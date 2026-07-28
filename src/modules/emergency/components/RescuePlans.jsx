@@ -26,7 +26,7 @@ const statusMeta = (key) => PLAN_STATUS.find((s) => s.key === key) || PLAN_STATU
  *  • site mode (default)  — a site's own plans, recallable from the baseline library
  *  • baseline mode        — the org-wide template library (`baseline` prop)
  */
-export default function RescuePlans({ site, plans, users, baseline = false }) {
+export default function RescuePlans({ site, plans, users, contacts = [], baseline = false }) {
   const { orgId, actor, isManager } = useAuth()
   const [editing, setEditing] = useState(null) // 'new' | plan | null
   const [form, setForm] = useState(EMPTY)
@@ -106,7 +106,7 @@ export default function RescuePlans({ site, plans, users, baseline = false }) {
     if (!picked.length) return toast.error('Pick at least one baseline plan')
     setBusy(true)
     try {
-      const res = await recallBaselines(orgId, site, picked, plans, actor)
+      const res = await recallBaselines(orgId, site, picked, plans, actor, contacts)
       toast.success(`${res.copied} plan(s) recalled to ${site.name}${res.skipped ? ` (${res.skipped} already covered)` : ''}`)
       setRecallOpen(false)
       setRecallPicked([])

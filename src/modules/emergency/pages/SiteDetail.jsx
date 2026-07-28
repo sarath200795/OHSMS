@@ -293,7 +293,7 @@ export default function SiteDetail() {
       )}
 
       {/* ── Rescue plans ── */}
-      {section === 'rescue' && <RescuePlans site={site} plans={plans} users={approvedUsers} />}
+      {section === 'rescue' && <RescuePlans site={site} plans={plans} users={approvedUsers} contacts={contacts || []} />}
 
       {sosOpen && (
         <SosPoster

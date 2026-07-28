@@ -127,7 +127,10 @@ const planRef = (orgId, id) => doc(db, 'organizations', orgId, 'erpRescuePlans',
 /** Scenarios a site plans a rescue response for. */
 export const RESCUE_SCENARIOS = [
   'Fire / Explosion',
+  'Vehicle Fire',
   'Medical Emergency',
+  'Blood / Body Fluid Spill',
+  'Fatality / Serious Injury',
   'Chemical Spill / Release',
   'Gas Leak',
   'Electrical Incident',
@@ -136,7 +139,11 @@ export const RESCUE_SCENARIOS = [
   'Machine Entrapment',
   'Water / Drowning Rescue',
   'Structural Collapse',
+  'Severe Weather / Cyclone',
   'Natural Disaster',
+  'Power Outage / Shelter in Place',
+  'Water Outage',
+  'Suspicious Package',
   'Security Threat',
   'Other',
 ]
@@ -216,9 +223,20 @@ export async function updateRescuePlan(orgId, id, data, actor) {
  * local to the site and flag it as customized. Skips scenarios the site already
  * covers. Returns { copied, skipped }.
  */
-export async function recallBaselines(orgId, site, baselines, existingSitePlans, actor) {
+export async function recallBaselines(orgId, site, baselines, existingSitePlans, actor, contacts = []) {
   const covered = new Set(existingSitePlans.filter((p) => p.siteId === site.id).map((p) => p.scenario))
   const targets = baselines.filter((b) => !covered.has(b.scenario))
+
+  // Resolve the baseline's role-only responders against THIS site's internal
+  // emergency contacts, so a recalled plan arrives with real names and numbers.
+  const internal = contacts.filter((c) => c.kind === 'internal' && (!c.siteId || c.siteId === site.id))
+  const contactFor = (role) => internal.find((c) => (c.role || '').toLowerCase() === (role || '').toLowerCase())
+  const resolveTeam = (team = []) =>
+    team.map((t) => {
+      const c = t.name ? null : contactFor(t.role)
+      return c ? { ...t, name: c.name, phone: c.phone || t.phone, uid: c.employeeUid || t.uid } : t
+    })
+
   if (targets.length) {
     const batch = writeBatch(db)
     for (const b of targets) {
@@ -229,6 +247,7 @@ export async function recallBaselines(orgId, site, baselines, existingSitePlans,
           baselineId: b.id,
           baselineName: b.title,
           customized: false,
+          team: resolveTeam(b.team),
           siteId: site.id,
           siteName: site.name,
           region: site.region || '',
