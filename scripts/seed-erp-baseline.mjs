@@ -9,18 +9,8 @@
 //
 // Run:  node scripts/seed-erp-baseline.mjs [--replace]
 // ─────────────────────────────────────────────────────────────────────────────
-import { initializeApp } from 'firebase/app'
-import { getAuth, connectAuthEmulator, signInWithEmailAndPassword } from 'firebase/auth'
-import {
-  getFirestore, connectFirestoreEmulator, doc, getDoc, getDocs, collection,
-  writeBatch, serverTimestamp,
-} from 'firebase/firestore'
-
-const app = initializeApp({ apiKey: 'demo-api-key', projectId: 'ohsms-demo' })
-const auth = getAuth(app)
-const db = getFirestore(app)
-connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true })
-connectFirestoreEmulator(db, '127.0.0.1', 8080)
+import { doc, getDocs, collection, writeBatch, serverTimestamp } from 'firebase/firestore'
+import { connect } from './_firebase.mjs'
 
 // Roles map 1:1 onto the app's internal escalation chain (INTERNAL_ROLES), so a
 // site that recalls a plan gets its own named people and phone numbers filled in
@@ -413,9 +403,7 @@ const PLANS = [
 
 async function main() {
   const replace = process.argv.includes('--replace')
-  const cred = await signInWithEmailAndPassword(auth, 'admin@acme.test', 'password123')
-  const me = (await getDoc(doc(db, 'users', cred.user.uid))).data()
-  const orgId = me.orgId
+  const { db, uid, orgId, profile } = await connect()
 
   const col = collection(db, 'organizations', orgId, 'erpRescuePlans')
   const existing = (await getDocs(col)).docs
@@ -456,8 +444,8 @@ async function main() {
       reviewedOn: new Date().toISOString().slice(0, 10),
       nextReviewOn: new Date(Date.now() + 365 * 86400000).toISOString().slice(0, 10),
       createdAt: serverTimestamp(),
-      createdBy: cred.user.uid,
-      createdByName: me.name || 'Admin',
+      createdBy: uid,
+      createdByName: profile?.name || 'Admin',
     })
   }
   await batch.commit()

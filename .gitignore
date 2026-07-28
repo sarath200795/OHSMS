@@ -34,3 +34,7 @@ coverage/
 
 # Vendored source (module repos copied in during integration)
 .vendor/
+
+# Firebase project targets & prod env (per-machine, never committed)
+.firebaserc
+.env.production
