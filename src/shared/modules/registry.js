@@ -139,7 +139,7 @@ export const MODULES = [
     path: '/emergency-response',
     icon: PhoneCall,
     tone: 'red',
-    description: 'FERP contact directory — external services (Police, Ambulance, Fire) and the internal escalation chain (CM, CLM, Safety, Legal, HR).',
+    description: 'Site emergency repository — FERP contacts (external & internal), evacuation plans and scenario rescue plans.',
     collection: 'erpContacts',
     isNew: true,
   },

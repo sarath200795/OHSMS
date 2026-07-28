@@ -105,3 +105,95 @@ export async function deleteLayout(orgId, site, actor) {
     summary: `Removed emergency evacuation layout for ${site.name}`,
   })
 }
+
+// ── Emergency rescue plans (per site, per scenario) ─────────────────────────
+const planCol = (orgId) => collection(db, 'organizations', orgId, 'erpRescuePlans')
+const planRef = (orgId, id) => doc(db, 'organizations', orgId, 'erpRescuePlans', id)
+
+/** Scenarios a site plans a rescue response for. */
+export const RESCUE_SCENARIOS = [
+  'Fire / Explosion',
+  'Medical Emergency',
+  'Chemical Spill / Release',
+  'Gas Leak',
+  'Electrical Incident',
+  'Confined Space Rescue',
+  'Work at Height Rescue',
+  'Machine Entrapment',
+  'Water / Drowning Rescue',
+  'Structural Collapse',
+  'Natural Disaster',
+  'Security Threat',
+  'Other',
+]
+
+export const PLAN_STATUS = [
+  { key: 'draft', label: 'Draft', tone: 'gray' },
+  { key: 'approved', label: 'Approved', tone: 'green' },
+  { key: 'review_due', label: 'Review due', tone: 'amber' },
+]
+
+export function subscribeRescuePlans(orgId, cb) {
+  const q = query(planCol(orgId), orderBy('scenario'))
+  return onSnapshot(q, (s) => cb(s.docs.map((d) => ({ id: d.id, ...d.data() }))), () => cb([]))
+}
+
+const cleanPlan = (data) => ({
+  siteId: data.siteId || '',
+  siteName: data.siteName || '',
+  region: data.region || '',
+  entity: data.entity || '',
+  scenario: data.scenario || 'Other',
+  title: (data.title || '').trim(),
+  description: (data.description || '').trim(),
+  triggers: (data.triggers || '').trim(),
+  assemblyPoint: (data.assemblyPoint || '').trim(),
+  steps: (Array.isArray(data.steps) ? data.steps : [])
+    .filter((s) => (s.action || '').trim())
+    .map((s, i) => ({
+      id: s.id || `st-${i}`,
+      order: i + 1,
+      action: s.action.trim(),
+      responsible: (s.responsible || '').trim(),
+    })),
+  team: (Array.isArray(data.team) ? data.team : [])
+    .filter((t) => (t.name || '').trim() || (t.role || '').trim())
+    .map((t, i) => ({
+      id: t.id || `tm-${i}`,
+      role: (t.role || '').trim(),
+      name: (t.name || '').trim(),
+      phone: (t.phone || '').trim(),
+      uid: t.uid || '',
+    })),
+  equipment: (Array.isArray(data.equipment) ? data.equipment : []).filter(Boolean),
+  status: data.status || 'draft',
+  reviewedOn: data.reviewedOn || '',
+  nextReviewOn: data.nextReviewOn || '',
+})
+
+export async function addRescuePlan(orgId, data, actor) {
+  const r = await addDoc(planCol(orgId), {
+    ...cleanPlan(data), createdAt: serverTimestamp(), createdBy: actor?.uid || null, createdByName: actor?.name || '',
+  })
+  await logAudit(orgId, actor, 'erp.plan_create', {
+    module: 'emergency', target: 'rescuePlan', targetId: r.id, targetLabel: `${data.siteName} · ${data.scenario}`,
+    summary: `Created rescue plan "${data.title}" (${data.scenario}) for ${data.siteName}`,
+  })
+  return r.id
+}
+
+export async function updateRescuePlan(orgId, id, data, actor) {
+  await updateDoc(planRef(orgId, id), { ...cleanPlan(data), updatedAt: serverTimestamp() })
+  await logAudit(orgId, actor, 'erp.plan_update', {
+    module: 'emergency', target: 'rescuePlan', targetId: id, targetLabel: `${data.siteName} · ${data.scenario}`,
+    summary: `Updated rescue plan "${data.title}" for ${data.siteName}`,
+  })
+}
+
+export async function deleteRescuePlan(orgId, id, actor, label) {
+  await deleteDoc(planRef(orgId, id))
+  await logAudit(orgId, actor, 'erp.plan_delete', {
+    module: 'emergency', target: 'rescuePlan', targetId: id, targetLabel: label,
+    summary: `Deleted rescue plan "${label}"`,
+  })
+}

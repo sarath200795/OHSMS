@@ -35,6 +35,7 @@ function statLines(statKey, stats = {}) {
       if (has('mockDrills')) lines.push(`${s.mockDrills} drill/emergency record(s)`)
       if (has('extinguishers')) lines.push(`${s.extinguishers} fire extinguisher(s) tracked`)
       if (has('erpContacts')) lines.push(`${s.erpContacts} FERP emergency contact(s)`)
+      if (has('erpRescuePlans')) lines.push(`${s.erpRescuePlans} scenario rescue plan(s)`)
       break
     case 'training':
       if (has('trainingCourses')) lines.push(`${s.trainingCourses} course(s) in the catalogue`)

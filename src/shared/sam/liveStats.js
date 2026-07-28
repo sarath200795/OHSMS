@@ -36,6 +36,7 @@ export async function getStats(orgId) {
     mockDrills: count(orgCol(orgId, 'mockDrills')),
     extinguishers: count(orgCol(orgId, 'extinguishers')),
     erpContacts: count(orgCol(orgId, 'erpContacts')),
+    erpRescuePlans: count(orgCol(orgId, 'erpRescuePlans')),
     trainingCourses: count(orgCol(orgId, 'trainingCourses')),
     trainingRecords: count(orgCol(orgId, 'trainingRecords')),
     trainingAssignments: count(orgCol(orgId, 'trainingAssignments')),

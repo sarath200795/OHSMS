@@ -1,0 +1,333 @@
+import { useMemo, useState } from 'react'
+import toast from 'react-hot-toast'
+import {
+  LifeBuoy, Plus, Pencil, Trash2, X, Users, Wrench, ChevronDown, ChevronUp,
+} from 'lucide-react'
+import { Card, Field, Input, Select, Textarea, Button, Modal, Badge, EmptyState } from '../../../shared/ui'
+import { useAuth } from '../../../shared/auth/AuthContext'
+import DeptPersonPicker from '../../../shared/org/DeptPersonPicker'
+import { formatDate } from '../../../shared/lib/format'
+import {
+  addRescuePlan, updateRescuePlan, deleteRescuePlan, RESCUE_SCENARIOS, PLAN_STATUS,
+} from '../lib/firestore'
+
+const newStep = () => ({ id: `st-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, action: '', responsible: '' })
+const newMember = () => ({ id: `tm-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, role: '', name: '', phone: '', uid: '' })
+
+const EMPTY = {
+  scenario: 'Fire / Explosion', title: '', description: '', triggers: '', assemblyPoint: '',
+  steps: [newStep()], team: [newMember()], equipment: [], status: 'draft', reviewedOn: '', nextReviewOn: '',
+}
+
+const statusMeta = (key) => PLAN_STATUS.find((s) => s.key === key) || PLAN_STATUS[0]
+
+export default function RescuePlans({ site, plans, users }) {
+  const { orgId, actor, isManager } = useAuth()
+  const [editing, setEditing] = useState(null) // 'new' | plan | null
+  const [form, setForm] = useState(EMPTY)
+  const [equipInput, setEquipInput] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [open, setOpen] = useState(null) // expanded plan id
+
+  const sitePlans = useMemo(
+    () => plans.filter((p) => p.siteId === site.id).sort((a, b) => a.scenario.localeCompare(b.scenario)),
+    [plans, site]
+  )
+  const covered = useMemo(() => new Set(sitePlans.map((p) => p.scenario)), [sitePlans])
+  const missing = RESCUE_SCENARIOS.filter((s) => s !== 'Other' && !covered.has(s))
+
+  const openNew = (scenario) => {
+    setForm({ ...EMPTY, scenario: scenario || EMPTY.scenario, steps: [newStep()], team: [newMember()] })
+    setEquipInput('')
+    setEditing('new')
+  }
+  const openEdit = (p) => {
+    setForm({
+      ...EMPTY, ...p,
+      steps: p.steps?.length ? p.steps : [newStep()],
+      team: p.team?.length ? p.team : [newMember()],
+      equipment: p.equipment || [],
+    })
+    setEquipInput('')
+    setEditing(p)
+  }
+
+  const setStep = (id, patch) => setForm((f) => ({ ...f, steps: f.steps.map((s) => (s.id === id ? { ...s, ...patch } : s)) }))
+  const moveStep = (i, dir) => setForm((f) => {
+    const next = [...f.steps]
+    const j = i + dir
+    if (j < 0 || j >= next.length) return f
+    ;[next[i], next[j]] = [next[j], next[i]]
+    return { ...f, steps: next }
+  })
+  const setMember = (id, patch) => setForm((f) => ({ ...f, team: f.team.map((t) => (t.id === id ? { ...t, ...patch } : t)) }))
+
+  const addEquip = () => {
+    const v = equipInput.trim()
+    if (!v) return
+    if (!form.equipment.includes(v)) setForm((f) => ({ ...f, equipment: [...f.equipment, v] }))
+    setEquipInput('')
+  }
+
+  const save = async (e) => {
+    e.preventDefault()
+    if (!form.title.trim()) return toast.error('Give the plan a title')
+    if (!form.steps.some((s) => s.action.trim())) return toast.error('Add at least one response step')
+    setBusy(true)
+    try {
+      const payload = { ...form, siteId: site.id, siteName: site.name, region: site.region || '', entity: site.entity || '' }
+      if (editing === 'new') { await addRescuePlan(orgId, payload, actor); toast.success('Rescue plan created') }
+      else { await updateRescuePlan(orgId, editing.id, payload, actor); toast.success('Rescue plan updated') }
+      setEditing(null)
+    } catch (err) { toast.error(err?.message || 'Failed') } finally { setBusy(false) }
+  }
+
+  const remove = async (p) => {
+    if (!window.confirm(`Delete the "${p.title}" rescue plan?`)) return
+    try { await deleteRescuePlan(orgId, p.id, actor, `${site.name} · ${p.title}`); toast.success('Plan deleted') }
+    catch (err) { toast.error(err?.message || 'Failed') }
+  }
+
+  return (
+    <Card>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h3 className="flex items-center gap-2 font-semibold text-ink-800">
+          <LifeBuoy size={17} className="text-accent-teal" /> Emergency rescue plans ({sitePlans.length})
+        </h3>
+        {isManager && <Button icon={Plus} onClick={() => openNew()}>Add rescue plan</Button>}
+      </div>
+
+      {sitePlans.length === 0 ? (
+        <EmptyState
+          icon={LifeBuoy}
+          title="No rescue plans yet"
+          description="Add a plan per emergency scenario — fire, medical, chemical spill, confined space, water rescue and more."
+          action={isManager && <Button icon={Plus} onClick={() => openNew()}>Add rescue plan</Button>}
+        />
+      ) : (
+        <div className="space-y-2.5">
+          {sitePlans.map((p) => {
+            const meta = statusMeta(p.status)
+            const isOpen = open === p.id
+            return (
+              <div key={p.id} className="rounded-2xl bg-clay-surface p-3.5 shadow-clay-inset">
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge tone="brand">{p.scenario}</Badge>
+                      <p className="font-bold text-ink-900">{p.title}</p>
+                      <Badge tone={meta.tone}>{meta.label}</Badge>
+                    </div>
+                    <p className="mt-0.5 text-xs text-ink-400">
+                      {p.steps?.length || 0} step(s) · {p.team?.length || 0} responder(s)
+                      {p.assemblyPoint ? ` · assembly: ${p.assemblyPoint}` : ''}
+                      {p.nextReviewOn ? ` · review by ${formatDate(p.nextReviewOn)}` : ''}
+                    </p>
+                  </div>
+                  {isManager && (
+                    <div className="flex gap-1">
+                      <button className="btn-ghost px-2 py-1 text-xs" onClick={() => openEdit(p)} title="Edit"><Pencil size={13} /></button>
+                      <button className="btn-ghost px-2 py-1 text-xs text-red-600 hover:bg-red-50" onClick={() => remove(p)} title="Delete"><Trash2 size={13} /></button>
+                    </div>
+                  )}
+                  <button className="btn-ghost px-2.5 py-1.5 text-xs" onClick={() => setOpen(isOpen ? null : p.id)}>
+                    {isOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />} {isOpen ? 'Hide' : 'Steps'}
+                  </button>
+                </div>
+
+                {isOpen && (
+                  <div className="mt-3 space-y-3 border-t border-clay-200/60 pt-3">
+                    {p.description && <p className="text-sm text-ink-700">{p.description}</p>}
+                    {p.triggers && <p className="text-xs text-ink-500"><b>Activate when:</b> {p.triggers}</p>}
+                    <ol className="space-y-1.5">
+                      {(p.steps || []).map((s) => (
+                        <li key={s.id} className="flex gap-2.5 text-sm">
+                          <span className="grid h-6 w-6 shrink-0 place-items-center rounded-lg bg-brand-600 text-xs font-bold text-white">{s.order}</span>
+                          <span className="text-ink-800">
+                            {s.action}
+                            {s.responsible && <span className="ml-1.5 text-xs font-semibold text-brand-600">— {s.responsible}</span>}
+                          </span>
+                        </li>
+                      ))}
+                    </ol>
+                    {(p.team || []).length > 0 && (
+                      <div>
+                        <p className="mb-1 flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-ink-400"><Users size={12} /> Rescue team</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {p.team.map((t) => (
+                            <span key={t.id} className="chip bg-clay-100 text-ink-700">
+                              {t.role ? `${t.role}: ` : ''}{t.name}{t.phone ? ` · ${t.phone}` : ''}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {(p.equipment || []).length > 0 && (
+                      <div>
+                        <p className="mb-1 flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-ink-400"><Wrench size={12} /> Equipment</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {p.equipment.map((eq) => <span key={eq} className="chip bg-accent-amber/15 text-ink-700">{eq}</span>)}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Scenario coverage prompts */}
+      {isManager && missing.length > 0 && (
+        <div className="mt-4 border-t border-clay-200/60 pt-3">
+          <p className="mb-2 text-xs font-bold uppercase tracking-widest text-ink-400">Scenarios without a plan</p>
+          <div className="flex flex-wrap gap-1.5">
+            {missing.map((s) => (
+              <button key={s} className="chip bg-clay-100 text-ink-500 transition hover:bg-brand-50 hover:text-brand-700" onClick={() => openNew(s)}>
+                <Plus size={11} /> {s}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Plan editor ── */}
+      <Modal open={!!editing} onClose={() => setEditing(null)} title={editing === 'new' ? `New rescue plan — ${site.name}` : 'Edit rescue plan'} size="xl">
+        <form onSubmit={save} className="space-y-4 p-6">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Scenario *">
+              <Select value={form.scenario} onChange={(e) => setForm({ ...form, scenario: e.target.value })}>
+                {RESCUE_SCENARIOS.map((s) => <option key={s} value={s}>{s}</option>)}
+              </Select>
+            </Field>
+            <Field label="Plan title *">
+              <Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="e.g. Gym floor fire evacuation & rescue" />
+            </Field>
+          </div>
+
+          <Field label="Description">
+            <Textarea rows={2} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="What this plan covers…" />
+          </Field>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Activate when (triggers)">
+              <Input value={form.triggers} onChange={(e) => setForm({ ...form, triggers: e.target.value })} placeholder="e.g. Fire alarm sounds / smoke detected" />
+            </Field>
+            <Field label="Assembly point">
+              <Input value={form.assemblyPoint} onChange={(e) => setForm({ ...form, assemblyPoint: e.target.value })} placeholder="e.g. Car park — north gate" />
+            </Field>
+          </div>
+
+          {/* Response steps */}
+          <div>
+            <div className="mb-1.5 flex items-center justify-between">
+              <label className="label !mb-0">Response steps *</label>
+              <Button type="button" variant="soft" icon={Plus} className="!py-1.5 text-xs" onClick={() => setForm((f) => ({ ...f, steps: [...f.steps, newStep()] }))}>
+                Add step
+              </Button>
+            </div>
+            <div className="space-y-2">
+              {form.steps.map((s, i) => (
+                <div key={s.id} className="flex items-start gap-2 rounded-xl bg-clay-surface p-2 shadow-clay-inset">
+                  <div className="flex flex-col items-center gap-0.5 pt-1.5">
+                    <span className="grid h-6 w-6 place-items-center rounded-lg bg-brand-600 text-xs font-bold text-white">{i + 1}</span>
+                    <button type="button" className="text-ink-300 hover:text-ink-600" onClick={() => moveStep(i, -1)} title="Move up"><ChevronUp size={12} /></button>
+                    <button type="button" className="text-ink-300 hover:text-ink-600" onClick={() => moveStep(i, 1)} title="Move down"><ChevronDown size={12} /></button>
+                  </div>
+                  <div className="grid flex-1 gap-2 sm:grid-cols-[2fr,1fr]">
+                    <Input value={s.action} onChange={(e) => setStep(s.id, { action: e.target.value })} placeholder={`Step ${i + 1} — what happens`} />
+                    <Input value={s.responsible} onChange={(e) => setStep(s.id, { responsible: e.target.value })} placeholder="Responsible role" />
+                  </div>
+                  {form.steps.length > 1 && (
+                    <button type="button" className="mt-1.5 rounded-lg p-1.5 text-ink-400 hover:bg-red-50 hover:text-red-600"
+                      onClick={() => setForm((f) => ({ ...f, steps: f.steps.filter((x) => x.id !== s.id) }))}>
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Rescue team */}
+          <div>
+            <div className="mb-1.5 flex items-center justify-between">
+              <label className="label !mb-0">Rescue team</label>
+              <Button type="button" variant="soft" icon={Plus} className="!py-1.5 text-xs" onClick={() => setForm((f) => ({ ...f, team: [...f.team, newMember()] }))}>
+                Add responder
+              </Button>
+            </div>
+            <div className="space-y-2">
+              {form.team.map((t) => (
+                <div key={t.id} className="rounded-xl bg-clay-surface p-2.5 shadow-clay-inset">
+                  <div className="mb-2 grid gap-2 sm:grid-cols-[1fr,1fr]">
+                    <Input value={t.role} onChange={(e) => setMember(t.id, { role: e.target.value })} placeholder="Role — e.g. Fire Marshal / First Aider" />
+                    <Input value={t.phone} onChange={(e) => setMember(t.id, { phone: e.target.value })} placeholder="Phone" />
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <div className="flex-1">
+                      <DeptPersonPicker
+                        users={users}
+                        value={t.uid}
+                        onChange={(v, u) => setMember(t.id, { uid: v, name: u?.name || t.name, phone: t.phone || u?.phone || '' })}
+                        personPlaceholder="Select responder…"
+                      />
+                    </div>
+                    {form.team.length > 1 && (
+                      <button type="button" className="rounded-lg p-1.5 text-ink-400 hover:bg-red-50 hover:text-red-600"
+                        onClick={() => setForm((f) => ({ ...f, team: f.team.filter((x) => x.id !== t.id) }))}>
+                        <X size={14} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Equipment */}
+          <div>
+            <label className="label">Rescue equipment</label>
+            {form.equipment.length > 0 && (
+              <div className="mb-2 flex flex-wrap gap-1.5">
+                {form.equipment.map((eq) => (
+                  <span key={eq} className="chip bg-clay-100 text-ink-700">
+                    {eq}
+                    <button type="button" onClick={() => setForm((f) => ({ ...f, equipment: f.equipment.filter((x) => x !== eq) }))} className="text-ink-400 hover:text-red-600">
+                      <X size={12} />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <Input value={equipInput} onChange={(e) => setEquipInput(e.target.value)} placeholder="e.g. Stretcher, AED, SCBA set, rescue tripod"
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addEquip() } }} />
+              <Button type="button" variant="soft" icon={Plus} onClick={addEquip}>Add</Button>
+            </div>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Field label="Status">
+              <Select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
+                {PLAN_STATUS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+              </Select>
+            </Field>
+            <Field label="Reviewed on">
+              <Input type="date" value={form.reviewedOn} onChange={(e) => setForm({ ...form, reviewedOn: e.target.value })} />
+            </Field>
+            <Field label="Next review">
+              <Input type="date" value={form.nextReviewOn} onChange={(e) => setForm({ ...form, nextReviewOn: e.target.value })} />
+            </Field>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-1">
+            <Button type="button" variant="ghost" onClick={() => setEditing(null)}>Cancel</Button>
+            <Button type="submit" loading={busy}>{editing === 'new' ? 'Create plan' : 'Save changes'}</Button>
+          </div>
+        </form>
+      </Modal>
+    </Card>
+  )
+}
