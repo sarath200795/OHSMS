@@ -7,7 +7,6 @@ import {
   inMemoryPersistence,
 } from 'firebase/auth'
 import { initializeFirestore, connectFirestoreEmulator } from 'firebase/firestore'
-import { getStorage, connectStorageEmulator } from 'firebase/storage'
 
 // Strip a leading UTF-8 BOM, zero-width chars, surrounding quotes and whitespace
 // from an env value. Some build/deploy pipelines silently prepend a BOM, which
@@ -20,13 +19,11 @@ const USE_EMULATORS = clean(import.meta.env.VITE_USE_EMULATORS) === 'true'
 const EMU_HOST = clean(import.meta.env.VITE_EMULATOR_HOST) || '127.0.0.1'
 const EMU_AUTH_PORT = Number(clean(import.meta.env.VITE_EMULATOR_AUTH_PORT)) || 9099
 const EMU_FS_PORT = Number(clean(import.meta.env.VITE_EMULATOR_FIRESTORE_PORT)) || 8080
-const EMU_STORAGE_PORT = Number(clean(import.meta.env.VITE_EMULATOR_STORAGE_PORT)) || 9199
 
 const firebaseConfig = {
   apiKey: clean(import.meta.env.VITE_FIREBASE_API_KEY),
   authDomain: clean(import.meta.env.VITE_FIREBASE_AUTH_DOMAIN),
   projectId: clean(import.meta.env.VITE_FIREBASE_PROJECT_ID),
-  storageBucket: clean(import.meta.env.VITE_FIREBASE_STORAGE_BUCKET),
   messagingSenderId: clean(import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID),
   appId: clean(import.meta.env.VITE_FIREBASE_APP_ID),
 }
@@ -58,13 +55,11 @@ export const auth = app ? getAuth(app) : null
 export const db = app
   ? initializeFirestore(app, { experimentalAutoDetectLongPolling: true })
   : null
-export const storage = app ? getStorage(app) : null
 
 if (app && USE_EMULATORS) {
   try {
     connectAuthEmulator(auth, `http://${EMU_HOST}:${EMU_AUTH_PORT}`, { disableWarnings: true })
     connectFirestoreEmulator(db, EMU_HOST, EMU_FS_PORT)
-    connectStorageEmulator(storage, EMU_HOST, EMU_STORAGE_PORT)
     // eslint-disable-next-line no-console
     console.info('[OHS MS] Connected to Firebase emulators at', EMU_HOST)
   } catch (e) {

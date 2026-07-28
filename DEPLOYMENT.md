@@ -1,7 +1,7 @@
 # WEHS — Deployment Runbook
 
 Target scale: **~5 000 users, 100–200 concurrent.**
-Stack: Vite + React SPA on Firebase Hosting, Firestore + Auth + Storage.
+Stack: Vite + React SPA on Firebase Hosting, Firestore + Auth. (No Firebase Storage — file uploads are stored as data URLs in Firestore, so there is nothing extra to provision.)
 
 Deploy to **staging first, always.** Production only after staging passes §6.
 
@@ -27,7 +27,6 @@ For **each** project:
    ⚠️ **The Firestore region is permanent.** Getting this wrong means recreating
    the project.
 4. **Authentication → Sign-in method → enable Email/Password.**
-5. **Storage → Get started** (same region).
 
 ## 2. Point the repo at them
 
@@ -55,7 +54,6 @@ VITE_USE_EMULATORS=false
 VITE_FIREBASE_API_KEY=…
 VITE_FIREBASE_AUTH_DOMAIN=wehs-prod.firebaseapp.com
 VITE_FIREBASE_PROJECT_ID=wehs-prod
-VITE_FIREBASE_STORAGE_BUCKET=wehs-prod.appspot.com
 VITE_FIREBASE_MESSAGING_SENDER_ID=…
 VITE_FIREBASE_APP_ID=…
 ```
@@ -72,8 +70,8 @@ npm run lint          # must be 0 errors
 npm test              # 108 tests must pass
 npm run test:rules    # 14 security-rules tests (starts its own emulator)
 
-# rules + indexes + storage
-firebase deploy --only firestore:rules,firestore:indexes,storage -P staging
+# rules + indexes
+firebase deploy --only firestore:rules,firestore:indexes -P staging
 
 # build with production env, then host
 npm run build

@@ -3,7 +3,7 @@
 A unified, multi-tenant OHS platform that brings ten health-&-safety domains into
 one app with a single sign-on, one dashboard and one audit trail.
 
-Built with **Vite + React + Tailwind CSS + Firebase (Auth + Firestore + Storage)**.
+Built with **Vite + React + Tailwind CSS + Firebase (Auth + Firestore)**.
 UI follows a **claymorphism** design language with **Emil Kowalski**-style motion and
 **skeleton loaders** throughout.
 
@@ -76,7 +76,7 @@ Set `VITE_USE_EMULATORS=false` in `.env` and fill in the `VITE_FIREBASE_*` value
 your Firebase console (Project settings → Your apps → Web). Then deploy rules:
 
 ```bash
-firebase deploy --only firestore:rules,storage:rules
+firebase deploy --only firestore:rules,firestore:indexes
 npm run build && firebase deploy --only hosting
 ```
 
