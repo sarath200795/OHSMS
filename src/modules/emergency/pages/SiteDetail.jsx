@@ -173,7 +173,12 @@ export default function SiteDetail() {
 
   return (
     <>
-      <PrintIsolate id={printTarget === 'plans' ? 'ferp-plans-sheet' : 'site-ferp-sheet'} />
+      {/* Floor plans print landscape (they're wide drawings); the full site FERP
+          sheet stays portrait for its contact tables. */}
+      <PrintIsolate
+        id={printTarget === 'plans' ? 'ferp-plans-sheet' : 'site-ferp-sheet'}
+        landscape={printTarget === 'plans'}
+      />
 
       <Link to="/emergency-response" className="mb-3 inline-flex items-center gap-1.5 text-sm font-semibold text-ink-500 transition hover:text-brand-600 print:hidden">
         <ArrowLeft size={15} /> All sites
@@ -306,18 +311,30 @@ export default function SiteDetail() {
         </div>
       </Modal>
 
-      {/* ── Printable FERP plans only (one floor per page) ── */}
-      <div id="ferp-plans-sheet" className="hidden bg-white p-8 text-black">
+      {/* ── Printable FERP plans only: one floor per LANDSCAPE page ──
+          Sized in mm so the drawing fills an A4 landscape sheet (281×194mm
+          usable inside the 8mm @page margin) rather than depending on the
+          screen viewport. */}
+      <div id="ferp-plans-sheet" className="hidden bg-white text-black">
         {floors.map((f, i) => (
-          <div key={f.id} style={i > 0 ? { pageBreakBefore: 'always' } : undefined}>
-            <h1 className="mb-0.5 text-xl font-black uppercase">{site.name} — Emergency Evacuation Plan</h1>
-            <p className="mb-3 text-sm font-bold">
-              {f.label}
-              <span className="ml-2 font-normal">
-                (Floor {i + 1} of {floors.length}){[site.entity, site.region].filter(Boolean).length ? ` · ${[site.entity, site.region].filter(Boolean).join(' · ')}` : ''}
-              </span>
-            </p>
-            <img src={f.dataUrl} alt={f.label} className="max-h-[74vh] w-full object-contain" />
+          <div
+            key={f.id}
+            className="flex flex-col items-center"
+            style={{ height: '188mm', ...(i > 0 ? { pageBreakBefore: 'always' } : null) }}
+          >
+            <div className="w-full border-b-2 border-black pb-1">
+              <h1 className="text-[16pt] font-black uppercase leading-tight">
+                {site.name} — Emergency Evacuation Plan
+              </h1>
+              <p className="text-[10pt] font-bold">
+                {f.label}
+                <span className="ml-2 font-normal">
+                  Floor {i + 1} of {floors.length}
+                  {[site.entity, site.region].filter(Boolean).length ? ` · ${[site.entity, site.region].filter(Boolean).join(' · ')}` : ''}
+                </span>
+              </p>
+            </div>
+            <img src={f.dataUrl} alt={f.label} className="mt-2 w-full flex-1 object-contain" style={{ minHeight: 0 }} />
           </div>
         ))}
       </div>
