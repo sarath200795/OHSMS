@@ -78,6 +78,8 @@ export default function SiteDetail() {
   }, [contacts, site])
 
   const sitePlans = useMemo(() => plans.filter((p) => p.siteId === siteId), [plans, siteId])
+  // Only approved plans are live procedures — they alone print on the site FERP.
+  const approvedPlans = useMemo(() => sitePlans.filter((p) => p.status === 'approved'), [sitePlans])
 
   const floors = useMemo(() => floorsOf(layout), [layout])
 
@@ -385,10 +387,10 @@ export default function SiteDetail() {
           </div>
         )}
 
-        {sitePlans.length > 0 && (
+        {approvedPlans.length > 0 && (
           <div style={{ pageBreakBefore: 'always' }}>
             <h2 className="mb-2 border-b-2 border-black pb-1 text-sm font-black">EMERGENCY RESCUE PLANS</h2>
-            {sitePlans.map((p) => (
+            {approvedPlans.map((p) => (
               <div key={p.id} className="mb-4">
                 <p className="text-sm font-black">{p.scenario} — {p.title}</p>
                 {p.assemblyPoint && <p className="text-xs">Assembly point: {p.assemblyPoint}</p>}

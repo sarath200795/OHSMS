@@ -148,9 +148,11 @@ export const RESCUE_SCENARIOS = [
   'Other',
 ]
 
+// Site plans are controlled documents: recalled from baseline → adapted →
+// approved. Only 'approved' plans are live for site use.
 export const PLAN_STATUS = [
-  { key: 'draft', label: 'Draft', tone: 'gray' },
-  { key: 'approved', label: 'Approved', tone: 'green' },
+  { key: 'draft', label: 'Awaiting approval', tone: 'amber' },
+  { key: 'approved', label: 'Approved — in use', tone: 'green' },
   { key: 'review_due', label: 'Review due', tone: 'amber' },
 ]
 
@@ -166,6 +168,9 @@ const cleanPlan = (data) => ({
   baselineId: data.baselineId || '',
   baselineName: data.baselineName || '',
   customized: !!data.customized,
+  approvedBy: data.approvedBy || '',
+  approvedByName: data.approvedByName || '',
+  approvedOn: data.approvedOn || '',
   siteId: data.siteId || '',
   siteName: data.siteName || '',
   region: data.region || '',
@@ -247,6 +252,9 @@ export async function recallBaselines(orgId, site, baselines, existingSitePlans,
           baselineId: b.id,
           baselineName: b.title,
           customized: false,
+          // Recalled plans always land unapproved — adapt locally, then approve.
+          status: 'draft',
+          approvedBy: '', approvedByName: '', approvedOn: '',
           team: resolveTeam(b.team),
           siteId: site.id,
           siteName: site.name,
@@ -265,6 +273,21 @@ export async function recallBaselines(orgId, site, baselines, existingSitePlans,
     })
   }
   return { copied: targets.length, skipped: baselines.length - targets.length }
+}
+
+/** Approve a site plan for operational use (managers only, enforced in the UI). */
+export async function approveRescuePlan(orgId, plan, actor) {
+  await updateDoc(planRef(orgId, plan.id), {
+    status: 'approved',
+    approvedBy: actor?.uid || null,
+    approvedByName: actor?.name || '',
+    approvedOn: new Date().toISOString().slice(0, 10),
+    updatedAt: serverTimestamp(),
+  })
+  await logAudit(orgId, actor, 'erp.plan_approve', {
+    module: 'emergency', target: 'rescuePlan', targetId: plan.id, targetLabel: `${plan.siteName} · ${plan.title}`,
+    summary: `Approved rescue plan "${plan.title}" (${plan.scenario}) for use at ${plan.siteName}`,
+  })
 }
 
 export async function deleteRescuePlan(orgId, id, actor, label) {

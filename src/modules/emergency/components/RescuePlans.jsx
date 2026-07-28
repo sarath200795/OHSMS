@@ -1,14 +1,17 @@
 import { useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import {
   LifeBuoy, Plus, Pencil, Trash2, X, Users, Wrench, ChevronDown, ChevronUp, Library, Check,
+  BadgeCheck, ShieldAlert,
 } from 'lucide-react'
 import { Card, Field, Input, Select, Textarea, Button, Modal, Badge, EmptyState } from '../../../shared/ui'
 import { useAuth } from '../../../shared/auth/AuthContext'
 import DeptPersonPicker from '../../../shared/org/DeptPersonPicker'
 import { formatDate } from '../../../shared/lib/format'
 import {
-  addRescuePlan, updateRescuePlan, deleteRescuePlan, recallBaselines, RESCUE_SCENARIOS, PLAN_STATUS,
+  addRescuePlan, updateRescuePlan, deleteRescuePlan, recallBaselines, approveRescuePlan,
+  RESCUE_SCENARIOS, PLAN_STATUS,
 } from '../lib/firestore'
 
 const newStep = () => ({ id: `st-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, action: '', responsible: '' })
@@ -50,6 +53,8 @@ export default function RescuePlans({ site, plans, users, contacts = [], baselin
   const covered = useMemo(() => new Set(sitePlans.map((p) => p.scenario)), [sitePlans])
   const recallable = useMemo(() => baselineLibrary.filter((b) => !covered.has(b.scenario)), [baselineLibrary, covered])
   const missing = RESCUE_SCENARIOS.filter((s) => s !== 'Other' && !covered.has(s))
+  const approvedCount = useMemo(() => sitePlans.filter((p) => p.status === 'approved').length, [sitePlans])
+  const pendingCount = sitePlans.length - approvedCount
 
   const openNew = (scenario) => {
     setForm({ ...EMPTY, scenario: scenario || EMPTY.scenario, steps: [newStep()], team: [newMember()] })
@@ -93,12 +98,28 @@ export default function RescuePlans({ site, plans, users, contacts = [], baselin
       const scope = baseline
         ? { kind: 'baseline', siteId: '', siteName: '', region: '', entity: '' }
         : { kind: 'site', siteId: site.id, siteName: site.name, region: site.region || '', entity: site.entity || '' }
-      // Editing a recalled plan marks it as adapted for this site.
-      const payload = { ...form, ...scope, customized: form.customized || (!baseline && !!form.baselineId && editing !== 'new') }
+      // Editing a recalled plan marks it as adapted for this site. Editing an
+      // approved site plan sends it back for re-approval — it's a controlled document.
+      const wasApproved = !baseline && editing !== 'new' && editing?.status === 'approved'
+      const payload = {
+        ...form, ...scope,
+        customized: form.customized || (!baseline && !!form.baselineId && editing !== 'new'),
+        ...(wasApproved ? { status: 'draft', approvedBy: '', approvedByName: '', approvedOn: '' } : null),
+      }
       if (editing === 'new') { await addRescuePlan(orgId, payload, actor); toast.success(baseline ? 'Baseline plan created' : 'Rescue plan created') }
-      else { await updateRescuePlan(orgId, editing.id, payload, actor); toast.success('Rescue plan updated') }
+      else {
+        await updateRescuePlan(orgId, editing.id, payload, actor)
+        toast.success(wasApproved ? 'Updated — needs re-approval before use' : 'Rescue plan updated')
+      }
       setEditing(null)
     } catch (err) { toast.error(err?.message || 'Failed') } finally { setBusy(false) }
+  }
+
+  const approve = async (p) => {
+    if (!window.confirm(`Approve "${p.title}" for use at ${site.name}?\n\nIt becomes the site's live procedure for ${p.scenario} and prints on the site FERP.`)) return
+    setBusy(true)
+    try { await approveRescuePlan(orgId, p, actor); toast.success('Approved for site use') }
+    catch (err) { toast.error(err?.message || 'Failed') } finally { setBusy(false) }
   }
 
   const doRecall = async () => {
@@ -124,18 +145,22 @@ export default function RescuePlans({ site, plans, users, contacts = [], baselin
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h3 className="flex items-center gap-2 font-semibold text-ink-800">
           <LifeBuoy size={17} className="text-accent-teal" />
-          {baseline ? 'Baseline rescue plans' : 'Emergency rescue plans'} ({sitePlans.length})
+          {baseline
+            ? `Baseline rescue plans (${sitePlans.length})`
+            : <>Emergency rescue plans — <span className="text-green-700">{approvedCount} in use</span>
+                {pendingCount > 0 && <span className="text-amber-600">, {pendingCount} awaiting approval</span>}</>}
         </h3>
         {isManager && (
           <div className="flex flex-wrap gap-2">
-            {!baseline && (
+            {baseline ? (
+              <Button icon={Plus} onClick={() => openNew()}>Add baseline plan</Button>
+            ) : (
               <Button variant="soft" icon={Library} disabled={recallable.length === 0}
-                title={recallable.length ? 'Copy plans from the baseline library' : 'No baseline plans left to recall'}
+                title={recallable.length ? 'Recall plans from the baseline library' : 'Every baseline scenario is already recalled here'}
                 onClick={() => { setRecallPicked(recallable.map((b) => b.id)); setRecallOpen(true) }}>
                 Recall baseline ({recallable.length})
               </Button>
             )}
-            <Button icon={Plus} onClick={() => openNew()}>{baseline ? 'Add baseline plan' : 'Add rescue plan'}</Button>
           </div>
         )}
       </div>
@@ -143,19 +168,18 @@ export default function RescuePlans({ site, plans, users, contacts = [], baselin
       {sitePlans.length === 0 ? (
         <EmptyState
           icon={LifeBuoy}
-          title={baseline ? 'No baseline plans yet' : 'No rescue plans yet'}
+          title={baseline ? 'No baseline plans yet' : 'No rescue plans recalled yet'}
           description={baseline
             ? 'Build your organization’s standard rescue plans here — every site can recall them and adapt locally.'
-            : 'Recall your organization’s baseline plans and adapt them, or write a site-specific plan from scratch.'}
+            : 'Site procedures start from the baseline library: recall a plan, adapt it to this site, then approve it for use.'}
           action={isManager && (
-            <div className="flex flex-wrap justify-center gap-2">
-              {!baseline && recallable.length > 0 && (
-                <Button variant="soft" icon={Library} onClick={() => { setRecallPicked(recallable.map((b) => b.id)); setRecallOpen(true) }}>
-                  Recall baseline ({recallable.length})
-                </Button>
-              )}
-              <Button icon={Plus} onClick={() => openNew()}>{baseline ? 'Add baseline plan' : 'Add rescue plan'}</Button>
-            </div>
+            baseline
+              ? <Button icon={Plus} onClick={() => openNew()}>Add baseline plan</Button>
+              : recallable.length > 0
+                ? <Button variant="soft" icon={Library} onClick={() => { setRecallPicked(recallable.map((b) => b.id)); setRecallOpen(true) }}>
+                    Recall baseline ({recallable.length})
+                  </Button>
+                : <Link to="/emergency-response/baseline" className="btn-primary"><Library size={16} /> Build the baseline library</Link>
           )}
         />
       ) : (
@@ -182,11 +206,18 @@ export default function RescuePlans({ site, plans, users, contacts = [], baselin
                       {p.steps?.length || 0} step(s) · {p.team?.length || 0} responder(s)
                       {p.assemblyPoint ? ` · assembly: ${p.assemblyPoint}` : ''}
                       {p.nextReviewOn ? ` · review by ${formatDate(p.nextReviewOn)}` : ''}
+                      {p.status === 'approved' && p.approvedByName ? ` · approved by ${p.approvedByName}${p.approvedOn ? ` on ${formatDate(p.approvedOn)}` : ''}` : ''}
                     </p>
                   </div>
                   {isManager && (
-                    <div className="flex gap-1">
-                      <button className="btn-ghost px-2 py-1 text-xs" onClick={() => openEdit(p)} title="Edit"><Pencil size={13} /></button>
+                    <div className="flex items-center gap-1">
+                      {!baseline && p.status !== 'approved' && (
+                        <Button variant="soft" icon={BadgeCheck} className="!py-1.5 text-xs" loading={busy}
+                          onClick={() => approve(p)} title="Approve this plan for use at this site">
+                          Approve
+                        </Button>
+                      )}
+                      <button className="btn-ghost px-2 py-1 text-xs" onClick={() => openEdit(p)} title={p.status === 'approved' ? 'Edit (will need re-approval)' : 'Edit'}><Pencil size={13} /></button>
                       <button className="btn-ghost px-2 py-1 text-xs text-red-600 hover:bg-red-50" onClick={() => remove(p)} title="Delete"><Trash2 size={13} /></button>
                     </div>
                   )}
@@ -238,17 +269,30 @@ export default function RescuePlans({ site, plans, users, contacts = [], baselin
         </div>
       )}
 
-      {/* Scenario coverage prompts */}
+      {/* Scenario coverage: baselines are authored centrally, so at site level
+          we surface the gap and route to the library rather than ad-hoc creation. */}
       {isManager && missing.length > 0 && (
         <div className="mt-4 border-t border-clay-200/60 pt-3">
-          <p className="mb-2 text-xs font-bold uppercase tracking-widest text-ink-400">Scenarios without a plan</p>
+          <p className="mb-2 flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-ink-400">
+            <ShieldAlert size={12} /> Scenarios without a plan
+          </p>
           <div className="flex flex-wrap gap-1.5">
             {missing.map((s) => (
-              <button key={s} className="chip bg-clay-100 text-ink-500 transition hover:bg-brand-50 hover:text-brand-700" onClick={() => openNew(s)}>
-                <Plus size={11} /> {s}
-              </button>
+              baseline ? (
+                <button key={s} className="chip bg-clay-100 text-ink-500 transition hover:bg-brand-50 hover:text-brand-700" onClick={() => openNew(s)}>
+                  <Plus size={11} /> {s}
+                </button>
+              ) : (
+                <span key={s} className="chip bg-clay-100 text-ink-400">{s}</span>
+              )
             ))}
           </div>
+          {!baseline && (
+            <p className="mt-2 text-xs text-ink-400">
+              Site procedures come from the baseline library — add the missing scenarios in{' '}
+              <Link to="/emergency-response/baseline" className="font-semibold text-brand-600 hover:underline">Baseline Plans</Link>, then recall them here.
+            </p>
+          )}
         </div>
       )}
 

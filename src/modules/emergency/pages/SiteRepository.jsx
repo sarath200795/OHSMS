@@ -43,7 +43,7 @@ export default function SiteRepository() {
       const mine = list.filter((c) => !c.siteId || c.siteId === s.id)
       const internal = mine.filter((c) => c.kind === 'internal').length
       const external = mine.filter((c) => c.kind === 'external').length
-      const sitePlans = plans.filter((p) => p.siteId === s.id).length
+      const sitePlans = plans.filter((p) => p.siteId === s.id && p.status === 'approved').length
       const hasLayout = !!layouts[s.id]
       return {
         site: s, internal, external, hasLayout, plans: sitePlans,

@@ -18,6 +18,7 @@ import {
 } from '../lib/mockDrillTemplates'
 import SiteScopePicker from '../../../shared/org/SiteScopePicker'
 import DeptPersonPicker from '../../../shared/org/DeptPersonPicker'
+import { subscribeContacts as subscribeErpContacts } from '../../emergency/lib/firestore'
 
 const nowTime = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
 const today = () => new Date().toISOString().slice(0, 10)
@@ -54,6 +55,7 @@ export default function MockDrills() {
   const [commanders, setCommanders] = useState([])
   const [commanderPick, setCommanderPick] = useState('')
   const [commanderManual, setCommanderManual] = useState('')
+  const autoCmRef = useRef('') // CM auto-filled from the site's ERP contacts
   const [checks, setChecks] = useState({})
   const [teamChecks, setTeamChecks] = useState({})
   const [actionLog, setActionLog] = useState([{ time: '', action: '', observation: '' }])
@@ -104,6 +106,27 @@ export default function MockDrills() {
   const closeRecorder = () => setScenario(null)
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }))
+
+  // The site's CM from the Emergency Response Plan is the Incident Commander by
+  // default — auto-filled when a site is picked, and freely editable afterwards.
+  useEffect(() => {
+    if (!orgId || !form.siteId) return undefined
+    return subscribeErpContacts(orgId, (list) => {
+      const cm = list.find(
+        (c) => c.kind === 'internal' && c.siteId === form.siteId && (c.role || '').toUpperCase() === 'CM'
+      ) || list.find(
+        (c) => c.kind === 'internal' && !c.siteId && (c.role || '').toUpperCase() === 'CM'
+      )
+      const name = (cm?.name || '').trim()
+      if (!name) return
+      setCommanders((prev) => {
+        // Only seed it — never overwrite what the user has already entered.
+        if (prev.length > 0 || autoCmRef.current === name) return prev
+        autoCmRef.current = name
+        return [name]
+      })
+    })
+  }, [orgId, form.siteId])
 
   // commanders
   const addCommander = (src) => {
@@ -332,7 +355,12 @@ export default function MockDrills() {
 
             {/* commanders */}
             <div className="rounded-xl bg-clay-surface/60 p-4 shadow-clay-inset">
-              <p className="mb-2 flex items-center gap-2 text-sm font-bold text-ink-700"><ShieldCheck size={16} /> Incident commanders</p>
+              <p className="mb-1 flex items-center gap-2 text-sm font-bold text-ink-700"><ShieldCheck size={16} /> Incident commanders</p>
+              <p className="mb-2 text-xs text-ink-400">
+                {autoCmRef.current
+                  ? <>Auto-filled with <b>{autoCmRef.current}</b> — the site&apos;s CM from the Emergency Response Plan. Change it if the CM has changed.</>
+                  : 'The site CM from the Emergency Response Plan is used by default — pick a site to auto-fill.'}
+              </p>
               {commanders.length > 0 && (
                 <div className="mb-3 flex flex-wrap gap-2">
                   {commanders.map((n, i) => (
