@@ -7,7 +7,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import {
   addDoc, collection, deleteDoc, doc, onSnapshot, orderBy, query,
-  serverTimestamp, setDoc, updateDoc,
+  serverTimestamp, setDoc, updateDoc, writeBatch,
 } from 'firebase/firestore'
 import { db } from '../../../shared/firebase'
 import { logAudit } from '../../../shared/org/orgData'
@@ -84,19 +84,31 @@ export function subscribeLayouts(orgId, cb) {
   )
 }
 
-export async function saveLayout(orgId, site, { dataUrl, fileName }, actor) {
+/**
+ * A site's FERP layout doc holds an ordered list of floor plans:
+ *   { siteId, siteName, floors: [{ id, label, dataUrl, fileName }] }
+ * Older single-image docs (dataUrl at the top level) are read as one floor.
+ */
+export function floorsOf(layout) {
+  if (!layout) return []
+  if (Array.isArray(layout.floors) && layout.floors.length) return layout.floors
+  return layout.dataUrl
+    ? [{ id: 'legacy', label: 'Ground floor', dataUrl: layout.dataUrl, fileName: layout.fileName || '' }]
+    : []
+}
+
+export async function saveFloors(orgId, site, floors, actor, summary) {
   await setDoc(layoutRef(orgId, site.id), {
     siteId: site.id,
     siteName: site.name,
-    dataUrl,
-    fileName: fileName || '',
+    floors,
     updatedAt: serverTimestamp(),
     updatedBy: actor?.uid || null,
     updatedByName: actor?.name || '',
   })
   await logAudit(orgId, actor, 'erp.layout_save', {
     module: 'emergency', target: 'layout', targetId: site.id, targetLabel: site.name,
-    summary: `Uploaded emergency evacuation layout for ${site.name}`,
+    summary: summary || `Updated FERP floor plans for ${site.name} (${floors.length} floor(s))`,
   })
 }
 
@@ -104,7 +116,7 @@ export async function deleteLayout(orgId, site, actor) {
   await deleteDoc(layoutRef(orgId, site.id))
   await logAudit(orgId, actor, 'erp.layout_delete', {
     module: 'emergency', target: 'layout', targetId: site.id, targetLabel: site.name,
-    summary: `Removed emergency evacuation layout for ${site.name}`,
+    summary: `Removed all FERP floor plans for ${site.name}`,
   })
 }
 
@@ -141,6 +153,12 @@ export function subscribeRescuePlans(orgId, cb) {
 }
 
 const cleanPlan = (data) => ({
+  // 'baseline' = org-wide template plan; 'site' = a site's own plan (often
+  // recalled from a baseline and then adapted).
+  kind: data.kind === 'baseline' ? 'baseline' : 'site',
+  baselineId: data.baselineId || '',
+  baselineName: data.baselineName || '',
+  customized: !!data.customized,
   siteId: data.siteId || '',
   siteName: data.siteName || '',
   region: data.region || '',
@@ -190,6 +208,44 @@ export async function updateRescuePlan(orgId, id, data, actor) {
     module: 'emergency', target: 'rescuePlan', targetId: id, targetLabel: `${data.siteName} · ${data.scenario}`,
     summary: `Updated rescue plan "${data.title}" for ${data.siteName}`,
   })
+}
+
+/**
+ * Copy baseline plans onto a site. Each copy keeps a link back to its baseline
+ * (`baselineId`) so the site can see where it came from; edits afterwards are
+ * local to the site and flag it as customized. Skips scenarios the site already
+ * covers. Returns { copied, skipped }.
+ */
+export async function recallBaselines(orgId, site, baselines, existingSitePlans, actor) {
+  const covered = new Set(existingSitePlans.filter((p) => p.siteId === site.id).map((p) => p.scenario))
+  const targets = baselines.filter((b) => !covered.has(b.scenario))
+  if (targets.length) {
+    const batch = writeBatch(db)
+    for (const b of targets) {
+      batch.set(doc(planCol(orgId)), {
+        ...cleanPlan({
+          ...b,
+          kind: 'site',
+          baselineId: b.id,
+          baselineName: b.title,
+          customized: false,
+          siteId: site.id,
+          siteName: site.name,
+          region: site.region || '',
+          entity: site.entity || '',
+        }),
+        createdAt: serverTimestamp(),
+        createdBy: actor?.uid || null,
+        createdByName: actor?.name || '',
+      })
+    }
+    await batch.commit()
+    await logAudit(orgId, actor, 'erp.plan_recall', {
+      module: 'emergency', target: 'rescuePlan', targetId: site.id, targetLabel: site.name,
+      summary: `Recalled ${targets.length} baseline rescue plan(s) to ${site.name}`,
+    })
+  }
+  return { copied: targets.length, skipped: baselines.length - targets.length }
 }
 
 export async function deleteRescuePlan(orgId, id, actor, label) {

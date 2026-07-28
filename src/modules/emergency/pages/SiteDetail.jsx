@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import {
   Map, Phone, Printer, Upload, Trash2, ImageOff, ArrowLeft, Building2, LifeBuoy, Siren,
+  Layers, ChevronUp, ChevronDown, Pencil,
 } from 'lucide-react'
 import {
   PageHeader, Card, Button, EmptyState, SkeletonCard, Modal, PrintIsolate,
@@ -16,7 +17,7 @@ import RescuePlans from '../components/RescuePlans'
 import ContactsSection from '../components/ContactsSection'
 import SosPoster from '../components/SosPoster'
 import {
-  subscribeContacts, subscribeLayouts, subscribeRescuePlans, saveLayout, deleteLayout, INTERNAL_ROLES,
+  subscribeContacts, subscribeLayouts, subscribeRescuePlans, saveFloors, deleteLayout, floorsOf, INTERNAL_ROLES,
 } from '../lib/firestore'
 
 const MAX_LAYOUT_BYTES = 900 * 1024
@@ -42,7 +43,7 @@ export default function SiteDetail() {
   const [allSites, setAllSites] = useState([])
   const [users, setUsers] = useState([])
   const [section, setSection] = useState('contacts')
-  const [viewLayout, setViewLayout] = useState(false)
+  const [viewLayout, setViewLayout] = useState(null) // floor being enlarged
   const [sosOpen, setSosOpen] = useState(false)
   const [sosAccent, setSosAccent] = useState('pink')
   const [busy, setBusy] = useState(false)
@@ -76,17 +77,30 @@ export default function SiteDetail() {
 
   const sitePlans = useMemo(() => plans.filter((p) => p.siteId === siteId), [plans, siteId])
 
-  const uploadLayout = async (e) => {
-    const file = e.target.files?.[0]
+  const floors = useMemo(() => floorsOf(layout), [layout])
+
+  // Multi-floor upload: each selected image becomes a floor, labelled in order.
+  const uploadFloors = async (e) => {
+    const files = [...(e.target.files || [])]
     e.target.value = ''
-    if (!file || !site) return
-    if (!file.type.startsWith('image/')) return toast.error('Pick an image (photo or exported plan)')
-    if (file.size > MAX_LAYOUT_BYTES) return toast.error('Keep the layout under 900 KB — export a compressed JPG/PNG')
+    if (!files.length || !site) return
+    if (files.some((f) => !f.type.startsWith('image/'))) return toast.error('Pick image files (photos or exported plans)')
+    const tooBig = files.find((f) => f.size > MAX_LAYOUT_BYTES)
+    if (tooBig) return toast.error(`"${tooBig.name}" is over 900 KB — export a compressed JPG/PNG`)
     setBusy(true)
     try {
-      const dataUrl = await fileToDataUrl(file)
-      await saveLayout(orgId, site, { dataUrl, fileName: file.name }, actor)
-      toast.success(`FERP plan saved for ${site.name}`)
+      const added = []
+      for (const [i, file] of files.entries()) {
+        added.push({
+          id: `fl-${Date.now()}-${i}`,
+          label: file.name.replace(/\.[^.]+$/, '').slice(0, 40) || `Floor ${floors.length + i + 1}`,
+          dataUrl: await fileToDataUrl(file),
+          fileName: file.name,
+        })
+      }
+      const next = [...floors, ...added]
+      await saveFloors(orgId, site, next, actor, `Added ${added.length} floor plan(s) to ${site.name}`)
+      toast.success(`${added.length} floor plan(s) added`)
     } catch (err) {
       toast.error(err?.message || 'Upload failed')
     } finally {
@@ -94,10 +108,32 @@ export default function SiteDetail() {
     }
   }
 
-  const removeLayout = async () => {
-    if (!site || !window.confirm(`Remove the FERP plan for ${site.name}?`)) return
-    try { await deleteLayout(orgId, site, actor); toast.success('FERP plan removed') }
+  const renameFloor = async (floor) => {
+    const label = window.prompt('Floor name', floor.label)
+    if (label == null || !label.trim()) return
+    try {
+      await saveFloors(orgId, site, floors.map((f) => (f.id === floor.id ? { ...f, label: label.trim() } : f)), actor,
+        `Renamed a floor plan for ${site.name}`)
+    } catch (err) { toast.error(err?.message || 'Failed') }
+  }
+
+  const moveFloor = async (i, dir) => {
+    const j = i + dir
+    if (j < 0 || j >= floors.length) return
+    const next = [...floors]
+    ;[next[i], next[j]] = [next[j], next[i]]
+    try { await saveFloors(orgId, site, next, actor, `Reordered floor plans for ${site.name}`) }
     catch (err) { toast.error(err?.message || 'Failed') }
+  }
+
+  const removeFloor = async (floor) => {
+    if (!window.confirm(`Remove the "${floor.label}" floor plan?`)) return
+    const next = floors.filter((f) => f.id !== floor.id)
+    try {
+      if (next.length) await saveFloors(orgId, site, next, actor, `Removed a floor plan from ${site.name}`)
+      else await deleteLayout(orgId, site, actor)
+      toast.success('Floor plan removed')
+    } catch (err) { toast.error(err?.message || 'Failed') }
   }
 
   if (contacts === null) {
@@ -149,7 +185,7 @@ export default function SiteDetail() {
           const count =
             s.key === 'contacts' ? siteContacts.internal.length + siteContacts.external.length
             : s.key === 'rescue' ? sitePlans.length
-            : layout ? 1 : 0
+            : floors.length
           return (
             <button
               key={s.key}
@@ -173,42 +209,53 @@ export default function SiteDetail() {
         <Card>
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <h3 className="flex items-center gap-2 font-semibold text-ink-800">
-              <Map size={17} className="text-accent-amber" /> FERP plan — evacuation layout
+              <Map size={17} className="text-accent-amber" /> FERP plan — evacuation layouts ({floors.length})
             </h3>
             {isManager && (
-              <div className="flex gap-1.5">
-                <Button variant="soft" icon={Upload} loading={busy} onClick={() => fileRef.current?.click()}>
-                  {layout ? 'Replace' : 'Upload plan'}
-                </Button>
-                {layout && (
-                  <button className="btn-ghost px-2.5 py-1.5 text-xs text-red-600 hover:bg-red-50" onClick={removeLayout} title="Remove plan">
-                    <Trash2 size={14} />
-                  </button>
-                )}
-              </div>
+              <Button variant="soft" icon={Upload} loading={busy} onClick={() => fileRef.current?.click()}>
+                {floors.length ? 'Add floors' : 'Upload floor plans'}
+              </Button>
             )}
-            <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={uploadLayout} />
+            <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={uploadFloors} />
           </div>
 
-          {layout ? (
+          {floors.length > 0 ? (
             <>
-              <button type="button" className="block w-full overflow-hidden rounded-2xl shadow-clay-sm transition hover:opacity-95" onClick={() => setViewLayout(true)} title="Click to enlarge">
-                <img src={layout.dataUrl} alt={`FERP plan — ${site.name}`} className="max-h-[520px] w-full bg-white object-contain" />
-              </button>
+              <div className="grid gap-4 lg:grid-cols-2">
+                {floors.map((f, i) => (
+                  <div key={f.id} className="rounded-2xl bg-clay-surface p-3 shadow-clay-inset">
+                    <div className="mb-2 flex items-center gap-2">
+                      <Layers size={14} className="shrink-0 text-accent-amber" />
+                      <p className="min-w-0 flex-1 truncate font-semibold text-ink-800">{f.label}</p>
+                      {isManager && (
+                        <div className="flex shrink-0 gap-0.5">
+                          <button className="btn-ghost px-1.5 py-1 text-xs" onClick={() => moveFloor(i, -1)} disabled={i === 0} title="Move up"><ChevronUp size={13} /></button>
+                          <button className="btn-ghost px-1.5 py-1 text-xs" onClick={() => moveFloor(i, 1)} disabled={i === floors.length - 1} title="Move down"><ChevronDown size={13} /></button>
+                          <button className="btn-ghost px-1.5 py-1 text-xs" onClick={() => renameFloor(f)} title="Rename floor"><Pencil size={13} /></button>
+                          <button className="btn-ghost px-1.5 py-1 text-xs text-red-600 hover:bg-red-50" onClick={() => removeFloor(f)} title="Remove floor"><Trash2 size={13} /></button>
+                        </div>
+                      )}
+                    </div>
+                    <button type="button" className="block w-full overflow-hidden rounded-xl transition hover:opacity-95"
+                      onClick={() => setViewLayout(f)} title="Click to enlarge">
+                      <img src={f.dataUrl} alt={`${f.label} — ${site.name}`} className="max-h-[360px] w-full bg-white object-contain" />
+                    </button>
+                  </div>
+                ))}
+              </div>
               <p className="mt-2 text-xs text-ink-400">
-                {layout.fileName || 'layout'}
-                {layout.updatedAt?.toDate ? ` · updated ${formatDate(layout.updatedAt.toDate())}` : ''}
-                {layout.updatedByName ? ` by ${layout.updatedByName}` : ''} · click to enlarge
+                {layout?.updatedAt?.toDate ? `Updated ${formatDate(layout.updatedAt.toDate())}` : ''}
+                {layout?.updatedByName ? ` by ${layout.updatedByName}` : ''} · click any plan to enlarge
               </p>
             </>
           ) : (
             <EmptyState
               icon={ImageOff}
-              title="No FERP plan uploaded"
+              title="No FERP plans uploaded"
               description={isManager
-                ? 'Upload this site’s fire & emergency response plan — evacuation routes, exits and assembly points (JPG/PNG up to 900 KB).'
-                : 'The FERP plan for this site hasn’t been uploaded yet — ask a manager.'}
-              action={isManager && <Button icon={Upload} onClick={() => fileRef.current?.click()}>Upload plan</Button>}
+                ? 'Upload this site’s fire & emergency response plans — one image per floor (select several at once). JPG/PNG up to 900 KB each.'
+                : 'The FERP plans for this site haven’t been uploaded yet — ask a manager.'}
+              action={isManager && <Button icon={Upload} onClick={() => fileRef.current?.click()}>Upload floor plans</Button>}
             />
           )}
         </Card>
@@ -227,9 +274,9 @@ export default function SiteDetail() {
         />
       )}
 
-      <Modal open={viewLayout} onClose={() => setViewLayout(false)} title={`FERP plan — ${site.name}`} size="xl">
+      <Modal open={!!viewLayout} onClose={() => setViewLayout(null)} title={viewLayout ? `${viewLayout.label} — ${site.name}` : ''} size="xl">
         <div className="p-4">
-          {layout && <img src={layout.dataUrl} alt={`FERP plan — ${site.name}`} className="max-h-[75vh] w-full bg-white object-contain" />}
+          {viewLayout && <img src={viewLayout.dataUrl} alt={`${viewLayout.label} — ${site.name}`} className="max-h-[75vh] w-full bg-white object-contain" />}
         </div>
       </Modal>
 
@@ -265,10 +312,17 @@ export default function SiteDetail() {
           </tbody>
         </table>
 
-        {layout && (
+        {floors.length > 0 && (
           <div className="mb-5">
-            <h2 className="mb-2 border-b-2 border-black pb-1 text-sm font-black">EVACUATION LAYOUT</h2>
-            <img src={layout.dataUrl} alt="FERP plan" className="max-h-[460px] w-full object-contain" />
+            <h2 className="mb-2 border-b-2 border-black pb-1 text-sm font-black">
+              EVACUATION LAYOUTS ({floors.length} FLOOR{floors.length === 1 ? '' : 'S'})
+            </h2>
+            {floors.map((f, i) => (
+              <div key={f.id} className="mb-4" style={i > 0 ? { pageBreakBefore: 'always' } : undefined}>
+                <p className="mb-1 text-sm font-bold">{f.label}</p>
+                <img src={f.dataUrl} alt={f.label} className="max-h-[460px] w-full object-contain" />
+              </div>
+            ))}
           </div>
         )}
 

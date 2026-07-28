@@ -1,14 +1,14 @@
 import { useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import {
-  LifeBuoy, Plus, Pencil, Trash2, X, Users, Wrench, ChevronDown, ChevronUp,
+  LifeBuoy, Plus, Pencil, Trash2, X, Users, Wrench, ChevronDown, ChevronUp, Library, Check,
 } from 'lucide-react'
 import { Card, Field, Input, Select, Textarea, Button, Modal, Badge, EmptyState } from '../../../shared/ui'
 import { useAuth } from '../../../shared/auth/AuthContext'
 import DeptPersonPicker from '../../../shared/org/DeptPersonPicker'
 import { formatDate } from '../../../shared/lib/format'
 import {
-  addRescuePlan, updateRescuePlan, deleteRescuePlan, RESCUE_SCENARIOS, PLAN_STATUS,
+  addRescuePlan, updateRescuePlan, deleteRescuePlan, recallBaselines, RESCUE_SCENARIOS, PLAN_STATUS,
 } from '../lib/firestore'
 
 const newStep = () => ({ id: `st-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, action: '', responsible: '' })
@@ -21,19 +21,34 @@ const EMPTY = {
 
 const statusMeta = (key) => PLAN_STATUS.find((s) => s.key === key) || PLAN_STATUS[0]
 
-export default function RescuePlans({ site, plans, users }) {
+/**
+ * Rescue plans list + editor. Runs in two modes:
+ *  • site mode (default)  — a site's own plans, recallable from the baseline library
+ *  • baseline mode        — the org-wide template library (`baseline` prop)
+ */
+export default function RescuePlans({ site, plans, users, baseline = false }) {
   const { orgId, actor, isManager } = useAuth()
   const [editing, setEditing] = useState(null) // 'new' | plan | null
   const [form, setForm] = useState(EMPTY)
   const [equipInput, setEquipInput] = useState('')
   const [busy, setBusy] = useState(false)
   const [open, setOpen] = useState(null) // expanded plan id
+  const [recallOpen, setRecallOpen] = useState(false)
+  const [recallPicked, setRecallPicked] = useState([])
 
   const sitePlans = useMemo(
-    () => plans.filter((p) => p.siteId === site.id).sort((a, b) => a.scenario.localeCompare(b.scenario)),
-    [plans, site]
+    () =>
+      plans
+        .filter((p) => (baseline ? p.kind === 'baseline' : p.kind !== 'baseline' && p.siteId === site?.id))
+        .sort((a, b) => a.scenario.localeCompare(b.scenario)),
+    [plans, site, baseline]
   )
+
+  // Baseline library available to recall (site mode only), minus scenarios the
+  // site already covers.
+  const baselineLibrary = useMemo(() => plans.filter((p) => p.kind === 'baseline'), [plans])
   const covered = useMemo(() => new Set(sitePlans.map((p) => p.scenario)), [sitePlans])
+  const recallable = useMemo(() => baselineLibrary.filter((b) => !covered.has(b.scenario)), [baselineLibrary, covered])
   const missing = RESCUE_SCENARIOS.filter((s) => s !== 'Other' && !covered.has(s))
 
   const openNew = (scenario) => {
@@ -75,10 +90,26 @@ export default function RescuePlans({ site, plans, users }) {
     if (!form.steps.some((s) => s.action.trim())) return toast.error('Add at least one response step')
     setBusy(true)
     try {
-      const payload = { ...form, siteId: site.id, siteName: site.name, region: site.region || '', entity: site.entity || '' }
-      if (editing === 'new') { await addRescuePlan(orgId, payload, actor); toast.success('Rescue plan created') }
+      const scope = baseline
+        ? { kind: 'baseline', siteId: '', siteName: '', region: '', entity: '' }
+        : { kind: 'site', siteId: site.id, siteName: site.name, region: site.region || '', entity: site.entity || '' }
+      // Editing a recalled plan marks it as adapted for this site.
+      const payload = { ...form, ...scope, customized: form.customized || (!baseline && !!form.baselineId && editing !== 'new') }
+      if (editing === 'new') { await addRescuePlan(orgId, payload, actor); toast.success(baseline ? 'Baseline plan created' : 'Rescue plan created') }
       else { await updateRescuePlan(orgId, editing.id, payload, actor); toast.success('Rescue plan updated') }
       setEditing(null)
+    } catch (err) { toast.error(err?.message || 'Failed') } finally { setBusy(false) }
+  }
+
+  const doRecall = async () => {
+    const picked = recallable.filter((b) => recallPicked.includes(b.id))
+    if (!picked.length) return toast.error('Pick at least one baseline plan')
+    setBusy(true)
+    try {
+      const res = await recallBaselines(orgId, site, picked, plans, actor)
+      toast.success(`${res.copied} plan(s) recalled to ${site.name}${res.skipped ? ` (${res.skipped} already covered)` : ''}`)
+      setRecallOpen(false)
+      setRecallPicked([])
     } catch (err) { toast.error(err?.message || 'Failed') } finally { setBusy(false) }
   }
 
@@ -92,17 +123,40 @@ export default function RescuePlans({ site, plans, users }) {
     <Card>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h3 className="flex items-center gap-2 font-semibold text-ink-800">
-          <LifeBuoy size={17} className="text-accent-teal" /> Emergency rescue plans ({sitePlans.length})
+          <LifeBuoy size={17} className="text-accent-teal" />
+          {baseline ? 'Baseline rescue plans' : 'Emergency rescue plans'} ({sitePlans.length})
         </h3>
-        {isManager && <Button icon={Plus} onClick={() => openNew()}>Add rescue plan</Button>}
+        {isManager && (
+          <div className="flex flex-wrap gap-2">
+            {!baseline && (
+              <Button variant="soft" icon={Library} disabled={recallable.length === 0}
+                title={recallable.length ? 'Copy plans from the baseline library' : 'No baseline plans left to recall'}
+                onClick={() => { setRecallPicked(recallable.map((b) => b.id)); setRecallOpen(true) }}>
+                Recall baseline ({recallable.length})
+              </Button>
+            )}
+            <Button icon={Plus} onClick={() => openNew()}>{baseline ? 'Add baseline plan' : 'Add rescue plan'}</Button>
+          </div>
+        )}
       </div>
 
       {sitePlans.length === 0 ? (
         <EmptyState
           icon={LifeBuoy}
-          title="No rescue plans yet"
-          description="Add a plan per emergency scenario — fire, medical, chemical spill, confined space, water rescue and more."
-          action={isManager && <Button icon={Plus} onClick={() => openNew()}>Add rescue plan</Button>}
+          title={baseline ? 'No baseline plans yet' : 'No rescue plans yet'}
+          description={baseline
+            ? 'Build your organization’s standard rescue plans here — every site can recall them and adapt locally.'
+            : 'Recall your organization’s baseline plans and adapt them, or write a site-specific plan from scratch.'}
+          action={isManager && (
+            <div className="flex flex-wrap justify-center gap-2">
+              {!baseline && recallable.length > 0 && (
+                <Button variant="soft" icon={Library} onClick={() => { setRecallPicked(recallable.map((b) => b.id)); setRecallOpen(true) }}>
+                  Recall baseline ({recallable.length})
+                </Button>
+              )}
+              <Button icon={Plus} onClick={() => openNew()}>{baseline ? 'Add baseline plan' : 'Add rescue plan'}</Button>
+            </div>
+          )}
         />
       ) : (
         <div className="space-y-2.5">
@@ -117,6 +171,12 @@ export default function RescuePlans({ site, plans, users }) {
                       <Badge tone="brand">{p.scenario}</Badge>
                       <p className="font-bold text-ink-900">{p.title}</p>
                       <Badge tone={meta.tone}>{meta.label}</Badge>
+                      {p.baselineId && (
+                        <Badge tone={p.customized ? 'amber' : 'gray'}>
+                          <Library size={11} className="mr-1 inline" />
+                          {p.customized ? 'Adapted from baseline' : 'From baseline'}
+                        </Badge>
+                      )}
                     </div>
                     <p className="mt-0.5 text-xs text-ink-400">
                       {p.steps?.length || 0} step(s) · {p.team?.length || 0} responder(s)
@@ -192,8 +252,56 @@ export default function RescuePlans({ site, plans, users }) {
         </div>
       )}
 
+      {/* ── Recall from the baseline library ── */}
+      <Modal open={recallOpen} onClose={() => setRecallOpen(false)} title={`Recall baseline plans — ${site?.name || ''}`} size="lg">
+        <div className="space-y-4 p-6">
+          <p className="-mt-1 text-sm text-ink-500">
+            Copies your organization&apos;s baseline plans onto this site. Each copy is fully editable —
+            adapt the steps, team and equipment locally without affecting the baseline.
+          </p>
+          <div className="max-h-72 space-y-1.5 overflow-y-auto">
+            {recallable.map((b) => {
+              const sel = recallPicked.includes(b.id)
+              return (
+                <button
+                  key={b.id}
+                  type="button"
+                  onClick={() => setRecallPicked((p) => (sel ? p.filter((x) => x !== b.id) : [...p, b.id]))}
+                  className={`flex w-full items-center gap-3 rounded-xl px-3.5 py-2.5 text-left transition ${
+                    sel ? 'bg-brand-50 shadow-clay-sm' : 'bg-clay-surface shadow-clay-inset'
+                  }`}
+                >
+                  <span className={`grid h-5 w-5 shrink-0 place-items-center rounded-md ${sel ? 'bg-brand-600 text-white' : 'bg-clay-200'}`}>
+                    {sel && <Check size={13} />}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-semibold text-ink-900">{b.title}</span>
+                    <span className="block truncate text-xs text-ink-400">
+                      {b.scenario} · {b.steps?.length || 0} step(s) · {b.team?.length || 0} responder(s)
+                    </span>
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="ghost" onClick={() => setRecallOpen(false)}>Cancel</Button>
+            <Button type="button" icon={Library} loading={busy} onClick={doRecall}>
+              Recall {recallPicked.length || '…'} plan{recallPicked.length === 1 ? '' : 's'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
       {/* ── Plan editor ── */}
-      <Modal open={!!editing} onClose={() => setEditing(null)} title={editing === 'new' ? `New rescue plan — ${site.name}` : 'Edit rescue plan'} size="xl">
+      <Modal
+        open={!!editing}
+        onClose={() => setEditing(null)}
+        title={editing === 'new'
+          ? (baseline ? 'New baseline rescue plan' : `New rescue plan — ${site?.name || ''}`)
+          : (baseline ? 'Edit baseline plan' : 'Edit rescue plan')}
+        size="xl"
+      >
         <form onSubmit={save} className="space-y-4 p-6">
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Scenario *">
