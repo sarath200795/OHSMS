@@ -3,8 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Building2, Search, PhoneCall, Phone, Map, LifeBuoy, CheckCircle2, AlertTriangle, ArrowRight } from 'lucide-react'
 import { PageHeader, Card, Select, StatCard, EmptyState, SkeletonTable, Badge, Pager } from '../../../shared/ui'
 import { useAuth } from '../../../shared/auth/AuthContext'
-import { subscribeSites } from '../../../shared/org/orgData'
-import { resolveAccessibleSites } from '../../../shared/auth/access'
+import { useAccessibleSites } from '../../../shared/org/useAccessibleSites'
 import { subscribeContacts, subscribeLayouts, subscribeRescuePlans } from '../lib/firestore'
 
 const PAGE_SIZE = 25
@@ -15,12 +14,11 @@ function Cell({ ok, children }) {
 }
 
 export default function SiteRepository() {
-  const { orgId, profile, isAdmin } = useAuth()
+  const { orgId } = useAuth()
   const navigate = useNavigate()
   const [contacts, setContacts] = useState(null)
   const [layouts, setLayouts] = useState({})
   const [plans, setPlans] = useState([])
-  const [allSites, setAllSites] = useState([])
   const [f, setF] = useState({ q: '', region: 'all', entity: 'all', site: 'all', status: 'all' })
   const [page, setPage] = useState(1)
 
@@ -29,13 +27,12 @@ export default function SiteRepository() {
     const u1 = subscribeContacts(orgId, setContacts)
     const u2 = subscribeLayouts(orgId, setLayouts)
     const u3 = subscribeRescuePlans(orgId, setPlans)
-    const u4 = subscribeSites(orgId, setAllSites)
-    return () => { u1(); u2(); u3(); u4() }
+    return () => { u1(); u2(); u3() }
   }, [orgId])
 
   useEffect(() => { setPage(1) }, [f])
 
-  const siteInventory = useMemo(() => resolveAccessibleSites(profile, allSites, { isAdmin }), [profile, allSites, isAdmin])
+  const siteInventory = useAccessibleSites()
 
   const rows = useMemo(() => {
     const list = contacts || []

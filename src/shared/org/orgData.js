@@ -140,16 +140,33 @@ export async function getUserProfile(uid) {
   return snap.exists() ? { uid, ...snap.data() } : null
 }
 
-// ONE org-users listener shared by every module context (5 000-employee scale:
-// avoids each module re-reading the whole directory on mount).
-const sharedOrgUsers = createSharedSubscription((orgId, emit) => {
-  const q = query(collection(db, 'users'), where('orgId', '==', orgId))
+// ── Shared org-collection listeners ─────────────────────────────────────────
+// The same collections are read by several modules at once (incidents, fas,
+// extinguishers, auditFindings…). Multiplexing them over ONE listener per
+// collection keeps document reads and open sockets flat as concurrency grows,
+// instead of scaling with (users × modules mounted).
+const sharedOrgCollection = createSharedSubscription((key, emit) => {
+  const [orgId, name] = key.split('/')
   return onSnapshot(
-    q,
-    (snap) => emit(snap.docs.map((d) => ({ uid: d.id, ...d.data() }))),
+    collection(db, 'organizations', orgId, name),
+    (snap) => emit(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
     () => emit([])
   )
 })
+
+/** Live rows of any org sub-collection, shared app-wide. */
+export function subscribeOrgCollection(orgId, name, cb) {
+  return sharedOrgCollection(`${orgId}/${name}`, cb)
+}
+
+// ONE org-users listener shared by every module context.
+const sharedOrgUsers = createSharedSubscription((orgId, emit) =>
+  onSnapshot(
+    query(collection(db, 'users'), where('orgId', '==', orgId)),
+    (snap) => emit(snap.docs.map((d) => ({ uid: d.id, ...d.data() }))),
+    () => emit([])
+  )
+)
 export function subscribeOrgUsers(orgId, cb) {
   return sharedOrgUsers(orgId, cb)
 }

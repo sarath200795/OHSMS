@@ -19,6 +19,9 @@ import {
  */
 
 // ---- shared helpers ---------------------------------------------------------
+/** Resolve a site id or code to its name; falls back to the raw value. */
+const siteNameOf = (sites = [], id) => sites.find((s) => s.id === id || s.code === id)?.name || id
+
 const fileToBase64 = (file) =>
   new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -105,7 +108,7 @@ const AuditScheduler = ({ setView, session, sites, users, locations = [], siteIn
 
   // The scope picker stores the site's id; older data may hold its code. Match
   // either, and fall back to the stored value so nothing renders blank.
-  const siteName = (id) => sites.find((s) => s.id === id || s.code === id)?.name || id
+  const siteName = (id) => siteNameOf(sites, id)
   const filteredAuditors = useMemo(() => {
     if (!teamSearch) return users
     const q = teamSearch.toLowerCase()
@@ -260,7 +263,7 @@ const AuditScheduler = ({ setView, session, sites, users, locations = [], siteIn
 // MODULE 2: AUDITOR WORKPLACE
 // ============================================================================
 const AuditorWorkplace = ({ setView, session, isGlobalOwner, users, plans, findings, sites = [] }) => {
-  const siteName = (id) => sites.find((s) => s.code === id || s.id === id)?.name || id
+  const siteName = (id) => siteNameOf(sites, id)
   const [view, setWView] = useState('list')
   const [filters, setFilters] = useState({ date: '', auditor: '', auditee: '', id: '' })
   const [currentTask, setCurrentTask] = useState(null)
@@ -504,7 +507,7 @@ const AuditorWorkplace = ({ setView, session, isGlobalOwner, users, plans, findi
 // MODULE 3: AUDITEE WORKPLACE
 // ============================================================================
 const AuditeeWorkplace = ({ setView, session, users, findings, sites = [] }) => {
-  const siteName = (id) => sites.find((s) => s.code === id || s.id === id)?.name || id
+  const siteName = (id) => siteNameOf(sites, id)
   const [selected, setSelected] = useState(null)
   const [modal, setModal] = useState(false)
   const [current, setCurrent] = useState(null)
@@ -704,7 +707,7 @@ const AuditReports = ({ setView, plans, findings, sites = [] }) => {
   const [printPlan, setPrintPlan] = useState(null)
 
   // sites here are remapped to { code: siteId, name }; resolve either form.
-  const siteName = (id) => sites.find((s) => s.code === id || s.id === id)?.name || id
+  const siteName = (id) => siteNameOf(sites, id)
 
   const reports = useMemo(() => [...findings].sort((a, b) => new Date(b.auditDate || 0) - new Date(a.auditDate || 0)), [findings])
   const planList = useMemo(() => [...plans].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)), [plans])
@@ -810,7 +813,8 @@ const AuditReports = ({ setView, plans, findings, sites = [] }) => {
 // ============================================================================
 // MODULE 5: AUDIT DASHBOARD
 // ============================================================================
-const AuditDashboard = ({ setView, findings }) => {
+const AuditDashboard = ({ setView, findings, sites = [] }) => {
+  const siteName = (id) => siteNameOf(sites, id)
   const [selected, setSelected] = useState(null)
   const stats = useMemo(() => ({
     open: findings.filter((a) => a.status === 'Reported').length,

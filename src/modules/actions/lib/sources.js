@@ -9,10 +9,10 @@
 //
 // Normalized status: 'open' | 'in_progress' | 'done'.
 // ─────────────────────────────────────────────────────────────────────────────
-import { collection, doc, getDoc, onSnapshot, updateDoc } from 'firebase/firestore'
+import { doc, getDoc, updateDoc } from 'firebase/firestore'
 import { db } from '../../../shared/firebase'
+import { subscribeOrgCollection } from '../../../shared/org/orgData'
 
-const cref = (orgId, name) => collection(db, 'organizations', orgId, name)
 const dref = (orgId, name, id) => doc(db, 'organizations', orgId, name, id)
 
 export const NORM_STATUS = [
@@ -283,18 +283,13 @@ export function subscribeActions(orgId, cb) {
     }
     cb(rows)
   }
+  // Shared listeners: these collections are already watched by their own
+  // modules, so the tracker adds no extra reads when they're mounted too.
   const unsubs = SOURCES.map((src) =>
-    onSnapshot(
-      cref(orgId, src.collection),
-      (snap) => {
-        latest[src.key] = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
-        emit()
-      },
-      () => {
-        latest[src.key] = []
-        emit()
-      },
-    ),
+    subscribeOrgCollection(orgId, src.collection, (rows) => {
+      latest[src.key] = rows
+      emit()
+    }),
   )
   return () => unsubs.forEach((u) => u())
 }

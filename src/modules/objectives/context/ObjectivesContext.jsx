@@ -1,71 +1,55 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
-import { collection, onSnapshot } from 'firebase/firestore'
-import { db } from '../../../shared/firebase'
 import { useAuth } from '../../../shared/auth/AuthContext'
-import { subscribeSites } from '../../../shared/org/orgData'
-import { resolveAccessibleSites } from '../../../shared/auth/access'
+import { subscribeOrgCollection } from '../../../shared/org/orgData'
+import { useAccessibleSites, useSiteFacets } from '../../../shared/org/useAccessibleSites'
 import { subscribeActions } from '../../actions/lib/sources'
 import { subscribeObjectives } from '../lib/firestore'
 
 const ObjectivesContext = createContext(null)
 
-/** Live subscription to a plain org sub-collection. */
-function subCol(orgId, name, cb) {
-  return onSnapshot(
-    collection(db, 'organizations', orgId, name),
-    (s) => cb(s.docs.map((d) => ({ id: d.id, ...d.data() }))),
-    () => cb([]),
-  )
+// Raw collections the KPI engine measures. All shared app-wide, so opening the
+// scorecard costs no extra reads when these modules are already mounted.
+const SOURCES = {
+  auditReports: 'auditFindings',
+  extinguishers: 'extinguishers',
+  fas: 'fas',
+  signages: 'signages',
+  incidents: 'incidents',
 }
+const EMPTY = Object.fromEntries(Object.keys(SOURCES).map((k) => [k, []]))
 
-/**
- * Feeds the scorecard: targets plus every module's raw records, so KPI actuals
- * are always live rather than snapshotted.
- */
+/** Targets plus live module records, so KPI actuals are never snapshotted. */
 export function ObjectivesProvider({ children }) {
-  const { orgId, profile, isAdmin } = useAuth()
+  const { orgId } = useAuth()
   const [objectives, setObjectives] = useState(null)
-  const [auditReports, setAuditReports] = useState([])
+  const [raw, setRaw] = useState(EMPTY)
   const [rawActions, setRawActions] = useState([])
-  const [extinguishers, setExtinguishers] = useState([])
-  const [fas, setFas] = useState([])
-  const [signages, setSignages] = useState([])
-  const [incidents, setIncidents] = useState([])
-  const [allSites, setAllSites] = useState([])
+  const sites = useAccessibleSites()
+  const { regions, entities } = useSiteFacets(sites)
 
   useEffect(() => {
     if (!orgId) return undefined
     const unsubs = [
       subscribeObjectives(orgId, setObjectives),
-      subCol(orgId, 'auditFindings', setAuditReports),
       subscribeActions(orgId, setRawActions),
-      subCol(orgId, 'extinguishers', setExtinguishers),
-      subCol(orgId, 'fas', setFas),
-      subCol(orgId, 'signages', setSignages),
-      subCol(orgId, 'incidents', setIncidents),
-      subscribeSites(orgId, setAllSites),
+      ...Object.entries(SOURCES).map(([key, name]) =>
+        subscribeOrgCollection(orgId, name, (rows) => setRaw((r) => ({ ...r, [key]: rows }))),
+      ),
     ]
     return () => unsubs.forEach((u) => u && u())
   }, [orgId])
 
-  const value = useMemo(() => {
-    const sites = resolveAccessibleSites(profile, allSites, { isAdmin })
+  const value = useMemo(() => ({
+    loading: objectives === null,
+    objectives: objectives || [],
     // Action Tracker rows use `norm`; the KPI engine reads `status`.
-    const actions = rawActions.map((a) => ({ ...a, status: a.norm }))
-    const regions = [...new Set(sites.map((s) => s.region).filter(Boolean))].sort()
-    const entities = [...new Set(sites.map((s) => s.entity).filter(Boolean))].sort()
-    return {
-      loading: objectives === null,
-      objectives: objectives || [],
-      data: { auditReports, actions, extinguishers, fas, signages, incidents },
-      sites,
-      regions,
-      entities,
-      // Scope option lists for the drill-downs
-      regionScopes: regions.map((r) => ({ value: r, label: r })),
-      siteScopes: sites.map((s) => ({ value: s.id, label: s.name, region: s.region, entity: s.entity })),
-    }
-  }, [objectives, auditReports, rawActions, extinguishers, fas, signages, incidents, allSites, profile, isAdmin])
+    data: { ...raw, actions: rawActions.map((a) => ({ ...a, status: a.norm })) },
+    sites,
+    regions,
+    entities,
+    regionScopes: regions.map((r) => ({ value: r, label: r })),
+    siteScopes: sites.map((s) => ({ value: s.id, label: s.name, region: s.region, entity: s.entity })),
+  }), [objectives, raw, rawActions, sites, regions, entities])
 
   return <ObjectivesContext.Provider value={value}>{children}</ObjectivesContext.Provider>
 }

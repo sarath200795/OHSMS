@@ -9,8 +9,8 @@ import {
   PageHeader, Card, Button, EmptyState, SkeletonCard, Modal, PrintIsolate,
 } from '../../../shared/ui'
 import { useAuth } from '../../../shared/auth/AuthContext'
-import { subscribeSites, subscribeOrgUsers } from '../../../shared/org/orgData'
-import { resolveAccessibleSites } from '../../../shared/auth/access'
+import { subscribeOrgUsers } from '../../../shared/org/orgData'
+import { useAccessibleSites } from '../../../shared/org/useAccessibleSites'
 import { formatDate } from '../../../shared/lib/format'
 import { fileToDataUrl } from '../../../shared/lib/files'
 import RescuePlans from '../components/RescuePlans'
@@ -36,11 +36,10 @@ const SECTIONS = [
 
 export default function SiteDetail() {
   const { siteId } = useParams()
-  const { orgId, actor, profile, isAdmin, isManager } = useAuth()
+  const { orgId, actor, isManager } = useAuth()
   const [contacts, setContacts] = useState(null)
   const [layouts, setLayouts] = useState({})
   const [plans, setPlans] = useState([])
-  const [allSites, setAllSites] = useState([])
   const [users, setUsers] = useState([])
   const [section, setSection] = useState('contacts')
   const [viewLayout, setViewLayout] = useState(null) // floor being enlarged
@@ -56,12 +55,11 @@ export default function SiteDetail() {
     const u1 = subscribeContacts(orgId, setContacts)
     const u2 = subscribeLayouts(orgId, setLayouts)
     const u3 = subscribeRescuePlans(orgId, setPlans)
-    const u4 = subscribeSites(orgId, setAllSites)
-    const u5 = subscribeOrgUsers(orgId, setUsers)
-    return () => { u1(); u2(); u3(); u4(); u5() }
+    const u4 = subscribeOrgUsers(orgId, setUsers)
+    return () => { u1(); u2(); u3(); u4() }
   }, [orgId])
 
-  const siteInventory = useMemo(() => resolveAccessibleSites(profile, allSites, { isAdmin }), [profile, allSites, isAdmin])
+  const siteInventory = useAccessibleSites()
   const site = useMemo(() => siteInventory.find((s) => s.id === siteId) || null, [siteInventory, siteId])
   const approvedUsers = useMemo(() => users.filter((u) => u.status === 'approved'), [users])
   const layout = site ? layouts[site.id] : null
