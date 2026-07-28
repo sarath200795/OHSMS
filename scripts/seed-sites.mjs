@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app'
 import { getAuth, connectAuthEmulator, signInWithEmailAndPassword } from 'firebase/auth'
-import { getFirestore, connectFirestoreEmulator, doc, getDoc, getDocs, setDoc, updateDoc, addDoc, collection, query, where, serverTimestamp } from 'firebase/firestore'
+import { getFirestore, connectFirestoreEmulator, doc, getDoc, getDocs, updateDoc, addDoc, collection, serverTimestamp } from 'firebase/firestore'
 const app = initializeApp({ apiKey: 'demo-api-key', projectId: 'ohsms-demo' })
 const auth = getAuth(app); const db = getFirestore(app)
 connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true })

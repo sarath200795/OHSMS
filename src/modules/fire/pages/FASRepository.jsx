@@ -327,7 +327,7 @@ export default function FASRepository() {
       </Modal>
 
       <Modal open={!!removing} onClose={() => setRemoving(null)} title="Delete FAS device?">
-        <p className="text-sm text-ink-600">Remove <span className="font-semibold">{removing?.deviceId || removing?.deviceType}</span> at <span className="font-semibold">{removing?.centerName}</span>? This can't be undone.</p>
+        <p className="text-sm text-ink-600">Remove <span className="font-semibold">{removing?.deviceId || removing?.deviceType}</span> at <span className="font-semibold">{removing?.centerName}</span>? This can’t be undone.</p>
         <div className="mt-5 flex justify-end gap-2">
           <button className="btn-ghost" onClick={() => setRemoving(null)}>Cancel</button>
           <button className="btn-danger" onClick={confirmDelete}>Delete</button>
@@ -335,7 +335,7 @@ export default function FASRepository() {
       </Modal>
 
       <Modal open={bulkRemoving} onClose={() => setBulkRemoving(false)} title={`Delete ${selected.size} FAS device(s)?`}>
-        <p className="text-sm text-ink-600">Permanently remove <span className="font-semibold">{selected.size}</span> selected device{selected.size === 1 ? '' : 's'} and their QR codes? This can't be undone.</p>
+        <p className="text-sm text-ink-600">Permanently remove <span className="font-semibold">{selected.size}</span> selected device{selected.size === 1 ? '' : 's'} and their QR codes? This can’t be undone.</p>
         <div className="mt-5 flex justify-end gap-2">
           <button className="btn-ghost" onClick={() => setBulkRemoving(false)}>Cancel</button>
           <button className="btn-danger" onClick={confirmBulkDelete} disabled={busy}>{busy ? <Spinner size={16} /> : `Delete ${selected.size}`}</button>

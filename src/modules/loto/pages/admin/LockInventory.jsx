@@ -112,7 +112,7 @@ export default function LockInventory() {
           </Button>
         </form>
         <p className="mt-2 text-xs text-steel-400">
-          Personal locks are added automatically from each technician's dedicated lock no. in the{' '}
+          Personal locks are added automatically from each technician’s dedicated lock no. in the{' '}
           <Link to="/loto/technicians" className="font-semibold text-amber-600">
             Technicians
           </Link>{' '}

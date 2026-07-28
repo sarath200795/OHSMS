@@ -269,7 +269,7 @@ export default function BulkUpload() {
             <div className="rounded-2xl bg-clay-surface p-3 text-xs text-ink-600 shadow-clay-inset">
               <p className="mb-1 font-bold uppercase text-ink-500">Serial No</p>
               Leave it blank to auto-assign a unique <code>FE-####</code>. A matching serial overwrites that
-              record's details but keeps its QR code, status and defects.
+              record’s details but keeps its QR code, status and defects.
             </div>
             <div className="rounded-2xl bg-clay-surface p-3 shadow-clay-inset">
               <p className="mb-1 text-xs font-bold uppercase text-ink-500">Columns</p>

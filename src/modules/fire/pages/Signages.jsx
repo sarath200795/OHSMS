@@ -551,7 +551,7 @@ export default function Signages() {
                 <div className="rounded-xl bg-brand-50 p-3 text-xs text-ink-600">
                   🧯 <strong>{site}</strong> has <strong>{required}</strong> fire extinguisher(s) in the Repository.
                   {required > 0 ? (
-                    <> With this record you'll have <strong>{withThis}</strong> sign(s) here — {withThis >= required ? 'that matches the fleet ✅' : `${required - withThis} more needed to match.`}</>
+                    <> With this record you’ll have <strong>{withThis}</strong> sign(s) here — {withThis >= required ? 'that matches the fleet ✅' : `${required - withThis} more needed to match.`}</>
                   ) : (
                     <> Add extinguishers to the Repository to track sign coverage.</>
                   )}
@@ -575,7 +575,7 @@ export default function Signages() {
       <Modal open={!!removing} onClose={() => setRemoving(null)} title="Delete signage?">
         <p className="text-sm text-ink-600">
           Remove <span className="font-semibold">{removing?.type}</span> at{' '}
-          <span className="font-semibold">{removing?.centerName}</span>? This can't be undone.
+          <span className="font-semibold">{removing?.centerName}</span>? This can’t be undone.
         </p>
         <div className="mt-5 flex justify-end gap-2">
           <button className="btn-ghost" onClick={() => setRemoving(null)}>Cancel</button>

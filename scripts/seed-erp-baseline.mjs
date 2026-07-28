@@ -26,9 +26,7 @@ connectFirestoreEmulator(db, '127.0.0.1', 8080)
 // site that recalls a plan gets its own named people and phone numbers filled in
 // automatically from that site's internal emergency contacts.
 const MGR = 'CM'          // Centre Manager — acts as Incident Commander on site
-const CLM = 'CLM'         // Cluster Manager — escalation above the site
 const SAFETY = 'Safety L1'
-const SAFETY2 = 'Safety L2'
 const SEC = 'Security'
 const FIRST_AID = 'First Aider'
 const HR_ = 'HR'

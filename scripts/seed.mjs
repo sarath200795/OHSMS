@@ -10,7 +10,7 @@
 import { initializeApp } from 'firebase/app'
 import { getAuth, connectAuthEmulator, createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth'
 import {
-  getFirestore, connectFirestoreEmulator, doc, setDoc, addDoc, collection,
+  getFirestore, connectFirestoreEmulator, doc, addDoc, collection,
   serverTimestamp, writeBatch, getDocs,
 } from 'firebase/firestore'
 

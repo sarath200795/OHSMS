@@ -38,7 +38,7 @@ export default function CapaRegister() {
   const rows = useMemo(() => {
     const out = []
     records.forEach((r) => {
-      ;(r.findings || []).forEach((f) => {
+      (r.findings || []).forEach((f) => {
         if (f.response?.status !== 'Completed') return
         const [tone, label] = capaState(r.status)
         out.push({

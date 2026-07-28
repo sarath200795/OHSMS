@@ -280,7 +280,7 @@ const AuditorWorkplace = ({ setView, session, isGlobalOwner, users, plans, findi
     })
     const plannedList = []
     plans.forEach((plan) => {
-      ;(plan.matrix || []).forEach((row) => {
+      (plan.matrix || []).forEach((row) => {
         if (row.auditor === session.user || isGlobalOwner) {
           const key = `${plan.docId}_${row.area}_${row.auditee}`
           if (!findingsList.some((f) => f._key === key)) {
@@ -634,7 +634,7 @@ const AuditeeWorkplace = ({ setView, session, users, findings, sites = [] }) => 
                         </div>
                         {editable && <button onClick={() => openResp(f)} className={`rounded-xl px-5 py-2.5 text-xs font-bold uppercase tracking-widest text-white transition active:scale-95 ${has ? 'bg-slate-500 hover:bg-slate-600' : 'bg-gradient-to-r from-amber-500 to-orange-500'}`}>{has ? <><i className="fas fa-edit mr-1" />Edit Reply</> : <><i className="fas fa-reply mr-1" />Respond Now</>}</button>}
                       </div>
-                      <div className="mb-2 rounded-r-lg border-l-4 border-slate-300 bg-slate-50 py-1 pl-4 text-sm text-slate-700">"{f.desc}"</div>
+                      <div className="mb-2 rounded-r-lg border-l-4 border-slate-300 bg-slate-50 py-1 pl-4 text-sm text-slate-700">“{f.desc}”</div>
                       {has && <CapaSummary r={f.response} />}
                     </div>
                   )
@@ -665,8 +665,8 @@ const AuditeeWorkplace = ({ setView, session, users, findings, sites = [] }) => 
             </div>
             <div className="flex-1 space-y-5 overflow-y-auto p-6">
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <span className={lbl}>Auditor's Finding</span>
-                <p className="border-l-4 border-amber-300 py-1 pl-4 text-sm text-slate-700">"{current.desc}"</p>
+                <span className={lbl}>Auditor’s Finding</span>
+                <p className="border-l-4 border-amber-300 py-1 pl-4 text-sm text-slate-700">“{current.desc}”</p>
               </div>
               <div><label className={lbl}>1. Root Cause Analysis</label><textarea rows="3" className={fld} value={form.rootCause} onChange={(e) => setForm({ ...form, rootCause: e.target.value })} placeholder="Why did this happen?" /></div>
               <div><label className={lbl}>2. Immediate Correction</label><input className={fld} value={form.correction} onChange={(e) => setForm({ ...form, correction: e.target.value })} placeholder="What was done immediately?" /></div>
@@ -1028,7 +1028,7 @@ function FindingList({ findings }) {
               </div>
               <span className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-500">Clause: <span className="text-ink-800">{f.clause}</span></span>
             </div>
-            <p className="mb-2 rounded-r-lg border-l-4 border-slate-300 bg-white py-1 pl-4 text-sm text-slate-700">"{f.desc}"</p>
+            <p className="mb-2 rounded-r-lg border-l-4 border-slate-300 bg-white py-1 pl-4 text-sm text-slate-700">“{f.desc}”</p>
             {f.response?.status === 'Completed' ? <CapaSummary r={f.response} /> : <div className="rounded-xl border border-dashed border-slate-200 bg-white p-4 text-center text-xs italic text-slate-400">No response submitted by auditee yet.</div>}
           </div>
         ))}
@@ -1063,7 +1063,7 @@ function PrintReport({ data, fallbackFindings, currentTask, docId, siteName }) {
       {list.map((f, i) => (
         <div key={i} className="mb-6 border border-black p-5">
           <div className="mb-3 flex justify-between border-b border-gray-300 pb-2"><span className="font-bold">Finding {f.id}</span><span className="border border-black px-2 py-0.5 text-xs font-bold uppercase">{f.type}</span></div>
-          <div className="mb-4 border-l-4 border-gray-400 pl-3 text-sm italic text-gray-700">"{f.desc}"</div>
+          <div className="mb-4 border-l-4 border-gray-400 pl-3 text-sm italic text-gray-700">“{f.desc}”</div>
           {f.response?.status === 'Completed' ? (
             <div className="border border-gray-300 bg-gray-50 p-4 text-sm">
               <div className="mb-3"><strong>Root Cause:</strong><br />{f.response.rootCause}</div>

@@ -29,11 +29,11 @@ export function groupLockDevices(groupLock) {
 export function collectInUseLockNos(procedures = []) {
   const set = new Set()
   procedures.forEach((p) => {
-    ;(p.isolationPoints || []).forEach((pt) => {
+    (p.isolationPoints || []).forEach((pt) => {
       if (pt.lockState?.locked && pt.lockState.techLockNo) set.add(pt.lockState.techLockNo)
     })
     if (p.groupLock?.active) {
-      ;(p.groupLock.members || []).forEach((m) => {
+      (p.groupLock.members || []).forEach((m) => {
         // Hasp model: per-point map. Box model: single padlock on the box.
         Object.values(m.locks || {}).forEach((no) => no && set.add(no))
         if (m.boxLock) set.add(m.boxLock)

@@ -47,7 +47,7 @@ function Watermark({ label, color }) {
             lineHeight: 1.9,
           }}
         >
-          {`${label}   ${label}   ${label}`}
+          {`${label}\u00a0\u00a0\u00a0${label}\u00a0\u00a0\u00a0${label}`}
         </div>
       ))}
     </div>

@@ -22,8 +22,6 @@
   "dependencies": {
     "@fontsource/inter": "^5.0.18",
     "@fortawesome/fontawesome-free": "^7.3.1",
-    "@react-three/drei": "^9.109.2",
-    "@react-three/fiber": "^8.16.8",
     "@xyflow/react": "^12.0.4",
     "date-fns": "^3.6.0",
     "firebase": "^10.12.4",
@@ -46,7 +44,6 @@
     "react-router-dom": "^6.26.0",
     "react-to-print": "^2.15.1",
     "recharts": "^2.12.7",
-    "three": "^0.167.1",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {

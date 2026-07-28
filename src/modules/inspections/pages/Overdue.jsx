@@ -25,7 +25,7 @@ export default function Overdue() {
         <div className="mt-0.5 flex flex-wrap gap-3 text-xs text-ink-500">
           <span>{t.frequency}</span>
           {(t.siteName || t.location) && <span className="inline-flex items-center gap-1"><MapPin size={12} /> {t.siteName || t.location}{t.area ? ` · ${t.area}` : ''}</span>}
-          {t.assignmentNotes && <span className="italic">"{t.assignmentNotes}"</span>}
+          {t.assignmentNotes && <span className="italic">“{t.assignmentNotes}”</span>}
         </div>
       </div>
       <button className="btn-primary shrink-0 text-xs" onClick={() => start(t)}><Play size={14} /> Start</button>

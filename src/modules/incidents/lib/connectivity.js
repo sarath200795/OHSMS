@@ -10,7 +10,7 @@
 
 // Sanitize env values (strip BOM / zero-width / quotes / whitespace) — a BOM
 // injected by a deploy pipeline corrupts these and is exactly what we're testing.
-const clean = (v) => (v == null ? '' : String(v).replace(/[​-‍﻿]/g, '').replace(/^["']|["']$/g, '').trim())
+const clean = (v) => (v == null ? '' : String(v).replace(/[\u200B-\u200D\uFEFF]/g, '').replace(/^["']|["']$/g, '').trim())
 const API_KEY = clean(import.meta.env.VITE_FIREBASE_API_KEY)
 const PROJECT_ID = clean(import.meta.env.VITE_FIREBASE_PROJECT_ID)
 

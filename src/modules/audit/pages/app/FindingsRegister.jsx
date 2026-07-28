@@ -31,7 +31,7 @@ export default function FindingsRegister() {
   const rows = useMemo(() => {
     const out = []
     records.forEach((r) => {
-      ;(r.findings || []).forEach((f) => {
+      (r.findings || []).forEach((f) => {
         out.push({
           ...f,
           auditDocId: r.docId,
