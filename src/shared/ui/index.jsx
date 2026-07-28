@@ -8,7 +8,7 @@
 // respected globally in index.css.
 // ─────────────────────────────────────────────────────────────────────────────
 import { forwardRef } from 'react'
-import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
+import { motion, useReducedMotion } from 'framer-motion'
 import { Loader2, X, Check } from 'lucide-react'
 
 const cx = (...c) => c.filter(Boolean).join(' ')
@@ -269,17 +269,19 @@ export function SkeletonDetail() {
 // ── Modal ─────────────────────────────────────────────────────────────────────
 // Center-origin (per Emil: modals are not anchored to a trigger). Fade+scale
 // from 0.96 (never scale(0)); backdrop fades; exit is snappier than enter.
+// NOTE: deliberately no exit animation / AnimatePresence. A stuck exit left the
+// overlay mounted at opacity 0, which silently swallowed every click on the page
+// after any modal closed. Unmounting straight off `open` keeps that impossible.
 export function Modal({ open, onClose, title, children, footer, size = 'md' }) {
   const reduce = useReducedMotion()
   const widths = { sm: 'max-w-md', md: 'max-w-lg', lg: 'max-w-2xl', xl: 'max-w-4xl' }
   return (
-    <AnimatePresence>
+    <>
       {open && (
         <motion.div
           className="fixed inset-0 z-50 grid place-items-center p-4"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
           transition={{ duration: 0.15 }}
         >
           <div className="absolute inset-0 bg-ink-950/40 backdrop-blur-sm" onClick={onClose} />
@@ -289,7 +291,6 @@ export function Modal({ open, onClose, title, children, footer, size = 'md' }) {
             className={cx('card relative z-10 w-full p-0', widths[size])}
             initial={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.96 }}
             animate={reduce ? { opacity: 1 } : { opacity: 1, scale: 1 }}
-            exit={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.97 }}
             transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}
           >
             <div className="flex items-center justify-between gap-4 border-b border-ink-100 px-6 py-4">
@@ -311,7 +312,7 @@ export function Modal({ open, onClose, title, children, footer, size = 'md' }) {
           </motion.div>
         </motion.div>
       )}
-    </AnimatePresence>
+    </>
   )
 }
 

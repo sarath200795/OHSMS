@@ -2,10 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import {
-  Map, Phone, PhoneCall, Printer, Upload, Trash2, ImageOff, ArrowLeft, Building2, LifeBuoy,
+  Map, Phone, Printer, Upload, Trash2, ImageOff, ArrowLeft, Building2, LifeBuoy, Siren,
 } from 'lucide-react'
 import {
-  PageHeader, Card, Button, Badge, EmptyState, SkeletonCard, Modal, PrintIsolate,
+  PageHeader, Card, Button, EmptyState, SkeletonCard, Modal, PrintIsolate,
 } from '../../../shared/ui'
 import { useAuth } from '../../../shared/auth/AuthContext'
 import { subscribeSites, subscribeOrgUsers } from '../../../shared/org/orgData'
@@ -13,6 +13,8 @@ import { resolveAccessibleSites } from '../../../shared/auth/access'
 import { formatDate } from '../../../shared/lib/format'
 import { fileToDataUrl } from '../../../shared/lib/files'
 import RescuePlans from '../components/RescuePlans'
+import ContactsSection from '../components/ContactsSection'
+import SosPoster from '../components/SosPoster'
 import {
   subscribeContacts, subscribeLayouts, subscribeRescuePlans, saveLayout, deleteLayout, INTERNAL_ROLES,
 } from '../lib/firestore'
@@ -41,6 +43,8 @@ export default function SiteDetail() {
   const [users, setUsers] = useState([])
   const [section, setSection] = useState('contacts')
   const [viewLayout, setViewLayout] = useState(false)
+  const [sosOpen, setSosOpen] = useState(false)
+  const [sosAccent, setSosAccent] = useState('pink')
   const [busy, setBusy] = useState(false)
   const fileRef = useRef(null)
 
@@ -113,7 +117,7 @@ export default function SiteDetail() {
           icon={Building2}
           title="This site isn't available"
           description="It may have been removed, or you don't have access to it."
-          action={<Link to="/emergency-response/sites" className="btn-primary"><ArrowLeft size={16} /> Back to repository</Link>}
+          action={<Link to="/emergency-response" className="btn-primary"><ArrowLeft size={16} /> Back to repository</Link>}
         />
       </>
     )
@@ -123,7 +127,7 @@ export default function SiteDetail() {
     <>
       <PrintIsolate id="site-ferp-sheet" />
 
-      <Link to="/emergency-response/sites" className="mb-3 inline-flex items-center gap-1.5 text-sm font-semibold text-ink-500 transition hover:text-brand-600 print:hidden">
+      <Link to="/emergency-response" className="mb-3 inline-flex items-center gap-1.5 text-sm font-semibold text-ink-500 transition hover:text-brand-600 print:hidden">
         <ArrowLeft size={15} /> All sites
       </Link>
 
@@ -131,7 +135,12 @@ export default function SiteDetail() {
         title={site.name}
         subtitle={`Emergency repository — ${[site.entity, site.region].filter(Boolean).join(' · ') || 'contacts, FERP plan & rescue plans'}`}
         icon={Building2}
-        actions={<Button variant="soft" icon={Printer} onClick={() => window.print()}>Print site FERP</Button>}
+        actions={
+          <div className="flex flex-wrap gap-2">
+            <Button variant="soft" icon={Siren} onClick={() => setSosOpen(true)}>SOS poster</Button>
+            <Button variant="soft" icon={Printer} onClick={() => window.print()}>Print site FERP</Button>
+          </div>
+        }
       />
 
       {/* Section switch */}
@@ -156,63 +165,8 @@ export default function SiteDetail() {
         })}
       </div>
 
-      {/* ── Contacts ── */}
-      {section === 'contacts' && (
-        <div className="grid gap-5 lg:grid-cols-2">
-          <Card className="overflow-hidden !p-0">
-            <div className="flex items-center justify-between px-5 pb-1 pt-4">
-              <h3 className="flex items-center gap-2 font-semibold text-ink-800">
-                <PhoneCall size={17} className="text-red-600" /> External services ({siteContacts.external.length})
-              </h3>
-              <Link to="/emergency-response" className="text-xs font-semibold text-brand-600 hover:underline">Manage</Link>
-            </div>
-            {siteContacts.external.length === 0 ? (
-              <div className="p-5"><EmptyState icon={PhoneCall} title="No external contacts" description="Add Police, Ambulance, Fire Brigade and Hospital numbers — or use Auto-fill nearest on the Contacts tab." /></div>
-            ) : (
-              <ul className="divide-y divide-clay-200/60">
-                {siteContacts.external.map((c) => (
-                  <li key={c.id} className="flex items-center gap-3 px-5 py-3">
-                    <Badge tone="red">{c.role}</Badge>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate font-semibold text-ink-900">{c.name}</p>
-                      {c.notes && <p className="truncate text-xs text-ink-400">{c.notes}</p>}
-                    </div>
-                    <a href={`tel:${c.phone}`} className="shrink-0 rounded-xl bg-red-50 px-3 py-1.5 text-sm font-bold text-red-700 transition hover:bg-red-100">{c.phone}</a>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Card>
-
-          <Card className="overflow-hidden !p-0">
-            <div className="flex items-center justify-between px-5 pb-1 pt-4">
-              <h3 className="flex items-center gap-2 font-semibold text-ink-800">
-                <Phone size={17} className="text-brand-600" /> Internal escalation ({siteContacts.internal.length})
-              </h3>
-              <Link to="/emergency-response" className="text-xs font-semibold text-brand-600 hover:underline">Manage</Link>
-            </div>
-            {siteContacts.internal.length === 0 ? (
-              <div className="p-5"><EmptyState icon={Phone} title="No internal contacts" description="Add CM, CLM, Safety L1/L2, Legal and HR contacts on the Contacts tab." /></div>
-            ) : (
-              <ul className="divide-y divide-clay-200/60">
-                {siteContacts.internal.map((c) => (
-                  <li key={c.id} className="flex items-center gap-3 px-5 py-3">
-                    <Badge tone="brand">{c.role}</Badge>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate font-semibold text-ink-900">{c.name}</p>
-                      <p className="truncate text-xs text-ink-400">
-                        {c.department || ''}{c.email ? (c.department ? ' · ' : '') + c.email : ''}
-                        {!c.siteId && ' · all sites'}
-                      </p>
-                    </div>
-                    <a href={`tel:${c.phone}`} className="shrink-0 font-bold text-brand-700 hover:underline">{c.phone}</a>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Card>
-        </div>
-      )}
+      {/* ── Contacts (site-scoped CRUD + nearest-services mapping) ── */}
+      {section === 'contacts' && <ContactsSection site={site} contacts={contacts} users={approvedUsers} />}
 
       {/* ── FERP plan (evacuation layout) ── */}
       {section === 'ferp' && (
@@ -262,6 +216,16 @@ export default function SiteDetail() {
 
       {/* ── Rescue plans ── */}
       {section === 'rescue' && <RescuePlans site={site} plans={plans} users={approvedUsers} />}
+
+      {sosOpen && (
+        <SosPoster
+          site={site}
+          contacts={siteContacts.external}
+          accent={sosAccent}
+          onAccent={setSosAccent}
+          onClose={() => setSosOpen(false)}
+        />
+      )}
 
       <Modal open={viewLayout} onClose={() => setViewLayout(false)} title={`FERP plan — ${site.name}`} size="xl">
         <div className="p-4">

@@ -16,7 +16,7 @@ const col = (orgId) => collection(db, 'organizations', orgId, 'erpContacts')
 const ref = (orgId, id) => doc(db, 'organizations', orgId, 'erpContacts', id)
 
 export const EXTERNAL_ROLES = [
-  'Police', 'Ambulance', 'Fire Brigade', 'Hospital', 'Electricity Board',
+  'Police', 'Ambulance', 'Fire Brigade', 'Hospital', 'Helpline', 'Electricity Board',
   'Gas Emergency', 'Pollution Control', 'Other',
 ]
 export const INTERNAL_ROLES = [
