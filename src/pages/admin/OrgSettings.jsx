@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
-import { Settings, Save, Activity, Plus, X, Layers, ChevronUp, ChevronDown, Lock, Building2 } from 'lucide-react'
+import { Settings, Save, Activity, Plus, X, Layers, ChevronUp, ChevronDown, Lock, Building2, PhoneCall } from 'lucide-react'
 import { DEPARTMENTS } from '../../shared/auth/access'
 import { useAuth } from '../../shared/auth/AuthContext'
 import { subscribeOrg, updateOrgSettings, subscribeSites } from '../../shared/org/orgData'
@@ -25,6 +25,7 @@ export default function OrgSettings() {
 
   const [form, setForm] = useState({
     name: '', address: '', notificationEmail: '', activityTypes: [], departments: [],
+    safetyHelplinePrimary: '', safetyHelplineSecondary: '',
   })
   const [customActivity, setCustomActivity] = useState('')
   const [newDept, setNewDept] = useState('')
@@ -47,6 +48,8 @@ export default function OrgSettings() {
           name: o.name || '',
           address: o.address || '',
           notificationEmail: o.notificationEmail || '',
+          safetyHelplinePrimary: o.safetyHelplinePrimary || '',
+          safetyHelplineSecondary: o.safetyHelplineSecondary || '',
           activityTypes: o.activityTypes || [],
           departments: Array.isArray(o.departments) && o.departments.length ? o.departments : DEPARTMENTS,
         })
@@ -91,6 +94,8 @@ export default function OrgSettings() {
         name: form.name,
         address: form.address,
         notificationEmail: form.notificationEmail,
+        safetyHelplinePrimary: form.safetyHelplinePrimary,
+        safetyHelplineSecondary: form.safetyHelplineSecondary,
         activityTypes: form.activityTypes,
         departments: form.departments,
       }, actor)
@@ -220,6 +225,27 @@ export default function OrgSettings() {
               </Field>
               <Field label="Notification email" htmlFor="email" hint="Where safety notifications are sent">
                 <Input id="email" type="email" value={form.notificationEmail} onChange={(e) => setForm({ ...form, notificationEmail: e.target.value })} />
+              </Field>
+            </div>
+          </Card>
+
+          {/* Org-wide emergency helpline — same on every site's SOS poster */}
+          <Card>
+            <h3 className="flex items-center gap-2 font-semibold text-ink-800">
+              <PhoneCall size={17} className="text-red-600" /> Safety &amp; Security helpline
+            </h3>
+            <p className="mb-3 mt-1 text-sm text-ink-500">
+              Your organization-wide helpline numbers. These are common to every site and print on the
+              <b> Safety &amp; Security (Help Line)</b> row of each site&apos;s SOS emergency poster.
+            </p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Primary helpline" htmlFor="hl1" hint="e.g. 1800 102 4100">
+                <Input id="hl1" value={form.safetyHelplinePrimary}
+                  onChange={(e) => setForm({ ...form, safetyHelplinePrimary: e.target.value })} />
+              </Field>
+              <Field label="Secondary helpline" htmlFor="hl2" hint="e.g. 9591900100">
+                <Input id="hl2" value={form.safetyHelplineSecondary}
+                  onChange={(e) => setForm({ ...form, safetyHelplineSecondary: e.target.value })} />
               </Field>
             </div>
           </Card>

@@ -1,5 +1,7 @@
 import { Printer, X } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { PrintIsolate } from '../../../shared/ui'
+import { useAuth } from '../../../shared/auth/AuthContext'
 
 // "THERE'S SAFETY IN NUMBERS" emergency poster — the org's standard SOS format.
 // Primary column = national emergency numbers; Secondary = this site's mapped
@@ -22,13 +24,19 @@ function pick(contacts, matchers) {
 }
 
 export default function SosPoster({ site, contacts, accent = 'pink', onAccent, onClose }) {
+  const { org, isAdmin } = useAuth()
   const ext = (contacts || []).filter((c) => c.kind === 'external')
   const rows = [
     { dept: 'Medical', contact: pick(ext, ['hospital', 'ambulance', 'medical']) },
     { dept: 'Police', contact: pick(ext, ['police']) },
     { dept: 'Fire', contact: pick(ext, ['fire']) },
   ]
-  const helplines = ext.filter((c) => /helpline|safety & security/i.test(c.role || ''))
+  // Safety & Security helpline is org-wide (Org Settings → General), so the same
+  // numbers print on every site's poster.
+  const helpline = {
+    primary: org?.safetyHelplinePrimary || '',
+    secondary: org?.safetyHelplineSecondary || '',
+  }
   const theme = ACCENTS.find((a) => a.key === accent) || ACCENTS[0]
 
   return (
@@ -118,10 +126,10 @@ export default function SosPoster({ site, contacts, accent = 'pink', onAccent, o
                     Safety &amp; Security<br />(Help Line)
                   </td>
                   <td className="px-2 text-center text-[clamp(9px,2.4vw,18px)] font-bold" style={{ border: `1px solid ${theme.color}` }}>
-                    {helplines[0]?.phone || '—'}
+                    {helpline.primary || '—'}
                   </td>
                   <td className="px-2 text-center text-[clamp(9px,2.4vw,18px)] font-bold" style={{ border: `1px solid ${theme.color}` }}>
-                    {helplines[1]?.phone || helplines[0]?.altPhone || '—'}
+                    {helpline.secondary || '—'}
                   </td>
                 </tr>
               </tbody>
@@ -129,9 +137,15 @@ export default function SosPoster({ site, contacts, accent = 'pink', onAccent, o
           </div>
         </div>
 
-        <p className="mt-2 text-center text-xs text-white/70 print:hidden">
-          Add contacts with the role <b>Helpline</b> to fill the Safety &amp; Security row.
-        </p>
+        {!helpline.primary && !helpline.secondary && (
+          <p className="mt-2 text-center text-xs text-white/70 print:hidden">
+            Set your org-wide Safety &amp; Security helpline in{' '}
+            {isAdmin
+              ? <Link to="/settings" className="font-semibold underline">Org Settings → General</Link>
+              : <b>Org Settings → General</b>}
+            {' '}— it prints on every site&apos;s poster.
+          </p>
+        )}
       </div>
     </div>
   )

@@ -15,8 +15,10 @@ import { logAudit } from '../../../shared/org/orgData'
 const col = (orgId) => collection(db, 'organizations', orgId, 'erpContacts')
 const ref = (orgId, id) => doc(db, 'organizations', orgId, 'erpContacts', id)
 
+// Note: the Safety & Security helpline is org-wide (Org Settings → General),
+// not a per-site contact — it prints on every site's SOS poster.
 export const EXTERNAL_ROLES = [
-  'Police', 'Ambulance', 'Fire Brigade', 'Hospital', 'Helpline', 'Electricity Board',
+  'Police', 'Ambulance', 'Fire Brigade', 'Hospital', 'Electricity Board',
   'Gas Emergency', 'Pollution Control', 'Other',
 ]
 export const INTERNAL_ROLES = [
