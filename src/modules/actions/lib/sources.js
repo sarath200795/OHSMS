@@ -263,6 +263,11 @@ export function subscribeActions(orgId, cb) {
             sourceLabel: src.label,
             tone: src.tone,
             docId: d.id,
+            // Scope carried from the owning record so actions can be rolled up
+            // by region / entity / site (Objectives & Targets).
+            region: d.region || d.taskDetails?.region || '',
+            entity: d.entity || d.taskDetails?.entity || '',
+            siteId: d.siteId || d.taskDetails?.siteId || '',
             actionId: a.actionId,
             title: a.title,
             owner: a.owner,

@@ -36,6 +36,7 @@ const Training = lazy(() => import('./modules/training'))
 const Documents = lazy(() => import('./modules/documents'))
 const Actions = lazy(() => import('./modules/actions'))
 const Emergency = lazy(() => import('./modules/emergency'))
+const Objectives = lazy(() => import('./modules/objectives'))
 
 function Protected({ children, ...guard }) {
   return (
@@ -84,6 +85,7 @@ export default function App() {
       <Route path="/documents/*" element={<Protected><Documents /></Protected>} />
       <Route path="/actions/*" element={<Protected><Actions /></Protected>} />
       <Route path="/emergency-response/*" element={<Protected><Emergency /></Protected>} />
+      <Route path="/objectives/*" element={<Protected><Objectives /></Protected>} />
 
       {/* Administration */}
       <Route path="/sites" element={<Protected requireCap="record.view"><Sites /></Protected>} />

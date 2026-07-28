@@ -17,6 +17,7 @@ import {
   FolderOpen,
   ListChecks,
   PhoneCall,
+  Gauge,
 } from 'lucide-react'
 
 export const MODULES = [
@@ -141,6 +142,17 @@ export const MODULES = [
     tone: 'red',
     description: 'Site emergency repository — FERP contacts (external & internal), evacuation plans and scenario rescue plans.',
     collection: 'erpContacts',
+    isNew: true,
+  },
+  {
+    key: 'objectives',
+    label: 'Objectives & Targets',
+    title: 'Objectives & Targets',
+    path: '/objectives',
+    icon: Gauge,
+    tone: 'violet',
+    description: 'OH&S KPI scorecard — audit pass, ticket closure, equipment uptime and incidents against target at org, region and site level.',
+    collection: 'objectives',
     isNew: true,
   },
   {
