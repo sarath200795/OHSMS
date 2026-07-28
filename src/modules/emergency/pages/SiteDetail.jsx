@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import {
   Map, Phone, Printer, Upload, Trash2, ImageOff, ArrowLeft, Building2, LifeBuoy, Siren,
-  Layers, ChevronUp, ChevronDown, Pencil,
+  Layers, ChevronUp, ChevronDown, Pencil, Download,
 } from 'lucide-react'
 import {
   PageHeader, Card, Button, EmptyState, SkeletonCard, Modal, PrintIsolate,
@@ -46,6 +46,8 @@ export default function SiteDetail() {
   const [viewLayout, setViewLayout] = useState(null) // floor being enlarged
   const [sosOpen, setSosOpen] = useState(false)
   const [sosAccent, setSosAccent] = useState('pink')
+  // Which sheet the next print job targets: the full site FERP, or the floor plans alone.
+  const [printTarget, setPrintTarget] = useState('site')
   const [busy, setBusy] = useState(false)
   const fileRef = useRef(null)
 
@@ -78,6 +80,16 @@ export default function SiteDetail() {
   const sitePlans = useMemo(() => plans.filter((p) => p.siteId === siteId), [plans, siteId])
 
   const floors = useMemo(() => floorsOf(layout), [layout])
+
+  /** Print a specific sheet: swap the isolation target, print, then restore. */
+  const printSheet = (target) => {
+    setPrintTarget(target)
+    // Let the new PrintIsolate style commit before opening the print dialog.
+    setTimeout(() => {
+      window.print()
+      setPrintTarget('site')
+    }, 60)
+  }
 
   // Multi-floor upload: each selected image becomes a floor, labelled in order.
   const uploadFloors = async (e) => {
@@ -161,7 +173,7 @@ export default function SiteDetail() {
 
   return (
     <>
-      <PrintIsolate id="site-ferp-sheet" />
+      <PrintIsolate id={printTarget === 'plans' ? 'ferp-plans-sheet' : 'site-ferp-sheet'} />
 
       <Link to="/emergency-response" className="mb-3 inline-flex items-center gap-1.5 text-sm font-semibold text-ink-500 transition hover:text-brand-600 print:hidden">
         <ArrowLeft size={15} /> All sites
@@ -174,7 +186,7 @@ export default function SiteDetail() {
         actions={
           <div className="flex flex-wrap gap-2">
             <Button variant="soft" icon={Siren} onClick={() => setSosOpen(true)}>SOS poster</Button>
-            <Button variant="soft" icon={Printer} onClick={() => window.print()}>Print site FERP</Button>
+            <Button variant="soft" icon={Printer} onClick={() => printSheet('site')}>Print site FERP</Button>
           </div>
         }
       />
@@ -211,11 +223,19 @@ export default function SiteDetail() {
             <h3 className="flex items-center gap-2 font-semibold text-ink-800">
               <Map size={17} className="text-accent-amber" /> FERP plan — evacuation layouts ({floors.length})
             </h3>
-            {isManager && (
-              <Button variant="soft" icon={Upload} loading={busy} onClick={() => fileRef.current?.click()}>
-                {floors.length ? 'Add floors' : 'Upload floor plans'}
-              </Button>
-            )}
+            <div className="flex flex-wrap gap-1.5">
+              {floors.length > 0 && (
+                <Button variant="soft" icon={Download} onClick={() => printSheet('plans')}
+                  title="Download the evacuation plans on their own (one floor per page)">
+                  Download FERP plan
+                </Button>
+              )}
+              {isManager && (
+                <Button variant="soft" icon={Upload} loading={busy} onClick={() => fileRef.current?.click()}>
+                  {floors.length ? 'Add floors' : 'Upload floor plans'}
+                </Button>
+              )}
+            </div>
             <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={uploadFloors} />
           </div>
 
@@ -227,14 +247,20 @@ export default function SiteDetail() {
                     <div className="mb-2 flex items-center gap-2">
                       <Layers size={14} className="shrink-0 text-accent-amber" />
                       <p className="min-w-0 flex-1 truncate font-semibold text-ink-800">{f.label}</p>
-                      {isManager && (
-                        <div className="flex shrink-0 gap-0.5">
-                          <button className="btn-ghost px-1.5 py-1 text-xs" onClick={() => moveFloor(i, -1)} disabled={i === 0} title="Move up"><ChevronUp size={13} /></button>
-                          <button className="btn-ghost px-1.5 py-1 text-xs" onClick={() => moveFloor(i, 1)} disabled={i === floors.length - 1} title="Move down"><ChevronDown size={13} /></button>
-                          <button className="btn-ghost px-1.5 py-1 text-xs" onClick={() => renameFloor(f)} title="Rename floor"><Pencil size={13} /></button>
-                          <button className="btn-ghost px-1.5 py-1 text-xs text-red-600 hover:bg-red-50" onClick={() => removeFloor(f)} title="Remove floor"><Trash2 size={13} /></button>
-                        </div>
-                      )}
+                      <div className="flex shrink-0 gap-0.5">
+                        <a className="btn-ghost px-1.5 py-1 text-xs" href={f.dataUrl}
+                          download={f.fileName || `${site.name} — ${f.label}.png`} title="Download this floor plan">
+                          <Download size={13} />
+                        </a>
+                        {isManager && (
+                          <>
+                            <button className="btn-ghost px-1.5 py-1 text-xs" onClick={() => moveFloor(i, -1)} disabled={i === 0} title="Move up"><ChevronUp size={13} /></button>
+                            <button className="btn-ghost px-1.5 py-1 text-xs" onClick={() => moveFloor(i, 1)} disabled={i === floors.length - 1} title="Move down"><ChevronDown size={13} /></button>
+                            <button className="btn-ghost px-1.5 py-1 text-xs" onClick={() => renameFloor(f)} title="Rename floor"><Pencil size={13} /></button>
+                            <button className="btn-ghost px-1.5 py-1 text-xs text-red-600 hover:bg-red-50" onClick={() => removeFloor(f)} title="Remove floor"><Trash2 size={13} /></button>
+                          </>
+                        )}
+                      </div>
                     </div>
                     <button type="button" className="block w-full overflow-hidden rounded-xl transition hover:opacity-95"
                       onClick={() => setViewLayout(f)} title="Click to enlarge">
@@ -279,6 +305,22 @@ export default function SiteDetail() {
           {viewLayout && <img src={viewLayout.dataUrl} alt={`${viewLayout.label} — ${site.name}`} className="max-h-[75vh] w-full bg-white object-contain" />}
         </div>
       </Modal>
+
+      {/* ── Printable FERP plans only (one floor per page) ── */}
+      <div id="ferp-plans-sheet" className="hidden bg-white p-8 text-black">
+        {floors.map((f, i) => (
+          <div key={f.id} style={i > 0 ? { pageBreakBefore: 'always' } : undefined}>
+            <h1 className="mb-0.5 text-xl font-black uppercase">{site.name} — Emergency Evacuation Plan</h1>
+            <p className="mb-3 text-sm font-bold">
+              {f.label}
+              <span className="ml-2 font-normal">
+                (Floor {i + 1} of {floors.length}){[site.entity, site.region].filter(Boolean).length ? ` · ${[site.entity, site.region].filter(Boolean).join(' · ')}` : ''}
+              </span>
+            </p>
+            <img src={f.dataUrl} alt={f.label} className="max-h-[74vh] w-full object-contain" />
+          </div>
+        ))}
+      </div>
 
       {/* ── Printable site FERP: contacts + plan + rescue plans ── */}
       <div id="site-ferp-sheet" className="hidden bg-white p-10 text-black">
