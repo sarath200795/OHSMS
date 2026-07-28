@@ -1,0 +1,1149 @@
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useLocation } from 'react-router-dom';
+import * as XLSX from 'xlsx';
+import toast from 'react-hot-toast';
+import {
+    PieChart, Pie, Cell, BarChart, Bar, AreaChart, Area, XAxis, YAxis, CartesianGrid,
+    Tooltip, Legend, ResponsiveContainer,
+} from 'recharts';
+import { useAuth } from '../context/AuthContext';
+import SiteScopePicker from '../../../shared/org/SiteScopePicker';
+import DeptPersonPicker from '../../../shared/org/DeptPersonPicker';
+import { moduleLevelKeys, SITE_LEVEL_KEY } from '../../../shared/org/scopeConfig';
+import Logo from '../components/Logo';
+import LogoLoader from '../components/LogoLoader';
+import {
+    subscribeSites,
+    subscribeOrgUsers,
+    subscribeConsultations,
+    addConsultation,
+    updateConsultation,
+    deleteConsultation,
+} from '../lib/firestore';
+
+const MEETING_TYPES = [
+    "HSE Committee Meeting",
+    "Risk Assessment Review",
+    "Policy Review",
+    "Emergency Planning",
+    "Management of Change",
+    "Management Review"
+];
+
+const STATUS_COLORS = { 'Open': '#ef4444', 'In Progress': '#facc15', 'Closed': '#22c55e' };
+const TYPE_COLORS = ['#16a34a', '#22c55e', '#4ade80', '#0ea5e9', '#6366f1', '#f59e0b'];
+
+// ==========================================
+// SUB-COMPONENT: MEETING DETAIL MODAL
+// ==========================================
+const MeetingDetailModal = ({ meeting, siteLabel, onClose, onUpdateStatus, onPrint, session, permissions }) => {
+    if (!meeting) return null;
+
+    const currentUser = session?.name || session?.email || session?.user;
+
+    const canEditStatus = (row) => {
+        if (permissions.canEditCreate) return true; // Admins/Managers/Owners can edit all
+        if (permissions.viewOnly && permissions.canEditOwnedActions) return row.owner === currentUser; // Users can edit their own assigned actions
+        return false;
+    };
+
+    return (
+        <div className="fixed inset-0 bg-ink-950/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto animate-in fade-in zoom-in-95 duration-300 print:hidden">
+            <div className="bg-clay-surface border border-clay-200 w-full max-w-5xl rounded-3xl flex flex-col shadow-2xl relative min-h-[50vh] max-h-[90vh] overflow-hidden">
+                <div className="p-6 border-b border-clay-200 flex justify-between items-center bg-clay-100">
+                    <div>
+                        <h1 className="text-2xl font-bold uppercase text-green-700 flex items-center gap-3"><i className="fas fa-handshake"></i> Minutes of Meeting</h1>
+                        <p className="text-sm text-ink-500 mt-1 font-mono">Ref: {meeting.docId || meeting.id}</p>
+                    </div>
+                    <div className="text-right text-xs text-ink-500 font-bold uppercase tracking-widest bg-clay-surface p-3 rounded-xl border border-clay-200">
+                        <p className="mb-1 text-green-700"><i className="far fa-calendar-alt mr-1"></i> {meeting.date}</p>
+                        <p><i className="fas fa-map-marker-alt mr-1"></i> Site: {siteLabel || meeting.siteId}</p>
+                    </div>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-8 custom-scroll space-y-6">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm bg-clay-surface p-6 rounded-2xl border border-clay-200/70 shadow-inner">
+                        <div><span className="text-ink-400 text-[10px] uppercase block tracking-widest mb-1">Type</span><span className="font-bold text-ink-900">{meeting.type || 'Consultation'}</span></div>
+                        <div><span className="text-ink-400 text-[10px] uppercase block tracking-widest mb-1">Date</span><span className="font-bold text-ink-900">{meeting.date}</span></div>
+                        <div><span className="text-ink-400 text-[10px] uppercase block tracking-widest mb-1">Time</span><span className="font-bold text-ink-900">{meeting.time || 'N/A'}</span></div>
+                        <div><span className="text-ink-400 text-[10px] uppercase block tracking-widest mb-1">Logged By</span><span className="font-bold text-green-700">{meeting.createdBy}</span></div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="flex flex-col">
+                            <h3 className="text-xs uppercase text-green-700 font-bold mb-3 tracking-widest"><i className="fas fa-bullseye mr-2"></i>Subject / Agenda</h3>
+                            <div className="bg-clay-100 p-4 rounded-xl border border-clay-200 text-sm flex-1 text-ink-900 shadow-inner font-medium leading-relaxed">{meeting.subject || meeting.agenda || 'N/A'}</div>
+                        </div>
+                        <div>
+                            <h3 className="text-xs uppercase text-green-700 font-bold mb-3 tracking-widest"><i className="fas fa-users mr-2"></i>Attendees</h3>
+                            <div className="flex flex-wrap gap-2 bg-clay-surface p-4 rounded-xl border border-clay-200/70 shadow-inner min-h-[80px]">
+                                {(meeting.attendees || []).map((a, i) => (
+                                    <span key={i} className="bg-clay-100 px-3 py-1.5 rounded-lg text-xs font-bold border border-clay-200 text-ink-900 shadow-sm">
+                                        {a.name} <span className="text-ink-500 font-medium ml-1">({a.role})</span>
+                                        {a.userId === 'External' && <span className="ml-2 text-[9px] text-purple-700 bg-purple-100 px-1.5 py-0.5 rounded font-bold uppercase tracking-widest border border-purple-500/30">EXT</span>}
+                                    </span>
+                                ))}
+                                {(!meeting.attendees || meeting.attendees.length === 0) && <span className="text-ink-400 italic text-xs">No attendees recorded.</span>}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <h3 className="text-xs uppercase text-green-700 font-bold mb-3 tracking-widest"><i className="fas fa-clipboard-list mr-2"></i>Pre-Requisites / Inputs</h3>
+                        <div className="bg-clay-surface p-5 rounded-xl border border-clay-200/70 text-sm whitespace-pre-wrap text-ink-600 shadow-inner leading-relaxed min-h-[100px]">{meeting.preRequisites || 'None specified.'}</div>
+                    </div>
+
+                    <div>
+                        <h3 className="text-xs uppercase text-green-700 font-bold mb-3 tracking-widest"><i className="fas fa-comments mr-2"></i>Discussion Minutes</h3>
+                        <div className="bg-clay-surface p-5 rounded-xl border border-clay-200/70 text-sm whitespace-pre-wrap text-ink-900 shadow-inner leading-relaxed min-h-[150px]">{meeting.minutes || 'No minutes recorded.'}</div>
+                    </div>
+
+                    <div>
+                        <h3 className="text-xs uppercase text-green-700 font-bold mb-4 border-b border-green-500/20 pb-2 tracking-widest"><i className="fas fa-tasks mr-2"></i>Action Plan (CAPA)</h3>
+                        <div className="overflow-x-auto rounded-xl border border-clay-200 shadow-xl">
+                            <table className="w-full text-left text-sm whitespace-nowrap">
+                                <thead className="bg-clay-surface text-[10px] uppercase font-bold text-ink-400 tracking-widest">
+                                    <tr>
+                                        <th className="p-4 pl-6">Action Item Description</th>
+                                        <th className="p-4">Owner</th>
+                                        <th className="p-4">Due Date</th>
+                                        <th className="p-4 pr-6 text-right">Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-clay-200/60 bg-clay-100/60 text-ink-900">
+                                    {(meeting.actions || []).map((row, idx) => {
+                                        const isOverdue = row.status !== 'Closed' && row.due && new Date(row.due) < new Date();
+                                        return (
+                                            <tr key={idx} className="hover:bg-clay-100 transition-colors">
+                                                <td className="p-4 pl-6 font-medium whitespace-normal min-w-[250px]">{row.action}</td>
+                                                <td className="p-4 font-bold text-blue-600">{row.owner}</td>
+                                                <td className="p-4 font-mono text-xs text-ink-600">
+                                                    {row.due}
+                                                    {isOverdue && <span className="ml-2 px-2 py-0.5 bg-red-100 text-red-600 border border-red-500/30 rounded font-bold uppercase text-[9px] animate-pulse">Overdue</span>}
+                                                </td>
+                                                <td className="p-4 pr-6 text-right">
+                                                    <select
+                                                        value={row.status || 'Open'}
+                                                        onChange={e => onUpdateStatus(meeting.firebaseKey, idx, e.target.value)}
+                                                        disabled={!canEditStatus(row)}
+                                                        className={`text-xs px-3 py-1.5 rounded-lg font-bold outline-none border ${canEditStatus(row) ? 'cursor-pointer' : 'cursor-not-allowed opacity-80'} ${row.status === 'Closed' ? 'bg-emerald-100 text-emerald-600 border-emerald-500/30' : row.status === 'In Progress' ? 'bg-yellow-100 text-yellow-600 border-yellow-500/30' : 'bg-red-100 text-red-600 border-red-500/30'}`}
+                                                    >
+                                                        <option value="Open">Open</option>
+                                                        <option value="In Progress">In Progress</option>
+                                                        <option value="Closed">Closed</option>
+                                                    </select>
+                                                </td>
+                                            </tr>
+                                        )
+                                    })}
+                                    {(!meeting.actions || meeting.actions.length === 0) && <tr><td colSpan="4" className="p-8 text-center text-ink-400 italic">No CAPA actions assigned.</td></tr>}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="p-6 border-t border-clay-200/70 flex justify-end gap-4 bg-clay-surface flex-shrink-0">
+                    <button onClick={() => onPrint(meeting)} className="bg-clay-100 hover:bg-clay-200 text-ink-900 px-6 py-2.5 rounded-xl font-bold text-sm transition-colors shadow-lg flex items-center gap-2"><i className="fas fa-print"></i> Print Minutes</button>
+                    <button onClick={onClose} className="bg-green-600 hover:bg-green-500 text-white px-8 py-2.5 rounded-xl font-bold text-sm shadow-lg shadow-green-900/50 transition-transform active:scale-95">Close Window</button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// ==========================================
+// MAIN COMPONENT
+// ==========================================
+export default function Consultation() {
+    const location = useLocation();
+    const { profile, orgId, isAdmin, org } = useAuth();
+
+    // Whether the HSE Committee scope config still includes a Site level. When an
+    // admin removes Site from this module's granularity, meetings become org-level
+    // and a specific site is no longer required.
+    const scopeHasSite = useMemo(() => moduleLevelKeys(org, 'committee').includes(SITE_LEVEL_KEY), [org]);
+
+    const [isLoading, setIsLoading] = useState(true);
+
+    // Session-like object derived from the auth profile (keeps existing references working).
+    const session = useMemo(() => (profile ? { name: profile.name, email: profile.email, role: profile.role, orgId } : null), [profile, orgId]);
+
+    // RBAC: every approved member can create/edit meetings (and CAPA actions);
+    // deleting a whole meeting record stays admin-only.
+    const permissions = useMemo(() => ({ viewOnly: false, canEditOwnedActions: true, canDelete: isAdmin, canEditCreate: true }), [isAdmin]);
+
+    // Filter State
+    const [filterSite, setFilterSite] = useState('All');
+    const [filterCategory, setFilterCategory] = useState('All');
+
+    // Calendar States
+    const [calMonth, setCalMonth] = useState(new Date().getMonth());
+    const [calYear, setCalYear] = useState(new Date().getFullYear());
+    const [calSiteFilter, setCalSiteFilter] = useState('All');
+
+    // Core Data
+    const [sites, setSites] = useState([]);
+    const [users, setUsers] = useState([]);
+    const [meetings, setMeetings] = useState([]);
+
+    // View States
+    const [view, setView] = useState('list');
+    const [printData, setPrintData] = useState(null);
+    const [saving, setSaving] = useState(false);
+
+    // Form Data State
+    const [formData, setFormData] = useState({
+        id: '', firebaseKey: '', siteId: '', type: 'HSE Committee Meeting', subject: '',
+        date: new Date().toISOString().split('T')[0], time: '', preRequisites: '', minutes: '',
+        attendees: [], actions: []
+    });
+
+    const [selectedUserToAdd, setSelectedUserToAdd] = useState('');
+    const [externalName, setExternalName] = useState('');
+    const [newActionLine, setNewActionLine] = useState({ action: '', owner: '', due: '' });
+
+    // Sync the active view from the ?view= query param so the sidebar's
+    // Dashboard / Calendar / New Meeting links (and the in-page tabs) stay in sync.
+    useEffect(() => {
+        const params = new URLSearchParams(location.search);
+        const pSite = params.get('site');
+        if (pSite) { setFilterSite(pSite); setCalSiteFilter(pSite); }
+        const v = params.get('view');
+        if (v === 'calendar') {
+            setView('calendar');
+        } else if (v === 'new') {
+            setFormData({
+                id: '', firebaseKey: '', siteId: filterSite !== 'All' ? filterSite : '',
+                type: 'HSE Committee Meeting', subject: '',
+                date: new Date().toISOString().split('T')[0], time: '', preRequisites: '', minutes: '',
+                attendees: [], actions: []
+            });
+            setView('form');
+        } else if (v === 'dashboard') {
+            setView('list');
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [location.search]);
+
+    // Live org data: sites, approved users and consultation records.
+    useEffect(() => {
+        if (!orgId) { setIsLoading(false); return undefined; }
+        const done = () => setIsLoading(false);
+        // Never get stuck on the loader — always show the dashboard once auth is ready,
+        // even if a listener is slow or a read is denied (it just renders empty then).
+        const safety = setTimeout(done, 5000);
+        const unsubSites = subscribeSites(orgId, (list) => setSites(list), () => {});
+        const unsubUsers = subscribeOrgUsers(orgId,
+            (list) => setUsers(list.filter(u => u.status === 'approved').map(u => ({ id: u.uid, ...u }))),
+            () => {});
+        const unsubMeetings = subscribeConsultations(orgId,
+            (list) => { setMeetings([...list].sort((a, b) => new Date(b.date) - new Date(a.date))); done(); },
+            () => done());
+        return () => { clearTimeout(safety); unsubSites(); unsubUsers(); unsubMeetings(); };
+    }, [orgId]);
+
+    // ==========================================
+    // 4. STRICT ROW-LEVEL SECURITY (RLS)
+    // ==========================================
+    // Every approved org member can see all of the organization's sites; the site
+    // dropdowns are a UX filter, not a security boundary (org membership is enforced
+    // by Firestore rules + the auth/approval guard).
+    const isGlobalUser = true;
+    const visibleSites = sites;
+
+    const handleSiteFilterChange = (e) => setFilterSite(e.target.value);
+    const handleCalSiteFilterChange = (e) => setCalSiteFilter(e.target.value);
+
+    const canViewRecord = useCallback(() => true, []);
+
+    // Records store the site id (site.code || site.id). Resolve it to the site's
+    // display name for the UI; fall back to the stored value if not found.
+    const siteName = useCallback((id) => {
+        if (!id) return '—';
+        const s = sites.find((x) => x.id === id || x.code === id);
+        return s?.name || id;
+    }, [sites]);
+
+    const canEditForm = useMemo(() => permissions.canEditCreate, [permissions.canEditCreate]);
+
+    // Open a blank New Meeting form (the old sidebar link that did this was removed
+    // when the app moved to a hub layout, so the page needs its own buttons).
+    const openNewMeeting = () => {
+        setFormData({
+            id: '', firebaseKey: '', siteId: filterSite !== 'All' ? filterSite : '',
+            type: 'HSE Committee Meeting', subject: '',
+            date: new Date().toISOString().split('T')[0], time: '', preRequisites: '', minutes: '',
+            attendees: [], actions: []
+        });
+        setView('form');
+    };
+
+    // --- Derived Filtering ---
+    // All approved org members are selectable as attendees / action owners.
+    const siteUsers = users;
+
+    const filteredList = useMemo(() => {
+        return meetings.filter(m => {
+            if (!canViewRecord(m.siteId)) return false; // RLS Hard Block
+            const matchSite = filterSite === 'All' || m.siteId === filterSite;
+            const matchCat = filterCategory === 'All' || m.type === filterCategory;
+            return matchSite && matchCat;
+        });
+    }, [meetings, filterSite, filterCategory, canViewRecord]);
+
+    // ----- Dashboard analytics (respect the active site/category filters) -----
+    const meetingsByType = useMemo(() => (
+        MEETING_TYPES
+            .map(t => ({ name: t, value: filteredList.filter(m => m.type === t).length }))
+            .filter(d => d.value > 0)
+    ), [filteredList]);
+
+    const actionStatusData = useMemo(() => {
+        const c = { 'Open': 0, 'In Progress': 0, 'Closed': 0 };
+        filteredList.forEach(m => (m.actions || []).forEach(a => {
+            const s = a.status || 'Open';
+            c[s] = (c[s] || 0) + 1;
+        }));
+        return ['Open', 'In Progress', 'Closed'].map(s => ({ name: s, value: c[s] })).filter(d => d.value > 0);
+    }, [filteredList]);
+
+    const perMeetingActions = useMemo(() => (
+        filteredList.slice(0, 12).map(m => {
+            const acts = m.actions || [];
+            const label = m.docId || m.subject || 'Meeting';
+            return {
+                name: label.length > 16 ? label.slice(0, 16) + '…' : label,
+                Open: acts.filter(a => (a.status || 'Open') === 'Open').length,
+                'In Progress': acts.filter(a => a.status === 'In Progress').length,
+                Closed: acts.filter(a => a.status === 'Closed').length,
+            };
+        })
+    ), [filteredList]);
+
+    const meetingsBySite = useMemo(() => {
+        const map = {};
+        filteredList.forEach(m => { const k = siteName(m.siteId); map[k] = (map[k] || 0) + 1; });
+        return Object.entries(map).map(([name, value]) => ({ name, value }));
+    }, [filteredList, siteName]);
+
+    // "Points in each meeting" = number of CAPA action items logged per meeting.
+    const pointsPerMeeting = useMemo(() => (
+        filteredList.slice(0, 12).map(m => {
+            const label = m.docId || m.subject || 'Meeting';
+            return {
+                name: label.length > 16 ? label.slice(0, 16) + '…' : label,
+                Points: (m.actions || []).length,
+                Attendees: (m.attendees || []).length,
+            };
+        })
+    ), [filteredList]);
+
+    // Meetings logged per month (trend).
+    const meetingsOverTime = useMemo(() => {
+        const map = {};
+        filteredList.forEach(m => { const ym = (m.date || '').slice(0, 7); if (ym) map[ym] = (map[ym] || 0) + 1; });
+        return Object.keys(map).sort().map(ym => {
+            const [y, mo] = ym.split('-');
+            const label = new Date(Number(y), Number(mo) - 1, 1).toLocaleString('en', { month: 'short', year: '2-digit' });
+            return { name: label, Meetings: map[ym] };
+        });
+    }, [filteredList]);
+
+    const totalActions = useMemo(() => filteredList.reduce((a, m) => a + (m.actions ? m.actions.length : 0), 0), [filteredList]);
+
+
+    // --- Handlers ---
+    const handleAddAttendee = (type) => {
+        if (!canEditForm) return;
+        if (type === 'external') {
+            if (!externalName.trim()) return toast.error("Enter external attendee name.");
+            if ((formData.attendees || []).some(a => a.name.toLowerCase() === externalName.trim().toLowerCase())) return toast.error("Attendee is already in the list.");
+            const newAttendee = { userId: 'External', name: externalName.trim(), role: 'External / Contractor', dept: 'N/A' };
+            setFormData(prev => ({ ...prev, attendees: [...(prev.attendees || []), newAttendee] }));
+            setExternalName('');
+        } else {
+            if (!selectedUserToAdd) return;
+            const userObj = users.find(u => u.name === selectedUserToAdd || u.email === selectedUserToAdd);
+            if ((formData.attendees || []).some(a => a.name === selectedUserToAdd)) return toast.error("Employee is already in the list.");
+            const newAttendee = { userId: userObj ? userObj.id : 'Internal', name: userObj ? (userObj.name || userObj.email) : selectedUserToAdd, role: userObj ? (userObj.designation || userObj.role) : 'Employee', dept: userObj ? userObj.department : 'N/A' };
+            setFormData(prev => ({ ...prev, attendees: [...(prev.attendees || []), newAttendee] }));
+            setSelectedUserToAdd('');
+        }
+    };
+
+    const removeAttendee = (i) => {
+        if (!canEditForm) return;
+        setFormData({ ...formData, attendees: formData.attendees.filter((_, x) => x !== i) });
+    }
+
+    const addAction = () => {
+        if (!canEditForm) return;
+        if (newActionLine.action && newActionLine.owner) {
+            setFormData({ ...formData, actions: [...(formData.actions || []), { ...newActionLine, status: 'Open' }] });
+            setNewActionLine({ action: '', owner: '', due: '' });
+        } else {
+            toast.error("Action Description and Owner are required.");
+        }
+    };
+
+    const updateAction = (i, field, val) => {
+        if (!canEditForm) return;
+        const na = [...formData.actions]; na[i][field] = val; setFormData({ ...formData, actions: na });
+    };
+    const removeAction = (i) => {
+        if (!canEditForm) return;
+        setFormData({ ...formData, actions: formData.actions.filter((_, x) => x !== i) });
+    }
+
+    const saveRecord = async () => {
+        if (!canEditForm) return toast.error("You do not have permission to edit records.");
+        if (!formData.subject) return toast.error("Subject is required.");
+        if (scopeHasSite && !formData.siteId) return toast.error("Site is required.");
+
+        setSaving(true);
+        const finalDocId = formData.docId || `MOM-${formData.siteId || 'ORG'}-${Date.now().toString().slice(-4)}`;
+        // firebaseKey is the Firestore doc id (a local handle), not a stored field.
+        const { firebaseKey, ...rest } = formData;
+        const payload = { ...rest, docId: finalDocId, timestamp: new Date().toISOString(), createdBy: session.name || session.email };
+
+        try {
+            if (firebaseKey) {
+                await updateConsultation(orgId, firebaseKey, payload);
+            } else {
+                await addConsultation(orgId, payload);
+            }
+            toast.success("Record saved successfully!");
+            // The onSnapshot subscription refreshes the list automatically.
+            setView('list');
+        } catch (e) { toast.error("Save failed: " + e.message); }
+        finally { setSaving(false); }
+    };
+
+    const deleteRecord = (key) => {
+        if (!permissions.canDelete) return toast.error("You do not have permission to delete this record.");
+        toast((t) => (
+            <div className="flex flex-col gap-2.5">
+                <span className="text-sm font-semibold text-white">Delete this meeting record permanently?</span>
+                <div className="flex justify-end gap-2">
+                    <button onClick={() => toast.dismiss(t.id)} className="px-3 py-1.5 rounded-lg text-xs font-bold bg-white/10 text-white hover:bg-white/20 transition-colors">Cancel</button>
+                    <button
+                        onClick={async () => {
+                            toast.dismiss(t.id);
+                            try { await deleteConsultation(orgId, key); toast.success("Record deleted"); }
+                            catch (e) { toast.error("Delete failed: " + e.message); }
+                        }}
+                        className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-600 text-white hover:bg-red-500 transition-colors"
+                    >Delete</button>
+                </div>
+            </div>
+        ), { duration: 8000 });
+    };
+
+    const quickStatusUpdate = async (key, idx, newStatus) => {
+        const meeting = meetings.find(m => m.firebaseKey === key);
+        const actionRow = meeting.actions[idx];
+
+        // Modal level RLS check
+        if (!permissions.canEditCreate && actionRow.owner !== (session.name || session.email || session.user)) {
+            return toast.error("You can only update actions assigned to you.");
+        }
+
+        const updatedActions = [...meeting.actions];
+        updatedActions[idx].status = newStatus;
+        await updateConsultation(orgId, key, { actions: updatedActions });
+        setMeetings(meetings.map(m => m.firebaseKey === key ? { ...m, actions: updatedActions } : m));
+
+        if (formData && formData.firebaseKey === key) {
+            setFormData(prev => ({ ...prev, actions: updatedActions }));
+        }
+    };
+
+    const triggerPrint = (dataObj) => { setPrintData(dataObj); setTimeout(() => window.print(), 800); };
+
+    // --- Compliance Logic ---
+    const pendingMeetings = useMemo(() => {
+        if (!calSiteFilter || calSiteFilter === 'All') return [];
+        const pending = [];
+        const currentM = calMonth;
+        const currentY = calYear;
+
+        const siteConsultations = meetings.filter(c => c.siteId === calSiteFilter);
+
+        const hasMeetingThisMonth = (type) => siteConsultations.some(c => {
+            if (!c.date) return false;
+            const parts = c.date.split('-');
+            if (parts.length < 3) return false;
+            return c.type === type && parseInt(parts[1], 10) - 1 === currentM && parseInt(parts[0], 10) === currentY;
+        });
+
+        const hasMeetingThisYear = (type) => siteConsultations.some(c => {
+            if (!c.date) return false;
+            const parts = c.date.split('-');
+            if (parts.length < 1) return false;
+            return c.type === type && parseInt(parts[0], 10) === currentY;
+        });
+
+        if (!hasMeetingThisMonth('HSE Committee Meeting')) pending.push('HSE Committee Meeting');
+        if (!hasMeetingThisYear('Management Review')) pending.push('Management Review');
+        if (!hasMeetingThisYear('Policy Review')) pending.push('Policy Review');
+        if (!hasMeetingThisYear('Risk Assessment Review')) pending.push('Risk Assessment Review');
+        if (!hasMeetingThisYear('Emergency Planning')) pending.push('Emergency Planning');
+
+        return pending;
+    }, [meetings, calSiteFilter, calMonth, calYear]);
+
+    const getFreqLabel = (type) => {
+        if (type === 'HSE Committee Meeting') return 'Monthly Requirement';
+        if (type === 'Risk Assessment Review') return 'Annual Requirement';
+        return 'Yearly Requirement';
+    };
+
+    const handleLogPending = (type) => {
+        if (!permissions.canEditCreate) return toast.error("You do not have permission to log meetings.");
+        const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+        const today = new Date();
+        setFormData({
+            id: '', firebaseKey: '', siteId: calSiteFilter, type: type,
+            subject: `${type} _ ${monthNames[calMonth]} _ ${calYear}`,
+            date: today.toISOString().split('T')[0], time: '', preRequisites: '', minutes: '',
+            attendees: [], actions: []
+        });
+        setView('form');
+    };
+
+    if (isLoading || !session) return (
+        <div className="flex items-center justify-center py-24">
+            <LogoLoader size={104} label="Loading meeting registry…" />
+        </div>
+    );
+
+    return (
+        <div>
+            {/* PAGE HEADER */}
+            <div className="mb-6 flex items-center gap-3 print:hidden">
+                <div className="grid h-11 w-11 place-items-center rounded-xl bg-brand-500 text-white shadow-glow"><Logo size={24} /></div>
+                <div>
+                    <h1 className="text-2xl font-extrabold tracking-tight text-ink-900">
+                        {view === 'calendar' ? 'Compliance Calendar' : view === 'form' ? (formData.firebaseKey ? (canEditForm ? 'Edit Meeting' : 'Meeting Record') : 'New Meeting') : 'Consultation & Meetings'}
+                    </h1>
+                    <p className="text-sm text-ink-500">HSE committees, management reviews and consultations.</p>
+                </div>
+                {permissions.viewOnly && <span className="chip bg-yellow-100 text-yellow-700 ml-1"><i className="fas fa-eye mr-1"></i> Read Only</span>}
+                {view !== 'list' && (
+                    <button type="button" onClick={() => setView('list')} className="ml-auto bg-clay-100 hover:bg-clay-200 text-ink-900 px-4 py-2.5 rounded-xl font-bold text-xs shadow flex items-center gap-2 transition-colors border border-clay-300"><i className="fas fa-arrow-left"></i> Dashboard</button>
+                )}
+            </div>
+
+            {/* MAIN CONTENT - Hidden on Print */}
+            <div className="print:hidden">
+
+                {/* -------------------- VIEW: LIST / REPOSITORY -------------------- */}
+                {view === 'list' && (
+                    <div className="max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500 pb-20">
+                        <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 mb-4">
+                            <div>
+                                <h2 className="text-3xl font-bold text-ink-900 mb-2">Dashboard</h2>
+                                <p className="text-sm text-ink-500">Live overview of meetings, types, CAPA action status and per-site compliance.</p>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <div className="bg-clay-surface border border-clay-200 p-1.5 rounded-xl flex gap-2 shadow-inner">
+                                    <select className="bg-clay-surface text-ink-900 text-xs font-bold px-3 py-2 rounded-lg outline-none border border-clay-200/70 focus:border-green-500" value={filterSite} onChange={handleSiteFilterChange}>
+                                        {(isGlobalUser || visibleSites.length > 1) && <option value="All">All Authorized Sites</option>}
+                                        {visibleSites.map((s, idx) => <option key={s.id || idx} value={s.code || s.id}>{s.name}</option>)}
+                                    </select>
+                                    <select className="bg-clay-surface text-ink-900 text-xs font-bold px-3 py-2 rounded-lg outline-none border border-clay-200/70 focus:border-green-500" value={filterCategory} onChange={e => setFilterCategory(e.target.value)}>
+                                        <option value="All">All Categories</option>
+                                        {MEETING_TYPES.map(t => <option key={t}>{t}</option>)}
+                                    </select>
+                                </div>
+                                <button type="button" onClick={() => {
+                                    const dataToExport = filteredList.map(m => ({ ID: m.docId, Site: siteName(m.siteId), Date: m.date, Type: m.type, Subject: m.subject, Attendees: (m.attendees || []).length, Actions: (m.actions || []).length }));
+                                    const ws = XLSX.utils.json_to_sheet(dataToExport); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Meetings"); XLSX.writeFile(wb, "Meetings_Export.xlsx");
+                                }} className="bg-clay-100 hover:bg-clay-200 text-ink-900 px-4 py-2.5 rounded-xl font-bold text-xs shadow flex items-center gap-2 transition-colors border border-clay-300"><i className="fas fa-file-excel text-emerald-600"></i> Export</button>
+                                <button type="button" onClick={() => setView('calendar')} className="bg-clay-100 hover:bg-clay-200 text-ink-900 px-4 py-2.5 rounded-xl font-bold text-xs shadow flex items-center gap-2 transition-colors border border-clay-300"><i className="fas fa-calendar-alt text-brand-600"></i> Calendar</button>
+                                {canEditForm && (
+                                    <button type="button" onClick={openNewMeeting} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2.5 rounded-xl font-bold text-xs shadow-glow flex items-center gap-2 transition-colors"><i className="fas fa-plus"></i> New Meeting</button>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
+                            <div className="glass-panel p-6 rounded-3xl border-l-4 border-green-500 shadow-xl flex justify-between items-center group hover:border-green-400 transition-colors">
+                                <div><p className="text-xs text-ink-500 uppercase font-bold tracking-widest mb-1">Meetings Held</p><h3 className="text-4xl font-black text-ink-900">{filteredList.length}</h3></div>
+                                <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center text-green-600/50 group-hover:text-green-700 transition-colors"><i className="fas fa-handshake text-2xl"></i></div>
+                            </div>
+                            <div className="glass-panel p-6 rounded-3xl border-l-4 border-sky-500 shadow-xl flex justify-between items-center group hover:border-sky-400 transition-colors">
+                                <div><p className="text-xs text-ink-500 uppercase font-bold tracking-widest mb-1">Action Points</p><h3 className="text-4xl font-black text-sky-600">{totalActions}</h3></div>
+                                <div className="w-12 h-12 rounded-full bg-sky-100 flex items-center justify-center text-sky-600/50 group-hover:text-sky-600 transition-colors"><i className="fas fa-list-ol text-2xl"></i></div>
+                            </div>
+                            <div className="glass-panel p-6 rounded-3xl border-l-4 border-emerald-500 shadow-xl flex justify-between items-center group hover:border-emerald-400 transition-colors">
+                                <div><p className="text-xs text-ink-500 uppercase font-bold tracking-widest mb-1">Actions Closed</p><h3 className="text-4xl font-black text-emerald-600">{filteredList.reduce((acc, curr) => acc + (curr.actions ? curr.actions.filter(a => a.status === 'Closed').length : 0), 0)}</h3></div>
+                                <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600/50 group-hover:text-emerald-600 transition-colors"><i className="fas fa-check-circle text-2xl"></i></div>
+                            </div>
+                            <div className="glass-panel p-6 rounded-3xl border-l-4 border-yellow-500 shadow-xl flex justify-between items-center group hover:border-yellow-400 transition-colors">
+                                <div><p className="text-xs text-ink-500 uppercase font-bold tracking-widest mb-1">Pending Actions</p><h3 className="text-4xl font-black text-yellow-600">{filteredList.reduce((acc, curr) => acc + (curr.actions ? curr.actions.filter(a => a.status !== 'Closed').length : 0), 0)}</h3></div>
+                                <div className="w-12 h-12 rounded-full bg-yellow-100 flex items-center justify-center text-yellow-600/50 group-hover:text-yellow-600 transition-colors"><i className="fas fa-clock text-2xl"></i></div>
+                            </div>
+                        </div>
+
+                        {/* -------------------- ANALYTICS / CHARTS -------------------- */}
+                        <div className="space-y-6">
+                            <h3 className="text-xs uppercase text-ink-500 font-bold tracking-widest flex items-center gap-2"><i className="fas fa-chart-simple text-green-600"></i> Analytics Overview</h3>
+
+                            {filteredList.length === 0 && (
+                                <div className="glass-panel p-10 rounded-3xl shadow-xl text-center text-ink-400">
+                                    <i className="fas fa-chart-pie text-3xl text-clay-300 mb-3"></i>
+                                    <p className="text-sm font-medium">No data to chart yet. Charts populate automatically as you log meetings.</p>
+                                </div>
+                            )}
+
+                            {filteredList.length > 0 && (
+                                <>
+                                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                        {/* Donut — meetings by type */}
+                                        <div className="glass-panel p-6 rounded-3xl shadow-xl">
+                                            <h4 className="text-xs uppercase text-ink-500 font-bold mb-4 tracking-widest"><i className="fas fa-chart-pie mr-2 text-green-600"></i>Meetings by Type</h4>
+                                            <ResponsiveContainer width="100%" height={260}>
+                                                <PieChart>
+                                                    <Pie data={meetingsByType} dataKey="value" nameKey="name" innerRadius={55} outerRadius={95} paddingAngle={2}>
+                                                        {meetingsByType.map((e, i) => <Cell key={i} fill={TYPE_COLORS[i % TYPE_COLORS.length]} />)}
+                                                    </Pie>
+                                                    <Tooltip />
+                                                    <Legend wrapperStyle={{ fontSize: 11 }} />
+                                                </PieChart>
+                                            </ResponsiveContainer>
+                                        </div>
+
+                                        {/* Donut — action status */}
+                                        <div className="glass-panel p-6 rounded-3xl shadow-xl">
+                                            <h4 className="text-xs uppercase text-ink-500 font-bold mb-4 tracking-widest"><i className="fas fa-list-check mr-2 text-green-600"></i>Overall Action Status</h4>
+                                            {actionStatusData.length > 0 ? (
+                                                <ResponsiveContainer width="100%" height={260}>
+                                                    <PieChart>
+                                                        <Pie data={actionStatusData} dataKey="value" nameKey="name" innerRadius={55} outerRadius={95} paddingAngle={2}>
+                                                            {actionStatusData.map((e, i) => <Cell key={i} fill={STATUS_COLORS[e.name]} />)}
+                                                        </Pie>
+                                                        <Tooltip />
+                                                        <Legend wrapperStyle={{ fontSize: 11 }} />
+                                                    </PieChart>
+                                                </ResponsiveContainer>
+                                            ) : (
+                                                <div className="flex items-center justify-center h-[260px] text-ink-400 italic text-sm">No CAPA actions recorded yet.</div>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Stacked bar — action status per meeting */}
+                                    <div className="glass-panel p-6 rounded-3xl shadow-xl">
+                                        <h4 className="text-xs uppercase text-ink-500 font-bold mb-4 tracking-widest"><i className="fas fa-chart-column mr-2 text-green-600"></i>Action Status per Meeting <span className="text-ink-400 normal-case font-medium tracking-normal">(latest {perMeetingActions.length})</span></h4>
+                                        <ResponsiveContainer width="100%" height={320}>
+                                            <BarChart data={perMeetingActions} margin={{ top: 8, right: 12, left: -10, bottom: 8 }}>
+                                                <CartesianGrid strokeDasharray="3 3" stroke="#e3ccbf" vertical={false} />
+                                                <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#62718c' }} angle={-25} textAnchor="end" height={72} interval={0} />
+                                                <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#62718c' }} />
+                                                <Tooltip />
+                                                <Legend wrapperStyle={{ fontSize: 11 }} />
+                                                <Bar dataKey="Open" stackId="a" fill="#ef4444" />
+                                                <Bar dataKey="In Progress" stackId="a" fill="#facc15" />
+                                                <Bar dataKey="Closed" stackId="a" fill="#22c55e" radius={[4, 4, 0, 0]} />
+                                            </BarChart>
+                                        </ResponsiveContainer>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                        {/* Bar — points (action items) per meeting */}
+                                        <div className="glass-panel p-6 rounded-3xl shadow-xl">
+                                            <h4 className="text-xs uppercase text-ink-500 font-bold mb-4 tracking-widest"><i className="fas fa-list-ol mr-2 text-green-600"></i>Points per Meeting</h4>
+                                            <ResponsiveContainer width="100%" height={280}>
+                                                <BarChart data={pointsPerMeeting} margin={{ top: 8, right: 12, left: -10, bottom: 8 }}>
+                                                    <CartesianGrid strokeDasharray="3 3" stroke="#e3ccbf" vertical={false} />
+                                                    <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#62718c' }} angle={-25} textAnchor="end" height={70} interval={0} />
+                                                    <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#62718c' }} />
+                                                    <Tooltip />
+                                                    <Legend wrapperStyle={{ fontSize: 11 }} />
+                                                    <Bar dataKey="Points" fill="#0ea5e9" radius={[5, 5, 0, 0]} />
+                                                    <Bar dataKey="Attendees" fill="#8b5cf6" radius={[5, 5, 0, 0]} />
+                                                </BarChart>
+                                            </ResponsiveContainer>
+                                        </div>
+
+                                        {/* Bar — meetings by site */}
+                                        <div className="glass-panel p-6 rounded-3xl shadow-xl">
+                                            <h4 className="text-xs uppercase text-ink-500 font-bold mb-4 tracking-widest"><i className="fas fa-map-marker-alt mr-2 text-green-600"></i>Meetings by Site</h4>
+                                            <ResponsiveContainer width="100%" height={280}>
+                                                <BarChart data={meetingsBySite} margin={{ top: 8, right: 12, left: -10, bottom: 8 }}>
+                                                    <CartesianGrid strokeDasharray="3 3" stroke="#e3ccbf" vertical={false} />
+                                                    <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#62718c' }} />
+                                                    <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#62718c' }} />
+                                                    <Tooltip />
+                                                    <Bar dataKey="value" name="Meetings" fill="#16a34a" radius={[6, 6, 0, 0]} />
+                                                </BarChart>
+                                            </ResponsiveContainer>
+                                        </div>
+                                    </div>
+
+                                    {/* Area — meetings logged over time */}
+                                    <div className="glass-panel p-6 rounded-3xl shadow-xl">
+                                        <h4 className="text-xs uppercase text-ink-500 font-bold mb-4 tracking-widest"><i className="fas fa-chart-area mr-2 text-green-600"></i>Meetings Over Time</h4>
+                                        <ResponsiveContainer width="100%" height={240}>
+                                            <AreaChart data={meetingsOverTime} margin={{ top: 8, right: 12, left: -10, bottom: 8 }}>
+                                                <defs>
+                                                    <linearGradient id="mtg" x1="0" y1="0" x2="0" y2="1">
+                                                        <stop offset="0%" stopColor="#22c55e" stopOpacity={0.5} />
+                                                        <stop offset="100%" stopColor="#22c55e" stopOpacity={0.05} />
+                                                    </linearGradient>
+                                                </defs>
+                                                <CartesianGrid strokeDasharray="3 3" stroke="#e3ccbf" vertical={false} />
+                                                <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#62718c' }} />
+                                                <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#62718c' }} />
+                                                <Tooltip />
+                                                <Area type="monotone" dataKey="Meetings" stroke="#16a34a" strokeWidth={2} fill="url(#mtg)" />
+                                            </AreaChart>
+                                        </ResponsiveContainer>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+
+                        <h3 className="text-xs uppercase text-ink-500 font-bold tracking-widest flex items-center gap-2 pt-2"><i className="fas fa-folder-open text-green-600"></i> Meeting Records</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            {filteredList.map(m => {
+                                const totalAct = m.actions ? m.actions.length : 0;
+                                const closedAct = m.actions ? m.actions.filter(a => a.status === 'Closed').length : 0;
+                                return (
+                                    <div key={m.firebaseKey} className="glass-panel p-6 rounded-3xl border-t-4 border-green-500 flex flex-col shadow-xl hover:shadow-2xl hover:-translate-y-1 transition-all cursor-pointer group" onClick={() => { setFormData(m); setView('detail'); }}>
+                                        <div className="flex justify-between items-start mb-4">
+                                            <span className="font-mono text-[10px] font-bold text-green-700 bg-green-100 px-2 py-1 rounded-lg border border-green-500/30">{m.docId}</span>
+                                            <span className="text-[10px] bg-clay-surface text-ink-600 px-2 py-1 rounded-lg border border-clay-200 font-bold shadow-inner"><i className="far fa-calendar-alt mr-1"></i> {m.date}</span>
+                                        </div>
+                                        <h3 className="font-bold text-ink-900 text-lg mb-2 line-clamp-2 leading-tight group-hover:text-green-700 transition-colors">{m.subject}</h3>
+                                        <p className="text-[10px] text-ink-500 mb-6 uppercase tracking-widest font-bold">{siteName(m.siteId)} • {m.type}</p>
+                                        <div className="mt-auto flex justify-between items-center border-t border-clay-200/70 pt-4">
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-[10px] font-bold text-ink-500 bg-clay-surface px-2.5 py-1 rounded-lg border border-clay-200/70"><i className="fas fa-users text-purple-700 mr-1.5"></i> {(m.attendees || []).length}</span>
+                                                <span className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border ${totalAct > 0 && closedAct === totalAct ? 'bg-emerald-100 text-emerald-600 border-emerald-500/30' : 'bg-clay-surface text-ink-500 border-clay-200/70'}`}>
+                                                    <i className="fas fa-tasks text-blue-600 mr-1.5"></i> CAPA: {closedAct}/{totalAct}
+                                                </span>
+                                            </div>
+                                            <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                {permissions.canEditCreate ? (
+                                                    <button type="button" onClick={e => { e.stopPropagation(); setFormData(m); setView('form'); }} className="text-blue-600 hover:text-white bg-clay-100 hover:bg-blue-600 w-8 h-8 rounded-lg flex items-center justify-center transition-colors shadow-lg"><i className="fas fa-edit"></i></button>
+                                                ) : (
+                                                    <button type="button" onClick={e => { e.stopPropagation(); setFormData(m); setView('form'); }} className="text-ink-500 hover:text-ink-900 bg-clay-100 hover:bg-clay-200 w-8 h-8 rounded-lg flex items-center justify-center transition-colors shadow-lg"><i className="fas fa-eye"></i></button>
+                                                )}
+
+                                                {permissions.canDelete && <button type="button" onClick={e => { e.stopPropagation(); deleteRecord(m.firebaseKey); }} className="text-red-600 hover:text-white bg-clay-100 hover:bg-red-600 w-8 h-8 rounded-lg flex items-center justify-center transition-colors shadow-lg"><i className="fas fa-trash"></i></button>}
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                            {filteredList.length === 0 && <div className="col-span-full text-center p-16 text-ink-400 italic text-lg border-2 border-dashed border-clay-200/70 rounded-3xl bg-clay-100/60 shadow-inner">No meeting records found matching your filters.</div>}
+                        </div>
+                    </div>
+                )}
+
+                {/* -------------------- VIEW: CALENDAR -------------------- */}
+                {view === 'calendar' && (
+                    <div className="max-w-7xl mx-auto space-y-6 animate-in fade-in duration-500 pb-20">
+                        <div className="flex justify-between items-center bg-clay-surface p-6 rounded-3xl border border-clay-200 shadow-xl">
+                            <div className="flex items-center gap-4">
+                                <label className="text-xs uppercase font-bold text-ink-500 tracking-widest">Compliance Site</label>
+                                <select className="bg-clay-surface p-3 rounded-xl w-64 border border-clay-200/70 text-sm font-bold text-green-700 outline-none focus:border-green-500 shadow-inner transition-colors" value={calSiteFilter} onChange={handleCalSiteFilterChange}>
+                                    {(isGlobalUser || visibleSites.length > 1) && <option value="All">All Authorized Sites</option>}
+                                    {visibleSites.map((s, idx) => <option key={s.id || idx} value={s.code || s.id}>{s.name}</option>)}
+                                </select>
+                            </div>
+                            <div className="flex items-center gap-2 bg-clay-surface rounded-xl p-1.5 border border-clay-200/70 shadow-inner">
+                                <button type="button" onClick={() => { if (calMonth === 0) { setCalMonth(11); setCalYear(y => y - 1) } else { setCalMonth(m => m - 1) } }} className="px-4 py-2 hover:bg-clay-100 rounded-lg text-ink-600 transition-colors"><i className="fas fa-chevron-left"></i></button>
+                                <span className="font-bold w-40 text-center text-ink-900 text-sm tracking-wide">{["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"][calMonth]} {calYear}</span>
+                                <button type="button" onClick={() => { if (calMonth === 11) { setCalMonth(0); setCalYear(y => y + 1) } else { setCalMonth(m => m + 1) } }} className="px-4 py-2 hover:bg-clay-100 rounded-lg text-ink-600 transition-colors"><i className="fas fa-chevron-right"></i></button>
+                            </div>
+                        </div>
+
+                        {calSiteFilter && calSiteFilter !== 'All' ? (
+                            <div className="mb-8">
+                                <h3 className="text-lg font-bold text-orange-600 mb-4 flex items-center gap-2"><i className="fas fa-exclamation-circle"></i> Mandatory Compliance Tracking</h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                                    {pendingMeetings.map((p, idx) => (
+                                        <div key={idx} className="bg-clay-surface border border-orange-500/30 p-5 rounded-2xl flex flex-col justify-between shadow-xl relative overflow-hidden group hover:border-orange-500 transition-colors">
+                                            <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-gradient-to-b from-orange-400 to-red-500"></div>
+                                            <div className="pl-3 mb-4">
+                                                <div className="font-bold text-ink-900 text-base leading-tight mb-2 group-hover:text-orange-600 transition-colors">{p}</div>
+                                                <div className="text-[10px] text-ink-500 bg-clay-surface font-bold uppercase tracking-widest inline-block px-2.5 py-1 rounded-lg border border-clay-200/70">
+                                                    {getFreqLabel(p)} Due
+                                                </div>
+                                            </div>
+                                            {permissions.canEditCreate && <button type="button" onClick={() => handleLogPending(p)} className="w-full bg-orange-100 hover:bg-orange-600 text-orange-600 hover:text-white border border-orange-500/20 px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors shadow-sm">Log Meeting Now</button>}
+                                        </div>
+                                    ))}
+                                    {pendingMeetings.length === 0 && <div className="text-emerald-600 font-bold p-6 bg-emerald-50 rounded-2xl border border-emerald-500/20 w-full col-span-full flex items-center gap-3 shadow-inner"><i className="fas fa-check-circle text-3xl"></i> All mandated statutory meetings for this period are completely up to date!</div>}
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="text-yellow-600 italic text-sm p-6 bg-yellow-50 rounded-2xl border border-yellow-500/20 w-full mb-8 shadow-inner font-bold text-center">Please select a specific facility site from the dropdown to view compliance status.</div>
+                        )}
+
+                        <div className="glass-panel p-8 rounded-3xl shadow-2xl border border-clay-200">
+                            <div className="grid grid-cols-7 border-t border-l border-clay-200/70 rounded-2xl overflow-hidden bg-clay-surface shadow-2xl">
+                                {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+                                    <div key={day} className="p-4 text-center text-xs font-bold text-ink-400 uppercase tracking-widest border-r border-b border-clay-200/70 bg-clay-surface shadow-inner">{day}</div>
+                                ))}
+                                {(() => {
+                                    const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+                                    const firstDayIndex = new Date(calYear, calMonth, 1).getDay();
+                                    const boxes = [];
+                                    for (let i = 0; i < firstDayIndex; i++) boxes.push(<div key={`empty-${i}`} className="p-2 border-r border-b border-clay-200/70 bg-clay-100/50 min-h-[140px]"></div>);
+                                    for (let d = 1; d <= daysInMonth; d++) {
+                                        const dateStr = `${calYear}-${String(calMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+
+                                        const dayMeetings = meetings.filter(c => {
+                                            if (!canViewRecord(c.siteId)) return false;
+                                            return c.date === dateStr && (calSiteFilter === 'All' || c.siteId === calSiteFilter);
+                                        });
+
+                                        boxes.push(
+                                            <div key={d} className="p-3 border-r border-b border-clay-200/70 bg-clay-surface hover:bg-clay-100 transition-colors min-h-[140px] flex flex-col group">
+                                                <span className="font-bold text-ink-400 block text-right mb-2 text-sm group-hover:text-ink-600 transition-colors">{d}</span>
+                                                <div className="flex-1 space-y-2 overflow-y-auto custom-scroll pr-1">
+                                                    {dayMeetings.map((m, i) => (
+                                                        <div key={i} onClick={() => { setFormData(m); setView('detail'); }} className="text-[10px] font-bold bg-green-100 text-green-700 p-2 rounded-lg leading-tight border border-green-500/30 cursor-pointer shadow-sm hover:bg-green-600 hover:text-white transition-colors truncate uppercase tracking-wider" title={m.subject}>
+                                                            {m.type}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        );
+                                    }
+                                    return boxes;
+                                })()}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* -------------------- VIEW: FORM -------------------- */}
+                {view === 'form' && (
+                    <div className="max-w-6xl mx-auto space-y-8 animate-in slide-in-from-bottom-8 duration-500 pb-20">
+                        <div className="glass-panel p-8 md:p-10 rounded-3xl border border-clay-200 shadow-2xl">
+                            <div className="flex justify-between items-center mb-10 border-b border-clay-200 pb-6">
+                                <div>
+                                    <h2 className="text-3xl font-bold text-green-700 flex items-center gap-4"><i className="fas fa-edit"></i> {formData.firebaseKey ? (canEditForm ? 'Edit Consultation Record' : 'View Consultation Record') : 'Log New Meeting'}</h2>
+                                    <p className="text-sm text-ink-500 font-mono mt-2 ml-10">Ref: {formData.docId || 'DRAFT'}</p>
+                                </div>
+                                <div className="flex gap-3">
+                                    <button type="button" onClick={() => setView('list')} className="text-ink-500 hover:text-ink-900 px-5 py-2.5 rounded-xl font-bold text-sm transition-colors">Cancel</button>
+                                    {formData.firebaseKey && <button type="button" onClick={() => triggerPrint(formData)} className="bg-clay-100 hover:bg-clay-200 text-ink-900 px-6 py-2.5 rounded-xl font-bold text-sm shadow-lg transition-colors flex items-center gap-2"><i className="fas fa-print"></i> Print</button>}
+                                    {canEditForm && (
+                                        <button type="button" onClick={saveRecord} disabled={saving} className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white font-bold px-6 py-2.5 rounded-xl text-sm shadow-lg shadow-green-900/30 transition-transform active:scale-95 flex items-center gap-2 disabled:opacity-50"><i className={`fas ${saving ? 'fa-spinner fa-spin' : 'fa-save'}`}></i> Save</button>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-10 bg-clay-surface p-8 rounded-2xl border border-clay-200/70 shadow-inner">
+                                <div className="md:col-span-3">
+                                    <label className="text-[10px] uppercase font-bold text-ink-400 block mb-2 tracking-widest ml-1">Facility / Site Scope</label>
+                                    <SiteScopePicker
+                                        module="committee"
+                                        sites={visibleSites}
+                                        value={formData}
+                                        disabled={!canEditForm || (formData.firebaseKey && !isGlobalUser)}
+                                        onChange={(v) => setFormData((f) => ({ ...f, ...v, ...(v.siteId !== f.siteId ? { attendees: [], actions: [] } : {}) }))}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-[10px] uppercase font-bold text-ink-400 block mb-2 tracking-widest ml-1">Meeting Category</label>
+                                    <select className="w-full bg-clay-surface border border-clay-200 p-3.5 rounded-xl text-sm font-bold text-green-700 focus:border-green-500 outline-none shadow-inner transition-colors" value={formData.type} onChange={e => setFormData({ ...formData, type: e.target.value })} disabled={!canEditForm}>
+                                        {MEETING_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                                    </select>
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="text-[10px] uppercase font-bold text-ink-400 block mb-2 tracking-widest ml-1">Date</label>
+                                        <input type="date" value={formData.date} onChange={e => setFormData({ ...formData, date: e.target.value })} disabled={!canEditForm} className="w-full bg-clay-surface border border-clay-200 p-3.5 rounded-xl text-sm text-ink-900 outline-none shadow-inner font-mono transition-colors focus:border-green-500" />
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] uppercase font-bold text-ink-400 block mb-2 tracking-widest ml-1">Time</label>
+                                        <input type="time" value={formData.time} onChange={e => setFormData({ ...formData, time: e.target.value })} disabled={!canEditForm} className="w-full bg-clay-surface border border-clay-200 p-3.5 rounded-xl text-sm text-ink-900 outline-none shadow-inner font-mono transition-colors focus:border-green-500" />
+                                    </div>
+                                </div>
+                                <div className="md:col-span-3">
+                                    <label className="text-[10px] uppercase font-bold text-ink-400 block mb-2 tracking-widest ml-1">Subject / Primary Agenda</label>
+                                    <input value={formData.subject} onChange={e => setFormData({ ...formData, subject: e.target.value })} placeholder="Main topic of discussion..." disabled={!canEditForm} className="w-full bg-clay-surface border border-clay-200 p-4 rounded-xl text-base font-bold text-ink-900 focus:border-green-500 outline-none shadow-inner transition-colors" />
+                                </div>
+                            </div>
+
+                            <div className="mb-10 bg-clay-surface p-8 rounded-2xl border border-clay-200/70 shadow-inner">
+                                <label className="text-xs uppercase font-bold text-green-700 tracking-widest mb-3 block flex items-center gap-2"><i className="fas fa-clipboard-list"></i> Pre-Requisites / Inputs</label>
+                                <textarea value={formData.preRequisites} onChange={e => setFormData({ ...formData, preRequisites: e.target.value })} className="w-full bg-clay-surface border border-clay-200 p-5 rounded-xl text-sm font-medium text-ink-600 focus:border-green-500 resize-none custom-scroll outline-none shadow-inner transition-colors leading-relaxed" placeholder="Record reference materials, incident IDs, or data inputs required for this meeting..." disabled={!canEditForm} rows="3"></textarea>
+                            </div>
+
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 mb-10">
+                                {/* Attendees List */}
+                                <div className="bg-clay-surface p-8 rounded-2xl border border-clay-200/70 shadow-inner flex flex-col h-[500px]">
+                                    <div className="flex justify-between items-center mb-6 border-b border-clay-200/70 pb-3">
+                                        <h3 className="font-bold text-purple-700 uppercase text-xs tracking-widest flex items-center gap-2"><i className="fas fa-users"></i> Attendance Roster <span className="bg-purple-100 text-ink-900 px-2 py-0.5 rounded border border-purple-500/50 text-[10px] ml-1">{(formData.attendees || []).length}</span></h3>
+                                    </div>
+
+                                    {canEditForm && (
+                                        <div className="space-y-4 mb-6">
+                                            <div>
+                                                <label className="text-[10px] font-bold text-ink-400 uppercase tracking-widest block mb-2 ml-1">Internal Staff — Department · Employee</label>
+                                                <div className="flex gap-2">
+                                                    <div className="flex-1">
+                                                        <DeptPersonPicker
+                                                            users={siteUsers}
+                                                            value={selectedUserToAdd}
+                                                            onChange={(v) => setSelectedUserToAdd(v)}
+                                                            getValue={(u) => u.name || u.email}
+                                                            renderPerson={(u) => `${u.name || u.email} (${u.role})`}
+                                                            personPlaceholder="Select Internal Employee..."
+                                                            selectClass="w-full text-sm font-bold bg-clay-surface border border-clay-200 rounded-xl p-3 focus:border-purple-500 text-ink-900 outline-none shadow-inner transition-colors"
+                                                        />
+                                                    </div>
+                                                    <button type="button" onClick={() => handleAddAttendee('internal')} className="bg-purple-600 hover:bg-purple-500 text-white px-5 rounded-xl font-bold shadow-lg shadow-purple-600/20 transition-transform active:scale-95 whitespace-nowrap"><i className="fas fa-plus"></i></button>
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label className="text-[10px] font-bold text-ink-400 uppercase tracking-widest block mb-2 ml-1">External Contractor</label>
+                                                <div className="flex gap-2">
+                                                    <input value={externalName} onChange={e => setExternalName(e.target.value)} placeholder="Type Contractor Name..." className="w-full text-sm font-bold bg-clay-surface border border-clay-200 rounded-xl p-3 focus:border-pink-500 text-ink-900 outline-none shadow-inner transition-colors" />
+                                                    <button type="button" onClick={() => handleAddAttendee('external')} className="bg-pink-600 hover:bg-pink-500 text-white px-5 rounded-xl font-bold shadow-lg shadow-pink-600/20 transition-transform active:scale-95 whitespace-nowrap"><i className="fas fa-plus"></i></button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <div className="flex-1 overflow-y-auto custom-scroll border border-clay-200 rounded-xl bg-clay-surface shadow-inner">
+                                        <table className="w-full text-left text-sm text-ink-600">
+                                            <thead className="bg-clay-surface uppercase font-bold text-ink-400 text-[10px] tracking-widest sticky top-0 shadow-sm border-b border-clay-200/70">
+                                                <tr><th className="p-4 pl-5">Name</th><th className="p-4">Role</th><th className="p-4 w-10 text-center"></th></tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-clay-200/60">
+                                                {(formData.attendees || []).map((att, idx) => (
+                                                    <tr key={idx} className="hover:bg-clay-100 transition-colors">
+                                                        <td className="p-4 pl-5 font-bold text-ink-900">
+                                                            {att.name}
+                                                            {att.userId === 'External' && <span className="ml-3 text-[9px] text-pink-600 bg-pink-100 px-2 py-1 rounded-lg font-bold uppercase tracking-widest border border-pink-500/30 shadow-sm">EXT</span>}
+                                                        </td>
+                                                        <td className="p-4 text-xs text-ink-500">{att.role}</td>
+                                                        <td className="p-4 text-center">
+                                                            {canEditForm && <button type="button" onClick={() => removeAttendee(idx)} className="text-red-600 hover:text-white bg-red-100 hover:bg-red-600 w-8 h-8 rounded-lg flex items-center justify-center transition-colors shadow-sm"><i className="fas fa-trash-alt"></i></button>}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                                {(!formData.attendees || formData.attendees.length === 0) && <tr><td colSpan="3" className="p-10 text-center text-ink-400 italic text-sm border-2 border-dashed border-clay-200/70 rounded-xl m-4">No attendees added to roster.</td></tr>}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+
+                                {/* Minutes */}
+                                <div className="bg-clay-surface p-8 rounded-2xl border border-clay-200/70 shadow-inner flex flex-col h-[500px]">
+                                    <label className="text-xs uppercase font-bold text-green-700 tracking-widest mb-4 block border-b border-clay-200/70 pb-3 flex items-center gap-2"><i className="fas fa-comments"></i> Official Discussion Minutes</label>
+                                    <textarea value={formData.minutes} onChange={e => setFormData({ ...formData, minutes: e.target.value })} className="w-full flex-1 bg-clay-surface border border-clay-200 p-5 rounded-xl text-sm font-medium text-ink-900 focus:border-green-500 resize-none custom-scroll outline-none shadow-inner transition-colors leading-relaxed" placeholder="Record the general discussion points, topics covered, and any feedback received from participants here..." disabled={!canEditForm}></textarea>
+                                </div>
+                            </div>
+
+                            {/* Action Plan (CAPA) */}
+                            <div className="bg-clay-surface p-8 rounded-2xl border border-blue-500/30 shadow-xl relative overflow-hidden">
+                                <div className="absolute top-0 right-0 w-32 h-32 bg-blue-100 rounded-full blur-3xl pointer-events-none"></div>
+
+                                <div className="flex justify-between items-center mb-6 border-b border-clay-200/70 pb-3 relative z-10">
+                                    <label className="text-sm uppercase font-bold text-blue-600 tracking-widest flex items-center gap-2"><i className="fas fa-list-check"></i> Formulated Action Plan (CAPA)</label>
+                                </div>
+
+                                {canEditForm && (
+                                    <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-8 bg-clay-surface p-5 rounded-xl border border-clay-200 shadow-inner relative z-10">
+                                        <div className="md:col-span-2">
+                                            <label className="text-[10px] uppercase font-bold text-ink-400 tracking-widest block mb-2 ml-1">Corrective Action Description</label>
+                                            <input value={newActionLine.action} onChange={e => setNewActionLine({ ...newActionLine, action: e.target.value })} placeholder="What needs to be done?..." className="w-full bg-clay-surface border border-clay-200 p-3 rounded-xl text-sm text-ink-900 focus:border-blue-500 outline-none transition-colors" />
+                                        </div>
+                                        <div className="md:col-span-1">
+                                            <label className="text-[10px] uppercase font-bold text-ink-400 tracking-widest block mb-2 ml-1">Owner / Assignee — Department · Person</label>
+                                            <DeptPersonPicker
+                                                users={siteUsers}
+                                                value={newActionLine.owner}
+                                                onChange={(v) => setNewActionLine({ ...newActionLine, owner: v })}
+                                                getValue={(u) => u.name || u.email}
+                                                personPlaceholder="Select..."
+                                                selectClass="w-full bg-clay-surface border border-clay-200 p-3 rounded-xl text-sm font-bold text-blue-600 focus:border-blue-500 outline-none transition-colors"
+                                            />
+                                        </div>
+                                        <div className="md:col-span-2 flex items-end gap-3">
+                                            <div className="flex-1">
+                                                <label className="text-[10px] uppercase font-bold text-ink-400 tracking-widest block mb-2 ml-1">Target Date</label>
+                                                <input type="date" value={newActionLine.due} onChange={e => setNewActionLine({ ...newActionLine, due: e.target.value })} className="w-full bg-clay-surface border border-clay-200 p-3 rounded-xl text-sm font-mono text-ink-900 focus:border-blue-500 outline-none transition-colors" />
+                                            </div>
+                                            <button type="button" onClick={addAction} className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-3 rounded-xl shadow-lg transition-transform active:scale-95 font-bold uppercase tracking-widest text-xs h-[46px] flex items-center justify-center gap-2"><i className="fas fa-plus"></i> Add</button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div className="overflow-x-auto rounded-xl border border-clay-200 shadow-2xl relative z-10 custom-scroll max-h-[400px]">
+                                    <table className="w-full text-left text-sm whitespace-nowrap min-w-[800px]">
+                                        <thead className="bg-clay-surface text-[10px] uppercase font-bold text-ink-400 tracking-widest sticky top-0 z-20 shadow-sm border-b border-clay-200/70">
+                                            <tr><th className="p-4 pl-6">Action Description</th><th className="p-4 w-1/4">Owner / Assignee</th><th className="p-4 w-40">Due Date</th><th className="p-4 w-40 text-center">Status</th><th className="p-4 w-16 text-center"></th></tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-clay-200/60 bg-ink-950/40">
+                                            {(formData.actions || []).map((c, i) => {
+                                                const canEditRowStatus = canEditForm || (permissions.canEditOwnedActions && c.owner === (session.name || session.email || session.user));
+                                                return (
+                                                    <tr key={i} className="hover:bg-clay-100 transition-colors">
+                                                        <td className="p-3 pl-6">
+                                                            <input value={c.action} onChange={e => updateAction(i, 'action', e.target.value)} placeholder="Task details..." className="w-full bg-transparent border-b border-transparent hover:border-clay-200 focus:border-blue-500 text-sm font-medium px-2 py-1.5 outline-none text-ink-900 transition-colors" disabled={!canEditForm} />
+                                                        </td>
+                                                        <td className="p-3">
+                                                            <select value={c.owner} onChange={e => updateAction(i, 'owner', e.target.value)} className="w-full bg-clay-surface border border-clay-200 rounded-lg p-2 text-xs font-bold text-blue-600 outline-none focus:border-blue-500 transition-colors shadow-inner" disabled={!canEditForm}>
+                                                                <option value="">Select...</option>
+                                                                {siteUsers.map(u => <option key={u.id} value={u.name || u.email}>{u.name || u.email}</option>)}
+                                                            </select>
+                                                        </td>
+                                                        <td className="p-3">
+                                                            <input type="date" value={c.due} onChange={e => updateAction(i, 'due', e.target.value)} className="w-full bg-clay-surface border border-clay-200 rounded-lg p-2 text-xs font-mono text-ink-900 outline-none focus:border-blue-500 transition-colors shadow-inner" disabled={!canEditForm} />
+                                                        </td>
+                                                        <td className="p-3 text-center">
+                                                            <select value={c.status} onChange={e => updateAction(i, 'status', e.target.value)} disabled={!canEditRowStatus} className={`w-full text-xs font-bold tracking-widest uppercase rounded-lg p-2 outline-none border shadow-inner transition-colors ${canEditRowStatus ? 'cursor-pointer' : 'cursor-not-allowed opacity-80'} ${c.status === 'Closed' ? 'bg-emerald-100 text-emerald-600 border-emerald-500/30 focus:border-emerald-500' : c.status === 'In Progress' ? 'bg-yellow-100 text-yellow-600 border-yellow-500/30 focus:border-yellow-500' : 'bg-clay-surface text-ink-600 border-clay-200 focus:border-clay-300'}`}>
+                                                                <option>Open</option><option>In Progress</option><option>Closed</option>
+                                                            </select>
+                                                        </td>
+                                                        <td className="p-3 text-center">
+                                                            {canEditForm && <button type="button" onClick={() => removeAction(i)} className="text-red-600 hover:text-white bg-red-100 hover:bg-red-600 w-8 h-8 rounded-lg flex items-center justify-center transition-colors shadow-sm"><i className="fas fa-trash-alt"></i></button>}
+                                                        </td>
+                                                    </tr>
+                                                )
+                                            })}
+                                            {(!formData.actions || formData.actions.length === 0) && <tr><td colSpan="5" className="p-12 text-center text-ink-400 italic text-sm">No follow-up actions have been defined for this meeting.</td></tr>}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            {canEditForm && (
+                                <div className="flex justify-end mt-10 border-t border-clay-200/70 pt-8">
+                                    <button type="button" onClick={saveRecord} disabled={saving} className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white font-bold py-4 px-12 rounded-xl shadow-lg shadow-green-900/50 transition-transform transform active:scale-95 flex items-center gap-3 uppercase tracking-widest text-sm">
+                                        {saving ? <i className="fas fa-spinner fa-spin text-lg"></i> : <i className="fas fa-save text-lg"></i>} Save Official Record
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
+
+                {/* DETAIL VIEW MODAL */}
+                {view === 'detail' && formData && (
+                    <MeetingDetailModal meeting={formData} siteLabel={siteName(formData.siteId)} onClose={() => setView('list')} onUpdateStatus={quickStatusUpdate} onPrint={triggerPrint} session={session} permissions={permissions} />
+                )}
+            </div>
+
+            {/* PRINT OVERLAY */}
+            {printData && (
+                <div className="hidden print:block p-10 bg-white text-black min-h-screen absolute inset-0 z-[9999]" style={{ WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}>
+                    <div className="flex justify-between items-end border-b-4 border-black pb-4 mb-8">
+                        <div>
+                            <div className="text-sm text-gray-500 font-bold mb-1 tracking-widest uppercase">ISO 45001 OHSMS - FORMAL RECORD</div>
+                            <h1 className="text-3xl font-black uppercase tracking-tighter m-0 p-0 leading-none">Consultation & Meeting Minutes</h1>
+                        </div>
+                        <div className="text-right">
+                            <p className="text-sm font-bold font-mono">Ref ID: {printData.docId || printData.id}</p>
+                            <p className="text-sm font-bold uppercase mt-1">Date Printed: {new Date().toLocaleDateString()}</p>
+                        </div>
+                    </div>
+
+                    <div className="mb-8 border border-black p-6 bg-gray-50">
+                        <h2 className="text-sm font-bold mb-4 uppercase bg-gray-200 p-1 border border-gray-400 inline-block">1. Meeting Details</h2>
+                        <table className="w-full text-sm border-none">
+                            <tbody>
+                                <tr>
+                                    <td className="w-[15%] font-bold py-2 border-b border-gray-300">Type:</td><td className="w-[35%] py-2 border-b border-gray-300 text-lg font-bold">{printData.type}</td>
+                                    <td className="w-[15%] font-bold py-2 border-b border-gray-300 pl-4">Time:</td><td className="w-[35%] py-2 border-b border-gray-300 font-mono">{printData.time || 'N/A'}</td>
+                                </tr>
+                                <tr>
+                                    <td className="w-[15%] font-bold py-2 border-b border-gray-300">Site/Location:</td><td className="w-[35%] py-2 border-b border-gray-300">{siteName(printData.siteId)}</td>
+                                    <td className="w-[15%] font-bold py-2 border-b border-gray-300 pl-4">Date:</td><td className="w-[35%] py-2 border-b border-gray-300 font-mono font-bold">{printData.date}</td>
+                                </tr>
+                                <tr>
+                                    <td className="font-bold py-3 align-top border-none">Subject/Agenda:</td><td colSpan="3" className="py-3 text-lg font-bold border-none leading-tight">{printData.subject}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div className="mb-8 border border-black p-6">
+                        <h2 className="text-sm font-bold mb-3 uppercase bg-gray-200 p-1 border border-gray-400 inline-block">2. Inputs / Pre-Requisites</h2>
+                        <div className="text-sm whitespace-pre-wrap pl-4 border-l-4 border-gray-300 min-h-[50px] leading-relaxed">{printData.preRequisites || 'None specified.'}</div>
+                    </div>
+
+                    <div className="mb-8 border border-black p-6 page-break-inside-avoid">
+                        <h2 className="text-sm font-bold mb-4 uppercase bg-gray-200 p-1 border border-gray-400 inline-block">3. Attendance Roster</h2>
+                        <table className="w-full text-sm border-collapse border border-black">
+                            <thead>
+                                <tr className="bg-gray-200">
+                                    <th className="border border-black p-3 text-center w-12">#</th>
+                                    <th className="border border-black p-3 text-left w-2/5">Full Name</th>
+                                    <th className="border border-black p-3 text-left w-1/3">Role / Affiliation</th>
+                                    <th className="border border-black p-3 text-center">Signature</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {(printData.attendees || []).map((a, i) => (
+                                    <tr key={i}>
+                                        <td className="border border-black p-3 text-center font-bold">{i + 1}</td>
+                                        <td className="border border-black p-3 font-bold">{a.name} {a.userId === 'External' ? '(Contractor/EXT)' : ''}</td>
+                                        <td className="border border-black p-3">{a.role}</td>
+                                        <td className="border border-black p-3 h-12"></td>
+                                    </tr>
+                                ))}
+                                {(!printData.attendees || printData.attendees.length === 0) && <tr><td colSpan="4" className="border border-black p-6 text-center italic text-gray-500">No attendees recorded.</td></tr>}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div className="mb-8 border border-black p-6 page-break">
+                        <h2 className="text-sm font-bold mb-4 uppercase bg-gray-200 p-1 border border-gray-400 inline-block">4. Discussion Minutes</h2>
+                        <div className="text-sm whitespace-pre-wrap leading-relaxed text-justify">{printData.minutes || 'No formal minutes documented.'}</div>
+                    </div>
+
+                    <div className="mb-8 border border-black p-6 page-break-inside-avoid">
+                        <h2 className="text-sm font-bold mb-4 uppercase bg-gray-200 p-1 border border-gray-400 inline-block">5. Agreed Action Plan (CAPA)</h2>
+                        <table className="w-full text-sm border-collapse border border-black">
+                            <thead>
+                                <tr className="bg-gray-200">
+                                    <th className="border border-black p-3 text-center w-12">#</th>
+                                    <th className="border border-black p-3 text-left">Action Item Description</th>
+                                    <th className="border border-black p-3 text-left w-1/4">Owner Assignee</th>
+                                    <th className="border border-black p-3 text-center w-32">Due Date</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {(printData.actions || []).map((row, idx) => (
+                                    <tr key={idx}>
+                                        <td className="border border-black p-3 text-center font-bold">{idx + 1}</td>
+                                        <td className="border border-black p-3 font-medium">{row.action}</td>
+                                        <td className="border border-black p-3 font-bold">{row.owner}</td>
+                                        <td className="border border-black p-3 text-center font-mono">{row.due}</td>
+                                    </tr>
+                                ))}
+                                {(!printData.actions || printData.actions.length === 0) && (
+                                    <tr><td colSpan="4" className="border border-black p-6 text-center italic text-gray-500">No follow-up actions assigned during this meeting.</td></tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <table className="w-full border-none mt-24 text-sm page-break-inside-avoid">
+                        <tbody>
+                            <tr>
+                                <td className="w-[45%] border-none border-t-2 border-black pt-2 text-center font-bold uppercase tracking-widest">Prepared By / Chairperson</td>
+                                <td className="w-[10%] border-none"></td>
+                                <td className="w-[45%] border-none border-t-2 border-black pt-2 text-center font-bold uppercase tracking-widest">Site Manager / EHS Lead Approval</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <div className="text-center text-xs text-gray-500 mt-12 border-t border-gray-300 pt-4 font-mono">Generated by OHSMS Enterprise Portal | Document Control Timestamp: {new Date().toLocaleString()}</div>
+                </div>
+            )}
+        </div>
+    );
+}

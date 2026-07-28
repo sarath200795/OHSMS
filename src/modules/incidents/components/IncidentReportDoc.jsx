@@ -1,0 +1,182 @@
+import { forwardRef } from 'react'
+import { incidentInvestigations } from '../lib/incidents'
+import { BodyMapStatic } from './BodyMap'
+import {
+  INCIDENT_TYPE_BY_KEY, SEVERITY_BY_KEY, HSE_CATEGORY_BY_KEY, INVESTIGATION_METHOD_BY_KEY,
+  ACTION_STATUS_BY_KEY, bodyPartLabel,
+} from '../lib/constants'
+
+const fmt = (v) => v || '—'
+const personLine = (p) =>
+  p.kind === 'internal'
+    ? `${p.name || 'Unnamed'}${p.dept ? ` (${p.dept})` : ''}${p.role ? ` — ${p.role}` : ''} · Internal`
+    : `${p.name || 'Unnamed'}${p.company ? `, ${p.company}` : ''}${p.contact ? ` · ${p.contact}` : ''}${p.role ? ` — ${p.role}` : ''} · External`
+
+function Section({ title, children }) {
+  return (
+    <section className="print-block mb-5">
+      <h2 className="mb-2 border-b-2 border-ink-900 pb-1 text-sm font-extrabold uppercase tracking-wide text-ink-900">{title}</h2>
+      {children}
+    </section>
+  )
+}
+
+function Field({ label, value }) {
+  return (
+    <div className="mb-1.5">
+      <span className="text-[11px] font-bold uppercase tracking-wide text-ink-500">{label}: </span>
+      <span className="text-sm text-ink-900">{fmt(value)}</span>
+    </div>
+  )
+}
+
+/**
+ * Printable incident report. `full=false` → Initial Incident Report (Step 1 +
+ * injuries). `full=true` → adds team, investigation (+ diagram image), CAPA and
+ * horizontal deployment. Photos/diagram images are passed in.
+ */
+const IncidentReportDoc = forwardRef(function IncidentReportDoc({ incident, photos = [], org, full = false, diagramUrl }, ref) {
+  if (!incident) return <div ref={ref} />
+  const type = INCIDENT_TYPE_BY_KEY[incident.type]
+  const sev = SEVERITY_BY_KEY[incident.severity]
+  const cat = HSE_CATEGORY_BY_KEY[incident.category]
+  const evidence = photos.filter((p) => p.kind === 'photo' && p.type?.startsWith('image/'))
+  const investigations = incidentInvestigations(incident)
+
+  return (
+    <div ref={ref} className="mx-auto max-w-[800px] bg-white p-8 text-ink-900">
+      {/* Header */}
+      <div className="mb-6 flex items-start justify-between border-b-4 border-brand-600 pb-4">
+        <div>
+          <h1 className="text-2xl font-black text-brand-700">{full ? 'Incident Investigation Report' : 'Initial Incident Report'}</h1>
+          <p className="text-sm text-ink-500">{org?.name || 'Organization'}</p>
+        </div>
+        <div className="text-right">
+          <p className="text-lg font-extrabold">{incident.refNo}</p>
+          <p className="text-xs text-ink-500">Generated {new Date().toLocaleDateString()}</p>
+        </div>
+      </div>
+
+      <Section title="Incident Details">
+        <div className="grid grid-cols-2 gap-x-8">
+          <Field label="Date" value={incident.incidentDate} />
+          <Field label="Time" value={incident.incidentTime} />
+          <Field label="Type" value={type?.label} />
+          <Field label="Severity" value={sev?.label} />
+          <Field label="HSE Category" value={cat?.label} />
+          <Field label="Location" value={incident.location} />
+        </div>
+      </Section>
+
+      <Section title="Incident Narrative">
+        <p className="whitespace-pre-wrap text-sm leading-relaxed">{fmt(incident.narrative)}</p>
+      </Section>
+
+      <Section title="Probable Cause">
+        <p className="whitespace-pre-wrap text-sm leading-relaxed">{fmt(incident.probableCause)}</p>
+      </Section>
+
+      <Section title="Affected Personnel">
+        {(incident.affectedPersonnel || []).length === 0 ? (
+          <p className="text-sm text-ink-400">None recorded.</p>
+        ) : (
+          <ul className="list-disc pl-5 text-sm">
+            {incident.affectedPersonnel.map((p) => <li key={p.id}>{personLine(p)}</li>)}
+          </ul>
+        )}
+      </Section>
+
+      {(incident.injuryReports || []).length > 0 && (
+        <Section title="Injury Reports">
+          {incident.injuryReports.map((r) => (
+            <div key={r.personId} className="print-block mb-3 rounded border border-ink-200 p-3">
+              <p className="font-bold">{r.personName || 'Injured person'}</p>
+              <div className="mt-1 grid grid-cols-2 gap-x-8">
+                <Field label="First aid done" value={r.firstAidDone ? `Yes${r.firstAidDetail ? ` — ${r.firstAidDetail}` : ''}` : 'No'} />
+                <Field label="Injury type" value={r.injuryType} />
+                <Field label="Body part(s)" value={(r.bodyParts || []).map(bodyPartLabel).join(', ')} />
+                <Field label="Medication" value={r.medication} />
+                <Field label="Days to return to work" value={r.daysToReturnToWork} />
+              </div>
+              {(r.bodyParts || []).length > 0 && (
+                <div className="mt-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-400">
+                    Injured body-part map
+                  </p>
+                  <BodyMapStatic parts={r.bodyParts} />
+                </div>
+              )}
+            </div>
+          ))}
+        </Section>
+      )}
+
+      {evidence.length > 0 && (
+        <Section title="Photographic Evidence">
+          <div className="flex flex-wrap gap-3">
+            {evidence.map((p) => (
+              <img key={p.id} src={p.dataUrl} alt={p.name} className="h-40 w-40 rounded object-cover" />
+            ))}
+          </div>
+        </Section>
+      )}
+
+      {full && (
+        <>
+          <Section title="Investigation Team">
+            {(incident.team || []).length === 0 ? <p className="text-sm text-ink-400">No team recorded.</p> : (
+              <ul className="list-disc pl-5 text-sm">{incident.team.map((p) => <li key={p.id}>{personLine(p)}</li>)}</ul>
+            )}
+          </Section>
+
+          <Section title="Investigation">
+            {investigations.length === 0 ? <p className="text-sm text-ink-400">No investigation recorded.</p> : investigations.map((inv, i) => {
+              const img = (photos.find((p) => p.id === inv.pngPhotoId)?.dataUrl) || (i === 0 ? diagramUrl : null)
+              return (
+                <div key={inv.id || i} className={i > 0 ? 'mt-5 border-t border-ink-200 pt-4' : ''}>
+                  <Field label="Method" value={INVESTIGATION_METHOD_BY_KEY[inv.method]?.label || inv.method} />
+                  {inv.summary && <p className="mt-1 whitespace-pre-wrap text-sm">{inv.summary}</p>}
+                  {img && <img src={img} alt="Investigation diagram" className="mt-3 max-h-[420px] w-full rounded border border-ink-200 object-contain" />}
+                </div>
+              )
+            })}
+          </Section>
+
+          <Section title="Corrective & Preventive Actions (CAPA)">
+            {(incident.capa || []).length === 0 ? <p className="text-sm text-ink-400">No actions recorded.</p> : (
+              <table className="w-full border-collapse text-sm">
+                <thead>
+                  <tr className="border-b border-ink-300 text-left text-[11px] uppercase text-ink-500">
+                    <th className="py-1 pr-2">Action</th><th className="py-1 pr-2">Owner</th><th className="py-1 pr-2">Due</th><th className="py-1">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {incident.capa.map((a) => (
+                    <tr key={a.id} className="border-b border-ink-100 align-top">
+                      <td className="py-1 pr-2">{a.description}</td>
+                      <td className="py-1 pr-2">{a.ownerName}</td>
+                      <td className="py-1 pr-2">{a.dueDate}</td>
+                      <td className="py-1">{ACTION_STATUS_BY_KEY[a.status]?.label || a.status}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </Section>
+
+          <Section title="Horizontal Deployment">
+            <Field label="Required" value={incident.horizontal?.required == null ? '—' : incident.horizontal.required ? 'Yes' : 'No'} />
+            {incident.horizontal?.locations?.length > 0 && <Field label="Locations" value={incident.horizontal.locations.join(', ')} />}
+            {incident.horizontal?.details && <p className="mt-1 whitespace-pre-wrap text-sm">{incident.horizontal.details}</p>}
+          </Section>
+        </>
+      )}
+
+      <p className="mt-8 border-t border-ink-200 pt-3 text-[10px] text-ink-400">
+        This report was generated by Incident IRA. It is a record-keeping aid and does not replace any statutory reporting obligation (e.g. RIDDOR).
+      </p>
+    </div>
+  )
+})
+
+export default IncidentReportDoc

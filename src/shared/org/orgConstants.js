@@ -1,0 +1,21 @@
+// Predefined organization activity types (admins can also add custom ones).
+export const ACTIVITY_TYPES = [
+  'Manufacturing',
+  'Construction',
+  'Warehousing & Logistics',
+  'Retail',
+  'Healthcare',
+  'Office / Administration',
+  'Chemical Processing',
+  'Food & Beverage',
+  'Oil & Gas',
+  'Mining & Quarrying',
+  'Utilities & Energy',
+  'Hospitality',
+  'Education',
+  'Transportation',
+  'Agriculture',
+  'Waste Management',
+  'Facilities Management',
+  'Fitness & Recreation',
+]

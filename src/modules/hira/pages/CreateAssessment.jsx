@@ -1,0 +1,651 @@
+import { useEffect, useMemo, useState } from 'react'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { motion, AnimatePresence } from 'framer-motion'
+import {
+  FilePlus2, Save, Plus, Trash2, Shield, UserPlus, AlertTriangle,
+} from 'lucide-react'
+import toast from 'react-hot-toast'
+import { PageHeader, Spinner } from '../components/ui'
+import { RiskBadge, MiniMatrix } from '../components/RiskBits'
+import { useAuth } from '../context/AuthContext'
+import { useRa } from '../context/RaContext'
+import { createAssessment, updateAssessment, updateOrgSites, logActivity, subscribeOrgUsers } from '../lib/firestore'
+import SiteScopePicker from '../../../shared/org/SiteScopePicker'
+import DepartmentSelect from '../../../shared/org/DepartmentSelect'
+import DeptPersonPicker from '../../../shared/org/DeptPersonPicker'
+import { riskLevel, PROBABILITY, SEVERITY } from '../lib/riskMatrix'
+import {
+  HAZARD_GROUPS, categoriesForGroup, typesForCategory,
+  CONTROL_HIERARCHY, CONTROL_STATUS, MEMBER_TYPES, ACTIVITY_NATURE, ASSESSMENT_STATUS,
+} from '../lib/constants'
+import { uid } from '../lib/id'
+
+const newControl = () => ({ id: uid('c'), hierarchy: 'Elimination', description: '', responsibleMemberId: '', department: '', status: 'Open', dueDate: '' })
+const newHazard = () => ({
+  id: uid('h'), description: '', whoMightBeHarmed: '',
+  hazardGroup: '', hazardCategory: '', hazardType: '', specificLocation: '',
+  probability: '', severity: '',
+  controls: [], alarp: false, additionalControls: [],
+  projectedProbability: '', projectedSeverity: '',
+})
+const newActivity = () => ({ id: uid('a'), title: '', nature: 'Routine', hazards: [newHazard()] })
+const newMember = (type = 'internal') => ({ id: uid('m'), name: '', email: '', role: '', department: '', type })
+
+// Short human reference id, e.g. HIRA-HYD8-3F9A2C
+const genRefId = (site) => {
+  const slug = (site || 'SITE').toUpperCase().replace(/[^A-Z0-9]+/g, '').slice(0, 6) || 'SITE'
+  const rand = uid('').replace(/-/g, '').slice(0, 6).toUpperCase()
+  return `HIRA-${slug}-${rand}`
+}
+
+const emptyForm = () => ({
+  name: '', siteName: '', region: '', entity: '', siteId: '',
+  location: '', assessmentDate: '', status: 'ACTIVE', refId: '',
+  kind: 'site', baselineId: '',
+  members: [], activities: [newActivity()],
+})
+
+// Deep-copy a baseline's activities into fresh rows (new ids) for a site RA.
+const copyActivities = (activities) =>
+  (activities?.length ? activities : [newActivity()]).map((act) => ({
+    id: uid('a'),
+    title: act.title || '',
+    nature: act.nature || 'Routine',
+    hazards: (act.hazards?.length ? act.hazards : [newHazard()]).map((h) => ({
+      ...newHazard(),
+      ...h,
+      id: uid('h'),
+      controls: (h.controls || []).map((c) => ({ ...c, id: uid('c') })),
+      additionalControls: (h.additionalControls || []).map((c) => ({ ...c, id: uid('c') })),
+    })),
+  }))
+
+function Section({ n, title, subtitle, children }) {
+  return (
+    <div className="card mb-5 p-6">
+      <div className="mb-4 flex items-center gap-3">
+        <span className="grid h-8 w-8 place-items-center rounded-xl bg-brand-500 text-sm font-bold text-white shadow-glow">{n}</span>
+        <div>
+          <h2 className="text-lg font-extrabold text-ink-900">{title}</h2>
+          {subtitle && <p className="text-xs text-ink-400">{subtitle}</p>}
+        </div>
+      </div>
+      {children}
+    </div>
+  )
+}
+
+export default function CreateAssessment() {
+  const { id } = useParams()
+  const navigate = useNavigate()
+  const { orgId, profile, user } = useAuth()
+  const { assessments, sites, org, siteInventory } = useRa()
+  const [form, setForm] = useState(emptyForm)
+  const [busy, setBusy] = useState(false)
+  const [loadedId, setLoadedId] = useState(null)
+  const [addingSite, setAddingSite] = useState(false)
+  const [newSite, setNewSite] = useState('')
+
+  // Employee directory for the internal-member Department → Person drill-down.
+  const [orgUsers, setOrgUsers] = useState([])
+  useEffect(() => {
+    if (!orgId) return undefined
+    return subscribeOrgUsers(orgId, setOrgUsers)
+  }, [orgId])
+
+  // Edit mode: hydrate form from the existing assessment once it's available.
+  useEffect(() => {
+    if (!id || loadedId === id) return
+    const a = assessments.find((x) => x.id === id)
+    if (a) {
+      setForm({
+        name: a.name || '', siteName: a.siteName || '', region: a.region || '', entity: a.entity || '', siteId: a.siteId || '',
+        location: a.location || '', assessmentDate: a.assessmentDate || '',
+        status: a.status || 'ACTIVE', refId: a.refId || '',
+        kind: a.kind || 'site', baselineId: a.baselineId || '',
+        members: a.members || [],
+        activities: (a.activities?.length ? a.activities : [newActivity()]).map((act) => ({
+          id: act.id || uid('a'), title: act.title || '', nature: act.nature || 'Routine',
+          hazards: (act.hazards?.length ? act.hazards : [newHazard()]).map((h) => ({ ...newHazard(), ...h })),
+        })),
+      })
+      setLoadedId(id)
+    }
+  }, [id, assessments, loadedId])
+
+  // New-assessment initialization from query params:
+  //   ?kind=baseline           → create a baseline (activity template, no site)
+  //   ?from=<baselineId>       → seed a site RA from a baseline (then edit)
+  const [searchParams] = useSearchParams()
+  const kindParam = searchParams.get('kind')
+  const fromId = searchParams.get('from')
+  const [paramsInited, setParamsInited] = useState(false)
+  useEffect(() => {
+    if (id || paramsInited) return
+    if (fromId) {
+      const base = assessments.find((x) => x.id === fromId)
+      if (!base) return // wait for assessments to load
+      setForm((f) => ({
+        ...f,
+        kind: 'site',
+        baselineId: fromId,
+        name: base.name ? `${base.name} — site assessment` : '',
+        members: base.members || [],
+        activities: copyActivities(base.activities),
+      }))
+      setParamsInited(true)
+    } else if (kindParam === 'baseline') {
+      setForm((f) => ({ ...f, kind: 'baseline' }))
+      setParamsInited(true)
+    } else {
+      setParamsInited(true)
+    }
+  }, [id, fromId, kindParam, assessments, paramsInited])
+
+  const internalMembers = useMemo(() => form.members.filter((m) => m.type === 'internal' && m.name.trim()), [form.members])
+
+  // Site dropdown options = org sites ∪ the assessment's current site (legacy/edit).
+  const siteOptions = useMemo(() => {
+    const set = new Set(sites)
+    if (form.siteName) set.add(form.siteName)
+    return Array.from(set).sort((a, b) => a.localeCompare(b))
+  }, [sites, form.siteName])
+
+  const confirmAddSite = async () => {
+    const name = newSite.trim()
+    if (!name) return
+    if (!sites.some((s) => s.toLowerCase() === name.toLowerCase())) {
+      try {
+        await updateOrgSites(orgId, [...sites, name].sort((a, b) => a.localeCompare(b)))
+      } catch (e) {
+        toast.error(e.message || 'Could not add site')
+        return
+      }
+    }
+    setForm((f) => ({ ...f, siteName: name }))
+    setNewSite('')
+    setAddingSite(false)
+  }
+
+  // ── State helpers ───────────────────────────────────────────────────────────
+  const setField = (k, v) => setForm((f) => ({ ...f, [k]: v }))
+  const updateActivities = (fn) => setForm((f) => ({ ...f, activities: fn(f.activities) }))
+  const mapActivity = (aid, fn) => updateActivities((acts) => acts.map((a) => (a.id === aid ? fn(a) : a)))
+  const mapHazard = (aid, hid, fn) => mapActivity(aid, (a) => ({ ...a, hazards: a.hazards.map((h) => (h.id === hid ? fn(h) : h)) }))
+
+  const addMember = (type) => setForm((f) => ({ ...f, members: [...f.members, newMember(type)] }))
+  const updateMember = (mid, patch) => setForm((f) => ({ ...f, members: f.members.map((m) => (m.id === mid ? { ...m, ...patch } : m)) }))
+  const removeMember = (mid) => setForm((f) => ({ ...f, members: f.members.filter((m) => m.id !== mid) }))
+
+  const addActivity = () => updateActivities((acts) => [...acts, newActivity()])
+  const removeActivity = (aid) => updateActivities((acts) => acts.filter((a) => a.id !== aid))
+  const addHazard = (aid) => mapActivity(aid, (a) => ({ ...a, hazards: [...a.hazards, newHazard()] }))
+  const updateHazard = (aid, hid, patch) => mapHazard(aid, hid, (h) => ({ ...h, ...patch }))
+  const removeHazard = (aid, hid) => mapActivity(aid, (a) => ({ ...a, hazards: a.hazards.filter((h) => h.id !== hid) }))
+
+  const addControl = (aid, hid, kind) => mapHazard(aid, hid, (h) => ({ ...h, [kind]: [...h[kind], newControl()] }))
+  const updateControl = (aid, hid, kind, cid, patch) => mapHazard(aid, hid, (h) => ({ ...h, [kind]: h[kind].map((c) => (c.id === cid ? { ...c, ...patch } : c)) }))
+  const removeControl = (aid, hid, kind, cid) => mapHazard(aid, hid, (h) => ({ ...h, [kind]: h[kind].filter((c) => c.id !== cid) }))
+
+  // ── Submit ──────────────────────────────────────────────────────────────────
+  const onSubmit = async (e) => {
+    e.preventDefault()
+    if (!form.name.trim()) return toast.error('Name of Risk Assessment is required')
+    if (!form.activities.length) return toast.error('Add at least one activity')
+
+    // Normalise: coerce numeric P/S, drop additional controls/projected when ALARP.
+    const payload = {
+      name: form.name.trim(),
+      kind: form.kind || 'site',
+      baselineId: form.baselineId || '',
+      siteName: form.siteName.trim(),
+      region: form.region || '',
+      entity: form.entity || '',
+      siteId: form.siteId || '',
+      location: form.location.trim(),
+      assessmentDate: form.assessmentDate,
+      status: form.status || 'ACTIVE',
+      refId: form.refId || genRefId(form.siteName),
+      members: form.members.filter((m) => m.name.trim()),
+      activities: form.activities.map((a) => ({
+        id: a.id,
+        title: a.title.trim(),
+        nature: a.nature || 'Routine',
+        hazards: a.hazards.map((h) => ({
+          ...h,
+          probability: Number(h.probability) || null,
+          severity: Number(h.severity) || null,
+          additionalControls: h.additionalControls,
+          projectedProbability: Number(h.projectedProbability) || null,
+          projectedSeverity: Number(h.projectedSeverity) || null,
+        })),
+      })),
+    }
+
+    setBusy(true)
+    try {
+      const actor = { uid: user?.uid, name: profile?.name }
+      let savedId = id
+      if (id) {
+        await updateAssessment(orgId, id, payload)
+        toast.success('Assessment updated')
+      } else {
+        savedId = await createAssessment(orgId, payload, actor)
+        toast.success('Assessment created')
+      }
+      logActivity(orgId, actor, {
+        type: id ? 'updated' : 'created',
+        message: `${id ? 'updated' : 'created'} risk assessment “${payload.name}”`,
+        assessmentId: savedId,
+      })
+      navigate('/hira/repository')
+    } catch (err) {
+      toast.error(err.message || 'Could not save')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <form onSubmit={onSubmit}>
+      <PageHeader
+        tour="create-header"
+        title={
+          form.kind === 'baseline'
+            ? (id ? 'Edit Baseline Risk Assessment' : 'Create Baseline Risk Assessment')
+            : (id ? 'Edit Risk Assessment' : 'Create Risk Assessment')
+        }
+        subtitle={
+          form.kind === 'baseline'
+            ? 'Activity-level template — reusable across sites'
+            : 'Hazard identification & risk assessment (HIRA)'
+        }
+        icon={FilePlus2}
+      >
+        <button type="submit" className="btn-primary" disabled={busy}>
+          {busy ? <Spinner size={18} /> : (<><Save size={16} /> {id ? 'Save changes' : 'Save assessment'}</>)}
+        </button>
+      </PageHeader>
+
+      {/* ── Section 1: Details ── */}
+      <Section n={1} title="Assessment details">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="lg:col-span-2">
+            <label className="label">Name of Risk Assessment *</label>
+            <input className="input" placeholder="e.g. Loading Dock Operations" value={form.name} onChange={(e) => setField('name', e.target.value)} />
+          </div>
+          {form.kind === 'baseline' ? (
+            <div className="lg:col-span-2">
+              <div className="rounded-2xl bg-brand-50 px-4 py-3 text-sm text-brand-800">
+                This is a <b>baseline</b> (activity-level template). It isn&apos;t tied to a site — create
+                site assessments from it in the <b>Baselines</b> tab.
+              </div>
+            </div>
+          ) : (
+            <div className="lg:col-span-2">
+              <label className="label">Facility / Site — Region · Entity · Site</label>
+              <SiteScopePicker
+                module="hira"
+                sites={siteInventory}
+                value={{ ...form, site: form.siteName }}
+                onChange={(v) => setForm((f) => ({ ...f, ...v, siteName: v.site }))}
+              />
+              {form.baselineId && (
+                <p className="mt-1 text-xs text-brand-700">
+                  Seeded from a baseline — edit below to add site-specific risks or controls.
+                </p>
+              )}
+            </div>
+          )}
+          <div>
+            <label className="label">Risk Assessment Date</label>
+            <input type="date" className="input" value={form.assessmentDate} onChange={(e) => setField('assessmentDate', e.target.value)} />
+          </div>
+          <div className="lg:col-span-2">
+            <label className="label">Location</label>
+            <input className="input" list="org-locations" placeholder="e.g. Inbound Dock" value={form.location} onChange={(e) => setField('location', e.target.value)} />
+            <datalist id="org-locations">
+              {(org?.locations || []).map((l) => <option key={l} value={l} />)}
+            </datalist>
+          </div>
+          <div>
+            <label className="label">Status</label>
+            <select className="input" value={form.status} onChange={(e) => setField('status', e.target.value)}>
+              {ASSESSMENT_STATUS.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          {form.refId && (
+            <div>
+              <label className="label">Reference ID</label>
+              <input className="input bg-clay-100 text-ink-500" value={form.refId} readOnly />
+            </div>
+          )}
+        </div>
+      </Section>
+
+      {/* ── Section 2: Members ── */}
+      <Section n={2} title="Members involved" subtitle="Add internal and external members. Internal members can be assigned as responsible persons for controls.">
+        <div className="space-y-2">
+          <AnimatePresence initial={false}>
+            {form.members.map((m) => (
+              <motion.div key={m.id} initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                className="grid items-end gap-2 rounded-2xl bg-clay-bg/40 p-3 shadow-clay-inset sm:grid-cols-12">
+                {m.type === 'internal' && (
+                  <div className="sm:col-span-12">
+                    <label className="label">Pick from employee directory — Department · Person</label>
+                    <DeptPersonPicker
+                      users={orgUsers.filter((u) => u.status === 'approved')}
+                      value={m.uid || ''}
+                      onChange={(v, u) =>
+                        updateMember(m.id, {
+                          uid: v,
+                          name: u?.name || m.name,
+                          email: u?.email || m.email,
+                          department: u?.department || u?.dept || m.department,
+                        })
+                      }
+                      personPlaceholder="Select employee…"
+                    />
+                  </div>
+                )}
+                <div className="sm:col-span-2">
+                  <label className="label">Type</label>
+                  <select className="input" value={m.type} onChange={(e) => updateMember(m.id, { type: e.target.value })}>
+                    {MEMBER_TYPES.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
+                  </select>
+                </div>
+                <div className="sm:col-span-3">
+                  <label className="label">Name</label>
+                  <input className="input" placeholder="Full name" value={m.name} onChange={(e) => updateMember(m.id, { name: e.target.value })} />
+                </div>
+                <div className="sm:col-span-3">
+                  <label className="label">Email</label>
+                  <input className="input" placeholder="email@company.com" value={m.email} onChange={(e) => updateMember(m.id, { email: e.target.value })} />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="label">Role</label>
+                  <input className="input" placeholder="Role" value={m.role} onChange={(e) => updateMember(m.id, { role: e.target.value })} />
+                </div>
+                <div className="sm:col-span-2 flex items-end gap-2">
+                  <div className="flex-1">
+                    <label className="label">Department</label>
+                    <DepartmentSelect value={m.department} onChange={(e) => updateMember(m.id, { department: e.target.value })} />
+                  </div>
+                  <button type="button" onClick={() => removeMember(m.id)} className="mb-0.5 rounded-xl p-2.5 text-red-500 shadow-clay-sm transition hover:bg-red-50" title="Remove"><Trash2 size={16} /></button>
+                </div>
+              </motion.div>
+            ))}
+          </AnimatePresence>
+          {form.members.length === 0 && <p className="px-1 text-sm text-ink-400">No members added yet.</p>}
+        </div>
+        <div className="mt-3 flex gap-2">
+          <button type="button" className="btn-soft" onClick={() => addMember('internal')}><Shield size={16} /> Add internal</button>
+          <button type="button" className="btn-ghost" onClick={() => addMember('external')}><UserPlus size={16} /> Add external</button>
+        </div>
+      </Section>
+
+      {/* ── Section 3: Activities & hazards ── */}
+      <Section n={3} title="Activities & hazards" subtitle="Add tasks/processes, then identify hazards, score risk and apply controls.">
+        <div className="space-y-4">
+          {form.activities.map((a, ai) => (
+            <ActivityCard
+              key={a.id}
+              activity={a}
+              index={ai}
+              internalMembers={internalMembers}
+              canRemove={form.activities.length > 1}
+              onTitle={(v) => mapActivity(a.id, (act) => ({ ...act, title: v }))}
+              onNature={(v) => mapActivity(a.id, (act) => ({ ...act, nature: v }))}
+              onRemove={() => removeActivity(a.id)}
+              onAddHazard={() => addHazard(a.id)}
+              onUpdateHazard={(hid, patch) => updateHazard(a.id, hid, patch)}
+              onRemoveHazard={(hid) => removeHazard(a.id, hid)}
+              onAddControl={(hid, kind) => addControl(a.id, hid, kind)}
+              onUpdateControl={(hid, kind, cid, patch) => updateControl(a.id, hid, kind, cid, patch)}
+              onRemoveControl={(hid, kind, cid) => removeControl(a.id, hid, kind, cid)}
+            />
+          ))}
+        </div>
+        <button type="button" className="btn-soft mt-4" onClick={addActivity}><Plus size={16} /> Add activity / task</button>
+      </Section>
+
+      <div className="flex justify-end">
+        <button type="submit" className="btn-primary" disabled={busy}>
+          {busy ? <Spinner size={18} /> : (<><Save size={16} /> {id ? 'Save changes' : 'Save assessment'}</>)}
+        </button>
+      </div>
+    </form>
+  )
+}
+
+// ── Activity card ──────────────────────────────────────────────────────────────
+function ActivityCard({ activity, index, internalMembers, canRemove, onTitle, onNature, onRemove, onAddHazard, onUpdateHazard, onRemoveHazard, onAddControl, onUpdateControl, onRemoveControl }) {
+  return (
+    <div className="rounded-2xl border border-clay-200 bg-clay-surface/60 p-4">
+      <div className="mb-3 flex items-end gap-2">
+        <span className="mb-2.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-ink-900 text-xs font-bold text-white">{index + 1}</span>
+        <div className="flex-1">
+          <label className="label">Activity / Task / Process</label>
+          <input className="input" placeholder="e.g. Unloading trailers" value={activity.title} onChange={(e) => onTitle(e.target.value)} />
+        </div>
+        <div className="w-40">
+          <label className="label">Nature</label>
+          <select className="input" value={activity.nature || 'Routine'} onChange={(e) => onNature(e.target.value)}>
+            {ACTIVITY_NATURE.map((n) => <option key={n} value={n}>{n}</option>)}
+          </select>
+        </div>
+        {canRemove && (
+          <button type="button" onClick={onRemove} className="mb-0.5 rounded-xl p-2.5 text-red-500 shadow-clay-sm transition hover:bg-red-50" title="Remove activity"><Trash2 size={16} /></button>
+        )}
+      </div>
+
+      <div className="space-y-3">
+        {activity.hazards.map((h, hi) => (
+          <HazardCard
+            key={h.id}
+            hazard={h}
+            index={hi}
+            internalMembers={internalMembers}
+            canRemove={activity.hazards.length > 1}
+            onUpdate={(patch) => onUpdateHazard(h.id, patch)}
+            onRemove={() => onRemoveHazard(h.id)}
+            onAddControl={(kind) => onAddControl(h.id, kind)}
+            onUpdateControl={(kind, cid, patch) => onUpdateControl(h.id, kind, cid, patch)}
+            onRemoveControl={(kind, cid) => onRemoveControl(h.id, kind, cid)}
+          />
+        ))}
+      </div>
+      <button type="button" className="btn-ghost mt-3 text-sm" onClick={onAddHazard}><Plus size={15} /> Add hazard</button>
+    </div>
+  )
+}
+
+// ── Hazard card ────────────────────────────────────────────────────────────────
+function HazardCard({ hazard: h, index, internalMembers, canRemove, onUpdate, onRemove, onAddControl, onUpdateControl, onRemoveControl }) {
+  const categories = categoriesForGroup(h.hazardGroup)
+  const types = typesForCategory(h.hazardCategory)
+  const initial = riskLevel(h.probability, h.severity)
+  const projected = riskLevel(h.projectedProbability, h.projectedSeverity)
+
+  return (
+    <div className="rounded-2xl bg-clay-bg/50 p-4 shadow-clay-inset">
+      <div className="mb-3 flex items-center justify-between">
+        <span className="flex items-center gap-2 text-sm font-bold text-ink-700">
+          <AlertTriangle size={15} className="text-brand-500" /> Hazard {index + 1}
+        </span>
+        {canRemove && (
+          <button type="button" onClick={onRemove} className="rounded-lg p-2 text-red-500 shadow-clay-sm transition hover:bg-red-50" title="Remove hazard"><Trash2 size={15} /></button>
+        )}
+      </div>
+
+      {/* Cascading group → category → type */}
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div>
+          <label className="label">Hazard Group</label>
+          <select className="input" value={h.hazardGroup} onChange={(e) => onUpdate({ hazardGroup: e.target.value, hazardCategory: '', hazardType: '' })}>
+            <option value="">Select group…</option>
+            {HAZARD_GROUPS.map((g) => <option key={g}>{g}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="label">Hazard Category</label>
+          <select className="input" value={h.hazardCategory} disabled={!h.hazardGroup} onChange={(e) => onUpdate({ hazardCategory: e.target.value, hazardType: '' })}>
+            <option value="">{h.hazardGroup ? 'Select category…' : 'Pick a group first'}</option>
+            {categories.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="label">Hazard Type</label>
+          <select className="input" value={h.hazardType} disabled={!h.hazardCategory} onChange={(e) => onUpdate({ hazardType: e.target.value })}>
+            <option value="">{h.hazardCategory ? 'Select type…' : 'Pick a category first'}</option>
+            {types.map((t) => <option key={t}>{t}</option>)}
+          </select>
+        </div>
+      </div>
+
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        <div>
+          <label className="label">Who might be harmed</label>
+          <input className="input" placeholder="e.g. Dock associates, visitors" value={h.whoMightBeHarmed} onChange={(e) => onUpdate({ whoMightBeHarmed: e.target.value })} />
+        </div>
+        <div>
+          <label className="label">Specific location</label>
+          <input className="input" placeholder="e.g. Dock door 12" value={h.specificLocation} onChange={(e) => onUpdate({ specificLocation: e.target.value })} />
+        </div>
+      </div>
+
+      <div className="mt-3">
+        <label className="label">Hazard description (optional)</label>
+        <input className="input" placeholder="Describe the hazard / how harm occurs" value={h.description} onChange={(e) => onUpdate({ description: e.target.value })} />
+      </div>
+
+      {/* Risk scoring */}
+      <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_auto]">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <label className="label">Probability</label>
+            <select className="input" value={h.probability} onChange={(e) => onUpdate({ probability: e.target.value })}>
+              <option value="">Select…</option>
+              {PROBABILITY.map((p) => <option key={p.value} value={p.value}>{p.value} — {p.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="label">Severity</label>
+            <select className="input" value={h.severity} onChange={(e) => onUpdate({ severity: e.target.value })}>
+              <option value="">Select…</option>
+              {SEVERITY.map((s) => <option key={s.value} value={s.value}>{s.value} — {s.label}</option>)}
+            </select>
+          </div>
+          <div className="sm:col-span-2 flex items-center gap-3">
+            <span className="text-sm font-semibold text-ink-600">Risk level:</span>
+            <RiskBadge risk={initial} />
+            {initial && <span className="text-xs text-ink-400">{initial.guidance}</span>}
+          </div>
+        </div>
+        <div className="flex items-center justify-center rounded-2xl bg-clay-surface p-3 shadow-clay-sm">
+          <MiniMatrix probability={h.probability} severity={h.severity} />
+        </div>
+      </div>
+
+      {/* Control measures */}
+      <ControlBlock
+        title="Control measures"
+        controls={h.controls}
+        internalMembers={internalMembers}
+        onAdd={() => onAddControl('controls')}
+        onUpdate={(cid, patch) => onUpdateControl('controls', cid, patch)}
+        onRemove={(cid) => onRemoveControl('controls', cid)}
+      />
+
+      {/* Additional controls — always available */}
+      <ControlBlock
+        title="Additional control measures"
+        controls={h.additionalControls}
+        internalMembers={internalMembers}
+        showDueDate
+        onAdd={() => onAddControl('additionalControls')}
+        onUpdate={(cid, patch) => onUpdateControl('additionalControls', cid, patch)}
+        onRemove={(cid) => onRemoveControl('additionalControls', cid)}
+      />
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div>
+          <label className="label">Projected Probability</label>
+          <select className="input" value={h.projectedProbability} onChange={(e) => onUpdate({ projectedProbability: e.target.value })}>
+            <option value="">Select…</option>
+            {PROBABILITY.map((p) => <option key={p.value} value={p.value}>{p.value} — {p.label}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="label">Projected Severity</label>
+          <select className="input" value={h.projectedSeverity} onChange={(e) => onUpdate({ projectedSeverity: e.target.value })}>
+            <option value="">Select…</option>
+            {SEVERITY.map((s) => <option key={s.value} value={s.value}>{s.value} — {s.label}</option>)}
+          </select>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-semibold text-ink-600">Projected (residual) risk:</span>
+          <RiskBadge risk={projected} />
+        </div>
+      </div>
+
+      {/* ALARP acceptance flag — residual risk accepted */}
+      <label className="mt-4 flex items-center gap-2.5 rounded-2xl bg-amber-50 px-4 py-2.5 text-sm font-semibold text-amber-800">
+        <input type="checkbox" className="h-4 w-4 accent-amber-600" checked={h.alarp} onChange={(e) => onUpdate({ alarp: e.target.checked })} />
+        Residual risk accepted as ALARP (as low as reasonably practicable)
+      </label>
+    </div>
+  )
+}
+
+// ── Reusable control list ───────────────────────────────────────────────────────
+function ControlBlock({ title, controls, internalMembers, onAdd, onUpdate, onRemove, showDueDate = false }) {
+  return (
+    <div className="mt-4">
+      <p className="mb-2 text-xs font-bold uppercase tracking-wide text-ink-500">{title}</p>
+      <div className="space-y-2">
+        {controls.map((c) => (
+          <div key={c.id} className="grid items-end gap-2 rounded-xl bg-clay-surface p-2.5 shadow-clay-sm sm:grid-cols-12">
+            <div className="sm:col-span-3">
+              <label className="label">Hierarchy</label>
+              <select className="input" value={c.hierarchy} onChange={(e) => onUpdate(c.id, { hierarchy: e.target.value })}>
+                {CONTROL_HIERARCHY.map((x) => <option key={x.key} value={x.key}>{x.label}</option>)}
+              </select>
+            </div>
+            <div className="sm:col-span-4">
+              <label className="label">Control description</label>
+              <input className="input" placeholder="Describe the control" value={c.description} onChange={(e) => onUpdate(c.id, { description: e.target.value })} />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="label">Responsible (internal)</label>
+              <select className="input" value={c.responsibleMemberId} onChange={(e) => onUpdate(c.id, { responsibleMemberId: e.target.value })}>
+                <option value="">—</option>
+                {internalMembers.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </select>
+            </div>
+            <div className="sm:col-span-2">
+              <label className="label">Status</label>
+              <select className="input" value={c.status} onChange={(e) => onUpdate(c.id, { status: e.target.value })}>
+                {CONTROL_STATUS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+              </select>
+            </div>
+            <div className="sm:col-span-1 flex items-end">
+              <button type="button" onClick={() => onRemove(c.id)} className="mb-0.5 rounded-xl p-2.5 text-red-500 shadow-clay-sm transition hover:bg-red-50" title="Remove control"><Trash2 size={15} /></button>
+            </div>
+            <div className="sm:col-span-3">
+              <label className="label">Department</label>
+              <DepartmentSelect value={c.department} onChange={(e) => onUpdate(c.id, { department: e.target.value })} />
+            </div>
+            {showDueDate && (
+              <div className="sm:col-span-3">
+                <label className="label">Due date</label>
+                <input type="date" className="input" value={c.dueDate || ''} onChange={(e) => onUpdate(c.id, { dueDate: e.target.value })} />
+              </div>
+            )}
+          </div>
+        ))}
+        {controls.length === 0 && <p className="px-1 text-xs text-ink-400">No controls added.</p>}
+      </div>
+      <button type="button" className="btn-ghost mt-2 px-3 py-1.5 text-xs" onClick={onAdd}><Plus size={14} /> Add control</button>
+    </div>
+  )
+}

@@ -1,0 +1,287 @@
+import { useRef, useState, useMemo } from 'react'
+import { motion } from 'framer-motion'
+import { Upload, Download, FileSpreadsheet, CheckCircle2, AlertTriangle, X, Loader2, RefreshCw, PlusCircle } from 'lucide-react'
+import toast from 'react-hot-toast'
+import { PageHeader, Spinner } from '../components/ui'
+import { useAuth } from '../context/AuthContext'
+import { useFleet } from '../context/FleetContext'
+import { downloadTemplate, parseUpload } from '../lib/exporter'
+import { bulkUpsertExtinguishers } from '../lib/firestore'
+import { assignSerials } from '../lib/serial'
+import { BULK_COLUMNS } from '../lib/constants'
+
+export default function BulkUpload() {
+  const { orgId, orgName, profile } = useAuth()
+  const { extinguishers } = useFleet()
+  const inputRef = useRef(null)
+  const [fileName, setFileName] = useState('')
+  const [parsing, setParsing] = useState(false)
+  const [result, setResult] = useState(null) // { valid, errors, total }
+  const [committing, setCommitting] = useState(false)
+  const [done, setDone] = useState(null) // { created, updated }
+
+  // Map of existing serial (lowercased) → existing extinguisher, for matching.
+  const bySerial = useMemo(() => {
+    const m = new Map()
+    for (const e of extinguishers) {
+      const s = (e.serialNo || '').trim().toLowerCase()
+      if (s) m.set(s, e)
+    }
+    return m
+  }, [extinguishers])
+
+  // Split parsed rows into creates (new) + updates (matched existing serial),
+  // assigning auto-serials to blank-serial creates.
+  const plan = useMemo(() => {
+    if (!result?.valid) return null
+    const updates = []
+    const newRows = []
+    for (const row of result.valid) {
+      const s = (row.serialNo || '').trim().toLowerCase()
+      const match = s ? bySerial.get(s) : null
+      if (match) {
+        updates.push({
+          ...row,
+          id: match.id,
+          qrToken: match.qrToken,
+          status: match.status,
+          physicalDefects: match.physicalDefects || [],
+        })
+      } else {
+        newRows.push(row)
+      }
+    }
+    const existingSerials = extinguishers.map((e) => e.serialNo).filter(Boolean)
+    const creates = assignSerials(newRows, existingSerials)
+    return { creates, updates }
+  }, [result, bySerial, extinguishers])
+
+  const handleFile = async (file) => {
+    if (!file) return
+    setFileName(file.name)
+    setParsing(true)
+    setResult(null)
+    try {
+      const r = await parseUpload(file)
+      setResult(r)
+      if (r.valid.length === 0) toast.error('No valid rows found')
+      else toast.success(`${r.valid.length} valid row(s) ready`)
+    } catch (e) {
+      toast.error('Could not read that file')
+    } finally {
+      setParsing(false)
+    }
+  }
+
+  const commit = async () => {
+    if (!plan || (!plan.creates.length && !plan.updates.length)) return
+    setCommitting(true)
+    try {
+      const res = await bulkUpsertExtinguishers(orgId, orgName, plan, { uid: profile?.uid, name: profile?.name })
+      setDone(res)
+      toast.success(`${res.created} added, ${res.updated} updated`)
+      setResult(null)
+      setFileName('')
+    } catch (e) {
+      toast.error(e.message)
+    } finally {
+      setCommitting(false)
+    }
+  }
+
+  const reset = () => {
+    setResult(null)
+    setFileName('')
+    setDone(null)
+  }
+
+  // Combined preview rows tagged with their action.
+  const previewRows = useMemo(() => {
+    if (!plan) return []
+    return [
+      ...plan.updates.map((r) => ({ ...r, __action: 'overwrite' })),
+      ...plan.creates.map((r) => ({ ...r, __action: 'new' })),
+    ]
+  }, [plan])
+
+  return (
+    <div>
+      <PageHeader
+        title="Bulk Upload"
+        subtitle="Import or update many extinguishers from a spreadsheet. Matching Serial No overwrites the existing record."
+        icon={Upload}
+      >
+        <button className="btn-ghost" onClick={downloadTemplate}>
+          <Download size={16} /> Download template
+        </button>
+      </PageHeader>
+
+      {done ? (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.96 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="card mx-auto max-w-lg p-8 text-center"
+        >
+          <div className="mx-auto mb-4 grid h-16 w-16 place-items-center rounded-2xl bg-green-100 text-green-600">
+            <CheckCircle2 size={34} />
+          </div>
+          <h2 className="text-xl font-extrabold">Import complete</h2>
+          <p className="mt-1 text-sm text-ink-500">
+            <strong>{done.created}</strong> added · <strong>{done.updated}</strong> updated. New records
+            have unique QR codes; updated records keep their existing QR.
+          </p>
+          <div className="mt-6 flex justify-center gap-3">
+            <button className="btn-primary" onClick={reset}>Import more</button>
+            <a className="btn-ghost" href="/equipment/repository">View repository</a>
+          </div>
+        </motion.div>
+      ) : (
+        <div className="grid gap-6 lg:grid-cols-3">
+          {/* Drop zone */}
+          <div className="lg:col-span-2 space-y-4">
+            <div
+              onClick={() => inputRef.current?.click()}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => {
+                e.preventDefault()
+                handleFile(e.dataTransfer.files?.[0])
+              }}
+              className="flex cursor-pointer flex-col items-center justify-center gap-3 rounded-3xl bg-clay-surface px-6 py-14 text-center shadow-clay-inset transition hover:bg-brand-50/40"
+            >
+              <div className="grid h-14 w-14 place-items-center rounded-2xl bg-brand-50 text-brand-500">
+                {parsing ? <Loader2 className="animate-spin" /> : <FileSpreadsheet size={26} />}
+              </div>
+              <p className="font-bold text-ink-800">
+                {fileName || 'Click to upload or drag & drop'}
+              </p>
+              <p className="text-sm text-ink-500">.xlsx or .csv using the template columns</p>
+              <input
+                ref={inputRef}
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                className="hidden"
+                onChange={(e) => handleFile(e.target.files?.[0])}
+              />
+            </div>
+
+            {result && plan && (
+              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="chip bg-green-100 text-green-700">
+                    <PlusCircle size={14} /> {plan.creates.length} new
+                  </span>
+                  <span className="chip bg-indigo-100 text-indigo-700">
+                    <RefreshCw size={14} /> {plan.updates.length} overwrite
+                  </span>
+                  {result.errors.length > 0 && (
+                    <span className="chip bg-red-100 text-red-700">
+                      <AlertTriangle size={14} /> {result.errors.length} with issues
+                    </span>
+                  )}
+                  <span className="text-sm text-ink-500">{result.total} total rows</span>
+                </div>
+
+                {previewRows.length > 0 && (
+                  <div className="card overflow-hidden">
+                    <div className="border-b border-ink-100 px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-ink-500">
+                      Preview ({Math.min(previewRows.length, 10)} of {previewRows.length})
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead className="bg-clay-100/70 text-left text-xs uppercase text-ink-400">
+                          <tr>
+                            <th className="px-3 py-2">Action</th>
+                            <th className="px-3 py-2">Serial</th>
+                            <th className="px-3 py-2">Type</th>
+                            <th className="px-3 py-2">Capacity</th>
+                            <th className="px-3 py-2">Entity</th>
+                            <th className="px-3 py-2">Region</th>
+                            <th className="px-3 py-2">Center</th>
+                            <th className="px-3 py-2">Next Refill</th>
+                            <th className="px-3 py-2">Next HPT</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-ink-100">
+                          {previewRows.slice(0, 10).map((r, i) => (
+                            <tr key={i}>
+                              <td className="px-3 py-2">
+                                {r.__action === 'overwrite' ? (
+                                  <span className="chip bg-indigo-100 text-indigo-700">Overwrite</span>
+                                ) : (
+                                  <span className="chip bg-green-100 text-green-700">New</span>
+                                )}
+                              </td>
+                              <td className="px-3 py-2 font-semibold">{r.serialNo || '—'}</td>
+                              <td className="px-3 py-2">{r.type}</td>
+                              <td className="px-3 py-2">{r.capacity}</td>
+                              <td className="px-3 py-2">{r.entity}</td>
+                              <td className="px-3 py-2">{r.region || '—'}</td>
+                              <td className="px-3 py-2">{r.centerName}</td>
+                              <td className="px-3 py-2">{r.dateOfNextRefill || '—'}</td>
+                              <td className="px-3 py-2">{r.dateOfNextHPT || '—'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {result.errors.length > 0 && (
+                  <div className="card overflow-hidden border border-red-200">
+                    <div className="border-b border-red-100 bg-red-50 px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-red-600">
+                      Rows skipped
+                    </div>
+                    <ul className="divide-y divide-ink-100 text-sm">
+                      {result.errors.slice(0, 10).map((e, i) => (
+                        <li key={i} className="flex items-start gap-2 px-4 py-2.5">
+                          <X size={15} className="mt-0.5 shrink-0 text-red-500" />
+                          <span>
+                            <strong>Row {e.row}:</strong> {e.issues.join('; ')}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {(plan.creates.length > 0 || plan.updates.length > 0) && (
+                  <div className="flex justify-end gap-3">
+                    <button className="btn-ghost" onClick={reset}>Cancel</button>
+                    <button className="btn-primary" onClick={commit} disabled={committing}>
+                      {committing ? <Spinner size={18} /> : `Import ${plan.creates.length + plan.updates.length} extinguishers`}
+                    </button>
+                  </div>
+                )}
+              </motion.div>
+            )}
+          </div>
+
+          {/* Instructions */}
+          <aside className="card h-fit space-y-3 p-6">
+            <h3 className="text-sm font-bold uppercase tracking-wide text-ink-500">How it works</h3>
+            <ol className="space-y-2 text-sm text-ink-600">
+              <li>1. Download the template.</li>
+              <li>2. Fill one extinguisher per row. Serial No is optional.</li>
+              <li>3. Upload — we validate against the allowed values.</li>
+              <li>4. Review: rows matching an existing Serial No are <strong>overwritten</strong>; the rest are added.</li>
+            </ol>
+            <div className="rounded-2xl bg-clay-surface p-3 text-xs text-ink-600 shadow-clay-inset">
+              <p className="mb-1 font-bold uppercase text-ink-500">Serial No</p>
+              Leave it blank to auto-assign a unique <code>FE-####</code>. A matching serial overwrites that
+              record's details but keeps its QR code, status and defects.
+            </div>
+            <div className="rounded-2xl bg-clay-surface p-3 shadow-clay-inset">
+              <p className="mb-1 text-xs font-bold uppercase text-ink-500">Columns</p>
+              <div className="flex flex-wrap gap-1.5">
+                {BULK_COLUMNS.map((c) => (
+                  <span key={c} className="chip bg-clay-surface text-ink-600">{c}</span>
+                ))}
+              </div>
+            </div>
+          </aside>
+        </div>
+      )}
+    </div>
+  )
+}

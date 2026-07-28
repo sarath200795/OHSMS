@@ -1,0 +1,159 @@
+rules_version = '2';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// OHS MS — unified, multi-tenant Firestore security rules.
+//
+// Model: every organization is a tenant. A user's profile (/users/{uid}) pins
+// them to one orgId with a status (pending|approved) and a role. Members only
+// ever touch their own organization's data; all module data lives under
+// /organizations/{orgId}/<collection>. The public /orgIndex lets signup resolve
+// an org by name without reading the member-only organizations collection.
+//
+// Module collections vary per feature (incidents, assessments, permits,
+// inspectionRecords, extinguishers, consultations, …). Rather than enumerate
+// them all, a generic per-org rule grants approved members access to any
+// collection EXCEPT auditLogs, which stays append-only via its own rule.
+// ─────────────────────────────────────────────────────────────────────────────
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function myProfile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function hasProfile() {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function isApprovedMemberOf(orgId) {
+      return hasProfile()
+        && myProfile().orgId == orgId
+        && myProfile().status == 'approved';
+    }
+
+    function isAdminOf(orgId) {
+      return isApprovedMemberOf(orgId) && myProfile().role == 'admin';
+    }
+
+    // Unified roles: manager is elevated (approve/close/delete), auditor is
+    // read-only, member is standard. Admin is implicitly allowed everything.
+    function isManagerOf(orgId) {
+      return isApprovedMemberOf(orgId)
+        && (myProfile().role == 'admin' || myProfile().role == 'manager');
+    }
+
+    // ── Public org-name index (no sensitive fields) ───────────────────────────
+    match /orgIndex/{key} {
+      allow read: if true;
+      allow create, update: if isSignedIn();
+      allow delete: if false;
+    }
+
+    // ── Public QR mirror (fire equipment) ─────────────────────────────────────
+    // A minimal, publicly-readable copy of an extinguisher / AED / fire-alarm
+    // device, keyed by its qrToken, so anyone scanning the QR code can view the
+    // asset without signing in. Written (create/update/delete) only by an
+    // approved member of the owning org — the write rides in the same batch as
+    // the org-scoped asset write, so the member is already authorised there.
+    match /qr/{token} {
+      allow read: if true;
+      allow create: if isApprovedMemberOf(request.resource.data.orgId);
+      allow update: if isApprovedMemberOf(resource.data.orgId)
+        || isApprovedMemberOf(request.resource.data.orgId);
+      allow delete: if isApprovedMemberOf(resource.data.orgId);
+    }
+
+    // ── Ported-module top-level collections (LOTO / hecp-loto) ─────────────────
+    // These modules scope tenancy with an `orgId` field on each document instead
+    // of an org subcollection path. Approved members of that org may read/write;
+    // managers+ may delete. This wildcard returns false for every other top-level
+    // collection (users, organizations, qr, orgIndex), which keep their own rules.
+    function isLegacyOrgCollection(col) {
+      return col in ['procedures', 'procedurePhotos', 'lotoEvents', 'locks', 'technicians', 'sites'];
+    }
+    match /{legacyCol}/{docId} {
+      allow read: if isLegacyOrgCollection(legacyCol)
+        && resource != null && isApprovedMemberOf(resource.data.orgId);
+      allow create: if isLegacyOrgCollection(legacyCol)
+        && isApprovedMemberOf(request.resource.data.orgId);
+      allow update: if isLegacyOrgCollection(legacyCol)
+        && ((resource != null && isApprovedMemberOf(resource.data.orgId))
+            || isApprovedMemberOf(request.resource.data.orgId));
+      allow delete: if isLegacyOrgCollection(legacyCol)
+        && resource != null && isManagerOf(resource.data.orgId);
+    }
+
+    // ── User profiles ─────────────────────────────────────────────────────────
+    match /users/{uid} {
+      // Read your own profile, or any profile in your organization.
+      allow read: if isSignedIn()
+        && (request.auth.uid == uid
+            || (hasProfile() && resource.data.orgId == myProfile().orgId));
+
+      // Create your own profile (joining as a pending member, or — if you just
+      // created the org — as its approved admin), OR an org admin provisions an
+      // employee account for their own org (never directly as admin; admins are
+      // promoted afterwards through the managed role update below).
+      allow create: if isSignedIn()
+        && (
+          (request.auth.uid == uid
+            && ((request.resource.data.status == 'pending' && request.resource.data.role != 'admin')
+                || (request.resource.data.status == 'approved' && request.resource.data.role == 'admin')))
+          || (isAdminOf(request.resource.data.orgId) && request.resource.data.role != 'admin')
+        );
+
+      // Update your own limited fields, or an admin manages members in the same
+      // org. Users cannot self-promote (role/status locked unless admin).
+      allow update: if isSignedIn() && (
+        (request.auth.uid == uid
+          && request.resource.data.orgId == resource.data.orgId
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.status == resource.data.status)
+        || isAdminOf(resource.data.orgId)
+      );
+
+      allow delete: if isAdminOf(resource.data.orgId);
+    }
+
+    // ── Organizations & all org-scoped module data ────────────────────────────
+    match /organizations/{orgId} {
+      allow read: if isApprovedMemberOf(orgId);
+      allow create: if isSignedIn()
+        && request.resource.data.createdBy == request.auth.uid;
+      allow update, delete: if isAdminOf(orgId);
+
+      // Append-only audit trail — create only, never edit or delete. Declared
+      // before the generic rule; the generic rule below excludes auditLogs so
+      // this is the only rule that governs it.
+      match /auditLogs/{logId} {
+        allow read: if isApprovedMemberOf(orgId);
+        allow create: if isApprovedMemberOf(orgId);
+        allow update, delete: if false;
+      }
+
+      // Generic module data (incidents, assessments, permits, inspections,
+      // extinguishers, meetings, meta/stats, sites, notifications, …). Approved
+      // members read/create/update; managers+ delete. auditLogs is excluded so
+      // it keeps its append-only rule above.
+      match /{col}/{docId} {
+        allow read, create, update: if col != 'auditLogs' && isApprovedMemberOf(orgId);
+        allow delete: if col != 'auditLogs' && isManagerOf(orgId);
+
+        // Nested subcollections (e.g. incidents/{id}/photos, documents/{id}/versions).
+        // The recursive wildcard also matches the parent {col}/{docId} itself, so
+        // it must repeat the auditLogs guard — otherwise it would silently reopen
+        // updates/deletes on the append-only audit trail.
+        match /{sub=**} {
+          allow read, create, update: if col != 'auditLogs' && isApprovedMemberOf(orgId);
+          allow delete: if col != 'auditLogs' && isManagerOf(orgId);
+        }
+      }
+    }
+  }
+}

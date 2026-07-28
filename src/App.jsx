@@ -1,0 +1,99 @@
+import { lazy, Suspense } from 'react'
+import { Routes, Route, Navigate } from 'react-router-dom'
+import { isFirebaseConfigured } from './shared/firebase'
+import ProtectedRoute from './shared/auth/ProtectedRoute'
+import AppShell from './shared/layout/AppShell'
+import { FullPageLoader, SkeletonDetail } from './shared/ui'
+
+// Public / auth pages (eager — small, first paint).
+import SetupNeeded from './pages/SetupNeeded'
+import Login from './pages/auth/Login'
+import RegisterOrg from './pages/auth/RegisterOrg'
+import Signup from './pages/auth/Signup'
+import ForgotPassword from './pages/auth/ForgotPassword'
+import PendingApproval from './pages/auth/PendingApproval'
+import NotFound from './pages/NotFound'
+
+// App pages.
+import Hub from './pages/Hub'
+import Dashboard from './pages/Dashboard'
+const Users = lazy(() => import('./pages/admin/Users'))
+const Sites = lazy(() => import('./pages/admin/Sites'))
+const OrgSettings = lazy(() => import('./pages/admin/OrgSettings'))
+const AuditLog = lazy(() => import('./pages/admin/AuditLog'))
+
+// Modules (lazy — several pull heavy libs like react-flow / three / xlsx).
+const Incidents = lazy(() => import('./modules/incidents'))
+const Hira = lazy(() => import('./modules/hira'))
+const Inspections = lazy(() => import('./modules/inspections'))
+const Audit = lazy(() => import('./modules/audit'))
+const Permits = lazy(() => import('./modules/ptw'))
+const Loto = lazy(() => import('./modules/loto'))
+const Equipment = lazy(() => import('./modules/fire'))
+const Drills = lazy(() => import('./modules/fire/DrillsModule'))
+const Committee = lazy(() => import('./modules/committee'))
+const Training = lazy(() => import('./modules/training'))
+const Documents = lazy(() => import('./modules/documents'))
+const Actions = lazy(() => import('./modules/actions'))
+const Emergency = lazy(() => import('./modules/emergency'))
+
+function Protected({ children, ...guard }) {
+  return (
+    <ProtectedRoute {...guard}>
+      <AppShell>
+        <Suspense fallback={<SkeletonDetail />}>{children}</Suspense>
+      </AppShell>
+    </ProtectedRoute>
+  )
+}
+
+export default function App() {
+  // Without Firebase config, only the setup screen can render.
+  if (!isFirebaseConfigured) {
+    return (
+      <Suspense fallback={<FullPageLoader />}>
+        <Routes>
+          <Route path="*" element={<SetupNeeded />} />
+        </Routes>
+      </Suspense>
+    )
+  }
+
+  return (
+    <Routes>
+      {/* Public */}
+      <Route path="/login" element={<Login />} />
+      <Route path="/register-org" element={<RegisterOrg />} />
+      <Route path="/signup" element={<Signup />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/pending" element={<PendingApproval />} />
+
+      {/* App */}
+      <Route path="/hub" element={<Protected><Hub /></Protected>} />
+      <Route path="/dashboard" element={<Protected><Dashboard /></Protected>} />
+      <Route path="/incidents/*" element={<Protected><Incidents /></Protected>} />
+      <Route path="/hira/*" element={<Protected><Hira /></Protected>} />
+      <Route path="/inspections/*" element={<Protected><Inspections /></Protected>} />
+      <Route path="/audit/*" element={<Protected><Audit /></Protected>} />
+      <Route path="/permits/*" element={<Protected><Permits /></Protected>} />
+      <Route path="/loto/*" element={<Protected><Loto /></Protected>} />
+      <Route path="/equipment/*" element={<Protected><Equipment /></Protected>} />
+      <Route path="/mock-drills/*" element={<Protected><Drills /></Protected>} />
+      <Route path="/committee/*" element={<Protected><Committee /></Protected>} />
+      <Route path="/training/*" element={<Protected><Training /></Protected>} />
+      <Route path="/documents/*" element={<Protected><Documents /></Protected>} />
+      <Route path="/actions/*" element={<Protected><Actions /></Protected>} />
+      <Route path="/emergency-response/*" element={<Protected><Emergency /></Protected>} />
+
+      {/* Administration */}
+      <Route path="/sites" element={<Protected requireCap="record.view"><Sites /></Protected>} />
+      <Route path="/audit-log" element={<Protected requireCap="audit.view"><AuditLog /></Protected>} />
+      <Route path="/users" element={<Protected requireAdmin><Users /></Protected>} />
+      <Route path="/settings" element={<Protected requireAdmin><OrgSettings /></Protected>} />
+
+      {/* Fallbacks */}
+      <Route path="/" element={<Navigate to="/hub" replace />} />
+      <Route path="*" element={<NotFound />} />
+    </Routes>
+  )
+}

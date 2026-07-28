@@ -1,0 +1,37 @@
+# Optional one-command local stack: Vite dev server + Firebase Emulator Suite.
+#
+#   docker compose up
+#
+# The web app talks to the emulators over the shared Docker network. For most
+# development the native flow (`npm run dev:full`) is simpler; this wrapper exists
+# for a reproducible, one-command environment.
+services:
+  emulators:
+    image: node:20-bookworm
+    working_dir: /app
+    command: >
+      sh -c "npm install -g firebase-tools &&
+             firebase emulators:start --only auth,firestore,storage
+             --project ohsms-demo --import=/app/emulator-data --export-on-exit"
+    volumes:
+      - ./:/app
+    ports:
+      - '9099:9099' # auth
+      - '8080:8080' # firestore
+      - '9199:9199' # storage
+      - '4000:4000' # emulator UI
+
+  web:
+    image: node:20-bookworm
+    working_dir: /app
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    environment:
+      - VITE_USE_EMULATORS=true
+      - VITE_EMULATOR_HOST=emulators
+    volumes:
+      - ./:/app
+      - /app/node_modules
+    ports:
+      - '5173:5173'
+    depends_on:
+      - emulators
