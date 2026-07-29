@@ -28,6 +28,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { searchNearbyGoogle } from './providers/googlePlaces'
+import { classifyPlace, pickBest } from './classify'
 
 // Google Places is used when a key is configured; OpenStreetMap is the fallback.
 // Guarded because this module is also exercised from plain Node scripts, where
@@ -104,11 +105,15 @@ function isPlausiblePhone(v) {
   return digits.length >= 6 && digits.length <= 15 && !GENERIC.has(digits)
 }
 
-/** Is this candidate really the amenity we asked for? */
+/**
+ * Is this candidate really the amenity we asked for? Street-style names are
+ * roads mis-tagged in OSM; the classifier then removes vendors, trade bodies,
+ * police housing, pharmacies and other things that cannot answer a call.
+ */
 function isValidCandidate(c) {
   if (!c.name || c.name.length < 3) return false
   if (c.amenity !== 'hospital' && looksLikeStreet(c.name)) return false
-  return true
+  return classifyPlace(c.name, c.amenity).ok
 }
 
 async function overpass(query) {
@@ -284,19 +289,12 @@ export async function findNearestServices(lat, lng, { onTier, apiKey } = {}) {
   if (!all.length && lastError) throw lastError
 
   return CATEGORIES.map((cat) => {
-    const group = all
-      .filter((x) => x.amenity === cat.amenity)
-      .sort((a, b) => a.distanceKm - b.distanceKm)
-    if (!group.length) return null
-
-    const nearest = group[0]
-    const reachable = group.filter((x) => x.phone && x.distanceKm <= MAX_PHONE_KM)
-    // For hospitals prefer a mapped A&E when one is about as close — in an
-    // emergency a casualty department beats a nearer specialist clinic.
-    const chosen =
-      reachable.find((x) => x.emergency && x.distanceKm <= (reachable[0]?.distanceKm ?? 0) * 1.5) ||
-      reachable[0] ||
-      nearest
+    const group = all.filter((x) => x.amenity === cat.amenity)
+    // pickBest drops anything that cannot answer an emergency call, then
+    // prefers a genuine station we can phone over a nearer one we cannot.
+    const best = pickBest(group, MAX_PHONE_KM)
+    if (!best) return null
+    const { chosen, nearest, usable } = best
 
     return {
       role: cat.role,
@@ -308,8 +306,8 @@ export async function findNearestServices(lat, lng, { onTier, apiKey } = {}) {
       nearestName: nearest.name,
       nearestDistanceKm: nearest.distanceKm,
       searchedKm: TIERS_M[TIERS_M.length - 1] / 1000,
-      alternatives: group.slice(0, 8).map(({ name, phone, distanceKm, emergency }) => ({
-        name, phone, distanceKm, emergency,
+      alternatives: usable.slice(0, 8).map(({ name, phone, distanceKm, strong }) => ({
+        name, phone, distanceKm, strong,
       })),
     }
   }).filter(Boolean)
