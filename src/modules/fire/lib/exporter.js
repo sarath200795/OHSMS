@@ -2,11 +2,39 @@
 import * as XLSX from 'xlsx'
 import { format } from 'date-fns'
 import {
-  BULK_COLUMNS, TYPES, CAPACITIES, ENTITIES, REGIONS, DEFAULT_REGION, STATUS_LABEL,
+  BULK_COLUMNS, TYPES, CAPACITIES, ENTITIES, REGIONS, DEFAULT_REGION, STATUS, STATUS_LABEL, DEFECTS,
   FAS_DEVICE_TYPES, AED_STATUS, AED_STATUS_LABEL, FAS_STATUS, FAS_STATUS_LABEL,
 } from './constants'
 import { severityLabel, toDate } from './extinguisherLogic'
 import { tokenFromQrValue } from './qr'
+
+/**
+ * Map an exported "Status" label back to its stored key.
+ * Anything unrecognised falls back to Active, which is what a fresh unit is.
+ */
+export function statusFromLabel(value) {
+  const v = String(value ?? '').trim().toLowerCase()
+  if (!v) return STATUS.ACTIVE
+  const hit = Object.entries(STATUS_LABEL).find(([, label]) => label.toLowerCase() === v)
+  return hit ? hit[0] : STATUS.ACTIVE
+}
+
+/**
+ * Map an exported "Condition" label back to a stored defect list.
+ *
+ * The export writes one label — the single most severe condition — so this
+ * cannot recover a unit's full defect list. It recovers the one that matters,
+ * which is the difference between a unit arriving flagged and arriving looking
+ * healthy. Conditions derived from dates ("HPT Overdue", "Refill Due Soon") are
+ * deliberately ignored: they are recomputed from the dates that come across,
+ * and storing them as defects would double-count.
+ */
+export function defectsFromCondition(value) {
+  const v = String(value ?? '').trim().toLowerCase()
+  if (!v || v === 'healthy') return []
+  const hit = DEFECTS.find((d) => d.label.toLowerCase() === v)
+  return hit ? [hit.key] : []
+}
 
 // Normalize a cell value (Date or string) to a yyyy-MM-dd string.
 function toISODate(v) {
@@ -86,7 +114,10 @@ export function downloadAssetTemplate(kind) {
 /** Parse an AED/FAS upload → { valid, errors, total }. */
 export async function parseAssetUpload(kind, file) {
   const cfg = ASSET_CFG[kind]
-  const buf = await file.arrayBuffer()
+  // Wrap in Uint8Array: with a bare ArrayBuffer, SheetJS can misread the xlsx
+  // zip container as a text sheet and silently return garbage rows instead of
+  // failing — which looks like a bad spreadsheet rather than a parsing bug.
+  const buf = new Uint8Array(await file.arrayBuffer())
   const wb = XLSX.read(buf, { type: 'array', cellDates: true })
   const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' })
   const valid = []
@@ -150,7 +181,10 @@ export function downloadTemplate() {
  * Returns { valid: [...extData], errors: [{row, issues}] }.
  */
 export async function parseUpload(file) {
-  const buf = await file.arrayBuffer()
+  // Wrap in Uint8Array: with a bare ArrayBuffer, SheetJS can misread the xlsx
+  // zip container as a text sheet and silently return garbage rows instead of
+  // failing — which looks like a bad spreadsheet rather than a parsing bug.
+  const buf = new Uint8Array(await file.arrayBuffer())
   const wb = XLSX.read(buf, { type: 'array', cellDates: true })
   const ws = wb.Sheets[wb.SheetNames[0]]
   const rows = XLSX.utils.sheet_to_json(ws, { defval: '' })
@@ -173,6 +207,11 @@ export async function parseUpload(file) {
       dateOfNextHPT: toISODate(r['Date of Next HPT']),
       // Reuse a QR code the site has already printed, when one is supplied.
       qrToken: tokenFromQrValue(r['QR Link']),
+      // Carry live state across when migrating from another system. Without
+      // these, a unit that is empty or awaiting refill would arrive looking
+      // healthy — the one import error with real safety consequences.
+      status: statusFromLabel(r['Status']),
+      physicalDefects: defectsFromCondition(r['Condition']),
     }
 
     const issues = []

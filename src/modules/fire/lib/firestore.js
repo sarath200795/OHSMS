@@ -413,8 +413,9 @@ export async function bulkAddExtinguishers(orgId, orgName, rows, actor) {
         dateOfDeployment: data.dateOfDeployment || '',
         dateOfNextRefill: data.dateOfNextRefill || '',
         dateOfNextHPT: data.dateOfNextHPT || '',
-        status: STATUS.ACTIVE,
-        physicalDefects: [],
+        // Migrated rows may arrive already flagged; a fresh row defaults to active.
+        status: data.status || STATUS.ACTIVE,
+        physicalDefects: Array.isArray(data.physicalDefects) ? data.physicalDefects : [],
         deletedAt: null,
         qrToken,
         createdAt: serverTimestamp(),
@@ -479,8 +480,9 @@ export async function bulkUpsertExtinguishers(orgId, orgName, { creates = [], up
         dateOfDeployment: data.dateOfDeployment || '',
         dateOfNextRefill: data.dateOfNextRefill || '',
         dateOfNextHPT: data.dateOfNextHPT || '',
-        status: STATUS.ACTIVE,
-        physicalDefects: [],
+        // Migrated rows may arrive already flagged; a fresh row defaults to active.
+        status: data.status || STATUS.ACTIVE,
+        physicalDefects: Array.isArray(data.physicalDefects) ? data.physicalDefects : [],
         deletedAt: null,
         qrToken,
         createdAt: serverTimestamp(),
