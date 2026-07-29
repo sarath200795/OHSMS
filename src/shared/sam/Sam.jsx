@@ -5,8 +5,9 @@ import { Send, X } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { answer, isoMap } from './brain'
 import { getStats } from './liveStats'
+import SamCharacter from './SamCharacter'
 
-const AVATAR = 64
+const AVATAR = 76
 
 /** Random on-screen spot (edge-biased) for Sam's idle wander. */
 function randomSpot() {
@@ -95,8 +96,22 @@ export default function Sam() {
   ])
   const [input, setInput] = useState('')
   const [thinking, setThinking] = useState(false)
+  // Walk state drives the limb swing and which way Sam faces while strolling.
+  const [walking, setWalking] = useState(false)
+  const [facing, setFacing] = useState(1)
   const dragging = useRef(false)
   const listRef = useRef(null)
+
+  /** Move to a spot, turning to face the direction of travel and walking there. */
+  const strollTo = (next) => {
+    setPos((prev) => {
+      if (next.x !== prev.x) setFacing(next.x > prev.x ? 1 : -1)
+      return next
+    })
+    setWalking(true)
+    // Matches the spring settle below; the legs stop when Sam does.
+    window.setTimeout(() => setWalking(false), 2200)
+  }
 
   // Idle wander: when the chat is closed, stroll to a new spot every 25–45 s.
   useEffect(() => {
@@ -104,7 +119,7 @@ export default function Sam() {
     let timer
     const schedule = () => {
       timer = setTimeout(() => {
-        if (!dragging.current) setPos(randomSpot())
+        if (!dragging.current) strollTo(randomSpot())
         schedule()
       }, 25_000 + Math.random() * 20_000)
     }
@@ -112,9 +127,9 @@ export default function Sam() {
     return () => clearTimeout(timer)
   }, [open, reduce])
 
-  // Dock beside the panel when the chat opens.
+  // Dock beside the panel when the chat opens — walking over rather than teleporting.
   useEffect(() => {
-    if (open) setPos({ x: Math.max(16, window.innerWidth - AVATAR - 24), y: Math.max(16, window.innerHeight - 520) })
+    if (open) strollTo({ x: Math.max(16, window.innerWidth - AVATAR - 24), y: Math.max(16, window.innerHeight - 520) })
   }, [open])
 
   useEffect(() => {
@@ -150,8 +165,8 @@ export default function Sam() {
       <motion.button
         type="button"
         aria-label="Sam — ISO 45001 assistant"
-        className="pointer-events-auto absolute left-0 top-0 grid h-16 w-16 cursor-grab place-items-center rounded-full bg-clay-surface text-3xl shadow-clay active:cursor-grabbing"
-        style={{ touchAction: 'none' }}
+        className="pointer-events-auto absolute left-0 top-0 grid cursor-grab place-items-center rounded-2xl active:cursor-grabbing"
+        style={{ width: AVATAR, height: AVATAR, touchAction: 'none' }}
         animate={{ x: pos.x, y: pos.y }}
         transition={reduce ? { duration: 0 } : { type: 'spring', stiffness: 40, damping: 14 }}
         drag
@@ -168,12 +183,19 @@ export default function Sam() {
         whileHover={{ scale: 1.08 }}
         whileTap={{ scale: 0.95 }}
       >
-        <motion.span
-          animate={reduce ? {} : { y: [0, -4, 0] }}
-          transition={{ repeat: Infinity, duration: 2.6, ease: 'easeInOut' }}
-        >
-          🦺
-        </motion.span>
+        {/* Soft ground shadow — anchors the character instead of leaving it floating */}
+        <span
+          aria-hidden="true"
+          className="absolute bottom-1 left-1/2 h-1.5 -translate-x-1/2 rounded-[50%] bg-ink-900/15 blur-[2px]"
+          style={{ width: AVATAR * 0.42 }}
+        />
+        <SamCharacter
+          size={AVATAR}
+          walking={walking}
+          facing={facing}
+          talking={thinking || open}
+          reduce={reduce}
+        />
         <span className="absolute -bottom-1 rounded-full bg-brand-600 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white shadow-clay-sm">
           Sam
         </span>
