@@ -135,7 +135,9 @@ export default function ContactsSection({ site, contacts, users }) {
           kind: 'external', role: r.role, name: r.name, phone: r.phone,
           altPhone: '', email: '', employeeUid: '', department: '',
           region: site.region || '', entity: site.entity || '', siteId: site.id, site: site.name,
-          notes: `Nearest ${r.role.toLowerCase()} (~${r.distanceKm} km) via OpenStreetMap${r.phoneSource === 'fallback' ? ' · phone defaulted to 112 — verify locally' : ''}`,
+          notes: `Nearest ${r.role.toLowerCase()} (~${r.distanceKm} km) via OpenStreetMap${
+            r.phoneSource === 'none' ? ' · no number published in OpenStreetMap — add it manually' : ''
+          }`,
         }
         const existing = external.find((c) => c.siteId === site.id && c.role === r.role)
         if (existing) { await updateContact(orgId, existing.id, payload, actor); updated += 1 }
@@ -323,9 +325,16 @@ export default function ContactsSection({ site, contacts, users }) {
                   <div key={r.role} className="rounded-2xl bg-clay-surface p-3.5 shadow-clay-inset">
                     <p className="text-xs font-bold uppercase tracking-widest text-ink-400">{r.role}</p>
                     <p className="mt-1 font-semibold leading-snug text-ink-900">{r.name}</p>
-                    <p className="mt-1 text-sm font-bold text-red-700">{r.phone}</p>
+                    {r.phone ? (
+                      <p className="mt-1 text-sm font-bold text-red-700">{r.phone}</p>
+                    ) : (
+                      <p className="mt-1 text-sm font-bold text-amber-600">No number published</p>
+                    )}
                     <p className="mt-1 text-xs text-ink-400">
-                      ~{r.distanceKm} km away{r.phoneSource === 'fallback' && ' · phone defaulted to 112 — verify'}
+                      ~{r.distanceKm} km away
+                      {r.phoneSource === 'none' && ' · OpenStreetMap has no phone for this one — add it after saving'}
+                      {r.phoneSource === 'osm' && r.nearestName && r.name !== r.nearestName &&
+                        ` · closest is ${r.nearestName} (~${r.nearestDistanceKm} km) but has no number`}
                     </p>
                   </div>
                 ))}
