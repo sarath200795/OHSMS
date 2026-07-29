@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import {
   LifeBuoy, Plus, Pencil, Trash2, X, Users, Wrench, ChevronDown, ChevronUp, Library, Check,
-  BadgeCheck, ShieldAlert,
+  BadgeCheck, ShieldAlert, RefreshCw,
 } from 'lucide-react'
 import { Card, Field, Input, Select, Textarea, Button, Modal, Badge, EmptyState } from '../../../shared/ui'
 import { useAuth } from '../../../shared/auth/AuthContext'
@@ -13,7 +13,7 @@ import { erpRoleLabel, renderRoleTokens, ERP_ROLES, ALL_EMPLOYEES } from '../../
 import { useErpRoleLabels } from '../../../shared/org/useErpRoleLabels'
 import {
   addRescuePlan, updateRescuePlan, deleteRescuePlan, recallBaselines, approveRescuePlan,
-  RESCUE_SCENARIOS, PLAN_STATUS,
+  RESCUE_SCENARIOS, PLAN_STATUS, syncFromBaseline, isBehindBaseline, baselineFor,
 } from '../lib/firestore'
 
 const newStep = () => ({ id: `st-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, action: '', responsible: '' })
@@ -41,6 +41,7 @@ export default function RescuePlans({ site, plans, users, contacts = [], baselin
   const [open, setOpen] = useState(null) // expanded plan id
   const [recallOpen, setRecallOpen] = useState(false)
   const [recallPicked, setRecallPicked] = useState([])
+  const [syncing, setSyncing] = useState(null) // site plan whose baseline moved on
 
   const sitePlans = useMemo(
     () =>
@@ -58,6 +59,41 @@ export default function RescuePlans({ site, plans, users, contacts = [], baselin
   const missing = RESCUE_SCENARIOS.filter((s) => s !== 'Other' && !covered.has(s))
   const approvedCount = useMemo(() => sitePlans.filter((p) => p.status === 'approved').length, [sitePlans])
   const pendingCount = sitePlans.length - approvedCount
+
+  // Site plans are copies of baselines, so a revised baseline leaves them
+  // stale. Surface that — an out-of-date procedure on a wall is worse than a
+  // missing one, because people trust it.
+  const behind = useMemo(
+    () => (baseline ? [] : sitePlans.filter((p) => isBehindBaseline(p, baselineLibrary))),
+    [baseline, sitePlans, baselineLibrary]
+  )
+
+  const doSync = async (plan, keepLocalEdits) => {
+    const b = baselineFor(plan, baselineLibrary)
+    if (!b) return toast.error('That baseline no longer exists')
+    setBusy(true)
+    try {
+      await syncFromBaseline(orgId, plan, b, actor, { keepLocalEdits })
+      toast.success('Updated from baseline — review and approve before use')
+      setSyncing(null)
+    } catch (err) { toast.error(err?.message || 'Failed') } finally { setBusy(false) }
+  }
+
+  const syncAll = async () => {
+    if (!window.confirm(
+      `Update ${behind.length} plan(s) at ${site.name} from the revised baseline?\n\n` +
+      'Each returns to draft and must be approved again before use. Plans you adapted locally are skipped — update those individually so you can choose what to keep.'
+    )) return
+    setBusy(true)
+    let n = 0
+    try {
+      for (const p of behind.filter((x) => !x.customized)) {
+        const b = baselineFor(p, baselineLibrary)
+        if (b) { await syncFromBaseline(orgId, p, b, actor, { keepLocalEdits: false }); n += 1 }
+      }
+      toast.success(`${n} plan(s) updated — each needs re-approval`)
+    } catch (err) { toast.error(err?.message || 'Failed') } finally { setBusy(false) }
+  }
 
   const openNew = (scenario) => {
     setForm({ ...EMPTY, scenario: scenario || EMPTY.scenario, steps: [newStep()], team: [newMember()] })
@@ -158,11 +194,18 @@ export default function RescuePlans({ site, plans, users, contacts = [], baselin
             {baseline ? (
               <Button icon={Plus} onClick={() => openNew()}>Add baseline plan</Button>
             ) : (
-              <Button variant="soft" icon={Library} disabled={recallable.length === 0}
-                title={recallable.length ? 'Recall plans from the baseline library' : 'Every baseline scenario is already recalled here'}
-                onClick={() => { setRecallPicked(recallable.map((b) => b.id)); setRecallOpen(true) }}>
-                Recall baseline ({recallable.length})
-              </Button>
+              <>
+                {behind.length > 0 && (
+                  <Button variant="soft" icon={RefreshCw} className="!bg-amber-100 !text-amber-900" onClick={syncAll}>
+                    Update {behind.length} from baseline
+                  </Button>
+                )}
+                <Button variant="soft" icon={Library} disabled={recallable.length === 0}
+                  title={recallable.length ? 'Recall plans from the baseline library' : 'Every baseline scenario is already recalled here'}
+                  onClick={() => { setRecallPicked(recallable.map((b) => b.id)); setRecallOpen(true) }}>
+                  Recall baseline ({recallable.length})
+                </Button>
+              </>
             )}
           </div>
         )}
@@ -203,6 +246,15 @@ export default function RescuePlans({ site, plans, users, contacts = [], baselin
                           <Library size={11} className="mr-1 inline" />
                           {p.customized ? 'Adapted from baseline' : 'From baseline'}
                         </Badge>
+                      )}
+                      {!baseline && isBehindBaseline(p, baselineLibrary) && (
+                        <button
+                          className="inline-flex items-center gap-1 rounded-lg bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900 hover:bg-amber-200"
+                          title="The baseline procedure has been revised since this copy was taken"
+                          onClick={(e) => { e.stopPropagation(); setSyncing(p) }}
+                        >
+                          <RefreshCw size={11} /> Baseline revised
+                        </button>
                       )}
                     </div>
                     <p className="mt-0.5 text-xs text-ink-400">
@@ -497,6 +549,58 @@ export default function RescuePlans({ site, plans, users, contacts = [], baselin
             <Button type="submit" loading={busy}>{editing === 'new' ? 'Create plan' : 'Save changes'}</Button>
           </div>
         </form>
+      </Modal>
+
+      {/* Baseline revised — pull it down, deciding what happens to local wording */}
+      <Modal
+        open={!!syncing}
+        onClose={() => setSyncing(null)}
+        title="Baseline procedure has been revised"
+        size="lg"
+      >
+        {syncing && (
+          <div className="space-y-4">
+            <p className="text-sm text-ink-600">
+              <b>{syncing.title}</b> was copied from the baseline library, and the baseline has changed since.
+              This site is still following the older version.
+            </p>
+
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+              Updating returns the plan to <b>draft</b>. A changed procedure is a changed controlled document —
+              it must be approved again before it is used or printed on the site FERP.
+            </div>
+
+            {syncing.customized ? (
+              <>
+                <p className="text-sm text-ink-600">
+                  This copy was <b>adapted for {site?.name}</b>, so choose what to keep:
+                </p>
+                <div className="flex flex-col gap-2">
+                  <Button variant="soft" loading={busy} onClick={() => doSync(syncing, true)}>
+                    Take the new steps, keep our wording
+                  </Button>
+                  <Button variant="ghost" loading={busy} onClick={() => doSync(syncing, false)}>
+                    Replace entirely with the baseline — discards local changes
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-ink-600">
+                This copy has not been adapted locally, so nothing of yours is lost. The site&apos;s assembly
+                point and responder team are kept.
+              </p>
+            )}
+
+            <div className="flex justify-end gap-2 pt-1">
+              <Button variant="ghost" onClick={() => setSyncing(null)}>Cancel</Button>
+              {!syncing.customized && (
+                <Button icon={RefreshCw} loading={busy} onClick={() => doSync(syncing, false)}>
+                  Update from baseline
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
       </Modal>
     </Card>
   )

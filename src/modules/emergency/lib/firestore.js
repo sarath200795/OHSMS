@@ -169,6 +169,13 @@ const cleanPlan = (data) => ({
   baselineId: data.baselineId || '',
   baselineName: data.baselineName || '',
   customized: !!data.customized,
+  // Revision tracking, so a site can tell that its copy has fallen behind.
+  // `revision` counts edits to a BASELINE; a site copy records the revision it
+  // was taken from in `baselineRevision`. Site plans are derived documents —
+  // without this they silently keep whatever the baseline said on the day they
+  // were recalled, which is how an obsolete procedure ends up on a wall.
+  revision: Number(data.revision) || 0,
+  baselineRevision: Number(data.baselineRevision) || 0,
   approvedBy: data.approvedBy || '',
   approvedByName: data.approvedByName || '',
   approvedOn: data.approvedOn || '',
@@ -216,7 +223,12 @@ export async function addRescuePlan(orgId, data, actor) {
 }
 
 export async function updateRescuePlan(orgId, id, data, actor) {
-  await updateDoc(planRef(orgId, id), { ...cleanPlan(data), updatedAt: serverTimestamp() })
+  // Editing a baseline bumps its revision, which is what tells every site that
+  // recalled it that their copy is now behind.
+  const bumped = data.kind === 'baseline'
+    ? { ...data, revision: (Number(data.revision) || 0) + 1 }
+    : data
+  await updateDoc(planRef(orgId, id), { ...cleanPlan(bumped), updatedAt: serverTimestamp() })
   await logAudit(orgId, actor, 'erp.plan_update', {
     module: 'emergency', target: 'rescuePlan', targetId: id, targetLabel: `${data.siteName} · ${data.scenario}`,
     summary: `Updated rescue plan "${data.title}" for ${data.siteName}`,
@@ -253,6 +265,7 @@ export async function recallBaselines(orgId, site, baselines, existingSitePlans,
           baselineId: b.id,
           baselineName: b.title,
           customized: false,
+          baselineRevision: Number(b.revision) || 0,
           // Recalled plans always land unapproved — adapt locally, then approve.
           status: 'draft',
           approvedBy: '', approvedByName: '', approvedOn: '',
@@ -274,6 +287,66 @@ export async function recallBaselines(orgId, site, baselines, existingSitePlans,
     })
   }
   return { copied: targets.length, skipped: baselines.length - targets.length }
+}
+
+/**
+ * Has the baseline moved on since this site copy was taken?
+ * Pure, so the list can flag stale procedures without a read.
+ */
+export function baselineFor(plan, baselines) {
+  return baselines.find((b) => b.id === plan.baselineId) || null
+}
+
+export function isBehindBaseline(plan, baselines) {
+  if (plan.kind === 'baseline' || !plan.baselineId) return false
+  const b = baselineFor(plan, baselines)
+  if (!b) return false
+  return (Number(b.revision) || 0) > (Number(plan.baselineRevision) || 0)
+}
+
+/**
+ * Pull a revised baseline back down onto a site plan.
+ *
+ * Site plans are derived from baselines, so a corrected procedure has to be
+ * able to reach the sites using it. The copy keeps its own identity — site
+ * scoping, assembly point and resolved team stay put — and always returns to
+ * draft, because a changed procedure is a changed controlled document and must
+ * be re-approved before it is used or printed.
+ *
+ * `keepLocalEdits` protects a site that deliberately adapted its copy: the
+ * baseline's steps are taken but the local title, description, triggers and
+ * assembly point are preserved.
+ */
+export async function syncFromBaseline(orgId, plan, baseline, actor, { keepLocalEdits = false } = {}) {
+  const payload = cleanPlan({
+    ...plan,
+    // Content comes from the baseline…
+    steps: baseline.steps,
+    equipment: baseline.equipment,
+    ...(keepLocalEdits ? null : {
+      title: baseline.title,
+      description: baseline.description,
+      triggers: baseline.triggers,
+    }),
+    // …identity and local adaptation stay with the site.
+    kind: 'site',
+    baselineId: baseline.id,
+    baselineName: baseline.title,
+    baselineRevision: Number(baseline.revision) || 0,
+    revision: 0,
+    customized: keepLocalEdits,
+    assemblyPoint: plan.assemblyPoint,
+    team: plan.team,
+    status: 'draft',
+    approvedBy: '', approvedByName: '', approvedOn: '',
+  })
+  await updateDoc(planRef(orgId, plan.id), { ...payload, updatedAt: serverTimestamp() })
+  await logAudit(orgId, actor, 'erp.plan_sync', {
+    module: 'emergency', target: 'rescuePlan', targetId: plan.id,
+    targetLabel: `${plan.siteName} · ${plan.scenario}`,
+    summary: `Updated "${plan.title}" at ${plan.siteName} from baseline revision ${baseline.revision || 0}` +
+      `${keepLocalEdits ? ' (local wording kept)' : ''} — needs re-approval`,
+  })
 }
 
 /** Approve a site plan for operational use (managers only, enforced in the UI). */
