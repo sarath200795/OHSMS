@@ -3,11 +3,11 @@ import toast from 'react-hot-toast'
 import {
   Building2, Plus, Trash2, MapPin, Map as MapIcon, List, Pencil, Upload, Download, Search, X,
   CheckCircle2, AlertCircle, FireExtinguisher, HeartPulse, BriefcaseMedical, AlertTriangle,
-  ListChecks, Users2,
+  ListChecks, Users2, CheckSquare, Square,
 } from 'lucide-react'
 import { useAuth } from '../../shared/auth/AuthContext'
 import {
-  subscribeSites, createSite, updateSite, deleteSite, bulkCreateSites,
+  subscribeSites, createSite, updateSite, deleteSite, deleteSites, bulkCreateSites,
   subscribeOrgUsers, subscribeCollection, cleanAttributes,
 } from '../../shared/org/orgData'
 import { can, roleLabel } from '../../shared/auth/permissions'
@@ -43,6 +43,11 @@ export default function Sites() {
   const [search, setSearch] = useState('')
   const [regionFilter, setRegionFilter] = useState('')
   const [entityFilter, setEntityFilter] = useState('')
+  // Bulk delete
+  const [selectMode, setSelectMode] = useState(false)
+  const [picked, setPicked] = useState([]) // site ids
+  const [confirmBulk, setConfirmBulk] = useState(false)
+  const [confirmText, setConfirmText] = useState('')
   const canManage = can(role, 'site.manage')
 
   useEffect(() => {
@@ -175,6 +180,42 @@ export default function Sites() {
     })
   }, [sites, search, regionFilter, entityFilter])
 
+  // ── Bulk delete ────────────────────────────────────────────────────────────
+  const togglePick = (id) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]))
+  const exitSelect = () => { setSelectMode(false); setPicked([]) }
+  const pickedSites = useMemo(
+    () => (sites || []).filter((s) => picked.includes(s.id)),
+    [sites, picked]
+  )
+  // Records already logged against the chosen sites — deleting a site does not
+  // delete these, so the user should know what will be left referencing it.
+  const pickedImpact = useMemo(() => {
+    const sum = { extinguishers: 0, aeds: 0, incidents: 0, users: 0 }
+    for (const s of pickedSites) {
+      const st = statsBySite[s.id]
+      if (!st) continue
+      sum.extinguishers += st.extinguishers || 0
+      sum.aeds += st.aeds || 0
+      sum.incidents += st.incidents || 0
+      sum.users += st.users || 0
+    }
+    return sum
+  }, [pickedSites, statsBySite])
+
+  const runBulkDelete = async () => {
+    if (confirmText.trim().toUpperCase() !== 'DELETE') return toast.error('Type DELETE to confirm')
+    setBusy(true)
+    try {
+      const n = await deleteSites(orgId, pickedSites, actor)
+      toast.success(`${n} site${n === 1 ? '' : 's'} deleted`)
+      setConfirmBulk(false); setConfirmText(''); exitSelect(); setSelected(null)
+    } catch (err) {
+      toast.error(err?.message || 'Failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const clearFilters = () => {
     setSearch('')
     setRegionFilter('')
@@ -205,7 +246,7 @@ export default function Sites() {
         ].map((t) => (
           <button
             key={t.key}
-            onClick={() => setTab(t.key)}
+            onClick={() => { setTab(t.key); if (t.key !== 'list') exitSelect() }}
             className={[
               'inline-flex items-center gap-2 rounded-2xl px-3.5 py-2 text-sm font-medium transition-all duration-200 ease-emil',
               tab === t.key
@@ -217,6 +258,35 @@ export default function Sites() {
           </button>
         ))}
       </div>
+
+      {/* Bulk-select toolbar — appears above the filters while selecting */}
+      {canManage && tab === 'list' && sites && sites.length > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          {!selectMode ? (
+            <Button variant="ghost" icon={CheckSquare} className="!py-2" onClick={() => setSelectMode(true)}>
+              Select sites
+            </Button>
+          ) : (
+            <>
+              <Button variant="ghost" className="!py-2"
+                onClick={() => setPicked(picked.length === filteredSites.length ? [] : filteredSites.map((s) => s.id))}>
+                {picked.length === filteredSites.length ? 'Clear all' : `Select all${activeFilters ? ' shown' : ''} (${filteredSites.length})`}
+              </Button>
+              <span className="text-sm font-semibold text-ink-700">{picked.length} selected</span>
+              <Button
+                icon={Trash2}
+                variant="danger"
+                className="!py-2"
+                disabled={picked.length === 0}
+                onClick={() => { setConfirmText(''); setConfirmBulk(true) }}
+              >
+                Delete {picked.length || ''}
+              </Button>
+              <Button variant="ghost" icon={X} className="!py-2" onClick={exitSelect}>Cancel</Button>
+            </>
+          )}
+        </div>
+      )}
 
       {/* Search + Region / Entity filters (apply to list and map) */}
       {sites && sites.length > 0 && (
@@ -285,13 +355,23 @@ export default function Sites() {
           {filteredSites.map((s) => (
             <button
               key={s.id}
-              onClick={() => setSelected(s)}
-              className="card group flex flex-col gap-3 p-5 text-left transition-transform duration-200 ease-emil hover:-translate-y-0.5 active:scale-[0.99]"
+              onClick={() => (selectMode ? togglePick(s.id) : setSelected(s))}
+              aria-pressed={selectMode ? picked.includes(s.id) : undefined}
+              className={[
+                'card group flex flex-col gap-3 p-5 text-left transition-transform duration-200 ease-emil hover:-translate-y-0.5 active:scale-[0.99]',
+                selectMode && picked.includes(s.id) ? 'ring-2 ring-red-500' : '',
+              ].join(' ')}
             >
               <div className="flex items-start justify-between gap-3">
-                <span className="grid h-11 w-11 place-items-center rounded-2xl bg-brand-50 text-brand-700 shadow-clay-sm">
-                  <Building2 size={20} />
-                </span>
+                {selectMode ? (
+                  <span className={`grid h-11 w-11 place-items-center rounded-2xl shadow-clay-sm ${picked.includes(s.id) ? 'bg-red-50 text-red-600' : 'bg-clay-100 text-ink-400'}`}>
+                    {picked.includes(s.id) ? <CheckSquare size={20} /> : <Square size={20} />}
+                  </span>
+                ) : (
+                  <span className="grid h-11 w-11 place-items-center rounded-2xl bg-brand-50 text-brand-700 shadow-clay-sm">
+                    <Building2 size={20} />
+                  </span>
+                )}
                 {(s.region || s.entity) && (
                   <Badge tone="gray">{[s.region, s.entity].filter(Boolean).join(' · ')}</Badge>
                 )}
@@ -305,7 +385,7 @@ export default function Sites() {
                 )}
               </div>
               <span className="text-xs font-medium text-brand-700 opacity-0 transition group-hover:opacity-100">
-                View summary →
+                {selectMode ? (picked.includes(s.id) ? 'Selected — click to remove' : 'Click to select') : 'View summary →'}
               </span>
             </button>
           ))}
@@ -550,6 +630,77 @@ export default function Sites() {
           )}
         </div>
       </Modal>
+
+      {/* Bulk delete confirmation */}
+      <Modal
+        open={confirmBulk}
+        onClose={() => setConfirmBulk(false)}
+        title={`Delete ${pickedSites.length} site${pickedSites.length === 1 ? '' : 's'}?`}
+        size="lg"
+        footer={
+          <>
+            <Button variant="ghost" type="button" onClick={() => setConfirmBulk(false)}>Cancel</Button>
+            <Button
+              variant="danger"
+              icon={Trash2}
+              loading={busy}
+              disabled={confirmText.trim().toUpperCase() !== 'DELETE'}
+              onClick={runBulkDelete}
+            >
+              Delete {pickedSites.length} site{pickedSites.length === 1 ? '' : 's'}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-ink-600">
+            This permanently removes the sites below from your organisation. It cannot be undone.
+          </p>
+
+          <div className="max-h-56 overflow-auto rounded-2xl border border-clay-200">
+            <table className="w-full text-sm">
+              <tbody className="divide-y divide-clay-100">
+                {pickedSites.map((s) => (
+                  <tr key={s.id}>
+                    <td className="px-4 py-2 font-medium text-ink-800">{s.name}</td>
+                    <td className="px-4 py-2 text-ink-500">
+                      {[s.region, s.entity].filter(Boolean).join(' · ') || '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {(pickedImpact.extinguishers + pickedImpact.aeds + pickedImpact.incidents + pickedImpact.users) > 0 && (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              <p className="flex items-center gap-2 font-semibold">
+                <AlertTriangle size={16} /> Records are linked to these sites
+              </p>
+              <p className="mt-1">
+                {[
+                  pickedImpact.users && `${pickedImpact.users} people`,
+                  pickedImpact.incidents && `${pickedImpact.incidents} incidents`,
+                  pickedImpact.extinguishers && `${pickedImpact.extinguishers} extinguishers`,
+                  pickedImpact.aeds && `${pickedImpact.aeds} AEDs`,
+                ].filter(Boolean).join(', ')}{' '}
+                stay in the system and keep their stored site name, so history and reports remain readable.
+                Reassign anyone who still needs an active site.
+              </p>
+            </div>
+          )}
+
+          <Field label="Type DELETE to confirm">
+            <Input
+              value={confirmText}
+              onChange={(e) => setConfirmText(e.target.value)}
+              placeholder="DELETE"
+              autoComplete="off"
+            />
+          </Field>
+        </div>
+      </Modal>
+
     </>
   )
 }

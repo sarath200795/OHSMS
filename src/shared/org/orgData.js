@@ -373,3 +373,24 @@ export async function deleteSite(orgId, id, actor, label) {
     targetLabel: label,
   })
 }
+
+/**
+ * Delete several sites at once, chunked to stay inside Firestore's 500-op batch
+ * limit. Records already logged against a site (incidents, equipment, contacts…)
+ * are NOT touched — they keep their stored site name, so history stays readable.
+ * One audit entry names every site removed.
+ */
+export async function deleteSites(orgId, sites, actor) {
+  const list = sites.filter(Boolean)
+  for (let i = 0; i < list.length; i += 400) {
+    const batch = writeBatch(db)
+    for (const s of list.slice(i, i + 400)) batch.delete(moduleDoc(orgId, 'sites', s.id))
+    await batch.commit()
+  }
+  await logAudit(orgId, actor, AUDIT.SITE_DELETE, {
+    target: 'site',
+    targetLabel: `${list.length} sites`,
+    summary: `Deleted ${list.length} site(s): ${list.map((s) => s.name).join(', ').slice(0, 500)}`,
+  })
+  return list.length
+}
