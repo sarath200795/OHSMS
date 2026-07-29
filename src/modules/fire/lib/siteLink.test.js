@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { resolveSite, planSiteLinks, indexSites, SITE_NAME_OVERRIDES } from './siteLink'
+import { resolveSite, planSiteLinks, indexSites, suggestSite, SITE_NAME_OVERRIDES } from './siteLink'
 
 // Names below are real values from the Cult site master and the Fire Marshal
 // export, so these cases reflect the data rather than invented shapes.
@@ -73,6 +73,36 @@ describe('indexSites', () => {
     const dupes = [site('a', 'Cult Gym X'), site('b', 'Cult X')]
     const idx = indexSites(dupes)
     expect(idx.get('cult x').id).toBe('a')
+  })
+})
+
+// Suggestions exist for the upload screen, where a person confirms them. The
+// contract that matters is that they never fire for a name that already
+// resolves, and never offer something unrelated.
+describe('suggestSite', () => {
+  it('offers nothing when the name already resolves', () => {
+    expect(suggestSite('Cult Gym Shaikpet', SITES)).toBeNull()
+    expect(suggestSite('Cult Shaikpet', SITES)).toBeNull() // normalises
+    expect(suggestSite('Cult Suchitra Hybrid', SITES)).toBeNull() // override
+  })
+
+  it('offers the near miss for a misspelling', () => {
+    const s = suggestSite('Cult Gym Shaikpett', SITES)
+    expect(s?.site.name).toBe('Cult Gym Shaikpet')
+  })
+
+  it('ignores word order', () => {
+    const s = suggestSite('Alwal Cult neo', SITES)
+    expect(s?.site.name).toBe('Cult neo gym Alwal')
+  })
+
+  it('offers nothing for a name with no relation to any site', () => {
+    expect(suggestSite('Zzzz Warehouse 12', SITES)).toBeNull()
+  })
+
+  it('offers nothing for a blank name', () => {
+    expect(suggestSite('', SITES)).toBeNull()
+    expect(suggestSite(null, SITES)).toBeNull()
   })
 })
 

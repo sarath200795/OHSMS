@@ -1008,6 +1008,9 @@ const cleanAed = (d) => ({
   brand: (d.brand || '').trim(),
   model: (d.model || '').trim(),
   centerName: (d.centerName || '').trim(),
+  // Set when the site was resolved against the registry (bulk upload, linking
+  // pass). Without it here the id would be silently dropped on write.
+  siteId: d.siteId || '',
   region: d.region || '',
   entity: d.entity || '',
   location: (d.location || '').trim(),
@@ -1158,6 +1161,8 @@ const cleanFas = (d) => ({
   deviceType: d.deviceType || 'Other',
   zone: (d.zone || '').trim(),
   centerName: (d.centerName || '').trim(),
+  // As with AEDs — the resolved registry link, dropped on write without this.
+  siteId: d.siteId || '',
   region: d.region || '',
   entity: d.entity || '',
   location: (d.location || '').trim(),

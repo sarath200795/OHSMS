@@ -1,12 +1,14 @@
-import { useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Upload, Download, FileSpreadsheet, CheckCircle2, AlertTriangle, X, Loader2 } from 'lucide-react'
+import { Upload, Download, FileSpreadsheet, CheckCircle2, AlertTriangle, X, Loader2, MapPin, Wand2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { PageHeader, Spinner } from '../components/ui'
 import { useAuth } from '../context/AuthContext'
 import { downloadAssetTemplate, parseAssetUpload, AED_BULK_COLUMNS, FAS_BULK_COLUMNS } from '../lib/exporter'
 import { bulkAddAeds, bulkAddFas } from '../lib/firestore'
+import { indexSites, resolveSite, suggestSite } from '../lib/siteLink'
+import { useAccessibleSites } from '../../../shared/org/useAccessibleSites'
 
 const CFG = {
   aed: {
@@ -30,9 +32,53 @@ export default function AssetBulkUpload() {
   const [committing, setCommitting] = useState(false)
   const [done, setDone] = useState(null)
 
+  // Accepted "did you mean?" answers, keyed by row index.
+  const [picked, setPicked] = useState({})
+  const orgSites = useAccessibleSites()
+
   const cfg = CFG[kind]
-  const reset = () => { setResult(null); setFileName(''); setDone(null) }
+  const reset = () => { setResult(null); setFileName(''); setDone(null); setPicked({}) }
   const switchKind = (k) => { setKind(k); reset() }
+
+  /**
+   * Check every parsed row's site against the registry.
+   *
+   * Three outcomes, and the middle one is the point: an exact or normalised
+   * match is taken silently, a close-but-different name is offered as a
+   * question rather than guessed at, and an unrecognised name blocks the row.
+   * Importing a site that does not exist is what produced the equipment records
+   * nothing could be matched to in the first place.
+   *
+   * With no registry loaded there is nothing to check against, so every row
+   * passes — an org that has not set up sites can still upload.
+   */
+  const checked = useMemo(() => {
+    if (!result?.valid.length) return []
+    if (!orgSites.length) return result.valid.map((row, i) => ({ row, i, status: 'ok' }))
+    const idx = indexSites(orgSites)
+    return result.valid.map((row, i) => {
+      const name = picked[i] || row.centerName
+      const hit = resolveSite(name, orgSites, idx)
+      if (hit) return { row, i, status: 'ok', site: hit.site }
+      const near = suggestSite(name, orgSites, idx)
+      return near
+        ? { row, i, status: 'suggest', suggestion: near.site, given: name }
+        : { row, i, status: 'missing', given: name }
+    })
+  }, [result, orgSites, picked])
+
+  const ready = checked.filter((c) => c.status === 'ok')
+  const suggested = checked.filter((c) => c.status === 'suggest')
+  const missing = checked.filter((c) => c.status === 'missing')
+
+  const acceptAll = () => {
+    setPicked((p) => {
+      const next = { ...p }
+      suggested.forEach((c) => { next[c.i] = c.suggestion.name })
+      return next
+    })
+    toast.success(`${suggested.length} site name(s) corrected`)
+  }
 
   const handleFile = async (file) => {
     if (!file) return
@@ -46,11 +92,16 @@ export default function AssetBulkUpload() {
   }
 
   const commit = async () => {
-    if (!result?.valid.length) return
+    if (!ready.length) return
     setCommitting(true)
     try {
-      const res = await cfg.add(orgId, orgName, result.valid, { uid: profile?.uid, name: profile?.name })
-      setResult(null); setFileName(''); setDone(res)
+      // Rows are written with the registry's own wording and id, so an import
+      // starts life linked rather than needing the linking pass afterwards.
+      const rows = ready.map(({ row, site }) => (site
+        ? { ...row, centerName: site.name, siteId: site.id, entity: site.entity || row.entity || '' }
+        : row))
+      const res = await cfg.add(orgId, orgName, rows, { uid: profile?.uid, name: profile?.name })
+      reset(); setDone(res)
       toast.success(`${res.created} ${cfg.label} added`)
     } catch (e) { toast.error(e.message) } finally { setCommitting(false) }
   }
@@ -96,22 +147,78 @@ export default function AssetBulkUpload() {
             {result && (
               <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
                 <div className="flex flex-wrap items-center gap-3">
-                  <span className="chip bg-green-100 text-green-700"><CheckCircle2 size={14} /> {result.valid.length} valid</span>
+                  <span className="chip bg-green-100 text-green-700"><CheckCircle2 size={14} /> {ready.length} ready</span>
+                  {suggested.length > 0 && <span className="chip bg-amber-100 text-amber-800"><AlertTriangle size={14} /> {suggested.length} need a site confirmed</span>}
+                  {missing.length > 0 && <span className="chip bg-red-100 text-red-700"><MapPin size={14} /> {missing.length} site not available</span>}
                   {result.errors.length > 0 && <span className="chip bg-red-100 text-red-700"><AlertTriangle size={14} /> {result.errors.length} with issues</span>}
                   <span className="text-sm text-ink-500">{result.total} total rows</span>
                 </div>
 
-                {result.valid.length > 0 && (
+                {suggested.length > 0 && (
+                  <div className="card overflow-hidden border border-amber-200">
+                    <div className="flex items-center justify-between gap-3 border-b border-amber-100 bg-amber-50 px-4 py-2.5">
+                      <span className="text-xs font-bold uppercase tracking-wide text-amber-700">Did you mean…?</span>
+                      <button className="btn-soft !bg-amber-100 !text-amber-900 px-2.5 py-1 text-xs" onClick={acceptAll}>
+                        <Wand2 size={14} /> Accept all {suggested.length}
+                      </button>
+                    </div>
+                    <ul className="divide-y divide-ink-100 text-sm">
+                      {suggested.slice(0, 12).map((c) => (
+                        <li key={c.i} className="flex flex-wrap items-center gap-x-2 gap-y-1 px-4 py-2.5">
+                          <strong>Row {c.i + 1}:</strong>
+                          <span className="text-ink-500 line-through">{c.given || '(no site)'}</span>
+                          <span className="text-ink-400">→</span>
+                          <span className="font-semibold text-ink-900">{c.suggestion.name}</span>
+                          <button
+                            className="btn-soft ml-auto px-2.5 py-1 text-xs"
+                            onClick={() => setPicked((p) => ({ ...p, [c.i]: c.suggestion.name }))}
+                          >
+                            Use this site
+                          </button>
+                        </li>
+                      ))}
+                      {suggested.length > 12 && (
+                        <li className="px-4 py-2 text-xs text-ink-400">…and {suggested.length - 12} more</li>
+                      )}
+                    </ul>
+                  </div>
+                )}
+
+                {missing.length > 0 && (
+                  <div className="card overflow-hidden border border-red-200">
+                    <div className="border-b border-red-100 bg-red-50 px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-red-600">
+                      Site is not available
+                    </div>
+                    <ul className="divide-y divide-ink-100 text-sm">
+                      {[...new Set(missing.map((c) => c.given || '(no site)'))].slice(0, 12).map((name) => (
+                        <li key={name} className="flex items-start gap-2 px-4 py-2.5">
+                          <MapPin size={15} className="mt-0.5 shrink-0 text-red-500" />
+                          <span>
+                            <strong>{name}</strong> is not in the site registry. Add the site first, or correct the
+                            spelling in your file — these rows will not be imported.
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {ready.length > 0 && (
                   <div className="card overflow-hidden">
-                    <div className="border-b border-ink-100 px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-ink-500">Preview ({Math.min(result.valid.length, 10)} of {result.valid.length})</div>
+                    <div className="border-b border-ink-100 px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-ink-500">Preview ({Math.min(ready.length, 10)} of {ready.length})</div>
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
                         <thead className="bg-clay-100/70 text-left text-xs uppercase text-ink-400">
                           <tr>{cfg.cols.map(([h]) => <th key={h} className="px-3 py-2">{h}</th>)}</tr>
                         </thead>
                         <tbody className="divide-y divide-ink-100">
-                          {result.valid.slice(0, 10).map((r, i) => (
-                            <tr key={i}>{cfg.cols.map(([h, f]) => <td key={h} className="px-3 py-2">{r[f] || '—'}</td>)}</tr>
+                          {ready.slice(0, 10).map((c) => (
+                            <tr key={c.i}>{cfg.cols.map(([h, f]) => (
+                              // Show the registry's wording, which is what will be written.
+                              <td key={h} className="px-3 py-2">
+                                {(f === 'centerName' && c.site ? c.site.name : c.row[f]) || '—'}
+                              </td>
+                            ))}</tr>
                           ))}
                         </tbody>
                       </table>
@@ -131,10 +238,15 @@ export default function AssetBulkUpload() {
                 )}
 
                 {result.valid.length > 0 && (
-                  <div className="flex justify-end gap-3">
+                  <div className="flex flex-wrap items-center justify-end gap-3">
+                    {suggested.length > 0 && (
+                      <span className="mr-auto text-sm text-amber-700">
+                        {suggested.length} row(s) are waiting on a site — confirm or fix them to include them.
+                      </span>
+                    )}
                     <button className="btn-ghost" onClick={reset}>Cancel</button>
-                    <button className="btn-primary" onClick={commit} disabled={committing}>
-                      {committing ? <Spinner size={18} /> : `Import ${result.valid.length} ${cfg.label}`}
+                    <button className="btn-primary" onClick={commit} disabled={committing || !ready.length}>
+                      {committing ? <Spinner size={18} /> : `Import ${ready.length} ${cfg.label}`}
                     </button>
                   </div>
                 )}

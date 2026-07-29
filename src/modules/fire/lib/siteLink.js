@@ -70,6 +70,43 @@ const alnum = (s) => base(s).replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').tr
 // "Gym" is noise: the site registry includes it, the equipment records often don't.
 const core = (s) => alnum(s).split(' ').filter((w) => w !== 'gym').join(' ')
 
+// ── Similarity, used only to suggest (never to match) ────────────────────────
+// Words are sorted before comparing so word order cannot matter, then compared
+// by character bigram overlap so a misspelling inside a word still scores high.
+// Comparing whole words alone is not enough: "Cult Shaikpett" and "Cult
+// Ameerpet" share exactly one word with "Cult Shaikpet", so a word-level score
+// ties them and picks whichever site comes first.
+const sortedCore = (s) => core(s).split(' ').filter(Boolean).sort().join(' ')
+
+function bigrams(s) {
+  const m = new Map()
+  for (let i = 0; i < s.length - 1; i += 1) {
+    const g = s.slice(i, i + 2)
+    m.set(g, (m.get(g) || 0) + 1)
+  }
+  return m
+}
+
+/** Sørensen–Dice over character bigrams: 1 is identical, 0 shares nothing. */
+function dice(a, b) {
+  const A = bigrams(a)
+  const B = bigrams(b)
+  let shared = 0
+  let total = 0
+  for (const n of A.values()) total += n
+  for (const [g, n] of B) {
+    total += n
+    const m = A.get(g)
+    if (m) shared += Math.min(m, n)
+  }
+  return total ? (2 * shared) / total : 0
+}
+
+// Below this, a suggestion is more likely to mislead than help. "Cult
+// Shaikpett" scores 0.96 against the site it means and 0.48 against the next
+// closest, so the gap this has to sit inside is real but not wide.
+const SUGGEST_FLOOR = 0.55
+
 /** Index a site list by each normalisation tier. First writer wins. */
 export function indexSites(sites) {
   const idx = new Map()
@@ -102,6 +139,37 @@ export function resolveSite(centerName, sites, idx = indexSites(sites)) {
 
   const hit = idx.get(base(raw)) || idx.get(alnum(raw)) || idx.get(core(raw))
   return hit ? { site: hit, how: 'normalised' } : null
+}
+
+/**
+ * The closest site name to one that did not resolve, for a "did you mean?"
+ * prompt on upload.
+ *
+ * This is the similarity scoring the header warns about, and it is used here
+ * for the one thing it is safe for: offering a person a choice. It never
+ * matches anything on its own — resolveSite still decides what is a match, and
+ * a suggestion only takes effect when someone accepts it. That is the whole
+ * difference between this and the mis-pairings that made the override table
+ * necessary.
+ *
+ * Scored by Dice coefficient over normalised word sets, so "Cult Ameerpet Gym"
+ * and "Cult Gym Ameerpet" score identically regardless of word order. The 0.5
+ * floor keeps unrelated names from being offered at all — a wrong suggestion a
+ * tired uploader accepts is worse than no suggestion.
+ */
+export function suggestSite(name, sites, idx = indexSites(sites)) {
+  if (!name || resolveSite(name, sites, idx)) return null
+  const want = sortedCore(name)
+  if (!want) return null
+
+  let best = null
+  for (const s of sites) {
+    const have = sortedCore(s.name)
+    if (!have) continue
+    const score = dice(want, have)
+    if (!best || score > best.score) best = { site: s, score }
+  }
+  return best && best.score >= SUGGEST_FLOOR ? best : null
 }
 
 /**
