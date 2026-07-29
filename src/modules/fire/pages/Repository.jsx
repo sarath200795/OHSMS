@@ -14,7 +14,9 @@ import { useAuth } from '../context/AuthContext'
 import { useFleet } from '../context/FleetContext'
 import { deriveStatus, isToBeRefilled, hasQuotation, hasDateIssue } from '../lib/extinguisherLogic'
 import { exportExtinguishers } from '../lib/exporter'
-import { bulkDeleteExtinguishers, markReceivedByVendor, resolveDefects, backfillExtinguisherQr } from '../lib/firestore'
+import { bulkDeleteExtinguishers, markReceivedByVendor, resolveDefects, backfillExtinguisherQr, linkExtinguishersToSites } from '../lib/firestore'
+import { planSiteLinks } from '../lib/siteLink'
+import { useAccessibleSites } from '../../../shared/org/useAccessibleSites'
 import { emptyFilters, applyListFilters, hasActiveFilters } from '../lib/listFilter'
 import { CATEGORY_LIST, PHYSICAL_DEFECT_KEYS } from '../lib/constants'
 
@@ -115,6 +117,33 @@ export default function Repository() {
   // printed or scanned until one is minted.
   const missingQr = extinguishers.filter((e) => !e.qrToken && !e.deletedAt).length
 
+  // Equipment came from a system with free-text site names; linking attaches
+  // each asset to the site registry and takes its entity from there.
+  const orgSites = useAccessibleSites()
+  const linkPlan = useMemo(
+    () => (orgSites.length ? planSiteLinks(extinguishers, orgSites) : null),
+    [extinguishers, orgSites]
+  )
+
+  const doLinkSites = async () => {
+    if (!linkPlan?.linked.length) return
+    const msg = `Link ${linkPlan.linked.length} extinguisher(s) to their site?
+
+` +
+      `${linkPlan.entityChanges} will also have Entity corrected from the site registry.` +
+      (linkPlan.unmatched.length ? `
+
+${linkPlan.unmatched.length} unit(s) across ${linkPlan.unmatchedCenters.length} center name(s) have no matching site and will be left alone:
+` + linkPlan.unmatchedCenters.slice(0, 12).join(', ') : '')
+    if (!window.confirm(msg)) return
+    try {
+      const r = await linkExtinguishersToSites(orgId, orgName, linkPlan, { uid: profile?.uid, name: profile?.name })
+      toast.success(`${r.linked} linked to sites · ${r.entityChanges} entity value(s) corrected`)
+    } catch (err) {
+      toast.error(err?.message || 'Could not link to sites')
+    }
+  }
+
   const doGenerateQr = async () => {
     try {
       const n = await backfillExtinguisherQr(orgId, orgName, extinguishers, { uid: profile?.uid, name: profile?.name })
@@ -156,6 +185,12 @@ export default function Repository() {
         <Link to="/equipment/bulk-upload" className="btn-soft"><Upload size={16} /> Bulk upload</Link>
         <button className="btn-ghost" onClick={doExport}><Download size={16} /> Export</button>
         <button className="btn-ghost" onClick={doPrint}><QrCode size={16} /> Print QR</button>
+        {linkPlan?.linked.length > 0 && (
+          <button className="btn-soft !bg-brand-100 !text-brand-800" onClick={doLinkSites}
+            title="Attach each asset to its site and take Entity from the site registry">
+            <Boxes size={16} /> Link {linkPlan.linked.length} to sites
+          </button>
+        )}
         {missingQr > 0 && (
           <button className="btn-soft !bg-amber-100 !text-amber-900" onClick={doGenerateQr}
             title="These assets have no QR code, so they cannot be printed or scanned">

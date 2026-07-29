@@ -2,7 +2,7 @@
 import * as XLSX from 'xlsx'
 import { format } from 'date-fns'
 import {
-  BULK_COLUMNS, TYPES, CAPACITIES, ENTITIES, REGIONS, DEFAULT_REGION, STATUS, STATUS_LABEL, DEFECTS,
+  BULK_COLUMNS, TYPES, CAPACITIES, ENTITIES, REGIONS, DEFAULT_REGION, STATUS, STATUS_LABEL, DEFECTS, normalizeEntity,
   FAS_DEVICE_TYPES, AED_STATUS, AED_STATUS_LABEL, FAS_STATUS, FAS_STATUS_LABEL,
 } from './constants'
 import { severityLabel, toDate } from './extinguisherLogic'
@@ -127,7 +127,7 @@ export async function parseAssetUpload(kind, file) {
   rows.forEach((r, idx) => {
     const rowNum = idx + 2
     const region = S(r, 'Region')
-    const entity = S(r, 'Entity')
+    const entity = normalizeEntity(S(r, 'Entity'))
     const data = kind === 'aed'
       ? {
           assetId: S(r, 'Asset ID'), brand: S(r, 'Brand'), model: S(r, 'Model'), centerName: S(r, 'Site'),
@@ -199,7 +199,8 @@ export async function parseUpload(file) {
       serialNo: String(r['Serial No'] ?? '').trim(),
       type: String(r['Type'] ?? '').trim(),
       capacity: String(r['Capacity'] ?? '').trim(),
-      entity: String(r['Entity'] ?? '').trim(),
+      // Accept the legacy 1P/2P/3P labels so older exports still upload.
+      entity: normalizeEntity(r['Entity']),
       region: region || DEFAULT_REGION, // default if blank
       centerName: String(r['Center Name'] ?? '').trim(),
       dateOfDeployment: toISODate(r['Date of Deployment']),

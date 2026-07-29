@@ -7,11 +7,16 @@
 const norm = (s) => (s == null ? '' : String(s)).trim().toLowerCase()
 
 function matchEquip(rec, site) {
-  const r = norm(site.region)
-  const e = norm(site.entity)
-  if (r && e) return norm(rec.region) === r && norm(rec.entity) === e
+  // An explicit link wins outright — set by the site-linking pass and immune to
+  // either side being renamed.
+  if (rec.siteId) return rec.siteId === site.id
+
+  // Otherwise match on the site's own name. Region+entity used to be tried
+  // first, but it attributes every asset in a region to every site in it: with
+  // 161 sites in one region that produced counts that were simply wrong.
   const n = norm(site.name)
   if (!n) return false
+  if (norm(rec.centerName) === n) return true
   const covered = rec.sitesCovered
   if (Array.isArray(covered)) return covered.some((c) => norm(c).includes(n))
   return norm(covered).includes(n) || norm(rec.site).includes(n) || norm(rec.location).includes(n)

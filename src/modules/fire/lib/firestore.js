@@ -389,6 +389,42 @@ export async function backfillExtinguisherQr(orgId, orgName, extinguishers, acto
   return missing.length
 }
 
+/**
+ * Attach extinguishers to the site registry.
+ *
+ * Writes the resolved siteId and takes entity from the linked site, which is
+ * the system of record for what a site is. The public QR mirror carries entity
+ * too, so it is rewritten in the same batch — otherwise a scanned label would
+ * keep showing the old value.
+ *
+ * `plan` comes from planSiteLinks(); nothing here decides what matches.
+ */
+export async function linkExtinguishersToSites(orgId, orgName, plan, actor) {
+  const items = plan.linked
+  if (!items.length) return { linked: 0, entityChanges: 0 }
+
+  // Two writes per asset, so chunk well inside the 500-op batch limit.
+  for (let i = 0; i < items.length; i += 200) {
+    const batch = writeBatch(db)
+    for (const { ext, site } of items.slice(i, i + 200)) {
+      const merged = { ...ext, siteId: site.id, siteName: site.name, entity: site.entity }
+      batch.update(extRef(orgId, ext.id), {
+        siteId: site.id,
+        siteName: site.name,
+        entity: site.entity,
+        updatedAt: serverTimestamp(),
+      })
+      if (ext.qrToken) batch.set(qrRef(ext.qrToken), mirrorPayload(orgId, orgName, ext.id, merged))
+    }
+    await batch.commit()
+  }
+
+  await logAudit(orgId, actor, AUDIT.EXT_UPDATE, {
+    summary: `Linked ${items.length} extinguisher(s) to sites; ${plan.entityChanges} entity value(s) corrected from the site registry`,
+  })
+  return { linked: items.length, entityChanges: plan.entityChanges }
+}
+
 /** Bulk add many extinguishers in chunked batches. Returns count written. */
 export async function bulkAddExtinguishers(orgId, orgName, rows, actor) {
   let written = 0

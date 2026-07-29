@@ -10,7 +10,23 @@ export const TYPES = ['ABC', 'CO2', 'Modular']
 export const CAPACITIES = ['2 Kg', '4.5 Kg', '5 Kg', '6 Kg']
 
 // Entity / business unit
-export const ENTITIES = ['1P', '2P', '3P', 'Fitso', 'EBO']
+// Entity uses the site registry's vocabulary — it is the system of record for
+// what a site is. Equipment arrived from a standalone system labelled 1P/2P/3P,
+// which turned out to be the same axis under different names.
+export const ENTITIES = ['COCO', 'FOCO', 'FOFO', 'Marketplace', 'Fitso', 'EBO', 'Pilate']
+
+/**
+ * Legacy equipment labels, still accepted on upload so existing exports keep
+ * working. The translation is approximate on purpose — 1P is usually COCO but
+ * sometimes FOFO, and 2P spans FOFO and FOCO — so it is only a starting value:
+ * linking an asset to its site overwrites entity with the site's own, which is
+ * exact. Never present these as choices; they exist to avoid rejecting a file.
+ */
+export const LEGACY_ENTITIES = { '1P': 'COCO', '2P': 'FOFO', '3P': 'Marketplace' }
+export const normalizeEntity = (v) => {
+  const s = String(v ?? '').trim()
+  return LEGACY_ENTITIES[s] || s
+}
 
 // Geographic region
 export const REGIONS = ['North', 'South', 'East', 'West']
