@@ -180,13 +180,21 @@ export const AED_STATUS_COLOR = {
   [AED_STATUS.OUT_OF_SERVICE]: '#dc2626',
 }
 
-// Defects a public QR scanner can report against an AED.
+// The catch-all every asset defect sheet ends with. Named rather than repeated
+// so the modal can recognise it and insist on a note — a bare "Other" tells an
+// approver nothing, and it is the one option whose meaning lives in the note.
+export const OTHER_DEFECT = 'Other'
+
+// Defects a public QR scanner can report against an AED. Battery and pads are
+// split into expiry vs condition because they are different failures with
+// different fixes — an expired pad is a reorder, a damaged one is immediate.
 export const AED_DEFECTS = [
-  'Battery Issue',
-  'Lock Issue',
+  'Battery Discharged',
+  'Battery Expired',
   'Pads Expired',
-  'Pads Missing',
-  'Battery Expired / Discharged',
+  'Pads Damaged',
+  'Key availability for AED box',
+  OTHER_DEFECT,
 ]
 
 // ── FAS (Fire Alarm System) device inventory ─────────────────────────────────
@@ -227,7 +235,7 @@ export const FAS_DEFECTS = [
   'Manual Call Point (MCP) Faulty',
   'Hooter Not Working',
   'Isolated Zone',
-  'Other',
+  OTHER_DEFECT,
 ]
 
 // Asset-kind → its public-reportable defect list.

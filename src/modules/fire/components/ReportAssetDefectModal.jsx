@@ -3,7 +3,7 @@ import { motion } from 'framer-motion'
 import { AlertTriangle, Send } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { Modal, Spinner } from './ui'
-import { ASSET_DEFECTS, REPORTER_ROLES } from '../lib/constants'
+import { ASSET_DEFECTS, OTHER_DEFECT, REPORTER_ROLES } from '../lib/constants'
 import { createAssetReport } from '../lib/firestore'
 
 /**
@@ -27,8 +27,11 @@ export default function ReportAssetDefectModal({ open, onClose, asset, kind }) {
   const options = ASSET_DEFECTS[kind] || []
   const label = asset.label || (kind === 'fas' ? 'FAS device' : 'AED')
 
+  const needsNote = selected === OTHER_DEFECT
+
   const submit = async () => {
     if (!selected) return toast.error('Select what is wrong')
+    if (needsNote && !note.trim()) return toast.error('Describe the problem in the note')
     if (!role) return toast.error('Select who is reporting')
     setBusy(true)
     try {
@@ -89,7 +92,7 @@ export default function ReportAssetDefectModal({ open, onClose, asset, kind }) {
       </div>
 
       <div className="mt-4">
-        <label className="label">Note (optional)</label>
+        <label className="label">{needsNote ? 'Describe the problem *' : 'Note (optional)'}</label>
         <textarea
           className="input min-h-[72px]"
           placeholder="Describe what you observed…"
