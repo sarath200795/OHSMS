@@ -10,6 +10,7 @@ import { useAuth } from '../../../shared/auth/AuthContext'
 import { useAccessibleSites } from '../../../shared/org/useAccessibleSites'
 import { subscribeContacts, subscribeLayouts, subscribeRescuePlans } from '../lib/firestore'
 import { refreshSites, needsRealNumber, siteNeedsRefresh } from '../lib/autofill'
+import { activeProvider } from '../lib/nearby'
 
 const PAGE_SIZE = 25
 
@@ -300,10 +301,26 @@ export default function SiteRepository() {
           <div className="space-y-4">
             <p className="text-sm text-ink-600">
               Looks up the nearest Hospital, Police station and Fire station from each site&apos;s latitude and
-              longitude, and stores each service&apos;s own published phone number. Where OpenStreetMap has no
-              number, the contact is saved with the name and distance but a blank number — never a national
-              helpline standing in for a direct line.
+              longitude, and stores each service&apos;s own published phone number. Where no number is published,
+              the contact is saved with the name and distance but a blank number — never a national helpline
+              standing in for a direct line. The search widens to 8, 15 then 30 km until it finds a station
+              that publishes one.
             </p>
+
+            {activeProvider() === 'osm' ? (
+              <p className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                <span className="font-semibold">Using OpenStreetMap.</span> It is free but incomplete — many
+                stations publish no phone number, and its police and fire entries are sometimes mis-tagged.
+                For reliable names and numbers, set a Google Places key
+                (<code className="text-xs">VITE_GOOGLE_MAPS_API_KEY</code>) and redeploy; results below are
+                worth spot-checking either way.
+              </p>
+            ) : (
+              <p className="rounded-2xl border border-green-200 bg-green-50 p-3 text-sm text-green-900">
+                <span className="font-semibold">Using Google Places</span> — curated names and numbers, with
+                OpenStreetMap as an automatic fallback if the key or quota fails.
+              </p>
+            )}
 
             <div className="space-y-2">
               <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-clay-200 p-3">
@@ -335,9 +352,11 @@ export default function SiteRepository() {
             )}
 
             <p className="text-xs text-ink-500">
-              Runs one site at a time with a short pause, because the public OpenStreetMap servers rate-limit
-              bursts — expect roughly {Math.max(1, Math.round((refreshTargets.length * 2.5) / 60))} minute(s) for
-              {' '}{refreshTargets.length} site{refreshTargets.length === 1 ? '' : 's'}. You can leave this open.
+              Runs one site at a time with a pause between them, because the public map servers rate-limit
+              bursts — measured at roughly {activeProvider() === 'google' ? '4' : '45'} seconds per site, so
+              about {Math.max(1, Math.round((refreshTargets.length * (activeProvider() === 'google' ? 4 : 45)) / 60))}
+              {' '}minute(s) for {refreshTargets.length} site{refreshTargets.length === 1 ? '' : 's'}. You can
+              leave this running and carry on elsewhere; use Stop to end it early and keep what has been saved.
             </p>
           </div>
         ) : (

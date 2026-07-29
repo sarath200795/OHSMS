@@ -322,9 +322,10 @@ export default function ContactsSection({ site, contacts, users }) {
                     )}
                     <p className="mt-1 text-xs text-ink-400">
                       ~{r.distanceKm} km away
-                      {r.phoneSource === 'none' && ' · OpenStreetMap has no phone for this one — add it after saving'}
-                      {r.phoneSource === 'osm' && r.nearestName && r.name !== r.nearestName &&
+                      {r.phoneSource === 'none' && ` · no published number within ${r.searchedKm} km — add it after saving`}
+                      {r.phoneSource !== 'none' && r.nearestName && r.name !== r.nearestName &&
                         ` · closest is ${r.nearestName} (~${r.nearestDistanceKm} km) but has no number`}
+                      {r.phoneSource === 'google' && ' · Google'}
                     </p>
                   </div>
                 ))}

@@ -32,11 +32,18 @@ export function siteNeedsRefresh(site, contacts) {
   return mine.length === 0 || mine.some(needsRealNumber)
 }
 
-const noteFor = (r) =>
-  `Nearest ${r.role.toLowerCase()} (~${r.distanceKm} km) via OpenStreetMap` +
-  (r.phoneSource === 'none'
-    ? ' · OpenStreetMap publishes no number for this one — confirm it locally and enter it manually'
-    : '')
+function noteFor(r) {
+  const base = `Nearest ${r.role.toLowerCase()} (~${r.distanceKm} km) via OpenStreetMap`
+  if (r.phoneSource === 'none') {
+    return `${base} · no published number within ${r.searchedKm} km — confirm it locally and enter it manually`
+  }
+  // The closest station does not always publish a number. When we had to reach
+  // past it, say so plainly rather than quietly moving the contact further out.
+  if (r.nearestName && r.nearestName !== r.name) {
+    return `${base} · closest is ${r.nearestName} (~${r.nearestDistanceKm} km) but publishes no number`
+  }
+  return base
+}
 
 /**
  * Look up the nearest services for one site and upsert its external contacts.
