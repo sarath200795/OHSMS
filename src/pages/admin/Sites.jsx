@@ -17,7 +17,7 @@ import {
 import { initials } from '../../shared/lib/format'
 import { regionsOf, entitiesOf } from '../../shared/auth/access'
 import { normalizeScopeConfig } from '../../shared/org/scopeConfig'
-import { siteStats } from './siteStats'
+import { siteStats, linkAssets } from './siteStats'
 import { parseSitesCsv, sitesCsvTemplate } from './parseSitesCsv'
 
 const SitesMap = lazy(() => import('./SitesMap'))
@@ -151,19 +151,27 @@ export default function Sites() {
     }
   }
 
+  // Every asset resolved to a site once. Shared by the panel and the map so the
+  // two can never disagree, and computed here because the per-site rollup below
+  // walks every asset for every site.
+  const links = useMemo(
+    () => linkAssets([...extinguishers, ...aeds], sites || []),
+    [extinguishers, aeds, sites]
+  )
+
   const stats = useMemo(
-    () => (selected ? siteStats(selected, { extinguishers, aeds, incidents, users }) : null),
-    [selected, extinguishers, aeds, incidents, users]
+    () => (selected ? siteStats(selected, { extinguishers, aeds, incidents, users, links }) : null),
+    [selected, extinguishers, aeds, incidents, users, links]
   )
 
   // Pre-computed summary per site, for the map hover bubbles.
   const statsBySite = useMemo(() => {
     const m = {}
     ;(sites || []).forEach((s) => {
-      m[s.id] = siteStats(s, { extinguishers, aeds, incidents, users })
+      m[s.id] = siteStats(s, { extinguishers, aeds, incidents, users, links })
     })
     return m
-  }, [sites, extinguishers, aeds, incidents, users])
+  }, [sites, extinguishers, aeds, incidents, users, links])
 
   const regionOptions = useMemo(() => regionsOf(sites || []), [sites])
   const entityOptions = useMemo(() => entitiesOf(sites || []), [sites])
