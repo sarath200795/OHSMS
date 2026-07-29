@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Boxes, Download, Trash2, QrCode, AlertTriangle, Filter, Pencil, CheckCircle2, Truck, FileText, CalendarX, Plus } from 'lucide-react'
+import { Boxes, Download, Trash2, QrCode, AlertTriangle, Filter, Pencil, CheckCircle2, Truck, FileText, CalendarX, Plus, Upload } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { PageHeader, EmptyState, Modal, Spinner } from '../components/ui'
 import { TableSkeleton } from '../components/Skeleton'
@@ -14,7 +14,7 @@ import { useAuth } from '../context/AuthContext'
 import { useFleet } from '../context/FleetContext'
 import { deriveStatus, isToBeRefilled, hasQuotation, hasDateIssue } from '../lib/extinguisherLogic'
 import { exportExtinguishers } from '../lib/exporter'
-import { bulkDeleteExtinguishers, markReceivedByVendor, resolveDefects } from '../lib/firestore'
+import { bulkDeleteExtinguishers, markReceivedByVendor, resolveDefects, backfillExtinguisherQr } from '../lib/firestore'
 import { emptyFilters, applyListFilters, hasActiveFilters } from '../lib/listFilter'
 import { CATEGORY_LIST, PHYSICAL_DEFECT_KEYS } from '../lib/constants'
 
@@ -111,6 +111,19 @@ export default function Repository() {
     exportExtinguishers(list, `extinguishers-${Date.now()}.xlsx`, today)
     toast.success(`Exported ${list.length} rows`)
   }
+  // Assets imported before the QR system carry no token, so they cannot be
+  // printed or scanned until one is minted.
+  const missingQr = extinguishers.filter((e) => !e.qrToken && !e.deletedAt).length
+
+  const doGenerateQr = async () => {
+    try {
+      const n = await backfillExtinguisherQr(orgId, orgName, extinguishers, { uid: profile?.uid, name: profile?.name })
+      toast.success(n ? `QR codes generated for ${n} extinguisher(s)` : 'Every extinguisher already has a QR code')
+    } catch (err) {
+      toast.error(err?.message || 'Could not generate QR codes')
+    }
+  }
+
   const doPrint = () => {
     const ids = selected.size ? Array.from(selected) : visible.map((e) => e.id)
     navigate('/equipment/qr-print', { state: { ids } })
@@ -140,8 +153,15 @@ export default function Repository() {
     <div>
       <PageHeader title="Repository" subtitle={countLabel} icon={Boxes}>
         <Link to="/equipment/add" className="btn-primary"><Plus size={16} /> Add extinguisher</Link>
+        <Link to="/equipment/bulk-upload" className="btn-soft"><Upload size={16} /> Bulk upload</Link>
         <button className="btn-ghost" onClick={doExport}><Download size={16} /> Export</button>
         <button className="btn-ghost" onClick={doPrint}><QrCode size={16} /> Print QR</button>
+        {missingQr > 0 && (
+          <button className="btn-soft !bg-amber-100 !text-amber-900" onClick={doGenerateQr}
+            title="These assets have no QR code, so they cannot be printed or scanned">
+            <QrCode size={16} /> Generate {missingQr} missing QR
+          </button>
+        )}
       </PageHeader>
 
       {/* Filters (client-side; all matching rows shown at once) */}

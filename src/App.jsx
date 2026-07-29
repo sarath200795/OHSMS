@@ -5,6 +5,9 @@ import ProtectedRoute from './shared/auth/ProtectedRoute'
 import AppShell from './shared/layout/AppShell'
 import { FullPageLoader, SkeletonDetail } from './shared/ui'
 
+// Public QR landing for equipment labels — no auth, so it stays outside the shell.
+const QrLanding = lazy(() => import('./modules/fire/pages/QrLanding'))
+
 // Public / auth pages (eager — small, first paint).
 import SetupNeeded from './pages/SetupNeeded'
 import Login from './pages/auth/Login'
@@ -67,6 +70,8 @@ export default function App() {
       <Route path="/register-org" element={<RegisterOrg />} />
       <Route path="/signup" element={<Signup />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
+      {/* Scanned from a printed extinguisher label — deliberately public. */}
+      <Route path="/qr/:token" element={<QrLanding />} />
       <Route path="/pending" element={<PendingApproval />} />
 
       {/* App */}

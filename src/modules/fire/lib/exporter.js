@@ -6,6 +6,7 @@ import {
   FAS_DEVICE_TYPES, AED_STATUS, AED_STATUS_LABEL, FAS_STATUS, FAS_STATUS_LABEL,
 } from './constants'
 import { severityLabel, toDate } from './extinguisherLogic'
+import { tokenFromQrValue } from './qr'
 
 // Normalize a cell value (Date or string) to a yyyy-MM-dd string.
 function toISODate(v) {
@@ -135,6 +136,7 @@ export function downloadTemplate() {
     'Date of Deployment': '2024-01-15',
     'Date of Next Refill': '2025-01-15',
     'Date of Next HPT': '2027-01-15',
+    'QR Link': '',
   }
   const ws = XLSX.utils.json_to_sheet([example], { header: BULK_COLUMNS })
   ws['!cols'] = BULK_COLUMNS.map(() => ({ wch: 20 }))
@@ -169,6 +171,8 @@ export async function parseUpload(file) {
       dateOfDeployment: toISODate(r['Date of Deployment']),
       dateOfNextRefill: toISODate(r['Date of Next Refill']),
       dateOfNextHPT: toISODate(r['Date of Next HPT']),
+      // Reuse a QR code the site has already printed, when one is supplied.
+      qrToken: tokenFromQrValue(r['QR Link']),
     }
 
     const issues = []

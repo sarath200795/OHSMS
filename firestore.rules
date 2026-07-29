@@ -137,6 +137,27 @@ service cloud.firestore {
         allow update, delete: if false;
       }
 
+      // Defect reports raised by scanning an equipment QR code. Whoever spots a
+      // discharged extinguisher is rarely a portal user, and requiring an
+      // account first is how defects go unreported — so an unauthenticated
+      // create is allowed, but only in the exact shape the QR page produces:
+      // a pending defect report that an approver must still accept. It cannot
+      // be used to write an approved record, change status, or edit anything.
+      // Note this is a public write surface; enable App Check to stop abuse.
+      match /reports/{reportId} {
+        allow create: if isApprovedMemberOf(orgId) || (
+          request.resource.data.source == 'qr'
+          && request.resource.data.kind == 'defect'
+          && request.resource.data.approvalStatus == 'pending'
+          && request.resource.data.reportedBy == 'public'
+          && request.resource.data.extId is string
+          && request.resource.data.extId.size() > 0
+          && request.resource.data.extId.size() < 200
+          && request.resource.data.note is string
+          && request.resource.data.note.size() <= 500
+        );
+      }
+
       // Generic module data (incidents, assessments, permits, inspections,
       // extinguishers, meetings, meta/stats, sites, notifications, …). Approved
       // members read/create/update; managers+ delete. auditLogs is excluded so

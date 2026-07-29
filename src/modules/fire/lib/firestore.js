@@ -306,16 +306,19 @@ function mirrorPayload(orgId, orgName, id, ext) {
     orgName: orgName || '',
     extId: id,
     token: ext.qrToken,
+    // Every field is defaulted: Firestore rejects `undefined`, and assets that
+    // predate a column (or arrived by import) legitimately lack one. The add
+    // path always supplies them, but backfilling existing stock does not.
     serialNo: ext.serialNo || '',
-    type: ext.type,
-    capacity: ext.capacity,
-    entity: ext.entity,
+    type: ext.type || '',
+    capacity: ext.capacity || '',
+    entity: ext.entity || '',
     region: ext.region || '',
-    centerName: ext.centerName,
+    centerName: ext.centerName || '',
     dateOfDeployment: ext.dateOfDeployment || '',
     dateOfNextRefill: ext.dateOfNextRefill || '',
     dateOfNextHPT: ext.dateOfNextHPT || '',
-    status: ext.status,
+    status: ext.status || '',
     physicalDefects: ext.physicalDefects || [],
     updatedAt: serverTimestamp(),
   }
@@ -357,6 +360,35 @@ export async function addExtinguisher(orgId, orgName, data, actor) {
   return { id: ref.id, qrToken }
 }
 
+/**
+ * Give extinguishers that have no QR code one, and publish their public mirror.
+ *
+ * Assets that predate the QR system — imported, seeded, or created before it
+ * existed — carry no token, so "Print QR" produced nothing for them and a scan
+ * could never resolve. Backfills only what is missing; an existing token is
+ * left alone so labels already on the wall keep working.
+ *
+ * Returns the number of assets given a code.
+ */
+export async function backfillExtinguisherQr(orgId, orgName, extinguishers, actor) {
+  const missing = extinguishers.filter((e) => !e.qrToken && !e.deletedAt)
+  if (!missing.length) return 0
+  // Each asset is 2 writes, so chunk well inside the 500-op batch limit.
+  for (let i = 0; i < missing.length; i += 200) {
+    const batch = writeBatch(db)
+    for (const asset of missing.slice(i, i + 200)) {
+      const qrToken = generateQrToken()
+      batch.update(extRef(orgId, asset.id), { qrToken, updatedAt: serverTimestamp() })
+      batch.set(qrRef(qrToken), mirrorPayload(orgId, orgName, asset.id, { ...asset, qrToken }))
+    }
+    await batch.commit()
+  }
+  await logAudit(orgId, actor, AUDIT.EXT_UPDATE, {
+    summary: `Generated QR codes for ${missing.length} extinguisher(s) that had none`,
+  })
+  return missing.length
+}
+
 /** Bulk add many extinguishers in chunked batches. Returns count written. */
 export async function bulkAddExtinguishers(orgId, orgName, rows, actor) {
   let written = 0
@@ -368,7 +400,9 @@ export async function bulkAddExtinguishers(orgId, orgName, rows, actor) {
     const created = []
     for (const data of chunk) {
       const ref = doc(extCol(orgId))
-      const qrToken = generateQrToken()
+      // Reuse a QR code the site already has printed, when the upload supplied
+      // one; otherwise mint a fresh token.
+      const qrToken = data.qrToken || generateQrToken()
       const ext = {
         serialNo: data.serialNo || '',
         type: data.type,
@@ -432,7 +466,9 @@ export async function bulkUpsertExtinguishers(orgId, orgName, { creates = [], up
     const batch = writeBatch(db)
     for (const data of chunk) {
       const ref = doc(extCol(orgId))
-      const qrToken = generateQrToken()
+      // Reuse a QR code the site already has printed, when the upload supplied
+      // one; otherwise mint a fresh token.
+      const qrToken = data.qrToken || generateQrToken()
       const ext = {
         serialNo: data.serialNo || '',
         type: data.type,

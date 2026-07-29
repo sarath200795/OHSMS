@@ -206,4 +206,7 @@ export const BULK_COLUMNS = [
   'Date of Deployment',
   'Date of Next Refill',
   'Date of Next HPT',
+  // Optional: an existing printed QR value (full URL or bare token). Blank mints
+  // a new code, so organizations with labels already on the wall keep them.
+  'QR Link',
 ]
