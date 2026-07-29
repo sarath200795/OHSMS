@@ -1201,7 +1201,7 @@ export async function bulkDeleteFas(orgId, items, actor) {
 
 // ── AED / FAS public defect reports (submitted from a QR scan) ─────────────────
 /** Create a pending asset-defect report (public QR scan). Lands in Approvals. */
-export async function createAssetReport(orgId, { assetKind, assetRefId, assetLabel, defect, token }) {
+export async function createAssetReport(orgId, { assetKind, assetRefId, assetLabel, defect, token, reporterRole, note }) {
   await addDoc(reportCol(orgId), {
     kind: 'asset_defect',
     assetKind,
@@ -1211,7 +1211,13 @@ export async function createAssetReport(orgId, { assetKind, assetRefId, assetLab
     token: token || '',
     approvalStatus: 'pending',
     source: 'qr',
+    reportedBy: 'public',
     reportedByName: 'QR Scan (Public)',
+    // Same two fields an extinguisher report carries, because the Approvals card
+    // reads them off the report regardless of kind — without them an AED or panel
+    // fault arrives anonymous next to a fully attributed extinguisher one.
+    reporterRole: reporterRole || null,
+    note: note || '',
     reportedAt: serverTimestamp(),
     createdAt: serverTimestamp(),
   })

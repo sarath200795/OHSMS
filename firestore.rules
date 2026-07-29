@@ -147,14 +147,34 @@ service cloud.firestore {
       match /reports/{reportId} {
         allow create: if isApprovedMemberOf(orgId) || (
           request.resource.data.source == 'qr'
-          && request.resource.data.kind == 'defect'
           && request.resource.data.approvalStatus == 'pending'
           && request.resource.data.reportedBy == 'public'
-          && request.resource.data.extId is string
-          && request.resource.data.extId.size() > 0
-          && request.resource.data.extId.size() < 200
           && request.resource.data.note is string
           && request.resource.data.note.size() <= 500
+          && (
+            // An extinguisher defect, keyed by the unit it was raised against.
+            (
+              request.resource.data.kind == 'defect'
+              && request.resource.data.extId is string
+              && request.resource.data.extId.size() > 0
+              && request.resource.data.extId.size() < 200
+            )
+            // An AED or fire-alarm fault. Same public surface, different sheet:
+            // these carry no extId, so the extinguisher clause above can never
+            // admit them and they need their own shape. assetKind is pinned to
+            // the two known kinds because approving one writes to the matching
+            // collection — an unrecognised kind would target nothing.
+            || (
+              request.resource.data.kind == 'asset_defect'
+              && request.resource.data.assetKind in ['aed', 'fas']
+              && request.resource.data.assetRefId is string
+              && request.resource.data.assetRefId.size() > 0
+              && request.resource.data.assetRefId.size() < 200
+              && request.resource.data.defect is string
+              && request.resource.data.defect.size() > 0
+              && request.resource.data.defect.size() <= 200
+            )
+          )
         );
       }
 

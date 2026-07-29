@@ -96,6 +96,54 @@ describe('public QR mirror (/qr)', () => {
   })
 })
 
+// A QR scan is a public write surface, so the rule admits exactly two shapes:
+// an extinguisher defect keyed by extId, and an AED/FAS fault keyed by
+// assetKind + assetRefId. AED and FAS carry no extId, so before the second
+// clause existed every fault reported from a scan was rejected outright.
+describe('public defect reports from a QR scan (/reports)', () => {
+  const reportAt = (db, id) => doc(db, 'organizations', 'orgA', 'reports', id)
+  const extReport = {
+    source: 'qr', kind: 'defect', approvalStatus: 'pending', reportedBy: 'public',
+    extId: 'ext1', note: 'nozzle blocked',
+  }
+  const assetReport = {
+    source: 'qr', kind: 'asset_defect', approvalStatus: 'pending', reportedBy: 'public',
+    assetKind: 'aed', assetRefId: 'aed1', defect: 'Pads Expired', note: '',
+  }
+
+  it('a signed-out scanner can report an extinguisher defect', async () => {
+    const anon = testEnv.unauthenticatedContext().firestore()
+    await assertSucceeds(setDoc(reportAt(anon, 'r1'), extReport))
+  })
+
+  it('a signed-out scanner can report an AED defect', async () => {
+    const anon = testEnv.unauthenticatedContext().firestore()
+    await assertSucceeds(setDoc(reportAt(anon, 'r2'), assetReport))
+  })
+
+  it('a signed-out scanner can report a FAS defect', async () => {
+    const anon = testEnv.unauthenticatedContext().firestore()
+    await assertSucceeds(
+      setDoc(reportAt(anon, 'r3'), { ...assetReport, assetKind: 'fas', assetRefId: 'fas1', defect: 'Hooter Not Working' })
+    )
+  })
+
+  it('an asset report CANNOT arrive pre-approved', async () => {
+    const anon = testEnv.unauthenticatedContext().firestore()
+    await assertFails(setDoc(reportAt(anon, 'r4'), { ...assetReport, approvalStatus: 'approved' }))
+  })
+
+  it('an asset report CANNOT name a kind that maps to no collection', async () => {
+    const anon = testEnv.unauthenticatedContext().firestore()
+    await assertFails(setDoc(reportAt(anon, 'r5'), { ...assetReport, assetKind: 'extinguisher' }))
+  })
+
+  it('an asset report CANNOT omit the asset it is about', async () => {
+    const anon = testEnv.unauthenticatedContext().firestore()
+    await assertFails(setDoc(reportAt(anon, 'r6'), { ...assetReport, assetRefId: '' }))
+  })
+})
+
 describe('employee provisioning', () => {
   const emp = { role: 'member', status: 'approved', name: 'New Emp', email: 'new@t.co' }
 
