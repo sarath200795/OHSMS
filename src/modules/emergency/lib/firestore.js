@@ -290,6 +290,95 @@ export async function recallBaselines(orgId, site, baselines, existingSitePlans,
 }
 
 /**
+ * Shape one library entry as a storable baseline plan. Pure, so the install
+ * preview can show exactly what will be written before anything is.
+ */
+export function baselinePlanFrom(entry) {
+  const today = new Date().toISOString().slice(0, 10)
+  return cleanPlan({
+    kind: 'baseline',
+    scenario: entry.scenario,
+    title: entry.title,
+    description: entry.description,
+    triggers: entry.triggers,
+    assemblyPoint: 'Primary Assembly Point (confirm per site)',
+    steps: entry.steps.map((s, i) => ({ id: `st-${i}`, order: i + 1, action: s.action, responsible: s.responsible })),
+    team: (entry.team || []).map((role, i) => ({ id: `tm-${i}`, role, name: '', phone: '', uid: '' })),
+    equipment: entry.equipment || [],
+    // Baselines are the org's approved templates; sites still approve their own copies.
+    status: 'approved',
+    reviewedOn: today,
+    nextReviewOn: new Date(Date.now() + 365 * 86400000).toISOString().slice(0, 10),
+    revision: 1,
+  })
+}
+
+/**
+ * Decide what installing the library would change. Pure, so the behaviour that
+ * matters — never duplicating a scenario, never overwriting without being asked
+ * — is testable without writing to a real organization.
+ */
+export function planLibraryDiff(library, existingBaselines, replace = false) {
+  const byScenario = new Map((existingBaselines || []).map((p) => [p.scenario, p]))
+  return {
+    byScenario,
+    toAdd: library.filter((e) => !byScenario.has(e.scenario)),
+    toUpdate: replace ? library.filter((e) => byScenario.has(e.scenario)) : [],
+  }
+}
+
+/**
+ * Install the standard baseline library into this organization.
+ *
+ * This exists in the app rather than only in a seed script because setting up
+ * emergency procedures should not require a developer, a terminal or
+ * production credentials.
+ *
+ * Scenarios already present are skipped, so it is safe to re-run as the library
+ * grows. `replace: true` overwrites the existing baseline for each scenario and
+ * bumps its revision, which is what tells sites their copies are behind.
+ */
+export async function installBaselineLibrary(orgId, library, existingBaselines, actor, { replace = false } = {}) {
+  const { toAdd, toUpdate, byScenario } = planLibraryDiff(library, existingBaselines, replace)
+
+  if (!toAdd.length && !toUpdate.length) return { added: 0, updated: 0 }
+
+  // Chunked to stay inside Firestore's 500-operation batch limit.
+  const ops = [
+    ...toAdd.map((e) => ({ kind: 'add', entry: e })),
+    ...toUpdate.map((e) => ({ kind: 'update', entry: e, existing: byScenario.get(e.scenario) })),
+  ]
+  for (let i = 0; i < ops.length; i += 400) {
+    const batch = writeBatch(db)
+    for (const op of ops.slice(i, i + 400)) {
+      const data = baselinePlanFrom(op.entry)
+      if (op.kind === 'add') {
+        batch.set(doc(planCol(orgId)), {
+          ...data,
+          createdAt: serverTimestamp(),
+          createdBy: actor?.uid || null,
+          createdByName: actor?.name || '',
+        })
+      } else {
+        batch.update(planRef(orgId, op.existing.id), {
+          ...data,
+          revision: (Number(op.existing.revision) || 0) + 1,
+          updatedAt: serverTimestamp(),
+        })
+      }
+    }
+    await batch.commit()
+  }
+
+  await logAudit(orgId, actor, 'erp.baseline_install', {
+    module: 'emergency', target: 'rescuePlan', targetLabel: 'Baseline library',
+    summary: `Installed standard baseline library: ${toAdd.length} added` +
+      `${toUpdate.length ? `, ${toUpdate.length} replaced` : ''}`,
+  })
+  return { added: toAdd.length, updated: toUpdate.length }
+}
+
+/**
  * Has the baseline moved on since this site copy was taken?
  * Pure, so the list can flag stale procedures without a read.
  */
