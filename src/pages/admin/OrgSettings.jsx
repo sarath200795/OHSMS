@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
-import { Settings, Save, Activity, Plus, X, Layers, ChevronUp, ChevronDown, Lock, Building2, PhoneCall } from 'lucide-react'
+import { Settings, Save, Activity, Plus, X, Layers, ChevronUp, ChevronDown, Lock, Building2, PhoneCall, LifeBuoy } from 'lucide-react'
+import { ERP_ROLES, normalizeErpRoleLabels } from '../../shared/org/erpRoles'
 import { DEPARTMENTS } from '../../shared/auth/access'
 import { useAuth } from '../../shared/auth/AuthContext'
 import { subscribeOrg, updateOrgSettings, subscribeSites } from '../../shared/org/orgData'
@@ -26,6 +27,7 @@ export default function OrgSettings() {
   const [form, setForm] = useState({
     name: '', address: '', notificationEmail: '', activityTypes: [], departments: [],
     safetyHelplinePrimary: '', safetyHelplineSecondary: '',
+    erpRoleLabels: {},
   })
   const [customActivity, setCustomActivity] = useState('')
   const [newDept, setNewDept] = useState('')
@@ -52,6 +54,7 @@ export default function OrgSettings() {
           safetyHelplineSecondary: o.safetyHelplineSecondary || '',
           activityTypes: o.activityTypes || [],
           departments: Array.isArray(o.departments) && o.departments.length ? o.departments : DEPARTMENTS,
+          erpRoleLabels: normalizeErpRoleLabels(o.erpRoleLabels),
         })
         const cfg = normalizeScopeConfig(o.scopeConfig)
         setCustomFields(cfg.customFields)
@@ -98,6 +101,7 @@ export default function OrgSettings() {
         safetyHelplineSecondary: form.safetyHelplineSecondary,
         activityTypes: form.activityTypes,
         departments: form.departments,
+        erpRoleLabels: form.erpRoleLabels,
       }, actor)
       toast.success('Settings saved')
     } catch (err) {
@@ -247,6 +251,36 @@ export default function OrgSettings() {
                 <Input id="hl2" value={form.safetyHelplineSecondary}
                   onChange={(e) => setForm({ ...form, safetyHelplineSecondary: e.target.value })} />
               </Field>
+            </div>
+          </Card>
+
+          {/* Emergency response role names. The baseline rescue plans are written
+              against roles, not people; this is where an organization says what
+              it calls each one. */}
+          <Card>
+            <h3 className="flex items-center gap-2 font-semibold text-ink-800">
+              <LifeBuoy size={17} className="text-red-600" /> Emergency response roles
+            </h3>
+            <p className="mb-3 mt-1 text-sm text-ink-500">
+              The baseline rescue plans name a <b>role</b> for every step, never a person. Set what your
+              organization calls each role and it will read in your own language across rescue plans,
+              emergency contacts, mock drills and printed plans. Renaming is safe at any time — existing
+              records are unaffected.
+            </p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {ERP_ROLES.filter((r) => r.key !== 'Other').map((r) => (
+                <Field key={r.key} label={r.duty} htmlFor={`role-${r.key}`} hint={`Default: ${r.label}`}>
+                  <Input
+                    id={`role-${r.key}`}
+                    value={form.erpRoleLabels?.[r.key] ?? ''}
+                    placeholder={r.label}
+                    onChange={(e) => setForm({
+                      ...form,
+                      erpRoleLabels: { ...form.erpRoleLabels, [r.key]: e.target.value },
+                    })}
+                  />
+                </Field>
+              ))}
             </div>
           </Card>
 

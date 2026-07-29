@@ -12,6 +12,8 @@ import { useAuth } from '../../../shared/auth/AuthContext'
 import { subscribeOrgUsers } from '../../../shared/org/orgData'
 import { useAccessibleSites } from '../../../shared/org/useAccessibleSites'
 import { formatDate } from '../../../shared/lib/format'
+import { erpRoleLabel } from '../../../shared/org/erpRoles'
+import { useErpRoleLabels } from '../../../shared/org/useErpRoleLabels'
 import { fileToDataUrl } from '../../../shared/lib/files'
 import RescuePlans from '../components/RescuePlans'
 import ContactsSection from '../components/ContactsSection'
@@ -37,6 +39,7 @@ const SECTIONS = [
 export default function SiteDetail() {
   const { siteId } = useParams()
   const { orgId, actor, isManager } = useAuth()
+  const roleLabels = useErpRoleLabels()
   const [contacts, setContacts] = useState(null)
   const [layouts, setLayouts] = useState({})
   const [plans, setPlans] = useState([])
@@ -362,7 +365,7 @@ export default function SiteDetail() {
           <tbody>
             {siteContacts.internal.map((c) => (
               <tr key={c.id} className="border-b border-gray-300">
-                <td className="w-1/4 py-1.5 font-bold">{c.role}</td>
+                <td className="w-1/4 py-1.5 font-bold">{erpRoleLabel(c.role, roleLabels)}</td>
                 <td className="w-1/4 py-1.5">{c.name}</td>
                 <td className="w-1/4 py-1.5 font-mono font-bold">{c.phone}</td>
                 <td className="py-1.5">{c.email || ''}</td>

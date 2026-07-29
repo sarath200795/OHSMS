@@ -9,6 +9,8 @@ import { Card, Field, Input, Select, Textarea, Button, Modal, Badge, EmptyState 
 import { useAuth } from '../../../shared/auth/AuthContext'
 import DeptPersonPicker from '../../../shared/org/DeptPersonPicker'
 import { formatDate } from '../../../shared/lib/format'
+import { erpRoleLabel, renderRoleTokens, ERP_ROLES, ALL_EMPLOYEES } from '../../../shared/org/erpRoles'
+import { useErpRoleLabels } from '../../../shared/org/useErpRoleLabels'
 import {
   addRescuePlan, updateRescuePlan, deleteRescuePlan, recallBaselines, approveRescuePlan,
   RESCUE_SCENARIOS, PLAN_STATUS,
@@ -30,6 +32,7 @@ const statusMeta = (key) => PLAN_STATUS.find((s) => s.key === key) || PLAN_STATU
  *  • baseline mode        — the org-wide template library (`baseline` prop)
  */
 export default function RescuePlans({ site, plans, users, contacts = [], baseline = false }) {
+  const roleLabels = useErpRoleLabels()
   const { orgId, actor, isManager } = useAuth()
   const [editing, setEditing] = useState(null) // 'new' | plan | null
   const [form, setForm] = useState(EMPTY)
@@ -235,8 +238,12 @@ export default function RescuePlans({ site, plans, users, contacts = [], baselin
                         <li key={s.id} className="flex gap-2.5 text-sm">
                           <span className="grid h-6 w-6 shrink-0 place-items-center rounded-lg bg-brand-600 text-xs font-bold text-white">{s.order}</span>
                           <span className="text-ink-800">
-                            {s.action}
-                            {s.responsible && <span className="ml-1.5 text-xs font-semibold text-brand-600">— {s.responsible}</span>}
+                            {renderRoleTokens(s.action, roleLabels)}
+                            {s.responsible && (
+                              <span className="ml-1.5 text-xs font-semibold text-brand-600">
+                                — {erpRoleLabel(s.responsible, roleLabels)}
+                              </span>
+                            )}
                           </span>
                         </li>
                       ))}
@@ -247,7 +254,7 @@ export default function RescuePlans({ site, plans, users, contacts = [], baselin
                         <div className="flex flex-wrap gap-1.5">
                           {p.team.map((t) => (
                             <span key={t.id} className="chip bg-clay-100 text-ink-700">
-                              {t.role ? `${t.role}: ` : ''}{t.name}{t.phone ? ` · ${t.phone}` : ''}
+                              {t.role ? `${erpRoleLabel(t.role, roleLabels)}: ` : ''}{t.name}{t.phone ? ` · ${t.phone}` : ''}
                             </span>
                           ))}
                         </div>
@@ -389,7 +396,18 @@ export default function RescuePlans({ site, plans, users, contacts = [], baselin
                   </div>
                   <div className="grid flex-1 gap-2 sm:grid-cols-[2fr,1fr]">
                     <Input value={s.action} onChange={(e) => setStep(s.id, { action: e.target.value })} placeholder={`Step ${i + 1} — what happens`} />
-                    <Input value={s.responsible} onChange={(e) => setStep(s.id, { responsible: e.target.value })} placeholder="Responsible role" />
+                    {/* Roles are picked, not typed, so a step always resolves to
+                        a real contact when the plan is recalled to a site. */}
+                    <Select value={s.responsible} onChange={(e) => setStep(s.id, { responsible: e.target.value })}>
+                      <option value="">Responsible role…</option>
+                      {ERP_ROLES.filter((r) => r.key !== 'Other').map((r) => (
+                        <option key={r.key} value={r.key}>{erpRoleLabel(r.key, roleLabels)}</option>
+                      ))}
+                      <option value={ALL_EMPLOYEES}>{ALL_EMPLOYEES}</option>
+                      {s.responsible && ![...ERP_ROLES.map((r) => r.key), ALL_EMPLOYEES].includes(s.responsible) && (
+                        <option value={s.responsible}>{s.responsible}</option>
+                      )}
+                    </Select>
                   </div>
                   {form.steps.length > 1 && (
                     <button type="button" className="mt-1.5 rounded-lg p-1.5 text-ink-400 hover:bg-red-50 hover:text-red-600"

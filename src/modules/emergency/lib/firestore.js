@@ -11,6 +11,7 @@ import {
 } from 'firebase/firestore'
 import { db } from '../../../shared/firebase'
 import { logAudit } from '../../../shared/org/orgData'
+import { ERP_ROLE_KEYS } from '../../../shared/org/erpRoles'
 
 const col = (orgId) => collection(db, 'organizations', orgId, 'erpContacts')
 const ref = (orgId, id) => doc(db, 'organizations', orgId, 'erpContacts', id)
@@ -21,9 +22,9 @@ export const EXTERNAL_ROLES = [
   'Police', 'Ambulance', 'Fire Brigade', 'Hospital', 'Electricity Board',
   'Gas Emergency', 'Pollution Control', 'Other',
 ]
-export const INTERNAL_ROLES = [
-  'CM', 'CLM', 'Safety L1', 'Safety L2', 'Legal', 'HR', 'Security', 'First Aider', 'Other',
-]
+// Role KEYS are fixed (stored on contacts, plans and drills); each org chooses
+// the labels it sees, in Org Settings → General. See shared/org/erpRoles.
+export const INTERNAL_ROLES = ERP_ROLE_KEYS
 
 export function subscribeContacts(orgId, cb) {
   const q = query(col(orgId), orderBy('role'))

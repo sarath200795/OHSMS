@@ -2,10 +2,22 @@
 // Seeds the org-wide BASELINE emergency response library (erpRescuePlans with
 // kind: 'baseline'). Sites recall these and adapt them locally.
 //
-// Procedures are generic, industry-standard emergency response steps written
-// for this organization — structured role-by-role (DURING / AFTER) in the way
-// site ERPs conventionally are. Indian national emergency numbers are used:
-//   112 all-emergency · 100 police · 101 fire · 102/108 ambulance · 1091 women's helpline
+// Procedures are generic, industry-standard emergency response steps, usable by
+// any organization in any country — structured role-by-role (DURING / AFTER) in
+// the way site ERPs conventionally are.
+//
+// Two things are deliberately NOT hardcoded, so one library serves everybody:
+//
+//   ROLES. Every step names a role key ('CM', 'Safety L1', …), never a person
+//   and never a job title. Each organization sets what it calls those roles in
+//   Org Settings → General, and steps referring to a role in prose use a
+//   {{role:KEY}} placeholder that renders in the org's own language.
+//
+//   PHONE NUMBERS. Steps say "call the site Ambulance contact" rather than
+//   naming a national helpline, because 112/999/911 differ by country and the
+//   site's own mapped contacts (Emergency Response → Site Repository) already
+//   hold the nearest hospital, police and fire numbers. The national helpline
+//   still prints on the SOS poster, from Org Settings.
 //
 // Run:  node scripts/seed-erp-baseline.mjs [--replace]
 // ─────────────────────────────────────────────────────────────────────────────
@@ -15,7 +27,7 @@ import { connect } from './_firebase.mjs'
 // Roles map 1:1 onto the app's internal escalation chain (INTERNAL_ROLES), so a
 // site that recalls a plan gets its own named people and phone numbers filled in
 // automatically from that site's internal emergency contacts.
-const MGR = 'CM'          // Centre Manager — acts as Incident Commander on site
+const MGR = 'CM'          // site's senior manager — acts as Incident Commander
 const SAFETY = 'Safety L1'
 const SEC = 'Security'
 const FIRST_AID = 'First Aider'
@@ -29,7 +41,7 @@ const step = (action, responsible) => ({ action, responsible })
 /** Steps every evacuation shares, so the plans stay consistent. */
 const evacuationCore = (hazard) => [
   step(`Raise the alarm and announce evacuation for ${hazard}`, SEC),
-  step('Call the site Fire Brigade contact (101/112) — call even if the alarm has sounded', SEC),
+  step('Call the site Fire Brigade contact — call even if the alarm has sounded', SEC),
   step('Stop work, shut down equipment where safe, and leave by the nearest safe exit', ALL),
   step('Walk, do not run. Do not use lifts. Stay low if there is smoke', ALL),
   step('Assist anyone needing help, including persons with disabilities, using the buddy system', ALL),
@@ -64,7 +76,7 @@ const PLANS = [
     triggers: 'Smoke or flames from a vehicle · EV thermal runaway warning · burning smell in the parking area',
     steps: [
       step('Move people away and establish a cordon of at least 15 m (EVs can reignite and eject debris)', SEC),
-      step('Call the site Fire Brigade contact (101/112); state whether the vehicle is electric, petrol/diesel or CNG', SEC),
+      step('Call the site Fire Brigade contact; state whether the vehicle is electric, petrol/diesel or CNG', SEC),
       step('Do not attempt to extinguish a lithium-battery fire — it needs sustained water from the fire service', SAFETY),
       step('Evacuate adjacent vehicles and any occupied area downwind of the smoke', ALL),
       step('Shut off nearby fuel sources and isolate EV chargers at the distribution board', SAFETY),
@@ -82,7 +94,7 @@ const PLANS = [
     triggers: 'Person collapses or is unresponsive · chest pain or breathing difficulty · serious bleeding, fracture or head injury',
     steps: [
       step('Check the scene is safe, then check response and breathing — do not move the casualty unnecessarily', FIRST_AID),
-      step('Call the site Ambulance/Hospital contact (102/108); give the exact site address and nearest landmark', SEC),
+      step('Call the site Ambulance/Hospital contact; give the exact site address and nearest landmark', SEC),
       step('Start CPR and bring the AED immediately if the person is unresponsive and not breathing normally', FIRST_AID),
       step('Control severe bleeding with direct pressure; keep the casualty warm and reassured', FIRST_AID),
       step('Clear space around the casualty and move other members away to give privacy', MGR),
@@ -119,11 +131,11 @@ const PLANS = [
     description: 'Response where a person has died or sustained an injury likely to be fatal or permanently disabling.',
     triggers: 'Death on site · amputation, major head/spinal injury · injury requiring resuscitation',
     steps: [
-      step('Give first aid and call the site Ambulance contact (102/108) — assume life can be saved until confirmed otherwise', FIRST_AID),
+      step('Give first aid and call the site Ambulance contact — assume life can be saved until confirmed otherwise', FIRST_AID),
       step('Do not disturb the scene beyond what is needed to give aid or make it safe', IC),
       step('Cordon the area and stop all related activity; preserve equipment in its found state', SEC),
-      step('Notify the Centre Manager, Safety L2 and senior leadership immediately', MGR),
-      step('Inform the site Police contact (100) and the statutory authority as legally required', LEGAL),
+      step('Notify the {{role:CM}}, {{role:Safety L2}} and senior leadership immediately', MGR),
+      step('Inform the site Police contact and the statutory authority as legally required', LEGAL),
       step('Inform the family personally and sensitively — never by message; arrange support', HR_),
       step('Appoint a single spokesperson; no one else speaks to media or posts on social media', IC),
       step('Secure CCTV, registers, training records and equipment maintenance history', SEC),
@@ -141,7 +153,7 @@ const PLANS = [
     steps: [
       step('Move everyone upwind and away; stop anyone from walking through the spill', SAFETY),
       step('Identify the substance from the label and consult its Safety Data Sheet before acting', SAFETY),
-      step('Evacuate and call the site Fire Brigade contact (101/112) if the substance is unknown, reactive or the spill is large', IC),
+      step('Evacuate and call the site Fire Brigade contact if the substance is unknown, reactive or the spill is large', IC),
       step('Ventilate the area — open doors and windows; never mix chemicals to neutralise a spill', SAFETY),
       step('Wear the PPE specified on the SDS, then contain with the spill kit working inwards from the edge', SAFETY),
       step('Prevent entry to drains — pool chemicals and chlorine must not reach the water system', SAFETY),
@@ -161,7 +173,7 @@ const PLANS = [
       step('Do not operate any electrical switch, light or lift, and do not use mobile phones inside', ALL),
       step('Isolate the gas supply at the main valve if it can be reached safely', SAFETY),
       step('Evacuate the building and move upwind, well beyond the normal assembly point', ALL),
-      step('Call the site Fire Brigade contact (101/112) and the gas supplier from outside the building', SEC),
+      step('Call the site Fire Brigade contact and the gas supplier from outside the building', SEC),
       step('Ventilate by opening doors and windows on the way out only if it causes no delay', SAFETY),
       step('Prevent all ignition sources — no vehicles started, no smoking within the cordon', SEC),
       step('Take a headcount and report anyone missing to the responding service', MGR),
@@ -179,7 +191,7 @@ const PLANS = [
       step('Do NOT touch the casualty while they may still be in contact with the supply', ALL),
       step('Isolate the supply at the breaker or main switch before approaching', SAFETY),
       step('If isolation is impossible, push the person clear using a dry non-conductive item', FIRST_AID),
-      step('Call the site Ambulance contact (102/108); treat for cardiac arrest — shock commonly stops the heart', FIRST_AID),
+      step('Call the site Ambulance contact; treat for cardiac arrest — shock commonly stops the heart', FIRST_AID),
       step('Use CO2 extinguishers only on electrical fires — never water', SAFETY),
       step('Evacuate if the fire spreads beyond the equipment or smoke fills the area', IC),
       step('Lock out and tag out the affected circuit to prevent re-energising', SAFETY),
@@ -199,12 +211,12 @@ const PLANS = [
       step('Reach or throw first — use pole or rescue tube; enter the water only if trained', FIRST_AID),
       step('Support the head and neck if a spinal injury is suspected (diving or fall)', FIRST_AID),
       step('Remove the casualty from the water using the spine board where spinal injury is suspected', FIRST_AID),
-      step('Call the site Ambulance/Hospital contact (102/108) — every near-drowning needs hospital assessment', SEC),
+      step('Call the site Ambulance/Hospital contact — every near-drowning needs hospital assessment', SEC),
       step('Start rescue breaths and CPR at once; bring the AED and dry the chest before pads', FIRST_AID),
       step('Place a breathing but unresponsive casualty in the recovery position and keep them warm', FIRST_AID),
       step('Guide the ambulance to the poolside entrance', SEC),
       step('Test and record pool water and equipment condition; retain CCTV', SAFETY),
-      step('Reopen the pool only after the Centre Manager authorises it', MGR),
+      step('Reopen the pool only after the {{role:CM}} authorises it', MGR),
     ],
     equipment: ['Rescue tube / torpedo buoy', 'Reaching pole', 'Spine board with head blocks', 'AED', 'Oxygen kit', 'First aid kit', 'Whistle'],
     team: [FIRST_AID, SAFETY, SEC, MGR],
@@ -218,7 +230,7 @@ const PLANS = [
       step('Stop the machine and hit the emergency stop; keep others clear', ALL),
       step('Isolate and lock out the energy source — electrical, and any stored/spring or gravity load', SAFETY),
       step('Do not reverse or re-energise the machine to free the person unless advised by rescuers', SAFETY),
-      step('Call the site Fire Brigade contact (101/112) if release needs cutting or lifting equipment', SEC),
+      step('Call the site Fire Brigade contact if release needs cutting or lifting equipment', SEC),
       step('Support any suspended weight or load before attempting release', SAFETY),
       step('Give first aid, control bleeding and keep the casualty still and reassured', FIRST_AID),
       step('Prepare for crush injury — do not release a long-trapped limb without medical presence', FIRST_AID),
@@ -235,7 +247,7 @@ const PLANS = [
     triggers: 'Fall arrested by harness · person stranded on a ladder, roof or MEWP · fall from height',
     steps: [
       step('Stop all work at height on site and secure the area below from falling objects', SAFETY),
-      step('Call the site Fire Brigade contact (101/112) immediately — suspension trauma can be fatal within minutes', SEC),
+      step('Call the site Fire Brigade contact immediately — suspension trauma can be fatal within minutes', SEC),
       step('Do not attempt a rescue that puts the rescuer at risk of a second fall', SAFETY),
       step('Encourage a suspended person to keep their legs moving or use relief straps', FIRST_AID),
       step('Use the MEWP or rescue kit to bring the casualty down if trained and safe to do so', SAFETY),
@@ -254,7 +266,7 @@ const PLANS = [
     triggers: 'Entrant unresponsive or not answering · gas monitor alarm · loss of communication with entrant',
     steps: [
       step('NEVER enter to rescue without breathing apparatus — most confined space deaths are would-be rescuers', SAFETY),
-      step('Call the site Fire Brigade contact (101/112) for a technical rescue team immediately', SEC),
+      step('Call the site Fire Brigade contact for a technical rescue team immediately', SEC),
       step('Attempt non-entry rescue first using the tripod, winch and the entrant\'s retrieval line', SAFETY),
       step('Increase ventilation and continue atmospheric monitoring from outside', SAFETY),
       step('Account for everyone who entered using the permit and entry log', IC),
@@ -273,7 +285,7 @@ const PLANS = [
     triggers: 'Cracking or collapse of structure · racking failure · ceiling or fixture falling',
     steps: [
       step('Evacuate the whole building immediately — assume further collapse is possible', ALL),
-      step('Call the site Fire Brigade contact (101/112) and state that people may be trapped', SEC),
+      step('Call the site Fire Brigade contact and state that people may be trapped', SEC),
       step('Do not enter the debris field or move rubble — leave this to trained rescue teams', ALL),
       step('Establish a wide cordon and keep the assembly point well clear of the affected structure', SEC),
       step('Take a headcount and give rescuers a list of anyone unaccounted for and their last known position', MGR),
@@ -350,7 +362,7 @@ const PLANS = [
       step('Do NOT touch, move, open or submerge the item', ALL),
       step('Do not use mobile phones or radios near the item', ALL),
       step('Clear the immediate area and cordon at least 100 m where possible', SEC),
-      step('Call the site Police contact (100/112) and report exactly what was seen and where', SEC),
+      step('Call the site Police contact and report exactly what was seen and where', SEC),
       step('Evacuate along routes that do not pass the item; use an alternative assembly point', IC),
       step('Identify and keep back the person who found it to brief the police', SEC),
       step('Preserve CCTV covering the area and the period before discovery', SEC),
@@ -368,7 +380,7 @@ const PLANS = [
     steps: [
       step('RUN: If there is a safe route out, leave immediately and encourage others to follow', ALL),
       step('HIDE: If escape is not possible, lock or barricade a room, silence phones and stay out of sight', ALL),
-      step('TELL: Call the site Police contact (100/112) when safe; describe the person, weapon and location quietly', ALL),
+      step('TELL: Call the site Police contact when safe; describe the person, weapon and location quietly', ALL),
       step('Do not attempt to confront or disarm an armed aggressor', ALL),
       step('Lock down reception and stop further entry to the premises', SEC),
       step('Account for staff and members from a safe location; do not conduct a headcount in the open', MGR),

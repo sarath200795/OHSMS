@@ -11,6 +11,8 @@ import {
 } from '../lib/firestore'
 import { findNearestServices } from '../lib/nearby'
 import { autofillSite } from '../lib/autofill'
+import { erpRoleLabel } from '../../../shared/org/erpRoles'
+import { useErpRoleLabels } from '../../../shared/org/useErpRoleLabels'
 
 const EMPTY = {
   kind: 'external', role: 'Police', customRole: '', name: '', phone: '', altPhone: '', email: '',
@@ -23,10 +25,10 @@ const roleRank = (role) => {
   return i === -1 ? 99 : i
 }
 
-function ContactRow({ c, tone, isManager, onEdit, onDelete }) {
+function ContactRow({ c, tone, isManager, onEdit, onDelete, roleLabels }) {
   return (
     <li className="flex items-center gap-3 px-5 py-3">
-      <Badge tone={tone}>{c.role}</Badge>
+      <Badge tone={tone}>{c.kind === 'internal' ? erpRoleLabel(c.role, roleLabels) : c.role}</Badge>
       <div className="min-w-0 flex-1">
         <p className="truncate font-semibold text-ink-900">{c.name}</p>
         <p className="truncate text-xs text-ink-400">
@@ -55,6 +57,7 @@ function ContactRow({ c, tone, isManager, onEdit, onDelete }) {
  * Contacts default to this site; tick "all sites" for org-wide entries.
  */
 export default function ContactsSection({ site, contacts, users }) {
+  const roleLabels = useErpRoleLabels()
   const { orgId, actor, isManager } = useAuth()
   const [editing, setEditing] = useState(null) // 'new' | contact | null
   const [form, setForm] = useState(EMPTY)
@@ -182,7 +185,7 @@ export default function ContactsSection({ site, contacts, users }) {
           ) : (
             <ul className="divide-y divide-clay-200/60">
               {external.map((c) => (
-                <ContactRow key={c.id} c={c} tone="red" isManager={isManager} onEdit={openEdit} onDelete={remove} />
+                <ContactRow key={c.id} c={c} tone="red" isManager={isManager} onEdit={openEdit} onDelete={remove} roleLabels={roleLabels} />
               ))}
             </ul>
           )}
@@ -203,7 +206,7 @@ export default function ContactsSection({ site, contacts, users }) {
           ) : (
             <ul className="divide-y divide-clay-200/60">
               {internal.map((c) => (
-                <ContactRow key={c.id} c={c} tone="brand" isManager={isManager} onEdit={openEdit} onDelete={remove} />
+                <ContactRow key={c.id} c={c} tone="brand" isManager={isManager} onEdit={openEdit} onDelete={remove} roleLabels={roleLabels} />
               ))}
             </ul>
           )}
@@ -226,7 +229,9 @@ export default function ContactsSection({ site, contacts, users }) {
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Role *">
               <Select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
-                {roles.map((r) => <option key={r} value={r}>{r}</option>)}
+                {roles.map((r) => (
+                  <option key={r} value={r}>{form.kind === 'internal' ? erpRoleLabel(r, roleLabels) : r}</option>
+                ))}
               </Select>
             </Field>
             {form.role === 'Other' && (
