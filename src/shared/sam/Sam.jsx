@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
 import { Send, X } from 'lucide-react'
@@ -8,18 +8,35 @@ import { getStats } from './liveStats'
 import SamCharacter from './SamCharacter'
 
 const AVATAR = 76
+const MARGIN = 16
 
-/** Random on-screen spot (edge-biased) for Sam's idle wander. */
-function randomSpot() {
-  const w = window.innerWidth
-  const h = window.innerHeight
-  const margin = 16
-  const edges = [
-    { x: margin, y: margin + Math.random() * (h - 200) }, // left
-    { x: w - AVATAR - margin, y: margin + Math.random() * (h - 200) }, // right
-    { x: margin + Math.random() * (w - 200), y: h - AVATAR - margin - 60 }, // bottom
-  ]
-  return edges[Math.floor(Math.random() * edges.length)]
+// Sam walks; he does not fly. Travel is along a single ground line at a constant
+// pace, because those two things together are what make motion read as walking:
+// a character that changes height mid-journey, or that eases in and out like a
+// spring, reads as floating no matter how well the legs are animated.
+const GROUND_GAP = 76           // clear of the bottom edge and the "Sam" badge
+const SPEED = 90                // px per second — an unhurried stroll
+const MIN_STROLL = 160          // don't bother shuffling a few pixels
+
+const groundY = () => Math.max(MARGIN, window.innerHeight - AVATAR - GROUND_GAP)
+const maxX = () => Math.max(MARGIN, window.innerWidth - AVATAR - MARGIN)
+
+/**
+ * Where Sam walks next: somewhere along the ground, far enough from where he is
+ * to be worth the trip. Direction is chosen from whichever side has room, so he
+ * paces the width of the screen instead of fidgeting in one corner.
+ */
+function nextStop(fromX) {
+  const min = MARGIN
+  const max = maxX()
+  if (max - min < MIN_STROLL) return min
+  const reach = Math.min(max - min, MIN_STROLL)
+  const roomLeft = fromX - reach - min
+  const roomRight = max - (fromX + reach)
+  const goRight = roomRight > 0 && (roomLeft <= 0 || Math.random() < 0.5)
+  if (goRight) return fromX + reach + Math.random() * roomRight
+  if (roomLeft > 0) return min + Math.random() * roomLeft
+  return fromX > (min + max) / 2 ? min : max
 }
 
 /** Render **bold** spans + newlines in Sam's text parts. */
@@ -84,10 +101,7 @@ export default function Sam() {
   const { orgId, isApproved, profile } = useAuth()
   const reduce = useReducedMotion()
   const [open, setOpen] = useState(false)
-  const [pos, setPos] = useState(() => ({
-    x: Math.max(16, window.innerWidth - AVATAR - 24),
-    y: Math.max(16, window.innerHeight - AVATAR - 96),
-  }))
+  const [pos, setPos] = useState(() => ({ x: maxX(), y: groundY() }))
   const [messages, setMessages] = useState([
     {
       role: 'sam',
@@ -99,38 +113,56 @@ export default function Sam() {
   // Walk state drives the limb swing and which way Sam faces while strolling.
   const [walking, setWalking] = useState(false)
   const [facing, setFacing] = useState(1)
+  // How long the current journey takes. Derived from distance so Sam covers
+  // ground at one speed — a fixed duration would make him sprint across a wide
+  // screen and crawl across a narrow one, at the same leg cadence either way.
+  const [travel, setTravel] = useState(0)
   const dragging = useRef(false)
   const listRef = useRef(null)
+  // Framer animates to `pos` on its own clock, so the last committed target is
+  // the only reliable "where is Sam" — reading state here would lag a journey.
+  const posRef = useRef(pos)
+  const walkTimer = useRef(null)
 
-  /** Move to a spot, turning to face the direction of travel and walking there. */
-  const strollTo = (next) => {
-    setPos((prev) => {
-      if (next.x !== prev.x) setFacing(next.x > prev.x ? 1 : -1)
-      return next
-    })
+  /** Walk to a spot, facing the way he is going, legs moving for exactly the trip. */
+  const strollTo = useCallback((next) => {
+    const from = posRef.current
+    const distance = Math.hypot(next.x - from.x, next.y - from.y)
+    if (distance < 4) return
+    posRef.current = next
+    if (next.x !== from.x) setFacing(next.x > from.x ? 1 : -1)
+    const seconds = reduce ? 0 : Math.min(8, distance / SPEED)
+    setTravel(seconds)
+    setPos(next)
+    if (reduce) return
     setWalking(true)
-    // Matches the spring settle below; the legs stop when Sam does.
-    window.setTimeout(() => setWalking(false), 2200)
-  }
+    clearTimeout(walkTimer.current)
+    walkTimer.current = setTimeout(() => setWalking(false), seconds * 1000)
+  }, [reduce])
 
-  // Idle wander: when the chat is closed, stroll to a new spot every 25–45 s.
+  useEffect(() => () => clearTimeout(walkTimer.current), [])
+
+  // Idle wander: when the chat is closed, walk somewhere new every 25–45 s.
   useEffect(() => {
     if (open || reduce) return undefined
     let timer
     const schedule = () => {
       timer = setTimeout(() => {
-        if (!dragging.current) strollTo(randomSpot())
+        if (!dragging.current) strollTo({ x: nextStop(posRef.current.x), y: groundY() })
         schedule()
       }, 25_000 + Math.random() * 20_000)
     }
     schedule()
     return () => clearTimeout(timer)
-  }, [open, reduce])
+  }, [open, reduce, strollTo])
 
-  // Dock beside the panel when the chat opens — walking over rather than teleporting.
+  // Walk over to the panel when the chat opens. Sam stops to the left of it
+  // rather than climbing up beside it, so he stays standing on the ground.
   useEffect(() => {
-    if (open) strollTo({ x: Math.max(16, window.innerWidth - AVATAR - 24), y: Math.max(16, window.innerHeight - 520) })
-  }, [open])
+    if (!open) return
+    const panel = Math.min(384, window.innerWidth - 2 * MARGIN)
+    strollTo({ x: Math.max(MARGIN, window.innerWidth - panel - MARGIN - AVATAR - 12), y: groundY() })
+  }, [open, strollTo])
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' })
@@ -168,16 +200,25 @@ export default function Sam() {
         className="pointer-events-auto absolute left-0 top-0 grid cursor-grab place-items-center rounded-2xl active:cursor-grabbing"
         style={{ width: AVATAR, height: AVATAR, touchAction: 'none' }}
         animate={{ x: pos.x, y: pos.y }}
-        transition={reduce ? { duration: 0 } : { type: 'spring', stiffness: 40, damping: 14 }}
+        // A walk is constant-speed, so the tween is linear. A spring was what
+        // made Sam look like he was drifting: it eases out and overshoots,
+        // which is how something floating settles, not how someone walking stops.
+        transition={reduce ? { duration: 0 } : { type: 'tween', ease: 'linear', duration: travel }}
         drag
         dragMomentum={false}
         onDragStart={() => { dragging.current = true }}
         onDragEnd={(e, info) => {
           dragging.current = false
-          setPos((p) => ({
-            x: Math.min(Math.max(8, p.x + info.offset.x), window.innerWidth - AVATAR - 8),
-            y: Math.min(Math.max(8, p.y + info.offset.y), window.innerHeight - AVATAR - 8),
-          }))
+          const dropped = {
+            x: Math.min(Math.max(8, posRef.current.x + info.offset.x), window.innerWidth - AVATAR - 8),
+            y: Math.min(Math.max(8, posRef.current.y + info.offset.y), window.innerHeight - AVATAR - 8),
+          }
+          // Land where dropped, instantly — the drag already moved him there, so
+          // animating would drag him a second time. His next stroll walks him
+          // back down to the ground line.
+          posRef.current = dropped
+          setTravel(0)
+          setPos(dropped)
         }}
         onClick={() => { if (!dragging.current) setOpen((o) => !o) }}
         whileHover={{ scale: 1.08 }}

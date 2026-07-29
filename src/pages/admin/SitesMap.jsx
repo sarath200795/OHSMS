@@ -60,6 +60,69 @@ const Dot = ({ color }) => (
   />
 )
 
+// How close the bubble may come to the edge of the map before it is pushed back.
+const EDGE_PAD = 10
+
+/**
+ * Keep the hover bubble fully inside the map.
+ *
+ * Leaflet's `direction: 'auto'` only picks left or right from which half of the
+ * map the pin sits in. It never flips vertically and never clamps to the
+ * container, and the tooltip pane is clipped by the map's overflow — so a pin
+ * near the top or a side edge showed a bubble with its stats cut off.
+ *
+ * Measuring after the tooltip opens is what makes this exact: the bubble's
+ * height depends on whether the site has an address and live stats, so it
+ * cannot be predicted from the data alone.
+ */
+function fitBubble(map, e) {
+  const tip = e.tooltip
+  const el = tip?._container
+  if (!el) return
+
+  // Measure the natural position, not wherever the last hover left it.
+  el.style.marginLeft = '0px'
+  el.style.marginTop = '0px'
+  el.classList.remove('site-bubble--shifted')
+
+  const frame = map.getContainer().getBoundingClientRect()
+  const pin = map.latLngToContainerPoint(e.target.getLatLng())
+
+  // Flip below the pin when there is no room above it, rather than letting the
+  // bubble run off the top and hide the very stats it exists to show.
+  const wanted = pin.y - el.offsetHeight - 24 < EDGE_PAD ? 'bottom' : 'top'
+  if (tip.options.direction !== wanted) {
+    tip.options.direction = wanted
+    tip.update()
+  }
+
+  // Then slide it back inside horizontally and vertically. Margins are used
+  // rather than transforms because Leaflet owns the element's transform.
+  const box = el.getBoundingClientRect()
+  let dx = 0
+  let dy = 0
+  if (box.left < frame.left + EDGE_PAD) dx = frame.left + EDGE_PAD - box.left
+  else if (box.right > frame.right - EDGE_PAD) dx = frame.right - EDGE_PAD - box.right
+  if (box.top < frame.top + EDGE_PAD) dy = frame.top + EDGE_PAD - box.top
+  else if (box.bottom > frame.bottom - EDGE_PAD) dy = frame.bottom - EDGE_PAD - box.bottom
+  if (dx) el.style.marginLeft = `${dx}px`
+  if (dy) el.style.marginTop = `${dy}px`
+
+  // The arrow points at the pin. Once the bubble has slid sideways it no longer
+  // does, so drop it instead of leaving it aimed at empty space.
+  if (Math.abs(dx) > 8) el.classList.add('site-bubble--shifted')
+}
+
+/** A pin whose hover bubble is re-fitted to the map each time it opens. */
+function SiteMarker({ children, ...props }) {
+  const map = useMap()
+  return (
+    <Marker {...props} eventHandlers={{ tooltipopen: (e) => fitBubble(map, e) }}>
+      {children}
+    </Marker>
+  )
+}
+
 export default function SitesMap({ sites, stats = {}, onSelect, onEdit, onDelete, canManage }) {
   const located = sites.filter((s) => typeof s.lat === 'number' && typeof s.lng === 'number')
   const points = located.map((s) => [s.lat, s.lng])
@@ -108,8 +171,11 @@ export default function SitesMap({ sites, stats = {}, onSelect, onEdit, onDelete
           const st = stats[s.id]
           const color = colorOf(s.entity)
           return (
-            <Marker key={s.id} position={[s.lat, s.lng]} icon={pinIcon(color)}>
-              <Tooltip direction="auto" offset={[0, -6]} opacity={1} className="site-bubble" sticky>
+            <SiteMarker key={s.id} position={[s.lat, s.lng]} icon={pinIcon(color)}>
+              {/* Anchored to the pin rather than sticky to the cursor: a bubble
+                  this tall has to be measured and clamped to stay fully visible,
+                  and one that re-flows under a moving cursor cannot settle. */}
+              <Tooltip direction="top" offset={[0, -6]} opacity={1} className="site-bubble">
                 <div className="site-bubble-card">
                   <div className="site-bubble-title"><Dot color={color} />{s.name}</div>
                   <div className="site-bubble-sub">{[s.region, s.entity].filter(Boolean).join(' · ') || '—'}</div>
@@ -140,7 +206,7 @@ export default function SitesMap({ sites, stats = {}, onSelect, onEdit, onDelete
                   </div>
                 </div>
               </Popup>
-            </Marker>
+            </SiteMarker>
           )
         })}
         </MarkerClusterGroup>

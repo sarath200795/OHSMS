@@ -115,9 +115,15 @@ body {
   padding: 8px 12px;
   white-space: normal;
 }
-.leaflet-tooltip.site-bubble::before {
-  border-top-color: #ffffff;
-}
+/* The arrow colour has to be set per direction — the bubble flips below the pin
+   when there is no room above it, and Leaflet colours a different border edge
+   for each direction. */
+.leaflet-tooltip.site-bubble.leaflet-tooltip-top::before { border-top-color: #ffffff; }
+.leaflet-tooltip.site-bubble.leaflet-tooltip-bottom::before { border-bottom-color: #ffffff; }
+.leaflet-tooltip.site-bubble.leaflet-tooltip-left::before { border-left-color: #ffffff; }
+.leaflet-tooltip.site-bubble.leaflet-tooltip-right::before { border-right-color: #ffffff; }
+/* Slid sideways to stay on the map, so the arrow no longer aims at the pin. */
+.leaflet-tooltip.site-bubble--shifted::before { display: none; }
 .site-bubble-card { min-width: 200px; max-width: 260px; }
 .site-bubble-title { font-weight: 700; font-size: 13px; color: #0f172a; line-height: 1.2; }
 .site-bubble-sub { font-size: 11px; color: #64748b; }
