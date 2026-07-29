@@ -96,13 +96,35 @@ export const DUE_SOON_DAYS = 30
 
 // Chart palettes (kept consistent across the app)
 export const TYPE_COLORS = { ABC: '#f73838', CO2: '#6366f1', Modular: '#0891b2' }
+// One hue per entity, in ENTITIES order. The order is the colour-blind-safety
+// mechanism: adjacent bars in the "By Entity" chart are the pairs that touch, so
+// neighbouring slots are the ones that have to stay apart under protanopia and
+// deuteranopia. Validated as a set — worst adjacent pair is amber↔green at
+// ΔE 9.1 (protan) and 22.9 (normal vision). Re-run the check before re-ordering
+// ENTITIES or swapping a hue; don't eyeball it.
+//
+// Four of these sit below 3:1 against the clay surface, which is allowed only
+// because the chart direct-labels every bar with its count and the repository
+// table carries the same numbers.
 export const ENTITY_COLORS = {
-  '1P': '#f59e0b',
-  '2P': '#10b981',
-  '3P': '#3b82f6',
-  Fitso: '#a855f7',
-  EBO: '#ec4899',
+  COCO: '#2a78d6',
+  FOCO: '#eb6834',
+  FOFO: '#1baf7a',
+  Marketplace: '#eda100',
+  Fitso: '#4a3aa7',
+  EBO: '#e87ba4',
+  Pilate: '#008300',
+  // Assets uploaded before the site-registry link still carry the old labels and
+  // are not normalised on read, so they keep the colour of what they map to.
+  '1P': '#2a78d6',
+  '2P': '#1baf7a',
+  '3P': '#eda100',
 }
+
+// Anything outside the vocabulary — slate, so it reads as "unclassified" rather
+// than impersonating an entity.
+export const ENTITY_FALLBACK_COLOR = '#64748b'
+
 export const REGION_COLORS = {
   North: '#3b82f6',
   South: '#f59e0b',

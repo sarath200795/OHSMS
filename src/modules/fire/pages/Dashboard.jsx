@@ -16,7 +16,7 @@ import {
   fleetSummary, isToBeRefilled, isInProcess, isPhysicalDefect, isRefilledClosed, deriveStatus,
 } from '../lib/extinguisherLogic'
 import {
-  TYPES, CAPACITIES, ENTITIES, REGIONS, TYPE_COLORS, ENTITY_COLORS, REGION_COLORS,
+  TYPES, CAPACITIES, ENTITIES, REGIONS, TYPE_COLORS, ENTITY_COLORS, ENTITY_FALLBACK_COLOR, REGION_COLORS,
   STATUS, STATUS_LABEL, STATUS_COLOR, CATEGORY_LIST, CATEGORIES,
 } from '../lib/constants'
 
@@ -70,7 +70,7 @@ function renderPieValue({ cx, cy, midAngle, innerRadius, outerRadius, value }) {
 const STATUS_VALUES = Object.values(STATUS)
 function chipMeta(dim, value) {
   if (dim === 'type') return { label: value, color: TYPE_COLORS[value] || '#64748b' }
-  if (dim === 'entity') return { label: value, color: ENTITY_COLORS[value] || '#64748b' }
+  if (dim === 'entity') return { label: value, color: ENTITY_COLORS[value] || ENTITY_FALLBACK_COLOR }
   if (dim === 'region') return { label: value, color: REGION_COLORS[value] || '#64748b' }
   if (dim === 'capacity') return { label: value, color: '#0891b2' }
   if (dim === 'status') return { label: STATUS_LABEL[value] || value, color: STATUS_COLOR[value] || '#64748b' }
@@ -138,7 +138,7 @@ export default function Dashboard() {
     [filtered]
   )
   const entityData = useMemo(
-    () => ENTITIES.map((en) => ({ name: en, value: filtered.filter((e) => e.entity === en).length, color: ENTITY_COLORS[en] })),
+    () => ENTITIES.map((en) => ({ name: en, value: filtered.filter((e) => e.entity === en).length, color: ENTITY_COLORS[en] || ENTITY_FALLBACK_COLOR })),
     [filtered]
   )
   const regionData = useMemo(
