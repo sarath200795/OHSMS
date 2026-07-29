@@ -10,6 +10,7 @@ import {
   addContact, updateContact, deleteContact, EXTERNAL_ROLES, INTERNAL_ROLES,
 } from '../lib/firestore'
 import { findNearestServices } from '../lib/nearby'
+import { autofillSite } from '../lib/autofill'
 
 const EMPTY = {
   kind: 'external', role: 'Police', customRole: '', name: '', phone: '', altPhone: '', email: '',
@@ -128,22 +129,11 @@ export default function ContactsSection({ site, contacts, users }) {
     if (!autoResults?.length) return
     setAutoBusy(true)
     try {
-      let added = 0
-      let updated = 0
-      for (const r of autoResults) {
-        const payload = {
-          kind: 'external', role: r.role, name: r.name, phone: r.phone,
-          altPhone: '', email: '', employeeUid: '', department: '',
-          region: site.region || '', entity: site.entity || '', siteId: site.id, site: site.name,
-          notes: `Nearest ${r.role.toLowerCase()} (~${r.distanceKm} km) via OpenStreetMap${
-            r.phoneSource === 'none' ? ' · no number published in OpenStreetMap — add it manually' : ''
-          }`,
-        }
-        const existing = external.find((c) => c.siteId === site.id && c.role === r.role)
-        if (existing) { await updateContact(orgId, existing.id, payload, actor); updated += 1 }
-        else { await addContact(orgId, payload, actor); added += 1 }
-      }
-      toast.success(`${added} contact(s) added${updated ? `, ${updated} updated` : ''}`)
+      const { added, updated, withoutNumber } = await autofillSite(orgId, site, contacts, actor)
+      toast.success(
+        `${added} contact(s) added${updated ? `, ${updated} updated` : ''}` +
+        (withoutNumber ? ` · ${withoutNumber} need a number entered manually` : '')
+      )
       setAutoOpen(false)
       setAutoResults(null)
     } catch (err) {

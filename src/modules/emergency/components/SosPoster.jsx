@@ -113,7 +113,15 @@ export default function SosPoster({ site, contacts, accent = 'pink', onAccent, o
                       {r.contact ? (
                         <>
                           <div className="text-[clamp(9px,2.3vw,17px)] font-bold">{r.contact.name}</div>
-                          <div className="text-[clamp(9px,2.4vw,18px)] font-bold">{r.contact.phone}</div>
+                          {r.contact.phone ? (
+                            <div className="text-[clamp(9px,2.4vw,18px)] font-bold">{r.contact.phone}</div>
+                          ) : (
+                            // Never leave a blank under a station name on a printed
+                            // poster — say to use the national line instead.
+                            <div className="text-[clamp(7px,1.9vw,13px)] italic text-white/60">
+                              No direct line — dial {NATIONAL[r.dept]}
+                            </div>
+                          )}
                         </>
                       ) : (
                         <span className="text-[clamp(8px,2vw,14px)] italic text-white/50">Not mapped — use “Map nearest”</span>

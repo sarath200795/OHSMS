@@ -1,10 +1,15 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Building2, Search, PhoneCall, Phone, Map, LifeBuoy, CheckCircle2, AlertTriangle, ArrowRight } from 'lucide-react'
-import { PageHeader, Card, Select, StatCard, EmptyState, SkeletonTable, Badge, Pager } from '../../../shared/ui'
+import toast from 'react-hot-toast'
+import {
+  Building2, Search, PhoneCall, Phone, Map, LifeBuoy, CheckCircle2, AlertTriangle,
+  ArrowRight, Wand2, MapPin,
+} from 'lucide-react'
+import { PageHeader, Card, Select, StatCard, EmptyState, SkeletonTable, Badge, Pager, Button, Modal } from '../../../shared/ui'
 import { useAuth } from '../../../shared/auth/AuthContext'
 import { useAccessibleSites } from '../../../shared/org/useAccessibleSites'
 import { subscribeContacts, subscribeLayouts, subscribeRescuePlans } from '../lib/firestore'
+import { refreshSites, needsRealNumber, siteNeedsRefresh } from '../lib/autofill'
 
 const PAGE_SIZE = 25
 
@@ -14,8 +19,12 @@ function Cell({ ok, children }) {
 }
 
 export default function SiteRepository() {
-  const { orgId } = useAuth()
+  const { orgId, actor, isManager } = useAuth()
   const navigate = useNavigate()
+  const [refreshOpen, setRefreshOpen] = useState(false)
+  const [refreshScope, setRefreshScope] = useState('needed') // 'needed' | 'all'
+  const [run, setRun] = useState(null) // { done, total, current, log[], summary }
+  const cancelRef = useRef(false)
   const [contacts, setContacts] = useState(null)
   const [layouts, setLayouts] = useState({})
   const [plans, setPlans] = useState([])
@@ -42,8 +51,12 @@ export default function SiteRepository() {
       const external = mine.filter((c) => c.kind === 'external').length
       const sitePlans = plans.filter((p) => p.siteId === s.id && p.status === 'approved').length
       const hasLayout = !!layouts[s.id]
+      // External contacts still carrying no number, or a generic helpline left
+      // behind by the old auto-fill — these look verified but are not.
+      const unverified = mine.filter((c) => c.kind === 'external' && needsRealNumber(c)).length
       return {
-        site: s, internal, external, hasLayout, plans: sitePlans,
+        site: s, internal, external, hasLayout, plans: sitePlans, unverified,
+        hasCoords: s.lat != null && s.lng != null,
         ready: internal > 0 && external > 0 && hasLayout && sitePlans > 0,
       }
     })
@@ -83,6 +96,36 @@ export default function SiteRepository() {
     [shown]
   )
 
+  // ── Refresh nearest services from coordinates ──────────────────────────────
+  // Only sites that actually have coordinates can be looked up.
+  const withCoords = useMemo(() => siteInventory.filter((s) => s.lat != null && s.lng != null), [siteInventory])
+  const needingRefresh = useMemo(
+    () => withCoords.filter((s) => siteNeedsRefresh(s, contacts || [])),
+    [withCoords, contacts]
+  )
+  const refreshTargets = refreshScope === 'all' ? withCoords : needingRefresh
+  const noCoords = siteInventory.length - withCoords.length
+  const unverifiedTotal = useMemo(() => rows.reduce((n, r) => n + r.unverified, 0), [rows])
+
+  const startRefresh = async () => {
+    cancelRef.current = false
+    const targets = refreshTargets
+    setRun({ done: 0, total: targets.length, current: targets[0]?.name || '', log: [], summary: null })
+    const log = []
+    const summary = await refreshSites(
+      orgId, targets, contacts || [], actor,
+      ({ done, total, site, status, detail }) => {
+        if (status !== 'running') log.push({ site: site.name, status, detail })
+        setRun({ done, total, current: site.name, log: [...log].slice(-200), summary: null })
+      },
+      { shouldStop: () => cancelRef.current }
+    )
+    setRun((p) => ({ ...(p || {}), done: targets.length, total: targets.length, current: '', log, summary }))
+    toast[summary.failed ? 'error' : 'success'](
+      `${summary.ok} site(s) refreshed` + (summary.failed ? ` · ${summary.failed} failed` : '')
+    )
+  }
+
   const pageCount = Math.max(1, Math.ceil(shown.length / PAGE_SIZE))
   const safePage = Math.min(page, pageCount)
   const pageItems = shown.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE)
@@ -93,7 +136,35 @@ export default function SiteRepository() {
         title="Site Emergency Repository"
         subtitle="Each site's emergency contacts, FERP plan and scenario rescue plans — in one place"
         icon={Building2}
+        actions={isManager && withCoords.length > 0 && (
+          <Button icon={Wand2} variant="ghost" onClick={() => { setRun(null); setRefreshOpen(true) }}>
+            Refresh nearest services
+          </Button>
+        )}
       />
+
+      {/* Contacts that look verified but are not. Worth saying loudly: in an
+          emergency somebody will dial whatever is printed on the poster. */}
+      {isManager && unverifiedTotal > 0 && (
+        <Card className="mb-4 border-amber-200 bg-amber-50">
+          <div className="flex flex-wrap items-start gap-3">
+            <AlertTriangle size={18} className="mt-0.5 shrink-0 text-amber-600" />
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold text-amber-900">
+                {unverifiedTotal} external contact{unverifiedTotal === 1 ? '' : 's'} without a verified direct number
+              </p>
+              <p className="mt-0.5 text-sm text-amber-800">
+                These carry no number, or a national helpline (112/100/101/102/108) stored as if it were the
+                station&apos;s own line. Refresh pulls each service&apos;s published number from the site&apos;s
+                coordinates; anything OpenStreetMap has no number for is left blank for you to confirm locally.
+              </p>
+            </div>
+            <Button icon={Wand2} className="!py-2" onClick={() => { setRun(null); setRefreshOpen(true) }}>
+              Refresh now
+            </Button>
+          </div>
+        </Card>
+      )}
 
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard label="Sites" value={totals.sites} icon={Building2} tone="brand" />
@@ -169,6 +240,14 @@ export default function SiteRepository() {
                     <td className="px-4 py-3 text-ink-600">{r.site.entity || '—'}</td>
                     <td className="px-4 py-3 text-center">
                       <Cell ok={r.external > 0}><PhoneCall size={12} className="mr-1 inline" />{r.external}</Cell>
+                      {r.unverified > 0 && (
+                        <span
+                          className="ml-1 inline-flex items-center text-amber-600"
+                          title={`${r.unverified} contact(s) have no verified direct number`}
+                        >
+                          <AlertTriangle size={12} />
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-center">
                       <Cell ok={r.internal > 0}><Phone size={12} className="mr-1 inline" />{r.internal}</Cell>
@@ -195,6 +274,116 @@ export default function SiteRepository() {
           <Pager className="border-t border-clay-200/60 px-4 py-3" page={safePage} pageCount={pageCount} onPage={setPage} total={shown.length} pageSize={PAGE_SIZE} />
         </Card>
       )}
+
+      {/* ── Refresh nearest services from site coordinates ── */}
+      <Modal
+        open={refreshOpen}
+        onClose={() => { if (!run || run.summary) { setRefreshOpen(false); setRun(null) } }}
+        title="Refresh nearest emergency services"
+        size="lg"
+        footer={
+          run && !run.summary ? (
+            <Button variant="ghost" onClick={() => { cancelRef.current = true }}>Stop after this site</Button>
+          ) : run?.summary ? (
+            <Button onClick={() => { setRefreshOpen(false); setRun(null) }}>Close</Button>
+          ) : (
+            <>
+              <Button variant="ghost" onClick={() => setRefreshOpen(false)}>Cancel</Button>
+              <Button icon={Wand2} disabled={refreshTargets.length === 0} onClick={startRefresh}>
+                Refresh {refreshTargets.length} site{refreshTargets.length === 1 ? '' : 's'}
+              </Button>
+            </>
+          )
+        }
+      >
+        {!run ? (
+          <div className="space-y-4">
+            <p className="text-sm text-ink-600">
+              Looks up the nearest Hospital, Police station and Fire station from each site&apos;s latitude and
+              longitude, and stores each service&apos;s own published phone number. Where OpenStreetMap has no
+              number, the contact is saved with the name and distance but a blank number — never a national
+              helpline standing in for a direct line.
+            </p>
+
+            <div className="space-y-2">
+              <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-clay-200 p-3">
+                <input type="radio" className="mt-1" checked={refreshScope === 'needed'} onChange={() => setRefreshScope('needed')} />
+                <span>
+                  <span className="font-semibold text-ink-900">Only sites that need it ({needingRefresh.length})</span>
+                  <span className="block text-sm text-ink-500">
+                    Sites with no external contacts yet, or whose numbers are blank or a generic helpline.
+                  </span>
+                </span>
+              </label>
+              <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-clay-200 p-3">
+                <input type="radio" className="mt-1" checked={refreshScope === 'all'} onChange={() => setRefreshScope('all')} />
+                <span>
+                  <span className="font-semibold text-ink-900">All sites with coordinates ({withCoords.length})</span>
+                  <span className="block text-sm text-ink-500">
+                    Re-checks every site. Numbers you entered by hand are kept.
+                  </span>
+                </span>
+              </label>
+            </div>
+
+            {noCoords > 0 && (
+              <p className="flex items-start gap-2 rounded-2xl bg-clay-100 p-3 text-sm text-ink-600">
+                <MapPin size={15} className="mt-0.5 shrink-0" />
+                {noCoords} site{noCoords === 1 ? ' has' : 's have'} no latitude/longitude and will be skipped.
+                Add coordinates in the Sites module, then run this again.
+              </p>
+            )}
+
+            <p className="text-xs text-ink-500">
+              Runs one site at a time with a short pause, because the public OpenStreetMap servers rate-limit
+              bursts — expect roughly {Math.max(1, Math.round((refreshTargets.length * 2.5) / 60))} minute(s) for
+              {' '}{refreshTargets.length} site{refreshTargets.length === 1 ? '' : 's'}. You can leave this open.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between text-sm">
+              <span className="font-semibold text-ink-800">
+                {run.summary ? 'Finished' : `Looking up ${run.current}…`}
+              </span>
+              <span className="text-ink-500">{run.done} / {run.total}</span>
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-clay-200">
+              <div
+                className="h-full rounded-full bg-brand-500 transition-all duration-300"
+                style={{ width: `${run.total ? (run.done / run.total) * 100 : 0}%` }}
+              />
+            </div>
+
+            {run.summary && (
+              <div className="rounded-2xl bg-clay-100 p-3 text-sm text-ink-700">
+                <p className="font-semibold text-ink-900">
+                  {run.summary.ok} site(s) refreshed
+                  {run.summary.failed ? ` · ${run.summary.failed} failed` : ''}
+                  {run.summary.stopped ? ' · stopped early' : ''}
+                </p>
+                <p className="mt-1">
+                  {run.summary.added} contact(s) added, {run.summary.updated} updated ·{' '}
+                  <span className="font-medium text-green-700">{run.summary.withNumber} with a direct number</span>,{' '}
+                  <span className="font-medium text-amber-700">{run.summary.withoutNumber} still need one entered manually</span>.
+                </p>
+              </div>
+            )}
+
+            <div className="max-h-64 space-y-1 overflow-auto rounded-2xl border border-clay-200 p-2 text-sm">
+              {run.log.map((l, i) => (
+                <div key={`${l.site}-${i}`} className="flex items-start gap-2 px-2 py-1">
+                  {l.status === 'done'
+                    ? <CheckCircle2 size={14} className="mt-0.5 shrink-0 text-green-600" />
+                    : <AlertTriangle size={14} className="mt-0.5 shrink-0 text-red-500" />}
+                  <span className="font-medium text-ink-800">{l.site}</span>
+                  <span className="text-ink-500">— {l.detail}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </Modal>
     </>
   )
 }
