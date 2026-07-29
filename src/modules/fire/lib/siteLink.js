@@ -112,21 +112,27 @@ export function resolveSite(centerName, sites, idx = indexSites(sites)) {
  * clean — 1P is usually COCO but sometimes FOFO or Pilate. Reading it off the
  * linked site is exact per asset and needs no translation table.
  */
-export function planSiteLinks(extinguishers, sites) {
+export function planSiteLinks(assets, sites) {
   const idx = indexSites(sites)
   const linked = []
   const unmatched = []
 
-  for (const e of extinguishers) {
+  for (const e of assets) {
     if (e.deletedAt) continue
     const hit = resolveSite(e.centerName, sites, idx)
     if (!hit) { unmatched.push(e); continue }
     const entityChanged = (e.entity || '') !== (hit.site.entity || '')
-    const needsWrite = e.siteId !== hit.site.id || entityChanged
-    if (needsWrite) linked.push({ ext: e, site: hit.site, how: hit.how, entityChanged })
+    // The centre name the asset arrived with is whatever the source system
+    // called the place. Once it resolves, the registry's name is the right one
+    // to show, so a difference here is a change worth making.
+    const nameChanged = (e.centerName || '') !== hit.site.name
+    const needsWrite = e.siteId !== hit.site.id || entityChanged || nameChanged
+    // `asset` is the general name; `ext` is kept because the extinguisher path
+    // has always destructured it and renaming it there buys nothing.
+    if (needsWrite) linked.push({ asset: e, ext: e, site: hit.site, how: hit.how, entityChanged, nameChanged })
   }
 
-  const centers = new Set(extinguishers.filter((e) => !e.deletedAt).map((e) => e.centerName))
+  const centers = new Set(assets.filter((e) => !e.deletedAt).map((e) => e.centerName))
   // Assets with no center name at all are a real case (older records); label
   // them rather than listing an empty string the reader cannot act on.
   const unmatchedCenters = [...new Set(
@@ -139,5 +145,6 @@ export function planSiteLinks(extinguishers, sites) {
     unmatchedCenters,
     totalCenters: centers.size,
     entityChanges: linked.filter((l) => l.entityChanged).length,
+    nameChanges: linked.filter((l) => l.nameChanged).length,
   }
 }

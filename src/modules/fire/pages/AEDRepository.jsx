@@ -1,12 +1,14 @@
 import { useMemo, useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { HeartPulse, Plus, Pencil, Trash2, Search, Filter, X, Download, QrCode, Wrench, Upload, AlertTriangle } from 'lucide-react'
+import { HeartPulse, Plus, Pencil, Trash2, Search, Filter, X, Download, QrCode, Wrench, Upload, AlertTriangle, MapPin } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import toast from 'react-hot-toast'
 import { PageHeader, EmptyState, Modal, Badge, Spinner } from '../components/ui'
 import { useAuth } from '../context/AuthContext'
 import { useFleet } from '../context/FleetContext'
-import { addAed, updateAed, deleteAed, serviceAed, bulkAddAeds, generateAedQr, bulkDeleteAeds } from '../lib/firestore'
+import { addAed, updateAed, deleteAed, serviceAed, bulkAddAeds, generateAedQr, bulkDeleteAeds, linkAedsToSites } from '../lib/firestore'
+import { planSiteLinks } from '../lib/siteLink'
+import { useAccessibleSites } from '../../../shared/org/useAccessibleSites'
 import { exportRows } from '../lib/exporter'
 import { publicQrUrl } from '../lib/qr'
 import SiteScopePicker from '../../../shared/org/SiteScopePicker'
@@ -94,6 +96,40 @@ export default function AEDRepository() {
     const have = new Set(aeds.map((a) => a.centerName))
     return pickSites.filter((s) => !have.has(s))
   }, [pickSites, aeds])
+
+  // AEDs came from a system with free-text site names. Linking attaches each to
+  // the site registry, takes its entity from there, and adopts the registry's
+  // wording so the same building is not called two things across modules.
+  const orgSites = useAccessibleSites()
+  const linkPlan = useMemo(
+    () => (orgSites.length ? planSiteLinks(aeds, orgSites) : null),
+    [aeds, orgSites]
+  )
+
+  const doLinkSites = async () => {
+    if (!linkPlan?.linked.length) return
+    const sample = linkPlan.linked
+      .filter((l) => l.nameChanged)
+      .slice(0, 8)
+      .map((l) => `  ${l.asset.centerName || '(no name)'} → ${l.site.name}`)
+      .join('\n')
+    const msg = `Link ${linkPlan.linked.length} AED(s) to their site?\n\n`
+      + `${linkPlan.nameChanges} will be renamed to the site registry's name`
+      + `, and ${linkPlan.entityChanges} will have Entity corrected.`
+      + (sample ? `\n\n${sample}${linkPlan.nameChanges > 8 ? `\n  …and ${linkPlan.nameChanges - 8} more` : ''}` : '')
+      + (linkPlan.unmatched.length
+        ? `\n\n${linkPlan.unmatched.length} AED(s) across ${linkPlan.unmatchedCenters.length} name(s) have no matching site and will be left alone:\n`
+          + linkPlan.unmatchedCenters.slice(0, 12).join(', ')
+        : '')
+    if (!window.confirm(msg)) return
+    setBusy(true)
+    try {
+      const r = await linkAedsToSites(orgId, orgName, linkPlan, { uid: profile?.uid, name: profile?.name })
+      toast.success(`${r.linked} linked · ${r.nameChanges} renamed · ${r.entityChanges} entity value(s) corrected`)
+    } catch (e) {
+      toast.error(e?.message || 'Could not link to sites')
+    } finally { setBusy(false) }
+  }
 
   // Open the Add form with the next unique asset ID pre-assigned.
   const openAdd = () => setEditing({ ...EMPTY, assetId: nextAssetId('AED', aeds, 'assetId') })
@@ -206,6 +242,12 @@ export default function AEDRepository() {
         {isAdmin && missingSites.length > 0 && (
           <button className="btn-soft" onClick={generateAll} disabled={busy} title="Create an AED with a QR code for every 1P/2P site that doesn't have one">
             <QrCode size={16} /> Generate for 1P/2P sites ({missingSites.length})
+          </button>
+        )}
+        {isAdmin && linkPlan?.linked.length > 0 && (
+          <button className="btn-soft !bg-brand-100 !text-brand-800" onClick={doLinkSites} disabled={busy}
+            title="Attach each AED to its site, rename it to the site registry's name, and take Entity from there">
+            <MapPin size={16} /> Link {linkPlan.linked.length} to sites
           </button>
         )}
         {isAdmin && <Link to="/equipment/asset-bulk-upload" state={{ kind: 'aed' }} className="btn-soft"><Upload size={16} /> Bulk upload</Link>}

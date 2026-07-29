@@ -1031,6 +1031,52 @@ function aedMirror(orgId, orgName, id, a) {
   }
 }
 
+/**
+ * Attach AEDs to the site registry and adopt its wording.
+ *
+ * Unlike the extinguisher pass, this rewrites centerName to the matched site's
+ * name. AEDs are listed, filtered and searched by that string, so leaving the
+ * source system's version in place means the same building reads as two
+ * different places depending on which module you are looking at.
+ *
+ * The original is preserved once, as sourceCenterName. If a match is ever
+ * wrong, that string is the only evidence of what the asset actually arrived
+ * with — and it is what the override table is keyed on, so without it a bad
+ * link could not be traced back.
+ *
+ * `plan` comes from planSiteLinks(); nothing here decides what matches.
+ */
+export async function linkAedsToSites(orgId, orgName, plan, actor) {
+  const items = plan.linked
+  if (!items.length) return { linked: 0, entityChanges: 0, nameChanges: 0 }
+
+  // Two writes per asset, so chunk well inside the 500-op batch limit.
+  for (let i = 0; i < items.length; i += 200) {
+    const batch = writeBatch(db)
+    for (const { asset, site } of items.slice(i, i + 200)) {
+      const update = {
+        siteId: site.id,
+        siteName: site.name,
+        centerName: site.name,
+        entity: site.entity,
+        updatedAt: serverTimestamp(),
+      }
+      if (!asset.sourceCenterName && asset.centerName) update.sourceCenterName = asset.centerName
+      batch.update(aedRef(orgId, asset.id), update)
+      // The scanned label shows centerName and entity, so the public mirror has
+      // to move in the same batch or a QR would keep showing the old site.
+      if (asset.qrToken) batch.set(qrRef(asset.qrToken), aedMirror(orgId, orgName, asset.id, { ...asset, ...update }))
+    }
+    await batch.commit()
+  }
+
+  await logAudit(orgId, actor, 'aed.update', {
+    target: 'aed',
+    summary: `Linked ${items.length} AED(s) to sites; ${plan.nameChanges} renamed and ${plan.entityChanges} entity value(s) corrected from the site registry`,
+  })
+  return { linked: items.length, entityChanges: plan.entityChanges, nameChanges: plan.nameChanges }
+}
+
 export async function addAed(orgId, orgName, data, actor) {
   // Records are created WITHOUT a QR — generating one is an admin-only action.
   const ref = doc(aedCol(orgId))

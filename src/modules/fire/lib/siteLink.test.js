@@ -109,6 +109,36 @@ describe('planSiteLinks', () => {
     expect(plan.linked[0].entityChanged).toBe(true)
   })
 
+  // AEDs are listed and searched by centerName, so once an asset resolves, the
+  // registry's wording is the one to keep — otherwise the same building reads
+  // as two different places depending on which module you are in.
+  it('flags a rename when the asset calls the site something else', () => {
+    const plan = planSiteLinks([ext('a1', 'Cult Ameerpet', 'FOCO')], SITES)
+    expect(plan.linked).toHaveLength(1)
+    expect(plan.linked[0].nameChanged).toBe(true)
+    expect(plan.linked[0].site.name).toBe('Cult Gym Ameerpet')
+    expect(plan.nameChanges).toBe(1)
+  })
+
+  it('does not flag a rename when the names already agree', () => {
+    const plan = planSiteLinks([ext('a1', 'Cult Gym Shaikpet', 'COCO', { siteId: 's2' })], SITES)
+    expect(plan.linked).toHaveLength(0)
+    expect(plan.nameChanges).toBe(0)
+  })
+
+  it('re-links an asset that is linked but still carries the old name', () => {
+    const plan = planSiteLinks([ext('a1', 'Cult Ameerpet', 'FOCO', { siteId: 's1' })], SITES)
+    expect(plan.linked).toHaveLength(1)
+    expect(plan.linked[0].nameChanged).toBe(true)
+    expect(plan.linked[0].entityChanged).toBe(false)
+  })
+
+  it('exposes the matched asset as `asset` as well as `ext`', () => {
+    const plan = planSiteLinks([ext('a1', 'Cult Ameerpet', 'FOCO')], SITES)
+    expect(plan.linked[0].asset).toBe(plan.linked[0].ext)
+    expect(plan.linked[0].asset.id).toBe('a1')
+  })
+
   it('ignores deleted assets', () => {
     const plan = planSiteLinks([ext('e1', 'Cult Gym Shaikpet', '1P', { deletedAt: 'x' })], SITES)
     expect(plan.linked).toHaveLength(0)
