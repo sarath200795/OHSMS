@@ -41,6 +41,9 @@ const Actions = lazy(() => import('./modules/actions'))
 const Emergency = lazy(() => import('./modules/emergency'))
 const Objectives = lazy(() => import('./modules/objectives'))
 
+// Employee portal — brings its own shell, so it is not wrapped in AppShell.
+const Portal = lazy(() => import('./pages/portal'))
+
 function Protected({ children, ...guard }) {
   return (
     <ProtectedRoute {...guard}>
@@ -73,6 +76,17 @@ export default function App() {
       {/* Scanned from a printed extinguisher label — deliberately public. */}
       <Route path="/qr/:token" element={<QrLanding />} />
       <Route path="/pending" element={<PendingApproval />} />
+
+      {/* Employee portal. Signed in like everything else, but outside AppShell:
+          the admin sidebar is the thing this surface exists to replace. */}
+      <Route
+        path="/portal/*"
+        element={
+          <ProtectedRoute>
+            <Suspense fallback={<FullPageLoader />}><Portal /></Suspense>
+          </ProtectedRoute>
+        }
+      />
 
       {/* App */}
       <Route path="/hub" element={<Protected><Hub /></Protected>} />
