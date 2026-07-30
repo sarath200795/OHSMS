@@ -40,8 +40,9 @@ const Actions = lazy(() => import('./modules/actions'))
 const Emergency = lazy(() => import('./modules/emergency'))
 const Objectives = lazy(() => import('./modules/objectives'))
 
-// Employee portal — brings its own shell, so it is not wrapped in AppShell.
+// Employee portal — brings its own shell, so it is not wrapped in AppChrome.
 const Portal = lazy(() => import('./pages/portal'))
+const Analytics = lazy(() => import('./pages/analytics'))
 
 function Protected({ children, ...guard }) {
   return (
@@ -107,6 +108,7 @@ export default function App() {
       <Route path="/objectives/*" element={<Protected><Objectives /></Protected>} />
 
       {/* Administration */}
+      <Route path="/analytics" element={<Protected><Analytics /></Protected>} />
       <Route path="/sites" element={<Protected requireCap="record.view"><Sites /></Protected>} />
       <Route path="/audit-log" element={<Protected requireCap="audit.view"><AuditLog /></Protected>} />
       <Route path="/users" element={<Protected requireAdmin><Users /></Protected>} />
