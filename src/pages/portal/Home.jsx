@@ -12,9 +12,10 @@ import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts'
 import {
-  AlertTriangle, ArrowRight, MapPin,
+  AlertTriangle, ArrowRight, MapPin, Building2, ScrollText, UsersRound, Settings,
   FireExtinguisher, HeartPulse, BellRing, GraduationCap, Signpost,
 } from 'lucide-react'
+import { can } from '../../shared/auth/permissions'
 import { useAuth } from '../../shared/auth/AuthContext'
 import { subscribeCollection, subscribeOrgUsers } from '../../shared/org/orgData'
 import { useAccessibleSites } from '../../shared/org/useAccessibleSites'
@@ -37,6 +38,16 @@ const GRADIENT = {
   brand: 'from-brand-500 to-brand-700',
 }
 
+// Workspace & administration. These used to live only on /hub; with the portal
+// as the single home they belong here, gated exactly as they were — otherwise
+// retiring the hub would quietly orphan them.
+const SYSTEM = [
+  { key: 'sites', label: 'Sites', title: 'Locations across your organization', path: '/sites', icon: Building2, tone: 'brand', cap: 'record.view' },
+  { key: 'audit-log', label: 'Audit Log', title: 'Append-only record of every action', path: '/audit-log', icon: ScrollText, tone: 'violet', cap: 'audit.view' },
+  { key: 'users', label: 'Employees', title: 'Roles, access and bulk upload', path: '/users', icon: UsersRound, tone: 'green', adminOnly: true },
+  { key: 'settings', label: 'Org Settings', title: 'Organization profile and preferences', path: '/settings', icon: Settings, tone: 'amber', adminOnly: true },
+]
+
 const greeting = (d = new Date()) => {
   const h = d.getHours()
   if (h < 12) return 'Good morning'
@@ -45,9 +56,10 @@ const greeting = (d = new Date()) => {
 }
 
 export default function PortalHome() {
-  const { orgId, profile } = useAuth()
+  const { orgId, profile, role, isAdmin } = useAuth()
   const navigate = useNavigate()
   const sites = useAccessibleSites()
+  const systemTiles = SYSTEM.filter((t) => (t.adminOnly ? isAdmin : can(role, t.cap)))
 
   const [siteId, setSiteId] = useState('all')
   const [extinguishers, setExt] = useState([])
@@ -268,6 +280,29 @@ export default function PortalHome() {
           </Link>
         ))}
       </div>
+
+      {systemTiles.length > 0 && (
+        <>
+          <SectionLabel className="mb-3 mt-8">Workspace &amp; administration</SectionLabel>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {systemTiles.map((s) => (
+              <Link
+                key={s.key}
+                to={s.path}
+                className="flex items-center gap-4 rounded-[26px] bg-clay-surface p-5 shadow-clay transition duration-200 ease-emil hover:-translate-y-1 active:scale-[0.985]"
+              >
+                <span className={`grid h-[60px] w-[60px] flex-none place-items-center rounded-[20px] bg-gradient-to-br ${GRADIENT[s.tone] || GRADIENT.brand} text-white shadow-clay-sm`}>
+                  <s.icon size={28} strokeWidth={2} />
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-[15px] font-bold tracking-[-0.015em] text-ink-900">{s.label}</span>
+                  <span className="mt-0.5 block text-[12px] leading-snug text-ink-400">{s.title}</span>
+                </span>
+              </Link>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   )
 }

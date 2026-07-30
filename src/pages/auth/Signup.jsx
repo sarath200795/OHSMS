@@ -21,7 +21,7 @@ export default function Signup() {
       .catch(() => setOrgs([]))
   }, [])
 
-  if (isAuthed && profile) return <Navigate to={profile.status === 'approved' ? '/hub' : '/pending'} replace />
+  if (isAuthed && profile) return <Navigate to={profile.status === 'approved' ? '/portal' : '/pending'} replace />
 
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value })
 

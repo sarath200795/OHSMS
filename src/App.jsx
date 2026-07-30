@@ -2,7 +2,7 @@ import { lazy, Suspense } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { isFirebaseConfigured } from './shared/firebase'
 import ProtectedRoute from './shared/auth/ProtectedRoute'
-import AppShell from './shared/layout/AppShell'
+import AppChrome from './shared/layout/AppChrome'
 import { FullPageLoader, SkeletonDetail } from './shared/ui'
 
 // Public QR landing for equipment labels — no auth, so it stays outside the shell.
@@ -18,7 +18,6 @@ import PendingApproval from './pages/auth/PendingApproval'
 import NotFound from './pages/NotFound'
 
 // App pages.
-import Hub from './pages/Hub'
 import Dashboard from './pages/Dashboard'
 const Users = lazy(() => import('./pages/admin/Users'))
 const Sites = lazy(() => import('./pages/admin/Sites'))
@@ -47,9 +46,9 @@ const Portal = lazy(() => import('./pages/portal'))
 function Protected({ children, ...guard }) {
   return (
     <ProtectedRoute {...guard}>
-      <AppShell>
+      <AppChrome>
         <Suspense fallback={<SkeletonDetail />}>{children}</Suspense>
-      </AppShell>
+      </AppChrome>
     </ProtectedRoute>
   )
 }
@@ -88,8 +87,9 @@ export default function App() {
         }
       />
 
-      {/* App */}
-      <Route path="/hub" element={<Protected><Hub /></Protected>} />
+      {/* App. /hub was the old home; the portal replaced it and carries the same
+          module grid plus the workspace tiles, so old links land there. */}
+      <Route path="/hub" element={<Navigate to="/portal" replace />} />
       <Route path="/dashboard" element={<Protected><Dashboard /></Protected>} />
       <Route path="/incidents/*" element={<Protected><Incidents /></Protected>} />
       <Route path="/hira/*" element={<Protected><Hira /></Protected>} />

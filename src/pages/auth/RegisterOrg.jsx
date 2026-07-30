@@ -12,7 +12,7 @@ export default function RegisterOrg() {
   const [form, setForm] = useState({ orgName: '', address: '', name: '', email: '', password: '' })
   const [busy, setBusy] = useState(false)
 
-  if (isAuthed && profile) return <Navigate to="/hub" replace />
+  if (isAuthed && profile) return <Navigate to="/portal" replace />
 
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value })
 
@@ -23,7 +23,7 @@ export default function RegisterOrg() {
     try {
       await registerOrganization(form)
       toast.success('Organization created — welcome!')
-      navigate('/hub', { replace: true })
+      navigate('/portal', { replace: true })
     } catch (err) {
       toast.error(authErrorMessage(err))
     } finally {
