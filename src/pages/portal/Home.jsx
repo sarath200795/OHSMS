@@ -24,7 +24,7 @@ import { INCIDENT_TYPE_BY_KEY } from '../../modules/incidents/lib/constants'
 import { MODULES } from '../../shared/modules/registry'
 import { Raised, Inset, SectionLabel } from './ui'
 import { myActions } from './myWork'
-import { portalStats } from './portalStats'
+import { portalStats, pendingWork } from './portalStats'
 
 // Same logo gradients the admin hub uses, so a module is recognisable by its
 // tile wherever it appears.
@@ -101,6 +101,11 @@ export default function PortalHome() {
 
   const mine = useMemo(() => myActions(actions, profile), [actions, profile])
   const open = mine.filter((a) => a.norm !== 'done')
+
+  const pending = useMemo(
+    () => pendingWork({ sites, siteId: activeSite, actions, assignments, users, limit: 5 }),
+    [sites, activeSite, actions, assignments, users]
+  )
 
   const pie = stats.incidentsByType.map((r) => ({
     name: INCIDENT_TYPE_BY_KEY[r.key]?.label || 'Unspecified',
@@ -263,6 +268,32 @@ export default function PortalHome() {
         </Raised>
       </div>
 
+      <SectionLabel className="mb-3">Closest to due</SectionLabel>
+      <div className="mb-6 grid gap-4 lg:grid-cols-2">
+        <Raised className="p-5">
+          <div className="mb-3 flex items-baseline justify-between">
+            <p className="text-[15px] font-bold tracking-[-0.015em] text-ink-900">Pending actions</p>
+            <Link to="/portal/actions" className="text-xs font-semibold text-brand-700">My actions</Link>
+          </div>
+          <DueList
+            rows={pending.actions}
+            empty="No open actions across these sites."
+            meta={(r) => r.source}
+          />
+        </Raised>
+
+        <Raised className="p-5">
+          <div className="mb-3 flex items-baseline justify-between">
+            <p className="text-[15px] font-bold tracking-[-0.015em] text-ink-900">Pending training</p>
+            <Link to="/portal/training" className="text-xs font-semibold text-brand-700">My training</Link>
+          </div>
+          <DueList
+            rows={pending.training}
+            empty="Nothing outstanding for people at these sites."
+          />
+        </Raised>
+      </div>
+
       <SectionLabel className="mb-3">All modules</SectionLabel>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {MODULES.map((m, i) => (
@@ -306,6 +337,50 @@ export default function PortalHome() {
         </>
       )}
     </div>
+  )
+}
+
+/**
+ * A due-date list: what it is, who owns it, when it is due.
+ *
+ * The owner is shown on every row rather than only where it differs, because
+ * the question this list answers is "whose is it" as much as "what is it".
+ */
+function DueList({ rows, empty, meta }) {
+  if (!rows.length) {
+    return (
+      <p className="rounded-[18px] bg-clay-50 px-4 py-6 text-center text-[13px] text-ink-400 shadow-clay-sm">
+        {empty}
+      </p>
+    )
+  }
+  return (
+    <ul className="flex flex-col gap-2.5">
+      {rows.map((r) => (
+        <li
+          key={r.key}
+          className="flex items-center gap-3.5 rounded-[18px] bg-clay-50 px-4 py-3 shadow-clay-sm"
+        >
+          <span
+            className="h-[34px] w-1 flex-none rounded"
+            style={{ background: r.overdue ? '#ef4444' : r.due ? '#e8a33d' : '#ab987f' }}
+          />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[13.5px] font-semibold text-ink-900">{r.title}</p>
+            <p className="mt-0.5 truncate text-[11.5px] text-ink-400">
+              {r.owner}{meta && meta(r) ? ` · ${meta(r)}` : ''}
+            </p>
+          </div>
+          <span
+            className={`flex-none rounded-full px-2.5 py-1 text-[10.5px] font-bold ${
+              r.overdue ? 'bg-red-100 text-red-700' : 'bg-clay-100 text-ink-600'
+            }`}
+          >
+            {r.overdue ? 'Overdue' : r.due || 'No date'}
+          </span>
+        </li>
+      ))}
+    </ul>
   )
 }
 

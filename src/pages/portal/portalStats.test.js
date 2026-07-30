@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { portalStats, scopeIds } from './portalStats'
+import { portalStats, scopeIds, pendingWork } from './portalStats'
 
 const SITES = [
   { id: 's1', name: 'Cult Gym Ameerpet' },
@@ -126,6 +126,97 @@ describe('portalStats compliance', () => {
       assignments: [{ employeeUid: 'u1', status: 'completed' }],
     })
     expect(s.trainingCompliance).toBe(100)
+  })
+})
+
+// This answers "what is about to slip, and whose is it" — deliberately not
+// filtered to the signed-in person, which "My actions" already covers.
+describe('pendingWork', () => {
+  const TODAY = '2026-07-30'
+  const users = [
+    { uid: 'u1', name: 'Ravi Kumar', siteId: 's1' },
+    { uid: 'u2', name: 'Priya Menon', siteId: 's2' },
+  ]
+  const actions = [
+    { key: 'a1', title: 'Re-mark dock lines', owner: 'Ravi Kumar', due: '2026-06-01', norm: 'open', siteId: 's1', sourceLabel: 'Incident' },
+    { key: 'a2', title: 'Toolbox talk', owner: { name: 'Priya Menon' }, due: '2026-09-01', norm: 'in_progress', siteId: 's2', sourceLabel: 'Inspection' },
+    { key: 'a3', title: 'Already done', owner: 'Ravi Kumar', due: '2026-08-01', norm: 'done', siteId: 's1', sourceLabel: 'Incident' },
+    { key: 'a4', title: 'No date', owner: '', due: '', norm: 'open', siteId: 's1', sourceLabel: 'Audit' },
+  ]
+
+  it('excludes finished work', () => {
+    const r = pendingWork({ sites: SITES, actions, users, today: TODAY })
+    expect(r.actions.map((a) => a.key)).not.toContain('a3')
+  })
+
+  it('puts overdue first, then soonest due, then undated', () => {
+    // An empty due date sorts ahead of every real one as a string, so the naive
+    // comparison would bury the genuinely urgent items.
+    const r = pendingWork({ sites: SITES, actions, users, today: TODAY })
+    expect(r.actions.map((a) => a.key)).toEqual(['a1', 'a2', 'a4'])
+    expect(r.actions[0].overdue).toBe(true)
+  })
+
+  it('names the owner whether it is a string or an object', () => {
+    const r = pendingWork({ sites: SITES, actions, users, today: TODAY })
+    expect(r.actions[0].owner).toBe('Ravi Kumar')
+    expect(r.actions[1].owner).toBe('Priya Menon')
+  })
+
+  it('labels unowned work rather than leaving it blank', () => {
+    const r = pendingWork({ sites: SITES, actions, users, today: TODAY })
+    expect(r.actions.find((a) => a.key === 'a4').owner).toBe('Unassigned')
+  })
+
+  it('caps the list at the limit', () => {
+    const many = Array.from({ length: 9 }, (_, i) => ({
+      key: `k${i}`, title: `t${i}`, owner: 'Ravi Kumar', due: `2026-08-0${i + 1}`, norm: 'open', siteId: 's1',
+    }))
+    expect(pendingWork({ sites: SITES, actions: many, users, today: TODAY }).actions).toHaveLength(5)
+  })
+
+  it('narrows to the filtered site', () => {
+    const r = pendingWork({ sites: SITES, siteId: 's2', actions, users, today: TODAY })
+    expect(r.actions.map((a) => a.key)).toEqual(['a2'])
+  })
+
+  it('hides site-less actions once a site is chosen', () => {
+    // Without a site of its own it might belong anywhere, so a site filter must
+    // not imply it belongs to the chosen one.
+    const loose = [{ key: 'x', title: 'Loose', owner: 'Ravi Kumar', due: '2026-08-01', norm: 'open' }]
+    expect(pendingWork({ sites: SITES, actions: loose, users, today: TODAY }).actions).toHaveLength(1)
+    expect(pendingWork({ sites: SITES, siteId: 's1', actions: loose, users, today: TODAY }).actions).toHaveLength(0)
+  })
+
+  it('lists pending training with the person it is assigned to', () => {
+    const assignments = [
+      { id: 'as1', courseName: 'Working at Height', employeeUid: 'u1', employeeName: 'Ravi Kumar', dueDate: '2026-06-15', status: 'assigned' },
+      { id: 'as2', courseName: 'Manual Handling', employeeUid: 'u2', employeeName: 'Priya Menon', dueDate: '2026-09-20', status: 'assigned' },
+      { id: 'as3', courseName: 'Done one', employeeUid: 'u1', status: 'completed' },
+      { id: 'as4', courseName: 'Dropped', employeeUid: 'u1', status: 'cancelled' },
+    ]
+    const r = pendingWork({ sites: SITES, actions: [], assignments, users, today: TODAY })
+    expect(r.training.map((t) => t.key)).toEqual(['as1', 'as2'])
+    expect(r.training[0]).toMatchObject({ owner: 'Ravi Kumar', overdue: true })
+  })
+
+  it('scopes training through the employee’s site', () => {
+    const assignments = [
+      { id: 'as1', courseName: 'A', employeeUid: 'u1', dueDate: '2026-08-01', status: 'assigned' },
+      { id: 'as2', courseName: 'B', employeeUid: 'u2', dueDate: '2026-08-01', status: 'assigned' },
+    ]
+    const r = pendingWork({ sites: SITES, siteId: 's1', actions: [], assignments, users, today: TODAY })
+    expect(r.training.map((t) => t.key)).toEqual(['as1'])
+  })
+
+  it('shows nothing to a viewer with no sites', () => {
+    const r = pendingWork({
+      sites: [], actions, users,
+      assignments: [{ id: 'as1', employeeUid: 'u1', status: 'assigned' }],
+      today: TODAY,
+    })
+    expect(r.actions).toEqual([])
+    expect(r.training).toEqual([])
   })
 })
 

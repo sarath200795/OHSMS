@@ -107,6 +107,80 @@ export function portalStats({
   }
 }
 
+/** Today as YYYY-MM-DD, so due dates compare as plain strings. */
+export const todayISO = (d = new Date()) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+
+/**
+ * Soonest-due first, overdue ahead of everything, undated last.
+ *
+ * Undated last is the part that matters: an empty due date sorts ahead of every
+ * real one as a string, so the naive comparison buries the genuinely urgent
+ * items under work nobody has scheduled.
+ */
+const byUrgency = (a, b) => {
+  if (a.overdue !== b.overdue) return a.overdue ? -1 : 1
+  if (!a.due && !b.due) return 0
+  if (!a.due) return 1
+  if (!b.due) return -1
+  return a.due < b.due ? -1 : 1
+}
+
+/**
+ * The work closest to its due date across the viewer's sites, with who owns it.
+ *
+ * Deliberately not filtered to the signed-in person — "My actions" already
+ * answers that. This answers the other question a supervisor opens the portal
+ * for: what is about to slip, and whose is it.
+ */
+export function pendingWork({
+  sites = [], siteId = 'all', actions = [], assignments = [], users = [], limit = 5, today = todayISO(),
+} = {}) {
+  const ids = scopeIds(sites, siteId)
+  const byUid = new Map(users.map((u) => [u.uid, u]))
+
+  // An action carries its own site; where it does not, it stays in scope only
+  // when the viewer is looking at everything, so a site filter never shows work
+  // that might belong somewhere else.
+  const pendingActions = actions
+    .filter((a) => a.norm !== 'done')
+    .filter((a) => (a.siteId ? ids.has(a.siteId) : siteId === 'all' && ids.size > 0))
+    .map((a) => ({
+      key: a.key,
+      title: a.title,
+      owner: ownerName(a.owner) || 'Unassigned',
+      source: a.sourceLabel,
+      due: a.due || '',
+      overdue: !!a.due && a.due < today,
+    }))
+    .sort(byUrgency)
+    .slice(0, limit)
+
+  const scopedUids = new Set(
+    users.filter((u) => u.siteId && ids.has(u.siteId)).map((u) => u.uid).filter(Boolean)
+  )
+  const pendingTraining = assignments
+    .filter((a) => a.status !== 'completed' && a.status !== 'cancelled')
+    .filter((a) => (scopedUids.size ? scopedUids.has(a.employeeUid) : siteId === 'all' && ids.size > 0))
+    .map((a) => ({
+      key: a.id || `${a.courseId}:${a.employeeUid}`,
+      title: a.courseName || 'Course',
+      owner: a.employeeName || byUid.get(a.employeeUid)?.name || 'Unassigned',
+      due: a.dueDate || '',
+      overdue: !!a.dueDate && a.dueDate < today,
+    }))
+    .sort(byUrgency)
+    .slice(0, limit)
+
+  return { actions: pendingActions, training: pendingTraining }
+}
+
+/** Owners are free text in some modules and an object in others. */
+function ownerName(owner) {
+  if (!owner) return ''
+  return typeof owner === 'object' ? owner.name || '' : String(owner)
+}
+
 function countBy(rows, key) {
   const m = new Map()
   for (const r of rows) m.set(key(r), (m.get(key(r)) || 0) + 1)
