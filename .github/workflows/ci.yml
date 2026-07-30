@@ -1,0 +1,68 @@
+# Runs the checks that were being run by hand on every change: lint, unit
+# tests, the Firestore rules suite, and a production build.
+#
+# The rules job is separate because it needs a JDK — the Firestore emulator is
+# a Java process — and there is no reason to make the fast checks wait for one.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A second push to the same branch makes the first run irrelevant.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Lint, test & build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # npm ci needs the lockfile to match package.json, which is what we want
+      # CI to enforce — it fails loudly rather than quietly resolving something
+      # different from what anyone has installed locally.
+      - run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+  rules:
+    name: Firestore rules
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # The Firestore emulator runs on the JVM; without this the suite fails
+      # with an error about Java that says nothing about the rules.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - run: npm ci
+
+      # /reports accepts unauthenticated writes by design, so these tests are
+      # the check on how far that permission actually reaches.
+      - name: Rules tests
+        run: npm run test:rules
