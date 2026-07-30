@@ -15,7 +15,6 @@ import {
   AlertTriangle, ArrowRight, MapPin, Building2, ScrollText, UsersRound, Settings,
   FireExtinguisher, HeartPulse, BellRing, GraduationCap, Signpost,
 } from 'lucide-react'
-import { can } from '../../shared/auth/permissions'
 import { useAuth } from '../../shared/auth/AuthContext'
 import { subscribeCollection, subscribeOrgUsers } from '../../shared/org/orgData'
 import { useAccessibleSites } from '../../shared/org/useAccessibleSites'
@@ -38,14 +37,18 @@ const GRADIENT = {
   brand: 'from-brand-500 to-brand-700',
 }
 
-// Workspace & administration. These used to live only on /hub; with the portal
-// as the single home they belong here, gated exactly as they were — otherwise
-// retiring the hub would quietly orphan them.
-const SYSTEM = [
-  { key: 'sites', label: 'Sites', title: 'Locations across your organization', path: '/sites', icon: Building2, tone: 'brand', cap: 'record.view' },
-  { key: 'audit-log', label: 'Audit Log', title: 'Append-only record of every action', path: '/audit-log', icon: ScrollText, tone: 'violet', cap: 'audit.view' },
-  { key: 'users', label: 'Employees', title: 'Roles, access and bulk upload', path: '/users', icon: UsersRound, tone: 'green', adminOnly: true },
-  { key: 'settings', label: 'Org Settings', title: 'Organization profile and preferences', path: '/settings', icon: Settings, tone: 'amber', adminOnly: true },
+// Admin tools. These configure the organization rather than record work in it,
+// so the whole section is admin-only — a manager or auditor who can read the
+// audit log still reaches it from the module they are working in, and does not
+// need the org's plumbing on their home screen.
+//
+// Route guards are unchanged and remain the real control; hiding a tile is
+// presentation, not permission.
+const ADMIN_TOOLS = [
+  { key: 'sites', label: 'Sites', title: 'Locations across your organization', path: '/sites', icon: Building2, tone: 'brand' },
+  { key: 'users', label: 'Employees', title: 'Roles, access and bulk upload', path: '/users', icon: UsersRound, tone: 'green' },
+  { key: 'settings', label: 'Org Settings', title: 'Organization profile and preferences', path: '/settings', icon: Settings, tone: 'amber' },
+  { key: 'audit-log', label: 'Audit Log', title: 'Append-only record of every action', path: '/audit-log', icon: ScrollText, tone: 'violet' },
 ]
 
 const greeting = (d = new Date()) => {
@@ -56,10 +59,9 @@ const greeting = (d = new Date()) => {
 }
 
 export default function PortalHome() {
-  const { orgId, profile, role, isAdmin } = useAuth()
+  const { orgId, profile, isAdmin } = useAuth()
   const navigate = useNavigate()
   const sites = useAccessibleSites()
-  const systemTiles = SYSTEM.filter((t) => (t.adminOnly ? isAdmin : can(role, t.cap)))
 
   const [siteId, setSiteId] = useState('all')
   const [extinguishers, setExt] = useState([])
@@ -281,11 +283,11 @@ export default function PortalHome() {
         ))}
       </div>
 
-      {systemTiles.length > 0 && (
+      {isAdmin && (
         <>
-          <SectionLabel className="mb-3 mt-8">Workspace &amp; administration</SectionLabel>
+          <SectionLabel className="mb-3 mt-8">Admin tools</SectionLabel>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {systemTiles.map((s) => (
+            {ADMIN_TOOLS.map((s) => (
               <Link
                 key={s.key}
                 to={s.path}
