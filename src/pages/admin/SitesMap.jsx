@@ -184,6 +184,7 @@ export default function SitesMap({ sites, stats = {}, onSelect, onEdit, onDelete
                     <div className="site-bubble-stats">
                       <span>🧯 Extinguishers <b>{st.extinguishers}</b></span>
                       <span>❤️ AED <b>{st.aeds}</b></span>
+                      <span>🔔 Fire alarm <b>{st.fas}</b></span>
                       <span>🩹 First aid <b>{st.firstAidBoxes}</b></span>
                       <span>⚠️ Incidents <b>{st.incidentsTotal}</b></span>
                       <span>✅ Open actions <b>{st.openActions}</b></span>

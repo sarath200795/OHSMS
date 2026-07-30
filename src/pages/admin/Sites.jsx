@@ -3,7 +3,7 @@ import toast from 'react-hot-toast'
 import {
   Building2, Plus, Trash2, MapPin, Map as MapIcon, List, Pencil, Upload, Download, Search, X,
   CheckCircle2, AlertCircle, FireExtinguisher, HeartPulse, BriefcaseMedical, AlertTriangle,
-  ListChecks, Users2, CheckSquare, Square,
+  ListChecks, Users2, CheckSquare, Square, BellRing,
 } from 'lucide-react'
 import { useAuth } from '../../shared/auth/AuthContext'
 import {
@@ -31,6 +31,7 @@ export default function Sites() {
   const [users, setUsers] = useState([])
   const [extinguishers, setExtinguishers] = useState([])
   const [aeds, setAeds] = useState([])
+  const [fas, setFas] = useState([])
   const [incidents, setIncidents] = useState([])
   const [tab, setTab] = useState('list')
   const [editing, setEditing] = useState(null) // 'new' | site | null
@@ -57,6 +58,7 @@ export default function Sites() {
       subscribeOrgUsers(orgId, setUsers),
       subscribeCollection(orgId, 'extinguishers', setExtinguishers),
       subscribeCollection(orgId, 'aeds', setAeds),
+      subscribeCollection(orgId, 'fas', setFas),
       subscribeCollection(orgId, 'incidents', setIncidents),
     ]
     return () => unsubs.forEach((u) => u && u())
@@ -155,23 +157,23 @@ export default function Sites() {
   // two can never disagree, and computed here because the per-site rollup below
   // walks every asset for every site.
   const links = useMemo(
-    () => linkAssets([...extinguishers, ...aeds], sites || []),
-    [extinguishers, aeds, sites]
+    () => linkAssets([...extinguishers, ...aeds, ...fas], sites || []),
+    [extinguishers, aeds, fas, sites]
   )
 
   const stats = useMemo(
-    () => (selected ? siteStats(selected, { extinguishers, aeds, incidents, users, links }) : null),
-    [selected, extinguishers, aeds, incidents, users, links]
+    () => (selected ? siteStats(selected, { extinguishers, aeds, fas, incidents, users, links }) : null),
+    [selected, extinguishers, aeds, fas, incidents, users, links]
   )
 
   // Pre-computed summary per site, for the map hover bubbles.
   const statsBySite = useMemo(() => {
     const m = {}
     ;(sites || []).forEach((s) => {
-      m[s.id] = siteStats(s, { extinguishers, aeds, incidents, users, links })
+      m[s.id] = siteStats(s, { extinguishers, aeds, fas, incidents, users, links })
     })
     return m
-  }, [sites, extinguishers, aeds, incidents, users, links])
+  }, [sites, extinguishers, aeds, fas, incidents, users, links])
 
   const regionOptions = useMemo(() => regionsOf(sites || []), [sites])
   const entityOptions = useMemo(() => entitiesOf(sites || []), [sites])
@@ -198,12 +200,13 @@ export default function Sites() {
   // Records already logged against the chosen sites — deleting a site does not
   // delete these, so the user should know what will be left referencing it.
   const pickedImpact = useMemo(() => {
-    const sum = { extinguishers: 0, aeds: 0, incidents: 0, users: 0 }
+    const sum = { extinguishers: 0, aeds: 0, fas: 0, incidents: 0, users: 0 }
     for (const s of pickedSites) {
       const st = statsBySite[s.id]
       if (!st) continue
       sum.extinguishers += st.extinguishers || 0
       sum.aeds += st.aeds || 0
+      sum.fas += st.fas || 0
       sum.incidents += st.incidents || 0
       sum.users += st.users || 0
     }
@@ -482,6 +485,7 @@ export default function Sites() {
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <StatCard label="Fire Extinguishers" value={stats.extinguishers} icon={FireExtinguisher} tone="red" />
               <StatCard label="AED units" value={stats.aeds} icon={HeartPulse} tone="brand" />
+              <StatCard label="Fire alarm devices" value={stats.fas} icon={BellRing} tone="amber" />
               <StatCard label="First Aid Boxes" value={stats.firstAidBoxes} icon={BriefcaseMedical} tone="green" />
               <StatCard label="Incidents (total)" value={stats.incidentsTotal} icon={AlertTriangle} tone="amber" />
               <StatCard label="Open Actions" value={stats.openActions} icon={ListChecks} tone="violet" />
@@ -680,7 +684,7 @@ export default function Sites() {
             </table>
           </div>
 
-          {(pickedImpact.extinguishers + pickedImpact.aeds + pickedImpact.incidents + pickedImpact.users) > 0 && (
+          {(pickedImpact.extinguishers + pickedImpact.aeds + pickedImpact.fas + pickedImpact.incidents + pickedImpact.users) > 0 && (
             <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
               <p className="flex items-center gap-2 font-semibold">
                 <AlertTriangle size={16} /> Records are linked to these sites
@@ -691,6 +695,7 @@ export default function Sites() {
                   pickedImpact.incidents && `${pickedImpact.incidents} incidents`,
                   pickedImpact.extinguishers && `${pickedImpact.extinguishers} extinguishers`,
                   pickedImpact.aeds && `${pickedImpact.aeds} AEDs`,
+                  pickedImpact.fas && `${pickedImpact.fas} fire-alarm devices`,
                 ].filter(Boolean).join(', ')}{' '}
                 stay in the system and keep their stored site name, so history and reports remain readable.
                 Reassign anyone who still needs an active site.

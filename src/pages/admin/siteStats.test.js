@@ -10,8 +10,8 @@ const SITES = [
   { id: 's4', name: 'Pilates Circle - Banjara Hills', region: 'East', entity: 'Pilate' },
 ]
 
-const roll = (site, aeds, extinguishers = []) =>
-  siteStats(site, { aeds, extinguishers, links: linkAssets([...aeds, ...extinguishers], SITES) })
+const roll = (site, aeds, extinguishers = [], fas = []) =>
+  siteStats(site, { aeds, extinguishers, fas, links: linkAssets([...aeds, ...extinguishers, ...fas], SITES) })
 
 describe('AEDs are counted against the site they are deployed at', () => {
   // Only extinguishers were ever put through the linking pass, so AEDs still
@@ -60,6 +60,40 @@ describe('AEDs are counted against the site they are deployed at', () => {
   it('still counts extinguishers by their stored link', () => {
     const ext = [{ id: 'e1', siteId: 's1' }, { id: 'e2', centerName: 'Cult Ameerpet' }]
     expect(roll(SITES[0], [], ext).extinguishers).toBe(2)
+  })
+})
+
+// FAS devices arrived from the same standalone system as AEDs and carry the
+// same free-text centre name, so they need the same resolution. They were not
+// counted at all before — a site's rollup was silent about its fire alarm.
+describe('FAS devices are counted the same way', () => {
+  it('resolves a centre name that omits "Gym"', () => {
+    expect(roll(SITES[0], [], [], [{ id: 'f1', centerName: 'Cult Ameerpet' }]).fas).toBe(1)
+  })
+
+  it('resolves through the override table', () => {
+    const fas = [{ id: 'f2', centerName: 'Cult Suchitra Hybrid' }]
+    expect(roll(SITES[2], [], [], fas).fas).toBe(1)
+    expect(roll(SITES[1], [], [], fas).fas).toBe(0)
+  })
+
+  it('leaves an unrecognised name unattributed', () => {
+    const fas = [{ id: 'f3', centerName: 'Nowhere At All' }]
+    for (const s of SITES) expect(roll(s, [], [], fas).fas).toBe(0)
+  })
+
+  it('counts each asset kind separately', () => {
+    const st = roll(
+      SITES[0],
+      [{ id: 'a1', centerName: 'Cult Ameerpet' }],
+      [{ id: 'e1', centerName: 'Cult Ameerpet' }],
+      [{ id: 'f1', centerName: 'Cult Ameerpet' }, { id: 'f2', centerName: 'Cult Ameerpet' }],
+    )
+    expect([st.extinguishers, st.aeds, st.fas]).toEqual([1, 1, 2])
+  })
+
+  it('defaults to zero when no devices are passed', () => {
+    expect(siteStats(SITES[0], {}).fas).toBe(0)
   })
 })
 

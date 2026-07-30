@@ -1035,11 +1035,11 @@ function aedMirror(orgId, orgName, id, a) {
 }
 
 /**
- * Attach AEDs to the site registry and adopt its wording.
+ * Attach AEDs or FAS devices to the site registry and adopt its wording.
  *
  * Unlike the extinguisher pass, this rewrites centerName to the matched site's
- * name. AEDs are listed, filtered and searched by that string, so leaving the
- * source system's version in place means the same building reads as two
+ * name. Both kinds are listed, filtered and searched by that string, so leaving
+ * the source system's version in place means the same building reads as two
  * different places depending on which module you are looking at.
  *
  * The original is preserved once, as sourceCenterName. If a match is ever
@@ -1049,7 +1049,7 @@ function aedMirror(orgId, orgName, id, a) {
  *
  * `plan` comes from planSiteLinks(); nothing here decides what matches.
  */
-export async function linkAedsToSites(orgId, orgName, plan, actor) {
+async function linkKindToSites(orgId, orgName, plan, actor, kind) {
   const items = plan.linked
   if (!items.length) return { linked: 0, entityChanges: 0, nameChanges: 0 }
 
@@ -1065,20 +1065,26 @@ export async function linkAedsToSites(orgId, orgName, plan, actor) {
         updatedAt: serverTimestamp(),
       }
       if (!asset.sourceCenterName && asset.centerName) update.sourceCenterName = asset.centerName
-      batch.update(aedRef(orgId, asset.id), update)
+      batch.update(kind.ref(orgId, asset.id), update)
       // The scanned label shows centerName and entity, so the public mirror has
       // to move in the same batch or a QR would keep showing the old site.
-      if (asset.qrToken) batch.set(qrRef(asset.qrToken), aedMirror(orgId, orgName, asset.id, { ...asset, ...update }))
+      if (asset.qrToken) batch.set(qrRef(asset.qrToken), kind.mirror(orgId, orgName, asset.id, { ...asset, ...update }))
     }
     await batch.commit()
   }
 
-  await logAudit(orgId, actor, 'aed.update', {
-    target: 'aed',
-    summary: `Linked ${items.length} AED(s) to sites; ${plan.nameChanges} renamed and ${plan.entityChanges} entity value(s) corrected from the site registry`,
+  await logAudit(orgId, actor, `${kind.name}.update`, {
+    target: kind.name,
+    summary: `Linked ${items.length} ${kind.label}(s) to sites; ${plan.nameChanges} renamed and ${plan.entityChanges} entity value(s) corrected from the site registry`,
   })
   return { linked: items.length, entityChanges: plan.entityChanges, nameChanges: plan.nameChanges }
 }
+
+export const linkAedsToSites = (orgId, orgName, plan, actor) =>
+  linkKindToSites(orgId, orgName, plan, actor, { name: 'aed', label: 'AED', ref: aedRef, mirror: aedMirror })
+
+export const linkFasToSites = (orgId, orgName, plan, actor) =>
+  linkKindToSites(orgId, orgName, plan, actor, { name: 'fas', label: 'FAS device', ref: fasRef, mirror: fasMirror })
 
 export async function addAed(orgId, orgName, data, actor) {
   // Records are created WITHOUT a QR — generating one is an admin-only action.

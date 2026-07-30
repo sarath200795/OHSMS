@@ -63,11 +63,12 @@ function matchIncident(inc, site) {
 
 const alive = (r) => !r.deletedAt
 
-export function siteStats(site, { extinguishers = [], aeds = [], incidents = [], users = [], links }) {
+export function siteStats(site, { extinguishers = [], aeds = [], fas = [], incidents = [], users = [], links }) {
   const inc = incidents.filter((i) => alive(i) && matchIncident(i, site))
   return {
     extinguishers: extinguishers.filter((x) => alive(x) && matchEquip(x, site, links)).length,
     aeds: aeds.filter((x) => alive(x) && matchEquip(x, site, links)).length,
+    fas: fas.filter((x) => alive(x) && matchEquip(x, site, links)).length,
     firstAidBoxes: Number(site.firstAidBoxes) || 0,
     incidentsTotal: inc.length,
     byType: {

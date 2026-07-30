@@ -1,13 +1,15 @@
 import { useMemo, useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { BellRing, Plus, Pencil, Trash2, Search, Filter, X, Download, QrCode, Wrench, Upload, AlertTriangle } from 'lucide-react'
+import { BellRing, Plus, Pencil, Trash2, Search, Filter, X, Download, QrCode, Wrench, Upload, AlertTriangle, MapPin } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import { PageHeader, EmptyState, Modal, Badge, Spinner } from '../components/ui'
 import { useAuth } from '../context/AuthContext'
 import { useFleet } from '../context/FleetContext'
-import { addFas, updateFas, deleteFas, serviceFas, bulkAddFas, generateFasQr, bulkDeleteFas } from '../lib/firestore'
+import { addFas, updateFas, deleteFas, serviceFas, bulkAddFas, generateFasQr, bulkDeleteFas, linkFasToSites } from '../lib/firestore'
+import { planSiteLinks } from '../lib/siteLink'
+import { useAccessibleSites } from '../../../shared/org/useAccessibleSites'
 import { exportRows } from '../lib/exporter'
 import { publicQrUrl } from '../lib/qr'
 import SiteScopePicker from '../../../shared/org/SiteScopePicker'
@@ -83,6 +85,40 @@ export default function FASRepository() {
     const have = new Set(fas.filter((a) => a.deviceType === 'Control Panel').map((a) => a.centerName))
     return pickSites.filter((s) => !have.has(s))
   }, [pickSites, fas])
+
+  // FAS devices came from a system with free-text site names, exactly as AEDs
+  // did. Linking attaches each to the site registry, takes its entity from
+  // there, and adopts the registry's wording.
+  const orgSites = useAccessibleSites()
+  const linkPlan = useMemo(
+    () => (orgSites.length ? planSiteLinks(fas, orgSites) : null),
+    [fas, orgSites]
+  )
+
+  const doLinkSites = async () => {
+    if (!linkPlan?.linked.length) return
+    const sample = linkPlan.linked
+      .filter((l) => l.nameChanged)
+      .slice(0, 8)
+      .map((l) => `  ${l.asset.centerName || '(no name)'} → ${l.site.name}`)
+      .join('\n')
+    const msg = `Link ${linkPlan.linked.length} FAS device(s) to their site?\n\n`
+      + `${linkPlan.nameChanges} will be renamed to the site registry's name`
+      + `, and ${linkPlan.entityChanges} will have Entity corrected.`
+      + (sample ? `\n\n${sample}${linkPlan.nameChanges > 8 ? `\n  …and ${linkPlan.nameChanges - 8} more` : ''}` : '')
+      + (linkPlan.unmatched.length
+        ? `\n\n${linkPlan.unmatched.length} device(s) across ${linkPlan.unmatchedCenters.length} name(s) have no matching site and will be left alone:\n`
+          + linkPlan.unmatchedCenters.slice(0, 12).join(', ')
+        : '')
+    if (!window.confirm(msg)) return
+    setBusy(true)
+    try {
+      const r = await linkFasToSites(orgId, orgName, linkPlan, { uid: profile?.uid, name: profile?.name })
+      toast.success(`${r.linked} linked · ${r.nameChanges} renamed · ${r.entityChanges} entity value(s) corrected`)
+    } catch (e) {
+      toast.error(e?.message || 'Could not link to sites')
+    } finally { setBusy(false) }
+  }
 
   // Open the Add form with the next unique device ID pre-assigned.
   const openAdd = () => setEditing({ ...EMPTY, deviceId: nextAssetId('FAS', fas, 'deviceId') })
@@ -197,6 +233,12 @@ export default function FASRepository() {
         {isAdmin && missingSites.length > 0 && (
           <button className="btn-soft" onClick={generateAll} disabled={busy} title="Create a FAS Panel with a QR code for every 1P/2P site that doesn't have one">
             <QrCode size={16} /> Generate panels for 1P/2P sites ({missingSites.length})
+          </button>
+        )}
+        {isAdmin && linkPlan?.linked.length > 0 && (
+          <button className="btn-soft !bg-brand-100 !text-brand-800" onClick={doLinkSites} disabled={busy}
+            title="Attach each device to its site, rename it to the site registry's name, and take Entity from there">
+            <MapPin size={16} /> Link {linkPlan.linked.length} to sites
           </button>
         )}
         {isAdmin && <Link to="/equipment/asset-bulk-upload" state={{ kind: 'fas' }} className="btn-soft"><Upload size={16} /> Bulk upload</Link>}
