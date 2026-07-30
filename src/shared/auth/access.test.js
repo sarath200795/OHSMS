@@ -39,6 +39,29 @@ describe('resolveAccessibleSites — site/region/entity scoping', () => {
     expect(resolveAccessibleSites(u, sites)).toHaveLength(0)
   })
 
+  // Their own posting counts. Before this, a member mapped to a site resolved
+  // to nothing and saw an empty portal — no counts, no pending work, nothing
+  // about the place they stand in every day.
+  it('a member reaches their own posting without any grant', () => {
+    const u = { role: 'member', siteId: 's3', access: {} }
+    expect(ids(resolveAccessibleSites(u, sites))).toEqual(['s3'])
+  })
+
+  it('their posting unions with whatever they were granted', () => {
+    const u = { role: 'member', siteId: 's1', access: { sites: ['s2'], regions: [], entities: [] } }
+    expect(ids(resolveAccessibleSites(u, sites))).toEqual(['s1', 's2'])
+  })
+
+  it('a posting that is not a real site grants nothing', () => {
+    const u = { role: 'member', siteId: 'deleted-site', access: {} }
+    expect(resolveAccessibleSites(u, sites)).toHaveLength(0)
+  })
+
+  it('no grant and no posting → still no sites', () => {
+    const u = { role: 'member', access: { sites: [], regions: [], entities: [] } }
+    expect(resolveAccessibleSites(u, sites)).toHaveLength(0)
+  })
+
   it('dropdown option builders return distinct sorted values', () => {
     expect(regionsOf(sites)).toEqual(['North', 'South'])
     expect(entitiesOf(sites)).toEqual(['Acme Logistics', 'Acme Mfg'])

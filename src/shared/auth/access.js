@@ -27,12 +27,22 @@ export const regionsOf = (sites) =>
 export const entitiesOf = (sites) =>
   [...new Set(arr(sites).map((s) => s.entity).filter(Boolean))].sort()
 
-/** The concrete list of sites a user can access, resolved from their access grant. */
+/**
+ * The concrete list of sites a user can access.
+ *
+ * Their own posting counts. `siteId` is where the employee actually works — set
+ * when an admin provisions them — and until now it granted nothing, so someone
+ * mapped to a site still resolved to zero and saw an empty portal: no counts,
+ * no pending work, nothing about the place they stand in every day. An explicit
+ * access grant remains the way to reach *other* sites; this only stops a person
+ * being locked out of their own.
+ */
 export function resolveAccessibleSites(user, sites, { isAdmin } = {}) {
   const list = arr(sites)
   if (isAdmin || user?.role === 'admin') return list
   const a = user?.access || {}
   const s = new Set(arr(a.sites))
+  if (user?.siteId) s.add(user.siteId)
   const r = new Set(arr(a.regions))
   const e = new Set(arr(a.entities))
   return list.filter((site) => s.has(site.id) || r.has(site.region) || e.has(site.entity))
