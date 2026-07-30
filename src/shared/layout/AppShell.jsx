@@ -6,7 +6,6 @@ import { useAuth } from '../auth/AuthContext'
 import { roleLabel } from '../auth/permissions'
 import { initials } from '../lib/format'
 import RequestAccessModal from './RequestAccessModal'
-import ViewSwitch from './ViewSwitch'
 import Sam from '../sam/Sam'
 
 function UserMenu() {
@@ -110,8 +109,6 @@ export default function AppShell({ children }) {
         )}
 
         <div className="flex-1" />
-
-        <ViewSwitch view="org" />
 
         <div className="hidden items-center gap-2 sm:flex">
           <Building2 size={16} className="text-ink-400" />

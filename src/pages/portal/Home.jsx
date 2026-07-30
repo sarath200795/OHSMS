@@ -12,7 +12,7 @@ import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts'
 import {
-  AlertTriangle, Eye, ClipboardCheck, BookOpen, ArrowRight, MapPin,
+  AlertTriangle, ArrowRight, MapPin,
   FireExtinguisher, HeartPulse, BellRing, GraduationCap, Signpost,
 } from 'lucide-react'
 import { useAuth } from '../../shared/auth/AuthContext'
@@ -36,13 +36,6 @@ const GRADIENT = {
   green: 'from-emerald-500 to-teal-600',
   brand: 'from-brand-500 to-brand-700',
 }
-
-const QUICK = [
-  { key: 'incident', to: '/portal/report', icon: AlertTriangle, title: 'Report an incident', blurb: 'Injury, damage or anything that went wrong.', from: '#e77a64', via: '#a63c2a' },
-  { key: 'near-miss', to: '/portal/report?type=near_miss', icon: Eye, title: 'Log a near miss', blurb: 'Nothing happened — but it nearly did.', from: '#8ba7bd', via: '#5b7f9c' },
-  { key: 'permit', to: '/permits', icon: ClipboardCheck, title: 'Request a permit', blurb: 'Hot work, height, confined space, electrical.', from: '#8fbc74', via: '#4f8b53' },
-  { key: 'docs', to: '/documents', icon: BookOpen, title: 'Find a document', blurb: 'SOPs, SDS sheets and site safety rules.', from: '#e8a33d', via: '#c07a17' },
-]
 
 const greeting = (d = new Date()) => {
   const h = d.getHours()
@@ -256,44 +249,21 @@ export default function PortalHome() {
         </Raised>
       </div>
 
-      <SectionLabel className="mb-3">What do you need to do?</SectionLabel>
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {QUICK.map((q, i) => (
-          <button
-            key={q.key}
-            type="button"
-            onClick={() => navigate(q.to)}
-            style={{ animationDelay: `${i * 60}ms` }}
-            className="flex animate-fade-in-up flex-col items-start gap-3.5 rounded-[26px] bg-clay-surface p-5 text-left shadow-clay transition duration-200 ease-emil hover:-translate-y-1 active:scale-[0.985]"
-          >
-            <span
-              className="grid h-[52px] w-[52px] place-items-center rounded-[20px] text-white shadow-clay-sm"
-              style={{ background: `linear-gradient(135deg, ${q.from}, ${q.via})` }}
-            >
-              <q.icon size={25} strokeWidth={2.1} />
-            </span>
-            <span className="block">
-              <span className="block text-[15px] font-bold tracking-[-0.015em] text-ink-900">{q.title}</span>
-              <span className="mt-1 block text-[12.5px] leading-relaxed text-ink-500">{q.blurb}</span>
-            </span>
-          </button>
-        ))}
-      </div>
-
       <SectionLabel className="mb-3">All modules</SectionLabel>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-        {MODULES.map((m) => (
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        {MODULES.map((m, i) => (
           <Link
             key={m.key}
             to={m.path}
-            className="flex items-center gap-3 rounded-[20px] bg-clay-surface p-3.5 shadow-clay-sm transition duration-200 ease-emil hover:-translate-y-0.5 hover:shadow-clay active:scale-[0.985]"
+            style={{ animationDelay: `${Math.min(i, 8) * 40}ms` }}
+            className="flex animate-fade-in-up items-center gap-4 rounded-[26px] bg-clay-surface p-5 shadow-clay transition duration-200 ease-emil hover:-translate-y-1 active:scale-[0.985]"
           >
-            <span className={`grid h-10 w-10 flex-none place-items-center rounded-[14px] bg-gradient-to-br ${GRADIENT[m.tone] || GRADIENT.brand} text-white shadow-clay-sm`}>
-              <m.icon size={19} strokeWidth={2.1} />
+            <span className={`grid h-[60px] w-[60px] flex-none place-items-center rounded-[20px] bg-gradient-to-br ${GRADIENT[m.tone] || GRADIENT.brand} text-white shadow-clay-sm`}>
+              <m.icon size={28} strokeWidth={2} />
             </span>
             <span className="min-w-0">
-              <span className="block truncate text-[13px] font-bold tracking-[-0.01em] text-ink-900">{m.label}</span>
-              <span className="block truncate text-[11px] text-ink-400">{m.title}</span>
+              <span className="block text-[15px] font-bold tracking-[-0.015em] text-ink-900">{m.label}</span>
+              <span className="mt-0.5 block text-[12px] leading-snug text-ink-400">{m.title}</span>
             </span>
           </Link>
         ))}

@@ -9,10 +9,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
-import { AlertTriangle, Building2, ChevronDown, LogOut, Bell, KeySquare, LayoutGrid } from 'lucide-react'
+import { AlertTriangle, Building2, ChevronDown, LogOut, Bell, KeySquare } from 'lucide-react'
 import { useAuth } from '../../shared/auth/AuthContext'
 import { initials } from '../../shared/lib/format'
-import ViewSwitch from '../../shared/layout/ViewSwitch'
 
 const NAV = [
   { to: '/portal', end: true, label: 'Home', dot: '#8fbc74' },
@@ -85,8 +84,6 @@ export default function PortalLayout() {
 
         <div className="flex-1" />
 
-        <ViewSwitch view="personal" />
-
         <button
           type="button"
           onClick={() => navigate('/portal/report')}
@@ -130,13 +127,6 @@ export default function PortalLayout() {
                 <p className="truncate text-[11.5px] text-ink-400">{profile?.email}</p>
                 <p className="mt-0.5 text-[11.5px] text-ink-400">{orgName}</p>
               </div>
-              {/* Mirrors ViewSwitch, which is hidden below md — without this the
-                  org view is unreachable on a phone. */}
-              {role !== 'member' && (
-                <MenuItem icon={LayoutGrid} onClick={() => { setMenuOpen(false); navigate('/hub') }}>
-                  Organization view
-                </MenuItem>
-              )}
               <MenuItem icon={Bell} onClick={() => { setMenuOpen(false); navigate('/portal/training') }}>
                 My training record
               </MenuItem>
