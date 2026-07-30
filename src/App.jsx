@@ -113,7 +113,9 @@ export default function App() {
       <Route path="/settings" element={<Protected requireAdmin><OrgSettings /></Protected>} />
 
       {/* Fallbacks */}
-      <Route path="/" element={<Navigate to="/hub" replace />} />
+      {/* The portal is everyone's home. Anyone with a role above plain member
+          gets to the modules from the Personal / Organization switch. */}
+      <Route path="/" element={<Navigate to="/portal" replace />} />
       <Route path="*" element={<NotFound />} />
     </Routes>
   )

@@ -24,8 +24,11 @@ export default function ProtectedRoute({ children, requireAdmin = false, require
   // Provisioned employees must replace the temporary password before anything else.
   if (profile.mustChangePassword) return <ForcePasswordChange />
   if (!isApproved) return <Navigate to="/pending" replace />
-  if (requireAdmin && !isAdmin) return <Navigate to="/hub" replace />
-  if (requireCap && !can(role, requireCap)) return <Navigate to="/hub" replace />
+  // Turned away from an admin-only screen — send them to their own home rather
+  // than to /hub, which is no longer where anyone lands and which a plain
+  // member has no particular reason to be looking at.
+  if (requireAdmin && !isAdmin) return <Navigate to="/portal" replace />
+  if (requireCap && !can(role, requireCap)) return <Navigate to="/portal" replace />
 
   return children
 }

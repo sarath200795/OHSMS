@@ -15,7 +15,7 @@ export default function Login() {
 
   // Only redirect once the profile has loaded — redirecting on isAuthed alone
   // races ProtectedRoute (which needs the profile) and causes a redirect loop.
-  if (isAuthed && profile) return <Navigate to={location.state?.from?.pathname || '/hub'} replace />
+  if (isAuthed && profile) return <Navigate to={location.state?.from?.pathname || '/portal'} replace />
 
   const submit = async (e) => {
     e.preventDefault()
@@ -23,7 +23,7 @@ export default function Login() {
     try {
       await login(form)
       toast.success('Welcome back')
-      navigate('/hub', { replace: true })
+      navigate('/portal', { replace: true })
     } catch (err) {
       toast.error(authErrorMessage(err))
     } finally {
