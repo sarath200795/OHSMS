@@ -67,6 +67,8 @@ export default {
         // Claymorphism, kraft-tinted: warm brown drop + paper-white highlight.
         clay: '6px 6px 14px rgba(178,148,112,0.42), -6px -6px 14px rgba(255,251,242,0.95)',
         'clay-sm': '3px 3px 8px rgba(178,148,112,0.38), -3px -3px 8px rgba(255,251,242,0.90)',
+        // Lifted state — the shadow travels further and softens as a tile rises.
+        'clay-lg': '9px 11px 22px rgba(178,148,112,0.46), -6px -6px 14px rgba(255,251,242,0.95)',
         'clay-inset': 'inset 4px 4px 8px rgba(178,148,112,0.42), inset -4px -4px 8px rgba(255,251,242,0.95)',
         'clay-pressed': 'inset 5px 5px 10px rgba(178,148,112,0.52), inset -4px -4px 8px rgba(255,251,242,0.85)',
         'clay-brand': '5px 5px 12px rgba(199,74,51,0.28), -5px -5px 12px rgba(255,251,242,0.80)',

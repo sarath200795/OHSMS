@@ -51,6 +51,47 @@ const ADMIN_TOOLS = [
   { key: 'audit-log', label: 'Audit Log', title: 'Append-only record of every action', path: '/audit-log', icon: ScrollText, tone: 'violet' },
 ]
 
+/**
+ * A module tile that tilts under the cursor.
+ *
+ * The card and the logo move on different axes and by different amounts: the
+ * card leans back, the logo lifts toward the viewer and turns slightly. Moving
+ * them together would just be a scale — the gap between the two is what reads
+ * as depth, and it is the reason the tile needs a perspective of its own rather
+ * than inheriting one from the grid.
+ *
+ * Everything is transform and opacity, so it stays off the main thread, and
+ * `motion-reduce` drops the whole effect rather than softening it.
+ */
+function Tile({ to, icon: Icon, gradient, label, title, delay = 0 }) {
+  return (
+    <div className="[perspective:900px]">
+      <Link
+        to={to}
+        style={{ animationDelay: `${delay}ms` }}
+        className="group flex animate-fade-in-up items-center gap-4 rounded-[26px] bg-clay-surface p-5 shadow-clay
+                   transition-[transform,box-shadow] duration-300 ease-emil [transform-style:preserve-3d]
+                   hover:shadow-clay-lg hover:[transform:translateY(-6px)_rotateX(7deg)_rotateY(-7deg)]
+                   active:[transform:translateY(-2px)_scale(0.985)]
+                   motion-reduce:transition-none motion-reduce:hover:[transform:none]"
+      >
+        <span
+          className={`grid h-[60px] w-[60px] flex-none place-items-center rounded-[20px] bg-gradient-to-br ${gradient} text-white shadow-clay-sm
+                      transition-transform duration-300 ease-emil
+                      group-hover:[transform:translateZ(34px)_rotate(-8deg)_scale(1.1)]
+                      motion-reduce:transition-none motion-reduce:group-hover:[transform:none]`}
+        >
+          <Icon size={28} strokeWidth={2} />
+        </span>
+        <span className="min-w-0 transition-transform duration-300 ease-emil group-hover:[transform:translateZ(18px)] motion-reduce:group-hover:[transform:none]">
+          <span className="block text-[15px] font-bold tracking-[-0.015em] text-ink-900">{label}</span>
+          <span className="mt-0.5 block text-[12px] leading-snug text-ink-400">{title}</span>
+        </span>
+      </Link>
+    </div>
+  )
+}
+
 const greeting = (d = new Date()) => {
   const h = d.getHours()
   if (h < 12) return 'Good morning'
@@ -299,33 +340,23 @@ export default function PortalHome() {
         {/* Analytics sits in the grid rather than above it — it is one more
             destination, and a full-width banner claimed an importance the
             others have equal claim to. */}
-        <Link
+        <Tile
           to="/analytics"
-          className="flex animate-fade-in-up items-center gap-4 rounded-[26px] bg-clay-surface p-5 shadow-clay transition duration-200 ease-emil hover:-translate-y-1 active:scale-[0.985]"
-        >
-          <span className="grid h-[60px] w-[60px] flex-none place-items-center rounded-[20px] bg-gradient-to-br from-sky-500 to-blue-600 text-white shadow-clay-sm">
-            <BarChart3 size={28} strokeWidth={2} />
-          </span>
-          <span className="min-w-0">
-            <span className="block text-[15px] font-bold tracking-[-0.015em] text-ink-900">Analytics</span>
-            <span className="mt-0.5 block text-[12px] leading-snug text-ink-400">Trends and breakdowns across your sites</span>
-          </span>
-        </Link>
+          icon={BarChart3}
+          gradient="from-sky-500 to-blue-600"
+          label="Analytics"
+          title="Trends and breakdowns across your sites"
+        />
         {MODULES.map((m, i) => (
-          <Link
+          <Tile
             key={m.key}
             to={m.path}
-            style={{ animationDelay: `${Math.min(i, 8) * 40}ms` }}
-            className="flex animate-fade-in-up items-center gap-4 rounded-[26px] bg-clay-surface p-5 shadow-clay transition duration-200 ease-emil hover:-translate-y-1 active:scale-[0.985]"
-          >
-            <span className={`grid h-[60px] w-[60px] flex-none place-items-center rounded-[20px] bg-gradient-to-br ${GRADIENT[m.tone] || GRADIENT.brand} text-white shadow-clay-sm`}>
-              <m.icon size={28} strokeWidth={2} />
-            </span>
-            <span className="min-w-0">
-              <span className="block text-[15px] font-bold tracking-[-0.015em] text-ink-900">{m.label}</span>
-              <span className="mt-0.5 block text-[12px] leading-snug text-ink-400">{m.title}</span>
-            </span>
-          </Link>
+            icon={m.icon}
+            gradient={GRADIENT[m.tone] || GRADIENT.brand}
+            label={m.label}
+            title={m.title}
+            delay={Math.min(i, 8) * 40}
+          />
         ))}
       </div>
 
@@ -334,19 +365,14 @@ export default function PortalHome() {
           <SectionLabel className="mb-3 mt-8">Admin tools</SectionLabel>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {ADMIN_TOOLS.map((s) => (
-              <Link
+              <Tile
                 key={s.key}
                 to={s.path}
-                className="flex items-center gap-4 rounded-[26px] bg-clay-surface p-5 shadow-clay transition duration-200 ease-emil hover:-translate-y-1 active:scale-[0.985]"
-              >
-                <span className={`grid h-[60px] w-[60px] flex-none place-items-center rounded-[20px] bg-gradient-to-br ${GRADIENT[s.tone] || GRADIENT.brand} text-white shadow-clay-sm`}>
-                  <s.icon size={28} strokeWidth={2} />
-                </span>
-                <span className="min-w-0">
-                  <span className="block text-[15px] font-bold tracking-[-0.015em] text-ink-900">{s.label}</span>
-                  <span className="mt-0.5 block text-[12px] leading-snug text-ink-400">{s.title}</span>
-                </span>
-              </Link>
+                icon={s.icon}
+                gradient={GRADIENT[s.tone] || GRADIENT.brand}
+                label={s.label}
+                title={s.title}
+              />
             ))}
           </div>
         </>
