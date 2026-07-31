@@ -167,9 +167,11 @@ export default {
           '45%': { transform: 'translateZ(24px) translateY(-11px) rotate(5deg)' },
         },
         // An item ticking off and the list moving up to fill the gap.
+        // The list moving down rather than up: work arriving on the tracker
+        // instead of clearing off the top of it.
         listAdvance: {
           '0%,100%': { transform: 'translateY(0)', opacity: '1' },
-          '55%': { transform: 'translateY(-7px)', opacity: '0.35' },
+          '55%': { transform: 'translateY(7px)', opacity: '0.35' },
         },
         // An arrow landing in the middle of the target.
         arrowHit: {
