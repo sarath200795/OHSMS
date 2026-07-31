@@ -100,6 +100,50 @@ export default {
         },
         // ── Module logo motions. Each is the object doing the thing it is for,
         // which is why they are separate keyframes rather than one shared wiggle.
+        // The second set below is the payload — the spray, the toss, the pop —
+        // that turns a movement into an action.
+        spray: {
+          '0%': { transform: 'translate(0,0) scale(0.3)', opacity: '0' },
+          '25%': { opacity: '0.9' },
+          '100%': { transform: 'translate(16px,-10px) scale(1.9)', opacity: '0' },
+        },
+        tossUp: {
+          '0%,100%': { transform: 'translateZ(10px) translateY(0) rotate(-8deg)' },
+          '30%': { transform: 'translateZ(22px) translateY(-13px) rotate(-26deg)' },
+          '60%': { transform: 'translateZ(16px) translateY(-4px) rotate(4deg)' },
+        },
+        tassel: {
+          '0%,100%': { transform: 'rotate(0deg)' },
+          '30%': { transform: 'rotate(26deg)' },
+          '65%': { transform: 'rotate(-16deg)' },
+        },
+        shake: {
+          '0%,100%': { transform: 'translateX(0) rotate(0deg)' },
+          '25%': { transform: 'translateX(-1.5px) rotate(-3deg)' },
+          '75%': { transform: 'translateX(1.5px) rotate(3deg)' },
+        },
+        popIn: {
+          '0%': { transform: 'scale(0)', opacity: '0' },
+          '55%': { transform: 'scale(1.15)', opacity: '1' },
+          '100%': { transform: 'scale(1)', opacity: '1' },
+        },
+        liftHandset: {
+          '0%,100%': { transform: 'translateZ(12px) translateY(0) rotate(-6deg)' },
+          '40%': { transform: 'translateZ(20px) translateY(-9px) rotate(-22deg)' },
+          '70%': { transform: 'translateZ(16px) translateY(-4px) rotate(8deg)' },
+        },
+        trendRise: {
+          '0%,100%': { transform: 'translateZ(18px) translate(-4px,6px) rotate(-30deg)', opacity: '0.35' },
+          '50%': { transform: 'translateZ(22px) translate(6px,-6px) rotate(-30deg)', opacity: '1' },
+        },
+        tagSwing: {
+          '0%,100%': { transform: 'rotate(-10deg)' },
+          '50%': { transform: 'rotate(14deg)' },
+        },
+        scanGlow: {
+          '0%,100%': { opacity: '0.2' },
+          '50%': { opacity: '0.7' },
+        },
         hatTip: {
           '0%,100%': { transform: 'translateZ(10px) rotate(-8deg)' },
           '35%': { transform: 'translateZ(16px) rotate(-30deg) translateY(-3px)' },
@@ -161,6 +205,15 @@ export default {
         blare: 'blare 0.85s cubic-bezier(0.45,0,0.55,1) infinite',
         chatter: 'chatter 1.1s cubic-bezier(0.45,0,0.55,1) infinite',
         'pen-write': 'penWrite 1.3s cubic-bezier(0.45,0,0.55,1) infinite',
+        spray: 'spray 1.1s cubic-bezier(0.23,1,0.32,1) infinite',
+        'toss-up': 'tossUp 1.8s cubic-bezier(0.23,1,0.32,1) infinite',
+        tassel: 'tassel 1.8s cubic-bezier(0.45,0,0.55,1) infinite',
+        shake: 'shake 0.32s cubic-bezier(0.36,0,0.66,1) infinite',
+        'pop-in': 'popIn 1.6s cubic-bezier(0.23,1,0.32,1) infinite',
+        'lift-handset': 'liftHandset 1.6s cubic-bezier(0.23,1,0.32,1) infinite',
+        'trend-rise': 'trendRise 1.4s cubic-bezier(0.45,0,0.55,1) infinite',
+        'tag-swing': 'tagSwing 1.3s cubic-bezier(0.45,0,0.55,1) infinite',
+        'scan-glow': 'scanGlow 1.2s cubic-bezier(0.45,0,0.55,1) infinite',
       },
     },
   },

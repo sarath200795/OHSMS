@@ -91,10 +91,12 @@ function Tile({ to, icon: Icon, gradient, label, title, delay = 0, logoKey }) {
             className={`absolute inset-0 rounded-[20px] bg-gradient-to-br ${gradient} opacity-0 blur-lg
                         transition-opacity duration-300 group-hover:opacity-60 motion-reduce:hidden`}
           />
+          {/* Modules with a built object let the object do the moving; the
+              rest keep the turn, since a static glyph has nothing else to say. */}
           <span
             className={`relative grid h-full w-full place-items-center overflow-hidden rounded-[20px]
                         bg-gradient-to-br ${gradient} text-white shadow-clay-sm [transform-style:preserve-3d]
-                        group-hover:animate-wobble3d motion-reduce:group-hover:animate-none`}
+                        ${has3D ? '' : 'group-hover:animate-wobble3d'} motion-reduce:group-hover:animate-none`}
           >
             {/* A built object where one exists; the line icon otherwise, rather
                 than giving a module a shape that means something else. */}
