@@ -144,6 +144,39 @@ export default {
           '0%,100%': { opacity: '0.2' },
           '50%': { opacity: '0.7' },
         },
+        // A warning light turning, rather than simply blinking.
+        beacon: {
+          '0%,100%': { transform: 'translateZ(20px) scaleX(1)', opacity: '1' },
+          '50%': { transform: 'translateZ(20px) scaleX(0.25)', opacity: '0.55' },
+        },
+        // The needle of a risk matrix settling on a square.
+        needleSweep: {
+          '0%,100%': { transform: 'translateZ(20px) rotate(-38deg)' },
+          '45%': { transform: 'translateZ(20px) rotate(32deg)' },
+          '70%': { transform: 'translateZ(20px) rotate(18deg)' },
+        },
+        // A stamp coming down on a permit.
+        stampDown: {
+          '0%,100%': { transform: 'translateZ(26px) translateY(-13px) rotate(-9deg)', opacity: '0.9' },
+          '45%': { transform: 'translateZ(16px) translateY(1px) rotate(-3deg)', opacity: '1' },
+          '60%': { transform: 'translateZ(18px) translateY(-2px) rotate(-4deg)', opacity: '1' },
+        },
+        // A sheet lifting out of the folder and settling back.
+        filePull: {
+          '0%,100%': { transform: 'translateZ(14px) translateY(0)' },
+          '45%': { transform: 'translateZ(24px) translateY(-11px) rotate(5deg)' },
+        },
+        // An item ticking off and the list moving up to fill the gap.
+        listAdvance: {
+          '0%,100%': { transform: 'translateY(0)', opacity: '1' },
+          '55%': { transform: 'translateY(-7px)', opacity: '0.35' },
+        },
+        // An arrow landing in the middle of the target.
+        arrowHit: {
+          '0%': { transform: 'translateZ(28px) translate(17px,-15px) rotate(38deg)', opacity: '0' },
+          '30%': { opacity: '1' },
+          '65%,100%': { transform: 'translateZ(28px) translate(1px,-1px) rotate(38deg)', opacity: '1' },
+        },
         hatTip: {
           '0%,100%': { transform: 'translateZ(10px) rotate(-8deg)' },
           '35%': { transform: 'translateZ(16px) rotate(-30deg) translateY(-3px)' },
@@ -214,6 +247,12 @@ export default {
         'trend-rise': 'trendRise 1.4s cubic-bezier(0.45,0,0.55,1) infinite',
         'tag-swing': 'tagSwing 1.3s cubic-bezier(0.45,0,0.55,1) infinite',
         'scan-glow': 'scanGlow 1.2s cubic-bezier(0.45,0,0.55,1) infinite',
+        beacon: 'beacon 0.9s cubic-bezier(0.45,0,0.55,1) infinite',
+        'needle-sweep': 'needleSweep 2.1s cubic-bezier(0.23,1,0.32,1) infinite',
+        'stamp-down': 'stampDown 1.5s cubic-bezier(0.23,1,0.32,1) infinite',
+        'file-pull': 'filePull 1.7s cubic-bezier(0.23,1,0.32,1) infinite',
+        'list-advance': 'listAdvance 1.5s cubic-bezier(0.45,0,0.55,1) infinite',
+        'arrow-hit': 'arrowHit 1.8s cubic-bezier(0.23,1,0.32,1) infinite',
       },
     },
   },

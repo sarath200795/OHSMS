@@ -257,7 +257,154 @@ function LotoLock() {
   )
 }
 
+// ── Incidents: a hazard cone under a turning warning beacon ──────────────────
+function IncidentCone() {
+  return (
+    <>
+      <Slab z={4} className="h-[4px] w-[34px] translate-y-[15px] rounded-full bg-slate-900/40" />
+      <Slab z={10} className="h-[5px] w-[30px] translate-y-[13px] rounded-[2px] bg-orange-500" />
+      {/* The cone body, with its reflective band. */}
+      <span
+        className="absolute h-0 w-0 border-b-[27px] border-x-[13px] border-x-transparent border-b-orange-500"
+        style={{ transform: 'translateZ(13px) translateY(-2px)' }}
+      />
+      <Slab z={16} className="h-[5px] w-[15px] -translate-y-[1px] rounded-[1px] bg-white/90" />
+      {/* The beacon on top, sweeping rather than blinking. */}
+      <span
+        className="absolute h-[7px] w-[7px] rounded-full bg-red-400 group-hover:animate-beacon motion-reduce:group-hover:animate-none"
+        style={{ transform: 'translateZ(20px) translateY(-17px)' }}
+      />
+      <span
+        className="absolute h-[13px] w-[13px] rounded-full bg-red-400/40 blur-[3px] group-hover:animate-beacon motion-reduce:group-hover:animate-none"
+        style={{ transform: 'translateZ(20px) translateY(-17px)', animationDelay: '0.1s' }}
+      />
+    </>
+  )
+}
+
+// ── Risk assessment: a 3×3 matrix with a needle settling on a square ─────────
+function RiskMatrix() {
+  const cells = ['bg-emerald-400', 'bg-emerald-300', 'bg-amber-300', 'bg-emerald-300', 'bg-amber-300', 'bg-orange-400', 'bg-amber-300', 'bg-orange-400', 'bg-red-500']
+  return (
+    <>
+      <Slab z={6} className="h-[32px] w-[32px] rounded-[5px] bg-white/90 shadow-[0_2px_4px_rgba(0,0,0,0.25)]" />
+      {cells.map((tone, i) => (
+        <span
+          key={i}
+          className={`absolute h-[8px] w-[8px] rounded-[1.5px] ${tone}`}
+          style={{ transform: `translateZ(9px) translate(${-9.5 + (i % 3) * 9.5}px, ${-9.5 + Math.floor(i / 3) * 9.5}px)` }}
+        />
+      ))}
+      {/* The needle, swinging up the scale and settling high. */}
+      <span
+        className="absolute h-[15px] w-[2.5px] origin-bottom rounded-full bg-slate-900 group-hover:animate-needle-sweep motion-reduce:group-hover:animate-none"
+        style={{ transform: 'translateZ(20px) rotate(-38deg)', transformOrigin: 'bottom center' }}
+      />
+      <Slab z={22} className="h-[5px] w-[5px] translate-y-[7px] rounded-full bg-slate-900" />
+    </>
+  )
+}
+
+// ── Permit to work: a permit being stamped ───────────────────────────────────
+function PermitStamp() {
+  return (
+    <>
+      <Slab z={5} className="h-[32px] w-[25px] rounded-[4px] bg-white/95 shadow-[0_2px_4px_rgba(0,0,0,0.25)]" />
+      {[0, 1, 2].map((i) => (
+        <Slab key={i} z={7} className="h-[2px] rounded-full bg-slate-400/70"
+          style={{ transform: `translateZ(7px) translateY(${-11 + i * 6}px)`, width: i === 2 ? 10 : 15 }} />
+      ))}
+      {/* The mark it leaves, appearing as the stamp lands. */}
+      <span
+        className="absolute h-[13px] w-[13px] rounded-full border-[2.5px] border-emerald-500/80 opacity-0 group-hover:animate-pop-in motion-reduce:group-hover:animate-none"
+        style={{ transform: 'translateZ(9px) translateY(7px) rotate(-12deg)', animationDelay: '0.62s' }}
+      />
+      <span
+        className="absolute group-hover:animate-stamp-down motion-reduce:group-hover:animate-none"
+        style={{ transform: 'translateZ(26px) translateY(-13px) rotate(-9deg)' }}
+      >
+        <span className="absolute -left-[9px] h-[7px] w-[18px] rounded-[2px] bg-slate-700" />
+        <span className="absolute -left-[4px] -top-[9px] h-[9px] w-[8px] rounded-[3px] bg-slate-800" />
+        <span className="absolute -left-[6px] -top-[13px] h-[5px] w-[12px] rounded-[3px] bg-slate-600" />
+      </span>
+    </>
+  )
+}
+
+// ── Documents & SDS: a sheet pulled from the folder ──────────────────────────
+function DocumentFolder() {
+  return (
+    <>
+      {/* The sheet lifts out from behind the folder's front flap. */}
+      <span
+        className="absolute h-[26px] w-[19px] rounded-[3px] bg-white/95 group-hover:animate-file-pull motion-reduce:group-hover:animate-none"
+        style={{ transform: 'translateZ(14px)' }}
+      >
+        <span className="absolute left-[3px] top-[5px] h-[2px] w-[12px] rounded-full bg-slate-400/70" />
+        <span className="absolute left-[3px] top-[10px] h-[2px] w-[12px] rounded-full bg-slate-400/70" />
+        <span className="absolute left-[3px] top-[15px] h-[2px] w-[8px] rounded-full bg-slate-400/70" />
+        {/* the SDS diamond */}
+        <span className="absolute bottom-[3px] right-[3px] h-[7px] w-[7px] rotate-45 border-[1.5px] border-red-500 bg-red-100" />
+      </span>
+      <Slab z={8} className="h-[26px] w-[30px] translate-y-[4px] rounded-[4px] bg-amber-300" />
+      <Slab z={18} className="h-[19px] w-[30px] translate-y-[8px] rounded-[4px] bg-amber-400 shadow-[0_-2px_4px_rgba(0,0,0,0.18)]" />
+      <Slab z={19} className="h-[3px] w-[12px] -translate-x-[7px] -translate-y-[1px] rounded-full bg-amber-600/60" />
+    </>
+  )
+}
+
+// ── Action tracker: a list where the top item ticks off and the rest move up ─
+function ActionList() {
+  return (
+    <>
+      <Slab z={5} className="h-[32px] w-[28px] rounded-[4px] bg-white/95 shadow-[0_2px_4px_rgba(0,0,0,0.25)]" />
+      {[0, 1, 2].map((i) => (
+        <span
+          key={i}
+          className="absolute group-hover:animate-list-advance motion-reduce:group-hover:animate-none"
+          style={{ transform: `translateZ(9px) translateY(${-9 + i * 8}px)`, animationDelay: `${i * 0.1}s` }}
+        >
+          <span className={`absolute -left-[11px] h-[7px] w-[7px] rounded-[2px] ${i === 0 ? 'bg-emerald-400' : 'border-[1.5px] border-slate-400'}`} />
+          <span className="absolute -left-[1px] top-[2px] h-[2.5px] w-[13px] rounded-full bg-slate-400/80" />
+        </span>
+      ))}
+      {/* The tick that lands on the item being completed. */}
+      <span
+        className="absolute h-[6px] w-[3px] rotate-45 border-b-[2px] border-r-[2px] border-white opacity-0 group-hover:animate-pop-in motion-reduce:group-hover:animate-none"
+        style={{ transform: 'translateZ(12px) translate(-11px,-10px) rotate(45deg)' }}
+      />
+    </>
+  )
+}
+
+// ── Objectives & targets: an arrow landing in the bullseye ───────────────────
+function TargetArrow() {
+  return (
+    <>
+      <Slab z={6} className="h-[32px] w-[32px] rounded-full bg-white/95 shadow-[0_2px_4px_rgba(0,0,0,0.25)]" />
+      <Slab z={8} className="h-[23px] w-[23px] rounded-full bg-red-500" />
+      <Slab z={10} className="h-[14px] w-[14px] rounded-full bg-white/95" />
+      <Slab z={12} className="h-[6px] w-[6px] rounded-full bg-red-500" />
+      {/* The arrow flies in and stays in the gold. */}
+      <span
+        className="absolute opacity-0 group-hover:animate-arrow-hit motion-reduce:group-hover:animate-none"
+        style={{ transform: 'translateZ(28px) translate(17px,-15px) rotate(38deg)' }}
+      >
+        <span className="absolute h-[2.5px] w-[22px] rounded-full bg-slate-700" />
+        <span className="absolute -left-[4px] -top-[2px] h-0 w-0 border-y-[3.5px] border-r-[6px] border-y-transparent border-r-slate-800" />
+        <span className="absolute right-0 -top-[3px] h-[8px] w-[3px] rounded-[1px] bg-amber-300" />
+      </span>
+    </>
+  )
+}
+
 const LOGOS = {
+  incidents: IncidentCone,
+  hira: RiskMatrix,
+  ptw: PermitStamp,
+  documents: DocumentFolder,
+  actions: ActionList,
+  objectives: TargetArrow,
   inspections: InspectionPad,
   equipment: Extinguisher,
   drills: Hooter,
