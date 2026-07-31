@@ -1,9 +1,9 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { MapContainer, TileLayer, Marker, Tooltip as LeafletTooltip } from 'react-leaflet'
 import L from 'leaflet'
-import { HeartPulse, ShieldCheck, TriangleAlert, MapPin } from 'lucide-react'
+import { HeartPulse, ShieldCheck, TriangleAlert, MapPin, FireExtinguisher, BellRing } from 'lucide-react'
 import { Panel, Stat, NoData, Picker } from './ui'
-import { equipmentAnalytics } from './moduleAnalytics'
+import { equipmentAnalytics, ASSET_KINDS } from './moduleAnalytics'
 import Breakdown from './Breakdown'
 
 // Pin size and colour carry the count, so a site with one finding and a site
@@ -24,14 +24,24 @@ function defectPin(count) {
   })
 }
 
+const KIND_TONE = { Extinguisher: '#dd5a41', AED: '#7fc4bb', 'Fire alarm': '#e8a33d' }
+const KIND_ICON = { Extinguisher: FireExtinguisher, AED: HeartPulse, 'Fire alarm': BellRing }
+
 export default function EquipmentTab({ extinguishers, aeds, fas, sites, keepUnplaced = true }) {
   const [siteId, setSiteId] = useState('all')
   const [defectType, setDefectType] = useState('all')
+  const [kind, setKind] = useState('all')
 
   const a = useMemo(
-    () => equipmentAnalytics({ extinguishers, aeds, fas, sites, siteId, defectType, keepUnplaced }),
-    [extinguishers, aeds, fas, sites, siteId, defectType, keepUnplaced]
+    () => equipmentAnalytics({ extinguishers, aeds, fas, sites, siteId, defectType, kind, keepUnplaced }),
+    [extinguishers, aeds, fas, sites, siteId, defectType, kind, keepUnplaced]
   )
+
+  // Narrowing to a kind can strip the chosen defect type out of the list, which
+  // would otherwise leave a filter selected that matches nothing.
+  useEffect(() => {
+    if (defectType !== 'all' && !a.defectTypes.includes(defectType)) setDefectType('all')
+  }, [a.defectTypes, defectType])
 
   const centre = a.pins.length ? [a.pins[0].lat, a.pins[0].lng] : [20, 78]
   const unmapped = a.bySite.reduce((n, r) => n + r.value, 0) - a.pins.reduce((n, p) => n + p.defects, 0)
@@ -43,24 +53,61 @@ export default function EquipmentTab({ extinguishers, aeds, fas, sites, keepUnpl
           <option value="all">All sites ({sites.length})</option>
           {sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
         </Picker>
+        <Picker id="eq-kind" label="Equipment" value={kind} onChange={(e) => setKind(e.target.value)}>
+          <option value="all">All equipment</option>
+          {ASSET_KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
+        </Picker>
         <Picker id="eq-defect" label="Defect type" value={defectType} onChange={(e) => setDefectType(e.target.value)}>
           <option value="all">All defect types</option>
           {a.defectTypes.map((t) => <option key={t} value={t}>{t}</option>)}
         </Picker>
         <button
           type="button"
-          onClick={() => { setSiteId('all'); setDefectType('all') }}
+          onClick={() => { setSiteId('all'); setDefectType('all'); setKind('all') }}
           className="rounded-2xl bg-clay-surface px-4 py-2.5 text-[12.5px] font-semibold text-ink-700 shadow-clay-sm"
         >
           Reset
         </button>
       </div>
 
-      <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mb-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Stat icon={ShieldCheck} label="Fleet health" value={a.healthPct === null ? '—' : `${a.healthPct}%`} sub={`${a.healthy} of ${a.total} ready`} tone="#16a34a" />
-        <Stat icon={TriangleAlert} label="Assets with a defect" value={a.faulty} sub="any kind" tone="#dc2626" />
-        <Stat icon={HeartPulse} label="Total assets" value={a.total} sub="extinguishers, AED, alarm" tone="#0891b2" />
+        <Stat icon={TriangleAlert} label="Assets with a defect" value={a.faulty} sub={kind === 'all' ? 'any equipment' : kind} tone="#dc2626" />
+        <Stat icon={HeartPulse} label="Total assets" value={a.total} sub={kind === 'all' ? 'extinguishers, AED, alarm' : kind} tone="#0891b2" />
         <Stat icon={MapPin} label="Sites affected" value={a.bySite.length} tone="#a855f7" />
+      </div>
+
+      {/* The three kinds fail for unrelated reasons and are maintained by
+          different people, so the combined figure above hides the question
+          everyone actually asks: which of the three is the problem. */}
+      <div className="mb-5 grid gap-3 sm:grid-cols-3">
+        {a.fleetByKind.map((k) => {
+          const Icon = KIND_ICON[k.key]
+          return (
+            <button
+              key={k.key}
+              type="button"
+              onClick={() => setKind(kind === k.key ? 'all' : k.key)}
+              aria-pressed={kind === k.key}
+              className={`card flex items-center gap-4 p-4 text-left transition duration-200 ease-emil hover:-translate-y-0.5 ${
+                kind === k.key ? 'ring-2 ring-brand-500' : ''
+              }`}
+            >
+              <span className="grid h-11 w-11 flex-none place-items-center rounded-2xl text-white" style={{ background: KIND_TONE[k.key] }}>
+                <Icon size={20} strokeWidth={2.1} />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-[20px] font-extrabold leading-none tracking-[-0.03em] text-ink-900">
+                  {k.healthPct === null ? '—' : `${k.healthPct}%`}
+                </span>
+                <span className="mt-1 block text-[12.5px] font-semibold text-ink-700">{k.name}</span>
+                <span className="block text-[11px] text-ink-400">
+                  {k.total === 0 ? 'none recorded' : `${k.faulty} of ${k.total} with a defect`}
+                </span>
+              </span>
+            </button>
+          )
+        })}
       </div>
 
       <Panel
@@ -112,6 +159,7 @@ export default function EquipmentTab({ extinguishers, aeds, fas, sites, keepUnpl
       </Panel>
 
       <div className="grid gap-4 lg:grid-cols-2">
+        <Breakdown title="By equipment" subtitle="Which kind the defects are on" rows={a.byKind} />
         <Breakdown title="By defect type" rows={a.byType} />
         <Breakdown title="By site" rows={a.bySite} />
         <Breakdown title="By region" rows={a.byRegion} />

@@ -319,3 +319,55 @@ describe('extinguisher refill and HPT dates count as defects', () => {
     expect(only.bySite.map((s) => s.key)).toEqual(['Depot Chennai'])
   })
 })
+
+// The three kinds fail for unrelated reasons and are maintained by different
+// people, so a single fleet figure hides which of the three is the problem.
+describe('defects segregated by equipment kind', () => {
+  const TODAY = new Date('2026-07-31')
+  const args = {
+    sites: SITES, today: TODAY,
+    extinguishers: [
+      { id: 'e1', siteId: 's1', physicalDefects: ['pin'] },
+      { id: 'e2', siteId: 's1', physicalDefects: [] },
+    ],
+    aeds: [{ id: 'a1', siteId: 's1', status: 'out_of_service' }],
+    fas: [{ id: 'f1', siteId: 's1', status: 'operational' }],
+  }
+
+  it('reports health per kind as well as overall', () => {
+    const a = equipmentAnalytics(args)
+    expect(a.healthPct).toBe(50) // 2 of 4 assets healthy
+    const byKind = Object.fromEntries(a.fleetByKind.map((k) => [k.key, k]))
+    expect(byKind.Extinguisher).toMatchObject({ total: 2, faulty: 1, healthPct: 50 })
+    expect(byKind.AED).toMatchObject({ total: 1, faulty: 1, healthPct: 0 })
+    expect(byKind['Fire alarm']).toMatchObject({ total: 1, faulty: 0, healthPct: 100 })
+  })
+
+  it('counts defects by kind', () => {
+    const a = equipmentAnalytics(args)
+    expect(a.byKind).toEqual([
+      { key: 'Extinguisher', name: 'Extinguisher', value: 1 },
+      { key: 'AED', name: 'AED', value: 1 },
+    ])
+  })
+
+  it('narrows every figure to one kind', () => {
+    const a = equipmentAnalytics({ ...args, kind: 'AED' })
+    expect(a.total).toBe(1)
+    expect(a.faulty).toBe(1)
+    expect(a.byKind.map((k) => k.key)).toEqual(['AED'])
+    expect(a.byType.map((t) => t.key)).toEqual(['AED out of service'])
+  })
+
+  it('offers only defect types that belong to the chosen kind', () => {
+    // Otherwise the filter lists options that would return nothing.
+    expect(equipmentAnalytics({ ...args, kind: 'AED' }).defectTypes).toEqual(['AED out of service'])
+    expect(equipmentAnalytics({ ...args, kind: 'Extinguisher' }).defectTypes).toEqual(['PIN'])
+  })
+
+  it('keeps per-kind health describing the whole kind, not the defect filter', () => {
+    const a = equipmentAnalytics({ ...args, defectType: 'PIN' })
+    expect(a.byType.map((t) => t.key)).toEqual(['PIN'])
+    expect(a.fleetByKind.find((k) => k.key === 'AED').faulty).toBe(1)
+  })
+})

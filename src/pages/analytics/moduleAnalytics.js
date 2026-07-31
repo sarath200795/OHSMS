@@ -217,9 +217,11 @@ function extinguisherFindings(e, at, today) {
   return out
 }
 
+export const ASSET_KINDS = ['Extinguisher', 'AED', 'Fire alarm']
+
 export function equipmentAnalytics({
   extinguishers = [], aeds = [], fas = [], sites = [], siteId = 'all', defectType = 'all',
-  keepUnplaced = true, today = new Date(),
+  kind = 'all', keepUnplaced = true, today = new Date(),
 } = {}) {
   const links = linkAssets([...extinguishers, ...aeds, ...fas], sites)
   const visible = new Set(sites.map((s) => s.id))
@@ -253,13 +255,35 @@ export function equipmentAnalytics({
     })),
   ]
 
-  const filtered = defectType === 'all' ? findings : findings.filter((f) => f.type === defectType)
+  const filtered = findings
+    .filter((f) => defectType === 'all' || f.type === defectType)
+    .filter((f) => kind === 'all' || f.kind === kind)
 
-  const total = ext.length + aed.length + fasRows.length
+  const pool = { Extinguisher: ext, AED: aed, 'Fire alarm': fasRows }
+  const inKind = (k) => kind === 'all' || k === kind
+
+  const total = ASSET_KINDS.filter(inKind).reduce((n, k) => n + pool[k].length, 0)
   // An asset can carry more than one finding — a damaged unit that is also
   // overdue for test — so health counts assets, not findings. Otherwise one
   // badly-off extinguisher would look worse than a whole site out of service.
-  const faulty = new Set(findings.map((f) => f.asset)).size
+  const faultySet = new Set(findings.filter((f) => inKind(f.kind)).map((f) => f.asset))
+  const faulty = faultySet.size
+
+  // The three kinds fail for unrelated reasons and are maintained by different
+  // people, so a single fleet figure hides the answer everyone actually wants:
+  // which of the three is the problem.
+  const fleetByKind = ASSET_KINDS.map((k) => {
+    const assets = pool[k]
+    const bad = new Set(findings.filter((f) => f.kind === k).map((f) => f.asset)).size
+    return {
+      key: k,
+      name: k,
+      total: assets.length,
+      faulty: bad,
+      healthy: assets.length - bad,
+      healthPct: assets.length ? Math.round(((assets.length - bad) / assets.length) * 100) : null,
+    }
+  })
 
   const byId = new Map(sites.map((s) => [s.id, s]))
   const group = (key) => {
@@ -277,7 +301,14 @@ export function equipmentAnalytics({
     faulty,
     healthy: total - faulty,
     healthPct: total ? Math.round(((total - faulty) / total) * 100) : null,
-    defectTypes: [...new Set(findings.map((f) => f.type))].sort(),
+    fleetByKind,
+    // Defect types are offered for whichever kind is being looked at, so the
+    // filter never lists an option that would return nothing.
+    defectTypes: [...new Set(findings.filter((f) => inKind(f.kind)).map((f) => f.type))].sort(),
+    byKind: ASSET_KINDS
+      .map((k) => ({ key: k, name: k, value: filtered.filter((f) => f.kind === k).length }))
+      .filter((r) => r.value > 0)
+      .sort((a, b) => b.value - a.value),
     byType: (() => {
       const m = new Map()
       for (const f of filtered) m.set(f.type, (m.get(f.type) || 0) + 1)
