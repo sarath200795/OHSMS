@@ -89,7 +89,10 @@ export default function SamCharacter({ walking = false, facing = 1, talking = fa
         style={{
           position: 'relative', width: '100%', height: '100%',
           transformStyle: 'preserve-3d',
-          transform: `scale(${s}) rotateY(${facing < 0 ? 20 : -20}deg)`,
+          // rotateY sends the front face to (sin θ, 0, cos θ), so a positive
+          // angle turns him toward +X — screen right — which is what facing 1
+          // means. He turns further while actually walking than when idling.
+          transform: `scale(${s}) rotateY(${facing * (walking ? 42 : 16)}deg)`,
           animation: anim(walking ? 'sam-bob-walk' : 'sam-bob', walking ? '0.6s' : '3.2s'),
         }}
       >

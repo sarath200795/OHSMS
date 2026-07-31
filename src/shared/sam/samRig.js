@@ -12,6 +12,27 @@
 // model of a person.
 // ─────────────────────────────────────────────────────────────────────────────
 
+// How far Sam turns toward travel, in radians. ~76° reads as "heading that
+// way" while keeping his face partly toward the viewer; a right angle would be
+// a flat silhouette. Standing still he is nearly front-on, because that is when
+// he is being talked to.
+export const WALK_TURN = Math.PI * 0.42
+export const IDLE_TURN = 0.16
+
+/**
+ * The Y rotation that points Sam the way he is going.
+ *
+ * The rig is modelled facing +Z. Rotating by θ about Y sends that forward
+ * vector to (sin θ, 0, cos θ), so a positive angle turns him toward +X — screen
+ * right — which is what `facing === 1` means. Worth stating because the sign is
+ * easy to invert, and inverted it points him away from travel while still
+ * looking deliberate.
+ */
+export function facingAngle(facing, walking) {
+  const dir = facing < 0 ? -1 : 1
+  return dir * (walking ? WALK_TURN : IDLE_TURN)
+}
+
 /** Build the rig. `THREE` is passed in so this file imports nothing itself. */
 export function buildSam(THREE) {
   const M = {

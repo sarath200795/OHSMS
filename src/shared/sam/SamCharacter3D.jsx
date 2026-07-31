@@ -17,6 +17,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { useEffect, useRef, useState } from 'react'
 import SamCharacter from './SamCharacter'
+import { facingAngle } from './samRig'
 
 /** Cheap probe — a browser without WebGL should never pay for the import. */
 function webglAvailable() {
@@ -84,10 +85,11 @@ export default function SamCharacter3D({ walking = false, facing = 1, talking = 
         const { walking: w, facing: f, talking: tk } = state.current
         const t = (performance.now() - t0) / 1000
 
-        // Turn to face travel; eased so a change of direction is a turn rather
-        // than a snap.
-        const targetY = f < 0 ? 0.42 : -0.42
-        rig.sam.rotation.y += (targetY - rig.sam.rotation.y) * 0.08
+        // Face the way he is going — the sign convention is explained and
+        // tested alongside facingAngle. Eased rather than snapped, so a change
+        // of direction is a turn.
+        const targetY = facingAngle(f, w)
+        rig.sam.rotation.y += (targetY - rig.sam.rotation.y) * 0.12
 
         if (w) {
           const s = t * 9
