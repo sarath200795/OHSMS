@@ -253,3 +253,69 @@ describe('scoping records the viewer cannot place', () => {
     expect(equipmentAnalytics({ ...args, sites: SITES, keepUnplaced: true }).total).toBe(3)
   })
 })
+
+// A logged defect is only half of it: an extinguisher whose refill or hydraulic
+// test has come due is not fit for purpose either, and nobody ticks a box to
+// say so — it is a date passing.
+describe('extinguisher refill and HPT dates count as defects', () => {
+  const TODAY = new Date('2026-07-31')
+  const ONE = (patch) => equipmentAnalytics({
+    sites: SITES, today: TODAY,
+    extinguishers: [{ id: 'e1', siteId: 's1', physicalDefects: [], ...patch }],
+  })
+
+  it('flags an overdue refill', () => {
+    const a = ONE({ dateOfNextRefill: '2026-06-01' })
+    expect(a.byType.map((t) => t.key)).toEqual(['Refilling Due'])
+    expect(a.faulty).toBe(1)
+  })
+
+  it('flags an overdue hydraulic test', () => {
+    const a = ONE({ dateOfNextHPT: '2026-01-01' })
+    expect(a.byType.map((t) => t.key)).toEqual(['HPT Due'])
+  })
+
+  it('separates due-soon from overdue', () => {
+    // One is a purchase order, the other is a unit that should be off the wall.
+    expect(ONE({ dateOfNextRefill: '2026-08-10' }).byType.map((t) => t.key)).toEqual(['Refilling Due in 30'])
+    expect(ONE({ dateOfNextHPT: '2026-08-10' }).byType.map((t) => t.key)).toEqual(['HPT Due in 30'])
+  })
+
+  it('leaves a unit in date alone', () => {
+    const a = ONE({ dateOfNextRefill: '2027-01-01', dateOfNextHPT: '2028-01-01' })
+    expect(a.byType).toEqual([])
+    expect(a.faulty).toBe(0)
+    expect(a.healthPct).toBe(100)
+  })
+
+  it('counts a unit that is both damaged and overdue once against health', () => {
+    const a = ONE({ physicalDefects: ['pin'], dateOfNextRefill: '2026-06-01' })
+    expect(a.byType).toHaveLength(2)
+    expect(a.faulty).toBe(1)
+  })
+
+  it('stops reporting dates once the unit is refilled and closed', () => {
+    const a = ONE({ dateOfNextRefill: '2026-06-01', status: 'closed' })
+    expect(a.byType).toEqual([])
+  })
+
+  it('offers the date states as filterable defect types', () => {
+    const a = equipmentAnalytics({
+      sites: SITES, today: TODAY,
+      extinguishers: [
+        { id: 'e1', siteId: 's1', dateOfNextRefill: '2026-06-01' },
+        { id: 'e2', siteId: 's2', dateOfNextHPT: '2026-01-01' },
+      ],
+    })
+    expect(a.defectTypes).toEqual(['HPT Due', 'Refilling Due'])
+    const only = equipmentAnalytics({
+      sites: SITES, today: TODAY, defectType: 'HPT Due',
+      extinguishers: [
+        { id: 'e1', siteId: 's1', dateOfNextRefill: '2026-06-01' },
+        { id: 'e2', siteId: 's2', dateOfNextHPT: '2026-01-01' },
+      ],
+    })
+    expect(only.byType.map((t) => t.key)).toEqual(['HPT Due'])
+    expect(only.bySite.map((s) => s.key)).toEqual(['Depot Chennai'])
+  })
+})

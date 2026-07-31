@@ -8,7 +8,8 @@
 // site rather than trusted from the record.
 // ─────────────────────────────────────────────────────────────────────────────
 import { linkAssets } from '../admin/siteStats'
-import { DEFECT_BY_KEY } from '../../modules/fire/lib/constants'
+import { DEFECT_BY_KEY, CATEGORIES } from '../../modules/fire/lib/constants'
+import { deriveStatus } from '../../modules/fire/lib/extinguisherLogic'
 
 const norm = (s) => String(s ?? '').trim().toLowerCase()
 
@@ -189,9 +190,36 @@ const FAS_BAD = new Set(['faulty', 'service_due'])
  * in its ready state. Counting only extinguisher defects would report a fleet
  * as healthy while its defibrillators were out of service.
  */
+/**
+ * Everything wrong with one extinguisher.
+ *
+ * A logged defect is only half of it. An extinguisher whose refill or hydraulic
+ * test has come due is not fit for purpose either, and those are dates rather
+ * than flags — nobody ticks a box to say a unit went out of test. deriveStatus
+ * is the fire module's own reading of both, so the analytics and the Fire
+ * dashboard cannot disagree about whether a unit is due.
+ *
+ * Due-in-30 is reported separately from overdue: one is a purchase order, the
+ * other is an extinguisher that should not be on the wall.
+ */
+function extinguisherFindings(e, at, today) {
+  const d = deriveStatus(e, today)
+  const cat = (c) => ({ asset: e, kind: 'Extinguisher', siteId: at, type: c.label, color: c.color })
+  const out = [...d.physicalDefects, ...d.refillDefects].map((k) => ({
+    asset: e, kind: 'Extinguisher', siteId: at,
+    type: DEFECT_BY_KEY[k]?.label || k, color: DEFECT_BY_KEY[k]?.color || '#dc2626',
+  }))
+  if (d.isClosed) return out
+  if (d.flags.HPT_DUE) out.push(cat(CATEGORIES.HPT_DUE))
+  else if (d.flags.HPT_DUE_30) out.push(cat(CATEGORIES.HPT_DUE_30))
+  if (d.flags.REFILL_DUE) out.push(cat(CATEGORIES.REFILL_DUE))
+  else if (d.flags.REFILL_DUE_30) out.push(cat(CATEGORIES.REFILL_DUE_30))
+  return out
+}
+
 export function equipmentAnalytics({
   extinguishers = [], aeds = [], fas = [], sites = [], siteId = 'all', defectType = 'all',
-  keepUnplaced = true,
+  keepUnplaced = true, today = new Date(),
 } = {}) {
   const links = linkAssets([...extinguishers, ...aeds, ...fas], sites)
   const visible = new Set(sites.map((s) => s.id))
@@ -212,10 +240,7 @@ export function equipmentAnalytics({
 
   // One flat list of findings, each already attributed to a site.
   const findings = [
-    ...ext.flatMap((e) => (e.physicalDefects || []).map((d) => ({
-      asset: e, kind: 'Extinguisher', siteId: siteOf(e),
-      type: DEFECT_BY_KEY[d]?.label || d, color: DEFECT_BY_KEY[d]?.color || '#dc2626',
-    }))),
+    ...ext.flatMap((e) => extinguisherFindings(e, siteOf(e), today)),
     ...aed.filter((a) => AED_BAD.has(a.status)).map((a) => ({
       asset: a, kind: 'AED', siteId: siteOf(a),
       type: a.status === 'out_of_service' ? 'AED out of service' : 'AED service due',
@@ -231,9 +256,9 @@ export function equipmentAnalytics({
   const filtered = defectType === 'all' ? findings : findings.filter((f) => f.type === defectType)
 
   const total = ext.length + aed.length + fasRows.length
-  // An asset can carry more than one defect, so health counts assets, not
-  // findings — otherwise a single badly-damaged extinguisher could make the
-  // fleet look worse than a whole site being out of service.
+  // An asset can carry more than one finding — a damaged unit that is also
+  // overdue for test — so health counts assets, not findings. Otherwise one
+  // badly-off extinguisher would look worse than a whole site out of service.
   const faulty = new Set(findings.map((f) => f.asset)).size
 
   const byId = new Map(sites.map((s) => [s.id, s]))
