@@ -13,8 +13,10 @@ import {
 } from 'recharts'
 import { AlertTriangle, Flame, HeartPulse, Clock, ShieldAlert } from 'lucide-react'
 import { INCIDENT_TYPE_BY_KEY } from '../../modules/incidents/lib/constants'
-import { Panel, Stat, NoData, Picker } from './ui'
+import { Panel, Stat, NoData } from './ui'
 import { incidentAnalytics, resolveIncidents, facets } from './incidentAnalytics'
+import Breakdown from './Breakdown'
+import FilterBar from './FilterBar'
 
 const TREND_TYPES = [
   { key: 'near_miss', label: 'Near miss' },
@@ -26,15 +28,14 @@ const TREND_TYPES = [
 
 const axis = { tickLine: false, axisLine: false, fontSize: 11, tick: { fill: '#8a7660' } }
 
-export default function IncidentsTab({ incidents, sites }) {
+export default function IncidentsTab({ incidents, sites, keepUnplaced = true }) {
   const [f, setF] = useState({ siteId: 'all', region: 'all', entity: 'all', from: '', to: '' })
-  const set = (k) => (e) => setF((p) => ({ ...p, [k]: e.target.value }))
 
   // Facets come from every visible incident, not the filtered set — options
   // that vanish as you use them make a filter bar impossible to reason about.
-  const all = useMemo(() => resolveIncidents(incidents, sites), [incidents, sites])
+  const all = useMemo(() => resolveIncidents(incidents, sites, { keepUnplaced }), [incidents, sites, keepUnplaced])
   const opts = useMemo(() => facets(all), [all])
-  const a = useMemo(() => incidentAnalytics(incidents, sites, f), [incidents, sites, f])
+  const a = useMemo(() => incidentAnalytics(incidents, sites, f, { keepUnplaced }), [incidents, sites, f, keepUnplaced])
 
   const h = a.headline
   const HEAD = [
@@ -47,35 +48,7 @@ export default function IncidentsTab({ incidents, sites }) {
 
   return (
     <div className="animate-fade-in-up">
-      <div className="card mb-5 flex flex-wrap items-end gap-3 p-4">
-        <Picker id="an-site" label="Site" value={f.siteId} onChange={set('siteId')}>
-          <option value="all">All sites ({sites.length})</option>
-          {sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-        </Picker>
-        <Picker id="an-region" label="Region" value={f.region} onChange={set('region')}>
-          <option value="all">All regions</option>
-          {opts.regions.map((r) => <option key={r} value={r}>{r}</option>)}
-        </Picker>
-        <Picker id="an-entity" label="Entity" value={f.entity} onChange={set('entity')}>
-          <option value="all">All entities</option>
-          {opts.entities.map((r) => <option key={r} value={r}>{r}</option>)}
-        </Picker>
-        <Picker id="an-from" label="From" value={f.from} onChange={set('from')}>
-          <option value="">Earliest</option>
-          {opts.months.map((m) => <option key={m} value={m}>{m}</option>)}
-        </Picker>
-        <Picker id="an-to" label="To" value={f.to} onChange={set('to')}>
-          <option value="">Latest</option>
-          {opts.months.map((m) => <option key={m} value={m}>{m}</option>)}
-        </Picker>
-        <button
-          type="button"
-          onClick={() => setF({ siteId: 'all', region: 'all', entity: 'all', from: '', to: '' })}
-          className="rounded-2xl bg-clay-surface px-4 py-2.5 text-[12.5px] font-semibold text-ink-700 shadow-clay-sm"
-        >
-          Reset
-        </button>
-      </div>
+      <FilterBar f={f} setF={setF} sites={sites} opts={opts} idPrefix="an" />
 
       <div className="mb-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         {HEAD.map((k) => <Stat key={k.key} {...k} />)}
@@ -138,32 +111,3 @@ export default function IncidentsTab({ incidents, sites }) {
   )
 }
 
-/**
- * A horizontal bar list. Long labels — "Struck by Moving / Falling Object", full
- * site names — are unreadable rotated under a vertical axis, so these lay the
- * bars on their side and give the label real room.
- */
-function Breakdown({ title, subtitle, rows }) {
-  const height = Math.max(160, rows.length * 34 + 24)
-  return (
-    <Panel title={title} subtitle={subtitle}>
-      {rows.length === 0 ? (
-        <NoData height={160}>Nothing recorded in this scope.</NoData>
-      ) : (
-        <ResponsiveContainer width="100%" height={height}>
-          <BarChart data={rows} layout="vertical" margin={{ top: 0, right: 28, left: 0, bottom: 0 }}>
-            <XAxis type="number" allowDecimals={false} hide />
-            <YAxis
-              type="category" dataKey="name" width={150} {...axis}
-              tickFormatter={(v) => (String(v).length > 22 ? `${String(v).slice(0, 21)}…` : v)}
-            />
-            <Tooltip cursor={{ fill: 'rgba(227,204,191,0.35)' }} />
-            <Bar dataKey="value" radius={[0, 6, 6, 0]} barSize={18}>
-              {rows.map((d) => <Cell key={d.key} fill={d.color || '#c74a33'} />)}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
-      )}
-    </Panel>
-  )
-}

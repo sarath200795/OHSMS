@@ -11,33 +11,48 @@
 // scoping mistake is least visible and most consequential, so the same
 // useAccessibleSites the modules use is the only source of that list.
 // ─────────────────────────────────────────────────────────────────────────────
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { BarChart3, AlertTriangle, Siren, FireExtinguisher, Users } from 'lucide-react'
 import { useAuth } from '../../shared/auth/AuthContext'
 import { subscribeCollection } from '../../shared/org/orgData'
 import { useAccessibleSites } from '../../shared/org/useAccessibleSites'
 import { PageHeader } from '../../shared/ui'
 import IncidentsTab from './IncidentsTab'
+import DrillsTab from './DrillsTab'
+import EquipmentTab from './EquipmentTab'
+import CommitteeTab from './CommitteeTab'
 
 const TABS = [
   { key: 'incidents', label: 'Incidents', icon: AlertTriangle },
-  { key: 'drills', label: 'Mock Drills', icon: Siren, soon: 'Drills per site, entity and region; observations by status; and the mix of drill types.' },
-  { key: 'equipment', label: 'Emergency Equipment', icon: FireExtinguisher, soon: 'A defect map with site and defect-type filters, fleet health, and defects by entity, region and site.' },
-  { key: 'committee', label: 'HSE Committee', icon: Users, soon: 'Meetings per month, and observations by status per month.' },
+  { key: 'drills', label: 'Mock Drills', icon: Siren },
+  { key: 'equipment', label: 'Emergency Equipment', icon: FireExtinguisher },
+  { key: 'committee', label: 'HSE Committee', icon: Users },
 ]
 
 export default function Analytics() {
-  const { orgId } = useAuth()
+  const { orgId, isAdmin } = useAuth()
   const sites = useAccessibleSites()
   const [tab, setTab] = useState('incidents')
   const [incidents, setIncidents] = useState([])
+  const [drills, setDrills] = useState([])
+  const [consultations, setConsultations] = useState([])
+  const [extinguishers, setExt] = useState([])
+  const [aeds, setAeds] = useState([])
+  const [fas, setFas] = useState([])
 
   useEffect(() => {
     if (!orgId) return undefined
-    return subscribeCollection(orgId, 'incidents', setIncidents)
+    const unsubs = [
+      subscribeCollection(orgId, 'incidents', setIncidents),
+      subscribeCollection(orgId, 'mockDrills', setDrills),
+      subscribeCollection(orgId, 'consultations', setConsultations),
+      subscribeCollection(orgId, 'extinguishers', setExt),
+      subscribeCollection(orgId, 'aeds', setAeds),
+      subscribeCollection(orgId, 'fas', setFas),
+    ]
+    return () => unsubs.forEach((u) => u && u())
   }, [orgId])
 
-  const active = useMemo(() => TABS.find((t) => t.key === tab) || TABS[0], [tab])
 
   return (
     <div>
@@ -78,15 +93,13 @@ export default function Analytics() {
           </p>
         </div>
       ) : tab === 'incidents' ? (
-        <IncidentsTab incidents={incidents} sites={sites} />
+        <IncidentsTab incidents={incidents} sites={sites} keepUnplaced={isAdmin} />
+      ) : tab === 'drills' ? (
+        <DrillsTab drills={drills} sites={sites} keepUnplaced={isAdmin} />
+      ) : tab === 'equipment' ? (
+        <EquipmentTab extinguishers={extinguishers} aeds={aeds} fas={fas} sites={sites} keepUnplaced={isAdmin} />
       ) : (
-        <div className="card px-6 py-14 text-center">
-          <span className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-2xl bg-clay-100 text-ink-400">
-            <active.icon size={22} />
-          </span>
-          <p className="text-[15px] font-bold text-ink-900">{active.label} analytics is not built yet</p>
-          <p className="mx-auto mt-1.5 max-w-[52ch] text-[13px] leading-relaxed text-ink-500">{active.soon}</p>
-        </div>
+        <CommitteeTab consultations={consultations} sites={sites} keepUnplaced={isAdmin} />
       )}
     </div>
   )

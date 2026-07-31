@@ -26,7 +26,7 @@ export function monthOf(inc) {
  * it. Historical incidents predate the site link and carry only free text, so
  * the name fallback is what keeps them from vanishing out of every breakdown.
  */
-export function resolveIncidents(incidents = [], sites = []) {
+export function resolveIncidents(incidents = [], sites = [], { keepUnplaced = true } = {}) {
   const byId = new Map(sites.map((s) => [s.id, s]))
   return incidents
     .filter((i) => i && !i.deletedAt)
@@ -48,6 +48,10 @@ export function resolveIncidents(incidents = [], sites = []) {
         month: monthOf(inc),
       }
     })
+    // An incident matching none of the visible sites is only truly unassigned
+    // when the viewer can see every site; for anyone else it is most likely
+    // another site's, and must not be counted for them at all.
+    .filter((r) => keepUnplaced || r.siteId)
 }
 
 /**
@@ -126,8 +130,8 @@ function prettyMonth(m) {
 }
 
 /** Everything the tab renders, for one filter selection. */
-export function incidentAnalytics(incidents = [], sites = [], filters = {}) {
-  const resolved = resolveIncidents(incidents, sites)
+export function incidentAnalytics(incidents = [], sites = [], filters = {}, opts = {}) {
+  const resolved = resolveIncidents(incidents, sites, opts)
   const rows = filterIncidents(resolved, filters)
 
   return {
