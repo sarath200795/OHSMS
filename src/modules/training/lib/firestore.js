@@ -6,7 +6,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import {
   addDoc, deleteDoc, doc, getDocs, limit, onSnapshot, orderBy, query, serverTimestamp,
-  updateDoc, writeBatch, collection,
+  updateDoc, where, writeBatch, collection,
 } from 'firebase/firestore'
 import { db } from '../../../shared/firebase'
 import { logAudit } from '../../../shared/org/orgData'
@@ -18,6 +18,11 @@ const recordCol = (orgId) => collection(db, 'organizations', orgId, 'trainingRec
 const recordRef = (orgId, id) => doc(db, 'organizations', orgId, 'trainingRecords', id)
 const assignmentCol = (orgId) => collection(db, 'organizations', orgId, 'trainingAssignments')
 const assignmentRef = (orgId, id) => doc(db, 'organizations', orgId, 'trainingAssignments', id)
+// Classroom sittings of a course, and the employees asking for a place on one.
+const sessionCol = (orgId) => collection(db, 'organizations', orgId, 'trainingSessions')
+const sessionRef = (orgId, id) => doc(db, 'organizations', orgId, 'trainingSessions', id)
+const requestCol = (orgId) => collection(db, 'organizations', orgId, 'trainingRequests')
+const requestRef = (orgId, id) => doc(db, 'organizations', orgId, 'trainingRequests', id)
 
 export const COURSE_CATEGORIES = [
   'Induction', 'Fire Safety', 'First Aid', 'Work at Height', 'Electrical Safety',
@@ -71,6 +76,10 @@ const cleanContent = (content) =>
 const cleanCourse = (data) => ({
   name: (data.name || '').trim(),
   category: data.category || 'Other',
+  // Courses created before sessions existed carry no mode; they are self-paced
+  // material, which is what 'module' means, so the default is the truth rather
+  // than a placeholder.
+  deliveryMode: data.deliveryMode === 'classroom' ? 'classroom' : 'module',
   validityMonths: Number(data.validityMonths) || 0, // 0 = never expires
   mandatory: !!data.mandatory,
   description: (data.description || '').trim(),
@@ -272,4 +281,132 @@ export async function selfCompleteTraining(orgId, { course, profile, assignmentI
     summary: `Self-completed "${course.name}"`,
   })
   return rref.id
+}
+
+// ── Classroom sessions ────────────────────────────────────────────────────────
+// A session is one sitting of a classroom course: a window it runs in, and
+// either a link to join or a site to attend. Courses can have several.
+
+const cleanSession = (d) => ({
+  courseId: d.courseId || '',
+  courseName: (d.courseName || '').trim(),
+  mode: d.mode === 'offline' ? 'offline' : 'online',
+  // Only the field the mode actually uses is stored, so switching mode cannot
+  // leave a stale link pointing at a room or a room attached to a video call.
+  meetingLink: d.mode === 'offline' ? '' : (d.meetingLink || '').trim(),
+  siteId: d.mode === 'offline' ? d.siteId || '' : '',
+  siteName: d.mode === 'offline' ? (d.siteName || '').trim() : '',
+  room: d.mode === 'offline' ? (d.room || '').trim() : '',
+  validFrom: d.validFrom || '',
+  validTo: d.validTo || '',
+  trainerName: (d.trainerName || '').trim(),
+  seats: Number(d.seats) > 0 ? Number(d.seats) : 0, // 0 = no cap
+  notes: (d.notes || '').trim(),
+})
+
+export function subscribeSessions(orgId, cb) {
+  return onSnapshot(
+    query(sessionCol(orgId), orderBy('validFrom', 'desc')),
+    (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    () => cb([]),
+  )
+}
+
+export async function createSession(orgId, data, actor) {
+  const s = cleanSession(data)
+  const ref = await addDoc(sessionCol(orgId), { ...s, createdAt: serverTimestamp(), createdBy: actor?.uid || null })
+  await logAudit(orgId, actor, 'training.session_create', {
+    module: 'training', target: 'session', targetId: ref.id, targetLabel: s.courseName,
+    summary: `Scheduled "${s.courseName}" ${s.mode === 'online' ? 'online' : `at ${s.siteName || 'a site'}`} (${s.validFrom} → ${s.validTo})`,
+  })
+  return ref.id
+}
+
+export async function updateSession(orgId, id, data, actor) {
+  const s = cleanSession(data)
+  await updateDoc(sessionRef(orgId, id), { ...s, updatedAt: serverTimestamp() })
+  await logAudit(orgId, actor, 'training.session_update', {
+    module: 'training', target: 'session', targetId: id, targetLabel: s.courseName,
+    summary: `Updated session for "${s.courseName}"`,
+  })
+}
+
+/**
+ * Delete a session and every request against it.
+ *
+ * Leaving the requests behind would strand them: they point at a session that
+ * no longer exists, so nobody could act on them and the employee would still
+ * appear to be waiting.
+ */
+export async function deleteSession(orgId, id, actor, label) {
+  const reqs = await getDocs(query(requestCol(orgId), where('sessionId', '==', id)))
+  const batch = writeBatch(db)
+  batch.delete(sessionRef(orgId, id))
+  reqs.docs.forEach((d) => batch.delete(d.ref))
+  await batch.commit()
+  await logAudit(orgId, actor, 'training.session_delete', {
+    module: 'training', target: 'session', targetId: id, targetLabel: label || '',
+    summary: `Deleted session${label ? ` for "${label}"` : ''}${reqs.size ? ` and ${reqs.size} request(s)` : ''}`,
+  })
+}
+
+// ── Requests for a place ──────────────────────────────────────────────────────
+
+export function subscribeRequests(orgId, cb) {
+  return onSnapshot(
+    query(requestCol(orgId), orderBy('createdAt', 'desc')),
+    (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    () => cb([]),
+  )
+}
+
+/**
+ * Ask for a place on a session. Idempotent per person: asking twice re-opens
+ * the existing request rather than adding a second, so an admin's count is
+ * people wanting the training and not clicks.
+ */
+export async function requestSession(orgId, { session, profile }, actor) {
+  const existing = await getDocs(query(
+    requestCol(orgId),
+    where('sessionId', '==', session.id),
+    where('employeeUid', '==', profile?.uid || ''),
+  ))
+  if (!existing.empty) {
+    await updateDoc(existing.docs[0].ref, { status: 'pending', updatedAt: serverTimestamp() })
+    return existing.docs[0].id
+  }
+  const ref = await addDoc(requestCol(orgId), {
+    sessionId: session.id,
+    courseId: session.courseId || '',
+    courseName: session.courseName || '',
+    employeeUid: profile?.uid || '',
+    employeeName: profile?.name || profile?.email || 'Unknown',
+    employeeEmail: profile?.email || '',
+    siteId: profile?.siteId || '',
+    status: 'pending',
+    createdAt: serverTimestamp(),
+  })
+  await logAudit(orgId, actor, 'training.session_request', {
+    module: 'training', target: 'request', targetId: ref.id, targetLabel: session.courseName || '',
+    summary: `${profile?.name || 'An employee'} requested a place on "${session.courseName}"`,
+  })
+  return ref.id
+}
+
+export async function withdrawRequest(orgId, id, actor, label) {
+  await deleteDoc(requestRef(orgId, id))
+  await logAudit(orgId, actor, 'training.session_request_withdraw', {
+    module: 'training', target: 'request', targetId: id, targetLabel: label || '',
+    summary: `Withdrew request for "${label || 'a session'}"`,
+  })
+}
+
+export async function decideRequest(orgId, request, status, actor) {
+  await updateDoc(requestRef(orgId, request.id), {
+    status, reviewedBy: actor?.name || '', reviewedAt: serverTimestamp(),
+  })
+  await logAudit(orgId, actor, 'training.session_request_decide', {
+    module: 'training', target: 'request', targetId: request.id, targetLabel: request.courseName || '',
+    summary: `${status === 'approved' ? 'Approved' : 'Declined'} ${request.employeeName}'s request for "${request.courseName}"`,
+  })
 }

@@ -16,17 +16,23 @@
 // Motion is suppressed entirely under prefers-reduced-motion.
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Taken from the Sam 3D design's material list, so the two read as the same
+// character. The vest is brand terracotta over a navy shirt rather than generic
+// hi-vis yellow, and the reflective tape is clay-surface — Sam wears the
+// product's own palette instead of borrowing a stock safety look.
 const C = {
-  helmet: '#f2a33c',      // hard hat
-  helmetDark: '#d4832a',
-  skin: '#e8b48c',
-  skinDark: '#cf9a72',
-  vest: '#e8e34a',        // hi-vis
-  vestDark: '#c9c33a',
-  band: '#8d9aa8',        // reflective bands
-  trouser: '#3d5673',
-  trouserDark: '#31465e',
-  boot: '#2c2c31',
+  hair: '#e8a33d',        // accent-amber
+  hairDark: '#c9861f',
+  skin: '#eec9a0',
+  skinDark: '#d9ac7f',
+  vest: '#c74a33',        // brand-600
+  vestDark: '#a63b28',
+  band: '#f8f1e4',        // clay-surface — the reflective tape
+  shirt: '#456175',
+  shirtDark: '#31465a',
+  trouser: '#31465a',
+  trouserDark: '#273949',
+  boot: '#2c241d',        // ink-900
 }
 
 /** One face of a box. */
@@ -111,22 +117,27 @@ export default function SamCharacter({ walking = false, facing = 1, talking = fa
           <Box w={11} h={5} d={11} color={C.boot} dark={C.boot} radius={2} style={{ left: 15, top: 60 }} />
           <Box w={11} h={5} d={11} color={C.boot} dark={C.boot} radius={2} style={{ left: 27, top: 60 }} />
 
-          {/* ── Torso in a hi-vis vest ── */}
-          <Box w={26} h={26} d={14} color={C.vest} dark={C.vestDark} radius={4} style={{ left: 14, top: 22 }}>
-            {/* Reflective bands, and the vest's open front */}
-            <div style={{ position: 'absolute', top: 7, left: 0, right: 0, height: 3, background: C.band, opacity: 0.9 }} />
-            <div style={{ position: 'absolute', top: 15, left: 0, right: 0, height: 3, background: C.band, opacity: 0.9 }} />
-            <div style={{ position: 'absolute', top: 0, bottom: 0, left: 11, width: 4, background: C.vestDark, opacity: 0.55 }} />
+          {/* ── Torso: navy shirt under an open terracotta vest ── */}
+          <Box w={26} h={26} d={14} color={C.shirt} dark={C.shirtDark} radius={4} style={{ left: 14, top: 22 }}>
+            {/* The vest is two open panels over the shirt, not a solid front —
+                which is what makes it read as worn rather than painted on. */}
+            <div style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: 8, background: C.vest, borderRadius: '4px 0 0 4px' }} />
+            <div style={{ position: 'absolute', top: 0, bottom: 0, right: 0, width: 8, background: C.vest, borderRadius: '0 4px 4px 0' }} />
+            {/* Reflective tape, carried across both panels */}
+            <div style={{ position: 'absolute', top: 8, left: 0, width: 8, height: 3, background: C.band }} />
+            <div style={{ position: 'absolute', top: 8, right: 0, width: 8, height: 3, background: C.band }} />
+            <div style={{ position: 'absolute', top: 16, left: 0, width: 8, height: 3, background: C.band }} />
+            <div style={{ position: 'absolute', top: 16, right: 0, width: 8, height: 3, background: C.band }} />
           </Box>
 
-          {/* ── Arms ── */}
-          <Box w={7} h={20} d={7} color={C.vest} dark={C.vestDark} radius={3}
+          {/* ── Arms — shirt sleeves; the vest is sleeveless ── */}
+          <Box w={7} h={20} d={7} color={C.shirt} dark={C.shirtDark} radius={3}
             style={{
               left: 8, top: 24, transformOrigin: 'top center',
               animation: walking ? anim('sam-arm-a', '0.6s') : anim('sam-arm-idle', '3.2s'),
             }}
           />
-          <Box w={7} h={20} d={7} color={C.vest} dark={C.vestDark} radius={3}
+          <Box w={7} h={20} d={7} color={C.shirt} dark={C.shirtDark} radius={3}
             style={{
               left: 39, top: 24, transformOrigin: 'top center',
               // The free arm waves when Sam is talking — the only asymmetry, and
@@ -160,13 +171,22 @@ export default function SamCharacter({ walking = false, facing = 1, talking = fa
               }} />
             </Box>
 
-            {/* Hard hat — dome plus brim, the instant read of "safety" */}
-            <Box w={23} h={9} d={18} color={C.helmet} dark={C.helmetDark} radius={5} style={{ left: 15.5, top: 1 }}>
-              <div style={{ position: 'absolute', top: 2, left: '50%', width: 3, height: 7, marginLeft: -1.5, background: C.helmetDark, opacity: 0.5 }} />
-            </Box>
+            {/* Hair — crown, fringe and side tufts. The 3D design has no hard
+                hat: Sam is the person who runs the safety system rather than
+                someone dressed for a site visit, and the vest already carries
+                the safety read. */}
+            <Box w={21} h={8} d={17} color={C.hair} dark={C.hairDark} radius={5} style={{ left: 16.5, top: 2.5 }} />
             <div style={{
-              position: 'absolute', left: 13, top: 8.5, width: 28, height: 3.5,
-              background: C.helmetDark, borderRadius: 3, transform: 'translateZ(11px) rotateX(-8deg)',
+              position: 'absolute', left: 17, top: 8, width: 20, height: 4,
+              background: C.hair, borderRadius: '2px 6px 2px 2px', transform: 'translateZ(8.5px)',
+            }} />
+            <div style={{
+              position: 'absolute', left: 15.5, top: 5, width: 4, height: 11,
+              background: C.hairDark, borderRadius: 3, transform: 'translateZ(6px)',
+            }} />
+            <div style={{
+              position: 'absolute', right: 15.5, top: 5, width: 4, height: 11,
+              background: C.hairDark, borderRadius: 3, transform: 'translateZ(6px)',
             }} />
           </div>
         </div>

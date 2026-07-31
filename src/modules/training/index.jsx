@@ -1,5 +1,5 @@
 import { Routes, Route, Navigate, Outlet, NavLink } from 'react-router-dom'
-import { LayoutDashboard, BookOpen, BookOpenCheck, GraduationCap, UsersRound, ClipboardList } from 'lucide-react'
+import { LayoutDashboard, BookOpen, BookOpenCheck, GraduationCap, UsersRound, ClipboardList, CalendarClock } from 'lucide-react'
 import { useAuth } from '../../shared/auth/AuthContext'
 import { TrainingProvider } from './context/TrainingContext'
 import Dashboard from './pages/Dashboard'
@@ -8,11 +8,13 @@ import Courses from './pages/Courses'
 import Records from './pages/Records'
 import EmployeeStatus from './pages/EmployeeStatus'
 import AdminWorkspace from './pages/AdminWorkspace'
+import Sessions from './pages/Sessions'
 
 const TABS = [
   { to: '/training', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/training/my', label: 'My Learning', icon: BookOpenCheck },
   { to: '/training/courses', label: 'Courses', icon: BookOpen },
+  { to: '/training/sessions', label: 'Sessions', icon: CalendarClock },
   { to: '/training/records', label: 'Records', icon: GraduationCap },
   { to: '/training/employees', label: 'Employee Status', icon: UsersRound },
   { to: '/training/admin', label: 'Admin Workspace', icon: ClipboardList, managerOnly: true },
@@ -63,6 +65,7 @@ export default function TrainingModule() {
           <Route index element={<Dashboard />} />
           <Route path="my" element={<MyLearning />} />
           <Route path="courses" element={<Courses />} />
+          <Route path="sessions" element={<Sessions />} />
           <Route path="records" element={<Records />} />
           <Route path="employees" element={<EmployeeStatus />} />
           <Route path="admin" element={<AdminWorkspace />} />

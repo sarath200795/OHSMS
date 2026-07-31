@@ -1,11 +1,18 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
-import { BookOpenCheck, GraduationCap, Link2, Paperclip, CheckCircle2, CalendarClock, BadgeCheck, Award } from 'lucide-react'
+import {
+  BookOpenCheck, GraduationCap, Link2, Paperclip, CheckCircle2, CalendarClock, BadgeCheck, Award,
+  Video, MapPin, ExternalLink,
+} from 'lucide-react'
 import { PageHeader, Card, Badge, Button, EmptyState, SkeletonCard } from '../../../shared/ui'
 import { useAuth } from '../../../shared/auth/AuthContext'
+import { useAccessibleSites } from '../../../shared/org/useAccessibleSites'
 import { formatDate, daysUntil } from '../../../shared/lib/format'
 import { useTraining } from '../context/TrainingContext'
-import { selfCompleteTraining } from '../lib/firestore'
+import {
+  selfCompleteTraining, subscribeSessions, subscribeRequests, requestSession, withdrawRequest,
+} from '../lib/firestore'
+import { isClassroom, sortSessions, sessionState, canRequest, sessionWhere } from '../lib/sessions'
 import { assignmentStatus, ASSIGNMENT_META, recordStatus, STATUS_META, todayISO } from '../lib/status'
 import CertificateModal from '../components/Certificate'
 import CourseThumb from '../components/CourseThumb'
@@ -32,12 +39,123 @@ function ContentList({ course }) {
   )
 }
 
+const STATE_LABEL = { open: 'Running now', upcoming: 'Upcoming', closed: 'Finished' }
+
+/**
+ * The sittings of one classroom course, with the ask-for-a-place action.
+ *
+ * Finished sittings are shown greyed rather than hidden: an employee looking at
+ * a course needs to see it has run before, otherwise an empty card reads as
+ * "this training does not exist" when it simply is not scheduled right now.
+ */
+function SessionPicker({ course, sessions, requests, sites, busyId, onRequest, onWithdraw }) {
+  if (sessions.length === 0) {
+    return (
+      <div className="my-3 rounded-2xl bg-clay-50 px-3.5 py-3 text-xs leading-relaxed text-ink-500 shadow-clay-sm">
+        <span className="font-semibold text-ink-700">Classroom training.</span> No sittings are scheduled
+        yet — it will appear here when a date is set.
+      </div>
+    )
+  }
+  return (
+    <div className="my-3 flex flex-col gap-2">
+      {sessions.map((s) => {
+        const st = sessionState(s)
+        // `requests` is already this person's, so the session is the only key.
+        const mine = requests.find((r) => r.sessionId === s.id) || null
+        const closed = st === 'closed'
+        return (
+          <div key={s.id} className={`rounded-2xl px-3.5 py-3 shadow-clay-sm ${closed ? 'bg-clay-100/60' : 'bg-clay-50'}`}>
+            <div className="flex items-center gap-2">
+              {s.mode === 'online' ? <Video size={13} className="text-ink-400" /> : <MapPin size={13} className="text-ink-400" />}
+              <span className={`text-xs font-semibold ${closed ? 'text-ink-400' : 'text-ink-800'}`}>
+                {sessionWhere(s, sites)}
+              </span>
+              <Badge tone={st === 'open' ? 'green' : st === 'upcoming' ? 'blue' : 'gray'} className="ml-auto shrink-0 !py-0 text-[10px]">
+                {STATE_LABEL[st]}
+              </Badge>
+            </div>
+            <p className="mt-1 text-[11px] text-ink-400">{s.validFrom} → {s.validTo}{s.trainerName ? ` · ${s.trainerName}` : ''}</p>
+
+            {/* The link only helps once a place is confirmed. */}
+            {s.mode === 'online' && s.meetingLink && mine?.status === 'approved' && (
+              <a href={s.meetingLink} target="_blank" rel="noreferrer"
+                className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-semibold text-brand-700 hover:underline">
+                <ExternalLink size={11} /> Join link
+              </a>
+            )}
+
+            <div className="mt-2">
+              {mine ? (
+                <div className="flex items-center gap-2">
+                  <Badge tone={mine.status === 'approved' ? 'green' : mine.status === 'declined' ? 'red' : 'amber'} className="!py-0 text-[10px]">
+                    {mine.status === 'approved' ? 'Place confirmed' : mine.status === 'declined' ? 'Not this time' : 'Requested'}
+                  </Badge>
+                  {mine.status === 'pending' && (
+                    <button type="button" onClick={() => onWithdraw(mine)}
+                      className="text-[11px] font-semibold text-ink-400 hover:text-red-600">
+                      Withdraw
+                    </button>
+                  )}
+                </div>
+              ) : canRequest(s) ? (
+                <Button variant="soft" className="!px-3 !py-1.5 !text-xs"
+                  loading={busyId === `req-${s.id}`} onClick={() => onRequest({ ...s, courseName: course.name })}>
+                  Request a place
+                </Button>
+              ) : (
+                <span className="text-[11px] text-ink-400">This sitting has finished.</span>
+              )}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 export default function MyLearning() {
   const { orgId, orgName, profile, actor } = useAuth()
   const { loading, courses, myAssignments, myRecords } = useTraining()
   const [busyId, setBusyId] = useState(null)
   const [certRecord, setCertRecord] = useState(null)
   const today = todayISO()
+
+  // Classroom sittings and my own requests for them.
+  const sites = useAccessibleSites()
+  const [sessions, setSessions] = useState([])
+  const [requests, setRequests] = useState([])
+  useEffect(() => {
+    if (!orgId) return undefined
+    const unsubs = [subscribeSessions(orgId, setSessions), subscribeRequests(orgId, setRequests)]
+    return () => unsubs.forEach((u) => u && u())
+  }, [orgId])
+
+  const myRequests = useMemo(
+    () => requests.filter((r) => r.employeeUid === profile?.uid),
+    [requests, profile]
+  )
+  const sessionsFor = (courseId) => sortSessions(sessions.filter((s) => s.courseId === courseId))
+
+  const request = async (session) => {
+    setBusyId(`req-${session.id}`)
+    try {
+      await requestSession(orgId, { session, profile }, actor)
+      toast.success('Requested — your trainer will confirm your place')
+    } catch (e) {
+      toast.error(e?.message || 'Could not send the request')
+    } finally { setBusyId(null) }
+  }
+
+  const withdraw = async (req) => {
+    setBusyId(`req-${req.sessionId}`)
+    try {
+      await withdrawRequest(orgId, req.id, actor, req.courseName)
+      toast.success('Request withdrawn')
+    } catch (e) {
+      toast.error(e?.message || 'Could not withdraw')
+    } finally { setBusyId(null) }
+  }
 
   // Courses not currently assigned to me — the browsable catalogue.
   const availableCourses = courses.filter((c) => !myAssignments.some((a) => a.courseId === c.id))
@@ -146,12 +264,29 @@ export default function MyLearning() {
                 {c.mandatory && <Badge tone="red" className="shrink-0 !py-0 text-[10px]">Mandatory</Badge>}
               </div>
               <p className="text-xs text-ink-500">{c.category || 'Other'} · {c.validityMonths ? `${c.validityMonths}m validity` : 'no expiry'}</p>
-              <div className="my-3"><ContentList course={c} /></div>
-              <div className="mt-auto">
-                <Button variant="soft" icon={CheckCircle2} loading={busyId === `course-${c.id}`} onClick={() => completeCourse(c)}>
-                  Complete training
-                </Button>
-              </div>
+              {isClassroom(c) ? (
+                /* A classroom course is not something you can simply mark done —
+                   it happens at a time and a place, so the only action is to ask
+                   for a place at one of its sittings. */
+                <SessionPicker
+                  course={c}
+                  sessions={sessionsFor(c.id)}
+                  requests={myRequests}
+                  sites={sites}
+                  busyId={busyId}
+                  onRequest={request}
+                  onWithdraw={withdraw}
+                />
+              ) : (
+                <>
+                  <div className="my-3"><ContentList course={c} /></div>
+                  <div className="mt-auto">
+                    <Button variant="soft" icon={CheckCircle2} loading={busyId === `course-${c.id}`} onClick={() => completeCourse(c)}>
+                      Complete training
+                    </Button>
+                  </div>
+                </>
+              )}
             </Card>
           ))}
         </div>

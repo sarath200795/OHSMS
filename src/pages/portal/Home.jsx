@@ -295,21 +295,22 @@ export default function PortalHome() {
       </div>
 
       <SectionLabel className="mb-3">All modules</SectionLabel>
-      <Link
-        to="/analytics"
-        className="mb-4 flex items-center gap-4 rounded-[26px] bg-clay-surface p-5 shadow-clay transition duration-200 ease-emil hover:-translate-y-1 active:scale-[0.985]"
-      >
-        <span className="grid h-[60px] w-[60px] flex-none place-items-center rounded-[20px] bg-gradient-to-br from-sky-500 to-blue-600 text-white shadow-clay-sm">
-          <BarChart3 size={28} strokeWidth={2} />
-        </span>
-        <span className="min-w-0">
-          <span className="block text-[15px] font-bold tracking-[-0.015em] text-ink-900">Analytics</span>
-          <span className="mt-0.5 block text-[12px] leading-snug text-ink-400">
-            Incident trends and breakdowns across your sites
-          </span>
-        </span>
-      </Link>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        {/* Analytics sits in the grid rather than above it — it is one more
+            destination, and a full-width banner claimed an importance the
+            others have equal claim to. */}
+        <Link
+          to="/analytics"
+          className="flex animate-fade-in-up items-center gap-4 rounded-[26px] bg-clay-surface p-5 shadow-clay transition duration-200 ease-emil hover:-translate-y-1 active:scale-[0.985]"
+        >
+          <span className="grid h-[60px] w-[60px] flex-none place-items-center rounded-[20px] bg-gradient-to-br from-sky-500 to-blue-600 text-white shadow-clay-sm">
+            <BarChart3 size={28} strokeWidth={2} />
+          </span>
+          <span className="min-w-0">
+            <span className="block text-[15px] font-bold tracking-[-0.015em] text-ink-900">Analytics</span>
+            <span className="mt-0.5 block text-[12px] leading-snug text-ink-400">Trends and breakdowns across your sites</span>
+          </span>
+        </Link>
         {MODULES.map((m, i) => (
           <Link
             key={m.key}

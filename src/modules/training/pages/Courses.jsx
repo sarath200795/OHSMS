@@ -7,8 +7,9 @@ import { useAuth } from '../../../shared/auth/AuthContext'
 import { fileToDataUrl } from '../../../shared/lib/files'
 import { useTraining } from '../context/TrainingContext'
 import { createCourse, updateCourse, deleteCourse, COURSE_CATEGORIES } from '../lib/firestore'
+import { DELIVERY_MODES } from '../lib/sessions'
 
-const EMPTY = { name: '', category: 'Induction', validityMonths: 12, mandatory: false, description: '', content: [], thumbnail: '' }
+const EMPTY = { name: '', category: 'Induction', deliveryMode: 'module', validityMonths: 12, mandatory: false, description: '', content: [], thumbnail: '' }
 
 const MAX_FILE_BYTES = 700 * 1024
 
@@ -25,7 +26,7 @@ export default function Courses() {
   const openNew = () => { setForm(EMPTY); setNewLink({ label: '', url: '' }); setEditing('new') }
   const openEdit = (c) => {
     setForm({
-      name: c.name, category: c.category || 'Other', validityMonths: c.validityMonths ?? 0,
+      name: c.name, category: c.category || 'Other', deliveryMode: c.deliveryMode || 'module', validityMonths: c.validityMonths ?? 0,
       mandatory: !!c.mandatory, description: c.description || '', content: c.content || [],
       thumbnail: c.thumbnail || '',
     })
@@ -148,6 +149,30 @@ export default function Courses() {
                 onChange={(e) => setForm({ ...form, validityMonths: e.target.value })} />
             </Field>
           </div>
+          {/* How the course is delivered decides what else it needs: only a
+              classroom course has a time, a place and a request queue. */}
+          <div>
+            <label className="label">How is it delivered?</label>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {DELIVERY_MODES.map((d) => {
+                const on = (form.deliveryMode || 'module') === d.key
+                return (
+                  <button
+                    key={d.key}
+                    type="button"
+                    onClick={() => setForm({ ...form, deliveryMode: d.key })}
+                    className={`rounded-2xl px-4 py-3 text-left transition ${
+                      on ? 'bg-clay-surface shadow-clay-inset' : 'bg-clay-surface shadow-clay-sm'
+                    }`}
+                  >
+                    <span className={`block text-sm font-bold ${on ? 'text-brand-700' : 'text-ink-800'}`}>{d.label}</span>
+                    <span className="mt-0.5 block text-xs leading-snug text-ink-400">{d.hint}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
           <label className="flex cursor-pointer items-center gap-2.5 text-sm font-medium text-ink-700">
             <input type="checkbox" checked={form.mandatory} onChange={(e) => setForm({ ...form, mandatory: e.target.checked })} />
             Mandatory for all employees
