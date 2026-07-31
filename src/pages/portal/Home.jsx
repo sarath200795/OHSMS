@@ -65,25 +65,46 @@ const ADMIN_TOOLS = [
  */
 function Tile({ to, icon: Icon, gradient, label, title, delay = 0 }) {
   return (
-    <div className="[perspective:900px]">
+    <div className="[perspective:760px]">
       <Link
         to={to}
         style={{ animationDelay: `${delay}ms` }}
-        className="group flex animate-fade-in-up items-center gap-4 rounded-[26px] bg-clay-surface p-5 shadow-clay
+        className="group relative flex animate-fade-in-up items-center gap-4 rounded-[26px] bg-clay-surface p-5 shadow-clay
                    transition-[transform,box-shadow] duration-300 ease-emil [transform-style:preserve-3d]
-                   hover:shadow-clay-lg hover:[transform:translateY(-6px)_rotateX(7deg)_rotateY(-7deg)]
-                   active:[transform:translateY(-2px)_scale(0.985)]
+                   hover:shadow-clay-lg hover:[transform:translateY(-8px)_rotateX(9deg)_rotateY(-9deg)]
+                   active:[transform:translateY(-3px)_scale(0.985)]
                    motion-reduce:transition-none motion-reduce:hover:[transform:none]"
       >
+        {/* The logo lifts far enough off the card for the perspective to bend
+            it — the wobble below only reads as rotation because of this gap. */}
         <span
-          className={`grid h-[60px] w-[60px] flex-none place-items-center rounded-[20px] bg-gradient-to-br ${gradient} text-white shadow-clay-sm
-                      transition-transform duration-300 ease-emil
-                      group-hover:[transform:translateZ(34px)_rotate(-8deg)_scale(1.1)]
-                      motion-reduce:transition-none motion-reduce:group-hover:[transform:none]`}
+          className="relative grid h-[60px] w-[60px] flex-none place-items-center [transform-style:preserve-3d]
+                     transition-transform duration-300 ease-emil
+                     group-hover:[transform:translateZ(56px)_scale(1.12)]
+                     motion-reduce:transition-none motion-reduce:group-hover:[transform:none]"
         >
-          <Icon size={28} strokeWidth={2} />
+          {/* Colour cast on the card beneath, so the lift has somewhere to fall from. */}
+          <span
+            aria-hidden="true"
+            className={`absolute inset-0 rounded-[20px] bg-gradient-to-br ${gradient} opacity-0 blur-lg
+                        transition-opacity duration-300 group-hover:opacity-60 motion-reduce:hidden`}
+          />
+          <span
+            className={`relative grid h-full w-full place-items-center overflow-hidden rounded-[20px]
+                        bg-gradient-to-br ${gradient} text-white shadow-clay-sm [transform-style:preserve-3d]
+                        group-hover:animate-wobble3d motion-reduce:group-hover:animate-none`}
+          >
+            <Icon size={28} strokeWidth={2} className="relative z-10 drop-shadow-[0_2px_3px_rgba(0,0,0,0.28)]" />
+            {/* Specular sweep — what makes the face read as glossy rather than flat. */}
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-y-0 -left-1/3 w-1/2 bg-white/45 opacity-0
+                         group-hover:animate-sheen motion-reduce:group-hover:animate-none"
+            />
+          </span>
         </span>
-        <span className="min-w-0 transition-transform duration-300 ease-emil group-hover:[transform:translateZ(18px)] motion-reduce:group-hover:[transform:none]">
+
+        <span className="min-w-0 transition-transform duration-300 ease-emil group-hover:[transform:translateZ(26px)] motion-reduce:group-hover:[transform:none]">
           <span className="block text-[15px] font-bold tracking-[-0.015em] text-ink-900">{label}</span>
           <span className="mt-0.5 block text-[12px] leading-snug text-ink-400">{title}</span>
         </span>

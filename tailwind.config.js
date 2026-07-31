@@ -92,12 +92,26 @@ export default {
           '0%': { opacity: '0', transform: 'translateY(8px)' },
           '100%': { opacity: '1', transform: 'translateY(0)' },
         },
+        // A logo turning slowly in place while the cursor rests on its tile.
+        // It runs only on hover, so nothing on the page is moving unprompted.
+        wobble3d: {
+          '0%,100%': { transform: 'rotateY(-20deg) rotateX(11deg)' },
+          '50%': { transform: 'rotateY(16deg) rotateX(-4deg)' },
+        },
+        // The highlight that crosses a glossy face as it turns.
+        sheen: {
+          '0%': { transform: 'translateX(-120%) skewX(-18deg)', opacity: '0' },
+          '18%': { opacity: '0.75' },
+          '100%': { transform: 'translateX(220%) skewX(-18deg)', opacity: '0' },
+        },
       },
       animation: {
         shimmer: 'shimmer 1.8s infinite',
         float: 'float 6s ease-in-out infinite',
         pulseRing: 'pulseRing 2s infinite',
         'fade-in-up': 'fadeInUp 300ms cubic-bezier(0.23,1,0.32,1) both',
+        wobble3d: 'wobble3d 2.8s cubic-bezier(0.45,0,0.55,1) infinite',
+        sheen: 'sheen 1.5s cubic-bezier(0.23,1,0.32,1) infinite',
       },
     },
   },

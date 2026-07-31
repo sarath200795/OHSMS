@@ -44,6 +44,7 @@
     "react-router-dom": "^6.26.0",
     "react-to-print": "^2.15.1",
     "recharts": "^2.12.7",
+    "three": "^0.185.1",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {

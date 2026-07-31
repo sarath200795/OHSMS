@@ -5,7 +5,7 @@ import { Send, X } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { answer, isoMap } from './brain'
 import { getStats } from './liveStats'
-import SamCharacter from './SamCharacter'
+import SamCharacter3D from './SamCharacter3D'
 
 const AVATAR = 76
 const MARGIN = 16
@@ -230,7 +230,7 @@ export default function Sam() {
           className="absolute bottom-1 left-1/2 h-1.5 -translate-x-1/2 rounded-[50%] bg-ink-900/15 blur-[2px]"
           style={{ width: AVATAR * 0.42 }}
         />
-        <SamCharacter
+        <SamCharacter3D
           size={AVATAR}
           walking={walking}
           facing={facing}
