@@ -98,6 +98,46 @@ export default {
           '0%,100%': { transform: 'rotateY(-20deg) rotateX(11deg)' },
           '50%': { transform: 'rotateY(16deg) rotateX(-4deg)' },
         },
+        // ── Module logo motions. Each is the object doing the thing it is for,
+        // which is why they are separate keyframes rather than one shared wiggle.
+        hatTip: {
+          '0%,100%': { transform: 'translateZ(10px) rotate(-8deg)' },
+          '35%': { transform: 'translateZ(16px) rotate(-30deg) translateY(-3px)' },
+          '70%': { transform: 'translateZ(12px) rotate(-2deg)' },
+        },
+        barGrow: {
+          '0%,100%': { transform: 'scaleY(0.45)' },
+          '50%': { transform: 'scaleY(1)' },
+        },
+        magnify: {
+          '0%,100%': { transform: 'translateZ(14px) translate(-4px,-3px) rotate(-12deg)' },
+          '50%': { transform: 'translateZ(18px) translate(5px,3px) rotate(-2deg)' },
+        },
+        lockOpen: {
+          '0%,100%': { transform: 'translateZ(6px) translateY(0)' },
+          '45%': { transform: 'translateZ(6px) translateY(-6px) rotate(12deg)' },
+        },
+        phoneRing: {
+          '0%,100%': { transform: 'translateZ(12px) rotate(-6deg)' },
+          '25%': { transform: 'translateZ(12px) rotate(10deg)' },
+          '55%': { transform: 'translateZ(12px) rotate(-10deg)' },
+        },
+        squeeze: {
+          '0%,100%': { transform: 'translateZ(12px) rotate(-6deg)' },
+          '50%': { transform: 'translateZ(16px) rotate(-14deg) translateY(-2px)' },
+        },
+        blare: {
+          '0%,100%': { transform: 'translateZ(10px) scale(1)', opacity: '0.85' },
+          '50%': { transform: 'translateZ(16px) scale(1.14)', opacity: '1' },
+        },
+        chatter: {
+          '0%,100%': { transform: 'translateY(0)' },
+          '50%': { transform: 'translateY(-3px)' },
+        },
+        penWrite: {
+          '0%,100%': { transform: 'translateZ(16px) rotate(28deg) translate(-3px,2px)' },
+          '50%': { transform: 'translateZ(16px) rotate(28deg) translate(4px,-2px)' },
+        },
         // The highlight that crosses a glossy face as it turns.
         sheen: {
           '0%': { transform: 'translateX(-120%) skewX(-18deg)', opacity: '0' },
@@ -112,6 +152,15 @@ export default {
         'fade-in-up': 'fadeInUp 300ms cubic-bezier(0.23,1,0.32,1) both',
         wobble3d: 'wobble3d 2.8s cubic-bezier(0.45,0,0.55,1) infinite',
         sheen: 'sheen 1.5s cubic-bezier(0.23,1,0.32,1) infinite',
+        'hat-tip': 'hatTip 1.6s cubic-bezier(0.23,1,0.32,1) infinite',
+        'bar-grow': 'barGrow 1.4s cubic-bezier(0.45,0,0.55,1) infinite',
+        magnify: 'magnify 2s cubic-bezier(0.45,0,0.55,1) infinite',
+        'lock-open': 'lockOpen 1.6s cubic-bezier(0.23,1,0.32,1) infinite',
+        'phone-ring': 'phoneRing 0.9s cubic-bezier(0.36,0,0.66,1) infinite',
+        squeeze: 'squeeze 1.4s cubic-bezier(0.45,0,0.55,1) infinite',
+        blare: 'blare 0.85s cubic-bezier(0.45,0,0.55,1) infinite',
+        chatter: 'chatter 1.1s cubic-bezier(0.45,0,0.55,1) infinite',
+        'pen-write': 'penWrite 1.3s cubic-bezier(0.45,0,0.55,1) infinite',
       },
     },
   },

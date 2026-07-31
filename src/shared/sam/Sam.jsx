@@ -7,7 +7,10 @@ import { answer, isoMap } from './brain'
 import { getStats } from './liveStats'
 import SamCharacter3D from './SamCharacter3D'
 
-const AVATAR = 76
+// Sam is a modelled character now rather than a flat badge — at 76px the vest
+// tape, the badge and the clipboard were all sub-pixel. Every position on
+// screen derives from this, so the ground line and the drag bounds follow.
+const AVATAR = 124
 const MARGIN = 16
 
 // Sam walks; he does not fly. Travel is along a single ground line at a constant
@@ -237,7 +240,7 @@ export default function Sam() {
           talking={thinking || open}
           reduce={reduce}
         />
-        <span className="absolute -bottom-1 rounded-full bg-brand-600 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white shadow-clay-sm">
+        <span className="absolute -bottom-1 rounded-full bg-brand-600 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white shadow-clay-sm">
           Sam
         </span>
       </motion.button>

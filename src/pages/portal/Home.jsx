@@ -25,6 +25,7 @@ import { MODULES } from '../../shared/modules/registry'
 import { Raised, Inset, SectionLabel } from './ui'
 import { myActions } from './myWork'
 import { portalStats, pendingWork } from './portalStats'
+import ModuleLogo3D, { has3DLogo } from './ModuleLogo3D'
 
 // Same logo gradients the admin hub uses, so a module is recognisable by its
 // tile wherever it appears.
@@ -63,7 +64,8 @@ const ADMIN_TOOLS = [
  * Everything is transform and opacity, so it stays off the main thread, and
  * `motion-reduce` drops the whole effect rather than softening it.
  */
-function Tile({ to, icon: Icon, gradient, label, title, delay = 0 }) {
+function Tile({ to, icon: Icon, gradient, label, title, delay = 0, logoKey }) {
+  const has3D = has3DLogo(logoKey)
   return (
     <div className="[perspective:760px]">
       <Link
@@ -94,7 +96,11 @@ function Tile({ to, icon: Icon, gradient, label, title, delay = 0 }) {
                         bg-gradient-to-br ${gradient} text-white shadow-clay-sm [transform-style:preserve-3d]
                         group-hover:animate-wobble3d motion-reduce:group-hover:animate-none`}
           >
-            <Icon size={28} strokeWidth={2} className="relative z-10 drop-shadow-[0_2px_3px_rgba(0,0,0,0.28)]" />
+            {/* A built object where one exists; the line icon otherwise, rather
+                than giving a module a shape that means something else. */}
+            {has3D
+              ? <ModuleLogo3D moduleKey={logoKey} />
+              : <Icon size={28} strokeWidth={2} className="relative z-10 drop-shadow-[0_2px_3px_rgba(0,0,0,0.28)]" />}
             {/* Specular sweep — what makes the face read as glossy rather than flat. */}
             <span
               aria-hidden="true"
@@ -367,6 +373,7 @@ export default function PortalHome() {
           gradient="from-sky-500 to-blue-600"
           label="Analytics"
           title="Trends and breakdowns across your sites"
+          logoKey="analytics"
         />
         {MODULES.map((m, i) => (
           <Tile
@@ -376,6 +383,7 @@ export default function PortalHome() {
             gradient={GRADIENT[m.tone] || GRADIENT.brand}
             label={m.label}
             title={m.title}
+            logoKey={m.key}
             delay={Math.min(i, 8) * 40}
           />
         ))}
