@@ -13,7 +13,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { motion, useReducedMotion } from 'framer-motion'
-import { AlertTriangle, Building2, ChevronDown, LogOut, GraduationCap, KeyRound } from 'lucide-react'
+import { Building2, ChevronDown, LogOut, GraduationCap, KeyRound } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { initials } from '../lib/format'
 import RequestAccessModal from './RequestAccessModal'
@@ -90,16 +90,6 @@ export default function AppChrome({ children }) {
         </nav>
 
         <div className="flex-1" />
-
-        <button
-          type="button"
-          onClick={() => navigate('/portal/report')}
-          className="inline-flex items-center gap-2 rounded-2xl bg-brand-600 px-4 py-2.5 text-[13px] font-semibold text-white shadow-clay-brand transition-transform duration-200 ease-emil hover:bg-brand-700 active:scale-[0.97]"
-        >
-          <AlertTriangle size={15} strokeWidth={2.2} />
-          <span className="hidden sm:inline">Report something</span>
-          <span className="sm:hidden">Report</span>
-        </button>
 
         <div className="ml-1.5 hidden items-center gap-2 border-l border-ink-200 pl-3.5 lg:flex">
           <Building2 size={15} className="text-ink-400" />
