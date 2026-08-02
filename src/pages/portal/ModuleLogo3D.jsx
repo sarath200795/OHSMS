@@ -37,12 +37,14 @@ function InspectionPad() {
       {[0, 1, 2].map((i) => (
         <span
           key={`t${i}`}
-          className={`absolute h-[7px] w-[3.5px] rotate-45 border-b-[2.5px] border-r-[2.5px] border-emerald-400 opacity-0 group-hover:animate-pop-in motion-reduce:group-hover:animate-none`}
-          style={{
-            transform: `translateZ(11px) translateY(${-5 + i * 7}px) translateX(-9px) rotate(45deg)`,
-            animationDelay: `${0.25 + i * 0.36}s`,
-          }}
-        />
+          className="absolute h-[7px] w-[3.5px]"
+          style={{ transform: `translateZ(11px) translateY(${-5 + i * 7}px) translateX(-9px) rotate(45deg)` }}
+        >
+          <span
+            className="absolute inset-0 border-b-[2.5px] border-r-[2.5px] border-emerald-400 opacity-0 group-hover:animate-pop-in motion-reduce:group-hover:animate-none"
+            style={{ animationDelay: `${0.25 + i * 0.36}s` }}
+          />
+        </span>
       ))}
       <span
         className={`absolute h-[15px] w-[3px] rounded-full bg-amber-300 group-hover:animate-pen-write motion-reduce:group-hover:animate-none`}
@@ -141,11 +143,16 @@ function CommitteeGroup() {
       <Slab z={14} className="h-[4px] w-[38px] translate-y-[13px] rounded-full bg-slate-700/80" />
       {/* Somebody makes a point. */}
       <span
-        className={`absolute grid h-[13px] w-[16px] place-items-center rounded-[5px] bg-white opacity-0 group-hover:animate-pop-in motion-reduce:group-hover:animate-none`}
-        style={{ transform: 'translateZ(20px) translate(9px,-19px)', animationDelay: '0.3s' }}
+        className="absolute h-[13px] w-[16px]"
+        style={{ transform: 'translateZ(20px) translate(9px,-19px)' }}
       >
-        <span className="flex gap-[2px]">
-          {[0, 1, 2].map((i) => <span key={i} className="h-[2px] w-[2px] rounded-full bg-slate-500" />)}
+        <span
+          className="absolute inset-0 grid place-items-center rounded-[5px] bg-white opacity-0 group-hover:animate-pop-in motion-reduce:group-hover:animate-none"
+          style={{ animationDelay: '0.3s' }}
+        >
+          <span className="flex gap-[2px]">
+            {[0, 1, 2].map((i) => <span key={i} className="h-[2px] w-[2px] rounded-full bg-slate-500" />)}
+          </span>
         </span>
       </span>
     </>
@@ -193,14 +200,17 @@ function BarGraph() {
       {bars.map((b) => (
         <span
           key={b.x}
-          className={`absolute w-[7px] rounded-t-[3px] bg-white/95 group-hover:animate-bar-grow motion-reduce:group-hover:animate-none`}
+          className="absolute w-[7px]"
           style={{
             height: b.h,
             transform: `translateZ(10px) translateX(${b.x}px) translateY(${14 - b.h / 2}px)`,
-            transformOrigin: 'bottom',
-            animationDelay: `${b.d}s`,
           }}
-        />
+        >
+          <span
+            className="absolute inset-0 rounded-t-[3px] bg-white/95 group-hover:animate-bar-grow motion-reduce:group-hover:animate-none"
+            style={{ transformOrigin: 'bottom', animationDelay: `${b.d}s` }}
+          />
+        </span>
       ))}
       {/* The trend the bars add up to. */}
       <span
@@ -244,14 +254,19 @@ function LotoLock() {
       <Slab z={15} className="h-[6px] w-[6px] translate-y-[3px] rounded-full bg-slate-900/70" />
       <Slab z={15} className="h-[5px] w-[2.5px] translate-y-[8px] rounded-full bg-slate-900/70" />
       {/* The danger tag every lockout carries. */}
-      <span
-        className={`absolute origin-top group-hover:animate-tag-swing motion-reduce:group-hover:animate-none`}
-        style={{ transform: 'translateZ(17px) translate(16px,-6px) rotate(-10deg)' }}
-      >
+      <span className="absolute" style={{ transform: 'translateZ(17px) translate(16px,-6px)' }}>
+        {/* The tag's own hang angle lives here, not on the parent, so the swing
+            keyframe (which starts at that same -10deg) replaces it rather than
+            compounding with it. */}
+        <span
+          className="absolute origin-top group-hover:animate-tag-swing motion-reduce:group-hover:animate-none"
+          style={{ transform: 'rotate(-10deg)' }}
+        >
         <span className="absolute h-[5px] w-[1.5px] bg-slate-300" />
         <span className="absolute top-[4px] -left-[5px] h-[14px] w-[11px] rounded-[2px] bg-amber-300 shadow-[0_1px_2px_rgba(0,0,0,0.3)]" />
         <span className="absolute top-[7px] -left-[3px] h-[1.5px] w-[7px] rounded-full bg-amber-700/70" />
         <span className="absolute top-[11px] -left-[3px] h-[1.5px] w-[5px] rounded-full bg-amber-700/70" />
+        </span>
       </span>
     </>
   )
@@ -316,9 +331,14 @@ function PermitStamp() {
       ))}
       {/* The mark it leaves, appearing as the stamp lands. */}
       <span
-        className="absolute h-[13px] w-[13px] rounded-full border-[2.5px] border-emerald-500/80 opacity-0 group-hover:animate-pop-in motion-reduce:group-hover:animate-none"
-        style={{ transform: 'translateZ(9px) translateY(7px) rotate(-12deg)', animationDelay: '0.62s' }}
-      />
+        className="absolute h-[13px] w-[13px]"
+        style={{ transform: 'translateZ(9px) translateY(7px) rotate(-12deg)' }}
+      >
+        <span
+          className="absolute inset-0 rounded-full border-[2.5px] border-emerald-500/80 opacity-0 group-hover:animate-pop-in motion-reduce:group-hover:animate-none"
+          style={{ animationDelay: '0.62s' }}
+        />
+      </span>
       <span
         className="absolute group-hover:animate-stamp-down motion-reduce:group-hover:animate-none"
         style={{ transform: 'translateZ(26px) translateY(-13px) rotate(-9deg)' }}
@@ -361,18 +381,28 @@ function ActionList() {
       {[0, 1, 2].map((i) => (
         <span
           key={i}
-          className="absolute group-hover:animate-list-advance motion-reduce:group-hover:animate-none"
-          style={{ transform: `translateZ(9px) translateY(${-9 + i * 8}px)`, animationDelay: `${i * 0.1}s` }}
+          className="absolute"
+          style={{ transform: `translateZ(9px) translateY(${-9 + i * 8}px)` }}
         >
-          <span className={`absolute -left-[11px] h-[7px] w-[7px] rounded-[2px] ${i === 0 ? 'bg-emerald-400' : 'border-[1.5px] border-slate-400'}`} />
-          <span className="absolute -left-[1px] top-[2px] h-[2.5px] w-[13px] rounded-full bg-slate-400/80" />
+          {/* The row's place in the stack is set above and its motion here. Both
+              on one element and the keyframe's transform would replace the
+              placement, dropping every row to the same spot with no depth. */}
+          <span
+            className="absolute group-hover:animate-list-advance motion-reduce:group-hover:animate-none"
+            style={{ animationDelay: `${i * 0.1}s` }}
+          >
+            <span className={`absolute -left-[11px] h-[7px] w-[7px] rounded-[2px] ${i === 0 ? 'bg-emerald-400' : 'border-[1.5px] border-slate-400'}`} />
+            <span className="absolute -left-[1px] top-[2px] h-[2.5px] w-[13px] rounded-full bg-slate-400/80" />
+          </span>
         </span>
       ))}
       {/* The tick that lands on the item being completed. */}
       <span
-        className="absolute h-[6px] w-[3px] rotate-45 border-b-[2px] border-r-[2px] border-white opacity-0 group-hover:animate-pop-in motion-reduce:group-hover:animate-none"
+        className="absolute h-[6px] w-[3px]"
         style={{ transform: 'translateZ(12px) translate(-11px,-10px) rotate(45deg)' }}
-      />
+      >
+        <span className="absolute inset-0 border-b-[2px] border-r-[2px] border-white opacity-0 group-hover:animate-pop-in motion-reduce:group-hover:animate-none" />
+      </span>
     </>
   )
 }
