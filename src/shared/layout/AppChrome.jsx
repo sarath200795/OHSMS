@@ -9,6 +9,10 @@
 // This is the portal header, used everywhere. Module pages render inside it
 // exactly as portal pages do, which is why it takes children rather than
 // assuming an Outlet: the portal routes nest, the module routes do not.
+//
+// It carries no navigation. The portal home is the only hub — every module and
+// every personal page is a tile or a button there — so the bar holds identity
+// and account, and nothing that competes with the page below it.
 // ─────────────────────────────────────────────────────────────────────────────
 import { useEffect, useRef, useState } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
@@ -18,13 +22,6 @@ import { useAuth } from '../auth/AuthContext'
 import { initials } from '../lib/format'
 import RequestAccessModal from './RequestAccessModal'
 import Sam from '../sam/Sam'
-
-const NAV = [
-  { to: '/portal', end: true, label: 'Home', dot: '#8fbc74' },
-  { to: '/portal/report', label: 'Report', dot: '#c74a33' },
-  { to: '/portal/actions', label: 'My actions', dot: '#e8a33d' },
-  { to: '/portal/training', label: 'My training', dot: '#7fc4bb' },
-]
 
 const ROLE_LABEL = {
   admin: 'Administrator',
@@ -70,24 +67,6 @@ export default function AppChrome({ children }) {
             <span className="block text-[11px] text-ink-400">Workplace Environment, Health &amp; Safety</span>
           </span>
         </NavLink>
-
-        <nav className="ml-2 hidden gap-1.5 md:flex">
-          {NAV.map((n) => (
-            <NavLink
-              key={n.to}
-              to={n.to}
-              end={n.end}
-              className={({ isActive }) =>
-                `inline-flex items-center gap-2 rounded-2xl px-3 py-2 text-[13px] font-semibold transition-transform duration-200 ease-emil active:scale-[0.97] ${
-                  isActive ? 'bg-clay-surface text-ink-900 shadow-clay-inset' : 'text-ink-600 hover:text-ink-900'
-                }`
-              }
-            >
-              <span className="h-[7px] w-[7px] rounded-full" style={{ background: n.dot }} />
-              {n.label}
-            </NavLink>
-          ))}
-        </nav>
 
         <div className="flex-1" />
 
@@ -137,25 +116,6 @@ export default function AppChrome({ children }) {
           )}
         </div>
       </header>
-
-      {/* The header row has no space for nav beside the CTA on a phone. */}
-      <nav className="flex gap-1.5 overflow-x-auto px-5 pt-3 md:hidden">
-        {NAV.map((n) => (
-          <NavLink
-            key={n.to}
-            to={n.to}
-            end={n.end}
-            className={({ isActive }) =>
-              `inline-flex flex-none items-center gap-2 rounded-2xl px-3 py-2 text-[13px] font-semibold ${
-                isActive ? 'bg-clay-surface text-ink-900 shadow-clay-inset' : 'text-ink-600'
-              }`
-            }
-          >
-            <span className="h-[7px] w-[7px] rounded-full" style={{ background: n.dot }} />
-            {n.label}
-          </NavLink>
-        ))}
-      </nav>
 
       <main className="mx-auto max-w-[1180px] px-5 pb-24 pt-6 sm:px-7">
         <motion.div

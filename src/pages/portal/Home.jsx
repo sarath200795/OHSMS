@@ -223,6 +223,17 @@ export default function PortalHome() {
               : `Nothing is waiting on you. Everything below is scoped to ${scopeLabel}.`}
           </p>
           <div className="relative mt-5 flex flex-wrap gap-2.5">
+            {/* With no navigation bar, this is the only way to the report
+                wizard — and reporting is the thing most people open the portal
+                to do, so it leads. */}
+            <button
+              type="button"
+              onClick={() => navigate('/portal/report')}
+              className="inline-flex items-center gap-1.5 rounded-2xl bg-brand-600 px-4 py-2.5 text-[13px] font-semibold text-white shadow-clay-brand transition-transform duration-200 ease-emil hover:bg-brand-700 active:scale-[0.97]"
+            >
+              <AlertTriangle size={15} strokeWidth={2.2} />
+              Report an incident
+            </button>
             <button
               type="button"
               onClick={() => navigate('/portal/actions')}
