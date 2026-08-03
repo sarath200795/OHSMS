@@ -42,6 +42,7 @@ const writeBatch = (...args) => { assertWritable(); return _writeBatch(...args) 
 import { generateQrToken } from './qr'
 import { STATUS, REFILL_DEFECT_KEYS, DEFECT_BY_KEY } from './constants'
 import { lockId, duplicateDefectMessage } from './defectLock'
+import { reserveDocId } from '../../../shared/docId/reserve'
 import { AUDIT, diffSummary } from './audit'
 import { buildExtinguisherConstraints } from './extinguisherQuery'
 import { statsDeltaFor, accumulate } from './stats'
@@ -1026,6 +1027,7 @@ export async function addMockDrill(orgId, data, actor) {
     createdAt: null, // placeholder; replaced by serverTimestamp below
   }))
   payload.createdAt = serverTimestamp()
+  payload.docId = await reserveDocId(orgId, 'drills')
   const ref = await addDoc(drillCol(orgId), payload)
   // Evidence photos, one doc each (fetched on demand when viewing / printing).
   for (const dataUrl of valid) {

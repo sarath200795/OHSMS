@@ -4,6 +4,7 @@ import {
   addDoc, collection, deleteDoc, doc, onSnapshot, orderBy, query, serverTimestamp, updateDoc, writeBatch,
 } from 'firebase/firestore'
 import { db } from '../../../shared/firebase'
+import { reserveDocId } from '../../../shared/docId/reserve'
 import { logAudit } from '../../../shared/org/orgData'
 import { KPIS } from './kpis'
 
@@ -31,7 +32,7 @@ const clean = (d) => ({
 const label = (d) => `${KPIS.find((k) => k.key === d.kpi)?.label || d.kpi} · ${d.scopeLabel || 'Organization'}`
 
 export async function addObjective(orgId, data, actor) {
-  const r = await addDoc(col(orgId), { ...clean(data), createdAt: serverTimestamp(), createdBy: actor?.uid || null })
+  const r = await addDoc(col(orgId), { ...clean(data), docId: await reserveDocId(orgId, 'objectives'), createdAt: serverTimestamp(), createdBy: actor?.uid || null })
   await logAudit(orgId, actor, 'objective.create', {
     module: 'objectives', target: 'objective', targetId: r.id, targetLabel: label(data),
     summary: `Set target ${data.target} for ${label(data)}`,

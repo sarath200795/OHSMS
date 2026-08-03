@@ -7,6 +7,7 @@ import {
   updateDoc,
 } from 'firebase/firestore'
 import { db } from '../lib/firebase'
+import { reserveDocId } from '../../../shared/docId/reserve'
 
 // Faithful to the original portal's Internal Audit data model:
 //   organizations/{orgId}/auditPlans     — schedules with an execution matrix
@@ -30,6 +31,7 @@ export function subscribeAuditFindings(orgId, callback) {
 export async function createAuditPlan(orgId, payload) {
   const ref = await addDoc(plansCol(orgId), {
     ...payload,
+    docId: await reserveDocId(orgId, 'audit'),
     createdAt: payload.createdAt || new Date().toISOString(),
     _serverCreatedAt: serverTimestamp(),
   })
@@ -39,6 +41,7 @@ export async function createAuditPlan(orgId, payload) {
 export async function createAuditFinding(orgId, payload) {
   const ref = await addDoc(findingsCol(orgId), {
     ...payload,
+    docId: await reserveDocId(orgId, 'auditFindings'),
     _serverCreatedAt: serverTimestamp(),
   })
   return ref.id

@@ -156,13 +156,12 @@ export default function MockDrills() {
 
     setBusy(true)
     try {
-      const srNo = Math.floor(10000 + Math.random() * 90000)
-      const prefix = form.eventType === 'Mock Drill' ? 'MD' : 'ER'
-      const siteSlug = form.centerName.trim().toUpperCase().replace(/[^A-Z0-9]+/g, '').slice(0, 6) || 'SITE'
       const record = {
         ...form,
         scenario: scenario.title,
-        docId: `${prefix}-${siteSlug}-${srNo}`,
+        // docId is issued by the write path from the org-wide counter. It used
+        // to be built here as MD-SITE-<random 5 digits>, which could collide
+        // and sorted by nothing useful.
         commanders,
         commander: commanders.join(', '),
         evacTimeMin: form.evacTimeMin === '' ? null : Number(form.evacTimeMin),

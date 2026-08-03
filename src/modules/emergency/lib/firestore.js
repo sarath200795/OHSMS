@@ -12,6 +12,7 @@ import {
 import { db } from '../../../shared/firebase'
 import { logAudit } from '../../../shared/org/orgData'
 import { ERP_ROLE_KEYS } from '../../../shared/org/erpRoles'
+import { reserveDocId } from '../../../shared/docId/reserve'
 
 const col = (orgId) => collection(db, 'organizations', orgId, 'erpContacts')
 const ref = (orgId, id) => doc(db, 'organizations', orgId, 'erpContacts', id)
@@ -213,7 +214,7 @@ const cleanPlan = (data) => ({
 
 export async function addRescuePlan(orgId, data, actor) {
   const r = await addDoc(planCol(orgId), {
-    ...cleanPlan(data), createdAt: serverTimestamp(), createdBy: actor?.uid || null, createdByName: actor?.name || '',
+    ...cleanPlan(data), docId: await reserveDocId(orgId, 'emergency'), createdAt: serverTimestamp(), createdBy: actor?.uid || null, createdByName: actor?.name || '',
   })
   await logAudit(orgId, actor, 'erp.plan_create', {
     module: 'emergency', target: 'rescuePlan', targetId: r.id, targetLabel: `${data.siteName} · ${data.scenario}`,

@@ -24,6 +24,7 @@ import {
   arrayUnion,
 } from 'firebase/firestore'
 import { db } from '../firebase'
+import { reserveDocId } from '../../../shared/docId/reserve'
 import { AUDIT } from './audit'
 import { ROLES } from './permissions'
 import { computeWindow, derivePermitStatus } from './permitStatus'
@@ -301,6 +302,7 @@ export async function createPermit(orgId, data, actor) {
   const ref = doc(permitCol(orgId))
   const permit = {
     permitNo,
+    docId: await reserveDocId(orgId, 'ptw'),
     qrToken,
     date: data.date || '',
     time: data.time || '',
@@ -381,6 +383,7 @@ export function subscribePermitObservations(orgId, permitId, cb) {
 export async function createObservation(orgId, data, actor) {
   const ref = await addDoc(obsCol(orgId), {
     permitId: data.permitId,
+    docId: await reserveDocId(orgId, 'observations'),
     permitNo: data.permitNo || '',
     token: data.token || '',
     type: data.type, // 'safe' | 'unsafe'

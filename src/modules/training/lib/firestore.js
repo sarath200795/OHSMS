@@ -11,6 +11,7 @@ import {
 import { db } from '../../../shared/firebase'
 import { logAudit } from '../../../shared/org/orgData'
 import { computeExpiry, todayISO } from './status'
+import { reserveDocId } from '../../../shared/docId/reserve'
 
 const courseCol = (orgId) => collection(db, 'organizations', orgId, 'trainingCourses')
 const courseRef = (orgId, id) => doc(db, 'organizations', orgId, 'trainingCourses', id)
@@ -90,6 +91,7 @@ const cleanCourse = (data) => ({
 export async function createCourse(orgId, data, actor) {
   const ref = await addDoc(courseCol(orgId), {
     ...cleanCourse(data),
+    docId: await reserveDocId(orgId, 'training'),
     createdAt: serverTimestamp(),
     createdBy: actor?.uid || null,
     createdByName: actor?.name || '',
@@ -314,7 +316,12 @@ export function subscribeSessions(orgId, cb) {
 
 export async function createSession(orgId, data, actor) {
   const s = cleanSession(data)
-  const ref = await addDoc(sessionCol(orgId), { ...s, createdAt: serverTimestamp(), createdBy: actor?.uid || null })
+  const ref = await addDoc(sessionCol(orgId), {
+    ...s,
+    docId: await reserveDocId(orgId, 'trainingSessions'),
+    createdAt: serverTimestamp(),
+    createdBy: actor?.uid || null,
+  })
   await logAudit(orgId, actor, 'training.session_create', {
     module: 'training', target: 'session', targetId: ref.id, targetLabel: s.courseName,
     summary: `Scheduled "${s.courseName}" ${s.mode === 'online' ? 'online' : `at ${s.siteName || 'a site'}`} (${s.validFrom} → ${s.validTo})`,

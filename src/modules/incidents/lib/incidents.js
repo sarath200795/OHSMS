@@ -24,6 +24,7 @@ import { db } from '../firebase'
 import { logAudit } from './firestore'
 import { AUDIT, diffSummary } from './audit'
 import { statsDeltaFor, accumulate, emptyStats, BUCKETS } from './stats'
+import { reserveDocId } from '../../../shared/docId/reserve'
 
 const BUCKET_NAMES = Object.keys(BUCKETS)
 
@@ -108,6 +109,10 @@ export async function createIncident(orgId, actor, initial = {}) {
   const year = new Date().getFullYear()
   const ref = doc(incidentCol(orgId))
   const incident = {
+    // The org-wide document id. refNo is kept alongside it because incidents
+    // raised before this scheme are quoted by that number in closed
+    // investigations and emails, and dropping it would strand those references.
+    docId: await reserveDocId(orgId, 'incidents'),
     refNo: `IRA-${year}-${pad4(seq)}`,
     lifecycle: 'reporting',
     stagesDone: { initial: false, team: false, investigation: false, capa: false, horizontal: false },
@@ -151,8 +156,8 @@ export async function createIncident(orgId, actor, initial = {}) {
   await logAudit(orgId, actor, AUDIT.INCIDENT_CREATE, {
     target: 'incident',
     targetId: ref.id,
-    targetLabel: incident.refNo,
-    summary: `Incident ${incident.refNo} created`,
+    targetLabel: incident.docId,
+    summary: `Incident ${incident.docId} created`,
   })
   return ref.id
 }

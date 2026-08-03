@@ -18,6 +18,7 @@ import {
   writeBatch,
 } from 'firebase/firestore'
 import { db } from '../firebase'
+import { reserveDocId } from '../../../shared/docId/reserve'
 
 // ── Path helpers ─────────────────────────────────────────────────────────────
 const orgRef = (orgId) => doc(db, 'organizations', orgId)
@@ -196,7 +197,7 @@ export function subscribeConsultations(orgId, cb, onError) {
 }
 
 export async function addConsultation(orgId, data) {
-  const ref = await addDoc(consultationCol(orgId), { ...data, createdAt: serverTimestamp() })
+  const ref = await addDoc(consultationCol(orgId), { ...data, docId: await reserveDocId(orgId, 'committee'), createdAt: serverTimestamp() })
   return ref.id
 }
 

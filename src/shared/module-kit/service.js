@@ -16,6 +16,7 @@ import {
 } from 'firebase/firestore'
 import { moduleCol, moduleDoc, logAudit } from '../org/orgData'
 import { AUDIT } from '../audit/audit'
+import { reserveDocId } from '../docId/reserve'
 
 export function createModuleService(collectionName, moduleKey = collectionName) {
   const col = (orgId) => moduleCol(orgId, collectionName)
@@ -42,6 +43,7 @@ export function createModuleService(collectionName, moduleKey = collectionName) 
     async create(orgId, data, actor, label) {
       const created = await addDoc(col(orgId), {
         ...data,
+        docId: await reserveDocId(orgId, moduleKey),
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         createdBy: actor?.uid || null,

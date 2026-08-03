@@ -25,6 +25,7 @@ import {
 import { db } from '../firebase'
 import { logAudit } from './firestore'
 import { AUDIT, diffSummary } from './audit'
+import { reserveDocId } from '../../../shared/docId/reserve'
 
 const illnessCol = (orgId) => collection(db, 'organizations', orgId, 'illnesses')
 const illnessRef = (orgId, id) => doc(db, 'organizations', orgId, 'illnesses', id)
@@ -41,6 +42,9 @@ export async function createIllness(orgId, actor, initial = {}) {
   const year = new Date().getFullYear()
   const ref = doc(illnessCol(orgId))
   const illness = {
+    // See createIncident: docId is the org-wide id, refNo is kept for records
+    // and correspondence that already quote the older number.
+    docId: await reserveDocId(orgId, 'illnesses'),
     refNo: `ILL-${year}-${pad4(seq)}`,
     lifecycle: 'reporting',
     stagesDone: { initial: false, actions: false },

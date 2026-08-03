@@ -23,6 +23,7 @@ import {
   limit,
 } from 'firebase/firestore'
 import { db } from '../firebase'
+import { reserveDocId } from '../../../shared/docId/reserve'
 
 // ── Path helpers ─────────────────────────────────────────────────────────────
 const orgRef = (orgId) => doc(db, 'organizations', orgId)
@@ -176,6 +177,7 @@ function clean(value) {
 export async function createAssessment(orgId, data, actor) {
   const ref = await addDoc(assessmentCol(orgId), {
     ...clean(data),
+    docId: await reserveDocId(orgId, 'hira'),
     createdBy: actor?.uid || null,
     createdByName: actor?.name || '',
     createdAt: serverTimestamp(),

@@ -20,6 +20,7 @@ import {
   limit,
 } from 'firebase/firestore'
 import { db } from '../firebase'
+import { reserveDocId } from '../../../shared/docId/reserve'
 
 // ── Path helpers ─────────────────────────────────────────────────────────────
 const orgRef = (orgId) => doc(db, 'organizations', orgId)
@@ -220,6 +221,7 @@ export function subscribeRecords(orgId, cb) {
 
 export async function addRecord(orgId, record, actor) {
   const ref = await addDoc(recordCol(orgId), {
+    docId: await reserveDocId(orgId, 'inspections'),
     ...record,
     completedAt: record.completedAt || new Date().toISOString(),
     createdAt: serverTimestamp(),
