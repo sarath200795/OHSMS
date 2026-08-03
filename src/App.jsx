@@ -39,6 +39,7 @@ const Documents = lazy(() => import('./modules/documents'))
 const Actions = lazy(() => import('./modules/actions'))
 const Emergency = lazy(() => import('./modules/emergency'))
 const Objectives = lazy(() => import('./modules/objectives'))
+const Weather = lazy(() => import('./modules/weather'))
 
 // Employee portal — brings its own shell, so it is not wrapped in AppChrome.
 const Portal = lazy(() => import('./pages/portal'))
@@ -106,6 +107,7 @@ export default function App() {
       <Route path="/actions/*" element={<Protected><Actions /></Protected>} />
       <Route path="/emergency-response/*" element={<Protected><Emergency /></Protected>} />
       <Route path="/objectives/*" element={<Protected><Objectives /></Protected>} />
+      <Route path="/weather/*" element={<Protected><Weather /></Protected>} />
 
       {/* Administration */}
       <Route path="/analytics" element={<Protected><Analytics /></Protected>} />

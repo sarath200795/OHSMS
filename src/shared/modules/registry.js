@@ -18,6 +18,7 @@ import {
   ListChecks,
   PhoneCall,
   Gauge,
+  CloudSun,
 } from 'lucide-react'
 
 export const MODULES = [
@@ -153,6 +154,17 @@ export const MODULES = [
     tone: 'violet',
     description: 'OH&S KPI scorecard — audit pass, ticket closure, equipment uptime and incidents against target at org, region and site level.',
     collection: 'objectives',
+    isNew: true,
+  },
+  {
+    key: 'weather',
+    label: 'Weather Risk',
+    title: 'Site Weather Risk',
+    path: '/weather',
+    icon: CloudSun,
+    tone: 'blue',
+    description: 'Current conditions at every site read as occupational risk — heat stress, wind limits for work at height, lightning, rain, UV and visibility.',
+    collection: '',
     isNew: true,
   },
   {

@@ -272,6 +272,39 @@ function LotoLock() {
   )
 }
 
+// ── Weather risk: sun behind a cloud, with rain falling from it ──────────────
+function WeatherCloud() {
+  return (
+    <>
+      {/* The sun sits behind and to the side, so the cloud reads as in front. */}
+      <span
+        className="absolute h-[15px] w-[15px] rounded-full bg-amber-300 shadow-[0_0_8px_rgba(252,211,77,0.8)] group-hover:animate-beacon motion-reduce:group-hover:animate-none"
+        style={{ transform: 'translateZ(6px) translate(11px,-11px)' }}
+      />
+      {/* Cloud: three overlapping lobes on one plane, plus a flat base. */}
+      <span className="absolute" style={{ transform: 'translateZ(14px) translateY(-3px)' }}>
+        <span className="absolute -left-[14px] -top-[4px] h-[13px] w-[13px] rounded-full bg-white" />
+        <span className="absolute -left-[6px] -top-[9px] h-[17px] w-[17px] rounded-full bg-white" />
+        <span className="absolute left-[6px] -top-[3px] h-[12px] w-[12px] rounded-full bg-white" />
+        <span className="absolute -left-[14px] top-[2px] h-[8px] w-[30px] rounded-b-[6px] bg-white shadow-[0_2px_4px_rgba(0,0,0,0.2)]" />
+      </span>
+      {/* Rain, each drop falling on its own beat. */}
+      {[0, 1, 2].map((i) => (
+        <span
+          key={i}
+          className="absolute h-[6px] w-[2px]"
+          style={{ transform: `translateZ(12px) translate(${-9 + i * 8}px,10px)` }}
+        >
+          <span
+            className="absolute inset-0 rounded-full bg-sky-400 opacity-0 group-hover:animate-rain-fall motion-reduce:group-hover:animate-none"
+            style={{ animationDelay: `${i * 0.18}s` }}
+          />
+        </span>
+      ))}
+    </>
+  )
+}
+
 // ── Incidents: a hazard cone under a turning warning beacon ──────────────────
 function IncidentCone() {
   return (
@@ -429,6 +462,7 @@ function TargetArrow() {
 }
 
 const LOGOS = {
+  weather: WeatherCloud,
   incidents: IncidentCone,
   hira: RiskMatrix,
   ptw: PermitStamp,

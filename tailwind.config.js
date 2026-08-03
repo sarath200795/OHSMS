@@ -169,6 +169,12 @@ export default {
         // An item ticking off and the list moving up to fill the gap.
         // The list moving down rather than up: work arriving on the tracker
         // instead of clearing off the top of it.
+        // A drop falling clear of the cloud and fading as it goes.
+        rainFall: {
+          '0%': { transform: 'translateY(-4px)', opacity: '0' },
+          '25%': { opacity: '1' },
+          '100%': { transform: 'translateY(9px)', opacity: '0' },
+        },
         listAdvance: {
           '0%,100%': { transform: 'translateY(0)', opacity: '1' },
           '55%': { transform: 'translateY(7px)', opacity: '0.35' },
@@ -253,6 +259,7 @@ export default {
         'needle-sweep': 'needleSweep 2.1s cubic-bezier(0.23,1,0.32,1) infinite',
         'stamp-down': 'stampDown 1.5s cubic-bezier(0.23,1,0.32,1) infinite',
         'file-pull': 'filePull 1.7s cubic-bezier(0.23,1,0.32,1) infinite',
+        'rain-fall': 'rainFall 1.1s cubic-bezier(0.55,0,1,0.45) infinite',
         'list-advance': 'listAdvance 1.5s cubic-bezier(0.45,0,0.55,1) infinite',
         'arrow-hit': 'arrowHit 1.8s cubic-bezier(0.23,1,0.32,1) infinite',
       },

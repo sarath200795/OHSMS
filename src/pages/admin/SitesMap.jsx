@@ -3,7 +3,7 @@ import { MapContainer, TileLayer, Marker, Tooltip, Popup, useMap } from 'react-l
 import MarkerClusterGroup from 'react-leaflet-cluster'
 import L from 'leaflet'
 import { MapPin } from 'lucide-react'
-import { WeatherBubbleRow, WeatherRiskPanel } from '../../shared/weather/WeatherPanels'
+import { WeatherBubbleRow, WeatherRiskPanel } from '../../modules/weather/components/WeatherPanels'
 
 // Distinct, map-legible colours cycled across entities.
 const PALETTE = [

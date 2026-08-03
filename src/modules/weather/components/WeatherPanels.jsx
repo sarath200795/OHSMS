@@ -6,8 +6,8 @@
 // `weatherRisk.js` differs only in case: Windows and macOS resolve the import
 // to whichever they feel like (here, the wrong one) and Linux to the other, so
 // the collision breaks in a different place than it is written.
-import { useSiteWeather } from './useSiteWeather'
-import { BAND_LABEL } from './weatherRisk'
+import { useSiteWeather } from '../lib/useSiteWeather'
+import { BAND_LABEL } from '../lib/weatherRisk'
 
 const BAND_COLOR = {
   none: { bg: '#ecfdf5', fg: '#047857', dot: '#10b981' },
