@@ -1,8 +1,9 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { MapContainer, TileLayer, Marker, Tooltip, Popup, useMap } from 'react-leaflet'
 import MarkerClusterGroup from 'react-leaflet-cluster'
 import L from 'leaflet'
 import { MapPin } from 'lucide-react'
+import { WeatherBubbleRow, WeatherRiskPanel } from '../../shared/weather/WeatherPanels'
 
 // Distinct, map-legible colours cycled across entities.
 const PALETTE = [
@@ -113,12 +114,27 @@ function fitBubble(map, e) {
   if (Math.abs(dx) > 8) el.classList.add('site-bubble--shifted')
 }
 
-/** A pin whose hover bubble is re-fitted to the map each time it opens. */
-function SiteMarker({ children, ...props }) {
+/**
+ * A pin whose hover bubble is re-fitted to the map each time it opens, and
+ * which reports when it has been opened at all.
+ *
+ * That second job is what keeps the weather lookup affordable: `render` gives
+ * children an `opened` flag that stays false until the pin is first hovered or
+ * clicked, so a map of two hundred sites makes no weather requests until
+ * someone actually looks at one, and none again for the rest of the session.
+ */
+function SiteMarker({ render, ...props }) {
   const map = useMap()
+  const [opened, setOpened] = useState(false)
   return (
-    <Marker {...props} eventHandlers={{ tooltipopen: (e) => fitBubble(map, e) }}>
-      {children}
+    <Marker
+      {...props}
+      eventHandlers={{
+        tooltipopen: (e) => { setOpened(true); fitBubble(map, e) },
+        popupopen: () => setOpened(true),
+      }}
+    >
+      {render(opened)}
     </Marker>
   )
 }
@@ -171,43 +187,52 @@ export default function SitesMap({ sites, stats = {}, onSelect, onEdit, onDelete
           const st = stats[s.id]
           const color = colorOf(s.entity)
           return (
-            <SiteMarker key={s.id} position={[s.lat, s.lng]} icon={pinIcon(color)}>
-              {/* Anchored to the pin rather than sticky to the cursor: a bubble
-                  this tall has to be measured and clamped to stay fully visible,
-                  and one that re-flows under a moving cursor cannot settle. */}
-              <Tooltip direction="top" offset={[0, -6]} opacity={1} className="site-bubble">
-                <div className="site-bubble-card">
-                  <div className="site-bubble-title"><Dot color={color} />{s.name}</div>
-                  <div className="site-bubble-sub">{[s.region, s.entity].filter(Boolean).join(' · ') || '—'}</div>
-                  {s.address && <div className="site-bubble-addr">{s.address}</div>}
-                  {st && (
-                    <div className="site-bubble-stats">
-                      <span>🧯 Extinguishers <b>{st.extinguishers}</b></span>
-                      <span>❤️ AED <b>{st.aeds}</b></span>
-                      <span>🔔 Fire alarm <b>{st.fas}</b></span>
-                      <span>🩹 First aid <b>{st.firstAidBoxes}</b></span>
-                      <span>⚠️ Incidents <b>{st.incidentsTotal}</b></span>
-                      <span>✅ Open actions <b>{st.openActions}</b></span>
-                      <span>👤 Employees <b>{st.employees.length}</b></span>
+            <SiteMarker
+              key={s.id}
+              position={[s.lat, s.lng]}
+              icon={pinIcon(color)}
+              render={(opened) => (
+                <>
+                  {/* Anchored to the pin rather than sticky to the cursor: a bubble
+                      this tall has to be measured and clamped to stay fully visible,
+                      and one that re-flows under a moving cursor cannot settle. */}
+                  <Tooltip direction="top" offset={[0, -6]} opacity={1} className="site-bubble">
+                    <div className="site-bubble-card">
+                      <div className="site-bubble-title"><Dot color={color} />{s.name}</div>
+                      <div className="site-bubble-sub">{[s.region, s.entity].filter(Boolean).join(' · ') || '—'}</div>
+                      {s.address && <div className="site-bubble-addr">{s.address}</div>}
+                      {st && (
+                        <div className="site-bubble-stats">
+                          <span>🧯 Extinguishers <b>{st.extinguishers}</b></span>
+                          <span>❤️ AED <b>{st.aeds}</b></span>
+                          <span>🔔 Fire alarm <b>{st.fas}</b></span>
+                          <span>🩹 First aid <b>{st.firstAidBoxes}</b></span>
+                          <span>⚠️ Incidents <b>{st.incidentsTotal}</b></span>
+                          <span>✅ Open actions <b>{st.openActions}</b></span>
+                          <span>👤 Employees <b>{st.employees.length}</b></span>
+                        </div>
+                      )}
+                      <WeatherBubbleRow lat={s.lat} lng={s.lng} active={opened} />
+                      <div className="site-bubble-hint">Click the pin for actions</div>
                     </div>
-                  )}
-                  <div className="site-bubble-hint">Click the pin for actions</div>
-                </div>
-              </Tooltip>
+                  </Tooltip>
 
-              <Popup>
-                <div style={{ minWidth: 170 }}>
-                  <div style={{ fontWeight: 700, fontSize: 13, color: '#0f172a' }}><Dot color={color} />{s.name}</div>
-                  <div style={{ fontSize: 11, color: '#64748b' }}>{[s.region, s.entity].filter(Boolean).join(' · ') || '—'}</div>
-                  {s.address && <div style={{ fontSize: 11, color: '#94a3b8' }}>{s.address}</div>}
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    <button onClick={() => onSelect?.(s)} className="rounded-lg bg-brand-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-brand-700">Summary</button>
-                    {canManage && <button onClick={() => onEdit?.(s)} className="rounded-lg bg-clay-100 px-2.5 py-1 text-xs font-semibold text-ink-700 hover:bg-clay-200">Edit</button>}
-                    {canManage && <button onClick={() => onDelete?.(s)} className="rounded-lg bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-600 hover:bg-red-100">Delete</button>}
-                  </div>
-                </div>
-              </Popup>
-            </SiteMarker>
+                  <Popup>
+                    <div style={{ minWidth: 170, maxWidth: 250 }}>
+                      <div style={{ fontWeight: 700, fontSize: 13, color: '#0f172a' }}><Dot color={color} />{s.name}</div>
+                      <div style={{ fontSize: 11, color: '#64748b' }}>{[s.region, s.entity].filter(Boolean).join(' · ') || '—'}</div>
+                      {s.address && <div style={{ fontSize: 11, color: '#94a3b8' }}>{s.address}</div>}
+                      <WeatherRiskPanel lat={s.lat} lng={s.lng} active={opened} />
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        <button onClick={() => onSelect?.(s)} className="rounded-lg bg-brand-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-brand-700">Summary</button>
+                        {canManage && <button onClick={() => onEdit?.(s)} className="rounded-lg bg-clay-100 px-2.5 py-1 text-xs font-semibold text-ink-700 hover:bg-clay-200">Edit</button>}
+                        {canManage && <button onClick={() => onDelete?.(s)} className="rounded-lg bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-600 hover:bg-red-100">Delete</button>}
+                      </div>
+                    </div>
+                  </Popup>
+                </>
+              )}
+            />
           )
         })}
         </MarkerClusterGroup>
