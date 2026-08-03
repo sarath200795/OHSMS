@@ -7,6 +7,7 @@ import { PageHeader, EmptyState, Spinner } from '../components/ui'
 import StatusBadge from '../components/StatusBadge'
 import { publicPermitUrl } from '../lib/qr'
 import { useAuth } from '../context/AuthContext'
+import DocIdTag from '../../../shared/docId/DocIdTag'
 import { usePermits } from '../context/PermitContext'
 import { WORK_TYPES } from '../lib/ptwData'
 import { STATUS, STATUS_META } from '../lib/permitStatus'
@@ -113,6 +114,7 @@ export default function Permits() {
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-bold text-ink-900">{p.permitNo}</span>
+                  <DocIdTag id={p.docId} />
                   <span className="text-sm text-ink-500">· {p.typeOfWork}</span>
                 </div>
                 <div className="mt-0.5 flex flex-wrap items-center gap-x-4 gap-y-0.5 text-xs text-ink-500">

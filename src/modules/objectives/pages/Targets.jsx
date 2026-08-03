@@ -4,6 +4,7 @@ import { Target, Plus, Pencil, Trash2, Wand2, Search } from 'lucide-react'
 import { PageHeader, Card, Field, Input, Select, Textarea, Button, Modal, Badge, EmptyState, SkeletonTable } from '../../../shared/ui'
 import { useAuth } from '../../../shared/auth/AuthContext'
 import { useObjectives } from '../context/ObjectivesContext'
+import DocIdTag from '../../../shared/docId/DocIdTag'
 import { addObjective, updateObjective, deleteObjective, seedDefaultTargets } from '../lib/firestore'
 import { KPIS, KPI_BY_KEY, LEVELS } from '../lib/kpis'
 
@@ -126,6 +127,7 @@ export default function Targets() {
                     <td className="px-5 py-3">
                       <p className="font-semibold text-ink-900">{o.kpiMeta?.label || o.kpi}</p>
                       <p className="text-xs text-ink-400">{o.kpiMeta?.source}</p>
+                      <DocIdTag id={o.docId} />
                     </td>
                     <td className="px-4 py-3"><Badge tone="brand">{LEVELS.find((l) => l.key === o.level)?.label || o.level}</Badge></td>
                     <td className="px-4 py-3 text-ink-700">{o.scopeLabel || 'Organization'}</td>

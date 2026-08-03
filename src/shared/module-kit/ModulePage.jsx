@@ -14,6 +14,7 @@ import {
 } from '../ui'
 import { formatDate } from '../lib/format'
 import RecordForm from './RecordForm'
+import { DocIdCell } from '../docId/DocIdTag'
 
 const STATUS_TONE_FALLBACK = 'gray'
 
@@ -192,6 +193,7 @@ export default function ModulePage({ module, config }) {
           <table className="w-full text-left text-sm">
             <thead>
               <tr className="text-xs uppercase tracking-wide text-ink-400">
+                <th className="px-5 py-3 font-semibold">ID</th>
                 {columns.map((c) => (
                   <th key={c.key} className="px-5 py-3 font-semibold">
                     {c.label}
@@ -211,6 +213,7 @@ export default function ModulePage({ module, config }) {
                     className="animate-fade-in-up cursor-pointer transition-colors hover:bg-clay-100"
                     style={{ animationDelay: `${Math.min(i, 12) * 35}ms` }}
                   >
+                    <td className="whitespace-nowrap px-5 py-3.5"><DocIdCell id={r.docId} /></td>
                     {columns.map((c, ci) => (
                       <td key={c.key} className={`px-5 py-3.5 ${ci === 0 ? 'font-medium text-ink-900' : 'text-ink-600'}`}>
                         {c.render ? c.render(r) : formatCell(r[c.key])}

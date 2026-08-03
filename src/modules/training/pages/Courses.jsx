@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import { BookOpen, Plus, Pencil, Trash2, Link2, Paperclip, X, ImagePlus } from 'lucide-react'
 import CourseThumb from '../components/CourseThumb'
+import DocIdTag from '../../../shared/docId/DocIdTag'
 import { PageHeader, Field, Input, Select, Textarea, Button, Modal, Badge, EmptyState, SkeletonTable } from '../../../shared/ui'
 import { useAuth } from '../../../shared/auth/AuthContext'
 import { fileToDataUrl } from '../../../shared/lib/files'
@@ -111,7 +112,7 @@ export default function Courses() {
               <CourseThumb course={c} />
               <div className="flex flex-1 flex-col px-1 pt-3">
                 <div className="mb-1 flex items-start justify-between gap-2">
-                  <p className="font-bold leading-snug text-ink-900">{c.name}</p>
+                  <p className="font-bold leading-snug text-ink-900">{c.name}<DocIdTag id={c.docId} className="mt-0.5 block" /></p>
                   {c.mandatory && <Badge tone="red" className="shrink-0 !py-0 text-[10px]">Mandatory</Badge>}
                 </div>
                 <p className="text-xs text-ink-500">

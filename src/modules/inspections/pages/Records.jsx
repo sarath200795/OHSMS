@@ -4,6 +4,7 @@ import toast from 'react-hot-toast'
 import { History, Search, Trash2, MapPin, User, Calendar } from 'lucide-react'
 import { PageHeader, EmptyState, Modal, StatusPill } from '../components/ui'
 import SiteFilter from '../components/SiteFilter'
+import DocIdTag from '../../../shared/docId/DocIdTag'
 import { useAuth } from '../context/AuthContext'
 import { useData } from '../context/DataContext'
 import { deleteRecord } from '../lib/firestore'
@@ -116,7 +117,7 @@ export default function Records() {
             <tbody>
               {filtered.map((r) => (
                 <tr key={r.id} className="cursor-pointer border-t border-clay-200/60 hover:bg-clay-surface/60" onClick={() => setActive(r)}>
-                  <td className="px-4 py-3 font-semibold text-ink-800">{r.templateTitle}</td>
+                  <td className="px-4 py-3 font-semibold text-ink-800">{r.templateTitle}<DocIdTag id={r.docId} className="mt-0.5 block" /></td>
                   <td className="px-4 py-3 text-ink-500">{r.siteName || r.location || '—'}</td>
                   <td className="px-4 py-3 text-ink-500">{r.inspector}</td>
                   <td className="px-4 py-3 text-ink-500">{new Date(r.completedAt).toLocaleDateString()}</td>

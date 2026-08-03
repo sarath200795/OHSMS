@@ -5,6 +5,7 @@ import { FolderOpen, Filter, Search, X, FilePlus2, Eye, Pencil, Trash2, AlertTri
 import toast from 'react-hot-toast'
 import { PageHeader, EmptyState, Modal, Skeleton } from '../components/ui'
 import { RiskBadge } from '../components/RiskBits'
+import DocIdTag from '../../../shared/docId/DocIdTag'
 import { useRa } from '../context/RaContext'
 import { useAuth } from '../context/AuthContext'
 import { deleteAssessment, logActivity } from '../lib/firestore'
@@ -160,7 +161,7 @@ export default function Repository() {
                   const r = topRisk(a)
                   return (
                     <tr key={a.id} className="group cursor-pointer transition hover:bg-clay-100/40" onClick={() => navigate(`/hira/assessment/${a.id}`)}>
-                      <td className="px-4 py-3 font-semibold text-ink-900">{a.name}</td>
+                      <td className="px-4 py-3 font-semibold text-ink-900">{a.name}<DocIdTag id={a.docId} className="mt-0.5 block" /></td>
                       <td className="px-4 py-3">{a.siteName || '—'}</td>
                       <td className="px-4 py-3">{a.location || '—'}</td>
                       <td className="px-4 py-3">{a.assessmentDate || '—'}</td>
