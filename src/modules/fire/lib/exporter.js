@@ -287,6 +287,39 @@ export function exportSignage(matrixRows, detailRows, filename = 'safety-signage
   downloadWorkbook(wb, filename)
 }
 
+/**
+ * Export defects as a site-wise work list, with the per-unit detail behind it.
+ *
+ * "By site" leads because that is the sheet the file is opened for: how many
+ * defects each site has, of what kinds, where it is and how to drive there. The
+ * detail sheet keeps every unit-level row, so nothing the old export carried is
+ * lost by leading with the summary.
+ */
+export function exportSiteDefects(summaryRows, detailRows, filename = 'defects-by-site.xlsx') {
+  downloadWorkbook(buildSiteDefectsBook(summaryRows, detailRows), filename)
+}
+
+/** The workbook itself, split out so the sheet layout can be tested without a DOM. */
+export function buildSiteDefectsBook(summaryRows = [], detailRows = []) {
+  const wb = XLSX.utils.book_new()
+
+  const headers = ['Site', 'No. of Defects', 'Type of Defects', 'Address', 'Entity', 'Region', 'Location Link']
+  const sws = XLSX.utils.json_to_sheet(
+    summaryRows.length ? summaryRows : [Object.fromEntries(headers.map((h) => [h, '']))]
+  )
+  // The type list and the address are the long ones; the count is a number.
+  sws['!cols'] = headers.map((h) => ({
+    wch: h === 'Type of Defects' ? 46 : h === 'Address' ? 34 : h === 'Location Link' ? 44 : h === 'Site' ? 26 : 14,
+  }))
+  XLSX.utils.book_append_sheet(wb, sws, 'By Site')
+
+  const dws = XLSX.utils.json_to_sheet(detailRows.length ? detailRows : [{ Site: '' }])
+  dws['!cols'] = (detailRows.length ? Object.keys(detailRows[0]) : ['Site']).map(() => ({ wch: 20 }))
+  XLSX.utils.book_append_sheet(wb, dws, 'Defect Detail')
+
+  return wb
+}
+
 /** Export audit-log rows to .xlsx. `rows` already shaped by the page (When/Actor/Action/…). */
 export function exportAuditLogs(rows, filename = 'audit-log.xlsx') {
   const ws = XLSX.utils.json_to_sheet(rows.length ? rows : [{ When: '', Actor: '', Action: '', Target: '', Summary: '' }])

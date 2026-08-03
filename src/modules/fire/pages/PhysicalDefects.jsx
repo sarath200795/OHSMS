@@ -11,12 +11,13 @@ import { useFleet } from '../context/FleetContext'
 import { useAuth } from '../context/AuthContext'
 import { resolveDefects } from '../lib/firestore'
 import { emptyFilters, applyListFilters } from '../lib/listFilter'
-import { exportExtinguishers } from '../lib/exporter'
+import { exportSiteDefects } from '../lib/exporter'
+import { summariseDefectsBySite } from '../lib/siteDefectSummary'
 import { deriveStatus, hasQuotation } from '../lib/extinguisherLogic'
 import { DEFECT_BY_KEY, PHYSICAL_DEFECT_KEYS } from '../lib/constants'
 
 export default function PhysicalDefects() {
-  const { physicalDefects, loading } = useFleet()
+  const { physicalDefects, siteInventory, loading } = useFleet()
   const { orgId, orgName, profile } = useAuth()
   const today = useMemo(() => new Date(), [])
   const [reportFor, setReportFor] = useState(null)
@@ -29,8 +30,20 @@ export default function PhysicalDefects() {
 
   const doExport = () => {
     if (!visible.length) return toast.error('Nothing to export')
-    exportExtinguishers(visible, `physical-defects-${visible.length}.xlsx`, today)
-    toast.success(`Exported ${visible.length} rows`)
+    // This page lists units, and one unit can carry several defects. Expanding
+    // them first is what makes "No. of Defects" a defect count rather than a
+    // unit count.
+    const defectRows = visible.flatMap((ext) =>
+      (ext.physicalDefects || []).map((key) => ({
+        centerName: ext.centerName,
+        entity: ext.entity,
+        region: ext.region,
+        defectLabel: DEFECT_BY_KEY[key]?.label || key,
+      }))
+    )
+    const bySite = summariseDefectsBySite(defectRows, siteInventory)
+    exportSiteDefects(bySite, visible, `physical-defects-${bySite.length}-sites.xlsx`)
+    toast.success(`Exported ${defectRows.length} defects across ${bySite.length} site${bySite.length === 1 ? '' : 's'}`)
   }
 
   const physical = (ext) => deriveStatus(ext, today).physicalDefects

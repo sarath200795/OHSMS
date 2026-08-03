@@ -8,7 +8,8 @@ import ListFilters from '../components/ListFilters'
 import { useFleet } from '../context/FleetContext'
 import { useAuth } from '../context/AuthContext'
 import { resolveDefects } from '../lib/firestore'
-import { exportExtinguishers } from '../lib/exporter'
+import { exportSiteDefects } from '../lib/exporter'
+import { summariseDefectsBySite } from '../lib/siteDefectSummary'
 import { toDate } from '../lib/extinguisherLogic'
 import { emptyFilters, applyListFilters } from '../lib/listFilter'
 import { DEFECT_BY_KEY, REGION_COLORS } from '../lib/constants'
@@ -57,9 +58,11 @@ export default function PhysicalDefectLog({ mode = 'open' }) {
 
   const doExport = () => {
     if (!filtered.length) return toast.error('Nothing to export')
-    // rows already carry extinguisher fields + defectLabel; export as-is.
-    exportExtinguishers(filtered, `${fileBase}-${filtered.length}.xlsx`)
-    toast.success(`Exported ${filtered.length} rows`)
+    // Site-wise first — how many defects each site has, of what kinds, and how
+    // to get there — with the per-unit rows kept on a second sheet.
+    const bySite = summariseDefectsBySite(filtered, fleet.siteInventory)
+    exportSiteDefects(bySite, filtered, `${fileBase}-${bySite.length}-sites.xlsx`)
+    toast.success(`Exported ${filtered.length} defects across ${bySite.length} site${bySite.length === 1 ? '' : 's'}`)
   }
 
   return (
