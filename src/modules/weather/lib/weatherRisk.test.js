@@ -7,25 +7,30 @@ const bandOf = (obs, key) => assessWeather(obs).hazards.find((h) => h.key === ke
 // warning about conditions its safety officer is expected to act on, and
 // nothing else in the app would notice.
 describe('heat stress thresholds', () => {
-  // NWS heat index: Caution 27, Extreme Caution 32, Danger 39, Extreme Danger 51.
+  // Reporting starts at 40°C. Below that is an ordinary working day here, and a
+  // heat row that is always lit tells nobody anything.
   it.each([
-    [20, 'none'], [26.9, 'none'],
-    [27, 'low'], [31.9, 'low'],
-    [32, 'moderate'], [38.9, 'moderate'],
-    [39, 'high'], [50.9, 'high'],
-    [51, 'severe'], [60, 'severe'],
+    [20, 'none'], [30, 'none'], [35, 'none'], [39.9, 'none'],
+    [40, 'low'], [44.9, 'low'],
+    [45, 'moderate'], [50.9, 'moderate'],
+    [51, 'high'], [55.9, 'high'],
+    [56, 'severe'], [62, 'severe'],
   ])('feels like %s°C is %s', (t, expected) => {
     expect(bandOf({ apparentTempC: t }, 'heat')).toBe(expected)
   })
 
+  it('says nothing about a warm but unremarkable day', () => {
+    // 34°C used to raise "take precautions" on every site, every summer day.
+    expect(assessWeather({ apparentTempC: 34 }).hazards).toEqual([])
+  })
+
   it('reads apparent temperature, not dry bulb, because humidity defeats sweating', () => {
-    // 30°C in high humidity feels like 41°C — dangerous, though the raw
-    // temperature looks unremarkable.
-    expect(bandOf({ tempC: 30, apparentTempC: 41 }, 'heat')).toBe('high')
+    // 33°C in high humidity feels like 46°C — the raw figure looks unremarkable.
+    expect(bandOf({ tempC: 33, apparentTempC: 46 }, 'heat')).toBe('moderate')
   })
 
   it('falls back to dry bulb when the provider gives no apparent temperature', () => {
-    expect(bandOf({ tempC: 33 }, 'heat')).toBe('moderate')
+    expect(bandOf({ tempC: 41 }, 'heat')).toBe('low')
   })
 })
 
@@ -83,6 +88,22 @@ describe('visibility and rain get worse in opposite directions', () => {
     }
   )
 
+  it.each([[0.5, 'Low'], [4, 'Medium'], [10, 'High'], [30, 'High']])(
+    '%s mm/h is a %s rain alert', (r, alert) => {
+      const h = assessWeather({ precipMmHr: r }).hazards.find((x) => x.key === 'rain')
+      expect(h.alert).toBe(alert)
+      expect(h.label).toBe('Rain alert')
+      expect(h.value).toContain(alert)
+    }
+  )
+
+  it('keeps a cloudburst driving the severe verdict even though it reads High', () => {
+    // Three alert names, five bands — the overall risk must not be flattened.
+    const r = assessWeather({ precipMmHr: 40 })
+    expect(r.hazards[0].alert).toBe('High')
+    expect(r.band).toBe('severe')
+  })
+
   it('renders visibility in km once it is over a kilometre', () => {
     expect(assessWeather({ visibilityM: 2500 }).hazards.find((h) => h.key === 'visibility').value)
       .toBe('2.5 km')
@@ -121,7 +142,7 @@ describe('the overall verdict', () => {
   })
 
   it('sorts worst first so a bubble showing one row shows the right one', () => {
-    const r = assessWeather({ apparentTempC: 28, windKph: 55, uvIndex: 4 })
+    const r = assessWeather({ apparentTempC: 41, windKph: 55, uvIndex: 4 })
     expect(r.hazards.map((h) => h.key)).toEqual(['wind', 'heat', 'uv'])
     const levels = r.hazards.map((h) => levelOf(h.band))
     expect(levels).toEqual([...levels].sort((a, b) => b - a))

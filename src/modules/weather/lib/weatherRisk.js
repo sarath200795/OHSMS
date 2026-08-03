@@ -49,11 +49,17 @@ export const levelOf = (b) => BANDS.indexOf(b)
 
 const round = (n) => Math.round(n)
 
-// NWS/NIOSH heat index categories, converted from °F: Caution 80, Extreme
-// Caution 90, Danger 105, Extreme Danger 130. Read against apparent temperature
-// because humidity is what defeats sweating, and a crew in PPE feels the
-// apparent figure rather than the dry-bulb one.
-const HEAT_CUTS = [27, 32, 39, 51]
+// Heat is only reported from 40°C up.
+//
+// The published NWS caution band starts at 27°C, which is an ordinary working
+// day across most of this org's sites — flagging it meant the heat row was
+// permanently lit and stopped carrying information. Starting at 40 keeps the
+// warning for days that genuinely need water, shade and rest breaks scheduled,
+// and the upper bands still line up with the NWS danger figures.
+//
+// Read against apparent temperature, because humidity is what defeats sweating
+// and a crew in PPE feels that figure rather than the dry-bulb one.
+const HEAT_CUTS = [40, 45, 51, 56]
 
 // Wind chill. NWS puts frostbite on exposed skin at 30 minutes around -28°C,
 // which anchors the severe band; the milder ones follow the usual cold-stress
@@ -68,6 +74,17 @@ const WIND_CUTS = [29, 39, 50, 62]
 // Rain rate. Above 10 mm/h drainage stops keeping up and yards flood; above 30
 // is a cloudburst.
 const RAIN_CUTS = [0.5, 4, 10, 30]
+
+// Rain is reported as a named alert rather than only a band, because "medium
+// rain alert" is what gets said on a site call and "moderate weather risk" is
+// not. The two scales stay tied: the alert is the band in the words people use,
+// so a cloudburst reads High and still drives the severe overall verdict.
+export const RAIN_ALERT = {
+  low: 'Low',
+  moderate: 'Medium',
+  high: 'High',
+  severe: 'High',
+}
 
 // WHO global UV index bands: moderate 3, high 6, very high 8, extreme 11.
 const UV_CUTS = [3, 6, 8, 11]
@@ -139,11 +156,13 @@ export function assessWeather(obs = {}) {
 
   const rain = num(precipMmHr)
   if (rain != null) {
+    const rainBand = band(rain, RAIN_CUTS)
     add({
       key: 'rain',
-      label: 'Heavy rain',
-      band: band(rain, RAIN_CUTS),
-      value: `${rain.toFixed(1)} mm/h`,
+      label: 'Rain alert',
+      band: rainBand,
+      alert: RAIN_ALERT[rainBand] || null,
+      value: `${RAIN_ALERT[rainBand] || ''} · ${rain.toFixed(1)} mm/h`.replace(/^ · /, ''),
       affects: 'Slips, excavations, electrical work and site vehicle stopping distance.',
     })
   }

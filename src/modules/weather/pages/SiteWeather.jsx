@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react'
-import { CloudSun, MapPin, RefreshCw } from 'lucide-react'
-import { PageHeader, Card, Select, EmptyState } from '../../../shared/ui'
+import { CloudSun, MapPin, RefreshCw, Download, X } from 'lucide-react'
+import toast from 'react-hot-toast'
+import { PageHeader, Card, Select, EmptyState, Button } from '../../../shared/ui'
 import { useAccessibleSites, useSiteFacets } from '../../../shared/org/useAccessibleSites'
 import { useAllSiteWeather } from '../lib/useAllSiteWeather'
 import { BANDS, BAND_LABEL, levelOf } from '../lib/weatherRisk'
+import { weatherExportRows, exportWeatherRisk } from '../lib/weatherExport'
 
 // Same five bands as the map bubble, in the clay palette rather than Leaflet's.
 const BAND_STYLE = {
@@ -28,6 +30,8 @@ export default function SiteWeather() {
   const { regions, entities } = useSiteFacets(sites)
   const [region, setRegion] = useState('')
   const [entity, setEntity] = useState('')
+  // Which bands the chips have narrowed to. Empty means all of them.
+  const [bandFilter, setBandFilter] = useState([])
 
   const scoped = useMemo(
     () => sites.filter((s) => (!region || s.region === region) && (!entity || s.entity === entity)),
@@ -42,12 +46,27 @@ export default function SiteWeather() {
   // Worst first, and sites still loading sink to the bottom rather than jumping
   // around as each result lands.
   const ordered = useMemo(() => {
-    return [...located].sort((a, b) => {
+    const shown = bandFilter.length
+      ? located.filter((s) => byId[s.id] && bandFilter.includes(byId[s.id].risk.band))
+      : located
+    return [...shown].sort((a, b) => {
       const la = byId[a.id] ? levelOf(byId[a.id].risk.band) : -1
       const lb = byId[b.id] ? levelOf(byId[b.id].risk.band) : -1
       return lb - la || a.name.localeCompare(b.name)
     })
-  }, [located, byId])
+  }, [located, byId, bandFilter])
+
+  const toggleBand = (b) =>
+    setBandFilter((prev) => (prev.includes(b) ? prev.filter((x) => x !== b) : [...prev, b]))
+
+  const doExport = () => {
+    // Export what is on screen, filters and all — the file should match the
+    // question that was just asked, not silently widen back to everything.
+    const rows = weatherExportRows(ordered, byId)
+    if (!rows.length) return toast.error('Nothing to export')
+    exportWeatherRisk(rows, `weather-risk-${rows.length}-sites.xlsx`)
+    toast.success(`Exported ${rows.length} site${rows.length === 1 ? '' : 's'}`)
+  }
 
   const tally = useMemo(() => {
     const counts = Object.fromEntries(BANDS.map((b) => [b, 0]))
@@ -67,11 +86,14 @@ export default function SiteWeather() {
         subtitle="Current conditions at each site, read as occupational risk — heat, wind, lightning, rain, UV and visibility."
         icon={CloudSun}
         actions={
-          loading ? (
-            <span className="flex items-center gap-1.5 text-sm text-ink-400">
-              <RefreshCw size={14} className="animate-spin" /> {done} of {total}
-            </span>
-          ) : null
+          <div className="flex items-center gap-3">
+            {loading && (
+              <span className="flex items-center gap-1.5 text-sm text-ink-400">
+                <RefreshCw size={14} className="animate-spin" /> {done} of {total}
+              </span>
+            )}
+            <Button variant="ghost" icon={Download} onClick={doExport}>Export</Button>
+          </div>
         }
       />
 
@@ -86,14 +108,36 @@ export default function SiteWeather() {
         </Select>
       </div>
 
-      {/* Only bands that are actually present — a row of zeroes is noise. */}
-      <div className="mb-5 flex flex-wrap gap-2">
-        {BANDS.filter((b) => tally[b] > 0).reverse().map((b) => (
-          <span key={b} className={`flex items-center gap-2 rounded-2xl px-3.5 py-2 text-sm font-semibold ${BAND_STYLE[b].chip}`}>
-            <span className={`h-2 w-2 rounded-full ${BAND_STYLE[b].dot}`} />
-            {tally[b]} {BAND_LABEL[b].toLowerCase()}
-          </span>
-        ))}
+      {/* Only bands that are actually present — a row of zeroes is noise. Each
+          one narrows the list, so the summary and the filter are one control
+          rather than a count you then have to act on somewhere else. */}
+      <div className="mb-5 flex flex-wrap items-center gap-2">
+        {BANDS.filter((b) => tally[b] > 0).reverse().map((b) => {
+          const on = bandFilter.includes(b)
+          return (
+            <button
+              key={b}
+              type="button"
+              aria-pressed={on}
+              onClick={() => toggleBand(b)}
+              className={`flex items-center gap-2 rounded-2xl px-3.5 py-2 text-sm font-semibold transition-all duration-200 ease-emil active:scale-[0.98] ${BAND_STYLE[b].chip} ${
+                on ? 'ring-2 ring-ink-400 ring-offset-1' : 'opacity-90 hover:opacity-100'
+              }`}
+            >
+              <span className={`h-2 w-2 rounded-full ${BAND_STYLE[b].dot}`} />
+              {tally[b]} {BAND_LABEL[b].toLowerCase()}
+            </button>
+          )
+        })}
+        {bandFilter.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setBandFilter([])}
+            className="flex items-center gap-1 rounded-2xl px-2.5 py-2 text-xs font-semibold text-ink-500 hover:bg-clay-100"
+          >
+            <X size={13} /> Clear
+          </button>
+        )}
       </div>
 
       {located.length === 0 ? (
@@ -101,6 +145,12 @@ export default function SiteWeather() {
           icon={MapPin}
           title="No mapped sites"
           description="Weather is read from a site's latitude and longitude. Add coordinates to a site to see its conditions here."
+        />
+      ) : ordered.length === 0 ? (
+        <EmptyState
+          icon={CloudSun}
+          title="No sites in that band"
+          description="No site currently matches the risk levels you have selected."
         />
       ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
