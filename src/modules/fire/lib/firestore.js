@@ -40,7 +40,8 @@ const updateDoc = (...args) => { assertWritable(); return _updateDoc(...args) }
 const deleteDoc = (...args) => { assertWritable(); return _deleteDoc(...args) }
 const writeBatch = (...args) => { assertWritable(); return _writeBatch(...args) }
 import { generateQrToken } from './qr'
-import { STATUS, REFILL_DEFECT_KEYS } from './constants'
+import { STATUS, REFILL_DEFECT_KEYS, DEFECT_BY_KEY } from './constants'
+import { lockId, duplicateDefectMessage } from './defectLock'
 import { AUDIT, diffSummary } from './audit'
 import { buildExtinguisherConstraints } from './extinguisherQuery'
 import { statsDeltaFor, accumulate } from './stats'
@@ -51,6 +52,8 @@ const extCol = (orgId) => collection(db, 'organizations', orgId, 'extinguishers'
 const extRef = (orgId, id) => doc(db, 'organizations', orgId, 'extinguishers', id)
 const reportCol = (orgId) => collection(db, 'organizations', orgId, 'reports')
 const reportRef = (orgId, id) => doc(db, 'organizations', orgId, 'reports', id)
+const defectLockRef = (orgId, extId, defectType) =>
+  doc(db, 'organizations', orgId, 'defectLocks', lockId(extId, defectType))
 const userRef = (uid) => doc(db, 'users', uid)
 const qrRef = (token) => doc(db, 'qr', token)
 const auditCol = (orgId) => collection(db, 'organizations', orgId, 'auditLogs')
@@ -731,7 +734,38 @@ export async function getExtinguisherByToken(token) {
  * users AND public QR visitors. Always lands as `pending`.
  */
 export async function createReport(orgId, report) {
-  await addDoc(reportCol(orgId), {
+  // One open report per defect per unit. The lock document and the report are
+  // written together, so a duplicate cannot slip through between the check and
+  // the write, and the QR page — which may not read reports — is covered by the
+  // same rule as the portal.
+  if (report.kind === 'defect' && report.defectType) {
+    const batch = writeBatch(db)
+    batch.set(defectLockRef(orgId, report.extId, report.defectType), {
+      extId: report.extId,
+      defectType: report.defectType,
+      createdAt: serverTimestamp(),
+    })
+    batch.set(doc(reportCol(orgId)), reportPayload(report))
+    try {
+      await batch.commit()
+    } catch (e) {
+      // A create that lands on an existing lock is denied, since the rules for
+      // this collection allow create and never update.
+      if (e?.code === 'permission-denied') {
+        throw new Error(duplicateDefectMessage(DEFECT_BY_KEY[report.defectType]?.label || 'That defect'))
+      }
+      throw e
+    }
+    await logReportCreated(orgId, report)
+    return
+  }
+
+  await addDoc(reportCol(orgId), reportPayload(report))
+  await logReportCreated(orgId, report)
+}
+
+function reportPayload(report) {
+  return {
     extId: report.extId,
     extLabel: report.extLabel || '',
     kind: report.kind, // 'defect' | 'status_change'
@@ -744,9 +778,12 @@ export async function createReport(orgId, report) {
     source: report.source || 'portal',
     approvalStatus: 'pending',
     reportedAt: serverTimestamp(),
-  })
+  }
+}
+
+function logReportCreated(orgId, report) {
   const what = report.kind === 'defect' ? `defect (${report.defectType})` : `status → ${report.newStatus}`
-  await logAudit(orgId, { uid: report.reportedBy, name: report.reportedByName }, AUDIT.REPORT_CREATE, {
+  return logAudit(orgId, { uid: report.reportedBy, name: report.reportedByName }, AUDIT.REPORT_CREATE, {
     target: 'report',
     targetLabel: report.extLabel || report.extId,
     summary: `Reported ${what}${report.reporterRole ? ` (by ${report.reporterRole})` : ''}`,
@@ -798,12 +835,33 @@ export async function approveReport(orgId, orgName, report, reviewerName, actor)
   })
 }
 
+/**
+ * Release the lock on defects that are no longer live for a unit, so the same
+ * fault can be reported again the next time it happens.
+ *
+ * Deleting a lock that is not there is not an error, and a failure here must
+ * not fail the close it follows: the worst case is a stale lock that blocks one
+ * re-report, which is far better than a refill that half-applied.
+ */
+async function releaseDefectLocks(orgId, extId, defectTypes = []) {
+  if (!extId || defectTypes.length === 0) return
+  try {
+    const batch = writeBatch(db)
+    for (const key of defectTypes) batch.delete(defectLockRef(orgId, extId, key))
+    await batch.commit()
+  } catch { /* a stale lock is recoverable; a failed close is not */ }
+}
+
 export async function rejectReport(orgId, report, reviewerName, actor) {
   await updateDoc(reportRef(orgId, report.id), {
     approvalStatus: 'rejected',
     reviewedBy: reviewerName || '',
     reviewedAt: serverTimestamp(),
   })
+  // Rejected means it was never a real defect, so it becomes reportable again.
+  if (report.kind === 'defect' && report.defectType) {
+    await releaseDefectLocks(orgId, report.extId, [report.defectType])
+  }
   const what = report.kind === 'defect' ? `defect (${report.defectType})` : `status → ${report.newStatus}`
   await logAudit(orgId, actor || { name: reviewerName }, AUDIT.REPORT_REJECT, {
     target: 'report',
@@ -853,6 +911,7 @@ export async function markReceivedByVendor(orgId, orgName, id, actorName) {
 
 /** Extinguisher refilled & returned: close it, set new due dates, clear defects. */
 export async function markRefilledAndClosed(orgId, orgName, id, { dateOfNextRefill, dateOfNextHPT }, actorName) {
+  const before = await getExtinguisher(orgId, id)
   await updateExtinguisher(orgId, orgName, id, {
     status: STATUS.ACTIVE,
     dateOfNextRefill,
@@ -862,15 +921,21 @@ export async function markRefilledAndClosed(orgId, orgName, id, { dateOfNextRefi
     lastRefilledAt: new Date().toISOString().slice(0, 10),
     ...actionStamp(actorName, 'Refilled & Closed'),
   }, { actor: { name: actorName }, action: AUDIT.WF_REFILLED_CLOSED, summary: `Refilled & closed (next refill ${dateOfNextRefill}, next HPT ${dateOfNextHPT})` })
+  // A refill clears every defect, so every one of them becomes reportable again.
+  await releaseDefectLocks(orgId, id, before?.physicalDefects || [])
 }
 
 /** Resolve (clear) physical defects without a refill. */
 export async function resolveDefects(orgId, orgName, id, remainingDefects = [], actorName) {
+  const before = await getExtinguisher(orgId, id)
   await updateExtinguisher(orgId, orgName, id, {
     physicalDefects: remainingDefects,
     quotation: null,
     ...actionStamp(actorName, 'Resolved defects'),
   }, { actor: { name: actorName }, action: AUDIT.WF_RESOLVED_DEFECTS, summary: 'Physical defects resolved' })
+  // Only the ones actually cleared — a defect left on the unit stays locked.
+  const kept = new Set(remainingDefects)
+  await releaseDefectLocks(orgId, id, (before?.physicalDefects || []).filter((k) => !kept.has(k)))
 }
 
 // ── Safety signage inventory (org-scoped, site-wise) ──────────────────────────

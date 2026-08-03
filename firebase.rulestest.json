@@ -1,0 +1,16 @@
+{
+  "_comment": "Rules-test-only emulator config. Same rules file, different ports, so `npm run test:rules` never collides with — or clears — a Firestore emulator already serving local development on 8080.",
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "emulators": {
+    "firestore": {
+      "port": 8085
+    },
+    "ui": {
+      "enabled": false
+    },
+    "singleProjectMode": true
+  }
+}

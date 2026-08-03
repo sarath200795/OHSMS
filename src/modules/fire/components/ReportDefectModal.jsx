@@ -5,6 +5,7 @@ import toast from 'react-hot-toast'
 import { Modal, Spinner } from './ui'
 import { DEFECTS, REPORTER_ROLES } from '../lib/constants'
 import { createReport } from '../lib/firestore'
+import { lockedDefects } from '../lib/defectLock'
 
 /**
  * Report a defect against an extinguisher. Submits a PENDING report into the
@@ -25,8 +26,15 @@ export default function ReportDefectModal({ open, onClose, ext, orgId, reporter,
   const extId = ext.extId || ext.id
   const label = ext.serialNo ? `${ext.serialNo} · ${ext.type}` : `${ext.type} · ${ext.capacity}`
 
+  // Defects already open on this unit are known from the unit itself, so they
+  // can be shown as unavailable before anyone taps them. A defect reported but
+  // not yet approved cannot be seen from here — the QR reporter has no access
+  // to the report queue — so that case is caught by the write instead.
+  const locked = lockedDefects(ext)
+
   const submit = async () => {
     if (!selected) return toast.error('Select a defect type')
+    if (locked.has(selected.key)) return toast.error(locked.get(selected.key).label)
     if (isQr && !role) return toast.error('Select who is reporting')
     setBusy(true)
     try {
@@ -61,22 +69,40 @@ export default function ReportDefectModal({ open, onClose, ext, orgId, reporter,
       </div>
 
       <p className="label">Defect type</p>
+      {locked.size > 0 && (
+        <p className="-mt-1 mb-2 text-xs text-ink-500">
+          {locked.size === DEFECTS.length
+            ? 'Every defect is already being dealt with on this unit. Once one is closed it can be reported again.'
+            : 'Greyed-out defects are already being dealt with on this unit.'}
+        </p>
+      )}
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
         {DEFECTS.map((d) => {
           const active = selected?.key === d.key
+          const lock = locked.get(d.key)
           return (
             <motion.button
               key={d.key}
               type="button"
-              whileTap={{ scale: 0.96 }}
+              whileTap={lock ? undefined : { scale: 0.96 }}
+              disabled={!!lock}
+              title={lock?.label}
               onClick={() => setSelected(d)}
               className={`rounded-xl border-2 px-3 py-3 text-left text-sm font-semibold transition ${
-                active ? 'border-transparent text-white shadow-card' : 'border-ink-200 text-ink-700 hover:border-ink-300'
+                lock
+                  ? 'cursor-not-allowed border-ink-100 bg-clay-100 text-ink-400'
+                  : active
+                    ? 'border-transparent text-white shadow-card'
+                    : 'border-ink-200 text-ink-700 hover:border-ink-300'
               }`}
-              style={active ? { backgroundColor: d.color } : {}}
+              style={active && !lock ? { backgroundColor: d.color } : {}}
             >
               {d.label}
-              {d.triggersRefill && (
+              {lock ? (
+                <span className="mt-0.5 block text-[10px] font-medium text-amber-600">
+                  Under progress
+                </span>
+              ) : d.triggersRefill && (
                 <span className={`mt-0.5 block text-[10px] font-medium ${active ? 'text-white/80' : 'text-ink-400'}`}>
                   → sends to refill
                 </span>

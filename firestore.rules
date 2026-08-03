@@ -137,6 +137,30 @@ service cloud.firestore {
         allow update, delete: if false;
       }
 
+      // One open report per defect per unit, enforced as a document rather than
+      // a check. The QR reporter is not signed in and must never be able to
+      // read the org's reports, so the client cannot look for a duplicate
+      // before submitting — but creating a document that already exists fails
+      // by itself. That is why update is denied here and why this collection is
+      // carved out of the generic member rule below: if a member could update,
+      // a second report would overwrite the lock instead of being refused.
+      //
+      // It holds no personal data, only which defect is live on which unit, and
+      // is written in the same batch as the report it guards.
+      match /defectLocks/{lockId} {
+        allow read, delete: if isApprovedMemberOf(orgId);
+        // Public, like the report it accompanies: a QR reporter has no account,
+        // and a lock they cannot write is a lock that never blocks them.
+        allow create: if request.resource.data.keys().hasOnly(['extId', 'defectType', 'createdAt'])
+          && request.resource.data.extId is string
+          && request.resource.data.extId.size() > 0
+          && request.resource.data.extId.size() < 200
+          && request.resource.data.defectType is string
+          && request.resource.data.defectType.size() > 0
+          && request.resource.data.defectType.size() <= 60;
+        allow update: if false;
+      }
+
       // Defect reports raised by scanning an equipment QR code. Whoever spots a
       // discharged extinguisher is rarely a portal user, and requiring an
       // account first is how defects go unreported — so an unauthenticated
@@ -183,15 +207,19 @@ service cloud.firestore {
       // members read/create/update; managers+ delete. auditLogs is excluded so
       // it keeps its append-only rule above.
       match /{col}/{docId} {
-        allow read, create, update: if col != 'auditLogs' && isApprovedMemberOf(orgId);
+        // defectLocks joins auditLogs in being excluded: its whole purpose is
+        // that a create fails on an existing document, which a generic update
+        // permission would quietly defeat.
+        allow read, create, update: if col != 'auditLogs' && col != 'defectLocks' && isApprovedMemberOf(orgId);
         allow delete: if col != 'auditLogs' && isManagerOf(orgId);
 
         // Nested subcollections (e.g. incidents/{id}/photos, documents/{id}/versions).
         // The recursive wildcard also matches the parent {col}/{docId} itself, so
         // it must repeat the auditLogs guard — otherwise it would silently reopen
-        // updates/deletes on the append-only audit trail.
+        // updates/deletes on the append-only audit trail. The same applies to
+        // defectLocks, whose create-only rule is the duplicate check.
         match /{sub=**} {
-          allow read, create, update: if col != 'auditLogs' && isApprovedMemberOf(orgId);
+          allow read, create, update: if col != 'auditLogs' && col != 'defectLocks' && isApprovedMemberOf(orgId);
           allow delete: if col != 'auditLogs' && isManagerOf(orgId);
         }
       }

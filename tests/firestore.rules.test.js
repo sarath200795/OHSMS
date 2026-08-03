@@ -7,7 +7,7 @@ import {
   assertFails,
   assertSucceeds,
 } from '@firebase/rules-unit-testing'
-import { doc, getDoc, setDoc } from 'firebase/firestore'
+import { doc, getDoc, setDoc, deleteDoc } from 'firebase/firestore'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const PROJECT_ID = 'ohsms-demo'
@@ -141,6 +141,83 @@ describe('public defect reports from a QR scan (/reports)', () => {
   it('an asset report CANNOT omit the asset it is about', async () => {
     const anon = testEnv.unauthenticatedContext().firestore()
     await assertFails(setDoc(reportAt(anon, 'r6'), { ...assetReport, assetRefId: '' }))
+  })
+})
+
+// The lock exists so the same fault cannot be reported twice while it is still
+// being dealt with. It is enforced entirely by "create fails if it exists", so
+// every test here is really asking one question: can anything turn that create
+// into an update?
+describe('one open report per defect (/defectLocks)', () => {
+  const lockAt = (db, id) => doc(db, 'organizations', 'orgA', 'defectLocks', id)
+  const lock = { extId: 'ext1', defectType: 'leakage', createdAt: new Date() }
+
+  it('a signed-out scanner can take the lock, or it would never block them', async () => {
+    const anon = testEnv.unauthenticatedContext().firestore()
+    await assertSucceeds(setDoc(lockAt(anon, 'ext1__leakage'), lock))
+  })
+
+  it('the same defect on the same unit CANNOT be locked twice', async () => {
+    const anon = testEnv.unauthenticatedContext().firestore()
+    await assertSucceeds(setDoc(lockAt(anon, 'ext1__leakage'), lock))
+    await assertFails(setDoc(lockAt(anon, 'ext1__leakage'), lock))
+  })
+
+  it('a member CANNOT overwrite an existing lock either', async () => {
+    // The generic member rule allows update on every other collection, so this
+    // is the case that would silently defeat the whole mechanism.
+    const anon = testEnv.unauthenticatedContext().firestore()
+    await assertSucceeds(setDoc(lockAt(anon, 'ext1__leakage'), lock))
+    const alice = testEnv.authenticatedContext('alice').firestore()
+    await assertFails(setDoc(lockAt(alice, 'ext1__leakage'), lock))
+  })
+
+  it('a different defect on the same unit is still reportable', async () => {
+    const anon = testEnv.unauthenticatedContext().firestore()
+    await assertSucceeds(setDoc(lockAt(anon, 'ext1__leakage'), lock))
+    await assertSucceeds(setDoc(lockAt(anon, 'ext1__damaged_hose'), { ...lock, defectType: 'damaged_hose' }))
+  })
+
+  it('the same defect on a different unit is still reportable', async () => {
+    const anon = testEnv.unauthenticatedContext().firestore()
+    await assertSucceeds(setDoc(lockAt(anon, 'ext1__leakage'), lock))
+    await assertSucceeds(setDoc(lockAt(anon, 'ext2__leakage'), { ...lock, extId: 'ext2' }))
+  })
+
+  it('a member can release the lock when the defect is closed', async () => {
+    const anon = testEnv.unauthenticatedContext().firestore()
+    await assertSucceeds(setDoc(lockAt(anon, 'ext1__leakage'), lock))
+    const alice = testEnv.authenticatedContext('alice').firestore()
+    await assertSucceeds(deleteDoc(lockAt(alice, 'ext1__leakage')))
+    // …and then it can be reported again, which is the whole point.
+    await assertSucceeds(setDoc(lockAt(anon, 'ext1__leakage'), lock))
+  })
+
+  it('a signed-out scanner CANNOT release a lock', async () => {
+    const anon = testEnv.unauthenticatedContext().firestore()
+    await assertSucceeds(setDoc(lockAt(anon, 'ext1__leakage'), lock))
+    await assertFails(deleteDoc(lockAt(anon, 'ext1__leakage')))
+  })
+
+  it('a signed-out scanner CANNOT read who reported what', async () => {
+    const anon = testEnv.unauthenticatedContext().firestore()
+    await assertFails(getDoc(lockAt(anon, 'ext1__leakage')))
+  })
+
+  it('CANNOT be used as free storage for arbitrary fields', async () => {
+    const anon = testEnv.unauthenticatedContext().firestore()
+    await assertFails(setDoc(lockAt(anon, 'x'), { ...lock, payload: 'x'.repeat(500) }))
+  })
+
+  it('CANNOT be created without the unit and defect it locks', async () => {
+    const anon = testEnv.unauthenticatedContext().firestore()
+    await assertFails(setDoc(lockAt(anon, 'a'), { extId: '', defectType: 'leakage', createdAt: new Date() }))
+    await assertFails(setDoc(lockAt(anon, 'b'), { extId: 'ext1', defectType: '', createdAt: new Date() }))
+  })
+
+  it('a member CANNOT reach another org locks', async () => {
+    const bob = testEnv.authenticatedContext('bob').firestore()
+    await assertFails(getDoc(lockAt(bob, 'ext1__leakage')))
   })
 })
 
