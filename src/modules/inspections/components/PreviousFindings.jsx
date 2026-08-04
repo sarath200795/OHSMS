@@ -99,7 +99,11 @@ export function PreviousFindingNote({ finding }) {
     <p className="mt-1.5 flex items-start gap-1.5 rounded-lg bg-amber-50 px-2 py-1 text-[11px] leading-snug text-amber-800">
       <AlertTriangle size={11} className="mt-0.5 flex-none" />
       <span>
-        <span className="font-bold">Failed last time.</span>
+        <span className="font-bold">
+          {finding.repeatCount > 1
+            ? `Failed ${finding.repeatCount} inspections running.`
+            : 'Failed last time.'}
+        </span>
         {finding.observation ? ` ${finding.observation}` : ' Verify it has been fixed.'}
       </span>
     </p>

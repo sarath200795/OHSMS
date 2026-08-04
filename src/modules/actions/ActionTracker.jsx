@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import toast from 'react-hot-toast'
-import { ListChecks, AlertTriangle, CircleDot, Loader2, CheckCircle2, ExternalLink, Search } from 'lucide-react'
+import { ListChecks, AlertTriangle, CircleDot, Loader2, CheckCircle2, ExternalLink, Search, Repeat } from 'lucide-react'
 import { useAuth } from '../../shared/auth/AuthContext'
 import { PageHeader, Card, Select, StatCard, EmptyState, SkeletonTable } from '../../shared/ui'
 import { SOURCES, NORM_STATUS, NORM_BY_KEY, subscribeActions, updateActionStatus, isOverdue, todayISO } from './lib/sources'
@@ -13,7 +13,7 @@ export default function ActionTracker() {
   const { orgId, isApproved } = useAuth()
   const [rows, setRows] = useState(null)
   const [busyKey, setBusyKey] = useState(null)
-  const [f, setF] = useState({ source: 'all', status: 'all', q: '', overdue: false })
+  const [f, setF] = useState({ source: 'all', status: 'all', q: '', overdue: false, repeating: false })
 
   useEffect(() => {
     if (!orgId) return undefined
@@ -30,6 +30,8 @@ export default function ActionTracker() {
       in_progress: list.filter((r) => r.norm === 'in_progress').length,
       done: list.filter((r) => r.norm === 'done').length,
       overdue: list.filter((r) => isOverdue(r.due, r.norm, today)).length,
+      // Still open and already failed more than once — the ones being ignored.
+      repeating: list.filter((r) => r.repeat > 1 && r.norm !== 'done').length,
     }
   }, [rows, today])
 
@@ -39,12 +41,16 @@ export default function ActionTracker() {
       .filter((r) => (f.source === 'all' ? true : r.source === f.source))
       .filter((r) => (f.status === 'all' ? true : r.norm === f.status))
       .filter((r) => (f.overdue ? isOverdue(r.due, r.norm, today) : true))
+      .filter((r) => (f.repeating ? r.repeat > 1 : true))
       .filter((r) => (q ? `${r.title} ${r.owner} ${r.context} ${r.sourceLabel}`.toLowerCase().includes(q) : true))
       .sort((a, b) => {
-        // Overdue first, then by due date (blank last), then source.
+        // Overdue first, then the ones that keep coming back, then by due date
+        // (blank last). A fault on its fourth inspection has been overlooked
+        // three times already, so it should not sit below a fresh one.
         const ao = isOverdue(a.due, a.norm, today) ? 0 : 1
         const bo = isOverdue(b.due, b.norm, today) ? 0 : 1
         if (ao !== bo) return ao - bo
+        if (a.repeat !== b.repeat) return b.repeat - a.repeat
         return (a.due || '9999').localeCompare(b.due || '9999')
       })
   }, [rows, f, today])
@@ -69,12 +75,13 @@ export default function ActionTracker() {
         icon={ListChecks}
       />
 
-      <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+      <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         <StatCard label="Total actions" value={stats.total} icon={ListChecks} tone="brand" />
         <StatCard label="Open" value={stats.open} icon={CircleDot} tone="red" />
         <StatCard label="In progress" value={stats.in_progress} icon={Loader2} tone="amber" />
         <StatCard label="Done" value={stats.done} icon={CheckCircle2} tone="green" />
         <StatCard label="Overdue" value={stats.overdue} icon={AlertTriangle} tone="red" />
+        <StatCard label="Repeating" value={stats.repeating} icon={Repeat} tone="amber" />
       </div>
 
       <Card className="mb-4">
@@ -99,6 +106,10 @@ export default function ActionTracker() {
           <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-clay-surface px-3 py-2 text-sm font-medium text-ink-700 shadow-clay-inset">
             <input type="checkbox" checked={f.overdue} onChange={(e) => setF((p) => ({ ...p, overdue: e.target.checked }))} />
             Overdue only
+          </label>
+          <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-clay-surface px-3 py-2 text-sm font-medium text-ink-700 shadow-clay-inset">
+            <input type="checkbox" checked={f.repeating} onChange={(e) => setF((p) => ({ ...p, repeating: e.target.checked }))} />
+            Repeating only
           </label>
         </div>
       </Card>
@@ -145,6 +156,14 @@ export default function ActionTracker() {
                       </td>
                       <td className="px-4 py-3">
                         <div className="max-w-[320px] font-medium text-ink-900">{r.title}</div>
+                        {r.repeat > 1 && (
+                          <span
+                            title={r.repeatSince ? `Unresolved since ${fmtDue(r.repeatSince)}` : undefined}
+                            className="mt-1 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-800"
+                          >
+                            <Repeat size={10} /> {r.repeat}× running
+                          </span>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-ink-700">{r.owner || <span className="text-ink-300">—</span>}</td>
                       <td className="px-4 py-3">

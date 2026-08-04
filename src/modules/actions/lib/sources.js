@@ -169,6 +169,11 @@ export const SOURCES = [
           native: r.actionStatus || 'open',
           context: `${d.templateTitle || 'Inspection'}${d.siteName ? ` · ${d.siteName}` : ''}`,
           link: '/inspections/records',
+          // How many inspections running this same check has failed. A fault on
+          // its third month is not the same problem as one found today, and
+          // without this the tracker showed them identically.
+          repeat: Number(r.repeatCount) || 1,
+          repeatSince: r.repeatSince || '',
         })),
     write: async (orgId, action, native) => {
       const snap = await getDoc(dref(orgId, 'inspectionRecords', action.docId))
@@ -277,6 +282,10 @@ export function subscribeActions(orgId, cb) {
             overdue: isOverdue(a.due, norm),
             context: a.context,
             link: a.link,
+            // Sources that cannot repeat simply do not set it, so every action
+            // has a count of at least one and nothing has to special-case it.
+            repeat: Number(a.repeat) || 1,
+            repeatSince: a.repeatSince || '',
           })
         }
       }

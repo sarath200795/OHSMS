@@ -10,7 +10,7 @@ import { useData } from '../context/DataContext'
 import { addRecord } from '../lib/firestore'
 import { fileToDataUrl } from '../lib/fileToDataUrl'
 import { hasAnsweredQuestion, scoreResponses } from '../lib/schedule'
-import { previousInspection } from '../lib/previousFindings'
+import { previousInspection, withRepeatHistory } from '../lib/previousFindings'
 import PreviousFindingsPanel, { PreviousFindingNote } from '../components/PreviousFindings'
 
 export default function Execute() {
@@ -101,6 +101,10 @@ export default function Execute() {
     if (errors.length) return toast.error(errors[0] + (errors.length > 1 ? ` (+${errors.length - 1} more)` : ''))
 
     const { score, result } = scoreResponses(responses)
+    // Each failure is already an action in the tracker. Stamping the repeat
+    // chain here is what lets a fault failing for the third month running be
+    // told apart from one found today.
+    const stamped = withRepeatHistory(responses, previous)
     const site = sites.find((s) => s.id === inspSiteId)
     const record = {
       templateId: task.templateId,
@@ -116,7 +120,7 @@ export default function Execute() {
       frequency: task.frequency || '',
       score,
       passFailResult: result,
-      responses,
+      responses: stamped,
     }
     setBusy(true)
     try {

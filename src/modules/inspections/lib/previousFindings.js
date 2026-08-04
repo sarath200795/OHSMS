@@ -53,6 +53,11 @@ export function openFindings(record, fields = []) {
       label: r.label || fieldId,
       observation: (r.observation || '').trim(),
       hasPhoto: Boolean(r.photoEvidence),
+      // Carried so the next inspection can continue the chain rather than
+      // restarting it. Records written before repeat tracking have no count;
+      // treating those as 1 makes the next failure the second, which is right.
+      repeatCount: Number(r.repeatCount) || 1,
+      repeatSince: r.repeatSince || null,
     })
   }
 
@@ -61,6 +66,48 @@ export function openFindings(record, fields = []) {
     const bi = order.has(b.fieldId) ? order.get(b.fieldId) : Number.MAX_SAFE_INTEGER
     return ai - bi || a.label.localeCompare(b.label)
   })
+  return out
+}
+
+/**
+ * Stamp the repeat history onto the responses about to be saved.
+ *
+ * A failed check already becomes an action in the tracker, so raising another
+ * one would only duplicate it. What was missing is that a fault failing for the
+ * third running month looked exactly like one found today — same row, same
+ * wording, nothing to sort or escalate by.
+ *
+ * The count is carried forward on the response itself rather than recomputed by
+ * walking history, so a chain that started a year ago still reads "5th time"
+ * without loading a year of records. It resets by simply not being carried:
+ * a check that passes writes no repeat data, so the next failure starts at 1.
+ *
+ * @param responses the responses being submitted
+ * @param previous  result of previousInspection(), or null
+ */
+export function withRepeatHistory(responses = {}, previous = null) {
+  const out = {}
+  for (const [fieldId, r] of Object.entries(responses)) {
+    if (r?.answer !== 'Fail') {
+      // Passing clears the chain. Explicit nulls rather than omitted keys so an
+      // edit cannot leave a stale count behind on the document.
+      out[fieldId] = { ...r, repeatCount: null, repeatSince: null, repeatOfDocId: null }
+      continue
+    }
+    const prior = previous?.byField.get(fieldId)
+    if (!prior) {
+      out[fieldId] = { ...r, repeatCount: 1, repeatSince: null, repeatOfDocId: null }
+      continue
+    }
+    const priorCount = Number(prior.repeatCount) || 1
+    out[fieldId] = {
+      ...r,
+      repeatCount: priorCount + 1,
+      // The date this fault was first raised, carried from the start of the chain.
+      repeatSince: prior.repeatSince || previous.completedAt || null,
+      repeatOfDocId: previous.docId || null,
+    }
+  }
   return out
 }
 

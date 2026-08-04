@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { findLastInspection, openFindings, previousInspection } from './previousFindings'
+import { findLastInspection, openFindings, previousInspection, withRepeatHistory } from './previousFindings'
 
 const rec = (id, over = {}) => ({
   id,
@@ -93,6 +93,76 @@ describe('openFindings', () => {
     expect(openFindings(rec('a', { responses: answers({ q1: 'Pass' }) }))).toEqual([])
     expect(openFindings(null)).toEqual([])
     expect(openFindings({})).toEqual([])
+  })
+})
+
+describe('withRepeatHistory', () => {
+  const prev = (map) => previousInspection(
+    [rec('p', { completedAt: '2026-07-01T09:00:00.000Z', docId: 'INSP-ACME_0007', responses: map })],
+    { templateId: 't1', siteId: 's1' }
+  )
+
+  it('starts a chain at one for a fault found for the first time', () => {
+    const out = withRepeatHistory({ q1: { answer: 'Fail' } }, null)
+    expect(out.q1).toMatchObject({ repeatCount: 1, repeatSince: null, repeatOfDocId: null })
+  })
+
+  it('counts up when the same check failed last time', () => {
+    const previous = prev({ q1: { label: 'Handrail', answer: 'Fail' } })
+    const out = withRepeatHistory({ q1: { answer: 'Fail' } }, previous)
+    expect(out.q1.repeatCount).toBe(2)
+    expect(out.q1.repeatOfDocId).toBe('INSP-ACME_0007')
+  })
+
+  it('keeps counting across a long chain without reading the whole history', () => {
+    // The previous record already says it was the third; this makes four.
+    const previous = prev({ q1: { label: 'Handrail', answer: 'Fail', repeatCount: 3, repeatSince: '2026-04-01T00:00:00.000Z' } })
+    const out = withRepeatHistory({ q1: { answer: 'Fail' } }, previous)
+    expect(out.q1.repeatCount).toBe(4)
+  })
+
+  it('holds the date the fault was first raised, not the last time it was seen', () => {
+    const previous = prev({ q1: { label: 'Handrail', answer: 'Fail', repeatCount: 2, repeatSince: '2026-05-01T00:00:00.000Z' } })
+    const out = withRepeatHistory({ q1: { answer: 'Fail' } }, previous)
+    expect(out.q1.repeatSince).toBe('2026-05-01T00:00:00.000Z')
+  })
+
+  it('dates the chain from the previous inspection when it started there', () => {
+    const previous = prev({ q1: { label: 'Handrail', answer: 'Fail' } })
+    const out = withRepeatHistory({ q1: { answer: 'Fail' } }, previous)
+    expect(out.q1.repeatSince).toBe('2026-07-01T09:00:00.000Z')
+  })
+
+  it('breaks the chain when the check passes, so the next failure starts over', () => {
+    const previous = prev({ q1: { label: 'Handrail', answer: 'Fail', repeatCount: 4 } })
+    const passed = withRepeatHistory({ q1: { answer: 'Pass' } }, previous)
+    expect(passed.q1.repeatCount).toBeNull()
+    // A later failure, with the passing run as its history, starts at one.
+    const after = previousInspection(
+      [rec('p2', { completedAt: '2026-08-01T09:00:00.000Z', responses: passed })],
+      { templateId: 't1', siteId: 's1' }
+    )
+    expect(withRepeatHistory({ q1: { answer: 'Fail' } }, after).q1.repeatCount).toBe(1)
+  })
+
+  it('clears the chain explicitly rather than leaving stale fields behind', () => {
+    const out = withRepeatHistory({ q1: { answer: 'N/A', repeatCount: 9, repeatSince: 'x' } }, null)
+    expect(out.q1).toMatchObject({ repeatCount: null, repeatSince: null, repeatOfDocId: null })
+  })
+
+  it('does not count a different check that happened to fail', () => {
+    const previous = prev({ q1: { label: 'Handrail', answer: 'Fail' } })
+    expect(withRepeatHistory({ q2: { answer: 'Fail' } }, previous).q2.repeatCount).toBe(1)
+  })
+
+  it('leaves the rest of each response untouched', () => {
+    const out = withRepeatHistory({ q1: { answer: 'Fail', label: 'Handrail', observation: 'loose', photoEvidence: 'data:x' } }, null)
+    expect(out.q1).toMatchObject({ answer: 'Fail', label: 'Handrail', observation: 'loose', photoEvidence: 'data:x' })
+  })
+
+  it('survives empty input', () => {
+    expect(withRepeatHistory()).toEqual({})
+    expect(withRepeatHistory({}, null)).toEqual({})
   })
 })
 
