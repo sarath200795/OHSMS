@@ -10,12 +10,14 @@ import { useData } from '../context/DataContext'
 import { addRecord } from '../lib/firestore'
 import { fileToDataUrl } from '../lib/fileToDataUrl'
 import { hasAnsweredQuestion, scoreResponses } from '../lib/schedule'
+import { previousInspection } from '../lib/previousFindings'
+import PreviousFindingsPanel, { PreviousFindingNote } from '../components/PreviousFindings'
 
 export default function Execute() {
   const navigate = useNavigate()
   const location = useLocation()
   const { profile, orgId } = useAuth()
-  const { sites } = useData()
+  const { sites, records } = useData()
   const task = location.state?.task
 
   const [responses, setResponses] = useState({})
@@ -34,7 +36,9 @@ export default function Execute() {
     setResponses(init)
   }, [task])
 
-  const fields = task?.template?.fields || []
+  // Memoised because `|| []` is a fresh array every render, which would make
+  // every memo downstream of it recompute on each keystroke.
+  const fields = useMemo(() => task?.template?.fields || [], [task])
 
   const progress = useMemo(() => {
     let answered = 0, photoNeed = 0, photoOk = 0
@@ -50,6 +54,18 @@ export default function Execute() {
   }, [fields, responses])
 
   const live = useMemo(() => scoreResponses(responses), [responses])
+
+  // What the last run of this form at this site found. Keyed on the site the
+  // inspector actually selects, not the scheduled one, so picking a different
+  // site swaps the history rather than showing another site's findings.
+  const previous = useMemo(
+    () => previousInspection(records, {
+      templateId: task?.templateId,
+      siteId: inspSiteId || task?.siteId || '',
+      fields,
+    }),
+    [records, task?.templateId, task?.siteId, inspSiteId, fields]
+  )
 
   if (!task) {
     return (
@@ -179,12 +195,16 @@ export default function Execute() {
         </div>
       </div>
 
+      {/* What the last run of this form found here, before anything is answered. */}
+      <PreviousFindingsPanel previous={previous} />
+
       {/* Questions */}
       <div className="space-y-3">
         {fields.map((f, i) => {
           const r = responses[f.id] || {}
+          const lastFail = previous?.byField.get(f.id)
           return (
-            <div key={f.id} className="card p-5">
+            <div key={f.id} className={`card p-5 ${lastFail ? 'border-l-4 border-amber-300' : ''}`}>
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="flex-1">
                   <p className="font-semibold text-ink-800">
@@ -194,6 +214,7 @@ export default function Execute() {
                     <span>{f.type}</span>
                     {f.photoRequirement !== 'Not Required' && <span className="text-brand-600">📷 {f.photoRequirement}</span>}
                   </div>
+                  <PreviousFindingNote finding={lastFail} />
                 </div>
                 <div>
                   {f.type === 'Pass/Fail' && <PF fid={f.id} value={r.answer} />}
