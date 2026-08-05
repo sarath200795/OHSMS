@@ -144,6 +144,58 @@ describe('public defect reports from a QR scan (/reports)', () => {
   })
 })
 
+// The QR on a printed permit is scanned by contractors, auditors and fire
+// watchers, none of whom have an account. If they cannot read the mirror the
+// code is dead, and if they can write to it a permit can be forged.
+describe('public permit QR mirror (/permitQr)', () => {
+  const mirrorAt = (db, token) => doc(db, 'permitQr', token)
+  const mirror = { orgId: 'orgA', permitId: 'p1', token: 'tok1', permitNo: 'PTW-001', storedStatus: 'approved' }
+
+  beforeEach(async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'permitQr', 'tok1'), mirror)
+    })
+  })
+
+  it('a signed-out scanner can read it, or the printed QR is dead', async () => {
+    const anon = testEnv.unauthenticatedContext().firestore()
+    await assertSucceeds(getDoc(mirrorAt(anon, 'tok1')))
+  })
+
+  it('a signed-out scanner CANNOT alter a permit through it', async () => {
+    const anon = testEnv.unauthenticatedContext().firestore()
+    await assertFails(setDoc(mirrorAt(anon, 'tok1'), { ...mirror, storedStatus: 'approved' }))
+  })
+
+  it('a signed-out scanner CANNOT publish a permit that does not exist', async () => {
+    const anon = testEnv.unauthenticatedContext().firestore()
+    await assertFails(setDoc(mirrorAt(anon, 'forged'), { ...mirror, token: 'forged' }))
+  })
+
+  it('a signed-out scanner CANNOT delete it', async () => {
+    const anon = testEnv.unauthenticatedContext().firestore()
+    await assertFails(deleteDoc(mirrorAt(anon, 'tok1')))
+  })
+
+  it('a member of the owning org can publish and update it', async () => {
+    const alice = testEnv.authenticatedContext('alice').firestore()
+    await assertSucceeds(setDoc(mirrorAt(alice, 'tok2'), { ...mirror, token: 'tok2' }))
+    await assertSucceeds(setDoc(mirrorAt(alice, 'tok1'), { ...mirror, storedStatus: 'closed' }, { merge: true }))
+  })
+
+  it('a member of the owning org can delete it when the permit is deleted', async () => {
+    const alice = testEnv.authenticatedContext('alice').firestore()
+    await assertSucceeds(deleteDoc(mirrorAt(alice, 'tok1')))
+  })
+
+  it('another org CANNOT touch it', async () => {
+    const bob = testEnv.authenticatedContext('bob').firestore() // orgB
+    await assertFails(setDoc(mirrorAt(bob, 'tok1'), { ...mirror, storedStatus: 'closed' }, { merge: true }))
+    await assertFails(deleteDoc(mirrorAt(bob, 'tok1')))
+    await assertFails(setDoc(mirrorAt(bob, 'tok3'), { ...mirror, token: 'tok3' }))
+  })
+})
+
 // The lock exists so the same fault cannot be reported twice while it is still
 // being dealt with. It is enforced entirely by "create fails if it exists", so
 // every test here is really asking one question: can anything turn that create

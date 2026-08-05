@@ -66,6 +66,12 @@ export function can(profile, action, permit = null) {
     case 'manageUsers':
     case 'viewAudit':
       return admin
+    // Deleting a permit destroys the record of who authorised what work, which
+    // is exactly what an investigation or an audit goes looking for. Admin only,
+    // and even then it is meant for permits raised in error rather than as a
+    // way to tidy up history.
+    case 'delete':
+      return admin
     case 'view':
       return approver || isOwner(profile, permit)
     case 'edit':

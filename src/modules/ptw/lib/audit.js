@@ -6,6 +6,7 @@
 export const AUDIT = {
   PERMIT_CREATE: 'permit.create',
   PERMIT_EDIT: 'permit.edit',
+  PERMIT_DELETE: 'permit.delete',
   APPROVE: 'permit.approve',
   REJECT: 'permit.reject',
   CLOSURE_REQUEST: 'permit.closureRequest',
@@ -23,6 +24,7 @@ export const AUDIT = {
 export const AUDIT_META = {
   [AUDIT.PERMIT_CREATE]: { label: 'Permit created', color: '#16a34a' },
   [AUDIT.PERMIT_EDIT]: { label: 'Permit edited', color: '#6366f1' },
+  [AUDIT.PERMIT_DELETE]: { label: 'Permit deleted', color: '#dc2626' },
   [AUDIT.APPROVE]: { label: 'Approved', color: '#16a34a' },
   [AUDIT.REJECT]: { label: 'Rejected', color: '#dc2626' },
   [AUDIT.CLOSURE_REQUEST]: { label: 'Closure requested', color: '#f59e0b' },

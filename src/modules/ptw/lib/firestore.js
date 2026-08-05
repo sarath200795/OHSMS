@@ -227,8 +227,13 @@ function fullMirror(orgId, orgName, permitId, p) {
     orgId,
     orgName: orgName || '',
     permitId,
-    token: p.qrToken,
-    permitNo: p.permitNo,
+    // Every field is defaulted: Firestore rejects `undefined`, and permits that
+    // predate a column — or arrived by import or seed — legitimately lack one.
+    // permitNo was the exception, so publishing the mirror threw for exactly the
+    // legacy permits this function exists to heal, and the QR stayed dead.
+    token: p.qrToken || '',
+    permitNo: p.permitNo || '',
+    docId: p.docId || '',
     typeOfWork: p.typeOfWork || '',
     site: p.site || '',
     jobLocation: p.jobLocation || '',
@@ -498,6 +503,41 @@ export async function updatePermit(orgId, id, updates, actor) {
   await logAudit(orgId, actor, AUDIT.PERMIT_EDIT, {
     targetId: id, targetLabel: updates.permitNo || id, summary: `Edited: ${Object.keys(updates).join(', ')}`,
   })
+}
+
+/**
+ * Delete a permit, its attached documents and its public QR mirror.
+ *
+ * The mirror goes first and on its own: leaving it behind would keep a scanned
+ * QR answering for a permit that no longer exists, which is worse than the code
+ * simply not resolving. The audit entry is written before the document is
+ * removed, because afterwards there is nothing left to describe.
+ */
+export async function deletePermit(orgId, permit, actor) {
+  const id = permit?.id
+  if (!id) throw new Error('No permit to delete')
+
+  await logAudit(orgId, actor, AUDIT.PERMIT_DELETE, {
+    targetId: id,
+    targetLabel: permit.permitNo || id,
+    summary: `Deleted permit ${permit.permitNo || id}${permit.typeOfWork ? ` (${permit.typeOfWork})` : ''}`,
+  })
+
+  if (permit.qrToken) {
+    try {
+      await deleteDoc(qrRef(permit.qrToken))
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn('[Permit to Work] QR mirror delete skipped:', e?.message || e)
+    }
+  }
+
+  // Attachments live in a subcollection, which deleting the parent leaves
+  // orphaned and unreachable.
+  const docs = await getDocs(docCol(orgId, id))
+  for (const d of docs.docs) await deleteDoc(d.ref)
+
+  await deleteDoc(permitRef(orgId, id))
 }
 
 function decisionBlock(decision, actor, note) {

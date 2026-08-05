@@ -5,7 +5,7 @@ import { motion } from 'framer-motion'
 import {
   ArrowLeft, Printer, FileText, MapPin, Calendar, Phone, User, Building2, ShieldAlert, HardHat,
   ListChecks, Users as UsersIcon, CheckCircle2, XCircle, Clock, Lock, TimerReset, MessageSquarePlus,
-  Table, Paperclip, Download, Flame, Eye, X, QrCode, AlertTriangle,
+  Table, Paperclip, Download, Flame, Eye, X, QrCode, AlertTriangle, Trash2,
 } from 'lucide-react'
 import { QRCodeCanvas } from 'qrcode.react'
 import toast from 'react-hot-toast'
@@ -17,7 +17,7 @@ import { usePermits } from '../context/PermitContext'
 import {
   decideApproval, requestClosure, decideClosure, requestExtension, addExtensionSuggestion, decideExtension,
   subscribePermitDocuments, addPermitDocument, deletePermitDocument,
-  ensurePermitQr, subscribePermitObservations, createObservation,
+  ensurePermitQr, subscribePermitObservations, createObservation, deletePermit,
 } from '../lib/firestore'
 import { can, canActForTeam, TEAMS } from '../lib/permissions'
 import { STATUS, statusMeta } from '../lib/permitStatus'
@@ -92,6 +92,8 @@ export default function PermitDetail() {
   const [decision, setDecision] = useState(null) // {stage, team, decision}
   const [note, setNote] = useState('')
   const [closing, setClosing] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [confirmNo, setConfirmNo] = useState('')
   const [extOpen, setExtOpen] = useState(false)
   const [extForm, setExtForm] = useState({ reason: '', newValidTo: '', participantChanges: '', riskChanges: '' })
   const [suggestOpen, setSuggestOpen] = useState(false)
@@ -143,6 +145,7 @@ export default function PermitDetail() {
   const isOwner = permit.createdBy === profile?.uid
   const canManageDocs = (can(profile, 'edit', permit) || isOwner) && !isClosed
   const canRemoveDocs = can(profile, 'decide') // approvers/admin
+  const canDelete = can(profile, 'delete', permit)
 
   const run = async (fn) => {
     setBusy(true)
@@ -182,6 +185,16 @@ export default function PermitDetail() {
       setDecision(null); setNote('')
     })
   }
+
+  const onDelete = () => run(async () => {
+    // Guarded twice: the button only exists for admins, and the modal will not
+    // enable this until the permit number has been typed back.
+    if (confirmNo.trim() !== permit.permitNo) throw new Error('Permit number does not match')
+    await deletePermit(orgId, permit, actor)
+    toast.success(`Deleted permit ${permit.permitNo}`)
+    setDeleting(false)
+    navigate('/permits')
+  })
 
   const submitClosure = () => run(async () => {
     await requestClosure(orgId, permit.id, actor); toast.success('Submitted for closure'); setClosing(false)
@@ -238,6 +251,7 @@ export default function PermitDetail() {
           <button className="btn-ghost" onClick={handlePrint}><Printer size={16} /> Print / PDF</button>
           {canRequestExtension && <button className="btn-ghost" onClick={openExtension}><TimerReset size={16} /> Request Extension</button>}
           {canRequestClosure && <button className="btn-primary" onClick={() => setClosing(true)}><Lock size={16} /> Request Closure</button>}
+          {canDelete && <button className="btn-danger" onClick={() => setDeleting(true)}><Trash2 size={16} /> Delete</button>}
         </div>
       </div>
 
@@ -539,6 +553,28 @@ export default function PermitDetail() {
       </Modal>
 
       {/* Request closure modal */}
+      {/* Deleting destroys the record of who authorised what work, so it asks
+          for the permit number rather than a single OK — the same guard used
+          for anything that cannot be undone. */}
+      <Modal open={deleting} onClose={() => { setDeleting(false); setConfirmNo('') }} title="Delete this permit?">
+        <p className="text-sm text-ink-600">
+          This removes permit <strong>{permit.permitNo}</strong>, its attached documents and its QR
+          code permanently. The audit log keeps a record that it was deleted, but the permit itself
+          cannot be recovered.
+        </p>
+        <div className="mt-3">
+          <Field label={`Type ${permit.permitNo} to confirm`}>
+            <input className="input" value={confirmNo} onChange={(e) => setConfirmNo(e.target.value)} placeholder={permit.permitNo} />
+          </Field>
+        </div>
+        <div className="mt-4 flex justify-end gap-2">
+          <button className="btn-ghost" onClick={() => { setDeleting(false); setConfirmNo('') }}>Cancel</button>
+          <button className="btn-danger" onClick={onDelete} disabled={busy || confirmNo.trim() !== permit.permitNo}>
+            {busy ? <Spinner size={18} /> : 'Delete permanently'}
+          </button>
+        </div>
+      </Modal>
+
       <Modal open={closing} onClose={() => setClosing(false)} title="Request closure">
         <p className="text-sm text-ink-600">Submit this permit for closure. Both Engineering and Operations must approve to close it.</p>
         <div className="mt-4 flex justify-end gap-2">

@@ -7,6 +7,7 @@ import { FullPageLoader, SkeletonDetail } from './shared/ui'
 
 // Public QR landing for equipment labels — no auth, so it stays outside the shell.
 const QrLanding = lazy(() => import('./modules/fire/pages/QrLanding'))
+const PublicPermit = lazy(() => import('./modules/ptw/pages/PublicPermit'))
 
 // Public / auth pages (eager — small, first paint).
 import SetupNeeded from './pages/SetupNeeded'
@@ -76,6 +77,9 @@ export default function App() {
       <Route path="/forgot-password" element={<ForgotPassword />} />
       {/* Scanned from a printed extinguisher label — deliberately public. */}
       <Route path="/qr/:token" element={<QrLanding />} />
+      {/* The QR printed on every work permit. Public: whoever scans a permit
+          taped to a scaffold has no account. */}
+      <Route path="/permit/:token" element={<PublicPermit />} />
       <Route path="/pending" element={<PendingApproval />} />
 
       {/* Employee portal. Signed in like everything else, but outside AppShell:

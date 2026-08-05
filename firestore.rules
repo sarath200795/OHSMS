@@ -69,6 +69,23 @@ service cloud.firestore {
       allow delete: if isApprovedMemberOf(resource.data.orgId);
     }
 
+    // Public mirror for the QR code printed on a work permit. Same shape of
+    // rule as /qr above and for the same reason: whoever scans a permit taped
+    // to a scaffold — a contractor, an auditor, a fire watcher — has no account
+    // and must still be able to read whether it is valid right now.
+    //
+    // The mirror is a copy, not the permit: it carries no approvals, no
+    // decisions and no attached documents, and nothing can be written back
+    // through it. The token is 18 random characters, so it is unguessable and
+    // is the only thing linking a scan to a permit.
+    match /permitQr/{token} {
+      allow read: if true;
+      allow create: if isApprovedMemberOf(request.resource.data.orgId);
+      allow update: if isApprovedMemberOf(resource.data.orgId)
+        || isApprovedMemberOf(request.resource.data.orgId);
+      allow delete: if isApprovedMemberOf(resource.data.orgId);
+    }
+
     // ── Ported-module top-level collections (LOTO / hecp-loto) ─────────────────
     // These modules scope tenancy with an `orgId` field on each document instead
     // of an org subcollection path. Approved members of that org may read/write;
