@@ -1,0 +1,29 @@
+rules_version = '2';
+
+// Storage mirrors Firestore's tenancy: files live under /orgs/{orgId}/… and
+// only approved members of that org may touch them. The membership check reads
+// the SAME user document Firestore rules read (cross-service rules), so the two
+// systems cannot drift apart about who belongs where.
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isApprovedMemberOf(orgId) {
+      return request.auth != null
+        && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.orgId == orgId
+        && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.status == 'approved';
+    }
+
+    match /orgs/{orgId}/{kind}/{fileName} {
+      allow read: if isApprovedMemberOf(orgId);
+      // 20MB cap: generous for photos and PDFs, small enough that the bucket
+      // cannot be used as free bulk hosting by a compromised account.
+      allow write: if isApprovedMemberOf(orgId)
+        && request.resource.size < 20 * 1024 * 1024;
+      allow delete: if isApprovedMemberOf(orgId);
+    }
+
+    // Everything else is closed. New areas get their own explicit match.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

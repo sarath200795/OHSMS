@@ -5,13 +5,14 @@
 // Every mutation writes to the shared append-only audit log (module 'training').
 // ─────────────────────────────────────────────────────────────────────────────
 import {
-  addDoc, deleteDoc, doc, getDocs, limit, onSnapshot, orderBy, query, serverTimestamp,
+  addDoc, deleteDoc, doc, getDoc, getDocs, limit, onSnapshot, orderBy, query, serverTimestamp,
   updateDoc, where, writeBatch, collection,
 } from 'firebase/firestore'
 import { db } from '../../../shared/firebase'
 import { logAudit } from '../../../shared/org/orgData'
 import { computeExpiry, todayISO } from './status'
 import { reserveDocId } from '../../../shared/docId/reserve'
+import { removeFile } from '../../../shared/storage'
 
 const courseCol = (orgId) => collection(db, 'organizations', orgId, 'trainingCourses')
 const courseRef = (orgId, id) => doc(db, 'organizations', orgId, 'trainingCourses', id)
@@ -70,6 +71,8 @@ const cleanContent = (content) =>
       type: c.type === 'file' ? 'file' : 'link',
       label: c.label.trim(),
       url: c.url || '',
+      // Cloud-storage location; legacy items keep their inline dataUrl instead.
+      path: c.path || '',
       fileName: c.fileName || '',
       dataUrl: c.dataUrl || '',
     }))
@@ -112,6 +115,15 @@ export async function updateCourse(orgId, id, data, actor) {
 }
 
 export async function deleteCourse(orgId, id, actor, label) {
+  // Content files live in cloud storage; deleting only the document would
+  // strand them. Best-effort and before the delete, because afterwards nothing
+  // remembers the paths. A failure here costs storage, not correctness.
+  try {
+    const snap = await getDoc(courseRef(orgId, id))
+    for (const c of snap.data()?.content || []) {
+      if (c.path) removeFile(c.path)
+    }
+  } catch { /* orphans tolerated */ }
   await deleteDoc(courseRef(orgId, id))
   await logAudit(orgId, actor, 'training.course_delete', {
     module: 'training', target: 'course', targetId: id, targetLabel: label,

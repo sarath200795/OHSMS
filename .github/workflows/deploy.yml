@@ -1,0 +1,77 @@
+# Deploys happen from CI, not from a laptop: the artifact that went through
+# lint, tests and rules checks is the artifact that ships, and every release is
+# traceable to a commit.
+#
+# Setup (once):
+#   1. Firebase console → Project settings → Service accounts → generate key.
+#   2. GitHub repo → Settings → Secrets → Actions → new secret
+#      FIREBASE_SERVICE_ACCOUNT with the JSON as its value.
+#   3. Copy .env.production values into repo Variables (VITE_* below).
+# Until the secret exists, this workflow skips rather than fails, so CI stays
+# green for forks and for the period before production credentials are set up.
+name: Deploy
+
+on:
+  push:
+    tags: ['v*']          # releases deploy on tags: v1.0.0, v1.1.0, …
+  workflow_dispatch: {}    # and manually from the Actions tab when needed
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false   # never cancel a half-finished release
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check credentials are configured
+        id: creds
+        env:
+          SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          if [ -z "$SA" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::FIREBASE_SERVICE_ACCOUNT secret not set — skipping deploy."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.creds.outputs.configured == 'true'
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install
+        if: steps.creds.outputs.configured == 'true'
+        run: npm ci
+
+      # The same gates CI runs on push — a tag must not be able to skip them.
+      - name: Lint and test
+        if: steps.creds.outputs.configured == 'true'
+        run: |
+          npx eslint src
+          npx vitest run
+
+      - name: Build
+        if: steps.creds.outputs.configured == 'true'
+        env:
+          VITE_FIREBASE_API_KEY: ${{ vars.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ vars.VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID: ${{ vars.VITE_FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ vars.VITE_FIREBASE_MESSAGING_SENDER_ID }}
+          VITE_FIREBASE_APP_ID: ${{ vars.VITE_FIREBASE_APP_ID }}
+          VITE_APPCHECK_SITE_KEY: ${{ vars.VITE_APPCHECK_SITE_KEY }}
+          VITE_SENTRY_DSN: ${{ vars.VITE_SENTRY_DSN }}
+        run: npm run build
+
+      - name: Deploy hosting + rules
+        if: steps.creds.outputs.configured == 'true'
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json
+        run: |
+          echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > "$GOOGLE_APPLICATION_CREDENTIALS"
+          npx firebase-tools deploy --only hosting,firestore:rules,storage \
+            --project "${{ vars.VITE_FIREBASE_PROJECT_ID }}" --non-interactive

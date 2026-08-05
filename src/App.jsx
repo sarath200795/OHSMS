@@ -57,6 +57,13 @@ function Protected({ children, ...guard }) {
 }
 
 export default function App() {
+  // Dev-only crash switch so the root ErrorBoundary stays verifiable: append
+  // ?__crash=1 to any URL in dev and the recovery screen must appear. Compiled
+  // out of production builds by the DEV guard.
+  if (import.meta.env.DEV && window.location.search.includes('__crash=1')) {
+    throw new Error('Deliberate test crash (?__crash=1)')
+  }
+
   // Without Firebase config, only the setup screen can render.
   if (!isFirebaseConfigured) {
     return (

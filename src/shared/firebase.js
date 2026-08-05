@@ -47,6 +47,36 @@ if (!isFirebaseConfigured) {
 // Only initialize when configured — calling getAuth() with an undefined apiKey
 // throws at module load and blanks the whole app (so SetupNeeded can't render).
 const app = isFirebaseConfigured ? initializeApp(firebaseConfig) : null
+
+// ── App Check ─────────────────────────────────────────────────────────────────
+// The app has three deliberately-public write surfaces (equipment defect
+// reports, defect locks, permit observations). App Check is what stops them
+// being scripted: without a valid attestation token, requests are refused at
+// Google's edge before any rule runs.
+//
+// Gated on the env key so local/emulator development is unaffected. Wiring the
+// client is half the job — the other half is console-side and cannot live in
+// this repo: register the site key, then turn ON enforcement for Firestore
+// (docs/PRODUCTION.md walks through it). Until enforcement is on, this ships
+// tokens but blocks nothing.
+const APPCHECK_KEY = clean(import.meta.env.VITE_APPCHECK_SITE_KEY)
+if (app && APPCHECK_KEY && !USE_EMULATORS) {
+  // Dynamic so the App Check SDK costs nothing until a key is configured.
+  import('firebase/app-check')
+    .then(({ initializeAppCheck, ReCaptchaV3Provider }) => {
+      const debug = clean(import.meta.env.VITE_APPCHECK_DEBUG_TOKEN)
+      // The documented escape hatch for local dev against a real project.
+      if (debug) self.FIREBASE_APPCHECK_DEBUG_TOKEN = debug
+      initializeAppCheck(app, {
+        provider: new ReCaptchaV3Provider(APPCHECK_KEY),
+        isTokenAutoRefreshEnabled: true,
+      })
+    })
+    .catch((e) => {
+      // eslint-disable-next-line no-console
+      console.warn('[OHS MS] App Check init failed:', e?.message || e)
+    })
+}
 export const auth = app ? getAuth(app) : null
 // initializeFirestore (not getFirestore) so we can auto-detect networks that need
 // long-polling (VPNs, restrictive proxies) and transparently fall back.

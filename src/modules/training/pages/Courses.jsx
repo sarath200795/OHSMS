@@ -6,6 +6,7 @@ import DocIdTag from '../../../shared/docId/DocIdTag'
 import { PageHeader, Field, Input, Select, Textarea, Button, Modal, Badge, EmptyState, SkeletonTable } from '../../../shared/ui'
 import { useAuth } from '../../../shared/auth/AuthContext'
 import { fileToDataUrl } from '../../../shared/lib/files'
+import { putFile, removeFile } from '../../../shared/storage'
 import { useTraining } from '../context/TrainingContext'
 import { createCourse, updateCourse, deleteCourse, COURSE_CATEGORIES } from '../lib/firestore'
 import { DELIVERY_MODES } from '../lib/sessions'
@@ -56,9 +57,29 @@ export default function Courses() {
     setNewLink({ label: '', url: '' })
   }
   const addFile = async (e) => {
-    const file = e.target.files?.[0]
+    const picked = e.target.files?.[0]
     e.target.value = ''
-    if (!file) return
+    if (!picked) return
+    // Cloud storage first: no meaningful size ceiling (rules cap at 20MB) and
+    // the course document stays small however much material it carries.
+    if (picked.size <= 20 * 1024 * 1024) {
+      const up = await putFile(orgId, 'training-content', picked)
+      if (up) {
+        setForm((f) => ({
+          ...f,
+          content: [...(f.content || []), {
+            id: `ct-${Date.now()}`, type: 'file', label: picked.name,
+            fileName: picked.name, url: up.url, path: up.path, dataUrl: '',
+          }],
+        }))
+        return
+      }
+    }
+    // Fallback — storage bucket not enabled (or upload failed): the legacy
+    // inline route, with the document-size cap that regime demands.
+    await addFileInline(picked)
+  }
+  const addFileInline = async (file) => {
     if (file.size > MAX_FILE_BYTES) return toast.error('File too large — keep it under 700 KB (link larger files instead)')
     const dataUrl = await fileToDataUrl(file)
     setForm((f) => ({
@@ -66,7 +87,13 @@ export default function Courses() {
       content: [...(f.content || []), { id: `ct-${Date.now()}`, type: 'file', label: file.name, fileName: file.name, dataUrl }],
     }))
   }
-  const removeContent = (id) => setForm((f) => ({ ...f, content: (f.content || []).filter((c) => c.id !== id) }))
+  const removeContent = (id) => setForm((f) => {
+    // A cloud file removed from the form is deleted for real, best-effort — an
+    // orphan in the bucket is a cost, not a bug, so no await and no error path.
+    const gone = (f.content || []).find((c) => c.id === id)
+    if (gone?.path) removeFile(gone.path)
+    return { ...f, content: (f.content || []).filter((c) => c.id !== id) }
+  })
 
   const save = async (e) => {
     e.preventDefault()

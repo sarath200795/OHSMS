@@ -26,7 +26,7 @@ function ContentList({ course }) {
       {items.map((c) => (
         <a
           key={c.id}
-          href={c.type === 'file' ? c.dataUrl : c.url}
+          href={c.type === 'file' ? (c.dataUrl || c.url) : c.url}
           target="_blank"
           rel="noreferrer"
           download={c.type === 'file' ? c.fileName || c.label : undefined}
