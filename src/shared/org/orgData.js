@@ -207,10 +207,6 @@ export async function setUserRole(uid, role, orgId, actor, userLabel) {
   })
 }
 
-export async function setUserDept(uid, dept) {
-  await updateDoc(userRef(uid), { dept: dept || '' })
-}
-
 // ── Sites (shared across modules) ───────────────────────────────────────────
 // Same multiplexing as users — the site registry is read by nearly every module.
 const sharedSites = createSharedSubscription((orgId, emit) => {
@@ -284,17 +280,6 @@ export async function bulkCreateSites(orgId, rows, actor) {
     summary: `Bulk imported ${names.length} site(s): ${names.slice(0, 6).join(', ')}${names.length > 6 ? '…' : ''}`,
   })
   return names.length
-}
-
-/** Assign (or clear) the site an employee is mapped to. */
-export async function setUserSite(uid, siteId, siteName, orgId, actor, userLabel) {
-  await updateDoc(userRef(uid), { siteId: siteId || null, siteName: siteName || '' })
-  await logAudit(orgId, actor, AUDIT.USER_ROLE, {
-    target: 'user',
-    targetId: uid,
-    targetLabel: userLabel || uid,
-    summary: `Mapped to site ${siteName || '—'}`,
-  })
 }
 
 // ── Site-scoped access / permissions ────────────────────────────────────────

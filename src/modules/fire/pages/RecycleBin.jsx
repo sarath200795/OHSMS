@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react'
-import { motion } from 'framer-motion'
 import { format } from 'date-fns'
-import { Trash2, RotateCcw, AlertTriangle, Download, Database } from 'lucide-react'
+import { Trash2, RotateCcw, AlertTriangle, Database } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { PageHeader, EmptyState, Modal, Spinner, Badge } from '../components/ui'
 import { useFleet } from '../context/FleetContext'

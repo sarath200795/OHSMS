@@ -93,7 +93,7 @@ export default function ModulePage({ module, config }) {
         await service.create(orgId, payload, actor, label)
         toast.success(`${config.singular} created`)
       } else {
-        const { id, createdAt, ...rest } = payload
+        const { id: _id, createdAt: _createdAt, ...rest } = payload
         await service.update(orgId, editing.id, rest, actor, label)
         toast.success(`${config.singular} updated`)
       }

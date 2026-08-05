@@ -25,10 +25,7 @@ const textareaCls =
 
 export default function IsolationPointEditor({
   point,
-  index,
   pointId,
-  orgId,
-  procedureId,
   onChange,
   onRemove,
 }) {

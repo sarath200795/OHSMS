@@ -14,7 +14,7 @@ import { useIncidents } from '../context/IncidentContext'
 import { summarizeActions } from '../lib/actions'
 import {
   INCIDENT_TYPES, INCIDENT_TYPE_BY_KEY, SEVERITY, SEVERITY_BY_KEY,
-  HSE_CATEGORIES, HSE_CATEGORY_BY_KEY, LOCATIONS, ACTION_STATUS, ACTION_STATUS_BY_KEY,
+  HSE_CATEGORIES, HSE_CATEGORY_BY_KEY, LOCATIONS, ACTION_STATUS,
   bodyPartLabel,
 } from '../lib/constants'
 

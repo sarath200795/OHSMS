@@ -43,6 +43,3 @@ export function initials(name = '') {
     .map((p) => p[0]?.toUpperCase())
     .join('')
 }
-
-export const titleCase = (s = '') =>
-  s.replace(/[_-]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())

@@ -8,14 +8,10 @@
 import {
   collection,
   doc,
-  getDoc,
-  getDocs,
-  setDoc,
   addDoc,
   updateDoc,
   deleteDoc,
   query,
-  where,
   orderBy,
   onSnapshot,
   serverTimestamp,
@@ -29,79 +25,8 @@ import { reserveDocId } from '../../../shared/docId/reserve'
 const orgRef = (orgId) => doc(db, 'organizations', orgId)
 const assessmentCol = (orgId) => collection(db, 'organizations', orgId, 'assessments')
 const assessmentRef = (orgId, id) => doc(db, 'organizations', orgId, 'assessments', id)
-const userRef = (uid) => doc(db, 'users', uid)
-const orgIndexKey = (name) => (name || '').trim().toLowerCase()
-const orgIndexRef = (name) => doc(db, 'orgIndex', orgIndexKey(name))
 
 // ── Organizations & users ─────────────────────────────────────────────────────
-
-/** Create an org + its first admin user + public name index, atomically. */
-export async function createOrganization({ orgName, address, uid, name, email }) {
-  const org = doc(collection(db, 'organizations'))
-  const batch = writeBatch(db)
-  batch.set(org, {
-    name: orgName,
-    nameLower: orgName.trim().toLowerCase(),
-    address: address || '',
-    createdBy: uid,
-    createdAt: serverTimestamp(),
-  })
-  batch.set(userRef(uid), {
-    name,
-    email,
-    orgId: org.id,
-    orgName,
-    role: 'admin',
-    status: 'approved',
-    createdAt: serverTimestamp(),
-  })
-  batch.set(orgIndexRef(orgName), { orgId: org.id, name: orgName })
-  await batch.commit()
-  return org.id
-}
-
-export async function findOrgByName(orgName) {
-  const snap = await getDoc(orgIndexRef(orgName))
-  if (!snap.exists()) return null
-  const d = snap.data()
-  return { id: d.orgId, name: d.name }
-}
-
-/** List every organization (from the public orgIndex), [{ id, name }] sorted. */
-export async function listOrganizations() {
-  const snap = await getDocs(collection(db, 'orgIndex'))
-  return snap.docs
-    .map((d) => ({ id: d.data().orgId, name: d.data().name }))
-    .filter((o) => o.id && o.name)
-    .sort((a, b) => a.name.localeCompare(b.name))
-}
-
-/** Create a member joining an existing org. Auto-approved (no admin queue). */
-export async function createMember({ uid, name, email, orgId, orgName }) {
-  await setDoc(userRef(uid), {
-    name,
-    email,
-    orgId,
-    orgName,
-    role: 'member',
-    status: 'approved',
-    createdAt: serverTimestamp(),
-  })
-}
-
-export async function getUserProfile(uid) {
-  const snap = await getDoc(userRef(uid))
-  return snap.exists() ? normalizeRoles({ uid, ...snap.data() }) : null
-}
-
-// Multi-role compatibility: ensure roles[] exists and role/isAdmin reflect it so
-// existing `role === 'admin'` checks keep working when users hold several roles.
-function normalizeRoles(p) {
-  const roles = Array.isArray(p.roles) && p.roles.length ? p.roles : p.role ? [p.role] : []
-  const isAdmin = p.isAdmin === true || roles.includes('admin')
-  const role = isAdmin ? 'admin' : roles.includes(p.role) ? p.role : roles[0] || p.role || 'member'
-  return { ...p, roles, isAdmin, role }
-}
 
 // Default snapshot error handler: log a warning instead of letting Firestore
 // raise an "Uncaught Error in snapshot listener" that can hang/blank the UI.
@@ -154,11 +79,6 @@ const ASSESSMENT_LOAD_CAP = 1000
 export function subscribeAssessments(orgId, cb, onError, max = ASSESSMENT_LOAD_CAP) {
   const q = query(assessmentCol(orgId), orderBy('createdAt', 'desc'), limit(max))
   return onSnapshot(q, (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))), onError || onSnapErr('assessments'))
-}
-
-export async function getAssessment(orgId, id) {
-  const snap = await getDoc(assessmentRef(orgId, id))
-  return snap.exists() ? { id, ...snap.data() } : null
 }
 
 /** Strip undefined values so Firestore accepts the nested write. */

@@ -1,7 +1,6 @@
 import {
   addDoc,
   collection,
-  deleteDoc,
   doc,
   onSnapshot,
   orderBy,
@@ -32,8 +31,4 @@ export function createCapa(orgId, data) {
 
 export function updateCapa(orgId, capaId, data) {
   return updateDoc(doc(db, 'organizations', orgId, 'capas', capaId), data)
-}
-
-export function deleteCapa(orgId, capaId) {
-  return deleteDoc(doc(db, 'organizations', orgId, 'capas', capaId))
 }

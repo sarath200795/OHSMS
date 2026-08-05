@@ -39,7 +39,7 @@ function Section({ icon: Icon, title, color, count, to, cta, cols, rows, empty }
 }
 
 export default function AssetsDue() {
-  const { extinguishers, refillDue, physicalDefects, aeds, fas, loading } = useFleet()
+  const { refillDue, physicalDefects, aeds, fas, loading } = useFleet()
   const today = useMemo(() => new Date(), [])
 
   // Extinguishers needing attention: refill-due + physical defects (deduped).

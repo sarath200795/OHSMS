@@ -9,7 +9,7 @@ import { PageHeader, Spinner } from '../components/ui'
 import { RiskBadge, MiniMatrix } from '../components/RiskBits'
 import { useAuth } from '../context/AuthContext'
 import { useRa } from '../context/RaContext'
-import { createAssessment, updateAssessment, updateOrgSites, logActivity, subscribeOrgUsers } from '../lib/firestore'
+import { createAssessment, updateAssessment, logActivity, subscribeOrgUsers } from '../lib/firestore'
 import SiteScopePicker from '../../../shared/org/SiteScopePicker'
 import DepartmentSelect from '../../../shared/org/DepartmentSelect'
 import DeptPersonPicker from '../../../shared/org/DeptPersonPicker'
@@ -79,12 +79,10 @@ export default function CreateAssessment() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { orgId, profile, user } = useAuth()
-  const { assessments, sites, org, siteInventory } = useRa()
+  const { assessments, org, siteInventory } = useRa()
   const [form, setForm] = useState(emptyForm)
   const [busy, setBusy] = useState(false)
   const [loadedId, setLoadedId] = useState(null)
-  const [addingSite, setAddingSite] = useState(false)
-  const [newSite, setNewSite] = useState('')
 
   // Employee directory for the internal-member Department → Person drill-down.
   const [orgUsers, setOrgUsers] = useState([])
@@ -143,29 +141,6 @@ export default function CreateAssessment() {
   }, [id, fromId, kindParam, assessments, paramsInited])
 
   const internalMembers = useMemo(() => form.members.filter((m) => m.type === 'internal' && m.name.trim()), [form.members])
-
-  // Site dropdown options = org sites ∪ the assessment's current site (legacy/edit).
-  const siteOptions = useMemo(() => {
-    const set = new Set(sites)
-    if (form.siteName) set.add(form.siteName)
-    return Array.from(set).sort((a, b) => a.localeCompare(b))
-  }, [sites, form.siteName])
-
-  const confirmAddSite = async () => {
-    const name = newSite.trim()
-    if (!name) return
-    if (!sites.some((s) => s.toLowerCase() === name.toLowerCase())) {
-      try {
-        await updateOrgSites(orgId, [...sites, name].sort((a, b) => a.localeCompare(b)))
-      } catch (e) {
-        toast.error(e.message || 'Could not add site')
-        return
-      }
-    }
-    setForm((f) => ({ ...f, siteName: name }))
-    setNewSite('')
-    setAddingSite(false)
-  }
 
   // ── State helpers ───────────────────────────────────────────────────────────
   const setField = (k, v) => setForm((f) => ({ ...f, [k]: v }))

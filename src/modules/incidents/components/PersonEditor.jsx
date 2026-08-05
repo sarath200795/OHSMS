@@ -12,7 +12,7 @@ const uid = () => (crypto?.randomUUID ? crypto.randomUUID() : `p_${Date.now()}_$
  *  - external: { id, kind:'external', name, company, contact }
  *  - allowRole adds a free-text `role` field (e.g. team member roles).
  */
-export default function PersonEditor({ value = [], onChange, users = [], allowRole = false, addLabel = 'Add person' }) {
+export default function PersonEditor({ value = [], onChange, users = [], allowRole = false }) {
   const set = (id, patch) => onChange(value.map((p) => (p.id === id ? { ...p, ...patch } : p)))
   const remove = (id) => onChange(value.filter((p) => p.id !== id))
   const add = (kind) =>

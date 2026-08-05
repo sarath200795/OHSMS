@@ -13,9 +13,6 @@ import { db } from '../lib/firebase'
 
 const col = (orgId) => collection(db, 'organizations', orgId, 'findings')
 
-export const SEVERITIES = ['observation', 'minor', 'major']
-export const FINDING_STATUSES = ['open', 'in_progress', 'closed']
-
 export function subscribeFindings(orgId, callback) {
   const q = query(col(orgId), orderBy('raisedAt', 'desc'))
   return onSnapshot(q, (snap) => {

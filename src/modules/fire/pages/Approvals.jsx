@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { format } from 'date-fns'
-import { ClipboardCheck, Check, X, AlertTriangle, Truck, QrCode, Smartphone, Building2 } from 'lucide-react'
+import { ClipboardCheck, Check, X, AlertTriangle, Truck, Smartphone, Building2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { PageHeader, EmptyState, Badge } from '../components/ui'
 import { useFleet } from '../context/FleetContext'

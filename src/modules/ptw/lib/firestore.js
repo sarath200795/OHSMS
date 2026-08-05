@@ -18,7 +18,6 @@ import {
   orderBy,
   onSnapshot,
   serverTimestamp,
-  writeBatch,
   limit,
   runTransaction,
   arrayUnion,
@@ -26,7 +25,6 @@ import {
 import { db } from '../firebase'
 import { reserveDocId } from '../../../shared/docId/reserve'
 import { AUDIT } from './audit'
-import { ROLES } from './permissions'
 import { computeWindow, derivePermitStatus } from './permitStatus'
 import { generateQrToken } from './qr'
 
@@ -38,7 +36,6 @@ const docCol = (orgId, permitId) => collection(db, 'organizations', orgId, 'perm
 const docRef = (orgId, permitId, docId) => doc(db, 'organizations', orgId, 'permits', permitId, 'documents', docId)
 const obsCol = (orgId) => collection(db, 'organizations', orgId, 'observations')
 const qrRef = (token) => doc(db, 'permitQr', token)
-const userRef = (uid) => doc(db, 'users', uid)
 const auditCol = (orgId) => collection(db, 'organizations', orgId, 'auditLogs')
 const countersRef = (orgId) => doc(db, 'organizations', orgId, 'meta', 'counters')
 const orgIndexKey = (name) => (name || '').trim().toLowerCase()
@@ -64,54 +61,7 @@ async function logAudit(orgId, actor, action, details = {}) {
   }
 }
 
-export function subscribeAuditLogs(orgId, cb) {
-  const q = query(auditCol(orgId), orderBy('at', 'desc'), limit(300))
-  return onSnapshot(q, (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))))
-}
-
 // ── Organizations & users ──────────────────────────────────────────────────────
-
-/** Create an org + its first admin user + public name index, atomically. */
-export async function createOrganization({ orgName, address, uid, name, email, phone }) {
-  const org = doc(collection(db, 'organizations'))
-  const batch = writeBatch(db)
-  batch.set(org, {
-    name: orgName,
-    nameLower: orgName.trim().toLowerCase(),
-    address: address || '',
-    createdBy: uid,
-    createdAt: serverTimestamp(),
-  })
-  batch.set(userRef(uid), {
-    name,
-    email,
-    phone: phone || '',
-    orgId: org.id,
-    orgName,
-    role: ROLES.ADMIN,
-    status: 'approved',
-    createdAt: serverTimestamp(),
-  })
-  batch.set(orgIndexRef(orgName), { orgId: org.id, name: orgName })
-  await batch.commit()
-  return org.id
-}
-
-export async function findOrgByName(orgName) {
-  const snap = await getDoc(orgIndexRef(orgName))
-  if (!snap.exists()) return null
-  const d = snap.data()
-  return { id: d.orgId, name: d.name }
-}
-
-/** List every organization (public orgIndex), [{id,name}] sorted by name. */
-export async function listOrganizations() {
-  const snap = await getDocs(collection(db, 'orgIndex'))
-  return snap.docs
-    .map((d) => ({ id: d.data().orgId, name: d.data().name }))
-    .filter((o) => o.id && o.name)
-    .sort((a, b) => a.name.localeCompare(b.name))
-}
 
 /** Self-heal the public orgIndex entry (idempotent, non-blocking). */
 export async function ensureOrgIndex(org) {
@@ -127,59 +77,11 @@ export async function ensureOrgIndex(org) {
   }
 }
 
-/** Create a pending member joining an existing org. Defaults to Technician. */
-export async function createPendingMember({ uid, name, email, phone, orgId, orgName }) {
-  await setDoc(userRef(uid), {
-    name,
-    email,
-    phone: phone || '',
-    orgId,
-    orgName,
-    role: ROLES.TECHNICIAN,
-    status: 'pending',
-    createdAt: serverTimestamp(),
-  })
-}
-
-export async function getUserProfile(uid) {
-  const snap = await getDoc(userRef(uid))
-  return snap.exists() ? normalizeRoles({ uid, ...snap.data() }) : null
-}
-
-// Multi-role compatibility: ensure roles[] exists and role/isAdmin reflect it so
-// existing `role === 'admin'` checks keep working when users hold several roles.
-function normalizeRoles(p) {
-  const roles = Array.isArray(p.roles) && p.roles.length ? p.roles : p.role ? [p.role] : []
-  const isAdmin = p.isAdmin === true || roles.includes('admin')
-  const role = isAdmin ? 'admin' : roles.includes(p.role) ? p.role : roles[0] || p.role || 'member'
-  return { ...p, roles, isAdmin, role }
-}
-
 // Delegated to the shared ref-counted org-users listener (one per org app-wide).
 export { subscribeOrgUsers } from '../../../shared/org/orgData'
 
 export function subscribeOrg(orgId, cb) {
   return onSnapshot(orgRef(orgId), (snap) => cb(snap.exists() ? { id: snap.id, ...snap.data() } : null))
-}
-
-/** Admin: set the organization's list of work sites. */
-export async function updateOrgSites(orgId, sites, actor) {
-  await updateDoc(orgRef(orgId), { sites })
-  await logAudit(orgId, actor, AUDIT.ORG_SITES, { target: 'org', summary: `Updated sites (${sites.length})` })
-}
-
-export async function setUserStatus(uid, status, orgId, actor, userLabel) {
-  await updateDoc(userRef(uid), { status })
-  await logAudit(orgId, actor, AUDIT.USER_STATUS, {
-    target: 'user', targetId: uid, targetLabel: userLabel || uid, summary: `Set status → ${status}`,
-  })
-}
-
-export async function setUserRole(uid, role, orgId, actor, userLabel) {
-  await updateDoc(userRef(uid), { role })
-  await logAudit(orgId, actor, AUDIT.USER_ROLE, {
-    target: 'user', targetId: uid, targetLabel: userLabel || uid, summary: `Set role → ${role}`,
-  })
 }
 
 // ── Permits ─────────────────────────────────────────────────────────────────
@@ -269,11 +171,6 @@ export function subscribePermitByToken(token, cb, onError) {
     (snap) => cb(snap.exists() ? { id: snap.id, ...snap.data() } : null),
     (err) => { if (onError) onError(err); else cb(null) }
   )
-}
-
-export async function getPermitByToken(token) {
-  const snap = await getDoc(qrRef(token))
-  return snap.exists() ? { id: snap.id, ...snap.data() } : null
 }
 
 /**
@@ -536,14 +433,6 @@ export async function reconcilePermitStatus(orgId, permit) {
     // eslint-disable-next-line no-console
     console.warn('[Permit to Work] status reconcile skipped:', e?.message || e)
   }
-}
-
-/** Edit core permit fields (approver only). */
-export async function updatePermit(orgId, id, updates, actor) {
-  await updateDoc(permitRef(orgId, id), { ...updates, updatedAt: serverTimestamp() })
-  await logAudit(orgId, actor, AUDIT.PERMIT_EDIT, {
-    targetId: id, targetLabel: updates.permitNo || id, summary: `Edited: ${Object.keys(updates).join(', ')}`,
-  })
 }
 
 /**

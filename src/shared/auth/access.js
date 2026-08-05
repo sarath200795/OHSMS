@@ -48,11 +48,6 @@ export function resolveAccessibleSites(user, sites, { isAdmin } = {}) {
   return list.filter((site) => s.has(site.id) || r.has(site.region) || e.has(site.entity))
 }
 
-export const hasAccessGrant = (user) => {
-  const a = user?.access || {}
-  return arr(a.sites).length + arr(a.regions).length + arr(a.entities).length > 0
-}
-
 export const hasPendingAccessRequest = (user) => {
   const r = user?.accessRequest
   return !!r && (arr(r.sites).length + arr(r.regions).length + arr(r.entities).length > 0)

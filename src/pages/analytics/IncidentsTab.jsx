@@ -51,7 +51,7 @@ export default function IncidentsTab({ incidents, sites, keepUnplaced = true }) 
       <FilterBar f={f} setF={setF} sites={sites} opts={opts} idPrefix="an" />
 
       <div className="mb-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        {HEAD.map((k) => <Stat key={k.key} {...k} />)}
+        {HEAD.map(({ key, ...s }) => <Stat key={key} {...s} />)}
       </div>
       {/* Both caveats are real and both mislead if left unsaid: the five figures
           neither partition the population nor cover it. */}

@@ -172,11 +172,6 @@ export function subscribeIllnessFiles(orgId, id, cb) {
   return onSnapshot(q, (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))))
 }
 
-export async function getIllnessFiles(orgId, id) {
-  const snap = await getDocs(query(fileCol(orgId, id), orderBy('uploadedAt', 'asc')))
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }))
-}
-
 export async function deleteIllnessFile(orgId, id, fileId) {
   await deleteDoc(fileRef(orgId, id, fileId))
   await updateDoc(illnessRef(orgId, id), { fileCount: increment(-1), updatedAt: serverTimestamp() })

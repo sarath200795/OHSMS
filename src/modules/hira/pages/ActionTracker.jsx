@@ -8,7 +8,7 @@ import { RiskBadge } from '../components/RiskBits'
 import { useRa } from '../context/RaContext'
 import { useAuth } from '../context/AuthContext'
 import { updateAssessment, logActivity } from '../lib/firestore'
-import { flattenAdditionalControls, isOverdue, isNonAcceptable, todayISO } from '../lib/raStats'
+import { flattenAdditionalControls, isOverdue, isNonAcceptable} from '../lib/raStats'
 import { CONTROL_STATUS } from '../lib/constants'
 
 const FILTERS = [
@@ -35,7 +35,6 @@ export default function ActionTracker() {
   const [filter, setFilter] = useState('all')
   const [focus, setFocus] = useState('all')
   const [overdueOnly, setOverdueOnly] = useState(false)
-  const today = todayISO()
 
   // Counts per status (across all additional controls) for the filter chips.
   const counts = useMemo(() => {

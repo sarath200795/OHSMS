@@ -23,7 +23,7 @@ import {
 import { db } from '../firebase'
 import { logAudit } from './firestore'
 import { AUDIT, diffSummary } from './audit'
-import { statsDeltaFor, accumulate, emptyStats, BUCKETS } from './stats'
+import { statsDeltaFor, emptyStats, BUCKETS } from './stats'
 import { reserveDocId } from '../../../shared/docId/reserve'
 
 const BUCKET_NAMES = Object.keys(BUCKETS)
@@ -69,18 +69,6 @@ async function bumpStats(orgId, delta) {
 
 export function subscribeStats(orgId, cb) {
   return onSnapshot(statsRef(orgId), (snap) => cb(snap.exists() ? snap.data() : null))
-}
-
-/** Full recompute from a one-time read of all incidents (admin Refresh). */
-export async function recomputeStats(orgId) {
-  const snap = await getDocs(incidentCol(orgId))
-  const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
-  const s = accumulate(list)
-  // Preserve the running refNo counter.
-  const cur = await getDoc(statsRef(orgId))
-  s.nextSeq = (cur.exists() && cur.data().nextSeq) || 0
-  await setDoc(statsRef(orgId), { ...s, updatedAt: serverTimestamp() })
-  return s
 }
 
 // ── Incident document ─────────────────────────────────────────────────────────
@@ -258,11 +246,6 @@ export async function addIncidentPhoto(orgId, id, photo) {
 export function subscribeIncidentPhotos(orgId, id, cb) {
   const q = query(photoCol(orgId, id), orderBy('uploadedAt', 'asc'))
   return onSnapshot(q, (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))))
-}
-
-export async function getIncidentPhotos(orgId, id) {
-  const snap = await getDocs(query(photoCol(orgId, id), orderBy('uploadedAt', 'asc')))
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }))
 }
 
 export async function deleteIncidentPhoto(orgId, id, photoId) {

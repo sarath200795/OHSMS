@@ -1,12 +1,7 @@
 import {
-  addDoc,
   collection,
-  deleteDoc,
-  doc,
   onSnapshot,
   query,
-  serverTimestamp,
-  updateDoc,
   where,
 } from 'firebase/firestore'
 import { db } from '../firebase/config'
@@ -24,22 +19,4 @@ export function subscribeSites(orgId, cb, onError) {
     },
     onError,
   )
-}
-
-export async function addSite({ orgId, name }, user) {
-  return addDoc(collection(db, COL), {
-    orgId,
-    name: name.trim(),
-    active: true,
-    createdBy: user.id,
-    createdAt: serverTimestamp(),
-  })
-}
-
-export async function updateSite(id, patch) {
-  return updateDoc(doc(db, COL, id), patch)
-}
-
-export async function deleteSite(id) {
-  return deleteDoc(doc(db, COL, id))
 }

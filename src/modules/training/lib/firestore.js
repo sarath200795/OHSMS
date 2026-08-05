@@ -162,14 +162,6 @@ export async function logTraining(orgId, { course, employees, trainerName, compl
   return employees.length
 }
 
-export async function updateRecord(orgId, id, updates, actor, label) {
-  await updateDoc(recordRef(orgId, id), { ...updates, updatedAt: serverTimestamp() })
-  await logAudit(orgId, actor, 'training.record_update', {
-    module: 'training', target: 'record', targetId: id, targetLabel: label,
-    summary: `Updated training record${label ? ` "${label}"` : ''}`,
-  })
-}
-
 export async function deleteRecord(orgId, id, actor, label) {
   await deleteDoc(recordRef(orgId, id))
   await logAudit(orgId, actor, 'training.record_delete', {

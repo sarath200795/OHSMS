@@ -262,7 +262,7 @@ const AuditScheduler = ({ setView, session, sites, users, locations = [], siteIn
 // ============================================================================
 // MODULE 2: AUDITOR WORKPLACE
 // ============================================================================
-const AuditorWorkplace = ({ setView, session, isGlobalOwner, users, plans, findings, sites = [] }) => {
+const AuditorWorkplace = ({ setView, session, isGlobalOwner, plans, findings, sites = [] }) => {
   const siteName = (id) => siteNameOf(sites, id)
   const [view, setWView] = useState('list')
   const [filters, setFilters] = useState({ date: '', auditor: '', auditee: '', id: '' })
@@ -506,8 +506,7 @@ const AuditorWorkplace = ({ setView, session, isGlobalOwner, users, plans, findi
 // ============================================================================
 // MODULE 3: AUDITEE WORKPLACE
 // ============================================================================
-const AuditeeWorkplace = ({ setView, session, users, findings, sites = [] }) => {
-  const siteName = (id) => siteNameOf(sites, id)
+const AuditeeWorkplace = ({ session, users, findings }) => {
   const [selected, setSelected] = useState(null)
   const [modal, setModal] = useState(false)
   const [current, setCurrent] = useState(null)
@@ -700,7 +699,7 @@ const AuditeeWorkplace = ({ setView, session, users, findings, sites = [] }) => 
 // ============================================================================
 // MODULE 4: AUDIT REPORTS
 // ============================================================================
-const AuditReports = ({ setView, plans, findings, sites = [] }) => {
+const AuditReports = ({ plans, findings, sites = [] }) => {
   const [tab, setTab] = useState('findings')
   const [filters, setFilters] = useState({ search: '', status: '', dept: '' })
   const [printData, setPrintData] = useState(null)
@@ -813,7 +812,7 @@ const AuditReports = ({ setView, plans, findings, sites = [] }) => {
 // ============================================================================
 // MODULE 5: AUDIT DASHBOARD
 // ============================================================================
-const AuditDashboard = ({ setView, findings, sites = [] }) => {
+const AuditDashboard = ({ findings, sites = [] }) => {
   const siteName = (id) => siteNameOf(sites, id)
   const [selected, setSelected] = useState(null)
   const stats = useMemo(() => ({
@@ -907,7 +906,7 @@ const AuditDashboard = ({ setView, findings, sites = [] }) => {
 // ============================================================================
 // MODULE 6: AUDIT CALENDAR
 // ============================================================================
-const AuditCalendar = ({ setView, sites, plans, findings }) => {
+const AuditCalendar = ({ sites, plans, findings }) => {
   const now = new Date()
   const [month, setMonth] = useState(now.getMonth())
   const [year, setYear] = useState(now.getFullYear())

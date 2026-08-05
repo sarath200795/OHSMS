@@ -2,7 +2,7 @@ import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { qrDataUrl } from './qr'
 import { numberIsolationPoints, procedureScanUrl } from './codes'
-import { deviceLabel, pointDevicesLabel } from '../constants/energySources'
+import { pointDevicesLabel } from '../constants/energySources'
 
 function imageFormat(dataUrl) {
   const m = /^data:image\/(\w+)/.exec(dataUrl || '')

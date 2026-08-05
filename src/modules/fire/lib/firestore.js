@@ -12,13 +12,11 @@ import {
   updateDoc as _updateDoc,
   deleteDoc as _deleteDoc,
   query,
-  where,
   orderBy,
   onSnapshot,
   serverTimestamp,
   writeBatch as _writeBatch,
   limit,
-  startAfter,
   increment,
 } from 'firebase/firestore'
 import { db } from '../firebase'
@@ -29,7 +27,6 @@ import { db } from '../firebase'
 // Reads (subscribe*/get*/list*/query*) are untouched. Wrapping the write
 // primitives here means ALL mutations are covered without touching each helper.
 let READ_ONLY = false
-export function setFirestoreReadOnly(v) { READ_ONLY = Boolean(v) }
 export const DEMO_READONLY_MESSAGE = "You're in the read-only demo — sign up to make changes."
 function assertWritable() {
   if (READ_ONLY) throw new Error(DEMO_READONLY_MESSAGE)
@@ -44,7 +41,6 @@ import { STATUS, REFILL_DEFECT_KEYS, DEFECT_BY_KEY } from './constants'
 import { lockId, duplicateDefectMessage } from './defectLock'
 import { reserveDocId } from '../../../shared/docId/reserve'
 import { AUDIT, diffSummary } from './audit'
-import { buildExtinguisherConstraints } from './extinguisherQuery'
 import { statsDeltaFor, accumulate } from './stats'
 
 // ── Path helpers ─────────────────────────────────────────────────────────────
@@ -55,7 +51,6 @@ const reportCol = (orgId) => collection(db, 'organizations', orgId, 'reports')
 const reportRef = (orgId, id) => doc(db, 'organizations', orgId, 'reports', id)
 const defectLockRef = (orgId, extId, defectType) =>
   doc(db, 'organizations', orgId, 'defectLocks', lockId(extId, defectType))
-const userRef = (uid) => doc(db, 'users', uid)
 const qrRef = (token) => doc(db, 'qr', token)
 const auditCol = (orgId) => collection(db, 'organizations', orgId, 'auditLogs')
 const statsRef = (orgId) => doc(db, 'organizations', orgId, 'meta', 'stats')
@@ -154,58 +149,6 @@ const extLabelOf = (ext) =>
 
 // ── Organizations & users ─────────────────────────────────────────────────────
 
-/** Create an org + its first admin user + public name index, atomically. */
-export async function createOrganization({ orgName, address, uid, name, email }) {
-  const org = doc(collection(db, 'organizations'))
-  const batch = writeBatch(db)
-  batch.set(org, {
-    name: orgName,
-    nameLower: orgName.trim().toLowerCase(),
-    address: address || '',
-    createdBy: uid,
-    notificationEmail: email, // default: admin's email (editable later)
-    createdAt: serverTimestamp(),
-  })
-  batch.set(userRef(uid), {
-    name,
-    email,
-    orgId: org.id,
-    orgName,
-    role: 'admin',
-    status: 'approved',
-    createdAt: serverTimestamp(),
-  })
-  // Public lookup index (no sensitive fields) so signup can resolve org-by-name
-  // without read access to the organizations collection.
-  batch.set(orgIndexRef(orgName), { orgId: org.id, name: orgName })
-  await batch.commit()
-  return org.id
-}
-
-/**
- * Find an organization by exact (case-insensitive) name via the public
- * orgIndex. Returns { id, name } or null. (Only the fields needed at signup.)
- */
-export async function findOrgByName(orgName) {
-  const snap = await getDoc(orgIndexRef(orgName))
-  if (!snap.exists()) return null
-  const d = snap.data()
-  return { id: d.orgId, name: d.name }
-}
-
-/**
- * List every organization (from the public orgIndex), as [{ id, name }] sorted
- * by name. Used by the signup dropdown so members pick a real org instead of
- * typing its name. Public-readable, so it works pre-auth.
- */
-export async function listOrganizations() {
-  const snap = await getDocs(collection(db, 'orgIndex'))
-  return snap.docs
-    .map((d) => ({ id: d.data().orgId, name: d.data().name }))
-    .filter((o) => o.id && o.name)
-    .sort((a, b) => a.name.localeCompare(b.name))
-}
-
 /**
  * Backfill the public orgIndex entry for an org if it's missing. Orgs created
  * before the orgIndex feature have no index doc, so they don't appear in the
@@ -226,80 +169,12 @@ export async function ensureOrgIndex(org) {
   }
 }
 
-/**
- * Explicit, admin-triggered version of the orgIndex backfill. Unlike
- * ensureOrgIndex this does NOT swallow errors — so the UI can show a clear
- * permission/error toast (e.g. when the live rules haven't been published).
- * Writes (creates/overwrites) the public orgIndex entry so the org appears in
- * the signup "Join your team" dropdown.
- */
-export async function registerOrgInIndex(orgId, orgName) {
-  if (!orgId || !orgName) throw new Error('Organization details are missing.')
-  await setDoc(orgIndexRef(orgName), { orgId, name: orgName })
-}
-
-/** Create a pending member who is joining an existing org. */
-export async function createPendingMember({ uid, name, email, orgId, orgName }) {
-  await setDoc(userRef(uid), {
-    name,
-    email,
-    orgId,
-    orgName,
-    role: 'member',
-    status: 'pending',
-    createdAt: serverTimestamp(),
-  })
-}
-
-export async function getUserProfile(uid) {
-  const snap = await getDoc(userRef(uid))
-  return snap.exists() ? normalizeRoles({ uid, ...snap.data() }) : null
-}
-
-// Multi-role compatibility: ensure roles[] exists and role/isAdmin reflect it so
-// existing `role === 'admin'` checks keep working when users hold several roles.
-function normalizeRoles(p) {
-  const roles = Array.isArray(p.roles) && p.roles.length ? p.roles : p.role ? [p.role] : []
-  const isAdmin = p.isAdmin === true || roles.includes('admin')
-  const role = isAdmin ? 'admin' : roles.includes(p.role) ? p.role : roles[0] || p.role || 'member'
-  return { ...p, roles, isAdmin, role }
-}
-
 // Delegated to the shared ref-counted org-users listener (one per org app-wide).
 export { subscribeOrgUsers } from '../../../shared/org/orgData'
 
 /** Live org document. */
 export function subscribeOrg(orgId, cb) {
   return onSnapshot(orgRef(orgId), (snap) => cb(snap.exists() ? { id: snap.id, ...snap.data() } : null))
-}
-
-/** Admin updates org-level settings. */
-export async function updateOrgSettings(orgId, updates, actor) {
-  await updateDoc(orgRef(orgId), updates)
-  await logAudit(orgId, actor, AUDIT.ORG_SETTINGS, {
-    target: 'org',
-    summary: `Updated org settings: ${Object.keys(updates).join(', ')}`,
-  })
-}
-
-export async function setUserStatus(uid, status, orgId, actor, userLabel) {
-  await updateDoc(userRef(uid), { status })
-  await logAudit(orgId, actor, AUDIT.USER_STATUS, {
-    target: 'user',
-    targetId: uid,
-    targetLabel: userLabel || uid,
-    summary: `Set status → ${status}`,
-  })
-}
-
-export async function setUserRole(uid, role, orgId, actor, userLabel) {
-  await updateDoc(userRef(uid), { role })
-  await logAudit(orgId, actor, AUDIT.USER_ROLE, {
-    target: 'user',
-    targetId: uid,
-    targetLabel: userLabel || uid,
-    summary: `Set role → ${role}`,
-  })
 }
 
 // ── QR mirror ──────────────────────────────────────────────────────────────────
@@ -429,54 +304,6 @@ export async function linkExtinguishersToSites(orgId, orgName, plan, actor) {
   return { linked: items.length, entityChanges: plan.entityChanges }
 }
 
-/** Bulk add many extinguishers in chunked batches. Returns count written. */
-export async function bulkAddExtinguishers(orgId, orgName, rows, actor) {
-  let written = 0
-  const allCreated = []
-  // Firestore batches max 500 ops; each row = 2 writes, so chunk by 200 rows.
-  for (let i = 0; i < rows.length; i += 200) {
-    const chunk = rows.slice(i, i + 200)
-    const batch = writeBatch(db)
-    const created = []
-    for (const data of chunk) {
-      const ref = doc(extCol(orgId))
-      // Reuse a QR code the site already has printed, when the upload supplied
-      // one; otherwise mint a fresh token.
-      const qrToken = data.qrToken || generateQrToken()
-      const ext = {
-        serialNo: data.serialNo || '',
-        type: data.type,
-        capacity: data.capacity,
-        entity: data.entity,
-        region: data.region || '',
-        centerName: data.centerName,
-        dateOfDeployment: data.dateOfDeployment || '',
-        dateOfNextRefill: data.dateOfNextRefill || '',
-        dateOfNextHPT: data.dateOfNextHPT || '',
-        // Migrated rows may arrive already flagged; a fresh row defaults to active.
-        status: data.status || STATUS.ACTIVE,
-        physicalDefects: Array.isArray(data.physicalDefects) ? data.physicalDefects : [],
-        deletedAt: null,
-        qrToken,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      }
-      batch.set(ref, ext)
-      batch.set(qrRef(qrToken), mirrorPayload(orgId, orgName, ref.id, ext))
-      created.push(ext)
-      allCreated.push(ext)
-      written++
-    }
-    await batch.commit()
-  }
-  // Stats update runs AFTER all data is safely committed, and never blocks it.
-  await bumpStats(orgId, accumulate(allCreated))
-  await logAudit(orgId, actor, AUDIT.EXT_BULK_CREATE, {
-    summary: `${written} extinguisher(s) added via bulk upload`,
-  })
-  return written
-}
-
 // Spec/date fields safe to overwrite on a CSV upsert (NOT status/defects/qrToken).
 const UPSERT_FIELDS = [
   'type',
@@ -597,22 +424,6 @@ export async function updateExtinguisher(orgId, orgName, id, updates, opts = {})
   }
 }
 
-/**
- * Soft-delete one extinguisher: mark deletedAt/deletedBy (recoverable from the
- * Recycle Bin) and remove the public QR mirror so scans stop resolving.
- */
-export async function deleteExtinguisher(orgId, id, qrToken, actor, label) {
-  const batch = writeBatch(db)
-  batch.update(extRef(orgId, id), {
-    deletedAt: serverTimestamp(),
-    deletedBy: actor?.name || '',
-  })
-  if (qrToken) batch.delete(qrRef(qrToken))
-  await batch.commit()
-  await recomputeStats(orgId).catch((e) => console.warn('[Fire Marshal] stats recompute skipped:', e?.message || e))
-  await logAudit(orgId, actor, AUDIT.EXT_DELETE, { targetId: id, targetLabel: label || '' })
-}
-
 /** Bulk soft-delete extinguishers (+ remove mirrors) by [{id, qrToken}]. */
 export async function bulkDeleteExtinguishers(orgId, items, actor) {
   for (let i = 0; i < items.length; i += 200) {
@@ -691,42 +502,12 @@ export async function backfillDeletedAt(orgId, list = []) {
 
 export const PAGE_SIZE = 50
 
-/**
- * One page of extinguishers via cursor pagination + server-side equality
- * filters. Returns { rows, nextCursor, hasMore }.
- *  - filters: { type, capacity, entity, region, status } (use FILTER_ALL to skip)
- *  - cursor: the last QueryDocumentSnapshot from the previous page (or null)
- * Excludes soft-deleted (deletedAt == null), newest first.
- * Requires composite indexes (deletedAt + the filtered field + createdAt) —
- * Firestore will surface a one-click index link for any missing combo.
- */
-export async function queryExtinguishersPage(orgId, { filters = {}, cursor = null, pageSize = PAGE_SIZE } = {}) {
-  const constraints = buildExtinguisherConstraints(filters).map((c) => where(c.field, c.op, c.value))
-  const parts = [...constraints, orderBy('createdAt', 'desc')]
-  if (cursor) parts.push(startAfter(cursor))
-  parts.push(limit(pageSize + 1)) // +1 sentinel to detect "has more"
-  const snap = await getDocs(query(extCol(orgId), ...parts))
-  const docs = snap.docs
-  const hasMore = docs.length > pageSize
-  const pageDocs = hasMore ? docs.slice(0, pageSize) : docs
-  return {
-    rows: pageDocs.map((d) => ({ id: d.id, ...d.data() })),
-    nextCursor: pageDocs.length ? pageDocs[pageDocs.length - 1] : null,
-    hasMore,
-  }
-}
-
 export async function getExtinguisher(orgId, id) {
   const snap = await getDoc(extRef(orgId, id))
   return snap.exists() ? { id, ...snap.data() } : null
 }
 
 // ── Public QR ───────────────────────────────────────────────────────────────────
-
-export async function getExtinguisherByToken(token) {
-  const snap = await getDoc(qrRef(token))
-  return snap.exists() ? { ...snap.data() } : null
-}
 
 // ── Reports (approval queue) ──────────────────────────────────────────────────
 

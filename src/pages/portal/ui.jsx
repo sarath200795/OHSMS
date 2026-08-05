@@ -35,16 +35,6 @@ export function SectionLabel({ className = '', children }) {
   )
 }
 
-/** A number over a caption, in a pressed well. */
-export function StatTile({ value, caption }) {
-  return (
-    <Inset className="px-3.5 py-3">
-      <p className="text-[26px] font-extrabold leading-none tracking-[-0.03em] text-ink-900">{value}</p>
-      <p className="mt-1 text-[11.5px] text-ink-500">{caption}</p>
-    </Inset>
-  )
-}
-
 /**
  * A progress ring drawn with conic-gradient rather than SVG.
  *

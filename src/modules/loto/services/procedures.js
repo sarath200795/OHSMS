@@ -1,13 +1,11 @@
 import {
   collection,
-  deleteDoc,
   doc,
   getDoc,
   onSnapshot,
   query,
   runTransaction,
   serverTimestamp,
-  setDoc,
   updateDoc,
   where,
   writeBatch,

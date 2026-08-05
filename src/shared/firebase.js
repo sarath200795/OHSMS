@@ -39,8 +39,6 @@ export const isFirebaseConfigured = USE_EMULATORS
 export const firebaseClientConfig = firebaseConfig
 export const emulatorAuthUrl = USE_EMULATORS ? `http://${EMU_HOST}:${EMU_AUTH_PORT}` : null
 
-export const usingEmulators = USE_EMULATORS
-
 if (!isFirebaseConfigured) {
   // eslint-disable-next-line no-console
   console.warn('[OHS MS] Firebase is not configured. Copy .env.example to .env.')

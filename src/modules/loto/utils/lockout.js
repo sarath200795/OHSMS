@@ -1,26 +1,6 @@
 import { numberIsolationPoints } from './codes'
 import { pointDeviceKeys } from '../constants/energySources'
 
-// Device hardware contributed by a group lockout, per the org's rules:
-//  - Group LOTO Box: 1st additional tech => +2 padlocks + 1 box;
-//                    each later tech    => +1 padlock.  (N members => N+1 padlocks, 1 box)
-//  - Hasp:           1st additional tech => +1 hasp + 1 padlock;
-//                    each later tech    => +1 padlock.  (N members => N padlocks, 1 hasp)
-export function groupLockDevices(groupLock) {
-  const res = {}
-  const members = groupLock?.active ? groupLock.members || [] : []
-  const n = members.length
-  if (!n) return res
-  if (groupLock.method === 'box') {
-    res.safety_padlock = n + 1
-    res.group_loto_box = 1
-  } else if (groupLock.method === 'hasp') {
-    res.hasp = 1
-    res.safety_padlock = n
-  }
-  return res
-}
-
 /**
  * Set of lock numbers currently applied across the given procedures — locked
  * isolation points + active group-lock members. Used to keep a lock from being
