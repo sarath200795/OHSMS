@@ -2,12 +2,14 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState } from 
 import { useAuth } from './AuthContext'
 import {
   subscribePermits,
+  subscribeObservations,
   subscribeOrgUsers,
   subscribeOrg,
   ensureOrgIndex,
   reconcilePermitStatus,
 } from '../lib/firestore'
 import { derivePermitStatus, STATUS } from '../lib/permitStatus'
+import { openUnsafeByPermit } from '../lib/observations'
 import { canActForTeam, TEAMS } from '../lib/permissions'
 
 const PermitContext = createContext(null)
@@ -16,6 +18,7 @@ const PermitContext = createContext(null)
 export function PermitProvider({ children }) {
   const { orgId, profile, isApprover } = useAuth()
   const [permits, setPermits] = useState([])
+  const [observations, setObservations] = useState([])
   const [users, setUsers] = useState([])
   const [org, setOrg] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -29,6 +32,7 @@ export function PermitProvider({ children }) {
     const done = () => { if (!ready) { ready = true; setLoading(false) } }
     const u1 = subscribePermits(orgId, (list) => { setPermits(list); done() })
     const u2 = subscribeOrgUsers(orgId, setUsers)
+    const u4 = subscribeObservations(orgId, setObservations)
     const u3 = subscribeOrg(orgId, (o) => {
       setOrg(o)
       if (o && o.name && orgIndexedRef.current !== orgId) {
@@ -36,7 +40,7 @@ export function PermitProvider({ children }) {
         ensureOrgIndex({ id: o.id || orgId, name: o.name })
       }
     })
-    return () => { u1(); u2(); u3() }
+    return () => { u1(); u2(); u3(); u4() }
   }, [orgId])
 
   // Auto-expire: persist storedStatus for permits whose live status drifted
@@ -59,7 +63,14 @@ export function PermitProvider({ children }) {
 
   const value = useMemo(() => {
     const now = Date.now()
-    const withStatus = permits.map((p) => ({ ...p, status: derivePermitStatus(p, now) }))
+    // Unanswered unsafe reports, joined on so the status can reflect them. They
+    // live in their own collection because the person raising one from a QR
+    // scan has no permission to touch the permit.
+    const openUnsafe = openUnsafeByPermit(observations)
+    const withStatus = permits.map((p) => {
+      const merged = { ...p, openUnsafeCount: openUnsafe.get(p.id) || 0 }
+      return { ...merged, status: derivePermitStatus(merged, now) }
+    })
     // Permits awaiting THIS user's team decision (and assigned to them, if assigned).
     const approvalQueue = withStatus.filter((p) => {
       if (p.status === STATUS.CLOSED) return false
@@ -84,8 +95,9 @@ export function PermitProvider({ children }) {
       permits: withStatus,
       pendingUsers: users.filter((u) => u.status === 'pending'),
       approvalQueue,
+      observations,
     }
-  }, [permits, users, org, loading, profile])
+  }, [permits, observations, users, org, loading, profile])
 
   return <PermitContext.Provider value={value}>{children}</PermitContext.Provider>
 }

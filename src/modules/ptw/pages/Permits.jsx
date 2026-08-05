@@ -18,6 +18,7 @@ const STATUS_FILTERS = [
   { key: STATUS.IN_PROGRESS, label: 'In Progress' },
   { key: STATUS.EXTENDED_IN_PROGRESS, label: 'Extended' },
   { key: STATUS.NOT_CLOSED, label: 'Not Closed' },
+  { key: STATUS.OPEN_WITH_OBSERVATIONS, label: 'Unsafe Reported' },
   { key: STATUS.CLOSED, label: 'Closed' },
   { key: STATUS.CLOSED_NONCOMPLIANCE, label: 'Non-Compliance' },
 ]

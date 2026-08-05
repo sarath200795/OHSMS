@@ -17,6 +17,7 @@ export const STATUS = {
   EXTENDED: 'extended',
   EXTENDED_IN_PROGRESS: 'extended_in_progress',
   NOT_CLOSED: 'not_closed',
+  OPEN_WITH_OBSERVATIONS: 'open_with_observations',
   CLOSED: 'closed',
   CLOSED_NONCOMPLIANCE: 'closed_noncompliance',
 }
@@ -28,6 +29,7 @@ export const STATUS_META = {
   [STATUS.EXTENDED]: { label: 'Extended', color: '#7c3aed' },
   [STATUS.EXTENDED_IN_PROGRESS]: { label: 'Extended & In Progress', color: '#7c3aed' },
   [STATUS.NOT_CLOSED]: { label: 'Not Closed / Expired', color: '#dc2626' },
+  [STATUS.OPEN_WITH_OBSERVATIONS]: { label: 'Open — Unsafe Observation Raised', color: '#ea580c' },
   [STATUS.CLOSED]: { label: 'Closed', color: '#334155' },
   [STATUS.CLOSED_NONCOMPLIANCE]: { label: 'Closed — Non-Compliance at work location', color: '#991b1b' },
 }
@@ -91,6 +93,17 @@ export function derivePermitStatus(permit, now = Date.now()) {
   if (permit.closedDueToObservation) return STATUS.CLOSED_NONCOMPLIANCE
   if (closureDone(permit)) return STATUS.CLOSED
 
+  // An unsafe observation reported by QR scan does not close the permit — only
+  // a signed-in decision does that — but it must be visible from the list
+  // rather than only from the observations page. It outranks the lifecycle
+  // states because a permit with an unanswered "this work is unsafe" against it
+  // is the one to look at first, whatever else is true of it.
+  //
+  // `openUnsafeCount` is joined on by PermitContext from the observations
+  // listener; it is not a stored field, so a permit read straight from
+  // Firestore simply never has it and this is skipped.
+  if (permit.openUnsafeCount > 0) return STATUS.OPEN_WITH_OBSERVATIONS
+
   if (!bothApproved(permit)) return STATUS.DRAFT
 
   const to = ms(effectiveValidTo(permit))
@@ -117,11 +130,14 @@ export function dashboardBuckets(permits = [], now = Date.now()) {
   const c = {
     open: 0, inProgress: 0, extended: 0,
     notClosed: 0, notClosedExtended: 0, notClosedPlain: 0,
-    closed: 0, rejected: 0,
+    withObservations: 0, closed: 0, rejected: 0,
   }
   for (const p of permits) {
     const s = derivePermitStatus(p, now)
     if (s === STATUS.CLOSED || s === STATUS.CLOSED_NONCOMPLIANCE) c.closed++
+    // Its own bucket. Falling through to `open` would count a permit with an
+    // unanswered unsafe report as one merely awaiting approval.
+    else if (s === STATUS.OPEN_WITH_OBSERVATIONS) c.withObservations++
     else if (s === STATUS.NOT_CLOSED) {
       // Segregate expired permits by whether they were extended before lapsing.
       c.notClosed++
