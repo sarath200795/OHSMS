@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { assessWeather, levelOf, isThunderstorm, BANDS } from './weatherRisk'
+import { assessWeather, levelOf, isThunderstorm, BANDS, summariseHazards } from './weatherRisk'
 
 const bandOf = (obs, key) => assessWeather(obs).hazards.find((h) => h.key === key)?.band ?? 'none'
 
@@ -181,5 +181,61 @@ describe('the overall verdict', () => {
       expect(h.value).toBeTruthy()
       expect(BANDS).toContain(h.band)
     }
+  })
+})
+
+describe('summariseHazards', () => {
+  const site = (obs) => assessWeather(obs)
+
+  it('names each kind of weather that is a problem, once', () => {
+    const out = summariseHazards([
+      site({ windKph: 55 }),
+      site({ windKph: 45 }),
+      site({ apparentTempC: 46 }),
+    ])
+    expect(out.map((h) => h.key)).toEqual(['wind', 'heat'])
+  })
+
+  it('counts how many sites show each one', () => {
+    const out = summariseHazards([site({ windKph: 55 }), site({ windKph: 45 }), site({ apparentTempC: 46 })])
+    expect(out.find((h) => h.key === 'wind').sites).toBe(2)
+    expect(out.find((h) => h.key === 'heat').sites).toBe(1)
+  })
+
+  it('reports a category at its worst band across the sites', () => {
+    // One site gusting into severe, another merely breezy.
+    const out = summariseHazards([site({ windKph: 30 }), site({ windKph: 70 })])
+    expect(out[0]).toMatchObject({ key: 'wind', band: 'severe', sites: 2 })
+  })
+
+  it('puts the worst category first, then the most widespread', () => {
+    const out = summariseHazards([
+      site({ uvIndex: 4 }), site({ uvIndex: 4 }), site({ uvIndex: 4 }),
+      site({ weatherCode: 95 }),
+    ])
+    expect(out[0].key).toBe('lightning')
+    expect(out[1]).toMatchObject({ key: 'uv', sites: 3 })
+  })
+
+  it('does not let one site count twice for the same category', () => {
+    const out = summariseHazards([site({ windKph: 60, gustKph: 80 })])
+    expect(out.filter((h) => h.key === 'wind')).toHaveLength(1)
+    expect(out[0].sites).toBe(1)
+  })
+
+  it('is empty when nothing is wrong anywhere', () => {
+    expect(summariseHazards([site({ apparentTempC: 21, windKph: 5 })])).toEqual([])
+    expect(summariseHazards([])).toEqual([])
+    expect(summariseHazards()).toEqual([])
+  })
+
+  it('ignores sites that have not been assessed', () => {
+    expect(summariseHazards([null, undefined, {}, site({ windKph: 55 })])).toHaveLength(1)
+  })
+
+  it('carries the label and level the UI renders', () => {
+    const [h] = summariseHazards([site({ weatherCode: 95 })])
+    expect(h.label).toBe('Thunderstorm')
+    expect(h.level).toBe(levelOf('severe'))
   })
 })

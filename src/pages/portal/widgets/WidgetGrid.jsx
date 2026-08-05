@@ -4,7 +4,7 @@ import { SlidersHorizontal, Check, X, RotateCcw, CloudSun } from 'lucide-react'
 import { Raised, SectionLabel } from '../ui'
 import { WIDGET_BY_KEY, DEFAULT_WIDGETS, widgetsByGroup } from './catalog'
 import { useAllSiteWeather } from '../../../modules/weather/lib/useAllSiteWeather'
-import { BAND_LABEL, levelOf, BANDS } from '../../../modules/weather/lib/weatherRisk'
+import { BAND_LABEL, levelOf, summariseHazards } from '../../../modules/weather/lib/weatherRisk'
 
 /**
  * The stats this person chose, and the control to change them.
@@ -79,11 +79,15 @@ function CountWidget({ w, data }) {
   )
 }
 
+const BAND_TONE = { none: '#16a34a', low: '#eab308', moderate: '#f97316', high: '#ef4444', severe: '#7f1d1d' }
+
 /**
- * The worst weather across the viewer's sites.
+ * The weather across the viewer's sites: how bad it is, and what kind.
  *
- * A count would be meaningless here, so this reports the band and where it is —
- * the same reading the weather module gives, so the two cannot disagree.
+ * A count would be meaningless here, so the headline is the worst band and
+ * beneath it every category present, each at its own worst band and carrying
+ * the number of sites showing it. The same reading the weather module gives, so
+ * the tile and the page cannot disagree.
  */
 function WeatherWidget({ w, sites = [] }) {
   const located = sites.filter((s) => Number.isFinite(s.lat) && Number.isFinite(s.lng))
@@ -96,24 +100,44 @@ function WeatherWidget({ w, sites = [] }) {
     if (!worst || levelOf(r.risk.band) > levelOf(worst.risk.band)) worst = { site: s, risk: r.risk }
   }
 
+  // Which kinds of weather are a problem, not just how bad the worst one is.
+  // Three sites in high wind and one in a thunderstorm is a different morning
+  // from four sites baking, and the band alone cannot tell them apart.
+  const categories = summariseHazards(located.map((s) => byId[s.id]?.risk).filter(Boolean))
+
   const band = worst?.risk.band || 'none'
-  const tone = { none: '#16a34a', low: '#eab308', moderate: '#f97316', high: '#ef4444', severe: '#7f1d1d' }[band]
   const waiting = done < total && !worst
 
   return (
     <Shell w={w}>
-      <span className="grid h-9 w-9 place-items-center rounded-xl text-white" style={{ background: tone }}>
+      <span className="grid h-9 w-9 place-items-center rounded-xl text-white" style={{ background: BAND_TONE[band] }}>
         <CloudSun size={17} strokeWidth={2.2} />
       </span>
       <p className="mt-3 text-[17px] font-extrabold leading-tight tracking-[-0.02em] text-ink-900">
         {located.length === 0 ? 'No mapped sites' : waiting ? <span className="text-ink-300">Checking…</span> : BAND_LABEL[band]}
       </p>
       <p className="mt-1.5 text-[12px] font-semibold leading-snug text-ink-700">{w.label}</p>
-      <p className="truncate text-[11px] text-ink-400">
-        {worst && BANDS.indexOf(band) > 0
-          ? `${worst.risk.hazards[0]?.label} · ${worst.site.name}`
-          : located.length === 0 ? 'Add coordinates to a site' : w.hint}
-      </p>
+
+      {categories.length > 0 ? (
+        <div className="mt-1.5 flex flex-wrap gap-1">
+          {categories.map((h) => (
+            <span
+              key={h.key}
+              title={`${h.label} at ${h.sites} site${h.sites === 1 ? '' : 's'}`}
+              className="inline-flex items-center gap-1 rounded-lg px-1.5 py-0.5 text-[10px] font-bold"
+              style={{ background: `${BAND_TONE[h.band]}1f`, color: BAND_TONE[h.band] }}
+            >
+              {h.label}
+              {/* The count only earns its space once more than one site shows it. */}
+              {h.sites > 1 && <span className="opacity-70">{h.sites}</span>}
+            </span>
+          ))}
+        </div>
+      ) : (
+        <p className="truncate text-[11px] text-ink-400">
+          {located.length === 0 ? 'Add coordinates to a site' : waiting ? w.hint : 'Nothing restricting outdoor work'}
+        </p>
+      )}
     </Shell>
   )
 }

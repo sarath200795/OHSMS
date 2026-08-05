@@ -228,3 +228,38 @@ export function assessWeather(obs = {}) {
 function num(v) {
   return typeof v === 'number' && Number.isFinite(v) ? v : null
 }
+
+/**
+ * Roll several sites' assessments into one list of what kinds of weather are a
+ * problem, and how widely.
+ *
+ * The single worst hazard answers "how bad is it" but not "what is it" — three
+ * sites in high wind and one in a thunderstorm is a different morning from four
+ * sites baking. So each category present is reported once, at its worst band,
+ * with the number of sites showing it.
+ *
+ * @param risks assessments (the result of assessWeather), one per site
+ * @returns [{ key, label, band, level, sites }] worst first, then most sites
+ */
+export function summariseHazards(risks = []) {
+  const byKey = new Map()
+  for (const r of risks) {
+    if (!r?.hazards) continue
+    // A site cannot count twice for the same category, however many readings
+    // produced it.
+    const seen = new Set()
+    for (const h of r.hazards) {
+      if (seen.has(h.key)) continue
+      seen.add(h.key)
+      const cur = byKey.get(h.key)
+      if (!cur) byKey.set(h.key, { key: h.key, label: h.label, band: h.band, sites: 1 })
+      else {
+        cur.sites += 1
+        if (levelOf(h.band) > levelOf(cur.band)) cur.band = h.band
+      }
+    }
+  }
+  return [...byKey.values()]
+    .map((h) => ({ ...h, level: levelOf(h.band) }))
+    .sort((a, b) => b.level - a.level || b.sites - a.sites || a.label.localeCompare(b.label))
+}
