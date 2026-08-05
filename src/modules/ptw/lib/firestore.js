@@ -24,6 +24,7 @@ import {
 } from 'firebase/firestore'
 import { db } from '../firebase'
 import { reserveDocId } from '../../../shared/docId/reserve'
+import { putFile, removeFile } from '../../../shared/storage'
 import { AUDIT } from './audit'
 import { computeWindow, derivePermitStatus } from './permitStatus'
 import { generateQrToken } from './qr'
@@ -242,17 +243,7 @@ export async function createPermit(orgId, data, actor) {
   // Attached files live in a subcollection (each ≤ ~750 KB base64) so the parent
   // permit doc stays well under Firestore's 1 MB limit.
   for (const d of data.documents || []) {
-    await addDoc(docCol(orgId, ref.id), {
-      key: d.key,
-      label: d.label || '',
-      mandatory: Boolean(d.mandatory),
-      fileName: d.fileName || '',
-      fileType: d.fileType || '',
-      fileData: d.fileData || '',
-      size: d.size || 0,
-      uploadedByName: actor?.name || '',
-      uploadedAt: serverTimestamp(),
-    })
+    await addDoc(docCol(orgId, ref.id), await permitDocPayload(orgId, d, actor))
   }
   // Public QR mirror so the permit is scannable immediately.
   await setDoc(qrRef(qrToken), fullMirror(orgId, actor?.orgName, ref.id, permit)).catch((e) =>
@@ -366,22 +357,40 @@ export async function createPublicObservation(orgId, data) {
 // ── Permit documents (base64 files in a subcollection) ───────────────────────
 export function subscribePermitDocuments(orgId, permitId, cb) {
   const q = query(docCol(orgId, permitId), orderBy('uploadedAt', 'asc'))
-  return onSnapshot(q, (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))))
+  // fileData is normalised at the seam so the download links keep working for
+  // both eras: inline base64 (legacy) and cloud URL (new).
+  return onSnapshot(q, (snap) => cb(snap.docs.map((d) => {
+    const data = d.data()
+    return { id: d.id, ...data, fileData: data.fileData || data.fileUrl || '' }
+  })))
 }
 
-/** Attach a document to an existing permit; updates attachedDocKeys. */
-export async function addPermitDocument(orgId, permitId, meta, actor) {
-  await addDoc(docCol(orgId, permitId), {
+/**
+ * The stored shape of one attached document. Cloud storage first — the permit
+ * subcollection doc then carries a URL instead of up to ~750KB of base64 —
+ * falling back to inline when the bucket is unavailable, so attaching a
+ * document never fails harder than it did before storage existed.
+ */
+async function permitDocPayload(orgId, meta, actor) {
+  const up = meta.fileData ? await putFile(orgId, 'permit-documents', meta.fileData, meta.fileName) : null
+  return {
     key: meta.key || 'extra',
     label: meta.label || '',
     mandatory: Boolean(meta.mandatory),
     fileName: meta.fileName || '',
     fileType: meta.fileType || '',
-    fileData: meta.fileData || '',
+    fileData: up ? '' : meta.fileData || '',
+    fileUrl: up?.url || '',
+    filePath: up?.path || '',
     size: meta.size || 0,
     uploadedByName: actor?.name || '',
     uploadedAt: serverTimestamp(),
-  })
+  }
+}
+
+/** Attach a document to an existing permit; updates attachedDocKeys. */
+export async function addPermitDocument(orgId, permitId, meta, actor) {
+  await addDoc(docCol(orgId, permitId), await permitDocPayload(orgId, meta, actor))
   if (meta.key) {
     await updateDoc(permitRef(orgId, permitId), {
       attachedDocKeys: arrayUnion(meta.key), updatedAt: serverTimestamp(),
@@ -393,6 +402,11 @@ export async function addPermitDocument(orgId, permitId, meta, actor) {
 }
 
 export async function deletePermitDocument(orgId, permitId, docId, actor, label) {
+  // The doc is the only record of its cloud path.
+  try {
+    const snap = await getDoc(docRef(orgId, permitId, docId))
+    if (snap.data()?.filePath) removeFile(snap.data().filePath)
+  } catch { /* orphan tolerated */ }
   await deleteDoc(docRef(orgId, permitId, docId))
   await logAudit(orgId, actor, AUDIT.PERMIT_EDIT, {
     targetId: permitId, summary: `Removed document: ${label || docId}`,
@@ -465,7 +479,10 @@ export async function deletePermit(orgId, permit, actor) {
   // Attachments live in a subcollection, which deleting the parent leaves
   // orphaned and unreachable.
   const docs = await getDocs(docCol(orgId, id))
-  for (const d of docs.docs) await deleteDoc(d.ref)
+  for (const d of docs.docs) {
+    if (d.data().filePath) removeFile(d.data().filePath)
+    await deleteDoc(d.ref)
+  }
 
   await deleteDoc(permitRef(orgId, id))
 }

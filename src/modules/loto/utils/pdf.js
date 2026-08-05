@@ -44,12 +44,31 @@ const M = 36
  * template: header info block, application-process strip, a lockout-steps
  * table (colored energy cells + isolation photos), and an OSHA procedure page.
  */
+async function resolveImageSrc(src) {
+  if (!src || String(src).startsWith('data:')) return src || null
+  try {
+    const blob = await (await fetch(src)).blob()
+    return await new Promise((resolve, reject) => {
+      const r = new FileReader()
+      r.onload = () => resolve(r.result)
+      r.onerror = reject
+      r.readAsDataURL(blob)
+    })
+  } catch {
+    return null // a missing photo degrades to the '—' cell, not a broken PDF
+  }
+}
+
 export async function generateProcedurePdf(procedure, photos = {}) {
   const doc = new jsPDF({ unit: 'pt', format: 'letter' })
   const points = numberIsolationPoints(procedure.isolationPoints || [])
   const qr = await qrDataUrl(procedureScanUrl(procedure.id), { scale: 8 })
-  // Photos are data URLs from Firestore (no Storage). Fall back to legacy photoUrl.
-  const photoData = points.map((p) => photos[p.key] || p.photo || null)
+  // Photos may be inline data: URLs (legacy) or cloud https URLs. jsPDF's
+  // addImage only takes image data, so remote ones are fetched down first —
+  // Firebase download URLs answer simple GETs with open CORS.
+  const photoData = await Promise.all(
+    points.map((p) => resolveImageSrc(photos[p.key] || p.photo || null))
+  )
 
   // Energy tally e.g. "Electrical-02, Mechanical-01"
   const tally = {}

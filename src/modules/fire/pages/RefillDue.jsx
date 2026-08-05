@@ -86,8 +86,8 @@ export default function RefillDue() {
                 </button>
               )}
               {hasQuotation(ext) && (
-                ext.quotation?.fileData ? (
-                  <a href={ext.quotation.fileData} target="_blank" rel="noreferrer" className="chip bg-cyan-50 text-cyan-700 hover:underline" title={`Quoted ${ext.quotation?.amount ?? ''} · ${ext.quotation?.vendor || ''} — view document`}>
+                (ext.quotation?.fileData || ext.quotation?.fileUrl) ? (
+                  <a href={ext.quotation.fileData || ext.quotation.fileUrl} target="_blank" rel="noreferrer" className="chip bg-cyan-50 text-cyan-700 hover:underline" title={`Quoted ${ext.quotation?.amount ?? ''} · ${ext.quotation?.vendor || ''} — view document`}>
                     <CheckCircle2 size={12} /> Quoted · View
                   </a>
                 ) : (

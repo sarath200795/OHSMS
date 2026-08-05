@@ -25,6 +25,7 @@ import { logAudit } from './firestore'
 import { AUDIT, diffSummary } from './audit'
 import { statsDeltaFor, emptyStats, BUCKETS } from './stats'
 import { reserveDocId } from '../../../shared/docId/reserve'
+import { putFile, removeFile } from '../../../shared/storage'
 
 const BUCKET_NAMES = Object.keys(BUCKETS)
 
@@ -220,6 +221,7 @@ export async function restoreIncident(orgId, id, actor) {
 export async function purgeIncident(orgId, id, actor, label) {
   // Remove photos subcollection then the doc.
   const photos = await getDocs(photoCol(orgId, id))
+  photos.docs.forEach((d) => { if (d.data().path) removeFile(d.data().path) })
   const batch = writeBatch(db)
   photos.docs.forEach((d) => batch.delete(d.ref))
   batch.delete(incidentRef(orgId, id))
@@ -227,12 +229,18 @@ export async function purgeIncident(orgId, id, actor, label) {
   await logAudit(orgId, actor, AUDIT.INCIDENT_PURGE, { target: 'incident', targetId: id, targetLabel: label || id })
 }
 
-// ── Photos / medical records (base64 subcollection) ───────────────────────────
+// ── Photos / medical records subcollection ────────────────────────────────────
 export async function addIncidentPhoto(orgId, id, photo) {
+  // Cloud first; the photo document then holds a URL instead of the image.
+  // putFile returning null (bucket not enabled, offline) keeps the legacy
+  // inline path, so evidence upload never fails harder than it used to.
+  const up = photo.dataUrl ? await putFile(orgId, 'incident-photos', photo.dataUrl, photo.name) : null
   const ref = await addDoc(photoCol(orgId, id), {
     name: photo.name || '',
     type: photo.type || '',
-    dataUrl: photo.dataUrl,
+    dataUrl: up ? '' : photo.dataUrl,
+    url: up?.url || '',
+    path: up?.path || '',
     size: photo.size || 0,
     caption: photo.caption || '',
     kind: photo.kind || 'photo', // 'photo' | 'medical_record' | 'diagram'
@@ -245,10 +253,20 @@ export async function addIncidentPhoto(orgId, id, photo) {
 
 export function subscribeIncidentPhotos(orgId, id, cb) {
   const q = query(photoCol(orgId, id), orderBy('uploadedAt', 'asc'))
-  return onSnapshot(q, (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))))
+  // Normalised at the seam: every renderer (gallery, report doc, PDF) reads
+  // .dataUrl, whichever era the photo was saved in.
+  return onSnapshot(q, (snap) => cb(snap.docs.map((d) => {
+    const data = d.data()
+    return { id: d.id, ...data, dataUrl: data.dataUrl || data.url || '' }
+  })))
 }
 
 export async function deleteIncidentPhoto(orgId, id, photoId) {
+  // The doc is the only thing that remembers the cloud path — read it first.
+  try {
+    const snap = await getDoc(photoRef(orgId, id, photoId))
+    if (snap.data()?.path) removeFile(snap.data().path)
+  } catch { /* orphan tolerated */ }
   await deleteDoc(photoRef(orgId, id, photoId))
   await updateDoc(incidentRef(orgId, id), { photoCount: increment(-1), updatedAt: serverTimestamp() })
 }

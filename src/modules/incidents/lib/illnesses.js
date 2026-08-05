@@ -26,6 +26,7 @@ import { db } from '../firebase'
 import { logAudit } from './firestore'
 import { AUDIT, diffSummary } from './audit'
 import { reserveDocId } from '../../../shared/docId/reserve'
+import { putFile, removeFile } from '../../../shared/storage'
 
 const illnessCol = (orgId) => collection(db, 'organizations', orgId, 'illnesses')
 const illnessRef = (orgId, id) => doc(db, 'organizations', orgId, 'illnesses', id)
@@ -145,6 +146,7 @@ export async function restoreIllness(orgId, id, actor) {
 
 export async function purgeIllness(orgId, id, actor, label) {
   const files = await getDocs(fileCol(orgId, id))
+  files.docs.forEach((d) => { if (d.data().path) removeFile(d.data().path) })
   const batch = writeBatch(db)
   files.docs.forEach((d) => batch.delete(d.ref))
   batch.delete(illnessRef(orgId, id))
@@ -154,10 +156,14 @@ export async function purgeIllness(orgId, id, actor, label) {
 
 // ── Files (base64 subcollection) ──────────────────────────────────────────────
 export async function addIllnessFile(orgId, id, file) {
+  // Same cloud-first-with-inline-fallback contract as incident photos.
+  const up = file.dataUrl ? await putFile(orgId, 'illness-files', file.dataUrl, file.name) : null
   const ref = await addDoc(fileCol(orgId, id), {
     name: file.name || '',
     type: file.type || '',
-    dataUrl: file.dataUrl,
+    dataUrl: up ? '' : file.dataUrl,
+    url: up?.url || '',
+    path: up?.path || '',
     size: file.size || 0,
     caption: file.caption || '',
     uploadedBy: file.uploadedBy || '',
@@ -169,10 +175,17 @@ export async function addIllnessFile(orgId, id, file) {
 
 export function subscribeIllnessFiles(orgId, id, cb) {
   const q = query(fileCol(orgId, id), orderBy('uploadedAt', 'asc'))
-  return onSnapshot(q, (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))))
+  return onSnapshot(q, (snap) => cb(snap.docs.map((d) => {
+    const data = d.data()
+    return { id: d.id, ...data, dataUrl: data.dataUrl || data.url || '' }
+  })))
 }
 
 export async function deleteIllnessFile(orgId, id, fileId) {
+  try {
+    const snap = await getDoc(fileRef(orgId, id, fileId))
+    if (snap.data()?.path) removeFile(snap.data().path)
+  } catch { /* orphan tolerated */ }
   await deleteDoc(fileRef(orgId, id, fileId))
   await updateDoc(illnessRef(orgId, id), { fileCount: increment(-1), updatedAt: serverTimestamp() })
 }

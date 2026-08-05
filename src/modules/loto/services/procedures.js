@@ -11,10 +11,50 @@ import {
   writeBatch,
 } from 'firebase/firestore'
 import { db } from '../firebase/config'
+import { putFile, removeFile } from '../../../shared/storage'
 import { PROCEDURE_STATUS, computeLockSummary } from '../constants/procedures'
 
 const COL = 'procedures'
 const PHOTOS = 'procedurePhotos'
+
+/**
+ * Move fresh captures (data: URLs) to cloud storage; stored values become
+ * { url, path } objects. Values that are already https strings are re-matched
+ * against the previous stored map so their paths survive an edit round-trip
+ * (the read seam hands pages plain URLs, and pages hand them straight back).
+ * Anything unmatched stays inline — the pre-storage behaviour.
+ */
+async function resolvePhotoMap(orgId, incoming = {}, prevRaw = {}) {
+  const out = {}
+  for (const [key, v] of Object.entries(incoming)) {
+    if (!v) continue
+    if (typeof v === 'object' && v.url) { out[key] = { url: v.url, path: v.path || '' }; continue }
+    const s = String(v)
+    if (s.startsWith('data:')) {
+      const up = await putFile(orgId, 'loto-photos', s, key + '.jpg')
+      out[key] = up ? { url: up.url, path: up.path } : s
+      continue
+    }
+    const prev = prevRaw[key]
+    out[key] = (prev && typeof prev === 'object' && prev.url === s) ? prev : s
+  }
+  // Cloud files dropped or replaced in this edit have nothing left pointing at
+  // them once the new map is written.
+  for (const [key, v] of Object.entries(prevRaw)) {
+    if (v && typeof v === 'object' && v.path) {
+      const kept = out[key]
+      if (!(kept && typeof kept === 'object' && kept.path === v.path)) removeFile(v.path)
+    }
+  }
+  return out
+}
+
+async function rawPhotoMap(id) {
+  try {
+    const snap = await getDoc(doc(db, PHOTOS, id))
+    return snap.exists() ? snap.data().photos || {} : {}
+  } catch { return {} }
+}
 const EVENTS = 'lotoEvents'
 
 /** Pre-generate a procedure document id so a draft can be referenced early. */
@@ -30,6 +70,7 @@ function sanitizePoints(points = []) {
 
 /** Create a brand-new procedure (status: draft) + its photos doc. */
 export async function createProcedure(id, data, user, photos = {}) {
+  const resolvedPhotos = await resolvePhotoMap(data.orgId, photos, {})
   const points = sanitizePoints(data.isolationPoints || [])
   const batch = writeBatch(db)
   batch.set(doc(db, COL, id), {
@@ -48,7 +89,7 @@ export async function createProcedure(id, data, user, photos = {}) {
   })
   batch.set(doc(db, PHOTOS, id), {
     orgId: data.orgId,
-    photos: photos || {},
+    photos: resolvedPhotos,
     updatedAt: serverTimestamp(),
   })
   await batch.commit()
@@ -57,6 +98,7 @@ export async function createProcedure(id, data, user, photos = {}) {
 
 /** Save a revision: bumps revision, resets to draft, replaces photos. */
 export async function reviseProcedure(id, data, user, photos = {}) {
+  const resolvedPhotos = await resolvePhotoMap(data.orgId, photos, await rawPhotoMap(id))
   const snap = await getDoc(doc(db, COL, id))
   const current = snap.data() || {}
   const points = sanitizePoints(data.isolationPoints || [])
@@ -76,7 +118,7 @@ export async function reviseProcedure(id, data, user, photos = {}) {
   })
   batch.set(doc(db, PHOTOS, id), {
     orgId: data.orgId,
-    photos: photos || {},
+    photos: resolvedPhotos,
     updatedAt: serverTimestamp(),
   })
   await batch.commit()
@@ -85,18 +127,26 @@ export async function reviseProcedure(id, data, user, photos = {}) {
 export async function deleteProcedure(procedure) {
   const batch = writeBatch(db)
   batch.delete(doc(db, COL, procedure.id))
+  // Cloud photo files go with the photos doc — it is their only index.
+  const raw = await rawPhotoMap(procedure.id)
+  for (const v of Object.values(raw)) {
+    if (v && typeof v === 'object' && v.path) removeFile(v.path)
+  }
   batch.delete(doc(db, PHOTOS, procedure.id))
   await batch.commit()
 }
 
-/** Photos map { [pointKey]: dataUrl } for a procedure (empty object if none). */
+/**
+ * Photos map { [pointKey]: src } for a procedure (empty object if none).
+ * Normalised to plain strings — inline data: URL or cloud https URL — so every
+ * consumer (point editor, operate view, PDF) keeps its contract from before
+ * storage existed.
+ */
 export async function getProcedurePhotos(id) {
-  try {
-    const snap = await getDoc(doc(db, PHOTOS, id))
-    return snap.exists() ? snap.data().photos || {} : {}
-  } catch {
-    return {}
-  }
+  const raw = await rawPhotoMap(id)
+  const out = {}
+  for (const [k, v] of Object.entries(raw)) out[k] = typeof v === 'object' ? v.url : v
+  return out
 }
 
 export async function sendForApproval(id) {

@@ -39,6 +39,7 @@ const writeBatch = (...args) => { assertWritable(); return _writeBatch(...args) 
 import { generateQrToken } from './qr'
 import { STATUS, REFILL_DEFECT_KEYS, DEFECT_BY_KEY } from './constants'
 import { lockId, duplicateDefectMessage } from './defectLock'
+import { putFile, removeFile } from '../../../shared/storage'
 import { reserveDocId } from '../../../shared/docId/reserve'
 import { AUDIT, diffSummary } from './audit'
 import { statsDeltaFor, accumulate } from './stats'
@@ -666,6 +667,14 @@ function actionStamp(actorName, label) {
  * extinguisher doc; cleared when the cycle completes.
  */
 export async function submitQuotation(orgId, orgName, id, { amount, vendor, ref, notes, fileName, fileType, fileData }, actorName) {
+  // Resubmitting replaces the previous quotation; its cloud file would be
+  // orphaned with nothing left remembering the path.
+  const prev = await getExtinguisher(orgId, id)
+  if (prev?.quotation?.filePath) removeFile(prev.quotation.filePath)
+
+  // The document itself goes to cloud storage when available; the extinguisher
+  // doc then carries a URL instead of the base64 payload.
+  const up = fileData ? await putFile(orgId, 'quotations', fileData, fileName) : null
   const quotation = {
     amount: Number(amount) || 0,
     vendor: vendor || '',
@@ -673,7 +682,9 @@ export async function submitQuotation(orgId, orgName, id, { amount, vendor, ref,
     notes: notes || '',
     fileName: fileName || '',
     fileType: fileType || '',
-    fileData: fileData || null, // base64 data URL (≤~700KB) or null
+    fileData: up ? null : fileData || null, // legacy inline fallback (≤~700KB)
+    fileUrl: up?.url || null,
+    filePath: up?.path || null,
     submittedAt: new Date().toISOString().slice(0, 10),
     submittedBy: actorName || '',
   }
@@ -705,6 +716,8 @@ export async function markRefilledAndClosed(orgId, orgName, id, { dateOfNextRefi
   }, { actor: { name: actorName }, action: AUDIT.WF_REFILLED_CLOSED, summary: `Refilled & closed (next refill ${dateOfNextRefill}, next HPT ${dateOfNextHPT})` })
   // A refill clears every defect, so every one of them becomes reportable again.
   await releaseDefectLocks(orgId, id, before?.physicalDefects || [])
+  // The cleared quotation's cloud file goes with it.
+  if (before?.quotation?.filePath) removeFile(before.quotation.filePath)
 }
 
 /** Resolve (clear) physical defects without a refill. */
@@ -718,6 +731,7 @@ export async function resolveDefects(orgId, orgName, id, remainingDefects = [], 
   // Only the ones actually cleared — a defect left on the unit stays locked.
   const kept = new Set(remainingDefects)
   await releaseDefectLocks(orgId, id, (before?.physicalDefects || []).filter((k) => !kept.has(k)))
+  if (before?.quotation?.filePath) removeFile(before.quotation.filePath)
 }
 
 // ── Safety signage inventory (org-scoped, site-wise) ──────────────────────────
@@ -811,8 +825,13 @@ export async function addMockDrill(orgId, data, actor) {
   payload.docId = await reserveDocId(orgId, 'drills')
   const ref = await addDoc(drillCol(orgId), payload)
   // Evidence photos, one doc each (fetched on demand when viewing / printing).
+  // Cloud storage first — the photo doc then holds a URL instead of ~700KB of
+  // base64 — falling back to the inline form when the bucket is unavailable.
   for (const dataUrl of valid) {
-    await addDoc(drillPhotoCol(orgId, ref.id), { dataUrl, createdAt: serverTimestamp() })
+    const up = await putFile(orgId, 'drill-evidence', dataUrl, 'evidence.jpg')
+    await addDoc(drillPhotoCol(orgId, ref.id), up
+      ? { url: up.url, path: up.path, createdAt: serverTimestamp() }
+      : { dataUrl, createdAt: serverTimestamp() })
   }
   await logAudit(orgId, actor, 'mockdrill.create', {
     target: 'mockdrill',
@@ -823,16 +842,27 @@ export async function addMockDrill(orgId, data, actor) {
   return ref.id
 }
 
-/** Fetch a mock drill's evidence photos on demand. Returns [{ id, dataUrl }]. */
+/**
+ * Fetch a mock drill's evidence photos on demand. Returns [{ id, dataUrl }] —
+ * the seam normalises cloud photos onto the same field, so every renderer and
+ * the PDF keep reading `.dataUrl` whichever era the photo was saved in.
+ */
 export async function getMockDrillPhotos(orgId, drillId) {
   const snap = await getDocs(drillPhotoCol(orgId, drillId))
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+  return snap.docs.map((d) => {
+    const data = d.data()
+    return { id: d.id, path: data.path || '', dataUrl: data.dataUrl || data.url || '' }
+  })
 }
 
 export async function deleteMockDrill(orgId, id, actor, label) {
-  // Remove evidence photos first (non-fatal if it fails).
+  // Remove evidence photos first (non-fatal if it fails). Cloud copies go too —
+  // a photo doc is the only thing that remembers its storage path.
   try {
     const snap = await getDocs(drillPhotoCol(orgId, id))
+    for (const d of snap.docs) {
+      if (d.data().path) removeFile(d.data().path)
+    }
     await Promise.all(snap.docs.map((d) => deleteDoc(d.ref)))
   } catch (e) {
     console.warn('[Fire Marshal] drill photo cleanup skipped:', e?.message || e)

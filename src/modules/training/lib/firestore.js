@@ -88,7 +88,8 @@ const cleanCourse = (data) => ({
   mandatory: !!data.mandatory,
   description: (data.description || '').trim(),
   content: cleanContent(data.content),
-  thumbnail: data.thumbnail || '', // small data-URL image for the course card
+  thumbnail: data.thumbnail || '', // data-URL (legacy) or cloud URL for the course card
+  thumbnailPath: data.thumbnailPath || '',
 })
 
 export async function createCourse(orgId, data, actor) {
@@ -123,6 +124,7 @@ export async function deleteCourse(orgId, id, actor, label) {
     for (const c of snap.data()?.content || []) {
       if (c.path) removeFile(c.path)
     }
+    if (snap.data()?.thumbnailPath) removeFile(snap.data().thumbnailPath)
   } catch { /* orphans tolerated */ }
   await deleteDoc(courseRef(orgId, id))
   await logAudit(orgId, actor, 'training.course_delete', {

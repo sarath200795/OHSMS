@@ -11,7 +11,7 @@ import { useTraining } from '../context/TrainingContext'
 import { createCourse, updateCourse, deleteCourse, COURSE_CATEGORIES } from '../lib/firestore'
 import { DELIVERY_MODES } from '../lib/sessions'
 
-const EMPTY = { name: '', category: 'Induction', deliveryMode: 'module', validityMonths: 12, mandatory: false, description: '', content: [], thumbnail: '' }
+const EMPTY = { name: '', category: 'Induction', deliveryMode: 'module', validityMonths: 12, mandatory: false, description: '', content: [], thumbnail: '', thumbnailPath: '' }
 
 const MAX_FILE_BYTES = 700 * 1024
 
@@ -31,6 +31,7 @@ export default function Courses() {
       name: c.name, category: c.category || 'Other', deliveryMode: c.deliveryMode || 'module', validityMonths: c.validityMonths ?? 0,
       mandatory: !!c.mandatory, description: c.description || '', content: c.content || [],
       thumbnail: c.thumbnail || '',
+      thumbnailPath: c.thumbnailPath || '',
     })
     setNewLink({ label: '', url: '' })
     setEditing(c)
@@ -42,9 +43,15 @@ export default function Courses() {
     e.target.value = ''
     if (!file) return
     if (!file.type.startsWith('image/')) return toast.error('Pick an image file')
+    if (file.size > 2 * 1024 * 1024) return toast.error('Thumbnail too large — keep it under 2 MB')
+    // Cloud first: the course list is subscribed by everyone, and inline
+    // thumbnails ride along on every one of those reads. Inline stays as the
+    // fallback, back under its old cap because it lives inside the document.
+    const up = await putFile(orgId, 'course-thumbnails', file)
+    if (up) return setForm((f) => ({ ...f, thumbnail: up.url, thumbnailPath: up.path }))
     if (file.size > 250 * 1024) return toast.error('Thumbnail too large — keep it under 250 KB')
     const dataUrl = await fileToDataUrl(file)
-    setForm((f) => ({ ...f, thumbnail: dataUrl }))
+    setForm((f) => ({ ...f, thumbnail: dataUrl, thumbnailPath: '' }))
   }
 
   // ── Learning material (content) editing ──
