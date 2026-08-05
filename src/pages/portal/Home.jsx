@@ -13,7 +13,6 @@ import {
 } from 'recharts'
 import {
   AlertTriangle, ArrowRight, MapPin, Building2, ScrollText, UsersRound, Settings, BarChart3,
-  FireExtinguisher, HeartPulse, BellRing, GraduationCap, Signpost,
 } from 'lucide-react'
 import { useAuth } from '../../shared/auth/AuthContext'
 import { subscribeCollection, subscribeOrgUsers } from '../../shared/org/orgData'
@@ -25,6 +24,10 @@ import { MODULES } from '../../shared/modules/registry'
 import { Raised, Inset, SectionLabel } from './ui'
 import { myActions } from './myWork'
 import { portalStats, pendingWork } from './portalStats'
+import WidgetGrid from './widgets/WidgetGrid'
+import { useWidgetPrefs } from './widgets/useWidgetPrefs'
+import { dashboardBuckets } from '../../modules/ptw/lib/permitStatus'
+import { openUnsafeByPermit } from '../../modules/ptw/lib/observations'
 import ModuleLogo3D, { has3DLogo } from './ModuleLogo3D'
 
 // Same logo gradients the admin hub uses, so a module is recognisable by its
@@ -121,6 +124,19 @@ function Tile({ to, icon: Icon, gradient, label, title, delay = 0, logoKey }) {
   )
 }
 
+/**
+ * Attach each permit's count of unanswered unsafe observations.
+ *
+ * The permits module does this in its own context, which the portal does not
+ * mount — so it is repeated here rather than left out. Without it the portal
+ * would count a permit with an unsafe report against it as merely open, while
+ * the permits page shows it flagged.
+ */
+function withUnsafe(permits = [], observations = []) {
+  const counts = openUnsafeByPermit(observations)
+  return permits.map((p) => ({ ...p, openUnsafeCount: counts.get(p.id) || 0 }))
+}
+
 const greeting = (d = new Date()) => {
   const h = d.getHours()
   if (h < 12) return 'Good morning'
@@ -132,6 +148,7 @@ export default function PortalHome() {
   const { orgId, profile, isAdmin } = useAuth()
   const navigate = useNavigate()
   const sites = useAccessibleSites()
+  const { keys: widgetKeys, save: saveWidgets } = useWidgetPrefs()
 
   const [siteId, setSiteId] = useState('all')
   const [extinguishers, setExt] = useState([])
@@ -142,6 +159,10 @@ export default function PortalHome() {
   const [assignments, setAssignments] = useState([])
   const [users, setUsers] = useState([])
   const [actions, setActions] = useState([])
+  const [meetings, setMeetings] = useState([])
+  const [drills, setDrills] = useState([])
+  const [permits, setPermits] = useState([])
+  const [observations, setObservations] = useState([])
 
   useEffect(() => {
     if (!orgId) return undefined
@@ -154,6 +175,10 @@ export default function PortalHome() {
       subscribeAssignments(orgId, setAssignments),
       subscribeOrgUsers(orgId, setUsers),
       subscribeActions(orgId, setActions),
+      subscribeCollection(orgId, 'consultations', setMeetings),
+      subscribeCollection(orgId, 'mockDrills', setDrills),
+      subscribeCollection(orgId, 'permits', setPermits),
+      subscribeCollection(orgId, 'observations', setObservations),
     ]
     return () => unsubs.forEach((u) => u && u())
   }, [orgId])
@@ -165,8 +190,9 @@ export default function PortalHome() {
   const stats = useMemo(
     () => portalStats({
       sites, siteId: activeSite, extinguishers, aeds, fas, signages, incidents, assignments, users,
+      meetings, drills, permits,
     }),
-    [sites, activeSite, extinguishers, aeds, fas, signages, incidents, assignments, users]
+    [sites, activeSite, extinguishers, aeds, fas, signages, incidents, assignments, users, meetings, drills, permits]
   )
 
   const mine = useMemo(() => myActions(actions, profile), [actions, profile])
@@ -189,14 +215,23 @@ export default function PortalHome() {
     ? `${sites.length} site${sites.length === 1 ? '' : 's'} you can see`
     : sites.find((s) => s.id === activeSite)?.name
 
-  const KPIS = [
-    { key: 'training', icon: GraduationCap, label: 'Training compliance', value: fmtPct(stats.trainingCompliance), sub: `${stats.trainingTotal} assigned`, tone: '#8fbc74' },
-    { key: 'ext', icon: FireExtinguisher, label: 'Fire extinguishers', value: stats.counts.extinguishers, sub: 'deployed', tone: '#dd5a41' },
-    { key: 'aed', icon: HeartPulse, label: 'AED units', value: stats.counts.aeds, sub: 'deployed', tone: '#7fc4bb' },
-    { key: 'fas', icon: BellRing, label: 'Fire alarm devices', value: stats.counts.fas, sub: 'deployed', tone: '#e8a33d' },
-    { key: 'signage', icon: Signpost, label: 'Signage compliance', value: fmtPct(stats.signageCompliance), sub: `${stats.signageTotal} checked`, tone: '#8ba7bd' },
-    { key: 'incidents', icon: AlertTriangle, label: 'Incidents', value: stats.counts.incidents, sub: 'recorded', tone: '#a855f7' },
-  ]
+  // Everything a widget can ask for, already scoped. Widgets read from this
+  // rather than from the raw collections, so none of them can reach around the
+  // scoping that portalStats applied.
+  const widgetData = useMemo(() => ({
+    stats,
+    extinguishers: extinguishers.length ? stats.scoped.extinguishers : null,
+    aeds: aeds.length ? stats.scoped.aeds : null,
+    fas: fas.length ? stats.scoped.fas : null,
+    meetings: meetings.length ? stats.counts.meetings : null,
+    drills: drills.length ? stats.counts.drills : null,
+    // Joined the same way the permits module does it, or the portal would
+    // count a permit with an unanswered unsafe report as merely open while the
+    // permits page flags it — two screens disagreeing about the same permit.
+    permits: permits.length ? dashboardBuckets(withUnsafe(stats.scoped.permits, observations)) : null,
+    myOpenActions: actions.length ? open.length : null,
+    myPendingTraining: assignments.length ? pending.training.length : null,
+  }), [stats, extinguishers, aeds, fas, meetings, drills, permits, observations, actions, assignments, open, pending])
 
   return (
     <div className="animate-fade-in-up">
@@ -290,19 +325,7 @@ export default function PortalHome() {
         </Raised>
       </div>
 
-      <SectionLabel className="mb-3">How are my sites doing?</SectionLabel>
-      <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-        {KPIS.map((k) => (
-          <Raised key={k.key} className="p-4">
-            <span className="grid h-9 w-9 place-items-center rounded-xl text-white" style={{ background: k.tone }}>
-              <k.icon size={17} strokeWidth={2.2} />
-            </span>
-            <p className="mt-3 text-[26px] font-extrabold leading-none tracking-[-0.03em] text-ink-900">{k.value}</p>
-            <p className="mt-1.5 text-[12px] font-semibold leading-snug text-ink-700">{k.label}</p>
-            <p className="text-[11px] text-ink-400">{k.sub}</p>
-          </Raised>
-        ))}
-      </div>
+      <WidgetGrid keys={widgetKeys} onSave={saveWidgets} data={widgetData} sites={sites} />
 
       <div className="mb-6 grid gap-4 lg:grid-cols-2">
         <Raised className="p-5">
@@ -465,11 +488,6 @@ function DueList({ rows, empty, meta }) {
       ))}
     </ul>
   )
-}
-
-/** '—' rather than '0%' when there is nothing to measure. */
-function fmtPct(v) {
-  return v === null || v === undefined ? '—' : `${v}%`
 }
 
 function EmptyChart({ children }) {

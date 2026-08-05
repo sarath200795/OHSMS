@@ -56,10 +56,30 @@ const pct = (part, whole) => (whole > 0 ? Math.round((part / whole) * 100) : nul
  * measure — "no signage recorded" and "all signage failing" are opposite
  * situations and must not render as the same number.
  */
+/**
+ * Records that name their site by text rather than by id — meetings, drills,
+ * permits. They predate the site registry, so matching on the name is the only
+ * link available; without it a site's drill count reads zero however many it
+ * ran. Records with no site at all are excluded rather than counted for
+ * everyone, which would show one viewer another site's activity.
+ */
+function namedSiteInScope(rec, sites, ids, fields) {
+  if (rec.siteId) return ids.has(rec.siteId)
+  const scoped = sites.filter((s) => ids.has(s.id))
+  return scoped.some((s) => {
+    const n = norm(s.name)
+    if (!n) return false
+    return fields.some((f) => {
+      const v = norm(rec[f])
+      return !!v && (v === n || v.includes(n) || n.includes(v))
+    })
+  })
+}
+
 export function portalStats({
   sites = [], siteId = 'all',
   extinguishers = [], aeds = [], fas = [], signages = [], incidents = [],
-  assignments = [], users = [],
+  assignments = [], users = [], meetings = [], drills = [], permits = [],
 } = {}) {
   const ids = scopeIds(sites, siteId)
   const links = linkAssets([...extinguishers, ...aeds, ...fas, ...signages], sites)
@@ -91,13 +111,22 @@ export function portalStats({
 
   const signageOk = sig.filter((s) => SIGNAGE_OK.has(norm(s.condition)))
 
+  const meet = meetings.filter((m) => alive(m) && namedSiteInScope(m, sites, ids, ['site', 'siteName', 'centerName', 'location']))
+  const drill = drills.filter((d) => alive(d) && namedSiteInScope(d, sites, ids, ['centerName', 'site', 'siteName']))
+  const perm = permits.filter((p) => alive(p) && namedSiteInScope(p, sites, ids, ['site', 'siteName', 'jobLocation']))
+
   return {
     counts: {
       extinguishers: ext.length,
       aeds: aed.length,
       fas: fasRows.length,
       incidents: inc.length,
+      meetings: meet.length,
+      drills: drill.length,
     },
+    // The scoped lists themselves, so a widget can ask a question this module
+    // does not answer without re-deriving — and therefore re-risking — scope.
+    scoped: { extinguishers: ext, aeds: aed, fas: fasRows, meetings: meet, drills: drill, permits: perm },
     trainingCompliance: pct(completed.length, live.length),
     trainingTotal: live.length,
     signageCompliance: pct(signageOk.length, sig.length),
