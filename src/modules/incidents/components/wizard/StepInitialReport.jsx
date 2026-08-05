@@ -1,6 +1,6 @@
-import { Calendar, Clock, MapPin, AlertTriangle, Tag, Layers, FileText, Users, Lightbulb, Building2 } from 'lucide-react'
+import { Calendar, Clock, AlertTriangle, Tag, Layers, FileText, Users, Lightbulb, Building2 } from 'lucide-react'
 import PersonEditor from '../PersonEditor'
-import { INCIDENT_TYPES, SEVERITY, HSE_CATEGORIES, LOCATIONS } from '../../lib/constants'
+import { INCIDENT_TYPES, SEVERITY, HSE_CATEGORIES } from '../../lib/constants'
 import SiteScopePicker from '../../../../shared/org/SiteScopePicker'
 
 function FieldLabel({ icon: Icon, children }) {
@@ -8,11 +8,8 @@ function FieldLabel({ icon: Icon, children }) {
 }
 
 /** Step 1 — Initial Incident Report form. `value`/`onChange` controlled by the wizard. */
-export default function StepInitialReport({ value, onChange, users, sites = [], locations, readOnly = false }) {
+export default function StepInitialReport({ value, onChange, users, sites = [], readOnly = false }) {
   const set = (patch) => onChange({ ...value, ...patch })
-  // Org-configured locations (Org Settings) drive the dropdown; fall back to the
-  // built-in list if the org hasn't set any yet.
-  const locationList = locations && locations.length ? locations : LOCATIONS
   return (
     <fieldset disabled={readOnly} className="space-y-5">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -53,13 +50,6 @@ export default function StepInitialReport({ value, onChange, users, sites = [], 
               You don&apos;t have site access yet — request it from your account menu.
             </p>
           )}
-        </div>
-        <div>
-          <FieldLabel icon={MapPin}>Location / area</FieldLabel>
-          <select className="input" value={value.location || ''} onChange={(e) => set({ location: e.target.value })}>
-            <option value="">Select area…</option>
-            {locationList.map((l) => <option key={l} value={l}>{l}</option>)}
-          </select>
         </div>
       </div>
 

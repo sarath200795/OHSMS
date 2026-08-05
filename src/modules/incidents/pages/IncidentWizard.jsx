@@ -307,7 +307,7 @@ export default function IncidentWizard() {
               </div>
             )}
             <div className="card p-6">
-              <StepInitialReport value={draft} onChange={setDraft} users={users} sites={sites} locations={org?.locations || []} readOnly={lockInitial} />
+              <StepInitialReport value={draft} onChange={setDraft} users={users} sites={sites} readOnly={lockInitial} />
             </div>
             {incident && (
               <div className="card p-6">
