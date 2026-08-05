@@ -133,7 +133,7 @@ export default function IllnessWizard() {
 
       <motion.div key={step} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
         {step === 'initial' && (
-          <StepIllnessInitial value={draft} onChange={setDraft} users={users} incidents={incidents} sites={sites} locations={org?.locations || []} files={files} onAddFile={addFile} onRemoveFile={removeFile} canEdit={Boolean(illness)} />
+          <StepIllnessInitial value={draft} onChange={setDraft} users={users} incidents={incidents} sites={sites} files={files} onAddFile={addFile} onRemoveFile={removeFile} canEdit={Boolean(illness)} />
         )}
         {step === 'actions' && (
           <div className="card p-6">

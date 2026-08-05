@@ -1,8 +1,8 @@
-import { Calendar, Clock, MapPin, Building, Wind, Timer, ShieldCheck, HeartPulse, Users, Paperclip, Link2 } from 'lucide-react'
+import { Calendar, Clock, Building, Wind, Timer, ShieldCheck, HeartPulse, Users, Paperclip, Link2 } from 'lucide-react'
 import PersonEditor from '../PersonEditor'
 import BodyMap from '../BodyMap'
 import FileUploader from '../FileUploader'
-import { LOCATIONS, HSE_HEALTH_AGENTS, PPE_OPTIONS } from '../../lib/constants'
+import { HSE_HEALTH_AGENTS, PPE_OPTIONS } from '../../lib/constants'
 import SiteScopePicker from '../../../../shared/org/SiteScopePicker'
 
 function FieldLabel({ icon: Icon, children }) {
@@ -10,9 +10,8 @@ function FieldLabel({ icon: Icon, children }) {
 }
 
 /** Illness — Initial Reporting form. `value`/`onChange` controlled by the wizard. */
-export default function StepIllnessInitial({ value, onChange, users, incidents = [], sites = [], locations, files = [], onAddFile, onRemoveFile, canEdit = true }) {
+export default function StepIllnessInitial({ value, onChange, users, incidents = [], sites = [], files = [], onAddFile, onRemoveFile, canEdit = true }) {
   const set = (patch) => onChange({ ...value, ...patch })
-  const locationList = locations && locations.length ? locations : LOCATIONS
   const togglePpe = (p) => {
     const cur = value.ppe || []
     set({ ppe: cur.includes(p) ? cur.filter((x) => x !== p) : [...cur, p] })
@@ -24,7 +23,14 @@ export default function StepIllnessInitial({ value, onChange, users, incidents =
         <FieldLabel icon={Link2}>Link to an incident (optional)</FieldLabel>
         <select className="input" value={value.linkedIncidentId || ''} onChange={(e) => set({ linkedIncidentId: e.target.value || null })}>
           <option value="">Standalone illness report</option>
-          {incidents.map((i) => <option key={i.id} value={i.id}>{i.refNo} — {i.location || 'no location'}</option>)}
+          {/* Labelled by site rather than by location: incidents no longer
+              collect a free-text area, so every new one would read "no
+              location" and the list would stop distinguishing them. */}
+          {incidents.map((i) => (
+            <option key={i.id} value={i.id}>
+              {i.docId || i.refNo} — {i.site || i.location || 'no site'}
+            </option>
+          ))}
         </select>
       </div>
 
@@ -42,13 +48,6 @@ export default function StepIllnessInitial({ value, onChange, users, incidents =
         <div>
           <FieldLabel icon={Clock}>Time</FieldLabel>
           <input type="time" className="input" value={value.time || ''} onChange={(e) => set({ time: e.target.value })} />
-        </div>
-        <div>
-          <FieldLabel icon={MapPin}>Location / area</FieldLabel>
-          <select className="input" value={value.location || ''} onChange={(e) => set({ location: e.target.value })}>
-            <option value="">Select area…</option>
-            {locationList.map((l) => <option key={l} value={l}>{l}</option>)}
-          </select>
         </div>
         <div className="sm:col-span-2">
           <FieldLabel icon={Building}>Site scope</FieldLabel>
