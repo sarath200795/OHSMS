@@ -425,6 +425,47 @@ export async function createObservation(orgId, data, actor) {
   return ref.id
 }
 
+/** Who a QR observation can say they are. Free text would be worthless here. */
+export const OBSERVER_ROLES = [
+  'Worker on this permit',
+  'Supervisor',
+  'Safety officer',
+  'Contractor',
+  'Visitor',
+  'Other',
+]
+
+/**
+ * An observation logged by scanning the permit's QR code, by someone with no
+ * account.
+ *
+ * Deliberately NOT the same as the signed-in path. A portal observation of
+ * "unsafe" closes the permit for non-compliance on the spot; doing that from an
+ * unauthenticated write would put a stop-work button on a token printed on a
+ * sheet of paper that anyone can photograph. So a scanned observation is
+ * recorded and left pending for an approver, exactly as a scanned equipment
+ * defect is — the report is immediate, the consequence is a decision.
+ *
+ * It also cannot reserve a document id or write an audit entry, both of which
+ * require membership. The observation is its own record.
+ */
+export async function createPublicObservation(orgId, data) {
+  const ref = await addDoc(obsCol(orgId), {
+    permitId: data.permitId,
+    permitNo: data.permitNo || '',
+    token: data.token || '',
+    type: data.type === 'unsafe' ? 'unsafe' : 'safe',
+    note: (data.note || '').slice(0, 500),
+    observedBy: 'public',
+    observedByName: data.reporterRole || 'QR Scan (Public)',
+    observedByRole: data.reporterRole || '',
+    source: 'qr',
+    approvalStatus: 'pending',
+    at: serverTimestamp(),
+  })
+  return ref.id
+}
+
 // ── Permit documents (base64 files in a subcollection) ───────────────────────
 export function subscribePermitDocuments(orgId, permitId, cb) {
   const q = query(docCol(orgId, permitId), orderBy('uploadedAt', 'asc'))

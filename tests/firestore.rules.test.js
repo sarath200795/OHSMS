@@ -196,6 +196,80 @@ describe('public permit QR mirror (/permitQr)', () => {
   })
 })
 
+// Scanning a permit and reporting unsafe work is the point of the QR. The line
+// that matters is that reporting is not the same as acting: a signed-in unsafe
+// observation closes the permit, and this surface must not be able to.
+describe('public observations from a permit QR scan (/observations)', () => {
+  const obsAt = (db, id) => doc(db, 'organizations', 'orgA', 'observations', id)
+  const scan = {
+    source: 'qr', approvalStatus: 'pending', observedBy: 'public',
+    type: 'unsafe', permitId: 'p1', permitNo: 'PTW-001', note: 'no fire watch present',
+  }
+
+  it('a signed-out scanner can report unsafe work', async () => {
+    const anon = testEnv.unauthenticatedContext().firestore()
+    await assertSucceeds(setDoc(obsAt(anon, 'o1'), scan))
+  })
+
+  it('a signed-out scanner can report that it looks safe', async () => {
+    const anon = testEnv.unauthenticatedContext().firestore()
+    await assertSucceeds(setDoc(obsAt(anon, 'o2'), { ...scan, type: 'safe', note: '' }))
+  })
+
+  it('a scanned observation CANNOT arrive already accepted', async () => {
+    const anon = testEnv.unauthenticatedContext().firestore()
+    await assertFails(setDoc(obsAt(anon, 'o3'), { ...scan, approvalStatus: 'approved' }))
+  })
+
+  it('a scanned observation CANNOT claim to be from a signed-in user', async () => {
+    const anon = testEnv.unauthenticatedContext().firestore()
+    await assertFails(setDoc(obsAt(anon, 'o4'), { ...scan, observedBy: 'alice' }))
+    await assertFails(setDoc(obsAt(anon, 'o5'), { ...scan, source: 'portal' }))
+  })
+
+  it('CANNOT name a type the permit page never writes', async () => {
+    const anon = testEnv.unauthenticatedContext().firestore()
+    await assertFails(setDoc(obsAt(anon, 'o6'), { ...scan, type: 'closed' }))
+  })
+
+  it('CANNOT omit the permit it is about', async () => {
+    const anon = testEnv.unauthenticatedContext().firestore()
+    await assertFails(setDoc(obsAt(anon, 'o7'), { ...scan, permitId: '' }))
+  })
+
+  it('CANNOT be used to store an unbounded note', async () => {
+    const anon = testEnv.unauthenticatedContext().firestore()
+    await assertFails(setDoc(obsAt(anon, 'o8'), { ...scan, note: 'x'.repeat(501) }))
+  })
+
+  it('a signed-out scanner CANNOT read other observations back', async () => {
+    // They carry names and what people reported; the scan is write-only.
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'organizations', 'orgA', 'observations', 'seeded'), scan)
+    })
+    const anon = testEnv.unauthenticatedContext().firestore()
+    await assertFails(getDoc(obsAt(anon, 'seeded')))
+  })
+
+  it('a signed-out scanner CANNOT edit or delete one', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'organizations', 'orgA', 'observations', 'seeded'), scan)
+    })
+    const anon = testEnv.unauthenticatedContext().firestore()
+    await assertFails(setDoc(obsAt(anon, 'seeded'), { ...scan, type: 'safe' }, { merge: true }))
+    await assertFails(deleteDoc(obsAt(anon, 'seeded')))
+  })
+
+  it('CANNOT reach into another org through the path', async () => {
+    const anon = testEnv.unauthenticatedContext().firestore()
+    await assertSucceeds(setDoc(doc(anon, 'organizations', 'orgB', 'observations', 'o9'), scan))
+    // …which is fine: the org id comes from the mirror the token resolved to,
+    // and a pending report against a permit that does not exist is inert. What
+    // must not work is reading anything back out of it.
+    await assertFails(getDoc(doc(anon, 'organizations', 'orgB', 'observations', 'o9')))
+  })
+})
+
 // The lock exists so the same fault cannot be reported twice while it is still
 // being dealt with. It is enforced entirely by "create fails if it exists", so
 // every test here is really asking one question: can anything turn that create

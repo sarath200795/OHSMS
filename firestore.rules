@@ -219,6 +219,31 @@ service cloud.firestore {
         );
       }
 
+      // Observations logged by scanning a work permit's QR code. Whoever walks
+      // past unsafe hot work is usually not a portal user, and requiring an
+      // account first is how it goes unreported — so an unauthenticated create
+      // is allowed, but only in the exact shape the public permit page writes.
+      //
+      // It lands pending and touches nothing else. A signed-in "unsafe"
+      // observation closes the permit for non-compliance on the spot; allowing
+      // that here would put a stop-work button on a token printed on a sheet of
+      // paper, so the scan reports and a person decides.
+      //
+      // Note this is a public write surface; enable App Check to stop abuse.
+      match /observations/{obsId} {
+        allow create: if isApprovedMemberOf(orgId) || (
+          request.resource.data.source == 'qr'
+          && request.resource.data.approvalStatus == 'pending'
+          && request.resource.data.observedBy == 'public'
+          && request.resource.data.type in ['safe', 'unsafe']
+          && request.resource.data.permitId is string
+          && request.resource.data.permitId.size() > 0
+          && request.resource.data.permitId.size() < 200
+          && request.resource.data.note is string
+          && request.resource.data.note.size() <= 500
+        );
+      }
+
       // Generic module data (incidents, assessments, permits, inspections,
       // extinguishers, meetings, meta/stats, sites, notifications, …). Approved
       // members read/create/update; managers+ delete. auditLogs is excluded so

@@ -19,7 +19,7 @@ import {
   QrCode, Loader2, ShieldCheck, ShieldAlert, Clock, MapPin, User, HardHat,
   AlertTriangle, Building2,
 } from 'lucide-react'
-import { subscribePermitByToken } from '../lib/firestore'
+import { subscribePermitByToken, createPublicObservation, OBSERVER_ROLES } from '../lib/firestore'
 import { derivePermitStatus, statusMeta, effectiveValidTo, STATUS } from '../lib/permitStatus'
 
 /** Statuses under which work may actually proceed. */
@@ -154,12 +154,135 @@ export default function PublicPermit() {
           </div>
         )}
 
+        <ObservationForm permit={permit} token={token} />
+
         <p className="pb-6 text-center text-[11px] leading-snug text-ink-400">
           {permit.orgName || 'Workplace'} · live permit status.
           <br />
           If the work does not match this permit, stop it and tell the issuing department.
         </p>
       </div>
+    </div>
+  )
+}
+
+/**
+ * Report what the work actually looks like.
+ *
+ * Unsafe is the reason this exists, so it is the prominent choice — but the
+ * submission is a report, not an instruction: it lands pending for the issuing
+ * team rather than closing the permit, which is what the signed-in equivalent
+ * does. The wording says so, because someone who believes they have stopped the
+ * work when they have not is worse off than someone who knows to also go and
+ * tell a person.
+ */
+function ObservationForm({ permit, token }) {
+  const [type, setType] = useState(null) // 'safe' | 'unsafe'
+  const [role, setRole] = useState('')
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [sent, setSent] = useState(false)
+
+  if (sent) {
+    return (
+      <div className="card p-5 text-center">
+        <ShieldCheck size={26} className="mx-auto text-emerald-600" />
+        <p className="mt-2 text-sm font-bold text-ink-900">Observation sent</p>
+        <p className="mt-1 text-[13px] leading-snug text-ink-500">
+          The issuing team will see it against this permit.
+          {type === 'unsafe' && ' If the work is dangerous right now, stop it and tell a supervisor — do not wait for a reply.'}
+        </p>
+      </div>
+    )
+  }
+
+  const submit = async () => {
+    if (!type) return
+    if (!role) return
+    setBusy(true)
+    try {
+      await createPublicObservation(permit.orgId, {
+        permitId: permit.permitId,
+        permitNo: permit.permitNo,
+        token,
+        type,
+        note,
+        reporterRole: role,
+      })
+      setSent(true)
+    } catch {
+      // Deliberately terse: a stranger on a phone can do nothing with a
+      // Firestore error code, and the fallback advice is the same either way.
+      setBusy(false)
+      setNote('')
+      alert('Could not send that. Please tell a supervisor directly.')
+    }
+  }
+
+  return (
+    <div className="card space-y-3 p-5">
+      <p className="text-[10px] font-bold uppercase tracking-widest text-ink-400">Report what you see</p>
+
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={() => setType('safe')}
+          className={`rounded-2xl px-3 py-3 text-sm font-bold shadow-clay-sm transition active:scale-95 ${
+            type === 'safe' ? 'bg-emerald-600 text-white' : 'bg-clay-surface text-emerald-700'
+          }`}
+        >
+          Looks safe
+        </button>
+        <button
+          type="button"
+          onClick={() => setType('unsafe')}
+          className={`rounded-2xl px-3 py-3 text-sm font-bold shadow-clay-sm transition active:scale-95 ${
+            type === 'unsafe' ? 'bg-red-600 text-white' : 'bg-clay-surface text-red-700'
+          }`}
+        >
+          Unsafe
+        </button>
+      </div>
+
+      {type && (
+        <>
+          <div>
+            <label className="text-[10px] font-bold uppercase tracking-widest text-ink-400">You are</label>
+            <select
+              className="mt-1 w-full rounded-xl bg-clay-surface px-3 py-2.5 text-sm shadow-clay-inset outline-none"
+              value={role}
+              onChange={(e) => setRole(e.target.value)}
+            >
+              <option value="">Select…</option>
+              {OBSERVER_ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+            </select>
+          </div>
+
+          <textarea
+            className="min-h-[72px] w-full rounded-xl bg-clay-surface px-3 py-2.5 text-sm shadow-clay-inset outline-none"
+            placeholder={type === 'unsafe' ? 'What is unsafe about it?' : 'Anything worth noting (optional)'}
+            maxLength={500}
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+          />
+
+          {type === 'unsafe' && (
+            <p className="rounded-xl bg-amber-50 px-3 py-2 text-[11px] leading-snug text-amber-800">
+              This reports the work to the issuing team — it does not stop it. If it is dangerous
+              now, stop the work and tell a supervisor.
+            </p>
+          )}
+
+          <button
+            type="button"
+            onClick={submit}
+            disabled={busy || !role}
+            className="w-full rounded-2xl bg-brand-600 px-4 py-3 text-sm font-bold text-white shadow-clay-brand transition active:scale-[0.98] disabled:opacity-50"
+          >
+            {busy ? 'Sending…' : 'Send observation'}
+          </button>
+        </>
+      )}
     </div>
   )
 }

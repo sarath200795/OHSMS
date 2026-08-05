@@ -54,6 +54,7 @@ export default function Observations() {
         <div className="space-y-2.5">
           {visible.map((o, i) => {
             const unsafe = o.type === 'unsafe'
+            const pending = o.approvalStatus === 'pending'
             const color = unsafe ? '#991b1b' : '#16a34a'
             const Icon = unsafe ? AlertTriangle : CheckCircle2
             return (
@@ -71,7 +72,13 @@ export default function Observations() {
                 {o.note && <p className="mt-2 text-sm text-ink-700">{o.note}</p>}
                 <p className="mt-1.5 text-xs text-ink-400">
                   {o.observedByName || 'Unknown'} · {fmt(o.at)}
-                  {unsafe && <span className="font-semibold text-red-600"> · permit closed for non-compliance</span>}
+                  {/* Only a signed-in unsafe observation closes the permit. One
+                      logged by scanning the QR is a report awaiting a decision,
+                      and saying it closed the permit would tell an approver the
+                      work had already been stopped when it has not. */}
+                  {unsafe && (pending
+                    ? <span className="font-semibold text-amber-600"> · reported by scan — permit not closed</span>
+                    : <span className="font-semibold text-red-600"> · permit closed for non-compliance</span>)}
                 </p>
               </motion.div>
             )
