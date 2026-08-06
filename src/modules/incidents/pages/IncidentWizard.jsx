@@ -316,7 +316,7 @@ export default function IncidentWizard() {
                 <FileUploader
                   accept="image"
                   label="Add photo"
-                  hint="Images up to 750 KB each."
+                  hint="Images up to 10 MB each."
                   disabled={lockInitial}
                   files={photos.filter((p) => p.kind === 'photo')}
                   onAdd={(f) => addPhoto({ ...f, kind: 'photo' })}

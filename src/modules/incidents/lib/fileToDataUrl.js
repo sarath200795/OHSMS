@@ -1,12 +1,15 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Read a small uploaded file (PDF/image) into a base64 data URL so it can be
-// embedded directly in a Firestore document. Kept small on purpose — Firestore
-// docs are capped at ~1 MB, so we cap the source file well below that.
+// Read an uploaded file (PDF/image) into a base64 data URL.
+//
+// The cap used to be 700KB because every file was embedded directly in a
+// Firestore document, and those are capped at 1MB. Files now go to cloud
+// storage, so the limit is the product one (10MB). The old ceiling still
+// applies to the INLINE FALLBACK path, and that check lives with the write —
+// see MAX_INLINE_BYTES in shared/storage.
 // ─────────────────────────────────────────────────────────────────────────────
+import { MAX_UPLOAD_BYTES, formatSize } from '../../../shared/storage'
 
-// Max source file size. Base64 inflates by ~33%, so 700 KB → ~930 KB encoded,
-// which stays under Firestore's 1 MB document limit with room for other fields.
-export const MAX_QUOTE_FILE_BYTES = 700 * 1024
+export const MAX_QUOTE_FILE_BYTES = MAX_UPLOAD_BYTES
 
 export const ACCEPTED_QUOTE_TYPES = ['application/pdf'] // + any image/*
 
@@ -24,7 +27,7 @@ export function validateQuoteFile(file, max = MAX_QUOTE_FILE_BYTES) {
   if (!file) return 'No file selected'
   if (!isAcceptedQuoteType(file.type)) return 'Only PDF or image files are allowed'
   if (file.size > max) {
-    return `File is too large (${Math.round(file.size / 1024)} KB). Max ${Math.round(max / 1024)} KB — please compress it.`
+    return `File is too large (${formatSize(file.size)}). Max ${formatSize(max)} — please compress it.`
   }
   return null
 }

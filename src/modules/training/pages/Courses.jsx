@@ -6,14 +6,14 @@ import DocIdTag from '../../../shared/docId/DocIdTag'
 import { PageHeader, Field, Input, Select, Textarea, Button, Modal, Badge, EmptyState, SkeletonTable } from '../../../shared/ui'
 import { useAuth } from '../../../shared/auth/AuthContext'
 import { fileToDataUrl } from '../../../shared/lib/files'
-import { putFile, removeFile } from '../../../shared/storage'
+import { putFile, removeFile, MAX_UPLOAD_BYTES, MAX_INLINE_BYTES, tooLargeForInline, formatSize } from '../../../shared/storage'
 import { useTraining } from '../context/TrainingContext'
 import { createCourse, updateCourse, deleteCourse, COURSE_CATEGORIES } from '../lib/firestore'
 import { DELIVERY_MODES } from '../lib/sessions'
 
 const EMPTY = { name: '', category: 'Induction', deliveryMode: 'module', validityMonths: 12, mandatory: false, description: '', content: [], thumbnail: '', thumbnailPath: '' }
 
-const MAX_FILE_BYTES = 700 * 1024
+const MAX_FILE_BYTES = MAX_INLINE_BYTES
 
 export default function Courses() {
   const { orgId, actor, isManager } = useAuth()
@@ -43,13 +43,13 @@ export default function Courses() {
     e.target.value = ''
     if (!file) return
     if (!file.type.startsWith('image/')) return toast.error('Pick an image file')
-    if (file.size > 2 * 1024 * 1024) return toast.error('Thumbnail too large — keep it under 2 MB')
+    if (file.size > MAX_UPLOAD_BYTES) return toast.error(`Thumbnail too large — keep it under ${formatSize(MAX_UPLOAD_BYTES)}`)
     // Cloud first: the course list is subscribed by everyone, and inline
     // thumbnails ride along on every one of those reads. Inline stays as the
     // fallback, back under its old cap because it lives inside the document.
     const up = await putFile(orgId, 'course-thumbnails', file)
     if (up) return setForm((f) => ({ ...f, thumbnail: up.url, thumbnailPath: up.path }))
-    if (file.size > 250 * 1024) return toast.error('Thumbnail too large — keep it under 250 KB')
+    if (file.size > MAX_INLINE_BYTES) return toast.error(tooLargeForInline(file.name))
     const dataUrl = await fileToDataUrl(file)
     setForm((f) => ({ ...f, thumbnail: dataUrl, thumbnailPath: '' }))
   }
@@ -69,7 +69,7 @@ export default function Courses() {
     if (!picked) return
     // Cloud storage first: no meaningful size ceiling (rules cap at 20MB) and
     // the course document stays small however much material it carries.
-    if (picked.size <= 20 * 1024 * 1024) {
+    if (picked.size <= MAX_UPLOAD_BYTES) {
       const up = await putFile(orgId, 'training-content', picked)
       if (up) {
         setForm((f) => ({
@@ -87,7 +87,7 @@ export default function Courses() {
     await addFileInline(picked)
   }
   const addFileInline = async (file) => {
-    if (file.size > MAX_FILE_BYTES) return toast.error('File too large — keep it under 700 KB (link larger files instead)')
+    if (file.size > MAX_FILE_BYTES) return toast.error(tooLargeForInline(file.name))
     const dataUrl = await fileToDataUrl(file)
     setForm((f) => ({
       ...f,
@@ -231,7 +231,7 @@ export default function Courses() {
                     Remove — use category art
                   </button>
                 )}
-                <p className="text-xs text-ink-400">Image up to 250 KB. Without one, the category art is used.</p>
+                <p className="text-xs text-ink-400">Image up to 10 MB. Without one, the category art is used.</p>
               </div>
               <input ref={thumbRef} type="file" accept="image/*" className="hidden" onChange={onThumb} />
             </div>
@@ -260,7 +260,7 @@ export default function Courses() {
               <Button type="button" variant="soft" icon={Paperclip} onClick={() => fileRef.current?.click()}>Add file</Button>
               <input ref={fileRef} type="file" className="hidden" onChange={addFile} />
             </div>
-            <p className="mt-1 text-xs text-ink-400">Files up to 700 KB are stored inline; link larger material (videos, e-learning).</p>
+            <p className="mt-1 text-xs text-ink-400">Files up to 10 MB. Link anything larger (videos, e-learning).</p>
           </div>
 
           <div className="flex justify-end gap-2 pt-1">

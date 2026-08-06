@@ -25,7 +25,7 @@ import { logAudit } from './firestore'
 import { AUDIT, diffSummary } from './audit'
 import { statsDeltaFor, emptyStats, BUCKETS } from './stats'
 import { reserveDocId } from '../../../shared/docId/reserve'
-import { putFile, removeFile } from '../../../shared/storage'
+import { putFile, removeFile, MAX_INLINE_BYTES, tooLargeForInline } from '../../../shared/storage'
 
 const BUCKET_NAMES = Object.keys(BUCKETS)
 
@@ -235,6 +235,12 @@ export async function addIncidentPhoto(orgId, id, photo) {
   // putFile returning null (bucket not enabled, offline) keeps the legacy
   // inline path, so evidence upload never fails harder than it used to.
   const up = photo.dataUrl ? await putFile(orgId, 'incident-photos', photo.dataUrl, photo.name) : null
+  // No bucket: the file would be written base64 INSIDE this document, and
+  // Firestore rejects anything over 1MB with an error nobody can act on. Refuse
+  // it here with a sentence that says what to do instead.
+  if (!up && photo.dataUrl && (photo.size || 0) > MAX_INLINE_BYTES) {
+    throw new Error(tooLargeForInline(photo.name))
+  }
   const ref = await addDoc(photoCol(orgId, id), {
     name: photo.name || '',
     type: photo.type || '',

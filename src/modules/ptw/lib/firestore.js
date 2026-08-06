@@ -24,7 +24,7 @@ import {
 } from 'firebase/firestore'
 import { db } from '../firebase'
 import { reserveDocId } from '../../../shared/docId/reserve'
-import { putFile, removeFile } from '../../../shared/storage'
+import { putFile, removeFile, MAX_INLINE_BYTES, tooLargeForInline } from '../../../shared/storage'
 import { AUDIT } from './audit'
 import { computeWindow, derivePermitStatus } from './permitStatus'
 import { generateQrToken } from './qr'
@@ -373,6 +373,9 @@ export function subscribePermitDocuments(orgId, permitId, cb) {
  */
 async function permitDocPayload(orgId, meta, actor) {
   const up = meta.fileData ? await putFile(orgId, 'permit-documents', meta.fileData, meta.fileName) : null
+  if (!up && meta.fileData && (meta.size || 0) > MAX_INLINE_BYTES) {
+    throw new Error(tooLargeForInline(meta.fileName))
+  }
   return {
     key: meta.key || 'extra',
     label: meta.label || '',

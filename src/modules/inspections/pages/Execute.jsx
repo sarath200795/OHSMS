@@ -9,6 +9,7 @@ import { useAuth } from '../context/AuthContext'
 import { useData } from '../context/DataContext'
 import { addRecord } from '../lib/firestore'
 import { fileToDataUrl } from '../lib/fileToDataUrl'
+import { putFile, MAX_UPLOAD_BYTES, MAX_INLINE_BYTES, tooLargeForInline, formatSize } from '../../../shared/storage'
 import { hasAnsweredQuestion, scoreResponses } from '../lib/schedule'
 import { previousInspection, withRepeatHistory } from '../lib/previousFindings'
 import PreviousFindingsPanel, { PreviousFindingNote } from '../components/PreviousFindings'
@@ -84,11 +85,20 @@ export default function Execute() {
 
   const onPhoto = async (fid, e) => {
     const file = e.target.files?.[0]
-    if (!file) return
-    if (file.size > 900 * 1024) { toast.error('Photo too large (max ~900 KB).'); e.target.value = ''; return }
-    const data = await fileToDataUrl(file)
-    update(fid, { photoEvidence: data, photoEvidenceName: file.name })
     e.target.value = ''
+    if (!file) return
+    if (file.size > MAX_UPLOAD_BYTES) {
+      return toast.error(`Photo too large (${formatSize(file.size)}). Max ${formatSize(MAX_UPLOAD_BYTES)}.`)
+    }
+    // Cloud first. photoEvidence is rendered straight into an <img src>, so a
+    // URL drops in where the data URL used to sit and no renderer changes.
+    const up = await putFile(orgId, 'inspection-photos', file, file.name)
+    if (up) {
+      update(fid, { photoEvidence: up.url, photoEvidencePath: up.path, photoEvidenceName: file.name })
+      return
+    }
+    if (file.size > MAX_INLINE_BYTES) return toast.error(tooLargeForInline(file.name))
+    update(fid, { photoEvidence: await fileToDataUrl(file), photoEvidenceName: file.name })
   }
 
   const submit = async () => {

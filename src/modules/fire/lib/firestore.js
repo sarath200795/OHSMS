@@ -39,7 +39,7 @@ const writeBatch = (...args) => { assertWritable(); return _writeBatch(...args) 
 import { generateQrToken } from './qr'
 import { STATUS, REFILL_DEFECT_KEYS, DEFECT_BY_KEY } from './constants'
 import { lockId, duplicateDefectMessage } from './defectLock'
-import { putFile, removeFile } from '../../../shared/storage'
+import { putFile, removeFile, MAX_INLINE_BYTES, tooLargeForInline } from '../../../shared/storage'
 import { reserveDocId } from '../../../shared/docId/reserve'
 import { AUDIT, diffSummary } from './audit'
 import { statsDeltaFor, accumulate } from './stats'
@@ -675,6 +675,11 @@ export async function submitQuotation(orgId, orgName, id, { amount, vendor, ref,
   // The document itself goes to cloud storage when available; the extinguisher
   // doc then carries a URL instead of the base64 payload.
   const up = fileData ? await putFile(orgId, 'quotations', fileData, fileName) : null
+  // Base64 length * 3/4 is the decoded size, close enough to compare a limit.
+  const inlineBytes = fileData ? Math.floor((String(fileData).split(',')[1] || '').length * 0.75) : 0
+  if (!up && fileData && inlineBytes > MAX_INLINE_BYTES) {
+    throw new Error(tooLargeForInline(fileName))
+  }
   const quotation = {
     amount: Number(amount) || 0,
     vendor: vendor || '',

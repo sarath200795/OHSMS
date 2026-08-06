@@ -1,5 +1,42 @@
 import { describe, it, expect } from 'vitest'
-import { safeFileName, storagePath, dataUrlToBlob } from './index'
+import {
+  safeFileName, storagePath, dataUrlToBlob,
+  MAX_UPLOAD_BYTES, MAX_INLINE_BYTES, formatSize, tooLargeForInline,
+} from './index'
+
+// Two limits, and the relationship between them is the whole point: the big one
+// is a product decision, the small one is a hard Firestore constraint. If these
+// ever cross, uploads start failing with an error nobody can act on.
+describe('upload limits', () => {
+  it('accepts 10MB uploads, which is what the UI promises', () => {
+    expect(MAX_UPLOAD_BYTES).toBe(10 * 1024 * 1024)
+    expect(formatSize(MAX_UPLOAD_BYTES)).toBe('10.0 MB')
+  })
+
+  it('keeps the inline fallback under what a Firestore document can hold', () => {
+    // Base64 inflates by ~4/3, and the document needs room for its own fields.
+    const encoded = MAX_INLINE_BYTES * (4 / 3)
+    expect(encoded).toBeLessThan(1024 * 1024)
+  })
+
+  it('never lets the fallback limit exceed the upload limit', () => {
+    expect(MAX_INLINE_BYTES).toBeLessThan(MAX_UPLOAD_BYTES)
+  })
+
+  it('explains both the constraint and the fix when a file is too big to inline', () => {
+    const msg = tooLargeForInline('site-photo.jpg')
+    expect(msg).toContain('site-photo.jpg')
+    expect(msg).toContain(formatSize(MAX_INLINE_BYTES))  // what is allowed now
+    expect(msg).toContain(formatSize(MAX_UPLOAD_BYTES))  // what enabling storage buys
+    expect(msg).toMatch(/Cloud Storage/)
+  })
+
+  it('reads sizes the way a person would write them', () => {
+    expect(formatSize(700 * 1024)).toBe('700 KB')
+    expect(formatSize(1024 * 1024)).toBe('1.0 MB')
+    expect(formatSize(0)).toBe('0 KB')
+  })
+})
 
 describe('safeFileName', () => {
   it('keeps an ordinary filename readable', () => {

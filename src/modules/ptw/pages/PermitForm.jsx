@@ -320,7 +320,7 @@ export default function PermitForm() {
         </SectionCard>
 
         {/* 6 — Required documents */}
-        <SectionCard icon={Paperclip} title="Required documents" subtitle={form.typeOfWork ? 'Attach the documents for this activity (PDF or image, ≤750 KB each)' : 'Select a work type to see required documents'}>
+        <SectionCard icon={Paperclip} title="Required documents" subtitle={form.typeOfWork ? 'Attach the documents for this activity (PDF or image, up to 10 MB each)' : 'Select a work type to see required documents'}>
           {requiredDocs.length === 0 ? (
             <p className="text-sm text-ink-400">Select a work type to load its document checklist.</p>
           ) : (

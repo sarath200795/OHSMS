@@ -21,8 +21,12 @@ import SosPoster from '../components/SosPoster'
 import {
   subscribeContacts, subscribeLayouts, subscribeRescuePlans, saveFloors, deleteLayout, floorsOf, INTERNAL_ROLES,
 } from '../lib/firestore'
+import { putFile, removeFile, MAX_UPLOAD_BYTES, MAX_INLINE_BYTES, tooLargeForInline, formatSize } from '../../../shared/storage'
 
-const MAX_LAYOUT_BYTES = 900 * 1024
+// Floor plans go to cloud storage. The old 900KB ceiling was the Firestore
+// document limit — and layouts are the worst case for it, since SEVERAL plans
+// live in one document.
+const MAX_LAYOUT_BYTES = MAX_UPLOAD_BYTES
 
 /** Escalation order; unknown roles last. */
 const roleRank = (role) => {
@@ -101,7 +105,7 @@ export default function SiteDetail() {
     if (!files.length || !site) return
     if (files.some((f) => !f.type.startsWith('image/'))) return toast.error('Pick image files (photos or exported plans)')
     const tooBig = files.find((f) => f.size > MAX_LAYOUT_BYTES)
-    if (tooBig) return toast.error(`"${tooBig.name}" is over 900 KB — export a compressed JPG/PNG`)
+    if (tooBig) return toast.error(`"${tooBig.name}" is over ${formatSize(MAX_LAYOUT_BYTES)} — export a compressed JPG/PNG`)
     setBusy(true)
     try {
       const added = []
@@ -287,7 +291,7 @@ export default function SiteDetail() {
               icon={ImageOff}
               title="No FERP plans uploaded"
               description={isManager
-                ? 'Upload this site’s fire & emergency response plans — one image per floor (select several at once). JPG/PNG up to 900 KB each.'
+                ? 'Upload this site’s fire & emergency response plans — one image per floor (select several at once). JPG/PNG up to 10 MB each.'
                 : 'The FERP plans for this site haven’t been uploaded yet — ask a manager.'}
               action={isManager && <Button icon={Upload} onClick={() => fileRef.current?.click()}>Upload floor plans</Button>}
             />

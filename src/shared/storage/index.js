@@ -41,6 +41,36 @@ function loadAdapter() {
 /** The active driver name — surfaced for diagnostics/admin screens. */
 export const storageDriver = DRIVER in DRIVERS ? DRIVER : 'firebase'
 
+// ── The two size limits, and why there are two ───────────────────────────────
+//
+// MAX_UPLOAD_BYTES is the real, user-facing limit: what a photo or document may
+// be when it goes to the bucket. Storage does not care, so this is a product
+// decision (bandwidth on site WiFi, and a cap so one upload cannot fill a
+// screen's worth of time).
+//
+// MAX_INLINE_BYTES is the fallback limit. When the bucket is unavailable the
+// app still accepts the file by writing it base64 INSIDE a Firestore document,
+// and Firestore hard-caps a document at 1MB. Base64 inflates by ~33%, so 700KB
+// of file is about as much as fits with room for the record's own fields.
+//
+// A file between the two is accepted when storage works and refused with a
+// straight explanation when it does not — which is far better than writing a
+// document that Firestore will reject with something unreadable.
+export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+export const MAX_INLINE_BYTES = 700 * 1024
+
+/** Human size, for messages people read. */
+export const formatSize = (bytes) =>
+  bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} MB` : `${Math.round(bytes / 1024)} KB`
+
+/**
+ * The message shown when the bucket is unavailable and the file is too big to
+ * keep inline. Central so every module says the same thing.
+ */
+export const tooLargeForInline = (name) =>
+  `${name ? `${name}: ` : ''}file storage is unavailable, so files must be under ` +
+  `${formatSize(MAX_INLINE_BYTES)}. Enable Cloud Storage to upload up to ${formatSize(MAX_UPLOAD_BYTES)}.`
+
 /**
  * A user-supplied filename made path-safe. An allowlist, not a blocklist:
  * anything outside letters, digits, dot, dash, underscore, parens and spaces

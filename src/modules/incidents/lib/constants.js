@@ -242,4 +242,6 @@ export const PERSON_KINDS = [
 
 // Max source file size for base64 uploads (photos / medical records / attachments).
 // Base64 inflates ~33%, so 750 KB → ~1 MB encoded — kept under Firestore's doc cap.
-export const MAX_FILE_BYTES = 750 * 1024
+// Files go to cloud storage now; this is the product limit, not a Firestore
+// document limit. The inline-fallback ceiling lives in shared/storage.
+export { MAX_UPLOAD_BYTES as MAX_FILE_BYTES } from '../../../shared/storage'

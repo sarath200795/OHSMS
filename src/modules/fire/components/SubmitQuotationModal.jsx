@@ -4,6 +4,7 @@ import toast from 'react-hot-toast'
 import { Modal, Spinner } from './ui'
 import { submitQuotation } from '../lib/firestore'
 import { readFileAsDataUrl, MAX_QUOTE_FILE_BYTES } from '../lib/fileToDataUrl'
+import { formatSize } from '../../../shared/storage'
 
 function Field({ label, children }) {
   return (
@@ -159,7 +160,7 @@ export default function SubmitQuotationModal({ open, onClose, ext, orgId, orgNam
           </button>
         )}
         <p className="mt-1 text-xs text-ink-400">
-          PDF or image, up to {Math.round(MAX_QUOTE_FILE_BYTES / 1024)} KB.
+          PDF or image, up to {formatSize(MAX_QUOTE_FILE_BYTES)}.
         </p>
       </div>
 

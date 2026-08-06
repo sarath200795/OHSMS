@@ -4,7 +4,10 @@
 // the per-document 1 MB Firestore cap — we keep a safe margin at ~750 KB.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const MAX_FILE_BYTES = 750 * 1024 // ~750 KB
+// Permit attachments go to cloud storage; the old ~750KB ceiling was the
+// Firestore document limit and now only governs the inline fallback
+// (MAX_INLINE_BYTES in shared/storage).
+export const MAX_FILE_BYTES = 10 * 1024 * 1024
 
 const ACCEPTED = ['application/pdf', 'image/'] // pdf + any image/*
 

@@ -26,7 +26,7 @@ import { db } from '../firebase'
 import { logAudit } from './firestore'
 import { AUDIT, diffSummary } from './audit'
 import { reserveDocId } from '../../../shared/docId/reserve'
-import { putFile, removeFile } from '../../../shared/storage'
+import { putFile, removeFile, MAX_INLINE_BYTES, tooLargeForInline } from '../../../shared/storage'
 
 const illnessCol = (orgId) => collection(db, 'organizations', orgId, 'illnesses')
 const illnessRef = (orgId, id) => doc(db, 'organizations', orgId, 'illnesses', id)
@@ -158,6 +158,9 @@ export async function purgeIllness(orgId, id, actor, label) {
 export async function addIllnessFile(orgId, id, file) {
   // Same cloud-first-with-inline-fallback contract as incident photos.
   const up = file.dataUrl ? await putFile(orgId, 'illness-files', file.dataUrl, file.name) : null
+  if (!up && file.dataUrl && (file.size || 0) > MAX_INLINE_BYTES) {
+    throw new Error(tooLargeForInline(file.name))
+  }
   const ref = await addDoc(fileCol(orgId, id), {
     name: file.name || '',
     type: file.type || '',

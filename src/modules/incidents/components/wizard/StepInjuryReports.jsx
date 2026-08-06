@@ -103,7 +103,7 @@ export default function StepInjuryReports({ persons = [], value = [], onChange, 
                   <FileUploader
                     accept="any"
                     label="Attach medical record"
-                    hint="Image or PDF, up to 750 KB each."
+                    hint="Image or PDF, up to 10 MB each."
                     disabled={!canEdit}
                     files={records}
                     onAdd={(f) => onAddPhoto?.({ ...f, kind: 'medical_record', personId: p.id })}

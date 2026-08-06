@@ -216,7 +216,7 @@ export default function MockDrills() {
       for (const file of files) {
         if (!file.type.startsWith('image/')) { toast.error('Only image files are allowed'); continue }
         try {
-          const dataUrl = await readFileAsDataUrl(file) // validates + caps at ~700 KB
+          const dataUrl = await readFileAsDataUrl(file) // validates + caps at the shared upload limit
           let added = true
           setPhotos((p) => {
             if (p.length >= MAX_DRILL_PHOTOS) { added = false; return p }
@@ -567,7 +567,7 @@ export default function MockDrills() {
                   </label>
                 )}
               </div>
-              <p className="mt-2 text-xs text-ink-400">Photos of the drill, assembly point, issues, etc. Each image ≤ 700 KB.</p>
+              <p className="mt-2 text-xs text-ink-400">Photos of the drill, assembly point, issues, etc. Each image up to 10 MB.</p>
             </div>
 
             <div className="flex items-center justify-end gap-2 border-t border-clay-200/60 pt-4">
