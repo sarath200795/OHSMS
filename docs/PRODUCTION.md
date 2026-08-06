@@ -1,5 +1,37 @@
 # Production runbook
 
+## 0. Environment files — the footgun that bit us  ⚠️ read before deploying
+
+Vite loads `.env` for **every** mode; `.env.<mode>` overrides only the keys it
+names. Any key missing from `.env.production` therefore inherits the demo value
+from `.env` — silently, and per-key.
+
+That is how the live site shipped with
+`storageBucket=ohsms-demo.appspot.com` while auth and Firestore pointed at the
+real project: every upload failed and nothing in the UI said why.
+
+`.env.production` is gitignored (it holds keys), so this list cannot be enforced
+by the repo. **Every one of these must be defined explicitly there:**
+
+```
+VITE_USE_EMULATORS=false
+VITE_FIREBASE_API_KEY=
+VITE_FIREBASE_AUTH_DOMAIN=
+VITE_FIREBASE_PROJECT_ID=
+VITE_FIREBASE_STORAGE_BUCKET=      # firebase apps:sdkconfig web  →  storageBucket
+VITE_FIREBASE_MESSAGING_SENDER_ID=
+VITE_FIREBASE_APP_ID=
+```
+
+Verify after any build, before deploying:
+
+```bash
+grep -o "ohsms-demo[^\"]*" dist/assets/*.js   # must print nothing
+```
+
+The app also checks this itself at startup and logs an error listing any demo
+values found in a non-emulator build.
+
 What the code already does, and the console/CLI steps only a project owner can
 perform. Work top to bottom; each section says how to verify it worked.
 
