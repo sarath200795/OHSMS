@@ -25,10 +25,20 @@ const EMU_HOST = clean(import.meta.env.VITE_EMULATOR_HOST) || '127.0.0.1'
 const EMU_AUTH_PORT = Number(clean(import.meta.env.VITE_EMULATOR_AUTH_PORT)) || 9099
 const EMU_FS_PORT = Number(clean(import.meta.env.VITE_EMULATOR_FIRESTORE_PORT)) || 8080
 
+const projectId = clean(import.meta.env.VITE_FIREBASE_PROJECT_ID)
+
 const firebaseConfig = {
   apiKey: clean(import.meta.env.VITE_FIREBASE_API_KEY),
   authDomain: clean(import.meta.env.VITE_FIREBASE_AUTH_DOMAIN),
-  projectId: clean(import.meta.env.VITE_FIREBASE_PROJECT_ID),
+  projectId,
+  // Without this, getStorage() cannot find a default bucket and every upload
+  // silently falls back to inline data URLs. New Firebase projects (late 2024+)
+  // create `<id>.firebasestorage.app`; older ones use `<id>.appspot.com` — the
+  // env override exists because the default cannot know which vintage yours is.
+  // Copy the exact value from console → Storage if the derived one is wrong.
+  storageBucket:
+    clean(import.meta.env.VITE_FIREBASE_STORAGE_BUCKET) ||
+    (projectId ? `${projectId}.firebasestorage.app` : ''),
   messagingSenderId: clean(import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID),
   appId: clean(import.meta.env.VITE_FIREBASE_APP_ID),
 }

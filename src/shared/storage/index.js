@@ -1,42 +1,45 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// File storage.
+// File storage — the seam between the app and whichever backend holds bytes.
 //
-// Until now every uploaded file lived as a base64 string INSIDE a Firestore
-// document, capped at ~750–900KB per file because documents top out at 1MB.
-// That ceiling is the app's biggest structural risk: it is invisible until the
-// day a write fails, and it bloats every read that touches a record with files.
+// Callers deal in {url, path} and never see the backend. Which backend that is
+// comes from VITE_STORAGE_DRIVER:
 //
-// This module is the seam. Callers deal in {url, path} and never see the
-// backend; today it is Firebase Storage, and pointing it at S3/GCS/MinIO later
-// means reimplementing three functions in one file.
+//   firebase  (default)  Firebase Storage           adapters/firebase.js
+//   s3                   any S3-compatible bucket   adapters/s3.js
 //
-// putFile returns null on ANY failure — bucket not enabled in the console yet,
-// offline, rules refusal — so every caller can fall back to the old inline
-// dataUrl and the app keeps working un-degraded while infrastructure catches
-// up. A cleanup that breaks uploads for a project that has not clicked "enable
-// Storage" would be worse than the ceiling it fixes.
+// Adding a backend = one adapter file implementing { put(path, blob) -> {url},
+// remove(path) } plus a line in DRIVERS below. Nothing outside this folder
+// changes — every module already calls putFile/removeFile only.
+//
+// putFile returns null on ANY failure — driver not configured, offline, rules
+// refusal — so every caller can fall back to the old inline dataUrl and the
+// app keeps working un-degraded while infrastructure catches up.
 // ─────────────────────────────────────────────────────────────────────────────
-import app, { firebaseClientConfig } from '../firebase'
 import { reportError } from '../monitoring'
 
-const USE_EMULATORS = String(import.meta.env.VITE_USE_EMULATORS).trim() === 'true'
-const EMU_HOST = (import.meta.env.VITE_EMULATOR_HOST || '127.0.0.1').trim()
-const EMU_STORAGE_PORT = Number(import.meta.env.VITE_EMULATOR_STORAGE_PORT) || 9199
+const DRIVER = String(import.meta.env.VITE_STORAGE_DRIVER || 'firebase')
+  .trim()
+  .toLowerCase()
 
-let storagePromise = null
-function loadStorage() {
-  if (!app) return Promise.resolve(null)
-  if (!storagePromise) {
-    storagePromise = import('firebase/storage')
-      .then((mod) => {
-        const storage = mod.getStorage(app)
-        if (USE_EMULATORS) mod.connectStorageEmulator(storage, EMU_HOST, EMU_STORAGE_PORT)
-        return { mod, storage }
-      })
+// Dynamic imports so only the selected driver's code (and its SDK) is loaded.
+const DRIVERS = {
+  firebase: () => import('./adapters/firebase.js'),
+  s3: () => import('./adapters/s3.js'),
+}
+
+let adapterPromise = null
+function loadAdapter() {
+  if (!adapterPromise) {
+    const load = DRIVERS[DRIVER] || DRIVERS.firebase
+    adapterPromise = load()
+      .then((m) => m.default)
       .catch(() => null)
   }
-  return storagePromise
+  return adapterPromise
 }
+
+/** The active driver name — surfaced for diagnostics/admin screens. */
+export const storageDriver = DRIVER in DRIVERS ? DRIVER : 'firebase'
 
 /**
  * A user-supplied filename made path-safe. An allowlist, not a blocklist:
@@ -57,6 +60,9 @@ export function safeFileName(name) {
  * Where a file lives: org-scoped so storage rules can enforce the same tenancy
  * Firestore rules do, with an entropy prefix so two "photo.jpg"s never collide.
  * `rand` is injectable for tests; production uses crypto randomness.
+ *
+ * This layout is backend-neutral on purpose: on S3 the same `orgs/<orgId>/…`
+ * prefix is what the presign endpoint authorises against.
  */
 export function storagePath(orgId, kind, fileName, rand = defaultRand) {
   if (!orgId || !kind) throw new Error('storagePath needs an orgId and a kind')
@@ -100,20 +106,19 @@ export function dataUrlToBlob(dataUrl) {
  */
 export async function putFile(orgId, kind, file, fileName) {
   try {
-    const loaded = await loadStorage()
-    if (!loaded) return null
+    const adapter = await loadAdapter()
+    if (!adapter) return null
     const blob = typeof file === 'string' ? dataUrlToBlob(file) : file
     if (!blob) return null
     const name = safeFileName(fileName || file?.name)
     const path = storagePath(orgId, kind, name)
-    const ref = loaded.mod.ref(loaded.storage, path)
-    await loaded.mod.uploadBytes(ref, blob, { contentType: blob.type || undefined })
-    const url = await loaded.mod.getDownloadURL(ref)
-    return { url, path, size: blob.size, contentType: blob.type || '', name }
+    const result = await adapter.put(path, blob)
+    if (!result?.url) return null
+    return { url: result.url, path, size: blob.size, contentType: blob.type || '', name }
   } catch (e) {
     // Expected while the bucket/rules are not yet enabled in the console —
     // report once-per-kind noise is acceptable, silence is not.
-    reportError(e, { source: 'storage.putFile', kind })
+    reportError(e, { source: 'storage.putFile', kind, driver: storageDriver })
     return null
   }
 }
@@ -122,14 +127,8 @@ export async function putFile(orgId, kind, file, fileName) {
 export async function removeFile(path) {
   if (!path) return
   try {
-    const loaded = await loadStorage()
-    if (!loaded) return
-    await loaded.mod.deleteObject(loaded.mod.ref(loaded.storage, path))
+    const adapter = await loadAdapter()
+    if (!adapter) return
+    await adapter.remove(path)
   } catch { /* orphan tolerated */ }
 }
-
-// A vestige of the config is exported so a future S3 adapter has what it needs
-// to keep the same call sites. Nothing else reads it today.
-export const storageBucketHint = firebaseClientConfig?.projectId
-  ? `${firebaseClientConfig.projectId}.appspot.com`
-  : ''

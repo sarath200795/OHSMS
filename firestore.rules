@@ -251,6 +251,31 @@ service cloud.firestore {
         );
       }
 
+      // Document-id counters, one document per kind, holding a single integer.
+      //
+      // Every member must be able to increment these — reserving an id is what
+      // creating any record does — but a counter that can move BACKWARDS hands
+      // the next record an id already printed on a permit and quoted in the
+      // audit trail. The transaction in reserve.js protects against two people
+      // at once; it does nothing against one person choosing to rewind it.
+      //
+      // So: strictly monotonic, enforced here where it cannot be bypassed. One
+      // document per kind rather than one document with a field per kind
+      // because rules cannot compare a dynamically-named field — splitting the
+      // path is what makes the guarantee expressible at all.
+      match /docSeq/{kind} {
+        allow read: if isApprovedMemberOf(orgId);
+        allow create: if isApprovedMemberOf(orgId)
+          && request.resource.data.keys().hasOnly(['n'])
+          && request.resource.data.n is int
+          && request.resource.data.n > 0;
+        allow update: if isApprovedMemberOf(orgId)
+          && request.resource.data.keys().hasOnly(['n'])
+          && request.resource.data.n is int
+          && request.resource.data.n > resource.data.n;
+        allow delete: if false;
+      }
+
       // Generic module data (incidents, assessments, permits, inspections,
       // extinguishers, meetings, meta/stats, sites, notifications, …). Approved
       // members read/create/update; managers+ delete. auditLogs is excluded so
@@ -258,9 +283,10 @@ service cloud.firestore {
       match /{col}/{docId} {
         // defectLocks joins auditLogs in being excluded: its whole purpose is
         // that a create fails on an existing document, which a generic update
-        // permission would quietly defeat.
-        allow read, create, update: if col != 'auditLogs' && col != 'defectLocks' && isApprovedMemberOf(orgId);
-        allow delete: if col != 'auditLogs' && isManagerOf(orgId);
+        // permission would quietly defeat. docSeq likewise: its monotonic rule
+        // above is the guarantee, and a generic update would erase it.
+        allow read, create, update: if col != 'auditLogs' && col != 'defectLocks' && col != 'docSeq' && isApprovedMemberOf(orgId);
+        allow delete: if col != 'auditLogs' && col != 'docSeq' && isManagerOf(orgId);
 
         // Nested subcollections (e.g. incidents/{id}/photos, documents/{id}/versions).
         // The recursive wildcard also matches the parent {col}/{docId} itself, so
@@ -268,8 +294,8 @@ service cloud.firestore {
         // updates/deletes on the append-only audit trail. The same applies to
         // defectLocks, whose create-only rule is the duplicate check.
         match /{sub=**} {
-          allow read, create, update: if col != 'auditLogs' && col != 'defectLocks' && isApprovedMemberOf(orgId);
-          allow delete: if col != 'auditLogs' && isManagerOf(orgId);
+          allow read, create, update: if col != 'auditLogs' && col != 'defectLocks' && col != 'docSeq' && isApprovedMemberOf(orgId);
+          allow delete: if col != 'auditLogs' && col != 'docSeq' && isManagerOf(orgId);
         }
       }
     }

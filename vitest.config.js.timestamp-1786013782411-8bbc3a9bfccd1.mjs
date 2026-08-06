@@ -1,0 +1,16 @@
+// vitest.config.js
+import { defineConfig } from "file:///sessions/optimistic-hopeful-gauss/mnt/OHSMS/node_modules/vitest/dist/config.js";
+import react from "file:///sessions/optimistic-hopeful-gauss/mnt/OHSMS/node_modules/@vitejs/plugin-react/dist/index.js";
+var vitest_config_default = defineConfig({
+  plugins: [react()],
+  test: {
+    environment: "jsdom",
+    globals: true,
+    include: ["src/**/*.{test,spec}.{js,jsx}"],
+    exclude: ["tests/**", "node_modules/**", ".vendor/**"]
+  }
+});
+export {
+  vitest_config_default as default
+};
+//# sourceMappingURL=data:application/json;base64,ewogICJ2ZXJzaW9uIjogMywKICAic291cmNlcyI6IFsidml0ZXN0LmNvbmZpZy5qcyJdLAogICJzb3VyY2VzQ29udGVudCI6IFsiY29uc3QgX192aXRlX2luamVjdGVkX29yaWdpbmFsX2Rpcm5hbWUgPSBcIi9zZXNzaW9ucy9vcHRpbWlzdGljLWhvcGVmdWwtZ2F1c3MvbW50L09IU01TXCI7Y29uc3QgX192aXRlX2luamVjdGVkX29yaWdpbmFsX2ZpbGVuYW1lID0gXCIvc2Vzc2lvbnMvb3B0aW1pc3RpYy1ob3BlZnVsLWdhdXNzL21udC9PSFNNUy92aXRlc3QuY29uZmlnLmpzXCI7Y29uc3QgX192aXRlX2luamVjdGVkX29yaWdpbmFsX2ltcG9ydF9tZXRhX3VybCA9IFwiZmlsZTovLy9zZXNzaW9ucy9vcHRpbWlzdGljLWhvcGVmdWwtZ2F1c3MvbW50L09IU01TL3ZpdGVzdC5jb25maWcuanNcIjtpbXBvcnQgeyBkZWZpbmVDb25maWcgfSBmcm9tICd2aXRlc3QvY29uZmlnJ1xuaW1wb3J0IHJlYWN0IGZyb20gJ0B2aXRlanMvcGx1Z2luLXJlYWN0J1xuXG5leHBvcnQgZGVmYXVsdCBkZWZpbmVDb25maWcoe1xuICBwbHVnaW5zOiBbcmVhY3QoKV0sXG4gIHRlc3Q6IHtcbiAgICBlbnZpcm9ubWVudDogJ2pzZG9tJyxcbiAgICBnbG9iYWxzOiB0cnVlLFxuICAgIGluY2x1ZGU6IFsnc3JjLyoqLyoue3Rlc3Qsc3BlY30ue2pzLGpzeH0nXSxcbiAgICBleGNsdWRlOiBbJ3Rlc3RzLyoqJywgJ25vZGVfbW9kdWxlcy8qKicsICcudmVuZG9yLyoqJ10sXG4gIH0sXG59KVxuIl0sCiAgIm1hcHBpbmdzIjogIjtBQUEwVCxTQUFTLG9CQUFvQjtBQUN2VixPQUFPLFdBQVc7QUFFbEIsSUFBTyx3QkFBUSxhQUFhO0FBQUEsRUFDMUIsU0FBUyxDQUFDLE1BQU0sQ0FBQztBQUFBLEVBQ2pCLE1BQU07QUFBQSxJQUNKLGFBQWE7QUFBQSxJQUNiLFNBQVM7QUFBQSxJQUNULFNBQVMsQ0FBQywrQkFBK0I7QUFBQSxJQUN6QyxTQUFTLENBQUMsWUFBWSxtQkFBbUIsWUFBWTtBQUFBLEVBQ3ZEO0FBQ0YsQ0FBQzsiLAogICJuYW1lcyI6IFtdCn0K

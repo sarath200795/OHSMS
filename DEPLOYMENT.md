@@ -1,7 +1,12 @@
 # WEHS — Deployment Runbook
 
 Target scale: **~5 000 users, 100–200 concurrent.**
-Stack: Vite + React SPA on Firebase Hosting, Firestore + Auth. (No Firebase Storage — file uploads are stored as data URLs in Firestore, so there is nothing extra to provision.)
+Stack: Vite + React SPA on Firebase Hosting, Firestore + Auth + Storage.
+File uploads go to Firebase Storage (enable it in console → Storage, then
+`firebase deploy --only storage` publishes `storage.rules`); if the bucket is
+unreachable the app degrades gracefully to inline data URLs in Firestore.
+Storage and database backends are swappable via env — see
+`src/shared/data/README.md`.
 
 Deploy to **staging first, always.** Production only after staging passes §6.
 

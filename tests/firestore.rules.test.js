@@ -84,6 +84,61 @@ describe('admin self-create is pinned to org registration', () => {
   })
 })
 
+// A document id ends up printed on a permit and quoted in the audit trail, so
+// two records sharing one is the failure the whole scheme exists to prevent.
+// The transaction in reserve.js stops two people colliding by accident; only
+// this rule stops one person rewinding the counter on purpose.
+describe('document-id counters are monotonic (/docSeq)', () => {
+  const seqAt = (db, kind) => doc(db, 'organizations', 'orgA', 'docSeq', kind)
+
+  beforeEach(async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'organizations', 'orgA', 'docSeq', 'incidents'), { n: 42 })
+    })
+  })
+
+  it('a member can move a counter forward — reserving an id is a normal write', async () => {
+    const alice = testEnv.authenticatedContext('alice').firestore()
+    await assertSucceeds(setDoc(seqAt(alice, 'incidents'), { n: 43 }))
+  })
+
+  it('a member CANNOT rewind a counter', async () => {
+    // The attack: set it back, then create records that reuse issued numbers.
+    const alice = testEnv.authenticatedContext('alice').firestore()
+    await assertFails(setDoc(seqAt(alice, 'incidents'), { n: 1 }))
+  })
+
+  it('a member CANNOT rewrite a counter to its current value', async () => {
+    // Strictly greater, so a replayed write cannot re-issue the same number.
+    const alice = testEnv.authenticatedContext('alice').firestore()
+    await assertFails(setDoc(seqAt(alice, 'incidents'), { n: 42 }))
+  })
+
+  it('a counter CANNOT be deleted, which would reset it to zero', async () => {
+    const alice = testEnv.authenticatedContext('alice').firestore()
+    await assertFails(deleteDoc(seqAt(alice, 'incidents')))
+  })
+
+  it('a counter CANNOT be smuggled past the rule as a non-integer or extra field', async () => {
+    const alice = testEnv.authenticatedContext('alice').firestore()
+    await assertFails(setDoc(seqAt(alice, 'incidents'), { n: 99.5 }))
+    await assertFails(setDoc(seqAt(alice, 'incidents'), { n: '99' }))
+    await assertFails(setDoc(seqAt(alice, 'incidents'), { n: 99, sneaky: true }))
+  })
+
+  it('a new kind starts at a positive number, never zero', async () => {
+    const alice = testEnv.authenticatedContext('alice').firestore()
+    await assertFails(setDoc(seqAt(alice, 'permits'), { n: 0 }))
+    await assertSucceeds(setDoc(seqAt(alice, 'permits'), { n: 1 }))
+  })
+
+  it('another org cannot touch these counters at all', async () => {
+    const bob = testEnv.authenticatedContext('bob').firestore() // orgB
+    await assertFails(setDoc(seqAt(bob, 'incidents'), { n: 999 }))
+    await assertFails(getDoc(seqAt(bob, 'incidents')))
+  })
+})
+
 describe('multi-tenant isolation', () => {
   it('an approved member can read their own org data', async () => {
     const alice = testEnv.authenticatedContext('alice').firestore()
