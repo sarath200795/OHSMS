@@ -59,6 +59,28 @@ if (!isFirebaseConfigured) {
   console.warn('[OHS MS] Firebase is not configured. Copy .env.example to .env.')
 }
 
+// Vite loads .env for EVERY mode, and .env.<mode> overrides only the keys it
+// names. So any key a production env file forgets silently inherits the demo
+// value — which is exactly how a build shipped pointing storage at the emulator
+// bucket while auth and Firestore were correct, and every upload failed with
+// nothing in the UI to explain it.
+//
+// A real deployment can never legitimately carry a demo value, so say so loudly
+// rather than letting one subsystem quietly talk to the wrong project.
+if (isFirebaseConfigured && !USE_EMULATORS) {
+  const leaked = Object.entries(firebaseConfig)
+    .filter(([, v]) => /ohsms-demo|demo-api-key|^0+$|:0+:/.test(String(v)))
+    .map(([k]) => k)
+  if (leaked.length) {
+    // eslint-disable-next-line no-console
+    console.error(
+      `[OHS MS] Demo config leaked into a production build: ${leaked.join(', ')}. ` +
+      'Define these keys explicitly in .env.production — inheriting them from .env ' +
+      'points that subsystem at the wrong project.'
+    )
+  }
+}
+
 // Only initialize when configured — calling getAuth() with an undefined apiKey
 // throws at module load and blanks the whole app (so SetupNeeded can't render).
 const app = isFirebaseConfigured ? initializeApp(firebaseConfig) : null
