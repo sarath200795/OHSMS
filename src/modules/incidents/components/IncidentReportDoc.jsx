@@ -5,6 +5,7 @@ import {
   INCIDENT_TYPE_BY_KEY, SEVERITY_BY_KEY, HSE_CATEGORY_BY_KEY, INVESTIGATION_METHOD_BY_KEY,
   ACTION_STATUS_BY_KEY, bodyPartLabel,
 } from '../lib/constants'
+import { safeSrc } from '../../../shared/safeUrl'
 
 const fmt = (v) => v || '—'
 const personLine = (p) =>
@@ -115,7 +116,7 @@ const IncidentReportDoc = forwardRef(function IncidentReportDoc({ incident, phot
         <Section title="Photographic Evidence">
           <div className="flex flex-wrap gap-3">
             {evidence.map((p) => (
-              <img key={p.id} src={p.dataUrl} alt={p.name} className="h-40 w-40 rounded object-cover" />
+              <img key={p.id} src={safeSrc(p.dataUrl)} alt={p.name} className="h-40 w-40 rounded object-cover" />
             ))}
           </div>
         </Section>

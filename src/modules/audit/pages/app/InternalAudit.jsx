@@ -3,6 +3,7 @@ import { useAuth } from '../../context/AuthContext'
 import { useOrgData } from '../../context/OrgDataContext'
 import SiteScopePicker from '../../../../shared/org/SiteScopePicker'
 import DepartmentSelect from '../../../../shared/org/DepartmentSelect'
+import { safeHref } from '../../../../shared/safeUrl'
 import {
   subscribeAuditPlans,
   subscribeAuditFindings,
@@ -1003,7 +1004,7 @@ function CapaSummary({ r }) {
         <div className="rounded-xl border border-slate-200 bg-white p-4"><span className={lbl}>CAPA</span><span className="text-sm font-medium text-ink-800">{r.capa}</span></div>
       </div>
       <div className="flex items-center justify-between border-t border-orange-200 pt-3">
-        {r.evidenceFileName ? <a href={r.evidenceFile} download={r.evidenceFileName} className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs font-bold text-emerald-600 hover:bg-emerald-600 hover:text-white"><i className="fas fa-download" />View Evidence</a> : <span className="text-xs italic text-slate-400">No Evidence Provided</span>}
+        {r.evidenceFileName ? <a href={safeHref(r.evidenceFile)} download={r.evidenceFileName} className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs font-bold text-emerald-600 hover:bg-emerald-600 hover:text-white"><i className="fas fa-download" />View Evidence</a> : <span className="text-xs italic text-slate-400">No Evidence Provided</span>}
         <div className="flex gap-6 text-right">
           <div><span className={lbl}>Owner</span><span className="text-xs font-bold text-ink-800">{r.owner}</span></div>
           <div><span className={lbl}>Target</span><span className="font-mono text-xs text-ink-800">{r.targetDate}</span></div>

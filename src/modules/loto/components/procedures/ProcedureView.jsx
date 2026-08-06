@@ -10,6 +10,7 @@ import {
   computeLockSummary,
 } from '../../constants/procedures'
 import Badge from '../ui/Badge'
+import { safeHref, safeSrc } from '../../../../shared/safeUrl'
 
 function useQr(text) {
   const [url, setUrl] = useState('')
@@ -138,9 +139,9 @@ export default function ProcedureView({ procedure, photos = {}, headerActions })
                       <dt className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-steel-400">
                         Isolation point
                       </dt>
-                      <a href={photos[p.key]} target="_blank" rel="noreferrer">
+                      <a href={safeHref(photos[p.key])} target="_blank" rel="noreferrer">
                         <img
-                          src={photos[p.key]}
+                          src={safeSrc(photos[p.key])}
                           alt={`${p.pointId} isolation`}
                           className="h-28 w-full max-w-[180px] rounded-lg border border-steel-700 object-cover"
                         />

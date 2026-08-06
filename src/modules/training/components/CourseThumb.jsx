@@ -1,3 +1,4 @@
+import { safeSrc } from '../../../shared/safeUrl'
 // Course card thumbnail — uploaded image when set, otherwise category art
 // (kraft-toned gradient + icon) so every course reads well in the grid.
 const ART = {
@@ -19,7 +20,7 @@ const ART = {
 
 export default function CourseThumb({ course, className = '' }) {
   if (course?.thumbnail) {
-    return <img src={course.thumbnail} alt="" className={`aspect-video w-full rounded-xl object-cover ${className}`} />
+    return <img src={safeSrc(course.thumbnail)} alt="" className={`aspect-video w-full rounded-xl object-cover ${className}`} />
   }
   const [emoji, color] = ART[course?.category] || ART.Other
   return (

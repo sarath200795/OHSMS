@@ -26,6 +26,7 @@ import {
 import {
   SESSION_MODES, sessionProblems, sessionState, sortSessions, countRequests, sessionWhere, isClassroom,
 } from '../lib/sessions'
+import { safeHref } from '../../../shared/safeUrl'
 
 const EMPTY = {
   courseId: '', mode: 'online', meetingLink: '', siteId: '', room: '',
@@ -149,7 +150,7 @@ export default function Sessions() {
 
                 {s.mode === 'online' && s.meetingLink && (
                   <a
-                    href={s.meetingLink} target="_blank" rel="noreferrer"
+                    href={safeHref(s.meetingLink)} target="_blank" rel="noreferrer"
                     className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-brand-700 hover:underline"
                   >
                     <ExternalLink size={12} /> Join link

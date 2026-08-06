@@ -23,6 +23,7 @@ import { can, canActForTeam, TEAMS } from '../lib/permissions'
 import { STATUS, statusMeta } from '../lib/permitStatus'
 import { fileToDataUrl, formatBytes } from '../lib/files'
 import { publicPermitUrl } from '../lib/qr'
+import { safeHref } from '../../../shared/safeUrl'
 
 const fmt = (iso) => {
   if (!iso) return '—'
@@ -389,7 +390,7 @@ export default function PermitDetail() {
                       <span className={file ? 'text-ink-800' : 'text-ink-500'}>{req.label}</span>
                       {req.mandatory && !file && <span className="chip bg-red-50 text-red-600">Missing</span>}
                       {file && (
-                        <a href={file.fileData} download={file.fileName} className="ml-auto inline-flex items-center gap-1 text-xs font-semibold text-brand-600 hover:underline">
+                        <a href={safeHref(file.fileData)} download={file.fileName} className="ml-auto inline-flex items-center gap-1 text-xs font-semibold text-brand-600 hover:underline">
                           <Download size={13} /> {formatBytes(file.size)}
                         </a>
                       )}
@@ -406,7 +407,7 @@ export default function PermitDetail() {
                   <div key={d.id} className="flex items-center gap-2 text-sm">
                     <FileText size={15} className="shrink-0 text-ink-400" />
                     <span className="truncate text-ink-800">{d.fileName}</span>
-                    <a href={d.fileData} download={d.fileName} className="ml-auto inline-flex items-center gap-1 text-xs font-semibold text-brand-600 hover:underline"><Download size={13} /> {formatBytes(d.size)}</a>
+                    <a href={safeHref(d.fileData)} download={d.fileName} className="ml-auto inline-flex items-center gap-1 text-xs font-semibold text-brand-600 hover:underline"><Download size={13} /> {formatBytes(d.size)}</a>
                     {canRemoveDocs && <button onClick={() => onRemoveDocument(d)} className="rounded-lg p-1 text-ink-400 hover:text-red-600"><X size={14} /></button>}
                   </div>
                 ))}

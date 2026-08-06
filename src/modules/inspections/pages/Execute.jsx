@@ -13,6 +13,7 @@ import { putFile, MAX_UPLOAD_BYTES, MAX_INLINE_BYTES, tooLargeForInline, formatS
 import { hasAnsweredQuestion, scoreResponses } from '../lib/schedule'
 import { previousInspection, withRepeatHistory } from '../lib/previousFindings'
 import PreviousFindingsPanel, { PreviousFindingNote } from '../components/PreviousFindings'
+import { safeSrc } from '../../../shared/safeUrl'
 
 export default function Execute() {
   const navigate = useNavigate()
@@ -282,7 +283,7 @@ export default function Execute() {
                 <div className="mt-3">
                   {r.photoEvidence ? (
                     <div className="flex items-center gap-3">
-                      <img src={r.photoEvidence} alt="evidence" className="h-16 w-16 rounded-xl object-cover shadow-clay-sm" />
+                      <img src={safeSrc(r.photoEvidence)} alt="evidence" className="h-16 w-16 rounded-xl object-cover shadow-clay-sm" />
                       <span className="text-xs text-ink-500">{r.photoEvidenceName}</span>
                       <button onClick={() => update(f.id, { photoEvidence: null, photoEvidenceName: '' })}
                         className="rounded-lg p-1.5 text-ink-400 hover:bg-red-50 hover:text-red-600"><Trash2 size={15} /></button>

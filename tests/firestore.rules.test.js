@@ -84,6 +84,74 @@ describe('admin self-create is pinned to org registration', () => {
   })
 })
 
+// The orgIndex is how signup answers "which org is this?" before the user
+// belongs to anything, so it is world-readable. It was also world-WRITEABLE to
+// any signed-in account, which turned it into a tenant-hijack primitive:
+// repoint an org's entry, and every employee who signs up by name afterwards is
+// enrolled into the attacker's org instead.
+describe('orgIndex cannot be repointed at another org', () => {
+  const seedIndex = (orgId, key, name) =>
+    testEnv.withSecurityRulesDisabled((ctx) =>
+      setDoc(doc(ctx.firestore(), 'orgIndex', key), { orgId, name })
+    )
+
+  it('a signed-in stranger CANNOT repoint an existing org at their own', async () => {
+    await seedIndex('orgA', 'acme corp', 'Acme Corp')
+    const mallory = testEnv.authenticatedContext('mallory').firestore()
+    await assertFails(
+      setDoc(doc(mallory, 'orgIndex', 'acme corp'), { orgId: 'orgEvil', name: 'Acme Corp' })
+    )
+  })
+
+  it('even a member of another real org cannot repoint it', async () => {
+    await seedIndex('orgA', 'acme corp', 'Acme Corp')
+    const bob = testEnv.authenticatedContext('bob').firestore() // approved member of orgB
+    await assertFails(
+      setDoc(doc(bob, 'orgIndex', 'acme corp'), { orgId: 'orgB', name: 'Acme Corp' })
+    )
+  })
+
+  it('a stranger cannot squat a name by pointing a NEW entry at their own org', async () => {
+    // No profile written in the same batch, so the getAfter pin refuses it.
+    const mallory = testEnv.authenticatedContext('mallory').firestore()
+    await assertFails(
+      setDoc(doc(mallory, 'orgIndex', 'acme corp'), { orgId: 'orgEvil', name: 'Acme Corp' })
+    )
+  })
+
+  it("a member of the org CAN correct its own entry's name", async () => {
+    await seedIndex('orgA', 'acme corp', 'Acme Corp')
+    const alice = testEnv.authenticatedContext('alice').firestore() // admin of orgA
+    await assertSucceeds(
+      setDoc(doc(alice, 'orgIndex', 'acme corp'), { orgId: 'orgA', name: 'Acme Corporation' })
+    )
+  })
+
+  it('but cannot smuggle a different orgId into that correction', async () => {
+    await seedIndex('orgA', 'acme corp', 'Acme Corp')
+    const alice = testEnv.authenticatedContext('alice').firestore()
+    await assertFails(
+      setDoc(doc(alice, 'orgIndex', 'acme corp'), { orgId: 'orgEvil', name: 'Acme Corp' })
+    )
+  })
+
+  it('nobody can delete an entry to free the name for squatting', async () => {
+    await seedIndex('orgA', 'acme corp', 'Acme Corp')
+    const alice = testEnv.authenticatedContext('alice').firestore()
+    await assertFails(deleteDoc(doc(alice, 'orgIndex', 'acme corp')))
+  })
+
+  it('the self-heal backfill for a pre-index org still works', async () => {
+    // ensureOrgIndex(): an approved member creates the missing entry for their
+    // own org. No batch, but the getAfter pin is satisfied by their existing
+    // profile already naming that orgId.
+    const alice = testEnv.authenticatedContext('alice').firestore()
+    await assertSucceeds(
+      setDoc(doc(alice, 'orgIndex', 'acme corp'), { orgId: 'orgA', name: 'Acme Corp' })
+    )
+  })
+})
+
 // A document id ends up printed on a permit and quoted in the audit trail, so
 // two records sharing one is the failure the whole scheme exists to prevent.
 // The transaction in reserve.js stops two people colliding by accident; only

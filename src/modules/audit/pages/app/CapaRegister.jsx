@@ -8,6 +8,7 @@ import Input from '../../components/ui/Input'
 import Select from '../../components/ui/Select'
 import Badge from '../../components/ui/Badge'
 import EmptyState from '../../components/ui/EmptyState'
+import { safeHref } from '../../../../shared/safeUrl'
 
 const TYPE_TONE = { 'Major NC': 'red', 'Minor NC': 'amber', OFI: 'blue', Observation: 'slate' }
 // A CAPA is verified once its audit record is Closed; otherwise it's open/awaiting verification.
@@ -134,7 +135,7 @@ export default function CapaRegister() {
                   </div>
                   {r.evidenceFileName && (
                     <a
-                      href={r.evidenceFile}
+                      href={safeHref(r.evidenceFile)}
                       download={r.evidenceFileName}
                       className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 font-bold text-emerald-600 transition active:scale-[0.97] hover:bg-emerald-600 hover:text-white"
                     >

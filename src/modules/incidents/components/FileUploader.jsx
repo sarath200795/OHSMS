@@ -3,6 +3,7 @@ import { Upload, X, FileText, Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { readFileAsDataUrl } from '../lib/fileToDataUrl'
 import { MAX_FILE_BYTES } from '../lib/constants'
+import { safeSrc } from '../../../shared/safeUrl'
 
 /**
  * Upload + gallery for base64 files. Presentational: parent passes the current
@@ -43,7 +44,7 @@ export default function FileUploader({ files = [], onAdd, onRemove, accept = 'im
           {files.map((f) => (
             <div key={f.id} className="group relative">
               {f.type?.startsWith('image/') ? (
-                <img src={f.dataUrl} alt={f.name} className="h-24 w-24 rounded-xl object-cover shadow-clay-sm" />
+                <img src={safeSrc(f.dataUrl)} alt={f.name} className="h-24 w-24 rounded-xl object-cover shadow-clay-sm" />
               ) : (
                 <div className="flex h-24 w-24 flex-col items-center justify-center gap-1 rounded-xl bg-clay-surface p-2 text-center shadow-clay-sm">
                   <FileText size={26} className="text-brand-500" />

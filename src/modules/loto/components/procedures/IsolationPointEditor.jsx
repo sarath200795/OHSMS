@@ -8,6 +8,7 @@ import {
   pointDeviceKeys,
 } from '../../constants/energySources'
 import { fileToCompressedDataUrl } from '../../utils/image'
+import { safeSrc } from '../../../../shared/safeUrl'
 
 function Field({ label, children }) {
   return (
@@ -178,7 +179,7 @@ export default function IsolationPointEditor({
             <div className="flex items-center gap-3">
               {point.photo ? (
                 <img
-                  src={point.photo}
+                  src={safeSrc(point.photo)}
                   alt="Isolation point"
                   className="h-20 w-20 rounded-lg border border-steel-700 object-cover"
                 />

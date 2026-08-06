@@ -8,6 +8,7 @@ import DocIdTag from '../../../shared/docId/DocIdTag'
 import { useAuth } from '../context/AuthContext'
 import { useData } from '../context/DataContext'
 import { deleteRecord } from '../lib/firestore'
+import { safeSrc } from '../../../shared/safeUrl'
 
 function RecordDetail({ record, onClose }) {
   const findings = Object.values(record.responses || {}).filter(
@@ -31,7 +32,7 @@ function RecordDetail({ record, onClose }) {
               <li key={i} className="text-sm">
                 <span className="font-semibold text-ink-800">{f.label}</span>
                 {f.observation && <span className="text-ink-600"> — {f.observation}</span>}
-                {f.photoEvidence && <img src={f.photoEvidence} alt="" className="mt-1.5 h-20 w-20 rounded-lg object-cover shadow-clay-sm" />}
+                {f.photoEvidence && <img src={safeSrc(f.photoEvidence)} alt="" className="mt-1.5 h-20 w-20 rounded-lg object-cover shadow-clay-sm" />}
               </li>
             ))}
           </ul>

@@ -22,6 +22,7 @@ import {
   subscribeContacts, subscribeLayouts, subscribeRescuePlans, saveFloors, deleteLayout, floorsOf, INTERNAL_ROLES,
 } from '../lib/firestore'
 import { putFile, removeFile, MAX_UPLOAD_BYTES, MAX_INLINE_BYTES, tooLargeForInline, formatSize } from '../../../shared/storage'
+import { safeHref, safeSrc } from '../../../shared/safeUrl'
 
 // Floor plans go to cloud storage. The old 900KB ceiling was the Firestore
 // document limit — and layouts are the worst case for it, since SEVERAL plans
@@ -260,7 +261,7 @@ export default function SiteDetail() {
                       <Layers size={14} className="shrink-0 text-accent-amber" />
                       <p className="min-w-0 flex-1 truncate font-semibold text-ink-800">{f.label}</p>
                       <div className="flex shrink-0 gap-0.5">
-                        <a className="btn-ghost px-1.5 py-1 text-xs" href={f.dataUrl}
+                        <a className="btn-ghost px-1.5 py-1 text-xs" href={safeHref(f.dataUrl)}
                           download={f.fileName || `${site.name} — ${f.label}.png`} title="Download this floor plan">
                           <Download size={13} />
                         </a>
@@ -276,7 +277,7 @@ export default function SiteDetail() {
                     </div>
                     <button type="button" className="block w-full overflow-hidden rounded-xl transition hover:opacity-95"
                       onClick={() => setViewLayout(f)} title="Click to enlarge">
-                      <img src={f.dataUrl} alt={`${f.label} — ${site.name}`} className="max-h-[360px] w-full bg-white object-contain" />
+                      <img src={safeSrc(f.dataUrl)} alt={`${f.label} — ${site.name}`} className="max-h-[360px] w-full bg-white object-contain" />
                     </button>
                   </div>
                 ))}
@@ -314,7 +315,7 @@ export default function SiteDetail() {
 
       <Modal open={!!viewLayout} onClose={() => setViewLayout(null)} title={viewLayout ? `${viewLayout.label} — ${site.name}` : ''} size="xl">
         <div className="p-4">
-          {viewLayout && <img src={viewLayout.dataUrl} alt={`${viewLayout.label} — ${site.name}`} className="max-h-[75vh] w-full bg-white object-contain" />}
+          {viewLayout && <img src={safeSrc(viewLayout.dataUrl)} alt={`${viewLayout.label} — ${site.name}`} className="max-h-[75vh] w-full bg-white object-contain" />}
         </div>
       </Modal>
 
@@ -341,7 +342,7 @@ export default function SiteDetail() {
                 </span>
               </p>
             </div>
-            <img src={f.dataUrl} alt={f.label} className="mt-2 w-full flex-1 object-contain" style={{ minHeight: 0 }} />
+            <img src={safeSrc(f.dataUrl)} alt={f.label} className="mt-2 w-full flex-1 object-contain" style={{ minHeight: 0 }} />
           </div>
         ))}
       </div>
@@ -386,7 +387,7 @@ export default function SiteDetail() {
             {floors.map((f, i) => (
               <div key={f.id} className="mb-4" style={i > 0 ? { pageBreakBefore: 'always' } : undefined}>
                 <p className="mb-1 text-sm font-bold">{f.label}</p>
-                <img src={f.dataUrl} alt={f.label} className="max-h-[460px] w-full object-contain" />
+                <img src={safeSrc(f.dataUrl)} alt={f.label} className="max-h-[460px] w-full object-contain" />
               </div>
             ))}
           </div>

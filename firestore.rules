@@ -49,9 +49,34 @@ service cloud.firestore {
     }
 
     // ── Public org-name index (no sensitive fields) ───────────────────────────
+    // Maps a lowercased org name to its orgId. Publicly readable because signup
+    // has to resolve "which org is this?" before the user is a member of
+    // anything.
+    //
+    // This was `create, update: if isSignedIn()`, which made it a tenant-hijack
+    // primitive: anyone who registered an account could repoint an existing
+    // org's entry at their own org, and every employee who subsequently signed
+    // up by name would be enrolled into the attacker's tenant instead — where
+    // the attacker is admin and reads everything they go on to file. Nothing in
+    // the app writes an update, so the rule was granting authority the product
+    // never used.
+    //
+    // Create is pinned with getAfter to the registration batch that also writes
+    // the caller's own profile, exactly as /users/{uid} is: at that instant the
+    // profile does not exist yet, so isApprovedMemberOf cannot be used. The same
+    // condition covers the self-heal backfill for pre-index orgs, where the
+    // caller is already a member of the org being indexed.
     match /orgIndex/{key} {
       allow read: if true;
-      allow create, update: if isSignedIn();
+      allow create: if isSignedIn()
+        && request.resource.data.keys().hasOnly(['orgId', 'name'])
+        && request.resource.data.orgId is string
+        && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.orgId
+             == request.resource.data.orgId;
+      // An entry may be corrected by its own org, but never repointed elsewhere.
+      allow update: if isApprovedMemberOf(resource.data.orgId)
+        && request.resource.data.keys().hasOnly(['orgId', 'name'])
+        && request.resource.data.orgId == resource.data.orgId;
       allow delete: if false;
     }
 

@@ -16,6 +16,7 @@ import { isClassroom, sortSessions, sessionState, canRequest, sessionWhere } fro
 import { assignmentStatus, ASSIGNMENT_META, recordStatus, STATUS_META, todayISO } from '../lib/status'
 import CertificateModal from '../components/Certificate'
 import CourseThumb from '../components/CourseThumb'
+import { safeHref } from '../../../shared/safeUrl'
 
 /** Learning material chips for a course (links open, files download). */
 function ContentList({ course }) {
@@ -26,7 +27,7 @@ function ContentList({ course }) {
       {items.map((c) => (
         <a
           key={c.id}
-          href={c.type === 'file' ? (c.dataUrl || c.url) : c.url}
+          href={safeHref(c.type === 'file' ? (c.dataUrl || c.url) : c.url)}
           target="_blank"
           rel="noreferrer"
           download={c.type === 'file' ? c.fileName || c.label : undefined}
@@ -79,7 +80,7 @@ function SessionPicker({ course, sessions, requests, sites, busyId, onRequest, o
 
             {/* The link only helps once a place is confirmed. */}
             {s.mode === 'online' && s.meetingLink && mine?.status === 'approved' && (
-              <a href={s.meetingLink} target="_blank" rel="noreferrer"
+              <a href={safeHref(s.meetingLink)} target="_blank" rel="noreferrer"
                 className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-semibold text-brand-700 hover:underline">
                 <ExternalLink size={11} /> Join link
               </a>

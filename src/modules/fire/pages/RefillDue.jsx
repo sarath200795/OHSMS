@@ -13,6 +13,7 @@ import { markReceivedByVendor } from '../lib/firestore'
 import { hasQuotation } from '../lib/extinguisherLogic'
 import { emptyFilters, applyListFilters } from '../lib/listFilter'
 import { exportExtinguishers } from '../lib/exporter'
+import { safeHref } from '../../../shared/safeUrl'
 
 export default function RefillDue() {
   const { refillDue, loading } = useFleet()
@@ -87,7 +88,7 @@ export default function RefillDue() {
               )}
               {hasQuotation(ext) && (
                 (ext.quotation?.fileData || ext.quotation?.fileUrl) ? (
-                  <a href={ext.quotation.fileData || ext.quotation.fileUrl} target="_blank" rel="noreferrer" className="chip bg-cyan-50 text-cyan-700 hover:underline" title={`Quoted ${ext.quotation?.amount ?? ''} · ${ext.quotation?.vendor || ''} — view document`}>
+                  <a href={safeHref(ext.quotation.fileData || ext.quotation.fileUrl)} target="_blank" rel="noreferrer" className="chip bg-cyan-50 text-cyan-700 hover:underline" title={`Quoted ${ext.quotation?.amount ?? ''} · ${ext.quotation?.vendor || ''} — view document`}>
                     <CheckCircle2 size={12} /> Quoted · View
                   </a>
                 ) : (

@@ -5,6 +5,7 @@ import { Modal, Spinner } from './ui'
 import { submitQuotation } from '../lib/firestore'
 import { readFileAsDataUrl, MAX_QUOTE_FILE_BYTES } from '../lib/fileToDataUrl'
 import { formatSize } from '../../../shared/storage'
+import { safeHref } from '../../../shared/safeUrl'
 
 function Field({ label, children }) {
   return (
@@ -133,7 +134,7 @@ export default function SubmitQuotationModal({ open, onClose, ext, orgId, orgNam
           <div className="flex items-center gap-2 rounded-2xl bg-clay-surface px-3 py-2.5 text-sm shadow-clay-inset">
             <Paperclip size={15} className="shrink-0 text-ink-400" />
             <a
-              href={file.data}
+              href={safeHref(file.data)}
               target="_blank"
               rel="noreferrer"
               className="flex-1 truncate font-medium text-brand-700 hover:underline"

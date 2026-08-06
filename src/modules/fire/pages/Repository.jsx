@@ -19,6 +19,7 @@ import { planSiteLinks } from '../lib/siteLink'
 import { useAccessibleSites } from '../../../shared/org/useAccessibleSites'
 import { emptyFilters, applyListFilters, hasActiveFilters } from '../lib/listFilter'
 import { CATEGORY_LIST, PHYSICAL_DEFECT_KEYS } from '../lib/constants'
+import { safeHref } from '../../../shared/safeUrl'
 
 export default function Repository() {
   const { org, extinguishers, loading, capped, loadCap } = useFleet()
@@ -302,7 +303,7 @@ ${linkPlan.unmatched.length} unit(s) across ${linkPlan.unmatchedCenters.length} 
                   )}
                   {(canResolve || canSendToVendor) && quoted && (
                     (ext.quotation?.fileData || ext.quotation?.fileUrl) ? (
-                      <a href={ext.quotation.fileData || ext.quotation.fileUrl} target="_blank" rel="noreferrer" className="chip bg-cyan-50 text-cyan-700 hover:underline" title={`Quoted ${ext.quotation?.amount ?? ''} · ${ext.quotation?.vendor || ''} — view document`}>
+                      <a href={safeHref(ext.quotation.fileData || ext.quotation.fileUrl)} target="_blank" rel="noreferrer" className="chip bg-cyan-50 text-cyan-700 hover:underline" title={`Quoted ${ext.quotation?.amount ?? ''} · ${ext.quotation?.vendor || ''} — view document`}>
                         <CheckCircle2 size={12} /> Quoted · View
                       </a>
                     ) : (

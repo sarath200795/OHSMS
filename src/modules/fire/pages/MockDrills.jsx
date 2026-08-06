@@ -20,6 +20,7 @@ import {
 import SiteScopePicker from '../../../shared/org/SiteScopePicker'
 import DeptPersonPicker from '../../../shared/org/DeptPersonPicker'
 import { subscribeContacts as subscribeErpContacts } from '../../emergency/lib/firestore'
+import { safeSrc } from '../../../shared/safeUrl'
 
 const nowTime = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
 const today = () => new Date().toISOString().slice(0, 10)
@@ -556,7 +557,7 @@ export default function MockDrills() {
               <div className="flex flex-wrap gap-2">
                 {photos.map((p) => (
                   <div key={p.id} className="group relative">
-                    <img src={p.dataUrl} alt="Drill evidence" className="h-20 w-20 cursor-pointer rounded-lg border border-clay-200 object-cover" onClick={() => setEnlarge(p.dataUrl)} />
+                    <img src={safeSrc(p.dataUrl)} alt="Drill evidence" className="h-20 w-20 cursor-pointer rounded-lg border border-clay-200 object-cover" onClick={() => setEnlarge(p.dataUrl)} />
                     <button type="button" onClick={() => removeDrillPhoto(p.id)} className="absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full bg-red-600 text-white shadow" title="Remove"><X size={11} /></button>
                   </div>
                 ))}
@@ -620,7 +621,7 @@ export default function MockDrills() {
                 ) : viewPhotos.length > 0 ? (
                   <div className="flex flex-wrap gap-2">
                     {viewPhotos.map((p) => (
-                      <img key={p.id} src={p.dataUrl} alt="Drill evidence" className="h-20 w-20 cursor-pointer rounded-lg border border-clay-200 object-cover" onClick={() => setEnlarge(p.dataUrl)} />
+                      <img key={p.id} src={safeSrc(p.dataUrl)} alt="Drill evidence" className="h-20 w-20 cursor-pointer rounded-lg border border-clay-200 object-cover" onClick={() => setEnlarge(p.dataUrl)} />
                     ))}
                   </div>
                 ) : (
