@@ -7,7 +7,7 @@ import {
   assertFails,
   assertSucceeds,
 } from '@firebase/rules-unit-testing'
-import { doc, getDoc, setDoc, deleteDoc } from 'firebase/firestore'
+import { doc, getDoc, setDoc, deleteDoc, writeBatch } from 'firebase/firestore'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const PROJECT_ID = 'ohsms-demo'
@@ -39,6 +39,49 @@ beforeEach(async () => {
   await testEnv.clearFirestore()
   await seedMember('alice', 'orgA', 'admin')
   await seedMember('bob', 'orgB', 'member')
+})
+
+// The registration escape hatch: creating your own profile as an approved
+// admin is allowed ONLY inside the batch that creates the organization itself.
+// Without the getAfter pin, the public orgIndex hands any signed-up stranger an
+// orgId, and one lone write makes them that org's admin.
+describe('admin self-create is pinned to org registration', () => {
+  it('a stranger CANNOT write themselves in as admin of an existing org', async () => {
+    const mallory = testEnv.authenticatedContext('mallory').firestore()
+    await assertFails(setDoc(doc(mallory, 'users', 'mallory'), {
+      orgId: 'orgA', role: 'admin', status: 'approved', name: 'Mallory', email: 'm@x.co',
+    }))
+  })
+
+  it('registering a NEW org as its admin still works, batched', async () => {
+    const founder = testEnv.authenticatedContext('founder').firestore()
+    const batch = writeBatch(founder)
+    batch.set(doc(founder, 'organizations', 'orgNew'), { name: 'New Org', createdBy: 'founder' })
+    batch.set(doc(founder, 'users', 'founder'), {
+      orgId: 'orgNew', role: 'admin', status: 'approved', name: 'Founder', email: 'f@x.co',
+    })
+    batch.set(doc(founder, 'orgIndex', 'new org'), { orgId: 'orgNew', name: 'New Org' })
+    await assertSucceeds(batch.commit())
+  })
+
+  it('the batch trick does not work against someone else\'s org either', async () => {
+    // Batching a user doc with a WRITE to the existing org cannot help: the org
+    // create is refused (doc exists / not the creator), so the batch dies whole.
+    const mallory = testEnv.authenticatedContext('mallory').firestore()
+    const batch = writeBatch(mallory)
+    batch.set(doc(mallory, 'organizations', 'orgA'), { name: 'orgA', createdBy: 'mallory' })
+    batch.set(doc(mallory, 'users', 'mallory'), {
+      orgId: 'orgA', role: 'admin', status: 'approved', name: 'Mallory', email: 'm@x.co',
+    })
+    await assertFails(batch.commit())
+  })
+
+  it('joining as a pending member still works', async () => {
+    const newbie = testEnv.authenticatedContext('newbie').firestore()
+    await assertSucceeds(setDoc(doc(newbie, 'users', 'newbie'), {
+      orgId: 'orgA', role: 'member', status: 'pending', name: 'Newbie', email: 'n@x.co',
+    }))
+  })
 })
 
 describe('multi-tenant isolation', () => {

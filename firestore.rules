@@ -117,11 +117,18 @@ service cloud.firestore {
       // created the org — as its approved admin), OR an org admin provisions an
       // employee account for their own org (never directly as admin; admins are
       // promoted afterwards through the managed role update below).
+      // The approved-admin self-create exists for one moment only: registering
+      // a NEW organization, which writes the org doc and this user doc in one
+      // batch. getAfter pins that: within the batch the org must exist with
+      // createdBy == this caller. Without it, anyone could read an orgId out of
+      // the public orgIndex and write themselves in as that org's admin.
       allow create: if isSignedIn()
         && (
           (request.auth.uid == uid
             && ((request.resource.data.status == 'pending' && request.resource.data.role != 'admin')
-                || (request.resource.data.status == 'approved' && request.resource.data.role == 'admin')))
+                || (request.resource.data.status == 'approved'
+                    && request.resource.data.role == 'admin'
+                    && getAfter(/databases/$(database)/documents/organizations/$(request.resource.data.orgId)).data.createdBy == request.auth.uid)))
           || (isAdminOf(request.resource.data.orgId) && request.resource.data.role != 'admin')
         );
 
