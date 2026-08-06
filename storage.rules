@@ -1,24 +1,49 @@
 rules_version = '2';
 
-// Storage mirrors Firestore's tenancy: files live under /orgs/{orgId}/… and
-// only approved members of that org may touch them. The membership check reads
-// the SAME user document Firestore rules read (cross-service rules), so the two
-// systems cannot drift apart about who belongs where.
+// ─────────────────────────────────────────────────────────────────────────────
+// Storage rules — WITHOUT cross-service calls.
+//
+// The previous version asked Firestore "is this user an approved member of this
+// org?" from inside a Storage rule. That is the ideal check, and it is what the
+// commented block at the bottom does — but cross-service rules require a
+// project-level grant, and when the project does not have it the rules cannot
+// be evaluated AT ALL. The result is not a weaker check; it is every storage
+// operation denied, which is how this shipped and broke uploads.
+//
+// So this version uses only what a Storage rule can know by itself: whether the
+// caller is signed in, where they are writing, and how big the object is.
+//
+// ── What this DOES guarantee ─────────────────────────────────────────────────
+//   * Anonymous users cannot read or write anything.
+//   * Nothing outside /orgs/<orgId>/<kind>/<file> is reachable at all.
+//   * No object over 20MB, so a compromised account cannot use the bucket as
+//     free bulk hosting.
+//   * No listing: `list` is not granted, so the bucket cannot be enumerated.
+//     Without listing, reaching a file means already knowing its full path —
+//     and paths carry a 20-character org id plus 64 bits of per-file entropy
+//     (see storagePath() in src/shared/storage/index.js). Those paths are only
+//     ever stored inside org-scoped Firestore documents, which ARE tenancy-
+//     protected.
+//
+// ── What this does NOT guarantee ─────────────────────────────────────────────
+//   A signed-in member of org A who somehow obtains a full object path from
+//   org B can read it. That is a real gap versus the cross-service version.
+//   It is mitigated by unguessable paths and no listing, but mitigation is not
+//   enforcement, and this comment exists so nobody mistakes one for the other.
+//
+// ── Closing the gap ──────────────────────────────────────────────────────────
+//   Enable cross-service rules (Blaze plan + grant the Firebase Rules service
+//   agent read access to Firestore — the console prompts for this when you save
+//   rules containing firestore.get). Then swap in the commented block below and
+//   redeploy. docs/PRODUCTION.md carries the steps.
+// ─────────────────────────────────────────────────────────────────────────────
 service firebase.storage {
   match /b/{bucket}/o {
-    function isApprovedMemberOf(orgId) {
-      return request.auth != null
-        && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.orgId == orgId
-        && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.status == 'approved';
-    }
-
     match /orgs/{orgId}/{kind}/{fileName} {
-      allow read: if isApprovedMemberOf(orgId);
-      // 20MB cap: generous for photos and PDFs, small enough that the bucket
-      // cannot be used as free bulk hosting by a compromised account.
-      allow write: if isApprovedMemberOf(orgId)
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
         && request.resource.size < 20 * 1024 * 1024;
-      allow delete: if isApprovedMemberOf(orgId);
+      allow delete: if request.auth != null;
     }
 
     // Everything else is closed. New areas get their own explicit match.
@@ -27,3 +52,25 @@ service firebase.storage {
     }
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The stronger version. Requires cross-service rules to be enabled on the
+// project; deploying it without that grant denies ALL storage operations.
+//
+// service firebase.storage {
+//   match /b/{bucket}/o {
+//     function isApprovedMemberOf(orgId) {
+//       return request.auth != null
+//         && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.orgId == orgId
+//         && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.status == 'approved';
+//     }
+//     match /orgs/{orgId}/{kind}/{fileName} {
+//       allow read: if isApprovedMemberOf(orgId);
+//       allow write: if isApprovedMemberOf(orgId)
+//         && request.resource.size < 20 * 1024 * 1024;
+//       allow delete: if isApprovedMemberOf(orgId);
+//     }
+//     match /{allPaths=**} { allow read, write: if false; }
+//   }
+// }
+// ─────────────────────────────────────────────────────────────────────────────

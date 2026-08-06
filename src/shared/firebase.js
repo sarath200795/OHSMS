@@ -103,17 +103,32 @@ export const auth = app ? getAuth(app) : null
 // throwing the "already enabled elsewhere" error persistence is infamous for.
 // If the browser refuses IndexedDB entirely (private mode, ancient WebView),
 // fall back to memory-only — a working app beats a cached one.
+// OFF by default, opt in with VITE_OFFLINE_CACHE=true.
+//
+// It was on by default for one release and that was the wrong call for a live
+// app. A persistent cache changes the failure mode of a listener that never
+// connects: instead of an error, the app serves an EMPTY cached snapshot and
+// every list renders blank — which reads as "all our data is gone" rather than
+// "we are offline". Losing offline tolerance is an inconvenience; a screen that
+// silently claims a site has no equipment is not.
+//
+// Re-enable per environment once a bad-network session has been watched end to
+// end and confirmed to show stale-but-real data rather than nothing.
+const OFFLINE_CACHE = clean(import.meta.env.VITE_OFFLINE_CACHE) === 'true'
+
 function buildDb() {
   if (!app) return null
+  const base = { experimentalAutoDetectLongPolling: true }
+  if (!OFFLINE_CACHE) return initializeFirestore(app, base)
   try {
     return initializeFirestore(app, {
-      experimentalAutoDetectLongPolling: true,
+      ...base,
       localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
     })
   } catch (e) {
     // eslint-disable-next-line no-console
     console.warn('[OHS MS] persistent cache unavailable, running memory-only:', e?.message || e)
-    return initializeFirestore(app, { experimentalAutoDetectLongPolling: true })
+    return initializeFirestore(app, base)
   }
 }
 export const db = buildDb()
