@@ -6,7 +6,12 @@ import {
   browserSessionPersistence,
   inMemoryPersistence,
 } from 'firebase/auth'
-import { initializeFirestore, connectFirestoreEmulator } from 'firebase/firestore'
+import {
+  initializeFirestore,
+  connectFirestoreEmulator,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+} from 'firebase/firestore'
 
 // Strip a leading UTF-8 BOM, zero-width chars, surrounding quotes and whitespace
 // from an env value. Some build/deploy pipelines silently prepend a BOM, which
@@ -80,9 +85,28 @@ if (app && APPCHECK_KEY && !USE_EMULATORS) {
 export const auth = app ? getAuth(app) : null
 // initializeFirestore (not getFirestore) so we can auto-detect networks that need
 // long-polling (VPNs, restrictive proxies) and transparently fall back.
-export const db = app
-  ? initializeFirestore(app, { experimentalAutoDetectLongPolling: true })
-  : null
+//
+// Persistent cache because this app is used standing in front of equipment on
+// site WiFi: with it, a page that loaded once keeps answering from IndexedDB
+// through dead spots, and writes queue until the network returns instead of
+// failing. Multi-tab manager so a second open tab shares the cache rather than
+// throwing the "already enabled elsewhere" error persistence is infamous for.
+// If the browser refuses IndexedDB entirely (private mode, ancient WebView),
+// fall back to memory-only — a working app beats a cached one.
+function buildDb() {
+  if (!app) return null
+  try {
+    return initializeFirestore(app, {
+      experimentalAutoDetectLongPolling: true,
+      localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+    })
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('[OHS MS] persistent cache unavailable, running memory-only:', e?.message || e)
+    return initializeFirestore(app, { experimentalAutoDetectLongPolling: true })
+  }
+}
+export const db = buildDb()
 
 if (app && USE_EMULATORS) {
   try {

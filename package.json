@@ -51,6 +51,7 @@
   "devDependencies": {
     "@eslint/js": "^8.57.0",
     "@firebase/rules-unit-testing": "^3.0.4",
+    "@playwright/test": "^1.62.1",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/jest-dom": "^6.4.8",
     "@testing-library/react": "^16.0.0",

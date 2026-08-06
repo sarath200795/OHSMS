@@ -7,6 +7,7 @@ import {
   query,
   serverTimestamp,
   updateDoc,
+  limit,
 } from 'firebase/firestore'
 import { db } from '../lib/firebase'
 
@@ -15,7 +16,7 @@ const col = (orgId) => collection(db, 'organizations', orgId, 'capas')
 export const CAPA_STATUSES = ['open', 'in_progress', 'verified', 'closed']
 
 export function subscribeCapas(orgId, callback) {
-  const q = query(col(orgId), orderBy('createdAt', 'desc'))
+  const q = query(col(orgId), orderBy('createdAt', 'desc'), limit(1000))
   return onSnapshot(q, (snap) => {
     callback(snap.docs.map((d) => ({ id: d.id, ...d.data() })))
   })

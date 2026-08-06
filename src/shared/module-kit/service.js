@@ -13,6 +13,7 @@ import {
   orderBy,
   query,
   serverTimestamp,
+  limit,
 } from 'firebase/firestore'
 import { moduleCol, moduleDoc, logAudit } from '../org/orgData'
 import { AUDIT } from '../audit/audit'
@@ -26,7 +27,7 @@ export function createModuleService(collectionName, moduleKey = collectionName) 
     collectionName,
 
     subscribe(orgId, cb) {
-      const q = query(col(orgId), orderBy('createdAt', 'desc'))
+      const q = query(col(orgId), orderBy('createdAt', 'desc'), limit(1000))
       // Fallback for records created before ordering existed / permission errors.
       return onSnapshot(
         q,

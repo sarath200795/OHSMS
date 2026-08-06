@@ -575,7 +575,7 @@ function logReportCreated(orgId, report) {
 }
 
 export function subscribeReports(orgId, cb) {
-  const q = query(reportCol(orgId), orderBy('reportedAt', 'desc'))
+  const q = query(reportCol(orgId), orderBy('reportedAt', 'desc'), limit(1000))
   return onSnapshot(q, (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))))
 }
 
@@ -739,7 +739,7 @@ export async function resolveDefects(orgId, orgName, id, remainingDefects = [], 
 // mirror or stats — these are simple records read live and edited in place.
 
 export function subscribeSignages(orgId, cb) {
-  const q = query(signageCol(orgId), orderBy('createdAt', 'desc'))
+  const q = query(signageCol(orgId), orderBy('createdAt', 'desc'), limit(2000))
   return onSnapshot(
     q,
     (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
@@ -798,7 +798,7 @@ export async function deleteSignage(orgId, id, actor, label) {
 // ── Mock drills / emergency response records (org-scoped, site-wise) ───────────
 
 export function subscribeMockDrills(orgId, cb) {
-  const q = query(drillCol(orgId), orderBy('createdAt', 'desc'))
+  const q = query(drillCol(orgId), orderBy('createdAt', 'desc'), limit(1000))
   return onSnapshot(
     q,
     (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
@@ -873,7 +873,7 @@ export async function deleteMockDrill(orgId, id, actor, label) {
 
 // ── AED (Automated External Defibrillator) inventory (org-scoped) ──────────────
 export function subscribeAeds(orgId, cb) {
-  const q = query(aedCol(orgId), orderBy('createdAt', 'desc'))
+  const q = query(aedCol(orgId), orderBy('createdAt', 'desc'), limit(2000))
   return onSnapshot(
     q,
     (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
@@ -1032,7 +1032,7 @@ export async function bulkDeleteAeds(orgId, items, actor) {
 
 // ── FAS (Fire Alarm System) device inventory (org-scoped) ─────────────────────
 export function subscribeFas(orgId, cb) {
-  const q = query(fasCol(orgId), orderBy('createdAt', 'desc'))
+  const q = query(fasCol(orgId), orderBy('createdAt', 'desc'), limit(2000))
   return onSnapshot(
     q,
     (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),

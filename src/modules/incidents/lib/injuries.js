@@ -18,6 +18,7 @@ import {
   orderBy,
   onSnapshot,
   serverTimestamp,
+  limit,
 } from 'firebase/firestore'
 import { db } from '../firebase'
 import { logAudit } from './firestore'
@@ -98,7 +99,7 @@ export async function syncIncidentInjuries(orgId, incident, reports = [], actor)
 
 export function subscribeInjuries(orgId, cb) {
   // Order by updatedAt (every write stamps it); newest first.
-  const q = query(injuryCol(orgId), orderBy('updatedAt', 'desc'))
+  const q = query(injuryCol(orgId), orderBy('updatedAt', 'desc'), limit(2000))
   return onSnapshot(
     q,
     (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((x) => !x.deletedAt)),

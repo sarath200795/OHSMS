@@ -8,13 +8,14 @@ import {
   query,
   serverTimestamp,
   updateDoc,
+  limit,
 } from 'firebase/firestore'
 import { db } from '../lib/firebase'
 
 const col = (orgId) => collection(db, 'organizations', orgId, 'findings')
 
 export function subscribeFindings(orgId, callback) {
-  const q = query(col(orgId), orderBy('raisedAt', 'desc'))
+  const q = query(col(orgId), orderBy('raisedAt', 'desc'), limit(1000))
   return onSnapshot(q, (snap) => {
     callback(snap.docs.map((d) => ({ id: d.id, ...d.data() })))
   })

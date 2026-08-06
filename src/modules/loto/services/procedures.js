@@ -9,6 +9,7 @@ import {
   updateDoc,
   where,
   writeBatch,
+  limit,
 } from 'firebase/firestore'
 import { db } from '../firebase/config'
 import { putFile, removeFile } from '../../../shared/storage'
@@ -470,7 +471,7 @@ export function subscribeProcedure(id, cb, onError) {
 export function subscribeOrgEvents(orgId, cb, onError) {
   // Append-only LOTO activity log. No server-side orderBy (no index); sort by
   // timestamp on the client, newest first.
-  const q = query(collection(db, EVENTS), where('orgId', '==', orgId))
+  const q = query(collection(db, EVENTS), where('orgId', '==', orgId), limit(1000))
   return onSnapshot(
     q,
     (snap) => {

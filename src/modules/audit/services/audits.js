@@ -8,6 +8,7 @@ import {
   query,
   serverTimestamp,
   updateDoc,
+  limit,
 } from 'firebase/firestore'
 import { db } from '../lib/firebase'
 
@@ -33,7 +34,7 @@ export function buildClauseChecklist() {
 }
 
 export function subscribeAudits(orgId, callback) {
-  const q = query(col(orgId), orderBy('scheduledDate', 'asc'))
+  const q = query(col(orgId), orderBy('scheduledDate', 'asc'), limit(1000))
   return onSnapshot(q, (snap) => {
     callback(snap.docs.map((d) => ({ id: d.id, ...d.data() })))
   })

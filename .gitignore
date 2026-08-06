@@ -38,3 +38,7 @@ coverage/
 # Firebase project targets & prod env (per-machine, never committed)
 .firebaserc
 .env.production
+
+# Playwright artifacts
+test-results/
+playwright-report/

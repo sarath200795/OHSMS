@@ -66,3 +66,36 @@ jobs:
       # the check on how far that permission actually reaches.
       - name: Rules tests
         run: npm run test:rules
+
+  e2e:
+    name: Smoke (Playwright)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # The auth + Firestore emulators back the whole flow; both run on the JVM.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      # Emulators up → seed the demo org → drive the browser through the money
+      # flows. Playwright's webServer starts the Vite dev server itself.
+      - name: Smoke tests
+        env:
+          VITE_USE_EMULATORS: 'true'
+          VITE_FIREBASE_PROJECT_ID: ohsms-demo
+        run: >
+          npx firebase-tools emulators:exec --only auth,firestore
+          --project ohsms-demo
+          "node scripts/seed.mjs && npx playwright test"
