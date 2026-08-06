@@ -9,6 +9,7 @@ import { useAuth } from '../context/AuthContext'
 import { useFleet } from '../context/FleetContext'
 import { addMockDrill, deleteMockDrill, getMockDrillPhotos } from '../lib/firestore'
 import { readFileAsDataUrl } from '../lib/fileToDataUrl'
+import { orgDepartments } from '../../../shared/auth/access'
 import MockDrillReport from '../components/MockDrillReport'
 
 const MAX_DRILL_PHOTOS = 8
@@ -42,7 +43,14 @@ function scoreOf(checks, checklist) {
 
 export default function MockDrills() {
   const { orgId, profile } = useAuth()
-  const { mockDrills, sites, siteInventory, users, loading } = useFleet()
+  const { mockDrills, sites, siteInventory, users, org, loading } = useFleet()
+  // Org-configured departments UNION those actually on people, same as the
+  // shared DeptPersonPicker — otherwise back-filling a person's department
+  // writes a value the select has no option for, which renders as empty.
+  const departments = useMemo(
+    () => [...new Set([...orgDepartments(org), ...users.map((u) => u.dept || u.department).filter(Boolean)])].sort(),
+    [org, users]
+  )
 
   const [siteFilter, setSiteFilter] = useState('all')
   const [scenario, setScenario] = useState(null) // open recorder when set
@@ -144,7 +152,7 @@ export default function MockDrills() {
   const addRow = () => setActionLog([...actionLog, { time: '', action: '', observation: '' }])
   const setRow = (i, k, v) => setActionLog(actionLog.map((r, idx) => (idx === i ? { ...r, [k]: v } : r)))
   const delRow = (i) => setActionLog(actionLog.filter((_, idx) => idx !== i))
-  const addCapa = () => setCapa([...capa, { action: '', owner: '', due: '', status: 'Open' }])
+  const addCapa = () => setCapa([...capa, { action: '', department: '', assignees: [], due: '', status: 'Open' }])
   const setCapaRow = (i, k, v) => setCapa(capa.map((c, idx) => (idx === i ? { ...c, [k]: v } : c)))
   const delCapa = (i) => setCapa(capa.filter((_, idx) => idx !== i))
 
@@ -172,7 +180,13 @@ export default function MockDrills() {
         teamsAlerted: teamChecks,
         score,
         actionLog: actionLog.filter((l) => l.action && l.action.trim()),
-        capa: capa.filter((c) => c.action && c.action.trim()),
+        capa: capa.filter((c) => c.action && c.action.trim()).map((c) => ({
+          ...c,
+          // Derived display string so everything that reads .owner — the action
+          // tracker, the printed report, exports — keeps working unchanged.
+          owner: [c.department, (c.assignees || []).map((a) => a.name).join(', ')]
+            .filter(Boolean).join(' — '),
+        })),
         photos: photos.map((p) => p.dataUrl),
       }
       await addMockDrill(orgId, record, { uid: profile?.uid, name: profile?.name })
@@ -471,12 +485,62 @@ export default function MockDrills() {
               ) : (
                 <div className="space-y-2">
                   {capa.map((c, i) => (
-                    <div key={i} className="grid grid-cols-[1fr_140px_130px_120px_auto] gap-2">
-                      <input className="input px-2 py-1.5" placeholder="Action…" value={c.action} onChange={(e) => setCapaRow(i, 'action', e.target.value)} />
-                      <input className="input px-2 py-1.5" placeholder="Owner" value={c.owner} onChange={(e) => setCapaRow(i, 'owner', e.target.value)} />
-                      <input type="date" className="input px-2 py-1.5" value={c.due} onChange={(e) => setCapaRow(i, 'due', e.target.value)} />
-                      <select className="input px-2 py-1.5" value={c.status} onChange={(e) => setCapaRow(i, 'status', e.target.value)}>{CAPA_STATUSES.map((s) => <option key={s}>{s}</option>)}</select>
-                      <button className="text-ink-400 hover:text-red-600" onClick={() => delCapa(i)}><X size={15} /></button>
+                    <div key={i} className="rounded-xl border border-clay-200 p-2">
+                      <div className="grid grid-cols-[1fr_150px_170px_130px_120px_auto] gap-2">
+                        <input className="input px-2 py-1.5" placeholder="Action…" value={c.action} onChange={(e) => setCapaRow(i, 'action', e.target.value)} />
+                        {/* A corrective action is owned by a department and worked
+                            by named people — a free-text owner gave neither. */}
+                        <select className="input px-2 py-1.5" value={c.department || ''} onChange={(e) => setCapaRow(i, 'department', e.target.value)}>
+                          <option value="">Department…</option>
+                          {departments.map((d) => <option key={d} value={d}>{d}</option>)}
+                        </select>
+                        <select
+                          className="input px-2 py-1.5"
+                          value=""
+                          onChange={(e) => {
+                            const u = users.find((x) => x.uid === e.target.value)
+                            if (!u) return
+                            // One state update for both fields — setCapaRow maps
+                            // over the render's capa, so two calls in a row
+                            // would have the second clobber the first.
+                            setCapa(capa.map((row, idx) => {
+                              if (idx !== i) return row
+                              const assignees = (row.assignees || []).some((a) => a.uid === u.uid)
+                                ? row.assignees
+                                : [...(row.assignees || []), { uid: u.uid, name: (u.name || u.email || '').trim() }]
+                              // Same cascade the shared DeptPersonPicker gives the
+                              // commander field: a person back-fills their department.
+                              const department = row.department || u.dept || u.department || ''
+                              return { ...row, assignees, department }
+                            }))
+                          }}
+                        >
+                          <option value="">Assign person…</option>
+                          {users
+                            .filter((u) => u.status === 'approved')
+                            .filter((u) => !c.department || (u.dept || '') === c.department)
+                            .map((u) => <option key={u.uid} value={u.uid}>{u.name || u.email}</option>)}
+                        </select>
+                        <input type="date" className="input px-2 py-1.5" value={c.due} onChange={(e) => setCapaRow(i, 'due', e.target.value)} />
+                        <select className="input px-2 py-1.5" value={c.status} onChange={(e) => setCapaRow(i, 'status', e.target.value)}>{CAPA_STATUSES.map((s) => <option key={s}>{s}</option>)}</select>
+                        <button className="text-ink-400 hover:text-red-600" onClick={() => delCapa(i)}><X size={15} /></button>
+                      </div>
+                      {(c.assignees || []).length > 0 && (
+                        <div className="mt-1.5 flex flex-wrap gap-1.5">
+                          {c.assignees.map((a) => (
+                            <span key={a.uid} className="chip bg-violet-50 text-violet-700">
+                              {a.name}
+                              <button
+                                type="button"
+                                className="ml-1 text-violet-400 hover:text-red-600"
+                                onClick={() => setCapaRow(i, 'assignees', c.assignees.filter((x) => x.uid !== a.uid))}
+                              >
+                                <X size={11} />
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>

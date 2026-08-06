@@ -60,7 +60,16 @@ export function safeFileName(name) {
  */
 export function storagePath(orgId, kind, fileName, rand = defaultRand) {
   if (!orgId || !kind) throw new Error('storagePath needs an orgId and a kind')
-  return `orgs/${orgId}/${kind}/${rand()}-${safeFileName(fileName)}`
+  // Every segment is sanitised, not only the filename. orgId is a Firestore
+  // auto-id and kind a literal today, but a path builder that trusts its inputs
+  // is one refactor away from a traversal — and the org segment is what the
+  // storage rules match tenancy on, so nothing may be able to distort it.
+  const seg = (v) => {
+    const s = String(v).replace(/[^A-Za-z0-9_-]/g, '_')
+    if (!/[A-Za-z0-9]/.test(s)) throw new Error('storagePath segment carries no information')
+    return s
+  }
+  return `orgs/${seg(orgId)}/${seg(kind)}/${rand()}-${safeFileName(fileName)}`
 }
 
 function defaultRand() {

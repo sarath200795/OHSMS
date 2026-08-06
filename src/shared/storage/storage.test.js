@@ -43,6 +43,19 @@ describe('storagePath', () => {
     expect(() => storagePath('', 'k', 'a')).toThrow()
     expect(() => storagePath('o', '', 'a')).toThrow()
   })
+
+  it('sanitises every segment, not only the filename', () => {
+    // The org segment is what the storage rules match tenancy on: an orgId
+    // carrying a slash must not be able to escape its own folder.
+    const p = storagePath('org/../other', 'kind/../x', 'a.pdf', () => 'r')
+    expect(p).toBe('orgs/org____other/kind____x/r-a.pdf')
+    expect(p.split('/').length).toBe(4)
+  })
+
+  it('refuses a segment that sanitises to nothing', () => {
+    expect(() => storagePath('///', 'k', 'a')).toThrow()
+    expect(() => storagePath('o', '???', 'a')).toThrow()
+  })
 })
 
 // jsdom's Blob has no .text(); FileReader is the reader it does implement.
