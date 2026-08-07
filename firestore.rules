@@ -86,8 +86,19 @@ service cloud.firestore {
     // asset without signing in. Written (create/update/delete) only by an
     // approved member of the owning org — the write rides in the same batch as
     // the org-scoped asset write, so the member is already authorised there.
+    // `get`, NOT `read`. In Firestore, `read` = `get` + `list`, and a wildcard
+    // match with an unconditional allow grants BOTH — so `allow read: if true`
+    // let an unauthenticated stranger page the entire collection and walk away
+    // with every tenant's asset register. Verified against production before
+    // this change: 842 documents, no credential, one curl.
+    //
+    // Token unguessability was the whole security model here, and listing
+    // defeats it without guessing anything. The app has only ever fetched these
+    // by exact token (QrLanding does getDoc(doc(db,'qr',token))), so `get`
+    // alone costs nothing and `list` was authority the product never used.
     match /qr/{token} {
-      allow read: if true;
+      allow get: if true;
+      allow list: if false;
       allow create: if isApprovedMemberOf(request.resource.data.orgId);
       allow update: if isApprovedMemberOf(resource.data.orgId)
         || isApprovedMemberOf(request.resource.data.orgId);
@@ -103,8 +114,13 @@ service cloud.firestore {
     // decisions and no attached documents, and nothing can be written back
     // through it. The token is 18 random characters, so it is unguessable and
     // is the only thing linking a scan to a permit.
+    // Same split as /qr above, and it mattered more here: these mirrors carry
+    // job location, hazards, the issuer's and holder's names, fire watchers and
+    // the full participant list with each worker's employer — so a collection
+    // list was a cross-tenant PII dump, not just an inventory leak.
     match /permitQr/{token} {
-      allow read: if true;
+      allow get: if true;
+      allow list: if false;
       allow create: if isApprovedMemberOf(request.resource.data.orgId);
       allow update: if isApprovedMemberOf(resource.data.orgId)
         || isApprovedMemberOf(request.resource.data.orgId);

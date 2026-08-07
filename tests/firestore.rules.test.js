@@ -7,7 +7,7 @@ import {
   assertFails,
   assertSucceeds,
 } from '@firebase/rules-unit-testing'
-import { doc, getDoc, setDoc, deleteDoc, writeBatch } from 'firebase/firestore'
+import { doc, getDoc, getDocs, collection, query, where, setDoc, deleteDoc, writeBatch } from 'firebase/firestore'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const PROJECT_ID = 'ohsms-demo'
@@ -81,6 +81,55 @@ describe('admin self-create is pinned to org registration', () => {
     await assertSucceeds(setDoc(doc(newbie, 'users', 'newbie'), {
       orgId: 'orgA', role: 'member', status: 'pending', name: 'Newbie', email: 'n@x.co',
     }))
+  })
+})
+
+// `read` in Firestore rules means `get` OR `list`. Every existing test on these
+// public mirrors used getDoc, so a whole verb went untested — and `allow read:
+// if true` on a wildcard match had been granting unauthenticated collection
+// listing of every tenant's mirrors the entire time. Confirmed against
+// production before the fix: 842 documents, no credential.
+describe('public QR mirrors are readable by token but NOT listable', () => {
+  const seedMirrors = () =>
+    testEnv.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore()
+      await setDoc(doc(db, 'qr', 'tokA'), { orgId: 'orgA', serialNo: 'FE-1', centerName: 'Site A' })
+      await setDoc(doc(db, 'qr', 'tokB'), { orgId: 'orgB', serialNo: 'FE-2', centerName: 'Site B' })
+      await setDoc(doc(db, 'permitQr', 'ptokA'), { orgId: 'orgA', issuedToName: 'Alice', jobLocation: 'Bay 3' })
+      await setDoc(doc(db, 'permitQr', 'ptokB'), { orgId: 'orgB', issuedToName: 'Carol', jobLocation: 'Roof' })
+    })
+
+  it('an anonymous scanner CAN still read a mirror by its exact token', async () => {
+    await seedMirrors()
+    const anon = testEnv.unauthenticatedContext().firestore()
+    await assertSucceeds(getDoc(doc(anon, 'qr', 'tokA')))
+    await assertSucceeds(getDoc(doc(anon, 'permitQr', 'ptokA')))
+  })
+
+  it('an anonymous stranger CANNOT list the equipment mirrors', async () => {
+    await seedMirrors()
+    const anon = testEnv.unauthenticatedContext().firestore()
+    await assertFails(getDocs(collection(anon, 'qr')))
+  })
+
+  it('an anonymous stranger CANNOT list the permit mirrors', async () => {
+    await seedMirrors()
+    const anon = testEnv.unauthenticatedContext().firestore()
+    await assertFails(getDocs(collection(anon, 'permitQr')))
+  })
+
+  // Signing up is free, so "signed in" is not a meaningful barrier here.
+  it('a signed-in member of another org cannot list them either', async () => {
+    await seedMirrors()
+    const bob = testEnv.authenticatedContext('bob').firestore() // member of orgB
+    await assertFails(getDocs(collection(bob, 'qr')))
+    await assertFails(getDocs(collection(bob, 'permitQr')))
+  })
+
+  it('a query with a filter is still a list, and is still refused', async () => {
+    await seedMirrors()
+    const anon = testEnv.unauthenticatedContext().firestore()
+    await assertFails(getDocs(query(collection(anon, 'qr'), where('orgId', '==', 'orgA'))))
   })
 })
 
