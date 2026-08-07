@@ -149,10 +149,21 @@ service cloud.firestore {
 
     // ── User profiles ─────────────────────────────────────────────────────────
     match /users/{uid} {
-      // Read your own profile, or any profile in your organization.
+      // Read your own profile, or — once you are an APPROVED member — any
+      // profile in your organization.
+      //
+      // This used to say hasProfile(), which tests existence rather than
+      // approval. Joining is self-service: anyone can create their own profile
+      // as {status:'pending'} naming any orgId, and orgIds are public via
+      // orgIndex. So a stranger could sign up against a company they have no
+      // connection to and, while still sitting unapproved in that company's
+      // queue, read its entire staff directory — every name, email, role and
+      // department. Approval is the gate that was meant to be here; pending is
+      // exactly the state that should see nothing but itself.
       allow read: if isSignedIn()
         && (request.auth.uid == uid
-            || (hasProfile() && resource.data.orgId == myProfile().orgId));
+            || (isApprovedMemberOf(resource.data.orgId)
+                && resource.data.orgId == myProfile().orgId));
 
       // Create your own profile (joining as a pending member, or — if you just
       // created the org — as its approved admin), OR an org admin provisions an

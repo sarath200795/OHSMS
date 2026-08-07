@@ -84,6 +84,41 @@ describe('admin self-create is pinned to org registration', () => {
   })
 })
 
+// Joining an org is self-service, so "has a profile naming this org" is not a
+// trust signal — anyone can create one as pending against any public orgId.
+// Reading the directory has to require approval, not mere existence.
+describe('an unapproved joiner cannot read the org directory', () => {
+  const seedPending = (uid, orgId) =>
+    testEnv.withSecurityRulesDisabled((ctx) =>
+      setDoc(doc(ctx.firestore(), 'users', uid), {
+        orgId, role: 'member', status: 'pending', name: 'Mallory', email: 'm@x.co',
+      })
+    )
+
+  it('a pending joiner CANNOT read another member of that org', async () => {
+    await seedPending('mallory', 'orgA')
+    const mallory = testEnv.authenticatedContext('mallory').firestore()
+    await assertFails(getDoc(doc(mallory, 'users', 'alice')))
+  })
+
+  it('a pending joiner CAN still read their own profile', async () => {
+    await seedPending('mallory', 'orgA')
+    const mallory = testEnv.authenticatedContext('mallory').firestore()
+    await assertSucceeds(getDoc(doc(mallory, 'users', 'mallory')))
+  })
+
+  it('an approved member still reads their colleagues', async () => {
+    const alice = testEnv.authenticatedContext('alice').firestore()
+    await assertSucceeds(getDoc(doc(alice, 'users', 'alice')))
+  })
+
+  it('an admin can still see a pending joiner in order to approve them', async () => {
+    await seedPending('mallory', 'orgA')
+    const alice = testEnv.authenticatedContext('alice').firestore() // approved admin of orgA
+    await assertSucceeds(getDoc(doc(alice, 'users', 'mallory')))
+  })
+})
+
 // The /users update rule is two OR'd branches. Only the self branch pinned
 // orgId, so an admin editing their own document took the other branch — which
 // pinned nothing — and could rewrite orgId to any value. Creating an org is
