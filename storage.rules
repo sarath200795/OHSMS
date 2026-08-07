@@ -39,10 +39,28 @@ rules_version = '2';
 // ─────────────────────────────────────────────────────────────────────────────
 service firebase.storage {
   match /b/{bucket}/o {
+    // NOTE the {orgId} capture is not referenced by any condition below. That is
+    // not an oversight in this block — it is the documented limitation: binding a
+    // caller to an org needs either a cross-service Firestore read (this project
+    // cannot execute those) or an orgId custom claim on the token (needs the
+    // Admin SDK, i.e. the functions/ tier once it is deployed). Until one of
+    // those lands, any authenticated user can reach any org's prefix.
+    //
+    // What IS fixed here: `write` used to cover create, update AND delete in one
+    // grant, so a signed-in stranger could overwrite another tenant's evidence
+    // in place. Every upload already lands on a fresh random path
+    // (storagePath() prefixes 8 random bytes), so nothing legitimately writes
+    // over an existing object — update is denied outright and that vector is
+    // closed with no product change.
     match /orgs/{orgId}/{kind}/{fileName} {
       allow read: if request.auth != null;
-      allow write: if request.auth != null
+      allow create: if request.auth != null
         && request.resource.size < 20 * 1024 * 1024;
+      // Nothing overwrites: paths are unique per upload.
+      allow update: if false;
+      // Still cross-tenant, and the app needs it (removeFile). This is the
+      // sharpest remaining edge — a member of any org can delete another org's
+      // safety evidence — and it closes the moment orgId is on the token.
       allow delete: if request.auth != null;
     }
 

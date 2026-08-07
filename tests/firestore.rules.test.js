@@ -84,6 +84,57 @@ describe('admin self-create is pinned to org registration', () => {
   })
 })
 
+// The /users update rule is two OR'd branches. Only the self branch pinned
+// orgId, so an admin editing their own document took the other branch — which
+// pinned nothing — and could rewrite orgId to any value. Creating an org is
+// open to anyone, which made this a complete cross-tenant takeover.
+describe('orgId is immutable on /users, on BOTH update branches', () => {
+  it('an admin CANNOT move themselves into another org', async () => {
+    const alice = testEnv.authenticatedContext('alice').firestore() // admin of orgA
+    await assertFails(setDoc(doc(alice, 'users', 'alice'), {
+      orgId: 'orgB', role: 'admin', status: 'approved', name: 'Alice', email: 'a@x.co',
+    }))
+  })
+
+  it('an admin CANNOT move one of their members into another org', async () => {
+    await testEnv.withSecurityRulesDisabled((ctx) =>
+      setDoc(doc(ctx.firestore(), 'users', 'carol'), {
+        orgId: 'orgA', role: 'member', status: 'approved', name: 'Carol', email: 'c@x.co',
+      })
+    )
+    const alice = testEnv.authenticatedContext('alice').firestore()
+    await assertFails(setDoc(doc(alice, 'users', 'carol'), {
+      orgId: 'orgB', role: 'member', status: 'approved', name: 'Carol', email: 'c@x.co',
+    }))
+  })
+
+  it('a member cannot change their own orgId either', async () => {
+    const bob = testEnv.authenticatedContext('bob').firestore()
+    await assertFails(setDoc(doc(bob, 'users', 'bob'), {
+      orgId: 'orgA', role: 'member', status: 'approved', name: 'Bob', email: 'b@x.co',
+    }))
+  })
+
+  it('an admin CAN still manage a member inside their own org', async () => {
+    await testEnv.withSecurityRulesDisabled((ctx) =>
+      setDoc(doc(ctx.firestore(), 'users', 'dave'), {
+        orgId: 'orgA', role: 'member', status: 'pending', name: 'Dave', email: 'd@x.co',
+      })
+    )
+    const alice = testEnv.authenticatedContext('alice').firestore()
+    await assertSucceeds(setDoc(doc(alice, 'users', 'dave'), {
+      orgId: 'orgA', role: 'manager', status: 'approved', name: 'Dave', email: 'd@x.co',
+    }))
+  })
+
+  it('a user can still edit their own harmless fields', async () => {
+    const bob = testEnv.authenticatedContext('bob').firestore()
+    await assertSucceeds(setDoc(doc(bob, 'users', 'bob'), {
+      orgId: 'orgB', role: 'member', status: 'approved', name: 'Bobby', email: 'b@x.co',
+    }))
+  })
+})
+
 // `read` in Firestore rules means `get` OR `list`. Every existing test on these
 // public mirrors used getDoc, so a whole verb went untested — and `allow read:
 // if true` on a wildcard match had been granting unauthenticated collection

@@ -5,16 +5,22 @@ import { updatePassword, reauthenticateWithCredential, EmailAuthProvider } from 
 import { doc, updateDoc } from 'firebase/firestore'
 import { auth, db } from '../../shared/firebase'
 import { useAuth } from '../../shared/auth/AuthContext'
-import { TEMP_PASSWORD } from '../../shared/auth/provisioning'
 import { Button, Field, Input } from '../../shared/ui'
 
 /**
  * Full-screen gate shown after first login for provisioned employees
  * (profile.mustChangePassword). They must replace the temporary password
  * before reaching the app.
+ *
+ * This screen used to re-authenticate with a hardcoded TEMP_PASSWORD constant.
+ * Temporary passwords are unique per account now, so there is nothing to
+ * re-authenticate with implicitly — the user is asked for the one they were
+ * given. That is also the honest flow: proving you know the current password is
+ * the point of a re-auth, and a constant proved nothing.
  */
 export default function ForcePasswordChange() {
   const { profile, refreshProfile, signOut } = useAuth()
+  const [current, setCurrent] = useState('')
   const [pw, setPw] = useState('')
   const [pw2, setPw2] = useState('')
   const [busy, setBusy] = useState(false)
@@ -22,7 +28,7 @@ export default function ForcePasswordChange() {
   const submit = async (e) => {
     e.preventDefault()
     if (pw.length < 8) return toast.error('Password must be at least 8 characters')
-    if (pw === TEMP_PASSWORD) return toast.error('Choose a different password than the temporary one')
+    if (current && pw === current) return toast.error('Choose a different password than the temporary one')
     if (pw !== pw2) return toast.error('Passwords do not match')
     setBusy(true)
     try {
@@ -31,8 +37,12 @@ export default function ForcePasswordChange() {
         await updatePassword(u, pw)
       } catch (err) {
         if (err?.code === 'auth/requires-recent-login') {
-          // Session is stale — re-authenticate with the temp password and retry.
-          await reauthenticateWithCredential(u, EmailAuthProvider.credential(u.email, TEMP_PASSWORD))
+          // Session is stale — re-authenticate with the password they just used.
+          if (!current) {
+            setBusy(false)
+            return toast.error('Enter the temporary password you were given')
+          }
+          await reauthenticateWithCredential(u, EmailAuthProvider.credential(u.email, current))
           await updatePassword(u, pw)
         } else {
           throw err
@@ -59,8 +69,11 @@ export default function ForcePasswordChange() {
           </p>
         </div>
         <form onSubmit={submit} className="card space-y-4 p-6 sm:p-8">
+          <Field label="Temporary password" htmlFor="cpw" hint="The one you were given">
+            <Input id="cpw" type="password" autoFocus value={current} onChange={(e) => setCurrent(e.target.value)} />
+          </Field>
           <Field label="New password" htmlFor="npw" hint="At least 8 characters">
-            <Input id="npw" type="password" autoFocus value={pw} onChange={(e) => setPw(e.target.value)} />
+            <Input id="npw" type="password" value={pw} onChange={(e) => setPw(e.target.value)} />
           </Field>
           <Field label="Confirm new password" htmlFor="npw2">
             <Input id="npw2" type="password" value={pw2} onChange={(e) => setPw2(e.target.value)} />

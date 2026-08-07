@@ -175,13 +175,28 @@ service cloud.firestore {
 
       // Update your own limited fields, or an admin manages members in the same
       // org. Users cannot self-promote (role/status locked unless admin).
-      allow update: if isSignedIn() && (
-        (request.auth.uid == uid
-          && request.resource.data.orgId == resource.data.orgId
-          && request.resource.data.role == resource.data.role
-          && request.resource.data.status == resource.data.status)
-        || isAdminOf(resource.data.orgId)
-      );
+      //
+      // BOTH branches must pin orgId, and for a while only the first one did.
+      // Because the branches are OR'd, an admin editing their OWN document took
+      // the second branch — which constrained nothing — and could rewrite their
+      // orgId to any value. Registering an org is open to anyone, so the whole
+      // path was: sign up, create a throwaway org (you are its admin), read a
+      // victim orgId out of the public orgIndex, then update your own profile to
+      // {orgId: victim, role: admin, status: approved}. isAdminOf() reads the
+      // profile you just wrote, so you land as an approved admin of an org you
+      // have never belonged to, with read and write over all of its data.
+      //
+      // An admin manages members OF THEIR OWN ORG. Moving a person to a
+      // different org — themselves most of all — is not management, and no
+      // screen in the app does it.
+      allow update: if isSignedIn()
+        && request.resource.data.orgId == resource.data.orgId
+        && (
+          (request.auth.uid == uid
+            && request.resource.data.role == resource.data.role
+            && request.resource.data.status == resource.data.status)
+          || isAdminOf(resource.data.orgId)
+        );
 
       allow delete: if isAdminOf(resource.data.orgId);
     }

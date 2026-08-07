@@ -6,7 +6,7 @@ import { useAuth } from '../../shared/auth/AuthContext'
 import { orgDepartments } from '../../shared/auth/access'
 import { roleLabel } from '../../shared/auth/permissions'
 import {
-  TEMP_PASSWORD, PROVISION_ROLES, provisionEmployee, provisionEmployees,
+  PROVISION_ROLES, provisionEmployee, provisionEmployees,
   parseEmployeesCsv, EMPLOYEES_CSV_TEMPLATE,
 } from '../../shared/auth/provisioning'
 
@@ -17,9 +17,50 @@ function TempPasswordNote() {
     <div className="flex items-start gap-2.5 rounded-xl bg-amber-50 px-3.5 py-2.5 text-xs text-amber-800">
       <KeyRound size={15} className="mt-0.5 shrink-0" />
       <span>
-        New employees sign in with their email and the temporary password{' '}
-        <b className="font-mono">{TEMP_PASSWORD}</b> — they must set their own password at first login.
+        Each new employee gets their own one-time password, shown here once after
+        the account is created. Pass it on directly — it is not stored anywhere and
+        cannot be shown again.
       </span>
+    </div>
+  )
+}
+
+/**
+ * The generated passwords, shown once.
+ *
+ * They were a single shared constant until it turned out anyone who could guess
+ * a colleague's work email could sign in as them. Unique passwords fix that but
+ * move a burden onto the admin, so make the hand-off easy: copy them all at
+ * once rather than transcribing from the screen.
+ */
+function CredentialList({ credentials }) {
+  if (!credentials?.length) return null
+  const asText = credentials.map((c) => `${c.email}\t${c.tempPassword}`).join('\n')
+  return (
+    <div className="space-y-2 rounded-xl bg-amber-50 p-3">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-semibold text-amber-900">
+          One-time passwords — copy them now, they are not recoverable
+        </span>
+        <button
+          type="button"
+          className="btn-ghost px-2 py-1 text-xs"
+          onClick={() => {
+            navigator.clipboard?.writeText(asText)
+            toast.success('Copied')
+          }}
+        >
+          Copy all
+        </button>
+      </div>
+      <ul className="max-h-40 space-y-1 overflow-y-auto text-xs">
+        {credentials.map((c) => (
+          <li key={c.email} className="flex items-center justify-between gap-3">
+            <span className="truncate text-amber-900">{c.email}</span>
+            <b className="shrink-0 font-mono text-amber-950">{c.tempPassword}</b>
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }
@@ -48,9 +89,11 @@ export default function EmployeeProvisioning({ orgId, orgName, actor, existingEm
       return toast.error('That email is already a user in this organization')
     setBusy(true)
     try {
-      await provisionEmployee(form, { orgId, orgName }, actor)
-      toast.success(`${form.name.trim()} added — they can log in with the temp password`)
-      closeAll()
+      const { tempPassword } = await provisionEmployee(form, { orgId, orgName }, actor)
+      // Do NOT closeAll() — the password is shown once and is unrecoverable, so
+      // the admin has to see it before this modal goes away.
+      setResult({ created: 1, failed: [], credentials: [{ email: form.email.trim().toLowerCase(), tempPassword }] })
+      toast.success(`${form.name.trim()} added — copy their one-time password`)
     } catch (err) {
       toast.error(err.message)
     } finally {
@@ -127,9 +170,11 @@ export default function EmployeeProvisioning({ orgId, orgName, actor, existingEm
               </Select>
             </Field>
           </div>
+          {/* Shown after creation: the one-time password, which exists nowhere else. */}
+          <CredentialList credentials={result?.credentials} />
           <div className="flex justify-end gap-2 pt-1">
-            <Button type="button" variant="ghost" onClick={closeAll}>Cancel</Button>
-            <Button type="submit" loading={busy} icon={UserPlus}>Create account</Button>
+            <Button type="button" variant="ghost" onClick={closeAll}>{result ? 'Done' : 'Cancel'}</Button>
+            {!result && <Button type="submit" loading={busy} icon={UserPlus}>Create account</Button>}
           </div>
         </form>
       </Modal>
@@ -191,6 +236,7 @@ export default function EmployeeProvisioning({ orgId, orgName, actor, existingEm
               <div className="flex items-center gap-2 text-sm font-semibold text-ink-800">
                 <CheckCircle2 size={16} className="text-green-600" /> {result.created} account(s) created
               </div>
+              <CredentialList credentials={result.credentials} />
               {result.failed.length > 0 && (
                 <ul className="max-h-32 space-y-1 overflow-y-auto rounded-xl bg-red-50 p-3 text-xs text-red-700">
                   {result.failed.map((r, i) => <li key={i}>{r.email}: {r.reason}</li>)}
