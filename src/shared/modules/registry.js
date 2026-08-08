@@ -4,6 +4,7 @@
 // Each module's feature code lives in src/modules/<key>/.
 // ─────────────────────────────────────────────────────────────────────────────
 import {
+  Cctv,
   AlertTriangle,
   ShieldAlert,
   ClipboardCheck,
@@ -165,6 +166,18 @@ export const MODULES = [
     tone: 'blue',
     description: 'Current conditions at every site read as occupational risk — heat stress, wind limits for work at height, lightning, rain, UV and visibility.',
     collection: '',
+    isNew: true,
+  },
+  {
+    key: 'cctv',
+    label: 'CCTV',
+    title: 'CCTV Inventory & Health',
+    path: '/cctv',
+    icon: Cctv,
+    tone: 'slate',
+    description:
+      'Cameras, DVRs and Meraki devices as one chain — so a dead switch reads as one network fault rather than forty broken cameras. Health, uptime and defects kept separate per device kind.',
+    collection: 'cctvCameras',
     isNew: true,
   },
   {
