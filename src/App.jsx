@@ -42,6 +42,7 @@ const Emergency = lazy(() => import('./modules/emergency'))
 const Objectives = lazy(() => import('./modules/objectives'))
 const Weather = lazy(() => import('./modules/weather'))
 const Cctv = lazy(() => import('./modules/cctv'))
+const Stakeholder = lazy(() => import('./modules/stakeholder'))
 // Side-effect import: registers CCTV's site-created hook eagerly, so a site
 // added by someone who never opens the CCTV tab still gets its Meraki.
 import './modules/cctv/registerHooks'
@@ -124,6 +125,7 @@ export default function App() {
       <Route path="/objectives/*" element={<Protected><Objectives /></Protected>} />
       <Route path="/weather/*" element={<Protected><Weather /></Protected>} />
       <Route path="/cctv/*" element={<Protected><Cctv /></Protected>} />
+      <Route path="/stakeholder/*" element={<Protected><Stakeholder /></Protected>} />
 
       {/* Administration */}
       <Route path="/analytics" element={<Protected><Analytics /></Protected>} />

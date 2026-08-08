@@ -1,0 +1,179 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// Stakeholder issues persistence.
+//
+// Two collections, because escalations and legal issues are owned by different
+// people and answer different questions. The link between them lives on the
+// legal issue only — see linkage.js for why one direction beats two.
+//
+// Both get document ids: unlike equipment, these ARE generated documents. A
+// legal issue gets quoted in correspondence with an authority, so it needs a
+// number that means something outside this app.
+// ─────────────────────────────────────────────────────────────────────────────
+
+import {
+  collection, doc, addDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy, limit, serverTimestamp,
+} from 'firebase/firestore'
+import { db } from '../../../shared/firebase'
+import { logAudit } from '../../../shared/org/orgData'
+import { reserveDocId } from '../../../shared/docId/reserve'
+
+export const COLLECTIONS = {
+  escalations: 'escalations',
+  legalIssues: 'legalIssues',
+}
+
+const col = (orgId, name) => collection(db, 'organizations', orgId, name)
+const ref = (orgId, name, id) => doc(db, 'organizations', orgId, name, id)
+
+// Capped: these are read as a working list, and an org with years of history
+// should not pull all of it into the browser to show the current ones.
+const MAX = 500
+
+function subscribe(orgId, name, cb) {
+  if (!orgId) return () => {}
+  const q = query(col(orgId, name), orderBy('createdAt', 'desc'), limit(MAX))
+  return onSnapshot(
+    q,
+    (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    (err) => {
+      // eslint-disable-next-line no-console
+      console.error(`[Stakeholder] ${name} listener failed:`, err?.message || err)
+      cb(null, err)
+    }
+  )
+}
+
+export const subscribeEscalations = (orgId, cb) => subscribe(orgId, COLLECTIONS.escalations, cb)
+export const subscribeLegalIssues = (orgId, cb) => subscribe(orgId, COLLECTIONS.legalIssues, cb)
+
+// ── Shapes ───────────────────────────────────────────────────────────────────
+// Firestore rejects `undefined` and a half-filled form produces plenty of it,
+// so every optional field is defaulted rather than omitted.
+
+const str = (v) => String(v ?? '').trim()
+const list = (v) => (Array.isArray(v) ? v : [])
+
+/**
+ * The people who complained.
+ *
+ * Kept as an array of {memberId, name, contact, note} rather than a single
+ * field, because one incident routinely involves several members and recording
+ * only the loudest loses the pattern — repeatMembers() reads this to find
+ * someone on their fourth complaint.
+ */
+const members = (v) =>
+  list(v)
+    .map((m) => ({
+      memberId: str(m?.memberId),
+      name: str(m?.name),
+      contact: str(m?.contact),
+      note: str(m?.note),
+    }))
+    .filter((m) => m.memberId || m.name)
+
+const escalationShape = (d) => ({
+  title: str(d.title),
+  scope: {
+    siteId: str(d.scope?.siteId),
+    siteName: str(d.scope?.siteName),
+    region: str(d.scope?.region),
+    entity: str(d.scope?.entity),
+  },
+  channel: str(d.channel) || 'in_person',
+  severity: str(d.severity) || 'medium',
+  status: str(d.status) || 'open',
+  raisedOn: str(d.raisedOn),
+  description: str(d.description),
+  members: members(d.members),
+  // "Legal notice if any" on the escalation itself — a customer may serve one
+  // directly, without any authority being involved.
+  legalNoticeReceived: Boolean(d.legalNoticeReceived),
+  legalNoticeRef: str(d.legalNoticeRef),
+  legalNoticeDate: str(d.legalNoticeDate),
+  finalActionTaken: str(d.finalActionTaken),
+  actionTakenOn: str(d.actionTakenOn),
+  owner: str(d.owner),
+})
+
+const legalShape = (d) => ({
+  title: str(d.title),
+  scope: {
+    siteId: str(d.scope?.siteId),
+    siteName: str(d.scope?.siteName),
+    region: str(d.scope?.region),
+    entity: str(d.scope?.entity),
+  },
+  // The one and only place the join is stored.
+  escalationId: str(d.escalationId),
+  incidentDate: str(d.incidentDate),
+  description: str(d.description),
+  departments: list(d.departments).map(str).filter(Boolean),
+  departmentOther: str(d.departmentOther),
+  officials: str(d.officials),
+  noticeType: str(d.noticeType) || 'none',
+  noticeRef: str(d.noticeRef),
+  noticeDate: str(d.noticeDate),
+  responseDueDate: str(d.responseDueDate),
+  status: str(d.status) || 'open',
+  actionTaken: str(d.actionTaken),
+  penaltyAmount: Number(d.penaltyAmount) || 0,
+  owner: str(d.owner),
+})
+
+const SHAPES = {
+  [COLLECTIONS.escalations]: escalationShape,
+  [COLLECTIONS.legalIssues]: legalShape,
+}
+const KINDS = {
+  [COLLECTIONS.escalations]: 'escalations',
+  [COLLECTIONS.legalIssues]: 'legalIssues',
+}
+const LABELS = {
+  [COLLECTIONS.escalations]: 'customer escalation',
+  [COLLECTIONS.legalIssues]: 'legal issue',
+}
+
+// ── Writes ───────────────────────────────────────────────────────────────────
+
+async function create(orgId, name, data, actor) {
+  const payload = SHAPES[name](data)
+  if (!payload.title) throw new Error(`Give the ${LABELS[name]} a title`)
+  const created = await addDoc(col(orgId, name), {
+    ...payload,
+    docId: await reserveDocId(orgId, KINDS[name]),
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+    createdBy: actor?.uid || '',
+    createdByName: actor?.name || '',
+  })
+  await logAudit(orgId, actor, 'stakeholder.create', {
+    target: name, targetId: created.id, targetLabel: payload.title,
+    summary: `Logged ${LABELS[name]}: ${payload.title}`,
+  })
+  return created.id
+}
+
+async function update(orgId, name, id, data, actor) {
+  const payload = SHAPES[name](data)
+  await updateDoc(ref(orgId, name, id), { ...payload, updatedAt: serverTimestamp() })
+  await logAudit(orgId, actor, 'stakeholder.update', {
+    target: name, targetId: id, targetLabel: payload.title,
+    summary: `Updated ${LABELS[name]}: ${payload.title}`,
+  })
+}
+
+async function remove(orgId, name, id, label, actor) {
+  await deleteDoc(ref(orgId, name, id))
+  await logAudit(orgId, actor, 'stakeholder.delete', {
+    target: name, targetId: id, targetLabel: label,
+    summary: `Deleted ${LABELS[name]}: ${label}`,
+  })
+}
+
+export const addEscalation = (orgId, d, actor) => create(orgId, COLLECTIONS.escalations, d, actor)
+export const updateEscalation = (orgId, id, d, actor) => update(orgId, COLLECTIONS.escalations, id, d, actor)
+export const deleteEscalation = (orgId, id, label, actor) => remove(orgId, COLLECTIONS.escalations, id, label, actor)
+
+export const addLegalIssue = (orgId, d, actor) => create(orgId, COLLECTIONS.legalIssues, d, actor)
+export const updateLegalIssue = (orgId, id, d, actor) => update(orgId, COLLECTIONS.legalIssues, id, d, actor)
+export const deleteLegalIssue = (orgId, id, label, actor) => remove(orgId, COLLECTIONS.legalIssues, id, label, actor)

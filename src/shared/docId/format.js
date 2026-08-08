@@ -39,6 +39,8 @@ export const DOC_CODES = {
   documents: 'DOC',
   emergency: 'ERP',
   objectives: 'OBJ',
+  escalations: 'CE',
+  legalIssues: 'LEG',
 }
 // Equipment is deliberately absent. An extinguisher already carries FE-0001 and
 // an AED an asset tag; those identify a physical thing that was bought, not a
@@ -63,6 +65,8 @@ export const DOC_KIND_LABEL = {
   documents: 'Documents & SDS',
   emergency: 'Emergency response plans',
   objectives: 'Objectives & targets',
+  escalations: 'Customer escalations',
+  legalIssues: 'Legal issues',
 }
 
 export const SEQ_PAD = 4

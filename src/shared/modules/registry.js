@@ -5,6 +5,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import {
   Cctv,
+  Scale,
   AlertTriangle,
   ShieldAlert,
   ClipboardCheck,
@@ -178,6 +179,18 @@ export const MODULES = [
     description:
       'Cameras, DVRs and Meraki devices as one chain — so a dead switch reads as one network fault rather than forty broken cameras. Health, uptime and defects kept separate per device kind.',
     collection: 'cctvCameras',
+    isNew: true,
+  },
+  {
+    key: 'stakeholder',
+    label: 'Stakeholder Issues',
+    title: 'Customer Escalations & Legal Issues',
+    path: '/stakeholder',
+    icon: Scale,
+    tone: 'amber',
+    description:
+      'Customer escalations and the legal matters they turn into — members involved, departments that visited, notices served, and the crossover between the two that neither list shows on its own.',
+    collection: 'escalations',
     isNew: true,
   },
   {
