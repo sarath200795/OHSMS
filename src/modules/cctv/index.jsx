@@ -1,9 +1,10 @@
 import { Routes, Route, Navigate, NavLink } from 'react-router-dom'
-import { Activity, List, TriangleAlert } from 'lucide-react'
+import { Activity, List, TriangleAlert, Upload } from 'lucide-react'
 import { CctvProvider } from './context/CctvContext'
 import Dashboard from './pages/Dashboard'
 import Inventory from './pages/Inventory'
 import Defects from './pages/Defects'
+import BulkUpload from './pages/BulkUpload'
 
 // CCTV — an inventory of cameras, DVRs and Meraki devices, and the health that
 // falls out of how they are wired together. The module's whole reason for
@@ -13,6 +14,7 @@ const TABS = [
   { to: '/cctv', end: true, label: 'Health', icon: Activity },
   { to: '/cctv/inventory', label: 'Inventory', icon: List },
   { to: '/cctv/defects', label: 'Defects', icon: TriangleAlert },
+  { to: '/cctv/import', label: 'Import', icon: Upload },
 ]
 
 export default function CctvModule() {
@@ -38,6 +40,7 @@ export default function CctvModule() {
         <Route index element={<Dashboard />} />
         <Route path="inventory" element={<Inventory />} />
         <Route path="defects" element={<Defects />} />
+        <Route path="import" element={<BulkUpload />} />
         <Route path="*" element={<Navigate to="/cctv" replace />} />
       </Routes>
     </CctvProvider>

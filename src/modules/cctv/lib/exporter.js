@@ -179,4 +179,48 @@ export function downloadInventory({ cameras = [], dvrs = [], merakis = [] }, { o
   XLSX.writeFile(wb, `CCTV_Inventory_${orgName ? `${orgName}_` : ''}${stamp(now)}.xlsx`)
 }
 
+/**
+ * A blank import template with one worked example row.
+ *
+ * The example is not decoration. Every column that has to match something that
+ * already exists — Site, and DVR for cameras — fails the import when it does
+ * not, so showing the exact shape expected is what stops the first attempt
+ * coming back as a page of "not found".
+ */
+export function downloadImportTemplate(kind, { sites = [], dvrs = [] } = {}) {
+  const site = sites[0]?.name || 'Your Site Name'
+  const dvr = dvrs[0]?.name || 'DVR-01'
+
+  const rows =
+    kind === 'dvrs'
+      ? [{
+          'DVR Name': 'DVR-01', 'IP Address': '10.0.0.10', Site: site,
+          Channels: 16, Make: 'Hikvision', Model: 'DS-7216', Location: 'Server room', Status: 'Online',
+        }]
+      : [{
+          'Camera Name': 'CAM-01', Location: 'Main gate', DVR: dvr, Site: '',
+          Channel: 'CH-01', Make: 'Hikvision', Model: 'DS-2CD', Status: 'Online',
+        }]
+
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), kind === 'dvrs' ? 'DVR' : 'Cameras')
+
+  // A second sheet listing what the name columns must match. Without it the
+  // only way to learn the accepted spellings is to fail an import first.
+  const refRows =
+    kind === 'dvrs'
+      ? sites.map((s) => ({ 'Valid Site names': s.name }))
+      : [
+          ...dvrs.map((d) => ({ 'Valid DVR names': d.name, 'Valid Site names (optional)': '' })),
+          ...sites.map((s) => ({ 'Valid DVR names': '', 'Valid Site names (optional)': s.name })),
+        ]
+  XLSX.utils.book_append_sheet(
+    wb,
+    XLSX.utils.json_to_sheet(refRows.length ? refRows : [{ Note: 'Add sites first' }]),
+    'Reference'
+  )
+
+  XLSX.writeFile(wb, `CCTV_${kind === 'dvrs' ? 'DVR' : 'Camera'}_Import_Template.xlsx`)
+}
+
 export { CAUSE }

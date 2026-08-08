@@ -305,6 +305,58 @@ function WeatherCloud() {
   )
 }
 
+// ── CCTV: a bullet camera sweeping its arc from a wall bracket ───────────────
+//
+// The pan is the whole idea: a camera that only sat there would be a shape, and
+// the thing this module is about is coverage — what is being watched, and what
+// is not while the head is pointed elsewhere.
+//
+// Note the split between the two spans wrapping the assembly. The outer one
+// carries translateZ, the inner one is what animates. A keyframe's `transform`
+// REPLACES the element's inline transform rather than composing with it, so
+// animating the positioned span directly would drop it out of its layer the
+// moment the sweep started — which is exactly how a previous logo here
+// collapsed. Depth outside, motion inside.
+function CctvCamera() {
+  return (
+    <>
+      {/* Bracket plate, fixed to the wall behind everything. */}
+      <Slab
+        z={4}
+        className="h-[7px] w-[16px] rounded-[2px] bg-slate-400/90 shadow-[0_2px_4px_rgba(0,0,0,0.25)]"
+        style={{ transform: 'translateZ(4px) translate(0,-17px)' }}
+      />
+
+      {/* The pan assembly. Origin at the top so it swings from the bracket. */}
+      <span className="absolute" style={{ transform: 'translateZ(18px) translate(0,-13px)' }}>
+        <span className="block origin-top group-hover:animate-camera-pan motion-reduce:group-hover:animate-none">
+          {/* Neck joining bracket to body. */}
+          <span className="absolute -left-[2px] top-0 h-[9px] w-[4px] rounded-[1px] bg-slate-500" />
+
+          {/* Body: a bullet camera lying on its side, lens to the left. */}
+          <span className="absolute -left-[17px] top-[8px] h-[12px] w-[30px] rounded-[4px] bg-gradient-to-b from-slate-100 to-slate-300 shadow-[0_3px_5px_rgba(0,0,0,0.3)]" />
+          {/* Sun shade, overhanging the lens the way the real ones do. */}
+          <span className="absolute -left-[19px] top-[6px] h-[4px] w-[26px] rounded-[3px] bg-slate-500/90" />
+
+          {/* Lens barrel and glass. */}
+          <span className="absolute -left-[22px] top-[10px] h-[9px] w-[7px] rounded-[2px] bg-slate-600" />
+          <span className="absolute -left-[23px] top-[10.5px] h-[8px] w-[8px] rounded-full bg-slate-900 shadow-[inset_0_0_2px_rgba(255,255,255,0.5)]" />
+          <span className="absolute -left-[21px] top-[12px] h-[3px] w-[3px] rounded-full bg-sky-300/80" />
+
+          {/* Recording light on the tail. */}
+          <span className="absolute left-[9px] top-[12px] h-[3px] w-[3px] rounded-full bg-red-500 shadow-[0_0_4px_rgba(239,68,68,0.9)] group-hover:animate-rec-blink motion-reduce:group-hover:animate-none" />
+
+          {/* Field of view, sweeping with the head. Sits behind the body. */}
+          <span
+            className="absolute -left-[46px] top-[7px] h-[18px] w-[26px] bg-gradient-to-l from-sky-300/70 to-transparent opacity-[0.42] [clip-path:polygon(100%_35%,100%_65%,0_100%,0_0)] group-hover:animate-view-cone motion-reduce:group-hover:animate-none"
+            style={{ transform: 'translateZ(-4px)' }}
+          />
+        </span>
+      </span>
+    </>
+  )
+}
+
 // ── Incidents: a hazard cone under a turning warning beacon ──────────────────
 function IncidentCone() {
   return (
@@ -462,6 +514,7 @@ function TargetArrow() {
 }
 
 const LOGOS = {
+  cctv: CctvCamera,
   weather: WeatherCloud,
   incidents: IncidentCone,
   hira: RiskMatrix,

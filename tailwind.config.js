@@ -149,6 +149,30 @@ export default {
           '0%,100%': { transform: 'translateZ(20px) scaleX(1)', opacity: '1' },
           '50%': { transform: 'translateZ(20px) scaleX(0.25)', opacity: '0.55' },
         },
+        // A CCTV camera sweeping its arc from a wall bracket, and pausing at
+        // the ends of the sweep the way a real pan-tilt head does rather than
+        // sliding back immediately.
+        //
+        // No translateZ baked in, unlike the older keyframes here: this one is
+        // applied to an inner span whose parent carries the depth, so the
+        // keyframe replacing `transform` cannot flatten the scene.
+        cameraPan: {
+          '0%,100%': { transform: 'rotate(-26deg)' },
+          '8%': { transform: 'rotate(-26deg)' },
+          '46%,54%': { transform: 'rotate(26deg)' },
+          '92%': { transform: 'rotate(-26deg)' },
+        },
+        // The recording light: a hard on/off, not a fade. A camera's LED blinks.
+        recBlink: {
+          '0%,44%': { opacity: '1' },
+          '45%,100%': { opacity: '0.15' },
+        },
+        // The field of view brightening as the camera settles at each end.
+        viewCone: {
+          '0%,100%': { opacity: '0.42' },
+          '46%,54%': { opacity: '0.42' },
+          '25%,75%': { opacity: '0.16' },
+        },
         // The needle of a risk matrix settling on a square.
         needleSweep: {
           '0%,100%': { transform: 'translateZ(20px) rotate(-38deg)' },
@@ -256,6 +280,9 @@ export default {
         'tag-swing': 'tagSwing 1.3s cubic-bezier(0.45,0,0.55,1) infinite',
         'scan-glow': 'scanGlow 1.2s cubic-bezier(0.45,0,0.55,1) infinite',
         beacon: 'beacon 0.9s cubic-bezier(0.45,0,0.55,1) infinite',
+        'camera-pan': 'cameraPan 4.2s cubic-bezier(0.45,0,0.55,1) infinite',
+        'rec-blink': 'recBlink 1.1s steps(1,end) infinite',
+        'view-cone': 'viewCone 4.2s cubic-bezier(0.45,0,0.55,1) infinite',
         'needle-sweep': 'needleSweep 2.1s cubic-bezier(0.23,1,0.32,1) infinite',
         'stamp-down': 'stampDown 1.5s cubic-bezier(0.23,1,0.32,1) infinite',
         'file-pull': 'filePull 1.7s cubic-bezier(0.23,1,0.32,1) infinite',

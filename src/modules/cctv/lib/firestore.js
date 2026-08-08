@@ -161,6 +161,45 @@ export const addMeraki = (orgId, d, actor) => create(orgId, COLLECTIONS.merakis,
 export const updateMeraki = (orgId, id, d, actor) => update(orgId, COLLECTIONS.merakis, id, d, actor)
 export const deleteMeraki = (orgId, id, label, actor) => remove(orgId, COLLECTIONS.merakis, id, label, actor)
 
+/**
+ * Write validated import rows.
+ *
+ * Only rows that passed validation should reach here — the caller filters. They
+ * are shaped again anyway, because this is the last place before Firestore and
+ * a normaliser that only runs on the happy path is one that eventually does not.
+ *
+ * Chunked at 400 against the 500-write batch cap. Chunks commit independently:
+ * a 900-row import that fails on the third chunk leaves the first 800 in place
+ * rather than discarding the lot, and re-running skips them by name.
+ */
+export async function bulkImport(orgId, kind, rows = [], actor) {
+  const name = COLLECTIONS[kind]
+  if (!name) throw new Error(`Unknown device kind ${kind}`)
+  if (!rows.length) return 0
+
+  const CHUNK = 400
+  let written = 0
+  for (let i = 0; i < rows.length; i += CHUNK) {
+    const batch = writeBatch(db)
+    for (const r of rows.slice(i, i + CHUNK)) {
+      batch.set(doc(col(orgId, name)), {
+        ...SHAPES[name](r),
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      })
+    }
+    await batch.commit()
+    written += Math.min(CHUNK, rows.length - i)
+  }
+
+  await logAudit(orgId, actor, 'cctv.import', {
+    target: name,
+    targetLabel: `${written} ${LABELS[name]}(s)`,
+    summary: `Imported ${written} ${LABELS[name]}(s)`,
+  })
+  return written
+}
+
 /** One-shot read of the Meraki list, for callers with no live subscription. */
 export async function getMerakis(orgId) {
   const snap = await getDocs(col(orgId, COLLECTIONS.merakis))
