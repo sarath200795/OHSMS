@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
-import { Plus, Pencil, Trash2, Scale, UserPlus, X, MessageSquareWarning } from 'lucide-react'
+import { Plus, Pencil, Trash2, Scale, UserPlus, X, MessageSquareWarning, Users } from 'lucide-react'
 import {
   PageHeader, Button, Modal, Field, Input, Select, Textarea, EmptyState, SkeletonTable, Badge, Pager,
 } from '../../../shared/ui'
@@ -25,7 +25,7 @@ const EMPTY_MEMBER = { memberId: '', name: '', contact: '', note: '' }
 
 export default function Escalations() {
   const { orgId, actor, isManager } = useAuth()
-  const { escalations, sites, loading } = useStakeholder()
+  const { escalations, sites, repeats, loading } = useStakeholder()
   const [form, setForm] = useState(null)
   const [busy, setBusy] = useState(false)
   const [q, setQ] = useState('')
@@ -108,6 +108,30 @@ export default function Escalations() {
           onChange={(e) => setQ(e.target.value)}
         />
       </div>
+
+      {/* Carried over from the removed overview tab. A member on their fourth
+          complaint is a different conversation from one on their first, and no
+          single row in the table below can show that. */}
+      {repeats.length > 0 && (
+        <div className="card mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 p-3 text-sm text-ink-600">
+          <Users size={15} className="shrink-0 text-amber-600" />
+          <span>
+            <b>{repeats.length}</b> repeat complainant{repeats.length === 1 ? '' : 's'}:
+          </span>
+          {repeats.slice(0, 4).map((m) => (
+            <button
+              key={m.memberId || m.name}
+              type="button"
+              onClick={() => setQ(m.memberId || m.name)}
+              className="rounded-lg bg-ink-100 px-2 py-0.5 text-xs font-semibold text-ink-700 hover:bg-ink-200"
+              title="Show their escalations"
+            >
+              {m.name || m.memberId} ×{m.count}
+            </button>
+          ))}
+          {repeats.length > 4 && <span className="text-xs text-ink-400">+{repeats.length - 4} more</span>}
+        </div>
+      )}
 
       {loading ? (
         <SkeletonTable rows={5} />

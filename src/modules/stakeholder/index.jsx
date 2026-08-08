@@ -1,7 +1,6 @@
 import { Routes, Route, Navigate, NavLink } from 'react-router-dom'
-import { LayoutDashboard, MessageSquareWarning, Gavel } from 'lucide-react'
+import { MessageSquareWarning, Gavel } from 'lucide-react'
 import { StakeholderProvider } from './context/StakeholderContext'
-import Overview from './pages/Overview'
 import Escalations from './pages/Escalations'
 import LegalIssues from './pages/LegalIssues'
 
@@ -10,8 +9,7 @@ import LegalIssues from './pages/LegalIssues'
 // different people and answer different questions, but a legal issue can name
 // the complaint it came from, and that crossover is the point of the module.
 const TABS = [
-  { to: '/stakeholder', end: true, label: 'Overview', icon: LayoutDashboard },
-  { to: '/stakeholder/escalations', label: 'Customer Escalations', icon: MessageSquareWarning },
+  { to: '/stakeholder', end: true, label: 'Customer Escalations', icon: MessageSquareWarning },
   { to: '/stakeholder/legal', label: 'Legal Issues', icon: Gavel },
 ]
 
@@ -35,8 +33,7 @@ export default function StakeholderModule() {
         ))}
       </nav>
       <Routes>
-        <Route index element={<Overview />} />
-        <Route path="escalations" element={<Escalations />} />
+        <Route index element={<Escalations />} />
         <Route path="legal" element={<LegalIssues />} />
         <Route path="*" element={<Navigate to="/stakeholder" replace />} />
       </Routes>
