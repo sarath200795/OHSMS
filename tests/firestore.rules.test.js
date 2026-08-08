@@ -403,14 +403,26 @@ describe('public QR mirror (/qr)', () => {
 // clause existed every fault reported from a scan was rejected outright.
 describe('public defect reports from a QR scan (/reports)', () => {
   const reportAt = (db, id) => doc(db, 'organizations', 'orgA', 'reports', id)
+  // A public report must now carry the token of the asset it is about, so each
+  // of these scans a real mirror. Without one the write is refused, which is
+  // what stops a stranger filing against equipment they have never seen.
   const extReport = {
     source: 'qr', kind: 'defect', approvalStatus: 'pending', reportedBy: 'public',
-    extId: 'ext1', note: 'nozzle blocked',
+    extId: 'ext1', note: 'nozzle blocked', token: 'tok1',
   }
   const assetReport = {
     source: 'qr', kind: 'asset_defect', approvalStatus: 'pending', reportedBy: 'public',
-    assetKind: 'aed', assetRefId: 'aed1', defect: 'Pads Expired', note: '',
+    assetKind: 'aed', assetRefId: 'aed1', defect: 'Pads Expired', note: '', token: 'tokAed',
   }
+
+  beforeEach(async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore()
+      await setDoc(doc(db, 'qr', 'tok1'), { orgId: 'orgA', extId: 'ext1', token: 'tok1' })
+      await setDoc(doc(db, 'qr', 'tokAed'), { orgId: 'orgA', assetKind: 'aed', assetRefId: 'aed1', token: 'tokAed' })
+      await setDoc(doc(db, 'qr', 'tokFas'), { orgId: 'orgA', assetKind: 'fas', assetRefId: 'fas1', token: 'tokFas' })
+    })
+  })
 
   it('a signed-out scanner can report an extinguisher defect', async () => {
     const anon = testEnv.unauthenticatedContext().firestore()
@@ -425,7 +437,7 @@ describe('public defect reports from a QR scan (/reports)', () => {
   it('a signed-out scanner can report a FAS defect', async () => {
     const anon = testEnv.unauthenticatedContext().firestore()
     await assertSucceeds(
-      setDoc(reportAt(anon, 'r3'), { ...assetReport, assetKind: 'fas', assetRefId: 'fas1', defect: 'Hooter Not Working' })
+      setDoc(reportAt(anon, 'r3'), { ...assetReport, assetKind: 'fas', assetRefId: 'fas1', defect: 'Hooter Not Working', token: 'tokFas' })
     )
   })
 
@@ -502,10 +514,19 @@ describe('public permit QR mirror (/permitQr)', () => {
 // observation closes the permit, and this surface must not be able to.
 describe('public observations from a permit QR scan (/observations)', () => {
   const obsAt = (db, id) => doc(db, 'organizations', 'orgA', 'observations', id)
+  // As with reports, the scan now has to be provable: the token must exist and
+  // name the permit being observed.
   const scan = {
     source: 'qr', approvalStatus: 'pending', observedBy: 'public',
     type: 'unsafe', permitId: 'p1', permitNo: 'PTW-001', note: 'no fire watch present',
+    token: 'ptok1',
   }
+
+  beforeEach(async () => {
+    await testEnv.withSecurityRulesDisabled((ctx) =>
+      setDoc(doc(ctx.firestore(), 'permitQr', 'ptok1'), { orgId: 'orgA', permitId: 'p1', token: 'ptok1' })
+    )
+  })
 
   it('a signed-out scanner can report unsafe work', async () => {
     const anon = testEnv.unauthenticatedContext().firestore()
@@ -563,10 +584,11 @@ describe('public observations from a permit QR scan (/observations)', () => {
 
   it('CANNOT reach into another org through the path', async () => {
     const anon = testEnv.unauthenticatedContext().firestore()
-    await assertSucceeds(setDoc(doc(anon, 'organizations', 'orgB', 'observations', 'o9'), scan))
-    // …which is fine: the org id comes from the mirror the token resolved to,
-    // and a pending report against a permit that does not exist is inert. What
-    // must not work is reading anything back out of it.
+    // This used to SUCCEED, and the test said so — orgId was just a path
+    // segment, and the write was tolerated as inert. It is now refused
+    // outright: the token resolves to orgA's mirror, so it cannot be used to
+    // file into orgB no matter what path is typed.
+    await assertFails(setDoc(doc(anon, 'organizations', 'orgB', 'observations', 'o9'), scan))
     await assertFails(getDoc(doc(anon, 'organizations', 'orgB', 'observations', 'o9')))
   })
 })
@@ -575,13 +597,156 @@ describe('public observations from a permit QR scan (/observations)', () => {
 // being dealt with. It is enforced entirely by "create fails if it exists", so
 // every test here is really asking one question: can anything turn that create
 // into an update?
+// The public report and observation surfaces validated a few named fields but
+// never the key SET, and never checked that the asset or permit being written
+// about had anything to do with the writer. orgId was a path segment they chose.
+describe('public writes must prove a scan and cannot carry junk', () => {
+  const reportAt = (db, id) => doc(db, 'organizations', 'orgA', 'reports', id)
+  const obsAt = (db, id) => doc(db, 'organizations', 'orgA', 'observations', id)
+
+  const report = {
+    kind: 'defect', extId: 'ext1', extLabel: 'FE-1', defectType: 'leakage',
+    note: 'discharged', source: 'qr', token: 'tok1',
+    reportedBy: 'public', reportedByName: 'QR Scan (Public)', reporterRole: 'visitor',
+    approvalStatus: 'pending', reportedAt: new Date(),
+  }
+  const observation = {
+    permitId: 'p1', permitNo: 'PTW-1', token: 'ptok1', type: 'unsafe',
+    note: 'no fire watch', source: 'qr', observedBy: 'public',
+    observedByName: 'QR Scan (Public)', observedByRole: 'visitor',
+    approvalStatus: 'pending', at: new Date(),
+  }
+
+  beforeEach(async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore()
+      await setDoc(doc(db, 'qr', 'tok1'), { orgId: 'orgA', extId: 'ext1', token: 'tok1' })
+      await setDoc(doc(db, 'qr', 'tok2'), { orgId: 'orgA', extId: 'ext2', token: 'tok2' })
+      await setDoc(doc(db, 'qr', 'tokB'), { orgId: 'orgB', extId: 'extB', token: 'tokB' })
+      await setDoc(doc(db, 'permitQr', 'ptok1'), { orgId: 'orgA', permitId: 'p1', token: 'ptok1' })
+      await setDoc(doc(db, 'permitQr', 'ptokB'), { orgId: 'orgB', permitId: 'pB', token: 'ptokB' })
+    })
+  })
+
+  it('a scanner can still report a defect on the unit they scanned', async () => {
+    const anon = testEnv.unauthenticatedContext().firestore()
+    await assertSucceeds(setDoc(reportAt(anon, 'r1'), report))
+  })
+
+  it('a stranger with no token cannot report at all', async () => {
+    const anon = testEnv.unauthenticatedContext().firestore()
+    const { token, ...noToken } = report
+    await assertFails(setDoc(reportAt(anon, 'r2'), noToken))
+    await assertFails(setDoc(reportAt(anon, 'r3'), { ...report, token: 'made-up' }))
+  })
+
+  it('a token for one unit cannot report a defect on another', async () => {
+    const anon = testEnv.unauthenticatedContext().firestore()
+    await assertFails(setDoc(reportAt(anon, 'r4'), { ...report, extId: 'ext2' }))
+  })
+
+  it('a token from another org cannot file into this org queue', async () => {
+    const anon = testEnv.unauthenticatedContext().firestore()
+    await assertFails(setDoc(reportAt(anon, 'r5'), { ...report, extId: 'extB', token: 'tokB' }))
+  })
+
+  // ~1 MiB per document, unlimited documents, billed to the org.
+  it('a report cannot smuggle extra fields', async () => {
+    const anon = testEnv.unauthenticatedContext().firestore()
+    await assertFails(setDoc(reportAt(anon, 'r6'), { ...report, payload: 'x'.repeat(2000) }))
+    await assertFails(setDoc(reportAt(anon, 'r7'), { ...report, approvedBy: 'me' }))
+  })
+
+  it('a member can still create a report without scanning', async () => {
+    const alice = testEnv.authenticatedContext('alice').firestore()
+    await assertSucceeds(setDoc(reportAt(alice, 'r8'), {
+      kind: 'defect', extId: 'ext1', extLabel: 'FE-1', defectType: 'leakage',
+      note: '', source: 'portal', reportedBy: 'alice', reportedByName: 'Alice',
+      reporterRole: null, approvalStatus: 'pending', reportedAt: new Date(),
+    }))
+  })
+
+  // Documents the real boundary rather than an imagined one. hasOnly binds the
+  // ANONYMOUS branch only: /reports is also covered by the generic org
+  // collection rule, and rules are a permissive union, so any constraint placed
+  // on the member branch here is overridden by that rule granting the same
+  // write. A member can already write arbitrary fields to every other
+  // collection in their own org, so this is consistent — and it is worth a test
+  // so nobody later "fixes" the public branch by hoisting hasOnly above both
+  // and believes it now covers members too.
+  it('a member CAN carry extra fields — hasOnly binds the public branch only', async () => {
+    const alice = testEnv.authenticatedContext('alice').firestore()
+    await assertSucceeds(setDoc(reportAt(alice, 'r9'), { ...report, source: 'portal', junk: 1 }))
+  })
+
+  it('a scanner can still log an observation on the permit they scanned', async () => {
+    const anon = testEnv.unauthenticatedContext().firestore()
+    await assertSucceeds(setDoc(obsAt(anon, 'o1'), observation))
+  })
+
+  it('an observation needs a real permit token, for the permit it names', async () => {
+    const anon = testEnv.unauthenticatedContext().firestore()
+    const { token, ...noToken } = observation
+    await assertFails(setDoc(obsAt(anon, 'o2'), noToken))
+    await assertFails(setDoc(obsAt(anon, 'o3'), { ...observation, permitId: 'someone-elses' }))
+    await assertFails(setDoc(obsAt(anon, 'o4'), { ...observation, permitId: 'pB', token: 'ptokB' }))
+  })
+
+  it('an observation cannot smuggle extra fields', async () => {
+    const anon = testEnv.unauthenticatedContext().firestore()
+    await assertFails(setDoc(obsAt(anon, 'o5'), { ...observation, payload: 'x'.repeat(2000) }))
+  })
+})
+
 describe('one open report per defect (/defectLocks)', () => {
   const lockAt = (db, id) => doc(db, 'organizations', 'orgA', 'defectLocks', id)
-  const lock = { extId: 'ext1', defectType: 'leakage', createdAt: new Date() }
+  // A public scanner now has to prove they were at the unit, so every anonymous
+  // lock carries the token from the QR code they scanned.
+  const lock = { extId: 'ext1', defectType: 'leakage', createdAt: new Date(), token: 'tok1' }
 
-  it('a signed-out scanner can take the lock, or it would never block them', async () => {
+  // Two real assets in orgA, plus one in orgB to check the tenant binding.
+  beforeEach(async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore()
+      await setDoc(doc(db, 'qr', 'tok1'), { orgId: 'orgA', extId: 'ext1', token: 'tok1' })
+      await setDoc(doc(db, 'qr', 'tok2'), { orgId: 'orgA', extId: 'ext2', token: 'tok2' })
+      await setDoc(doc(db, 'qr', 'tokB'), { orgId: 'orgB', extId: 'extB', token: 'tokB' })
+    })
+  })
+
+  it('a scanner holding the unit token can take the lock, or it would never block them', async () => {
     const anon = testEnv.unauthenticatedContext().firestore()
     await assertSucceeds(setDoc(lockAt(anon, 'ext1__leakage'), lock))
+  })
+
+  // The denial-of-service this whole binding exists to stop: pre-created locks
+  // made every genuine defect report fail, and told the reporter it was already
+  // reported. Without a token there is now nothing to pre-create.
+  it('a stranger with NO token cannot create a lock at all', async () => {
+    const anon = testEnv.unauthenticatedContext().firestore()
+    await assertFails(setDoc(lockAt(anon, 'ext1__leakage'), { extId: 'ext1', defectType: 'leakage', createdAt: new Date() }))
+    await assertFails(setDoc(lockAt(anon, 'ext1__leakage'), { ...lock, token: '' }))
+    await assertFails(setDoc(lockAt(anon, 'ext1__leakage'), { ...lock, token: 'not-a-real-token' }))
+  })
+
+  // Scanning one extinguisher must not let you lock the rest of the estate.
+  it('a token for one unit cannot lock a different unit', async () => {
+    const anon = testEnv.unauthenticatedContext().firestore()
+    await assertFails(setDoc(lockAt(anon, 'ext2__leakage'), { ...lock, extId: 'ext2', token: 'tok1' }))
+  })
+
+  // The id IS the lock, so it has to agree with the payload — otherwise a valid
+  // scan of your own unit could be used to block someone else's.
+  it('the document id must match the unit and defect in the payload', async () => {
+    const anon = testEnv.unauthenticatedContext().firestore()
+    await assertFails(setDoc(lockAt(anon, 'ext2__leakage'), lock))
+    await assertFails(setDoc(lockAt(anon, 'ext1__damaged_hose'), lock))
+    await assertFails(setDoc(lockAt(anon, 'anything'), lock))
+  })
+
+  it('a token from another org cannot lock into this one', async () => {
+    const anon = testEnv.unauthenticatedContext().firestore()
+    await assertFails(setDoc(lockAt(anon, 'extB__leakage'), { extId: 'extB', defectType: 'leakage', createdAt: new Date(), token: 'tokB' }))
   })
 
   it('the same defect on the same unit CANNOT be locked twice', async () => {
@@ -599,6 +764,11 @@ describe('one open report per defect (/defectLocks)', () => {
     await assertFails(setDoc(lockAt(alice, 'ext1__leakage'), lock))
   })
 
+  it('a member can still take a lock without scanning anything', async () => {
+    const alice = testEnv.authenticatedContext('alice').firestore()
+    await assertSucceeds(setDoc(lockAt(alice, 'ext1__leakage'), { extId: 'ext1', defectType: 'leakage', createdAt: new Date() }))
+  })
+
   it('a different defect on the same unit is still reportable', async () => {
     const anon = testEnv.unauthenticatedContext().firestore()
     await assertSucceeds(setDoc(lockAt(anon, 'ext1__leakage'), lock))
@@ -608,7 +778,7 @@ describe('one open report per defect (/defectLocks)', () => {
   it('the same defect on a different unit is still reportable', async () => {
     const anon = testEnv.unauthenticatedContext().firestore()
     await assertSucceeds(setDoc(lockAt(anon, 'ext1__leakage'), lock))
-    await assertSucceeds(setDoc(lockAt(anon, 'ext2__leakage'), { ...lock, extId: 'ext2' }))
+    await assertSucceeds(setDoc(lockAt(anon, 'ext2__leakage'), { extId: 'ext2', defectType: 'leakage', createdAt: new Date(), token: 'tok2' }))
   })
 
   it('a member can release the lock when the defect is closed', async () => {
@@ -633,13 +803,13 @@ describe('one open report per defect (/defectLocks)', () => {
 
   it('CANNOT be used as free storage for arbitrary fields', async () => {
     const anon = testEnv.unauthenticatedContext().firestore()
-    await assertFails(setDoc(lockAt(anon, 'x'), { ...lock, payload: 'x'.repeat(500) }))
+    await assertFails(setDoc(lockAt(anon, 'ext1__leakage'), { ...lock, payload: 'x'.repeat(500) }))
   })
 
   it('CANNOT be created without the unit and defect it locks', async () => {
     const anon = testEnv.unauthenticatedContext().firestore()
-    await assertFails(setDoc(lockAt(anon, 'a'), { extId: '', defectType: 'leakage', createdAt: new Date() }))
-    await assertFails(setDoc(lockAt(anon, 'b'), { extId: 'ext1', defectType: '', createdAt: new Date() }))
+    await assertFails(setDoc(lockAt(anon, 'a'), { extId: '', defectType: 'leakage', createdAt: new Date(), token: 'tok1' }))
+    await assertFails(setDoc(lockAt(anon, 'b'), { extId: 'ext1', defectType: '', createdAt: new Date(), token: 'tok1' }))
   })
 
   it('a member CANNOT reach another org locks', async () => {

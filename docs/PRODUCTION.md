@@ -35,6 +35,39 @@ values found in a non-emulator build.
 What the code already does, and the console/CLI steps only a project owner can
 perform. Work top to bottom; each section says how to verify it worked.
 
+## 0b. Deploy order: rules BEFORE hosting  ⚠️ or public QR reporting breaks
+
+The public write surfaces are validated by `firestore.rules` with `hasOnly()`,
+so the rules enumerate the exact field set the client sends. That makes the two
+artifacts a matched pair, and it makes the deploy order load-bearing:
+
+- **A new client against old rules fails closed.** When the QR defect report
+  started carrying a `token`, the old `hasOnly(['extId','defectType','createdAt'])`
+  on `/defectLocks` rejected the extra key — every public defect report was
+  refused, and because `createReport` maps `permission-denied` to the duplicate
+  message, the reporter was told the fault was "already under progress". A
+  silent break on the one surface where the reporter has no way to escalate.
+- **An old client against new rules also fails**, for the mirror-image reason:
+  the public branch now requires proof of scan and an already-loaded tab has no
+  `token` to send. That window is small — a QR scan loads the page fresh — but
+  it is real.
+
+So: `firebase deploy --only firestore:rules` first, confirm, then
+`--only hosting`. Never the single combined command for a release that changes
+both, and never hosting first.
+
+```bash
+npx firebase deploy --only firestore:rules --project weehs-4eb28
+```
+
+Verify a denied write before shipping the client (this creates no data):
+
+```bash
+curl -s -X POST "https://firestore.googleapis.com/v1/projects/weehs-4eb28/databases/(default)/documents/organizations/ORGID/reports" -H "Content-Type: application/json" -d '{"fields":{"source":{"stringValue":"qr"},"kind":{"stringValue":"defect"},"extId":{"stringValue":"x"},"approvalStatus":{"stringValue":"pending"},"reportedBy":{"stringValue":"public"},"note":{"stringValue":""}}}'
+```
+
+It must return `PERMISSION_DENIED` — no token, no write.
+
 ## 1. App Check — protect the public write surfaces  ⚠️ console required
 
 The app has three deliberately unauthenticated write surfaces (equipment defect

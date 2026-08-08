@@ -48,6 +48,40 @@ service cloud.firestore {
         && (myProfile().role == 'admin' || myProfile().role == 'manager');
     }
 
+    // ── Proof of scan ─────────────────────────────────────────────────────────
+    // The public write surfaces exist for one person: someone standing in front
+    // of an asset with their phone. Nothing used to check that. A report only
+    // had to *claim* source=='qr', so anyone with curl could write into any
+    // org's queue, for any asset id, forever — and the same held for the defect
+    // locks, which meant a stranger could silently suppress fire-defect
+    // reporting on equipment they had never seen.
+    //
+    // Requiring the scanned token, and checking it really does point at the
+    // asset and org being written to, ties the write back to physical access.
+    // That only works because /qr and /permitQr are no longer listable: the
+    // token cannot be discovered, only scanned. The two fixes are load-bearing
+    // for each other.
+    //
+    // This is not a rate limit — rules cannot count requests. It bounds WHO can
+    // write and WHAT they can touch, not how often. App Check is what bounds
+    // volume, and it is still a console toggle away (docs/PRODUCTION.md §1).
+    function hasToken(data) {
+      return data.keys().hasAll(['token']) && data.token is string && data.token.size() > 0;
+    }
+    function scannedAsset(orgId, data) {
+      return hasToken(data)
+        && exists(/databases/$(database)/documents/qr/$(data.token))
+        && get(/databases/$(database)/documents/qr/$(data.token)).data.orgId == orgId;
+    }
+    function scannedPermit(orgId, data) {
+      return hasToken(data)
+        && exists(/databases/$(database)/documents/permitQr/$(data.token))
+        && get(/databases/$(database)/documents/permitQr/$(data.token)).data.orgId == orgId;
+    }
+    function scannedAssetField(data, field) {
+      return get(/databases/$(database)/documents/qr/$(data.token)).data[field];
+    }
+
     // ── Public org-name index (no sensitive fields) ───────────────────────────
     // Maps a lowercased org name to its orgId. Publicly readable because signup
     // has to resolve "which org is this?" before the user is a member of
@@ -229,26 +263,44 @@ service cloud.firestore {
       }
 
       // One open report per defect per unit, enforced as a document rather than
-      // a check. The QR reporter is not signed in and must never be able to
-      // read the org's reports, so the client cannot look for a duplicate
-      // before submitting — but creating a document that already exists fails
-      // by itself. That is why update is denied here and why this collection is
-      // carved out of the generic member rule below: if a member could update,
-      // a second report would overwrite the lock instead of being refused.
+      // a check. The QR reporter is not signed in and must never be able to read
+      // the org's reports, so the client cannot look for a duplicate before
+      // submitting — but creating a document that already exists fails by
+      // itself: the write IS the check. That is why update is denied here and
+      // why this collection is carved out of the generic member rule below.
       //
       // It holds no personal data, only which defect is live on which unit, and
       // is written in the same batch as the report it guards.
+      //
+      // That made it a denial-of-service primitive. The id is derived
+      // (`extId__defectType`), creation needed no account, and createReport
+      // batches the lock with the report — so pre-creating locks made every
+      // genuine defect report fail, and the reporter was told the fault was
+      // "already reported". Silent, indefinite, and pointed at fire equipment.
+      //
+      // Two bindings close it. The id must match the payload, so a scanner
+      // cannot claim one unit and lock another. And a public writer must
+      // present the token of the very asset they are locking — which they can
+      // only get by scanning it.
       match /defectLocks/{lockId} {
         allow read, delete: if isApprovedMemberOf(orgId);
-        // Public, like the report it accompanies: a QR reporter has no account,
-        // and a lock they cannot write is a lock that never blocks them.
-        allow create: if request.resource.data.keys().hasOnly(['extId', 'defectType', 'createdAt'])
+        allow create: if request.resource.data.keys().hasOnly(['extId', 'defectType', 'createdAt', 'token'])
           && request.resource.data.extId is string
           && request.resource.data.extId.size() > 0
           && request.resource.data.extId.size() < 200
           && request.resource.data.defectType is string
           && request.resource.data.defectType.size() > 0
-          && request.resource.data.defectType.size() <= 60;
+          && request.resource.data.defectType.size() <= 60
+          // lockId() escapes '/' before joining; forbid it on both sides so the
+          // client's id and this comparison cannot mean different things.
+          && !request.resource.data.extId.matches('.*/.*')
+          && !request.resource.data.defectType.matches('.*/.*')
+          && lockId == request.resource.data.extId + '__' + request.resource.data.defectType
+          && (
+            isApprovedMemberOf(orgId)
+            || (scannedAsset(orgId, request.resource.data)
+                && scannedAssetField(request.resource.data, 'extId') == request.resource.data.extId)
+          );
         allow update: if false;
       }
 
@@ -259,38 +311,68 @@ service cloud.firestore {
       // a pending defect report that an approver must still accept. It cannot
       // be used to write an approved record, change status, or edit anything.
       // Note this is a public write surface; enable App Check to stop abuse.
+      // hasOnly matters more here than anywhere else: this rule validated a
+      // handful of named fields but never the key SET, so an anonymous writer
+      // could attach anything else they liked and fill a document to Firestore's
+      // ~1 MiB ceiling, unlimited times, on someone else's bill. The list below
+      // is the union of what reportPayload() and createAssetReport() write.
+      // hasOnly sits INSIDE the public branch, not above both. Rules are a
+      // permissive union and /reports is also covered by the generic org
+      // collection rule below, so a constraint on the member branch here would
+      // be silently overridden by that rule granting the same write — the kind
+      // of protection that reads as real and enforces nothing. Members are
+      // governed by the generic rule, as they are for every other collection;
+      // what matters is that the ANONYMOUS branch is exhaustively bounded.
       match /reports/{reportId} {
-        allow create: if isApprovedMemberOf(orgId) || (
-          request.resource.data.source == 'qr'
-          && request.resource.data.approvalStatus == 'pending'
-          && request.resource.data.reportedBy == 'public'
-          && request.resource.data.note is string
-          && request.resource.data.note.size() <= 500
-          && (
-            // An extinguisher defect, keyed by the unit it was raised against.
-            (
-              request.resource.data.kind == 'defect'
-              && request.resource.data.extId is string
-              && request.resource.data.extId.size() > 0
-              && request.resource.data.extId.size() < 200
-            )
-            // An AED or fire-alarm fault. Same public surface, different sheet:
-            // these carry no extId, so the extinguisher clause above can never
-            // admit them and they need their own shape. assetKind is pinned to
-            // the two known kinds because approving one writes to the matching
-            // collection — an unrecognised kind would target nothing.
-            || (
-              request.resource.data.kind == 'asset_defect'
-              && request.resource.data.assetKind in ['aed', 'fas']
-              && request.resource.data.assetRefId is string
-              && request.resource.data.assetRefId.size() > 0
-              && request.resource.data.assetRefId.size() < 200
-              && request.resource.data.defect is string
-              && request.resource.data.defect.size() > 0
-              && request.resource.data.defect.size() <= 200
-            )
-          )
-        );
+        allow create: if isApprovedMemberOf(orgId)
+          || (
+              request.resource.data.keys().hasOnly([
+                'extId', 'extLabel', 'kind', 'defectType', 'newStatus', 'note',
+                'reportedBy', 'reportedByName', 'reporterRole', 'source',
+                'approvalStatus', 'reportedAt', 'createdAt', 'token',
+                'assetKind', 'assetRefId', 'assetLabel', 'defect',
+              ])
+              && request.resource.data.source == 'qr'
+              // The scanned token must exist and belong to THIS org. Without it,
+              // orgId was just a path segment an anonymous writer picked, so a
+              // stranger could file into any tenant's approval queue.
+              && scannedAsset(orgId, request.resource.data)
+              && request.resource.data.approvalStatus == 'pending'
+              && request.resource.data.reportedBy == 'public'
+              && request.resource.data.note is string
+              && request.resource.data.note.size() <= 500
+              && (
+                // An extinguisher defect, keyed by the unit it was raised
+                // against — and that unit must be the one the token names,
+                // otherwise a single scanned QR let someone report faults on
+                // every other asset in the org.
+                (
+                  request.resource.data.kind == 'defect'
+                  && request.resource.data.extId is string
+                  && request.resource.data.extId.size() > 0
+                  && request.resource.data.extId.size() < 200
+                  && scannedAssetField(request.resource.data, 'extId') == request.resource.data.extId
+                )
+                // An AED or fire-alarm fault. Same public surface, different
+                // sheet: these carry no extId, so the extinguisher clause above
+                // can never admit them and they need their own shape. assetKind
+                // is pinned to the two known kinds because approving one writes
+                // to the matching collection — an unrecognised kind would target
+                // nothing — and it must agree with the mirror too.
+                || (
+                  request.resource.data.kind == 'asset_defect'
+                  && request.resource.data.assetKind in ['aed', 'fas']
+                  && request.resource.data.assetRefId is string
+                  && request.resource.data.assetRefId.size() > 0
+                  && request.resource.data.assetRefId.size() < 200
+                  && request.resource.data.defect is string
+                  && request.resource.data.defect.size() > 0
+                  && request.resource.data.defect.size() <= 200
+                  && scannedAssetField(request.resource.data, 'assetRefId') == request.resource.data.assetRefId
+                  && scannedAssetField(request.resource.data, 'assetKind') == request.resource.data.assetKind
+                )
+              )
+          );
       }
 
       // Observations logged by scanning a work permit's QR code. Whoever walks
@@ -304,18 +386,30 @@ service cloud.firestore {
       // paper, so the scan reports and a person decides.
       //
       // Note this is a public write surface; enable App Check to stop abuse.
+      // Same two gaps as /reports, closed the same way: the key set was never
+      // constrained, and the permit being observed was a string the writer
+      // invented in a tenant they chose by editing the path.
       match /observations/{obsId} {
-        allow create: if isApprovedMemberOf(orgId) || (
-          request.resource.data.source == 'qr'
-          && request.resource.data.approvalStatus == 'pending'
-          && request.resource.data.observedBy == 'public'
-          && request.resource.data.type in ['safe', 'unsafe']
-          && request.resource.data.permitId is string
-          && request.resource.data.permitId.size() > 0
-          && request.resource.data.permitId.size() < 200
-          && request.resource.data.note is string
-          && request.resource.data.note.size() <= 500
-        );
+        allow create: if isApprovedMemberOf(orgId)
+          || (
+              request.resource.data.keys().hasOnly([
+                'permitId', 'permitNo', 'docId', 'token', 'type', 'note',
+                'observedBy', 'observedByName', 'observedByRole', 'source',
+                'approvalStatus', 'at',
+              ])
+              && request.resource.data.source == 'qr'
+              && scannedPermit(orgId, request.resource.data)
+              && get(/databases/$(database)/documents/permitQr/$(request.resource.data.token)).data.permitId
+                   == request.resource.data.permitId
+              && request.resource.data.approvalStatus == 'pending'
+              && request.resource.data.observedBy == 'public'
+              && request.resource.data.type in ['safe', 'unsafe']
+              && request.resource.data.permitId is string
+              && request.resource.data.permitId.size() > 0
+              && request.resource.data.permitId.size() < 200
+              && request.resource.data.note is string
+              && request.resource.data.note.size() <= 500
+          );
       }
 
       // Document-id counters, one document per kind, holding a single integer.

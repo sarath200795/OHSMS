@@ -527,6 +527,11 @@ export async function createReport(orgId, report) {
       extId: report.extId,
       defectType: report.defectType,
       createdAt: serverTimestamp(),
+      // The scanned token. A public reporter has no account, so this is the only
+      // evidence they were ever near the unit — the rules require it to name
+      // this exact extinguisher, which is what stops a stranger pre-creating
+      // locks and silently suppressing everyone else's defect reports.
+      token: report.token || '',
     })
     batch.set(doc(reportCol(orgId)), reportPayload(report))
     try {
@@ -561,6 +566,11 @@ function reportPayload(report) {
     source: report.source || 'portal',
     approvalStatus: 'pending',
     reportedAt: serverTimestamp(),
+    // Proof of scan. The rules require a public report to carry the token of
+    // the very asset it names, so orgId and extId stop being strings an
+    // anonymous writer can invent. Members are authorised without it, but it
+    // costs nothing to send and keeps both paths identical.
+    token: report.token || '',
   }
 }
 

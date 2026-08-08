@@ -43,6 +43,9 @@ export default function ReportDefectModal({ open, onClose, ext, orgId, reporter,
         extLabel: label,
         kind: 'defect',
         defectType: selected.key,
+        // `token` on a QR mirror, `qrToken` on the extinguisher itself — the
+        // rules use it as proof this reporter actually scanned this unit.
+        token: ext.token || ext.qrToken || '',
         note,
         reportedBy: reporter?.uid || 'public',
         reportedByName: reporter?.name || 'QR Scan (Public)',

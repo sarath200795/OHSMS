@@ -76,5 +76,16 @@ export function lockedDefects(ext, reports = []) {
  * reason. The message says what to do about it either way.
  */
 export function duplicateDefectMessage(defectLabel) {
-  return `${defectLabel} is already under progress for this unit. It can be reported again once it has been closed.`
+  // Hedged on purpose. The caller reaches here on ANY permission-denied, and a
+  // duplicate is only the most likely cause — an expired QR code or a rules
+  // change produces the identical error, and the client cannot tell them apart
+  // because a public reporter is not allowed to read the report queue.
+  //
+  // Stating "already under progress" as fact is the dangerous reading: someone
+  // standing in front of a discharged extinguisher is told it is handled, and
+  // walks away. So say what is probable, then give them the way out.
+  return (
+    `${defectLabel} looks like it has already been reported for this unit, so it was not logged again. ` +
+    `If nobody is dealing with it, tell your safety team directly — do not rely on this report.`
+  )
 }
