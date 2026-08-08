@@ -76,8 +76,22 @@ export default function Dashboard() {
           sub={cs.band.label}
           tone={cs.uptime >= 95 ? 'emerald' : cs.uptime >= 80 ? 'amber' : 'red'}
         />
-        <Stat label="DVR online" value={`${ds.online}/${ds.total}`} sub={`${ds.uptime}% · ${ds.band.label}`} />
-        <Stat label="Meraki online" value={`${ms.online}/${ms.total}`} sub={`${ms.uptime}% · ${ms.band.label}`} />
+        {/* An unreported device counts as working so a newly-added row does not
+            tank the estate figure — but saying "5/5 online" about five devices
+            nobody has checked is a green number that was never earned. Where
+            that is what the count is made of, say so instead. */}
+        <Stat
+          label="DVR online"
+          value={`${ds.online}/${ds.total}`}
+          sub={ds.unknown ? `${ds.unknown} not reported` : `${ds.uptime}% · ${ds.band.label}`}
+          tone={ds.unknown === ds.total && ds.total > 0 ? 'amber' : 'ink'}
+        />
+        <Stat
+          label="Meraki online"
+          value={`${ms.online}/${ms.total}`}
+          sub={ms.unknown ? `${ms.unknown} not reported` : `${ms.uptime}% · ${ms.band.label}`}
+          tone={ms.unknown === ms.total && ms.total > 0 ? 'amber' : 'ink'}
+        />
       </div>
 
       {/* The distinction the whole module exists for. */}

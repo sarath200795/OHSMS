@@ -15,9 +15,11 @@
 
 import {
   collection, doc, addDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy, serverTimestamp,
+  writeBatch,
 } from 'firebase/firestore'
 import { db } from '../../../shared/firebase'
 import { logAudit } from '../../../shared/org/orgData'
+import { standardMerakiPayloads } from './provision'
 
 export const COLLECTIONS = {
   cameras: 'cctvCameras',
@@ -158,6 +160,46 @@ export const deleteDvr = (orgId, id, label, actor) => remove(orgId, COLLECTIONS.
 export const addMeraki = (orgId, d, actor) => create(orgId, COLLECTIONS.merakis, d, actor)
 export const updateMeraki = (orgId, id, d, actor) => update(orgId, COLLECTIONS.merakis, id, d, actor)
 export const deleteMeraki = (orgId, id, label, actor) => remove(orgId, COLLECTIONS.merakis, id, label, actor)
+
+/**
+ * Give every site its standard Meraki device.
+ *
+ * Idempotent: sites that already have one are skipped, so this is safe to run
+ * again whenever sites are added, and pressing the button twice cannot produce
+ * two switches for one site (see sitesMissingMeraki — matched on siteId, so a
+ * renamed site is not mistaken for a new one).
+ *
+ * Batched because a whole estate is created at once and half a provisioning run
+ * is worse than none: it would leave some sites covered and some not, with no
+ * way to tell which from looking.
+ *
+ * @returns the number created — 0 means everything was already covered
+ */
+export async function provisionSiteMerakis(orgId, sites = [], merakis = [], actor) {
+  const payloads = standardMerakiPayloads(sites, merakis)
+  if (!payloads.length) return 0
+
+  // Firestore caps a batch at 500 writes; an estate could exceed that.
+  const CHUNK = 400
+  for (let i = 0; i < payloads.length; i += CHUNK) {
+    const batch = writeBatch(db)
+    for (const p of payloads.slice(i, i + CHUNK)) {
+      batch.set(doc(col(orgId, COLLECTIONS.merakis)), {
+        ...merakiShape(p),
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      })
+    }
+    await batch.commit()
+  }
+
+  await logAudit(orgId, actor, 'cctv.provision', {
+    target: COLLECTIONS.merakis,
+    targetLabel: `${payloads.length} site(s)`,
+    summary: `Created the standard Meraki device for ${payloads.length} site(s)`,
+  })
+  return payloads.length
+}
 
 /**
  * Set a device's reported status — the one field a monitoring integration would

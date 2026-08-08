@@ -10,8 +10,9 @@ import {
   addCamera, updateCamera, deleteCamera,
   addDvr, updateDvr, deleteDvr,
   addMeraki, updateMeraki, deleteMeraki,
-  setDefects,
+  setDefects, provisionSiteMerakis,
 } from '../lib/firestore'
+import { sitesMissingMeraki } from '../lib/provision'
 import { downloadInventory } from '../lib/exporter'
 import {
   REPORTABLE_CAMERA_DEFECTS, REPORTABLE_DVR_DEFECTS, REPORTABLE_MERAKI_DEFECTS,
@@ -129,6 +130,22 @@ export default function Inventory() {
     }
   }
 
+  // Sites with no switch on record are the ones where health silently cannot
+  // cascade, so the gap is surfaced wherever the Meraki list is being looked at.
+  const uncovered = useMemo(() => sitesMissingMeraki(sites, merakis), [sites, merakis])
+
+  const provision = async () => {
+    setBusy(true)
+    try {
+      const n = await provisionSiteMerakis(orgId, sites, merakis, actor)
+      toast.success(n ? `Created ${n} Meraki device${n === 1 ? '' : 's'}` : 'Every site already has one')
+    } catch (e) {
+      toast.error(e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const saveDefects = async (keys) => {
     const { kind, row } = defectFor
     try {
@@ -185,6 +202,23 @@ export default function Inventory() {
           onChange={(e) => setQ(e.target.value)}
         />
       </div>
+
+      {/* Standard-issue provisioning. Shown on the Meraki tab because that is
+          where the gap is being looked at, and only when there IS a gap. */}
+      {tab === 'merakis' && isManager && uncovered.length > 0 && (
+        <div className="card mb-3 flex flex-wrap items-center gap-3 p-4">
+          <Router size={18} className="shrink-0 text-amber-600" />
+          <div className="min-w-[16rem] flex-1 text-sm text-ink-700">
+            <b>{uncovered.length}</b> site{uncovered.length === 1 ? ' has' : 's have'} no Meraki on record
+            {uncovered.length <= 4 ? ` (${uncovered.map((s) => s.name || s.id).join(', ')})` : ''}. Until
+            {uncovered.length === 1 ? ' it is' : ' they are'} added, a network outage there shows up as every
+            camera failing separately rather than as one fault.
+          </div>
+          <Button loading={busy} onClick={provision}>
+            Create standard Meraki for each site
+          </Button>
+        </div>
+      )}
 
       {loading ? (
         <SkeletonTable rows={5} />
