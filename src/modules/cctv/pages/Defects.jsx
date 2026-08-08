@@ -1,5 +1,6 @@
 import { Download, Cctv, HardDrive, Router, CircleCheck } from 'lucide-react'
-import { PageHeader, Button, EmptyState, SkeletonTable } from '../../../shared/ui'
+import { PageHeader, Button, EmptyState, SkeletonTable, Pager } from '../../../shared/ui'
+import { usePagination } from '../../../shared/ui/usePagination'
 import { useCctv } from '../context/CctvContext'
 import { downloadDefects } from '../lib/exporter'
 import { CAMERA_DEFECT_BY_KEY, DVR_DEFECT_BY_KEY, MERAKI_DEFECT_BY_KEY, CAUSE_LABEL, CAUSE } from '../lib/constants'
@@ -93,7 +94,16 @@ export default function Defects() {
   )
 }
 
+/**
+ * Each section paginates independently.
+ *
+ * One shared page number across three lists would mean paging through camera
+ * defects silently blanked the DVR and Meraki sections — and those are the two
+ * a reader most needs to see, because a device listed there is why the cameras
+ * are dark.
+ */
 function Section({ icon: Icon, title, hint, rows, table, columns }) {
+  const { pageItems, page, setPage, pageCount, total, pageSize } = usePagination(rows)
   return (
     <section className="mt-6">
       <h2 className="mb-1 flex items-center gap-2 text-sm font-bold text-ink-800">
@@ -114,7 +124,7 @@ function Section({ icon: Icon, title, hint, rows, table, columns }) {
               </tr>
             </thead>
             <tbody>
-              {rows.map((d) => (
+              {pageItems.map((d) => (
                 <tr key={d.id} className="border-t border-ink-100">
                   {columns.map((c) => (
                     <td
@@ -130,6 +140,14 @@ function Section({ icon: Icon, title, hint, rows, table, columns }) {
               ))}
             </tbody>
           </table>
+          <Pager
+            className="border-t border-ink-100 px-3 py-2"
+            page={page}
+            pageCount={pageCount}
+            onPage={setPage}
+            total={total}
+            pageSize={pageSize}
+          />
         </div>
       )}
     </section>

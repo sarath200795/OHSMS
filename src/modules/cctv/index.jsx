@@ -1,10 +1,11 @@
-import { Routes, Route, Navigate, NavLink } from 'react-router-dom'
+import { Routes, Route, Navigate, NavLink, useLocation } from 'react-router-dom'
 import { Activity, List, TriangleAlert, Upload } from 'lucide-react'
 import { CctvProvider } from './context/CctvContext'
 import Dashboard from './pages/Dashboard'
 import Inventory from './pages/Inventory'
 import Defects from './pages/Defects'
 import BulkUpload from './pages/BulkUpload'
+import ScopeBar from './components/ScopeBar'
 
 // CCTV — an inventory of cameras, DVRs and Meraki devices, and the health that
 // falls out of how they are wired together. The module's whole reason for
@@ -20,11 +21,33 @@ const TABS = [
 export default function CctvModule() {
   return (
     <CctvProvider>
+      <ModuleShell />
+    </CctvProvider>
+  )
+}
+
+/**
+ * Inside the provider, so the scope bar can read it.
+ *
+ * The bar is hidden on Import: that page adds devices rather than reading them,
+ * and a filter sitting above it would imply the import is scoped too.
+ */
+function ModuleShell() {
+  const { pathname, search } = useLocation()
+  const onImport = pathname.startsWith('/cctv/import')
+
+  // The scope lives in the query string, so the tab links have to carry it —
+  // a bare `to="/cctv/defects"` would silently drop the filter on every tab
+  // change, which is the bug this whole arrangement exists to avoid.
+  const keepScope = (to) => ({ pathname: to, search })
+
+  return (
+    <>
       <nav className="mb-4 flex flex-wrap gap-2">
         {TABS.map((t) => (
           <NavLink
             key={t.to}
-            to={t.to}
+            to={keepScope(t.to)}
             end={t.end}
             className={({ isActive }) =>
               `flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-sm font-semibold transition ${
@@ -36,6 +59,9 @@ export default function CctvModule() {
           </NavLink>
         ))}
       </nav>
+
+      {!onImport && <ScopeBar />}
+
       <Routes>
         <Route index element={<Dashboard />} />
         <Route path="inventory" element={<Inventory />} />
@@ -43,6 +69,6 @@ export default function CctvModule() {
         <Route path="import" element={<BulkUpload />} />
         <Route path="*" element={<Navigate to="/cctv" replace />} />
       </Routes>
-    </CctvProvider>
+    </>
   )
 }

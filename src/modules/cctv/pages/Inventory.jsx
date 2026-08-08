@@ -2,8 +2,9 @@ import { useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { Plus, Download, Trash2, Pencil, Cctv, HardDrive, Router } from 'lucide-react'
 import {
-  PageHeader, Button, Modal, Field, Input, Select, Textarea, EmptyState, SkeletonTable,
+  PageHeader, Button, Modal, Field, Input, Select, Textarea, EmptyState, SkeletonTable, Pager,
 } from '../../../shared/ui'
+import { usePagination } from '../../../shared/ui/usePagination'
 import { useAuth } from '../../../shared/auth/AuthContext'
 import { useCctv } from '../context/CctvContext'
 import {
@@ -13,9 +14,6 @@ import {
   setDefects, provisionSiteMerakis,
 } from '../lib/firestore'
 import { sitesMissingMeraki } from '../lib/provision'
-import {
-  siteMeta, filterByScope, narrowSites, reconcileScope, scopeFacets, isScoped, EMPTY_SCOPE,
-} from '../lib/filters'
 import { downloadInventory } from '../lib/exporter'
 import {
   REPORTABLE_CAMERA_DEFECTS, REPORTABLE_DVR_DEFECTS, REPORTABLE_MERAKI_DEFECTS,
@@ -43,9 +41,10 @@ const EMPTY = {
 
 export default function Inventory() {
   const { orgId, orgName, actor, isManager } = useAuth()
-  const { cameras, dvrs, merakis, sites, estate, loading, dvrOptions, siteOptions } = useCctv()
+  // scopedRows is already narrowed by the module-wide site/entity/region filter;
+  // the raw lists are still needed for the unfiltered totals in the header.
+  const { cameras, dvrs, merakis, sites, estate, scopedRows, isScoped, loading, dvrOptions, siteOptions } = useCctv()
   const [tab, setTab] = useState('cameras')
-  const [scope, setScopeRaw] = useState(EMPTY_SCOPE)
   const [form, setForm] = useState(null) // { kind, id?, data }
   const [defectFor, setDefectFor] = useState(null) // { kind, row }
   const [busy, setBusy] = useState(false)
@@ -62,34 +61,22 @@ export default function Inventory() {
     [estate]
   )
 
-  const meta = useMemo(() => siteMeta(sites), [sites])
-  const facets = useMemo(() => scopeFacets(sites), [sites])
-  // Only the sites the chosen entity/region can actually contain, so nobody can
-  // build a combination that is guaranteed to return nothing.
-  const sitesInScope = useMemo(() => narrowSites(sites, scope), [sites, scope])
-
-  // Resolved inside the memo: `{cameras, dvrs, merakis}[tab]` builds a fresh
-  // object every render, so as a dependency it would defeat the memo entirely
-  // and re-filter the whole estate on every keystroke.
+  // Site/entity/region scoping happens in the context now, shared with the
+  // other tabs; only the text search is local to this page.
   const filtered = useMemo(() => {
-    const rows = { cameras, dvrs, merakis }[tab] || []
-    // A camera can inherit its site from its DVR, so the id worth testing is
-    // the one the health pass resolved rather than the raw field.
-    const siteIdOf = (r) => health[tab].get(r.id)?.siteId || r.siteId
-    const scoped = filterByScope(rows, scope, meta, siteIdOf)
+    const rows = scopedRows[tab] || []
     const needle = q.trim().toLowerCase()
-    if (!needle) return scoped
-    return scoped.filter((r) =>
+    if (!needle) return rows
+    return rows.filter((r) =>
       [r.name, r.location, r.ipAddress, r.siteName, r.model, r.serial]
         .filter(Boolean)
         .some((v) => String(v).toLowerCase().includes(needle))
     )
-  }, [cameras, dvrs, merakis, tab, q, scope, meta, health])
+  }, [scopedRows, tab, q])
 
-  // Every scope change is reconciled: choosing a region can strand a site
-  // outside it, and an empty table with two filters set reads as "no cameras"
-  // rather than "impossible combination".
-  const setScope = (patch) => setScopeRaw((s) => reconcileScope({ ...s, ...patch }, sites))
+  // 20 rows at a time. The cost of a long inventory is DOM, not data — a
+  // thousand rows is thousands of nodes to lay out on every keystroke.
+  const { pageItems, page, setPage, pageCount, total, pageSize } = usePagination(filtered)
 
   const open = (kind, row) => setForm({ kind, id: row?.id, data: { ...EMPTY[kind], ...(row || {}) } })
   const patch = (p) => setForm((f) => ({ ...f, data: { ...f.data, ...p } }))
@@ -182,7 +169,11 @@ export default function Inventory() {
     <>
       <PageHeader
         title="CCTV Inventory"
-        subtitle={`${cameras.length} cameras · ${dvrs.length} DVR · ${merakis.length} Meraki`}
+        subtitle={
+          isScoped
+            ? `Filtered — ${scopedRows.cameras.length}/${cameras.length} cameras · ${scopedRows.dvrs.length}/${dvrs.length} DVR · ${scopedRows.merakis.length}/${merakis.length} Meraki`
+            : `${cameras.length} cameras · ${dvrs.length} DVR · ${merakis.length} Meraki`
+        }
         actions={
           <div className="flex gap-2">
             <Button
@@ -220,52 +211,6 @@ export default function Inventory() {
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
-      </div>
-
-      {/* Entity and region live on the site record, not on the device, so both
-          resolve through it — a site moved between entities must not leave its
-          cameras claiming the old one. */}
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <Select
-          aria-label="Filter by entity"
-          className="w-auto"
-          value={scope.entity}
-          onChange={(e) => setScope({ entity: e.target.value })}
-        >
-          <option value="">All entities</option>
-          {facets.entities.map((x) => <option key={x} value={x}>{x}</option>)}
-        </Select>
-        <Select
-          aria-label="Filter by region"
-          className="w-auto"
-          value={scope.region}
-          onChange={(e) => setScope({ region: e.target.value })}
-        >
-          <option value="">All regions</option>
-          {facets.regions.map((x) => <option key={x} value={x}>{x}</option>)}
-        </Select>
-        <Select
-          aria-label="Filter by site"
-          className="w-auto"
-          value={scope.siteId}
-          onChange={(e) => setScope({ siteId: e.target.value })}
-        >
-          <option value="">All sites</option>
-          {sitesInScope.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-        </Select>
-
-        {isScoped(scope) && (
-          <>
-            <Button variant="ghost" className="px-2.5 py-1.5 text-xs" onClick={() => setScopeRaw(EMPTY_SCOPE)}>
-              Clear filters
-            </Button>
-            {/* Says what is on screen against what exists, so a filtered count
-                is never mistaken for the size of the estate. */}
-            <span className="text-xs text-ink-500">
-              {filtered.length} of {({ cameras, dvrs, merakis }[tab] || []).length}
-            </span>
-          </>
-        )}
       </div>
 
       {/* Standard-issue provisioning. Shown on the Meraki tab because that is
@@ -315,7 +260,7 @@ export default function Inventory() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((row) => {
+              {pageItems.map((row) => {
                 const h = health[tab].get(row.id)
                 return (
                   <tr key={row.id} className="border-t border-ink-100">
@@ -348,6 +293,14 @@ export default function Inventory() {
               })}
             </tbody>
           </table>
+          <Pager
+            className="border-t border-ink-100 px-3 py-2"
+            page={page}
+            pageCount={pageCount}
+            onPage={setPage}
+            total={total}
+            pageSize={pageSize}
+          />
         </div>
       )}
 

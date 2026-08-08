@@ -4,6 +4,8 @@ import { useReactToPrint } from 'react-to-print'
 import { QRCodeSVG } from 'qrcode.react'
 import { QrCode, Printer, CheckSquare, Square, Search } from 'lucide-react'
 import { PageHeader, EmptyState } from '../components/ui'
+import { Pager } from '../../../shared/ui'
+import { usePagination } from '../../../shared/ui/usePagination'
 import ListFilters from '../components/ListFilters'
 import { useFleet } from '../context/FleetContext'
 import { publicQrUrl } from '../lib/qr'
@@ -43,6 +45,13 @@ export default function QRPrint() {
   const filtersActive = assetType === 'ext' ? hasActiveFilters(filters) : !!search.trim()
 
   const items = useMemo(() => source.filter((e) => selected.has(e.id)), [source, selected])
+
+  // Paginates the PICKER only. `items` — the print grid below — is deliberately
+  // left whole: it is what react-to-print renders, so paging it would silently
+  // cap a print run at 20 labels. Select-all still works on the full filtered
+  // set rather than the visible page, so choosing 500 and printing them is
+  // unaffected.
+  const picker = usePagination(filtered)
 
   const toggle = (id) => setSelected((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
   const allOn = filtered.length > 0 && filtered.every((e) => selected.has(e.id))
@@ -110,7 +119,7 @@ export default function QRPrint() {
               <p className="px-2 py-6 text-center text-sm text-ink-400">No matches.</p>
             ) : (
               <div className="max-h-[60vh] space-y-1 overflow-y-auto">
-                {filtered.map((e) => {
+                {picker.pageItems.map((e) => {
                   const on = selected.has(e.id)
                   return (
                     <button key={e.id} onClick={() => toggle(e.id)} className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition ${on ? 'bg-brand-50 text-brand-700' : 'hover:bg-ink-50'}`}>
@@ -124,6 +133,14 @@ export default function QRPrint() {
                 })}
               </div>
             )}
+            <Pager
+              className="mt-2 px-2"
+              page={picker.page}
+              pageCount={picker.pageCount}
+              onPage={picker.setPage}
+              total={picker.total}
+              pageSize={picker.pageSize}
+            />
           </aside>
 
           <div className="lg:col-span-3">

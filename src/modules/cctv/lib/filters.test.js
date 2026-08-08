@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import {
   siteMeta, matchesScope, filterByScope, narrowSites, reconcileScope, scopeFacets, isScoped, EMPTY_SCOPE,
+  scopeEstate,
 } from './filters'
+import { estateHealth } from './health'
 
 const sites = [
   { id: 's1', name: 'Hosur', entity: 'COCO', region: 'South' },
@@ -128,6 +130,82 @@ describe('scopeFacets', () => {
   it('ignores blanks so the dropdown has no empty option', () => {
     expect(scopeFacets([{ entity: '', region: '  ' }, { entity: 'X', region: 'Y' }]))
       .toEqual({ entities: ['X'], regions: ['Y'] })
+  })
+})
+
+describe('scopeEstate', () => {
+  const mk = (o = {}) => ({ id: 'm1', name: 'MX-Hosur', siteId: 's1', siteName: 'Hosur', status: 'online', ...o })
+  const dv = (o = {}) => ({ id: 'd1', name: 'DVR-1', siteId: 's1', siteName: 'Hosur', status: 'online', ...o })
+  const cm = (o = {}) => ({ id: 'c1', name: 'CAM-1', dvrId: 'd1', siteId: 's1', siteName: 'Hosur', status: 'online', defects: [], ...o })
+
+  const build = (over = {}) => {
+    const merakis = over.merakis || [mk(), mk({ id: 'm2', name: 'MX-North', siteId: 's2', siteName: 'North Plant' })]
+    const dvrs = over.dvrs || [dv(), dv({ id: 'd2', name: 'DVR-2', siteId: 's2', siteName: 'North Plant' })]
+    const cameras = over.cameras || [
+      cm(), cm({ id: 'c2', name: 'CAM-2' }),
+      cm({ id: 'c3', name: 'CAM-3', dvrId: 'd2', siteId: 's2', siteName: 'North Plant' }),
+    ]
+    return { raw: { cameras, dvrs, merakis }, estate: estateHealth({ cameras, dvrs, merakis }) }
+  }
+
+  it('returns the estate untouched when nothing is selected', () => {
+    const { estate } = build()
+    expect(scopeEstate(estate, EMPTY_SCOPE, meta)).toBe(estate)
+  })
+
+  it('narrows every list to the scope', () => {
+    const { estate, raw } = build()
+    const s = scopeEstate(estate, { region: 'South' }, meta, raw)
+    expect(s.cameras.map((c) => c.id)).toEqual(['c1', 'c2'])
+    expect(s.dvrs.map((d) => d.id)).toEqual(['d1'])
+    expect(s.merakis.map((m) => m.id)).toEqual(['m1'])
+  })
+
+  // Estate-wide totals on a scoped page are worse than no totals.
+  it('recomputes the summaries from the filtered lists', () => {
+    const { estate, raw } = build()
+    expect(estate.cameraSummary.total).toBe(3)
+    expect(scopeEstate(estate, { region: 'South' }, meta, raw).cameraSummary.total).toBe(2)
+  })
+
+  it('recomputes the per-DVR and per-site reports', () => {
+    const { estate, raw } = build()
+    const s = scopeEstate(estate, { region: 'South' }, meta, raw)
+    expect(s.dvrReport).toHaveLength(1)
+    expect(s.dvrReport[0]).toMatchObject({ id: 'd1', cameras: 2 })
+    expect(s.siteReport.map((r) => r.siteName)).toEqual(['Hosur'])
+  })
+
+  // The reason results are filtered rather than inputs: calculating over a
+  // filtered set would give the same camera a different explanation depending
+  // on which region you were looking at.
+  it('keeps a camera’s cause intact even when the blamed device is out of scope', () => {
+    // CAM-9 sits in the South but records to a DVR in the North that is down.
+    const cameras = [cm({ id: 'c9', name: 'CAM-9', dvrId: 'd2', siteId: 's1', siteName: 'Hosur' })]
+    const dvrs = [dv(), dv({ id: 'd2', name: 'DVR-2', siteId: 's2', siteName: 'North Plant', status: 'offline' })]
+    const merakis = [mk(), mk({ id: 'm2', siteId: 's2' })]
+    const estate = estateHealth({ cameras, dvrs, merakis })
+    const s = scopeEstate(estate, { region: 'South' }, meta, { cameras, dvrs, merakis })
+    expect(s.cameras[0]).toMatchObject({ id: 'c9', cause: 'dvr', working: false })
+    expect(s.cameras[0].orphan).toBe(false)
+    expect(s.cameras[0].blamedOn).toMatchObject({ name: 'DVR-2' })
+  })
+
+  it('narrows the defect extracts, keeping hand-entered defects', () => {
+    const merakis = [mk({ defects: ['degraded'] }), mk({ id: 'm2', siteId: 's2', defects: ['degraded'] })]
+    const { estate, raw } = build({ merakis })
+    const s = scopeEstate(estate, { region: 'South' }, meta, raw)
+    expect(estate.defects.meraki).toHaveLength(2)
+    expect(s.defects.meraki).toHaveLength(1)
+    expect(s.defects.meraki[0].defects).toEqual(['degraded'])
+  })
+
+  it('produces an empty but valid estate when nothing matches', () => {
+    const { estate, raw } = build()
+    const s = scopeEstate(estate, { region: 'Nowhere' }, meta, raw)
+    expect(s.cameras).toEqual([])
+    expect(s.cameraSummary).toMatchObject({ total: 0, uptime: 100 })
+    expect(s.defects.camera).toEqual([])
   })
 })
 

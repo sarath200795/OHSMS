@@ -14,6 +14,11 @@
 // Pure, so the "does this device match?" rule can be tested without a page.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import {
+  cameraSummary, dvrSummary, merakiSummary, dvrReport, siteReport,
+  cameraDefects, dvrDefects, merakiDefects,
+} from './health'
+
 const clean = (v) => String(v ?? '').trim()
 
 /** siteId → { id, name, entity, region }, for resolving a device's attributes. */
@@ -94,6 +99,51 @@ export function reconcileScope(scope = {}, sites = []) {
   if (!siteId) return scope
   const stillValid = narrowSites(sites, scope).some((s) => clean(s.id) === siteId)
   return stillValid ? scope : { ...scope, siteId: '' }
+}
+
+/**
+ * Narrow a computed estate to the chosen scope.
+ *
+ * Note the order: health is calculated over the WHOLE estate first, and only
+ * the results are filtered. Filtering the inputs and then calculating would
+ * change what the cascade concludes — a camera whose DVR fell outside the
+ * filter would stop being "dark because its DVR is down" and become an orphan,
+ * so the same camera would have a different explanation depending on which
+ * region you happened to be looking at. The cascade is a property of the
+ * network; scope is a view of it.
+ *
+ * Summaries are recomputed from the filtered lists rather than carried over,
+ * because a scoped page showing estate-wide totals is worse than no totals.
+ */
+export function scopeEstate(estate, scope = {}, meta = new Map(), raw = {}) {
+  if (!estate || !isScoped(scope)) return estate
+
+  const inScope = (siteId) => matchesScope(siteId, scope, meta)
+  const cameras = estate.cameras.filter((c) => inScope(c.siteId))
+  const dvrs = estate.dvrs.filter((d) => inScope(d.siteId))
+  const merakis = estate.merakis.filter((m) => inScope(m.siteId))
+
+  // The raw lists carry the hand-entered defects that the health objects do
+  // not, so they are filtered alongside to keep the defect extracts honest.
+  const keep = (rows = [], ids) => rows.filter((r) => ids.has(r.id))
+  const dvrIds = new Set(dvrs.map((d) => d.id))
+  const merakiIds = new Set(merakis.map((m) => m.id))
+
+  return {
+    cameras,
+    dvrs,
+    merakis,
+    cameraSummary: cameraSummary(cameras),
+    dvrSummary: dvrSummary(dvrs),
+    merakiSummary: merakiSummary(merakis),
+    dvrReport: dvrReport(dvrs, cameras),
+    siteReport: siteReport(cameras, dvrs, merakis),
+    defects: {
+      camera: cameraDefects(cameras),
+      dvr: dvrDefects(dvrs, keep(raw.dvrs, dvrIds)),
+      meraki: merakiDefects(merakis, keep(raw.merakis, merakiIds)),
+    },
+  }
 }
 
 /** Facets present in a site list, for the dropdowns. */
