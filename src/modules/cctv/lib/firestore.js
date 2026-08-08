@@ -15,7 +15,7 @@
 
 import {
   collection, doc, addDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy, serverTimestamp,
-  writeBatch,
+  writeBatch, getDocs,
 } from 'firebase/firestore'
 import { db } from '../../../shared/firebase'
 import { logAudit } from '../../../shared/org/orgData'
@@ -160,6 +160,29 @@ export const deleteDvr = (orgId, id, label, actor) => remove(orgId, COLLECTIONS.
 export const addMeraki = (orgId, d, actor) => create(orgId, COLLECTIONS.merakis, d, actor)
 export const updateMeraki = (orgId, id, d, actor) => update(orgId, COLLECTIONS.merakis, id, d, actor)
 export const deleteMeraki = (orgId, id, label, actor) => remove(orgId, COLLECTIONS.merakis, id, label, actor)
+
+/** One-shot read of the Meraki list, for callers with no live subscription. */
+export async function getMerakis(orgId) {
+  const snap = await getDocs(col(orgId, COLLECTIONS.merakis))
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+}
+
+/**
+ * React to sites being created by giving each one its standard Meraki.
+ *
+ * Registered as a site hook at app start (see registerHooks.js), so it runs
+ * whether or not anyone has opened the CCTV module.
+ *
+ * It re-reads the existing Meraki list rather than trusting that the incoming
+ * sites are new. They should be, but a retried write or a hook fired twice
+ * would otherwise give a site two switches, and the read is one query against a
+ * collection with a handful of documents.
+ */
+export async function provisionMerakisForNewSites(orgId, sites = [], actor) {
+  if (!orgId || !sites.length) return 0
+  const existing = await getMerakis(orgId)
+  return provisionSiteMerakis(orgId, sites, existing, actor)
+}
 
 /**
  * Give every site its standard Meraki device.

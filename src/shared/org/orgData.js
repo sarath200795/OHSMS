@@ -24,6 +24,7 @@ import {
 import { db } from '../firebase'
 import { AUDIT } from '../audit/audit'
 import { createSharedSubscription } from './sharedSubscription'
+import { notifySiteCreated } from './siteHooks'
 
 // ── Path helpers ──────────────────────────────────────────────────────────────
 export const orgRef = (orgId) => doc(db, 'organizations', orgId)
@@ -249,8 +250,9 @@ function siteFields(data) {
 }
 
 export async function createSite(orgId, data, actor) {
+  const fields = siteFields(data)
   const ref = await addDoc(moduleCol(orgId, 'sites'), {
-    ...siteFields(data),
+    ...fields,
     createdAt: serverTimestamp(),
   })
   await logAudit(orgId, actor, AUDIT.SITE_CREATE, {
@@ -259,6 +261,11 @@ export async function createSite(orgId, data, actor) {
     targetLabel: data.name,
     summary: `Created site "${data.name}"`,
   })
+  // Modules that need something to exist per site (CCTV's Meraki, today) react
+  // here. Deliberately not awaited for its result and it cannot throw — the
+  // site is already written, and a failed hook must not report the creation as
+  // failed. See siteHooks.js.
+  await notifySiteCreated(orgId, [{ id: ref.id, ...fields }], actor)
   return ref.id
 }
 
@@ -269,16 +276,23 @@ export async function createSite(orgId, data, actor) {
 export async function bulkCreateSites(orgId, rows, actor) {
   const batch = writeBatch(db)
   const names = []
+  const created = []
   rows.forEach((r) => {
     const ref = doc(moduleCol(orgId, 'sites'))
-    batch.set(ref, { ...siteFields(r), createdAt: serverTimestamp() })
+    const fields = siteFields(r)
+    batch.set(ref, { ...fields, createdAt: serverTimestamp() })
     names.push(r.name)
+    created.push({ id: ref.id, ...fields })
   })
   await batch.commit()
   await logAudit(orgId, actor, AUDIT.SITE_CREATE, {
     target: 'site',
     summary: `Bulk imported ${names.length} site(s): ${names.slice(0, 6).join(', ')}${names.length > 6 ? '…' : ''}`,
   })
+  // The import path needs the hooks as much as the single-site one: fifty sites
+  // added at once would otherwise be fifty sites with no Meraki, which is the
+  // case where the health cascade is most obviously wrong.
+  await notifySiteCreated(orgId, created, actor)
   return names.length
 }
 

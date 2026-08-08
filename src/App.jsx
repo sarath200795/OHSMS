@@ -42,6 +42,9 @@ const Emergency = lazy(() => import('./modules/emergency'))
 const Objectives = lazy(() => import('./modules/objectives'))
 const Weather = lazy(() => import('./modules/weather'))
 const Cctv = lazy(() => import('./modules/cctv'))
+// Side-effect import: registers CCTV's site-created hook eagerly, so a site
+// added by someone who never opens the CCTV tab still gets its Meraki.
+import './modules/cctv/registerHooks'
 
 // Employee portal — brings its own shell, so it is not wrapped in AppChrome.
 const Portal = lazy(() => import('./pages/portal'))
