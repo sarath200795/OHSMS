@@ -27,6 +27,7 @@ import { aedCondition, fasCondition } from '../lib/assetLogic'
 import { EXT_LOAD_CAP } from '../lib/firestore'
 import { subscribeSites } from '../../../shared/org/orgData'
 import { resolveAccessibleSites } from '../../../shared/auth/access'
+import { withSites } from '../lib/siteResolve'
 
 const FleetContext = createContext(null)
 
@@ -121,7 +122,13 @@ export function FleetProvider({ children }) {
   const value = useMemo(() => {
     const today = new Date()
     // Soft-deleted units live in the Recycle Bin only — exclude everywhere else.
-    const active = extinguishers.filter((e) => !isDeleted(e))
+    // Fill in center/region/entity from the site registry wherever a unit left
+    // them blank. Units added by import, or before their site existed, carry
+    // only a siteId — their rows showed an empty Entity and Center, which reads
+    // as "never captured" when the site is known and one lookup away. Nothing is
+    // written: the asset's own values always win, and the link-to-sites action
+    // keeps its job of persisting them.
+    const active = withSites(extinguishers.filter((e) => !isDeleted(e)), allSites)
     const deletedExtinguishers = extinguishers.filter((e) => isDeleted(e))
     const summary = fleetSummary(active, today)
     const defectLog = derivePhysicalDefectLog(reports, active)
@@ -168,7 +175,7 @@ export function FleetProvider({ children }) {
       physicalOpen: defectLog.open,
       physicalClosed: defectLog.closed,
     }
-  }, [extinguishers, reports, users, org, stats, auditLogs, signages, mockDrills, aeds, fas, siteInventory, loading])
+  }, [extinguishers, reports, users, org, stats, auditLogs, signages, mockDrills, aeds, fas, allSites, siteInventory, loading])
 
   return <FleetContext.Provider value={value}>{children}</FleetContext.Provider>
 }

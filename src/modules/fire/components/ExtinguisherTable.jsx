@@ -137,12 +137,20 @@ export default function ExtinguisherTable({
                         />
                       )}
                     </div>
+                    {/* Joined rather than interpolated: a unit with no capacity
+                        recorded rendered as "ABC ·", a separator pointing at
+                        nothing. */}
                     <div className="text-xs text-ink-500">
-                      {ext.type} · {ext.capacity}
+                      {[ext.type, ext.capacity].map((v) => String(v ?? '').trim()).filter(Boolean).join(' · ') || '—'}
                     </div>
                   </td>
+                  {/* Dashes rather than nothing. An empty cell reads as a
+                      rendering fault; a dash says the field is genuinely blank,
+                      which is the same thing Region already did. */}
                   <td className="px-4 py-3">
-                    <span className="font-medium text-ink-700">{ext.entity}</span>
+                    {ext.entity
+                      ? <span className="font-medium text-ink-700">{ext.entity}</span>
+                      : <span className="text-ink-300">—</span>}
                   </td>
                   <td className="px-4 py-3">
                     {ext.region ? (
@@ -151,7 +159,9 @@ export default function ExtinguisherTable({
                       <span className="text-ink-300">—</span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-ink-700">{ext.centerName}</td>
+                  <td className="px-4 py-3 text-ink-700">
+                    {ext.centerName || <span className="text-ink-300">—</span>}
+                  </td>
                   <td className="px-4 py-3"><DueCell value={ext.dateOfNextRefill} /></td>
                   <td className="px-4 py-3"><DueCell value={ext.dateOfNextHPT} /></td>
                   {showStatus && (
