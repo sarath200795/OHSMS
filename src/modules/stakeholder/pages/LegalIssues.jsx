@@ -1,31 +1,22 @@
 import { useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { Plus, Pencil, Trash2, Gavel, Link2Off, TriangleAlert } from 'lucide-react'
+import { Plus, Pencil, Trash2, Gavel, Link2Off } from 'lucide-react'
 import {
-  PageHeader, Button, Modal, Field, Input, Select, Textarea, EmptyState, SkeletonTable, Badge, Pager,
+  PageHeader, Button, Input, Select, EmptyState, SkeletonTable, Badge, Pager,
 } from '../../../shared/ui'
 import { usePagination } from '../../../shared/ui/usePagination'
-import SiteScopePicker from '../../../shared/org/SiteScopePicker'
 import { useAuth } from '../../../shared/auth/AuthContext'
 import { useStakeholder } from '../context/StakeholderContext'
-import { addLegalIssue, updateLegalIssue, deleteLegalIssue } from '../lib/firestore'
+import { deleteLegalIssue } from '../lib/firestore'
 import {
-  DEPARTMENTS, DEPARTMENT_BY_KEY, DEPARTMENT_GROUPS,
-  NOTICE_TYPES, NOTICE_BY_KEY, LEGAL_STATUS, LEGAL_STATUS_BY_KEY,
+  DEPARTMENTS, DEPARTMENT_BY_KEY, NOTICE_BY_KEY, LEGAL_STATUS_BY_KEY,
 } from '../lib/constants'
-
-const EMPTY = {
-  title: '', scope: {}, escalationId: '', incidentDate: '', description: '',
-  departments: [], departmentOther: '', officials: '',
-  noticeType: 'none', noticeRef: '', noticeDate: '', responseDueDate: '',
-  status: 'open', actionTaken: '', penaltyAmount: '', owner: '',
-}
 
 export default function LegalIssues() {
   const { orgId, actor, isManager } = useAuth()
-  const { legalIssues, sites, escalationOptions, loading } = useStakeholder()
-  const [form, setForm] = useState(null)
-  const [busy, setBusy] = useState(false)
+  const navigate = useNavigate()
+  const { legalIssues, loading } = useStakeholder()
   const [q, setQ] = useState('')
   const [deptFilter, setDeptFilter] = useState('')
 
@@ -41,35 +32,6 @@ export default function LegalIssues() {
   }, [legalIssues, q, deptFilter])
 
   const { pageItems, page, setPage, pageCount, total, pageSize } = usePagination(filtered)
-
-  const open = (row) => setForm(row ? { ...EMPTY, ...row } : { ...EMPTY })
-  const patch = (p) => setForm((f) => ({ ...f, ...p }))
-
-  const toggleDept = (key) =>
-    patch({
-      departments: form.departments.includes(key)
-        ? form.departments.filter((d) => d !== key)
-        : [...form.departments, key],
-    })
-
-  const save = async () => {
-    if (!form.title.trim()) return toast.error('Give the legal issue a title')
-    if (!form.departments.length) return toast.error('Which department was involved?')
-    if (form.departments.includes('other') && !form.departmentOther.trim()) {
-      return toast.error('Name the other department')
-    }
-    setBusy(true)
-    try {
-      if (form.id) await updateLegalIssue(orgId, form.id, form, actor)
-      else await addLegalIssue(orgId, form, actor)
-      toast.success(form.id ? 'Saved' : 'Legal issue logged')
-      setForm(null)
-    } catch (e) {
-      toast.error(e.message)
-    } finally {
-      setBusy(false)
-    }
-  }
 
   const remove = async (row) => {
     // eslint-disable-next-line no-alert
@@ -87,7 +49,7 @@ export default function LegalIssues() {
       <PageHeader
         title="Legal Issues"
         subtitle={`${legalIssues.length} logged`}
-        actions={isManager && <Button icon={Plus} onClick={() => open()}>Log legal issue</Button>}
+        actions={isManager && <Button icon={Plus} onClick={() => navigate('/stakeholder/legal/new')}>Log legal issue</Button>}
       />
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -169,7 +131,7 @@ export default function LegalIssues() {
                     {isManager && (
                       <td className="px-3 py-2">
                         <div className="flex justify-end gap-1">
-                          <Button variant="ghost" className="px-2 py-1 text-xs" icon={Pencil} onClick={() => open(row)} />
+                          <Button variant="ghost" className="px-2 py-1 text-xs" icon={Pencil} onClick={() => navigate(`/stakeholder/legal/${row.id}`)} />
                           <Button variant="ghost" className="px-2 py-1 text-xs" icon={Trash2} onClick={() => remove(row)} />
                         </div>
                       </td>
@@ -186,124 +148,6 @@ export default function LegalIssues() {
         </div>
       )}
 
-      <Modal open={Boolean(form)} onClose={() => setForm(null)} title={form?.id ? 'Edit legal issue' : 'Log legal issue'} size="lg">
-        {form && (
-          <div className="space-y-4 p-6">
-            <Field label="Title *" htmlFor="ltitle">
-              <Input id="ltitle" value={form.title} onChange={(e) => patch({ title: e.target.value })}
-                placeholder="e.g. Fire NOC inspection — show cause notice" />
-            </Field>
-
-            <div>
-              <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-ink-400">Site scope</div>
-              <SiteScopePicker sites={sites} value={form.scope} onChange={(scope) => patch({ scope })} module="stakeholder" />
-            </div>
-
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              {/* The join, stored only here — see linkage.js. */}
-              <Field label="Connected customer escalation" htmlFor="lesc" hint="Leave blank if this did not come from a complaint">
-                <Select id="lesc" value={form.escalationId} onChange={(e) => patch({ escalationId: e.target.value })}>
-                  <option value="">Not linked to a complaint</option>
-                  {escalationOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </Select>
-              </Field>
-              <Field label="Date of incident / visit" htmlFor="ldate">
-                <Input id="ldate" type="date" value={form.incidentDate} onChange={(e) => patch({ incidentDate: e.target.value })} />
-              </Field>
-            </div>
-
-            <Field label="Description of the incident" htmlFor="ldesc">
-              <Textarea id="ldesc" rows={4} value={form.description} onChange={(e) => patch({ description: e.target.value })}
-                placeholder="What happened, what the officials asked for, what was shown to them." />
-            </Field>
-
-            <div>
-              <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-ink-400">Department(s) visited *</div>
-              <div className="space-y-2">
-                {DEPARTMENT_GROUPS.map((group) => (
-                  <div key={group}>
-                    <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-ink-400">{group}</div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {DEPARTMENTS.filter((d) => d.group === group).map((d) => (
-                        <button
-                          key={d.key}
-                          type="button"
-                          onClick={() => toggleDept(d.key)}
-                          className={`rounded-xl px-2.5 py-1.5 text-xs font-semibold transition ${
-                            form.departments.includes(d.key) ? 'bg-ink-900 text-white' : 'bg-ink-100 text-ink-600 hover:bg-ink-200'
-                          }`}
-                        >
-                          {d.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-              {form.departments.includes('other') && (
-                <Field className="mt-3" label="Name the other department *" htmlFor="ldeptother">
-                  <Input id="ldeptother" value={form.departmentOther} onChange={(e) => patch({ departmentOther: e.target.value })} />
-                </Field>
-              )}
-            </div>
-
-            <Field label="Officials who attended" htmlFor="lofficials" hint="Names / designations, if noted">
-              <Input id="lofficials" value={form.officials} onChange={(e) => patch({ officials: e.target.value })} />
-            </Field>
-
-            <div className="rounded-xl border border-ink-200 p-3">
-              <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-400">Notice served</div>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                <Field label="Type" htmlFor="lntype">
-                  <Select id="lntype" value={form.noticeType} onChange={(e) => patch({ noticeType: e.target.value })}>
-                    {NOTICE_TYPES.map((n) => <option key={n.key} value={n.key}>{n.label}</option>)}
-                  </Select>
-                </Field>
-                <Field label="Reference no." htmlFor="lnref">
-                  <Input id="lnref" value={form.noticeRef} onChange={(e) => patch({ noticeRef: e.target.value })} placeholder="FIR / notice number" />
-                </Field>
-                <Field label="Date served" htmlFor="lndate">
-                  <Input id="lndate" type="date" value={form.noticeDate} onChange={(e) => patch({ noticeDate: e.target.value })} />
-                </Field>
-              </div>
-              {NOTICE_BY_KEY[form.noticeType]?.severe && (
-                <div className="mt-3 flex items-start gap-2 text-xs text-amber-800">
-                  <TriangleAlert size={14} className="mt-0.5 shrink-0" />
-                  <span>This notice has a clock on it — set the response due date so it is not missed.</span>
-                </div>
-              )}
-              <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-3">
-                <Field label="Response due" htmlFor="lndue">
-                  <Input id="lndue" type="date" value={form.responseDueDate} onChange={(e) => patch({ responseDueDate: e.target.value })} />
-                </Field>
-                <Field label="Penalty / fine (₹)" htmlFor="lpen">
-                  <Input id="lpen" type="number" min="0" value={form.penaltyAmount} onChange={(e) => patch({ penaltyAmount: e.target.value })} />
-                </Field>
-                <Field label="Status" htmlFor="lstat">
-                  <Select id="lstat" value={form.status} onChange={(e) => patch({ status: e.target.value })}>
-                    {LEGAL_STATUS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
-                  </Select>
-                </Field>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-[2fr_1fr]">
-              <Field label="Action taken" htmlFor="lact">
-                <Textarea id="lact" rows={3} value={form.actionTaken} onChange={(e) => patch({ actionTaken: e.target.value })}
-                  placeholder="Reply filed, corrections made, compliance submitted…" />
-              </Field>
-              <Field label="Owner" htmlFor="lowner">
-                <Input id="lowner" value={form.owner} onChange={(e) => patch({ owner: e.target.value })} />
-              </Field>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-1">
-              <Button variant="ghost" onClick={() => setForm(null)}>Cancel</Button>
-              <Button loading={busy} onClick={save}>{form.id ? 'Save' : 'Log legal issue'}</Button>
-            </div>
-          </div>
-        )}
-      </Modal>
     </>
   )
 }

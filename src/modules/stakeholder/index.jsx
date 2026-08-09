@@ -3,7 +3,9 @@ import { LayoutGrid, MessageSquareWarning, Gavel } from 'lucide-react'
 import { StakeholderProvider } from './context/StakeholderContext'
 import Hub from './pages/Hub'
 import Escalations from './pages/Escalations'
+import EscalationForm from './pages/EscalationForm'
 import LegalIssues from './pages/LegalIssues'
+import LegalIssueForm from './pages/LegalIssueForm'
 
 // Stakeholder Issues — what customers escalated, and what authorities did about
 // it. Two records rather than one with a type field: they are owned by
@@ -37,7 +39,13 @@ export default function StakeholderModule() {
       <Routes>
         <Route index element={<Hub />} />
         <Route path="escalations" element={<Escalations />} />
+        {/* Full pages, not modals — see EscalationForm for why. Their own
+            routes so a half-filled form survives a refresh and can be linked. */}
+        <Route path="escalations/new" element={<EscalationForm />} />
+        <Route path="escalations/:id" element={<EscalationForm />} />
         <Route path="legal" element={<LegalIssues />} />
+        <Route path="legal/new" element={<LegalIssueForm />} />
+        <Route path="legal/:id" element={<LegalIssueForm />} />
         <Route path="*" element={<Navigate to="/stakeholder" replace />} />
       </Routes>
     </StakeholderProvider>
