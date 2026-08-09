@@ -4,6 +4,8 @@ import { HeartPulse, Plus, Pencil, Trash2, Search, Filter, X, Download, QrCode, 
 import { QRCodeSVG } from 'qrcode.react'
 import toast from 'react-hot-toast'
 import { PageHeader, EmptyState, Modal, Badge, Spinner } from '../components/ui'
+import { Pager } from '../../../shared/ui'
+import { usePagination } from '../../../shared/ui/usePagination'
 import { useAuth } from '../context/AuthContext'
 import { useFleet } from '../context/FleetContext'
 import { addAed, updateAed, deleteAed, serviceAed, bulkAddAeds, generateAedQr, bulkDeleteAeds, linkAedsToSites } from '../lib/firestore'
@@ -41,7 +43,6 @@ const EMPTY = {
   status: AED_STATUS.READY, installDate: '', batteryExpiry: '', padExpiry: '',
   lastInspection: '', nextInspection: '', notes: '',
 }
-const PAGE_SIZE = 20
 const STATUSES = Object.values(AED_STATUS)
 
 function Field({ label, children }) {
@@ -78,7 +79,6 @@ export default function AEDRepository() {
   const today = useMemo(() => new Date(), [])
 
   const [f, setF] = useState({ search: '', regions: [], entities: [], statuses: [] })
-  const [page, setPage] = useState(1)
   const [editing, setEditing] = useState(null)
   const [removing, setRemoving] = useState(null)
   const [qrFor, setQrFor] = useState(null)
@@ -162,10 +162,10 @@ export default function AEDRepository() {
     })
   }, [aeds, f])
 
-  useEffect(() => { setPage(1); setSelected(new Set()) }, [f])
-  const pageCount = Math.max(1, Math.ceil(visible.length / PAGE_SIZE))
-  const safePage = Math.min(page, pageCount)
-  const pageItems = visible.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE)
+  // Changing a filter drops the selection — the rows it referred to may no
+  // longer be on screen. (The page itself needs no reset; usePagination clamps.)
+  useEffect(() => { setSelected(new Set()) }, [f])
+  const { pageItems, page, setPage, pageCount, total, pageSize } = usePagination(visible)
 
   // ── Row selection + bulk delete ──
   const toggleSel = (id) => setSelected((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
@@ -332,16 +332,14 @@ export default function AEDRepository() {
                 ))}
               </tbody>
             </table>
-          </div>
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm">
-            <span className="text-ink-500">Showing <strong>{(safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, visible.length)}</strong> of <strong>{visible.length}</strong></span>
-            {pageCount > 1 && (
-              <div className="flex items-center gap-1.5">
-                <button className="btn-ghost px-3 py-1.5" onClick={() => setPage(safePage - 1)} disabled={safePage === 1}>Prev</button>
-                <span className="px-2 font-semibold text-ink-700">Page {safePage} / {pageCount}</span>
-                <button className="btn-ghost px-3 py-1.5" onClick={() => setPage(safePage + 1)} disabled={safePage === pageCount}>Next</button>
-              </div>
-            )}
+            <Pager
+              className="border-t border-ink-100 px-3 py-2"
+              page={page}
+              pageCount={pageCount}
+              onPage={setPage}
+              total={total}
+              pageSize={pageSize}
+            />
           </div>
         </>
       )}

@@ -3,6 +3,8 @@ import { format } from 'date-fns'
 import { Trash2, RotateCcw, AlertTriangle, Database } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { PageHeader, EmptyState, Modal, Spinner, Badge } from '../components/ui'
+import { Pager } from '../../../shared/ui'
+import { usePagination } from '../../../shared/ui/usePagination'
 import { useFleet } from '../context/FleetContext'
 import { useAuth } from '../context/AuthContext'
 import { restoreExtinguisher, purgeExtinguisher } from '../lib/firestore'
@@ -34,6 +36,8 @@ export default function RecycleBin() {
     () => [...deletedExtinguishers].sort((a, b) => (toDate(b.deletedAt) || 0) - (toDate(a.deletedAt) || 0)),
     [deletedExtinguishers]
   )
+
+  const { pageItems, page, setPage, pageCount, total, pageSize } = usePagination(rows)
 
   const restore = async (ext) => {
     setBusyId(ext.id)
@@ -101,7 +105,7 @@ export default function RecycleBin() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-clay-200/60">
-                {rows.map((ext) => {
+                {pageItems.map((ext) => {
                   const left = daysLeft(ext.deletedAt)
                   return (
                     <tr key={ext.id} className="hover:bg-clay-100/50" style={{ boxShadow: 'inset 4px 0 0 #dc2626' }}>
@@ -131,6 +135,10 @@ export default function RecycleBin() {
               </tbody>
             </table>
           </div>
+          <Pager
+            className="border-t border-clay-200/60 px-4 py-3"
+            page={page} pageCount={pageCount} onPage={setPage} total={total} pageSize={pageSize}
+          />
         </div>
       )}
 

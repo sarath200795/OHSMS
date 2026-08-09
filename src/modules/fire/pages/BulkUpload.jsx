@@ -3,6 +3,8 @@ import { motion } from 'framer-motion'
 import { Upload, Download, FileSpreadsheet, CheckCircle2, AlertTriangle, X, Loader2, RefreshCw, PlusCircle } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { PageHeader, Spinner } from '../components/ui'
+import { Pager } from '../../../shared/ui'
+import { usePagination } from '../../../shared/ui/usePagination'
 import { useAuth } from '../context/AuthContext'
 import { useFleet } from '../context/FleetContext'
 import { downloadTemplate, parseUpload } from '../lib/exporter'
@@ -104,6 +106,11 @@ export default function BulkUpload() {
     ]
   }, [plan])
 
+  // Preview and error list page separately — only what is rendered is paged.
+  // `commit` still writes the whole `plan`, not the visible page.
+  const previewPage = usePagination(previewRows)
+  const errorsPage = usePagination(result?.errors || [])
+
   return (
     <div>
       <PageHeader
@@ -184,7 +191,7 @@ export default function BulkUpload() {
                 {previewRows.length > 0 && (
                   <div className="card overflow-hidden">
                     <div className="border-b border-ink-100 px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-ink-500">
-                      Preview ({Math.min(previewRows.length, 10)} of {previewRows.length})
+                      Preview ({previewRows.length})
                     </div>
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
@@ -202,7 +209,7 @@ export default function BulkUpload() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-ink-100">
-                          {previewRows.slice(0, 10).map((r, i) => (
+                          {previewPage.pageItems.map((r, i) => (
                             <tr key={i}>
                               <td className="px-3 py-2">
                                 {r.__action === 'overwrite' ? (
@@ -224,6 +231,14 @@ export default function BulkUpload() {
                         </tbody>
                       </table>
                     </div>
+                    <Pager
+                      className="border-t border-ink-100 px-3 py-2"
+                      page={previewPage.page}
+                      pageCount={previewPage.pageCount}
+                      onPage={previewPage.setPage}
+                      total={previewPage.total}
+                      pageSize={previewPage.pageSize}
+                    />
                   </div>
                 )}
 
@@ -233,7 +248,7 @@ export default function BulkUpload() {
                       Rows skipped
                     </div>
                     <ul className="divide-y divide-ink-100 text-sm">
-                      {result.errors.slice(0, 10).map((e, i) => (
+                      {errorsPage.pageItems.map((e, i) => (
                         <li key={i} className="flex items-start gap-2 px-4 py-2.5">
                           <X size={15} className="mt-0.5 shrink-0 text-red-500" />
                           <span>
@@ -242,6 +257,14 @@ export default function BulkUpload() {
                         </li>
                       ))}
                     </ul>
+                    <Pager
+                      className="border-t border-ink-100 px-3 py-2"
+                      page={errorsPage.page}
+                      pageCount={errorsPage.pageCount}
+                      onPage={errorsPage.setPage}
+                      total={errorsPage.total}
+                      pageSize={errorsPage.pageSize}
+                    />
                   </div>
                 )}
 

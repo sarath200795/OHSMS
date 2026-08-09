@@ -4,6 +4,8 @@ import { format } from 'date-fns'
 import { Wrench, CheckCircle2, X, Flame, HeartPulse, BellRing } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { PageHeader, EmptyState, Badge } from './components/ui'
+import { Pager } from '../../shared/ui'
+import { usePagination } from '../../shared/ui/usePagination'
 import { useFleet } from './context/FleetContext'
 import { useAuth } from './context/AuthContext'
 import { resolveDefects, decideAssetReport } from './lib/firestore'
@@ -57,6 +59,8 @@ export default function DefectRepository() {
       (a, b) => (toDate(b.reportedAt)?.getTime() || 0) - (toDate(a.reportedAt)?.getTime() || 0),
     )
   }, [physicalOpen, pendingReports])
+
+  const { pageItems, page, setPage, pageCount, total, pageSize } = usePagination(rows)
 
   const resolveExt = async (row) => {
     const e = extinguishers.find((x) => x.id === row.raw.extId)
@@ -114,7 +118,7 @@ export default function DefectRepository() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-clay-200/60">
-                {rows.map((row, i) => {
+                {pageItems.map((row, i) => {
                   const Icon = row.icon
                   return (
                     <motion.tr
@@ -181,6 +185,14 @@ export default function DefectRepository() {
               </tbody>
             </table>
           </div>
+          <Pager
+            className="border-t border-clay-200/60 px-4 py-3"
+            page={page}
+            pageCount={pageCount}
+            onPage={setPage}
+            total={total}
+            pageSize={pageSize}
+          />
         </div>
       )}
     </div>

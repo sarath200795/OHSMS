@@ -11,6 +11,8 @@ import Badge from '../../components/ui/Badge'
 import Button from '../../components/ui/Button'
 import PageHeader, { HdrIcon } from '../../components/PageHeader'
 import EmptyState from '../../components/EmptyState'
+import { Pager } from '../../../../shared/ui'
+import { usePagination } from '../../../../shared/ui/usePagination'
 import { downloadRegisterCsv, downloadEventsCsv } from '../../utils/registerExport'
 
 const FILTERS = [
@@ -129,6 +131,7 @@ export default function Register() {
 }
 
 function LiveStatus({ loading, stats, filter, setFilter, filtered, navigate }) {
+  const { pageItems, page, setPage, pageCount, total, pageSize } = usePagination(filtered)
   return (
     <>
       <div className="mt-6 grid gap-3 sm:grid-cols-3">
@@ -161,7 +164,7 @@ function LiveStatus({ loading, stats, filter, setFilter, filtered, navigate }) {
         ) : filtered.length === 0 ? (
           <EmptyState title="Nothing to show" subtitle="No equipment matches this filter." />
         ) : (
-          filtered.map((p, i) => {
+          pageItems.map((p, i) => {
             const status = p.lockSummary?.status || LOCK_STATUS.UNLOCKED
             const lm = LOCK_STATUS_META[status]
             const points = numberIsolationPoints(p.isolationPoints || [])
@@ -235,12 +238,19 @@ function LiveStatus({ loading, stats, filter, setFilter, filtered, navigate }) {
             )
           })
         )}
+        <Pager
+          className="border-t border-steel-700/60 px-1 pt-3"
+          page={page} pageCount={pageCount} onPage={setPage} total={total} pageSize={pageSize}
+        />
       </div>
     </>
   )
 }
 
 function ActivityLog({ loading, events }) {
+  // Its own pager — sharing one with the live list would blank whichever tab
+  // you are not paging. The CSV/PDF exports upstream still take all `events`.
+  const { pageItems, page, setPage, pageCount, total, pageSize } = usePagination(events)
   if (loading) {
     return (
       <div className="py-16">
@@ -273,7 +283,7 @@ function ActivityLog({ loading, events }) {
             </tr>
           </thead>
           <tbody>
-            {events.map((e) => (
+            {pageItems.map((e) => (
               <tr key={e.id} className="border-t border-steel-700/60">
                 <td className="whitespace-nowrap px-4 py-2.5 text-steel-300">{tsStr(e.at)}</td>
                 <td className="px-4 py-2.5 text-steel-100">
@@ -307,6 +317,10 @@ function ActivityLog({ loading, events }) {
           </tbody>
         </table>
       </div>
+      <Pager
+        className="border-t border-steel-700/60 px-4 py-3"
+        page={page} pageCount={pageCount} onPage={setPage} total={total} pageSize={pageSize}
+      />
     </Card>
   )
 }

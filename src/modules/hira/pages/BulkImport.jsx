@@ -4,6 +4,8 @@ import { motion } from 'framer-motion'
 import { Upload, Download, FileSpreadsheet, CheckCircle2, AlertTriangle, X, Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { PageHeader, Spinner } from '../components/ui'
+import { Pager } from '../../../shared/ui'
+import { usePagination } from '../../../shared/ui/usePagination'
 import { useAuth } from '../context/AuthContext'
 import { parseCsv, downloadTemplate, previewRows, CSV_COLUMNS } from '../lib/csv'
 import { bulkCreateAssessments, logActivity } from '../lib/firestore'
@@ -20,6 +22,12 @@ export default function BulkImport() {
   const [file, setFile] = useState(null)
 
   const preview = useMemo(() => (result ? previewRows(result.assessments) : []), [result])
+
+  // Hazard preview and error list page separately — a CSV of a few hundred
+  // hazards is a few hundred rows of DOM. `commit` still imports every parsed
+  // assessment, not the visible page.
+  const previewPage = usePagination(preview)
+  const errorsPage = usePagination(result?.errors || [])
 
   // Parse (and re-validate) whenever the file OR the import kind changes — so
   // toggling Baseline/Site re-checks the Region/Entity/Site requirement.
@@ -146,7 +154,7 @@ export default function BulkImport() {
                 {preview.length > 0 && (
                   <div className="card overflow-hidden">
                     <div className="border-b border-ink-100 px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-ink-500">
-                      Preview ({Math.min(preview.length, 12)} of {preview.length} hazards)
+                      Preview ({preview.length} hazards)
                     </div>
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
@@ -162,7 +170,7 @@ export default function BulkImport() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-ink-100">
-                          {preview.slice(0, 12).map((r, i) => (
+                          {previewPage.pageItems.map((r, i) => (
                             <tr key={i}>
                               <td className="px-3 py-2 font-semibold">{r.assessment}</td>
                               <td className="px-3 py-2">{r.site || '—'}</td>
@@ -176,6 +184,14 @@ export default function BulkImport() {
                         </tbody>
                       </table>
                     </div>
+                    <Pager
+                      className="border-t border-ink-100 px-3 py-2"
+                      page={previewPage.page}
+                      pageCount={previewPage.pageCount}
+                      onPage={previewPage.setPage}
+                      total={previewPage.total}
+                      pageSize={previewPage.pageSize}
+                    />
                   </div>
                 )}
 
@@ -183,13 +199,21 @@ export default function BulkImport() {
                   <div className="card overflow-hidden border border-red-200">
                     <div className="border-b border-red-100 bg-red-50 px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-red-600">Rows skipped</div>
                     <ul className="divide-y divide-ink-100 text-sm">
-                      {result.errors.slice(0, 12).map((e, i) => (
+                      {errorsPage.pageItems.map((e, i) => (
                         <li key={i} className="flex items-start gap-2 px-4 py-2.5">
                           <X size={15} className="mt-0.5 shrink-0 text-red-500" />
                           <span><strong>Row {e.row}:</strong> {e.issues.join('; ')}</span>
                         </li>
                       ))}
                     </ul>
+                    <Pager
+                      className="border-t border-ink-100 px-3 py-2"
+                      page={errorsPage.page}
+                      pageCount={errorsPage.pageCount}
+                      onPage={errorsPage.setPage}
+                      total={errorsPage.total}
+                      pageSize={errorsPage.pageSize}
+                    />
                   </div>
                 )}
 

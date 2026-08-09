@@ -9,6 +9,8 @@ import Spinner from '../../components/ui/Spinner'
 import Badge from '../../components/ui/Badge'
 import PageHeader, { HdrIcon } from '../../components/PageHeader'
 import EmptyState from '../../components/EmptyState'
+import { Pager } from '../../../../shared/ui'
+import { usePagination } from '../../../../shared/ui/usePagination'
 import { PERMISSIONS } from '../../constants/roles'
 import {
   LOCK_STATUS_META,
@@ -52,6 +54,8 @@ export default function Inventory() {
     [procedures, site, status, equipment],
   )
 
+  const { pageItems, page, setPage, pageCount, total, pageSize } = usePagination(filtered)
+
   const statusCounts = useMemo(() => {
     const c = { total: procedures.length }
     Object.values(PROCEDURE_STATUS).forEach((s) => (c[s] = 0))
@@ -71,6 +75,8 @@ export default function Inventory() {
     }
   }
 
+  // Selection and the bulk print below stay on `filtered`, never on the visible
+  // page: ticking "select all" on page 1 must still cover the whole filter.
   const allSelected = filtered.length > 0 && filtered.every((p) => selected.has(p.id))
   const toggleSel = (id) =>
     setSelected((prev) => {
@@ -237,7 +243,7 @@ export default function Inventory() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((p) => {
+                  {pageItems.map((p) => {
                     const sm = PROCEDURE_STATUS_META[p.status]
                     const lm = LOCK_STATUS_META[p.lockSummary?.status || 'unlocked']
                     const checked = selected.has(p.id)
@@ -331,6 +337,10 @@ export default function Inventory() {
                 </tbody>
               </table>
             </div>
+            <Pager
+              className="border-t border-steel-700/60 px-3 py-2"
+              page={page} pageCount={pageCount} onPage={setPage} total={total} pageSize={pageSize}
+            />
           </Card>
         )}
       </div>

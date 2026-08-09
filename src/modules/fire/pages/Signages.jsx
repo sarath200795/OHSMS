@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react'
 import { Signpost, Plus, Pencil, Trash2, MapPin, X, LayoutGrid, List, Download, Check, Search, Filter } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { PageHeader, EmptyState, Modal, Badge, Spinner } from '../components/ui'
+import { Pager } from '../../../shared/ui'
+import { usePagination } from '../../../shared/ui/usePagination'
 import { useAuth } from '../context/AuthContext'
 import { useFleet } from '../context/FleetContext'
 import { addSignage, updateSignage, deleteSignage } from '../lib/firestore'
@@ -148,6 +150,11 @@ export default function Signages() {
     })
   }, [sites, signages, f.regions, f.entities, f.search, siteRegion, siteEntity])
 
+  // The matrix and the list are paged separately — a single page number would
+  // blank whichever view you are not paging. Both page the RENDERED rows only:
+  // the export below still walks the whole of `visibleSites` / `filtered`.
+  const matrixPager = usePagination(visibleSites)
+
   // List records: every record matching all active filters.
   const recordMatches = (s) => {
     if (f.regions.length && !f.regions.includes(s.region)) return false
@@ -161,6 +168,7 @@ export default function Signages() {
     return true
   }
   const filtered = useMemo(() => signages.filter(recordMatches), [signages, filters])
+  const listPager = usePagination(filtered)
 
   // A matrix cell: records for (site, type) that pass the Region + Condition filters.
   const cellFor = (site, type) => {
@@ -209,16 +217,18 @@ export default function Signages() {
   const isTypeCovered = (type, cell) =>
     type === EXT_SIGN_TYPE ? cell.status === 'ok' : cell.count > 0
 
-  // Group filtered records by site for the list view.
+  // Group this page's records by site for the list view. Paging counts records
+  // rather than sites, so a site with many signs continues onto the next page —
+  // the count beside a heading is what is listed under it.
   const grouped = useMemo(() => {
     const map = new Map()
-    for (const s of filtered) {
+    for (const s of listPager.pageItems) {
       const key = s.centerName || 'Unassigned'
       if (!map.has(key)) map.set(key, [])
       map.get(key).push(s)
     }
     return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]))
-  }, [filtered])
+  }, [listPager.pageItems])
 
   const set = (k) => (e) => setEditing({ ...editing, [k]: e.target.value })
   const openAddFor = (centerName, type) => {
@@ -371,58 +381,65 @@ export default function Signages() {
             <span className="ml-auto text-ink-400">🧯 column shows signs / extinguishers — they should match. Click a cell to manage records.</span>
           </div>
 
-          <div className="card overflow-x-auto">
-            <table className="w-full border-separate border-spacing-0 text-sm">
-              <thead>
-                <tr>
-                  <th className="sticky left-0 z-10 border-b border-clay-200/60 bg-clay-surface px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wide text-ink-500">Site</th>
-                  {visibleTypes.map((t) => (
-                    <th
-                      key={t}
-                      title={t === EXT_SIGN_TYPE ? 'Recorded signs / fire extinguishers at the site — these should match' : undefined}
-                      className="border-b border-clay-200/60 bg-clay-surface px-2 py-3 text-center text-[10px] font-semibold leading-tight text-ink-500"
-                      style={{ minWidth: 78 }}
-                    >
-                      {t}{t === EXT_SIGN_TYPE ? ' 🧯' : ''}
-                    </th>
-                  ))}
-                  <th className="border-b border-clay-200/60 bg-clay-surface px-3 py-3 text-center text-[10px] font-bold uppercase tracking-wide text-ink-500" style={{ minWidth: 78 }}>Coverage</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visibleSites.map((site) => {
-                  let covered = 0
-                  const cells = visibleTypes.map((t) => {
-                    const c = cellFor(site, t)
-                    if (isTypeCovered(t, c)) covered++
-                    return { t, ...c }
-                  })
-                  const pct = Math.round((covered / visibleTypes.length) * 100)
-                  return (
-                    <tr key={site} className="group">
-                      <td className="sticky left-0 z-10 border-b border-clay-200/40 bg-white px-4 py-2 font-semibold text-ink-800 group-hover:bg-clay-50">
-                        <span className="flex items-center gap-1.5"><MapPin size={13} className="text-brand-400" /> {site}</span>
-                      </td>
-                      {cells.map((c) => (
-                        <td key={c.t} className="border-b border-l border-clay-200/40 p-1 text-center">
-                          <button
-                            onClick={() => (c.count > 0 ? setCellView({ site, type: c.t }) : openAddFor(site, c.t))}
-                            title={c.count > 0 ? `${c.count} record(s) — click to manage` : 'Not recorded — click to add'}
-                            className={`flex h-9 w-full items-center justify-center gap-1 rounded-lg text-xs font-bold transition hover:ring-2 hover:ring-brand-200 ${cellStyles[c.status]}`}
-                          >
-                            {c.status === 'none' ? '—' : c.label ? <span>{c.label}</span> : c.status === 'missing' ? <X size={14} /> : <Check size={14} />}
-                            {!c.label && c.count > 1 && <span>{c.count}</span>}
-                          </button>
+          <div className="card overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full border-separate border-spacing-0 text-sm">
+                <thead>
+                  <tr>
+                    <th className="sticky left-0 z-10 border-b border-clay-200/60 bg-clay-surface px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wide text-ink-500">Site</th>
+                    {visibleTypes.map((t) => (
+                      <th
+                        key={t}
+                        title={t === EXT_SIGN_TYPE ? 'Recorded signs / fire extinguishers at the site — these should match' : undefined}
+                        className="border-b border-clay-200/60 bg-clay-surface px-2 py-3 text-center text-[10px] font-semibold leading-tight text-ink-500"
+                        style={{ minWidth: 78 }}
+                      >
+                        {t}{t === EXT_SIGN_TYPE ? ' 🧯' : ''}
+                      </th>
+                    ))}
+                    <th className="border-b border-clay-200/60 bg-clay-surface px-3 py-3 text-center text-[10px] font-bold uppercase tracking-wide text-ink-500" style={{ minWidth: 78 }}>Coverage</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {matrixPager.pageItems.map((site) => {
+                    let covered = 0
+                    const cells = visibleTypes.map((t) => {
+                      const c = cellFor(site, t)
+                      if (isTypeCovered(t, c)) covered++
+                      return { t, ...c }
+                    })
+                    const pct = Math.round((covered / visibleTypes.length) * 100)
+                    return (
+                      <tr key={site} className="group">
+                        <td className="sticky left-0 z-10 border-b border-clay-200/40 bg-white px-4 py-2 font-semibold text-ink-800 group-hover:bg-clay-50">
+                          <span className="flex items-center gap-1.5"><MapPin size={13} className="text-brand-400" /> {site}</span>
                         </td>
-                      ))}
-                      <td className="border-b border-l border-clay-200/40 px-3 py-2 text-center">
-                        <span className={`font-bold ${pct >= 80 ? 'text-green-700' : pct >= 40 ? 'text-amber-700' : 'text-red-700'}`}>{covered}/{visibleTypes.length}</span>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+                        {cells.map((c) => (
+                          <td key={c.t} className="border-b border-l border-clay-200/40 p-1 text-center">
+                            <button
+                              onClick={() => (c.count > 0 ? setCellView({ site, type: c.t }) : openAddFor(site, c.t))}
+                              title={c.count > 0 ? `${c.count} record(s) — click to manage` : 'Not recorded — click to add'}
+                              className={`flex h-9 w-full items-center justify-center gap-1 rounded-lg text-xs font-bold transition hover:ring-2 hover:ring-brand-200 ${cellStyles[c.status]}`}
+                            >
+                              {c.status === 'none' ? '—' : c.label ? <span>{c.label}</span> : c.status === 'missing' ? <X size={14} /> : <Check size={14} />}
+                              {!c.label && c.count > 1 && <span>{c.count}</span>}
+                            </button>
+                          </td>
+                        ))}
+                        <td className="border-b border-l border-clay-200/40 px-3 py-2 text-center">
+                          <span className={`font-bold ${pct >= 80 ? 'text-green-700' : pct >= 40 ? 'text-amber-700' : 'text-red-700'}`}>{covered}/{visibleTypes.length}</span>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <Pager
+              className="border-t border-clay-200/60 px-4 py-3"
+              page={matrixPager.page} pageCount={matrixPager.pageCount} onPage={matrixPager.setPage}
+              total={matrixPager.total} pageSize={matrixPager.pageSize}
+            />
           </div>
         </>
         )
@@ -479,6 +496,11 @@ export default function Signages() {
               </div>
             </div>
           ))}
+          <Pager
+            className="px-1"
+            page={listPager.page} pageCount={listPager.pageCount} onPage={listPager.setPage}
+            total={listPager.total} pageSize={listPager.pageSize}
+          />
         </div>
       )}
 

@@ -4,6 +4,8 @@ import { motion } from 'framer-motion'
 import { FolderOpen, Filter, Search, X, FilePlus2, Eye, Pencil, Trash2, AlertTriangle, FileDown, Layers, Upload, ArrowRight } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { PageHeader, EmptyState, Modal, Skeleton } from '../components/ui'
+import { Pager } from '../../../shared/ui'
+import { usePagination } from '../../../shared/ui/usePagination'
 import { RiskBadge } from '../components/RiskBits'
 import DocIdTag from '../../../shared/docId/DocIdTag'
 import { useRa } from '../context/RaContext'
@@ -59,6 +61,8 @@ export default function Repository() {
       return true
     })
   }, [assessments, site, name, location, search])
+
+  const { pageItems, page, setPage, pageCount, total, pageSize } = usePagination(filtered)
 
   const filtersActive = site || name || location || search
   const clearAll = () => { setSite(''); setName(''); setLocation(''); setSearch('') }
@@ -157,7 +161,7 @@ export default function Repository() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-ink-100">
-                {filtered.map((a) => {
+                {pageItems.map((a) => {
                   const r = topRisk(a)
                   return (
                     <tr key={a.id} className="group cursor-pointer transition hover:bg-clay-100/40" onClick={() => navigate(`/hira/assessment/${a.id}`)}>
@@ -182,6 +186,14 @@ export default function Repository() {
               </tbody>
             </table>
           </div>
+          <Pager
+            className="border-t border-ink-100 px-3 py-2"
+            page={page}
+            pageCount={pageCount}
+            onPage={setPage}
+            total={total}
+            pageSize={pageSize}
+          />
         </motion.div>
       )}
 

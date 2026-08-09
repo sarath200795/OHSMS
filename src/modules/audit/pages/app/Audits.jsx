@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   ClipboardCheck,
@@ -17,6 +17,8 @@ import Select from '../../components/ui/Select'
 import Modal from '../../components/ui/Modal'
 import EmptyState from '../../components/ui/EmptyState'
 import Badge, { STATUS_TONES, labelize } from '../../components/ui/Badge'
+import { Pager } from '../../../../shared/ui'
+import { usePagination } from '../../../../shared/ui/usePagination'
 import { createAudit } from '../../services/audits'
 import { formatDate, toDate } from '../../lib/format'
 
@@ -37,6 +39,19 @@ export default function Audits() {
 
   const approvedUsers = users.filter((u) => u.status === 'approved')
   const year = new Date().getFullYear()
+
+  // List view only. The matrix stays whole — it is the year at a glance, and its
+  // rows are sites, not audits.
+  const byDate = useMemo(
+    () =>
+      [...audits].sort(
+        (a, b) =>
+          (toDate(a.scheduledDate)?.getTime() || 0) -
+          (toDate(b.scheduledDate)?.getTime() || 0),
+      ),
+    [audits],
+  )
+  const { pageItems, page, setPage, pageCount, total, pageSize } = usePagination(byDate)
 
   const submit = async (e) => {
     e.preventDefault()
@@ -189,35 +204,33 @@ export default function Audits() {
         </Card>
       ) : (
         <div className="space-y-3">
-          {[...audits]
-            .sort(
-              (a, b) =>
-                (toDate(a.scheduledDate)?.getTime() || 0) -
-                (toDate(b.scheduledDate)?.getTime() || 0),
-            )
-            .map((a) => (
-              <Link key={a.id} to={`/audits/${a.id}`}>
-                <Card className="flex items-center justify-between gap-4 transition hover:shadow-md">
-                  <div className="flex min-w-0 items-center gap-3">
-                    <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-brand-50 text-brand-600">
-                      <ClipboardCheck className="h-5 w-5" />
-                    </span>
-                    <div className="min-w-0">
-                      <p className="truncate font-semibold text-ink-800">{a.title}</p>
-                      <p className="truncate text-xs text-slate-400">
-                        {siteById[a.siteId]?.name || 'Unassigned'} ·{' '}
-                        <CalendarDays className="inline h-3 w-3" />{' '}
-                        {formatDate(a.scheduledDate)}
-                        {a.auditorUid && userById[a.auditorUid]
-                          ? ` · ${userById[a.auditorUid].name}`
-                          : ''}
-                      </p>
-                    </div>
+          {pageItems.map((a) => (
+            <Link key={a.id} to={`/audits/${a.id}`}>
+              <Card className="flex items-center justify-between gap-4 transition hover:shadow-md">
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-brand-50 text-brand-600">
+                    <ClipboardCheck className="h-5 w-5" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="truncate font-semibold text-ink-800">{a.title}</p>
+                    <p className="truncate text-xs text-slate-400">
+                      {siteById[a.siteId]?.name || 'Unassigned'} ·{' '}
+                      <CalendarDays className="inline h-3 w-3" />{' '}
+                      {formatDate(a.scheduledDate)}
+                      {a.auditorUid && userById[a.auditorUid]
+                        ? ` · ${userById[a.auditorUid].name}`
+                        : ''}
+                    </p>
                   </div>
-                  <Badge tone={STATUS_TONES[a.status]}>{labelize(a.status)}</Badge>
-                </Card>
-              </Link>
-            ))}
+                </div>
+                <Badge tone={STATUS_TONES[a.status]}>{labelize(a.status)}</Badge>
+              </Card>
+            </Link>
+          ))}
+          <Pager
+            className="px-1"
+            page={page} pageCount={pageCount} onPage={setPage} total={total} pageSize={pageSize}
+          />
         </div>
       )}
 

@@ -4,6 +4,8 @@ import { format } from 'date-fns'
 import { Wrench, CheckCircle2, Download, QrCode } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { PageHeader, EmptyState, Badge } from '../components/ui'
+import { Pager } from '../../../shared/ui'
+import { usePagination } from '../../../shared/ui/usePagination'
 import ListFilters from '../components/ListFilters'
 import { useFleet } from '../context/FleetContext'
 import { useAuth } from '../context/AuthContext'
@@ -29,6 +31,7 @@ export default function PhysicalDefectLog({ mode = 'open' }) {
   const [busyId, setBusyId] = useState(null)
 
   const filtered = useMemo(() => applyListFilters(rows, filters), [rows, filters])
+  const { pageItems, page, setPage, pageCount, total, pageSize } = usePagination(filtered)
 
   const isClosed = mode === 'closed'
   const canResolve = !isClosed && isManager
@@ -56,6 +59,8 @@ export default function PhysicalDefectLog({ mode = 'open' }) {
     return d ? format(d, 'dd MMM yyyy') : '—'
   }
 
+  // Exports every match, not the page on screen — the workbook is the whole
+  // filtered set so a site summary is never cut off at the page boundary.
   const doExport = () => {
     if (!filtered.length) return toast.error('Nothing to export')
     // Site-wise first — how many defects each site has, of what kinds, and how
@@ -112,7 +117,7 @@ export default function PhysicalDefectLog({ mode = 'open' }) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-clay-200/60">
-                {filtered.map((r, i) => {
+                {pageItems.map((r, i) => {
                   const color = DEFECT_BY_KEY[r.defectType]?.color || '#64748b'
                   return (
                     <motion.tr
@@ -172,6 +177,14 @@ export default function PhysicalDefectLog({ mode = 'open' }) {
               </tbody>
             </table>
           </div>
+          <Pager
+            className="border-t border-clay-200/60 px-4 py-3"
+            page={page}
+            pageCount={pageCount}
+            onPage={setPage}
+            total={total}
+            pageSize={pageSize}
+          />
         </div>
       )}
     </div>

@@ -5,6 +5,8 @@ import {
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { PageHeader, EmptyState, Modal, Badge, Spinner } from '../components/ui'
+import { Pager } from '../../../shared/ui'
+import { usePagination } from '../../../shared/ui/usePagination'
 import { useAuth } from '../context/AuthContext'
 import { useFleet } from '../context/FleetContext'
 import { addMockDrill, deleteMockDrill, getMockDrillPhotos } from '../lib/firestore'
@@ -103,6 +105,10 @@ export default function MockDrills() {
     if (siteFilter === 'all') return mockDrills
     return mockDrills.filter((d) => d.centerName === siteFilter)
   }, [mockDrills, siteFilter])
+
+  // Pages the history table only. A PDF is always printed from one record
+  // (`printRecord`), so the report is untouched by this.
+  const { pageItems, page, setPage, pageCount, total, pageSize } = usePagination(history)
 
   const openScenario = (s) => {
     setScenario(s)
@@ -288,47 +294,53 @@ export default function MockDrills() {
       ) : history.length === 0 ? (
         <EmptyState icon={ListChecks} title="No records yet" hint="Pick a scenario above to run and record a mock drill." />
       ) : (
-        <div className="card overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="border-b border-clay-200/60 text-[11px] uppercase tracking-wide text-ink-400">
-              <tr>
-                <th className="px-4 py-2.5">Type</th>
-                <th className="px-4 py-2.5">Scenario</th>
-                <th className="px-4 py-2.5">Site</th>
-                <th className="px-4 py-2.5">Date</th>
-                <th className="px-4 py-2.5">Commander</th>
-                <th className="px-4 py-2.5">Score</th>
-                <th className="px-4 py-2.5 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-clay-200/50">
-              {history.map((d) => (
-                <tr key={d.id} className="hover:bg-clay-50">
-                  <td className="px-4 py-2.5">
-                    <Badge color={d.eventType === 'Real Emergency' ? '#dc2626' : '#3b82f6'}>{d.eventType || 'Mock Drill'}</Badge>
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <button className="inline-flex items-center gap-1.5 font-semibold text-ink-800 hover:text-brand-600" onClick={() => openView(d)}>
-                      {getScenario(d.scenario)?.emoji} {d.scenario}
-                      {d.photoCount > 0 && (
-                        <span className="inline-flex items-center gap-0.5 text-[11px] font-medium text-ink-400"><ImageIcon size={12} />{d.photoCount}</span>
-                      )}
-                    </button>
-                  </td>
-                  <td className="px-4 py-2.5 text-ink-500">{d.centerName || '—'}</td>
-                  <td className="px-4 py-2.5 font-mono text-xs text-ink-500">{d.date} {d.time}</td>
-                  <td className="px-4 py-2.5 text-ink-600">{d.commander || '—'}</td>
-                  <td className="px-4 py-2.5"><Badge color={scoreColor(d.score || 0)}>{d.score ?? 0}%</Badge></td>
-                  <td className="px-4 py-2.5">
-                    <div className="flex justify-end gap-1">
-                      <button className="btn-soft px-2 py-1.5" title="Download PDF" onClick={() => downloadPdf(d)}><FileText size={15} /></button>
-                      <button className="btn-soft px-2 py-1.5 text-red-600" title="Delete" onClick={() => setRemoving(d)}><Trash2 size={15} /></button>
-                    </div>
-                  </td>
+        <div className="card overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="border-b border-clay-200/60 text-[11px] uppercase tracking-wide text-ink-400">
+                <tr>
+                  <th className="px-4 py-2.5">Type</th>
+                  <th className="px-4 py-2.5">Scenario</th>
+                  <th className="px-4 py-2.5">Site</th>
+                  <th className="px-4 py-2.5">Date</th>
+                  <th className="px-4 py-2.5">Commander</th>
+                  <th className="px-4 py-2.5">Score</th>
+                  <th className="px-4 py-2.5 text-right">Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-clay-200/50">
+                {pageItems.map((d) => (
+                  <tr key={d.id} className="hover:bg-clay-50">
+                    <td className="px-4 py-2.5">
+                      <Badge color={d.eventType === 'Real Emergency' ? '#dc2626' : '#3b82f6'}>{d.eventType || 'Mock Drill'}</Badge>
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <button className="inline-flex items-center gap-1.5 font-semibold text-ink-800 hover:text-brand-600" onClick={() => openView(d)}>
+                        {getScenario(d.scenario)?.emoji} {d.scenario}
+                        {d.photoCount > 0 && (
+                          <span className="inline-flex items-center gap-0.5 text-[11px] font-medium text-ink-400"><ImageIcon size={12} />{d.photoCount}</span>
+                        )}
+                      </button>
+                    </td>
+                    <td className="px-4 py-2.5 text-ink-500">{d.centerName || '—'}</td>
+                    <td className="px-4 py-2.5 font-mono text-xs text-ink-500">{d.date} {d.time}</td>
+                    <td className="px-4 py-2.5 text-ink-600">{d.commander || '—'}</td>
+                    <td className="px-4 py-2.5"><Badge color={scoreColor(d.score || 0)}>{d.score ?? 0}%</Badge></td>
+                    <td className="px-4 py-2.5">
+                      <div className="flex justify-end gap-1">
+                        <button className="btn-soft px-2 py-1.5" title="Download PDF" onClick={() => downloadPdf(d)}><FileText size={15} /></button>
+                        <button className="btn-soft px-2 py-1.5 text-red-600" title="Delete" onClick={() => setRemoving(d)}><Trash2 size={15} /></button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <Pager
+            className="border-t border-clay-200/60 px-4 py-3"
+            page={page} pageCount={pageCount} onPage={setPage} total={total} pageSize={pageSize}
+          />
         </div>
       )}
 

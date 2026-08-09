@@ -4,6 +4,8 @@ import toast from 'react-hot-toast'
 import { History, Search, Trash2, MapPin, User, Calendar } from 'lucide-react'
 import { PageHeader, EmptyState, Modal, StatusPill } from '../components/ui'
 import SiteFilter from '../components/SiteFilter'
+import { Pager } from '../../../shared/ui'
+import { usePagination } from '../../../shared/ui/usePagination'
 import DocIdTag from '../../../shared/docId/DocIdTag'
 import { useAuth } from '../context/AuthContext'
 import { useData } from '../context/DataContext'
@@ -82,6 +84,8 @@ export default function Records() {
     )
   }, [filteredRecords, search])
 
+  const { pageItems, page, setPage, pageCount, total, pageSize } = usePagination(filtered)
+
   const handleDelete = async (r) => {
     if (!isAdmin) return toast.error('Only admins can delete records.')
     if (!window.confirm('Permanently delete this inspection record?')) return
@@ -116,7 +120,7 @@ export default function Records() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((r) => (
+              {pageItems.map((r) => (
                 <tr key={r.id} className="cursor-pointer border-t border-clay-200/60 hover:bg-clay-surface/60" onClick={() => setActive(r)}>
                   <td className="px-4 py-3 font-semibold text-ink-800">{r.templateTitle}<DocIdTag id={r.docId} className="mt-0.5 block" /></td>
                   <td className="px-4 py-3 text-ink-500">{r.siteName || r.location || '—'}</td>
@@ -132,6 +136,10 @@ export default function Records() {
               ))}
             </tbody>
           </table>
+          <Pager
+            className="border-t border-clay-200/60 px-3 py-2"
+            page={page} pageCount={pageCount} onPage={setPage} total={total} pageSize={pageSize}
+          />
         </div>
       )}
 

@@ -15,6 +15,8 @@ import Badge, {
   STATUS_TONES,
   labelize,
 } from '../../components/ui/Badge'
+import { Pager } from '../../../../shared/ui'
+import { usePagination } from '../../../../shared/ui/usePagination'
 import { createFinding } from '../../services/findings'
 import { formatDate, isOverdue, toDate } from '../../lib/format'
 
@@ -39,6 +41,8 @@ export default function Findings() {
       )
       .sort((a, b) => (toDate(b.raisedAt)?.getTime() || 0) - (toDate(a.raisedAt)?.getTime() || 0))
   }, [findings, filters])
+
+  const { pageItems, page, setPage, pageCount, total, pageSize } = usePagination(filtered)
 
   const submit = async (e) => {
     e.preventDefault()
@@ -133,7 +137,7 @@ export default function Findings() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filtered.map((f) => {
+              {pageItems.map((f) => {
                 const overdue = isOverdue(f.dueDate, f.status === 'closed')
                 return (
                   <tr key={f.id} className="group hover:bg-slate-50/60">
@@ -165,6 +169,10 @@ export default function Findings() {
               })}
             </tbody>
           </table>
+          <Pager
+            className="border-t border-slate-100 px-5 py-3"
+            page={page} pageCount={pageCount} onPage={setPage} total={total} pageSize={pageSize}
+          />
         </Card>
       )}
 

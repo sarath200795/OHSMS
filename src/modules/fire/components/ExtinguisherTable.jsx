@@ -1,6 +1,8 @@
 import { motion } from 'framer-motion'
 import { format } from 'date-fns'
 import { AlertTriangle } from 'lucide-react'
+import { Pager } from '../../../shared/ui'
+import { usePagination } from '../../../shared/ui/usePagination'
 import CategoryBadges from './CategoryBadges'
 import { healthColor, toDate, daysUntil, dateFieldState, hasDateIssue } from '../lib/extinguisherLogic'
 import { STATUS_LABEL, STATUS_COLOR, REGION_COLORS } from '../lib/constants'
@@ -65,6 +67,10 @@ export default function ExtinguisherTable({
   renderActions,
   onRowClick,
 }) {
+  // Paging is a render concern only: `items` stays the full list the caller
+  // passed, so the header checkbox and the bulk QR print it feeds keep covering
+  // every filtered unit rather than the twenty currently on screen.
+  const { pageItems, page, setPage, pageCount, total, pageSize } = usePagination(items)
   const allSelected = selectable && items.length > 0 && items.every((e) => selectedIds?.has(e.id))
 
   return (
@@ -96,7 +102,7 @@ export default function ExtinguisherTable({
             </tr>
           </thead>
           <tbody className="divide-y divide-clay-200/60">
-            {items.map((ext, i) => {
+            {pageItems.map((ext, i) => {
               const selected = selectedIds?.has(ext.id)
               return (
                 <motion.tr
@@ -183,6 +189,14 @@ export default function ExtinguisherTable({
           </tbody>
         </table>
       </div>
+      <Pager
+        className="border-t border-ink-100 px-3 py-2"
+        page={page}
+        pageCount={pageCount}
+        onPage={setPage}
+        total={total}
+        pageSize={pageSize}
+      />
     </div>
   )
 }

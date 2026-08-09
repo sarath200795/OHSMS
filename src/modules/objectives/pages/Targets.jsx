@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { Target, Plus, Pencil, Trash2, Wand2, Search } from 'lucide-react'
-import { PageHeader, Card, Field, Input, Select, Textarea, Button, Modal, Badge, EmptyState, SkeletonTable } from '../../../shared/ui'
+import { PageHeader, Card, Field, Input, Select, Textarea, Button, Modal, Badge, EmptyState, SkeletonTable, Pager } from '../../../shared/ui'
+import { usePagination } from '../../../shared/ui/usePagination'
 import { useAuth } from '../../../shared/auth/AuthContext'
 import { useObjectives } from '../context/ObjectivesContext'
 import DocIdTag from '../../../shared/docId/DocIdTag'
@@ -31,6 +32,8 @@ export default function Targets() {
       .filter((o) => (needle ? `${o.kpiMeta?.label} ${o.scopeLabel} ${o.entity} ${o.owner}`.toLowerCase().includes(needle) : true))
       .sort((a, b) => (a.kpiMeta?.label || '').localeCompare(b.kpiMeta?.label || '') || a.level.localeCompare(b.level))
   }, [objectives, q])
+
+  const { pageItems, page, setPage, pageCount, total, pageSize } = usePagination(rows)
 
   const openNew = () => { setForm({ ...EMPTY, period: thisPeriod() }); setEditing('new') }
   const openEdit = (o) => { setForm({ ...EMPTY, ...o, target: String(o.target ?? '') }); setEditing(o) }
@@ -122,7 +125,7 @@ export default function Targets() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-clay-200/60">
-                {rows.map((o) => (
+                {pageItems.map((o) => (
                   <tr key={o.id} className="hover:bg-clay-100/50">
                     <td className="px-5 py-3">
                       <p className="font-semibold text-ink-900">{o.kpiMeta?.label || o.kpi}</p>
@@ -148,6 +151,10 @@ export default function Targets() {
               </tbody>
             </table>
           </div>
+          <Pager
+            className="border-t border-ink-100 px-3 py-2"
+            page={page} pageCount={pageCount} onPage={setPage} total={total} pageSize={pageSize}
+          />
         </Card>
       )}
 

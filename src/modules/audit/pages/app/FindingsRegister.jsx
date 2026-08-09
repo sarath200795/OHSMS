@@ -8,6 +8,8 @@ import Input from '../../components/ui/Input'
 import Select from '../../components/ui/Select'
 import Badge from '../../components/ui/Badge'
 import EmptyState from '../../components/ui/EmptyState'
+import { Pager } from '../../../../shared/ui'
+import { usePagination } from '../../../../shared/ui/usePagination'
 
 const TYPE_TONE = { 'Major NC': 'red', 'Minor NC': 'amber', OFI: 'blue', Observation: 'slate' }
 const RECORD_TONE = { Reported: 'red', 'Submitted for Verification': 'amber', Closed: 'green' }
@@ -59,6 +61,8 @@ export default function FindingsRegister() {
             .includes(filters.q.toLowerCase())
         : true,
     )
+
+  const { pageItems, page, setPage, pageCount, total, pageSize } = usePagination(filtered)
 
   const setF = (k) => (e) => setFilters((f) => ({ ...f, [k]: e.target.value }))
 
@@ -113,7 +117,7 @@ export default function FindingsRegister() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filtered.map((r, i) => (
+              {pageItems.map((r, i) => (
                 <tr key={`${r.auditDocId}-${r.id}-${i}`} className="hover:bg-slate-50/60">
                   <td className="px-5 py-3 font-mono text-xs font-bold text-brand-600">{r.id}</td>
                   <td className="px-3 py-3"><Badge tone={TYPE_TONE[r.type] || 'slate'}>{r.type}</Badge></td>
@@ -128,6 +132,10 @@ export default function FindingsRegister() {
               ))}
             </tbody>
           </table>
+          <Pager
+            className="border-t border-slate-100 px-5 py-3"
+            page={page} pageCount={pageCount} onPage={setPage} total={total} pageSize={pageSize}
+          />
         </Card>
       )}
     </div>

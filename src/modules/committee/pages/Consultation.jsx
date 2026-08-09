@@ -10,6 +10,8 @@ import { useAuth } from '../context/AuthContext';
 import SiteScopePicker from '../../../shared/org/SiteScopePicker';
 import DeptPersonPicker from '../../../shared/org/DeptPersonPicker';
 import { moduleLevelKeys, SITE_LEVEL_KEY } from '../../../shared/org/scopeConfig';
+import { Pager } from '../../../shared/ui';
+import { usePagination } from '../../../shared/ui/usePagination';
 import Logo from '../components/Logo';
 import LogoLoader from '../components/LogoLoader';
 import {
@@ -291,6 +293,11 @@ export default function Consultation() {
             return matchSite && matchCat;
         });
     }, [meetings, filterSite, filterCategory, canViewRecord]);
+
+    // Paging applies to the record cards only. The KPI tiles, every chart below
+    // and the XLSX export all keep reading `filteredList`, so a page number never
+    // truncates an export or skews the analytics.
+    const { pageItems, page, setPage, pageCount, total, pageSize } = usePagination(filteredList);
 
     // ----- Dashboard analytics (respect the active site/category filters) -----
     const meetingsByType = useMemo(() => (
@@ -708,7 +715,7 @@ export default function Consultation() {
 
                         <h3 className="text-xs uppercase text-ink-500 font-bold tracking-widest flex items-center gap-2 pt-2"><i className="fas fa-folder-open text-green-600"></i> Meeting Records</h3>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            {filteredList.map(m => {
+                            {pageItems.map(m => {
                                 const totalAct = m.actions ? m.actions.length : 0;
                                 const closedAct = m.actions ? m.actions.filter(a => a.status === 'Closed').length : 0;
                                 return (
@@ -741,6 +748,10 @@ export default function Consultation() {
                             })}
                             {filteredList.length === 0 && <div className="col-span-full text-center p-16 text-ink-400 italic text-lg border-2 border-dashed border-clay-200/70 rounded-3xl bg-clay-100/60 shadow-inner">No meeting records found matching your filters.</div>}
                         </div>
+                        <Pager
+                            className="border-t border-clay-200/70 px-1 pt-4"
+                            page={page} pageCount={pageCount} onPage={setPage} total={total} pageSize={pageSize}
+                        />
                     </div>
                 )}
 

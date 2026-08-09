@@ -4,7 +4,8 @@ import {
   BookOpenCheck, GraduationCap, Link2, Paperclip, CheckCircle2, CalendarClock, BadgeCheck, Award,
   Video, MapPin, ExternalLink,
 } from 'lucide-react'
-import { PageHeader, Card, Badge, Button, EmptyState, SkeletonCard } from '../../../shared/ui'
+import { PageHeader, Card, Badge, Button, EmptyState, SkeletonCard, Pager } from '../../../shared/ui'
+import { usePagination } from '../../../shared/ui/usePagination'
 import { useAuth } from '../../../shared/auth/AuthContext'
 import { useAccessibleSites } from '../../../shared/org/useAccessibleSites'
 import { formatDate, daysUntil } from '../../../shared/lib/format'
@@ -161,6 +162,12 @@ export default function MyLearning() {
   // Courses not currently assigned to me — the browsable catalogue.
   const availableCourses = courses.filter((c) => !myAssignments.some((a) => a.courseId === c.id))
 
+  // The catalogue and the certification history grow independently, so each
+  // pages on its own number. "Assigned to me" is deliberately left whole — it is
+  // a short open-task list, not a register.
+  const catalogue = usePagination(availableCourses)
+  const records = usePagination(myRecords)
+
   // Self-complete a course directly from the catalogue (no assignment needed).
   const completeCourse = async (course) => {
     setBusyId(`course-${course.id}`)
@@ -257,7 +264,7 @@ export default function MyLearning() {
         </Card>
       ) : (
         <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {availableCourses.map((c) => (
+          {catalogue.pageItems.map((c) => (
             <Card key={c.id} className="flex flex-col !p-4">
               <CourseThumb course={c} className="mb-3" />
               <div className="mb-1 flex items-start justify-between gap-2">
@@ -290,6 +297,11 @@ export default function MyLearning() {
               )}
             </Card>
           ))}
+          <Pager
+            className="col-span-full border-t border-clay-200/60 px-1 pt-3"
+            page={catalogue.page} pageCount={catalogue.pageCount} onPage={catalogue.setPage}
+            total={catalogue.total} pageSize={catalogue.pageSize}
+          />
         </div>
       )}
 
@@ -315,7 +327,7 @@ export default function MyLearning() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-clay-200/60">
-                {myRecords.map((r) => {
+                {records.pageItems.map((r) => {
                   const st = recordStatus(r.expiresOn, today)
                   return (
                     <tr key={r.id} className="hover:bg-clay-100/50">
@@ -337,6 +349,11 @@ export default function MyLearning() {
               </tbody>
             </table>
           </div>
+          <Pager
+            className="border-t border-clay-200/60 px-4 py-3"
+            page={records.page} pageCount={records.pageCount} onPage={records.setPage}
+            total={records.total} pageSize={records.pageSize}
+          />
         </Card>
       )}
 

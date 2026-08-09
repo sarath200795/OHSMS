@@ -4,7 +4,8 @@ import { motion } from 'framer-motion'
 import toast from 'react-hot-toast'
 import { ListChecks, AlertTriangle, CircleDot, Loader2, CheckCircle2, ExternalLink, Search, Repeat } from 'lucide-react'
 import { useAuth } from '../../shared/auth/AuthContext'
-import { PageHeader, Card, Select, StatCard, EmptyState, SkeletonTable } from '../../shared/ui'
+import { PageHeader, Card, Select, StatCard, EmptyState, SkeletonTable, Pager } from '../../shared/ui'
+import { usePagination } from '../../shared/ui/usePagination'
 import { SOURCES, NORM_STATUS, NORM_BY_KEY, subscribeActions, updateActionStatus, isOverdue, todayISO } from './lib/sources'
 
 const fmtDue = (due) => (due ? due : '—')
@@ -54,6 +55,8 @@ export default function ActionTracker() {
         return (a.due || '9999').localeCompare(b.due || '9999')
       })
   }, [rows, f, today])
+
+  const { pageItems, page, setPage, pageCount, total, pageSize } = usePagination(filtered)
 
   const changeStatus = async (row, norm) => {
     setBusyKey(row.key)
@@ -137,7 +140,7 @@ export default function ActionTracker() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-clay-200/60">
-                {filtered.map((r, i) => {
+                {pageItems.map((r, i) => {
                   const od = isOverdue(r.due, r.norm, today)
                   return (
                     <motion.tr
@@ -199,6 +202,10 @@ export default function ActionTracker() {
               </tbody>
             </table>
           </div>
+          <Pager
+            className="border-t border-ink-100 px-3 py-2"
+            page={page} pageCount={pageCount} onPage={setPage} total={total} pageSize={pageSize}
+          />
         </Card>
       )}
     </>

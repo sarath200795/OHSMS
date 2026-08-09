@@ -4,6 +4,8 @@ import { motion } from 'framer-motion'
 import { CalendarClock, AlertTriangle, ExternalLink } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { PageHeader, EmptyState } from '../components/ui'
+import { Pager } from '../../../shared/ui'
+import { usePagination } from '../../../shared/ui/usePagination'
 import { RiskBadge } from '../components/RiskBits'
 import { useRa } from '../context/RaContext'
 import { useAuth } from '../context/AuthContext'
@@ -70,6 +72,8 @@ export default function ActionTracker() {
       return ad.localeCompare(bd)
     })
   }, [assessments, filter, focus, overdueOnly])
+
+  const { pageItems, page, setPage, pageCount, total, pageSize } = usePagination(rows)
 
   // Persist an inline change to one additional control.
   const patchControl = async (row, patch) => {
@@ -171,7 +175,7 @@ export default function ActionTracker() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-ink-100">
-                {rows.map((r, i) => {
+                {pageItems.map((r, i) => {
                   const overdue = isOverdue(r.control)
                   return (
                     <tr key={`${r.assessmentId}-${r.control.id}-${i}`} className={overdue ? 'bg-red-50/60' : ''}>
@@ -221,6 +225,14 @@ export default function ActionTracker() {
               </tbody>
             </table>
           </div>
+          <Pager
+            className="border-t border-ink-100 px-3 py-2"
+            page={page}
+            pageCount={pageCount}
+            onPage={setPage}
+            total={total}
+            pageSize={pageSize}
+          />
         </motion.div>
       )}
     </div>

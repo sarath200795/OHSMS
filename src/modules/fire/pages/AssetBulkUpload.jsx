@@ -9,6 +9,8 @@ import { downloadAssetTemplate, parseAssetUpload, AED_BULK_COLUMNS, FAS_BULK_COL
 import { bulkAddAeds, bulkAddFas } from '../lib/firestore'
 import { indexSites, resolveSite, suggestSite } from '../lib/siteLink'
 import { useAccessibleSites } from '../../../shared/org/useAccessibleSites'
+import { Pager } from '../../../shared/ui'
+import { usePagination } from '../../../shared/ui/usePagination'
 
 const CFG = {
   aed: {
@@ -70,6 +72,13 @@ export default function AssetBulkUpload() {
   const ready = checked.filter((c) => c.status === 'ok')
   const suggested = checked.filter((c) => c.status === 'suggest')
   const missing = checked.filter((c) => c.status === 'missing')
+
+  // A 900-row file is 900 rows of preview DOM. Each list pages on its own — one
+  // shared page number would blank the other two. Only the rendering is paged:
+  // `acceptAll` and `commit` below still run over the whole array.
+  const readyPage = usePagination(ready)
+  const suggestedPage = usePagination(suggested)
+  const errorsPage = usePagination(result?.errors || [])
 
   const acceptAll = () => {
     setPicked((p) => {
@@ -163,7 +172,7 @@ export default function AssetBulkUpload() {
                       </button>
                     </div>
                     <ul className="divide-y divide-ink-100 text-sm">
-                      {suggested.slice(0, 12).map((c) => (
+                      {suggestedPage.pageItems.map((c) => (
                         <li key={c.i} className="flex flex-wrap items-center gap-x-2 gap-y-1 px-4 py-2.5">
                           <strong>Row {c.i + 1}:</strong>
                           <span className="text-ink-500 line-through">{c.given || '(no site)'}</span>
@@ -177,10 +186,15 @@ export default function AssetBulkUpload() {
                           </button>
                         </li>
                       ))}
-                      {suggested.length > 12 && (
-                        <li className="px-4 py-2 text-xs text-ink-400">…and {suggested.length - 12} more</li>
-                      )}
                     </ul>
+                    <Pager
+                      className="border-t border-ink-100 px-3 py-2"
+                      page={suggestedPage.page}
+                      pageCount={suggestedPage.pageCount}
+                      onPage={suggestedPage.setPage}
+                      total={suggestedPage.total}
+                      pageSize={suggestedPage.pageSize}
+                    />
                   </div>
                 )}
 
@@ -205,14 +219,14 @@ export default function AssetBulkUpload() {
 
                 {ready.length > 0 && (
                   <div className="card overflow-hidden">
-                    <div className="border-b border-ink-100 px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-ink-500">Preview ({Math.min(ready.length, 10)} of {ready.length})</div>
+                    <div className="border-b border-ink-100 px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-ink-500">Preview ({ready.length})</div>
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
                         <thead className="bg-clay-100/70 text-left text-xs uppercase text-ink-400">
                           <tr>{cfg.cols.map(([h]) => <th key={h} className="px-3 py-2">{h}</th>)}</tr>
                         </thead>
                         <tbody className="divide-y divide-ink-100">
-                          {ready.slice(0, 10).map((c) => (
+                          {readyPage.pageItems.map((c) => (
                             <tr key={c.i}>{cfg.cols.map(([h, f]) => (
                               // Show the registry's wording, which is what will be written.
                               <td key={h} className="px-3 py-2">
@@ -223,6 +237,14 @@ export default function AssetBulkUpload() {
                         </tbody>
                       </table>
                     </div>
+                    <Pager
+                      className="border-t border-ink-100 px-3 py-2"
+                      page={readyPage.page}
+                      pageCount={readyPage.pageCount}
+                      onPage={readyPage.setPage}
+                      total={readyPage.total}
+                      pageSize={readyPage.pageSize}
+                    />
                   </div>
                 )}
 
@@ -230,10 +252,18 @@ export default function AssetBulkUpload() {
                   <div className="card overflow-hidden border border-red-200">
                     <div className="border-b border-red-100 bg-red-50 px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-red-600">Rows skipped</div>
                     <ul className="divide-y divide-ink-100 text-sm">
-                      {result.errors.slice(0, 10).map((e, i) => (
+                      {errorsPage.pageItems.map((e, i) => (
                         <li key={i} className="flex items-start gap-2 px-4 py-2.5"><X size={15} className="mt-0.5 shrink-0 text-red-500" /><span><strong>Row {e.row}:</strong> {e.issues.join('; ')}</span></li>
                       ))}
                     </ul>
+                    <Pager
+                      className="border-t border-ink-100 px-3 py-2"
+                      page={errorsPage.page}
+                      pageCount={errorsPage.pageCount}
+                      onPage={errorsPage.setPage}
+                      total={errorsPage.total}
+                      pageSize={errorsPage.pageSize}
+                    />
                   </div>
                 )}
 

@@ -4,6 +4,8 @@ import { motion } from 'framer-motion'
 import { ShieldAlert, CheckCircle2, Pencil, Wrench } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { PageHeader, EmptyState } from '../components/ui'
+import { Pager } from '../../../shared/ui'
+import { usePagination } from '../../../shared/ui/usePagination'
 import { RiskBadge } from '../components/RiskBits'
 import { useRa } from '../context/RaContext'
 import { useAuth } from '../context/AuthContext'
@@ -42,6 +44,9 @@ export default function RiskRegister() {
   const [tab, setTab] = useState('actionRequired')
 
   const rows = lists[tab] || []
+  // One pager for both layouts below — the cards and the table are the same tab's
+  // rows, only ever one of them on screen.
+  const { pageItems, page, setPage, pageCount, total, pageSize } = usePagination(rows)
 
   const declareAlarp = async (row) => {
     const a = assessments.find((x) => x.id === row.assessmentId)
@@ -95,7 +100,7 @@ export default function RiskRegister() {
         <EmptyState icon={tab === 'actionRequired' ? CheckCircle2 : ShieldAlert} title={loading ? 'Loading…' : 'Nothing here'} hint={tab === 'actionRequired' ? 'No hazards need action — residual risks are acceptable or ALARP-accepted.' : 'No hazards in this category.'} />
       ) : tab === 'actionRequired' ? (
         <div className="space-y-3">
-          {rows.map((r, i) => {
+          {pageItems.map((r, i) => {
             const initialBad = isNonAcceptable(r.initial)
             return (
               <motion.div
@@ -127,6 +132,14 @@ export default function RiskRegister() {
               </motion.div>
             )
           })}
+          <Pager
+            className="card px-4 py-2"
+            page={page}
+            pageCount={pageCount}
+            onPage={setPage}
+            total={total}
+            pageSize={pageSize}
+          />
         </div>
       ) : (
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="card overflow-hidden">
@@ -143,7 +156,7 @@ export default function RiskRegister() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-ink-100">
-                {rows.map((r, i) => (
+                {pageItems.map((r, i) => (
                   <tr key={`${r.assessmentId}-${r.hazard.id}-${i}`} className="cursor-pointer transition hover:bg-clay-100/40" onClick={() => navigate(`/hira/assessment/${r.assessmentId}`)}>
                     <td className="px-4 py-3 font-semibold text-ink-900">{r.assessmentName}</td>
                     <td className="px-4 py-3">{r.siteName || '—'}</td>
@@ -156,6 +169,14 @@ export default function RiskRegister() {
               </tbody>
             </table>
           </div>
+          <Pager
+            className="border-t border-ink-100 px-3 py-2"
+            page={page}
+            pageCount={pageCount}
+            onPage={setPage}
+            total={total}
+            pageSize={pageSize}
+          />
         </motion.div>
       )}
     </div>
