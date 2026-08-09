@@ -3,7 +3,8 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import { isFirebaseConfigured } from './shared/firebase'
 import ProtectedRoute from './shared/auth/ProtectedRoute'
 import AppChrome from './shared/layout/AppChrome'
-import { FullPageLoader, SkeletonDetail } from './shared/ui'
+import ModuleLoading from './shared/layout/ModuleLoading'
+import SamLoading from './shared/layout/SamLoading'
 
 // Public QR landing for equipment labels — no auth, so it stays outside the shell.
 const QrLanding = lazy(() => import('./modules/fire/pages/QrLanding'))
@@ -55,7 +56,7 @@ function Protected({ children, ...guard }) {
   return (
     <ProtectedRoute {...guard}>
       <AppChrome>
-        <Suspense fallback={<SkeletonDetail />}>{children}</Suspense>
+        <Suspense fallback={<ModuleLoading />}>{children}</Suspense>
       </AppChrome>
     </ProtectedRoute>
   )
@@ -72,7 +73,7 @@ export default function App() {
   // Without Firebase config, only the setup screen can render.
   if (!isFirebaseConfigured) {
     return (
-      <Suspense fallback={<FullPageLoader />}>
+      <Suspense fallback={<SamLoading />}>
         <Routes>
           <Route path="*" element={<SetupNeeded />} />
         </Routes>
@@ -100,7 +101,7 @@ export default function App() {
         path="/portal/*"
         element={
           <ProtectedRoute>
-            <Suspense fallback={<FullPageLoader />}><Portal /></Suspense>
+            <Suspense fallback={<SamLoading />}><Portal /></Suspense>
           </ProtectedRoute>
         }
       />
