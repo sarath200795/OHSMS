@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Boxes, Download, Trash2, QrCode, AlertTriangle, Filter, Pencil, CheckCircle2, Truck, FileText, CalendarX, Plus, Upload } from 'lucide-react'
@@ -58,18 +58,15 @@ export default function Repository() {
     return list
   }, [extinguishers, filters, activeCats, onlyIssues, today])
 
-  // Paginate — render one 20-row page at a time so the DOM stays light and the
-  // page loads fast even with thousands of units in memory.
-  const PAGE_SIZE = 20
-  const [page, setPage] = useState(1)
-  const pageCount = Math.max(1, Math.ceil(visible.length / PAGE_SIZE))
-  const safePage = Math.min(page, pageCount)
-  const pageItems = useMemo(
-    () => visible.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE),
-    [visible, safePage]
-  )
-  // Any filter change returns to page 1.
-  useEffect(() => { setPage(1) }, [filters, activeCats, onlyIssues])
+  // Paging is ExtinguisherTable's job now, and handing it the FULL filtered set
+  // rather than a pre-cut page is what makes select-all correct.
+  //
+  // This page used to slice its own 20 rows and pass only those. The table's
+  // header checkbox reports back the ids of whatever it was given, and
+  // toggleAll below replaces the selection with them — so "select all" quietly
+  // meant "select these twenty", and Delete / Export / Print QR then covered
+  // twenty of however many were filtered. It also wiped any selection built up
+  // across pages. Nothing said so; the count beside the toolbar just read 20.
 
   // ── Inline workflow actions (the realtime fleet listener refreshes rows) ──
   const sendToVendor = async (ext) => {
@@ -271,7 +268,7 @@ ${linkPlan.unmatched.length} unit(s) across ${linkPlan.unmatchedCenters.length} 
       ) : (
         <>
         <ExtinguisherTable
-          items={pageItems}
+          items={visible}
           today={today}
           selectable
           selectedIds={selected}
@@ -325,22 +322,6 @@ ${linkPlan.unmatched.length} unit(s) across ${linkPlan.unmatchedCenters.length} 
               )
             }}
         />
-        {/* Pagination — 20 rows per page */}
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm">
-          <span className="text-ink-500">
-            Showing <strong>{(safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, visible.length)}</strong> of{' '}
-            <strong>{visible.length}</strong>
-          </span>
-          {pageCount > 1 && (
-            <div className="flex items-center gap-1.5">
-              <button className="btn-ghost px-3 py-1.5" onClick={() => setPage(1)} disabled={safePage === 1} title="First page">«</button>
-              <button className="btn-ghost px-3 py-1.5" onClick={() => setPage(safePage - 1)} disabled={safePage === 1}>Prev</button>
-              <span className="px-2 font-semibold text-ink-700">Page {safePage} / {pageCount}</span>
-              <button className="btn-ghost px-3 py-1.5" onClick={() => setPage(safePage + 1)} disabled={safePage === pageCount}>Next</button>
-              <button className="btn-ghost px-3 py-1.5" onClick={() => setPage(pageCount)} disabled={safePage === pageCount} title="Last page">»</button>
-            </div>
-          )}
-        </div>
         </>
       )}
 
