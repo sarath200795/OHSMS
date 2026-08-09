@@ -16,6 +16,7 @@ import {
 import { db } from '../../../shared/firebase'
 import { logAudit } from '../../../shared/org/orgData'
 import { reserveDocId } from '../../../shared/docId/reserve'
+import { shapeAttachments } from './attachments'
 
 export const COLLECTIONS = {
   escalations: 'escalations',
@@ -91,6 +92,12 @@ const escalationShape = (d) => ({
   legalNoticeRef: str(d.legalNoticeRef),
   legalNoticeDate: str(d.legalNoticeDate),
   finalActionTaken: str(d.finalActionTaken),
+  // CCTV footage and an ethics report, if either exists. Shaped and filtered
+  // here so a failed upload never persists as a dead link.
+  attachments: {
+    cctv: shapeAttachments(d.attachments?.cctv),
+    ethics: shapeAttachments(d.attachments?.ethics),
+  },
   actionTakenOn: str(d.actionTakenOn),
   owner: str(d.owner),
 })

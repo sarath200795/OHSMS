@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { Plus, Pencil, Trash2, Scale, MessageSquareWarning, Users } from 'lucide-react'
+import { Plus, Pencil, Trash2, Scale, MessageSquareWarning, Users, Paperclip } from 'lucide-react'
 import {
   PageHeader, Button, Input, Select, EmptyState, SkeletonTable, Badge, Pager,
 } from '../../../shared/ui'
@@ -12,6 +12,7 @@ import { deleteEscalation } from '../lib/firestore'
 import {
   ESCALATION_STATUS, ESCALATION_STATUS_BY_KEY, SEVERITY_BY_KEY, NOTICE_BY_KEY,
 } from '../lib/constants'
+import { attachmentSummary } from '../lib/attachments'
 
 
 export default function Escalations() {
@@ -114,6 +115,7 @@ export default function Escalations() {
                 <th className="px-3 py-2">Members</th>
                 <th className="px-3 py-2">Severity</th>
                 <th className="px-3 py-2">Status</th>
+                <th className="px-3 py-2">Evidence</th>
                 <th className="px-3 py-2">Legal</th>
                 {isManager && <th className="px-3 py-2 text-right">Actions</th>}
               </tr>
@@ -138,6 +140,24 @@ export default function Escalations() {
                     <Badge tone={ESCALATION_STATUS_BY_KEY[row.status]?.tone || 'slate'}>
                       {ESCALATION_STATUS_BY_KEY[row.status]?.label || row.status}
                     </Badge>
+                  </td>
+                  {/* "We hold the clip" and "we know where it is" are different
+                      levels of readiness for a dispute, so they are counted apart. */}
+                  <td className="px-3 py-2">
+                    {(() => {
+                      const s = attachmentSummary(row)
+                      if (!s.total) return <span className="text-xs text-ink-400">—</span>
+                      const bits = [
+                        s.cctvFiles && `${s.cctvFiles} clip${s.cctvFiles > 1 ? 's' : ''}`,
+                        s.cctvReferences && `${s.cctvReferences} ref${s.cctvReferences > 1 ? 's' : ''}`,
+                        s.ethics && `${s.ethics} ethics`,
+                      ].filter(Boolean)
+                      return (
+                        <span className="flex items-center gap-1 text-xs text-ink-600" title={bits.join(' · ')}>
+                          <Paperclip size={12} className="text-ink-400" /> {bits.join(' · ')}
+                        </span>
+                      )
+                    })()}
                   </td>
                   {/* The column that stops a "resolved" complaint reading as
                       settled when it produced an FIR. */}

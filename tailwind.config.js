@@ -149,6 +149,22 @@ export default {
           '0%,100%': { transform: 'translateZ(20px) scaleX(1)', opacity: '1' },
           '50%': { transform: 'translateZ(20px) scaleX(0.25)', opacity: '0.55' },
         },
+        // A signal running down a connector from the organisation to one of its
+        // stakeholders. Fades in at the bar, fades out as it lands, so three of
+        // these on staggered delays read as continuous traffic rather than
+        // three dots ticking in unison.
+        flowDown: {
+          '0%': { transform: 'translateY(0)', opacity: '0' },
+          '15%': { opacity: '1' },
+          '75%': { opacity: '1' },
+          '100%': { transform: 'translateY(13px)', opacity: '0' },
+        },
+        // The stakeholder acknowledging it — a small lift as the signal lands,
+        // not a bounce. These are people, not notifications.
+        stakeNod: {
+          '0%,100%': { transform: 'translateY(0)' },
+          '55%': { transform: 'translateY(-1.5px)' },
+        },
         // A CCTV camera sweeping its arc from a wall bracket, and pausing at
         // the ends of the sweep the way a real pan-tilt head does rather than
         // sliding back immediately.
@@ -280,6 +296,8 @@ export default {
         'tag-swing': 'tagSwing 1.3s cubic-bezier(0.45,0,0.55,1) infinite',
         'scan-glow': 'scanGlow 1.2s cubic-bezier(0.45,0,0.55,1) infinite',
         beacon: 'beacon 0.9s cubic-bezier(0.45,0,0.55,1) infinite',
+        'flow-down': 'flowDown 1.9s cubic-bezier(0.45,0,0.55,1) infinite',
+        'stake-nod': 'stakeNod 1.9s cubic-bezier(0.45,0,0.55,1) infinite',
         'camera-pan': 'cameraPan 4.2s cubic-bezier(0.45,0,0.55,1) infinite',
         'rec-blink': 'recBlink 1.1s steps(1,end) infinite',
         'view-cone': 'viewCone 4.2s cubic-bezier(0.45,0,0.55,1) infinite',

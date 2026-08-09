@@ -305,6 +305,77 @@ function WeatherCloud() {
   )
 }
 
+// ── Stakeholder: the organisation, and the people it answers to ──────────────
+//
+// Three towers on a connector bar, three lines dropping to three stakeholders —
+// the org chart everyone already recognises. What makes it this module rather
+// than a directory is the traffic: a signal runs down each connector and the
+// person at the end lifts as it lands. Staggered, so it reads as three separate
+// conversations rather than one broadcast.
+//
+// Each stakeholder is a coloured head over a shoulder cap; the whole group sits
+// on one plane in front of the building, so turning the tile parts them.
+function StakeholderOrg() {
+  // left / centre / right: x offset, colour, and when its signal departs.
+  const PEOPLE = [
+    { x: -13, tone: 'bg-rose-400', delay: '0s' },
+    { x: 0, tone: 'bg-amber-300', delay: '0.28s' },
+    { x: 13, tone: 'bg-teal-300', delay: '0.56s' },
+  ]
+
+  return (
+    <>
+      {/* Towers. The centre one is taller and lighter so the silhouette reads
+          as one building rather than three blocks. */}
+      <span className="absolute" style={{ transform: 'translateZ(8px) translateY(-15px)' }}>
+        <span className="absolute -left-[15px] -top-[8px] h-[16px] w-[9px] rounded-[2px] bg-sky-500" />
+        <span className="absolute left-[6px] -top-[8px] h-[16px] w-[9px] rounded-[2px] bg-sky-500" />
+        <span className="absolute -left-[6px] -top-[13px] h-[21px] w-[12px] rounded-[2px] bg-teal-300 shadow-[0_2px_4px_rgba(0,0,0,0.25)]" />
+        {/* Windows: two columns on the centre tower, enough to read as a
+            facade at this size without turning into noise. */}
+        {[0, 1, 2].map((r) => (
+          <span key={r}>
+            <span className="absolute h-[2px] w-[2px] bg-ink-800/70" style={{ left: -4, top: -10 + r * 5 }} />
+            <span className="absolute h-[2px] w-[2px] bg-ink-800/70" style={{ left: 1, top: -10 + r * 5 }} />
+          </span>
+        ))}
+      </span>
+
+      {/* The bar everything hangs from. */}
+      <span
+        className="absolute h-[3px] w-[34px] rounded-[1px] bg-slate-500"
+        style={{ transform: 'translateZ(12px) translateY(-1px)' }}
+      />
+
+      {PEOPLE.map((p) => (
+        <span key={p.x} className="absolute" style={{ transform: `translateZ(14px) translate(${p.x}px,0)` }}>
+          {/* Connector: down from the bar, then across to the head. */}
+          <span className="absolute -top-[1px] left-0 h-[9px] w-[1.5px] bg-slate-500" />
+
+          {/* The signal. Outer span holds the position, inner one animates —
+              a keyframe's transform REPLACES the inline one, so animating the
+              positioned span directly would fling it out of the scene. */}
+          <span className="absolute -top-[1px] -left-[1px] h-[4px] w-[4px]">
+            <span
+              className="absolute inset-0 rounded-full bg-white opacity-0 shadow-[0_0_5px_rgba(255,255,255,0.9)] group-hover:animate-flow-down motion-reduce:group-hover:animate-none"
+              style={{ animationDelay: p.delay }}
+            />
+          </span>
+
+          {/* Head + shoulders, lifting as the signal arrives. */}
+          <span
+            className="absolute left-0 top-[10px] block group-hover:animate-stake-nod motion-reduce:group-hover:animate-none"
+            style={{ animationDelay: p.delay }}
+          >
+            <span className={`absolute -left-[4px] top-0 h-[8px] w-[8px] rounded-full ${p.tone}`} />
+            <span className={`absolute -left-[6px] top-[7px] h-[7px] w-[12px] rounded-t-[6px] ${p.tone} shadow-[0_2px_3px_rgba(0,0,0,0.2)]`} />
+          </span>
+        </span>
+      ))}
+    </>
+  )
+}
+
 // ── CCTV: a bullet camera sweeping its arc from a wall bracket ───────────────
 //
 // The pan is the whole idea: a camera that only sat there would be a shape, and
@@ -514,6 +585,7 @@ function TargetArrow() {
 }
 
 const LOGOS = {
+  stakeholder: StakeholderOrg,
   cctv: CctvCamera,
   weather: WeatherCloud,
   incidents: IncidentCone,

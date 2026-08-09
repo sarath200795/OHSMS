@@ -10,12 +10,14 @@ import { useAuth } from '../../../shared/auth/AuthContext'
 import { useStakeholder } from '../context/StakeholderContext'
 import { addEscalation, updateEscalation, deleteEscalation } from '../lib/firestore'
 import { ESCALATION_STATUS, ESCALATION_CHANNEL, SEVERITY } from '../lib/constants'
+import AttachmentField from '../components/AttachmentField'
 
 const EMPTY = {
   title: '', scope: {}, channel: 'in_person', severity: 'medium', status: 'open',
   raisedOn: '', description: '', members: [],
   legalNoticeReceived: false, legalNoticeRef: '', legalNoticeDate: '',
   finalActionTaken: '', actionTakenOn: '', owner: '',
+  attachments: { cctv: [], ethics: [] },
 }
 const EMPTY_MEMBER = { memberId: '', name: '', contact: '', note: '' }
 
@@ -46,7 +48,7 @@ export default function EscalationForm() {
     if (!id || hydrated || loading) return
     const found = escalations.find((e) => e.id === id)
     if (found) {
-      setForm({ ...EMPTY, ...found })
+      setForm({ ...EMPTY, ...found, attachments: { ...EMPTY.attachments, ...(found.attachments || {}) } })
       setHydrated(true)
     }
   }, [id, escalations, loading, hydrated])
@@ -212,6 +214,26 @@ export default function EscalationForm() {
           <p className="mt-2 text-xs text-ink-500">
             If an authority became involved, record that as a Legal Issue and link it to this escalation.
           </p>
+        </section>
+
+        {/* Evidence. Kept out of the description because a dispute is settled
+            by what can be produced, not by what was written down. */}
+        <section className="card space-y-5 p-5">
+          <h2 className="text-sm font-bold text-ink-800">Evidence</h2>
+          <AttachmentField
+            kind="cctv"
+            orgId={orgId}
+            actor={actor}
+            value={form.attachments?.cctv || []}
+            onChange={(cctv) => patch({ attachments: { ...form.attachments, cctv } })}
+          />
+          <AttachmentField
+            kind="ethics"
+            orgId={orgId}
+            actor={actor}
+            value={form.attachments?.ethics || []}
+            onChange={(ethics) => patch({ attachments: { ...form.attachments, ethics } })}
+          />
         </section>
 
         <section className="card grid grid-cols-1 gap-4 p-5 sm:grid-cols-[2fr_1fr]">
