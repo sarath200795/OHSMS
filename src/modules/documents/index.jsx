@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import ModulePage from '../../shared/module-kit/ModulePage'
-import { createModuleService } from '../../shared/module-kit/service'
+import { documentsService } from './lib/service'
 import { MODULE_BY_KEY } from '../../shared/modules/registry'
 import { Badge } from '../../shared/ui'
 import { formatDate, isOverdue } from '../../shared/lib/format'
@@ -49,7 +49,7 @@ const config = {
   plural: 'Documents',
   subtitle: 'Versioned policies, SOPs, forms and Safety Data Sheets (SDS)',
   titleField: 'title',
-  service: createModuleService('documents', 'documents'),
+  service: documentsService,
   useLookups: useSiteRegistry,
   defaultStatus: 'draft',
   statuses: [

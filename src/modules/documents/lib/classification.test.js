@@ -140,7 +140,7 @@ describe('levelFilterOptions', () => {
 
 describe('classificationFields', () => {
   it('writes every field so Firestore never sees undefined', () => {
-    const keys = ['level', 'region', 'siteId', 'site']
+    const keys = ['level', 'region', 'siteId', 'site', 'visibility', 'siteRegion', 'siteEntity']
     expect(Object.keys(classificationFields({ level: ORG })).sort()).toEqual([...keys].sort())
     expect(Object.keys(classificationFields({ level: REGION, region: 'South' })).sort()).toEqual([...keys].sort())
     expect(Object.keys(classificationFields({ level: SITE, siteId: 's1' }, sites)).sort()).toEqual([...keys].sort())
@@ -151,14 +151,45 @@ describe('classificationFields', () => {
   // applies everywhere AND to one site at the same time.
   it('clears the scope the new level does not use', () => {
     const wasSite = { level: ORG, region: 'South', siteId: 's1', site: 'Hosur' }
-    expect(classificationFields(wasSite, sites)).toEqual({ level: ORG, region: '', siteId: '', site: '' })
+    expect(classificationFields(wasSite, sites)).toEqual({
+      level: ORG, region: '', siteId: '', site: '',
+      visibility: 'all', siteRegion: '', siteEntity: '',
+    })
     expect(classificationFields({ level: REGION, region: 'North', siteId: 's1' }, sites))
-      .toEqual({ level: REGION, region: 'North', siteId: '', site: '' })
+      .toEqual({
+        level: REGION, region: 'North', siteId: '', site: '',
+        visibility: 'all', siteRegion: '', siteEntity: '',
+      })
   })
 
   it('snapshots the site name beside its id so a deleted site stays readable', () => {
     expect(classificationFields({ level: SITE, siteId: 's2' }, sites))
-      .toEqual({ level: SITE, region: '', siteId: 's2', site: 'North Plant' })
+      .toEqual({
+        level: SITE, region: '', siteId: 's2', site: 'North Plant',
+        visibility: 'site', siteRegion: 'North', siteEntity: '',
+      })
+  })
+
+  // The rule cannot read the site document, so what it needs travels with the
+  // document. A site level that never resolved to a site names nothing, so it
+  // is not a boundary either — it must not become a document only an admin can
+  // ever see.
+  it('marks a site-level document as site-scoped and carries what the rule reads', () => {
+    const f = classificationFields({ level: SITE, siteId: 's1' }, sites)
+    expect(f.visibility).toBe('site')
+    expect(f.siteRegion).toBe('South')
+  })
+
+  it('leaves a site level with no site open rather than locking it to nobody', () => {
+    const f = classificationFields({ level: SITE, siteId: '' }, sites)
+    expect(f.visibility).toBe('all')
+    expect(f.siteId).toBe('')
+  })
+
+  it('keeps every other level org-wide', () => {
+    expect(classificationFields({ level: ORG }).visibility).toBe('all')
+    expect(classificationFields({ level: REGION, region: 'South' }).visibility).toBe('all')
+    expect(classificationFields({}).visibility).toBe('all')
   })
 
   it('keeps a name already on the record when the site has left the registry', () => {

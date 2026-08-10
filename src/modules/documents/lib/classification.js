@@ -110,6 +110,30 @@ export function levelFilterOptions(docs = []) {
 }
 
 /**
+ * What `visibility` says to the security rule: 'all' is the whole org, 'site'
+ * is only people whose access reaches the named site. It is deliberately a
+ * separate field from `level` rather than derived from it in the rule, because
+ * the client's query has to filter on exactly what the rule checks — and a
+ * query cannot express "level is anything except site" over documents that
+ * predate the field.
+ */
+export const VISIBLE_ALL = 'all'
+export const VISIBLE_SITE = SITE
+
+// Every key is written on every save, blank when unused. Firestore rejects
+// undefined, and a document moved from Site to Organization that kept its
+// siteId would apply everywhere and to one place at once — and, now, would
+// still be locked to that site's staff.
+const OPEN = {
+  region: '',
+  siteId: '',
+  site: '',
+  visibility: VISIBLE_ALL,
+  siteRegion: '',
+  siteEntity: '',
+}
+
+/**
  * The classification to persist.
  *
  * Only the fields the chosen level uses are filled — a document moved from Site
@@ -122,11 +146,25 @@ export function levelFilterOptions(docs = []) {
  */
 export function classificationFields(form = {}, sites = []) {
   const level = clean(form.level)
-  if (level === REGION) return { level, region: clean(form.region), siteId: '', site: '' }
+  if (level === REGION) return { ...OPEN, level, region: clean(form.region) }
   if (level === SITE) {
     const id = clean(form.siteId)
     const known = sites.find((s) => clean(s?.id) === id)
-    return { level, region: '', siteId: id, site: clean(known?.name) || clean(form.site) }
+    // A site level that never resolved to a site names nothing, so it is not a
+    // boundary either — it stays open rather than becoming a document only an
+    // admin can ever see.
+    if (!id) return { ...OPEN, level }
+    return {
+      level,
+      region: '',
+      siteId: id,
+      site: clean(known?.name) || clean(form.site),
+      visibility: SITE,
+      // Snapshotted for the security rule, which cannot read the site document
+      // without spending a lookup per row of the library. See firestore.rules.
+      siteRegion: clean(known?.region) || clean(form.siteRegion),
+      siteEntity: clean(known?.entity) || clean(form.siteEntity),
+    }
   }
-  return { level: level === ORG ? ORG : '', region: '', siteId: '', site: '' }
+  return { ...OPEN, level: level === ORG ? ORG : '' }
 }

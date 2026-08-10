@@ -68,6 +68,51 @@ curl -s -X POST "https://firestore.googleapis.com/v1/projects/weehs-4eb28/databa
 
 It must return `PERMISSION_DENIED` — no token, no write.
 
+## 0c. Site-scoped documents: BACKFILL BEFORE RULES  ⚠️ or the library goes dark
+
+Site-level documents are restricted to people whose access reaches that site.
+The rule reads `visibility` off each document **directly** — `resource.data.visibility`,
+not `resource.data.get('visibility', 'all')` — and that is load-bearing rather
+than stylistic.
+
+`read` covers `get` and `list`. For a list, Firestore has to prove from the rule
+alone that the query cannot return a document the rule would refuse, and it can
+only do that when the condition names a field directly. Written defensively —
+`.get(field, default)`, `!('visibility' in resource.data) || …`, or
+`keys().hasAny([…])` — the condition stops constraining the query: the
+single-document `get` is still refused, but an unfiltered **list returns the
+whole collection, contents and all**. All three forms were checked against the
+emulator. Per-document tests pass in every one of them, which is how this would
+have shipped; `tests/documents.rules.test.js` lists as well as gets.
+
+The price of direct access is that reading a field that is not there errors, and
+an erroring rule denies. A document with no `visibility` is therefore readable by
+nobody but admins, managers and auditors. So, in this order:
+
+```bash
+node scripts/backfill-document-visibility.mjs --dry-run
+```
+
+```bash
+node scripts/backfill-document-visibility.mjs
+```
+
+Then, and only then:
+
+```bash
+npx firebase deploy --only firestore:rules,firestore:indexes --project weehs-4eb28
+```
+
+The script is idempotent — it only touches documents with no `visibility` yet,
+and stamps every one of them `all`, which is exactly the access they have today.
+It narrows nothing; it records what is already true so the rule can read it. Run
+it against **every** org in the project, not just the first: it reads the org off
+the signed-in account, so one run covers one tenant.
+
+The indexes ship with the rules because a member's library is fetched as
+`visibility == 'all'` plus `siteId in (…)`, and both need a composite index with
+`createdAt`. Without them a member sees an empty library and a console error.
+
 ## 1. App Check — protect the public write surfaces  ⚠️ console required
 
 The app has three deliberately unauthenticated write surfaces (equipment defect

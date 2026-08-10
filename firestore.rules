@@ -48,6 +48,66 @@ service cloud.firestore {
         && (myProfile().role == 'admin' || myProfile().role == 'manager');
     }
 
+    // ── Site-scoped document visibility ───────────────────────────────────────
+    // A document filed at Site level is readable only by people whose access
+    // reaches that site. Everything else in the library stays org-wide, which is
+    // what it was before, so this narrows one level and nothing else.
+    //
+    // The check must answer "does this user reach this site" WITHOUT reading the
+    // site document. Rules allow ten document reads per request and twenty per
+    // query, and a library list evaluates this rule once per document — one
+    // get() per row would deny the whole query well before the page filled. So
+    // the site's region and entity are snapshotted onto the document when it is
+    // saved, and the rule reads only the profile it already has.
+    //
+    // The cost of that is honest and worth stating: moving a site to another
+    // region does not re-file documents already saved against the old one.
+    // See classificationFields() in modules/documents/lib/classification.js.
+    function isElevatedOf(orgId) {
+      return isApprovedMemberOf(orgId)
+        && myProfile().role in ['admin', 'manager', 'auditor'];
+    }
+
+    // ── Read the queried document's fields DIRECTLY. This is not a style
+    // preference, it is the difference between a boundary and a decoration.
+    //
+    // `read` covers get AND list, and for a list Firestore has to prove from
+    // the rule alone that the query cannot return a document the rule refuses.
+    // It can only do that when the condition names a field directly. Write it
+    // defensively — resource.data.get('visibility','all'), or
+    // !('visibility' in resource.data) || … , or keys().hasAny([…]) — and the
+    // condition stops constraining the query: the single-document get is still
+    // refused, but an unfiltered LIST returns every document in the collection,
+    // contents and all. Verified against the emulator, all three forms.
+    //
+    // That failure is invisible to per-document tests, which is exactly how it
+    // would have shipped. tests/documents.rules.test.js lists as well as gets.
+    //
+    // The cost is that `visibility` must exist on every document: direct access
+    // to a missing field errors, and an erroring rule denies. So the backfill
+    // is a PREREQUISITE, not a follow-up — scripts/backfill-document-visibility.mjs
+    // runs BEFORE these rules deploy, or the existing library goes dark. See
+    // docs/PRODUCTION.md §0c.
+    //
+    // Fields of OTHER documents are safe to read defensively: the profile is
+    // fetched with get() and is constant across the query, so it constrains
+    // nothing and `.get(…, default)` on it costs nothing.
+    function reachesSite(d) {
+      let p = myProfile();
+      let a = p.get('access', {});
+      // Their own posting counts, exactly as resolveAccessibleSites() has it.
+      return d.siteId != ''
+        && (p.get('siteId', '') == d.siteId
+            || a.get('sites', []).hasAny([d.siteId])
+            || a.get('regions', []).hasAny([d.siteRegion])
+            || a.get('entities', []).hasAny([d.siteEntity]));
+    }
+
+    function canReadDocument(orgId, d) {
+      return isApprovedMemberOf(orgId)
+        && (isElevatedOf(orgId) || d.visibility != 'site' || reachesSite(d));
+    }
+
     // ── Proof of scan ─────────────────────────────────────────────────────────
     // The public write surfaces exist for one person: someone standing in front
     // of an asset with their phone. Nothing used to check that. A report only
@@ -441,21 +501,37 @@ service cloud.firestore {
       // extinguishers, meetings, meta/stats, sites, notifications, …). Approved
       // members read/create/update; managers+ delete. auditLogs is excluded so
       // it keeps its append-only rule above.
+      // Site-scoped reads for the document library. Writes stay with the generic
+      // rule below; only `read` is narrowed here.
+      //
+      // This is only worth anything because `documents` is excluded from the
+      // generic read below. Rules are a permissive union: a second match that
+      // still granted read would make every line of this one decorative.
+      match /documents/{docId} {
+        allow read: if canReadDocument(orgId, resource.data);
+      }
+
       match /{col}/{docId} {
         // defectLocks joins auditLogs in being excluded: its whole purpose is
         // that a create fails on an existing document, which a generic update
         // permission would quietly defeat. docSeq likewise: its monotonic rule
         // above is the guarantee, and a generic update would erase it.
-        allow read, create, update: if col != 'auditLogs' && col != 'defectLocks' && col != 'docSeq' && isApprovedMemberOf(orgId);
+        //
+        // `read` is split out from create/update for one reason: documents are
+        // read through the site-scoped rule above and written through this one.
+        allow read: if col != 'auditLogs' && col != 'defectLocks' && col != 'docSeq' && col != 'documents' && isApprovedMemberOf(orgId);
+        allow create, update: if col != 'auditLogs' && col != 'defectLocks' && col != 'docSeq' && isApprovedMemberOf(orgId);
         allow delete: if col != 'auditLogs' && col != 'docSeq' && isManagerOf(orgId);
 
-        // Nested subcollections (e.g. incidents/{id}/photos, documents/{id}/versions).
+        // Nested subcollections (e.g. incidents/{id}/photos).
         // The recursive wildcard also matches the parent {col}/{docId} itself, so
         // it must repeat the auditLogs guard — otherwise it would silently reopen
         // updates/deletes on the append-only audit trail. The same applies to
-        // defectLocks, whose create-only rule is the duplicate check.
+        // defectLocks, whose create-only rule is the duplicate check, and to
+        // documents, whose site scoping this would otherwise hand straight back.
         match /{sub=**} {
-          allow read, create, update: if col != 'auditLogs' && col != 'defectLocks' && col != 'docSeq' && isApprovedMemberOf(orgId);
+          allow read: if col != 'auditLogs' && col != 'defectLocks' && col != 'docSeq' && col != 'documents' && isApprovedMemberOf(orgId);
+          allow create, update: if col != 'auditLogs' && col != 'defectLocks' && col != 'docSeq' && isApprovedMemberOf(orgId);
           allow delete: if col != 'auditLogs' && col != 'docSeq' && isManagerOf(orgId);
         }
       }

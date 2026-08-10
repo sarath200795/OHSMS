@@ -65,12 +65,18 @@ export default function ModulePage({ module, config }) {
   const useLookups = config.useLookups || useNoLookups
   const lookups = useLookups()
 
+  // Passed to subscribe so a module whose reads are scoped can build a query the
+  // security rules will actually allow. Modules that do not care ignore the
+  // third argument, and for them `lookups` is a module-level constant, so this
+  // memo never changes and nothing re-subscribes.
+  const viewer = useMemo(() => ({ role, sites: lookups.sites || [] }), [role, lookups])
+
   useEffect(() => {
     if (!orgId) return
     setRecords(null)
-    const unsub = service.subscribe(orgId, setRecords)
+    const unsub = service.subscribe(orgId, setRecords, viewer)
     return unsub
-  }, [orgId, service])
+  }, [orgId, service, viewer])
 
   const canCreate = can(role, 'record.create')
   const canEdit = can(role, 'record.edit')
