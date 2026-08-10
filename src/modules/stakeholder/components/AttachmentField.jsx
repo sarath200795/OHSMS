@@ -3,6 +3,7 @@ import toast from 'react-hot-toast'
 import { Upload, X, Paperclip, Link2, Loader2, Video } from 'lucide-react'
 import { Button, Input, Field } from '../../../shared/ui'
 import { putFile, MAX_UPLOAD_BYTES, formatSize } from '../../../shared/storage'
+import { safeHref } from '../../../shared/safeUrl'
 import { attachmentShape, referenceHref, describeReference, ATTACHMENT_KINDS } from '../lib/attachments'
 
 /**
@@ -129,7 +130,13 @@ export default function AttachmentField({ kind, value = [], onChange, disabled =
       ) : (
         <ul className="space-y-1.5">
           {value.map((a) => {
-            const href = a.mode === 'reference' ? referenceHref(a) : a.url
+            // Through safeHref, not raw. An attachment's url is stored text,
+            // and a reference link is typed in by hand — so both are somewhere
+            // a colleague could put javascript: and wait for the next person to
+            // click it. safeHref returns '' for anything that is not http(s),
+            // and the branch below already renders unlinked text when there is
+            // no href, so a rejected URL degrades to a plain label.
+            const href = safeHref(a.mode === 'reference' ? referenceHref(a) : a.url)
             const Icon = a.mode === 'reference' ? Video : Paperclip
             return (
               <li key={a.id} className="flex items-center gap-2 rounded-xl bg-ink-50 px-3 py-2 text-sm">

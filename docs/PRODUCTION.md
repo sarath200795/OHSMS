@@ -170,10 +170,27 @@ database once, so the first restore you ever do is not the one that matters.
 
 ## 4. Cloud Storage for files  ⚠️ one console click
 
-The code now uploads new training-content files to Cloud Storage (org-scoped,
-`storage.rules` enforces the same tenancy as Firestore) and falls back to the
-old inline base64 if the bucket is unavailable — so nothing breaks before this
-step, files just stay on the old path.
+The code now uploads new training-content files to Cloud Storage under an
+org-scoped path, and falls back to the old inline base64 if the bucket is
+unavailable — so nothing breaks before this step, files just stay on the old
+path.
+
+⚠️ **Storage does NOT enforce the same tenancy as Firestore.** This section used
+to claim it did, which was wrong and is the more dangerous kind of wrong: it
+told whoever read it that a boundary existed. `storage.rules` binds nothing to
+an org — the `{orgId}` path segment is captured and never checked, because doing
+so needs either cross-service Firestore reads or an `orgId` custom claim on the
+token, and neither is in place yet. Concretely, any signed-in user of any
+tenant can read and delete any other tenant's uploaded files if they know the
+path. Uploads are at least safe from being overwritten in place (`update` is
+denied outright and every upload lands on a random path).
+
+Closing it needs the custom claim, which needs the Admin SDK — i.e. the
+`functions/` tier. The stronger ruleset is already written at the bottom of
+`storage.rules`, commented, ready to swap in once claims exist. Until then,
+treat file storage as org-scoped by convention only, and do not put anything in
+it that would be materially worse in a competitor's hands than the Firestore
+records already are.
 
 1. Firebase console → **Storage** → Get started (default bucket, production
    rules — the repo's `storage.rules` deploys over them).

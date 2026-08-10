@@ -853,10 +853,36 @@ describe('RBAC', () => {
   it('the audit log is append-only (no updates)', async () => {
     const alice = testEnv.authenticatedContext('alice').firestore()
     await assertSucceeds(
-      setDoc(doc(alice, 'organizations', 'orgA', 'auditLogs', 'l1'), { action: 'x', at: Date.now() })
+      setDoc(doc(alice, 'organizations', 'orgA', 'auditLogs', 'l1'), {
+        action: 'x', at: Date.now(), actorUid: 'alice',
+      })
     )
     await assertFails(
-      setDoc(doc(alice, 'organizations', 'orgA', 'auditLogs', 'l1'), { action: 'y', at: Date.now() })
+      setDoc(doc(alice, 'organizations', 'orgA', 'auditLogs', 'l1'), {
+        action: 'y', at: Date.now(), actorUid: 'alice',
+      })
+    )
+  })
+
+  // An append-only trail is only evidence if the name on an entry is the person
+  // who wrote it. Creation used to be unvalidated, so a member could attribute
+  // anything to an admin — in the one record that would otherwise show them
+  // doing it.
+  it('a member CANNOT write an audit entry in someone else\'s name', async () => {
+    const alice = testEnv.authenticatedContext('alice').firestore()
+    await assertFails(
+      setDoc(doc(alice, 'organizations', 'orgA', 'auditLogs', 'forged'), {
+        action: 'user.role', at: Date.now(), actorUid: 'someone-else', actorName: 'Admin',
+      })
+    )
+  })
+
+  it('an audit entry with no actor at all is refused', async () => {
+    const alice = testEnv.authenticatedContext('alice').firestore()
+    await assertFails(
+      setDoc(doc(alice, 'organizations', 'orgA', 'auditLogs', 'anon'), {
+        action: 'x', at: Date.now(),
+      })
     )
   })
 })

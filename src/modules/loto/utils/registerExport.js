@@ -59,10 +59,10 @@ const COLUMNS = [
   ['unlockedAt', 'Unlocked At'],
 ]
 
-function csvCell(v) {
-  const s = String(v ?? '')
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
-}
+// Shared with every other export so the formula neutralisation is in one place
+// — an isolation register carries technician names and free-text notes, both of
+// which are typed by the people the register is about.
+import { csvCell } from '../../../shared/lib/csv'
 
 const tsFmt = (ts) => {
   if (!ts) return ''

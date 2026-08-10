@@ -4,6 +4,8 @@
 // Status: expired < today ≤ expiring (≤30d) < valid; '' expiry = never expires.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { toCsv as sharedToCsv } from '../../../shared/lib/csv'
+
 export const EXPIRING_WINDOW_DAYS = 30
 
 export function todayISO(d = new Date()) {
@@ -185,13 +187,13 @@ export function buildStatusReport(users = [], courses = [], records = [], assign
   return rows
 }
 
-/** Minimal CSV serializer — quotes fields containing commas, quotes or newlines. */
+/**
+ * The training register as CSV.
+ *
+ * Serialization moved to shared/lib/csv so this export gets the same formula
+ * neutralisation as every other one — a trainee's own name reaches this file,
+ * and it is opened by the person who manages them.
+ */
 export function toCsv(rows, columns = REPORT_COLUMNS) {
-  const esc = (v) => {
-    const s = String(v ?? '')
-    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
-  }
-  const head = columns.map((c) => esc(c.label)).join(',')
-  const body = rows.map((r) => columns.map((c) => esc(r[c.key])).join(',')).join('\n')
-  return `${head}\n${body}\n`
+  return sharedToCsv(rows, columns)
 }

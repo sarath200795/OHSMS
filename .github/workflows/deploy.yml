@@ -67,11 +67,32 @@ jobs:
           VITE_SENTRY_DSN: ${{ vars.VITE_SENTRY_DSN }}
         run: npm run build
 
-      - name: Deploy hosting + rules
+      # Two steps, in this order, deliberately — see docs/PRODUCTION.md §0b.
+      #
+      # Rules and indexes go first because the bundle depends on both: a client
+      # that ships before its rules gets PERMISSION_DENIED, and one that ships
+      # before its indexes gets FAILED_PRECONDITION on the first compound query.
+      # Indexes were previously never deployed by CI at all, so every index the
+      # app relied on existed only because someone had run a deploy from a
+      # laptop — and a fresh project would have had none of them.
+      #
+      # Index builds are asynchronous: this returns once they are accepted, not
+      # once they are ready, so a brand-new index can still be building when
+      # hosting goes live. That window is minutes and only affects the query
+      # that needs it; shipping the client first would break it for certain.
+      - name: Deploy rules + indexes
         if: steps.creds.outputs.configured == 'true'
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json
         run: |
           echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > "$GOOGLE_APPLICATION_CREDENTIALS"
-          npx firebase-tools deploy --only hosting,firestore:rules,storage \
+          npx firebase-tools deploy --only firestore:rules,firestore:indexes,storage \
+            --project "${{ vars.VITE_FIREBASE_PROJECT_ID }}" --non-interactive
+
+      - name: Deploy hosting
+        if: steps.creds.outputs.configured == 'true'
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json
+        run: |
+          npx firebase-tools deploy --only hosting \
             --project "${{ vars.VITE_FIREBASE_PROJECT_ID }}" --non-interactive

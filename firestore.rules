@@ -48,6 +48,16 @@ service cloud.firestore {
         && (myProfile().role == 'admin' || myProfile().role == 'manager');
     }
 
+    // Auditor is documented as read-only across every module, and until now
+    // that was true only in React — `can()` hid the buttons while the rules
+    // cheerfully accepted the same write from the SDK. An auditor is typically
+    // an outside party given a login to inspect the safety record; being able
+    // to edit the evidence they are auditing is the one thing the role exists
+    // to prevent. Writes go through this instead of isApprovedMemberOf.
+    function isWriterOf(orgId) {
+      return isApprovedMemberOf(orgId) && myProfile().role != 'auditor';
+    }
+
     // ── Site-scoped document visibility ───────────────────────────────────────
     // A document filed at Site level is readable only by people whose access
     // reaches that site. Everything else in the library stays org-wide, which is
@@ -200,12 +210,31 @@ service cloud.firestore {
     // defeats it without guessing anything. The app has only ever fetched these
     // by exact token (QrLanding does getDoc(doc(db,'qr',token))), so `get`
     // alone costs nothing and `list` was authority the product never used.
+    // The update rule is pinned to the org that ALREADY owns the mirror.
+    //
+    // It used to read `isApprovedMemberOf(resource.data.orgId)
+    //   || isApprovedMemberOf(request.resource.data.orgId)`, and the second
+    // branch is evaluated against the POST state — so a write that simply set
+    // orgId to the caller's own org satisfied it no matter who owned the
+    // document. One signup gives anyone an approved admin profile in a throwaway
+    // org, and the token is not a secret in the field: it is printed on the
+    // sticker. So a photograph of someone else's extinguisher label was enough
+    // to re-point that unit's public QR page into the attacker's tenant, where
+    // every future defect report scanned from it would land — while the person
+    // scanning is told it was submitted, and the owner's safety team never
+    // hears about it. The same call against a permit mirror can show a fire
+    // watcher an expired hot-work permit as approved.
+    //
+    // Pinning orgId across the write closes it without costing anything: every
+    // legitimate writer already owns the mirror it is updating, and a merge
+    // write carries the existing orgId through to the post state.
     match /qr/{token} {
       allow get: if true;
       allow list: if false;
       allow create: if isApprovedMemberOf(request.resource.data.orgId);
-      allow update: if isApprovedMemberOf(resource.data.orgId)
-        || isApprovedMemberOf(request.resource.data.orgId);
+      allow update: if resource != null
+        && isApprovedMemberOf(resource.data.orgId)
+        && request.resource.data.orgId == resource.data.orgId;
       allow delete: if isApprovedMemberOf(resource.data.orgId);
     }
 
@@ -222,12 +251,14 @@ service cloud.firestore {
     // job location, hazards, the issuer's and holder's names, fire watchers and
     // the full participant list with each worker's employer — so a collection
     // list was a cross-tenant PII dump, not just an inventory leak.
+    // Same pin as /qr, and for the same reason — see the note above it.
     match /permitQr/{token} {
       allow get: if true;
       allow list: if false;
       allow create: if isApprovedMemberOf(request.resource.data.orgId);
-      allow update: if isApprovedMemberOf(resource.data.orgId)
-        || isApprovedMemberOf(request.resource.data.orgId);
+      allow update: if resource != null
+        && isApprovedMemberOf(resource.data.orgId)
+        && request.resource.data.orgId == resource.data.orgId;
       allow delete: if isApprovedMemberOf(resource.data.orgId);
     }
 
@@ -244,9 +275,13 @@ service cloud.firestore {
         && resource != null && isApprovedMemberOf(resource.data.orgId);
       allow create: if isLegacyOrgCollection(legacyCol)
         && isApprovedMemberOf(request.resource.data.orgId);
+      // Pinned the same way as /qr above: the post-state branch let one org
+      // capture another's document by rewriting orgId to its own in a single
+      // update, which for LOTO means taking over a live isolation procedure.
       allow update: if isLegacyOrgCollection(legacyCol)
-        && ((resource != null && isApprovedMemberOf(resource.data.orgId))
-            || isApprovedMemberOf(request.resource.data.orgId));
+        && resource != null
+        && isApprovedMemberOf(resource.data.orgId)
+        && request.resource.data.orgId == resource.data.orgId;
       allow delete: if isLegacyOrgCollection(legacyCol)
         && resource != null && isManagerOf(resource.data.orgId);
     }
@@ -281,7 +316,13 @@ service cloud.firestore {
       allow create: if isSignedIn()
         && (
           (request.auth.uid == uid
-            && ((request.resource.data.status == 'pending' && request.resource.data.role != 'admin')
+            // 'member', not merely "not admin". A self-joining stranger used to
+            // be able to name themselves 'manager' while pending, and approval
+            // only flips status — nothing ever re-asserts the role — so the
+            // admin clicking Approve on what looked like a routine join request
+            // was silently granting the elevated role the joiner had chosen for
+            // themselves. Promotion is the admin's to make, afterwards.
+            && ((request.resource.data.status == 'pending' && request.resource.data.role == 'member')
                 || (request.resource.data.status == 'approved'
                     && request.resource.data.role == 'admin'
                     && getAfter(/databases/$(database)/documents/organizations/$(request.resource.data.orgId)).data.createdBy == request.auth.uid)))
@@ -307,9 +348,18 @@ service cloud.firestore {
       allow update: if isSignedIn()
         && request.resource.data.orgId == resource.data.orgId
         && (
+          // `access` and `siteId` are pinned alongside role and status, because
+          // they are no less a privilege than role is. They decide which sites
+          // a person resolves to, and site-level documents are now readable
+          // only by people whose access reaches the site — so a member who can
+          // rewrite their own access grants themselves every restricted
+          // document in the org from the browser console, without ever
+          // touching their role. Only an admin changes who can see what.
           (request.auth.uid == uid
             && request.resource.data.role == resource.data.role
-            && request.resource.data.status == resource.data.status)
+            && request.resource.data.status == resource.data.status
+            && request.resource.data.get('siteId', '') == resource.data.get('siteId', '')
+            && request.resource.data.get('access', {}) == resource.data.get('access', {}))
           || isAdminOf(resource.data.orgId)
         );
 
@@ -326,9 +376,17 @@ service cloud.firestore {
       // Append-only audit trail — create only, never edit or delete. Declared
       // before the generic rule; the generic rule below excludes auditLogs so
       // this is the only rule that governs it.
+      // An append-only trail is only evidence if the name on an entry is the
+      // person who made it. Creation was unvalidated, so any approved member
+      // could write entries attributing whatever they liked to an admin — and
+      // the trail that would show them doing it is the same one they are
+      // writing. Pinning actorUid to the caller's own uid makes an entry mean
+      // what it says; the rest of the payload stays free-form because the trail
+      // records many different shapes.
       match /auditLogs/{logId} {
         allow read: if isApprovedMemberOf(orgId);
-        allow create: if isApprovedMemberOf(orgId);
+        allow create: if isApprovedMemberOf(orgId)
+          && request.resource.data.actorUid == request.auth.uid;
         allow update, delete: if false;
       }
 
@@ -411,6 +469,18 @@ service cloud.firestore {
               && request.resource.data.reportedBy == 'public'
               && request.resource.data.note is string
               && request.resource.data.note.size() <= 500
+              // `note` was the only free string anyone had bounded, so every
+              // other one on this ANONYMOUS branch was unbounded — a person
+              // holding one scanned token could push a megabyte per write into
+              // the org's approval queue, repeatedly, for free. These are labels
+              // and roles copied off a sticker; 200 is generous for all of them.
+              // .get() defaults an absent optional field to '', which passes.
+              && request.resource.data.get('extLabel', '').size() <= 200
+              && request.resource.data.get('assetLabel', '').size() <= 200
+              && request.resource.data.get('defectType', '').size() <= 200
+              && request.resource.data.get('newStatus', '').size() <= 60
+              && request.resource.data.get('reportedByName', '').size() <= 120
+              && request.resource.data.get('reporterRole', '').size() <= 60
               && (
                 // An extinguisher defect, keyed by the unit it was raised
                 // against — and that unit must be the one the token names,
@@ -530,7 +600,7 @@ service cloud.firestore {
         // `read` is split out from create/update for one reason: documents are
         // read through the site-scoped rule above and written through this one.
         allow read: if col != 'auditLogs' && col != 'defectLocks' && col != 'docSeq' && col != 'documents' && isApprovedMemberOf(orgId);
-        allow create, update: if col != 'auditLogs' && col != 'defectLocks' && col != 'docSeq' && isApprovedMemberOf(orgId);
+        allow create, update: if col != 'auditLogs' && col != 'defectLocks' && col != 'docSeq' && isWriterOf(orgId);
         allow delete: if col != 'auditLogs' && col != 'docSeq' && isManagerOf(orgId);
 
         // Nested subcollections (e.g. incidents/{id}/photos).
@@ -541,7 +611,7 @@ service cloud.firestore {
         // documents, whose site scoping this would otherwise hand straight back.
         match /{sub=**} {
           allow read: if col != 'auditLogs' && col != 'defectLocks' && col != 'docSeq' && col != 'documents' && isApprovedMemberOf(orgId);
-          allow create, update: if col != 'auditLogs' && col != 'defectLocks' && col != 'docSeq' && isApprovedMemberOf(orgId);
+          allow create, update: if col != 'auditLogs' && col != 'defectLocks' && col != 'docSeq' && isWriterOf(orgId);
           allow delete: if col != 'auditLogs' && col != 'docSeq' && isManagerOf(orgId);
         }
       }
