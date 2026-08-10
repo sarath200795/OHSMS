@@ -22,6 +22,7 @@ import { useAuth } from '../auth/AuthContext'
 import { initials } from '../lib/format'
 import RequestAccessModal from './RequestAccessModal'
 import Sam from '../sam/Sam'
+import HomeBar from './HomeBar'
 
 const ROLE_LABEL = {
   admin: 'Administrator',
@@ -118,6 +119,7 @@ export default function AppChrome({ children }) {
       </header>
 
       <main className="mx-auto max-w-[1180px] px-5 pb-24 pt-6 sm:px-7">
+        <HomeBar />
         <motion.div
           key={location.pathname}
           initial={reduce ? false : { opacity: 0, y: 6 }}

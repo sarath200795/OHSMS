@@ -1,5 +1,5 @@
 import { useLocation } from 'react-router-dom'
-import { MODULES } from '../modules/registry'
+import { moduleForPath } from '../modules/registry'
 import ModuleLogo3D, { has3DLogo } from '../../pages/portal/ModuleLogo3D'
 import { SkeletonDetail } from '../ui'
 
@@ -18,14 +18,7 @@ import { SkeletonDetail } from '../ui'
  * a shape that means something else.
  */
 
-// Longest path first, so /equipment/aed cannot match a shorter sibling.
-const BY_PATH = [...MODULES]
-  .filter((m) => m.path)
-  .sort((a, b) => b.path.length - a.path.length)
-
-export function moduleForPath(pathname = '') {
-  return BY_PATH.find((m) => pathname === m.path || pathname.startsWith(`${m.path}/`)) || null
-}
+export { moduleForPath }
 
 export default function ModuleLoading() {
   const { pathname } = useLocation()

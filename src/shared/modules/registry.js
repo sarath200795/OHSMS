@@ -207,3 +207,11 @@ export const MODULES = [
 ]
 
 export const MODULE_BY_KEY = Object.fromEntries(MODULES.map((m) => [m.key, m]))
+
+// Longest path first, so /equipment/aed cannot match a shorter sibling.
+const BY_PATH = [...MODULES].filter((m) => m.path).sort((a, b) => b.path.length - a.path.length)
+
+/** The module a pathname belongs to, or null for admin/portal routes. */
+export function moduleForPath(pathname = '') {
+  return BY_PATH.find((m) => pathname === m.path || pathname.startsWith(`${m.path}/`)) || null
+}
