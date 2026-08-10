@@ -245,6 +245,59 @@ export const SOURCES = [
       await updateDoc(dref(orgId, 'consultations', action.docId), { actions })
     },
   },
+  {
+    key: 'escalations',
+    label: 'Escalation',
+    tone: '#e11d48',
+    collection: 'escalations',
+    toNorm: (s) => (s === 'closed' ? 'done' : s === 'in_progress' ? 'in_progress' : 'open'),
+    toNative: (n) => (n === 'done' ? 'closed' : n),
+    extract: (d) =>
+      (d.capa || []).filter(Boolean).map((a) => ({
+        actionId: a.id,
+        title: a.description || 'Corrective action',
+        owner: a.owner || '',
+        due: a.dueDate || '',
+        native: a.status || 'open',
+        context: d.docId || d.title || 'Customer escalation',
+        link: `/stakeholder/escalations/${d.id}`,
+      })),
+    write: async (orgId, action, native) => {
+      const snap = await getDoc(dref(orgId, 'escalations', action.docId))
+      if (!snap.exists()) throw new Error('Escalation not found')
+      const capa = (snap.data().capa || []).map((a) =>
+        a.id === action.actionId ? { ...a, status: native, closedAt: native === 'closed' ? nowISO() : null } : a,
+      )
+      await updateDoc(dref(orgId, 'escalations', action.docId), { capa })
+    },
+  },
+  {
+    key: 'legalIssues',
+    label: 'Legal',
+    tone: '#b45309',
+    collection: 'legalIssues',
+    toNorm: (s) => (s === 'closed' ? 'done' : s === 'in_progress' ? 'in_progress' : 'open'),
+    toNative: (n) => (n === 'done' ? 'closed' : n),
+    extract: (d) =>
+      (d.capa || []).filter(Boolean).map((a) => ({
+        actionId: a.id,
+        title: a.description || 'Corrective action',
+        owner: a.owner || '',
+        due: a.dueDate || '',
+        native: a.status || 'open',
+        context: d.docId || d.title || 'Legal issue',
+        link: `/stakeholder/legal/${d.id}`,
+      })),
+    write: async (orgId, action, native) => {
+      const snap = await getDoc(dref(orgId, 'legalIssues', action.docId))
+      if (!snap.exists()) throw new Error('Legal issue not found')
+      const capa = (snap.data().capa || []).map((a) =>
+        a.id === action.actionId ? { ...a, status: native, closedAt: native === 'closed' ? nowISO() : null } : a,
+      )
+      await updateDoc(dref(orgId, 'legalIssues', action.docId), { capa })
+    },
+  },
+
 ]
 
 export const SOURCE_BY_KEY = Object.fromEntries(SOURCES.map((s) => [s.key, s]))

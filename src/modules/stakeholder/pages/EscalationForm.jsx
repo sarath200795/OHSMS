@@ -11,6 +11,7 @@ import { useStakeholder } from '../context/StakeholderContext'
 import { addEscalation, updateEscalation, deleteEscalation } from '../lib/firestore'
 import { ESCALATION_STATUS, ESCALATION_CHANNEL, SEVERITY } from '../lib/constants'
 import AttachmentField from '../components/AttachmentField'
+import CapaEditor from '../components/CapaEditor'
 
 const EMPTY = {
   title: '', scope: {}, channel: 'in_person', severity: 'medium', status: 'open',
@@ -18,6 +19,7 @@ const EMPTY = {
   legalNoticeReceived: false, legalNoticeRef: '', legalNoticeDate: '',
   finalActionTaken: '', actionTakenOn: '', owner: '',
   attachments: { cctv: [], ethics: [] },
+  capa: [],
 }
 const EMPTY_MEMBER = { memberId: '', name: '', contact: '', note: '' }
 
@@ -249,6 +251,10 @@ export default function EscalationForm() {
               <Input id="eowner" value={form.owner} onChange={(e) => patch({ owner: e.target.value })} />
             </Field>
           </div>
+        </section>
+
+        <section className="card p-5">
+          <CapaEditor value={form.capa || []} onChange={(capa) => patch({ capa })} />
         </section>
 
         <div className="flex justify-end gap-2 pb-2">

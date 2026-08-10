@@ -55,6 +55,28 @@ const str = (v) => String(v ?? '').trim()
 const list = (v) => (Array.isArray(v) ? v : [])
 
 /**
+ * Corrective and preventive actions.
+ *
+ * Same shape as the incident and audit CAPA arrays, deliberately — the central
+ * Action Tracker reads all of them through one extractor, and a fourth spelling
+ * of "who owns this and when is it due" would mean a fourth special case there.
+ *
+ * A row with no description is dropped: an action nobody can read is not an
+ * action, and it would sit in the tracker forever as a blank line.
+ */
+const capa = (v) =>
+  list(v)
+    .map((a) => ({
+      id: str(a?.id) || `capa-${Math.random().toString(36).slice(2, 10)}`,
+      description: str(a?.description),
+      owner: str(a?.owner),
+      dueDate: str(a?.dueDate),
+      status: str(a?.status) || 'open',
+      closedAt: str(a?.closedAt),
+    }))
+    .filter((a) => a.description)
+
+/**
  * The people who complained.
  *
  * Kept as an array of {memberId, name, contact, note} rather than a single
@@ -92,6 +114,7 @@ const escalationShape = (d) => ({
   legalNoticeRef: str(d.legalNoticeRef),
   legalNoticeDate: str(d.legalNoticeDate),
   finalActionTaken: str(d.finalActionTaken),
+  capa: capa(d.capa),
   // CCTV footage and an ethics report, if either exists. Shaped and filtered
   // here so a failed upload never persists as a dead link.
   attachments: {
@@ -123,6 +146,7 @@ const legalShape = (d) => ({
   responseDueDate: str(d.responseDueDate),
   status: str(d.status) || 'open',
   actionTaken: str(d.actionTaken),
+  capa: capa(d.capa),
   penaltyAmount: Number(d.penaltyAmount) || 0,
   owner: str(d.owner),
 })

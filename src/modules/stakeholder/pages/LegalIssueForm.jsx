@@ -12,12 +12,14 @@ import { addLegalIssue, updateLegalIssue, deleteLegalIssue } from '../lib/firest
 import {
   DEPARTMENTS, DEPARTMENT_GROUPS, NOTICE_TYPES, NOTICE_BY_KEY, LEGAL_STATUS,
 } from '../lib/constants'
+import CapaEditor from '../components/CapaEditor'
 
 const EMPTY = {
   title: '', scope: {}, escalationId: '', incidentDate: '', description: '',
   departments: [], departmentOther: '', officials: '',
   noticeType: 'none', noticeRef: '', noticeDate: '', responseDueDate: '',
   status: 'open', actionTaken: '', penaltyAmount: '', owner: '',
+  capa: [],
 }
 
 /**
@@ -231,6 +233,10 @@ export default function LegalIssueForm() {
           <Field label="Owner" htmlFor="lowner">
             <Input id="lowner" value={form.owner} onChange={(e) => patch({ owner: e.target.value })} />
           </Field>
+        </section>
+
+        <section className="card p-5">
+          <CapaEditor value={form.capa || []} onChange={(capa) => patch({ capa })} />
         </section>
 
         <div className="flex justify-end gap-2 pb-2">
