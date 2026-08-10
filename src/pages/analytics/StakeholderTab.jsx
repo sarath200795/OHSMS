@@ -9,6 +9,23 @@
 //
 // linkage.js owns the join and the counting. This file only scopes the two
 // collections to the sites the viewer may see and arranges what comes back.
+//
+// THE MONTH RANGE. The two collections are dated by different fields — a
+// complaint by when it was raised, a visit by when the incident happened — and
+// the range is applied to each record by its own date, independently. The two
+// ends of a linked pair can therefore fall in different months, and a complaint
+// raised in January whose FIR landed in March drops out of the crossover when
+// the range stops at January.
+//
+// The alternative — keeping a pair whenever either end is in range — was
+// rejected because it makes every other number on the page a lie: "3 legal
+// issues logged" would include a matter from a month the range excludes, and
+// the notice, department and status splits would all count it. Independence is
+// the only rule under which every denominator on screen means what it says.
+//
+// What it costs is reported rather than swallowed: escalatedOutOfRange counts
+// the complaints whose matter fell outside the range, so the crossover tile can
+// never quietly read zero while the range is doing the work.
 // ─────────────────────────────────────────────────────────────────────────────
 import { useMemo, useState } from 'react'
 import { ArrowRightLeft, MessageSquareWarning, Gavel, ShieldAlert } from 'lucide-react'
@@ -17,7 +34,10 @@ import {
   DEPARTMENT_BY_KEY, NOTICE_TYPES, NOTICE_BY_KEY, SEVERE_NOTICES,
   ESCALATION_STATUS, ESCALATION_STATUS_BY_KEY, LEGAL_STATUS,
 } from '../../modules/stakeholder/lib/constants'
-import { withLegal, withEscalation, summarise, repeatMembers } from '../../modules/stakeholder/lib/linkage'
+import {
+  withLegal, withEscalation, summarise, repeatMembers, legalByEscalation,
+} from '../../modules/stakeholder/lib/linkage'
+import { monthOf } from './moduleAnalytics'
 import { Panel, Stat, NoData, Picker } from './ui'
 import Breakdown from './Breakdown'
 
@@ -46,6 +66,7 @@ const CHIP = { emerald: 'green', slate: 'gray', blue: 'blue', amber: 'amber', re
 // eslint-disable-next-line react-refresh/only-export-components
 export function stakeholderAnalytics({
   escalations = [], legalIssues = [], sites = [], siteId = 'all', keepUnplaced = true,
+  from = '', to = '',
 } = {}) {
   const byId = new Map(sites.map((s) => [s.id, s]))
 
@@ -70,12 +91,55 @@ export function stakeholderAnalytics({
     return at.id ? true : keepUnplaced
   }
 
-  const esc = escalations.filter((e) => e && inScope(e))
-  const legal = legalIssues.filter((l) => l && inScope(l))
+  // Site visibility without the site picker applied, so the month options stay
+  // the same set whichever site is chosen. Choices that disappear as you use
+  // them make a filter impossible to reason about.
+  const visible = (r) => Boolean(place(r).id) || keepUnplaced
+
+  const inRange = (month) => {
+    // Undated records survive a range rather than vanishing — a missing date is
+    // a data-quality problem to surface, not one to hide. The count of them is
+    // returned as `undated` so the number on screen stays explainable.
+    if (!month) return true
+    if (from && month < from) return false
+    if (to && month > to) return false
+    return true
+  }
+
+  const escScoped = escalations.filter((e) => e && inScope(e))
+  const legalScoped = legalIssues.filter((l) => l && inScope(l))
+  const esc = escScoped.filter((e) => inRange(monthOf(e.raisedOn)))
+  const legal = legalScoped.filter((l) => inRange(monthOf(l.incidentDate)))
+
+  // The union of both collections' months, so a month carrying only a
+  // department visit is still offered — the two are dated by different fields
+  // and neither collection alone knows the whole calendar.
+  const months = [
+    ...new Set([
+      ...escalations.filter((e) => e && visible(e)).map((e) => monthOf(e.raisedOn)),
+      ...legalIssues.filter((l) => l && visible(l)).map((l) => monthOf(l.incidentDate)),
+    ]),
+  ].filter(Boolean).sort()
+
+  const undated = {
+    escalations: esc.filter((e) => !monthOf(e.raisedOn)).length,
+    legal: legal.filter((l) => !monthOf(l.incidentDate)).length,
+  }
+  undated.total = undated.escalations + undated.legal
 
   const joined = withLegal(esc, legal)
   const summary = summarise(esc, legal)
   const escalated = joined.filter((e) => e.escalated)
+
+  // A complaint whose matter is dated in a month the range excludes reads as
+  // "never escalated" everywhere above, which is the one thing this tab must
+  // not say by accident. Measured against the site-scoped population rather
+  // than the raw one, so this only ever reports the viewer's own range choice
+  // and never hints at records at a site they cannot see.
+  const linkedInScope = legalByEscalation(legalScoped)
+  const escalatedOutOfRange = joined.filter(
+    (e) => !e.escalated && (linkedInScope.get(clean(e.id)) || []).length > 0
+  ).length
 
   // Ranked by NOTICE_TYPES position, which runs least to most serious, so the
   // worst matter is the first one read. Ties break on how much is still open.
@@ -174,8 +238,11 @@ export function stakeholderAnalytics({
 
   return {
     summary,
+    months,
+    undated,
     crossover,
     closedButLive,
+    escalatedOutOfRange,
     openSevere,
     byDepartment,
     byNotice,
@@ -184,8 +251,8 @@ export function stakeholderAnalytics({
     repeats,
     bySite,
     // A legal issue whose complaint is not in this scope. Under a site filter
-    // that is usually the filter's doing and not a deletion, so the caption is
-    // written as "not in this scope" rather than "deleted".
+    // or a month range that is usually the filter's doing and not a deletion,
+    // so the caption is written as "not in this scope" rather than "deleted".
     orphanLegal: withEscalation(legal, esc).filter((l) => l.brokenLink).length,
     // An authority that turned up with no customer complaint behind it.
     standaloneLegal: summary.legal.total - summary.legal.fromEscalation,
@@ -195,23 +262,48 @@ export function stakeholderAnalytics({
 const REPEATS_SHOWN = 8
 
 export default function StakeholderTab({ escalations, legalIssues, sites, keepUnplaced = true }) {
-  const [siteId, setSiteId] = useState('all')
+  const [f, setF] = useState({ siteId: 'all', from: '', to: '' })
 
   const a = useMemo(
-    () => stakeholderAnalytics({ escalations, legalIssues, sites, siteId, keepUnplaced }),
-    [escalations, legalIssues, sites, siteId, keepUnplaced]
+    () => stakeholderAnalytics({ escalations, legalIssues, sites, keepUnplaced, ...f }),
+    [escalations, legalIssues, sites, keepUnplaced, f]
   )
 
   const s = a.summary
-  const scoped = siteId !== 'all'
+  const scoped = f.siteId !== 'all'
+  const ranged = Boolean(f.from || f.to)
   const plural = (n, one, many) => (n === 1 ? one : many)
+
+  const set = (k) => (e) => setF((p) => ({ ...p, [k]: e.target.value }))
+  const reset = () => setF({ siteId: 'all', from: '', to: '' })
+
+  // The months as the dropdowns spell them, so the sentence and the control the
+  // reader just used say the same thing.
+  const rangeLabel = f.from && f.to
+    ? (f.from === f.to ? f.from : `${f.from} to ${f.to}`)
+    : f.from ? `${f.from} onwards` : `up to ${f.to}`
 
   const picker = (
     <div className="card mb-5 flex flex-wrap items-end gap-3 p-4">
-      <Picker id="sh-site" label="Site" value={siteId} onChange={(e) => setSiteId(e.target.value)}>
+      <Picker id="sh-site" label="Site" value={f.siteId} onChange={set('siteId')}>
         <option value="all">All sites ({sites.length})</option>
         {sites.map((site) => <option key={site.id} value={site.id}>{site.name}</option>)}
       </Picker>
+      <Picker id="sh-from" label="From" value={f.from} onChange={set('from')}>
+        <option value="">Earliest</option>
+        {a.months.map((m) => <option key={m} value={m}>{m}</option>)}
+      </Picker>
+      <Picker id="sh-to" label="To" value={f.to} onChange={set('to')}>
+        <option value="">Latest</option>
+        {a.months.map((m) => <option key={m} value={m}>{m}</option>)}
+      </Picker>
+      <button
+        type="button"
+        onClick={reset}
+        className="rounded-2xl bg-clay-surface px-4 py-2.5 text-[12.5px] font-semibold text-ink-700 shadow-clay-sm"
+      >
+        Reset
+      </button>
     </div>
   )
 
@@ -221,23 +313,47 @@ export default function StakeholderTab({ escalations, legalIssues, sites, keepUn
         {picker}
         <div className="card px-6 py-14 text-center">
           <p className="text-[15px] font-bold text-ink-900">
-            {scoped ? 'Nothing recorded at this site' : 'No stakeholder issues recorded'}
+            {ranged
+              ? 'Nothing in this month range'
+              : scoped ? 'Nothing recorded at this site' : 'No stakeholder issues recorded'}
           </p>
           <p className="mx-auto mt-1.5 max-w-[52ch] text-[13px] leading-relaxed text-ink-500">
-            {scoped
-              ? 'Pick All sites to see the rest, or log a complaint or department visit against this one under Stakeholder Issues.'
-              : 'Log a customer escalation or a department visit under Stakeholder Issues — including visits that produced no notice, which is the evidence an inspection happened and passed.'}
+            {ranged
+              ? `Nothing ${scoped ? 'at this site ' : ''}falls in ${rangeLabel}. Widen From and To, or reset the filters — complaints are dated by when they were raised and visits by the date of the incident, so the two can land in different months.`
+              : scoped
+                ? 'Pick All sites to see the rest, or log a complaint or department visit against this one under Stakeholder Issues.'
+                : 'Log a customer escalation or a department visit under Stakeholder Issues — including visits that produced no notice, which is the evidence an inspection happened and passed.'}
           </p>
         </div>
       </div>
     )
   }
 
+  // Every figure below is one of these two populations, so the caveats are
+  // stated once here rather than repeated on each panel.
+  const crossoverNote = [
+    'Worst notice first — the notice served is what the complaint actually became.',
+    scoped && 'Both sides are narrowed to this site, so a notice filed against another site will not appear here.',
+    ranged && 'Both sides are dated on their own, so a complaint appears here only when the matter it became falls in this range too.',
+  ].filter(Boolean).join(' ')
+
+  const orphanCause = ranged && scoped
+    ? 'the site filter or the month range excludes it'
+    : ranged ? 'the month range excludes it'
+      : scoped ? 'the site filter excludes it' : 'it has been deleted'
+
+  const inScopeTotal = s.escalations.total + s.legal.total
+  const noteBelowStats = ranged || a.undated.total > 0
+
+  // An empty crossover list says this in its own empty state, so the note under
+  // the panel would only repeat it.
+  const showSevered = a.escalatedOutOfRange > 0 && a.crossover.length > 0
+
   return (
     <div className="animate-fade-in-up">
       {picker}
 
-      <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className={`${noteBelowStats ? 'mb-2' : 'mb-5'} grid gap-3 sm:grid-cols-2 lg:grid-cols-4`}>
         <Stat
           icon={ArrowRightLeft}
           label="Reached an authority"
@@ -268,25 +384,37 @@ export default function StakeholderTab({ escalations, legalIssues, sites, keepUn
         />
       </div>
 
+      {/* Every figure above has been narrowed, and both reasons mislead if left
+          unsaid: which months are in, and which records have no month at all. */}
+      {noteBelowStats && (
+        <p className="mb-5 text-[11.5px] leading-relaxed text-ink-400">
+          {ranged &&
+            `Narrowed to ${rangeLabel} — complaints by the date they were raised, department visits by the date of the incident. `}
+          {a.undated.total > 0 &&
+            `${a.undated.total} of ${inScopeTotal} ${plural(a.undated.total, 'record carries', 'records carry')} no date ` +
+            `(${a.undated.escalations} ${plural(a.undated.escalations, 'complaint', 'complaints')}, ` +
+            `${a.undated.legal} ${plural(a.undated.legal, 'visit', 'visits')}) and ` +
+            `${plural(a.undated.total, 'is', 'are')} counted in every range rather than hidden.`}
+        </p>
+      )}
+
       <Panel
         title="Complaints that reached an authority"
-        subtitle={
-          scoped
-            ? 'Worst notice first. Both sides are narrowed to this site, so a notice filed against another site will not appear here.'
-            : 'Worst notice first — the notice served is what the complaint actually became.'
-        }
+        subtitle={crossoverNote}
         right={
           <Badge tone={s.escalations.escalatedToLegal ? 'amber' : 'gray'}>
             {s.escalations.escalatedToLegal} of {s.escalations.total}
           </Badge>
         }
-        className={a.orphanLegal > 0 ? 'mb-3' : 'mb-5'}
+        className={a.orphanLegal > 0 || showSevered ? 'mb-3' : 'mb-5'}
       >
         {a.crossover.length === 0 ? (
           <NoData height={180}>
             {s.escalations.total === 0
               ? 'No complaints in this scope, so nothing here can have crossed over. The legal issues below stand on their own.'
-              : 'No complaint here has produced a legal issue. The link is recorded on the legal issue — set “From complaint” when logging one so it shows up in this panel.'}
+              : a.escalatedOutOfRange > 0
+                ? `${a.escalatedOutOfRange} ${plural(a.escalatedOutOfRange, 'complaint', 'complaints')} here reached an authority in a matter dated outside this range. Clear From and To to see ${plural(a.escalatedOutOfRange, 'it', 'them')}.`
+                : 'No complaint here has produced a legal issue. The link is recorded on the legal issue — set “From complaint” when logging one so it shows up in this panel.'}
           </NoData>
         ) : (
           <>
@@ -332,14 +460,24 @@ export default function StakeholderTab({ escalations, legalIssues, sites, keepUn
         )}
       </Panel>
 
-      {a.orphanLegal > 0 && (
-        /* Counting the notice while silently dropping the complaint behind it
-           would make the crossover read as complete when it is not. */
-        <p className="mb-5 text-[11.5px] leading-relaxed text-ink-400">
-          {a.orphanLegal} legal {plural(a.orphanLegal, 'issue', 'issues')} here came from a complaint that is not
-          in this scope — {scoped ? 'the site filter excludes it' : 'it has been deleted'}. Counted in the
-          panels below, but not in the crossover above.
-        </p>
+      {/* Both ends of a link can be filtered away independently, and either
+          direction makes the crossover read as complete when it is not. */}
+      {(a.orphanLegal > 0 || showSevered) && (
+        <div className="mb-5 space-y-1.5 text-[11.5px] leading-relaxed text-ink-400">
+          {a.orphanLegal > 0 && (
+            <p>
+              {a.orphanLegal} legal {plural(a.orphanLegal, 'issue', 'issues')} here came from a complaint that is
+              not in this scope — {orphanCause}. Counted in the panels below, but not in the crossover above.
+            </p>
+          )}
+          {showSevered && (
+            <p>
+              {a.escalatedOutOfRange} {plural(a.escalatedOutOfRange, 'complaint', 'complaints')} here reached an
+              authority in a matter dated outside this range, so {plural(a.escalatedOutOfRange, 'it counts', 'they count')} above
+              as never escalated. Clear From and To to see {plural(a.escalatedOutOfRange, 'it', 'them')}.
+            </p>
+          )}
+        </div>
       )}
 
       <div className="mb-4 grid gap-4 lg:grid-cols-2">

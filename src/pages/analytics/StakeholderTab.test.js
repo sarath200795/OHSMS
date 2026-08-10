@@ -55,6 +55,79 @@ describe('scoping', () => {
   })
 })
 
+describe('the month range', () => {
+  // Complaints carry `raisedOn`, department visits carry `incidentDate`.
+  const dated = [
+    esc({ id: 'e1', raisedOn: '2026-01-14' }),
+    esc({ id: 'e2', raisedOn: '2026-02-20' }),
+    esc({ id: 'e3', raisedOn: '2026-03-02' }),
+  ]
+  const datedLegal = [
+    leg({ id: 'l1', incidentDate: '2026-01-30' }),
+    leg({ id: 'l2', incidentDate: '2026-04-06' }),
+  ]
+
+  it('offers the union of months across both collections, sorted', () => {
+    // April exists only as a department visit and must still be offered.
+    expect(run(dated, datedLegal).months).toEqual(['2026-01', '2026-02', '2026-03', '2026-04'])
+  })
+
+  it('offers the same months whichever site is picked', () => {
+    const a = run(
+      [esc({ id: 'e1', raisedOn: '2026-01-14' })],
+      [leg({ id: 'l1', incidentDate: '2026-04-06', scope: { siteId: 's2' } })],
+      { siteId: 's1' }
+    )
+    expect(a.months).toEqual(['2026-01', '2026-04'])
+    expect(a.summary.legal.total).toBe(0)
+  })
+
+  it('keeps everything when the range spans the data', () => {
+    const a = run(dated, datedLegal, { from: '2026-01', to: '2026-04' })
+    expect(a.summary.escalations.total).toBe(3)
+    expect(a.summary.legal.total).toBe(2)
+  })
+
+  it('keeps nothing when the range lands where there is no data', () => {
+    const a = run(dated, datedLegal, { from: '2025-01', to: '2025-12' })
+    expect(a.summary.escalations.total).toBe(0)
+    expect(a.summary.legal.total).toBe(0)
+    // Still offered, or there would be no way back out of an empty range.
+    expect(a.months).toEqual(['2026-01', '2026-02', '2026-03', '2026-04'])
+  })
+
+  it('is inclusive at both ends', () => {
+    expect(run(dated, datedLegal, { from: '2026-01', to: '2026-03' }).summary.escalations.total).toBe(3)
+    expect(run(dated, [], { from: '2026-02', to: '2026-03' }).summary.escalations.total).toBe(2)
+    expect(run(dated, [], { from: '2026-01', to: '2026-02' }).summary.escalations.total).toBe(2)
+  })
+
+  it('reads an empty From as earliest and an empty To as latest', () => {
+    expect(run(dated, [], { to: '2026-01' }).summary.escalations.total).toBe(1)
+    expect(run(dated, [], { from: '2026-03' }).summary.escalations.total).toBe(1)
+    expect(run(dated, [], {}).summary.escalations.total).toBe(3)
+  })
+
+  // A missing date is a data-quality problem to surface, not one to hide.
+  it('keeps undated records in every range and counts them', () => {
+    const a = run(
+      [esc({ id: 'e1', raisedOn: '2026-01-14' }), esc({ id: 'e2', raisedOn: '' }), esc({ id: 'e3' })],
+      [leg({ id: 'l1', incidentDate: '' })],
+      { from: '2026-06', to: '2026-06' }
+    )
+    expect(a.summary.escalations.total).toBe(2)
+    expect(a.summary.legal.total).toBe(1)
+    expect(a.undated).toEqual({ escalations: 2, legal: 1, total: 3 })
+  })
+
+  it('treats a date it cannot read as no date rather than dropping the record', () => {
+    const a = run([esc({ raisedOn: 'last Tuesday' })], [], { from: '2026-01', to: '2026-01' })
+    expect(a.summary.escalations.total).toBe(1)
+    expect(a.undated.escalations).toBe(1)
+    expect(a.months).toEqual([])
+  })
+})
+
 describe('the crossover', () => {
   // The number the tab exists for: complaints that stopped being complaints.
   it('counts complaints that reached an authority', () => {
@@ -104,6 +177,59 @@ describe('the crossover', () => {
     expect(a.summary.escalations.escalatedToLegal).toBe(0)
     expect(a.orphanLegal).toBe(1)
     expect(a.standaloneLegal).toBe(1)
+  })
+})
+
+// The complaint and the matter it became are dated by different fields, so the
+// two ends of one link routinely fall in different months. The range applies to
+// each record on its own date; these pin what that costs and prove the cost is
+// reported rather than swallowed.
+describe('a linked pair dated in different months', () => {
+  const complaint = esc({ id: 'e1', raisedOn: '2026-01-14' })
+  const matter = leg({ id: 'l1', escalationId: 'e1', noticeType: 'fir', incidentDate: '2026-03-02' })
+
+  it('counts the crossover when the range covers both ends', () => {
+    const a = run([complaint], [matter], { from: '2026-01', to: '2026-03' })
+    expect(a.summary.escalations.escalatedToLegal).toBe(1)
+    expect(a.crossover).toHaveLength(1)
+    expect(a.escalatedOutOfRange).toBe(0)
+  })
+
+  it('reports the complaint whose matter the range excludes', () => {
+    const a = run([complaint], [matter], { from: '2026-01', to: '2026-01' })
+    expect(a.summary.escalations.total).toBe(1)
+    expect(a.summary.legal.total).toBe(0)
+    expect(a.summary.escalations.escalatedToLegal).toBe(0)
+    expect(a.crossover).toEqual([])
+    expect(a.escalatedOutOfRange).toBe(1)
+  })
+
+  it('reports the matter whose complaint the range excludes', () => {
+    const a = run([complaint], [matter], { from: '2026-03', to: '2026-03' })
+    expect(a.summary.escalations.total).toBe(0)
+    expect(a.summary.legal.total).toBe(1)
+    expect(a.orphanLegal).toBe(1)
+    expect(a.escalatedOutOfRange).toBe(0)
+  })
+
+  it('does not count a complaint that never escalated as one the range severed', () => {
+    const a = run(
+      [complaint, esc({ id: 'e2', raisedOn: '2026-01-20' })],
+      [matter],
+      { from: '2026-01', to: '2026-01' }
+    )
+    expect(a.escalatedOutOfRange).toBe(1)
+  })
+
+  // Measured against the site-scoped population, so it reports the reader's own
+  // range choice and never the existence of a record they may not see.
+  it('stays silent about a matter filed at a site outside the scope', () => {
+    const a = run(
+      [complaint],
+      [leg({ id: 'l1', escalationId: 'e1', incidentDate: '2026-01-20', scope: { siteId: 's2' } })],
+      { siteId: 's1' }
+    )
+    expect(a.escalatedOutOfRange).toBe(0)
   })
 })
 
@@ -237,6 +363,9 @@ describe('an empty module', () => {
     expect(a.bySite).toEqual([])
     expect(a.repeats).toEqual([])
     expect(a.orphanLegal).toBe(0)
+    expect(a.months).toEqual([])
+    expect(a.undated).toEqual({ escalations: 0, legal: 0, total: 0 })
+    expect(a.escalatedOutOfRange).toBe(0)
   })
 
   it('survives holes in the collections', () => {
@@ -291,6 +420,54 @@ describe('the tab itself', () => {
 
     render(createElement(StakeholderTab, { escalations: [], legalIssues: [], sites: SITES }))
     expect(screen.getByText('No stakeholder issues recorded')).toBeTruthy()
+    cleanup()
+  })
+
+  it('offers every month either collection has and says what the range narrowed', async () => {
+    const { createElement } = await import('react')
+    const { render, screen, fireEvent, cleanup } = await import('@testing-library/react')
+    const { default: StakeholderTab } = await import('./StakeholderTab')
+
+    render(createElement(StakeholderTab, {
+      escalations: [esc({ id: 'e1', title: 'Cold food served', raisedOn: '2026-01-14' })],
+      legalIssues: [leg({ id: 'l1', title: 'Fire NOC visit', incidentDate: '2026-04-06' })],
+      sites: SITES,
+    }))
+
+    const from = screen.getByLabelText('From')
+    expect([...from.options].map((o) => o.value)).toEqual(['', '2026-01', '2026-04'])
+
+    fireEvent.change(from, { target: { value: '2026-04' } })
+    expect(screen.getByText(/Narrowed to 2026-04 onwards/)).toBeTruthy()
+    expect(screen.queryByText('Cold food served')).toBeNull()
+
+    // An empty range must offer a way back out rather than read as an empty
+    // module — the records are still there, the range is not over them.
+    fireEvent.change(screen.getByLabelText('To'), { target: { value: '2026-01' } })
+    expect(screen.getByText('Nothing in this month range')).toBeTruthy()
+    expect(screen.getByLabelText('From').value).toBe('2026-04')
+    cleanup()
+  })
+
+  // The trap this tab is most exposed to: the range strips the matter, the
+  // crossover empties, and the panel reports it as a complaint that never
+  // escalated.
+  it('does not claim nothing crossed over when the range severed the link', async () => {
+    const { createElement } = await import('react')
+    const { render, screen, fireEvent, cleanup } = await import('@testing-library/react')
+    const { default: StakeholderTab } = await import('./StakeholderTab')
+
+    render(createElement(StakeholderTab, {
+      escalations: [esc({ id: 'e1', title: 'Cold food served', raisedOn: '2026-01-14' })],
+      legalIssues: [leg({ id: 'l1', escalationId: 'e1', noticeType: 'fir', incidentDate: '2026-03-02' })],
+      sites: SITES,
+    }))
+
+    expect(screen.getByText('Cold food served')).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText('To'), { target: { value: '2026-01' } })
+    expect(screen.queryByText(/No complaint here has produced a legal issue/)).toBeNull()
+    expect(screen.getByText(/reached an authority in a matter dated outside this range/)).toBeTruthy()
     cleanup()
   })
 })

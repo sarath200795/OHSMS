@@ -192,6 +192,129 @@ describe('the kind filter', () => {
   })
 })
 
+describe('the reported-on month range', () => {
+  // One camera per month either side of the boundaries, plus one that nobody
+  // dated. All five are their own fault, so nothing here is a casualty.
+  const spread = {
+    merakis: [meraki()],
+    dvrs: [dvr()],
+    cameras: [
+      cam({ id: 'c1', defects: ['blur'], defectReportedOn: '2024-12-31' }),
+      cam({ id: 'c2', defects: ['blur'], defectReportedOn: '2025-01-01' }),
+      cam({ id: 'c3', defects: ['blur'], defectReportedOn: '2025-03-31' }),
+      cam({ id: 'c4', defects: ['blur'], defectReportedOn: '2025-04-01' }),
+      cam({ id: 'c5', defects: ['blur'] }),
+    ],
+  }
+
+  it('counts everything when no range is set', () => {
+    expect(run(spread).total).toBe(5)
+  })
+
+  it('is inclusive at both ends', () => {
+    // The 1st of the From month and the 31st of the To month are both in; the
+    // day either side of them is not.
+    const a = run({ ...spread, from: '2025-01', to: '2025-03' })
+    expect(a.total).toBe(3) // c2, c3 and the undated c5
+    expect(a.outOfRange).toBe(2)
+  })
+
+  it('treats a blank From as the earliest and a blank To as the latest', () => {
+    expect(run({ ...spread, to: '2024-12' }).total).toBe(2) // c1 + undated
+    expect(run({ ...spread, from: '2025-04' }).total).toBe(2) // c4 + undated
+    expect(run({ ...spread, from: '', to: '' }).total).toBe(5)
+  })
+
+  it('includes everything when the range spans the data', () => {
+    const a = run({ ...spread, from: '2024-01', to: '2026-12' })
+    expect(a.total).toBe(5)
+    expect(a.outOfRange).toBe(0)
+  })
+
+  it('keeps undated defects whatever the range, and says how many', () => {
+    // A missing date is a gap on the inventory page, not a reason to drop a
+    // real fault off a map somebody dispatches from.
+    const a = run({ ...spread, from: '2030-01', to: '2030-12' })
+    expect(a.total).toBe(1)
+    expect(a.undated).toBe(1)
+    expect(a.outOfRange).toBe(4)
+    expect(a.byFault).toEqual([{ key: 'Camera · Blur', name: 'Camera · Blur', value: 1, color: '#2563eb' }])
+  })
+
+  it('excludes everything when every fault in the range is dated outside it', () => {
+    const a = run({
+      merakis: [meraki()], dvrs: [dvr()],
+      cameras: [cam({ defects: ['blur'], defectReportedOn: '2025-01-10' })],
+      from: '2026-01', to: '2026-12',
+    })
+    expect(a.total).toBe(0)
+    expect(a.outOfRange).toBe(1)
+    expect(a.pins).toEqual([])
+    expect(a.bySite).toEqual([])
+    expect(a.byFault).toEqual([])
+    expect(a.byKind.map((k) => k.value)).toEqual([0, 0, 0])
+  })
+
+  it('offers only the months defects were actually reported in', () => {
+    expect(run(spread).months).toEqual(['2024-12', '2025-01', '2025-03', '2025-04'])
+  })
+
+  it('keeps offering every month once one is chosen, so there is a way back', () => {
+    expect(run({ ...spread, from: '2025-04' }).months).toEqual(['2024-12', '2025-01', '2025-03', '2025-04'])
+  })
+
+  it('always shows a device that is merely offline — an outage carries no date', () => {
+    // defectReportedOn is cleared with the last stored defect, so a device with
+    // nothing but a connectivity fault can never be ranged off the map.
+    const a = run({ merakis: [meraki({ status: 'offline' })], from: '2025-01', to: '2025-12' })
+    expect(a.total).toBe(1)
+    expect(a.undated).toBe(1)
+    expect(a.outOfRange).toBe(0)
+  })
+
+  it('narrows the per-kind counts but still leaves the way back from the kind filter', () => {
+    const a = run({ ...spread, from: '2025-01', to: '2025-03', kind: 'camera' })
+    expect(a.byKind.map((k) => k.value)).toEqual([0, 0, 3])
+    expect(a.byKind.map((k) => k.fleet)).toEqual([1, 1, 5])
+  })
+})
+
+describe('the range narrows the defects, never the cascade', () => {
+  // The pin this whole tab hangs on. Health is computed over the estate before
+  // any range is applied, so a device dated outside the range still darkens
+  // what sits below it.
+  const estate = {
+    merakis: [meraki()],
+    dvrs: [dvr({ status: 'offline', defects: ['disk_fault'], defectReportedOn: '2024-01-05' })],
+    cameras: [cam({ id: 'c1' }), cam({ id: 'c2' })],
+  }
+
+  it('keeps cameras as casualties when their DVR falls outside the range', () => {
+    // Had the range been applied to the health inputs, this DVR would have
+    // vanished and its two cameras would have read as orphans with nothing
+    // wrong with them — the map would then show two jobs instead of one.
+    const a = run({ ...estate, from: '2025-01' })
+    expect(a.total).toBe(0)
+    expect(kind(a, 'dvr').value).toBe(0)
+    expect(kind(a, 'camera').value).toBe(0)
+    expect(a.casualties).toMatchObject({ cameras: 2, dvrs: 0 })
+    expect(a.outOfRange).toBe(1)
+  })
+
+  it('leaves the casualty count alone — being dark is a fact about now', () => {
+    const wide = run(estate)
+    const narrow = run({ ...estate, from: '2030-01', to: '2030-12' })
+    expect(narrow.casualties).toEqual(wide.casualties)
+  })
+
+  it('leaves the fleet counts alone — a device is in the estate whatever its dates', () => {
+    const wide = run(estate)
+    const narrow = run({ ...estate, from: '2030-01', to: '2030-12' })
+    expect(narrow.devices).toBe(wide.devices)
+    expect(narrow.byKind.map((k) => k.fleet)).toEqual(wide.byKind.map((k) => k.fleet))
+  })
+})
+
 describe('an empty estate', () => {
   it('returns zeroes rather than throwing', () => {
     const a = cctvDefectAnalytics({ sites: SITES })
@@ -203,5 +326,7 @@ describe('an empty estate', () => {
 
   it('survives being called with nothing at all', () => {
     expect(cctvDefectAnalytics().total).toBe(0)
+    expect(cctvDefectAnalytics().months).toEqual([])
+    expect(cctvDefectAnalytics({ from: '2025-01', to: '2025-02' })).toMatchObject({ undated: 0, outOfRange: 0 })
   })
 })

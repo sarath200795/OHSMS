@@ -19,6 +19,7 @@ import {
   REPORTABLE_CAMERA_DEFECTS, REPORTABLE_DVR_DEFECTS, REPORTABLE_MERAKI_DEFECTS,
   CAMERA_DEFECT_BY_KEY, DVR_DEFECT_BY_KEY, MERAKI_DEFECT_BY_KEY,
 } from '../lib/constants'
+import { asReportedOn, nextReportedOn, todayISO } from '../lib/defectDate'
 import { StatusChip, DefectChips } from '../components/ui'
 
 const TABS = [
@@ -152,10 +153,15 @@ export default function Inventory() {
     }
   }
 
-  const saveDefects = async (keys) => {
+  const saveDefects = async (keys, reportedOn) => {
     const { kind, row } = defectFor
+    // A fault cannot have been found tomorrow. Letting one through would put a
+    // defect in a month nobody has reached yet, where no report would find it.
+    if (reportedOn && reportedOn > todayISO()) {
+      return toast.error('A defect cannot be reported in the future')
+    }
     try {
-      await setDefects(orgId, kind, row.id, keys, actor, row.name)
+      await setDefects(orgId, kind, row.id, { defects: keys, defectReportedOn: reportedOn }, actor, row.name)
       toast.success('Defects updated')
       setDefectFor(null)
     } catch (e) {
@@ -262,6 +268,7 @@ export default function Inventory() {
             <tbody>
               {pageItems.map((row) => {
                 const h = health[tab].get(row.id)
+                const defectKeys = (row.defects || []).filter(Boolean)
                 return (
                   <tr key={row.id} className="border-t border-ink-100">
                     <td className="px-3 py-2 font-medium text-ink-800">{row.name}</td>
@@ -275,7 +282,15 @@ export default function Inventory() {
                     {tab === 'dvrs' && <td className="px-3 py-2">{row.channels || '—'}</td>}
                     <td className="px-3 py-2"><StatusChip health={h} /></td>
                     <td className="px-3 py-2">
-                      <DefectChips keys={(row.defects || []).filter(Boolean)} table={defectTable} />
+                      <DefectChips keys={defectKeys} table={defectTable} />
+                      {/* Said out loud rather than left blank: an undated defect
+                          is counted everywhere but can be placed in no month,
+                          and the analytics tab has to report it as a gap. */}
+                      {defectKeys.length > 0 && (
+                        <span className="mt-1 block text-[11px] text-ink-400">
+                          {row.defectReportedOn ? `Reported ${row.defectReportedOn}` : 'Date not recorded'}
+                        </span>
+                      )}
                     </td>
                     {isManager && (
                       <td className="px-3 py-2">
@@ -390,7 +405,7 @@ export default function Inventory() {
 }
 
 /**
- * Raise or clear defects on a device.
+ * Raise or clear defects on a device, and record when they were found.
  *
  * "Offline" is deliberately not on the list. It is derived from the reported
  * status in health.js, so offering it as a tick box would let someone mark a
@@ -403,7 +418,9 @@ function DefectModal({ target, onClose, onSave }) {
     merakis: REPORTABLE_MERAKI_DEFECTS,
   }[target?.kind] || []
   const current = (target?.row?.defects || []).filter(Boolean)
+  const stored = asReportedOn(target?.row?.defectReportedOn)
   const [picked, setPicked] = useState(current)
+  const [reportedOn, setReportedOn] = useState(stored)
   const [busy, setBusy] = useState(false)
 
   // Reset when a different device is opened.
@@ -412,9 +429,16 @@ function DefectModal({ target, onClose, onSave }) {
   if (key !== lastKey) {
     setLastKey(key)
     setPicked(current)
+    setReportedOn(stored)
   }
 
-  const toggle = (k) => setPicked((p) => (p.includes(k) ? p.filter((x) => x !== k) : [...p, k]))
+  const toggle = (k) => {
+    const after = picked.includes(k) ? picked.filter((x) => x !== k) : [...picked, k]
+    setPicked(after)
+    // The date follows the defects, but never overwrites one already on screen —
+    // see nextReportedOn for which transitions move it and which do not.
+    setReportedOn((d) => nextReportedOn({ before: picked, after, current: d }))
+  }
 
   return (
     <Modal open={Boolean(target)} onClose={onClose} title={`Defects — ${target?.row?.name || ''}`}>
@@ -437,11 +461,32 @@ function DefectModal({ target, onClose, onSave }) {
             </button>
           ))}
         </div>
+
+        <Field
+          label="Reported on"
+          htmlFor="cdefdate"
+          hint={
+            !picked.length
+              ? 'Clearing every defect clears the date with it — there is nothing left for it to describe.'
+              : 'The day the fault was found, not the day it was typed in. Correct it if the walk-round was earlier.'
+          }
+        >
+          <Input
+            id="cdefdate"
+            type="date"
+            className="font-mono"
+            value={reportedOn}
+            max={todayISO()}
+            disabled={!picked.length}
+            onChange={(e) => setReportedOn(e.target.value)}
+          />
+        </Field>
+
         <div className="flex justify-end gap-2 pt-1">
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
           <Button
             loading={busy}
-            onClick={async () => { setBusy(true); await onSave(picked); setBusy(false) }}
+            onClick={async () => { setBusy(true); await onSave(picked, reportedOn); setBusy(false) }}
           >
             Save
           </Button>

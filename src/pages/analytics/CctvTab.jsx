@@ -12,6 +12,12 @@
 // This tab takes its root-cause defect lists and does one thing to them:
 // attributes each to a site so it can be drawn. Coordinates live on the site
 // record, never on the device.
+//
+// The month range is applied for the same reason and in the same order: health
+// is computed over the whole estate FIRST, and the range narrows the defect
+// lists that come out of it. Narrowing the inputs instead would change what the
+// cascade concludes — a DVR dated outside the range would disappear, and the
+// cameras it was darkening would turn from casualties into orphans.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /* eslint-disable react-refresh/only-export-components --
@@ -20,9 +26,10 @@
 import { useMemo, useState } from 'react'
 import { MapContainer, TileLayer, Marker, Tooltip as LeafletTooltip } from 'react-leaflet'
 import L from 'leaflet'
-import { Cctv, HardDrive, Router, TriangleAlert, MapPin, Unplug } from 'lucide-react'
+import { Cctv, HardDrive, Router, TriangleAlert, MapPin, Unplug, CalendarClock } from 'lucide-react'
 import { Panel, Stat, NoData, Picker } from './ui'
 import Breakdown from './Breakdown'
+import { monthOf, prettyMonth } from './moduleAnalytics'
 import { estateHealth, cameraSummary, dvrSummary } from '../../modules/cctv/lib/health'
 import {
   CAUSE, CAMERA_DEFECT_BY_KEY, DVR_DEFECT_BY_KEY, MERAKI_DEFECT_BY_KEY,
@@ -84,10 +91,13 @@ function group(rows, label) {
  * `keepUnplaced` follows the rest of analytics: a device that resolves to no
  * visible site sits somewhere the viewer is not allowed to see, so only an
  * admin is shown it.
+ *
+ * `from` / `to` are 'YYYY-MM', '' meaning earliest and latest — the same month
+ * range every other tab uses, read off each device's `defectReportedOn`.
  */
 export function cctvDefectAnalytics({
   cameras = [], dvrs = [], merakis = [], sites = [],
-  siteId = 'all', kind = 'all', keepUnplaced = true,
+  siteId = 'all', kind = 'all', from = '', to = '', keepUnplaced = true,
 } = {}) {
   // Health is computed over the WHOLE estate and only the results are scoped.
   // Filtering the inputs first would change what the cascade concludes: a
@@ -97,7 +107,11 @@ export function cctvDefectAnalytics({
   const estate = estateHealth({ cameras, dvrs, merakis })
   const registry = new Map(sites.filter((s) => s?.id).map((s) => [s.id, s]))
 
-  const inScope = (at) => (siteId === 'all' ? keepUnplaced || registry.has(at) : at === siteId)
+  // Permission and choice, kept apart: `visible` is what this viewer may ever
+  // see, `inScope` is what they have currently asked for. The month options are
+  // built from the first, so choosing a site cannot remove a month.
+  const visible = (at) => keepUnplaced || registry.has(at)
+  const inScope = (at) => (siteId === 'all' ? visible(at) : at === siteId)
 
   // The defect extractors carry the site's name but not its id, and a camera's
   // site may have been inherited from its DVR — so the id comes off the health
@@ -108,7 +122,19 @@ export function cctvDefectAnalytics({
     meraki: new Map(estate.merakis.map((m) => [m.id, m.siteId])),
   }
 
-  const all = CCTV_KINDS.flatMap((k) =>
+  // The report date is on the device record, not on the health object: health.js
+  // derives connectivity and has no opinion about when somebody last walked
+  // round with a clipboard. A device whose only fault is being offline carries
+  // no date at all — the writer clears it with the last stored defect — so an
+  // outage is always undated, and an outage can therefore never be ranged out
+  // of the map.
+  const reportedIn = {
+    camera: new Map(cameras.map((c) => [c?.id, monthOf(c?.defectReportedOn)])),
+    dvr: new Map(dvrs.map((d) => [d?.id, monthOf(d?.defectReportedOn)])),
+    meraki: new Map(merakis.map((m) => [m?.id, monthOf(m?.defectReportedOn)])),
+  }
+
+  const everywhere = CCTV_KINDS.flatMap((k) =>
     (estate.defects[k.key] || []).map((d) => {
       const at = placedAt[k.key].get(d.id) || ''
       const site = registry.get(at)
@@ -124,11 +150,29 @@ export function cctvDefectAnalytics({
         region: site?.region || 'Unassigned',
         faults: Array.isArray(d.defects) ? d.defects : [],
         cause: d.cause || CAUSE.NONE,
+        month: reportedIn[k.key].get(d.id) || '',
       }
     })
-  ).filter((r) => inScope(r.siteId))
+  )
 
+  const inRange = (month) => {
+    // Undated defects survive the range rather than vanishing, exactly as
+    // applyFilters does in moduleAnalytics.js: a missing date is a data-quality
+    // problem to surface, not one to hide. It matters more here than anywhere,
+    // because every defect raised before this field existed is undated.
+    if (!month) return true
+    if (from && month < from) return false
+    if (to && month > to) return false
+    return true
+  }
+
+  const scopedRows = everywhere.filter((r) => inScope(r.siteId))
+  const all = scopedRows.filter((r) => inRange(r.month))
   const shown = kind === 'all' ? all : all.filter((r) => r.kind === kind)
+  // What the range took away from what would otherwise be on screen — the kind
+  // filter is applied to both sides so the two numbers are comparable.
+  const inKind = (rows) => (kind === 'all' ? rows : rows.filter((r) => r.kind === kind))
+  const outOfRange = inKind(scopedRows).length - shown.length
 
   const scoped = {
     camera: estate.cameras.filter((c) => inScope(c.siteId)),
@@ -139,6 +183,11 @@ export function cctvDefectAnalytics({
   // Casualties — dark, but nothing wrong with them. Counted separately and
   // never plotted, so the distance between "offline" and "faulty" stays visible
   // instead of being quietly folded into the defect count.
+  //
+  // The month range deliberately does not touch this. Being dark is a fact
+  // about right now, not something that was reported on a date, and a device
+  // has no defect record to carry one — filtering it by month would answer a
+  // question nobody asked with a number nobody could check.
   const cs = cameraSummary(scoped.camera)
   const ds = dvrSummary(scoped.dvr)
   const casualties = {
@@ -187,6 +236,15 @@ export function cctvDefectAnalytics({
     byKind,
     casualties,
     pins,
+    // The months anyone can choose between, taken from every defect the viewer
+    // may see rather than from the filtered set — a month that vanishes as you
+    // use it takes away the way back.
+    months: [...new Set(everywhere.filter((r) => visible(r.siteId)).map((r) => r.month).filter(Boolean))].sort(),
+    // Of what is on screen, how much of it no range could ever place. Without
+    // this the total is unexplainable: it barely moves as the range changes.
+    undated: shown.filter((r) => !r.month).length,
+    // And how much the range is currently holding back.
+    outOfRange,
     // Faults at sites with no coordinates. Reported rather than dropped: a map
     // that silently omits them reads as the whole picture when it is not.
     unmapped: shown.length - plotted,
@@ -249,15 +307,28 @@ function defectPin(pin) {
 export default function CctvTab({ cameras = [], dvrs = [], merakis = [], sites = [], keepUnplaced = true }) {
   const [siteId, setSiteId] = useState('all')
   const [kind, setKind] = useState('all')
+  const [from, setFrom] = useState('')
+  const [to, setTo] = useState('')
 
   const a = useMemo(
-    () => cctvDefectAnalytics({ cameras, dvrs, merakis, sites, siteId, kind, keepUnplaced }),
-    [cameras, dvrs, merakis, sites, siteId, kind, keepUnplaced]
+    () => cctvDefectAnalytics({ cameras, dvrs, merakis, sites, siteId, kind, from, to, keepUnplaced }),
+    [cameras, dvrs, merakis, sites, siteId, kind, from, to, keepUnplaced]
   )
 
   const centre = a.pins.length ? [a.pins[0].lat, a.pins[0].lng] : [20, 78]
   const chosen = CCTV_KINDS.find((k) => k.key === kind)
   const fleetOf = (k) => a.byKind.find((r) => r.key === k)?.fleet ?? 0
+
+  // The same range said three ways: short enough to sit under a number, long
+  // enough to read inside a sentence, and inverted for what it excluded. An
+  // open end is named as an open end — "the earliest to Mar 25" is not English.
+  const ranged = Boolean(from || to)
+  const rangeShort = from && to ? `${prettyMonth(from)} – ${prettyMonth(to)}`
+    : from ? `${prettyMonth(from)} onwards` : `up to ${prettyMonth(to)}`
+  const rangeLong = from && to ? `between ${prettyMonth(from)} and ${prettyMonth(to)}`
+    : from ? `from ${prettyMonth(from)} onwards` : `up to ${prettyMonth(to)}`
+  const outsideRange = from && to ? `outside ${rangeShort}`
+    : from ? `before ${prettyMonth(from)}` : `after ${prettyMonth(to)}`
 
   // Built as a list so the sentence can leave out a kind with none, rather than
   // telling anyone about zero dark DVRs.
@@ -267,11 +338,15 @@ export default function CctvTab({ cameras = [], dvrs = [], merakis = [], sites =
   ].filter(Boolean)
   const one = a.casualties.total === 1
 
-  // An empty map has four quite different meanings and only one of them is a
+  // An empty map has five quite different meanings and only one of them is a
   // problem the viewer can act on, so each says which it is.
   let mapEmpty
   if (a.devices === 0) {
     mapEmpty = `No CCTV equipment is recorded ${siteId === 'all' ? 'for the sites you can see' : 'at this site'}. Add the Meraki switches first, then the DVRs they carry, then the cameras on each DVR.`
+  } else if (a.total === 0 && a.outOfRange > 0) {
+    // Said before the "nothing is wrong" lines below, which would otherwise
+    // read as an all-clear for faults that are merely out of view.
+    mapEmpty = `Nothing was reported ${rangeLong}. ${a.outOfRange} fault${plural(a.outOfRange)} ${a.outOfRange === 1 ? 'was' : 'were'} reported ${outsideRange} — widen the range to see ${a.outOfRange === 1 ? 'it' : 'them'}.`
   } else if (a.total === 0 && chosen) {
     mapEmpty = `Nothing is wrong with the ${chosen.plural} in this scope. Clear the device filter to see the other kinds.`
   } else if (a.total === 0) {
@@ -293,21 +368,62 @@ export default function CctvTab({ cameras = [], dvrs = [], merakis = [], sites =
           <option value="all">All devices</option>
           {CCTV_KINDS.map((k) => <option key={k.key} value={k.key}>{k.plural}</option>)}
         </Picker>
+        <Picker id="cctv-from" label="From" value={from} onChange={(e) => setFrom(e.target.value)}>
+          <option value="">Earliest</option>
+          {a.months.map((m) => <option key={m} value={m}>{m}</option>)}
+        </Picker>
+        <Picker id="cctv-to" label="To" value={to} onChange={(e) => setTo(e.target.value)}>
+          <option value="">Latest</option>
+          {a.months.map((m) => <option key={m} value={m}>{m}</option>)}
+        </Picker>
         <button
           type="button"
-          onClick={() => { setSiteId('all'); setKind('all') }}
+          onClick={() => { setSiteId('all'); setKind('all'); setFrom(''); setTo('') }}
           className="rounded-2xl bg-clay-surface px-4 py-2.5 text-[12.5px] font-semibold text-ink-700 shadow-clay-sm"
         >
           Reset
         </button>
       </div>
 
+      {/* The range is over the date a defect was REPORTED, which most records do
+          not have yet — so what it did, and what it could not do, is spelled out
+          next to the numbers rather than left to be inferred from them. */}
+      {(a.undated > 0 || a.outOfRange > 0) && (
+        <div className="card mb-3 flex items-start gap-2.5 p-4 text-[12.5px] leading-relaxed text-ink-600">
+          <CalendarClock size={16} className="mt-0.5 shrink-0 text-ink-400" />
+          <span>
+            {a.undated > 0 && (
+              a.undated === a.total ? (
+                <>
+                  None of {a.total === 1 ? 'this fault' : `these ${a.total} faults`} has a date on it, so a month
+                  range has nothing here to narrow. Open a device on the CCTV inventory page and set “Reported on”
+                  to date it — until then it is undated, and an undated fault is shown whatever range you pick.
+                </>
+              ) : (
+                <>
+                  <b>{a.undated}</b> of these {a.total} faults {a.undated === 1 ? 'has' : 'have'} no report date and{' '}
+                  {a.undated === 1 ? 'is' : 'are'} shown whatever range you pick — a missing date is a gap to fill
+                  on the inventory page, not a reason to drop a real fault off the map.
+                </>
+              )
+            )}
+            {a.undated > 0 && a.outOfRange > 0 && ' '}
+            {a.outOfRange > 0 && (
+              <>
+                A further <b>{a.outOfRange}</b> {a.outOfRange === 1 ? 'was' : 'were'} reported {outsideRange} and{' '}
+                {a.outOfRange === 1 ? 'is' : 'are'} in none of the figures below.
+              </>
+            )}
+          </span>
+        </div>
+      )}
+
       <div className="mb-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Stat
           icon={TriangleAlert}
           label="Devices at fault"
           value={a.total}
-          sub={chosen ? chosen.plural : 'camera, DVR and Meraki'}
+          sub={`${chosen ? chosen.plural : 'camera, DVR and Meraki'}${ranged ? ` · reported ${rangeShort}` : ''}`}
           tone="#dc2626"
         />
         <Stat icon={MapPin} label="Sites affected" value={a.sitesAffected} tone="#a855f7" />
@@ -368,6 +484,7 @@ export default function CctvTab({ cameras = [], dvrs = [], merakis = [], sites =
             <b>{dark.join(' and ')}</b> {one ? 'is' : 'are'} dark because something above {one ? 'it' : 'them'} is
             down. Nothing is wrong with {one ? 'it' : 'them'}, so {one ? 'it is' : 'they are'} not plotted — the
             map shows the outage, not its casualties.
+            {ranged && ' Being dark is a fact about right now, so the month range does not apply to this number.'}
           </span>
         </div>
       )}

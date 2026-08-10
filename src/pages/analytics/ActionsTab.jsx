@@ -15,6 +15,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { CircleDot, Loader2, CheckCircle2, CalendarX } from 'lucide-react'
 import { Panel, Stat, NoData, Picker } from './ui'
 import Breakdown from './Breakdown'
+import { monthOf } from './moduleAnalytics'
 import { SOURCES, SOURCE_BY_KEY, subscribeActions, todayISO } from '../../modules/actions/lib/sources'
 
 const DAY = 86400000
@@ -50,6 +51,18 @@ export function isActionOverdue(action, today = todayISO()) {
   return days !== null && days > 0
 }
 
+/**
+ * The 'YYYY-MM' a due date falls in; '' when there is no usable date.
+ *
+ * Stricter than monthOf on its own, deliberately. This tab already treats a due
+ * date it cannot parse as no due date at all, so '2026-02-31' must not read as
+ * February for the range while reading as undated everywhere else — one action
+ * cannot be both dated and undated on the same screen.
+ */
+export function dueMonth(due) {
+  return parseDay(due) === null ? '' : monthOf(due)
+}
+
 // Worst first: this list is read to decide what to chase, and the oldest slip
 // is the one that has been chased least.
 export const AGE_BANDS = [
@@ -75,16 +88,32 @@ const NO_OWNER = 'Unassigned'
  * record that raised it, one that resolves to a site the viewer cannot see is
  * not theirs to count, and one that resolves to no site at all is only shown to
  * viewers who can see every site.
+ *
+ * `from` / `to` are inclusive 'YYYY-MM' bounds on the due date; '' means no
+ * bound at that end. Overdue is untouched by them — it is still measured against
+ * `today`, so narrowing to a past month cannot turn future work overdue, and
+ * every ageing figure is still read off the same in-scope unfinished list.
  */
 export function actionAnalytics(rows = [], sites = [], opts = {}) {
-  const { siteId = 'all', source = 'all', keepUnplaced = true, today = todayISO() } = opts
+  const { siteId = 'all', source = 'all', from = '', to = '', keepUnplaced = true, today = todayISO() } = opts
   const visible = new Set((sites || []).map((s) => s.id))
 
   const universe = (rows || []).filter(
     (r) => r && (visible.has(r.siteId) || (keepUnplaced && !r.siteId)),
   )
+  // An undated action survives a range rather than vanishing, the same rule the
+  // other tabs follow. It matters more here than anywhere: whole modules —
+  // inspections, extinguisher defects — raise actions with no due date at all,
+  // and dropping them would let a range hide the work nobody has scheduled.
+  const inRange = (r) => {
+    const m = dueMonth(r.due)
+    if (!m) return true
+    return (!from || m >= from) && (!to || m <= to)
+  }
   const list = universe.filter(
-    (r) => (source === 'all' || r.source === source) && (siteId === 'all' || r.siteId === siteId),
+    (r) => (source === 'all' || r.source === source)
+      && (siteId === 'all' || r.siteId === siteId)
+      && inRange(r),
   )
 
   const open = list.filter((r) => r.norm === 'open')
@@ -125,6 +154,9 @@ export function actionAnalytics(rows = [], sites = [], opts = {}) {
     // What the pickers are hiding, so a narrowed total never reads as the whole.
     narrowed: universe.length - list.length,
     unplaced: list.filter((r) => !r.siteId).length,
+    // Offered from everything the viewer can see rather than from the filtered
+    // set: a month that disappears once you pick it leaves no way back.
+    months: [...new Set(universe.map((r) => dueMonth(r.due)).filter(Boolean))].sort(),
     open: open.length,
     inProgress: inProgress.length,
     done: done.length,
@@ -134,6 +166,10 @@ export function actionAnalytics(rows = [], sites = [], opts = {}) {
     // and half-finished, so the two are never merged into one figure.
     overdueNotStarted: overdue.filter((a) => a.row.norm === 'open').length,
     noDue: aged.filter((a) => a.days === null).length,
+    // Every undated action in scope, finished or not. noDue is the unfinished
+    // part of it; this is the part a month range cannot place, so it is what
+    // explains why `shown` still holds records outside the months picked.
+    undated: list.filter((r) => !dueMonth(r.due)).length,
     worstOverdueDays: overdue.reduce((n, a) => Math.max(n, a.days), 0),
     worstSource: worstSourceKey ? SOURCE_BY_KEY[worstSourceKey]?.label || worstSourceKey : '',
     worstSourceCount: worstSourceKey ? overdueBySource.get(worstSourceKey) : 0,
@@ -159,10 +195,47 @@ export function actionAnalytics(rows = [], sites = [], opts = {}) {
 const OWNER_LIMIT = 8
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`
 
+/**
+ * The one sentence the tab uses to account for actions with no due date.
+ *
+ * They need saying for two reasons — they can never become overdue, and no month
+ * range can place them, so they stay in the count whichever months are picked —
+ * and telling the reader that twice, in two places, with two different numbers,
+ * is how they end up believing there are two separate piles of undated work.
+ * So it is said once, next to the overdue figure it qualifies.
+ */
+export function undatedNote({ undated = 0, noDue = 0 } = {}, rangeActive = false) {
+  // Nothing to account for: no undated work, or none of it is unfinished and no
+  // range is prompting the question of why undated rows are still counted.
+  if (undated === 0 || (noDue === 0 && !rangeActive)) return ''
+
+  const one = undated === 1
+  const carry = one ? 'carries' : 'carry'
+  const parts = []
+  if (noDue === 0) {
+    parts.push(`${plural(undated, 'action')} in scope ${carry} no due date, and ${one ? 'it is' : 'all of them are'} already done.`)
+  } else if (noDue === undated) {
+    parts.push(`${plural(noDue, 'unfinished action')} ${carry} no due date and can never appear above.`)
+  } else {
+    parts.push(`${plural(undated, 'action')} in scope ${carry} no due date, ${noDue} of them unfinished and so unable to appear above.`)
+  }
+
+  if (rangeActive) {
+    parts.push(`A month range cannot place an undated action either, so ${one ? 'it stays' : 'they all stay'} counted whichever months you pick.`)
+  }
+  if (noDue > 0) {
+    const which = noDue < undated ? 'the unfinished ones' : (one ? 'it' : 'them')
+    parts.push(`Set a due date in the source module to bring ${which} into this figure.`)
+  }
+  return parts.join(' ')
+}
+
 export default function ActionsTab({ orgId, sites = [], keepUnplaced = true }) {
   const [rows, setRows] = useState(null)
   const [siteId, setSiteId] = useState('all')
   const [source, setSource] = useState('all')
+  const [from, setFrom] = useState('')
+  const [to, setTo] = useState('')
   const today = todayISO()
 
   useEffect(() => {
@@ -171,11 +244,13 @@ export default function ActionsTab({ orgId, sites = [], keepUnplaced = true }) {
   }, [orgId])
 
   const a = useMemo(
-    () => actionAnalytics(rows || [], sites, { siteId, source, keepUnplaced, today }),
-    [rows, sites, siteId, source, keepUnplaced, today],
+    () => actionAnalytics(rows || [], sites, { siteId, source, from, to, keepUnplaced, today }),
+    [rows, sites, siteId, source, from, to, keepUnplaced, today],
   )
 
   const owners = a.byOwner.slice(0, OWNER_LIMIT)
+  const rangeActive = from !== '' || to !== ''
+  const undated = undatedNote(a, rangeActive)
 
   if (rows === null) {
     return <NoData height={280}>Collecting actions from every module…</NoData>
@@ -207,9 +282,20 @@ export default function ActionsTab({ orgId, sites = [], keepUnplaced = true }) {
           <option value="all">All modules</option>
           {SOURCES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
         </Picker>
+        {/* Labelled "Due" because an action carries no other date — without it
+            the pair reads as when the action was raised, which is not a thing
+            the tracker records. */}
+        <Picker id="ac-from" label="Due from" value={from} onChange={(e) => setFrom(e.target.value)}>
+          <option value="">Earliest</option>
+          {a.months.map((m) => <option key={m} value={m}>{m}</option>)}
+        </Picker>
+        <Picker id="ac-to" label="Due to" value={to} onChange={(e) => setTo(e.target.value)}>
+          <option value="">Latest</option>
+          {a.months.map((m) => <option key={m} value={m}>{m}</option>)}
+        </Picker>
         <button
           type="button"
-          onClick={() => { setSiteId('all'); setSource('all') }}
+          onClick={() => { setSiteId('all'); setSource('all'); setFrom(''); setTo('') }}
           className="rounded-2xl bg-clay-surface px-4 py-2.5 text-[12.5px] font-semibold text-ink-700 shadow-clay-sm"
         >
           Reset
@@ -224,7 +310,15 @@ export default function ActionsTab({ orgId, sites = [], keepUnplaced = true }) {
 
       {/* The one number people act on, so it gets its own panel rather than a
           quarter of a stat row — and it counts only unfinished work. */}
-      <Panel title="Overdue" subtitle="Past their due date and not yet done" className="mb-3">
+      <Panel
+        title="Overdue"
+        subtitle={
+          rangeActive
+            ? 'Past their due date as of today, and not yet done — the range narrows which actions are counted, never what overdue means'
+            : 'Past their due date and not yet done'
+        }
+        className="mb-3"
+      >
         <div className="flex flex-wrap items-center gap-x-10 gap-y-4">
           <div>
             <p
@@ -260,13 +354,11 @@ export default function ActionsTab({ orgId, sites = [], keepUnplaced = true }) {
             </div>
           </dl>
         </div>
-        {a.noDue > 0 && (
+        {undated !== '' && (
           /* Undated work can never become overdue, so a low overdue count is
-             only reassuring once you know how much is missing a date. */
-          <p className="mt-4 text-[11.5px] text-ink-400">
-            {plural(a.noDue, 'unfinished action')} carry no due date and can never appear above. Set a
-            due date in the source module to bring them into this figure.
-          </p>
+             only reassuring once you know how much is missing a date — and once
+             a range is set, the same actions are also the ones it cannot place. */
+          <p className="mt-4 text-[11.5px] text-ink-400">{undated}</p>
         )}
       </Panel>
 

@@ -20,6 +20,7 @@ import {
 import { db } from '../../../shared/firebase'
 import { logAudit } from '../../../shared/org/orgData'
 import { standardMerakiPayloads } from './provision'
+import { asReportedOn } from './defectDate'
 
 export const COLLECTIONS = {
   cameras: 'cctvCameras',
@@ -63,6 +64,20 @@ export const subscribeMerakis = (orgId, cb) => subscribe(orgId, COLLECTIONS.mera
 const str = (v) => String(v ?? '').trim()
 const list = (v) => (Array.isArray(v) ? v.filter(Boolean) : [])
 
+/**
+ * The defect list and the date it was reported, written as one fact.
+ *
+ * They are shaped together because neither is true without the other. A date
+ * left behind by a cleared defect describes nothing, and would still be counted
+ * by anything that reads the field — so it goes when the last defect goes.
+ * `offline` never survives either: it is derived from connectivity in health.js
+ * and storing it is how a streaming camera stays flagged offline forever.
+ */
+const defectFields = (d) => {
+  const defects = list(d.defects).filter((x) => x !== 'offline')
+  return { defects, defectReportedOn: defects.length ? asReportedOn(d.defectReportedOn) : '' }
+}
+
 const cameraShape = (d) => ({
   name: str(d.name),
   location: str(d.location),
@@ -70,7 +85,7 @@ const cameraShape = (d) => ({
   siteId: str(d.siteId),
   siteName: str(d.siteName),
   status: str(d.status) || 'unknown',
-  defects: list(d.defects).filter((x) => x !== 'offline'), // derived, never stored
+  ...defectFields(d),
   make: str(d.make),
   model: str(d.model),
   channel: str(d.channel),
@@ -83,7 +98,7 @@ const dvrShape = (d) => ({
   siteId: str(d.siteId),
   siteName: str(d.siteName),
   status: str(d.status) || 'unknown',
-  defects: list(d.defects).filter((x) => x !== 'offline'),
+  ...defectFields(d),
   channels: Number(d.channels) || 0,
   make: str(d.make),
   model: str(d.model),
@@ -97,7 +112,7 @@ const merakiShape = (d) => ({
   siteId: str(d.siteId),
   siteName: str(d.siteName),
   status: str(d.status) || 'unknown',
-  defects: list(d.defects).filter((x) => x !== 'offline'),
+  ...defectFields(d),
   model: str(d.model),
   serial: str(d.serial),
   notes: str(d.notes),
@@ -283,21 +298,27 @@ export async function setStatus(orgId, kind, id, status, actor, label) {
 }
 
 /**
- * Raise or clear the observed defects on a device.
+ * Raise or clear the observed defects on a device, and say when they were found.
  *
- * `offline` is stripped: it is derived from connectivity in health.js, and
- * letting it be stored is how a streaming camera ends up flagged offline
- * forever because someone ticked a box once.
+ * The two travel together deliberately. `updatedAt` is set by every edit to
+ * every field, so it can never stand in for a defect date; `defectReportedOn`
+ * only moves when this runs, which is what makes it worth counting by month.
+ *
+ * The audit line carries the reported date as well as the write time, because
+ * those are different facts and the gap between them is the point: a defect
+ * found on a Friday walk-round is often typed in the following Monday.
  */
-export async function setDefects(orgId, kind, id, defects, actor, label) {
+export async function setDefects(orgId, kind, id, { defects, defectReportedOn } = {}, actor, label) {
   const name = COLLECTIONS[kind]
   if (!name) throw new Error(`Unknown device kind ${kind}`)
-  const clean = list(defects).filter((x) => x !== 'offline')
-  await updateDoc(ref(orgId, name, id), { defects: clean, updatedAt: serverTimestamp() })
+  const clean = defectFields({ defects, defectReportedOn })
+  await updateDoc(ref(orgId, name, id), { ...clean, updatedAt: serverTimestamp() })
   await logAudit(orgId, actor, 'cctv.defects', {
     target: name, targetId: id, targetLabel: label || id,
-    summary: clean.length
-      ? `${LABELS[name]} ${label || id}: ${clean.join(', ')}`
+    summary: clean.defects.length
+      ? `${LABELS[name]} ${label || id}: ${clean.defects.join(', ')}${
+          clean.defectReportedOn ? ` (reported ${clean.defectReportedOn})` : ' (no report date)'
+        }`
       : `${LABELS[name]} ${label || id}: defects cleared`,
   })
 }
