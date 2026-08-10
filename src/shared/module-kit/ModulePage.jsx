@@ -11,12 +11,19 @@ import {
   SkeletonTable,
   Modal,
   Input,
+  Select,
 } from '../ui'
 import { formatDate } from '../lib/format'
 import RecordForm from './RecordForm'
+import { fieldOptions, visibleFields } from './fields'
 import { DocIdCell } from '../docId/DocIdTag'
 
 const STATUS_TONE_FALLBACK = 'gray'
+
+// Modules that need live reference data — a site registry, a person list —
+// supply a `useLookups` hook; the rest get this and never notice.
+const NO_LOOKUPS = {}
+const useNoLookups = () => NO_LOOKUPS
 
 function statusMeta(config, value) {
   return config.statuses?.find((s) => s.value === value)
@@ -34,18 +41,29 @@ function emptyRecord(config) {
 /**
  * Generic, fully-working module screen: list (crisp table) + create/edit modal +
  * detail view + status workflow + delete. Driven entirely by a module config.
+ *
+ * Beyond fields / columns / statuses, a config may declare:
+ *   useLookups  hook returning live reference data (sites, people…) handed to
+ *               field options, column renderers, filters and compute
+ *   filters     { key, label, when, options(lookups, records, facets),
+ *                 match(record, value, facets) } — selects beside the search box
  */
 export default function ModulePage({ module, config }) {
   const { orgId, actor, role } = useAuth()
   const [records, setRecords] = useState(null) // null = loading
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [facets, setFacets] = useState({}) // config.filters, by key
   const [editing, setEditing] = useState(null) // record | 'new' | null
   const [form, setForm] = useState({})
   const [detail, setDetail] = useState(null)
   const [busy, setBusy] = useState(false)
 
   const service = config.service
+  // Which hook this is never changes — a module's config is a module-level
+  // constant — so the rules of hooks hold despite the indirection.
+  const useLookups = config.useLookups || useNoLookups
+  const lookups = useLookups()
 
   useEffect(() => {
     if (!orgId) return
@@ -61,15 +79,41 @@ export default function ModulePage({ module, config }) {
 
   const titleOf = (r) => (config.titleField ? r[config.titleField] : r.title) || '(untitled)'
 
+  // A filter can depend on another: "which region" only means anything once
+  // Region is the chosen level, so the offered set is re-read on every change.
+  const activeFilters = useMemo(
+    () => (config.filters || []).filter((f) => !f.when || f.when(facets)),
+    [config.filters, facets]
+  )
+
+  const setFacet = (key, value) => {
+    setFacets((prev) => {
+      const next = { ...prev, [key]: value }
+      // A choice this change has invalidated must stop narrowing the list.
+      // Switching the level from Region to Site leaves a region name sitting in
+      // the scope filter, where it matches nothing — an empty table and nothing
+      // on screen to explain why.
+      ;(config.filters || []).forEach((f) => {
+        if (f.key === key) return
+        const offered =
+          (!f.when || f.when(next)) &&
+          f.options(lookups, records || [], next).some((o) => o.value === (next[f.key] ?? ''))
+        if (!offered) delete next[f.key]
+      })
+      return next
+    })
+  }
+
   const filtered = useMemo(() => {
     if (!records) return []
     const q = search.trim().toLowerCase()
     return records.filter((r) => {
       if (statusFilter !== 'all' && r.status !== statusFilter) return false
+      if (activeFilters.some((f) => !f.match(r, facets[f.key] ?? '', facets))) return false
       if (!q) return true
       return JSON.stringify(r).toLowerCase().includes(q)
     })
-  }, [records, search, statusFilter])
+  }, [records, search, statusFilter, activeFilters, facets])
 
   const openNew = () => {
     setForm({ ...emptyRecord(config) })
@@ -85,7 +129,7 @@ export default function ModulePage({ module, config }) {
     e.preventDefault()
     setBusy(true)
     try {
-      const derived = config.compute ? config.compute(form) : {}
+      const derived = config.compute ? config.compute(form, lookups) : {}
       const payload = { ...form, ...derived }
       const label = titleOf(payload)
       if (editing === 'new') {
@@ -143,16 +187,36 @@ export default function ModulePage({ module, config }) {
         }
       />
 
-      {/* Toolbar: search + status filter chips */}
+      {/* Toolbar: search + module filters + status filter chips */}
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="relative max-w-xs flex-1">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-400" />
-          <Input
-            className="!py-2 pl-9"
-            placeholder={`Search ${config.plural.toLowerCase()}…`}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+        <div className="flex flex-1 flex-col gap-2 sm:flex-row sm:items-center">
+          <div className="relative max-w-xs flex-1">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-400" />
+            <Input
+              className="!py-2 pl-9"
+              placeholder={`Search ${config.plural.toLowerCase()}…`}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+          {activeFilters.map((f) => {
+            const label = typeof f.label === 'function' ? f.label(facets) : f.label
+            return (
+              <Select
+                key={f.key}
+                aria-label={label}
+                className="!py-2 sm:max-w-[13rem]"
+                value={facets[f.key] ?? ''}
+                onChange={(e) => setFacet(f.key, e.target.value)}
+              >
+                {f.options(lookups, records || [], facets).map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </Select>
+            )
+          })}
         </div>
         {config.statuses?.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
@@ -171,6 +235,14 @@ export default function ModulePage({ module, config }) {
           </div>
         )}
       </div>
+
+      {/* Say so when a filter is hiding records, rather than letting what is on
+          screen pass for everything on record. */}
+      {records && filtered.length !== records.length && (
+        <p className="mb-2 text-xs text-ink-400">
+          Showing {filtered.length} of {records.length} {config.plural.toLowerCase()}
+        </p>
+      )}
 
       {/* List */}
       {records === null ? (
@@ -216,7 +288,7 @@ export default function ModulePage({ module, config }) {
                     <td className="whitespace-nowrap px-5 py-3.5"><DocIdCell id={r.docId} /></td>
                     {columns.map((c, ci) => (
                       <td key={c.key} className={`px-5 py-3.5 ${ci === 0 ? 'font-medium text-ink-900' : 'text-ink-600'}`}>
-                        {c.render ? c.render(r) : formatCell(r[c.key])}
+                        {c.render ? c.render(r, lookups) : formatCell(r[c.key])}
                       </td>
                     ))}
                     <td className="px-5 py-3.5">
@@ -262,8 +334,8 @@ export default function ModulePage({ module, config }) {
         }
       >
         <form id="record-form" onSubmit={save}>
-          <RecordForm fields={config.fields} value={form} onChange={setForm} />
-          {config.compute && <RiskPreview config={config} form={form} />}
+          <RecordForm fields={config.fields} value={form} onChange={setForm} lookups={lookups} />
+          {config.compute && <RiskPreview config={config} form={form} lookups={lookups} />}
         </form>
       </Modal>
 
@@ -298,6 +370,7 @@ export default function ModulePage({ module, config }) {
           <RecordDetail
             config={config}
             record={detail}
+            lookups={lookups}
             canClose={canClose}
             onStatus={(s) => changeStatus(detail, s)}
           />
@@ -326,8 +399,8 @@ function StatusChip({ active, onClick, children }) {
   )
 }
 
-function RiskPreview({ config, form }) {
-  const derived = config.compute(form)
+function RiskPreview({ config, form, lookups }) {
+  const derived = config.compute(form, lookups)
   if (derived.riskScore == null) return null
   return (
     <div className="clay-inset mt-4 flex items-center justify-between p-4">
@@ -339,7 +412,7 @@ function RiskPreview({ config, form }) {
   )
 }
 
-function RecordDetail({ config, record, canClose, onStatus }) {
+function RecordDetail({ config, record, lookups, canClose, onStatus }) {
   const sm = statusMeta(config, record.status)
   return (
     <div className="space-y-5">
@@ -349,11 +422,11 @@ function RecordDetail({ config, record, canClose, onStatus }) {
       </div>
 
       <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
-        {config.fields.map((f) => (
+        {visibleFields(config.fields, record).map((f) => (
           <div key={f.key} className={f.type === 'textarea' ? 'sm:col-span-2' : ''}>
             <dt className="text-xs font-semibold uppercase tracking-wide text-ink-400">{f.label}</dt>
             <dd className="mt-0.5 whitespace-pre-wrap text-sm text-ink-800">
-              {renderValue(f, record[f.key])}
+              {renderValue(f, record, lookups)}
             </dd>
           </div>
         ))}
@@ -378,11 +451,15 @@ function RecordDetail({ config, record, canClose, onStatus }) {
   )
 }
 
-function renderValue(field, value) {
+function renderValue(field, record, lookups) {
+  // `detail` renders whether or not the field holds anything, because for some
+  // fields an unset value is itself worth saying out loud.
+  if (field.detail) return field.detail(record, lookups)
+  const value = record[field.key]
   if (value == null || value === '') return '—'
   if (field.type === 'date') return formatDate(value)
   if (field.type === 'select') {
-    const opt = field.options?.find((o) => (o.value ?? o) === value)
+    const opt = fieldOptions(field, record, lookups).find((o) => (o.value ?? o) === value)
     return opt?.label ?? value
   }
   return String(value)
