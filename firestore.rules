@@ -96,11 +96,21 @@ service cloud.firestore {
       let p = myProfile();
       let a = p.get('access', {});
       // Their own posting counts, exactly as resolveAccessibleSites() has it.
+      //
+      // The empty-string guards are load-bearing. A site with no region stores
+      // siteRegion: '', so without them a profile carrying '' in its regions —
+      // an empty option submitted, a bad import, a hand-edited grant — would
+      // match every document filed at a site that has no region set. The access
+      // screen cannot produce that today, but the rule is the layer that stops
+      // depending on what the app happens to produce.
+      //
+      // Still direct field access on the queried document, which is what keeps
+      // list queries constrained. See the note above.
       return d.siteId != ''
         && (p.get('siteId', '') == d.siteId
             || a.get('sites', []).hasAny([d.siteId])
-            || a.get('regions', []).hasAny([d.siteRegion])
-            || a.get('entities', []).hasAny([d.siteEntity]));
+            || (d.siteRegion != '' && a.get('regions', []).hasAny([d.siteRegion]))
+            || (d.siteEntity != '' && a.get('entities', []).hasAny([d.siteEntity])));
     }
 
     function canReadDocument(orgId, d) {

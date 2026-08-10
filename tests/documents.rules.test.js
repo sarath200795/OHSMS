@@ -64,6 +64,10 @@ beforeEach(async () => {
     await setDoc(doc(db, 'users', 'byRegion'), user('byRegion', { access: { regions: ['South'] } }))
     await setDoc(doc(db, 'users', 'byEntity'), user('byEntity', { access: { entities: ['COCO'] } }))
     await setDoc(doc(db, 'users', 'wrongSite'), user('wrongSite', { access: { sites: ['site-other'] } }))
+    // Malformed grants: an empty option submitted, a bad import, a hand edit.
+    await setDoc(doc(db, 'users', 'blankRegion'), user('blankRegion', { access: { regions: [''] } }))
+    await setDoc(doc(db, 'users', 'blankEntity'), user('blankEntity', { access: { entities: [''] } }))
+    await setDoc(doc(db, 'users', 'reachesBare'), user('reachesBare', { access: { sites: ['site-bare'] } }))
     // Another org entirely.
     await setDoc(doc(db, 'organizations', 'orgB'), { name: 'orgB', createdBy: 'stranger' })
     await setDoc(doc(db, 'users', 'stranger'), user('stranger', { orgId: 'orgB' }))
@@ -73,6 +77,12 @@ beforeEach(async () => {
     await setDoc(doc(docs, 'orgDoc'), { title: 'HSE Policy', level: 'org', visibility: 'all', siteId: '' })
     // Written before the field existed. Must keep the access it has today.
     await setDoc(doc(docs, 'legacyDoc'), { title: 'Old SOP', version: '1.0' })
+    // A site that carries no region or entity — the shape that makes a blank
+    // grant dangerous, since '' would otherwise match ''.
+    await setDoc(doc(docs, 'bareDoc'), {
+      title: 'Bare site SOP', level: 'site', siteId: 'site-bare', site: 'Bare Site',
+      visibility: 'site', siteRegion: '', siteEntity: '',
+    })
   })
 })
 
@@ -107,6 +117,28 @@ describe('a site-level document is readable only by people who reach that site',
 
   it('refuses another org entirely, however they are mapped', async () => {
     await assertFails(getDocument('stranger', 'siteDoc'))
+  })
+})
+
+// A site with no region stores siteRegion: ''. Without the empty-string guards
+// in reachesSite, a grant carrying '' would match every such document at once —
+// a blank value quietly acting as a wildcard.
+describe('a blank region or entity grant matches nothing', () => {
+  it('refuses a member whose regions contain an empty string', async () => {
+    await assertFails(getDocument('blankRegion', 'bareDoc'))
+  })
+
+  it('refuses a member whose entities contain an empty string', async () => {
+    await assertFails(getDocument('blankEntity', 'bareDoc'))
+  })
+
+  // The guard must not have locked out the legitimate route to the same file.
+  it('still allows a member granted that site explicitly', async () => {
+    await assertSucceeds(getDocument('reachesBare', 'bareDoc'))
+  })
+
+  it('does not let a blank grant reach a site that does have a region', async () => {
+    await assertFails(getDocument('blankRegion', 'siteDoc'))
   })
 })
 

@@ -9,6 +9,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "emulators": "firebase emulators:start",
+    "emulators:rules": "node scripts/reload-emulator-rules.mjs",
     "seed": "node scripts/seed.mjs",
     "dev:full": "concurrently -k -n emu,web -c magenta,cyan \"npm:emulators\" \"npm:dev\"",
     "test": "vitest run",
