@@ -113,7 +113,6 @@ const escalationShape = (d) => ({
   legalNoticeReceived: Boolean(d.legalNoticeReceived),
   legalNoticeRef: str(d.legalNoticeRef),
   legalNoticeDate: str(d.legalNoticeDate),
-  finalActionTaken: str(d.finalActionTaken),
   capa: capa(d.capa),
   // CCTV footage and an ethics report, if either exists. Shaped and filtered
   // here so a failed upload never persists as a dead link.
@@ -121,7 +120,6 @@ const escalationShape = (d) => ({
     cctv: shapeAttachments(d.attachments?.cctv),
     ethics: shapeAttachments(d.attachments?.ethics),
   },
-  actionTakenOn: str(d.actionTakenOn),
   owner: str(d.owner),
 })
 
@@ -145,7 +143,6 @@ const legalShape = (d) => ({
   noticeDate: str(d.noticeDate),
   responseDueDate: str(d.responseDueDate),
   status: str(d.status) || 'open',
-  actionTaken: str(d.actionTaken),
   capa: capa(d.capa),
   penaltyAmount: Number(d.penaltyAmount) || 0,
   owner: str(d.owner),

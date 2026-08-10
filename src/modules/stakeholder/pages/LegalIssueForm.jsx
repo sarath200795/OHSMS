@@ -18,7 +18,7 @@ const EMPTY = {
   title: '', scope: {}, escalationId: '', incidentDate: '', description: '',
   departments: [], departmentOther: '', officials: '',
   noticeType: 'none', noticeRef: '', noticeDate: '', responseDueDate: '',
-  status: 'open', actionTaken: '', penaltyAmount: '', owner: '',
+  status: 'open', penaltyAmount: '', owner: '',
   capa: [],
 }
 
@@ -225,13 +225,9 @@ export default function LegalIssueForm() {
           </div>
         </section>
 
-        <section className="card grid grid-cols-1 gap-4 p-5 sm:grid-cols-[2fr_1fr]">
-          <Field label="Action taken" htmlFor="lact">
-            <Textarea id="lact" rows={4} value={form.actionTaken} onChange={(e) => patch({ actionTaken: e.target.value })}
-              placeholder="Reply filed, corrections made, compliance submitted…" />
-          </Field>
-          <Field label="Owner" htmlFor="lowner">
-            <Input id="lowner" value={form.owner} onChange={(e) => patch({ owner: e.target.value })} />
+        <section className="card p-5">
+          <Field label="Owner" htmlFor="lowner" hint="Who is accountable for this matter">
+            <Input id="lowner" className="max-w-sm" value={form.owner} onChange={(e) => patch({ owner: e.target.value })} />
           </Field>
         </section>
 

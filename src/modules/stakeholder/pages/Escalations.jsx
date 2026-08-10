@@ -27,7 +27,7 @@ export default function Escalations() {
     return escalations.filter((e) => {
       if (statusFilter && e.status !== statusFilter) return false
       if (!needle) return true
-      return [e.title, e.docId, e.description, e.scope?.siteName, e.finalActionTaken]
+      return [e.title, e.docId, e.description, e.scope?.siteName]
         .filter(Boolean)
         .some((v) => String(v).toLowerCase().includes(needle))
         || (e.members || []).some((m) =>

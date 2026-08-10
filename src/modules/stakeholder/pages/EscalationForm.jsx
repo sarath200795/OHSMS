@@ -17,7 +17,7 @@ const EMPTY = {
   title: '', scope: {}, channel: 'in_person', severity: 'medium', status: 'open',
   raisedOn: '', description: '', members: [],
   legalNoticeReceived: false, legalNoticeRef: '', legalNoticeDate: '',
-  finalActionTaken: '', actionTakenOn: '', owner: '',
+  owner: '',
   attachments: { cctv: [], ethics: [] },
   capa: [],
 }
@@ -238,19 +238,13 @@ export default function EscalationForm() {
           />
         </section>
 
-        <section className="card grid grid-cols-1 gap-4 p-5 sm:grid-cols-[2fr_1fr]">
-          <Field label="Final action taken" htmlFor="eact">
-            <Textarea id="eact" rows={4} value={form.finalActionTaken} onChange={(e) => patch({ finalActionTaken: e.target.value })}
-              placeholder="What was done to close it out with the customer." />
+        {/* Owner kept, the action narrative dropped: CAPA below records what
+            was done, with an owner and a date per action rather than one
+            paragraph for the whole complaint. */}
+        <section className="card p-5">
+          <Field label="Owner" htmlFor="eowner" hint="Who is accountable for this escalation">
+            <Input id="eowner" className="max-w-sm" value={form.owner} onChange={(e) => patch({ owner: e.target.value })} />
           </Field>
-          <div className="space-y-4">
-            <Field label="Action date" htmlFor="eacton">
-              <Input id="eacton" type="date" value={form.actionTakenOn} onChange={(e) => patch({ actionTakenOn: e.target.value })} />
-            </Field>
-            <Field label="Owner" htmlFor="eowner">
-              <Input id="eowner" value={form.owner} onChange={(e) => patch({ owner: e.target.value })} />
-            </Field>
-          </div>
         </section>
 
         <section className="card p-5">
