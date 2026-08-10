@@ -48,6 +48,9 @@
     "three": "^0.185.1",
     "xlsx": "^0.18.5"
   },
+  "overrides": {
+    "undici": "^6.28.0"
+  },
   "devDependencies": {
     "@eslint/js": "^8.57.0",
     "@firebase/rules-unit-testing": "^3.0.4",

@@ -164,3 +164,19 @@ in a `deploy-staging.yml` copy triggered on pushes to `main`, and stop using
   module against production-sized data and capture the index-creation links.
 - Admin accounts have no MFA (email/password only).
 - LOTO's collections live outside the org tenancy model.
+- Three dependency advisories are knowingly open, so `npm audit` is not expected
+  to come back clean. Check new findings against this list rather than assuming
+  the noise is the usual noise:
+  - **jspdf 2.5.2** (rated critical) and **jspdf-autotable 3.8.4**. The fixes are
+    two major versions up on each and need a migration. Most of the advisories —
+    `AcroForm`/`addJS` arbitrary JS execution, HTML injection, path traversal —
+    are unreachable because the app never calls those APIs. What is reachable is
+    `addImage` in `src/modules/loto/utils/pdf.js`, which takes user-uploaded
+    procedure photos: a crafted BMP/GIF hangs the tab of whoever generates the
+    PDF. Client-side DoS by an authenticated member, not disclosure.
+  - **xlsx 0.18.5**, no fix on npm — SheetJS publishes to its own CDN now. The
+    prototype-pollution sink was tested and is unreachable; the ReDoS is, but
+    only against a workbook the user chose to open in their own browser.
+  - `undici` is pinned in `overrides` because Firebase holds it at a vulnerable
+    version. It never reaches the browser bundle, so the pin keeps `npm audit`
+    readable rather than closing a hole in the shipped app.
