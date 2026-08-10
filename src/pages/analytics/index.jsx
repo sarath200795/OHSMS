@@ -12,7 +12,7 @@
 // useAccessibleSites the modules use is the only source of that list.
 // ─────────────────────────────────────────────────────────────────────────────
 import { useEffect, useState } from 'react'
-import { BarChart3, AlertTriangle, Siren, FireExtinguisher, Users } from 'lucide-react'
+import { BarChart3, AlertTriangle, Siren, FireExtinguisher, Users, Cctv, Scale, ListChecks } from 'lucide-react'
 import { useAuth } from '../../shared/auth/AuthContext'
 import { subscribeCollection } from '../../shared/org/orgData'
 import { useAccessibleSites } from '../../shared/org/useAccessibleSites'
@@ -21,12 +21,20 @@ import IncidentsTab from './IncidentsTab'
 import DrillsTab from './DrillsTab'
 import EquipmentTab from './EquipmentTab'
 import CommitteeTab from './CommitteeTab'
+import CctvTab from './CctvTab'
+import StakeholderTab from './StakeholderTab'
+import ActionsTab from './ActionsTab'
 
+// Icons match the portal registry's, so a tab here and the tile it reports on
+// are recognisably the same thing.
 const TABS = [
   { key: 'incidents', label: 'Incidents', icon: AlertTriangle },
   { key: 'drills', label: 'Mock Drills', icon: Siren },
   { key: 'equipment', label: 'Emergency Equipment', icon: FireExtinguisher },
   { key: 'committee', label: 'HSE Committee', icon: Users },
+  { key: 'cctv', label: 'CCTV Defects', icon: Cctv },
+  { key: 'stakeholder', label: 'Stakeholder Issues', icon: Scale },
+  { key: 'actions', label: 'Action Tracker', icon: ListChecks },
 ]
 
 export default function Analytics() {
@@ -39,7 +47,16 @@ export default function Analytics() {
   const [extinguishers, setExt] = useState([])
   const [aeds, setAeds] = useState([])
   const [fas, setFas] = useState([])
+  const [cameras, setCameras] = useState([])
+  const [dvrs, setDvrs] = useState([])
+  const [merakis, setMerakis] = useState([])
+  const [escalations, setEscalations] = useState([])
+  const [legalIssues, setLegalIssues] = useState([])
 
+  // subscribeCollection rather than each module's own subscribeX helper: those
+  // order and cap for their working lists — stakeholder's takes the newest 500 —
+  // and a total that quietly stops at 500 is exactly the kind of wrong an
+  // analytics page must not be. Here every document counts or the number lies.
   useEffect(() => {
     if (!orgId) return undefined
     const unsubs = [
@@ -49,6 +66,11 @@ export default function Analytics() {
       subscribeCollection(orgId, 'extinguishers', setExt),
       subscribeCollection(orgId, 'aeds', setAeds),
       subscribeCollection(orgId, 'fas', setFas),
+      subscribeCollection(orgId, 'cctvCameras', setCameras),
+      subscribeCollection(orgId, 'cctvDvrs', setDvrs),
+      subscribeCollection(orgId, 'cctvMeraki', setMerakis),
+      subscribeCollection(orgId, 'escalations', setEscalations),
+      subscribeCollection(orgId, 'legalIssues', setLegalIssues),
     ]
     return () => unsubs.forEach((u) => u && u())
   }, [orgId])
@@ -98,8 +120,17 @@ export default function Analytics() {
         <DrillsTab drills={drills} sites={sites} keepUnplaced={isAdmin} />
       ) : tab === 'equipment' ? (
         <EquipmentTab extinguishers={extinguishers} aeds={aeds} fas={fas} sites={sites} keepUnplaced={isAdmin} />
-      ) : (
+      ) : tab === 'committee' ? (
         <CommitteeTab consultations={consultations} sites={sites} keepUnplaced={isAdmin} />
+      ) : tab === 'cctv' ? (
+        <CctvTab cameras={cameras} dvrs={dvrs} merakis={merakis} sites={sites} keepUnplaced={isAdmin} />
+      ) : tab === 'stakeholder' ? (
+        <StakeholderTab escalations={escalations} legalIssues={legalIssues} sites={sites} keepUnplaced={isAdmin} />
+      ) : (
+        // The one tab that owns its query: the tracker gathers actions from every
+        // module through a single extractor, so there is no one collection to
+        // hand it — see modules/actions/lib/sources.js.
+        <ActionsTab orgId={orgId} sites={sites} keepUnplaced={isAdmin} />
       )}
     </div>
   )
