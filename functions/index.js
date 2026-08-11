@@ -117,25 +117,38 @@ export const backfillClaims = onCall({ region: REGION }, async (request) => {
   const members = await db.collection('users').where('orgId', '==', caller.orgId).get()
 
   let updated = 0
-  let skipped = 0
   const failed = []
+  // Skips were a single number, and that was not enough to explain a run that
+  // did nothing. "0 updated, 2 skipped" is either "everyone was already
+  // correct" or "nobody qualified" — opposite meanings, and the second one is
+  // the reason the storage cutover must not proceed. Each reason is counted
+  // separately now so the answer is in the result rather than in a guess.
+  const skipped = { alreadyCorrect: 0, notApproved: 0, noAuthUser: 0 }
 
   for (const doc of members.docs) {
     const uid = doc.id
+    const data = doc.data()
     try {
       const record = await getAuth().getUser(uid)
       const existing = record.customClaims || {}
-      const next = claimsFor(doc.data())
+      const next = claimsFor(data)
+
       if (!claimsChanged(existing, next)) {
-        skipped += 1
+        // Nulls on both sides is not "already correct" — it is a person who
+        // does not qualify for a claim at all, almost always because their
+        // status is not 'approved'.
+        if (next.orgId) skipped.alreadyCorrect += 1
+        else skipped.notApproved += 1
         continue
       }
       await getAuth().setCustomUserClaims(uid, mergeClaims(existing, next))
       updated += 1
     } catch (err) {
-      // One missing auth user must not abandon the rest of the org half-done.
+      // A /users document whose id is not an auth uid — the usual cause is a
+      // profile created by hand. It can never receive a claim, so it would sit
+      // in the skip count forever looking like a success.
       if (err?.code === 'auth/user-not-found') {
-        skipped += 1
+        skipped.noAuthUser += 1
         continue
       }
       failed.push(uid)
@@ -143,8 +156,16 @@ export const backfillClaims = onCall({ region: REGION }, async (request) => {
     }
   }
 
-  logger.info('claims: backfill complete', { orgId: caller.orgId, updated, skipped, failed: failed.length })
-  return { orgId: caller.orgId, total: members.size, updated, skipped, failed }
+  const stamped = updated + skipped.alreadyCorrect
+  logger.info('claims: backfill complete', { orgId: caller.orgId, updated, ...skipped, failed: failed.length })
+  return {
+    orgId: caller.orgId,
+    total: members.size,
+    updated,
+    stamped, // how many now carry a claim — the number the cutover depends on
+    ...skipped,
+    failed,
+  }
 })
 
 /**

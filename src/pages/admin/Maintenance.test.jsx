@@ -22,7 +22,9 @@ const DRY = {
 beforeEach(() => {
   vi.clearAllMocks()
   backfillDocumentVisibility.mockResolvedValue(DRY)
-  backfillClaims.mockResolvedValue({ total: 5, updated: 4, skipped: 1, failed: [] })
+  backfillClaims.mockResolvedValue({
+    total: 5, updated: 4, stamped: 4, alreadyCorrect: 0, notApproved: 1, noAuthUser: 0, failed: [],
+  })
 })
 
 const btn = (name) => screen.getByRole('button', { name })

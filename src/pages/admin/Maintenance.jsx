@@ -162,13 +162,14 @@ function DocumentVisibility() {
 function OrgClaims() {
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState(null)
+  const [token, setToken] = useState(null)
 
   const run = async () => {
     setBusy(true)
     try {
       const r = await backfillClaims()
       setResult(r)
-      toast.success(`Updated ${r.updated} of ${r.total}`)
+      toast.success(`${r.stamped} of ${r.total} now carry the organization`)
     } catch (err) {
       toast.error(err?.message || 'Failed')
     } finally {
@@ -176,20 +177,42 @@ function OrgClaims() {
     }
   }
 
+  // Ground truth, not a count. Counts describe what the job believed it did;
+  // this is what the token actually says, which is the only thing the storage
+  // rules will read.
+  const check = async () => {
+    try {
+      const { getAuth, getIdTokenResult } = await import('firebase/auth')
+      const user = getAuth().currentUser
+      if (!user) return toast.error('Not signed in')
+      const res = await getIdTokenResult(user, true)
+      setToken({ uid: user.uid, orgId: res.claims.orgId ?? null, role: res.claims.role ?? null })
+    } catch (err) {
+      toast.error(err?.message || 'Failed')
+    }
+  }
+
   return (
     <Job
       icon={ShieldCheck}
       title="Put this organization on everyone's sign-in token"
-      result={result && [
-        `${result.total} member${result.total === 1 ? '' : 's'}`,
-        `${result.updated} updated`,
-        `${result.skipped} already correct or no sign-in account`,
-        result.failed?.length ? `${result.failed.length} failed — see the function logs` : '',
-      ].filter(Boolean).join('\n')}
+      result={[
+        result && [
+          `${result.total} member${result.total === 1 ? '' : 's'}`,
+          `${result.updated} updated now, ${result.stamped} carry the organization in total`,
+          result.notApproved ? `${result.notApproved} not approved — these get no organization, by design` : '',
+          result.noAuthUser ? `${result.noAuthUser} have no sign-in account and can never receive one` : '',
+          result.failed?.length ? `${result.failed.length} failed — see the function logs` : '',
+        ].filter(Boolean).join('\n'),
+        token && `\nYour token: ${token.orgId ? `organization ${token.orgId}, role ${token.role}` : 'NO organization — sign out and back in, or run the update above'}`,
+      ].filter(Boolean).join('\n') || null}
       actions={
-        <Button icon={Play} loading={busy} onClick={run}>
-          {result ? 'Run again' : 'Update tokens'}
-        </Button>
+        <>
+          <Button icon={Play} loading={busy} onClick={run}>
+            {result ? 'Run again' : 'Update tokens'}
+          </Button>
+          <Button variant="ghost" onClick={check}>Check my token</Button>
+        </>
       }
     >
       <p>
