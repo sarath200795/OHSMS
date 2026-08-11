@@ -52,9 +52,6 @@ export default {
       fontFamily: {
         sans: ['Inter', 'system-ui', 'Segoe UI', 'sans-serif'],
       },
-      borderRadius: {
-        clay: '1.5rem',
-      },
       // Emil Kowalski motion tokens — stronger-than-default custom curves.
       transitionTimingFunction: {
         emil: 'cubic-bezier(0.23, 1, 0.32, 1)', // ease-out: enter/exit, responsive
@@ -77,10 +74,6 @@ export default {
         // Skeleton shimmer sweep.
         shimmer: {
           '100%': { transform: 'translateX(100%)' },
-        },
-        float: {
-          '0%,100%': { transform: 'translateY(0)' },
-          '50%': { transform: 'translateY(-8px)' },
         },
         pulseRing: {
           '0%': { boxShadow: '0 0 0 0 rgba(221,90,65,0.5)' },
@@ -225,11 +218,6 @@ export default {
           '30%': { opacity: '1' },
           '65%,100%': { transform: 'translateZ(28px) translate(1px,-1px) rotate(38deg)', opacity: '1' },
         },
-        hatTip: {
-          '0%,100%': { transform: 'translateZ(10px) rotate(-8deg)' },
-          '35%': { transform: 'translateZ(16px) rotate(-30deg) translateY(-3px)' },
-          '70%': { transform: 'translateZ(12px) rotate(-2deg)' },
-        },
         barGrow: {
           '0%,100%': { transform: 'scaleY(0.45)' },
           '50%': { transform: 'scaleY(1)' },
@@ -241,11 +229,6 @@ export default {
         lockOpen: {
           '0%,100%': { transform: 'translateZ(6px) translateY(0)' },
           '45%': { transform: 'translateZ(6px) translateY(-6px) rotate(12deg)' },
-        },
-        phoneRing: {
-          '0%,100%': { transform: 'translateZ(12px) rotate(-6deg)' },
-          '25%': { transform: 'translateZ(12px) rotate(10deg)' },
-          '55%': { transform: 'translateZ(12px) rotate(-10deg)' },
         },
         squeeze: {
           '0%,100%': { transform: 'translateZ(12px) rotate(-6deg)' },
@@ -272,16 +255,13 @@ export default {
       },
       animation: {
         shimmer: 'shimmer 1.8s infinite',
-        float: 'float 6s ease-in-out infinite',
         pulseRing: 'pulseRing 2s infinite',
         'fade-in-up': 'fadeInUp 300ms cubic-bezier(0.23,1,0.32,1) both',
         wobble3d: 'wobble3d 2.8s cubic-bezier(0.45,0,0.55,1) infinite',
         sheen: 'sheen 1.5s cubic-bezier(0.23,1,0.32,1) infinite',
-        'hat-tip': 'hatTip 1.6s cubic-bezier(0.23,1,0.32,1) infinite',
         'bar-grow': 'barGrow 1.4s cubic-bezier(0.45,0,0.55,1) infinite',
         magnify: 'magnify 2s cubic-bezier(0.45,0,0.55,1) infinite',
         'lock-open': 'lockOpen 1.6s cubic-bezier(0.23,1,0.32,1) infinite',
-        'phone-ring': 'phoneRing 0.9s cubic-bezier(0.36,0,0.66,1) infinite',
         squeeze: 'squeeze 1.4s cubic-bezier(0.45,0,0.55,1) infinite',
         blare: 'blare 0.85s cubic-bezier(0.45,0,0.55,1) infinite',
         chatter: 'chatter 1.1s cubic-bezier(0.45,0,0.55,1) infinite',

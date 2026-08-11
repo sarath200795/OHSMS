@@ -3,7 +3,6 @@ import globals from 'globals'
 import react from 'eslint-plugin-react'
 import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
-import jsxA11y from 'eslint-plugin-jsx-a11y'
 
 // Vitest injects these as globals (see vitest.config.js `globals: true`).
 const vitestGlobals = {
@@ -36,7 +35,6 @@ export default [
       react,
       'react-hooks': reactHooks,
       'react-refresh': reactRefresh,
-      'jsx-a11y': jsxA11y,
     },
     rules: {
       ...react.configs.recommended.rules,
