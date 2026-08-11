@@ -29,7 +29,7 @@ client has to be deployed before MFA is enforced.
 | Area | State | Verdict |
 |---|---|---|
 | Tenant isolation (database) | Org-scoped paths, enforced in rules, 149 tests | **Ready** |
-| Tenant isolation (files) | Claim mechanism deployed; backfill + rule swap outstanding | **Blocker, 3 steps out** |
+| Tenant isolation (files) | orgId claim on the token, enforced in storage.rules | **Ready** |
 | Authentication | SAML/OIDC implemented; needs console config | **Ready in code** |
 | MFA | TOTP implemented, self-service enrolment; needs console config | **Ready in code** |
 | Authorization | 4 roles, site scoping, manager-only decisions — all in rules | **Ready** |

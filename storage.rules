@@ -1,122 +1,77 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// Cloud Storage — tenant-isolated.
+//
+// This closes SECURITY.md S-01. Until this ruleset, {orgId} was captured in the
+// path and checked against nothing, so any signed-in user of any tenant could
+// read and delete any other tenant's uploaded files if they knew the path —
+// incident photos, permit documents, LOTO procedure photos, training content.
+//
+// It reads the organization off the ID TOKEN, because that is the only thing a
+// Storage rule can learn about the caller: Storage rules cannot query Firestore.
+// functions/index.js (syncUserClaims) puts it there, and only for an APPROVED
+// member — a pending joiner's profile already names an org, since that is what
+// the waiting room is, so minting a claim from it would let anyone sign up
+// naming a tenant and read its files at once.
+//
+// An earlier draft used firestore.get(), which needs cross-service rules
+// granted on the project and costs a document read on every file operation.
+// The claim is better on both counts: nothing to grant, nothing to bill, and
+// the check is local to the request.
+//
+// Verified against the emulator in tests/storage.rules.test.js, which mints
+// tokens carrying the same claims syncUserClaims stamps — so the token shapes
+// under test are the real ones.
+//
+// The path is built by storagePath() in src/shared/storage/index.js as
+// `orgs/<orgId>/<kind>/<rand>-<file>`. It sanitises every segment, but only by
+// replacing characters outside [A-Za-z0-9_-], and a Firestore auto-id is
+// alphanumeric — so the org segment is byte-identical to the claim it is
+// matched against. If that sanitiser ever starts folding case, this rule stops
+// matching and every upload fails closed.
+// ─────────────────────────────────────────────────────────────────────────────
 rules_version = '2';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Storage rules — WITHOUT cross-service calls.
-//
-// The previous version asked Firestore "is this user an approved member of this
-// org?" from inside a Storage rule. That is the ideal check, and it is what the
-// commented block at the bottom does — but cross-service rules require a
-// project-level grant, and when the project does not have it the rules cannot
-// be evaluated AT ALL. The result is not a weaker check; it is every storage
-// operation denied, which is how this shipped and broke uploads.
-//
-// So this version uses only what a Storage rule can know by itself: whether the
-// caller is signed in, where they are writing, and how big the object is.
-//
-// ── What this DOES guarantee ─────────────────────────────────────────────────
-//   * Anonymous users cannot read or write anything.
-//   * Nothing outside /orgs/<orgId>/<kind>/<file> is reachable at all.
-//   * No object over 20MB, so a compromised account cannot use the bucket as
-//     free bulk hosting.
-//   * No listing: `list` is not granted, so the bucket cannot be enumerated.
-//     Without listing, reaching a file means already knowing its full path —
-//     and paths carry a 20-character org id plus 64 bits of per-file entropy
-//     (see storagePath() in src/shared/storage/index.js). Those paths are only
-//     ever stored inside org-scoped Firestore documents, which ARE tenancy-
-//     protected.
-//
-// ── What this does NOT guarantee ─────────────────────────────────────────────
-//   A signed-in member of org A who somehow obtains a full object path from
-//   org B can read it. That is a real gap versus the cross-service version.
-//   It is mitigated by unguessable paths and no listing, but mitigation is not
-//   enforcement, and this comment exists so nobody mistakes one for the other.
-//
-// ── Closing the gap ──────────────────────────────────────────────────────────
-//   Enable cross-service rules (Blaze plan + grant the Firebase Rules service
-//   agent read access to Firestore — the console prompts for this when you save
-//   rules containing firestore.get). Then swap in the commented block below and
-//   redeploy. docs/PRODUCTION.md carries the steps.
-// ─────────────────────────────────────────────────────────────────────────────
 service firebase.storage {
   match /b/{bucket}/o {
-    // NOTE the {orgId} capture is not referenced by any condition below. That is
-    // not an oversight in this block — it is the documented limitation: binding a
-    // caller to an org needs either a cross-service Firestore read (this project
-    // cannot execute those) or an orgId custom claim on the token (needs the
-    // Admin SDK, i.e. the functions/ tier once it is deployed). Until one of
-    // those lands, any authenticated user can reach any org's prefix.
+
+    // No claim means no org, and no org matches any path segment — so an
+    // unstamped, revoked or pending user fails closed. That is the mechanism.
     //
-    // What IS fixed here: `write` used to cover create, update AND delete in one
-    // grant, so a signed-in stranger could overwrite another tenant's evidence
-    // in place. Every upload already lands on a fresh random path
-    // (storagePath() prefixes 8 random bytes), so nothing legitimately writes
-    // over an existing object — update is denied outright and that vector is
-    // closed with no product change.
-    match /orgs/{orgId}/{kind}/{fileName} {
-      allow read: if request.auth != null;
-      // `resource == null` is what actually prevents an overwrite. `allow
-      // update: if false` below does NOT: proved against the emulator, an
-      // upload onto an existing path is evaluated as a CREATE, so it sailed
-      // past the update denial. The comment that used to sit here claimed that
-      // vector was closed. It was not — until this line, any signed-in user of
-      // any tenant could replace another tenant's safety evidence in place,
-      // which is worse than the register described.
-      //
-      // Nothing legitimately overwrites: storagePath() prefixes 8 random bytes,
-      // so every upload lands on a fresh path.
-      allow create: if request.auth != null
-        && resource == null
-        && request.resource.size < 20 * 1024 * 1024;
-      allow update: if false;
-      // Still cross-tenant, and the app needs it (removeFile). This is the
-      // sharpest remaining edge — a member of any org can delete another org's
-      // safety evidence — and it closes the moment orgId is on the token.
-      allow delete: if request.auth != null;
+    // .get() rather than .orgId: reading an absent claim directly raises
+    // "Property orgId is undefined on object". An erroring rule denies, so the
+    // outcome was right either way, but it denied by accident rather than by
+    // decision and filled the logs with evaluation errors for every signed-in
+    // user who had not been stamped yet. (The direct-field-access rule that
+    // matters in firestore.rules is about constraining LIST queries; Storage
+    // has no such queries, so nothing here is weakened by reading it safely.)
+    function inOrg(orgId) {
+      return request.auth != null && request.auth.token.get('orgId', '') == orgId;
     }
 
-    // Everything else is closed. New areas get their own explicit match.
+    match /orgs/{orgId}/{kind}/{fileName} {
+      allow read: if inOrg(orgId);
+
+      // `resource == null` is what actually prevents an overwrite, and it is
+      // here because the emulator proved the obvious version does not work:
+      // `allow update: if false` did NOT stop an upload onto an existing path,
+      // because Storage evaluated that upload as a CREATE. An earlier version
+      // of this file carried a comment claiming update-denial closed that
+      // vector. It did not. Nothing legitimately overwrites — storagePath()
+      // prefixes 8 random bytes — so denying it outright costs nothing and
+      // stops evidence being replaced in place.
+      allow create: if inOrg(orgId)
+        && resource == null
+        && request.resource.size < 20 * 1024 * 1024;
+
+      allow update: if false;
+
+      allow delete: if inOrg(orgId);
+    }
+
+    // Everything else is closed. New areas get their own explicit match rather
+    // than inheriting one written for a different purpose.
     match /{allPaths=**} {
       allow read, write: if false;
     }
   }
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// THE STRONGER VERSION — ready, and now actually reachable.
-//
-// It reads the organization off the ID TOKEN rather than out of Firestore. An
-// earlier sketch here used firestore.get(), which needs cross-service rules
-// granted on the project and costs a document read on every single file
-// operation. The claim is better on both counts: nothing to grant, nothing to
-// bill, and the check is local to the request.
-//
-// functions/index.js puts the claim there — syncUserClaims mirrors
-// /users/{uid} onto the token, and only for an APPROVED member, so a pending
-// joiner naming a tenant at signup gets nothing.
-//
-// ⚠️ DO NOT DEPLOY THIS UNTIL THE CLAIMS EXIST. A user whose token has no orgId
-// is denied by every rule below, so swapping this in first locks the whole
-// organization out of its own files. The order is in docs/PRODUCTION.md §4b:
-//   1. deploy functions
-//   2. run backfillClaims once per organization
-//   3. have people sign in again (or wait out the token, up to an hour)
-//   4. then deploy this
-//
-// service firebase.storage {
-//   match /b/{bucket}/o {
-//     // No claim means no org, and null never equals a path segment — so an
-//     // unstamped or revoked user fails closed rather than falling through.
-//     function inOrg(orgId) {
-//       return request.auth != null && request.auth.token.orgId == orgId;
-//     }
-//     match /orgs/{orgId}/{kind}/{fileName} {
-//       allow read: if inOrg(orgId);
-//       allow create: if inOrg(orgId) && request.resource.size < 20 * 1024 * 1024;
-//       // Still nothing overwrites: every upload lands on a random path.
-//       allow update: if false;
-//       allow delete: if inOrg(orgId);
-//     }
-//     match /{allPaths=**} { allow read, write: if false; }
-//   }
-// }
-// ─────────────────────────────────────────────────────────────────────────────

@@ -1,10 +1,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// The staged tenant-isolated storage rules (storage.rules.next).
+// Tenant isolation in Cloud Storage — the live rules.
 //
-// These are NOT the rules currently deployed. They are the ones that replace
-// storage.rules once every user carries an orgId claim, and this file is how we
-// know they behave before that swap rather than after it — the swap is the step
-// that locks an organization out of its own files if it is wrong.
+// These were written and proved here BEFORE they were deployed, because the
+// deploy is the step that locks an organization out of its own files if the
+// rules are wrong. They are live now.
 //
 // What makes this testable at all: the rules-unit-testing harness mints ID
 // tokens with arbitrary custom claims, which is exactly what syncUserClaims
@@ -30,7 +29,7 @@ const p = (org, name = 'evidence.jpg') => `orgs/${org}/incidents/${name}`
 beforeAll(async () => {
   testEnv = await initializeTestEnvironment({
     projectId: 'ohsms-demo',
-    storage: { rules: readFileSync(join(__dirname, '..', 'storage.rules.next'), 'utf8') },
+    storage: { rules: readFileSync(join(__dirname, '..', 'storage.rules'), 'utf8') },
   })
 })
 
@@ -134,22 +133,5 @@ describe('the limits that survived from the permissive rules', () => {
   it('closes every path outside the org prefix', async () => {
     await assertFails(uploadBytes(ref(memberOfA(), 'loose/file.jpg'), bytes()))
     await assertFails(uploadBytes(ref(memberOfA(), `orgs/${A}/too/deep/nested.jpg`), bytes()))
-  })
-})
-
-// Guards the cutover itself: if this file ever stops differing from the live
-// ruleset, the staged copy has been swapped in and this suite is testing
-// production rather than a proposal.
-describe('staging', () => {
-  it('is still staged — storage.rules has not been replaced yet', () => {
-    const live = readFileSync(join(__dirname, '..', 'storage.rules'), 'utf8')
-    const next = readFileSync(join(__dirname, '..', 'storage.rules.next'), 'utf8')
-    if (live.includes('request.auth.token.orgId')) {
-      // The swap has happened. Delete storage.rules.next and this block.
-      expect(live).toContain('request.auth.token.orgId')
-    } else {
-      expect(next).toContain('request.auth.token.orgId')
-      expect(live).not.toContain('request.auth.token.orgId')
-    }
   })
 })

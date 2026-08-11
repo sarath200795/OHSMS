@@ -28,35 +28,6 @@ recognising on sight:
 
 ## Open
 
-### S-01 · Cloud Storage is not tenant-isolated — HIGH
-
-`storage.rules` captures `{orgId}` in the path and never checks it. Any signed-in
-user of any tenant can read and delete any other tenant's uploaded files if they
-know the path — incident photos, permit documents, LOTO procedure photos,
-training content.
-
-**Correction — this entry understated it.** It previously said uploads were
-"safe from being overwritten in place" because `update` is denied. That was
-wrong, and proving it took an emulator: Cloud Storage evaluates an upload onto
-an existing path as a **create**, so `allow update: if false` never saw it. Any
-signed-in user of any tenant could replace another tenant's safety evidence in
-place. Now closed by `resource == null` on create — a separate fix from the
-tenant isolation below, and one that did not need the claims.
-
-The lesson generalises: `update` in Storage rules does not mean what it means in
-Firestore rules, and a comment asserting a control is not the same as a test
-exercising one.
-
-**Why it is still open.** Binding a caller to an org in Storage rules needs
-either cross-service Firestore reads or an `orgId` custom claim on the token.
-The claim needs the Admin SDK, which means the `functions/` tier, which is not
-deployed. The stronger ruleset is already written and commented at the bottom of
-`storage.rules`, ready to swap in.
-
-**Until then:** treat file storage as org-scoped by convention only. Do not put
-anything in it that would be materially worse in a competitor's hands than the
-Firestore records already are.
-
 ### S-04 · Unbounded collection listeners — LOW
 
 `subscribeCollection` (`src/shared/org/orgData.js:354`) reads whole collections
@@ -86,6 +57,53 @@ but only against a workbook the user chose to open in their own browser.
 ---
 
 ## Closed
+
+### S-01 · Cloud Storage was not tenant-isolated — HIGH
+
+`storage.rules` captured `{orgId}` in the path and checked it against nothing.
+Any signed-in user of any tenant could read and delete any other tenant's
+uploaded files if they knew the path — incident photos, permit documents, LOTO
+procedure photos, training content.
+
+**Fixed** by putting the organization on the ID token. Storage rules cannot
+query Firestore, so a claim is the only thing they can learn about a caller;
+`syncUserClaims` in `functions/index.js` mirrors `/users/{uid}` onto the token,
+and only for an **approved** member — a pending joiner's profile already names
+an org, since that is what the waiting room is, so minting a claim from it would
+let anyone sign up naming a tenant and read its files at once.
+
+An earlier draft used `firestore.get()`, which needs cross-service rules granted
+on the project and costs a document read per file operation. The claim needs
+neither and the check is local to the request.
+
+**Two things the emulator caught before this shipped.**
+
+Reading an absent claim as `request.auth.token.orgId` *raises* rather than
+returning null. An erroring rule denies, so the outcome was right — but it was
+right by accident, and it logged an evaluation error for every signed-in user
+who had not been stamped, which during the cutover is all of them.
+
+And the bigger one: **`allow update: if false` does not prevent an overwrite.**
+Cloud Storage evaluates an upload onto an existing path as a **create**, so the
+update denial never saw it. Both the deployed rules and this register previously
+claimed that vector was closed. It was not — any signed-in user of any tenant
+could replace another tenant's safety evidence in place, which is worse than
+this entry described. Closed by `resource == null` on create, which needed no
+claims and shipped ahead of the cutover.
+
+`update` in Storage rules does not mean what it means in Firestore rules, and a
+comment asserting a control is not the same as a test exercising one.
+
+**Order mattered.** A token with no `orgId` is denied by every rule in the new
+set, so deploying before the claims existed would have locked the organization
+out of its own files. Sequence was: deploy functions → run `backfillClaims` →
+confirm a real token actually carried the claim → then deploy the rules. The
+confirmation step was not ceremony: the backfill reported `0 updated, 2 skipped`,
+which is ambiguous between "everyone was already correct" and "nobody
+qualified", and only the token settled it.
+
+Verified in `tests/storage.rules.test.js` — 17 cases against the emulator,
+minting tokens carrying the same claims `syncUserClaims` stamps.
 
 ### S-02 · Manager-only actions were enforced only in React — HIGH
 
