@@ -270,6 +270,86 @@ Remaining inline-file call sites to migrate onto `shared/storage` the same way
 attachments, permit documents, drill evidence, LOTO procedure photos, course
 thumbnails, quotation uploads.
 
+## 4b. Functions, and closing the storage hole  ⚠️ Blaze plan required
+
+This is what fixes `SECURITY.md` S-01 — any signed-in user of any tenant being
+able to read and delete any other tenant's files.
+
+**Why it needs a function at all.** Cloud Storage rules cannot query Firestore,
+so they have no way to learn which organization the caller belongs to. The only
+thing a Storage rule can read about the caller is their ID token. So the org has
+to be *on* the token as a custom claim, and only the Admin SDK can put it there
+— which means Cloud Functions.
+
+### First, the plan
+
+Cloud Functions requires the **Blaze** pay-as-you-go plan — this project is already on it. Until then the API is
+off and `firebase deploy --only functions` fails with `SERVICE_DISABLED`. This
+cannot be done from the CLI — it needs a billing account attached:
+
+Firebase console → **⚙️ → Usage and billing → Details & settings → Modify plan**
+→ Blaze. Then enable the Cloud Functions API if prompted.
+
+Two functions this size cost approximately nothing — they fire on profile writes,
+not on page loads — but Blaze is still a real billing account, so set a budget
+alert while you are in there.
+
+### Then, in this order — the order is the whole point
+
+```bash
+npx firebase deploy --only functions --project weehs-4eb28
+```
+
+`syncUserClaims` now stamps every future profile write. Existing users still
+carry no claim, so next:
+
+Call `backfillClaims` once, signed in as an admin of the org. It is idempotent
+and scoped to the caller's own organization. From the browser console of the
+running app:
+
+```js
+const { getFunctions, httpsCallable } = await import('firebase/functions')
+await httpsCallable(getFunctions(undefined, 'asia-south1'), 'backfillClaims')()
+```
+
+It returns `{ total, updated, skipped, failed }`. Run it for **every** org in the
+project — it does one tenant per call, by design.
+
+Then people need a token carrying the new claim. Signing out and in does it
+immediately; otherwise a cached token can be up to an hour stale. The client
+forces a refresh on every sign-in (`AuthContext.adopt`), so in practice this
+takes care of itself.
+
+⚠️ **Only now** swap in the stricter ruleset — it is written out in full at the
+bottom of `storage.rules`. Uncomment it, delete the permissive block above it,
+and deploy:
+
+```bash
+npx firebase deploy --only storage --project weehs-4eb28
+```
+
+Do it in the other order and every user is denied their own files, because a
+token with no `orgId` fails every rule in the new set. That is the correct
+behaviour — it is just catastrophic if nobody has been stamped yet.
+
+### Verifying it actually closed
+
+Signed in as a member of org A, in the browser console:
+
+```js
+(await firebase.auth().currentUser.getIdTokenResult()).claims.orgId
+```
+
+should be org A's id. Then try to read a path under another org's prefix — it
+must fail. If the claim is `undefined`, the backfill has not reached that user.
+
+### What is still not deployed
+
+The notification triggers and the scheduled digest (`functions/lib/templates.js`,
+`recipients.js`, `actionSources.js`) are written and tested but have no trigger
+wired to them. They belong in the same `functions/index.js`, and deploying them
+is a follow-up rather than a prerequisite for the storage fix.
+
 ## 5. Deploys from CI, and staging  ⚠️ secrets required
 
 `.github/workflows/deploy.yml` deploys hosting + Firestore rules + storage

@@ -17,12 +17,24 @@
       }
     ]
   },
+  "functions": {
+    "source": "functions",
+    "ignore": [
+      "node_modules",
+      ".git",
+      "**/*.test.js",
+      "vitest.config.js"
+    ]
+  },
   "emulators": {
     "auth": {
       "port": 9099
     },
     "firestore": {
       "port": 8080
+    },
+    "functions": {
+      "port": 5001
     },
     "ui": {
       "enabled": true,

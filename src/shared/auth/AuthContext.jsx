@@ -148,6 +148,12 @@ export function AuthProvider({ children }) {
     // Set user immediately so isAuthed is true right away — don't wait for the
     // async listener, which would let the redirect bounce off ProtectedRoute.
     setUser(cred.user)
+    // Force a fresh ID token so any custom claim set since the last sign-in is
+    // on it. The orgId claim is what lets Cloud Storage rules tell one tenant
+    // from another, and a cached token can be up to an hour stale — which for a
+    // just-approved member is the difference between reaching their own files
+    // and being refused. Best-effort: a failure here must not block sign-in.
+    await cred.user.getIdToken(true).catch(() => {})
     await withRetry(() => refreshProfile(cred.user.uid))
     return { status: 'signed-in', user: cred.user }
   }

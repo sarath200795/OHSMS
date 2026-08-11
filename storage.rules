@@ -72,21 +72,39 @@ service firebase.storage {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// The stronger version. Requires cross-service rules to be enabled on the
-// project; deploying it without that grant denies ALL storage operations.
+// THE STRONGER VERSION — ready, and now actually reachable.
+//
+// It reads the organization off the ID TOKEN rather than out of Firestore. An
+// earlier sketch here used firestore.get(), which needs cross-service rules
+// granted on the project and costs a document read on every single file
+// operation. The claim is better on both counts: nothing to grant, nothing to
+// bill, and the check is local to the request.
+//
+// functions/index.js puts the claim there — syncUserClaims mirrors
+// /users/{uid} onto the token, and only for an APPROVED member, so a pending
+// joiner naming a tenant at signup gets nothing.
+//
+// ⚠️ DO NOT DEPLOY THIS UNTIL THE CLAIMS EXIST. A user whose token has no orgId
+// is denied by every rule below, so swapping this in first locks the whole
+// organization out of its own files. The order is in docs/PRODUCTION.md §4b:
+//   1. deploy functions
+//   2. run backfillClaims once per organization
+//   3. have people sign in again (or wait out the token, up to an hour)
+//   4. then deploy this
 //
 // service firebase.storage {
 //   match /b/{bucket}/o {
-//     function isApprovedMemberOf(orgId) {
-//       return request.auth != null
-//         && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.orgId == orgId
-//         && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.status == 'approved';
+//     // No claim means no org, and null never equals a path segment — so an
+//     // unstamped or revoked user fails closed rather than falling through.
+//     function inOrg(orgId) {
+//       return request.auth != null && request.auth.token.orgId == orgId;
 //     }
 //     match /orgs/{orgId}/{kind}/{fileName} {
-//       allow read: if isApprovedMemberOf(orgId);
-//       allow write: if isApprovedMemberOf(orgId)
-//         && request.resource.size < 20 * 1024 * 1024;
-//       allow delete: if isApprovedMemberOf(orgId);
+//       allow read: if inOrg(orgId);
+//       allow create: if inOrg(orgId) && request.resource.size < 20 * 1024 * 1024;
+//       // Still nothing overwrites: every upload lands on a random path.
+//       allow update: if false;
+//       allow delete: if inOrg(orgId);
 //     }
 //     match /{allPaths=**} { allow read, write: if false; }
 //   }
