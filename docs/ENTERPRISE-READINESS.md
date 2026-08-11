@@ -29,7 +29,7 @@ client has to be deployed before MFA is enforced.
 | Area | State | Verdict |
 |---|---|---|
 | Tenant isolation (database) | Org-scoped paths, enforced in rules, 149 tests | **Ready** |
-| Tenant isolation (files) | `storage.rules` does not bind a caller to an org | **Blocker** |
+| Tenant isolation (files) | Claim mechanism deployed; backfill + rule swap outstanding | **Blocker, 3 steps out** |
 | Authentication | SAML/OIDC implemented; needs console config | **Ready in code** |
 | MFA | TOTP implemented, self-service enrolment; needs console config | **Ready in code** |
 | Authorization | 4 roles + site scoping; manager gate only in React | **Gap** |
@@ -60,13 +60,26 @@ This is the cheapest blocker to fix and the most expensive to leave. `PRODUCTION
 actually been performed once*, because a backup nobody has restored is a belief,
 not a control.
 
-### 2. File storage is not tenant-isolated
+### 2. File storage is not tenant-isolated — mechanism now deployed, cutover outstanding
 
 Any signed-in user of any tenant can read and delete any other tenant's uploaded
 files if they know the path — incident photos, permit documents, LOTO procedure
-photos. See `SECURITY.md` S-01. Needs an `orgId` custom claim, which needs the
-Admin SDK, which means deploying the `functions/` tier. The stronger ruleset is
-already written and waiting at the bottom of `storage.rules`.
+photos. See `SECURITY.md` S-01.
+
+**Still true today, but no longer blocked.** The missing piece was an `orgId`
+custom claim on the ID token, which only the Admin SDK can set — and the
+`functions/` tier had no entry point, so there was nothing to deploy. That is
+done: `syncUserClaims` and `backfillClaims` are live in `asia-south1`.
+
+Three steps remain, and the order is load-bearing because a token with no
+`orgId` fails every rule in the stricter set — swapping it in first locks the
+organization out of its own files:
+
+1. run `backfillClaims` once per organization
+2. let people get a fresh token (sign-in forces one)
+3. swap in the ruleset written out at the bottom of `storage.rules`
+
+`PRODUCTION.md` §4b has the commands and how to verify it actually closed.
 
 ---
 
