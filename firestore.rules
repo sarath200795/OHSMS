@@ -13,6 +13,11 @@ rules_version = '2';
 // inspectionRecords, extinguishers, consultations, …). Rather than enumerate
 // them all, a generic per-org rule grants approved members access to any
 // collection EXCEPT auditLogs, which stays append-only via its own rule.
+//
+// Roles bite in three places in that generic rule: an auditor cannot write at
+// all, only a manager may delete, and only a manager may move a record into one
+// of the states that record a decision (approved / closed / verified). See the
+// "Manager-only decisions" block below for what counts and what does not.
 // ─────────────────────────────────────────────────────────────────────────────
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -56,6 +61,96 @@ service cloud.firestore {
     // to prevent. Writes go through this instead of isApprovedMemberOf.
     function isWriterOf(orgId) {
       return isApprovedMemberOf(orgId) && myProfile().role != 'auditor';
+    }
+
+    // ── Manager-only decisions ────────────────────────────────────────────────
+    // Approving a permit, deciding a defect report, verifying an injury,
+    // closing a finding: each of these was enforced by can() in React and by
+    // nothing else, so the same write went through unchallenged from the SDK.
+    // The whole value of an approval is that only the approver could have made
+    // it — a decision whose only guarantee is a hidden button is not one.
+    //
+    // Writing each module's state machine out in full would be unmaintainable
+    // and would be wrong the first time someone adds a status. So only the
+    // states that RECORD A DECISION are named. A member may still create the
+    // record, edit it, and submit it for approval: 'pending', 'draft' and
+    // 'pending_approval' are deliberately absent, because asking is not
+    // deciding. What a member may not do is move a record into one of these.
+    //
+    // Nor back out of one. Clearing an approval is as much the approver's act
+    // as granting it, and a rule watching only the way IN would let a member
+    // wipe a decision and leave the record looking as though none was ever
+    // made. Both sides of the write are read for that reason:
+    // request.resource.data is the state AFTER the write, so on its own it
+    // authorises nothing — the writer supplies it.
+    //
+    // Deliberately NOT decisions: an extinguisher reaching 'closed' (refilled —
+    // the ordinary end of the fire workflow, recorded by whoever did the work),
+    // an inspection template going Active, and a permit's
+    // closedDueToObservation. Stopping unsafe work is not approving it, and a
+    // rule that sent a member to find a manager before they could stop it would
+    // be a safety defect, not a control.
+    //
+    // This governs `create` and `update` only. Reads are untouched, so none of
+    // the list-constraint reasoning above applies to it.
+    function decisionStates(col) {
+      return col in ['permits', 'procedures', 'reports', 'observations',
+                     'trainingRequests', 'erpRescuePlans']
+               ? ['approved', 'rejected', 'declined']
+           : col in ['incidents', 'illnesses', 'capas', 'findings', 'audits']
+               ? ['closed', 'verified']
+           // The internal-audit register capitalises its statuses.
+           : col == 'auditFindings' ? ['Closed']
+           : col == 'injuries' ? ['verified']
+           // A document reaching 'active' becomes the controlled copy of record.
+           : col == 'documents' ? ['active']
+           : [];
+    }
+
+    // Does this write leave `path` alone, or move it only between undecided
+    // states? An absent field reads as '', which is in no set, so a collection
+    // that does not use a given field is never affected by it.
+    function keeps(states, before, after, path) {
+      let a = before.get(path, '');
+      let b = after.get(path, '');
+      return a == b || (!(a in states) && !(b in states));
+    }
+
+    // A permit has no status field at all: each approving team writes its own
+    // decision block, and closure and extension carry another pair each.
+    // `storedStatus` is derived from them and is re-persisted by whoever opens
+    // the list, so gating that instead would deny ordinary browsing while
+    // leaving the decisions themselves wide open.
+    function keepsPermitDecisions(states, before, after) {
+      return keeps(states, before, after, ['engineering', 'status'])
+        && keeps(states, before, after, ['operations', 'status'])
+        && keeps(states, before, after, ['closure', 'engineering', 'status'])
+        && keeps(states, before, after, ['closure', 'operations', 'status'])
+        && keeps(states, before, after, ['extension', 'engineering', 'status'])
+        && keeps(states, before, after, ['extension', 'operations', 'status']);
+    }
+
+    // What a member may write: everything about the record except the decision.
+    //
+    // Rules are budgeted at 1000 expressions per request, and this rule is
+    // evaluated twice for every write (the recursive subcollection match below
+    // covers the parent document too). So the ungated collections — most of
+    // them — exit on the size() check, and the six nested permit paths are only
+    // walked for permits.
+    function keepsDecision(col, before, after) {
+      let s = decisionStates(col);
+      return s.size() == 0
+        || (keeps(s, before, after, ['status'])
+            && keeps(s, before, after, ['approvalStatus'])
+            // incidents and illnesses call it `lifecycle`.
+            && keeps(s, before, after, ['lifecycle'])
+            && (col != 'permits' || keepsPermitDecisions(s, before, after)));
+    }
+
+    // On a create there is no before state; an empty map defaults every field,
+    // so creating a record already in a decided state is a move like any other.
+    function beforeData() {
+      return resource == null ? {} : resource.data;
     }
 
     // ── Site-scoped document visibility ───────────────────────────────────────
@@ -228,14 +323,19 @@ service cloud.firestore {
     // Pinning orgId across the write closes it without costing anything: every
     // legitimate writer already owns the mirror it is updating, and a merge
     // write carries the existing orgId through to the post state.
+    //
+    // isWriterOf rather than isApprovedMemberOf, for the same reason the org
+    // collections use it: this mirror is what a stranger with a phone is shown,
+    // and an auditor rewriting it could mark a faulty extinguisher ready for use
+    // on the page the next person to scan it reads.
     match /qr/{token} {
       allow get: if true;
       allow list: if false;
-      allow create: if isApprovedMemberOf(request.resource.data.orgId);
+      allow create: if isWriterOf(request.resource.data.orgId);
       allow update: if resource != null
-        && isApprovedMemberOf(resource.data.orgId)
+        && isWriterOf(resource.data.orgId)
         && request.resource.data.orgId == resource.data.orgId;
-      allow delete: if isApprovedMemberOf(resource.data.orgId);
+      allow delete: if isWriterOf(resource.data.orgId);
     }
 
     // Public mirror for the QR code printed on a work permit. Same shape of
@@ -255,11 +355,11 @@ service cloud.firestore {
     match /permitQr/{token} {
       allow get: if true;
       allow list: if false;
-      allow create: if isApprovedMemberOf(request.resource.data.orgId);
+      allow create: if isWriterOf(request.resource.data.orgId);
       allow update: if resource != null
-        && isApprovedMemberOf(resource.data.orgId)
+        && isWriterOf(resource.data.orgId)
         && request.resource.data.orgId == resource.data.orgId;
-      allow delete: if isApprovedMemberOf(resource.data.orgId);
+      allow delete: if isWriterOf(resource.data.orgId);
     }
 
     // ── Ported-module top-level collections (LOTO / hecp-loto) ─────────────────
@@ -273,15 +373,24 @@ service cloud.firestore {
     match /{legacyCol}/{docId} {
       allow read: if isLegacyOrgCollection(legacyCol)
         && resource != null && isApprovedMemberOf(resource.data.orgId);
+      // isWriterOf, not isApprovedMemberOf. These collections were the one place
+      // the read-only auditor role was still only read-only in React: an auditor
+      // could edit the isolation procedure they were auditing, and the LOTO
+      // adapter maps auditor onto its `technician` role, which carries
+      // loto.perform — so the buttons were there too. See the note on isWriterOf.
       allow create: if isLegacyOrgCollection(legacyCol)
-        && isApprovedMemberOf(request.resource.data.orgId);
+        && isWriterOf(request.resource.data.orgId)
+        && (isManagerOf(request.resource.data.orgId)
+            || keepsDecision(legacyCol, {}, request.resource.data));
       // Pinned the same way as /qr above: the post-state branch let one org
       // capture another's document by rewriting orgId to its own in a single
       // update, which for LOTO means taking over a live isolation procedure.
       allow update: if isLegacyOrgCollection(legacyCol)
         && resource != null
-        && isApprovedMemberOf(resource.data.orgId)
-        && request.resource.data.orgId == resource.data.orgId;
+        && isWriterOf(resource.data.orgId)
+        && request.resource.data.orgId == resource.data.orgId
+        && (isManagerOf(resource.data.orgId)
+            || keepsDecision(legacyCol, resource.data, request.resource.data));
       allow delete: if isLegacyOrgCollection(legacyCol)
         && resource != null && isManagerOf(resource.data.orgId);
     }
@@ -410,8 +519,12 @@ service cloud.firestore {
       // cannot claim one unit and lock another. And a public writer must
       // present the token of the very asset they are locking — which they can
       // only get by scanning it.
+      // Split so the auditor keeps the read and loses the write: pre-creating a
+      // lock, or deleting one, is how the DoS above worked, and "read-only" has
+      // to mean it here too.
       match /defectLocks/{lockId} {
-        allow read, delete: if isApprovedMemberOf(orgId);
+        allow read: if isApprovedMemberOf(orgId);
+        allow delete: if isWriterOf(orgId);
         allow create: if request.resource.data.keys().hasOnly(['extId', 'defectType', 'createdAt', 'token'])
           && request.resource.data.extId is string
           && request.resource.data.extId.size() > 0
@@ -425,7 +538,7 @@ service cloud.firestore {
           && !request.resource.data.defectType.matches('.*/.*')
           && lockId == request.resource.data.extId + '__' + request.resource.data.defectType
           && (
-            isApprovedMemberOf(orgId)
+            isWriterOf(orgId)
             || (scannedAsset(orgId, request.resource.data)
                 && scannedAssetField(request.resource.data, 'extId') == request.resource.data.extId)
           );
@@ -448,12 +561,17 @@ service cloud.firestore {
       // permissive union and /reports is also covered by the generic org
       // collection rule below, so a constraint on the member branch here would
       // be silently overridden by that rule granting the same write — the kind
-      // of protection that reads as real and enforces nothing. Members are
-      // governed by the generic rule, as they are for every other collection;
-      // what matters is that the ANONYMOUS branch is exhaustively bounded.
+      // of protection that reads as real and enforces nothing. What matters is
+      // that the ANONYMOUS branch is exhaustively bounded.
+      //
+      // The member branch that used to sit here (`isApprovedMemberOf(orgId) ||`)
+      // is gone, and its absence is the point. It was the broader match of the
+      // pair: it let an AUDITOR file a report, and once approving one became a
+      // manager's act it would have let any member create a report that was
+      // already approved and skip the queue entirely. Signed-in writers go
+      // through the generic rule, exactly as the comment above always claimed.
       match /reports/{reportId} {
-        allow create: if isApprovedMemberOf(orgId)
-          || (
+        allow create: if (
               request.resource.data.keys().hasOnly([
                 'extId', 'extLabel', 'kind', 'defectType', 'newStatus', 'note',
                 'reportedBy', 'reportedByName', 'reporterRole', 'source',
@@ -529,9 +647,10 @@ service cloud.firestore {
       // Same two gaps as /reports, closed the same way: the key set was never
       // constrained, and the permit being observed was a string the writer
       // invented in a tenant they chose by editing the path.
+      //
+      // The member branch is gone for the same reason as /reports — see there.
       match /observations/{obsId} {
-        allow create: if isApprovedMemberOf(orgId)
-          || (
+        allow create: if (
               request.resource.data.keys().hasOnly([
                 'permitId', 'permitNo', 'docId', 'token', 'type', 'note',
                 'observedBy', 'observedByName', 'observedByRole', 'source',
@@ -564,13 +683,17 @@ service cloud.firestore {
       // document per kind rather than one document with a field per kind
       // because rules cannot compare a dynamically-named field — splitting the
       // path is what makes the guarantee expressible at all.
+      //
+      // Only writers reserve ids, because only writers create records. An
+      // auditor bumping a counter cannot forge a record, but it would burn a
+      // reference number out of a sequence that is quoted to a regulator.
       match /docSeq/{kind} {
         allow read: if isApprovedMemberOf(orgId);
-        allow create: if isApprovedMemberOf(orgId)
+        allow create: if isWriterOf(orgId)
           && request.resource.data.keys().hasOnly(['n'])
           && request.resource.data.n is int
           && request.resource.data.n > 0;
-        allow update: if isApprovedMemberOf(orgId)
+        allow update: if isWriterOf(orgId)
           && request.resource.data.keys().hasOnly(['n'])
           && request.resource.data.n is int
           && request.resource.data.n > resource.data.n;
@@ -600,18 +723,37 @@ service cloud.firestore {
         // `read` is split out from create/update for one reason: documents are
         // read through the site-scoped rule above and written through this one.
         allow read: if col != 'auditLogs' && col != 'defectLocks' && col != 'docSeq' && col != 'documents' && isApprovedMemberOf(orgId);
-        allow create, update: if col != 'auditLogs' && col != 'defectLocks' && col != 'docSeq' && isWriterOf(orgId);
+        // The manager gate lives INSIDE this rule rather than in a new match of
+        // its own. Rules are a permissive union: a narrow per-collection match
+        // restricts nothing while this one still grants the same write, so the
+        // alternative was excluding a dozen collections here and again below —
+        // a list nobody would keep correct. One conjunct covers every
+        // collection, and adding a module cannot forget it.
+        //
+        // Site registry: every module's scoping and every site-level document's
+        // visibility snapshot resolve through it, so renaming or deleting a site
+        // reaches much further than the row it edits. `site.manage` is manager
+        // in can(); this is that, enforced.
+        allow create, update: if col != 'auditLogs' && col != 'defectLocks' && col != 'docSeq'
+          && isWriterOf(orgId)
+          && (isManagerOf(orgId)
+              || (col != 'sites' && keepsDecision(col, beforeData(), request.resource.data)));
         allow delete: if col != 'auditLogs' && col != 'docSeq' && isManagerOf(orgId);
 
         // Nested subcollections (e.g. incidents/{id}/photos).
         // The recursive wildcard also matches the parent {col}/{docId} itself, so
         // it must repeat the auditLogs guard — otherwise it would silently reopen
         // updates/deletes on the append-only audit trail. The same applies to
-        // defectLocks, whose create-only rule is the duplicate check, and to
-        // documents, whose site scoping this would otherwise hand straight back.
+        // defectLocks, whose create-only rule is the duplicate check, to
+        // documents, whose site scoping this would otherwise hand straight back,
+        // and to the manager gate above, which this would otherwise hand back
+        // for the parent document of every gated collection.
         match /{sub=**} {
           allow read: if col != 'auditLogs' && col != 'defectLocks' && col != 'docSeq' && col != 'documents' && isApprovedMemberOf(orgId);
-          allow create, update: if col != 'auditLogs' && col != 'defectLocks' && col != 'docSeq' && isWriterOf(orgId);
+          allow create, update: if col != 'auditLogs' && col != 'defectLocks' && col != 'docSeq'
+            && isWriterOf(orgId)
+            && (isManagerOf(orgId)
+                || (col != 'sites' && keepsDecision(col, beforeData(), request.resource.data)));
           allow delete: if col != 'auditLogs' && col != 'docSeq' && isManagerOf(orgId);
         }
       }

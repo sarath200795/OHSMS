@@ -25,7 +25,11 @@ export default [
     languageOptions: {
       ecmaVersion: 'latest',
       sourceType: 'module',
-      globals: { ...globals.browser, ...globals.node },
+      // es2021 carries the standard built-ins — Intl, Promise, BigInt and the
+      // rest. browser and node between them do NOT declare all of these, so
+      // without it no-undef fires on language features that are simply always
+      // there. Adding known globals can only ever remove errors.
+      globals: { ...globals.browser, ...globals.node, ...globals.es2021 },
       parserOptions: {
         ecmaFeatures: { jsx: true },
       },

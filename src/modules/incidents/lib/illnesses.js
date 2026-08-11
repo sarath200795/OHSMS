@@ -25,6 +25,9 @@ import {
 import { db } from '../firebase'
 import { logAudit } from './firestore'
 import { AUDIT, diffSummary } from './audit'
+// Reference numbers are issued by the same transactional reserver incidents
+// use; only the counter document and the prefix differ.
+import { reserveRefNo } from './incidents'
 import { reserveDocId } from '../../../shared/docId/reserve'
 import { putFile, removeFile, MAX_INLINE_BYTES, tooLargeForInline } from '../../../shared/storage'
 
@@ -35,18 +38,18 @@ const fileRef = (orgId, id, fid) => doc(db, 'organizations', orgId, 'illnesses',
 const counterRef = (orgId) => doc(db, 'organizations', orgId, 'meta', 'illness')
 
 export const ILLNESS_LOAD_CAP = 2000
-const pad4 = (n) => String(n).padStart(4, '0')
 
 export async function createIllness(orgId, actor, initial = {}) {
-  const snap = await getDoc(counterRef(orgId))
-  const seq = ((snap.exists() && snap.data().nextSeq) || 0) + 1
-  const year = new Date().getFullYear()
+  // Both identifiers are reserved before anything is written, so a failure to
+  // issue one leaves no half-created record behind — only an unused number.
+  const refNo = await reserveRefNo(counterRef(orgId), 'ILL')
+  const docId = await reserveDocId(orgId, 'illnesses')
   const ref = doc(illnessCol(orgId))
   const illness = {
     // See createIncident: docId is the org-wide id, refNo is kept for records
     // and correspondence that already quote the older number.
-    docId: await reserveDocId(orgId, 'illnesses'),
-    refNo: `ILL-${year}-${pad4(seq)}`,
+    docId,
+    refNo,
     lifecycle: 'reporting',
     stagesDone: { initial: false, actions: false },
     deletedAt: null,
@@ -76,13 +79,6 @@ export async function createIllness(orgId, actor, initial = {}) {
     updatedAt: serverTimestamp(),
   }
   await setDoc(ref, illness)
-  // Bump the running counter (tolerated gaps), non-blocking.
-  try {
-    await setDoc(counterRef(orgId), { nextSeq: increment(1), updatedAt: serverTimestamp() }, { merge: true })
-  } catch (e) {
-    // eslint-disable-next-line no-console
-    console.warn('[Incident IRA] illness counter skipped:', e?.message || e)
-  }
   await logAudit(orgId, actor, AUDIT.ILLNESS_CREATE, {
     target: 'illness',
     targetId: ref.id,

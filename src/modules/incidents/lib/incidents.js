@@ -19,6 +19,7 @@ import {
   writeBatch,
   limit,
   increment,
+  runTransaction,
 } from 'firebase/firestore'
 import { db } from '../firebase'
 import { logAudit } from './firestore'
@@ -47,7 +48,6 @@ async function bumpStats(orgId, delta) {
   if (!delta) return
   const fields = {}
   if (delta.total) fields.total = increment(delta.total)
-  if (delta.nextSeq) fields.nextSeq = increment(delta.nextSeq)
   for (const bucket of BUCKET_NAMES) {
     const m = delta[bucket]
     if (!m) continue
@@ -59,7 +59,13 @@ async function bumpStats(orgId, delta) {
     await updateDoc(statsRef(orgId), fields)
   } catch (e) {
     try {
-      await setDoc(statsRef(orgId), emptyStats(), { merge: true })
+      // Seed WITHOUT nextSeq. emptyStats() carries nextSeq: 0, and a merge
+      // writes every field it names — seeding with it intact would rewind the
+      // reference-number counter and hand the next incident a number that is
+      // already printed on one.
+      const seed = emptyStats()
+      delete seed.nextSeq
+      await setDoc(statsRef(orgId), seed, { merge: true })
       await updateDoc(statsRef(orgId), fields)
     } catch (e2) {
       // eslint-disable-next-line no-console
@@ -88,21 +94,65 @@ export function incidentInvestigations(incident) {
   return []
 }
 
-const pad4 = (n) => String(n).padStart(4, '0')
+// ── Reference numbers ─────────────────────────────────────────────────────────
+
+/**
+ * The reference-number format. Fixed: records already carry these numbers into
+ * closed investigations, emails and regulator correspondence, so a number
+ * issued today has to come out looking exactly like one issued last year.
+ */
+export const formatRefNo = (prefix, year, seq) => `${prefix}-${year}-${String(seq).padStart(4, '0')}`
+
+/**
+ * The number to issue, given a counter document's contents (or null when the
+ * counter does not exist yet). Defensive about what it finds because `nextSeq`
+ * is an ordinary Firestore field: a string "7" read straight would produce
+ * IRA-2026-0071 via "7" + 1, and a missing or corrupt one IRA-2026-0NaN —
+ * neither of which anything downstream would notice.
+ */
+export function nextRefSeq(data) {
+  const n = Math.floor(Number(data?.nextSeq))
+  return (Number.isFinite(n) && n > 0 ? n : 0) + 1
+}
+
+/**
+ * Reserve the next reference number, reading and advancing the counter in a
+ * single transaction — the pattern in shared/docId/reserve.js.
+ *
+ * A read-then-write hands two people filing at the same moment the SAME
+ * number, and these are the records that get quoted to a regulator. The
+ * transaction also carries reserve.js's bargain: the number is consumed the
+ * moment it is reserved, so a create that fails afterwards leaves a gap in the
+ * sequence. A gap is harmless. Two records sharing a number is not.
+ *
+ * Exported because illnesses.js numbers its records from its own counter with
+ * the same format and the same guarantee.
+ */
+export async function reserveRefNo(counterDoc, prefix) {
+  const seq = await runTransaction(db, async (tx) => {
+    const snap = await tx.get(counterDoc)
+    const next = nextRefSeq(snap.exists() ? snap.data() : null)
+    // merge: the incident counter shares meta/stats with the dashboard totals,
+    // which this must not touch.
+    tx.set(counterDoc, { nextSeq: next, updatedAt: serverTimestamp() }, { merge: true })
+    return next
+  })
+  return formatRefNo(prefix, new Date().getFullYear(), seq)
+}
 
 /** Create a new incident (optionally pre-filled with Step-1 data). Returns id. */
 export async function createIncident(orgId, actor, initial = {}) {
-  // Reserve a reference number from the running counter (tolerated gaps).
-  const statsSnap = await getDoc(statsRef(orgId))
-  const seq = ((statsSnap.exists() && statsSnap.data().nextSeq) || 0) + 1
-  const year = new Date().getFullYear()
+  // Both identifiers are reserved before anything is written, so a failure to
+  // issue one leaves no half-created incident behind — only an unused number.
+  const refNo = await reserveRefNo(statsRef(orgId), 'IRA')
+  const docId = await reserveDocId(orgId, 'incidents')
   const ref = doc(incidentCol(orgId))
   const incident = {
     // The org-wide document id. refNo is kept alongside it because incidents
     // raised before this scheme are quoted by that number in closed
     // investigations and emails, and dropping it would strand those references.
-    docId: await reserveDocId(orgId, 'incidents'),
-    refNo: `IRA-${year}-${pad4(seq)}`,
+    docId,
+    refNo,
     lifecycle: 'reporting',
     stagesDone: { initial: false, team: false, investigation: false, capa: false, horizontal: false },
     deletedAt: null,
@@ -139,9 +189,7 @@ export async function createIncident(orgId, actor, initial = {}) {
     updatedAt: serverTimestamp(),
   }
   await setDoc(ref, incident)
-  const delta = statsDeltaFor(null, incident) || {}
-  delta.nextSeq = 1
-  await bumpStats(orgId, delta)
+  await bumpStats(orgId, statsDeltaFor(null, incident))
   await logAudit(orgId, actor, AUDIT.INCIDENT_CREATE, {
     target: 'incident',
     targetId: ref.id,

@@ -5,23 +5,32 @@
 // never existed — everything under lib/ was library code with nothing calling
 // it. That is why `firebase deploy --only functions` had nothing to deploy.
 //
-// What is here now is the smallest thing that closes SECURITY.md S-01: putting
-// the caller's organization onto their ID token so Cloud Storage rules can read
-// it. Storage rules cannot query Firestore, so without a claim they have no way
-// to tell one tenant from another — which is exactly why any signed-in user can
-// currently reach any org's files.
+// The first thing here was the smallest change that closes SECURITY.md S-01:
+// putting the caller's organization onto their ID token so Cloud Storage rules
+// can read it. Storage rules cannot query Firestore, so without a claim they
+// have no way to tell one tenant from another — which is exactly why any
+// signed-in user could reach any org's files.
 //
-// The notification triggers and the scheduled digest are NOT here yet. The
-// templates, recipient matching and action extraction under lib/ are ready for
-// them, and they belong in this same file when they land.
+// The notification tier follows it: a trigger per action-carrying collection,
+// and one scheduled digest. Both are thin — every decision they make lives in
+// lib/notify.js, which is where the tenant scoping is enforced and tested.
 // ─────────────────────────────────────────────────────────────────────────────
 import { initializeApp } from 'firebase-admin/app'
 import { getAuth } from 'firebase-admin/auth'
 import { getFirestore } from 'firebase-admin/firestore'
 import { onDocumentWritten } from 'firebase-functions/v2/firestore'
+import { onSchedule } from 'firebase-functions/v2/scheduler'
 import { onCall, HttpsError } from 'firebase-functions/v2/https'
 import { logger } from 'firebase-functions'
 import { claimsFor, claimsChanged, mergeClaims } from './lib/claims.js'
+import { createMailer } from './lib/email.js'
+import {
+  onActionWrite,
+  runDailyDigest,
+  mailConfigFromEnv,
+  appConfigFromEnv,
+  DIGEST_TZ,
+} from './lib/notify.js'
 
 initializeApp()
 
@@ -136,3 +145,89 @@ export const backfillClaims = onCall({ region: REGION }, async (request) => {
   logger.info('claims: backfill complete', { orgId: caller.orgId, updated, skipped, failed: failed.length })
   return { orgId: caller.orgId, total: members.size, updated, skipped, failed }
 })
+
+// ── Notifications ────────────────────────────────────────────────────────────
+
+/**
+ * The mailer, built on first use rather than at module load.
+ *
+ * createMailer throws on a provider name it does not recognise. At module scope
+ * that would be a typo in MAIL_PROVIDER taking down every function in this file
+ * — including the claims trigger, which has nothing to do with email. Built
+ * lazily and defaulted to console output, a misconfiguration costs the mail and
+ * a log line, nothing else.
+ *
+ * With no MAIL_PROVIDER set at all, createMailer selects the console provider
+ * and sends nothing: deploying this does not start mailing anyone until
+ * MAIL_PROVIDER and MAIL_API_KEY are both present.
+ */
+let mailer = null
+function getMailer() {
+  if (!mailer) {
+    try {
+      mailer = createMailer(mailConfigFromEnv(process.env))
+    } catch (err) {
+      logger.error('notify: mail configuration is invalid — falling back to console output', {
+        error: String(err?.message || err),
+      })
+      mailer = createMailer({})
+    }
+    logger.info('notify: mail provider', { provider: mailer.provider })
+  }
+  return mailer
+}
+
+/**
+ * One trigger per collection that carries corrective actions.
+ *
+ * Deliberately five narrow paths rather than one wildcard on
+ * organizations/{orgId}/{col}/{docId}. A wildcard would fire on every write in
+ * the product — audit logs, activity, counters — to discard nearly all of them,
+ * and it would also match the notifications ledger that lib/notify.js writes to,
+ * so each email sent would trigger the function that sends emails.
+ *
+ * retry is on because the handler rethrows for a provider outage; lib/notify.js
+ * stops rethrowing once the event is older than its retry window, which is what
+ * keeps a bad day from becoming 24 hours of billed attempts.
+ */
+const actionTrigger = (collection) =>
+  onDocumentWritten(
+    { document: `organizations/{orgId}/${collection}/{docId}`, region: REGION, retry: true },
+    (event) =>
+      onActionWrite({
+        db: getFirestore(),
+        mailer: getMailer(),
+        collection,
+        event,
+        config: appConfigFromEnv(process.env),
+        log: logger,
+      })
+  )
+
+// Named one by one because ESM exports cannot be generated in a loop, and the
+// deploy tooling discovers functions by enumerating this module's exports.
+// A new source collection in lib/actionSources.js needs a line here too.
+export const notifyIncidentActions = actionTrigger('incidents')
+export const notifyIllnessActions = actionTrigger('illnesses')
+export const notifyDrillActions = actionTrigger('mockDrills')
+export const notifyAuditFindingActions = actionTrigger('auditFindings')
+export const notifyConsultationActions = actionTrigger('consultations')
+
+/**
+ * The daily digest of what is overdue, per organization.
+ *
+ * 07:00 in the timezone the digest measures "today" in, so the mail lands before
+ * the shift it is about. retryCount is 0 on purpose: the handler never throws —
+ * it logs a failing org and carries on — so a retry would only re-read every
+ * tenant to send nothing, and tomorrow's run covers anything missed anyway.
+ */
+export const dailyDigest = onSchedule(
+  { schedule: '0 7 * * *', timeZone: DIGEST_TZ, region: REGION, retryCount: 0, timeoutSeconds: 540 },
+  () =>
+    runDailyDigest({
+      db: getFirestore(),
+      mailer: getMailer(),
+      config: appConfigFromEnv(process.env),
+      log: logger,
+    })
+)
