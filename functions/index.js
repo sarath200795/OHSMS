@@ -23,6 +23,7 @@ import { onSchedule } from 'firebase-functions/v2/scheduler'
 import { onCall, HttpsError } from 'firebase-functions/v2/https'
 import { logger } from 'firebase-functions'
 import { claimsFor, claimsChanged, mergeClaims } from './lib/claims.js'
+import { planBackfill } from './lib/docVisibility.js'
 import { createMailer } from './lib/email.js'
 import {
   onActionWrite,
@@ -144,6 +145,68 @@ export const backfillClaims = onCall({ region: REGION }, async (request) => {
 
   logger.info('claims: backfill complete', { orgId: caller.orgId, updated, skipped, failed: failed.length })
   return { orgId: caller.orgId, total: members.size, updated, skipped, failed }
+})
+
+/**
+ * Stamp `visibility` onto documents written before site scoping existed.
+ *
+ * The same job as scripts/backfill-document-visibility.mjs, reachable without
+ * holding a production password in a shell. Admin-only and scoped to the
+ * caller's own organization, like backfillClaims beside it, and idempotent for
+ * the same reason: it only touches documents that carry no visibility yet.
+ *
+ * This is not tidy-up. firestore.rules reads the field directly — it must, or
+ * the condition stops constraining list queries — and direct access to a field
+ * that is not there errors, which denies. So until a document is stamped it is
+ * readable by nobody except admins, managers and auditors.
+ */
+export const backfillDocumentVisibility = onCall({ region: REGION }, async (request) => {
+  const callerUid = request.auth?.uid
+  if (!callerUid) throw new HttpsError('unauthenticated', 'Sign in first.')
+
+  const db = getFirestore()
+  const caller = (await db.doc(`users/${callerUid}`).get()).data()
+  if (!caller || caller.status !== 'approved' || caller.role !== 'admin') {
+    throw new HttpsError('permission-denied', 'Administrators only.')
+  }
+  const orgId = caller.orgId
+
+  const [sitesSnap, docsSnap] = await Promise.all([
+    db.collection(`organizations/${orgId}/sites`).get(),
+    db.collection(`organizations/${orgId}/documents`).get(),
+  ])
+  const sites = new Map(sitesSnap.docs.map((d) => [d.id, d.data()]))
+  const plan = planBackfill(docsSnap.docs.map((d) => ({ id: d.id, data: d.data() })), sites)
+
+  // dryRun is the default. Reporting first and writing only when asked is what
+  // the script does, and this is the same operation with the same stakes.
+  const dryRun = request.data?.dryRun !== false
+  if (!dryRun) {
+    // Chunked: a batch takes 500 writes, and a library can exceed that.
+    for (let i = 0; i < plan.writes.length; i += 400) {
+      const batch = db.batch()
+      plan.writes.slice(i, i + 400).forEach((w) => {
+        batch.update(db.doc(`organizations/${orgId}/documents/${w.id}`), w.patch)
+      })
+      await batch.commit()
+    }
+  }
+
+  logger.info('documents: visibility backfill', {
+    orgId, dryRun, total: docsSnap.size, toWrite: plan.writes.length,
+  })
+
+  return {
+    orgId,
+    dryRun,
+    total: docsSnap.size,
+    alreadyStamped: plan.alreadyStamped,
+    written: dryRun ? 0 : plan.writes.length,
+    wouldWrite: plan.writes.length,
+    orgWide: plan.orgWide,
+    siteScoped: plan.siteScoped,
+    titles: plan.writes.slice(0, 25).map((w) => w.title),
+  }
 })
 
 // ── Notifications ────────────────────────────────────────────────────────────
