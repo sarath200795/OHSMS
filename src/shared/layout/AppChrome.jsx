@@ -17,7 +17,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { motion, useReducedMotion } from 'framer-motion'
-import { Building2, ChevronDown, LogOut, GraduationCap, KeyRound } from 'lucide-react'
+import { Building2, ChevronDown, LogOut, GraduationCap, KeyRound, ShieldCheck } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { initials } from '../lib/format'
 import RequestAccessModal from './RequestAccessModal'
@@ -109,6 +109,9 @@ export default function AppChrome({ children }) {
               </MenuItem>
               <MenuItem icon={KeyRound} onClick={() => { setMenuOpen(false); setReqOpen(true) }}>
                 Request access
+              </MenuItem>
+              <MenuItem icon={ShieldCheck} onClick={() => { setMenuOpen(false); navigate('/security') }}>
+                Security &amp; two-factor
               </MenuItem>
               <MenuItem icon={LogOut} danger onClick={() => signOut?.()}>
                 Sign out

@@ -21,6 +21,7 @@ import NotFound from './pages/NotFound'
 
 // App pages.
 import Dashboard from './pages/Dashboard'
+import Security from './pages/auth/Security'
 const Users = lazy(() => import('./pages/admin/Users'))
 const Sites = lazy(() => import('./pages/admin/Sites'))
 const OrgSettings = lazy(() => import('./pages/admin/OrgSettings'))
@@ -110,6 +111,7 @@ export default function App() {
           module grid plus the workspace tiles, so old links land there. */}
       <Route path="/hub" element={<Navigate to="/portal" replace />} />
       <Route path="/dashboard" element={<Protected><Dashboard /></Protected>} />
+      <Route path="/security" element={<Protected><Security /></Protected>} />
       <Route path="/incidents/*" element={<Protected><Incidents /></Protected>} />
       <Route path="/hira/*" element={<Protected><Hira /></Protected>} />
       <Route path="/inspections/*" element={<Protected><Inspections /></Protected>} />

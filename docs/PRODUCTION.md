@@ -133,6 +133,72 @@ wired; without the steps below it ships no tokens and nothing is enforced.
 Verify: with enforcement on, `curl` against the Firestore REST API without a
 token gets `PERMISSION_DENIED`; the app keeps working.
 
+## 1b. Single sign-on and two-factor  ⚠️ console + Identity Platform
+
+The app code for both is in place. Both are off until the console side is done,
+and **the order matters for MFA** — see the warning below.
+
+### Two-factor (TOTP)
+
+TOTP rather than SMS: codes work with no signal, which is the difference between
+a second factor and a lockout on a plant floor, and SMS costs money per login
+and falls to SIM swap.
+
+1. Firebase console → **Authentication → Sign-in method → Advanced → SMS/TOTP
+   multi-factor** → enable **TOTP**. This requires Identity Platform (the paid
+   tier of Firebase Auth).
+2. Users turn it on themselves at **/security**, reachable from the account menu.
+   Enrolment is deliberately self-service: the secret must reach that person's
+   authenticator and nobody else's, so a flow where an admin sees it defeats the
+   point.
+
+⚠️ **Do not enforce MFA before this code is deployed.** When a second factor is
+required, Firebase does not return a user — it throws
+`auth/multi-factor-auth-required` carrying a resolver, and sign-in only
+completes by answering it. An app that does not catch that shows a generic
+error and the account is unreachable. Enforcing MFA against a client without the
+challenge handling locks people out rather than protecting them. That handling
+now exists (`src/shared/auth/mfa.js`, wired through `AuthContext.login`), so as
+long as the client is deployed first, enabling it is safe.
+
+⚠️ **Enrolment requires a verified email.** Firebase refuses to add a factor to
+an unverified address, and only says so when you try. This app never sent
+verification emails before — accounts come from signup or admin provisioning —
+so the security screen detects it and offers to send one. Expect the first
+person to enrol to verify their address first.
+
+### Single sign-on (SAML / OIDC)
+
+1. Firebase console → **Authentication → Sign-in method → Add new provider** →
+   SAML or OIDC. Also Identity Platform. Note the provider id it gives you: it
+   always begins `saml.` or `oidc.`.
+2. Add that id to the client build:
+
+```bash
+VITE_SSO_PROVIDERS="saml.acme:Acme SSO,oidc.okta:Okta"
+```
+
+   Comma-separated, each `providerId:Button label`; the label is optional. Set it
+   as a repository variable so CI builds carry it (`.github/workflows/deploy.yml`
+   passes `VITE_*` through).
+3. Add the production domain to **Authorised domains** in the same console
+   screen, or sign-in returns `auth/unauthorized-domain`.
+
+With the variable unset there are no SSO buttons and the login page is exactly
+what it was — nothing to undo for deployments that do not use it. A malformed
+entry is dropped with a console error rather than throwing, because a bad value
+here must not take down the login page: without the password form there is no
+way back in.
+
+Sign-in tries a popup first and falls back to a full redirect when the browser
+blocks it — common on managed corporate devices, which is exactly the fleet most
+likely to have SSO.
+
+**What SSO does not do on its own:** a federated user still needs a `/users`
+profile before they can see anything, and the rules still put a self-created one
+in `pending` until an admin approves it. SSO replaces the password, not the
+approval step.
+
 ## 2. Error monitoring  ⚠️ account required
 
 The root ErrorBoundary and global handlers are live and log to the console

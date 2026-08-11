@@ -7,8 +7,13 @@ import {
   onAuthStateChanged,
   updateProfile,
   deleteUser,
+  OAuthProvider,
+  signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
 } from 'firebase/auth'
 import { auth, isFirebaseConfigured } from '../firebase'
+import { isMfaRequired, resolverFor, completeTotpSignIn } from './mfa'
 import {
   createOrganization,
   createPendingMember,
@@ -68,6 +73,30 @@ export function AuthProvider({ children }) {
     return unsub
   }, [refreshProfile])
 
+  // The other end of the SSO redirect fallback. Coming back from the identity
+  // provider looks like a fresh page load, so the result has to be collected
+  // here — and it can raise the same second-factor challenge the popup path
+  // does, which is why the resolver is held in state for the login screen to
+  // pick up rather than being thrown away with the page.
+  const [pendingMfa, setPendingMfa] = useState(null)
+
+  useEffect(() => {
+    if (!isFirebaseConfigured) return
+    getRedirectResult(auth).catch((err) => {
+      if (isMfaRequired(err)) {
+        setPendingMfa(resolverFor(err))
+        return
+      }
+      // No redirect in progress is the normal case and resolves to null; a real
+      // failure here would otherwise vanish, leaving a login screen that simply
+      // does nothing after the round trip.
+      if (err?.code) {
+        // eslint-disable-next-line no-console
+        console.error('[auth] single sign-on redirect failed:', err.code)
+      }
+    })
+  }, [])
+
   // Keep the org document live so any screen can read org-level config (e.g. the
   // per-module scope granularity settings) without its own subscription.
   useEffect(() => {
@@ -113,12 +142,57 @@ export function AuthProvider({ children }) {
     }
   }
 
-  const login = async ({ email, password }) => {
-    const cred = await withRetry(() => signInWithEmailAndPassword(auth, email, password))
+  // Sign-in is not always one step. Every entry point funnels through here so
+  // the second-factor branch cannot be forgotten at one of them.
+  const adopt = async (cred) => {
     // Set user immediately so isAuthed is true right away — don't wait for the
     // async listener, which would let the redirect bounce off ProtectedRoute.
     setUser(cred.user)
     await withRetry(() => refreshProfile(cred.user.uid))
+    return { status: 'signed-in', user: cred.user }
+  }
+
+  /**
+   * @returns { status: 'signed-in' } or { status: 'mfa', resolver }
+   *
+   * A required second factor is NOT an error — it is an unfinished sign-in, and
+   * returning it as a result rather than throwing is what stops a caller
+   * reporting "wrong password" to someone whose password was right.
+   */
+  const login = async ({ email, password }) => {
+    try {
+      return await adopt(await withRetry(() => signInWithEmailAndPassword(auth, email, password)))
+    } catch (err) {
+      if (isMfaRequired(err)) return { status: 'mfa', resolver: resolverFor(err) }
+      throw err
+    }
+  }
+
+  /** Finish a challenged sign-in with the code from the authenticator app. */
+  const completeMfa = async (resolver, code) => adopt(await completeTotpSignIn(resolver, code))
+
+  /**
+   * Federated sign-in. Popup first because it keeps the user on the page and
+   * needs no redirect-result plumbing; falls back to a full redirect when the
+   * browser blocks it, which is common on locked-down corporate devices — the
+   * exact fleet most likely to have SSO in the first place.
+   */
+  const loginWithSso = async (providerId) => {
+    const provider = new OAuthProvider(providerId)
+    try {
+      return await adopt(await signInWithPopup(auth, provider))
+    } catch (err) {
+      if (isMfaRequired(err)) return { status: 'mfa', resolver: resolverFor(err) }
+      if (err?.code === 'auth/popup-blocked' || err?.code === 'auth/operation-not-supported-in-this-environment') {
+        await signInWithRedirect(auth, provider)
+        return { status: 'redirecting' }
+      }
+      // Closing the popup is a decision, not a failure worth shouting about.
+      if (err?.code === 'auth/popup-closed-by-user' || err?.code === 'auth/cancelled-popup-request') {
+        return { status: 'cancelled' }
+      }
+      throw err
+    }
   }
 
   const resetPassword = async (email) => {
@@ -129,6 +203,8 @@ export function AuthProvider({ children }) {
     await fbSignOut(auth)
     setUser(null)
     setProfile(null)
+    // A half-finished sign-in must not outlive the session it belonged to.
+    setPendingMfa(null)
   }
 
   const role = profile?.role || null
@@ -149,6 +225,10 @@ export function AuthProvider({ children }) {
     registerOrganization,
     signUpMember,
     login,
+    loginWithSso,
+    completeMfa,
+    pendingMfa,
+    clearPendingMfa: () => setPendingMfa(null),
     resetPassword,
     signOut,
     refreshProfile: () => user && refreshProfile(user.uid),

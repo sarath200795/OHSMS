@@ -13,8 +13,14 @@ push. What is missing is almost entirely *operational* — the things a buyer's
 security questionnaire asks about and a developer never has to think about until
 someone does.
 
-Four things below would stop a deal on their own: no SSO, no MFA, no backups, and
-file storage that is not tenant-isolated.
+Two things below would stop a deal on their own: no backups, and file storage
+that is not tenant-isolated.
+
+SSO and MFA were on that list and are now built — SAML/OIDC sign-in and
+self-service TOTP enrolment, including the sign-in challenge handling without
+which enforcing MFA locks users out. Both are inert until switched on in the
+Identity Platform console; see `PRODUCTION.md` §1b, which also explains why the
+client has to be deployed before MFA is enforced.
 
 ---
 
@@ -24,8 +30,8 @@ file storage that is not tenant-isolated.
 |---|---|---|
 | Tenant isolation (database) | Org-scoped paths, enforced in rules, 149 tests | **Ready** |
 | Tenant isolation (files) | `storage.rules` does not bind a caller to an org | **Blocker** |
-| Authentication | Email + password only | **Blocker** |
-| MFA | None | **Blocker** |
+| Authentication | SAML/OIDC implemented; needs console config | **Ready in code** |
+| MFA | TOTP implemented, self-service enrolment; needs console config | **Ready in code** |
 | Authorization | 4 roles + site scoping; manager gate only in React | **Gap** |
 | Audit trail | Append-only, immutable, actor pinned to caller | **Ready** |
 | Backups / disaster recovery | Not configured. No RPO or RTO defined | **Blocker** |
@@ -40,27 +46,9 @@ file storage that is not tenant-isolated.
 
 ---
 
-## The four blockers
+## The blockers
 
-### 1. No SSO
-
-Authentication is `signInWithEmailAndPassword` and nothing else. Enterprises
-expect SAML or OIDC against their own identity provider, because it is how they
-switch someone off everywhere at once when that person leaves. An app with its
-own password list is a second offboarding step nobody remembers to perform.
-
-Firebase Auth supports SAML and OIDC on the Identity Platform tier, so this is
-configuration and a login-screen change rather than an architectural one. It also
-brings enforced session length and device policy along with it.
-
-### 2. No MFA
-
-Admin accounts protect every safety record in the tenant and are protected by a
-password. Most security reviews treat unconditional MFA on privileged accounts as
-non-negotiable. Comes largely for free with SSO; available standalone through
-Identity Platform otherwise.
-
-### 3. No backups, no disaster recovery
+### 1. No backups, no disaster recovery
 
 Firestore has no automatic backups on the free tier and none are configured. If a
 tenant's data is deleted — a bad script, a compromised admin, a bug — it is
@@ -72,7 +60,7 @@ This is the cheapest blocker to fix and the most expensive to leave. `PRODUCTION
 actually been performed once*, because a backup nobody has restored is a belief,
 not a control.
 
-### 4. File storage is not tenant-isolated
+### 2. File storage is not tenant-isolated
 
 Any signed-in user of any tenant can read and delete any other tenant's uploaded
 files if they know the path — incident photos, permit documents, LOTO procedure
@@ -146,7 +134,10 @@ problem:
 1. Turn on backups and **perform one restore** (hours; removes a blocker)
 2. Set the Sentry DSN and add an uptime check (hours; you stop finding out from users)
 3. Enforce App Check on the public write surfaces (a console toggle, already documented)
-4. Identity Platform: SSO + enforced MFA for admins (days; removes two blockers)
+4. Identity Platform: switch on TOTP and your SAML/OIDC provider — the client
+   side is built, so this is console work plus one env var (`PRODUCTION.md` §1b).
+   Deploy the client first; enforcing MFA against a build without the challenge
+   handling locks users out rather than protecting them.
 5. Deploy `functions/`, then the `orgId` claim and the stronger `storage.rules` (removes a blocker, and unblocks notifications)
 6. Move manager-only transitions into the rules (`SECURITY.md` S-02)
 7. A staging project and a staging deploy on merge
@@ -154,5 +145,5 @@ problem:
 9. Cap the unbounded listeners
 10. Compliance artifacts, and a penetration test once 1–8 are done
 
-Items 1–3 are hours of work and clear two blockers between them. That is the
+Items 1–4 are hours of work between them and clear a blocker apiece. That is the
 cheapest security the project will ever buy.
