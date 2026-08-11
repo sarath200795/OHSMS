@@ -54,9 +54,19 @@ service firebase.storage {
     // closed with no product change.
     match /orgs/{orgId}/{kind}/{fileName} {
       allow read: if request.auth != null;
+      // `resource == null` is what actually prevents an overwrite. `allow
+      // update: if false` below does NOT: proved against the emulator, an
+      // upload onto an existing path is evaluated as a CREATE, so it sailed
+      // past the update denial. The comment that used to sit here claimed that
+      // vector was closed. It was not — until this line, any signed-in user of
+      // any tenant could replace another tenant's safety evidence in place,
+      // which is worse than the register described.
+      //
+      // Nothing legitimately overwrites: storagePath() prefixes 8 random bytes,
+      // so every upload lands on a fresh path.
       allow create: if request.auth != null
+        && resource == null
         && request.resource.size < 20 * 1024 * 1024;
-      // Nothing overwrites: paths are unique per upload.
       allow update: if false;
       // Still cross-tenant, and the app needs it (removeFile). This is the
       // sharpest remaining edge — a member of any org can delete another org's

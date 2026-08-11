@@ -4,9 +4,15 @@
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
   },
+  "storage": {
+    "rules": "storage.rules"
+  },
   "emulators": {
     "firestore": {
       "port": 8085
+    },
+    "storage": {
+      "port": 9198
     },
     "ui": {
       "enabled": false

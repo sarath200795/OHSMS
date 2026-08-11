@@ -14,7 +14,7 @@
     "dev:full": "concurrently -k -n emu,web -c magenta,cyan \"npm:emulators\" \"npm:dev\"",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:rules": "firebase emulators:exec --only firestore --config firebase.rulestest.json \"vitest run --config vitest.rules.config.js\"",
+    "test:rules": "firebase emulators:exec --only firestore,storage --config firebase.rulestest.json \"vitest run --config vitest.rules.config.js\"",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",

@@ -35,9 +35,17 @@ user of any tenant can read and delete any other tenant's uploaded files if they
 know the path — incident photos, permit documents, LOTO procedure photos,
 training content.
 
-Uploads are at least safe from being overwritten in place: `update` is denied
-outright and every upload lands on a random path, so evidence cannot be swapped
-under an existing record.
+**Correction — this entry understated it.** It previously said uploads were
+"safe from being overwritten in place" because `update` is denied. That was
+wrong, and proving it took an emulator: Cloud Storage evaluates an upload onto
+an existing path as a **create**, so `allow update: if false` never saw it. Any
+signed-in user of any tenant could replace another tenant's safety evidence in
+place. Now closed by `resource == null` on create — a separate fix from the
+tenant isolation below, and one that did not need the claims.
+
+The lesson generalises: `update` in Storage rules does not mean what it means in
+Firestore rules, and a comment asserting a control is not the same as a test
+exercising one.
 
 **Why it is still open.** Binding a caller to an org in Storage rules needs
 either cross-service Firestore reads or an `orgId` custom claim on the token.
