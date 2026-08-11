@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import toast from 'react-hot-toast'
-import { ShieldCheck, FileStack, Play, Check } from 'lucide-react'
+import { ShieldCheck, FileStack, Play, Check, Bug } from 'lucide-react'
 import { Card, Button } from '../../shared/ui'
 import { backfillDocumentVisibility, backfillClaims } from '../../shared/functions'
+import { reportError } from '../../shared/monitoring'
 
 /**
  * One-off migrations, run by an admin for their own organization.
@@ -20,7 +21,56 @@ export default function Maintenance() {
     <div className="space-y-4">
       <DocumentVisibility />
       <OrgClaims />
+      <ErrorReporting />
     </div>
+  )
+}
+
+/**
+ * Prove error reporting reaches Sentry, from the deployed build.
+ *
+ * The existing `?__crash=1` hook is gated on import.meta.env.DEV, so it cannot
+ * answer the only question that matters — whether errors arrive from
+ * PRODUCTION. Without this, configuring the DSN is an act of faith until the
+ * first real crash, which is the worst moment to discover a typo in it.
+ */
+function ErrorReporting() {
+  const [sent, setSent] = useState(false)
+  const configured = Boolean((import.meta.env.VITE_SENTRY_DSN || '').trim())
+
+  const send = () => {
+    // A real Error, through the real funnel — not a synthetic call that would
+    // prove a different path works.
+    reportError(new Error('Test event from Maintenance — error reporting is wired up'), {
+      deliberate: true,
+      sentAt: new Date().toISOString(),
+    })
+    setSent(true)
+  }
+
+  return (
+    <Job
+      icon={Bug}
+      title="Check error reporting"
+      result={sent && (configured
+        ? 'Sent. It should appear in Sentry within a minute — look for "Test event from Maintenance".'
+        : 'Logged to this browser console only. No DSN is configured in this build.')}
+      actions={
+        <Button variant="ghost" icon={sent ? Check : Bug} onClick={send}>
+          {sent ? 'Send another' : 'Send a test event'}
+        </Button>
+      }
+    >
+      <p>
+        {configured
+          ? 'Error reporting is configured in this build. Send a test event to confirm it arrives.'
+          : 'No error reporting is configured in this build, so crashes are only written to the browser console — nobody finds out unless a user tells you. Set VITE_SENTRY_DSN and redeploy.'}
+      </p>
+      <p>
+        This sends one deliberate error through the same path a real crash takes,
+        so it proves the whole funnel rather than just the connection.
+      </p>
+    </Job>
   )
 }
 
