@@ -49,27 +49,6 @@ deployed. The stronger ruleset is already written and commented at the bottom of
 anything in it that would be materially worse in a competitor's hands than the
 Firestore records already are.
 
-### S-02 · Manager-only actions are enforced only in React — HIGH
-
-Approving and closing permits, deciding defect reports, and managing sites are
-gated by `can()` in the UI. The rules gate `delete` by role and nothing else, so
-an ordinary member can perform any of these from the SDK.
-
-Partially closed: `auditor` is now genuinely read-only in the rules (S-09). The
-member-versus-manager half remains, and it is not a patch — it needs per-module
-rules describing which status transitions each role may make. Doing it properly
-means writing, for each module, what a legal state change looks like.
-
-### S-03 · Duplicate reference numbers under concurrency — MEDIUM
-
-`src/modules/incidents/lib/incidents.js:96` issues `refNo` with a
-read-then-write rather than a transaction, so two reports filed at the same
-moment get the same reference number. Illness records have the same shape.
-
-Not a security hole, but a reference number that is not unique undermines the
-record it identifies — and these are the records that get quoted to a regulator.
-`src/shared/docId/reserve.js` already has the transactional pattern to copy.
-
 ### S-04 · Unbounded collection listeners — LOW
 
 `subscribeCollection` (`src/shared/org/orgData.js:354`) reads whole collections
@@ -99,6 +78,49 @@ but only against a workbook the user chose to open in their own browser.
 ---
 
 ## Closed
+
+### S-02 · Manager-only actions were enforced only in React — HIGH
+
+Approving a permit, deciding a defect report, verifying an injury, closing a
+finding: each was gated by `can()` in the UI and by nothing else, so the same
+write went through unchallenged from the SDK. The value of an approval is that
+only the approver could have made it.
+
+**Fixed** by naming only the states that *record a decision* — writing each
+module's state machine out in full would be unmaintainable and wrong the first
+time someone added a status. `pending`, `draft` and `pending_approval` are
+deliberately absent: asking is not deciding, and a member must still be able to
+raise a record and submit it. Both directions are gated, because clearing an
+approval is as much the approver's act as granting it.
+
+Deliberately **not** decisions: an extinguisher reaching `closed` (refilled —
+the ordinary end of the fire workflow), an inspection template going Active, and
+a permit's `closedDueToObservation`. Stopping unsafe work is not approving it,
+and a rule that sent someone to find a manager before they could stop it would be
+a safety defect rather than a control.
+
+The gate lives *inside* the generic collection rule rather than in per-collection
+matches, because rules are a permissive union — a narrow match restricts nothing
+while the generic one still grants the same write. One conjunct covers every
+collection, so adding a module cannot forget it.
+
+Two things fell out of doing it properly. The member branch on `/reports` and
+`/observations` create is gone: it was the broader half of a union, and once
+approving became a manager's act it would have let any member file a report that
+was *already approved* and skip the queue. And `isWriterOf` now covers the QR
+mirrors, defect locks, id counters and LOTO collections — each was still a place
+an auditor could write.
+
+One boundary that is deliberately **not** role-based: an auditor can still create
+a defect lock when they hold a scanned token, because that branch authorises on
+proof of physical scan and is open to a stranger with no account at all.
+Refusing an auditor something any passer-by can do would be incoherent.
+
+### S-03 · Duplicate reference numbers under concurrency — MEDIUM
+
+`refNo` was issued by a read-then-write, so two reports filed at the same moment
+took the same number — and these are the records quoted to a regulator.
+**Fixed** with a transaction, following the pattern `reserve.js` already used.
 
 ### S-07 · Public QR mirrors could be captured by another tenant — HIGH
 

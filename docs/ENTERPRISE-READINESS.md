@@ -32,9 +32,9 @@ client has to be deployed before MFA is enforced.
 | Tenant isolation (files) | Claim mechanism deployed; backfill + rule swap outstanding | **Blocker, 3 steps out** |
 | Authentication | SAML/OIDC implemented; needs console config | **Ready in code** |
 | MFA | TOTP implemented, self-service enrolment; needs console config | **Ready in code** |
-| Authorization | 4 roles + site scoping; manager gate only in React | **Gap** |
+| Authorization | 4 roles, site scoping, manager-only decisions — all in rules | **Ready** |
 | Audit trail | Append-only, immutable, actor pinned to caller | **Ready** |
-| Backups / disaster recovery | Not configured. No RPO or RTO defined | **Blocker** |
+| Backups / disaster recovery | PITR (7d) + weekly schedule (30d retention). No restore drill yet | **Nearly** |
 | Observability | Sentry wired, DSN unset. No metrics, no alerting, no uptime check | **Gap** |
 | Data lifecycle (export, deletion, retention) | None | **Gap** |
 | Testing | 1075 unit, 149 rules, 1 e2e smoke | **Mostly ready** |
