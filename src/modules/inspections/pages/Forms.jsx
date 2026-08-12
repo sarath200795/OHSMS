@@ -2,12 +2,13 @@ import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import {
-  ClipboardList, Plus, Pencil, Trash2, CalendarPlus, Search, ListChecks, MapPin,
+  ClipboardList, Plus, Pencil, Trash2, CalendarPlus, Search, ListChecks, MapPin, PlayCircle,
 } from 'lucide-react'
 import { PageHeader, EmptyState, StatusPill } from '../components/ui'
 import { useAuth } from '../context/AuthContext'
 import { useData } from '../context/DataContext'
 import { deleteTemplate, setTemplateStatus, updateTemplateAssignments } from '../lib/firestore'
+import { isOnDemand } from '../lib/schedule'
 import InspectionAssignmentsModal from './Inspections/InspectionAssignmentsModal'
 
 export default function Forms() {
@@ -46,6 +47,32 @@ export default function Forms() {
     if (!window.confirm(`Permanently delete "${t.title}"?`)) return
     try { await deleteTemplate(orgId, t.id, t.title, profile); toast.success('Form deleted') }
     catch (e) { toast.error('Delete failed: ' + e.message) }
+  }
+
+  // An on-demand form never reaches the calendar, so this is the only way to
+  // run one without first inventing a date for it — which would be recording a
+  // schedule that does not exist purely to satisfy the scheduler.
+  //
+  // The task is shaped exactly like a scheduled one so Execute needs no special
+  // case, minus dueString: there is no due date, and passing today's would make
+  // the record claim it was scheduled for today.
+  const startNow = (t) => {
+    if (!(t.fields?.length > 0)) return toast.error('Add at least one question before running this form.')
+    navigate('/inspections/execute', {
+      state: {
+        task: {
+          templateId: t.id,
+          title: t.title,
+          siteId: t.siteId || '',
+          siteName: t.siteName || '',
+          area: '',
+          frequency: t.frequency,
+          dueDate: null,
+          dueString: '',
+          template: t,
+        },
+      },
+    })
   }
 
   const saveAssignments = async (next) => {
@@ -110,6 +137,15 @@ export default function Forms() {
               )}
 
               <div className="mt-auto flex flex-wrap items-center gap-2">
+                {/* Only while Active, matching the condition the scheduler uses
+                    to pick a form up. A Draft is unfinished and an Inactive one
+                    was deliberately retired; neither should be runnable from a
+                    button that exists because there is no due date to stop you. */}
+                {isOnDemand(t.frequency) && t.status === 'Active' && (
+                  <button className="btn-primary flex-1 text-xs" onClick={() => startNow(t)}>
+                    <PlayCircle size={14} /> Start now
+                  </button>
+                )}
                 <button className="btn-soft flex-1 text-xs" onClick={() => setAssignTemplate(t)}>
                   <CalendarPlus size={14} /> Assign
                 </button>
