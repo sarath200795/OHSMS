@@ -171,9 +171,16 @@ export const SOURCES = [
         .filter(([, r]) => r && r.answer === 'Fail')
         .map(([fieldId, r]) => ({
           actionId: fieldId,
-          title: `${r.label || 'Failed check'}${r.observation ? ` — ${r.observation}` : ''}`,
-          owner: d.inspector || '',
-          due: '',
+          // The corrective action if the inspector gave one, else the old
+          // shape. A tracker row saying "Extinguisher blocked" records the
+          // fault; one saying "Clear the pallets and re-mark the bay" records
+          // the work, which is the thing being tracked. Records written before
+          // the action was asked for keep reading exactly as they did.
+          title: r.action
+            ? `${r.label || 'Failed check'} — ${r.action}`
+            : `${r.label || 'Failed check'}${r.observation ? ` — ${r.observation}` : ''}`,
+          owner: r.actionOwner || d.inspector || '',
+          due: r.actionDue || '',
           native: r.actionStatus || 'open',
           context: `${d.templateTitle || 'Inspection'}${d.siteName ? ` · ${d.siteName}` : ''}`,
           link: '/inspections/records',

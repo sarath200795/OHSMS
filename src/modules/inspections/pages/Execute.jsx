@@ -37,7 +37,21 @@ export default function Execute() {
       // a record has to stay readable after the form it came from is edited,
       // and a question that has since been re-filed would otherwise re-file
       // every inspection ever done against it.
-      init[f.id] = { label: f.label, category: f.category || '', type: f.type, answer: f.type === 'Multiple Choice' ? [] : '', observation: '', photoEvidence: null, photoEvidenceName: '' }
+      init[f.id] = {
+        label: f.label,
+        category: f.category || '',
+        type: f.type,
+        answer: f.type === 'Multiple Choice' ? [] : '',
+        observation: '',
+        // Only filled in on a Fail, but initialised for every question so the
+        // controlled inputs never flip between uncontrolled and controlled when
+        // an answer changes.
+        action: '',
+        actionOwner: '',
+        actionDue: '',
+        photoEvidence: null,
+        photoEvidenceName: '',
+      }
     })
     setResponses(init)
   }, [task])
@@ -118,6 +132,12 @@ export default function Execute() {
       const r = responses[f.id]
       if (!hasAnsweredQuestion(f, r)) errors.push(`Question ${i + 1} is unanswered.`)
       if (f.photoRequirement === 'Mandatory' && !r?.photoEvidence) errors.push(`Question ${i + 1} requires a photo.`)
+      // A failure with no action is a finding nobody owns. Blocking here rather
+      // than nudging afterwards, because "afterwards" is a list somebody else
+      // reads a week later without knowing what the inspector saw.
+      if (r?.answer === 'Fail' && !String(r.action || '').trim()) {
+        errors.push(`Question ${i + 1} failed — say what will be done about it.`)
+      }
     })
     if (errors.length) return toast.error(errors[0] + (errors.length > 1 ? ` (+${errors.length - 1} more)` : ''))
 
@@ -297,10 +317,48 @@ export default function Execute() {
                       </div>
                     </div>
 
-                    {/* Observation on Fail */}
+                    {/* A failure IS an action. The Action Tracker has always
+                        derived one from a Fail, but it could only ever quote the
+                        observation back — "Extinguisher blocked" — which records
+                        the fault and not what anyone intends to do about it. The
+                        person who found it, standing there, is the one who knows;
+                        asking later means asking someone who was not present. */}
                     {f.type === 'Pass/Fail' && r.answer === 'Fail' && (
-                      <textarea className="input mt-3 min-h-[60px]" placeholder="Describe the defect / observation…"
-                        value={r.observation} onChange={(e) => update(f.id, { observation: e.target.value })} />
+                      <div className="mt-3 space-y-2 rounded-2xl bg-clay-surface p-3 shadow-clay-inset">
+                        <textarea
+                          className="input min-h-[60px]"
+                          placeholder="What is wrong? (observation)"
+                          aria-label={`Observation for question ${i + 1}`}
+                          value={r.observation}
+                          onChange={(e) => update(f.id, { observation: e.target.value })}
+                        />
+                        <textarea
+                          className="input min-h-[60px]"
+                          placeholder="What will be done about it? (corrective action — required)"
+                          aria-label={`Corrective action for question ${i + 1}`}
+                          value={r.action || ''}
+                          onChange={(e) => update(f.id, { action: e.target.value })}
+                        />
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                          <input
+                            className="input"
+                            placeholder="Owner (optional)"
+                            aria-label={`Action owner for question ${i + 1}`}
+                            value={r.actionOwner || ''}
+                            onChange={(e) => update(f.id, { actionOwner: e.target.value })}
+                          />
+                          <input
+                            type="date"
+                            className="input font-mono"
+                            aria-label={`Action due date for question ${i + 1}`}
+                            value={r.actionDue || ''}
+                            onChange={(e) => update(f.id, { actionDue: e.target.value })}
+                          />
+                        </div>
+                        <p className="text-[11px] text-ink-400">
+                          This opens an item in the Action Tracker when the inspection is submitted.
+                        </p>
+                      </div>
                     )}
 
                     {/* Photo */}
