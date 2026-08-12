@@ -63,6 +63,26 @@ service cloud.firestore {
       return isApprovedMemberOf(orgId) && myProfile().role != 'auditor';
     }
 
+    // A length cap that survives a null.
+    //
+    // The caps on the public QR surface were written as
+    // `data.get('field', '').size() <= n`, and .get() only substitutes the
+    // default when the key is ABSENT. reportPayload writes `newStatus: x ||
+    // null` — the key is present, holding null — so .size() was called on null,
+    // which raises, and a rule that raises denies.
+    //
+    // That is how a length check became an outage: every QR defect report was
+    // refused, and createReport maps any permission-denied to "already
+    // reported", so the person holding the phone was told the fault was a
+    // duplicate. Nothing was wrong with their scan and nothing was in the
+    // defectLocks collection at all.
+    //
+    // A non-string carries no length to police, so it passes here and is left
+    // to the type and shape checks that already exist alongside.
+    function shortText(v, max) {
+      return !(v is string) || v.size() <= max;
+    }
+
     // ── Manager-only decisions ────────────────────────────────────────────────
     // Approving a permit, deciding a defect report, verifying an injury,
     // closing a finding: each of these was enforced by can() in React and by
@@ -593,12 +613,12 @@ service cloud.firestore {
               // the org's approval queue, repeatedly, for free. These are labels
               // and roles copied off a sticker; 200 is generous for all of them.
               // .get() defaults an absent optional field to '', which passes.
-              && request.resource.data.get('extLabel', '').size() <= 200
-              && request.resource.data.get('assetLabel', '').size() <= 200
-              && request.resource.data.get('defectType', '').size() <= 200
-              && request.resource.data.get('newStatus', '').size() <= 60
-              && request.resource.data.get('reportedByName', '').size() <= 120
-              && request.resource.data.get('reporterRole', '').size() <= 60
+              && shortText(request.resource.data.get('extLabel', ''), 200)
+              && shortText(request.resource.data.get('assetLabel', ''), 200)
+              && shortText(request.resource.data.get('defectType', ''), 200)
+              && shortText(request.resource.data.get('newStatus', ''), 60)
+              && shortText(request.resource.data.get('reportedByName', ''), 120)
+              && shortText(request.resource.data.get('reporterRole', ''), 60)
               && (
                 // An extinguisher defect, keyed by the unit it was raised
                 // against — and that unit must be the one the token names,

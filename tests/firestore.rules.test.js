@@ -437,6 +437,64 @@ describe('public defect reports from a QR scan (/reports)', () => {
   const lockAt = (db, id) => doc(db, 'organizations', 'orgA', 'defectLocks', id)
   const lockDoc = { extId: 'ext1', defectType: 'empty', createdAt: Date.now(), token: 'tok1' }
 
+  // EXACTLY what reportPayload() builds — every key it writes, including the
+  // ones it sets to null. The fixtures above omit those keys, and that gap took
+  // QR defect reporting down: `.get(k, '')` only substitutes when a key is
+  // ABSENT, so a present-but-null newStatus reached .size() and raised, and a
+  // rule that raises denies. A fixture that is tidier than production tests
+  // something production never sends.
+  const realPayload = {
+    extId: 'ext1',
+    extLabel: '',
+    kind: 'defect',
+    defectType: 'empty',
+    newStatus: null,
+    note: '',
+    reportedBy: 'public',
+    reportedByName: 'QR Scan (Public)',
+    reporterRole: null,
+    source: 'qr',
+    approvalStatus: 'pending',
+    reportedAt: Date.now(),
+    token: 'tok1',
+  }
+
+  it('accepts the payload the app actually sends, nulls and all', async () => {
+    const anon = testEnv.unauthenticatedContext().firestore()
+    await assertSucceeds(setDoc(reportAt(anon, 'rp1'), realPayload))
+  })
+
+  // Not a defect in the rule — a deliberate limit I mis-asserted first time.
+  // The anonymous branch admits 'defect' and 'asset_defect' only: a passer-by
+  // may report that something is broken, but may not move the unit's status.
+  // That is a decision about equipment, and it belongs to someone accountable.
+  it('refuses a status change from an anonymous scanner', async () => {
+    const anon = testEnv.unauthenticatedContext().firestore()
+    await assertFails(setDoc(reportAt(anon, 'rp2'), {
+      ...realPayload, kind: 'status_change', defectType: null, newStatus: 'to_be_refilled',
+    }))
+  })
+
+  it('the whole batch goes through with that payload', async () => {
+    const anon = testEnv.unauthenticatedContext().firestore()
+    const b = writeBatch(anon)
+    b.set(lockAt(anon, 'ext1__empty'), lockDoc)
+    b.set(reportAt(anon, 'rp3'), realPayload)
+    await assertSucceeds(b.commit())
+  })
+
+  // The caps still have to bite — tolerating null must not mean tolerating a
+  // megabyte.
+  it('still refuses an oversized string in those fields', async () => {
+    const anon = testEnv.unauthenticatedContext().firestore()
+    await assertFails(setDoc(reportAt(anon, 'rp4'), {
+      ...realPayload, reportedByName: 'x'.repeat(200),
+    }))
+    await assertFails(setDoc(reportAt(anon, 'rp5'), {
+      ...realPayload, newStatus: 'y'.repeat(100),
+    }))
+  })
+
   it('a signed-out scanner can write the lock and the report in one batch', async () => {
     const anon = testEnv.unauthenticatedContext().firestore()
     const b = writeBatch(anon)
