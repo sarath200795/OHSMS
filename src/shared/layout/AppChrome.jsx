@@ -59,10 +59,20 @@ export default function AppChrome({ children }) {
   return (
     <div className="min-h-screen bg-clay-bg">
       <header className="sticky top-0 z-30 flex items-center gap-3.5 border-b border-ink-100 bg-clay-bg/90 px-5 py-3 backdrop-blur-md sm:px-7">
-        <NavLink to="/portal" className="flex flex-none items-center gap-2.5">
-          <span className="grid h-9 w-9 place-items-center rounded-[10px] bg-brand-600 text-sm font-extrabold text-white shadow-clay-sm">
-            W
-          </span>
+        {/* aria-label rather than leaning on the wordmark beside it: that text
+            is hidden below sm, and without this the only way home on a phone
+            was a link announced as the single letter "W". */}
+        <NavLink
+          to="/portal"
+          aria-label="WEHS home"
+          className="flex flex-none items-center gap-2.5"
+        >
+          <img
+            src="/wehs.svg"
+            alt=""
+            aria-hidden="true"
+            className="h-9 w-9 flex-none rounded-[10px] shadow-clay-sm"
+          />
           <span className="hidden leading-tight sm:block">
             <span className="block text-[13px] font-extrabold tracking-[-0.01em] text-ink-900">WEHS</span>
             <span className="block text-[11px] text-ink-400">Workplace Environment, Health &amp; Safety</span>
