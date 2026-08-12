@@ -41,6 +41,7 @@ import { STATUS, REFILL_DEFECT_KEYS, DEFECT_BY_KEY } from './constants'
 import { lockId, duplicateDefectMessage } from './defectLock'
 import { putFile, removeFile, MAX_INLINE_BYTES, tooLargeForInline } from '../../../shared/storage'
 import { reserveDocId } from '../../../shared/docId/reserve'
+import { reportError } from '../../../shared/monitoring'
 import { AUDIT, diffSummary } from './audit'
 import { statsDeltaFor, accumulate } from './stats'
 
@@ -537,12 +538,42 @@ export async function createReport(orgId, report) {
     try {
       await batch.commit()
     } catch (e) {
-      // A create that lands on an existing lock is denied, since the rules for
-      // this collection allow create and never update.
-      if (e?.code === 'permission-denied') {
-        throw new Error(duplicateDefectMessage(DEFECT_BY_KEY[report.defectType]?.label || 'That defect'))
+      if (e?.code !== 'permission-denied') throw e
+
+      // Somebody just failed to report a safety defect. Whatever the cause,
+      // that must reach an operator — this exact failure once looked like a
+      // duplicate for a day because the only signal was a hedged sentence on a
+      // phone in a corridor, and nothing anywhere else.
+      reportError(e, {
+        where: 'createReport',
+        extId: report.extId,
+        defectType: report.defectType,
+        source: report.source,
+        hasToken: Boolean(report.token),
+      })
+
+      // A duplicate is only the LIKELIEST cause. When the caller can read the
+      // lock collection we can stop guessing and say which it actually was; a
+      // public reporter cannot, and gets the hedged message that assumes the
+      // common case without asserting it.
+      const label = DEFECT_BY_KEY[report.defectType]?.label || 'That defect'
+      let locked = null
+      try {
+        locked = (await getDoc(defectLockRef(orgId, report.extId, report.defectType))).exists()
+      } catch {
+        locked = null // not permitted to look — anonymous scan
       }
-      throw e
+
+      if (locked === false) {
+        // Certain it is not a duplicate, so saying so would be a lie. Whatever
+        // refused this is a fault on our side, and the reporter needs to know
+        // the defect is NOT recorded.
+        throw new Error(
+          `${label} could not be reported — the system refused it, and it has NOT been logged. ` +
+          `Tell your safety team directly. This has been reported to the administrators.`
+        )
+      }
+      throw new Error(duplicateDefectMessage(label))
     }
     await logReportCreated(orgId, report)
     return
