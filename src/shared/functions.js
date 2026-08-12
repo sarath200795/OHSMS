@@ -33,3 +33,12 @@ export async function backfillClaims() {
   const fn = await callable('backfillClaims')
   return (await fn()).data
 }
+
+/**
+ * Delete defect locks whose fault no longer exists, so the unit can be reported
+ * again. Reports without deleting unless `dryRun: false`.
+ */
+export async function clearOrphanedDefectLocks({ dryRun = true } = {}) {
+  const fn = await callable('clearOrphanedDefectLocks')
+  return (await fn({ dryRun })).data
+}

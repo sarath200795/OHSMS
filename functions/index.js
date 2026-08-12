@@ -24,6 +24,7 @@ import { onCall, HttpsError } from 'firebase-functions/v2/https'
 import { logger } from 'firebase-functions'
 import { claimsFor, claimsChanged, mergeClaims } from './lib/claims.js'
 import { planBackfill } from './lib/docVisibility.js'
+import { classifyLocks } from './lib/defectLocks.js'
 import { createMailer } from './lib/email.js'
 import {
   onActionWrite,
@@ -227,6 +228,70 @@ export const backfillDocumentVisibility = onCall({ region: REGION }, async (requ
     orgWide: plan.orgWide,
     siteScoped: plan.siteScoped,
     titles: plan.writes.slice(0, 25).map((w) => w.title),
+  }
+})
+
+/**
+ * Delete defect locks that no longer describe a live fault.
+ *
+ * A lock outlived its defect whenever the Action Tracker resolved one — that
+ * path removed the defect from the unit without releasing the lock. It is fixed
+ * going forward, but the locks already left behind are unreachable from the app:
+ * the defect is gone, so there is nothing to resolve, and the next person to
+ * scan that extinguisher for that fault is told it has already been reported.
+ *
+ * Conservative by construction — see classifyLocks. Anything it cannot explain
+ * is kept, because deleting a live lock re-opens the duplicate flood the
+ * mechanism exists to prevent, while keeping a stale one costs another run.
+ */
+export const clearOrphanedDefectLocks = onCall({ region: REGION }, async (request) => {
+  const callerUid = request.auth?.uid
+  if (!callerUid) throw new HttpsError('unauthenticated', 'Sign in first.')
+
+  const db = getFirestore()
+  const caller = (await db.doc(`users/${callerUid}`).get()).data()
+  if (!caller || caller.status !== 'approved' || caller.role !== 'admin') {
+    throw new HttpsError('permission-denied', 'Administrators only.')
+  }
+  const orgId = caller.orgId
+  const base = `organizations/${orgId}`
+
+  const [lockSnap, extSnap, reportSnap] = await Promise.all([
+    db.collection(`${base}/defectLocks`).get(),
+    db.collection(`${base}/extinguishers`).get(),
+    db.collection(`${base}/reports`).get(),
+  ])
+
+  const { orphaned, live } = classifyLocks({
+    locks: lockSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
+    extinguishers: extSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
+    reports: reportSnap.docs.map((d) => d.data()),
+  })
+
+  const dryRun = request.data?.dryRun !== false
+  if (!dryRun && orphaned.length) {
+    for (let i = 0; i < orphaned.length; i += 400) {
+      const batch = db.batch()
+      orphaned.slice(i, i + 400).forEach((l) => {
+        batch.delete(db.doc(`${base}/defectLocks/${l.id}`))
+      })
+      await batch.commit()
+    }
+  }
+
+  logger.info('defectLocks: orphan sweep', {
+    orgId, dryRun, total: lockSnap.size, orphaned: orphaned.length,
+  })
+
+  return {
+    orgId,
+    dryRun,
+    total: lockSnap.size,
+    kept: live.length,
+    removed: dryRun ? 0 : orphaned.length,
+    wouldRemove: orphaned.length,
+    // Named so an admin can recognise the unit before agreeing to the delete.
+    ids: orphaned.slice(0, 25).map((l) => l.id),
   }
 })
 

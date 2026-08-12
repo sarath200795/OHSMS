@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import toast from 'react-hot-toast'
-import { ShieldCheck, FileStack, Play, Check, Bug } from 'lucide-react'
+import { ShieldCheck, FileStack, Play, Check, Bug, Unlock } from 'lucide-react'
 import { Card, Button } from '../../shared/ui'
-import { backfillDocumentVisibility, backfillClaims } from '../../shared/functions'
+import { backfillDocumentVisibility, backfillClaims, clearOrphanedDefectLocks } from '../../shared/functions'
 import { reportError } from '../../shared/monitoring'
 
 /**
@@ -21,8 +21,85 @@ export default function Maintenance() {
     <div className="space-y-4">
       <DocumentVisibility />
       <OrgClaims />
+      <DefectLocks />
       <ErrorReporting />
     </div>
+  )
+}
+
+/**
+ * Release defect locks that outlived the fault they described.
+ *
+ * A QR defect report writes a lock so five people scanning the same discharged
+ * extinguisher file one report, not five. Resolving the defect from the Action
+ * Tracker used to remove it from the unit WITHOUT releasing the lock, and the
+ * locks that left behind cannot be reached from anywhere else in the app — the
+ * defect is gone, so there is nothing left to resolve. The symptom is a scanner
+ * being told a fault "has already been reported", permanently.
+ */
+function DefectLocks() {
+  const [busy, setBusy] = useState('')
+  const [preview, setPreview] = useState(null)
+  const [done, setDone] = useState(false)
+
+  const run = async (dryRun) => {
+    setBusy(dryRun ? 'dry' : 'write')
+    try {
+      const r = await clearOrphanedDefectLocks({ dryRun })
+      setPreview(r)
+      if (!dryRun) {
+        setDone(true)
+        toast.success(`Released ${r.removed} lock${r.removed === 1 ? '' : 's'}`)
+      } else if (r.wouldRemove === 0) {
+        toast.success('Nothing stuck — every lock still describes a live fault')
+      }
+    } catch (err) {
+      toast.error(err?.message || 'Failed')
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const nothingToDo = preview && preview.wouldRemove === 0
+
+  return (
+    <Job
+      icon={Unlock}
+      title="Release stuck defect reports"
+      result={preview && [
+        `${preview.total} lock${preview.total === 1 ? '' : 's'} on record`,
+        `${preview.kept} still describe a live fault and are kept`,
+        `${preview.wouldRemove} stuck`,
+        preview.ids?.length ? `\n${preview.ids.map((i) => `  · ${i}`).join('\n')}` : '',
+      ].filter(Boolean).join('\n')}
+      actions={
+        <>
+          <Button variant="ghost" icon={Play} loading={busy === 'dry'} disabled={Boolean(busy)} onClick={() => run(true)}>
+            Check first
+          </Button>
+          <Button
+            icon={done ? Check : undefined}
+            loading={busy === 'write'}
+            disabled={Boolean(busy) || !preview || nothingToDo}
+            onClick={() => run(false)}
+          >
+            {done ? 'Released' : 'Release them'}
+          </Button>
+        </>
+      }
+    >
+      <p>
+        When someone scans a QR code to report a fault, that fault is locked so the next
+        five people scanning the same unit do not file the same report again. The lock is
+        meant to last exactly as long as the fault.
+      </p>
+      <p>
+        If a lock outlives its fault, that unit can never be reported for it again — the
+        scanner is told it has already been reported. This finds locks whose fault is no
+        longer open anywhere and releases them. A fault still awaiting approval, or still
+        open on the unit, is left alone.
+      </p>
+    </Job>
   )
 }
 
@@ -77,7 +154,10 @@ function ErrorReporting() {
 /** Shared shell: title, why it matters, a result panel, and the action. */
 function Job({ icon: Icon, title, children, result, actions }) {
   return (
-    <Card>
+    // Labelled as a region so each job is its own landmark: several of these
+    // carry a button called "Check first", and without this neither a screen
+    // reader nor a test can tell which one it is looking at.
+    <Card role="region" aria-label={title}>
       <div className="mb-1 flex items-center gap-2">
         <Icon size={16} className="shrink-0 text-ink-500" />
         <h2 className="text-sm font-bold text-ink-800">{title}</h2>

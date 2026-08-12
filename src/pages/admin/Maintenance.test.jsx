@@ -1,12 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, fireEvent, act } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, act, within } from '@testing-library/react'
 
 const backfillDocumentVisibility = vi.fn()
 const backfillClaims = vi.fn()
+const clearOrphanedDefectLocks = vi.fn()
 
 vi.mock('../../shared/functions', () => ({
   backfillDocumentVisibility: (...a) => backfillDocumentVisibility(...a),
   backfillClaims: (...a) => backfillClaims(...a),
+  clearOrphanedDefectLocks: (...a) => clearOrphanedDefectLocks(...a),
 }))
 vi.mock('react-hot-toast', () => ({
   default: { success: vi.fn(), error: vi.fn() },
@@ -22,12 +24,17 @@ const DRY = {
 beforeEach(() => {
   vi.clearAllMocks()
   backfillDocumentVisibility.mockResolvedValue(DRY)
+  clearOrphanedDefectLocks.mockResolvedValue({ total: 0, kept: 0, wouldRemove: 0, removed: 0, ids: [] })
   backfillClaims.mockResolvedValue({
     total: 5, updated: 4, stamped: 4, alreadyCorrect: 0, notApproved: 1, noAuthUser: 0, failed: [],
   })
 })
 
-const btn = (name) => screen.getByRole('button', { name })
+// Several jobs carry a button of the same name, so every query is scoped to
+// the region it belongs to.
+const card = (name) => within(screen.getByRole('region', { name }))
+const docs = () => card(/Stamp document visibility/)
+const btn = (name) => docs().getByRole('button', { name })
 
 describe('Maintenance', () => {
   it('offers both jobs', () => {
@@ -76,7 +83,7 @@ describe('Maintenance', () => {
 
   it('runs the claims job and reports the counts', async () => {
     render(<Maintenance />)
-    await act(async () => fireEvent.click(btn(/Update tokens/)))
+    await act(async () => fireEvent.click(card(/sign-in token/).getByRole('button', { name: /Update tokens/ })))
 
     await waitFor(() => expect(backfillClaims).toHaveBeenCalled())
     expect(screen.getByText(/4 updated/)).toBeTruthy()

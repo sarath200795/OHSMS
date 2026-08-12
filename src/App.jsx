@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react'
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useParams } from 'react-router-dom'
 import { isFirebaseConfigured } from './shared/firebase'
 import ProtectedRoute from './shared/auth/ProtectedRoute'
 import AppChrome from './shared/layout/AppChrome'
@@ -53,6 +53,18 @@ import './modules/cctv/registerHooks'
 const Portal = lazy(() => import('./pages/portal'))
 const Analytics = lazy(() => import('./pages/analytics'))
 
+/**
+ * The target of a scanned LOTO procedure QR.
+ *
+ * Kept as a redirect so the printed code stays short and the real page stays
+ * the single place a procedure is rendered. `replace` so the scan does not
+ * leave a dead entry in history for the back button to land on.
+ */
+function ProcedureScanRedirect() {
+  const { id } = useParams()
+  return <Navigate to={`/loto/procedures/${id}`} replace />
+}
+
 function Protected({ children, ...guard }) {
   return (
     <ProtectedRoute {...guard}>
@@ -95,6 +107,23 @@ export default function App() {
           taped to a scaffold has no account. */}
       <Route path="/permit/:token" element={<PublicPermit />} />
       <Route path="/pending" element={<PendingApproval />} />
+
+      {/* The QR printed on a LOTO isolation procedure. It has always encoded
+          `/p/<id>` (procedureScanUrl), and until now nothing served that path —
+          every scan fell through to the catch-all, so the codes on the machines
+          led nowhere.
+
+          A redirect rather than a renamed URL, because those codes are printed
+          and stuck to equipment: changing the generator would orphan every one
+          already in the field. The short path is also the better QR — fewer
+          characters means a less dense code, which matters when it is being
+          scanned off a dirty machine in bad light.
+
+          Not public, unlike the extinguisher and permit codes. A procedure is
+          the instruction set for making equipment safe, and the target route is
+          protected, so a scan by someone signed out lands on sign-in and
+          returns here afterwards. */}
+      <Route path="/p/:id" element={<ProcedureScanRedirect />} />
 
       {/* Employee portal. Signed in like everything else, but outside AppShell:
           the admin sidebar is the thing this surface exists to replace. */}
