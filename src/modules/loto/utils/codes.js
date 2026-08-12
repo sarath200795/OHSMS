@@ -49,3 +49,26 @@ export function procedureScanUrl(procedureId) {
     typeof window !== 'undefined' ? window.location.origin : ''
   return `${origin}/p/${procedureId}`
 }
+
+/**
+ * The URL on the tag hung at an isolation point.
+ *
+ * A procedure QR answers "what does isolating this machine involve"; this one
+ * answers "what is the state of THIS point, right now" — which is the question
+ * someone standing at a locked valve is actually asking.
+ *
+ * It resolves to the LIVE operation rather than a snapshot, and that is the
+ * safety property. A tag is printed when isolation is applied and can easily
+ * outlive the job it belonged to; one that still reads "isolated" after the
+ * lock came off is worse than no tag at all. Pointing at live state means a
+ * stale tag tells the truth — the operation it opens will show the point
+ * unlocked.
+ *
+ * Short like /p/ for the same reason: fewer characters, a less dense code, and
+ * these are scanned off oily metal in bad light.
+ */
+export function tagScanUrl(procedureId, pointKey) {
+  const origin =
+    typeof window !== 'undefined' ? window.location.origin : ''
+  return `${origin}/t/${procedureId}/${encodeURIComponent(pointKey)}`
+}

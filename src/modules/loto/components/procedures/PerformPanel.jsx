@@ -12,6 +12,7 @@ import {
 import Button from '../ui/Button'
 import ApplyLockDialog from './ApplyLockDialog'
 import GroupLockDialog from './GroupLockDialog'
+import PointTagDialog from './PointTagDialog'
 
 export default function PerformPanel({
   procedure,
@@ -20,6 +21,7 @@ export default function PerformPanel({
   inUseLockNos,
   user,
 }) {
+  const [tagFor, setTagFor] = useState(null)
   const [busyKey, setBusyKey] = useState(null)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [pendingPoint, setPendingPoint] = useState(null)
@@ -137,6 +139,20 @@ export default function PerformPanel({
                       )}
                   </div>
                 </div>
+                {/* Only while the lock is on. A tag exists to hang on a locked
+                    point, and offering one for an unlocked point invites
+                    printing a tag that claims an isolation nobody performed. */}
+                {locked && (
+                  <button
+                    type="button"
+                    onClick={() => setTagFor(p)}
+                    title={`Print the tag for ${p.pointId}`}
+                    aria-label={`Print the tag for ${p.pointId}`}
+                    className="shrink-0 rounded-lg bg-steel-700 px-2.5 py-1.5 text-xs font-bold text-steel-100 transition-colors hover:bg-steel-600"
+                  >
+                    Tag
+                  </button>
+                )}
                 <button
                   disabled={busyKey === p.key || (locked && membersRemain)}
                   title={locked && membersRemain ? 'Remove all group-lock technicians first' : undefined}
@@ -232,6 +248,8 @@ export default function PerformPanel({
           )}
         </div>
       )}
+
+      <PointTagDialog procedure={procedure} point={tagFor} onClose={() => setTagFor(null)} />
 
       <ApplyLockDialog
         open={pickerOpen}

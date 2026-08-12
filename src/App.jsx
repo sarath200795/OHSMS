@@ -65,6 +65,21 @@ function ProcedureScanRedirect() {
   return <Navigate to={`/loto/procedures/${id}`} replace />
 }
 
+/**
+ * The target of a tag scanned at an isolation point.
+ *
+ * Goes to the OPERATION, not the procedure. The procedure is the instruction
+ * set; someone standing at a locked valve wants the live state of this
+ * particular point, and the operation page is the only thing that carries it.
+ *
+ * The point travels as a hash so the page can bring it into view without the
+ * route needing to know anything about how that page is laid out.
+ */
+function TagScanRedirect() {
+  const { id, point } = useParams()
+  return <Navigate to={`/loto/operations/${id}#point-${point}`} replace />
+}
+
 function Protected({ children, ...guard }) {
   return (
     <ProtectedRoute {...guard}>
@@ -124,6 +139,12 @@ export default function App() {
           protected, so a scan by someone signed out lands on sign-in and
           returns here afterwards. */}
       <Route path="/p/:id" element={<ProcedureScanRedirect />} />
+
+      {/* The tag hung at an isolation point. Opens the live operation rather
+          than the procedure: a tag is printed when the lock goes on and can
+          outlive the job, so pointing at live state is what stops a stale tag
+          claiming a machine is still isolated. */}
+      <Route path="/t/:id/:point" element={<TagScanRedirect />} />
 
       {/* Employee portal. Signed in like everything else, but outside AppShell:
           the admin sidebar is the thing this surface exists to replace. */}
