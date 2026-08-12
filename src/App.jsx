@@ -53,17 +53,9 @@ import './modules/cctv/registerHooks'
 const Portal = lazy(() => import('./pages/portal'))
 const Analytics = lazy(() => import('./pages/analytics'))
 
-/**
- * The target of a scanned LOTO procedure QR.
- *
- * Kept as a redirect so the printed code stays short and the real page stays
- * the single place a procedure is rendered. `replace` so the scan does not
- * leave a dead entry in history for the back button to land on.
- */
-function ProcedureScanRedirect() {
-  const { id } = useParams()
-  return <Navigate to={`/loto/procedures/${id}`} replace />
-}
+// The public read-only view of a scanned LOTO procedure. Lazy like the other
+// public QR landings — it is reached from a printed code, not from the app.
+const PublicProcedure = lazy(() => import('./modules/loto/pages/PublicProcedure'))
 
 /**
  * The target of a tag scanned at an isolation point.
@@ -134,11 +126,17 @@ export default function App() {
           characters means a less dense code, which matters when it is being
           scanned off a dirty machine in bad light.
 
-          Not public, unlike the extinguisher and permit codes. A procedure is
-          the instruction set for making equipment safe, and the target route is
-          protected, so a scan by someone signed out lands on sign-in and
-          returns here afterwards. */}
-      <Route path="/p/:id" element={<ProcedureScanRedirect />} />
+          Public, and read-only. It used to redirect into the protected app, so
+          scanning a code on a machine showed a login screen to the person least
+          able to do anything about it — a fitter at the equipment, mid-shift,
+          with no account. It now serves a reference view: what to isolate, how,
+          the hazard, how to verify it dead, and whether each point is locked
+          right now. No controls. Locking a point still requires signing in.
+
+          It reads a public MIRROR (/procedureQr), never the procedure document,
+          because rules cannot restrict which fields a read returns and the
+          procedure carries the names of the people who locked it. */}
+      <Route path="/p/:id" element={<PublicProcedure />} />
 
       {/* The tag hung at an isolation point. Opens the live operation rather
           than the procedure: a tag is printed when the lock goes on and can

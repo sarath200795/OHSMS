@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import toast from 'react-hot-toast'
-import { ShieldCheck, FileStack, Play, Check, Bug, Unlock } from 'lucide-react'
+import { ShieldCheck, FileStack, Play, Check, Bug, Unlock, QrCode } from 'lucide-react'
 import { Card, Button } from '../../shared/ui'
 import { backfillDocumentVisibility, backfillClaims, clearOrphanedDefectLocks } from '../../shared/functions'
 import { reportError } from '../../shared/monitoring'
+import { useAuth } from '../../shared/auth/AuthContext'
+import { backfillProcedureMirrors } from '../../modules/loto/services/procedures'
 
 /**
  * One-off migrations, run by an admin for their own organization.
@@ -21,9 +23,96 @@ export default function Maintenance() {
     <div className="space-y-4">
       <DocumentVisibility />
       <OrgClaims />
+      <ProcedureMirrors />
       <DefectLocks />
       <ErrorReporting />
     </div>
+  )
+}
+
+/**
+ * Publish the isolation procedures that predate the public QR view.
+ *
+ * The QR printed on a LOTO procedure now opens a read-only view for whoever is
+ * standing at the machine, with no account. That view reads a mirror document
+ * holding the instructions and the live lock state, and deliberately not the
+ * names of the people who applied the locks.
+ *
+ * Every writer keeps the mirror current, and each rebuilds it in full, so any
+ * procedure that gets locked, approved or revised publishes itself. The gap is
+ * the procedure nobody touches — an approved isolation on a machine that is
+ * simply running. Its code would answer "does not match a current procedure",
+ * which on a LOTO tag is an alarming way to say "nothing has changed".
+ *
+ * Unlike its neighbours this runs in the browser rather than as a callable: the
+ * writes are the same ones the app already makes, under the same rules, so it
+ * needs no privilege an admin does not already have.
+ */
+function ProcedureMirrors() {
+  const { orgId } = useAuth()
+  const [busy, setBusy] = useState('')
+  const [preview, setPreview] = useState(null)
+  const [done, setDone] = useState(false)
+
+  const run = async (dryRun) => {
+    if (!orgId) return toast.error('No organization on your profile.')
+    setBusy(dryRun ? 'dry' : 'write')
+    try {
+      const r = await backfillProcedureMirrors(orgId, { dryRun })
+      setPreview(r)
+      if (!dryRun) {
+        setDone(true)
+        toast.success(`Published ${r.written} procedure${r.written === 1 ? '' : 's'}`)
+      } else if (r.missing === 0) {
+        toast.success('Nothing to do — every procedure is already published')
+      }
+    } catch (err) {
+      reportError(err, { where: 'backfillProcedureMirrors' })
+      toast.error(err?.message || 'Failed')
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const nothingToDo = preview && preview.missing === 0
+
+  return (
+    <Job
+      icon={QrCode}
+      title="Publish procedure QR pages"
+      result={preview && [
+        `${preview.total} procedure${preview.total === 1 ? '' : 's'} in this organization`,
+        `${preview.present} already published`,
+        `${preview.missing} whose printed code leads nowhere`,
+        preview.ids?.length ? `\n${preview.ids.map((i) => `  · ${i}`).join('\n')}` : '',
+      ].filter(Boolean).join('\n')}
+      actions={
+        <>
+          <Button variant="ghost" icon={Play} loading={busy === 'dry'} disabled={Boolean(busy)} onClick={() => run(true)}>
+            Check first
+          </Button>
+          <Button
+            icon={done ? Check : undefined}
+            loading={busy === 'write'}
+            disabled={Boolean(busy) || !preview || nothingToDo}
+            onClick={() => run(false)}
+          >
+            {done ? 'Published' : 'Publish them'}
+          </Button>
+        </>
+      }
+    >
+      <p>
+        Scanning the QR on an isolation procedure opens a read-only view — the isolation
+        points, the hazards, how to verify each one dead, and which points are locked right
+        now — without needing an account. Locking a point still requires signing in.
+      </p>
+      <p>
+        Procedures written before this existed have no published view until something
+        changes them. This publishes the rest. It copies no names: the page shows that a
+        point is locked, never who locked it.
+      </p>
+    </Job>
   )
 }
 

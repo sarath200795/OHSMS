@@ -4,12 +4,22 @@ import { render, screen, waitFor, fireEvent, act, within } from '@testing-librar
 const backfillDocumentVisibility = vi.fn()
 const backfillClaims = vi.fn()
 const clearOrphanedDefectLocks = vi.fn()
+const backfillProcedureMirrors = vi.fn()
 
 vi.mock('../../shared/functions', () => ({
   backfillDocumentVisibility: (...a) => backfillDocumentVisibility(...a),
   backfillClaims: (...a) => backfillClaims(...a),
   clearOrphanedDefectLocks: (...a) => clearOrphanedDefectLocks(...a),
 }))
+// The procedure-mirror job runs in the browser rather than as a callable, so
+// unlike its neighbours it needs the caller's org and reaches the LOTO service
+// directly. Both are mocked here — importing the real service would stand up
+// Firebase, and this page is rendered without a provider.
+vi.mock('../../shared/auth/AuthContext', () => ({ useAuth: () => ({ orgId: 'org-1' }) }))
+vi.mock('../../modules/loto/services/procedures', () => ({
+  backfillProcedureMirrors: (...a) => backfillProcedureMirrors(...a),
+}))
+vi.mock('../../shared/monitoring', () => ({ reportError: vi.fn() }))
 vi.mock('react-hot-toast', () => ({
   default: { success: vi.fn(), error: vi.fn() },
 }))
@@ -25,6 +35,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   backfillDocumentVisibility.mockResolvedValue(DRY)
   clearOrphanedDefectLocks.mockResolvedValue({ total: 0, kept: 0, wouldRemove: 0, removed: 0, ids: [] })
+  backfillProcedureMirrors.mockResolvedValue({ total: 3, present: 1, missing: 2, ids: ['p1', 'p2'], written: 0 })
   backfillClaims.mockResolvedValue({
     total: 5, updated: 4, stamped: 4, alreadyCorrect: 0, notApproved: 1, noAuthUser: 0, failed: [],
   })
@@ -97,5 +108,45 @@ describe('Maintenance', () => {
 
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('permission-denied'))
     expect(btn(/Stamp them/).disabled).toBe(true)
+  })
+})
+
+// The LOTO procedure QR opens a public read-only page, which only exists for
+// procedures that have a published mirror. Procedures written before that
+// feature have none until something changes them, so this job publishes the
+// rest — and like its neighbours it must not write until someone has looked.
+describe('publishing procedure QR pages', () => {
+  const job = () => within(screen.getByRole('region', { name: /Publish procedure QR pages/ }))
+
+  it('will not publish until you have checked', () => {
+    render(<Maintenance />)
+    expect(job().getByRole('button', { name: /Publish them/ }).disabled).toBe(true)
+  })
+
+  it('reports how many printed codes lead nowhere, without writing', async () => {
+    render(<Maintenance />)
+    await act(async () => fireEvent.click(job().getByRole('button', { name: /Check first/ })))
+
+    await waitFor(() =>
+      expect(backfillProcedureMirrors).toHaveBeenCalledWith('org-1', { dryRun: true }))
+    expect(screen.getByText(/2 whose printed code leads nowhere/)).toBeTruthy()
+    expect(job().getByRole('button', { name: /Publish them/ }).disabled).toBe(false)
+  })
+
+  it('writes only on the second, explicit click', async () => {
+    render(<Maintenance />)
+    await act(async () => fireEvent.click(job().getByRole('button', { name: /Check first/ })))
+    backfillProcedureMirrors.mockResolvedValue({ total: 3, present: 3, missing: 0, ids: [], written: 3 })
+    await act(async () => fireEvent.click(job().getByRole('button', { name: /Publish them/ })))
+
+    expect(backfillProcedureMirrors).toHaveBeenCalledWith('org-1', { dryRun: false })
+    await waitFor(() => expect(job().getByRole('button', { name: /Published/ })).toBeTruthy())
+  })
+
+  it('stays disabled when every procedure is already published', async () => {
+    backfillProcedureMirrors.mockResolvedValue({ total: 3, present: 3, missing: 0, ids: [], written: 0 })
+    render(<Maintenance />)
+    await act(async () => fireEvent.click(job().getByRole('button', { name: /Check first/ })))
+    await waitFor(() => expect(job().getByRole('button', { name: /Publish them/ }).disabled).toBe(true))
   })
 })

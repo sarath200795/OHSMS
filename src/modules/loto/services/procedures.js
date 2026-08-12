@@ -2,11 +2,11 @@ import {
   collection,
   doc,
   getDoc,
+  getDocs,
   onSnapshot,
   query,
   runTransaction,
   serverTimestamp,
-  updateDoc,
   where,
   writeBatch,
   limit,
@@ -14,9 +14,22 @@ import {
 import { db } from '../firebase/config'
 import { putFile, removeFile } from '../../../shared/storage'
 import { PROCEDURE_STATUS, computeLockSummary } from '../constants/procedures'
+import { PUBLIC_COL, publicProcedure } from '../utils/publicProcedure'
 
 const COL = 'procedures'
 const PHOTOS = 'procedurePhotos'
+
+/**
+ * The public mirror a scanned procedure QR reads (see utils/publicProcedure).
+ *
+ * Every writer below updates it in the SAME batch or transaction as the
+ * procedure itself. That is the whole safety property: a mirror written
+ * separately can be left behind by a failure between the two writes, and a
+ * stale one tells someone standing at a machine that it is isolated when the
+ * lock has already come off. Atomic or it is worse than nothing.
+ */
+const publicRef = (id) => doc(db, PUBLIC_COL, id)
+const publicBody = (procedure) => ({ ...publicProcedure(procedure), updatedAt: serverTimestamp() })
 
 /**
  * Move fresh captures (data: URLs) to cloud storage; stored values become
@@ -73,8 +86,7 @@ function sanitizePoints(points = []) {
 export async function createProcedure(id, data, user, photos = {}) {
   const resolvedPhotos = await resolvePhotoMap(data.orgId, photos, {})
   const points = sanitizePoints(data.isolationPoints || [])
-  const batch = writeBatch(db)
-  batch.set(doc(db, COL, id), {
+  const body = {
     ...data,
     isolationPoints: points,
     revision: 0,
@@ -87,7 +99,10 @@ export async function createProcedure(id, data, user, photos = {}) {
     approvedBy: null,
     approvedByName: null,
     approvedAt: null,
-  })
+  }
+  const batch = writeBatch(db)
+  batch.set(doc(db, COL, id), body)
+  batch.set(publicRef(id), publicBody(body))
   batch.set(doc(db, PHOTOS, id), {
     orgId: data.orgId,
     photos: resolvedPhotos,
@@ -103,8 +118,7 @@ export async function reviseProcedure(id, data, user, photos = {}) {
   const snap = await getDoc(doc(db, COL, id))
   const current = snap.data() || {}
   const points = sanitizePoints(data.isolationPoints || [])
-  const batch = writeBatch(db)
-  batch.update(doc(db, COL, id), {
+  const body = {
     ...data,
     isolationPoints: points,
     revision: (current.revision ?? 0) + 1,
@@ -116,7 +130,12 @@ export async function reviseProcedure(id, data, user, photos = {}) {
     approvedBy: null,
     approvedByName: null,
     approvedAt: null,
-  })
+  }
+  const batch = writeBatch(db)
+  batch.update(doc(db, COL, id), body)
+  // set, not update: a revision replaces the point set wholesale, and a
+  // procedure that predates the mirror has none to update.
+  batch.set(publicRef(id), publicBody({ ...current, ...body }))
   batch.set(doc(db, PHOTOS, id), {
     orgId: data.orgId,
     photos: resolvedPhotos,
@@ -128,6 +147,10 @@ export async function reviseProcedure(id, data, user, photos = {}) {
 export async function deleteProcedure(procedure) {
   const batch = writeBatch(db)
   batch.delete(doc(db, COL, procedure.id))
+  // The mirror goes with it, in the same batch. A mirror outliving its
+  // procedure is a public page still describing an isolation that no longer
+  // exists — the one state worse than the code leading nowhere.
+  batch.delete(publicRef(procedure.id))
   // Cloud photo files go with the photos doc — it is their only index.
   const raw = await rawPhotoMap(procedure.id)
   for (const v of Object.values(raw)) {
@@ -150,28 +173,40 @@ export async function getProcedurePhotos(id) {
   return out
 }
 
+/**
+ * A lifecycle status change, carried through to the public mirror.
+ *
+ * Reads the procedure first and rebuilds the mirror in full rather than
+ * patching `status` onto it. Costs one extra read on a rare action, and buys
+ * two things: a procedure that predates the mirror gets a complete one instead
+ * of a document holding a status and no isolation points, and there is only
+ * ever one expression of what the mirror contains.
+ *
+ * `extra` may carry serverTimestamp() sentinels, so it goes to the procedure
+ * only — the mirror is built from the stored data plus the new status.
+ */
+async function setProcedureStatus(id, status, extra = {}) {
+  const snap = await getDoc(doc(db, COL, id))
+  const batch = writeBatch(db)
+  batch.update(doc(db, COL, id), { status, ...extra, updatedAt: serverTimestamp() })
+  if (snap.exists()) batch.set(publicRef(id), publicBody({ ...snap.data(), status }))
+  await batch.commit()
+}
+
 export async function sendForApproval(id) {
-  await updateDoc(doc(db, COL, id), {
-    status: PROCEDURE_STATUS.PENDING_APPROVAL,
-    updatedAt: serverTimestamp(),
-  })
+  await setProcedureStatus(id, PROCEDURE_STATUS.PENDING_APPROVAL)
 }
 
 export async function approveProcedure(id, user) {
-  await updateDoc(doc(db, COL, id), {
-    status: PROCEDURE_STATUS.APPROVED,
+  await setProcedureStatus(id, PROCEDURE_STATUS.APPROVED, {
     approvedBy: user.id,
     approvedByName: user.displayName,
     approvedAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
   })
 }
 
 export async function rejectProcedure(id) {
-  await updateDoc(doc(db, COL, id), {
-    status: PROCEDURE_STATUS.REJECTED,
-    updatedAt: serverTimestamp(),
-  })
+  await setProcedureStatus(id, PROCEDURE_STATUS.REJECTED)
 }
 
 /**
@@ -276,6 +311,10 @@ export async function setPointLock(procedureId, pointKey, locked, user, tech = n
       update.groupLock = { active: false, method: null, members: [] }
     }
     tx.update(ref, update)
+    // Same transaction as the lock itself — see publicRef. A lock that lands
+    // without its mirror leaves the public page saying "unlocked" about a
+    // machine somebody has just isolated, or worse, the reverse.
+    tx.set(publicRef(procedureId), publicBody({ ...data, ...update }))
 
     tx.set(eventRef, {
       orgId: data.orgId,
@@ -398,6 +437,7 @@ export async function addGroupMember(procedureId, member, method, user, swaps = 
     update.groupLock = next
     update.lockSummary = computeLockSummary(points, next)
     tx.update(ref, update)
+    tx.set(publicRef(procedureId), publicBody({ ...data, ...update }))
     tx.set(eventRef, {
       orgId: data.orgId,
       procedureId,
@@ -432,11 +472,13 @@ export async function removeGroupMember(procedureId, techId, user) {
       method: members.length > 0 ? group.method : null,
       members,
     }
-    tx.update(ref, {
+    const update = {
       groupLock: next,
       lockSummary: computeLockSummary(data.isolationPoints || [], next),
       updatedAt: serverTimestamp(),
-    })
+    }
+    tx.update(ref, update)
+    tx.set(publicRef(procedureId), publicBody({ ...data, ...update }))
     tx.set(eventRef, {
       orgId: data.orgId,
       procedureId,
@@ -495,4 +537,51 @@ export function subscribeOrgProcedures(orgId, cb, onError) {
     },
     onError,
   )
+}
+
+/**
+ * Give every existing procedure a public mirror.
+ *
+ * The nine writers above keep the mirror current from now on, and each rebuilds
+ * it in full — so any procedure that is locked, approved or revised heals
+ * itself. What none of them reaches is a procedure nobody touches: an approved
+ * isolation on a machine that is simply working. Its printed code would resolve
+ * to "does not match a current procedure", which is the wrong answer and, on a
+ * LOTO code, an alarming one.
+ *
+ * Idempotent by construction — it rewrites from the procedure rather than
+ * patching — so running it twice costs writes and changes nothing. `dryRun`
+ * reports without writing, because the honest thing before a bulk write is to
+ * say how many documents it will touch.
+ *
+ * Mirrors are checked one at a time rather than queried: `allow list: if false`
+ * on /procedureQr means even an approved member cannot page it, which is the
+ * property that stops a stranger walking off with every tenant's procedures.
+ */
+export async function backfillProcedureMirrors(orgId, { dryRun = true, max = 2000 } = {}) {
+  const snap = await getDocs(query(collection(db, COL), where('orgId', '==', orgId), limit(max)))
+  const procedures = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+
+  let present = 0
+  const missing = []
+  for (const p of procedures) {
+    const m = await getDoc(publicRef(p.id))
+    if (m.exists()) present += 1
+    else missing.push(p.id)
+  }
+
+  const result = { total: procedures.length, present, missing: missing.length, ids: missing.slice(0, 20) }
+  if (dryRun) return { ...result, written: 0 }
+
+  // Firestore caps a batch at 500 operations.
+  let written = 0
+  for (let i = 0; i < procedures.length; i += 400) {
+    const batch = writeBatch(db)
+    for (const p of procedures.slice(i, i + 400)) {
+      batch.set(publicRef(p.id), publicBody(p))
+      written += 1
+    }
+    await batch.commit()
+  }
+  return { ...result, written }
 }

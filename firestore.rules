@@ -358,6 +358,36 @@ service cloud.firestore {
       allow delete: if isWriterOf(resource.data.orgId);
     }
 
+    // ── Public LOTO procedure mirror ──────────────────────────────────────────
+    // The QR printed on an isolation procedure is stuck to a machine, and the
+    // person scanning it is standing in front of that machine — usually with no
+    // account. This is what they read: what to isolate, how, the hazard, how to
+    // prove it dead, and whether each point is locked RIGHT NOW.
+    //
+    // A mirror rather than opening /procedures/{id}, because rules cannot
+    // restrict which FIELDS a read returns. The procedure document carries
+    // lockState.techName, groupLock.members[].name, primaryTech and the approval
+    // trail; publishing it would put workers' names on an unauthenticated URL.
+    // src/modules/loto/utils/publicProcedure.js whitelists what lands here.
+    //
+    // `get`, NOT `read` — the same distinction that mattered for /qr above.
+    // read = get + list, and an unconditional read would let anyone page the
+    // whole collection and walk off with every tenant's isolation procedures.
+    // The document id is the procedureId (the printed codes encode /p/<id>), so
+    // get-by-exact-id is all the app has ever needed.
+    //
+    // Writes are pinned to the owning tenant and ride in the same batch or
+    // transaction as the procedure write, so the two cannot disagree.
+    match /procedureQr/{procedureId} {
+      allow get: if true;
+      allow list: if false;
+      allow create: if isWriterOf(request.resource.data.orgId);
+      allow update: if resource != null
+        && isWriterOf(resource.data.orgId)
+        && request.resource.data.orgId == resource.data.orgId;
+      allow delete: if resource != null && isWriterOf(resource.data.orgId);
+    }
+
     // Public mirror for the QR code printed on a work permit. Same shape of
     // rule as /qr above and for the same reason: whoever scans a permit taped
     // to a scaffold — a contractor, an auditor, a fire watcher — has no account
