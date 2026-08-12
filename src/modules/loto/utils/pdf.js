@@ -1,7 +1,7 @@
 import { jsPDF } from 'jspdf'
 import { autoTable } from 'jspdf-autotable'
 import { qrDataUrl } from './qr'
-import { numberIsolationPoints, procedureScanUrl } from './codes'
+import { numberIsolationPoints, procedureScanUrl, tagScanUrl } from './codes'
 import { pointDevicesLabel } from '../constants/energySources'
 
 function imageFormat(dataUrl) {
@@ -471,8 +471,8 @@ export function generateActivityLogPdf(events = []) {
 }
 
 /**
- * Energy-tag sheet: one color-coded tag per isolation point with point ID,
- * procedure QR, LOTO hardware and equipment name.
+ * Energy-tag sheet: one color-coded tag per isolation point with point ID, a QR
+ * for that point, LOTO hardware and equipment name.
  */
 export async function generateTagsPdf(procedure) {
   const doc = new jsPDF({ unit: 'mm', format: 'a4' })
@@ -485,18 +485,36 @@ export async function generateTagsPdf(procedure) {
   const tagH = 56
 
   const points = numberIsolationPoints(procedure.isolationPoints || [])
-  const qr = await qrDataUrl(procedureScanUrl(procedure.id), { scale: 8 })
+
+  // One QR per tag, resolving to THAT point's live state — not a single
+  // procedure QR stamped on every tag, which is what this did and why a scanned
+  // tag opened the procedure. A tag hangs on one specific valve or breaker, and
+  // the question the person holding it is asking is "is THIS point still
+  // isolated" — which only the operation page answers.
+  //
+  // Points have carried a `key` since they were introduced, and revising a
+  // procedure backfills one, but a procedure written before that and never
+  // revised has none. Those fall back to the procedure QR: a tag that opens the
+  // procedure is the old behaviour and still useful, whereas /t/<id>/undefined
+  // would print a code that resolves to nothing.
+  const qrs = await Promise.all(
+    points.map((p) =>
+      qrDataUrl(p.key ? tagScanUrl(procedure.id, p.key) : procedureScanUrl(procedure.id), {
+        scale: 8,
+      }),
+    ),
+  )
 
   let col = 0
   let y = margin
-  points.forEach((p) => {
+  points.forEach((p, i) => {
     const x = margin + col * (tagW + gap)
     if (y + tagH > pageH - margin) {
       doc.addPage()
       y = margin
       col = 0
     }
-    drawTag(doc, x, y, tagW, tagH, p, procedure, qr)
+    drawTag(doc, x, y, tagW, tagH, p, procedure, qrs[i])
     col += 1
     if (col >= cols) {
       col = 0

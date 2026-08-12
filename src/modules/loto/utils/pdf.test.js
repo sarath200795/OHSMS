@@ -6,6 +6,25 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 // serialising here proves the document actually assembled.
 const saved = []
 
+// What each QR actually encodes — the one thing about a printed tag that a byte
+// count cannot tell you. A tag sheet with the wrong URL on every tag weighs
+// exactly as much as a correct one, which is how tags that all opened the
+// procedure instead of their own isolation point shipped past a green suite.
+//
+// The stub returns a real 1x1 PNG so addImage still runs against jsPDF. Inlined
+// rather than shared with PHOTO below because vi.mock is hoisted and this
+// factory runs during the import on line 28, before that const initialises.
+const qrCalls = []
+
+vi.mock('./qr', () => ({
+  qrDataUrl: (value) => {
+    qrCalls.push(value)
+    return Promise.resolve(
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+    )
+  },
+}))
+
 vi.mock('jspdf', async (importOriginal) => {
   const actual = await importOriginal()
   const Real = actual.jsPDF
@@ -34,6 +53,7 @@ const PHOTO =
 
 beforeEach(() => {
   saved.length = 0
+  qrCalls.length = 0
 })
 
 const procedure = {
@@ -162,5 +182,36 @@ describe('LOTO tag sheet PDF', () => {
     }
     await generateTagsPdf(many)
     expect(saved).toHaveLength(1)
+  })
+
+  // The tag is hung on one specific valve or breaker. Scanning it has to answer
+  // "is THIS point still isolated", which only the live operation page knows —
+  // so each tag carries its own code, not one procedure code copied across the
+  // sheet. Every tag pointing at the procedure is precisely the bug this pins.
+  it('gives every tag its own point code, not the procedure code', async () => {
+    await generateTagsPdf(procedure)
+    expect(qrCalls).toHaveLength(3)
+    expect(qrCalls[0]).toContain('/t/proc-1/p1')
+    expect(qrCalls[1]).toContain('/t/proc-1/p2')
+    expect(qrCalls[2]).toContain('/t/proc-1/p3')
+    expect(new Set(qrCalls).size).toBe(3)
+  })
+
+  it('never sends a tag to the procedure when the point can be identified', async () => {
+    await generateTagsPdf(procedure)
+    expect(qrCalls.some((u) => u.includes('/p/proc-1'))).toBe(false)
+  })
+
+  // A procedure written before points carried keys, and never revised since.
+  // The procedure code is the old behaviour and still scans; /t/proc-1/undefined
+  // would be a printed code that resolves to nothing.
+  it('falls back to the procedure code for a point with no key', async () => {
+    const legacy = {
+      ...procedure,
+      isolationPoints: [{ energySource: 'mechanical', isolationDetails: 'Chock the ram.' }],
+    }
+    await generateTagsPdf(legacy)
+    expect(qrCalls).toEqual([expect.stringContaining('/p/proc-1')])
+    expect(qrCalls[0]).not.toContain('undefined')
   })
 })
