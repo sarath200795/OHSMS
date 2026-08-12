@@ -272,3 +272,56 @@ describe('the exclusion from the generic rule is surgical', () => {
     await assertSucceeds(getDocs(collection(as('outsider'), 'organizations', ORG, 'incidents')))
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The two things an audit flagged about this rule. Both are measured here
+// rather than argued about, because the read path reads `d.visibility`
+// DIRECTLY, and a rule that raises denies — which is the difference between one
+// odd document and a library that is empty for everybody who is not elevated.
+// ─────────────────────────────────────────────────────────────────────────────
+const listAll = (uid) => getDocs(collection(as(uid), 'organizations', ORG, 'documents'))
+
+describe('an unfiltered list of the library', () => {
+  // The seed already holds `legacyDoc`, written before `visibility` existed.
+  // An elevated reader never reaches the field — isElevatedOf short-circuits —
+  // so an admin sees a healthy library while a member is refused the entire
+  // query by one document. That asymmetry is the point: this cannot be found
+  // from an admin account, which is what makes the backfill a PREREQUISITE
+  // rather than a follow-up.
+  it('is refused for a member while an admin sees it fine', async () => {
+    await assertSucceeds(listAll('admin1'))
+    await assertSucceeds(listAll('manager1'))
+    await assertFails(listAll('bySite'))
+  })
+
+  // …and the filtered queries the app actually runs still work, which is why
+  // the library is not visibly broken today. Covered above; restated here so
+  // the two facts sit together and neither reads as the whole story.
+  it('is not how the app reads it, which is why nobody has noticed', async () => {
+    await assertSucceeds(
+      getDocs(query(
+        collection(as('bySite'), 'organizations', ORG, 'documents'),
+        where('visibility', 'in', ['all', 'org']),
+      )),
+    )
+  })
+})
+
+// An audit suggested guarding this rule with `resource != null` so a missing id
+// would return "does not exist" instead of a permission error. Measured here
+// rather than taken on faith, because the guard short-circuits to FALSE and
+// false denies exactly as a raise does — it could not have had that effect.
+//
+// What actually happens is stranger and worth recording: an elevated reader is
+// allowed, because isElevatedOf short-circuits before the null resource.data is
+// ever touched, while a member is refused. So the behaviour already differs by
+// role, and the suggested change would not have altered either.
+describe('getting a document id that is not there', () => {
+  const missing = (uid) => getDoc(doc(as(uid), 'organizations', ORG, 'documents', 'no-such-id'))
+
+  it('answers an elevated reader, and refuses a member', async () => {
+    await assertSucceeds(missing('admin1'))
+    await assertSucceeds(missing('manager1'))
+    await assertFails(missing('bySite'))
+  })
+})
