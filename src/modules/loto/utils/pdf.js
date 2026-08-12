@@ -1,5 +1,5 @@
-import jsPDF from 'jspdf'
-import autoTable from 'jspdf-autotable'
+import { jsPDF } from 'jspdf'
+import { autoTable } from 'jspdf-autotable'
 import { qrDataUrl } from './qr'
 import { numberIsolationPoints, procedureScanUrl } from './codes'
 import { pointDevicesLabel } from '../constants/energySources'

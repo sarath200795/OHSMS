@@ -13,6 +13,7 @@ import {
   FREQUENCIES, STATUSES, QUESTION_TYPES, CHOICE_TYPES, PHOTO_REQUIREMENTS,
   emptyTemplate, normalizeTemplateFields, normalizeQuestionType, normalizePhotoRequirement,
 } from '../lib/schedule'
+import { assertWorkbookSize, assertRowCount } from '../../../shared/lib/workbookGuard'
 
 export default function FormBuilder() {
   const { id } = useParams()
@@ -65,46 +66,49 @@ export default function FormBuilder() {
     XLSX.writeFile(wb, 'Inspection_Questions_Template.xlsx')
   }
 
-  const handleImport = (e) => {
-    const file = e.target.files?.[0]
+  const handleImport = async (e) => {
+    const input = e.target
+    const file = input.files?.[0]
     if (!file) return
-    const reader = new FileReader()
-    reader.onload = (evt) => {
-      try {
-        const wb = XLSX.read(evt.target.result, { type: 'binary' })
-        const ws = wb.Sheets[wb.SheetNames[0]]
-        const rows = XLSX.utils.sheet_to_json(ws)
-        if (rows.length === 0) throw new Error('Sheet is empty.')
-        const newFields = []
-        rows.forEach((row, idx) => {
-          const keys = Object.keys(row)
-          const qKey = keys.find((k) => k.toLowerCase().includes('question') || k.toLowerCase().includes('requirement'))
-          const tKey = keys.find((k) => k.toLowerCase().includes('type'))
-          const pKey = keys.find((k) => k.toLowerCase().includes('photo'))
-          const oKey = keys.find((k) => k.toLowerCase().includes('option'))
-          const text = row[qKey]
-          if (!text) return
-          const type = normalizeQuestionType(row[tKey] || 'Pass/Fail')
-          const options = isChoice(type) && oKey
-            ? String(row[oKey] || '').split(';').map((s) => s.trim()).filter(Boolean)
-            : []
-          newFields.push({
-            id: `imported-${Date.now()}-${idx}`,
-            label: String(text),
-            type,
-            photoRequirement: normalizePhotoRequirement(row[pKey] || 'Not Required'),
-            options,
-          })
+    try {
+      assertWorkbookSize(file.size, file.name)
+      // Bytes rather than a binary string: the string form holds the whole file
+      // twice over and is the slower parser path, and this parse blocks the tab.
+      const wb = XLSX.read(new Uint8Array(await file.arrayBuffer()), { type: 'array' })
+      const ws = wb.Sheets[wb.SheetNames[0]]
+      const rows = XLSX.utils.sheet_to_json(ws)
+      if (rows.length === 0) throw new Error('Sheet is empty.')
+      assertRowCount(rows.length)
+      const newFields = []
+      rows.forEach((row, idx) => {
+        const keys = Object.keys(row)
+        const qKey = keys.find((k) => k.toLowerCase().includes('question') || k.toLowerCase().includes('requirement'))
+        const tKey = keys.find((k) => k.toLowerCase().includes('type'))
+        const pKey = keys.find((k) => k.toLowerCase().includes('photo'))
+        const oKey = keys.find((k) => k.toLowerCase().includes('option'))
+        const text = row[qKey]
+        if (!text) return
+        const type = normalizeQuestionType(row[tKey] || 'Pass/Fail')
+        const options = isChoice(type) && oKey
+          ? String(row[oKey] || '').split(';').map((s) => s.trim()).filter(Boolean)
+          : []
+        newFields.push({
+          id: `imported-${Date.now()}-${idx}`,
+          label: String(text),
+          type,
+          photoRequirement: normalizePhotoRequirement(row[pKey] || 'Not Required'),
+          options,
         })
-        if (newFields.length === 0) return toast.error('No valid questions found — check the column headers.')
+      })
+      if (newFields.length === 0) toast.error('No valid questions found — check the column headers.')
+      else {
         set({ fields: [...tpl.fields, ...newFields] })
         toast.success(`Imported ${newFields.length} question${newFields.length === 1 ? '' : 's'}`)
-      } catch (err) {
-        toast.error('Failed to parse Excel: ' + err.message)
       }
-      e.target.value = null
+    } catch (err) {
+      toast.error('Failed to parse Excel: ' + err.message)
     }
-    reader.readAsBinaryString(file)
+    input.value = null
   }
 
   const save = async () => {

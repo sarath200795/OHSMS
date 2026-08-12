@@ -346,17 +346,118 @@ export async function grantAccessRequest(uid, request, orgId, actor, userLabel) 
   })
 }
 
+// ── Capped multi-collection reads ───────────────────────────────────────────
+// The screens that roll several modules up at once (analytics, portal home, the
+// site summary) read whole collections. Unbounded, that grows with the age of
+// the tenant: one analytics visit used to stream every incident, drill, camera
+// and legal issue ever recorded, and both the bill and the tab's memory grew
+// forever.
+//
+// 5 000 documents per collection is the ceiling. It is deliberately far above
+// what these collections hold in practice — a fifty-site tenant logging ten
+// incidents a site a month takes eight years to reach it — so a cap that hides
+// records is the rare case, not the normal one. It also bounds the worst case:
+// the eleven listeners analytics opens can pull 55 000 documents and no more.
+export const COLLECTION_READ_CAP = 5000
+
+// Used in the "your numbers are short" sentence, so these read as the thing the
+// user sees on screen rather than as the Firestore path.
+const COLLECTION_LABEL = {
+  incidents: 'incidents',
+  mockDrills: 'mock drills',
+  consultations: 'committee meetings',
+  extinguishers: 'fire extinguishers',
+  aeds: 'AEDs',
+  fas: 'fire alarm devices',
+  signages: 'safety signage',
+  permits: 'permits to work',
+  observations: 'permit observations',
+  cctvCameras: 'CCTV cameras',
+  cctvDvrs: 'CCTV recorders',
+  cctvMeraki: 'Meraki devices',
+  escalations: 'escalations',
+  legalIssues: 'legal issues',
+}
+
+const groupDigits = (n) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+
+function joinLabels(names) {
+  const labels = names.map((n) => COLLECTION_LABEL[n] || n)
+  if (labels.length < 2) return labels[0] || ''
+  return `${labels.slice(0, -1).join(', ')} and ${labels[labels.length - 1]}`
+}
+
 /**
- * Generic real-time listener for any org-scoped collection (used by the Sites
- * summary to roll up extinguishers / AEDs / incidents, etc.). No orderBy so it
- * never needs a composite index; returns [] on permission/other errors.
+ * Turn per-collection read status into the sentence a screen must show, or null
+ * when every collection came back whole.
+ *
+ * `status` maps collection name → 'ok' | 'capped' | 'failed'. Kept pure and
+ * exported so the wording is the same on every screen and can be tested.
  */
-export function subscribeCollection(orgId, name, cb) {
-  return onSnapshot(
-    moduleCol(orgId, name),
-    (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
-    () => cb([])
+export function incompleteReadNotice(status, cap = COLLECTION_READ_CAP) {
+  const names = Object.keys(status || {})
+  const capped = names.filter((n) => status[n] === 'capped')
+  const failed = names.filter((n) => status[n] === 'failed')
+  if (!capped.length && !failed.length) return null
+  const parts = []
+  if (capped.length) {
+    parts.push(`Only the first ${groupDigits(cap)} records were loaded for ${joinLabels(capped)}.`)
+  }
+  if (failed.length) parts.push(`${joinLabels(failed)} could not be loaded at all.`)
+  parts.push('Any total that counts them is lower than the real figure, so these numbers must not be quoted as a count.')
+  return { capped, failed, cap, message: parts.join(' ') }
+}
+
+/** The state a screen starts in, before any snapshot has arrived. */
+export function emptyCollections(names = []) {
+  return { data: Object.fromEntries(names.map((n) => [n, []])), incomplete: null }
+}
+
+/**
+ * Live rows for a set of org-scoped collections, capped and honest about it.
+ *
+ * The callback gets the whole set in one object — `{ data, incomplete }` — not
+ * an array per collection. That shape is the point: these rows are counted and
+ * the counts end up in regulatory reports, so a caller that can reach the rows
+ * is holding, in the same object, the reason they might be short. There is no
+ * way to take the list and leave the warning behind.
+ *
+ * `incomplete` is null while everything is whole; otherwise it carries the
+ * message to put on screen (see incompleteReadNotice).
+ *
+ * No orderBy, so no composite index is ever needed — the cap keeps the first
+ * 5 000 by document ID, which is an arbitrary 5 000, but which 5 000 only
+ * matters once the notice is already up.
+ */
+export function subscribeCollections(orgId, names, cb) {
+  const data = Object.fromEntries(names.map((n) => [n, []]))
+  const status = Object.fromEntries(names.map((n) => [n, 'ok']))
+  const emit = () => cb({ data: { ...data }, incomplete: incompleteReadNotice(status) })
+
+  const unsubs = names.map((name) =>
+    onSnapshot(
+      query(moduleCol(orgId, name), limit(COLLECTION_READ_CAP)),
+      (snap) => {
+        data[name] = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+        // A snapshot that exactly fills the cap is the only signal Firestore
+        // gives that more is behind it. A collection holding precisely 5 000
+        // rows is reported as capped when it is not — over-warning is the
+        // harmless direction here.
+        status[name] = snap.size >= COLLECTION_READ_CAP ? 'capped' : 'ok'
+        emit()
+      },
+      (err) => {
+        // A read that failed is not an empty collection. Reporting [] here is
+        // how a permission error used to render as a confident zero.
+        // eslint-disable-next-line no-console
+        console.warn(`[OHS MS] ${name} read failed:`, err?.message || err)
+        data[name] = []
+        status[name] = 'failed'
+        emit()
+      }
+    )
   )
+  return () => unsubs.forEach((u) => u && u())
 }
 
 export async function updateSite(orgId, id, updates, actor) {

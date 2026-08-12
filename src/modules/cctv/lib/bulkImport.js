@@ -16,6 +16,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import * as XLSX from 'xlsx'
+import { assertWorkbookSize, assertRowCount } from '../../../shared/lib/workbookGuard'
 
 const clean = (v) => String(v ?? '').trim()
 const key = (v) => clean(v).toLowerCase()
@@ -207,11 +208,13 @@ export function validateCameraRows(raw = [], { sites = [], dvrs = [], cameras = 
  */
 export function parseWorkbook(buffer, kind) {
   const aliases = kind === 'dvrs' ? DVR_ALIASES : CAMERA_ALIASES
+  assertWorkbookSize(buffer?.byteLength)
   const wb = XLSX.read(buffer, { type: 'array' })
   const ws = wb.Sheets[wb.SheetNames[0]]
   if (!ws) return { headerOk: false, rows: [], headers: [] }
 
   const table = XLSX.utils.sheet_to_json(ws, { defval: '' })
+  assertRowCount(table.length)
   const headers = Object.keys(table[0] || {})
   const map = headerMap(headers, aliases)
 

@@ -8,6 +8,7 @@ import { useCctv } from '../context/CctvContext'
 import { parseImport, DVR_COLUMNS, CAMERA_COLUMNS } from '../lib/bulkImport'
 import { downloadImportTemplate } from '../lib/exporter'
 import { bulkImport } from '../lib/firestore'
+import { assertWorkbookSize } from '../../../shared/lib/workbookGuard'
 
 const KINDS = {
   dvrs: { label: 'DVR', icon: HardDrive, columns: DVR_COLUMNS },
@@ -41,6 +42,11 @@ export default function BulkUpload() {
     setBusy(true)
     setResult(null)
     try {
+      // Size is checked BEFORE the read, not after. parseImport checks it too,
+      // but by then the whole file is already in memory — which is the thing
+      // the limit exists to prevent. A 200 MB workbook does not need a CVE to
+      // take the tab down.
+      assertWorkbookSize(file.size, file.name)
       const buffer = await file.arrayBuffer()
       const parsed = parseImport(buffer, kind, { sites, dvrs, cameras })
       setResult({ ...parsed, fileName: file.name })

@@ -5,7 +5,7 @@
 // · R2 · Additional Actions (CAPA). Text-based (selectable). Reuses app risk logic.
 // ─────────────────────────────────────────────────────────────────────────────
 import { jsPDF } from 'jspdf'
-import autoTable from 'jspdf-autotable'
+import { autoTable } from 'jspdf-autotable'
 import { initialRisk, residualRisk } from './raStats'
 import { categoryLabel } from './constants'
 

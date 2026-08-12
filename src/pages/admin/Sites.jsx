@@ -8,7 +8,7 @@ import {
 import { useAuth } from '../../shared/auth/AuthContext'
 import {
   subscribeSites, createSite, updateSite, deleteSite, deleteSites, bulkCreateSites,
-  subscribeOrgUsers, subscribeCollection, cleanAttributes,
+  subscribeOrgUsers, subscribeCollections, emptyCollections, cleanAttributes,
 } from '../../shared/org/orgData'
 import { can, roleLabel } from '../../shared/auth/permissions'
 import {
@@ -24,15 +24,33 @@ const SitesMap = lazy(() => import('./SitesMap'))
 
 const EMPTY = { name: '', region: '', entity: '', address: '', lat: '', lng: '', firstAidBoxes: '', attributes: {} }
 
+// The asset registers behind every per-site rollup on this page.
+const COLLECTIONS = ['extinguishers', 'aeds', 'fas', 'incidents']
+
+/**
+ * Says that a rollup on this screen is short. Rendered wherever a number built
+ * from the capped registers appears — the page, the site summary and the delete
+ * confirmation each stand alone, and a warning only on the page behind a modal
+ * is a warning the reader of that modal never sees.
+ */
+function IncompleteNotice({ notice, className = '' }) {
+  if (!notice) return null
+  return (
+    <div role="status" className={`flex items-start gap-2.5 rounded-2xl bg-amber-50 px-4 py-3 ${className}`}>
+      <AlertTriangle size={16} className="mt-0.5 flex-none text-amber-700" />
+      <p className="text-[12.5px] leading-relaxed text-amber-900">
+        <b>These counts are incomplete.</b> {notice.message}
+      </p>
+    </div>
+  )
+}
+
 export default function Sites() {
   const { orgId, actor, role, org } = useAuth()
   const customFields = useMemo(() => normalizeScopeConfig(org?.scopeConfig).customFields, [org])
   const [sites, setSites] = useState(null)
   const [users, setUsers] = useState([])
-  const [extinguishers, setExtinguishers] = useState([])
-  const [aeds, setAeds] = useState([])
-  const [fas, setFas] = useState([])
-  const [incidents, setIncidents] = useState([])
+  const [store, setStore] = useState(() => emptyCollections(COLLECTIONS))
   const [tab, setTab] = useState('list')
   const [editing, setEditing] = useState(null) // 'new' | site | null
   const [form, setForm] = useState(EMPTY)
@@ -56,13 +74,12 @@ export default function Sites() {
     const unsubs = [
       subscribeSites(orgId, setSites),
       subscribeOrgUsers(orgId, setUsers),
-      subscribeCollection(orgId, 'extinguishers', setExtinguishers),
-      subscribeCollection(orgId, 'aeds', setAeds),
-      subscribeCollection(orgId, 'fas', setFas),
-      subscribeCollection(orgId, 'incidents', setIncidents),
+      subscribeCollections(orgId, COLLECTIONS, setStore),
     ]
     return () => unsubs.forEach((u) => u && u())
   }, [orgId])
+
+  const { extinguishers, aeds, fas, incidents } = store.data
 
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value })
   const setAttr = (k) => (e) => setForm((f) => ({ ...f, attributes: { ...f.attributes, [k]: e.target.value } }))
@@ -248,6 +265,8 @@ export default function Sites() {
           )
         }
       />
+
+      <IncompleteNotice notice={store.incomplete} className="mb-4 shadow-clay-sm" />
 
       {/* Tabs */}
       <div className="mb-5 flex gap-1.5 border-b border-ink-100 pb-3">
@@ -481,6 +500,8 @@ export default function Sites() {
       >
         {selected && stats && (
           <div className="space-y-5">
+            <IncompleteNotice notice={store.incomplete} />
+
             {/* Equipment + safety KPIs */}
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <StatCard label="Fire Extinguishers" value={stats.extinguishers} icon={FireExtinguisher} tone="red" />
@@ -683,6 +704,12 @@ export default function Sites() {
               </tbody>
             </table>
           </div>
+
+          {/* Outside the impact block below on purpose: when a register was
+              capped or failed to load, the linked-records tally can read zero
+              for sites that do have records, and this is the only thing that
+              would tell you. */}
+          <IncompleteNotice notice={store.incomplete} />
 
           {(pickedImpact.extinguishers + pickedImpact.aeds + pickedImpact.fas + pickedImpact.incidents + pickedImpact.users) > 0 && (
             <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">

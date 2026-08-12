@@ -15,7 +15,7 @@ import {
   AlertTriangle, ArrowRight, MapPin, Building2, ScrollText, UsersRound, Settings, BarChart3,
 } from 'lucide-react'
 import { useAuth } from '../../shared/auth/AuthContext'
-import { subscribeCollection, subscribeOrgUsers } from '../../shared/org/orgData'
+import { subscribeCollections, emptyCollections, subscribeOrgUsers } from '../../shared/org/orgData'
 import { useAccessibleSites } from '../../shared/org/useAccessibleSites'
 import { subscribeActions, NORM_BY_KEY } from '../../modules/actions/lib/sources'
 import { subscribeAssignments } from '../../modules/training/lib/firestore'
@@ -137,6 +137,14 @@ function withUnsafe(permits = [], observations = []) {
   return permits.map((p) => ({ ...p, openUnsafeCount: counts.get(p.id) || 0 }))
 }
 
+// Everything on this page that is a count comes from these. Read as one set so
+// the page cannot show a compliance figure without also showing that a cap or a
+// failed read made it short.
+const COLLECTIONS = [
+  'extinguishers', 'aeds', 'fas', 'signages', 'incidents',
+  'consultations', 'mockDrills', 'permits', 'observations',
+]
+
 const greeting = (d = new Date()) => {
   const h = d.getHours()
   if (h < 12) return 'Good morning'
@@ -151,37 +159,26 @@ export default function PortalHome() {
   const { keys: widgetKeys, save: saveWidgets } = useWidgetPrefs()
 
   const [siteId, setSiteId] = useState('all')
-  const [extinguishers, setExt] = useState([])
-  const [aeds, setAeds] = useState([])
-  const [fas, setFas] = useState([])
-  const [signages, setSignages] = useState([])
-  const [incidents, setIncidents] = useState([])
+  const [store, setStore] = useState(() => emptyCollections(COLLECTIONS))
   const [assignments, setAssignments] = useState([])
   const [users, setUsers] = useState([])
   const [actions, setActions] = useState([])
-  const [meetings, setMeetings] = useState([])
-  const [drills, setDrills] = useState([])
-  const [permits, setPermits] = useState([])
-  const [observations, setObservations] = useState([])
 
   useEffect(() => {
     if (!orgId) return undefined
     const unsubs = [
-      subscribeCollection(orgId, 'extinguishers', setExt),
-      subscribeCollection(orgId, 'aeds', setAeds),
-      subscribeCollection(orgId, 'fas', setFas),
-      subscribeCollection(orgId, 'signages', setSignages),
-      subscribeCollection(orgId, 'incidents', setIncidents),
+      subscribeCollections(orgId, COLLECTIONS, setStore),
       subscribeAssignments(orgId, setAssignments),
       subscribeOrgUsers(orgId, setUsers),
       subscribeActions(orgId, setActions),
-      subscribeCollection(orgId, 'consultations', setMeetings),
-      subscribeCollection(orgId, 'mockDrills', setDrills),
-      subscribeCollection(orgId, 'permits', setPermits),
-      subscribeCollection(orgId, 'observations', setObservations),
     ]
     return () => unsubs.forEach((u) => u && u())
   }, [orgId])
+
+  const {
+    extinguishers, aeds, fas, signages, incidents,
+    consultations: meetings, mockDrills: drills, permits, observations,
+  } = store.data
 
   // A filter pointing at a site the viewer lost access to would silently show
   // zeros, so fall back to everything rather than to an empty scope.
@@ -324,6 +321,20 @@ export default function PortalHome() {
           )}
         </Raised>
       </div>
+
+      {/* Ahead of the widgets, the charts and the due lists — everything below
+          counts these records, so the caveat cannot sit under them. */}
+      {store.incomplete && (
+        <div
+          role="status"
+          className="mb-5 flex items-start gap-2.5 rounded-2xl bg-amber-50 px-4 py-3 shadow-clay-sm"
+        >
+          <AlertTriangle size={16} className="mt-0.5 flex-none text-amber-700" />
+          <p className="text-[12.5px] leading-relaxed text-amber-900">
+            <b>These figures are incomplete.</b> {store.incomplete.message}
+          </p>
+        </div>
+      )}
 
       <WidgetGrid keys={widgetKeys} onSave={saveWidgets} data={widgetData} sites={sites} />
 

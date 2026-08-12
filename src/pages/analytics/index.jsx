@@ -14,7 +14,7 @@
 import { useEffect, useState } from 'react'
 import { BarChart3, AlertTriangle, Siren, FireExtinguisher, Users, Cctv, Scale, ListChecks } from 'lucide-react'
 import { useAuth } from '../../shared/auth/AuthContext'
-import { subscribeCollection } from '../../shared/org/orgData'
+import { subscribeCollections, emptyCollections } from '../../shared/org/orgData'
 import { useAccessibleSites } from '../../shared/org/useAccessibleSites'
 import { PageHeader } from '../../shared/ui'
 import IncidentsTab from './IncidentsTab'
@@ -37,44 +37,31 @@ const TABS = [
   { key: 'actions', label: 'Action Tracker', icon: ListChecks },
 ]
 
+// Read through subscribeCollections rather than each module's own subscribeX
+// helper: those order and cap for their working lists — stakeholder's takes the
+// newest 500 — and a total that quietly stops at 500 is exactly the kind of
+// wrong an analytics page must not be. This read caps far higher and, when it
+// does cap, says so at the top of the page.
+const COLLECTIONS = [
+  'incidents', 'mockDrills', 'consultations', 'extinguishers', 'aeds', 'fas',
+  'cctvCameras', 'cctvDvrs', 'cctvMeraki', 'escalations', 'legalIssues',
+]
+
 export default function Analytics() {
   const { orgId, isAdmin } = useAuth()
   const sites = useAccessibleSites()
   const [tab, setTab] = useState('incidents')
-  const [incidents, setIncidents] = useState([])
-  const [drills, setDrills] = useState([])
-  const [consultations, setConsultations] = useState([])
-  const [extinguishers, setExt] = useState([])
-  const [aeds, setAeds] = useState([])
-  const [fas, setFas] = useState([])
-  const [cameras, setCameras] = useState([])
-  const [dvrs, setDvrs] = useState([])
-  const [merakis, setMerakis] = useState([])
-  const [escalations, setEscalations] = useState([])
-  const [legalIssues, setLegalIssues] = useState([])
+  const [store, setStore] = useState(() => emptyCollections(COLLECTIONS))
 
-  // subscribeCollection rather than each module's own subscribeX helper: those
-  // order and cap for their working lists — stakeholder's takes the newest 500 —
-  // and a total that quietly stops at 500 is exactly the kind of wrong an
-  // analytics page must not be. Here every document counts or the number lies.
   useEffect(() => {
     if (!orgId) return undefined
-    const unsubs = [
-      subscribeCollection(orgId, 'incidents', setIncidents),
-      subscribeCollection(orgId, 'mockDrills', setDrills),
-      subscribeCollection(orgId, 'consultations', setConsultations),
-      subscribeCollection(orgId, 'extinguishers', setExt),
-      subscribeCollection(orgId, 'aeds', setAeds),
-      subscribeCollection(orgId, 'fas', setFas),
-      subscribeCollection(orgId, 'cctvCameras', setCameras),
-      subscribeCollection(orgId, 'cctvDvrs', setDvrs),
-      subscribeCollection(orgId, 'cctvMeraki', setMerakis),
-      subscribeCollection(orgId, 'escalations', setEscalations),
-      subscribeCollection(orgId, 'legalIssues', setLegalIssues),
-    ]
-    return () => unsubs.forEach((u) => u && u())
+    return subscribeCollections(orgId, COLLECTIONS, setStore)
   }, [orgId])
 
+  const {
+    incidents, mockDrills: drills, consultations, extinguishers, aeds, fas,
+    cctvCameras: cameras, cctvDvrs: dvrs, cctvMeraki: merakis, escalations, legalIssues,
+  } = store.data
 
   return (
     <div>
@@ -83,6 +70,20 @@ export default function Analytics() {
         subtitle={`Across the ${sites.length} site${sites.length === 1 ? '' : 's'} you can see.`}
         icon={BarChart3}
       />
+
+      {/* Above the tabs, because every tab counts these records and the reader
+          has to see this before the number, not after. */}
+      {store.incomplete && (
+        <div
+          role="status"
+          className="mb-5 flex items-start gap-2.5 rounded-2xl bg-amber-50 px-4 py-3 shadow-clay-sm"
+        >
+          <AlertTriangle size={16} className="mt-0.5 flex-none text-amber-700" />
+          <p className="text-[12.5px] leading-relaxed text-amber-900">
+            <b>These figures are incomplete.</b> {store.incomplete.message}
+          </p>
+        </div>
+      )}
 
       <div
         role="tablist"

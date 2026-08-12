@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx'
 import {
   normalizeStatus, nameIndex, validateDvrRows, validateCameraRows, parseWorkbook, parseImport,
 } from './bulkImport'
+import { MAX_WORKBOOK_BYTES, MAX_IMPORT_ROWS } from '../../../shared/lib/workbookGuard'
 
 const sites = [
   { id: 's1', name: 'Hosur' },
@@ -167,6 +168,27 @@ describe('parseWorkbook', () => {
 
   it('survives an empty sheet', () => {
     expect(parseWorkbook(sheet([]), 'dvrs')).toMatchObject({ headerOk: false, rows: [] })
+  })
+
+  // SheetJS parses on the main thread, so an oversized workbook is a frozen tab.
+  // Refused before XLSX.read sees it.
+  it('refuses a workbook past the size cap', () => {
+    const huge = new ArrayBuffer(MAX_WORKBOOK_BYTES + 1)
+    expect(() => parseWorkbook(huge, 'dvrs')).toThrow(/limit is 15 MB/)
+  })
+
+  it('refuses a sheet past the row cap rather than importing part of it', () => {
+    const rows = Array.from({ length: MAX_IMPORT_ROWS + 1 }, (_, i) => ({ 'DVR Name': `DVR-${i}`, Site: 'Hosur' }))
+    expect(() => parseWorkbook(sheet(rows), 'dvrs')).toThrow(/limit is 20,000 per upload/)
+  })
+
+  // A header a spreadsheet cannot express safely: SheetJS mangles it rather than
+  // reaching Object.prototype, and nothing here uses a parsed key as a target.
+  it('does not let a __proto__ column reach the prototype chain', () => {
+    const out = parseWorkbook(sheet([{ ['__proto__']: 'x', 'DVR Name': 'DVR-1', Site: 'Hosur' }]), 'dvrs')
+    expect(out.headerOk).toBe(true)
+    expect({}.x).toBeUndefined()
+    expect(Object.prototype).not.toHaveProperty('x')
   })
 })
 

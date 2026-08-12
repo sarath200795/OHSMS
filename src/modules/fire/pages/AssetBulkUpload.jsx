@@ -97,7 +97,10 @@ export default function AssetBulkUpload() {
       setResult(r)
       if (!r.valid.length) toast.error('No valid rows found')
       else toast.success(`${r.valid.length} valid row(s) ready`)
-    } catch { toast.error('Could not read that file') } finally { setParsing(false) }
+      // The guard's message names the actual problem — the file's size against
+      // the limit, or the row count — and "Could not read that file" threw all
+      // of that away and left the person guessing.
+    } catch (e) { toast.error(e?.message || 'Could not read that file') } finally { setParsing(false) }
   }
 
   const commit = async () => {

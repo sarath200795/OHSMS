@@ -69,7 +69,10 @@ export default function BulkUpload() {
       if (r.valid.length === 0) toast.error('No valid rows found')
       else toast.success(`${r.valid.length} valid row(s) ready`)
     } catch (e) {
-      toast.error('Could not read that file')
+      // Say what was actually wrong. The size and row-count guards produce an
+      // actionable sentence; discarding it for a generic one leaves someone
+      // re-uploading the same oversized file.
+      toast.error(e?.message || 'Could not read that file')
     } finally {
       setParsing(false)
     }
