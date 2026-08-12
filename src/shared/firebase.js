@@ -96,16 +96,27 @@ const app = isFirebaseConfigured ? initializeApp(firebaseConfig) : null
 // this repo: register the site key, then turn ON enforcement for Firestore
 // (docs/PRODUCTION.md walks through it). Until enforcement is on, this ships
 // tokens but blocks nothing.
+//
+// The provider MUST match the attestation provider the app is registered with
+// under App Check → Apps. It is registered as reCAPTCHA ENTERPRISE, so this is
+// ReCaptchaEnterpriseProvider and not ReCaptchaV3Provider — the two mint
+// different tokens and App Check rejects the wrong kind. That mismatch is not
+// visible from the client: the SDK initialises happily, the reCAPTCHA badge
+// appears, nothing logs an error, and every token is silently refused at the
+// edge. It surfaces only as 0% verified in the console — and if enforcement is
+// on, as a total Firestore lockout that reads as "Missing or insufficient
+// permissions" on the profile read at sign-in. It cost a production outage
+// once; check the console registration before changing this line.
 const APPCHECK_KEY = clean(import.meta.env.VITE_APPCHECK_SITE_KEY)
 if (app && APPCHECK_KEY && !USE_EMULATORS) {
   // Dynamic so the App Check SDK costs nothing until a key is configured.
   import('firebase/app-check')
-    .then(({ initializeAppCheck, ReCaptchaV3Provider }) => {
+    .then(({ initializeAppCheck, ReCaptchaEnterpriseProvider }) => {
       const debug = clean(import.meta.env.VITE_APPCHECK_DEBUG_TOKEN)
       // The documented escape hatch for local dev against a real project.
       if (debug) self.FIREBASE_APPCHECK_DEBUG_TOKEN = debug
       initializeAppCheck(app, {
-        provider: new ReCaptchaV3Provider(APPCHECK_KEY),
+        provider: new ReCaptchaEnterpriseProvider(APPCHECK_KEY),
         isTokenAutoRefreshEnabled: true,
       })
     })

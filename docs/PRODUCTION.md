@@ -119,16 +119,35 @@ The app has three deliberately unauthenticated write surfaces (equipment defect
 reports via QR, defect locks, permit observations via QR). The client is fully
 wired; without the steps below it ships no tokens and nothing is enforced.
 
-1. Firebase console → **App Check** → register the web app → provider
-   **reCAPTCHA v3** → copy the site key.
-2. Put the key in the production env: `VITE_APPCHECK_SITE_KEY=<key>` (locally in
+1. Firebase console → **App Check** → **Apps** → register the web app → pick an
+   attestation provider → copy the site key.
+2. **Make `firebase.js` match the provider you picked.** reCAPTCHA v3 and
+   reCAPTCHA Enterprise mint different tokens, and App Check refuses the wrong
+   kind:
+
+   | Registered as | `src/shared/firebase.js` must use |
+   | --- | --- |
+   | reCAPTCHA v3 | `ReCaptchaV3Provider` |
+   | reCAPTCHA Enterprise | `ReCaptchaEnterpriseProvider` |
+
+   This project is registered as **Enterprise**. Getting this wrong is invisible
+   from the client — the SDK initialises, the badge renders, no error logs — and
+   shows up only as **0% verified** in step 4.
+3. Put the key in the production env: `VITE_APPCHECK_SITE_KEY=<key>` (locally in
    `.env.production`, in CI as a repo variable), redeploy.
-3. Watch console → App Check → **Metrics** until verified-request share is ~100%
-   (give real users a day or two).
-4. Only then: App Check → APIs → **Cloud Firestore → Enforce**. Enforcing before
-   the metric is clean logs out every stale client at once.
-5. For local dev against the enforced project: console → App Check → your app →
+4. Watch console → App Check → **APIs** until Cloud Firestore's verified-request
+   share is ~100% (give real users a day or two; metrics lag up to 24h).
+5. **Only then**: App Check → APIs → **Cloud Firestore → ⋮ → Enforce**.
+6. For local dev against the enforced project: console → App Check → your app →
    **Manage debug tokens** → create one → set `VITE_APPCHECK_DEBUG_TOKEN`.
+
+> ⚠️ **Do not enforce while verified sits at 0%.** Enforcement is checked at
+> Google's edge *before* security rules, so it rejects everything — including the
+> member-profile read that runs immediately after sign-in. The symptom is
+> "Missing or insufficient permissions" **at login**, for every user at once,
+> with nothing wrong in the rules. This has happened here once, caused by the
+> provider mismatch in step 2. Recovery is App Check → APIs → Cloud Firestore →
+> ⋮ → **Unenforce**, which takes a minute or two to propagate.
 
 Verify: with enforcement on, `curl` against the Firestore REST API without a
 token gets `PERMISSION_DENIED`; the app keeps working.
