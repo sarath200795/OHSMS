@@ -161,16 +161,24 @@ wired; without the steps below it ships no tokens and nothing is enforced.
    the probe itself with Google's public test key
    `6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI`, which must come back clean.
 
-   > **Current state of this project: App Check is OFF.**
-   > `VITE_APPCHECK_SITE_KEY` is blank in `.env.production`, so
-   > `src/shared/firebase.js` never initialises App Check. The key previously
-   > there was rejected as `Invalid site key` on **both** endpoints from this
-   > origin while the control key passed — it had never minted a token, which is
-   > why verified sat at 0% from the start and why enforcing Firestore locked
-   > every user out at the login screen. It was blanked because a key that
-   > cannot mint a token protects nothing and only logs `appCheck/recaptcha-error`
-   > every 30 seconds. To re-enable: obtain a real **site** key, prove it with
-   > the probe above, set it, rebuild, watch verified climb, then enforce.
+   **The console registration must hold the same key.** A valid site key that
+   App Check → Apps does not know still verifies **0%** — it just fails later, at
+   the token exchange, instead of at reCAPTCHA. Same symptom, different cause, so
+   read the console before concluding anything from the percentage:
+
+   | Browser console | Where it broke |
+   | --- | --- |
+   | `appCheck/recaptcha-error`, `recaptcha/api2/…` **400** | reCAPTCHA refused the key — run the probe |
+   | `appCheck/fetch-status-error`, or a 403 exchanging the token | reCAPTCHA is fine; the **registration** holds a different key |
+   | Nothing, but verified stays 0% after a day | give it 24h — these metrics lag |
+
+   > **Current state of this project: App Check is ON, unenforced.**
+   > `VITE_APPCHECK_SITE_KEY` is a classic **v3** site key, proved with the probe
+   > above (accepted on `api2` from `weehs-4eb28.web.app`, while the key it
+   > replaced was rejected as `Invalid site key` and Google's control key passed).
+   > The client uses `ReCaptchaV3Provider` to match. Firestore, Storage and
+   > Authentication are all on **Monitoring** — that is deliberate, and nothing
+   > should be enforced until verified requests approach 100%.
 3. Put the key in the production env: `VITE_APPCHECK_SITE_KEY=<key>` (locally in
    `.env.production`, in CI as a repo variable), redeploy.
 4. Watch console → App Check → **APIs** until Cloud Firestore's verified-request
