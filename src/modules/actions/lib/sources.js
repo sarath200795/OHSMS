@@ -11,7 +11,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { doc, getDoc, updateDoc } from 'firebase/firestore'
 import { db } from '../../../shared/firebase'
-import { subscribeOrgCollection } from '../../../shared/org/orgData'
+import { subscribeOrgCollection, incompleteReadNotice } from '../../../shared/org/orgData'
+import { releaseDefectLocks } from '../../fire/lib/firestore'
 
 const dref = (orgId, name, id) => doc(db, 'organizations', orgId, name, id)
 
@@ -116,6 +117,13 @@ export const SOURCES = [
         await updateDoc(dref(orgId, 'extinguishers', action.docId), {
           physicalDefects: remaining, defectStatuses: statuses, quotation: null,
         })
+        // Release the QR reporting lock too. Resolving the defect here without
+        // this left the lock in place forever, so the next person to scan that
+        // extinguisher for the SAME fault was told it had already been
+        // reported — permanently, with no way to clear it from the app. The
+        // fire module's own resolve path always did this; the tracker, which
+        // resolves the identical defect, did not.
+        await releaseDefectLocks(orgId, action.docId, [action.actionId])
       } else {
         statuses[action.actionId] = native
         await updateDoc(dref(orgId, 'extinguishers', action.docId), { defectStatuses: statuses })
@@ -308,6 +316,9 @@ export const SOURCE_BY_KEY = Object.fromEntries(SOURCES.map((s) => [s.key, s]))
  */
 export function subscribeActions(orgId, cb) {
   const latest = {} // { [sourceKey]: docs[] }
+  // Keyed by COLLECTION, not source key: two sources can read the same
+  // collection, and the notice names collections.
+  const status = {}
   const emit = () => {
     const rows = []
     for (const src of SOURCES) {
@@ -343,13 +354,18 @@ export function subscribeActions(orgId, cb) {
         }
       }
     }
-    cb(rows)
+    // Rows and the reason they may be short, together. An action list that is
+    // quietly short is worse here than anywhere else in the app: the whole
+    // point of the tracker is that nothing outstanding is missed, so a silent
+    // truncation says "you are up to date" when you are not.
+    cb({ rows, incomplete: incompleteReadNotice(status) })
   }
   // Shared listeners: these collections are already watched by their own
   // modules, so the tracker adds no extra reads when they're mounted too.
   const unsubs = SOURCES.map((src) =>
-    subscribeOrgCollection(orgId, src.collection, (rows) => {
+    subscribeOrgCollection(orgId, src.collection, ({ rows, status: st }) => {
       latest[src.key] = rows
+      status[src.collection] = st
       emit()
     }),
   )

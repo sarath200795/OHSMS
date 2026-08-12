@@ -29,6 +29,7 @@ import { useWidgetPrefs } from './widgets/useWidgetPrefs'
 import { dashboardBuckets } from '../../modules/ptw/lib/permitStatus'
 import { openUnsafeByPermit } from '../../modules/ptw/lib/observations'
 import ModuleLogo3D, { has3DLogo } from './ModuleLogo3D'
+import IncompleteNotice from '../../shared/ui/IncompleteNotice'
 
 // Same logo gradients the admin hub uses, so a module is recognisable by its
 // tile wherever it appears.
@@ -163,6 +164,7 @@ export default function PortalHome() {
   const [assignments, setAssignments] = useState([])
   const [users, setUsers] = useState([])
   const [actions, setActions] = useState([])
+  const [actionsIncomplete, setActionsIncomplete] = useState(null)
 
   useEffect(() => {
     if (!orgId) return undefined
@@ -170,7 +172,13 @@ export default function PortalHome() {
       subscribeCollections(orgId, COLLECTIONS, setStore),
       subscribeAssignments(orgId, setAssignments),
       subscribeOrgUsers(orgId, setUsers),
-      subscribeActions(orgId, setActions),
+      // Two independent incomplete reads feed this page — the collections and
+      // the action tracker — so the notice has to be the union of both, or one
+      // of them silently qualifies nothing.
+      subscribeActions(orgId, ({ rows, incomplete }) => {
+        setActions(rows)
+        setActionsIncomplete(incomplete)
+      }),
     ]
     return () => unsubs.forEach((u) => u && u())
   }, [orgId])
@@ -324,17 +332,12 @@ export default function PortalHome() {
 
       {/* Ahead of the widgets, the charts and the due lists — everything below
           counts these records, so the caveat cannot sit under them. */}
-      {store.incomplete && (
-        <div
-          role="status"
-          className="mb-5 flex items-start gap-2.5 rounded-2xl bg-amber-50 px-4 py-3 shadow-clay-sm"
-        >
-          <AlertTriangle size={16} className="mt-0.5 flex-none text-amber-700" />
-          <p className="text-[12.5px] leading-relaxed text-amber-900">
-            <b>These figures are incomplete.</b> {store.incomplete.message}
-          </p>
-        </div>
-      )}
+      <IncompleteNotice incomplete={store.incomplete} className="mb-5" />
+      {/* The action tracker reads its own collections, so it can be short when
+          the ones above are whole. Two notices rather than one merged sentence:
+          they describe different data, and splicing them would produce a list
+          nobody could act on. */}
+      <IncompleteNotice incomplete={actionsIncomplete} className="mb-5" />
 
       <WidgetGrid keys={widgetKeys} onSave={saveWidgets} data={widgetData} sites={sites} />
 

@@ -7,18 +7,20 @@ import { useAuth } from '../../shared/auth/AuthContext'
 import { PageHeader, Card, Select, StatCard, EmptyState, SkeletonTable, Pager } from '../../shared/ui'
 import { usePagination } from '../../shared/ui/usePagination'
 import { SOURCES, NORM_STATUS, NORM_BY_KEY, subscribeActions, updateActionStatus, isOverdue, todayISO } from './lib/sources'
+import IncompleteNotice from '../../shared/ui/IncompleteNotice'
 
 const fmtDue = (due) => (due ? due : '—')
 
 export default function ActionTracker() {
   const { orgId, isApproved } = useAuth()
   const [rows, setRows] = useState(null)
+  const [incomplete, setIncomplete] = useState(null)
   const [busyKey, setBusyKey] = useState(null)
   const [f, setF] = useState({ source: 'all', status: 'all', q: '', overdue: false, repeating: false })
 
   useEffect(() => {
     if (!orgId) return undefined
-    return subscribeActions(orgId, setRows)
+    return subscribeActions(orgId, ({ rows, incomplete }) => { setRows(rows); setIncomplete(incomplete) })
   }, [orgId])
 
   const today = todayISO()
@@ -77,6 +79,10 @@ export default function ActionTracker() {
         subtitle="Every CAPA & action item across all modules — update status here and it writes back to the source."
         icon={ListChecks}
       />
+
+      {/* Before the counts, not after. "Total actions" is the first thing read
+          on this page, and a caveat underneath it arrives too late. */}
+      <IncompleteNotice incomplete={incomplete} className="mb-5" />
 
       <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         <StatCard label="Total actions" value={stats.total} icon={ListChecks} tone="brand" />

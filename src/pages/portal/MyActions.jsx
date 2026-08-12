@@ -13,6 +13,7 @@ import { useAuth } from '../../shared/auth/AuthContext'
 import { subscribeActions, updateActionStatus, NORM_STATUS, NORM_BY_KEY } from '../../modules/actions/lib/sources'
 import { Raised, Inset, PortalHeading } from './ui'
 import { myActions } from './myWork'
+import IncompleteNotice from '../../shared/ui/IncompleteNotice'
 
 const FILTERS = [
   { key: 'all', label: 'All' },
@@ -24,12 +25,13 @@ const FILTERS = [
 export default function MyActions() {
   const { orgId, profile } = useAuth()
   const [rows, setRows] = useState([])
+  const [incomplete, setIncomplete] = useState(null)
   const [filter, setFilter] = useState('all')
   const [savingKey, setSavingKey] = useState(null)
 
   useEffect(() => {
     if (!orgId) return undefined
-    return subscribeActions(orgId, setRows)
+    return subscribeActions(orgId, ({ rows, incomplete }) => { setRows(rows); setIncomplete(incomplete) })
   }, [orgId])
 
   const mine = useMemo(() => myActions(rows, profile), [rows, profile])
@@ -56,6 +58,7 @@ export default function MyActions() {
 
   return (
     <div className="animate-fade-in-up">
+      <IncompleteNotice incomplete={incomplete} className="mb-4" />
       <PortalHeading
         icon={ListChecks}
         title="My actions"

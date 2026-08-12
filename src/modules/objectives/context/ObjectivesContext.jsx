@@ -31,9 +31,9 @@ export function ObjectivesProvider({ children }) {
     if (!orgId) return undefined
     const unsubs = [
       subscribeObjectives(orgId, setObjectives),
-      subscribeActions(orgId, setRawActions),
+      subscribeActions(orgId, ({ rows }) => setRawActions(rows)),
       ...Object.entries(SOURCES).map(([key, name]) =>
-        subscribeOrgCollection(orgId, name, (rows) => setRaw((r) => ({ ...r, [key]: rows }))),
+        subscribeOrgCollection(orgId, name, ({ rows }) => setRaw((r) => ({ ...r, [key]: rows }))),
       ),
     ]
     return () => unsubs.forEach((u) => u && u())

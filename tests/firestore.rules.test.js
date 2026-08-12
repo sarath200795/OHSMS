@@ -429,6 +429,44 @@ describe('public defect reports from a QR scan (/reports)', () => {
     await assertSucceeds(setDoc(reportAt(anon, 'r1'), extReport))
   })
 
+  // THE REAL PATH, which every test above missed: createReport writes the
+  // defect LOCK and the report in ONE batch, so both halves must be permitted
+  // together. Testing the report on its own passes while the batch is refused —
+  // and the app maps any permission-denied here to "already reported", so a
+  // broken rule surfaces to the person holding the phone as a duplicate.
+  const lockAt = (db, id) => doc(db, 'organizations', 'orgA', 'defectLocks', id)
+  const lockDoc = { extId: 'ext1', defectType: 'empty', createdAt: Date.now(), token: 'tok1' }
+
+  it('a signed-out scanner can write the lock and the report in one batch', async () => {
+    const anon = testEnv.unauthenticatedContext().firestore()
+    const b = writeBatch(anon)
+    b.set(lockAt(anon, 'ext1__empty'), lockDoc)
+    b.set(reportAt(anon, 'rb1'), { ...extReport, defectType: 'empty' })
+    await assertSucceeds(b.commit())
+  })
+
+  it('a signed-in member can write the same batch', async () => {
+    const alice = testEnv.authenticatedContext('alice').firestore()
+    const b = writeBatch(alice)
+    b.set(lockAt(alice, 'ext1__empty'), lockDoc)
+    b.set(reportAt(alice, 'rb2'), { ...extReport, defectType: 'empty', reportedBy: 'alice' })
+    await assertSucceeds(b.commit())
+  })
+
+  // And the behaviour the message actually describes still holds.
+  it('the second scan of the same defect is refused', async () => {
+    const anon = testEnv.unauthenticatedContext().firestore()
+    const first = writeBatch(anon)
+    first.set(lockAt(anon, 'ext1__empty'), lockDoc)
+    first.set(reportAt(anon, 'rb3'), { ...extReport, defectType: 'empty' })
+    await assertSucceeds(first.commit())
+
+    const second = writeBatch(anon)
+    second.set(lockAt(anon, 'ext1__empty'), lockDoc)
+    second.set(reportAt(anon, 'rb4'), { ...extReport, defectType: 'empty' })
+    await assertFails(second.commit())
+  })
+
   it('a signed-out scanner can report an AED defect', async () => {
     const anon = testEnv.unauthenticatedContext().firestore()
     await assertSucceeds(setDoc(reportAt(anon, 'r2'), assetReport))

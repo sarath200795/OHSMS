@@ -17,6 +17,7 @@ import { Panel, Stat, NoData, Picker } from './ui'
 import Breakdown from './Breakdown'
 import { monthOf } from './moduleAnalytics'
 import { SOURCES, SOURCE_BY_KEY, subscribeActions, todayISO } from '../../modules/actions/lib/sources'
+import IncompleteNotice from '../../shared/ui/IncompleteNotice'
 
 const DAY = 86400000
 
@@ -232,6 +233,7 @@ export function undatedNote({ undated = 0, noDue = 0 } = {}, rangeActive = false
 
 export default function ActionsTab({ orgId, sites = [], keepUnplaced = true }) {
   const [rows, setRows] = useState(null)
+  const [incomplete, setIncomplete] = useState(null)
   const [siteId, setSiteId] = useState('all')
   const [source, setSource] = useState('all')
   const [from, setFrom] = useState('')
@@ -240,7 +242,7 @@ export default function ActionsTab({ orgId, sites = [], keepUnplaced = true }) {
 
   useEffect(() => {
     if (!orgId) return undefined
-    return subscribeActions(orgId, setRows)
+    return subscribeActions(orgId, ({ rows, incomplete }) => { setRows(rows); setIncomplete(incomplete) })
   }, [orgId])
 
   const a = useMemo(
@@ -273,6 +275,7 @@ export default function ActionsTab({ orgId, sites = [], keepUnplaced = true }) {
 
   return (
     <div className="animate-fade-in-up">
+      <IncompleteNotice incomplete={incomplete} className="mb-5" />
       <div className="card mb-5 flex flex-wrap items-end gap-3 p-4">
         <Picker id="ac-site" label="Site" value={siteId} onChange={(e) => setSiteId(e.target.value)}>
           <option value="all">All sites ({sites.length})</option>

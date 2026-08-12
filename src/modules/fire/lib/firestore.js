@@ -636,7 +636,7 @@ export async function approveReport(orgId, orgName, report, reviewerName, actor)
  * not fail the close it follows: the worst case is a stale lock that blocks one
  * re-report, which is far better than a refill that half-applied.
  */
-async function releaseDefectLocks(orgId, extId, defectTypes = []) {
+export async function releaseDefectLocks(orgId, extId, defectTypes = []) {
   if (!extId || defectTypes.length === 0) return
   try {
     const batch = writeBatch(db)

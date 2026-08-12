@@ -146,16 +146,35 @@ export async function getUserProfile(uid) {
 // extinguishers, auditFindings…). Multiplexing them over ONE listener per
 // collection keeps document reads and open sockets flat as concurrency grows,
 // instead of scaling with (users × modules mounted).
+// Capped and status-carrying for the same reasons as subscribeCollections
+// below — this one feeds the Action Tracker, whose totals are read the same way
+// analytics' are. It was the last uncapped read in the app, and it had the same
+// two faults: no ceiling, and an error path that emitted an empty array so a
+// permission failure looked like "no outstanding actions", which on a safety
+// system is the most dangerous possible way to be wrong.
 const sharedOrgCollection = createSharedSubscription((key, emit) => {
   const [orgId, name] = key.split('/')
   return onSnapshot(
-    collection(db, 'organizations', orgId, name),
-    (snap) => emit(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
-    () => emit([])
+    query(collection(db, 'organizations', orgId, name), limit(COLLECTION_READ_CAP)),
+    (snap) => emit({
+      rows: snap.docs.map((d) => ({ id: d.id, ...d.data() })),
+      status: snap.size >= COLLECTION_READ_CAP ? 'capped' : 'ok',
+    }),
+    (err) => {
+      // eslint-disable-next-line no-console
+      console.warn(`[OHS MS] ${name} read failed:`, err?.message || err)
+      emit({ rows: [], status: 'failed' })
+    }
   )
 })
 
-/** Live rows of any org sub-collection, shared app-wide. */
+/**
+ * Live rows of any org sub-collection, shared app-wide.
+ *
+ * Emits `{ rows, status }`, never a bare array — the same reasoning as
+ * subscribeCollections: a caller that can reach the rows is holding the reason
+ * they may be short. status is 'ok' | 'capped' | 'failed'.
+ */
 export function subscribeOrgCollection(orgId, name, cb) {
   return sharedOrgCollection(`${orgId}/${name}`, cb)
 }
@@ -215,7 +234,21 @@ const sharedSites = createSharedSubscription((orgId, emit) => {
   return onSnapshot(
     q,
     (snap) => emit(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
-    () => emit([])
+    (err) => {
+      // Still an empty array, because ~20 callers destructure it as one and
+      // changing that shape here is a bigger change than this deserves. But it
+      // is no longer SILENT: a failed sites read renders as "No sites you can
+      // access yet" on every site picker in the app, which reads as a
+      // configuration problem and sends people off to create sites that
+      // already exist.
+      //
+      // Note also the orderBy('name') above: Firestore drops documents missing
+      // the ordered field, so a site saved without a name is invisible here
+      // while existing perfectly well in the database.
+      // eslint-disable-next-line no-console
+      console.error('[OHS MS] sites read failed — every site picker will look empty:', err?.message || err)
+      emit([])
+    }
   )
 })
 export function subscribeSites(orgId, cb) {
