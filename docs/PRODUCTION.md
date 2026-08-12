@@ -140,11 +140,37 @@ wired; without the steps below it ships no tokens and nothing is enforced.
    | `recaptcha/enterprise.js` returns **400**, `appCheck/recaptcha-error` | an Enterprise provider on a **v3 key** |
    | Everything loads but verified stays **0%** | provider and key agree, but the **registration** does not |
 
-   > **Current state of this project:** `VITE_APPCHECK_SITE_KEY` is a classic
-   > **v3** key and the client uses `ReCaptchaV3Provider`. The App Check → Apps
-   > registration still says **Enterprise**, which is why verified sits at 0%.
-   > The outstanding fix is to re-register the web app with **reCAPTCHA v3**
-   > using this same key — a console change, not a code one.
+   **Test the key before wiring it in.** Two provider swaps and a production
+   lockout were spent on a mismatch that did not exist, because nobody asked
+   reCAPTCHA whether it recognised the key. It answers directly:
+
+   ```bash
+   K=<your-site-key>
+   CO=$(node -e "process.stdout.write(Buffer.from('https://YOUR-DOMAIN:443').toString('base64').replace(/=/g,'.'))")
+   curl -s "https://www.google.com/recaptcha/api2/anchor?ar=1&k=$K&co=$CO&hl=en&size=invisible&cb=x" \
+     | grep -oiE "Invalid site key|Invalid domain|ERROR for site owner[^<]*"
+   ```
+
+   | Output | Meaning |
+   | --- | --- |
+   | *(nothing)* | the key is valid for that origin — wire it in |
+   | `Invalid site key` | the key does not exist as a **site** key. Usually the **Secret** key pasted by mistake: reCAPTCHA issues both, both are 40 chars, both start `6L` |
+   | `Invalid domain …` | right key, wrong origin — add the domain to the key |
+
+   Swap `api2` for `enterprise` in that URL to test an Enterprise key. Sanity-check
+   the probe itself with Google's public test key
+   `6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI`, which must come back clean.
+
+   > **Current state of this project: App Check is OFF.**
+   > `VITE_APPCHECK_SITE_KEY` is blank in `.env.production`, so
+   > `src/shared/firebase.js` never initialises App Check. The key previously
+   > there was rejected as `Invalid site key` on **both** endpoints from this
+   > origin while the control key passed — it had never minted a token, which is
+   > why verified sat at 0% from the start and why enforcing Firestore locked
+   > every user out at the login screen. It was blanked because a key that
+   > cannot mint a token protects nothing and only logs `appCheck/recaptcha-error`
+   > every 30 seconds. To re-enable: obtain a real **site** key, prove it with
+   > the probe above, set it, rebuild, watch verified climb, then enforce.
 3. Put the key in the production env: `VITE_APPCHECK_SITE_KEY=<key>` (locally in
    `.env.production`, in CI as a repo variable), redeploy.
 4. Watch console → App Check → **APIs** until Cloud Firestore's verified-request
