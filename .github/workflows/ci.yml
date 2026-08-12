@@ -95,6 +95,16 @@ jobs:
         env:
           VITE_USE_EMULATORS: 'true'
           VITE_FIREBASE_PROJECT_ID: ohsms-demo
+          # Not a credential — the Auth emulator accepts any key and validates
+          # none. It has to be PRESENT though: with it absent the Firebase app
+          # never initialises, so every flow fails at whatever it touched first
+          # and the run reads as four broken features rather than one missing
+          # variable. Locally .env supplies this, which is why the suite passed
+          # on a laptop and had never once been green here.
+          #
+          # isFirebaseConfigured only requires a projectId under emulators
+          # (src/shared/firebase.js), so nothing warns that this is missing.
+          VITE_FIREBASE_API_KEY: demo-api-key
         run: >
           npx firebase-tools emulators:exec --only auth,firestore
           --project ohsms-demo
