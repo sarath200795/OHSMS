@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import {
-  ClipboardCheck, ArrowLeft, Check, X, Minus, Camera, Trash2, Send, MapPin,
+  ClipboardCheck, ArrowLeft, Check, X, Minus, Camera, Trash2, Send, MapPin, Tag,
 } from 'lucide-react'
 import { PageHeader, Spinner } from '../components/ui'
 import { useAuth } from '../context/AuthContext'
@@ -10,7 +10,7 @@ import { useData } from '../context/DataContext'
 import { addRecord } from '../lib/firestore'
 import { fileToDataUrl } from '../lib/fileToDataUrl'
 import { putFile, MAX_UPLOAD_BYTES, MAX_INLINE_BYTES, tooLargeForInline, formatSize } from '../../../shared/storage'
-import { hasAnsweredQuestion, scoreResponses } from '../lib/schedule'
+import { hasAnsweredQuestion, scoreResponses, groupFieldsByCategory, usesCategories } from '../lib/schedule'
 import { previousInspection, withRepeatHistory } from '../lib/previousFindings'
 import PreviousFindingsPanel, { PreviousFindingNote } from '../components/PreviousFindings'
 import { safeSrc } from '../../../shared/safeUrl'
@@ -33,7 +33,11 @@ export default function Execute() {
     setInspSiteId(task.siteId || '')
     const init = {}
     ;(task.template?.fields || []).forEach((f) => {
-      init[f.id] = { label: f.label, type: f.type, answer: f.type === 'Multiple Choice' ? [] : '', observation: '', photoEvidence: null, photoEvidenceName: '' }
+      // The category is copied onto the response, not just read off the form:
+      // a record has to stay readable after the form it came from is edited,
+      // and a question that has since been re-filed would otherwise re-file
+      // every inspection ever done against it.
+      init[f.id] = { label: f.label, category: f.category || '', type: f.type, answer: f.type === 'Multiple Choice' ? [] : '', observation: '', photoEvidence: null, photoEvidenceName: '' }
     })
     setResponses(init)
   }, [task])
@@ -41,6 +45,12 @@ export default function Execute() {
   // Memoised because `|| []` is a fresh array every render, which would make
   // every memo downstream of it recompute on each keystroke.
   const fields = useMemo(() => task?.template?.fields || [], [task])
+
+  // Only show headings once the form actually uses categories — otherwise every
+  // question lands under one "General" banner, which is a label and no
+  // information, and pushes the first question further down the phone screen.
+  const grouped = useMemo(() => usesCategories(fields), [fields])
+  const groups = useMemo(() => groupFieldsByCategory(fields), [fields])
 
   const progress = useMemo(() => {
     let answered = 0, photoNeed = 0, photoOk = 0
@@ -213,92 +223,110 @@ export default function Execute() {
       {/* What the last run of this form found here, before anything is answered. */}
       <PreviousFindingsPanel previous={previous} />
 
-      {/* Questions */}
-      <div className="space-y-3">
-        {fields.map((f, i) => {
-          const r = responses[f.id] || {}
-          const lastFail = previous?.byField.get(f.id)
-          return (
-            <div key={f.id} className={`card p-5 ${lastFail ? 'border-l-4 border-amber-300' : ''}`}>
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="flex-1">
-                  <p className="font-semibold text-ink-800">
-                    <span className="mr-2 text-ink-400">{i + 1}.</span>{f.label}
-                  </p>
-                  <div className="mt-1 flex gap-2 text-[10px] font-bold uppercase tracking-widest text-ink-400">
-                    <span>{f.type}</span>
-                    {f.photoRequirement !== 'Not Required' && <span className="text-brand-600">📷 {f.photoRequirement}</span>}
+      {/* Questions, under their category headings. The numbering stays the
+          form's own — question 7 is the seventh question on the form, not the
+          first of the second group, because that is the number the submission
+          errors quote and the number a record is read back against. */}
+      <div className="space-y-6">
+        {groups.map((group) => (
+          <section key={group.category}>
+            {grouped && (
+              <h3 className="mb-2 flex flex-wrap items-baseline gap-2 px-1">
+                <Tag size={13} className="translate-y-0.5 text-brand-600" />
+                <span className="text-xs font-bold uppercase tracking-widest text-ink-700">{group.category}</span>
+                <span className="text-[11px] font-semibold text-ink-400">
+                  {group.fields.length} question{group.fields.length === 1 ? '' : 's'}
+                </span>
+              </h3>
+            )}
+            <div className="space-y-3">
+              {group.fields.map(({ field: f, index: i }) => {
+                const r = responses[f.id] || {}
+                const lastFail = previous?.byField.get(f.id)
+                return (
+                  <div key={f.id} className={`card p-5 ${lastFail ? 'border-l-4 border-amber-300' : ''}`}>
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="flex-1">
+                        <p className="font-semibold text-ink-800">
+                          <span className="mr-2 text-ink-400">{i + 1}.</span>{f.label}
+                        </p>
+                        <div className="mt-1 flex gap-2 text-[10px] font-bold uppercase tracking-widest text-ink-400">
+                          <span>{f.type}</span>
+                          {f.photoRequirement !== 'Not Required' && <span className="text-brand-600">📷 {f.photoRequirement}</span>}
+                        </div>
+                        <PreviousFindingNote finding={lastFail} />
+                      </div>
+                      <div>
+                        {f.type === 'Pass/Fail' && <PF fid={f.id} value={r.answer} />}
+                        {f.type === 'Number' && (
+                          <input type="number" className="input w-40" placeholder="Value" value={r.answer}
+                            onChange={(e) => update(f.id, { answer: e.target.value })} />
+                        )}
+                        {f.type === 'Text Input' && (
+                          <input className="input w-56" placeholder="Answer" value={r.answer}
+                            onChange={(e) => update(f.id, { answer: e.target.value })} />
+                        )}
+                        {f.type === 'Single Choice' && (
+                          <div className="flex max-w-md flex-wrap justify-end gap-2">
+                            {(f.options || []).map((opt) => {
+                              const sel = r.answer === opt
+                              return (
+                                <button key={opt} type="button" onClick={() => update(f.id, { answer: opt })}
+                                  className={`rounded-xl px-3 py-2 text-xs font-bold shadow-clay-sm transition active:scale-95 ${sel ? 'bg-brand-500 text-white' : 'bg-clay-surface text-ink-600'}`}>
+                                  {opt}
+                                </button>
+                              )
+                            })}
+                          </div>
+                        )}
+                        {f.type === 'Multiple Choice' && (
+                          <div className="flex max-w-md flex-wrap justify-end gap-2">
+                            {(f.options || []).map((opt) => {
+                              const arr = Array.isArray(r.answer) ? r.answer : []
+                              const sel = arr.includes(opt)
+                              return (
+                                <button key={opt} type="button"
+                                  onClick={() => update(f.id, { answer: sel ? arr.filter((x) => x !== opt) : [...arr, opt] })}
+                                  className={`inline-flex items-center gap-1 rounded-xl px-3 py-2 text-xs font-bold shadow-clay-sm transition active:scale-95 ${sel ? 'bg-brand-500 text-white' : 'bg-clay-surface text-ink-600'}`}>
+                                  {sel && <Check size={13} />}{opt}
+                                </button>
+                              )
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Observation on Fail */}
+                    {f.type === 'Pass/Fail' && r.answer === 'Fail' && (
+                      <textarea className="input mt-3 min-h-[60px]" placeholder="Describe the defect / observation…"
+                        value={r.observation} onChange={(e) => update(f.id, { observation: e.target.value })} />
+                    )}
+
+                    {/* Photo */}
+                    {f.photoRequirement !== 'Not Required' && (
+                      <div className="mt-3">
+                        {r.photoEvidence ? (
+                          <div className="flex items-center gap-3">
+                            <img src={safeSrc(r.photoEvidence)} alt="evidence" className="h-16 w-16 rounded-xl object-cover shadow-clay-sm" />
+                            <span className="text-xs text-ink-500">{r.photoEvidenceName}</span>
+                            <button onClick={() => update(f.id, { photoEvidence: null, photoEvidenceName: '' })}
+                              className="rounded-lg p-1.5 text-ink-400 hover:bg-red-50 hover:text-red-600"><Trash2 size={15} /></button>
+                          </div>
+                        ) : (
+                          <label className="btn-ghost inline-flex cursor-pointer text-xs">
+                            <Camera size={14} /> Attach photo
+                            <input type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => onPhoto(f.id, e)} />
+                          </label>
+                        )}
+                      </div>
+                    )}
                   </div>
-                  <PreviousFindingNote finding={lastFail} />
-                </div>
-                <div>
-                  {f.type === 'Pass/Fail' && <PF fid={f.id} value={r.answer} />}
-                  {f.type === 'Number' && (
-                    <input type="number" className="input w-40" placeholder="Value" value={r.answer}
-                      onChange={(e) => update(f.id, { answer: e.target.value })} />
-                  )}
-                  {f.type === 'Text Input' && (
-                    <input className="input w-56" placeholder="Answer" value={r.answer}
-                      onChange={(e) => update(f.id, { answer: e.target.value })} />
-                  )}
-                  {f.type === 'Single Choice' && (
-                    <div className="flex max-w-md flex-wrap justify-end gap-2">
-                      {(f.options || []).map((opt) => {
-                        const sel = r.answer === opt
-                        return (
-                          <button key={opt} type="button" onClick={() => update(f.id, { answer: opt })}
-                            className={`rounded-xl px-3 py-2 text-xs font-bold shadow-clay-sm transition active:scale-95 ${sel ? 'bg-brand-500 text-white' : 'bg-clay-surface text-ink-600'}`}>
-                            {opt}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  )}
-                  {f.type === 'Multiple Choice' && (
-                    <div className="flex max-w-md flex-wrap justify-end gap-2">
-                      {(f.options || []).map((opt) => {
-                        const arr = Array.isArray(r.answer) ? r.answer : []
-                        const sel = arr.includes(opt)
-                        return (
-                          <button key={opt} type="button"
-                            onClick={() => update(f.id, { answer: sel ? arr.filter((x) => x !== opt) : [...arr, opt] })}
-                            className={`inline-flex items-center gap-1 rounded-xl px-3 py-2 text-xs font-bold shadow-clay-sm transition active:scale-95 ${sel ? 'bg-brand-500 text-white' : 'bg-clay-surface text-ink-600'}`}>
-                            {sel && <Check size={13} />}{opt}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Observation on Fail */}
-              {f.type === 'Pass/Fail' && r.answer === 'Fail' && (
-                <textarea className="input mt-3 min-h-[60px]" placeholder="Describe the defect / observation…"
-                  value={r.observation} onChange={(e) => update(f.id, { observation: e.target.value })} />
-              )}
-
-              {/* Photo */}
-              {f.photoRequirement !== 'Not Required' && (
-                <div className="mt-3">
-                  {r.photoEvidence ? (
-                    <div className="flex items-center gap-3">
-                      <img src={safeSrc(r.photoEvidence)} alt="evidence" className="h-16 w-16 rounded-xl object-cover shadow-clay-sm" />
-                      <span className="text-xs text-ink-500">{r.photoEvidenceName}</span>
-                      <button onClick={() => update(f.id, { photoEvidence: null, photoEvidenceName: '' })}
-                        className="rounded-lg p-1.5 text-ink-400 hover:bg-red-50 hover:text-red-600"><Trash2 size={15} /></button>
-                    </div>
-                  ) : (
-                    <label className="btn-ghost inline-flex cursor-pointer text-xs">
-                      <Camera size={14} /> Attach photo
-                      <input type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => onPhoto(f.id, e)} />
-                    </label>
-                  )}
-                </div>
-              )}
+                )
+              })}
             </div>
-          )
-        })}
+          </section>
+        ))}
       </div>
 
       <div className="sticky bottom-4 mt-6 flex justify-end">

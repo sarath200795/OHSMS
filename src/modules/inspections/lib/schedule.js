@@ -4,8 +4,20 @@
 // one-off/recurring assignments into concrete due-date occurrences.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const FREQUENCIES = ['Daily', 'Weekly', 'Monthly', 'Quarterly', 'Bi-Annually', 'Annually']
-export const ASSIGNMENT_FREQUENCIES = ['One-off', ...FREQUENCIES]
+/**
+ * A form with no cycle: run when something calls for it, never auto-scheduled.
+ *
+ * Kept out of RECURRING_FREQUENCIES rather than added to the end of it, because
+ * every piece of date maths in this file is written for a cycle and quietly
+ * does the wrong thing without one — see the guard in getPendingOccurrences.
+ */
+export const ON_DEMAND = 'On Demand'
+export const RECURRING_FREQUENCIES = ['Daily', 'Weekly', 'Monthly', 'Quarterly', 'Bi-Annually', 'Annually']
+export const FREQUENCIES = [ON_DEMAND, ...RECURRING_FREQUENCIES]
+// Assignments are not offered On Demand: an assignment IS a date, and the thing
+// you want when there is no cycle is already spelled 'One-off'.
+export const ASSIGNMENT_FREQUENCIES = ['One-off', ...RECURRING_FREQUENCIES]
+export const isOnDemand = (frequency) => frequency === ON_DEMAND
 export const STATUSES = ['Draft', 'Active', 'Inactive']
 export const QUESTION_TYPES = ['Pass/Fail', 'Single Choice', 'Multiple Choice', 'Text Input', 'Number']
 export const CHOICE_TYPES = ['Single Choice', 'Multiple Choice']
@@ -58,6 +70,12 @@ const getRecordScheduleDate = (record) => {
  * skipped. Returns [{ date, dateString, alertStartString }].
  */
 export const getPendingOccurrences = ({ assignedFrom, assignedTo, frequency, pastRecords = [], rangeEnd }) => {
+  // An on-demand form has no cycle to expand, and this guard is what makes that
+  // true rather than merely intended: addFrequencyToDate falls back to +1 month
+  // for any frequency it does not recognise, so without this the loop below
+  // would happily lay 'On Demand' out monthly — the exact opposite of the point.
+  if (isOnDemand(frequency)) return []
+
   const startDate = parseDateOnly(assignedFrom)
   if (!startDate) return []
 
@@ -96,13 +114,59 @@ export const getPendingOccurrences = ({ assignedFrom, assignedTo, frequency, pas
 export const normalizeQuestionType = (v) => (QUESTION_TYPES.includes(v) ? v : 'Pass/Fail')
 export const normalizePhotoRequirement = (v) => (PHOTO_REQUIREMENTS.includes(v) ? v : 'Not Required')
 
+/**
+ * Question categories are free text, not a fixed list — every organization
+ * groups its checks differently, and a closed list would only get worked around
+ * by pushing the real grouping into the question label.
+ */
+export const normalizeCategory = (v) => String(v ?? '').trim()
+
+/** What an uncategorised question is filed under when the form uses categories. */
+export const UNCATEGORIZED = 'General'
+
 export const normalizeTemplateField = (field = {}, index = 0) => ({
   id: field.id || `field-${Date.now()}-${index}`,
   label: field.label || '',
+  category: normalizeCategory(field.category),
   type: normalizeQuestionType(field.type),
   photoRequirement: normalizePhotoRequirement(field.photoRequirement),
   options: Array.isArray(field.options) ? field.options.map((s) => String(s).trim()).filter(Boolean) : [],
 })
+
+/** Distinct categories already used in a form, in first-use order — the builder
+ *  offers these back as suggestions so a form does not end up with "Fire",
+ *  "fire " and "Fire Safety" meaning one thing. */
+export const templateCategories = (fields = []) =>
+  Array.from(new Set(fields.map((f) => normalizeCategory(f?.category)).filter(Boolean)))
+
+/** True once any question is categorised. Until then, grouping the form under a
+ *  single "General" heading would add a label and no information. */
+export const usesCategories = (fields = []) => templateCategories(fields).length > 0
+
+/**
+ * Questions grouped under their category, categories in first-appearance order
+ * and questions in template order within each.
+ *
+ * Each entry carries the question's index in the WHOLE form, not its position
+ * in the group: submission errors say "Question 7 is unanswered" and records
+ * are read against the printed form, so that number has to keep meaning the
+ * same thing whether or not the form is grouped.
+ */
+export const groupFieldsByCategory = (fields = []) => {
+  const groups = []
+  const byName = new Map()
+  fields.forEach((field, index) => {
+    const category = normalizeCategory(field?.category) || UNCATEGORIZED
+    let group = byName.get(category)
+    if (!group) {
+      group = { category, fields: [] }
+      byName.set(category, group)
+      groups.push(group)
+    }
+    group.fields.push({ field, index })
+  })
+  return groups
+}
 
 export const normalizeTemplateFields = (fields = []) => fields.map((f, i) => normalizeTemplateField(f, i))
 

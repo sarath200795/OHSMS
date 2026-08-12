@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import * as XLSX from 'xlsx'
 import toast from 'react-hot-toast'
 import {
-  ClipboardCheck, Plus, Trash2, GripVertical, Download, FileUp, Save, ArrowLeft,
+  ClipboardCheck, Plus, Trash2, GripVertical, Download, FileUp, Save, ArrowLeft, Tag,
 } from 'lucide-react'
 import { PageHeader, Spinner } from '../components/ui'
 import { useAuth } from '../context/AuthContext'
@@ -12,6 +12,7 @@ import { addTemplate, updateTemplate } from '../lib/firestore'
 import {
   FREQUENCIES, STATUSES, QUESTION_TYPES, CHOICE_TYPES, PHOTO_REQUIREMENTS,
   emptyTemplate, normalizeTemplateFields, normalizeQuestionType, normalizePhotoRequirement,
+  normalizeCategory, templateCategories, isOnDemand,
 } from '../lib/schedule'
 import { assertWorkbookSize, assertRowCount } from '../../../shared/lib/workbookGuard'
 
@@ -32,8 +33,18 @@ export default function FormBuilder() {
 
   const set = (patch) => setTpl((p) => ({ ...p, ...patch }))
 
+  // A new question inherits the last one's category. Questions are written in
+  // runs — six fire checks, then four electrical — so carrying it forward is
+  // right far more often than blank, and it is one keystroke to change.
   const addField = () => set({
-    fields: [...tpl.fields, { id: `field-${Date.now()}`, label: '', type: 'Pass/Fail', photoRequirement: 'Not Required', options: [] }],
+    fields: [...tpl.fields, {
+      id: `field-${Date.now()}`,
+      label: '',
+      category: tpl.fields[tpl.fields.length - 1]?.category || '',
+      type: 'Pass/Fail',
+      photoRequirement: 'Not Required',
+      options: [],
+    }],
   })
   const updateField = (fid, patch) => set({ fields: tpl.fields.map((f) => (f.id === fid ? { ...f, ...patch } : f)) })
   const removeField = (fid) => set({ fields: tpl.fields.filter((f) => f.id !== fid) })
@@ -48,19 +59,24 @@ export default function FormBuilder() {
   const downloadQuestionTemplate = () => {
     const wb = XLSX.utils.book_new()
     const questions = XLSX.utils.aoa_to_sheet([
-      ['Question / Check Requirement (Required)', 'Answer Type (Required)', 'Photo Requirement (Optional)', 'Options (separate with ;)'],
-      ['Are fire exits clear and unobstructed?', 'Pass/Fail', 'Optional', ''],
-      ['Overall condition of the area?', 'Single Choice', 'Not Required', 'Good; Fair; Poor'],
-      ['Which PPE was worn?', 'Multiple Choice', 'Not Required', 'Helmet; Gloves; Goggles; Boots'],
-      ['Current pressure reading?', 'Number', 'Not Required', ''],
-      ['General observations of the work area:', 'Text Input', 'Mandatory', ''],
+      ['Question / Check Requirement (Required)', 'Category (Optional)', 'Answer Type (Required)', 'Photo Requirement (Optional)', 'Options (separate with ;)'],
+      ['Are fire exits clear and unobstructed?', 'Fire Safety', 'Pass/Fail', 'Optional', ''],
+      ['Is the extinguisher within its service date?', 'Fire Safety', 'Pass/Fail', 'Mandatory', ''],
+      ['Overall condition of the area?', 'Housekeeping', 'Single Choice', 'Not Required', 'Good; Fair; Poor'],
+      ['Which PPE was worn?', 'PPE', 'Multiple Choice', 'Not Required', 'Helmet; Gloves; Goggles; Boots'],
+      ['Current pressure reading?', 'Plant & Equipment', 'Number', 'Not Required', ''],
+      ['General observations of the work area:', '', 'Text Input', 'Mandatory', ''],
     ])
-    questions['!cols'] = [{ wch: 60 }, { wch: 25 }, { wch: 24 }, { wch: 40 }]
+    questions['!cols'] = [{ wch: 60 }, { wch: 22 }, { wch: 25 }, { wch: 24 }, { wch: 40 }]
     const allowed = XLSX.utils.aoa_to_sheet([
       ['Allowed Answer Types'], ...QUESTION_TYPES.map((t) => [t]), [],
-      ['Allowed Photo Requirement Values'], ...PHOTO_REQUIREMENTS.map((t) => [t]),
+      ['Allowed Photo Requirement Values'], ...PHOTO_REQUIREMENTS.map((t) => [t]), [],
+      ['Category'],
+      ['Free text — anything you like.'],
+      ['Questions sharing a category are grouped under it when the inspection is run.'],
+      ['Leave blank to file the question under General.'],
     ])
-    allowed['!cols'] = [{ wch: 24 }]
+    allowed['!cols'] = [{ wch: 80 }]
     XLSX.utils.book_append_sheet(wb, questions, 'Inspection_Questions')
     XLSX.utils.book_append_sheet(wb, allowed, 'Allowed_Values')
     XLSX.writeFile(wb, 'Inspection_Questions_Template.xlsx')
@@ -83,6 +99,7 @@ export default function FormBuilder() {
       rows.forEach((row, idx) => {
         const keys = Object.keys(row)
         const qKey = keys.find((k) => k.toLowerCase().includes('question') || k.toLowerCase().includes('requirement'))
+        const cKey = keys.find((k) => k.toLowerCase().includes('categ'))
         const tKey = keys.find((k) => k.toLowerCase().includes('type'))
         const pKey = keys.find((k) => k.toLowerCase().includes('photo'))
         const oKey = keys.find((k) => k.toLowerCase().includes('option'))
@@ -95,6 +112,7 @@ export default function FormBuilder() {
         newFields.push({
           id: `imported-${Date.now()}-${idx}`,
           label: String(text),
+          category: cKey ? normalizeCategory(row[cKey]) : '',
           type,
           photoRequirement: normalizePhotoRequirement(row[pKey] || 'Not Required'),
           options,
@@ -151,6 +169,10 @@ export default function FormBuilder() {
   }
 
   const passFailCount = useMemo(() => tpl.fields.filter((f) => f.type === 'Pass/Fail').length, [tpl.fields])
+  // Offered back as suggestions so one form does not end up with "Fire",
+  // "fire " and "Fire  Safety" as three separate groups.
+  const categoriesInUse = useMemo(() => templateCategories(tpl.fields), [tpl.fields])
+  const onDemand = isOnDemand(tpl.frequency)
 
   return (
     <div>
@@ -213,24 +235,39 @@ export default function FormBuilder() {
                 </select>
               </div>
             </div>
-            <div className="rounded-2xl bg-clay-surface p-3 shadow-clay-inset">
-              <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-ink-500">Recurring window (optional)</p>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="label">From</label>
-                  <input type="date" className="input font-mono" value={tpl.assignedFrom}
-                    onChange={(e) => set({ assignedFrom: e.target.value })} />
-                </div>
-                <div>
-                  <label className="label">To</label>
-                  <input type="date" className="input font-mono" value={tpl.assignedTo} min={tpl.assignedFrom}
-                    onChange={(e) => set({ assignedTo: e.target.value })} />
-                </div>
+            {/* An on-demand form has no cycle, so a recurring window has nothing
+                to repeat. Replaced rather than disabled: greyed-out date fields
+                invite people to work out why they cannot fill them in. The dates
+                themselves are kept, so switching back restores the window. */}
+            {onDemand ? (
+              <div className="rounded-2xl bg-clay-surface p-3 shadow-clay-inset">
+                <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-ink-500">On demand</p>
+                <p className="text-[11px] text-ink-400">
+                  This form never schedules itself. Run it from <strong>Checklists → Start now</strong>{' '}
+                  whenever it is called for, or give it a date from <strong>Assign</strong> on the
+                  occasion you do want it on the calendar.
+                </p>
               </div>
-              <p className="mt-2 text-[11px] text-ink-400">
-                When set, an <strong>Active</strong> form auto-schedules on the calendar at its frequency. You can also assign one-off dates from the Forms list.
-              </p>
-            </div>
+            ) : (
+              <div className="rounded-2xl bg-clay-surface p-3 shadow-clay-inset">
+                <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-ink-500">Recurring window (optional)</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="label">From</label>
+                    <input type="date" className="input font-mono" value={tpl.assignedFrom}
+                      onChange={(e) => set({ assignedFrom: e.target.value })} />
+                  </div>
+                  <div>
+                    <label className="label">To</label>
+                    <input type="date" className="input font-mono" value={tpl.assignedTo} min={tpl.assignedFrom}
+                      onChange={(e) => set({ assignedTo: e.target.value })} />
+                  </div>
+                </div>
+                <p className="mt-2 text-[11px] text-ink-400">
+                  When set, an <strong>Active</strong> form auto-schedules on the calendar at its frequency. You can also assign one-off dates from the Forms list.
+                </p>
+              </div>
+            )}
           </div>
         </div>
 
@@ -278,6 +315,18 @@ export default function FormBuilder() {
                     </button>
                   </div>
 
+                  <div className="ml-7 mt-2 flex items-center gap-2">
+                    <Tag size={13} className="flex-none text-ink-400" />
+                    <input
+                      className="input max-w-[280px] py-2"
+                      list="question-categories"
+                      aria-label={`Category for question ${i + 1}`}
+                      placeholder="Category (optional) — e.g. Fire Safety"
+                      value={f.category || ''}
+                      onChange={(e) => updateField(f.id, { category: e.target.value })}
+                    />
+                  </div>
+
                   {isChoice(f.type) && (
                     <div className="mt-3 ml-7 rounded-xl bg-clay-bg/60 p-3">
                       <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-ink-500">
@@ -308,6 +357,12 @@ export default function FormBuilder() {
           <button onClick={addField} className="btn-ghost mt-4 w-full border border-dashed border-clay-300">
             <Plus size={16} /> Add question
           </button>
+
+          {/* Suggestions only — the field stays free text, so a new category
+              never needs a trip somewhere else to be created first. */}
+          <datalist id="question-categories">
+            {categoriesInUse.map((c) => <option key={c} value={c} />)}
+          </datalist>
         </div>
       </div>
     </div>

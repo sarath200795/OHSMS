@@ -98,25 +98,31 @@ const app = isFirebaseConfigured ? initializeApp(firebaseConfig) : null
 // tokens but blocks nothing.
 //
 // The provider MUST match the attestation provider the app is registered with
-// under App Check → Apps. It is registered as reCAPTCHA ENTERPRISE, so this is
-// ReCaptchaEnterpriseProvider and not ReCaptchaV3Provider — the two mint
-// different tokens and App Check rejects the wrong kind. That mismatch is not
-// visible from the client: the SDK initialises happily, the reCAPTCHA badge
-// appears, nothing logs an error, and every token is silently refused at the
-// edge. It surfaces only as 0% verified in the console — and if enforcement is
-// on, as a total Firestore lockout that reads as "Missing or insufficient
-// permissions" on the profile read at sign-in. It cost a production outage
-// once; check the console registration before changing this line.
+// under App Check → Apps: the two mint different tokens and App Check refuses
+// the wrong kind, which is why verified requests sat at 0%.
+//
+// This is ReCaptchaV3Provider because VITE_APPCHECK_SITE_KEY is a CLASSIC v3
+// key. That is measured, not assumed. With this provider the page loads
+// recaptcha/api.js, grecaptcha initialises and the badge renders with nothing
+// in the console; switching to ReCaptchaEnterpriseProvider made it load
+// recaptcha/enterprise.js instead, which answered HTTP 400 and raised
+// appCheck/recaptcha-error on every refresh.
+//
+// The console registration currently SAYS reCAPTCHA Enterprise, and that label
+// is the half that is wrong — fixing it is a console change, not a code one.
+// Do not "correct" this line to match the label without first checking which
+// script the browser actually loads and whether it 400s. Trusting the label
+// over the key is exactly the mistake that produced those errors.
 const APPCHECK_KEY = clean(import.meta.env.VITE_APPCHECK_SITE_KEY)
 if (app && APPCHECK_KEY && !USE_EMULATORS) {
   // Dynamic so the App Check SDK costs nothing until a key is configured.
   import('firebase/app-check')
-    .then(({ initializeAppCheck, ReCaptchaEnterpriseProvider }) => {
+    .then(({ initializeAppCheck, ReCaptchaV3Provider }) => {
       const debug = clean(import.meta.env.VITE_APPCHECK_DEBUG_TOKEN)
       // The documented escape hatch for local dev against a real project.
       if (debug) self.FIREBASE_APPCHECK_DEBUG_TOKEN = debug
       initializeAppCheck(app, {
-        provider: new ReCaptchaEnterpriseProvider(APPCHECK_KEY),
+        provider: new ReCaptchaV3Provider(APPCHECK_KEY),
         isTokenAutoRefreshEnabled: true,
       })
     })

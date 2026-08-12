@@ -130,9 +130,21 @@ wired; without the steps below it ships no tokens and nothing is enforced.
    | reCAPTCHA v3 | `ReCaptchaV3Provider` |
    | reCAPTCHA Enterprise | `ReCaptchaEnterpriseProvider` |
 
-   This project is registered as **Enterprise**. Getting this wrong is invisible
-   from the client — the SDK initialises, the badge renders, no error logs — and
-   shows up only as **0% verified** in step 4.
+   Match the provider to **the key**, then make the console agree — not the
+   other way round. The console's label is just a label; the key is the thing
+   that either works or does not. Tell them apart in the browser:
+
+   | Symptom in the console/network tab | What it means |
+   | --- | --- |
+   | `recaptcha/api.js` loads, badge renders, no errors | the key is **classic v3** |
+   | `recaptcha/enterprise.js` returns **400**, `appCheck/recaptcha-error` | an Enterprise provider on a **v3 key** |
+   | Everything loads but verified stays **0%** | provider and key agree, but the **registration** does not |
+
+   > **Current state of this project:** `VITE_APPCHECK_SITE_KEY` is a classic
+   > **v3** key and the client uses `ReCaptchaV3Provider`. The App Check → Apps
+   > registration still says **Enterprise**, which is why verified sits at 0%.
+   > The outstanding fix is to re-register the web app with **reCAPTCHA v3**
+   > using this same key — a console change, not a code one.
 3. Put the key in the production env: `VITE_APPCHECK_SITE_KEY=<key>` (locally in
    `.env.production`, in CI as a repo variable), redeploy.
 4. Watch console → App Check → **APIs** until Cloud Firestore's verified-request
