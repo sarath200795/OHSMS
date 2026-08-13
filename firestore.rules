@@ -469,8 +469,31 @@ service cloud.firestore {
     // of an org subcollection path. Approved members of that org may read/write;
     // managers+ may delete. This wildcard returns false for every other top-level
     // collection (users, organizations, qr, orgIndex), which keep their own rules.
+    // lotoEvents is deliberately NOT here. It gets its own append-only rule
+    // below, and because rules are a permissive UNION a narrower match would
+    // restrict nothing while this wildcard still granted the collection — the
+    // same reason the generic org rule excludes auditLogs.
     function isLegacyOrgCollection(col) {
-      return col in ['procedures', 'procedurePhotos', 'lotoEvents', 'locks', 'technicians', 'sites'];
+      return col in ['procedures', 'procedurePhotos', 'locks', 'technicians', 'sites'];
+    }
+
+    // ── LOTO activity trail ───────────────────────────────────────────────────
+    // Who applied and who removed a padlock on live plant: the document an
+    // investigator reads after somebody is hurt. It was described as append-only
+    // and was not — the wildcard above let any approved member rewrite an entry,
+    // a manager delete one, and anyone create one naming a colleague as the
+    // person who unlocked the machine.
+    //
+    // Same shape as /auditLogs: the actor is the caller, the time is the
+    // server's, and nothing can be edited or removed afterwards. setPointLock,
+    // addGroupMember and removeGroupMember already write `by` from the signed-in
+    // user and `at` from serverTimestamp(), so no legitimate write changes.
+    match /lotoEvents/{eventId} {
+      allow read: if resource != null && isApprovedMemberOf(resource.data.orgId);
+      allow create: if isWriterOf(request.resource.data.orgId)
+        && request.resource.data.by == request.auth.uid
+        && request.resource.data.at == request.time;
+      allow update, delete: if false;
     }
     match /{legacyCol}/{docId} {
       allow read: if isLegacyOrgCollection(legacyCol)
@@ -596,8 +619,19 @@ service cloud.firestore {
       // records many different shapes.
       match /auditLogs/{logId} {
         allow read: if isApprovedMemberOf(orgId);
+        // actorUid pins WHO. `at == request.time` pins WHEN, and without it a
+        // member could write a real entry under their own uid, dated last
+        // Tuesday, describing an action taken by someone else — every human
+        // reading the page sees a plausible backdated event, and only someone
+        // querying Firestore directly could tell. Every app-side writer already
+        // uses serverTimestamp(), so nothing legitimate changes.
+        //
+        // actorName stays client-supplied and is NOT pinned: it is a display
+        // string the reader should treat as such, and the uid beside it is the
+        // fact. Pinning it would need a profile read on every audit write.
         allow create: if isApprovedMemberOf(orgId)
-          && request.resource.data.actorUid == request.auth.uid;
+          && request.resource.data.actorUid == request.auth.uid
+          && request.resource.data.at == request.time;
         allow update, delete: if false;
       }
 
@@ -816,6 +850,31 @@ service cloud.firestore {
         allow read: if canReadDocument(orgId, resource.data);
       }
 
+    // A document's classification is enforced on READ and was unprotected on
+    // WRITE, so any member who could legitimately reach a restricted document —
+    // via their own site access — could publish it org-wide, and any member who
+    // learned a document id could overwrite one they cannot read. A
+    // classification the classified party can remove is advisory.
+    //
+    // Elevated roles set and change it; everyone else must leave all four
+    // fields exactly as they are. A CREATE has no prior state to preserve, so
+    // it is unaffected: the label is chosen once and then frozen against
+    // ordinary members.
+    function keepsClassification(col) {
+      return col != 'documents'
+        || resource == null
+        // .get(f, '') on BOTH sides: a document written before a field existed
+        // does not carry it, and reading it directly raises — a raising rule
+        // denies, which would refuse every edit to older documents rather than
+        // protecting a label they never had. Safe here in a way it would not be
+        // on a read: this is a write condition, so nothing about list-query
+        // constraining applies.
+        || request.resource.data.get('visibility', '') == resource.data.get('visibility', '')
+        && request.resource.data.get('level', '') == resource.data.get('level', '')
+        && request.resource.data.get('siteId', '') == resource.data.get('siteId', '')
+        && request.resource.data.get('region', '') == resource.data.get('region', '');
+    }
+
       match /{col}/{docId} {
         // defectLocks joins auditLogs in being excluded: its whole purpose is
         // that a create fails on an existing document, which a generic update
@@ -838,6 +897,7 @@ service cloud.firestore {
         // in can(); this is that, enforced.
         allow create, update: if col != 'auditLogs' && col != 'defectLocks' && col != 'docSeq'
           && isWriterOf(orgId)
+          && (isElevatedOf(orgId) || keepsClassification(col))
           && (isManagerOf(orgId)
               || (col != 'sites' && keepsDecision(col, beforeData(), request.resource.data)));
         allow delete: if col != 'auditLogs' && col != 'docSeq' && isManagerOf(orgId);
@@ -854,6 +914,7 @@ service cloud.firestore {
           allow read: if col != 'auditLogs' && col != 'defectLocks' && col != 'docSeq' && col != 'documents' && isApprovedMemberOf(orgId);
           allow create, update: if col != 'auditLogs' && col != 'defectLocks' && col != 'docSeq'
             && isWriterOf(orgId)
+            && (isElevatedOf(orgId) || keepsClassification(col))
             && (isManagerOf(orgId)
                 || (col != 'sites' && keepsDecision(col, beforeData(), request.resource.data)));
           allow delete: if col != 'auditLogs' && col != 'docSeq' && isManagerOf(orgId);

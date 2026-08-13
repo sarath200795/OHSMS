@@ -325,3 +325,58 @@ describe('getting a document id that is not there', () => {
     await assertFails(missing('bySite'))
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MEDIUM-8: the classification was enforced on READ and unprotected on WRITE.
+// Any member who could legitimately reach a restricted document — through their
+// own site access — could publish it org-wide, and any member who learned a
+// document id could overwrite one they cannot read. A classification the
+// classified party can remove is advisory.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('a classification cannot be removed by the people it restricts', () => {
+  const asDb = (uid) => testEnv.authenticatedContext(uid).firestore()
+  const docRef = (uid, id = 'siteDoc') => doc(asDb(uid), 'organizations', ORG, 'documents', id)
+
+  it('refuses a member publishing a restricted document org-wide', async () => {
+    // bySite reaches this document legitimately — that is the point.
+    await assertSucceeds(getDoc(docRef('bySite')))
+    await assertFails(setDoc(docRef('bySite'), { ...SITE_DOC, visibility: 'all' }))
+  })
+
+  it('refuses a member re-filing it to a different site', async () => {
+    await assertFails(setDoc(docRef('bySite'), { ...SITE_DOC, siteId: 'site-other' }))
+    await assertFails(setDoc(docRef('bySite'), { ...SITE_DOC, level: 'org' }))
+  })
+
+  // The label is frozen, not the document. A member still does the day job.
+  it('still lets that member edit everything else about it', async () => {
+    await assertSucceeds(setDoc(docRef('bySite'), { ...SITE_DOC, title: 'Plant 2 evacuation plan rev C' }))
+  })
+
+  it('lets an elevated role change the classification, which is whose job it is', async () => {
+    await assertSucceeds(setDoc(docRef('manager1'), { ...SITE_DOC, visibility: 'all' }))
+    await assertSucceeds(setDoc(docRef('admin1'), { ...SITE_DOC, siteId: 'site-other' }))
+  })
+
+  // A create has no prior state to preserve: the label is chosen once, then
+  // frozen against ordinary members.
+  it('still lets a member create a document and classify it then', async () => {
+    await assertSucceeds(
+      setDoc(doc(asDb('bySite'), 'organizations', ORG, 'documents', 'fresh'), {
+        title: 'New SOP', level: 'site', siteId: 'site-plant2', visibility: 'site',
+        siteRegion: 'South', siteEntity: 'COCO',
+      })
+    )
+  })
+
+  // Older documents carry no visibility key at all. Reading the field directly
+  // would raise, and a raising rule denies — refusing every edit to the oldest
+  // documents in the library rather than protecting a label they never had.
+  it('does not lock out edits to a document written before the field existed', async () => {
+    await assertSucceeds(
+      setDoc(doc(asDb('bySite'), 'organizations', ORG, 'documents', 'legacyDoc'), {
+        title: 'Old SOP', version: '1.1',
+      })
+    )
+  })
+})

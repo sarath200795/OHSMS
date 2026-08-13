@@ -7,7 +7,7 @@ import {
   assertFails,
   assertSucceeds,
 } from '@firebase/rules-unit-testing'
-import { doc, getDoc, getDocs, collection, query, where, setDoc, deleteDoc, writeBatch } from 'firebase/firestore'
+import { doc, getDoc, getDocs, collection, query, where, setDoc, deleteDoc, writeBatch, serverTimestamp } from 'firebase/firestore'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const PROJECT_ID = 'ohsms-demo'
@@ -965,12 +965,30 @@ describe('RBAC', () => {
     const alice = testEnv.authenticatedContext('alice').firestore()
     await assertSucceeds(
       setDoc(doc(alice, 'organizations', 'orgA', 'auditLogs', 'l1'), {
-        action: 'x', at: Date.now(), actorUid: 'alice',
+        action: 'x', at: serverTimestamp(), actorUid: 'alice',
       })
     )
     await assertFails(
       setDoc(doc(alice, 'organizations', 'orgA', 'auditLogs', 'l1'), {
-        action: 'y', at: Date.now(), actorUid: 'alice',
+        action: 'y', at: serverTimestamp(), actorUid: 'alice',
+      })
+    )
+  })
+
+  // Was Date.now(), and that was the hole: a real entry under your own uid,
+  // dated whenever you like. Every human reading the page sees a plausible
+  // backdated event and only a direct Firestore query could tell. Every
+  // app-side writer already uses serverTimestamp().
+  it('a member CANNOT choose the time an audit entry claims', async () => {
+    const alice = testEnv.authenticatedContext('alice').firestore()
+    await assertFails(
+      setDoc(doc(alice, 'organizations', 'orgA', 'auditLogs', 'backdated'), {
+        action: 'record.close', at: Date.now(), actorUid: 'alice',
+      })
+    )
+    await assertFails(
+      setDoc(doc(alice, 'organizations', 'orgA', 'auditLogs', 'backdated2'), {
+        action: 'record.close', at: new Date('2020-01-01'), actorUid: 'alice',
       })
     )
   })
@@ -1076,5 +1094,74 @@ describe('an orgIndex entry must be the claiming org own name', () => {
     await assertFails(
       setDoc(doc(three, 'orgIndex', 'three ltd'), { orgId: 'orgThree', name: 'Victim Company' }),
     )
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MEDIUM-15: the LOTO activity trail. Who applied and who removed a padlock on
+// live plant — the document an investigator reads after somebody is hurt. It
+// was described as append-only and was not: the legacy wildcard let any
+// approved member rewrite an entry, a manager delete one, and anyone create one
+// naming a colleague as the person who unlocked the machine.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('the LOTO activity trail is append-only for real', () => {
+  const seedEvent = () =>
+    testEnv.withSecurityRulesDisabled((ctx) =>
+      setDoc(doc(ctx.firestore(), 'lotoEvents', 'e1'), {
+        orgId: 'orgA', procedureId: 'p1', action: 'unlock', by: 'alice', at: new Date(),
+      })
+    )
+
+  it('lets a member of the org read it', async () => {
+    await seedEvent()
+    await assertSucceeds(getDoc(doc(testEnv.authenticatedContext('alice').firestore(), 'lotoEvents', 'e1')))
+  })
+
+  it('records an event under the caller own uid, stamped by the server', async () => {
+    const alice = testEnv.authenticatedContext('alice').firestore()
+    await assertSucceeds(
+      setDoc(doc(alice, 'lotoEvents', 'ok'), {
+        orgId: 'orgA', procedureId: 'p1', action: 'lock', by: 'alice', at: serverTimestamp(),
+      })
+    )
+  })
+
+  // The forgery that mattered: an entry saying somebody else took the lock off.
+  it('refuses an entry naming someone else as the person who acted', async () => {
+    const alice = testEnv.authenticatedContext('alice').firestore()
+    await assertFails(
+      setDoc(doc(alice, 'lotoEvents', 'forged'), {
+        orgId: 'orgA', procedureId: 'p1', action: 'unlock', by: 'bob', at: serverTimestamp(),
+      })
+    )
+  })
+
+  it('refuses an entry that chooses its own time', async () => {
+    const alice = testEnv.authenticatedContext('alice').firestore()
+    await assertFails(
+      setDoc(doc(alice, 'lotoEvents', 'backdated'), {
+        orgId: 'orgA', procedureId: 'p1', action: 'unlock', by: 'alice', at: new Date('2020-01-01'),
+      })
+    )
+  })
+
+  it('cannot be edited or deleted, by anyone', async () => {
+    await seedEvent()
+    for (const uid of ['alice', 'mem', 'bob']) {
+      const db = testEnv.authenticatedContext(uid).firestore()
+      await assertFails(setDoc(doc(db, 'lotoEvents', 'e1'), {
+        orgId: 'orgA', procedureId: 'p1', action: 'lock', by: uid, at: serverTimestamp(),
+      }))
+      await assertFails(deleteDoc(doc(db, 'lotoEvents', 'e1')))
+    }
+  })
+
+  it('stays inside its tenant', async () => {
+    await seedEvent()
+    const bob = testEnv.authenticatedContext('bob').firestore()
+    await assertFails(getDoc(doc(bob, 'lotoEvents', 'e1')))
+    await assertFails(setDoc(doc(bob, 'lotoEvents', 'x'), {
+      orgId: 'orgA', procedureId: 'p1', action: 'lock', by: 'bob', at: serverTimestamp(),
+    }))
   })
 })
