@@ -13,7 +13,7 @@ import {
 } from 'firebase/firestore'
 import { db } from '../firebase/config'
 import { putFile, removeFile } from '../../../shared/storage'
-import { PROCEDURE_STATUS, computeLockSummary } from '../constants/procedures'
+import { PROCEDURE_STATUS, computeLockSummary, mergeRevisedPoints } from '../constants/procedures'
 import { PUBLIC_COL, publicProcedure } from '../utils/publicProcedure'
 
 const COL = 'procedures'
@@ -117,13 +117,29 @@ export async function reviseProcedure(id, data, user, photos = {}) {
   const resolvedPhotos = await resolvePhotoMap(data.orgId, photos, await rawPhotoMap(id))
   const snap = await getDoc(doc(db, COL, id))
   const current = snap.data() || {}
-  const points = sanitizePoints(data.isolationPoints || [])
+
+  // A revision replaces the point set with what the form submitted, and those
+  // points carry no lockState. Carrying the live one across is what stops a
+  // revision erasing a lockout that is physically still on the equipment.
+  const { points, droppedLocked } = mergeRevisedPoints(
+    sanitizePoints(data.isolationPoints || []),
+    current.isolationPoints || [],
+  )
+  if (droppedLocked.length) {
+    throw new Error(
+      `Remove the lock on ${droppedLocked.join(', ')} before deleting ${droppedLocked.length === 1 ? 'that point' : 'those points'}.`,
+    )
+  }
+
   const body = {
     ...data,
     isolationPoints: points,
     revision: (current.revision ?? 0) + 1,
     status: PROCEDURE_STATUS.DRAFT,
-    lockSummary: computeLockSummary(points),
+    // WITH the group lock, like every other writer. Without it a revision made
+    // during an active group lockout recomputed the status as though the group
+    // had gone home.
+    lockSummary: computeLockSummary(points, current.groupLock),
     revisedBy: user.id,
     revisedByName: user.displayName,
     updatedAt: serverTimestamp(),
@@ -221,7 +237,15 @@ export async function setPointLock(procedureId, pointKey, locked, user, tech = n
     const snap = await tx.get(ref)
     if (!snap.exists()) throw new Error('Procedure not found')
     const data = snap.data()
-    if (data.status !== PROCEDURE_STATUS.APPROVED) {
+    // Approval gates APPLYING a lock, never removing one.
+    //
+    // It used to gate both, and revising a procedure resets it to draft — so a
+    // revision made while equipment was locked left padlocks that the system
+    // refused to release, with the only way out being to re-approve a procedure
+    // somebody was midway through editing. Nothing should ever stand between a
+    // person and taking their own lock off; the reasons to refuse an unlock are
+    // about lockout order (group members first), which is checked below.
+    if (locked && data.status !== PROCEDURE_STATUS.APPROVED) {
       throw new Error('Procedure must be approved before performing LOTO')
     }
     // Primary technician: required when locking; reuse the procedure's primary

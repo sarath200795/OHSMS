@@ -62,3 +62,43 @@ export function computeLockSummary(isolationPoints = [], groupLock = null) {
   if (groupActive) status = LOCK_STATUS.LOCKED
   return { total, lockedCount, status, groupActive }
 }
+
+/**
+ * Carry a live lockout across a revision.
+ *
+ * A revision replaces the isolation points wholesale with what the editor form
+ * submitted, and those points carry no lockState — the form never had one. So
+ * revising a procedure while its equipment was locked used to erase the record
+ * of the locks while the physical padlocks stayed on the machine, which is the
+ * worst direction for this to be wrong in: the system says safe, the equipment
+ * is not.
+ *
+ * Matching is by `key`, the stable id each point has carried since points were
+ * introduced. A point the revision DELETES cannot carry its lock anywhere, so
+ * those are reported rather than silently dropped — the caller refuses the
+ * revision, because deleting a locked point is someone editing away a lockout
+ * that people are working behind.
+ *
+ * Returns { points, droppedLocked } — pure, so the decision is the caller's and
+ * both halves are testable without a database.
+ */
+export function mergeRevisedPoints(incoming = [], current = []) {
+  const byKey = new Map((current || []).filter((p) => p?.key).map((p) => [p.key, p]))
+  const seen = new Set()
+
+  const points = (incoming || []).map((p) => {
+    if (!p?.key) return p
+    seen.add(p.key)
+    const was = byKey.get(p.key)
+    // Only fill in what the form could not know. An incoming point that
+    // already carries lockState is deliberate and is left alone.
+    if (!was?.lockState || p.lockState) return p
+    return { ...p, lockState: was.lockState }
+  })
+
+  const droppedLocked = (current || [])
+    .filter((p) => p?.key && p.lockState?.locked && !seen.has(p.key))
+    .map((p) => p.pointId || p.key)
+
+  return { points, droppedLocked }
+}
