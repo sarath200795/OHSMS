@@ -121,8 +121,13 @@ export default function ModulePage({ module, config }) {
     })
   }, [records, search, statusFilter, activeFilters, facets])
 
-  const openNew = () => {
-    setForm({ ...emptyRecord(config) })
+  // `prefill` lets a module open the form already pointed somewhere — the
+  // documents library uses it so "add to this folder" arrives with the site
+  // already chosen, rather than making someone re-pick the folder they just
+  // clicked. Merged over the empty record, never under it, so a prefilled
+  // field cannot be blanked by a default.
+  const openNew = (prefill) => {
+    setForm({ ...emptyRecord(config), ...(prefill || {}) })
     setEditing('new')
   }
   const openEdit = (r) => {
@@ -186,7 +191,7 @@ export default function ModulePage({ module, config }) {
         icon={module.icon}
         actions={
           canCreate && (
-            <Button icon={Plus} onClick={openNew}>
+            <Button icon={Plus} onClick={() => openNew()}>
               New {config.singular}
             </Button>
           )
@@ -198,7 +203,7 @@ export default function ModulePage({ module, config }) {
           library uses it for a folder per site, where clicking one sets the
           same facets the dropdowns do. Given setFacet so it cannot drift into
           being a second, competing filter mechanism. */}
-      {config.aside?.({ records: records || [], lookups, facets, setFacet })}
+      {config.aside?.({ records: records || [], lookups, facets, setFacet, openNew })}
 
       {/* Toolbar: search + module filters + status filter chips */}
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -271,7 +276,7 @@ export default function ModulePage({ module, config }) {
                 : 'Records will appear here once created.'
               : 'Try a different search or filter.'
           }
-          action={records.length === 0 && canCreate && <Button icon={Plus} onClick={openNew}>New {config.singular}</Button>}
+          action={records.length === 0 && canCreate && <Button icon={Plus} onClick={() => openNew()}>New {config.singular}</Button>}
         />
       ) : (
         <div className="card table-crisp overflow-x-auto p-0">

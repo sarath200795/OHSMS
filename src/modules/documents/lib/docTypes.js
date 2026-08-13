@@ -124,3 +124,46 @@ export function siteFolders(sites = [], docs = []) {
   folders.sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')))
   return { folders, orgWide }
 }
+
+/**
+ * Narrow the library by region, entity and site.
+ *
+ * A document is filed at org, region or site level — there is no entity level —
+ * so entity and region are answered through the SITE REGISTRY: a site-level
+ * document belongs to whatever region and entity its site belongs to. That is
+ * the only way an entity filter can mean anything without inventing a fourth
+ * level and making a document's home ambiguous.
+ *
+ * An org-wide document matches every narrowing, because it genuinely applies
+ * everywhere: filtering to one site and losing the org-wide policy that governs
+ * it is how someone concludes a site has no policy.
+ */
+export function matchesScope(doc, { region = '', entity = '', siteId = '' } = {}, sites = []) {
+  if (!region && !entity && !siteId) return true
+  if (!doc) return false
+
+  const level = doc.level || ''
+  if (level !== SITE && level !== 'region') return true // org-wide, or unclassified
+
+  if (level === 'region') {
+    // A region-level document answers a region question and nothing narrower:
+    // it names a region, not a site, so it cannot be attributed to one.
+    if (siteId || entity) return false
+    return String(doc.region || '') === region
+  }
+
+  if (siteId && doc.siteId !== siteId) return false
+
+  // The document's OWN snapshot first. classificationFields stamps siteRegion
+  // and siteEntity at write time, and firestore.rules reads those same fields
+  // to decide who may read the row — so filtering on them means the filter and
+  // the rule agree about which region a document is in. The registry is the
+  // fallback for documents written before the snapshot existed.
+  const site = (sites || []).find((s) => s && s.id === doc.siteId)
+  const docRegion = String(doc.siteRegion || site?.region || '')
+  const docEntity = String(doc.siteEntity || site?.entity || '')
+
+  if (region && docRegion !== region) return false
+  if (entity && docEntity !== entity) return false
+  return true
+}

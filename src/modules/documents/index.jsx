@@ -1,5 +1,5 @@
-import { useMemo } from 'react'
-import { ExternalLink, Paperclip, Folder as FolderIcon } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { ExternalLink, Paperclip, Folder as FolderIcon, Plus } from 'lucide-react'
 import { useAuth } from '../../shared/auth/AuthContext'
 import { putFile, MAX_UPLOAD_BYTES } from '../../shared/storage'
 import { safeHref } from '../../shared/safeUrl'
@@ -10,12 +10,12 @@ import { Badge } from '../../shared/ui'
 import { formatDate, isOverdue } from '../../shared/lib/format'
 import { useAccessibleSites, useSiteFacets } from '../../shared/org/useAccessibleSites'
 import {
-  ORG, REGION, SITE, LEVEL_OPTIONS,
+  REGION, SITE, LEVEL_OPTIONS,
   classificationFields, levelFilterOptions, levelSummary, matches, scopeOf,
 } from './lib/classification'
 import {
   DOC_TYPES, docTypeTone, docTypeLabel, SOURCE_OPTIONS, SOURCE_UPLOAD, SOURCE_LINK,
-  isSafeDocumentUrl, documentHref, documentLabel, documentFolder, siteFolders,
+  isSafeDocumentUrl, documentHref, documentLabel, documentFolder, siteFolders, matchesScope,
 } from './lib/docTypes'
 
 const module = MODULE_BY_KEY.documents
@@ -29,12 +29,12 @@ const module = MODULE_BY_KEY.documents
  */
 function useSiteRegistry() {
   const sites = useAccessibleSites()
-  const { regions } = useSiteFacets(sites)
+  const { regions, entities } = useSiteFacets(sites)
   // orgId rides along so the file field can work out its own storage path —
   // module-kit knows nothing about buckets, and the folder a document belongs
   // in is decided by the form, not by the kit.
   const { orgId } = useAuth()
-  return useMemo(() => ({ sites, regions, orgId }), [sites, regions, orgId])
+  return useMemo(() => ({ sites, regions, entities, orgId }), [sites, regions, entities, orgId])
 }
 
 /**
@@ -90,53 +90,95 @@ function LevelCell({ doc, sites }) {
  * The empty folders are the useful half. A site with nothing filed against it
  * reads as "0", which is the finding an audit is looking for; a view assembled
  * only from documents that exist can never show an absence.
+ *
+ * A list rather than tiles, capped so a hundred-site org does not push the
+ * library itself below the fold.
  */
-function Folders({ records, lookups, facets, setFacet }) {
+const PAGE = 20
+
+function Folders({ records, lookups, facets, setFacet, openNew }) {
+  const [shown, setShown] = useState(PAGE)
   const { folders, orgWide } = siteFolders(lookups.sites, records)
   if (!folders.length) return null
 
-  const openSite = facets.level === SITE ? facets.scope : null
-  const openOrg = facets.level === ORG
-  const pick = (level, scope) => {
-    setFacet('level', level)
-    setFacet('scope', scope)
-  }
+  const visible = folders.slice(0, shown)
+  const openSite = facets.siteId || ''
 
-  const tile = (key, name, count, active, onClick) => (
-    <button
-      key={key}
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={`flex min-w-[150px] flex-1 items-center gap-2 rounded-2xl px-3 py-2.5 text-left transition ${
-        active ? 'bg-brand-600 text-white shadow-clay-sm' : 'bg-clay-surface text-ink-700 shadow-clay-sm hover:bg-clay-100'
-      }`}
-    >
-      <FolderIcon size={16} className="flex-none opacity-70" />
-      <span className="min-w-0 flex-1 truncate text-sm font-semibold">{name}</span>
-      <span className={`flex-none text-xs font-bold ${active ? 'text-white/80' : count ? 'text-ink-500' : 'text-ink-300'}`}>
-        {count}
-      </span>
-    </button>
+  const Row = ({ id, name, count, active, onOpen, onAdd }) => (
+    <li className={`flex items-center gap-2 border-b border-ink-100 last:border-0 ${active ? 'bg-brand-50' : ''}`}>
+      <button
+        type="button"
+        onClick={onOpen}
+        aria-pressed={active}
+        className="flex min-w-0 flex-1 items-center gap-2.5 px-3 py-2 text-left transition hover:bg-clay-100"
+      >
+        <FolderIcon size={15} className={`flex-none ${active ? 'text-brand-600' : 'text-ink-400'}`} />
+        <span className={`min-w-0 flex-1 truncate text-sm ${active ? 'font-bold text-brand-700' : 'font-semibold text-ink-700'}`}>
+          {name}
+        </span>
+        {/* A folder holding nothing is the finding, so the zero is shown and
+            greyed rather than hidden. */}
+        <span className={`flex-none text-xs font-bold ${count ? 'text-ink-500' : 'text-ink-300'}`}>
+          {count}
+        </span>
+      </button>
+      {onAdd && (
+        <button
+          type="button"
+          onClick={onAdd}
+          title={`Add a document to ${name}`}
+          aria-label={`Add a document to ${name}`}
+          className="mr-2 flex-none rounded-lg p-1.5 text-ink-400 transition hover:bg-brand-50 hover:text-brand-600"
+        >
+          <Plus size={15} />
+        </button>
+      )}
+    </li>
   )
 
   return (
-    <div className="mb-4">
-      <div className="mb-2 flex items-center justify-between">
-        <p className="text-[10px] font-bold uppercase tracking-widest text-ink-400">Folders</p>
-        {(facets.level || facets.scope) && (
+    <div className="card mb-4 overflow-hidden p-0">
+      <div className="flex items-center justify-between px-3 py-2">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-ink-400">
+          Folders <span className="text-ink-300">({folders.length} sites)</span>
+        </p>
+        {openSite && (
           <button type="button" className="text-xs font-semibold text-brand-600 hover:underline"
-            onClick={() => pick('', '')}>
+            onClick={() => setFacet('siteId', '')}>
             Show all
           </button>
         )}
       </div>
-      <div className="flex flex-wrap gap-2">
-        {tile('org', 'Organization-wide', orgWide, openOrg, () => pick(openOrg ? '' : ORG, ''))}
-        {folders.map((f) =>
-          tile(f.id, f.name, f.count, openSite === f.id, () =>
-            (openSite === f.id ? pick('', '') : pick(SITE, f.id))))}
-      </div>
+
+      <ul className="max-h-[22rem] overflow-y-auto border-t border-ink-100">
+        {/* Everything not filed to a site. No add button: "organization-wide"
+            is a level someone chooses deliberately, not a folder to drop into. */}
+        <Row id="org" name="Organization-wide" count={orgWide} active={false}
+          onOpen={() => setFacet('siteId', '')} />
+        {visible.map((f) => (
+          <Row
+            key={f.id}
+            id={f.id}
+            name={f.name}
+            count={f.count}
+            active={openSite === f.id}
+            onOpen={() => setFacet('siteId', openSite === f.id ? '' : f.id)}
+            // Opens the form already filed to this folder — nobody should have
+            // to re-pick the site they just clicked.
+            onAdd={() => openNew({ level: SITE, siteId: f.id, source: SOURCE_UPLOAD })}
+          />
+        ))}
+      </ul>
+
+      {folders.length > shown && (
+        <button
+          type="button"
+          onClick={() => setShown((n) => n + PAGE)}
+          className="w-full border-t border-ink-100 px-3 py-2 text-xs font-semibold text-brand-600 transition hover:bg-clay-100"
+        >
+          Show {Math.min(PAGE, folders.length - shown)} more of {folders.length}
+        </button>
+      )}
     </div>
   )
 }
@@ -155,23 +197,48 @@ const config = {
     { value: 'under_review', label: 'Under review', tone: 'amber' },
     { value: 'archived', label: 'Archived', tone: 'gray' },
   ],
+  // Region / Entity / Site, each standing on its own rather than the old
+  // level-then-scope pair. Someone looking for a site's fire drawings should
+  // not have to know they must pick "Site" before a site list appears.
+  //
+  // All three read the snapshot on the document (siteRegion / siteEntity),
+  // which is what firestore.rules reads to decide who may see the row — so the
+  // filter and the rule cannot disagree about which region a document is in.
+  // matchesScope receives the whole facet set, so only one of the three needs
+  // to do the work; the other two match everything and let it decide.
   filters: [
+    {
+      key: 'region',
+      label: 'Region',
+      options: (lookups) => [
+        { value: '', label: 'Every region' },
+        ...lookups.regions.map((r) => ({ value: r, label: r })),
+      ],
+      match: (r, value, facets) => matchesScope(r, facets),
+    },
+    {
+      key: 'entity',
+      label: 'Entity',
+      options: (lookups) => [
+        { value: '', label: 'Every entity' },
+        ...(lookups.entities || []).map((e) => ({ value: e, label: e })),
+      ],
+      match: () => true,
+    },
+    {
+      key: 'siteId',
+      label: 'Site',
+      options: (lookups) => [
+        { value: '', label: 'Every site' },
+        ...lookups.sites.map((s) => ({ value: s.id, label: s.name })),
+      ],
+      match: () => true,
+    },
     {
       key: 'level',
       label: 'Level',
       options: (lookups, records) => levelFilterOptions(records),
       match: (r, value) => matches(r, value),
-    },
-    {
-      // Only meaningful once a level that names something is chosen.
-      key: 'scope',
-      label: (facets) => (facets.level === REGION ? 'Region' : 'Site'),
-      when: (facets) => facets.level === REGION || facets.level === SITE,
-      options: (lookups, records, facets) =>
-        facets.level === REGION
-          ? [{ value: '', label: 'Every region' }, ...lookups.regions.map((r) => ({ value: r, label: r }))]
-          : [{ value: '', label: 'Every site' }, ...lookups.sites.map((s) => ({ value: s.id, label: s.name }))],
-      match: (r, value, facets) => matches(r, facets.level, value),
     },
   ],
   columns: [

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   DOC_TYPES, docTypeTone, docTypeLabel,
   SOURCE_UPLOAD, SOURCE_LINK, isSafeDocumentUrl, documentHref, hasDocument,
-  documentLabel, documentFolder, siteFolders, FOLDER_PREFIX,
+  documentLabel, documentFolder, siteFolders, FOLDER_PREFIX, matchesScope,
 } from './docTypes'
 
 describe('the document types', () => {
@@ -141,5 +141,76 @@ describe('a folder for every site', () => {
   it('copes with no sites and no documents', () => {
     expect(siteFolders()).toEqual({ folders: [], orgWide: 0 })
     expect(siteFolders(sites, [null]).folders).toHaveLength(2)
+  })
+})
+
+describe('narrowing by region, entity and site', () => {
+  const sites = [
+    { id: 's1', name: 'Alpha', region: 'South', entity: 'COCO' },
+    { id: 's2', name: 'Beta', region: 'North', entity: 'FOFO' },
+  ]
+  const at = (level, extra = {}) => ({ level, ...extra })
+
+  it('matches everything when nothing is chosen', () => {
+    expect(matchesScope(at('site', { siteId: 's1' }), {}, sites)).toBe(true)
+  })
+
+  it('narrows a site document by its own site', () => {
+    expect(matchesScope(at('site', { siteId: 's1' }), { siteId: 's1' }, sites)).toBe(true)
+    expect(matchesScope(at('site', { siteId: 's2' }), { siteId: 's1' }, sites)).toBe(false)
+  })
+
+  // Entity and region are answered through the registry, because a document has
+  // no entity of its own — its site does.
+  it('narrows a site document by the region and entity of its site', () => {
+    expect(matchesScope(at('site', { siteId: 's1' }), { region: 'South' }, sites)).toBe(true)
+    expect(matchesScope(at('site', { siteId: 's1' }), { region: 'North' }, sites)).toBe(false)
+    expect(matchesScope(at('site', { siteId: 's1' }), { entity: 'COCO' }, sites)).toBe(true)
+    expect(matchesScope(at('site', { siteId: 's1' }), { entity: 'FOFO' }, sites)).toBe(false)
+  })
+
+  it('combines them', () => {
+    expect(matchesScope(at('site', { siteId: 's1' }), { region: 'South', entity: 'COCO' }, sites)).toBe(true)
+    expect(matchesScope(at('site', { siteId: 's1' }), { region: 'South', entity: 'FOFO' }, sites)).toBe(false)
+  })
+
+  // Losing the org-wide policy the moment you look at one site is how somebody
+  // concludes that site has no policy.
+  it('keeps an org-wide document under every narrowing', () => {
+    expect(matchesScope(at('org'), { siteId: 's1', region: 'South', entity: 'COCO' }, sites)).toBe(true)
+  })
+
+  it('answers a region question for a region document, and nothing narrower', () => {
+    const doc = at('region', { region: 'South' })
+    expect(matchesScope(doc, { region: 'South' }, sites)).toBe(true)
+    expect(matchesScope(doc, { region: 'North' }, sites)).toBe(false)
+    // It names a region, not a site, so it cannot be attributed to one.
+    expect(matchesScope(doc, { siteId: 's1' }, sites)).toBe(false)
+    expect(matchesScope(doc, { entity: 'COCO' }, sites)).toBe(false)
+  })
+
+  it('does not throw on a site that has left the registry', () => {
+    expect(matchesScope(at('site', { siteId: 'gone' }), { region: 'South' }, sites)).toBe(false)
+    expect(matchesScope(null, { region: 'South' }, sites)).toBe(false)
+  })
+})
+
+describe('the snapshot the rules read is what the filter reads', () => {
+  // classificationFields stamps siteRegion/siteEntity onto the document, and
+  // firestore.rules decides who may READ the row from those same fields. If the
+  // filter used a different source the two could disagree about which region a
+  // document is in — the filter showing a row the rule would refuse.
+  it('prefers the document snapshot over the registry', () => {
+    const doc = { level: 'site', siteId: 's1', siteRegion: 'South', siteEntity: 'COCO' }
+    expect(matchesScope(doc, { region: 'South' }, [])).toBe(true)
+    expect(matchesScope(doc, { entity: 'COCO' }, [])).toBe(true)
+    // A site since moved to another region does not retro-move its documents.
+    expect(matchesScope(doc, { region: 'South' }, [{ id: 's1', region: 'North' }])).toBe(true)
+  })
+
+  it('falls back to the registry for a document written before the snapshot', () => {
+    const legacy = { level: 'site', siteId: 's1' }
+    expect(matchesScope(legacy, { region: 'South' }, [{ id: 's1', region: 'South' }])).toBe(true)
+    expect(matchesScope(legacy, { region: 'North' }, [{ id: 's1', region: 'South' }])).toBe(false)
   })
 })
