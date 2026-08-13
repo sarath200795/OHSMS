@@ -109,6 +109,11 @@ describe('the mirror belongs to its tenant', () => {
   const as = (uid) => testEnv.authenticatedContext(uid).firestore()
 
   it('lets an approved member of the owning org write and delete it', async () => {
+    // proc-2 needs a procedure behind it: a mirror may only be created for a
+    // procedure the writer's org actually owns (see the last block below).
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'procedures', 'proc-2'), { orgId: OWNER, equipment: 'Press' })
+    })
     await assertSucceeds(setDoc(doc(as('own'), 'procedureQr', 'proc-2'), mirror(OWNER)))
     await assertSucceeds(setDoc(doc(as('own'), 'procedureQr', 'proc-1'), mirror(OWNER)))
     await assertSucceeds(deleteDoc(doc(as('own'), 'procedureQr', 'proc-1')))
@@ -134,5 +139,40 @@ describe('the mirror belongs to its tenant', () => {
     await assertFails(deleteDoc(doc(as('aud'), 'procedureQr', 'proc-1')))
     // …but reading is what an auditor is for, and this one is public anyway.
     await assertSucceeds(getDoc(doc(as('aud'), 'procedureQr', 'proc-1')))
+  })
+})
+
+// The finding an ISO 27001 audit turned up hours after this shipped. The mirror
+// ID is a procedure ID, so a rule that only checks the org in the PAYLOAD lets
+// any tenant plant a mirror at another tenant's procedure — serving isolation
+// instructions of their choosing at the URL printed on that machine, and
+// locking the real owner out of ever correcting it.
+describe('a mirror belongs to the procedure it speaks for', () => {
+  const as = (uid) => testEnv.authenticatedContext(uid).firestore()
+
+  it('refuses another tenant planting a mirror at this org\'s procedure id', async () => {
+    // proc-2 belongs to OWNER; the attacker names their OWN org in the payload,
+    // which is what the old rule checked and passed.
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'procedures', 'proc-2'), { orgId: OWNER, equipment: 'Press' })
+    })
+    await assertFails(setDoc(doc(as('mal'), 'procedureQr', 'proc-2'), mirror(OTHER)))
+  })
+
+  it('refuses a mirror for a procedure that does not exist at all', async () => {
+    await assertFails(setDoc(doc(as('own'), 'procedureQr', 'no-such-procedure'), mirror(OWNER)))
+  })
+
+  it('still lets the owning org publish its own procedure', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'procedures', 'proc-3'), { orgId: OWNER, equipment: 'Press' })
+    })
+    await assertSucceeds(setDoc(doc(as('own'), 'procedureQr', 'proc-3'), mirror(OWNER)))
+  })
+
+  // The squatter's other prize was permanent denial of service: the owner's
+  // backfill could never overwrite the planted document.
+  it('leaves the owner able to overwrite its own mirror', async () => {
+    await assertSucceeds(setDoc(doc(as('own'), 'procedureQr', 'proc-1'), mirror(OWNER)))
   })
 })

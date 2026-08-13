@@ -381,10 +381,28 @@ service cloud.firestore {
     match /procedureQr/{procedureId} {
       allow get: if true;
       allow list: if false;
-      allow create: if isWriterOf(request.resource.data.orgId);
+
+      // The document ID is another tenant's procedure ID, so owning the org in
+      // the PAYLOAD is not enough — that only proves the writer owns the org
+      // they named, never that they own the procedure this mirror speaks for.
+      // Without the second clause any tenant could plant a mirror at someone
+      // else's procedure ID and serve attacker-written isolation instructions
+      // at the URL printed on that machine; worse, the real owner could then
+      // never overwrite it, because update pins to the squatter's orgId.
+      //
+      // getAfter, not get: createProcedure writes the procedure and this mirror
+      // in ONE batch, so at get() time the procedure does not exist yet. The
+      // backfill path has it committed already and getAfter reads the same.
+      allow create: if isWriterOf(request.resource.data.orgId)
+        && getAfter(/databases/$(database)/documents/procedures/$(procedureId)).data.orgId
+             == request.resource.data.orgId;
+
       allow update: if resource != null
         && isWriterOf(resource.data.orgId)
         && request.resource.data.orgId == resource.data.orgId;
+      // Pinned to the mirror's own org rather than the procedure's: delete runs
+      // in the same batch that deletes the procedure, so nothing would be left
+      // for getAfter to read.
       allow delete: if resource != null && isWriterOf(resource.data.orgId);
     }
 
