@@ -1,16 +1,18 @@
 import { useMemo, useState } from 'react'
-import { RefreshCw, Truck, AlertTriangle, QrCode, Download, FileText, CheckCircle2 } from 'lucide-react'
+import { RefreshCw, Truck, AlertTriangle, QrCode, Download, FileText, CheckCircle2, Gauge } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { PageHeader, EmptyState } from '../components/ui'
 import ExtinguisherTable from '../components/ExtinguisherTable'
 import ReportDefectModal from '../components/ReportDefectModal'
 import SubmitQuotationModal from '../components/SubmitQuotationModal'
+import SubmitHptModal from '../components/SubmitHptModal'
 import ListFilters from '../components/ListFilters'
 import { TableSkeleton } from '../components/Skeleton'
 import { useFleet } from '../context/FleetContext'
 import { useAuth } from '../context/AuthContext'
 import { markReceivedByVendor } from '../lib/firestore'
 import { hasQuotation } from '../lib/extinguisherLogic'
+import { isHptDue } from '../lib/hpt'
 import { emptyFilters, applyListFilters } from '../lib/listFilter'
 import { exportExtinguishers } from '../lib/exporter'
 import { safeHref } from '../../../shared/safeUrl'
@@ -21,6 +23,7 @@ export default function RefillDue() {
   const today = useMemo(() => new Date(), [])
   const [reportFor, setReportFor] = useState(null)
   const [quoteFor, setQuoteFor] = useState(null)
+  const [hptFor, setHptFor] = useState(null)
   const [busyId, setBusyId] = useState(null)
   const [filters, setFilters] = useState(emptyFilters())
 
@@ -68,7 +71,21 @@ export default function RefillDue() {
           today={today}
           renderActions={(ext) => (
             <>
-              {hasQuotation(ext) ? (
+              {/* A cylinder here because its HPT fell due needs the TEST
+                  recorded, not a quotation raised. The two are different events:
+                  a quotation is a step towards buying work, an HPT is the work,
+                  and passing it is what clears the unit from this list. Where
+                  both a refill and an HPT are due the test takes precedence —
+                  the cylinder cannot be refilled until it has passed. */}
+              {isHptDue(ext, today) ? (
+                <button
+                  className="btn bg-violet-600 px-2.5 py-1.5 text-xs text-white hover:bg-violet-700"
+                  onClick={() => setHptFor(ext)}
+                  title={`Hydrostatic test due ${ext.dateOfNextHPT || ''} — record the test and its certificate`}
+                >
+                  <Gauge size={14} /> Submit HPT
+                </button>
+              ) : hasQuotation(ext) ? (
                 <button
                   className="btn-soft px-2.5 py-1.5 text-xs"
                   disabled={busyId === ext.id}
@@ -85,6 +102,14 @@ export default function RefillDue() {
                 >
                   <FileText size={14} /> Submit quotation
                 </button>
+              )}
+
+              {/* A recorded failure is the one outcome that leaves the unit
+                  here, so it is stated on the row rather than buried. */}
+              {ext.hpt?.result === 'fail' && (
+                <span className="chip bg-red-50 text-red-700" title={`Failed on ${ext.hpt.testedOn || ''} · ${ext.hpt.vendor || ''}`}>
+                  <AlertTriangle size={12} /> HPT failed
+                </span>
               )}
               {hasQuotation(ext) && (
                 (ext.quotation?.fileData || ext.quotation?.fileUrl) ? (
@@ -120,6 +145,15 @@ export default function RefillDue() {
         open={!!quoteFor}
         onClose={() => setQuoteFor(null)}
         ext={quoteFor}
+        orgId={orgId}
+        orgName={orgName}
+        actor={{ uid: profile?.uid, name: profile?.name }}
+      />
+
+      <SubmitHptModal
+        open={!!hptFor}
+        onClose={() => setHptFor(null)}
+        ext={hptFor}
         orgId={orgId}
         orgName={orgName}
         actor={{ uid: profile?.uid, name: profile?.name }}

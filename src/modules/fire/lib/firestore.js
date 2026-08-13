@@ -43,6 +43,7 @@ import { putFile, removeFile, MAX_INLINE_BYTES, tooLargeForInline } from '../../
 import { reserveDocId } from '../../../shared/docId/reserve'
 import { reportError } from '../../../shared/monitoring'
 import { AUDIT, diffSummary } from './audit'
+import { hptUpdate, hptSummary } from './hpt'
 import { statsDeltaFor, accumulate } from './stats'
 
 // ── Path helpers ─────────────────────────────────────────────────────────────
@@ -738,6 +739,54 @@ export async function submitQuotation(orgId, orgName, id, { amount, vendor, ref,
     quotation,
     ...actionStamp(actorName, 'Quotation submitted'),
   }, { actor: { name: actorName }, action: AUDIT.WF_QUOTATION_SUBMITTED, summary: `Quotation submitted (${quotation.amount}, ${quotation.vendor || 'vendor n/a'})` })
+}
+
+/**
+ * Record a hydrostatic pressure test against a cylinder that was due one.
+ *
+ * The counterpart of submitQuotation, and deliberately not the same thing: a
+ * quotation is a step towards buying work, an HPT IS the work, and it is the
+ * event that clears the unit. So this writes the certificate and, on a pass,
+ * moves dateOfNextHPT — which is what takes the unit off the To Be Refilled
+ * list. On a FAILURE the date is left exactly where it is (see hptUpdate): a
+ * failed test condemns the cylinder, and advancing the date would make a
+ * condemned unit read as compliant for another cycle.
+ */
+export async function submitHpt(orgId, orgName, id, { testedOn, result, nextDueOn, vendor, ref, notes, fileName, fileType, fileData }, actorName) {
+  // Re-recording replaces the previous certificate; its cloud file would be
+  // orphaned with nothing left remembering the path.
+  const prev = await getExtinguisher(orgId, id)
+  if (prev?.hpt?.filePath) removeFile(prev.hpt.filePath)
+
+  const up = fileData ? await putFile(orgId, 'hpt-certificates', fileData, fileName) : null
+  const inlineBytes = fileData ? Math.floor((String(fileData).split(',')[1] || '').length * 0.75) : 0
+  if (!up && fileData && inlineBytes > MAX_INLINE_BYTES) {
+    throw new Error(tooLargeForInline(fileName))
+  }
+
+  const hpt = {
+    testedOn: testedOn || '',
+    result: result || '',
+    nextDueOn: nextDueOn || '',
+    vendor: vendor || '',
+    ref: ref || '',
+    notes: notes || '',
+    fileName: fileName || '',
+    fileType: fileType || '',
+    fileData: up ? null : fileData || null,
+    fileUrl: up?.url || null,
+    filePath: up?.path || null,
+    submittedAt: new Date().toISOString().slice(0, 10),
+    submittedBy: actorName || '',
+  }
+
+  const summary = hptSummary({ testedOn, result, vendor })
+  await updateExtinguisher(orgId, orgName, id, {
+    hpt,
+    ...hptUpdate({ testedOn, result, nextDueOn }),
+    ...actionStamp(actorName, summary),
+  }, { actor: { name: actorName }, action: AUDIT.WF_HPT_SUBMITTED, summary })
+  return hpt
 }
 
 /** Vendor received the extinguisher for refilling. */
