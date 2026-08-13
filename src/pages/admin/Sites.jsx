@@ -284,13 +284,20 @@ export default function Sites() {
         subtitle="Locations & departments — mapped, with a live safety summary"
         icon={Building2}
         actions={
-          canManage && (
-            <div className="flex flex-wrap gap-2">
-              <Button variant="ghost" icon={Download} onClick={exportSites}>Export</Button>
-              <Button variant="ghost" icon={Upload} onClick={openBulk}>Bulk upload</Button>
-              <Button icon={Plus} onClick={openNew}>Add site</Button>
-            </div>
-          )
+          // Export sits OUTSIDE the canManage gate on purpose: it writes
+          // nothing, and every row in the file is already on the screen of
+          // whoever clicked it. Gating a read behind a write permission is how
+          // an auditor ends up asking someone else to send them a list they can
+          // already see.
+          <div className="flex flex-wrap gap-2">
+            <Button variant="ghost" icon={Download} onClick={exportSites}>Export</Button>
+            {canManage && (
+              <>
+                <Button variant="ghost" icon={Upload} onClick={openBulk}>Bulk upload</Button>
+                <Button icon={Plus} onClick={openNew}>Add site</Button>
+              </>
+            )}
+          </div>
         }
       />
 

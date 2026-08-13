@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import toast from 'react-hot-toast'
-import { ClipboardList, Plus, Search, Filter, Trash2, ChevronRight, AlertTriangle } from 'lucide-react'
+import { ClipboardList, Plus, Search, Filter, Trash2, ChevronRight, AlertTriangle, Download } from 'lucide-react'
 import { PageHeader, Badge, EmptyState } from '../components/ui'
 import { useAuth } from '../context/AuthContext'
 import { useIncidents } from '../context/IncidentContext'
@@ -38,6 +38,17 @@ export default function Incidents() {
     })
   }, [incidents, search, type, severity, lifecycle])
 
+  const doExport = async () => {
+    if (!filtered.length) return toast.error('Nothing to export')
+    try {
+      const { exportIncidents } = await import('../lib/exporter')
+      const { incidents: n, actions } = exportIncidents(filtered, `incidents-${filtered.length}.xlsx`)
+      toast.success(`Exported ${n} incident${n === 1 ? '' : 's'} and ${actions} action${actions === 1 ? '' : 's'}`)
+    } catch (err) {
+      toast.error(err?.message || 'Export failed')
+    }
+  }
+
   const onDelete = async (e, inc) => {
     e.stopPropagation()
     if (!window.confirm(`Delete incident ${inc.refNo}? It can be restored from the Recycle Bin.`)) return
@@ -52,6 +63,14 @@ export default function Incidents() {
   return (
     <div>
       <PageHeader title="Incidents" subtitle={`${incidents.length} recorded`} icon={ClipboardList} tourId="incidents-header">
+        {/* Exports what the filters are currently showing, not the whole
+            register: the filters are on the next line, and a button that
+            ignored them would hand back a different list from the one on
+            screen. Lazy — xlsx is a large dependency and most visits to this
+            page never export. */}
+        <button type="button" className="btn-ghost" onClick={doExport}>
+          <Download size={16} /> Export
+        </button>
         <Link to="/incidents/new" className="btn-primary"><Plus size={16} /> Report Incident</Link>
       </PageHeader>
 
