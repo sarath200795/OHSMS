@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { ExternalLink, Paperclip, Folder as FolderIcon, Plus } from 'lucide-react'
+import { ExternalLink, Paperclip, Folder as FolderIcon, FolderOpen, Plus, ChevronLeft } from 'lucide-react'
 import { useAuth } from '../../shared/auth/AuthContext'
 import { putFile, MAX_UPLOAD_BYTES } from '../../shared/storage'
 import { safeHref } from '../../shared/safeUrl'
@@ -104,6 +104,37 @@ function Folders({ records, lookups, facets, setFacet, openNew }) {
   const visible = folders.slice(0, shown)
   const openSite = facets.siteId || ''
 
+  // Inside a folder the list of every other folder is in the way — the table
+  // below is now the contents, so this collapses to a way back out and a way to
+  // add here. The same shape a file manager uses, for the same reason.
+  if (openSite) {
+    const here = folders.find((f) => f.id === openSite)
+    return (
+      <div className="card mb-4 flex flex-wrap items-center gap-2 px-3 py-2">
+        <button
+          type="button"
+          onClick={() => setFacet('siteId', '')}
+          className="inline-flex items-center gap-1.5 text-sm font-semibold text-brand-600 hover:underline"
+        >
+          <ChevronLeft size={15} /> All folders
+        </button>
+        <span className="text-ink-300">/</span>
+        <FolderOpen size={15} className="text-ink-400" />
+        <span className="text-sm font-bold text-ink-900">{here?.name || 'Folder'}</span>
+        <span className="text-xs font-semibold text-ink-400">
+          {here?.count ?? 0} document{(here?.count ?? 0) === 1 ? '' : 's'}
+        </span>
+        <button
+          type="button"
+          onClick={() => openNew({ level: SITE, siteId: openSite, source: SOURCE_UPLOAD })}
+          className="ml-auto inline-flex items-center gap-1.5 rounded-xl bg-brand-600 px-3 py-1.5 text-xs font-bold text-white transition hover:brightness-95"
+        >
+          <Plus size={14} /> Add here
+        </button>
+      </div>
+    )
+  }
+
   const Row = ({ id, name, count, active, onOpen, onAdd }) => (
     <li className={`flex items-center gap-2 border-b border-ink-100 last:border-0 ${active ? 'bg-brand-50' : ''}`}>
       <button
@@ -138,16 +169,12 @@ function Folders({ records, lookups, facets, setFacet, openNew }) {
 
   return (
     <div className="card mb-4 overflow-hidden p-0">
-      <div className="flex items-center justify-between px-3 py-2">
+      {/* No "show all" here — reaching this point means no folder is open,
+          because the breadcrumb above returns early when one is. */}
+      <div className="px-3 py-2">
         <p className="text-[10px] font-bold uppercase tracking-widest text-ink-400">
           Folders <span className="text-ink-300">({folders.length} sites)</span>
         </p>
-        {openSite && (
-          <button type="button" className="text-xs font-semibold text-brand-600 hover:underline"
-            onClick={() => setFacet('siteId', '')}>
-            Show all
-          </button>
-        )}
       </div>
 
       <ul className="max-h-[22rem] overflow-y-auto border-t border-ink-100">
@@ -335,6 +362,16 @@ const config = {
   // the reason — the only validation seam the kit offers, and the right one:
   // this has to hold whether the value came from the form or from a paste.
   aside: (ctx) => <Folders {...ctx} />,
+
+  // In a folder, a file opens. Returning false hands the click back to the
+  // detail view, so a record that carries neither an upload nor a link still
+  // goes somewhere — a row that silently does nothing reads as broken.
+  onRowClick: (r) => {
+    const href = documentHref(r)
+    if (!href) return false
+    window.open(safeHref(href), '_blank', 'noopener,noreferrer')
+    return true
+  },
   compute: (form, lookups) => {
     if (form.source === SOURCE_LINK && !isSafeDocumentUrl(form.linkUrl)) {
       // Checked on the way IN as well as on render. A javascript: or data: URL

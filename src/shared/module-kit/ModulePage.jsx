@@ -299,7 +299,12 @@ export default function ModulePage({ module, config }) {
                 return (
                   <tr
                     key={r.id}
-                    onClick={() => setDetail(r)}
+                    // A module may claim the row click. The documents library
+                    // does: in a folder view a file should OPEN, the way it
+                    // would anywhere else that calls itself a folder. Falling
+                    // back to the detail view means a record with nothing to
+                    // open still goes somewhere rather than doing nothing.
+                    onClick={() => (config.onRowClick?.(r) ? null : setDetail(r))}
                     className="animate-fade-in-up cursor-pointer transition-colors hover:bg-clay-100"
                     style={{ animationDelay: `${Math.min(i, 12) * 35}ms` }}
                   >
