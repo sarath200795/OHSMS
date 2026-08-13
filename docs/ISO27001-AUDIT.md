@@ -20,6 +20,25 @@ already fixed. Every entry cites file:line — verify before you spend a day on 
 
 `app` = fixable in this repo. `org` = needs a policy, a person or a cadence.
 
+## Closed since the audit
+
+All three HIGH findings and the three MEDIUMs a security rule could close. Each
+was fixed, covered by tests against the emulator, and deployed to production.
+
+| Finding | What changed |
+| --- | --- |
+| **HIGH-1** A.8.3 — Storage delete granted on org membership alone, so the read-only auditor could destroy every uploaded file | `storage.rules` now reads the `role` claim it already had: create mirrors `isWriterOf`, delete mirrors `isManagerOf` |
+| **HIGH-2** A.8.22 — `/orgIndex` name squatting captured every future joiner of an unindexed org | an entry must be backed by an organization that carries that name, and the key must be that name normalised |
+| **HIGH-3** A.8.22 — `/procedureQr` could be claimed at another tenant's procedure ID | create also requires the procedure at that ID to belong to the same org |
+| **MEDIUM-8** A.8.12 — document classification writable by the members it restricts | the four classification fields are frozen unless elevated |
+| **MEDIUM-15** A.8.15 — `lotoEvents` claimed append-only, actually rewritable and forgeable | its own append-only rule; removed from the legacy wildcard, which is what actually granted the write |
+| **MEDIUM-18** A.8.15 — audit entries could be backdated | `at` must equal `request.time` |
+
+Rules tests went from 225 to 280 over these changes. Two existing tests had to
+be inverted on the way through, and both are worth noting: `a member deletes
+their own org files` and an audit entry written with `Date.now()` were each the
+vulnerability written down as expected behaviour.
+
 ## HIGH (3)
 
 ### HIGH-1 · A.8.3 Information access restriction · `app`
