@@ -48,6 +48,34 @@ service firebase.storage {
       return request.auth != null && request.auth.token.get('orgId', '') == orgId;
     }
 
+    // Role rides on the same token as orgId (functions/lib/claims.js CLAIM_KEYS),
+    // and until now this file never read it — so both enforcement surfaces
+    // disagreed about the same person. Firestore refuses an auditor every write
+    // (isWriterOf) and requires a manager to delete (isManagerOf); Storage let
+    // any member of the org delete anything in it. The files ARE the evidence —
+    // incident photos, permit documents, isolation procedure photos, drill
+    // evidence — and the auditor is described in firestore.rules as an outside
+    // party given a login to inspect the safety record. Deleting is
+    // unrecoverable and leaves nothing in the audit trail, which only records
+    // what the app chose to write.
+    function myRole() {
+      return request.auth != null ? request.auth.token.get('role', '') : '';
+    }
+
+    // Mirrors isWriterOf: an auditor reads the record, never edits it.
+    function canWriteTo(orgId) {
+      return inOrg(orgId) && myRole() != 'auditor';
+    }
+
+    // Mirrors isManagerOf. A token stamped before role was a claim yields '',
+    // which is not in this list — so a stale session loses the ability to
+    // delete rather than keeping it, and gets it back on the next sign-in
+    // (AuthContext forces getIdToken(true), and sessions do not outlive the
+    // browser session). Failing closed is the right direction for a delete.
+    function canDeleteFrom(orgId) {
+      return inOrg(orgId) && myRole() in ['admin', 'manager'];
+    }
+
     match /orgs/{orgId}/{kind}/{fileName} {
       allow read: if inOrg(orgId);
 
@@ -59,13 +87,13 @@ service firebase.storage {
       // vector. It did not. Nothing legitimately overwrites — storagePath()
       // prefixes 8 random bytes — so denying it outright costs nothing and
       // stops evidence being replaced in place.
-      allow create: if inOrg(orgId)
+      allow create: if canWriteTo(orgId)
         && resource == null
         && request.resource.size < 20 * 1024 * 1024;
 
       allow update: if false;
 
-      allow delete: if inOrg(orgId);
+      allow delete: if canDeleteFrom(orgId);
     }
 
     // Everything else is closed. New areas get their own explicit match rather

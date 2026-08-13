@@ -62,8 +62,12 @@ describe('a member reaches their own org and nothing else', () => {
     await assertSucceeds(uploadBytes(ref(memberOfA(), p(A, 'new.jpg')), bytes()))
   })
 
-  it('deletes their own org files', async () => {
-    await assertSucceeds(deleteObject(ref(memberOfA(), p(A))))
+  // Was `assertSucceeds`, and that assertion was the vulnerability written
+  // down: Storage granted delete on org membership alone while Firestore
+  // required a manager for the same act. Deletion now needs the same standing
+  // in both places — see the role block at the foot of this file.
+  it('CANNOT delete their own org files — that takes a manager', async () => {
+    await assertFails(deleteObject(ref(memberOfA(), p(A))))
   })
 
   // The hole this whole exercise exists to close.
@@ -133,5 +137,63 @@ describe('the limits that survived from the permissive rules', () => {
   it('closes every path outside the org prefix', async () => {
     await assertFails(uploadBytes(ref(memberOfA(), 'loose/file.jpg'), bytes()))
     await assertFails(uploadBytes(ref(memberOfA(), `orgs/${A}/too/deep/nested.jpg`), bytes()))
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The role dimension, which this suite never exercised — every context above
+// mints role:'member', which is why the two enforcement surfaces could disagree
+// about the same person unnoticed.
+//
+// Firestore refuses an auditor every write and requires a manager to delete.
+// Storage granted delete on org membership alone, so the read-only auditor —
+// an outside party given a login to inspect the safety record — could destroy
+// every incident photo, permit document and drill evidence file in the tenant.
+// Unrecoverable, and invisible to an audit trail that only records what the app
+// chose to write.
+// ─────────────────────────────────────────────────────────────────────────────
+const asRole = (uid, role) => testEnv.authenticatedContext(uid, { orgId: A, role }).storage()
+
+describe('the auditor is read-only in Storage too, not only in Firestore', () => {
+  it('reads the evidence, which is what the role exists for', async () => {
+    await assertSucceeds(getBytes(ref(asRole('aud', 'auditor'), p(A))))
+  })
+
+  it('cannot delete it', async () => {
+    await assertFails(deleteObject(ref(asRole('aud', 'auditor'), p(A))))
+  })
+
+  it('cannot upload either', async () => {
+    await assertFails(uploadBytes(ref(asRole('aud', 'auditor'), `orgs/${A}/docs/new.pdf`), bytes()))
+  })
+})
+
+describe('deleting a file needs the same standing Firestore asks for', () => {
+  it('refuses an ordinary member, who can still upload', async () => {
+    await assertFails(deleteObject(ref(asRole('mem', 'member'), p(A))))
+    await assertSucceeds(uploadBytes(ref(asRole('mem', 'member'), `orgs/${A}/docs/mem.pdf`), bytes()))
+  })
+
+  it('allows a manager and an admin', async () => {
+    await assertSucceeds(deleteObject(ref(asRole('mgr', 'manager'), p(A))))
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await uploadBytes(ref(ctx.storage(), p(A)), bytes())
+    })
+    await assertSucceeds(deleteObject(ref(asRole('adm', 'admin'), p(A))))
+  })
+
+  // A session stamped before role was a claim yields '' — not in the allowed
+  // list, so it loses delete rather than keeping it, and gets it back on the
+  // next sign-in. Failing closed is the right direction for an unrecoverable op.
+  it('refuses a token carrying an org but no role at all', async () => {
+    const stale = testEnv.authenticatedContext('stale', { orgId: A }).storage()
+    await assertFails(deleteObject(ref(stale, p(A))))
+    await assertSucceeds(uploadBytes(ref(stale, `orgs/${A}/docs/stale.pdf`), bytes()))
+  })
+
+  // Role must never substitute for tenancy: an admin is an admin of THEIR org.
+  it('does not let an admin of another org delete anything here', async () => {
+    const adminOfB = testEnv.authenticatedContext('badm', { orgId: B, role: 'admin' }).storage()
+    await assertFails(deleteObject(ref(adminOfB, p(A))))
   })
 })
