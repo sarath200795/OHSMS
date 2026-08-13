@@ -21,16 +21,66 @@ import { incidentInvestigations } from './incidents'
 
 const label = (map, key, fallback = '') => map[key]?.label || key || fallback
 
-/** Root cause is the investigation summary — the field the wizard asks for as
- *  "Summarize the root cause(s) and key findings". Several methods can be run
- *  on one incident, so they are joined with the method that produced each. */
+// The labels the 5-Why toolbar creates before anyone types over them. Exporting
+// "Why?" as a root cause is worse than exporting nothing: it fills the column
+// that an audit reads, so the gap stops looking like a gap.
+const PLACEHOLDER = /^(problem:?.*|why\??|why did this happen\??|why\? \(new path\)|root cause)$/i
+
+/**
+ * The answer at the end of a 5-Why chain.
+ *
+ * A 5-Why is a diagram, not prose: the finding is the LAST why — the node
+ * nothing else hangs off. An explicitly added "Add Root Cause" node wins when
+ * there is one, because someone marked it deliberately; otherwise every leaf is
+ * taken, since the toolbar's "Add Branch" exists precisely so a chain can fork
+ * into parallel causes and reporting only one of them would hide the rest.
+ *
+ * The problem node is excluded — it restates the incident, which the export
+ * already carries as Description.
+ */
+export function fiveWhyFindings(diagram) {
+  const nodes = Array.isArray(diagram?.nodes) ? diagram.nodes : []
+  const edges = Array.isArray(diagram?.edges) ? diagram.edges : []
+  if (!nodes.length) return []
+
+  const hasOutgoing = new Set(edges.map((e) => e?.source).filter(Boolean))
+  const notProblem = (n) => n?.id !== 'problem'
+
+  const explicit = nodes.filter((n) => notProblem(n) && n?.data?.kind === 'root')
+  const terminals = explicit.length
+    ? explicit
+    : nodes.filter((n) => notProblem(n) && !hasOutgoing.has(n?.id))
+
+  return terminals
+    .map((n) => String(n?.data?.label || '').trim())
+    .filter((l) => l && !PLACEHOLDER.test(l))
+}
+
+/**
+ * Root cause, per investigation.
+ *
+ * Two sources, and the order matters. For a 5-Why the finding lives in the
+ * diagram — the last why — and that is the answer, so it leads. The wizard's
+ * free-text summary ("Summarize the root cause(s) and key findings") follows as
+ * the reasoning. Before this, an investigation whose whole analysis was drawn
+ * and never re-typed into the summary box exported as an empty Root Cause,
+ * which is exactly the record an audit asks for.
+ */
 export function rootCauseOf(incident) {
   return incidentInvestigations(incident)
-    .filter((inv) => String(inv?.summary || '').trim())
     .map((inv) => {
-      const method = label(INVESTIGATION_METHOD_BY_KEY, inv.method)
-      return method ? `${method}: ${inv.summary.trim()}` : inv.summary.trim()
+      const parts = []
+      if (inv?.method === '5why') {
+        const findings = fiveWhyFindings(inv.diagram)
+        if (findings.length) parts.push(findings.join('; '))
+      }
+      const summary = String(inv?.summary || '').trim()
+      if (summary) parts.push(summary)
+      if (!parts.length) return ''
+      const method = label(INVESTIGATION_METHOD_BY_KEY, inv?.method)
+      return method ? `${method}: ${parts.join(' — ')}` : parts.join(' — ')
     })
+    .filter(Boolean)
     .join('\n')
 }
 

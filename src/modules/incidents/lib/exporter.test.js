@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { incidentRows, actionRows, rootCauseOf, actionsSummary } from './exporter'
+import { incidentRows, actionRows, rootCauseOf, actionsSummary, fiveWhyFindings } from './exporter'
 
 const incident = {
   id: 'i1',
@@ -124,5 +124,80 @@ describe('the actions sheet', () => {
     const s = actionsSummary(incident)
     expect(s.split('\n')).toHaveLength(2)
     expect(s).toContain('• Re-seat and inspect all beams in Bay C · Sam · due 2026-03-20 · Closed')
+  })
+})
+
+// A 5-Why is a diagram, not prose. The finding is the last why — the node
+// nothing else hangs off — and an investigation drawn but never re-typed into
+// the summary box used to export an empty Root Cause, which is exactly the
+// record an audit asks for.
+describe('the last why of a 5-Why', () => {
+  const node = (id, labelText, kind = 'box') => ({ id, data: { label: labelText, kind } })
+  const edge = (source, target) => ({ id: `e_${source}_${target}`, source, target })
+
+  const chain = {
+    nodes: [
+      node('problem', 'Problem: pallet fell', 'root'),
+      node('w1', 'Rack beam gave way'),
+      node('w2', 'Beam was not seated'),
+      node('w3', 'Reconfiguration was not checked'),
+    ],
+    edges: [edge('problem', 'w1'), edge('w1', 'w2'), edge('w2', 'w3')],
+  }
+
+  it('takes the end of the chain, not the problem it started from', () => {
+    expect(fiveWhyFindings(chain)).toEqual(['Reconfiguration was not checked'])
+  })
+
+  // Add Branch exists so a chain can fork into parallel causes. Reporting one
+  // of them would hide the rest.
+  it('takes every leaf when the chain forks', () => {
+    const forked = {
+      nodes: [...chain.nodes, node('w2b', 'Nobody signed off the change')],
+      edges: [...chain.edges, edge('w1', 'w2b')],
+    }
+    expect(fiveWhyFindings(forked)).toEqual(['Reconfiguration was not checked', 'Nobody signed off the change'])
+  })
+
+  // Someone marking a node with "Add Root Cause" said which one it is.
+  it('prefers a node explicitly marked as the root cause', () => {
+    const marked = {
+      nodes: [...chain.nodes, node('rc', 'No change-control on racking', 'root')],
+      edges: [...chain.edges, edge('w3', 'rc')],
+    }
+    expect(fiveWhyFindings(marked)).toEqual(['No change-control on racking'])
+  })
+
+  // Exporting "Why?" fills the column an audit reads, so the gap stops looking
+  // like a gap. Worse than exporting nothing.
+  it('ignores the placeholders the toolbar creates', () => {
+    const untouched = {
+      nodes: [node('problem', 'Problem: …', 'root'), node('w1', 'Why did this happen?'), node('w2', 'Why?')],
+      edges: [edge('problem', 'w1'), edge('w1', 'w2')],
+    }
+    expect(fiveWhyFindings(untouched)).toEqual([])
+  })
+
+  it('copes with no diagram at all', () => {
+    expect(fiveWhyFindings()).toEqual([])
+    expect(fiveWhyFindings({})).toEqual([])
+    expect(fiveWhyFindings({ nodes: 'nonsense', edges: null })).toEqual([])
+  })
+
+  it('leads the Root Cause column, with the summary as the reasoning', () => {
+    const inc = { investigations: [{ method: '5why', diagram: chain, summary: 'Change control gap.' }] }
+    expect(rootCauseOf(inc)).toBe('5-Why Analysis: Reconfiguration was not checked — Change control gap.')
+  })
+
+  it('still reports the diagram when nobody wrote a summary', () => {
+    const inc = { investigations: [{ method: '5why', diagram: chain, summary: '' }] }
+    expect(rootCauseOf(inc)).toBe('5-Why Analysis: Reconfiguration was not checked')
+  })
+
+  // Only 5-Why has a chain to walk; a fishbone's diagram is a different shape
+  // and must not be mined for a "last why" that does not exist.
+  it('does not walk the diagram of another method', () => {
+    const inc = { investigations: [{ method: 'fishbone', diagram: chain, summary: 'Man/Method.' }] }
+    expect(rootCauseOf(inc)).toBe('Fishbone (Ishikawa): Man/Method.')
   })
 })

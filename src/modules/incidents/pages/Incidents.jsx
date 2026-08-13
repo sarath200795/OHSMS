@@ -26,6 +26,8 @@ export default function Incidents() {
   const [type, setType] = useState('')
   const [severity, setSeverity] = useState('')
   const [lifecycle, setLifecycle] = useState('')
+  const [from, setFrom] = useState('')
+  const [to, setTo] = useState('')
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -34,9 +36,21 @@ export default function Incidents() {
       if (type && i.type !== type) return false
       if (severity && i.severity !== severity) return false
       if (lifecycle && i.lifecycle !== lifecycle) return false
+      // incidentDate is stored as YYYY-MM-DD, which compares correctly as a
+      // string — no Date parsing, so no timezone shifting a boundary incident
+      // into the wrong day. Both bounds are inclusive: someone asking for
+      // "March" means the whole of it, including the 31st.
+      if (from || to) {
+        const d = i.incidentDate || ''
+        // An incident with no date cannot be shown to fall inside a range.
+        // Including it would inflate a bounded total with nothing to notice.
+        if (!d) return false
+        if (from && d < from) return false
+        if (to && d > to) return false
+      }
       return true
     })
-  }, [incidents, search, type, severity, lifecycle])
+  }, [incidents, search, type, severity, lifecycle, from, to])
 
   const doExport = async () => {
     if (!filtered.length) return toast.error('Nothing to export')
@@ -98,7 +112,49 @@ export default function Incidents() {
           <option value="">All stages</option>
           {LIFECYCLE.map((l) => <option key={l.key} value={l.key}>{l.label}</option>)}
         </select>
+
+        {/* Labelled rather than two bare date boxes: a pair of unlabelled
+            inputs beside four dropdowns gives no clue which way round they go. */}
+        <label className="flex items-center gap-1.5 text-xs font-semibold text-ink-500">
+          From
+          <input
+            type="date"
+            className="input w-auto font-mono"
+            value={from}
+            max={to || undefined}
+            onChange={(e) => setFrom(e.target.value)}
+          />
+        </label>
+        <label className="flex items-center gap-1.5 text-xs font-semibold text-ink-500">
+          To
+          <input
+            type="date"
+            className="input w-auto font-mono"
+            value={to}
+            min={from || undefined}
+            onChange={(e) => setTo(e.target.value)}
+          />
+        </label>
+
+        {(search || type || severity || lifecycle || from || to) && (
+          <button
+            type="button"
+            className="btn-ghost text-xs"
+            onClick={() => { setSearch(''); setType(''); setSeverity(''); setLifecycle(''); setFrom(''); setTo('') }}
+          >
+            Clear
+          </button>
+        )}
       </div>
+
+      {/* Says what the export and the list below are actually covering. Without
+          it a narrowed range looks identical to a quiet quarter. */}
+      {(from || to) && (
+        <p className="mb-3 text-xs text-ink-500">
+          Showing {filtered.length} of {incidents.length} incidents
+          {from ? ` from ${from}` : ''}{to ? ` to ${to}` : ''}.
+        </p>
+      )}
 
       {filtered.length === 0 ? (
         <EmptyState icon={ClipboardList} title="No incidents found" hint={incidents.length ? 'Try clearing filters.' : 'Report your first incident to get started.'} action={<Link to="/incidents/new" className="btn-primary"><Plus size={16} /> Report Incident</Link>} />
