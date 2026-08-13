@@ -193,6 +193,13 @@ export default function ModulePage({ module, config }) {
         }
       />
 
+      {/* An optional module-owned panel above the toolbar. Rendered before the
+          filters because what it offers is a way INTO them — the documents
+          library uses it for a folder per site, where clicking one sets the
+          same facets the dropdowns do. Given setFacet so it cannot drift into
+          being a second, competing filter mechanism. */}
+      {config.aside?.({ records: records || [], lookups, facets, setFacet })}
+
       {/* Toolbar: search + module filters + status filter chips */}
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-1 flex-col gap-2 sm:flex-row sm:items-center">

@@ -1,8 +1,11 @@
+import { useRef, useState } from 'react'
+import { Paperclip, X } from 'lucide-react'
+import toast from 'react-hot-toast'
 import { Field, Input, Textarea, Select } from '../ui'
 import { fieldOptions, visibleFields } from './fields'
 
 // Renders a form from a module's `fields` config. Supported types:
-// text | textarea | number | date | select | email.
+// text | textarea | number | date | select | email | file.
 //
 // `lookups` is whatever the module's `useLookups` hook returned — live reference
 // data a field builds itself from, such as the site registry behind a Site
@@ -24,6 +27,9 @@ export default function RecordForm({ fields, value, onChange, lookups }) {
               onChange={set(f.key)}
               placeholder={f.placeholder}
             />
+          ) : f.type === 'file' ? (
+            <FileField field={f} value={value[f.key]} form={value} lookups={lookups}
+              onChange={(v) => onChange({ ...value, [f.key]: v })} />
           ) : f.type === 'select' ? (
             <Select id={f.key} required={f.required} value={value[f.key] ?? ''} onChange={set(f.key)}>
               {/* A dropdown with nothing in it should say where the choices come
@@ -59,5 +65,78 @@ export default function RecordForm({ fields, value, onChange, lookups }) {
         )
       })}
     </div>
+  )
+}
+
+/**
+ * A file on a record.
+ *
+ * The kit stays storage-agnostic: the FIELD declares how to store, via an
+ * `upload(file, form, lookups)` that resolves to whatever should be saved (a
+ * { url, path, name } object here). module-kit has no idea what a bucket is,
+ * and a module that files by site can work its own path out from the form —
+ * which is what the documents library does.
+ *
+ * The stored value is the upload RESULT, not the File. A half-finished pick
+ * must never look like an attachment, so nothing is written until the upload
+ * resolves, and a failure clears back to empty rather than leaving a filename
+ * with nothing behind it.
+ */
+function FileField({ field, value, form, lookups, onChange }) {
+  const [busy, setBusy] = useState(false)
+  const inputRef = useRef(null)
+
+  const pick = async (file) => {
+    if (!file) return
+    if (field.maxBytes && file.size > field.maxBytes) {
+      toast.error(`That file is too large (max ${Math.round(field.maxBytes / 1024 / 1024)} MB)`)
+      if (inputRef.current) inputRef.current.value = ''
+      return
+    }
+    setBusy(true)
+    try {
+      const stored = await field.upload?.(file, form, lookups)
+      if (!stored) throw new Error('Upload failed — the file was not saved')
+      onChange(stored)
+    } catch (e) {
+      toast.error(e?.message || 'Upload failed')
+      onChange(null)
+    } finally {
+      setBusy(false)
+      if (inputRef.current) inputRef.current.value = ''
+    }
+  }
+
+  if (busy) {
+    return <p className="rounded-xl bg-clay-surface px-3 py-2.5 text-sm text-ink-500 shadow-clay-inset">Uploading…</p>
+  }
+
+  if (value?.url) {
+    return (
+      <div className="flex items-center gap-2 rounded-xl bg-clay-surface px-3 py-2 shadow-clay-inset">
+        <Paperclip size={15} className="flex-none text-ink-400" />
+        <span className="truncate text-sm text-ink-700">{value.name || 'Attached file'}</span>
+        <button
+          type="button"
+          onClick={() => onChange(null)}
+          aria-label="Remove the attached file"
+          className="ml-auto flex-none rounded-lg p-1 text-ink-400 transition hover:bg-red-50 hover:text-red-600"
+        >
+          <X size={15} />
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <input
+      ref={inputRef}
+      id={field.key}
+      type="file"
+      accept={field.accept}
+      required={field.required}
+      onChange={(e) => pick(e.target.files?.[0])}
+      className="block w-full text-sm text-ink-600 file:mr-3 file:rounded-xl file:border-0 file:bg-clay-surface file:px-3 file:py-2 file:text-sm file:font-semibold file:text-ink-700 file:shadow-clay-sm"
+    />
   )
 }

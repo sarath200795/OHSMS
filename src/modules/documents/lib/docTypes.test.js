@@ -1,0 +1,145 @@
+import { describe, it, expect } from 'vitest'
+import {
+  DOC_TYPES, docTypeTone, docTypeLabel,
+  SOURCE_UPLOAD, SOURCE_LINK, isSafeDocumentUrl, documentHref, hasDocument,
+  documentLabel, documentFolder, siteFolders, FOLDER_PREFIX,
+} from './docTypes'
+
+describe('the document types', () => {
+  it('keeps the four the library started with', () => {
+    const values = DOC_TYPES.map((t) => t.value)
+    expect(values).toEqual(expect.arrayContaining(['Policy', 'SOP', 'SDS', 'Form']))
+  })
+
+  it('adds the engineering records a site has to produce on demand', () => {
+    const values = DOC_TYPES.map((t) => t.value)
+    expect(values).toEqual(expect.arrayContaining([
+      'GFC', 'HPT', 'Structural Stability', 'Load Balancing', 'UPS & Power Backup Calculation',
+    ]))
+  })
+
+  // The abbreviations are the ones people file under; the expansion is what
+  // somebody who has not seen them before needs.
+  it('expands the abbreviations in the label but files under the short value', () => {
+    expect(docTypeLabel('GFC')).toBe('GFC (Good For Construction)')
+    expect(docTypeLabel('HPT')).toBe('HPT (Hydrostatic Pressure Test)')
+  })
+
+  it('falls back rather than rendering undefined for an unknown type', () => {
+    expect(docTypeLabel('Whatever')).toBe('Whatever')
+    expect(docTypeLabel('')).toBe('—')
+    expect(docTypeTone('Whatever')).toBe('gray')
+  })
+
+  it('has no duplicate values', () => {
+    const values = DOC_TYPES.map((t) => t.value)
+    expect(new Set(values).size).toBe(values.length)
+  })
+})
+
+// A library is a place people click things. A javascript: URL stored by one
+// member and opened by another is stored XSS with an audience.
+describe('a link to a document', () => {
+  it('accepts http and https', () => {
+    expect(isSafeDocumentUrl('https://example.com/a.pdf')).toBe(true)
+    expect(isSafeDocumentUrl('http://intranet/doc')).toBe(true)
+  })
+
+  it('refuses every scheme that is not', () => {
+    for (const bad of [
+      'javascript:alert(1)',
+      'JavaScript:alert(1)',
+      'data:text/html;base64,PHNjcmlwdD4=',
+      'vbscript:msgbox',
+      'file:///etc/passwd',
+      'about:blank',
+    ]) {
+      expect(isSafeDocumentUrl(bad), bad).toBe(false)
+    }
+  })
+
+  it('refuses nothing at all, and anything unparseable', () => {
+    expect(isSafeDocumentUrl('')).toBe(false)
+    expect(isSafeDocumentUrl('   ')).toBe(false)
+    expect(isSafeDocumentUrl(null)).toBe(false)
+    expect(isSafeDocumentUrl('not a url')).toBe(false)
+  })
+})
+
+describe('where a document opens', () => {
+  it('uses the uploaded file for an upload', () => {
+    const doc = { source: SOURCE_UPLOAD, file: { url: 'https://cdn/x.pdf', name: 'x.pdf' } }
+    expect(documentHref(doc)).toBe('https://cdn/x.pdf')
+    expect(documentLabel(doc)).toBe('x.pdf')
+    expect(hasDocument(doc)).toBe(true)
+  })
+
+  it('uses the link for a link, named by its host', () => {
+    const doc = { source: SOURCE_LINK, linkUrl: 'https://www.sharepoint.com/a/b.pdf' }
+    expect(documentHref(doc)).toBe('https://www.sharepoint.com/a/b.pdf')
+    expect(documentLabel(doc)).toBe('sharepoint.com')
+  })
+
+  // The record must not become clickable just because a bad value was stored.
+  it('opens nothing when the stored link is unsafe', () => {
+    const doc = { source: SOURCE_LINK, linkUrl: 'javascript:alert(1)' }
+    expect(documentHref(doc)).toBe('')
+    expect(hasDocument(doc)).toBe(false)
+    expect(documentLabel(doc)).toBe('')
+  })
+
+  it('is empty for a record that carries neither', () => {
+    expect(hasDocument({})).toBe(false)
+    expect(documentHref()).toBe('')
+    expect(documentLabel({})).toBe('')
+  })
+
+  // A record filed as a link but still holding an old upload must not silently
+  // fall back to the file — the source is what the author chose.
+  it('does not fall back to a stale upload when the source is a link', () => {
+    const doc = { source: SOURCE_LINK, linkUrl: '', file: { url: 'https://cdn/old.pdf' } }
+    expect(documentHref(doc)).toBe('')
+  })
+})
+
+describe('a folder for every site', () => {
+  const sites = [
+    { id: 's2', name: 'Plant 2' },
+    { id: 's1', name: 'Alpha Depot' },
+  ]
+
+  it('files a site document under that site', () => {
+    expect(documentFolder({ level: 'site', siteId: 's1' })).toBe(`${FOLDER_PREFIX}-s1`)
+  })
+
+  it('files everything else in the root folder', () => {
+    expect(documentFolder({ level: 'org' })).toBe(FOLDER_PREFIX)
+    expect(documentFolder({ level: 'region', region: 'South' })).toBe(FOLDER_PREFIX)
+    expect(documentFolder({})).toBe(FOLDER_PREFIX)
+  })
+
+  // A site level with no site named is a half-finished record, not a folder.
+  it('does not invent a folder from a blank site id', () => {
+    expect(documentFolder({ level: 'site', siteId: '   ' })).toBe(FOLDER_PREFIX)
+  })
+
+  // The whole point: an empty folder says "nothing has been filed for this
+  // site", which is the finding an audit is looking for. A view built only from
+  // documents that exist can never show an absence.
+  it('lists every site, including the ones with nothing in them', () => {
+    const { folders } = siteFolders(sites, [{ level: 'site', siteId: 's1' }])
+    expect(folders.map((f) => [f.name, f.count])).toEqual([['Alpha Depot', 1], ['Plant 2', 0]])
+  })
+
+  it('counts everything not filed to a site as organization-wide', () => {
+    const { orgWide } = siteFolders(sites, [
+      { level: 'org' }, { level: 'region' }, { level: 'site', siteId: 's1' },
+    ])
+    expect(orgWide).toBe(2)
+  })
+
+  it('copes with no sites and no documents', () => {
+    expect(siteFolders()).toEqual({ folders: [], orgWide: 0 })
+    expect(siteFolders(sites, [null]).folders).toHaveLength(2)
+  })
+})
