@@ -254,11 +254,25 @@ describe('orgIndex cannot be repointed at another org', () => {
     )
   })
 
-  it("a member of the org CAN correct its own entry's name", async () => {
-    await seedIndex('orgA', 'acme corp', 'Acme Corp')
+  // Was a rename to 'Acme Corporation', which the key 'acme corp' no longer
+  // matches — that freedom WAS the display-level squat: keep an honest key while
+  // listOrganizations() shows a name the org is not called. A correction is now
+  // case and whitespace only; a genuinely different name is a different entry,
+  // which is the right semantic for a key that IS the name. (The seed names
+  // organizations after their id, so 'orgA' is what this org is actually called.)
+  it("a member of the org CAN correct its own entry's casing", async () => {
+    await seedIndex('orgA', 'orga', 'orgA')
     const alice = testEnv.authenticatedContext('alice').firestore() // admin of orgA
     await assertSucceeds(
-      setDoc(doc(alice, 'orgIndex', 'acme corp'), { orgId: 'orgA', name: 'Acme Corporation' })
+      setDoc(doc(alice, 'orgIndex', 'orga'), { orgId: 'orgA', name: 'orgA' })
+    )
+  })
+
+  it('but CANNOT rename it to something the organization is not called', async () => {
+    await seedIndex('orgA', 'orga', 'orgA')
+    const alice = testEnv.authenticatedContext('alice').firestore()
+    await assertFails(
+      setDoc(doc(alice, 'orgIndex', 'orga'), { orgId: 'orgA', name: 'Acme Corporation' })
     )
   })
 
@@ -280,9 +294,10 @@ describe('orgIndex cannot be repointed at another org', () => {
     // ensureOrgIndex(): an approved member creates the missing entry for their
     // own org. No batch, but the getAfter pin is satisfied by their existing
     // profile already naming that orgId.
+    // The org is seeded with name === its id, so this is its real name.
     const alice = testEnv.authenticatedContext('alice').firestore()
     await assertSucceeds(
-      setDoc(doc(alice, 'orgIndex', 'acme corp'), { orgId: 'orgA', name: 'Acme Corp' })
+      setDoc(doc(alice, 'orgIndex', 'orga'), { orgId: 'orgA', name: 'orgA' })
     )
   })
 })
@@ -979,6 +994,87 @@ describe('RBAC', () => {
       setDoc(doc(alice, 'organizations', 'orgA', 'auditLogs', 'anon'), {
         action: 'x', at: Date.now(),
       })
+    )
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HIGH-2 from the ISO 27001 audit: name squatting in the public index.
+//
+// The key IS the claim — whoever owns the entry for a name owns where everyone
+// typing that name ends up. Proving you own the orgId in the payload only says
+// "this is my org", never "my org is called that", and registering an org is
+// self-service. So any company not yet in the index was claimable by anyone,
+// capturing every future joiner into the squatter's tenant.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('an orgIndex entry must be the claiming org own name', () => {
+  const seedOrg = (id, name, uid) =>
+    testEnv.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore()
+      await setDoc(doc(db, 'organizations', id), { name, createdBy: uid })
+      await setDoc(doc(db, 'users', uid), {
+        orgId: id, role: 'admin', status: 'approved', name: uid, email: `${uid}@t.co`,
+      })
+    })
+
+  it('refuses squatting a name that is not yours, even with your own orgId', async () => {
+    await seedOrg('orgSquat', 'Squatter Ltd', 'squat')
+    const squatter = testEnv.authenticatedContext('squat').firestore()
+    // Payload names the squatter's own org — which is all the old rule checked.
+    await assertFails(
+      setDoc(doc(squatter, 'orgIndex', 'victim company'), { orgId: 'orgSquat', name: 'Victim Company' }),
+    )
+  })
+
+  // The other half: claim the key honestly but lie about the name in the entry,
+  // so listOrganizations() displays your org under someone else's name.
+  it('refuses an entry whose name is not what the organization is called', async () => {
+    await seedOrg('orgSquat2', 'Squatter Ltd', 'squat2')
+    const squatter = testEnv.authenticatedContext('squat2').firestore()
+    await assertFails(
+      setDoc(doc(squatter, 'orgIndex', 'squatter ltd'), { orgId: 'orgSquat2', name: 'Victim Company' }),
+    )
+  })
+
+  it('refuses a key that is not the name normalised', async () => {
+    await seedOrg('orgReal', 'Real Ltd', 'real')
+    const owner = testEnv.authenticatedContext('real').firestore()
+    await assertFails(
+      setDoc(doc(owner, 'orgIndex', 'something-else'), { orgId: 'orgReal', name: 'Real Ltd' }),
+    )
+  })
+
+  // ensureOrgIndex backfills from the live organization document, so an org
+  // that predates the index can still claim its own name — which is the whole
+  // reason that function exists.
+  it('lets an org claim its own name, trimmed and lowercased', async () => {
+    await seedOrg('orgOwn', 'Own Ltd', 'own2')
+    const owner = testEnv.authenticatedContext('own2').firestore()
+    await assertSucceeds(
+      setDoc(doc(owner, 'orgIndex', 'own ltd'), { orgId: 'orgOwn', name: 'Own Ltd' }),
+    )
+  })
+
+  it('still refuses repointing an existing entry at another org', async () => {
+    await seedOrg('orgOne', 'One Ltd', 'one')
+    await seedOrg('orgTwo', 'Two Ltd', 'two')
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'orgIndex', 'one ltd'), { orgId: 'orgOne', name: 'One Ltd' })
+    })
+    const two = testEnv.authenticatedContext('two').firestore()
+    await assertFails(setDoc(doc(two, 'orgIndex', 'one ltd'), { orgId: 'orgTwo', name: 'Two Ltd' }))
+  })
+
+  // Renaming the entry to a name the org does not carry was a display-level
+  // squat: the key stays honest while listOrganizations() shows a lie.
+  it('refuses renaming an entry to a name the org does not carry', async () => {
+    await seedOrg('orgThree', 'Three Ltd', 'three')
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'orgIndex', 'three ltd'), { orgId: 'orgThree', name: 'Three Ltd' })
+    })
+    const three = testEnv.authenticatedContext('three').firestore()
+    await assertFails(
+      setDoc(doc(three, 'orgIndex', 'three ltd'), { orgId: 'orgThree', name: 'Victim Company' }),
     )
   })
 })

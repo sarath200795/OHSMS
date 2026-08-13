@@ -295,17 +295,51 @@ service cloud.firestore {
     // profile does not exist yet, so isApprovedMemberOf cannot be used. The same
     // condition covers the self-heal backfill for pre-index orgs, where the
     // caller is already a member of the org being indexed.
+    // ── Public name → org index ───────────────────────────────────────────────
+    // The KEY is the claim. This maps a company name to an orgId so signup can
+    // resolve "Acme Manufacturing" without reading the member-only
+    // organizations collection — which means whoever owns the entry for a name
+    // owns where everyone typing that name ends up.
+    //
+    // Proving the writer owns the orgId in the PAYLOAD was never enough: it only
+    // says "this is my org", not "my org is called that". Registering an org is
+    // self-service, so that precondition cost one signup — and any company not
+    // yet in the index (the reason ensureOrgIndex exists) was claimable by
+    // anyone, capturing every one of its future joiners into the squatter's
+    // tenant as pending members.
+    //
+    // So the org itself has to carry the name being claimed, and the key has to
+    // be that name normalised the way the client normalises it
+    // (orgData.js orgIndexKey: trim + lowercase). getAfter because
+    // createOrganization writes the org, the profile and this entry in one batch.
     match /orgIndex/{key} {
+      // Declared inside the match: `key` is only bound here.
+      function claimsOwnName(orgId, name) {
+        return getAfter(/databases/$(database)/documents/organizations/$(orgId)).data.name == name
+          && name.trim().lower() == key;
+      }
+
       allow read: if true;
+
       allow create: if isSignedIn()
         && request.resource.data.keys().hasOnly(['orgId', 'name'])
         && request.resource.data.orgId is string
+        && request.resource.data.name is string
         && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.orgId
-             == request.resource.data.orgId;
-      // An entry may be corrected by its own org, but never repointed elsewhere.
+             == request.resource.data.orgId
+        && claimsOwnName(request.resource.data.orgId, request.resource.data.name);
+
+      // An entry may be corrected by its own org, but never repointed elsewhere
+      // and never renamed to something the org is not called. Since the key IS
+      // the normalised name, this now only permits fixing case or stray
+      // whitespace — a genuinely different name is a different entry, which is
+      // the correct semantic for a key that is the name.
       allow update: if isApprovedMemberOf(resource.data.orgId)
         && request.resource.data.keys().hasOnly(['orgId', 'name'])
-        && request.resource.data.orgId == resource.data.orgId;
+        && request.resource.data.orgId == resource.data.orgId
+        && request.resource.data.name is string
+        && claimsOwnName(resource.data.orgId, request.resource.data.name);
+
       allow delete: if false;
     }
 
