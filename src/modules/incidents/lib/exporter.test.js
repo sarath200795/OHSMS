@@ -201,3 +201,50 @@ describe('the last why of a 5-Why', () => {
     expect(rootCauseOf(inc)).toBe('Fishbone (Ishikawa): Man/Method.')
   })
 })
+
+// The rule stated plainly: 5-Why takes the last why; everything else takes the
+// investigation summary. Pinned per method, because the diagram walk is gated
+// on a string comparison and a fifth method added later must not start being
+// mined for a chain it does not have.
+describe('where the root cause comes from, by method', () => {
+  const diagram = {
+    nodes: [
+      { id: 'problem', data: { label: 'Problem: x', kind: 'root' } },
+      { id: 'n1', data: { label: 'A cause drawn on the canvas', kind: 'box' } },
+    ],
+    edges: [{ id: 'e1', source: 'problem', target: 'n1' }],
+  }
+
+  for (const [method, name] of [
+    ['fishbone', 'Fishbone (Ishikawa)'],
+    ['bowtie', 'Bow-Tie Analysis'],
+    ['fta', 'Fault Tree Analysis'],
+    ['eta', 'Event Tree Analysis'],
+  ]) {
+    it(`takes the summary for ${name}, and never the diagram`, () => {
+      const inc = { investigations: [{ method, diagram, summary: 'Barrier was not maintained.' }] }
+      expect(rootCauseOf(inc)).toBe(`${name}: Barrier was not maintained.`)
+      expect(rootCauseOf(inc)).not.toContain('drawn on the canvas')
+    })
+  }
+
+  // The reason the summary is kept as a fallback for 5-Why too: a chain that
+  // was started and left as placeholders yields no finding, and dropping the
+  // summary as well would export a blank Root Cause for an investigation that
+  // plainly recorded one.
+  it('falls back to the summary when a 5-Why chain yields nothing usable', () => {
+    const unfinished = {
+      nodes: [
+        { id: 'problem', data: { label: 'Problem: x', kind: 'root' } },
+        { id: 'w1', data: { label: 'Why?', kind: 'box' } },
+      ],
+      edges: [{ id: 'e1', source: 'problem', target: 'w1' }],
+    }
+    const inc = { investigations: [{ method: '5why', diagram: unfinished, summary: 'Written up in prose instead.' }] }
+    expect(rootCauseOf(inc)).toBe('5-Why Analysis: Written up in prose instead.')
+  })
+
+  it('is blank only when the investigation recorded nothing at all', () => {
+    expect(rootCauseOf({ investigations: [{ method: 'fishbone', diagram, summary: '' }] })).toBe('')
+  })
+})
