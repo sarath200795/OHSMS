@@ -99,3 +99,44 @@ export function sitesCsvTemplate(customFields = []) {
     `South Warehouse,South,Acme Logistics,"Avonmouth, Bristol, UK",51.5045,-2.6997,2${extra}\n`
   )
 }
+
+/**
+ * The site register as CSV, coordinates included.
+ *
+ * Headers are the SAME ones sitesCsvTemplate emits and buildKeyMap accepts, so
+ * the file round-trips: export, fix the coordinates in a spreadsheet, import
+ * the same file back. An export whose columns the importer rejects is a dead
+ * end, and the two would drift the first time either was edited alone — hence
+ * one source for the header row.
+ *
+ * Quoting is Papa's, not hand-rolled: addresses carry commas, names carry
+ * apostrophes, and a naive join produces a file that opens misaligned in Excel
+ * and imports as garbage.
+ */
+export const SITE_CSV_HEADERS = ['Site Name', 'Region', 'Entity', 'Address', 'Latitude', 'Longitude', 'First Aid Boxes']
+
+export function sitesToCsv(sites = [], customFields = []) {
+  const fields = [...SITE_CSV_HEADERS, ...customFields.map((f) => f.label)]
+  const data = (sites || [])
+    .filter(Boolean)
+    .map((s) => [
+      s.name ?? '',
+      s.region ?? '',
+      s.entity ?? '',
+      s.address ?? '',
+      // Blank, not 0 and not "null": a site whose coordinates were never set
+      // must read as missing, because a zero here is a real place in the Gulf
+      // of Guinea and would be plotted as one.
+      s.lat == null || s.lat === '' ? '' : s.lat,
+      s.lng == null || s.lng === '' ? '' : s.lng,
+      s.firstAidBoxes == null || s.firstAidBoxes === '' ? '' : s.firstAidBoxes,
+      ...customFields.map((f) => s.attributes?.[f.key] ?? ''),
+    ])
+  return Papa.unparse({ fields, data })
+}
+
+/** True when a site can actually be put on a map. */
+export function hasCoordinates(site) {
+  return Number.isFinite(Number(site?.lat)) && site?.lat !== '' && site?.lat != null
+    && Number.isFinite(Number(site?.lng)) && site?.lng !== '' && site?.lng != null
+}

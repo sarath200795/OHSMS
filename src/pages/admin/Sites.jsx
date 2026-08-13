@@ -18,7 +18,7 @@ import { initials } from '../../shared/lib/format'
 import { regionsOf, entitiesOf } from '../../shared/auth/access'
 import { normalizeScopeConfig } from '../../shared/org/scopeConfig'
 import { siteStats, linkAssets } from './siteStats'
-import { parseSitesCsv, sitesCsvTemplate } from './parseSitesCsv'
+import { parseSitesCsv, sitesCsvTemplate, sitesToCsv, hasCoordinates } from './parseSitesCsv'
 
 const SitesMap = lazy(() => import('./SitesMap'))
 
@@ -145,14 +145,41 @@ export default function Sites() {
     }
   }
 
-  const downloadTemplate = () => {
-    const blob = new Blob([sitesCsvTemplate(customFields)], { type: 'text/csv;charset=utf-8;' })
+  const saveCsv = (text, filename) => {
+    // BOM so Excel opens it as UTF-8. Without it a site name carrying an
+    // accent or a non-Latin script arrives mojibake, which is exactly the
+    // register most likely to be checked by someone who did not write it.
+    const blob = new Blob(['﻿', text], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = 'sites-template.csv'
+    a.download = filename
     a.click()
     URL.revokeObjectURL(url)
+  }
+
+  const downloadTemplate = () => saveCsv(sitesCsvTemplate(customFields), 'sites-template.csv')
+
+  /**
+   * The register as it is currently filtered, coordinates included.
+   *
+   * Exports what is ON SCREEN rather than everything: the filters are right
+   * there, and a button that silently ignores them hands back a different list
+   * from the one being looked at. The count goes in the toast so the two can be
+   * compared without opening the file.
+   *
+   * Same columns the importer accepts, so this file can be edited and put back.
+   */
+  const exportSites = () => {
+    const rows = filteredSites
+    if (!rows.length) return toast.error('No sites to export')
+    const withCoords = rows.filter(hasCoordinates).length
+    saveCsv(sitesToCsv(rows, customFields), `sites-${rows.length}.csv`)
+    toast.success(
+      withCoords === rows.length
+        ? `Exported ${rows.length} site${rows.length === 1 ? '' : 's'}`
+        : `Exported ${rows.length} — ${rows.length - withCoords} without coordinates`,
+    )
   }
 
   const importBulk = async () => {
@@ -259,6 +286,7 @@ export default function Sites() {
         actions={
           canManage && (
             <div className="flex flex-wrap gap-2">
+              <Button variant="ghost" icon={Download} onClick={exportSites}>Export</Button>
               <Button variant="ghost" icon={Upload} onClick={openBulk}>Bulk upload</Button>
               <Button icon={Plus} onClick={openNew}>Add site</Button>
             </div>
