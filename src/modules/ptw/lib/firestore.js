@@ -27,6 +27,7 @@ import { reserveDocId } from '../../../shared/docId/reserve'
 import { putFile, removeFile, MAX_INLINE_BYTES, tooLargeForInline } from '../../../shared/storage'
 import { AUDIT } from './audit'
 import { computeWindow, derivePermitStatus } from './permitStatus'
+import { mirrorDisplayFields } from './publicPermit'
 import { generateQrToken } from './qr'
 
 // ── Path helpers ─────────────────────────────────────────────────────────────
@@ -137,20 +138,11 @@ function fullMirror(orgId, orgName, permitId, p) {
     token: p.qrToken || '',
     permitNo: p.permitNo || '',
     docId: p.docId || '',
-    typeOfWork: p.typeOfWork || '',
     site: p.site || '',
-    jobLocation: p.jobLocation || '',
-    jobDescription: p.jobDescription || '',
-    issuingDepartment: p.issuingDepartment || '',
-    issuedToName: p.issuedToName || '',
-    hazards: p.hazards || [],
-    ppe: p.ppe || [],
-    precautions: p.precautions || [],
-    jsa: p.jsa || [],
-    participants: (p.participants || []).map((x) => ({ name: x.name, type: x.type, company: x.company || '' })),
-    fireWatchers: p.fireWatchers || [],
-    confinedWatcher: p.confinedWatcher || null,
-    createdByName: p.createdByName || '',
+    // Crew as COUNTS, and the display half withdrawn once the job is over —
+    // see publicPermit.js. This published every participant's name and employer
+    // to an unauthenticated URL for the life of the permit and then forever.
+    ...mirrorDisplayFields(p),
     ...mirrorStatusFields(p),
   }
 }
@@ -159,7 +151,14 @@ function fullMirror(orgId, orgName, permitId, p) {
 export async function updatePermitMirror(token, mergedPermit) {
   if (!token) return
   try {
-    await setDoc(qrRef(token), mirrorStatusFields(mergedPermit), { merge: true })
+    // The display half rides along, so a permit that closes has its detail
+    // actively blanked rather than left behind by a merge that only ever
+    // touched the status fields — which was the 'never withdrawn' half of it.
+    await setDoc(
+      qrRef(token),
+      { ...mirrorDisplayFields(mergedPermit), ...mirrorStatusFields(mergedPermit) },
+      { merge: true },
+    )
   } catch (e) {
     // eslint-disable-next-line no-console
     console.warn('[Permit to Work] permit mirror sync skipped:', e?.message || e)

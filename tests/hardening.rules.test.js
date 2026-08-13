@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { beforeAll, afterAll, beforeEach, describe, it } from 'vitest'
 import { initializeTestEnvironment, assertFails, assertSucceeds } from '@firebase/rules-unit-testing'
-import { doc, setDoc, updateDoc, getDoc, deleteDoc, collection, addDoc } from 'firebase/firestore'
+import { doc, setDoc, updateDoc, getDoc, deleteDoc, collection, addDoc, writeBatch } from 'firebase/firestore'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 let testEnv
@@ -189,5 +189,64 @@ describe('auditor is read-only in the rules, not just in the UI', () => {
     await assertSucceeds(
       addDoc(collection(as('mem'), 'organizations', VICTIM, 'incidents'), { title: 'genuine' })
     )
+  })
+})
+
+// Reproduction of the bulk Excel import: one batch writing the asset and its
+// public QR mirror together, which is what bulkUpsertExtinguishers does.
+describe('the extinguisher bulk import', () => {
+  const ext = (token) => ({
+    serialNo: 'S1', type: 'CO2', capacity: '5kg', entity: 'E', region: 'R',
+    centerName: 'C', dateOfDeployment: '', dateOfNextRefill: '', dateOfNextHPT: '',
+    status: 'active', physicalDefects: [], deletedAt: null, qrToken: token,
+  })
+  const mirror = (token, extId) => ({
+    orgId: VICTIM, orgName: 'Victim Ltd', extId, token,
+    serialNo: 'S1', type: 'CO2', capacity: '5kg', entity: 'E', region: 'R',
+    centerName: 'C', dateOfDeployment: '', dateOfNextRefill: '', dateOfNextHPT: '',
+    status: 'active', physicalDefects: [],
+  })
+
+  it('creates an asset and a fresh mirror in one batch, as an admin', async () => {
+    const db = testEnv.authenticatedContext('vic').firestore()
+    const batch = writeBatch(db)
+    batch.set(doc(db, 'organizations', VICTIM, 'extinguishers', 'new1'), ext('tok-new'))
+    batch.set(doc(db, 'qr', 'tok-new'), mirror('tok-new', 'new1'))
+    await assertSucceeds(batch.commit())
+  })
+
+  it('does the same as an ordinary member, who runs the imports', async () => {
+    const db = testEnv.authenticatedContext('mem').firestore()
+    const batch = writeBatch(db)
+    batch.set(doc(db, 'organizations', VICTIM, 'extinguishers', 'new2'), ext('tok-new2'))
+    batch.set(doc(db, 'qr', 'tok-new2'), mirror('tok-new2', 'new2'))
+    await assertSucceeds(batch.commit())
+  })
+
+  // The case the report describes: the spreadsheet carries a QR link for a code
+  // already printed and already in the index, so the mirror write is an UPDATE.
+  it('reuses a QR code the site already has printed', async () => {
+    const db = testEnv.authenticatedContext('mem').firestore()
+    const batch = writeBatch(db)
+    batch.set(doc(db, 'organizations', VICTIM, 'extinguishers', 'new3'), ext('tok-ext'))
+    batch.set(doc(db, 'qr', 'tok-ext'), mirror('tok-ext', 'new3'))
+    await assertSucceeds(batch.commit())
+  })
+})
+
+describe('bulk import — which half is refused', () => {
+  it('the extinguisher document alone', async () => {
+    const db = testEnv.authenticatedContext('vic').firestore()
+    await assertSucceeds(setDoc(doc(db, 'organizations', VICTIM, 'extinguishers', 'solo1'), {
+      serialNo: 'S1', type: 'CO2', capacity: '5kg', status: 'active', qrToken: 'tok-solo',
+    }))
+  })
+
+  it('the qr mirror alone', async () => {
+    const db = testEnv.authenticatedContext('vic').firestore()
+    await assertSucceeds(setDoc(doc(db, 'qr', 'tok-solo'), {
+      orgId: VICTIM, orgName: 'Victim Ltd', extId: 'solo1', token: 'tok-solo',
+      serialNo: 'S1', type: 'CO2', status: 'active',
+    }))
   })
 })

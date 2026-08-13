@@ -138,18 +138,23 @@ export default function PublicPermit() {
           </div>
         )}
 
-        {permit.participants?.length > 0 && (
+        {/* Counts, not a roster. How many people are meant to be in there is
+            the fact a rescue needs; who they are is not, and this page is
+            readable by anyone who photographed the code at the barrier. The
+            names live on the permit itself, behind sign-in. */}
+        {(permit.participantCount > 0 || permit.fireWatcherCount > 0 || permit.hasConfinedWatcher) && (
           <div className="card p-5">
             <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-ink-400">
-              People on this permit ({permit.participants.length})
+              People on this permit
             </p>
-            <ul className="space-y-1">
-              {permit.participants.map((p, i) => (
-                <li key={i} className="text-sm text-ink-700">
-                  {p.name}
-                  {p.company ? <span className="text-ink-400"> · {p.company}</span> : null}
-                </li>
-              ))}
+            <ul className="space-y-1 text-sm text-ink-700">
+              {permit.participantCount > 0 && (
+                <li>{permit.participantCount} on the work party</li>
+              )}
+              {permit.fireWatcherCount > 0 && (
+                <li>{permit.fireWatcherCount} fire watcher{permit.fireWatcherCount === 1 ? '' : 's'}</li>
+              )}
+              {permit.hasConfinedWatcher && <li>Confined-space watcher assigned</li>}
             </ul>
           </div>
         )}
