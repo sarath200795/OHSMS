@@ -2,10 +2,10 @@ import { useEffect, useMemo, useState } from 'react'
 import { ScrollText, Search, Download } from 'lucide-react'
 import { useAuth } from '../../shared/auth/AuthContext'
 import toast from 'react-hot-toast'
-import { subscribeAuditLogs, fetchAuditLogs } from '../../shared/org/orgData'
+import { subscribeAuditLogs, fetchAuditLogs, logAudit } from '../../shared/org/orgData'
 import { auditRows, auditExportSummary } from '../../shared/audit/auditExport'
 import { writeErrorMessage } from '../../shared/lib/writeError'
-import { auditLabel } from '../../shared/audit/audit'
+import { auditLabel, AUDIT } from '../../shared/audit/audit'
 import { MODULE_BY_KEY } from '../../shared/modules/registry'
 import { PageHeader, Badge, Input, SkeletonTable, EmptyState } from '../../shared/ui'
 import { formatDateTime } from '../../shared/lib/format'
@@ -16,7 +16,7 @@ const LIVE_LIMIT = 400
 const RANGE_LIMIT = 5000
 
 export default function AuditLog() {
-  const { orgId, orgName } = useAuth()
+  const { orgId, orgName, actor } = useAuth()
   const [logs, setLogs] = useState(null)
   const [search, setSearch] = useState('')
   const [from, setFrom] = useState('')
@@ -70,6 +70,15 @@ export default function AuditLog() {
       sheet['!cols'] = [{ wch: 24 }, { wch: 28 }, { wch: 22 }, { wch: 16 }, { wch: 22 }, { wch: 24 }, { wch: 28 }, { wch: 22 }, { wch: 60 }, { wch: 22 }]
       XLSX.utils.book_append_sheet(wb, sheet, 'Audit trail')
       XLSX.writeFile(wb, `audit-log-${from || 'start'}-to-${to || 'now'}.xlsx`)
+      // Recorded in the trail it is a copy of. Taking the audit log is the one
+      // export where an unrecorded copy matters most — it is the evidence
+      // itself leaving the system, and the next entry after this one is the
+      // proof of who took it.
+      logAudit(orgId, actor, AUDIT.EXPORT, {
+        module: 'core',
+        targetLabel: `${rows.length} audit entries`,
+        summary: `Exported the audit log (${from || 'earliest'} to ${to || 'latest'})${capped ? ', truncated at the query limit' : ''}`,
+      })
       toast.success(`Exported ${rows.length} entries`)
     } catch (e) {
       toast.error(e?.message || 'Export failed')

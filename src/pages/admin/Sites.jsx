@@ -8,7 +8,7 @@ import {
 import { useAuth } from '../../shared/auth/AuthContext'
 import {
   subscribeSites, createSite, updateSite, deleteSite, deleteSites, bulkCreateSites,
-  subscribeOrgUsers, subscribeCollections, emptyCollections, cleanAttributes,
+  subscribeOrgUsers, subscribeCollections, emptyCollections, cleanAttributes, logAudit,
 } from '../../shared/org/orgData'
 import { can, roleLabel } from '../../shared/auth/permissions'
 import {
@@ -18,6 +18,7 @@ import { initials } from '../../shared/lib/format'
 import { regionsOf, entitiesOf } from '../../shared/auth/access'
 import { normalizeScopeConfig } from '../../shared/org/scopeConfig'
 import { siteStats, linkAssets } from './siteStats'
+import { AUDIT } from '../../shared/audit/audit'
 import { parseSitesCsv, sitesCsvTemplate, sitesToCsv, hasCoordinates } from './parseSitesCsv'
 
 const SitesMap = lazy(() => import('./SitesMap'))
@@ -175,6 +176,14 @@ export default function Sites() {
     if (!rows.length) return toast.error('No sites to export')
     const withCoords = rows.filter(hasCoordinates).length
     saveCsv(sitesToCsv(rows, customFields), `sites-${rows.length}.csv`)
+    // The register, coordinates included, has left the system. No preventive
+    // control exists for a read the reader may make; the record that it
+    // happened is what remains.
+    logAudit(orgId, actor, AUDIT.EXPORT, {
+      module: 'core',
+      targetLabel: `${rows.length} sites`,
+      summary: `Exported ${rows.length} sites (${withCoords} with coordinates)`,
+    })
     toast.success(
       withCoords === rows.length
         ? `Exported ${rows.length} site${rows.length === 1 ? '' : 's'}`

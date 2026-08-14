@@ -25,6 +25,12 @@ export const AUDIT = {
   ACTION_CREATE: 'action.create',
   ACTION_UPDATE: 'action.update',
   ACTION_CLOSE: 'action.close',
+
+  // Taking a copy of a module out of the system. A.8.12 offers no preventive
+  // control for this in a browser-only architecture — an export is a read the
+  // reader is entitled to make — so the control that remains is a record that
+  // it happened, and by whom.
+  EXPORT: 'data.export',
 }
 
 // Human labels for the audit-log viewer.
@@ -45,6 +51,7 @@ export const AUDIT_LABEL = {
   [AUDIT.ACTION_CREATE]: 'Created action',
   [AUDIT.ACTION_UPDATE]: 'Updated action',
   [AUDIT.ACTION_CLOSE]: 'Closed action',
+  [AUDIT.EXPORT]: 'Exported data',
 }
 
 export const auditLabel = (action) => AUDIT_LABEL[action] || action

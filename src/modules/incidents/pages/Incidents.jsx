@@ -11,6 +11,8 @@ import {
   INCIDENT_TYPES, SEVERITY, LIFECYCLE,
 } from '../lib/constants'
 import { deleteIncident } from '../lib/incidents'
+import { logAudit } from '../../../shared/org/orgData'
+import { AUDIT } from '../../../shared/audit/audit'
 
 function fmtDate(ts) {
   if (!ts) return '—'
@@ -57,6 +59,16 @@ export default function Incidents() {
     try {
       const { exportIncidents } = await import('../lib/exporter')
       const { incidents: n, actions } = exportIncidents(filtered, `incidents-${filtered.length}.xlsx`)
+      // A copy of the incident register — narratives, root causes, and the
+      // injury detail behind them — has just left the system on someone's
+      // disk. There is no preventive control available for that in a
+      // browser-only architecture: an export is a read the reader is entitled
+      // to make. What remains is a record that it happened, and by whom.
+      logAudit(orgId, { uid: user?.uid, name: profile?.name }, AUDIT.EXPORT, {
+        module: 'incidents',
+        targetLabel: `${n} incidents, ${actions} actions`,
+        summary: `Exported ${n} incidents (${filtered.length === incidents.length ? 'whole register' : 'filtered'})`,
+      })
       toast.success(`Exported ${n} incident${n === 1 ? '' : 's'} and ${actions} action${actions === 1 ? '' : 's'}`)
     } catch (err) {
       toast.error(err?.message || 'Export failed')
