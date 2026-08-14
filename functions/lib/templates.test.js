@@ -155,6 +155,15 @@ describe('digest', () => {
     expect(out.text).toContain('Permits')
     expect(out.text).not.toContain('Training')
   })
+
+  // The only opt-out the mail tier honours is notificationsEnabled on the user
+  // record, and no screen in the app writes it. The footer has to name the route
+  // that exists rather than one the reader would go looking for and never find.
+  it('points the opt-out at an administrator, not at a profile screen', () => {
+    const out = digest(payload, { orgName: 'Acme', now: NOW })
+    expect(out.html).toContain('ask your OHS administrator')
+    expect(out.html).not.toMatch(/profile/i)
+  })
 })
 
 describe('escaping', () => {

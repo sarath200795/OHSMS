@@ -18,6 +18,7 @@
 import { initializeApp } from 'firebase-admin/app'
 import { getAuth } from 'firebase-admin/auth'
 import { getFirestore } from 'firebase-admin/firestore'
+import { getStorage } from 'firebase-admin/storage'
 import { onDocumentWritten } from 'firebase-functions/v2/firestore'
 import { onSchedule } from 'firebase-functions/v2/scheduler'
 import { onCall, HttpsError } from 'firebase-functions/v2/https'
@@ -353,7 +354,7 @@ function getMailer() {
 /**
  * One trigger per collection that carries corrective actions.
  *
- * Deliberately five narrow paths rather than one wildcard on
+ * Deliberately one narrow path each rather than one wildcard on
  * organizations/{orgId}/{col}/{docId}. A wildcard would fire on every write in
  * the product — audit logs, activity, counters — to discard nearly all of them,
  * and it would also match the notifications ledger that lib/notify.js writes to,
@@ -379,12 +380,17 @@ const actionTrigger = (collection) =>
 
 // Named one by one because ESM exports cannot be generated in a loop, and the
 // deploy tooling discovers functions by enumerating this module's exports.
-// A new source collection in lib/actionSources.js needs a line here too.
+// A new source collection in lib/actionSources.js needs a line here too — one
+// listed there and missing here assigns work no email ever mentions, which is
+// what the last three were. index.test.js asserts the two lists still agree.
 export const notifyIncidentActions = actionTrigger('incidents')
 export const notifyIllnessActions = actionTrigger('illnesses')
 export const notifyDrillActions = actionTrigger('mockDrills')
 export const notifyAuditFindingActions = actionTrigger('auditFindings')
 export const notifyConsultationActions = actionTrigger('consultations')
+export const notifyEscalationActions = actionTrigger('escalations')
+export const notifyLegalIssueActions = actionTrigger('legalIssues')
+export const notifyInspectionActions = actionTrigger('inspectionRecords')
 
 /**
  * The daily digest of what is overdue, per organization.
@@ -405,6 +411,35 @@ export const dailyDigest = onSchedule(
     })
 )
 
+let bucket = null
+const getBucket = () => (bucket ||= getStorage().bucket())
+
+/**
+ * Destroy the stored object a file pointer names, before the pointer goes.
+ *
+ * The Storage path is written on the pointer document and nowhere else, so
+ * deleting the document first strands the object in the bucket with nothing left
+ * in the database able to name it. For illness attachments that is retained
+ * occupational-health data that can no longer be found, produced or erased —
+ * the precise opposite of what a purge is for. The client's own purge has always
+ * removed the file first; see purgeIllness in
+ * src/modules/incidents/lib/illnesses.js. This one deleted only the pointer.
+ *
+ * Never throws. An object that has already gone is a success, and any other
+ * Storage failure is logged and stepped over: the documents still have to go, or
+ * a record 30 days past its retention window survives because a bucket had a bad
+ * minute — and the next run will not find the file either way.
+ */
+async function purgeStoredFile(store, path, ctx) {
+  try {
+    await store.file(path).delete({ ignoreNotFound: true })
+    return true
+  } catch (e) {
+    logger.error('retention: file left behind in storage', { ...ctx, path, error: e?.message || String(e) })
+    return false
+  }
+}
+
 /**
  * Make the Recycle Bin's promise true.
  *
@@ -420,14 +455,17 @@ export const dailyDigest = onSchedule(
  * retryCount 0 for the same reason the digest uses it: the handler never
  * throws, a failed org is logged and skipped, and tomorrow's run picks up
  * anything missed — a record already 30 days dead is not urgent.
+ *
+ * Exported for index.test.js, not for deploy: function discovery only picks up
+ * exports carrying an __endpoint, which a plain function does not.
  */
-async function purgeOrgCollection(db, orgId, spec, now) {
+export async function purgeOrgCollection(db, orgId, spec, now, store = null) {
   const col = db.collection('organizations').doc(orgId).collection(spec.collection)
   // Query by the field AND re-check in the plan. The query is a filter; the
   // plan is the guarantee, and only one of them is tested.
   const cutoff = new Date(now - PURGE_AFTER_DAYS * 24 * 60 * 60 * 1000)
   const snap = await col.where('deletedAt', '<=', cutoff).limit(MAX_PURGES_PER_RUN * 2).get()
-  if (snap.empty) return { purged: 0, kept: 0 }
+  if (snap.empty) return { purged: 0, kept: 0, files: 0 }
 
   const docs = snap.docs.map((d) => ({ id: d.id, deletedAt: d.data().deletedAt, data: d.data() }))
   const { purge, keep, capped } = planPurge(docs, { now })
@@ -435,6 +473,7 @@ async function purgeOrgCollection(db, orgId, spec, now) {
     logger.info('retention: capped', { orgId, collection: spec.collection, cap: MAX_PURGES_PER_RUN })
   }
 
+  let files = 0
   for (const id of purge) {
     const ref = col.doc(id)
     const row = docs.find((d) => d.id === id)
@@ -444,7 +483,16 @@ async function purgeOrgCollection(db, orgId, spec, now) {
     // could find them again.
     for (const sub of spec.subcollections || []) {
       const kids = await ref.collection(sub).get()
-      for (const kid of kids.docs) await kid.ref.delete()
+      for (const kid of kids.docs) {
+        // An attachment small enough to inline is base64 on the document
+        // itself and has no object behind it, which is not a failure.
+        const path = String(kid.data()?.path || '').trim()
+        if (path) {
+          const ctx = { orgId, collection: spec.collection, docId: id }
+          if (await purgeStoredFile(store || getBucket(), path, ctx)) files += 1
+        }
+        await kid.ref.delete()
+      }
     }
 
     // The public QR mirror lives outside the org path, keyed by token. Leaving
@@ -457,7 +505,7 @@ async function purgeOrgCollection(db, orgId, spec, now) {
     await ref.delete()
   }
 
-  return { purged: purge.length, kept: keep.length }
+  return { purged: purge.length, kept: keep.length, files }
 }
 
 export const purgeSoftDeleted = onSchedule(
@@ -467,14 +515,16 @@ export const purgeSoftDeleted = onSchedule(
     const now = Date.now()
     const orgs = await db.collection('organizations').get()
     let total = 0
+    let totalFiles = 0
 
     for (const org of orgs.docs) {
       for (const spec of PURGEABLE) {
         try {
-          const { purged, kept } = await purgeOrgCollection(db, org.id, spec, now)
+          const { purged, kept, files } = await purgeOrgCollection(db, org.id, spec, now)
           total += purged
+          totalFiles += files
           if (purged > 0) {
-            logger.info('retention: purged', { orgId: org.id, collection: spec.collection, purged, kept })
+            logger.info('retention: purged', { orgId: org.id, collection: spec.collection, purged, kept, files })
           }
         } catch (e) {
           // One bad collection must not stop the rest, and must not retry the
@@ -486,6 +536,6 @@ export const purgeSoftDeleted = onSchedule(
       }
     }
 
-    logger.info('retention: run complete', { organizations: orgs.size, purged: total })
+    logger.info('retention: run complete', { organizations: orgs.size, purged: total, files: totalFiles })
   }
 )

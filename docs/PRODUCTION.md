@@ -408,12 +408,115 @@ Signed in as a member of org A, in the browser console:
 should be org A's id. Then try to read a path under another org's prefix — it
 must fail. If the claim is `undefined`, the backfill has not reached that user.
 
-### What is still not deployed
+### The notification tier ships with this deploy
 
-The notification triggers and the scheduled digest (`functions/lib/templates.js`,
-`recipients.js`, `actionSources.js`) are written and tested but have no trigger
-wired to them. They belong in the same `functions/index.js`, and deploying them
-is a follow-up rather than a prerequisite for the storage fix.
+This section used to say the notification triggers "have no trigger wired to
+them". That has not been true since they were wired: `functions/index.js`
+exports five `onDocumentWritten` triggers (`:383-387`) and the `onSchedule`
+daily digest (`:397-406`), so `deploy --only functions` above ships them along
+with `syncUserClaims`. Nothing further is needed to deploy them.
+
+What they will not do is send email — that takes configuration, and until it
+exists they log instead. §4c is how you turn them on.
+
+## 4c. Turning on notifications  ⚠️ mail provider account required
+
+The tier is **deployed and running right now, sending nothing**. Five triggers
+fire on assignment writes and the digest runs at 07:00 `Asia/Kolkata`, and every
+message they produce goes to a log line rather than to a person. That is the
+designed default, not a fault — but it is invisible, so an organisation can be
+months into "we send overdue-action reminders" without one having left the
+system. If nobody has done the steps below, nobody is being notified.
+
+**The variables.** All server-side, read by `mailConfigFromEnv` and
+`appConfigFromEnv` in `functions/lib/notify.js` from the deployed functions'
+environment. None is a `VITE_` variable; putting them in `.env` or
+`.env.production` has no effect at all.
+
+| Variable | Required? | What it does |
+| --- | --- | --- |
+| `MAIL_PROVIDER` | **yes** | `resend` \| `sendgrid` \| `console`. Absent ⇒ `console`. |
+| `MAIL_API_KEY` | **yes** | The provider credential. Absent ⇒ falls back to `console`. |
+| `MAIL_FROM` | strongly | Sender address. See the warning below before skipping it. |
+| `MAIL_REPLY_TO` | no | Where replies land, if not the From address. |
+| `MAIL_DRY_RUN` | no | `true` keeps a credentialed provider logging instead of sending. |
+| `APP_BASE_URL` | strongly | Base of the links in each email. Empty ⇒ the templates render with no button, so the mail names a problem and offers no way to reach it. |
+
+**Both, or nothing.** `createMailer` in `functions/lib/email.js` only selects a
+real provider when `MAIL_PROVIDER` names one **and** `MAIL_API_KEY` is
+non-empty. A provider named without a key logs one error at cold start and then
+behaves exactly like an unconfigured deployment. So a half-finished setup looks
+identical to no setup, and that one log line is the only thing that tells them
+apart.
+
+**`MAIL_FROM` is not optional in practice.** Left unset it defaults to
+`OHS MS <onboarding@resend.dev>` — Resend's **shared sandbox sender**, the
+`from` fallback inside `createMailer`. It is a domain you do not own and cannot
+publish SPF, DKIM or DMARC for, it is shared with every other unconfigured
+Resend account, and safety notices arriving from it will be filtered as spam by
+recipients who most need to read them. Verify your own sending domain with the
+provider and set `MAIL_FROM` to an address on it before the first real send.
+
+**Put the key in Secret Manager, not in the environment.** A plain env var lives
+in the Cloud Run service configuration in cleartext — readable by any project
+Viewer, with no versioning, no access log and no rotation story (ISO27001-AUDIT
+LOW-13). Store it once:
+
+```bash
+npx firebase functions:secrets:set MAIL_API_KEY --project weehs-4eb28
+```
+
+and bind it in `functions/index.js` — declare
+`const MAIL_API_KEY = defineSecret('MAIL_API_KEY')` (from
+`firebase-functions/params`) and add `secrets: [MAIL_API_KEY]` to the five action
+triggers and to `dailyDigest`. The runtime then exposes the value as
+`process.env.MAIL_API_KEY`, so `mailConfigFromEnv` needs no change — only the
+declaration is missing today. Never create `functions/.env` with a real key in
+it; the remaining variables are not secret and belong there or in the deploy
+config.
+
+### Verifying mail is actually flowing
+
+Turning it on is not the same as it working, and the failure mode is silence, so
+check all three:
+
+1. **A real send, end to end.** Assign a corrective action to yourself on an
+   incident. Within a minute you should have the mail, and the ledger should
+   carry it: `organizations/{orgId}/notifications` gains a document with
+   `status: 'sent'` and a non-null `messageId`. `status: 'refused'` means the
+   provider rejected the address and will never be retried — the reason is on
+   the document and in the log.
+
+2. **The provider the functions actually picked.** Each instance logs it once,
+   on its first invocation after deploy (`functions/index.js:348`), so the send
+   above is what produces the line:
+
+   ```bash
+   npx firebase functions:log --project weehs-4eb28 | grep "mail provider"
+   ```
+
+   It must say `provider: resend` (or `sendgrid`). `provider: console` means the
+   key never reached the runtime — that is the whole failure, and no other
+   symptom announces it.
+
+3. **The digest, on its own schedule.** It runs 07:00 `Asia/Kolkata` and only
+   mails organisations that have something overdue, so an empty inbox is not
+   evidence. Force one (`gcloud`, not the Firebase CLI):
+
+   ```bash
+   gcloud scheduler jobs run firebase-schedule-dailyDigest-asia-south1 \
+     --location asia-south1 --project weehs-4eb28
+   ```
+
+Once the provider is real, roll it out with `MAIL_DRY_RUN=true` first if you
+want the full path exercised — recipients resolved, ledger written, templates
+rendered — while every message still goes to the log instead of a mailbox.
+
+Note for the sub-processor register: switching this on starts sending personal
+data (names, email addresses, incident text) to Resend or SendGrid. That is the
+ORG action recorded against ISO27001-AUDIT LOW-10 — sub-processor registered,
+DPA executed and transfer basis documented against the `asia-south1` residency
+claim **before** `MAIL_PROVIDER` is set, not after.
 
 ## 5. Deploys from CI, and staging  ⚠️ secrets required
 

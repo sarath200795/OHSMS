@@ -6,7 +6,9 @@ import { defineConfig } from 'vitest/config'
 // nothing at all.
 export default defineConfig({
   test: {
-    include: ['lib/**/*.test.js'],
+    // index.js is collected as well as lib/: the destructive half of the
+    // retention sweep lives there, and that is the half worth a test.
+    include: ['lib/**/*.test.js', 'index.test.js'],
     environment: 'node',
   },
 })

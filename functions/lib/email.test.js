@@ -124,12 +124,91 @@ describe('send contract', () => {
   it('sanitises the subject on the dryRun path as well', async () => {
     const info = vi.spyOn(console, 'info').mockImplementation(() => {})
     const m = createMailer({ provider: 'resend', apiKey: 'k', dryRun: true })
-    await m.send({ to: 'x@y.test', subject: 'One\r\nTwo', text: 'b' })
+    const id = await m.send({ to: 'x@y.test', subject: 'One\r\nTwo', text: 'b' })
     expect(global.fetch).not.toHaveBeenCalled()
-    expect(info.mock.calls[0][0]).toContain('One Two')
+    // The id is the only place the collapsed subject survives now — the dry run
+    // reports the attempt without reproducing what was in it.
+    expect(id).toContain('One Two')
+    expect(info.mock.calls[0][0]).not.toContain('One Two')
   })
 
   it('rejects an unknown provider by name', () => {
     expect(() => createMailer({ provider: 'pigeon' })).toThrow(/pigeon/)
+  })
+})
+
+// Nothing here is hypothetical: with no MAIL_PROVIDER set, this project sends
+// every notification through the console provider, so whatever it writes is
+// what platform operators can read in Cloud Logging.
+describe('what the console provider writes to the log', () => {
+  let info
+
+  // An incident notification, which is the worst thing this path can be handed.
+  const incident = {
+    to: ['nurse@acme.test', 'hse@acme.test'],
+    subject: 'Incident reported — chemical burn, Ravi Kumar',
+    text: 'Ravi Kumar was treated on site for a chemical burn to the left forearm.',
+  }
+
+  const logged = () => info.mock.calls.map((c) => c.join(' ')).join('\n')
+
+  beforeEach(() => {
+    info = vi.spyOn(console, 'info').mockImplementation(() => {})
+    delete process.env.MAIL_LOG_BODY
+  })
+
+  afterEach(() => {
+    delete process.env.MAIL_LOG_BODY
+  })
+
+  it('counts the recipients instead of naming them', async () => {
+    await createMailer({}).send(incident)
+    expect(logged()).toMatch(/recipients=2\b/)
+    expect(logged()).not.toContain('nurse@acme.test')
+    expect(logged()).not.toContain('hse@acme.test')
+  })
+
+  it('measures the subject and the body rather than reproducing them', async () => {
+    await createMailer({}).send(incident)
+    expect(logged()).not.toContain('Ravi Kumar')
+    expect(logged()).not.toContain('chemical burn')
+    expect(logged()).toMatch(new RegExp(`subject=${incident.subject.length} chars`))
+    expect(logged()).toMatch(new RegExp(`body=${incident.text.length} chars`))
+  })
+
+  it('leaks nothing through the keyless fallback either', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    await createMailer({ provider: 'resend' }).send(incident)
+    expect(global.fetch).not.toHaveBeenCalled()
+    expect(logged()).not.toContain('Ravi Kumar')
+    expect(logged()).not.toContain('nurse@acme.test')
+  })
+
+  it('leaks nothing through a dry run either', async () => {
+    await createMailer({ provider: 'resend', apiKey: 'k', dryRun: true }).send(incident)
+    expect(logged()).not.toContain('Ravi Kumar')
+    expect(logged()).not.toContain('nurse@acme.test')
+  })
+
+  it('still returns a message id, which the ledger records as proof of the send', async () => {
+    const id = await createMailer({}).send(incident)
+    expect(id).toBeTruthy()
+    expect(typeof id).toBe('string')
+  })
+
+  it('writes the body only when MAIL_LOG_BODY is switched on by hand', async () => {
+    process.env.MAIL_LOG_BODY = 'true'
+    await createMailer({}).send(incident)
+    expect(logged()).toContain('chemical burn')
+    expect(logged()).toContain('nurse@acme.test')
+  })
+
+  it('treats any other value of MAIL_LOG_BODY as off', async () => {
+    for (const v of ['', '1', 'yes', 'false']) {
+      info.mockClear()
+      process.env.MAIL_LOG_BODY = v
+      await createMailer({}).send(incident)
+      expect(logged()).not.toContain('chemical burn')
+    }
   })
 })

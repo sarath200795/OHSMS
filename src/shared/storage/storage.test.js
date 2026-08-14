@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import {
   safeFileName, storagePath, dataUrlToBlob,
   MAX_UPLOAD_BYTES, MAX_INLINE_BYTES, formatSize, tooLargeForInline,

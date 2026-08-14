@@ -111,6 +111,33 @@ const writeEvent = ({ orgId = 'orgA', docId = 'inc1', before = null, after = {},
 
 const capaFor = (uid) => ({ capa: [{ id: 'c1', description: 'Fix the guard', dueDate: '2026-08-20', assignees: [{ uid }] }] })
 
+// An audit as InternalAudit.jsx writes it: the finding names nobody and dates
+// itself with `auditeeDueDate`, and the responsible person is on the parent.
+const auditDoc = (over = {}) => ({
+  docId: 'IAF-14023',
+  status: 'Reported',
+  auditor: 'Meera Nair',
+  taskDetails: { auditee: 'Ravi Kumar', dept: 'Maintenance' },
+  findings: [{ id: 'AF-1', type: 'Major NC', desc: 'Machine guard missing', clause: '8.1', auditeeDueDate: '2026-08-01' }],
+  ...over,
+})
+
+/** The same db, but one organization's user read fails — a whole-tenant fault. */
+const usersUnreadableIn = (db, orgId) => ({
+  ...db,
+  collection: (name) => {
+    const q = db.collection(name)
+    if (name !== 'users') return q
+    return {
+      ...q,
+      where: (field, op, value) =>
+        value === orgId
+          ? { ...q, get: async () => { throw new Error('firestore unavailable') } }
+          : q.where(field, op, value),
+    }
+  },
+})
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('orgScope', () => {
@@ -305,6 +332,27 @@ describe('sendOnce', () => {
     expect(later.sent).toEqual([])
   })
 
+  // The provider has taken the message by this point. Treating a failed
+  // bookkeeping write as a failed send released the claim and rethrew, and the
+  // retry then delivered a second copy of safety mail already in an inbox.
+  it('keeps the claim and reports a send when the ledger write fails afterwards', async () => {
+    const log = { info: vi.fn(), error: vi.fn(), warn: vi.fn() }
+    const mailer = fakeMailer()
+    const brokenLedger = {
+      ...scope,
+      doc: (name, id) => ({ ...scope.doc(name, id), update: async () => { throw new Error('firestore unavailable') } }),
+    }
+
+    expect(await sendOnce(brokenLedger, mailer, message(), { now: NOW, log })).toMatchObject({ status: 'sent' })
+    expect([...db.store.keys()]).toHaveLength(1)
+    expect(log.error).toHaveBeenCalled()
+
+    // And the claim it kept is what stops the retry sending it again.
+    const retry = fakeMailer()
+    expect(await sendOnce(brokenLedger, retry, message(), { now: NOW, log })).toEqual({ status: 'duplicate' })
+    expect(retry.sent).toEqual([])
+  })
+
   it('gives different actions on the same document different keys', () => {
     const a = ledgerId(['actionAssigned', 'incidents', 'inc1', 'c1', 'u1'])
     const b = ledgerId(['actionAssigned', 'incidents', 'inc1', 'c2', 'u1'])
@@ -469,6 +517,24 @@ describe('onActionWrite', () => {
     expect(res).toEqual({ sent: 0, skipped: 1 })
   })
 
+  // Every field this trigger used to look for is absent from an audit finding,
+  // so it resolved nobody and mailed nobody, for every finding ever raised.
+  it('mails the auditee an audit finding raised against them', async () => {
+    const db = makeDb({ ...orgSeed, ...user('u1', { name: 'Ravi Kumar' }) })
+    const mailer = fakeMailer()
+    const res = await onActionWrite({
+      db,
+      mailer,
+      collection: 'auditFindings',
+      event: writeEvent({ docId: 'af1', after: auditDoc() }),
+      now: NOW,
+      log: { info: vi.fn(), error: vi.fn() },
+    })
+    expect(res).toEqual({ sent: 1, skipped: 0 })
+    expect(mailer.sent[0].to).toBe('u1@acme.test')
+    expect(mailer.sent[0].subject).toContain('Machine guard missing')
+  })
+
   it('logs the assignment it could not address to anyone', async () => {
     const db = makeDb({ ...orgSeed, ...user('u1', { name: 'Ravi' }), ...user('u2', { name: 'Ravi' }) })
     const log = { info: vi.fn(), error: vi.fn() }
@@ -534,6 +600,25 @@ describe('digestItems', () => {
       at
     )
     expect(items.actions.map((a) => a.title)).toEqual(['Late'])
+  })
+
+  // Findings date themselves with `auditeeDueDate`. Read as `dueDate` they came
+  // out undated, and the past-due filter below then dropped every one of them.
+  it('reports an overdue audit finding, which spells both of its fields differently', () => {
+    const items = digestItems({ actionDocs: [{ collection: 'auditFindings', data: auditDoc() }] }, at)
+    expect(items.actions).toEqual([
+      {
+        title: 'Major NC: Machine guard missing (clause 8.1)',
+        dueDate: '2026-08-01',
+        source: 'Audit finding',
+        context: 'IAF-14023 · Maintenance',
+      },
+    ])
+  })
+
+  it('leaves the findings of a verified and closed audit out of it', () => {
+    const items = digestItems({ actionDocs: [{ collection: 'auditFindings', data: auditDoc({ status: 'Closed' }) }] }, at)
+    expect(items.actions).toEqual([])
   })
 
   // The digest lists work nobody was ever assigned. Those are the rows most
@@ -624,21 +709,50 @@ describe('runDailyDigest', () => {
     expect(mailer.sent).toHaveLength(4)
   })
 
+  // The org-level catch is for a whole tenant being unreadable. One address
+  // failing is a smaller thing and is handled per recipient, below.
   it('carries on to the next tenant when one fails', async () => {
     const db = twoOrgs()
     const log = { info: vi.fn(), error: vi.fn() }
-    let first = true
-    const flaky = fakeMailer(() => {
-      if (first) {
-        first = false
-        throw new MailError('down', { status: 503, retryable: true })
-      }
+    const mailer = fakeMailer()
+    const res = await runDailyDigest({ db: usersUnreadableIn(db, 'orgA'), mailer, now: NOW, log })
+    expect(mailer.sent.map((m) => m.to)).toEqual(['b1@rival.test'])
+    expect(res.mailed).toBe(1)
+    expect(res.failed).toEqual(['orgA'])
+    expect(log.error).toHaveBeenCalled()
+  })
+
+  // The schedule runs with no retries, so an admin skipped here loses that
+  // day's digest entirely — and before this, so did every admin listed after
+  // them in the same organisation.
+  it('still mails the second admin when the first one fails', async () => {
+    const db = makeDb({
+      'organizations/orgA': { name: 'Acme' },
+      'users/a1': { name: 'A One', email: 'a1@acme.test', orgId: 'orgA', role: 'admin', status: 'approved' },
+      'users/a2': { name: 'A Two', email: 'a2@acme.test', orgId: 'orgA', role: 'admin', status: 'approved' },
+      'organizations/orgA/incidents/i1': { refNo: 'INC-1', capa: [{ id: 'c1', description: 'Acme overdue', dueDate: '2026-08-01' }] },
+    })
+    const log = { info: vi.fn(), error: vi.fn() }
+    const flaky = fakeMailer((m) => {
+      if (m.to === 'a1@acme.test') throw new MailError('down', { status: 503, retryable: true })
       return 'ok'
     })
     const res = await runDailyDigest({ db, mailer: flaky, now: NOW, log })
-    expect(res.mailed).toBe(1)
-    expect(res.failed).toHaveLength(1)
-    expect(log.error).toHaveBeenCalled()
+    expect(flaky.sent.map((m) => m.to)).toEqual(['a1@acme.test', 'a2@acme.test'])
+    expect(res).toMatchObject({ mailed: 1, skipped: 1, failed: [] })
+    expect(log.error).toHaveBeenCalledWith(expect.stringMatching(/one recipient/), expect.objectContaining({ uid: 'a1' }))
+  })
+
+  it('mails an audit finding the digest could not previously see', async () => {
+    const db = makeDb({
+      'organizations/orgA': { name: 'Acme' },
+      'users/a1': { name: 'A', email: 'a1@acme.test', orgId: 'orgA', role: 'admin', status: 'approved' },
+      'organizations/orgA/auditFindings/af1': auditDoc(),
+    })
+    const mailer = fakeMailer()
+    await runDailyDigest({ db, mailer, now: NOW, log: { info: vi.fn(), error: vi.fn() } })
+    expect(mailer.sent).toHaveLength(1)
+    expect(mailer.sent[0].text).toContain('Major NC: Machine guard missing (clause 8.1)')
   })
 
   it('skips an org with no reachable admin without paying for the scan', async () => {

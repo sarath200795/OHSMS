@@ -106,17 +106,40 @@ const providers = {
   },
 
   // ── Console ───────────────────────────────────────────────────────────────
-  // The default. An unconfigured deployment logs what it *would* have sent
+  // The default. An unconfigured deployment logs that it *would* have sent
   // instead of throwing, so triggers can be exercised in the emulator and a
   // missing API key never turns into a failed incident report.
+  //
+  // Metadata only, and that is not a style choice. This is the live path for any
+  // deployment with no MAIL_PROVIDER set, it is where a keyless provider falls
+  // back to, and it is where dry runs go — so writing the recipient, the subject
+  // and the body here copies an incident report or a health record out of the
+  // app's access rules and into Cloud Logging, which is read by platform
+  // operators and retained on its own schedule. A count and two lengths are
+  // enough for an operator to see mail was attempted and how big it was.
   console: {
     async send({ to, subject, text }) {
+      const recipients = asArray(to)
       // eslint-disable-next-line no-console
-      console.info(`[mail:console] → ${asArray(to).join(', ')}\n  ${subject}\n  ${text?.slice(0, 400)}`)
+      console.info(
+        `[mail:console] would send: recipients=${recipients.length}` +
+          ` subject=${String(subject ?? '').length} chars body=${String(text ?? '').length} chars`
+      )
+      if (logBodies()) {
+        // eslint-disable-next-line no-console
+        console.info(`[mail:console:body] → ${recipients.join(', ')}\n  ${subject}\n  ${text}`)
+      }
       return `console-${subject}`
     },
   },
 }
+
+// The escape hatch for emulator work, where seeing the rendered mail is the
+// whole point. Read per call rather than captured at import, so turning it on
+// does not mean restarting the emulator — and absent or anything other than
+// "true" it stays off, which is the only setting a deployment should ever have.
+const logBodies = () =>
+  String(globalThis.process?.env?.MAIL_LOG_BODY ?? '').toLowerCase() === 'true'
 
 /**
  * Build a mailer from config.

@@ -920,9 +920,9 @@ service cloud.firestore {
       }
 
       // Generic module data (incidents, assessments, permits, inspections,
-      // extinguishers, meetings, meta/stats, sites, notifications, …). Approved
-      // members read/create/update; managers+ delete. auditLogs is excluded so
-      // it keeps its append-only rule above.
+      // extinguishers, meetings, meta/stats, sites, …). Approved members
+      // read/create/update; managers+ delete. auditLogs is excluded so it keeps
+      // its append-only rule above.
       // Site-scoped reads for the document library. Writes stay with the generic
       // rule below; only `read` is narrowed here.
       //
@@ -965,6 +965,30 @@ service cloud.firestore {
         allow read: if isManagerOf(orgId);
       }
 
+      // ── Notification ledger ─────────────────────────────────────────────────
+      // sendOnce() (functions/lib/notify.js) claims a document here before every
+      // send, and the claim carries the recipient's uid and the SUBJECT LINE. A
+      // subject names a person and an event — an injury or illness notification
+      // reprints exactly the detail the two rules above exist to contain, in a
+      // collection nobody thought of as health data. It was readable by every
+      // approved member, auditor included.
+      //
+      // Nothing on the client reads this. It is written only by the Admin SDK,
+      // which bypasses rules entirely, so denying outright costs the app
+      // nothing — there is no role to pick.
+      //
+      // `if false` rather than a test on the document: it refuses a LIST as
+      // flatly as a GET, and it cannot raise on a ledger row written before a
+      // field existed. A defensive .get() would have stopped the rule
+      // constraining list queries, which is the shape that leaks a collection.
+      //
+      // Worth anything only because 'notifications' is excluded from the generic
+      // read below AND from its recursive wildcard. Rules are a permissive
+      // union: one surviving grant makes this line decorative.
+      match /notifications/{notificationId} {
+        allow read: if false;
+      }
+
     // A document's classification is enforced on READ and was unprotected on
     // WRITE, so any member who could legitimately reach a restricted document —
     // via their own site access — could publish it org-wide, and any member who
@@ -998,7 +1022,7 @@ service cloud.firestore {
         //
         // `read` is split out from create/update for one reason: documents are
         // read through the site-scoped rule above and written through this one.
-        allow read: if col != 'auditLogs' && col != 'defectLocks' && col != 'docSeq' && col != 'documents' && col != 'injuries' && col != 'illnesses' && isApprovedMemberOf(orgId);
+        allow read: if col != 'auditLogs' && col != 'defectLocks' && col != 'docSeq' && col != 'documents' && col != 'injuries' && col != 'illnesses' && col != 'notifications' && isApprovedMemberOf(orgId);
         // The manager gate lives INSIDE this rule rather than in a new match of
         // its own. Rules are a permissive union: a narrow per-collection match
         // restricts nothing while this one still grants the same write, so the
@@ -1026,7 +1050,7 @@ service cloud.firestore {
         // and to the manager gate above, which this would otherwise hand back
         // for the parent document of every gated collection.
         match /{sub=**} {
-          allow read: if col != 'auditLogs' && col != 'defectLocks' && col != 'docSeq' && col != 'documents' && col != 'injuries' && col != 'illnesses' && isApprovedMemberOf(orgId);
+          allow read: if col != 'auditLogs' && col != 'defectLocks' && col != 'docSeq' && col != 'documents' && col != 'injuries' && col != 'illnesses' && col != 'notifications' && isApprovedMemberOf(orgId);
           allow create, update: if col != 'auditLogs' && col != 'defectLocks' && col != 'docSeq'
             && isWriterOf(orgId)
             && (isElevatedOf(orgId) || keepsClassification(col))

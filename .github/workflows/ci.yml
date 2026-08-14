@@ -89,6 +89,31 @@ jobs:
       - name: Build
         run: npm run build
 
+  # The `npm test` above cannot reach this suite: vitest.config.js includes only
+  # src/**, and functions/ has its own config, its own lockfile and its own
+  # dependency tree. So the notification tier's tests ran in exactly one place —
+  # deploy.yml, on a version tag — which means a merge could break the triggers
+  # and the digest and nothing said so until someone cut a release. Same two
+  # commands deploy.yml runs, moved to where they can still stop a merge.
+  functions:
+    name: Cloud Functions tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install
+        working-directory: functions
+        run: npm ci
+
+      - name: Unit tests
+        working-directory: functions
+        run: npm test
+
   rules:
     name: Firestore rules
     runs-on: ubuntu-latest

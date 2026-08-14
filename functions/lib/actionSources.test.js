@@ -75,3 +75,64 @@ describe('newAssignments', () => {
     expect(newAssignments('incidents', null, { capa: [null, undefined] })).toEqual([])
   })
 })
+
+// The shape InternalAudit.jsx actually writes. A finding has no owner, no
+// description and no dueDate — nothing the CAPA-row reading looks for — and the
+// person responsible for it is on the audit rather than on the row.
+const audit = (over = {}) => ({
+  docId: 'ACME-S1-IAF-14023',
+  status: 'Reported',
+  auditor: 'Meera Nair',
+  taskDetails: { auditee: 'Ravi Kumar', dept: 'Maintenance', criteria: 'ISO 45001' },
+  findings: [
+    {
+      id: 'AF-10001',
+      type: 'Minor NC',
+      desc: 'Extinguisher blocked by pallets',
+      clause: '8.1',
+      evidence: 'data:image/png;base64,AAA',
+      fileName: 'bay.png',
+      auditeeDueDate: '2026-08-26',
+    },
+  ],
+  ...over,
+})
+
+describe('audit findings', () => {
+  it('addresses a finding to the auditee named on the audit, not on the row', () => {
+    const out = newAssignments('auditFindings', null, audit())
+    expect(out).toHaveLength(1)
+    expect(out[0].refs).toEqual([{ name: 'Ravi Kumar' }])
+    expect(out[0].action.title).toBe('Minor NC: Extinguisher blocked by pallets (clause 8.1)')
+    expect(out[0].action.dueDate).toBe('2026-08-26')
+    expect(out[0].action.context).toBe('ACME-S1-IAF-14023 · Maintenance')
+    expect(out[0].action.source).toBe('Audit finding')
+  })
+
+  it('falls back to the auditor when the audit names no auditee', () => {
+    const out = newAssignments('auditFindings', null, audit({ taskDetails: { dept: 'Maintenance' } }))
+    expect(out[0].refs).toEqual([{ name: 'Meera Nair' }])
+  })
+
+  it('hands the finding to the CAPA owner once the auditee has answered it', () => {
+    const before = audit()
+    const after = audit({
+      findings: [{ ...before.findings[0], response: { owner: 'Priya Sharma', capa: 'Re-mark the bay', status: 'Completed' } }],
+    })
+    expect(newAssignments('auditFindings', before, after)[0].refs).toEqual([{ name: 'Priya Sharma' }])
+  })
+
+  it('stays silent when the audit is written for some other reason', () => {
+    expect(newAssignments('auditFindings', audit(), audit({ submissionDate: '2026-08-14' }))).toEqual([])
+  })
+
+  // A finding carries no status of its own until the action tracker gives it
+  // one, so a verified-and-closed audit would otherwise keep mailing forever.
+  it('stops mailing findings once the audit itself is closed', () => {
+    expect(newAssignments('auditFindings', null, audit({ status: 'Closed' }))).toEqual([])
+  })
+
+  it('says nothing about an audit that names nobody at all', () => {
+    expect(newAssignments('auditFindings', null, audit({ taskDetails: {}, auditor: '' }))).toEqual([])
+  })
+})

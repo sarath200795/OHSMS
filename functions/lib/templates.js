@@ -242,6 +242,11 @@ export function digest({ permits = [], training = [], actions = [] }, { baseUrl,
       }),
     ],
     cta: baseUrl ? { label: 'Open the portal', href: link(baseUrl, '/') } : null,
-    footer: 'Daily digest. Turn these off from your profile in the app.',
+    // Points at the opt-out that exists. The mail tier honours
+    // notificationsEnabled on the user record, but nothing in the app writes it
+    // — there is no preferences screen — so promising one sends a reader
+    // hunting through their profile for a switch that was never built, and the
+    // ones who give up learn to filter the sender instead.
+    footer: 'Daily digest. To stop receiving it, ask your OHS administrator.',
   })
 }
