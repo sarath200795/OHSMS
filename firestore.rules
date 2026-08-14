@@ -83,6 +83,23 @@ service cloud.firestore {
       return !(v is string) || v.size() <= max;
     }
 
+    // Stricter than shortText, for fields an ANONYMOUS writer supplies.
+    //
+    // shortText answers "is this string short enough", and lets anything that
+    // is not a string straight through — which was the right call where it is
+    // used, because .size() on a present-but-null value RAISES and a raising
+    // rule denies (that refused every QR defect report for a day). But on a
+    // public surface it leaves the hole open at a different angle: a megabyte
+    // ARRAY in permitNo is not a string, so shortText waves it past.
+    //
+    // This keeps the null tolerance and closes that: absent or null is fine,
+    // anything present must be a string and must be short. Note that
+    // .get(k, '') already turns an absent key into '', so the null branch here
+    // is specifically for a key present with an explicit null.
+    function boundedText(v, max) {
+      return v == null || (v is string && v.size() <= max);
+    }
+
     // ── Manager-only decisions ────────────────────────────────────────────────
     // Approving a permit, deciding a defect report, verifying an injury,
     // closing a finding: each of these was enforced by can() in React and by
@@ -729,12 +746,12 @@ service cloud.firestore {
               // the org's approval queue, repeatedly, for free. These are labels
               // and roles copied off a sticker; 200 is generous for all of them.
               // .get() defaults an absent optional field to '', which passes.
-              && shortText(request.resource.data.get('extLabel', ''), 200)
-              && shortText(request.resource.data.get('assetLabel', ''), 200)
-              && shortText(request.resource.data.get('defectType', ''), 200)
-              && shortText(request.resource.data.get('newStatus', ''), 60)
-              && shortText(request.resource.data.get('reportedByName', ''), 120)
-              && shortText(request.resource.data.get('reporterRole', ''), 60)
+              && boundedText(request.resource.data.get('extLabel', ''), 200)
+              && boundedText(request.resource.data.get('assetLabel', ''), 200)
+              && boundedText(request.resource.data.get('defectType', ''), 200)
+              && boundedText(request.resource.data.get('newStatus', ''), 60)
+              && boundedText(request.resource.data.get('reportedByName', ''), 120)
+              && boundedText(request.resource.data.get('reporterRole', ''), 60)
               && (
                 // An extinguisher defect, keyed by the unit it was raised
                 // against — and that unit must be the one the token names,
@@ -804,6 +821,23 @@ service cloud.firestore {
               && request.resource.data.permitId.size() < 200
               && request.resource.data.note is string
               && request.resource.data.note.size() <= 500
+              // note and permitId were the only two anyone had bounded, so the
+              // other free strings on this ANONYMOUS branch had no ceiling at
+              // all. Whoever photographs a permit QR taped to a scaffold holds
+              // a valid token indefinitely, and scannedPermit() only proves the
+              // token exists and belongs to the org — it does not bound what
+              // rides in beside it. One token, repeated writes, a megabyte at a
+              // time, into the queue a manager has to read. The same hole was
+              // found and closed on /reports; this is the sibling nobody went
+              // back for.
+              //
+              // The client only ever writes short values (ptw/lib/firestore.js
+              // addObservation), so nothing legitimate needs the headroom.
+              && boundedText(request.resource.data.get('permitNo', ''), 120)
+              && boundedText(request.resource.data.get('docId', ''), 120)
+              && boundedText(request.resource.data.get('observedByName', ''), 120)
+              && boundedText(request.resource.data.get('observedByRole', ''), 60)
+              && boundedText(request.resource.data.get('token', ''), 200)
           );
       }
 

@@ -675,6 +675,39 @@ describe('public observations from a permit QR scan (/observations)', () => {
     await assertFails(setDoc(obsAt(anon, 'o8'), { ...scan, note: 'x'.repeat(501) }))
   })
 
+  // note was the ONLY field anyone had bounded here. Whoever photographs a
+  // permit QR taped to a scaffold holds a valid token indefinitely, and
+  // scannedPermit() only proves the token exists and belongs to the org — it
+  // does not bound what rides in beside it. The same hole was found and closed
+  // on /reports; this is the sibling nobody went back for.
+  it('CANNOT smuggle a megabyte into any of the other free strings', async () => {
+    const anon = testEnv.unauthenticatedContext().firestore()
+    const huge = 'x'.repeat(2000)
+    await assertFails(setDoc(obsAt(anon, 'o80'), { ...scan, permitNo: huge }))
+    await assertFails(setDoc(obsAt(anon, 'o81'), { ...scan, docId: huge }))
+    await assertFails(setDoc(obsAt(anon, 'o82'), { ...scan, observedByName: huge }))
+    await assertFails(setDoc(obsAt(anon, 'o83'), { ...scan, observedByRole: huge }))
+  })
+
+  // shortText() lets a non-string straight through, which is correct where it
+  // is used but leaves this surface open at another angle: an array is not a
+  // string, so a length cap alone never looks at it.
+  it('CANNOT smuggle one in as an array or a map instead', async () => {
+    const anon = testEnv.unauthenticatedContext().firestore()
+    const huge = 'x'.repeat(2000)
+    await assertFails(setDoc(obsAt(anon, 'o84'), { ...scan, permitNo: [huge, huge] }))
+    await assertFails(setDoc(obsAt(anon, 'o85'), { ...scan, observedByName: { a: huge } }))
+    await assertFails(setDoc(obsAt(anon, 'o86'), { ...scan, docId: 12345 }))
+  })
+
+  // The tolerance that must survive the fix: .size() on a present-but-null
+  // value RAISES, and a raising rule denies — that refused every QR defect
+  // report for a day. An absent or null optional field stays acceptable.
+  it('still accepts the payload the permit page actually sends', async () => {
+    const anon = testEnv.unauthenticatedContext().firestore()
+    await assertSucceeds(setDoc(obsAt(anon, 'o87'), { ...scan, observedByName: null, docId: null }))
+  })
+
   it('a signed-out scanner CANNOT read other observations back', async () => {
     // They carry names and what people reported; the scan is write-only.
     await testEnv.withSecurityRulesDisabled(async (ctx) => {
