@@ -24,6 +24,7 @@ const EMPTY = {
   dateOfDeployment: '',
   dateOfNextRefill: '',
   dateOfNextHPT: '',
+  qrLink: '',
 }
 
 function Field({ label, children }) {
@@ -161,6 +162,18 @@ export default function AddExtinguisher() {
                 </Field>
                 <Field label="Date of Next HPT">
                   <input type="date" className="input" value={form.dateOfNextHPT} onChange={set('dateOfNextHPT')} />
+                </Field>
+                {/* Stock often arrives with labels already stuck on. Minting a
+                    fresh token regardless would leave every printed label
+                    scanning to nothing, so an existing code can be adopted —
+                    the same field the CSV import has always accepted. */}
+                <Field label="QR Link (optional — adopt a label already printed)">
+                  <input
+                    className="input"
+                    placeholder="https://.../qr/AB12CD34 — leave blank to generate a new code"
+                    value={form.qrLink}
+                    onChange={set('qrLink')}
+                  />
                 </Field>
               </div>
 

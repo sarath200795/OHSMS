@@ -36,7 +36,7 @@ const addDoc = (...args) => { assertWritable(); return _addDoc(...args) }
 const updateDoc = (...args) => { assertWritable(); return _updateDoc(...args) }
 const deleteDoc = (...args) => { assertWritable(); return _deleteDoc(...args) }
 const writeBatch = (...args) => { assertWritable(); return _writeBatch(...args) }
-import { generateQrToken } from './qr'
+import { generateQrToken, tokenFromQrValue } from './qr'
 import { STATUS, REFILL_DEFECT_KEYS, DEFECT_BY_KEY } from './constants'
 import { lockId, duplicateDefectMessage } from './defectLock'
 import { putFile, removeFile, MAX_INLINE_BYTES, tooLargeForInline } from '../../../shared/storage'
@@ -211,7 +211,11 @@ function mirrorPayload(orgId, orgName, id, ext) {
 /** Add a single extinguisher + its public QR mirror. Returns {id, qrToken}. */
 export async function addExtinguisher(orgId, orgName, data, actor) {
   const ref = doc(extCol(orgId))
-  const qrToken = generateQrToken()
+  // Adopt a code the site has already printed, exactly as the CSV import does.
+  // The add form offers a QR Link field for the same reason imports accept one:
+  // stock frequently arrives with labels already stuck on, and minting a fresh
+  // token here would mean every one of those labels scans to nothing.
+  const qrToken = tokenFromQrValue(data.qrToken || data.qrLink) || generateQrToken()
   const ext = {
     serialNo: data.serialNo || '',
     type: data.type,
