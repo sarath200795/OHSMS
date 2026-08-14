@@ -135,7 +135,7 @@ problem:
   token that resolves to the org and asset being written to, which ties a write
   to physical access to the equipment. That is a sharper control than most
   products manage on an unauthenticated endpoint.
-- **The seams are real.** Storage, data and email are behind adapters with a
+- **The seams are real.** Storage and data are behind adapters with a
   documented contract, so swapping infrastructure is a file, not a project.
 - **The deploy order is understood and written down**, including the failure
   modes that motivated it.
@@ -151,7 +151,7 @@ problem:
    side is built, so this is console work plus one env var (`PRODUCTION.md` §1b).
    Deploy the client first; enforcing MFA against a build without the challenge
    handling locks users out rather than protecting them.
-5. Deploy `functions/`, then the `orgId` claim and the stronger `storage.rules` (removes a blocker, and unblocks notifications)
+5. Deploy `functions/`, then the `orgId` claim and the stronger `storage.rules` (removes a blocker)
 6. Move manager-only transitions into the rules (`SECURITY.md` S-02)
 7. A staging project and a staging deploy on merge
 8. Data export / deletion / retention

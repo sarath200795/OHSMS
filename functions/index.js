@@ -1,19 +1,15 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Cloud Functions entry point.
 //
-// package.json has named this file as `main` since the tier was written, but it
-// never existed — everything under lib/ was library code with nothing calling
-// it. That is why `firebase deploy --only functions` had nothing to deploy.
+// package.json named this file as `main` long before it existed — everything
+// under lib/ was library code with nothing calling it. That is why
+// `firebase deploy --only functions` had nothing to deploy.
 //
 // The first thing here was the smallest change that closes SECURITY.md S-01:
 // putting the caller's organization onto their ID token so Cloud Storage rules
 // can read it. Storage rules cannot query Firestore, so without a claim they
 // have no way to tell one tenant from another — which is exactly why any
 // signed-in user could reach any org's files.
-//
-// The notification tier follows it: a trigger per action-carrying collection,
-// and one scheduled digest. Both are thin — every decision they make lives in
-// lib/notify.js, which is where the tenant scoping is enforced and tested.
 // ─────────────────────────────────────────────────────────────────────────────
 import { initializeApp } from 'firebase-admin/app'
 import { getAuth } from 'firebase-admin/auth'
@@ -27,14 +23,6 @@ import { claimsFor, claimsChanged, mergeClaims, revokesAccess } from './lib/clai
 import { planBackfill } from './lib/docVisibility.js'
 import { classifyLocks } from './lib/defectLocks.js'
 import { PURGEABLE, PURGE_AFTER_DAYS, MAX_PURGES_PER_RUN, planPurge } from './lib/retention.js'
-import { createMailer } from './lib/email.js'
-import {
-  onActionWrite,
-  runDailyDigest,
-  mailConfigFromEnv,
-  appConfigFromEnv,
-  DIGEST_TZ,
-} from './lib/notify.js'
 
 initializeApp()
 
@@ -48,6 +36,11 @@ initializeApp()
 // name it when calling (getFunctions(app, REGION)), and two regions in one file
 // is one more thing to get wrong at the call site.
 const REGION = 'asia-south1'
+
+// The timezone a scheduled run's clock time means. A retention sweep pinned to
+// UTC would move around the working day twice a year for everyone reading the
+// logs, and "03:30" is chosen to be the quiet part of THEIR night.
+const SCHEDULE_TZ = 'Asia/Kolkata'
 
 /**
  * Mirror /users/{uid} onto the ID token.
@@ -320,97 +313,6 @@ export const clearOrphanedDefectLocks = onCall({ region: REGION }, async (reques
   }
 })
 
-// ── Notifications ────────────────────────────────────────────────────────────
-
-/**
- * The mailer, built on first use rather than at module load.
- *
- * createMailer throws on a provider name it does not recognise. At module scope
- * that would be a typo in MAIL_PROVIDER taking down every function in this file
- * — including the claims trigger, which has nothing to do with email. Built
- * lazily and defaulted to console output, a misconfiguration costs the mail and
- * a log line, nothing else.
- *
- * With no MAIL_PROVIDER set at all, createMailer selects the console provider
- * and sends nothing: deploying this does not start mailing anyone until
- * MAIL_PROVIDER and MAIL_API_KEY are both present.
- */
-let mailer = null
-function getMailer() {
-  if (!mailer) {
-    try {
-      mailer = createMailer(mailConfigFromEnv(process.env))
-    } catch (err) {
-      logger.error('notify: mail configuration is invalid — falling back to console output', {
-        error: String(err?.message || err),
-      })
-      mailer = createMailer({})
-    }
-    logger.info('notify: mail provider', { provider: mailer.provider })
-  }
-  return mailer
-}
-
-/**
- * One trigger per collection that carries corrective actions.
- *
- * Deliberately one narrow path each rather than one wildcard on
- * organizations/{orgId}/{col}/{docId}. A wildcard would fire on every write in
- * the product — audit logs, activity, counters — to discard nearly all of them,
- * and it would also match the notifications ledger that lib/notify.js writes to,
- * so each email sent would trigger the function that sends emails.
- *
- * retry is on because the handler rethrows for a provider outage; lib/notify.js
- * stops rethrowing once the event is older than its retry window, which is what
- * keeps a bad day from becoming 24 hours of billed attempts.
- */
-const actionTrigger = (collection) =>
-  onDocumentWritten(
-    { document: `organizations/{orgId}/${collection}/{docId}`, region: REGION, retry: true },
-    (event) =>
-      onActionWrite({
-        db: getFirestore(),
-        mailer: getMailer(),
-        collection,
-        event,
-        config: appConfigFromEnv(process.env),
-        log: logger,
-      })
-  )
-
-// Named one by one because ESM exports cannot be generated in a loop, and the
-// deploy tooling discovers functions by enumerating this module's exports.
-// A new source collection in lib/actionSources.js needs a line here too — one
-// listed there and missing here assigns work no email ever mentions, which is
-// what the last three were. index.test.js asserts the two lists still agree.
-export const notifyIncidentActions = actionTrigger('incidents')
-export const notifyIllnessActions = actionTrigger('illnesses')
-export const notifyDrillActions = actionTrigger('mockDrills')
-export const notifyAuditFindingActions = actionTrigger('auditFindings')
-export const notifyConsultationActions = actionTrigger('consultations')
-export const notifyEscalationActions = actionTrigger('escalations')
-export const notifyLegalIssueActions = actionTrigger('legalIssues')
-export const notifyInspectionActions = actionTrigger('inspectionRecords')
-
-/**
- * The daily digest of what is overdue, per organization.
- *
- * 07:00 in the timezone the digest measures "today" in, so the mail lands before
- * the shift it is about. retryCount is 0 on purpose: the handler never throws —
- * it logs a failing org and carries on — so a retry would only re-read every
- * tenant to send nothing, and tomorrow's run covers anything missed anyway.
- */
-export const dailyDigest = onSchedule(
-  { schedule: '0 7 * * *', timeZone: DIGEST_TZ, region: REGION, retryCount: 0, timeoutSeconds: 540 },
-  () =>
-    runDailyDigest({
-      db: getFirestore(),
-      mailer: getMailer(),
-      config: appConfigFromEnv(process.env),
-      log: logger,
-    })
-)
-
 let bucket = null
 const getBucket = () => (bucket ||= getStorage().bucket())
 
@@ -451,10 +353,10 @@ async function purgeStoredFile(store, path, ctx) {
  * control an auditor will test, a claim a data subject may rely on, and the
  * reason somebody stops thinking about the delete they performed.
  *
- * 03:30, away from the 07:00 digest so a slow run cannot delay the mail.
- * retryCount 0 for the same reason the digest uses it: the handler never
- * throws, a failed org is logged and skipped, and tomorrow's run picks up
- * anything missed — a record already 30 days dead is not urgent.
+ * 03:30, the quiet part of the night for the people whose records these are.
+ * retryCount 0 because the handler never throws: a failed org is logged and
+ * skipped, and tomorrow's run picks up anything missed — a record already 30
+ * days dead is not urgent.
  *
  * Exported for index.test.js, not for deploy: function discovery only picks up
  * exports carrying an __endpoint, which a plain function does not.
@@ -509,7 +411,7 @@ export async function purgeOrgCollection(db, orgId, spec, now, store = null) {
 }
 
 export const purgeSoftDeleted = onSchedule(
-  { schedule: '30 3 * * *', timeZone: DIGEST_TZ, region: REGION, retryCount: 0, timeoutSeconds: 540 },
+  { schedule: '30 3 * * *', timeZone: SCHEDULE_TZ, region: REGION, retryCount: 0, timeoutSeconds: 540 },
   async () => {
     const db = getFirestore()
     const now = Date.now()

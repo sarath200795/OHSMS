@@ -1,6 +1,6 @@
 {
   "name": "ohsms-functions",
-  "description": "Notification tier for WEHS/OHSMS — Firestore triggers and scheduled digests.",
+  "description": "Server-side jobs for WEHS/OHSMS: auth claims sync, data backfills, defect-lock cleanup and the retention sweep.",
   "private": true,
   "type": "module",
   "main": "index.js",

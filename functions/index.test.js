@@ -1,9 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { logger } from 'firebase-functions'
-import * as functions from './index.js'
 import { purgeOrgCollection } from './index.js'
 import { PURGEABLE } from './lib/retention.js'
-import { ACTION_COLLECTIONS } from './lib/notify.js'
 
 // ── Stand-ins ────────────────────────────────────────────────────────────────
 // Both fakes append to one shared `log`, because the thing that went wrong here
@@ -174,27 +172,5 @@ describe('purging a record whose attachments live in Cloud Storage', () => {
     expect(res).toEqual({ purged: 1, kept: 0, files: 0 })
     expect(db.store.has('qr/tok9')).toBe(false)
     expect(bucket.deleted).toEqual([])
-  })
-})
-
-describe('the deployed function list', () => {
-  const watched = () =>
-    Object.values(functions)
-      .map((f) => f?.__endpoint?.eventTrigger?.eventFilterPathPatterns?.document)
-      .filter(Boolean)
-
-  // A collection listed in ACTION_SOURCES with no trigger here is silent: no
-  // assignment mail, ever, and nobody finds out. Four of them were.
-  it('watches every collection that carries corrective actions', () => {
-    for (const collection of ACTION_COLLECTIONS) {
-      expect(watched(), collection).toContain(`organizations/{orgId}/${collection}/{docId}`)
-    }
-  })
-
-  // The other half of the same rule: a trigger on a collection notify.js does
-  // not know about would read every write of it and decide nothing.
-  it('watches nothing else', () => {
-    expect(watched()).toHaveLength(ACTION_COLLECTIONS.length + 1) // + users/{uid}
-    expect(watched()).toContain('users/{uid}')
   })
 })

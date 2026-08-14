@@ -729,6 +729,8 @@ firebase.json:6-19 configures public/ignore/rewrites and no `headers` block, so 
 
 **Fix.** ORG action: record Resend/SendGrid and Sentry on the sub-processor register, execute DPAs, document the transfer basis against the asia-south1 residency claim, and set MAIL_PROVIDER only once that is done. No code change is required.
 
+**Note (2026-08-14).** The notification tier was removed from the product, so no mail provider receives personal data from it and the Resend/SendGrid half of this finding no longer has a subject. The Sentry half stands unchanged.
+
 <details><summary>Evidence</summary>
 
 The code paths are real and correct in themselves: functions/lib/email.js:53-95 posts message bodies to api.resend.com or api.sendgrid.com, and those bodies carry personal data — functions/lib/notify.js:317-333 puts employee names and course expiries into the daily digest, addressed to org admins. src/shared/monitoring.js:15-37 ships exception data to Sentry. The repository holds no DPA, sub-processor list, or transfer assessment for either, and Firestore is deliberately pinned to asia-south1 (functions/index.js:39-48) while both providers default to US/EU processing.
@@ -767,6 +769,8 @@ Already on the register: docs/SECURITY.md:38-44 (S-05, 'App Check is not enforce
 **Gap.** With firebase-functions v2, a plain env var means the credential lives in the Cloud Run service configuration in cleartext, readable by anyone with project Viewer, absent from Secret Manager's versioning, access log and rotation. It is also the shape that invites a `functions/.env` file being created next to the code — the one place .gitignore's `.env.*` rule would still catch, but only by luck of path. Mail is currently unconfigured (createMailer falls back to the console provider, functions/index.js:309-311), so this is a gap to close before a live credential exists rather than one leaking today.
 
 **Fix.** Declare `const MAIL_API_KEY = defineSecret('MAIL_API_KEY')` and attach `secrets: [MAIL_API_KEY]` to the five action triggers and dailyDigest, reading `MAIL_API_KEY.value()` inside getMailer(); store the value with `firebase functions:secrets:set`. Document the setup and the rotation owner alongside the App Check notes in docs/PRODUCTION.md.
+
+**Note (2026-08-14).** The notification tier was removed from the product. There is no mail provider, no `MAIL_API_KEY` and no credential left to bind, so the fix above is moot; the finding is kept as the record of what was open while the tier shipped.
 
 <details><summary>Evidence</summary>
 
@@ -819,6 +823,8 @@ src/modules/fire/lib/qr.js:31-53 (`tokenFromQrValue`) accepts any candidate matc
 **Gap.** The runbook that an operator follows to reason about what is live understates what the deployed function set does — including a scheduled job that sends mail to every tenant.
 
 **Fix.** Update docs/PRODUCTION.md §4/§5 to describe the deployed function set (five action triggers, dailyDigest at 07:00 in DIGEST_TZ, syncUserClaims, the maintenance callables) and what configuration each needs, and fold that into the same pass that adds functions to the deploy pipeline.
+
+**Note (2026-08-14).** The notification tier was removed from the product — the five action triggers and dailyDigest no longer exist, and docs/PRODUCTION.md no longer describes them. The documentation drift this finding records was resolved by deleting the subject, not by correcting the runbook.
 
 <details><summary>Evidence</summary>
 
@@ -1072,7 +1078,7 @@ re-auditing them later costs the same as auditing them the first time.
 - **A.8.22 Segregation of networks (tenant segregation)** — The LOTO top-level collections tenanted by an orgId FIELD are pinned on both sides of every write
 - **A.8.12 Data leakage prevention** — Every public mirror is get-only and never listable, and each publishes an explicit field whitelist
 - **A.8.22 Segregation of networks (tenant segregation)** — Public write surfaces are bound to a scanned token that must belong to the tenant being written to
-- **A.5.14 Information transfer** — The outbound notification tier cannot address a recipient outside the originating tenant
+- **A.5.14 Information transfer** — The outbound notification tier cannot address a recipient outside the originating tenant _(note 2026-08-14: assessed while the tier shipped; the tier has since been removed from the product)_
 - **A.8.24 Use of cryptography** — No secret has ever been committed: env files are excluded, history is clean, and the shipped bundle carries only keys that are public by design
 - **A.8.24 Use of cryptography** — Every token, password and object path is generated from the platform CSPRNG, with no hand-rolled crypto anywhere
 - **A.8.24 Use of cryptography** — Transport is TLS everywhere; no plaintext endpoint outside the local emulator
