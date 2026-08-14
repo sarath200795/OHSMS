@@ -1343,3 +1343,34 @@ describe('a provisioned account is inert until its password is changed', () => {
     await assertFails(getDocs(collection(asFresh(), 'organizations', 'orgB', 'incidents')))
   })
 })
+
+// actorName was free text beside a pinned uid, so a member could write an entry
+// under their own uid reading "Priya (Safety Manager)" and every human scanning
+// the page would see a plausible action by somebody else.
+describe('an audit entry cannot be signed with another person name', () => {
+  const entry = (db, id, extra) => setDoc(
+    doc(db, 'organizations', 'orgA', 'auditLogs', id),
+    { action: 'record.close', at: serverTimestamp(), actorUid: 'alice', ...extra },
+  )
+
+  it('accepts your own name', async () => {
+    const alice = testEnv.authenticatedContext('alice').firestore()
+    await assertSucceeds(entry(alice, 'n1', { actorName: 'alice' }))
+  })
+
+  it('refuses somebody else name', async () => {
+    const alice = testEnv.authenticatedContext('alice').firestore()
+    await assertFails(entry(alice, 'n2', { actorName: 'Priya (Safety Manager)' }))
+  })
+
+  // logAudit falls back to 'Unknown' when an actor has no name, and swallows
+  // its own failures so an audit write can never break the action it describes.
+  // A strict pin would therefore stop recording those users SILENTLY — losing
+  // the trail is worse than a soft name.
+  it('still accepts the writers fallbacks, and an entry with no name at all', async () => {
+    const alice = testEnv.authenticatedContext('alice').firestore()
+    await assertSucceeds(entry(alice, 'n3', { actorName: 'Unknown' }))
+    await assertSucceeds(entry(alice, 'n4', { actorName: '' }))
+    await assertSucceeds(entry(alice, 'n5', {}))
+  })
+})

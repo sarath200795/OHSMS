@@ -67,6 +67,31 @@ export async function logAudit(orgId, actor, action, details = {}) {
   }
 }
 
+/**
+ * Fetch the trail for a DATE RANGE, rather than the newest N.
+ *
+ * The viewer subscribed to the 400 most recent entries and offered no way to
+ * ask for a period, so "what happened to this permit in March" became
+ * unanswerable the moment 400 events had accrued — days, in a busy tenant.
+ * Evidence that cannot be retrieved is not evidence, and an append-only trail
+ * nobody can read back is a write-only file.
+ *
+ * A one-shot read rather than a listener: collecting evidence is a question
+ * asked once, and a live subscription over a wide range would stream the whole
+ * period into memory and then keep it there.
+ *
+ * The `to` bound covers the whole day it names. Somebody asking for the 31st
+ * means the 31st, not the instant it began.
+ */
+export async function fetchAuditLogs(orgId, { from = '', to = '', max = 5000 } = {}) {
+  if (!orgId) return []
+  const clauses = [orderBy('at', 'desc'), limit(max)]
+  if (from) clauses.unshift(where('at', '>=', new Date(from + 'T00:00:00')))
+  if (to) clauses.unshift(where('at', '<=', new Date(to + 'T23:59:59.999')))
+  const snap = await getDocs(query(auditCol(orgId), ...clauses))
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+}
+
 export function subscribeAuditLogs(orgId, cb, max = 300) {
   const q = query(auditCol(orgId), orderBy('at', 'desc'), limit(max))
   return onSnapshot(q, (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))))

@@ -668,12 +668,36 @@ service cloud.firestore {
         // querying Firestore directly could tell. Every app-side writer already
         // uses serverTimestamp(), so nothing legitimate changes.
         //
-        // actorName stays client-supplied and is NOT pinned: it is a display
-        // string the reader should treat as such, and the uid beside it is the
-        // fact. Pinning it would need a profile read on every audit write.
+        // actorName may only be YOUR name, or one of the writers' fallbacks.
+        //
+        // It was left entirely free, on the reasoning that it is a display
+        // string and the uid beside it is the fact, and that pinning it would
+        // cost a profile read. The second half was wrong: isApprovedMemberOf on
+        // the line above already reads the profile, and rules cache document
+        // reads within a request, so this is free. The first half underrates the
+        // attack — a member could write actorUid = their own uid with actorName
+        // = 'Priya (Safety Manager)', and every human reading the page sees a
+        // plausible action by someone else. Only somebody querying Firestore
+        // directly would notice, which is nobody.
+        //
+        // Not pinned to the profile name ALONE, because logAudit falls back to
+        // 'Unknown' when an actor has no name, and logAudit deliberately
+        // swallows its own failures so an audit write can never break the
+        // action it describes. A strict pin would therefore stop recording
+        // those users SILENTLY — losing the trail is worse than a soft name.
+        // .get() with a default for the same reason it is used elsewhere: a
+        // profile without a name would otherwise raise, which denies.
         allow create: if isApprovedMemberOf(orgId)
           && request.resource.data.actorUid == request.auth.uid
-          && request.resource.data.at == request.time;
+          && request.resource.data.at == request.time
+          // .get() on BOTH sides. An entry written without an actorName at all
+          // is legitimate — several writers omit it — and reading an absent key
+          // directly raises, which denies. Getting that wrong here would have
+          // silently stopped recording, which is the one failure an audit trail
+          // must not have.
+          && (request.resource.data.get('actorName', '') == myProfile().get('name', '')
+              || request.resource.data.get('actorName', '') == 'Unknown'
+              || request.resource.data.get('actorName', '') == '');
         allow update, delete: if false;
       }
 
