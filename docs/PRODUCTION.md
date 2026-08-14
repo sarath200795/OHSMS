@@ -485,3 +485,27 @@ unrestricted key is somebody else's map bill. Tracked as S-05 in SECURITY.md.
 
 Neither restriction changes anything in this repository, and neither is a
 substitute for the rules. They bound what a copied key can be pointed at.
+
+## 10. Bucket CORS — required before authenticated file reads take effect
+
+`getDownloadURL` mints a URL with a permanent `token` parameter. That token is a
+bearer credential in a string: it works unauthenticated, forever, for anyone who
+obtains it, and `storage.rules` is never consulted. Once such a URL is stored in
+a Firestore document, anyone who can read that document can copy it out, and it
+keeps working after they leave the organization.
+
+`shared/storage.fileUrl` / `useFileUrl` prefer an authenticated fetch by `path`
+instead, which `storage.rules` governs. That fetch needs a bucket CORS rule that
+`<img src>` never required — until it is set, `resolve()` returns null and the
+app silently falls back to the stored URL. So this is inert, not broken, on a
+bucket without CORS.
+
+To turn it on:
+
+```bash
+printf '[{"origin":["https://weehs-4eb28.web.app","https://weehs-4eb28.firebaseapp.com"],"method":["GET"],"maxAgeSeconds":3600,"responseHeader":["Content-Type"]}]' > cors.json && gsutil cors set cors.json gs://weehs-4eb28.firebasestorage.app
+```
+
+Then migrate render sites to `useFileUrl` module by module, checking images still
+appear after each. Records written before uploads recorded a `path` keep using
+the stored URL permanently — only re-upload closes those.

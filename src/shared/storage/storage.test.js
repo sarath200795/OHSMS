@@ -1,7 +1,8 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import {
   safeFileName, storagePath, dataUrlToBlob,
   MAX_UPLOAD_BYTES, MAX_INLINE_BYTES, formatSize, tooLargeForInline,
+  fileUrl,
 } from './index'
 
 // Two limits, and the relationship between them is the whole point: the big one
@@ -122,6 +123,40 @@ describe('dataUrlToBlob', () => {
   it('returns null for anything that is not a data URL', () => {
     for (const bad of ['https://x/y.png', 'hello', '', null, 'data:text/plain;base64,%%%']) {
       expect(dataUrlToBlob(bad)).toBeNull()
+    }
+  })
+})
+
+// A persisted download URL is a bearer credential in a string: it works for
+// anyone holding it, signed in or not, forever, and storage.rules never sees
+// it. fileUrl exists to prefer an authenticated fetch over that — while never
+// letting the secure path turn a working image into a broken one.
+describe('resolving a stored file to a governed URL', () => {
+  const STORED = 'https://firebasestorage.googleapis.com/o/x?alt=media&token=perm'
+
+  it('falls back to the stored URL when the record predates paths', async () => {
+    const r = await fileUrl({ url: STORED })
+    expect(r.url).toBe(STORED)
+    expect(() => r.revoke()).not.toThrow()
+  })
+
+  // The bucket needs a CORS rule for getBlob that <img src> never required.
+  // Until that lands the adapter returns null, and the app must keep rendering.
+  it('falls back when the authenticated fetch cannot succeed', async () => {
+    const r = await fileUrl({ url: STORED, path: 'orgs/a/incidents/p.jpg' })
+    expect(r.url).toBe(STORED)
+  })
+
+  it('has nothing to offer when there is neither a path nor a URL', async () => {
+    const r = await fileUrl({})
+    expect(r.url).toBeNull()
+    expect(await (await fileUrl(null)).url).toBeNull()
+  })
+
+  // Every caller gets a revoke, so no caller has to test whether it needs one.
+  it('always returns a callable revoke', async () => {
+    for (const rec of [{ url: STORED }, {}, 'orgs/a/x.jpg']) {
+      expect(typeof (await fileUrl(rec)).revoke).toBe('function')
     }
   })
 })

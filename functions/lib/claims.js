@@ -63,3 +63,41 @@ export function mergeClaims(existing, next) {
 
 /** True when the user should be able to reach an org's files at all. */
 export const isScoped = (claims) => Boolean(claims && str(claims.orgId))
+
+/**
+ * Does this change REDUCE what the token can reach?
+ *
+ * Firestore re-reads the profile on every rule evaluation, so a revoked member
+ * loses Firestore access the instant the document changes. Cloud Storage does
+ * not: storage.rules reads orgId and role off the presented TOKEN, and an ID
+ * token stays valid for up to an hour. So a member who is suspended, moved, or
+ * demoted keeps whatever Storage access their cached token still claims —
+ * including, before the role fix, the ability to delete every file in the org.
+ *
+ * Revoking refresh tokens closes that window: the SDK cannot mint a new ID
+ * token, so access ends when the current one expires rather than whenever the
+ * person next signs in.
+ *
+ * Deliberately NOT fired on every claim change. Promotion and a first approval
+ * both change claims while granting more, and forcing a re-authentication there
+ * would interrupt somebody mid-task for no security gain. Only reductions.
+ */
+export function revokesAccess(before, next) {
+  const had = (before || {}).orgId ?? null
+  const now = (next || {}).orgId ?? null
+
+  // Membership withdrawn, or moved to a different tenant. The second matters as
+  // much as the first: a stale token still names the OLD org, so until it
+  // expires the person can reach the files of a tenant they have left.
+  if (had && had !== now) return true
+
+  // Same org, less authority. storage.rules gates delete on admin/manager, so a
+  // demotion that only takes effect at the next refresh leaves an ex-manager
+  // able to destroy evidence for the rest of the hour.
+  const ELEVATED = ['admin', 'manager']
+  const wasElevated = ELEVATED.includes((before || {}).role)
+  const isElevated = ELEVATED.includes((next || {}).role)
+  if (had && had === now && wasElevated && !isElevated) return true
+
+  return false
+}

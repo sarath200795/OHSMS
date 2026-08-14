@@ -162,3 +162,31 @@ export async function removeFile(path) {
     await adapter.remove(path)
   } catch { /* orphan tolerated */ }
 }
+
+/**
+ * A URL for a stored file that storage.rules actually governs.
+ *
+ * Prefers an authenticated fetch by `path`. Falls back to the persisted `url`,
+ * which is a permanent unauthenticated bearer link — so the fallback is the
+ * insecure path, taken only when the secure one cannot work:
+ *   - records written before uploads recorded a `path`
+ *   - a driver with no `resolve` (inline/data-URL storage has nothing to fetch)
+ *   - the bucket has no CORS rule for this origin yet
+ *
+ * Returns `{ url, revoke }`. Callers MUST call revoke() when done: an object
+ * URL pins its blob in memory until it is released, and a gallery that forgets
+ * leaks every photo the user scrolls past.
+ */
+export async function fileUrl(record) {
+  const stored = typeof record === 'string' ? null : record?.url || null
+  const path = typeof record === 'string' ? record : record?.path || null
+  if (!path) return { url: stored, revoke: () => {} }
+
+  try {
+    const adapter = await loadAdapter()
+    const resolved = adapter?.resolve ? await adapter.resolve(path) : null
+    if (resolved) return { url: resolved, revoke: () => URL.revokeObjectURL(resolved) }
+  } catch { /* fall through to the stored URL */ }
+
+  return { url: stored, revoke: () => {} }
+}

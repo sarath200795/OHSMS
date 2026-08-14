@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { claimsFor, claimsChanged, mergeClaims, isScoped, CLAIM_KEYS } from './claims.js'
+import { claimsFor, claimsChanged, mergeClaims, isScoped, CLAIM_KEYS, revokesAccess } from './claims.js'
 
 const approved = { orgId: 'orgA', role: 'member', status: 'approved' }
 
@@ -100,5 +100,48 @@ describe('isScoped', () => {
     expect(isScoped({ orgId: null })).toBe(false)
     expect(isScoped({ orgId: '  ' })).toBe(false)
     expect(isScoped(null)).toBe(false)
+  })
+})
+
+// Firestore re-reads the profile on every evaluation, so revocation is instant
+// there. Cloud Storage reads the TOKEN, which lives up to an hour — so a
+// suspended, moved or demoted member keeps whatever their cached token claims
+// unless the refresh tokens go with it.
+describe('when a claim change has to end the session', () => {
+  const c = (orgId, role) => ({ orgId, role })
+
+  it('revokes when membership is withdrawn', () => {
+    expect(revokesAccess(c('orgA', 'member'), c(null, null))).toBe(true)
+  })
+
+  // A stale token still names the OLD org, so until it expires the person can
+  // reach the files of a tenant they have left.
+  it('revokes when the member is moved to another tenant', () => {
+    expect(revokesAccess(c('orgA', 'member'), c('orgB', 'member'))).toBe(true)
+  })
+
+  // storage.rules gates delete on admin/manager. A demotion that only bites at
+  // the next refresh leaves an ex-manager able to destroy evidence meanwhile.
+  it('revokes on a demotion out of the roles that can delete', () => {
+    expect(revokesAccess(c('orgA', 'manager'), c('orgA', 'member'))).toBe(true)
+    expect(revokesAccess(c('orgA', 'admin'), c('orgA', 'auditor'))).toBe(true)
+  })
+
+  // Interrupting somebody mid-task buys nothing when the change GRANTS access.
+  it('does not revoke on approval or promotion', () => {
+    expect(revokesAccess(c(null, null), c('orgA', 'member'))).toBe(false)
+    expect(revokesAccess(c('orgA', 'member'), c('orgA', 'manager'))).toBe(false)
+    expect(revokesAccess(c('orgA', 'manager'), c('orgA', 'admin'))).toBe(false)
+  })
+
+  it('does not revoke when nothing that matters moved', () => {
+    expect(revokesAccess(c('orgA', 'member'), c('orgA', 'member'))).toBe(false)
+    expect(revokesAccess(undefined, undefined)).toBe(false)
+    expect(revokesAccess(null, c(null, null))).toBe(false)
+  })
+
+  // admin -> manager keeps the delete right, so there is nothing to close.
+  it('does not revoke a demotion that keeps the same Storage rights', () => {
+    expect(revokesAccess(c('orgA', 'admin'), c('orgA', 'manager'))).toBe(false)
   })
 })

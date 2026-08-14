@@ -22,7 +22,7 @@ import { onDocumentWritten } from 'firebase-functions/v2/firestore'
 import { onSchedule } from 'firebase-functions/v2/scheduler'
 import { onCall, HttpsError } from 'firebase-functions/v2/https'
 import { logger } from 'firebase-functions'
-import { claimsFor, claimsChanged, mergeClaims } from './lib/claims.js'
+import { claimsFor, claimsChanged, mergeClaims, revokesAccess } from './lib/claims.js'
 import { planBackfill } from './lib/docVisibility.js'
 import { classifyLocks } from './lib/defectLocks.js'
 import { PURGEABLE, PURGE_AFTER_DAYS, MAX_PURGES_PER_RUN, planPurge } from './lib/retention.js'
@@ -84,6 +84,29 @@ export const syncUserClaims = onDocumentWritten(
     if (!claimsChanged(existing, next)) return
 
     await getAuth().setCustomUserClaims(uid, mergeClaims(existing, next))
+
+    // A REDUCTION also has to end the existing session.
+    //
+    // Firestore re-reads the profile on every rule evaluation, so a revoked
+    // member loses Firestore access the instant this document changes. Cloud
+    // Storage does not — storage.rules reads orgId and role off the presented
+    // TOKEN, which stays valid for up to an hour. Without this, someone
+    // suspended, moved to another tenant, or demoted out of the roles that can
+    // delete keeps that access for the rest of the hour, holding a token that
+    // names an organization they have left.
+    //
+    // Only on reductions: revoking on a promotion or a first approval would
+    // interrupt somebody mid-task and close no window at all.
+    if (revokesAccess(existing, next)) {
+      try {
+        await getAuth().revokeRefreshTokens(uid)
+        logger.info('claims: sessions revoked', { uid, from: existing?.orgId || null, to: next.orgId })
+      } catch (e) {
+        // The claim change is the control; this narrows the window it leaves.
+        // Failing here must not undo the claim write that already succeeded.
+        logger.error('claims: could not revoke sessions', { uid, error: e?.message || String(e) })
+      }
+    }
 
     // Nothing is written back to Firestore here, deliberately: a write to
     // /users would re-trigger this same function, and that loop would be silent
