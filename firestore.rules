@@ -1008,10 +1008,27 @@ service cloud.firestore {
         // protecting a label they never had. Safe here in a way it would not be
         // on a read: this is a write condition, so nothing about list-query
         // constraining applies.
+        //
+        // The list below must be the list reachesSite() and canReadDocument()
+        // actually DECIDE on. It was not. It froze visibility, level, siteId and
+        // `region` — but the rule grants site access on siteRegion and
+        // siteEntity, which are different fields (classification.js writes all
+        // three separately) and were left writable, while `region` is a display
+        // field no rule reads. So the freeze guarded the labels that decide
+        // nothing and left the two that decide everything open: a plain member
+        // could PUT siteRegion: 'their own region' onto a document filed at a
+        // site they have no grant for — an update needs no read permission, so
+        // it worked on documents they had never been able to open — and then
+        // read it. Relabel, then read.
+        //
+        // Any new field reachesSite() consults has to be added here in the same
+        // change, or it reopens exactly this.
         || request.resource.data.get('visibility', '') == resource.data.get('visibility', '')
         && request.resource.data.get('level', '') == resource.data.get('level', '')
         && request.resource.data.get('siteId', '') == resource.data.get('siteId', '')
-        && request.resource.data.get('region', '') == resource.data.get('region', '');
+        && request.resource.data.get('region', '') == resource.data.get('region', '')
+        && request.resource.data.get('siteRegion', '') == resource.data.get('siteRegion', '')
+        && request.resource.data.get('siteEntity', '') == resource.data.get('siteEntity', '');
     }
 
       match /{col}/{docId} {

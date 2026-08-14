@@ -64,6 +64,10 @@ beforeEach(async () => {
     await setDoc(doc(db, 'users', 'byRegion'), user('byRegion', { access: { regions: ['South'] } }))
     await setDoc(doc(db, 'users', 'byEntity'), user('byEntity', { access: { entities: ['COCO'] } }))
     await setDoc(doc(db, 'users', 'wrongSite'), user('wrongSite', { access: { sites: ['site-other'] } }))
+    // Grants that reach a DIFFERENT region and entity than the document's. The
+    // only way either of them opens it is by moving the document to themselves.
+    await setDoc(doc(db, 'users', 'otherRegion'), user('otherRegion', { access: { regions: ['North'] } }))
+    await setDoc(doc(db, 'users', 'otherEntity'), user('otherEntity', { access: { entities: ['FOFO'] } }))
     // Malformed grants: an empty option submitted, a bad import, a hand edit.
     await setDoc(doc(db, 'users', 'blankRegion'), user('blankRegion', { access: { regions: [''] } }))
     await setDoc(doc(db, 'users', 'blankEntity'), user('blankEntity', { access: { entities: [''] } }))
@@ -346,6 +350,33 @@ describe('a classification cannot be removed by the people it restricts', () => 
   it('refuses a member re-filing it to a different site', async () => {
     await assertFails(setDoc(docRef('bySite'), { ...SITE_DOC, siteId: 'site-other' }))
     await assertFails(setDoc(docRef('bySite'), { ...SITE_DOC, level: 'org' }))
+  })
+
+  // The two fields the READ rule actually decides on. The freeze pinned
+  // visibility, level, siteId and `region` — but reachesSite() grants on
+  // siteRegion and siteEntity, which are separate fields, and `region` is a
+  // display field no rule reads. So the guarded labels decided nothing and the
+  // deciding ones were writable: relabel the document into your own region,
+  // then read it. An update needs no read permission, so this worked on
+  // documents the attacker had never been able to open.
+  it('refuses a member moving the region the rule reads into their own', async () => {
+    await assertFails(getDoc(docRef('otherRegion')))
+    await assertFails(setDoc(docRef('otherRegion'), { ...SITE_DOC, siteRegion: 'North' }))
+    // Still shut afterwards — the point is the read never opens.
+    await assertFails(getDoc(docRef('otherRegion')))
+  })
+
+  it('refuses the same move by entity', async () => {
+    await assertFails(getDoc(docRef('otherEntity')))
+    await assertFails(setDoc(docRef('otherEntity'), { ...SITE_DOC, siteEntity: 'FOFO' }))
+    await assertFails(getDoc(docRef('otherEntity')))
+  })
+
+  // Someone who CAN legitimately see it must not be able to relabel it either.
+  it('refuses the relabel even from a member who can already read it', async () => {
+    await assertSucceeds(getDoc(docRef('bySite')))
+    await assertFails(setDoc(docRef('bySite'), { ...SITE_DOC, siteRegion: 'North' }))
+    await assertFails(setDoc(docRef('bySite'), { ...SITE_DOC, siteEntity: 'FOFO' }))
   })
 
   // The label is frozen, not the document. A member still does the day job.
