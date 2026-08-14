@@ -223,6 +223,29 @@ export async function parseUpload(file) {
     if (!ENTITIES.includes(data.entity)) issues.push(`Entity must be one of ${ENTITIES.join(', ')}`)
     if (region && !REGIONS.includes(region)) issues.push(`Region must be one of ${REGIONS.join(', ')}`)
 
+    // A QR Link that cannot be turned into a token used to be dropped in
+    // silence: tokenFromQrValue returns '', the upsert falls through to
+    // generateQrToken(), and the row imports looking perfectly fine with a
+    // BRAND NEW code. The labels already stuck on those units then scan to
+    // nothing, and the import reported success. Say so instead.
+    const suppliedQr = String(r['QR Link'] ?? '').trim()
+    if (suppliedQr && !data.qrToken) {
+      // Name the actual problem. "Invalid QR Link" against a thousand-row
+      // upload tells somebody to go hunting; the reason tells them what to
+      // change. These are the three that come up: a code with spaces in it, one
+      // shorter than the minimum, and characters that cannot survive being put
+      // in a URL.
+      const tail = suppliedQr.split(/[?#]/)[0].split('/').filter(Boolean).pop() || suppliedQr
+      const why = /\s/.test(suppliedQr) ? 'it contains a space'
+        : tail.length < 4 ? `"${tail}" is shorter than 4 characters`
+          : `"${tail}" uses characters other than letters, digits, dot, underscore, tilde or hyphen`
+      issues.push(
+        `QR Link could not be read as a code — ${why}. Give the full scan URL `
+        + '(https://…/qr/AB12CD34) or the code on its own, or leave the cell '
+        + 'blank to generate a new code.',
+      )
+    }
+
     if (issues.length) errors.push({ row: rowNum, data, issues })
     else valid.push(data)
   })

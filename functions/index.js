@@ -23,6 +23,7 @@ import { claimsFor, claimsChanged, mergeClaims, revokesAccess } from './lib/clai
 import { planBackfill } from './lib/docVisibility.js'
 import { classifyLocks } from './lib/defectLocks.js'
 import { PURGEABLE, PURGE_AFTER_DAYS, MAX_PURGES_PER_RUN, planPurge } from './lib/retention.js'
+import { planQrBackfill, QR_SOURCES } from './lib/qrMirrors.js'
 
 initializeApp()
 
@@ -246,6 +247,96 @@ export const backfillDocumentVisibility = onCall({ region: REGION }, async (requ
     orgWide: plan.orgWide,
     siteScoped: plan.siteScoped,
     titles: plan.writes.slice(0, 25).map((w) => w.title),
+  }
+})
+
+/**
+ * Stamp orgId onto QR mirrors written before the field existed.
+ *
+ * /qr/{token} is the public copy a scanned label resolves to, and its update
+ * rule reads resource.data.orgId DIRECTLY. Reading an absent field raises in
+ * Firestore rules, and a raising rule denies — so a mirror predating that field
+ * cannot be updated by anybody. The bulk extinguisher import writes each asset
+ * and its mirror in one batch, so ONE legacy document refuses the whole upload:
+ * 771 rows, one stale mirror, everything denied. Reproduced on the emulator.
+ *
+ * A callable rather than a script because no client can do this. /qr denies
+ * list outright, so the mirrors cannot even be enumerated from the browser, and
+ * the write that would fix each one is the write the rule is refusing. Only the
+ * Admin SDK, which bypasses rules, can break that deadlock.
+ *
+ * The rule is not being loosened to accept an absent orgId. That would let
+ * anyone who scans a label claim its mirror into their own organization and
+ * control what the label then displays — defacement of a safety notice. The
+ * data is what is stale, so the data is what gets fixed.
+ *
+ * dryRun defaults to TRUE. Report first, write when asked.
+ */
+export const backfillQrMirrors = onCall({ region: REGION, timeoutSeconds: 540 }, async (request) => {
+  const callerUid = request.auth?.uid
+  if (!callerUid) throw new HttpsError('unauthenticated', 'Sign in first.')
+
+  const db = getFirestore()
+  const caller = (await db.doc(`users/${callerUid}`).get()).data()
+  if (!caller || caller.status !== 'approved' || caller.role !== 'admin') {
+    throw new HttpsError('permission-denied', 'Administrators only.')
+  }
+  const orgId = caller.orgId
+
+  // Every asset in this org that names a token, across all three collections
+  // that share /qr.
+  const snaps = await Promise.all(
+    QR_SOURCES.map((c) => db.collection(`organizations/${orgId}/${c}`).get()),
+  )
+  const assets = []
+  snaps.forEach((snap, i) => {
+    snap.docs.forEach((d) => {
+      const qrToken = d.data()?.qrToken
+      if (qrToken) assets.push({ collection: QR_SOURCES[i], id: d.id, qrToken })
+    })
+  })
+
+  // Read the mirrors by id. getAll takes 300 refs at a time; a mirror that is
+  // absent comes back with exists === false, which the plan reports rather than
+  // inventing a payload for.
+  const mirrors = new Map()
+  const tokens = [...new Set(assets.map((a) => a.qrToken))]
+  for (let i = 0; i < tokens.length; i += 300) {
+    const refs = tokens.slice(i, i + 300).map((t) => db.doc(`qr/${t}`))
+    const docs = await db.getAll(...refs)
+    docs.forEach((d, j) => mirrors.set(tokens[i + j], d.exists ? d.data() : null))
+  }
+
+  const plan = planQrBackfill(assets, mirrors, orgId)
+
+  const dryRun = request.data?.dryRun !== false
+  if (!dryRun) {
+    for (let i = 0; i < plan.writes.length; i += 400) {
+      const batch = db.batch()
+      plan.writes.slice(i, i + 400).forEach((w) => {
+        batch.update(db.doc(`qr/${w.token}`), w.patch)
+      })
+      await batch.commit()
+    }
+  }
+
+  logger.info('qr: mirror orgId backfill', {
+    orgId, dryRun, assets: assets.length, toWrite: plan.writes.length,
+    foreign: plan.foreign.length, missingMirror: plan.missingMirror.length,
+  })
+
+  return {
+    orgId,
+    dryRun,
+    assets: assets.length,
+    alreadyStamped: plan.alreadyStamped,
+    written: dryRun ? 0 : plan.writes.length,
+    wouldWrite: plan.writes.length,
+    // Both are reported, never guessed at: a mirror naming another tenant, and
+    // an asset whose mirror is gone. Each needs a human, not a default.
+    foreign: plan.foreign,
+    missingMirror: plan.missingMirror.slice(0, 50),
+    missingMirrorTotal: plan.missingMirror.length,
   }
 })
 
