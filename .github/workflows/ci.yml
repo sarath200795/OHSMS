@@ -17,6 +17,51 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # ── Dependency advisories ───────────────────────────────────────────────────
+  # Nothing scanned the tree, so every advisory in it was invisible: an ISO
+  # 27001 audit found 2 critical and 9 high sitting there unnoticed, and the
+  # only reason none of them mattered much is luck — almost all were in
+  # devDependencies, which never reach a user.
+  #
+  # That distinction is the whole design of this job. `--omit=dev` scans what
+  # ACTUALLY SHIPS. A critical in vitest is a fact about this repository's
+  # toolchain; a high in a runtime dependency is a fact about the deployed
+  # product, and only the second should stop a merge. Failing on the first
+  # would train everyone to ignore a red build, which is how the real one gets
+  # missed.
+  #
+  # The dev tree is still reported, as a warning that never blocks, so it does
+  # not become invisible again.
+  #
+  # Blocking at CRITICAL rather than high, deliberately and temporarily. There
+  # is one KNOWN high in the runtime tree — xlsx, prototype pollution, no
+  # upstream fix available (docs/SECURITY.md records it) — and a gate that is
+  # red on the day it ships teaches everyone to ignore it, which is exactly how
+  # 2 critical and 9 high came to sit here unnoticed. Raise this to `high` the
+  # moment xlsx is resolved; until then the exception is named in the register
+  # rather than hidden in a flag.
+  audit:
+    name: Dependency advisories
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+
+      - name: Runtime dependencies (blocking)
+        run: npm audit --omit=dev --audit-level=critical
+
+      - name: Cloud Functions (blocking)
+        working-directory: functions
+        run: npm ci && npm audit --omit=dev --audit-level=critical
+
+      - name: Whole tree, including tooling (advisory only)
+        if: always()
+        run: npm audit || true
+
   check:
     name: Lint, test & build
     runs-on: ubuntu-latest

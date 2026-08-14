@@ -291,3 +291,31 @@ One trap that has now bitten twice: a long-running emulator serves the rules it
 started with. `npm run emulators:rules` reloads them. The unit tests never see
 this because `initializeTestEnvironment` uploads the file per run — so a green
 suite is not evidence that the emulator you are clicking around in agrees.
+
+### S-18 · Accepted risk: `xlsx` prototype pollution, no upstream fix — MEDIUM
+
+`xlsx` (SheetJS) carries a prototype-pollution advisory with **no fixed version
+on npm**, and it is a *runtime* dependency sitting directly on the untrusted-file
+path — the Excel import in Fire (bulk asset upload) and Inspections (question
+import).
+
+**Why it is accepted rather than fixed today.** There is nothing to upgrade to:
+SheetJS stopped publishing to npm, and the current build is distributed from
+their own CDN. Swapping the dependency changes how every import and export in
+the product parses files, which is not a change to make in the same commit as a
+CI gate.
+
+**What limits it meanwhile.** Both import paths are behind authentication — an
+attacker needs an account in the tenant they are attacking. `shared/lib/
+workbookGuard` caps file size and row count before parsing, so the classic
+resource-exhaustion half is bounded. Prototype pollution remains possible for
+someone who already has a login.
+
+**How it is tracked.** `.github/workflows/ci.yml` blocks a merge on **critical**
+advisories in the runtime tree, not high, precisely because of this one — a gate
+that is red the day it ships teaches everyone to ignore it. The whole tree is
+still reported on every run, so it cannot go quiet again.
+
+**To close it:** migrate to the maintained SheetJS build, then raise the CI gate
+from `critical` to `high` in the same change. The gate level is the tripwire that
+says this is still open.
