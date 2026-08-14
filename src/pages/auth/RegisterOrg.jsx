@@ -5,6 +5,7 @@ import { useAuth } from '../../shared/auth/AuthContext'
 import { authErrorMessage } from '../../shared/lib/authErrors'
 import { Button, Field, Input } from '../../shared/ui'
 import AuthLayout from './AuthLayout'
+import { validatePassword } from '../../shared/auth/passwordPolicy'
 
 export default function RegisterOrg() {
   const { registerOrganization, isAuthed, profile } = useAuth()
@@ -18,7 +19,8 @@ export default function RegisterOrg() {
 
   const submit = async (e) => {
     e.preventDefault()
-    if (form.password.length < 6) return toast.error('Password must be at least 6 characters.')
+    const pwError = validatePassword(form.password, { email: form.email, name: form.name })
+    if (pwError) return toast.error(pwError)
     setBusy(true)
     try {
       await registerOrganization(form)

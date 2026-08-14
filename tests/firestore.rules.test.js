@@ -1274,3 +1274,72 @@ describe('injury and illness records are need-to-know', () => {
     })
   }
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// An account still on the password an admin typed for it.
+//
+// Provisioning stamps mustChangePassword, and the only thing honouring it was a
+// React route guard. The SDK never asked — so the account could read and write
+// the whole tenant from the browser console while still on the password the
+// provisioning admin chose and therefore knows, with nothing expiring it.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('a provisioned account is inert until its password is changed', () => {
+  beforeEach(async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore()
+      await setDoc(doc(db, 'users', 'fresh'), {
+        orgId: 'orgA', role: 'member', status: 'approved',
+        name: 'Fresh', email: 'fresh@t.co', mustChangePassword: true,
+      })
+      await setDoc(doc(db, 'organizations', 'orgA', 'incidents', 'i1'), { title: 'x' })
+    })
+  })
+
+  const asFresh = () => testEnv.authenticatedContext('fresh').firestore()
+
+  it('cannot read the org data an approved member normally reads', async () => {
+    await assertFails(getDocs(collection(asFresh(), 'organizations', 'orgA', 'incidents')))
+    await assertFails(getDoc(doc(asFresh(), 'organizations', 'orgA', 'incidents', 'i1')))
+  })
+
+  it('cannot write either', async () => {
+    await assertFails(setDoc(doc(asFresh(), 'organizations', 'orgA', 'incidents', 'i2'), { title: 'y' }))
+  })
+
+  it('cannot read the staff directory', async () => {
+    await assertFails(getDocs(query(collection(asFresh(), 'users'), where('orgId', '==', 'orgA'))))
+  })
+
+  // The two things it MUST still be able to do, or the screen that clears the
+  // flag would be locked out of clearing it.
+  it('can still read its own profile and clear the flag', async () => {
+    await assertSucceeds(getDoc(doc(asFresh(), 'users', 'fresh')))
+    await assertSucceeds(setDoc(doc(asFresh(), 'users', 'fresh'), {
+      orgId: 'orgA', role: 'member', status: 'approved',
+      name: 'Fresh', email: 'fresh@t.co', mustChangePassword: false,
+    }))
+  })
+
+  it('works normally once the flag is cleared', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'users', 'fresh'), {
+        orgId: 'orgA', role: 'member', status: 'approved',
+        name: 'Fresh', email: 'fresh@t.co', mustChangePassword: false,
+      })
+    })
+    await assertSucceeds(getDocs(collection(asFresh(), 'organizations', 'orgA', 'incidents')))
+  })
+
+  // The field did not exist until now. Reading it directly would raise on every
+  // profile written before it, and a raising rule denies — which would have
+  // locked out every existing user of the app.
+  it('leaves a profile that has never carried the field alone', async () => {
+    await assertSucceeds(getDocs(collection(
+      testEnv.authenticatedContext('alice').firestore(), 'organizations', 'orgA', 'incidents',
+    )))
+  })
+
+  it('cannot use it to escape into another tenant either', async () => {
+    await assertFails(getDocs(collection(asFresh(), 'organizations', 'orgB', 'incidents')))
+  })
+})

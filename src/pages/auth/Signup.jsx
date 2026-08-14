@@ -7,6 +7,7 @@ import { authErrorMessage } from '../../shared/lib/authErrors'
 import { Button, Field, Input, Select } from '../../shared/ui'
 import { DEPARTMENTS } from '../../shared/auth/access'
 import AuthLayout from './AuthLayout'
+import { validatePassword } from '../../shared/auth/passwordPolicy'
 
 export default function Signup() {
   const { signUpMember, isAuthed, profile } = useAuth()
@@ -28,7 +29,8 @@ export default function Signup() {
   const submit = async (e) => {
     e.preventDefault()
     if (!form.orgId) return toast.error('Please select your organization.')
-    if (form.password.length < 6) return toast.error('Password must be at least 6 characters.')
+    const pwError = validatePassword(form.password, { email: form.email, name: form.name })
+    if (pwError) return toast.error(pwError)
     setBusy(true)
     try {
       const orgName = orgs.find((o) => o.id === form.orgId)?.name

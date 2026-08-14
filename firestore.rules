@@ -36,10 +36,35 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/users/$(request.auth.uid));
     }
 
+    // An account still holding the password an admin typed for it reaches
+    // NOTHING.
+    //
+    // Provisioning stamps mustChangePassword, and until now the only thing
+    // honouring it was a React route guard — ProtectedRoute rendering a
+    // different screen. The SDK never asked. So the account could read and
+    // write the whole tenant from the browser console while still on the
+    // password the provisioning admin chose and therefore knows, and nothing
+    // expired that password. That is a credential the admin can use to act as
+    // that employee, indefinitely, in a system whose value rests on who did
+    // what.
+    //
+    // .get() with a default: every profile written before this field existed
+    // has no such key, and reading it directly would raise — which denies, and
+    // would have locked out every existing user of the app. The same shape that
+    // refused every QR defect report for a day.
+    //
+    // Reading and updating your OWN profile deliberately do not go through this
+    // (see /users below), or the change-password screen would be locked out of
+    // clearing the flag it exists to clear.
+    function passwordIsOwn() {
+      return myProfile().get('mustChangePassword', false) != true;
+    }
+
     function isApprovedMemberOf(orgId) {
       return hasProfile()
         && myProfile().orgId == orgId
-        && myProfile().status == 'approved';
+        && myProfile().status == 'approved'
+        && passwordIsOwn();
     }
 
     function isAdminOf(orgId) {

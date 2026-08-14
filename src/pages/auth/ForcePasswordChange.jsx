@@ -6,6 +6,7 @@ import { doc, updateDoc } from 'firebase/firestore'
 import { auth, db } from '../../shared/firebase'
 import { useAuth } from '../../shared/auth/AuthContext'
 import { Button, Field, Input } from '../../shared/ui'
+import { validatePassword } from '../../shared/auth/passwordPolicy'
 
 /**
  * Full-screen gate shown after first login for provisioned employees
@@ -27,7 +28,8 @@ export default function ForcePasswordChange() {
 
   const submit = async (e) => {
     e.preventDefault()
-    if (pw.length < 8) return toast.error('Password must be at least 8 characters')
+    const pwError = validatePassword(pw, { email: auth.currentUser?.email })
+    if (pwError) return toast.error(pwError)
     if (current && pw === current) return toast.error('Choose a different password than the temporary one')
     if (pw !== pw2) return toast.error('Passwords do not match')
     setBusy(true)
