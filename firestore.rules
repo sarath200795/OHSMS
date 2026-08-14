@@ -884,6 +884,38 @@ service cloud.firestore {
         allow read: if canReadDocument(orgId, resource.data);
       }
 
+      // ── Health records ──────────────────────────────────────────────────────
+      // Injuries and illnesses carry special-category data: a named colleague's
+      // body parts, injury type, medication, days off, the agent they were
+      // exposed to, the health issue. All of it was scoped to the tenant and to
+      // nothing within it — every approved member could list every colleague's
+      // medical detail, and so could the auditor, who is typically an outside
+      // party given a login to inspect the safety record.
+      //
+      // isManagerOf, NOT isElevatedOf: that helper includes 'auditor', and an
+      // outside reviewer confirming injuries are recorded and verified does not
+      // need to read what medication a named person is on.
+      //
+      // Reads nothing off the document on purpose. A per-person branch — "you
+      // may read your own" — would have to test a field on the queried
+      // document, and a field access in an `allow read` raises on any record
+      // written before that field existed, which denies; the fix would need a
+      // backfill before it could ship, and the same access decision would then
+      // be spread across two mechanisms. Whoever the record is about reads it
+      // through the incident it belongs to, which they are already party to.
+      //
+      // Worth anything only because both collections are excluded from the
+      // generic read below, and from its recursive wildcard. Rules are a
+      // permissive union: one surviving grant makes every line of this
+      // decorative.
+      match /injuries/{injuryId} {
+        allow read: if isManagerOf(orgId);
+      }
+
+      match /illnesses/{illnessId} {
+        allow read: if isManagerOf(orgId);
+      }
+
     // A document's classification is enforced on READ and was unprotected on
     // WRITE, so any member who could legitimately reach a restricted document —
     // via their own site access — could publish it org-wide, and any member who
@@ -917,7 +949,7 @@ service cloud.firestore {
         //
         // `read` is split out from create/update for one reason: documents are
         // read through the site-scoped rule above and written through this one.
-        allow read: if col != 'auditLogs' && col != 'defectLocks' && col != 'docSeq' && col != 'documents' && isApprovedMemberOf(orgId);
+        allow read: if col != 'auditLogs' && col != 'defectLocks' && col != 'docSeq' && col != 'documents' && col != 'injuries' && col != 'illnesses' && isApprovedMemberOf(orgId);
         // The manager gate lives INSIDE this rule rather than in a new match of
         // its own. Rules are a permissive union: a narrow per-collection match
         // restricts nothing while this one still grants the same write, so the
@@ -945,7 +977,7 @@ service cloud.firestore {
         // and to the manager gate above, which this would otherwise hand back
         // for the parent document of every gated collection.
         match /{sub=**} {
-          allow read: if col != 'auditLogs' && col != 'defectLocks' && col != 'docSeq' && col != 'documents' && isApprovedMemberOf(orgId);
+          allow read: if col != 'auditLogs' && col != 'defectLocks' && col != 'docSeq' && col != 'documents' && col != 'injuries' && col != 'illnesses' && isApprovedMemberOf(orgId);
           allow create, update: if col != 'auditLogs' && col != 'defectLocks' && col != 'docSeq'
             && isWriterOf(orgId)
             && (isElevatedOf(orgId) || keepsClassification(col))

@@ -1198,3 +1198,79 @@ describe('the LOTO activity trail is append-only for real', () => {
     }))
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Special-category health data.
+//
+// An injury record names a colleague and carries their body parts, injury type,
+// medication and days off work; an illness record carries the agent they were
+// exposed to and the health issue. All of it was scoped to the tenant and to
+// nothing within it — every approved member could list every colleague's
+// medical detail, and so could the auditor, who is typically an outside party
+// given a login to inspect the safety record.
+//
+// LISTS as well as GETS, per the S-17 lesson: a rule can refuse a single
+// document while an unfiltered query walks the whole collection, and the list
+// is the shape that matters here.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('injury and illness records are need-to-know', () => {
+  const health = (db, col) => collection(db, 'organizations', 'orgA', col)
+  const one = (db, col) => doc(db, 'organizations', 'orgA', col, 'h1')
+
+  beforeEach(async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore()
+      await setDoc(doc(db, 'organizations', 'orgA', 'injuries', 'h1'), {
+        personName: 'R. Osei', bodyParts: ['hand'], injuryType: 'laceration',
+        medication: 'co-codamol', daysToReturnToWork: 3,
+      })
+      await setDoc(doc(db, 'organizations', 'orgA', 'illnesses', 'h1'), {
+        healthIssue: 'dermatitis', exposedToAgent: 'isocyanate',
+      })
+      for (const [uid, role] of [['mgr', 'manager'], ['bobA', 'member'], ['auditorA', 'auditor']]) {
+        await setDoc(doc(db, 'users', uid), {
+          orgId: 'orgA', role, status: 'approved', name: uid, email: uid + '@t.co',
+        })
+      }
+    })
+  })
+
+  for (const col of ['injuries', 'illnesses']) {
+    it(`lets a manager and an admin read ${col}, by get and by list`, async () => {
+      for (const uid of ['alice', 'mgr']) {
+        const db = testEnv.authenticatedContext(uid).firestore()
+        await assertSucceeds(getDoc(one(db, col)))
+        await assertSucceeds(getDocs(health(db, col)))
+      }
+    })
+
+    it(`refuses an ordinary member ${col}, by get AND by list`, async () => {
+      const db = testEnv.authenticatedContext('bobA').firestore()
+      await assertFails(getDoc(one(db, col)))
+      await assertFails(getDocs(health(db, col)))
+    })
+
+    // isElevatedOf would have included the auditor. An outside reviewer
+    // confirming injuries are recorded and verified does not need to read what
+    // medication a named person is on.
+    it(`refuses the auditor ${col}`, async () => {
+      const db = testEnv.authenticatedContext('auditorA').firestore()
+      await assertFails(getDoc(one(db, col)))
+      await assertFails(getDocs(health(db, col)))
+    })
+
+    it(`refuses another tenant and a signed-out caller ${col}`, async () => {
+      await assertFails(getDocs(health(testEnv.authenticatedContext('bob').firestore(), col)))
+      await assertFails(getDocs(health(testEnv.unauthenticatedContext().firestore(), col)))
+    })
+
+    // Reporting an incident writes these. Narrowing the READ must not stop the
+    // person doing the reporting from recording what happened.
+    it(`still lets a member WRITE ${col}, which reporting an incident does`, async () => {
+      const db = testEnv.authenticatedContext('bobA').firestore()
+      await assertSucceeds(setDoc(doc(db, 'organizations', 'orgA', col, 'h2'), {
+        personName: 'New', incidentId: 'i1',
+      }))
+    })
+  }
+})

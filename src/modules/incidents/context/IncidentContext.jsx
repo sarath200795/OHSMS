@@ -27,20 +27,28 @@ export function IncidentProvider({ children }) {
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
 
+  // Injuries and illnesses carry a named colleague's body parts, injury type,
+  // medication and days off. The rules now restrict them to admin and manager;
+  // this stops everyone else opening a listener that can only ever be refused,
+  // which would fill the console with permission errors on a page that is
+  // working correctly and make the real ones harder to see.
+  const canReadHealth = isAdmin || profile?.role === 'manager'
+
   useEffect(() => {
     if (!orgId) return
     setLoading(true)
     let ready = false
     const done = () => { if (!ready) { ready = true; setLoading(false) } }
     const u1 = subscribeIncidents(orgId, (list) => { setIncidents(list); done() })
-    const u2 = subscribeIllnesses(orgId, setIllnesses)
     const u3 = subscribeOrgUsers(orgId, setUsers)
     const u4 = subscribeOrg(orgId, setOrg)
     const u5 = subscribeStats(orgId, setStats)
-    const u6 = subscribeInjuries(orgId, setInjuries)
     const u7 = subscribeSites(orgId, setAllSites)
+    const noop = () => {}
+    const u2 = canReadHealth ? subscribeIllnesses(orgId, setIllnesses) : noop
+    const u6 = canReadHealth ? subscribeInjuries(orgId, setInjuries) : noop
     return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7() }
-  }, [orgId])
+  }, [orgId, canReadHealth])
 
   // Sites the current user is permitted to log incidents against.
   const sites = useMemo(
