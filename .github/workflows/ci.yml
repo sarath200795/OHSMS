@@ -33,13 +33,13 @@ jobs:
   # The dev tree is still reported, as a warning that never blocks, so it does
   # not become invisible again.
   #
-  # Blocking at CRITICAL rather than high, deliberately and temporarily. There
-  # is one KNOWN high in the runtime tree — xlsx, prototype pollution, no
-  # upstream fix available (docs/SECURITY.md records it) — and a gate that is
-  # red on the day it ships teaches everyone to ignore it, which is exactly how
-  # 2 critical and 9 high came to sit here unnoticed. Raise this to `high` the
-  # moment xlsx is resolved; until then the exception is named in the register
-  # rather than hidden in a flag.
+  # Blocking at HIGH via scripts/audit-gate.mjs, which allows a NAMED list of
+  # advisories rather than lowering the threshold. The first version blocked at
+  # critical only, because one unfixable high (xlsx) would have made the gate red
+  # on the day it shipped — but that hid every other high too, which is most of
+  # what a dependency gate is for. The allowlist entry has to say why it is
+  # tolerable and what closes it, and a stale entry is reported. If the list
+  # grows, that is the signal, not the workaround.
   audit:
     name: Dependency advisories
     runs-on: ubuntu-latest
@@ -52,11 +52,13 @@ jobs:
       - run: npm ci
 
       - name: Runtime dependencies (blocking)
-        run: npm audit --omit=dev --audit-level=critical
+        run: node scripts/audit-gate.mjs
 
       - name: Cloud Functions (blocking)
         working-directory: functions
-        run: npm ci && npm audit --omit=dev --audit-level=critical
+        # No allowlist here — the functions tree is clean at high, and it should
+        # stay that way. If this ever goes red, fix it rather than exempting it.
+        run: npm ci && npm audit --omit=dev --audit-level=high
 
       - name: Whole tree, including tooling (advisory only)
         if: always()

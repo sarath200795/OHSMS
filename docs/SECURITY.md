@@ -292,7 +292,7 @@ started with. `npm run emulators:rules` reloads them. The unit tests never see
 this because `initializeTestEnvironment` uploads the file per run — so a green
 suite is not evidence that the emulator you are clicking around in agrees.
 
-### S-18 · Accepted risk: `xlsx` prototype pollution, no upstream fix — MEDIUM
+### S-18 · `xlsx` prototype pollution — CLOSED (residual risk accepted, narrowed)
 
 `xlsx` (SheetJS) carries a prototype-pollution advisory with **no fixed version
 on npm**, and it is a *runtime* dependency sitting directly on the untrusted-file
@@ -319,3 +319,17 @@ still reported on every run, so it cannot go quiet again.
 **To close it:** migrate to the maintained SheetJS build, then raise the CI gate
 from `critical` to `high` in the same change. The gate level is the tripwire that
 says this is still open.
+
+**Update — closed.** Every import now parses CSV through `shared/lib/parseTable`
+(papaparse), so no untrusted file reaches SheetJS. `xlsx` remains a dependency
+because the seven EXPORT paths still write real workbooks, and writing from data
+we already hold is not a parsing surface — which is the whole of this advisory.
+
+The CI gate was raised from `critical` to **high** at the same time, which was
+the tripwire this entry set. It runs `scripts/audit-gate.mjs`: blocks on high and
+above, allows a NAMED list, and each entry must state why it is tolerable and
+what closes it. Lowering a threshold hides every other advisory at that level;
+an allowlist hides exactly one, by name, and reports itself when stale.
+
+To remove the last of it: drop `xlsx` entirely, or move exports to the
+maintained SheetJS build, then delete the allowlist entry.
