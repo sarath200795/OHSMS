@@ -457,23 +457,44 @@ Resend account, and safety notices arriving from it will be filtered as spam by
 recipients who most need to read them. Verify your own sending domain with the
 provider and set `MAIL_FROM` to an address on it before the first real send.
 
-**Put the key in Secret Manager, not in the environment.** A plain env var lives
-in the Cloud Run service configuration in cleartext — readable by any project
-Viewer, with no versioning, no access log and no rotation story (ISO27001-AUDIT
-LOW-13). Store it once:
+**Where the key goes today: `functions/.env.weehs-4eb28`.** The deploy uploads
+that file's contents as the functions' environment, and `.gitignore` covers it
+(`.env.*` matches at any depth — verify with
+`git check-ignore -v functions/.env.weehs-4eb28` before you write a key into it).
+
+```
+MAIL_PROVIDER=resend
+MAIL_API_KEY=re_...
+MAIL_FROM=OHS MS <safety@your-verified-domain>
+APP_BASE_URL=https://weehs-4eb28.web.app
+```
+
+Know what you are accepting. A plain env var is stored in the Cloud Run service
+configuration in cleartext: readable by anyone with project Viewer, with no
+versioning, no access log, and no rotation story (ISO27001-AUDIT LOW-13). It is
+adequate to get mail flowing and to prove the tier works; it is not where this
+should stay.
+
+**The upgrade, when you want it: Secret Manager.** Two steps, and they must
+happen in this order or the deploy breaks.
 
 ```bash
 npx firebase functions:secrets:set MAIL_API_KEY --project weehs-4eb28
 ```
 
-and bind it in `functions/index.js` — declare
+Then bind it in `functions/index.js`: declare
 `const MAIL_API_KEY = defineSecret('MAIL_API_KEY')` (from
-`firebase-functions/params`) and add `secrets: [MAIL_API_KEY]` to the five action
-triggers and to `dailyDigest`. The runtime then exposes the value as
-`process.env.MAIL_API_KEY`, so `mailConfigFromEnv` needs no change — only the
-declaration is missing today. Never create `functions/.env` with a real key in
-it; the remaining variables are not secret and belong there or in the deploy
-config.
+`firebase-functions/params`) and add `secrets: [MAIL_API_KEY]` to the eight
+action triggers and to `dailyDigest`. The runtime exposes the value as
+`process.env.MAIL_API_KEY`, so `mailConfigFromEnv` needs no change — the
+declaration is the only missing piece.
+
+Order matters because a function that declares a secret **will not deploy until
+that secret exists**. Wiring `defineSecret` before running the command above
+turns every subsequent `firebase deploy --only functions` into a prompt, and a
+prompt in CI is a failed pipeline. Create the secret first, then bind it, then
+delete the key from `functions/.env.weehs-4eb28` — a stale copy there is the
+thing you just moved it out of.
 
 ### Verifying mail is actually flowing
 
