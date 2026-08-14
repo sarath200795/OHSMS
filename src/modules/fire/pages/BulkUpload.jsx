@@ -11,6 +11,7 @@ import { downloadTemplate, parseUpload } from '../lib/exporter'
 import { bulkUpsertExtinguishers } from '../lib/firestore'
 import { assignSerials } from '../lib/serial'
 import { BULK_COLUMNS } from '../lib/constants'
+import { writeErrorMessage } from '../../../shared/lib/writeError'
 
 export default function BulkUpload() {
   const { orgId, orgName, profile } = useAuth()
@@ -88,7 +89,7 @@ export default function BulkUpload() {
       setResult(null)
       setFileName('')
     } catch (e) {
-      toast.error(e.message)
+      toast.error(writeErrorMessage(e, { online: navigator.onLine, action: 'import these extinguishers' }))
     } finally {
       setCommitting(false)
     }

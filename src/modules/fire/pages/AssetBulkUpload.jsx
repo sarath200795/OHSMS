@@ -11,6 +11,7 @@ import { indexSites, resolveSite, suggestSite } from '../lib/siteLink'
 import { useAccessibleSites } from '../../../shared/org/useAccessibleSites'
 import { Pager } from '../../../shared/ui'
 import { usePagination } from '../../../shared/ui/usePagination'
+import { writeErrorMessage } from '../../../shared/lib/writeError'
 
 const CFG = {
   aed: {
@@ -115,7 +116,7 @@ export default function AssetBulkUpload() {
       const res = await cfg.add(orgId, orgName, rows, { uid: profile?.uid, name: profile?.name })
       reset(); setDone(res)
       toast.success(`${res.created} ${cfg.label} added`)
-    } catch (e) { toast.error(e.message) } finally { setCommitting(false) }
+    } catch (e) { toast.error(writeErrorMessage(e, { online: navigator.onLine, action: 'import these assets' })) } finally { setCommitting(false) }
   }
 
   return (
