@@ -25,6 +25,7 @@ import { logger } from 'firebase-functions'
 import { claimsFor, claimsChanged, mergeClaims } from './lib/claims.js'
 import { planBackfill } from './lib/docVisibility.js'
 import { classifyLocks } from './lib/defectLocks.js'
+import { PURGEABLE, PURGE_AFTER_DAYS, MAX_PURGES_PER_RUN, planPurge } from './lib/retention.js'
 import { createMailer } from './lib/email.js'
 import {
   onActionWrite,
@@ -379,4 +380,89 @@ export const dailyDigest = onSchedule(
       config: appConfigFromEnv(process.env),
       log: logger,
     })
+)
+
+/**
+ * Make the Recycle Bin's promise true.
+ *
+ * The screen has always said "Auto-purged after 30 days" and rendered a
+ * countdown, and nothing implemented it — soft-deleted records, including
+ * illness records carrying health data, sat there for as long as the project
+ * existed unless a human clicked Purge. The countdown reached zero and kept
+ * going. A stated retention period nothing enforces is worse than none: it is a
+ * control an auditor will test, a claim a data subject may rely on, and the
+ * reason somebody stops thinking about the delete they performed.
+ *
+ * 03:30, away from the 07:00 digest so a slow run cannot delay the mail.
+ * retryCount 0 for the same reason the digest uses it: the handler never
+ * throws, a failed org is logged and skipped, and tomorrow's run picks up
+ * anything missed — a record already 30 days dead is not urgent.
+ */
+async function purgeOrgCollection(db, orgId, spec, now) {
+  const col = db.collection('organizations').doc(orgId).collection(spec.collection)
+  // Query by the field AND re-check in the plan. The query is a filter; the
+  // plan is the guarantee, and only one of them is tested.
+  const cutoff = new Date(now - PURGE_AFTER_DAYS * 24 * 60 * 60 * 1000)
+  const snap = await col.where('deletedAt', '<=', cutoff).limit(MAX_PURGES_PER_RUN * 2).get()
+  if (snap.empty) return { purged: 0, kept: 0 }
+
+  const docs = snap.docs.map((d) => ({ id: d.id, deletedAt: d.data().deletedAt, data: d.data() }))
+  const { purge, keep, capped } = planPurge(docs, { now })
+  if (capped) {
+    logger.info('retention: capped', { orgId, collection: spec.collection, cap: MAX_PURGES_PER_RUN })
+  }
+
+  for (const id of purge) {
+    const ref = col.doc(id)
+    const row = docs.find((d) => d.id === id)
+
+    // Subcollections first. A pointer must not outlive its file, and the
+    // parent going first would orphan the children beyond any query that
+    // could find them again.
+    for (const sub of spec.subcollections || []) {
+      const kids = await ref.collection(sub).get()
+      for (const kid of kids.docs) await kid.ref.delete()
+    }
+
+    // The public QR mirror lives outside the org path, keyed by token. Leaving
+    // it behind means a world-readable record of equipment that no longer
+    // exists, reachable by anyone who photographed the label.
+    if (spec.qrMirror && row?.data?.qrToken) {
+      await db.collection('qr').doc(String(row.data.qrToken)).delete().catch(() => {})
+    }
+
+    await ref.delete()
+  }
+
+  return { purged: purge.length, kept: keep.length }
+}
+
+export const purgeSoftDeleted = onSchedule(
+  { schedule: '30 3 * * *', timeZone: DIGEST_TZ, region: REGION, retryCount: 0, timeoutSeconds: 540 },
+  async () => {
+    const db = getFirestore()
+    const now = Date.now()
+    const orgs = await db.collection('organizations').get()
+    let total = 0
+
+    for (const org of orgs.docs) {
+      for (const spec of PURGEABLE) {
+        try {
+          const { purged, kept } = await purgeOrgCollection(db, org.id, spec, now)
+          total += purged
+          if (purged > 0) {
+            logger.info('retention: purged', { orgId: org.id, collection: spec.collection, purged, kept })
+          }
+        } catch (e) {
+          // One bad collection must not stop the rest, and must not retry the
+          // whole sweep — the next run covers it.
+          logger.error('retention: skipped', {
+            orgId: org.id, collection: spec.collection, error: e?.message || String(e),
+          })
+        }
+      }
+    }
+
+    logger.info('retention: run complete', { organizations: orgs.size, purged: total })
+  }
 )

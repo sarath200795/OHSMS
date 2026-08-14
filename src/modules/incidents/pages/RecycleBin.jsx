@@ -35,7 +35,15 @@ export default function RecycleBin() {
 
   return (
     <div>
-      <PageHeader title="Recycle Bin" subtitle="Soft-deleted incidents & illnesses" icon={Trash2} />
+      {/* Says the window out loud. These records now expire on a schedule, and
+          this screen previously implied they were kept indefinitely — an
+          illness record carrying health data disappearing without warning is
+          worse than one kept too long. */}
+      <PageHeader
+        title="Recycle Bin"
+        subtitle="Soft-deleted incidents & illnesses — restore, or purge permanently. Anything left here is deleted automatically after 30 days."
+        icon={Trash2}
+      />
       {items.length === 0 ? (
         <EmptyState icon={Trash2} title="Recycle bin is empty" hint="Deleted records can be restored from here." />
       ) : (
