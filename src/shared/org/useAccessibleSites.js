@@ -14,10 +14,24 @@ export function useAccessibleSites(sites) {
   const [own, setOwn] = useState([])
   const external = sites !== undefined
 
+  // Gated on an APPROVED profile, not just an orgId.
+  //
+  // orgId outlives the thing the rule actually checks. isApprovedMemberOf reads
+  // the profile on every re-evaluation, so a listener opened on orgId alone
+  // stays open across sign-out and token refresh and re-evaluates with auth
+  // that no longer satisfies it — permission-denied, on a session that is
+  // simply ending. It was a race: sometimes React tore the listener down first,
+  // sometimes the listener answered first and logged "every site picker will
+  // look empty" at somebody whose app was working perfectly.
+  //
+  // Depending on the profile means the listener cannot open before it could
+  // succeed, and closes the moment it could not.
+  const canRead = Boolean(orgId && profile?.status === 'approved')
+
   useEffect(() => {
-    if (external || !orgId) return undefined
+    if (external || !canRead) return undefined
     return subscribeSites(orgId, setOwn)
-  }, [external, orgId])
+  }, [external, canRead, orgId])
 
   const all = external ? sites : own
   return useMemo(() => resolveAccessibleSites(profile, all || [], { isAdmin }), [profile, all, isAdmin])

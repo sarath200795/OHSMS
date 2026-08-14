@@ -21,7 +21,7 @@ import {
   writeBatch,
   limit,
 } from 'firebase/firestore'
-import { db } from '../firebase'
+import { db, auth } from '../firebase'
 import { AUDIT } from '../audit/audit'
 import { createSharedSubscription } from './sharedSubscription'
 import { notifySiteCreated } from './siteHooks'
@@ -270,8 +270,21 @@ const sharedSites = createSharedSubscription((orgId, emit) => {
       // Note also the orderBy('name') above: Firestore drops documents missing
       // the ordered field, so a site saved without a name is invisible here
       // while existing perfectly well in the database.
-      // eslint-disable-next-line no-console
-      console.error('[OHS MS] sites read failed — every site picker will look empty:', err?.message || err)
+      //
+      // A permission-denied while nobody is signed in is a session ENDING, not
+      // a fault: this listener is shared app-wide, so one component unmounting
+      // does not close it, and it can outlive auth by a moment on sign-out or a
+      // token refresh. Shouting about it there taught people to discount a
+      // message that is genuine the rest of the time — which is the same way a
+      // dropped connection came to read as a permissions bug.
+      const signedOut = !auth?.currentUser
+      if (err?.code === 'permission-denied' && signedOut) {
+        // eslint-disable-next-line no-console
+        console.debug('[OHS MS] sites listener closed with the session')
+      } else {
+        // eslint-disable-next-line no-console
+        console.error('[OHS MS] sites read failed — every site picker will look empty:', err?.message || err)
+      }
       emit([])
     }
   )
