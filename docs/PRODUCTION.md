@@ -453,3 +453,35 @@ in a `deploy-staging.yml` copy triggered on pushes to `main`, and stop using
   - `undici` is pinned in `overrides` because Firebase holds it at a vulnerable
     version. It never reaches the browser bundle, so the pin keeps `npm audit`
     readable rather than closing a hole in the shipped app.
+
+## 9. API key restrictions  ⚠️ console required
+
+The `AIzaSy…` key in the client bundle is a **Firebase Web API key**, not a
+secret. It ships in every Firebase web app by design — it names the project so
+Google knows which one a request belongs to — and it cannot be removed from a
+browser without the app losing its ability to reach Firebase at all. Anything
+that appears to hide it (obfuscation, a proxy, an env indirection) leaves it
+visible in the network tab and buys nothing.
+
+What stops it being useful to somebody else is `firestore.rules` and
+`storage.rules`: the key lets a caller ADDRESS the project, the rules decide
+what they may read or write. That is the control, and it is the one this
+codebase invests in.
+
+There is still a worthwhile restriction to apply, and it is console-only.
+
+**Firebase Web API key** — Google Cloud console → APIs & Services →
+Credentials → the browser key:
+1. *Application restrictions* → **HTTP referrers**, and list only
+   `weehs-4eb28.web.app/*` and `weehs-4eb28.firebaseapp.com/*` (add a staging
+   host when one exists). A key lifted from the bundle then fails from anywhere
+   else, which removes the quota-abuse and phishing-clone uses of it.
+2. *API restrictions* → **Restrict key**, and select only what the app calls:
+   Identity Toolkit, Token Service, Firestore, Cloud Storage, and — while the
+   map is in use — Maps JavaScript.
+
+**Maps JavaScript key** — restrict the same way. This one is billable, so an
+unrestricted key is somebody else's map bill. Tracked as S-05 in SECURITY.md.
+
+Neither restriction changes anything in this repository, and neither is a
+substitute for the rules. They bound what a copied key can be pointed at.
