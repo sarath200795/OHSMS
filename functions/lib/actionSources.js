@@ -18,6 +18,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** collection → where its corrective actions live, and how to describe one. */
+import { createHash } from 'node:crypto'
+
 export const ACTION_SOURCES = {
   incidents: { field: 'capa', label: 'Incident', context: (d) => d.refNo || d.referenceNo || 'Incident' },
   illnesses: { field: 'actions', label: 'Illness', context: (d) => d.refNo || 'Illness' },
@@ -85,8 +87,37 @@ export const ACTION_SOURCES = {
   // a trigger on that collection fires on every scan and inspection.
 }
 
-/** Stable identity for one row, so a diff can tell "new" from "edited". */
-const rowId = (row, i) => String(row?.id ?? row?.actionId ?? i)
+/**
+ * Stable identity for one row, so a diff can tell "new" from "edited".
+ *
+ * The fallback used to be the array index, and for the two sources whose rows
+ * carry no id of their own — drill CAPA and consultations — the index WAS the
+ * identity. A position is not an identity. Delete the second of five rows and
+ * the three below it renumber; the diff sees three rows whose contents changed
+ * completely, calls them new assignments, and mails everybody attached to them
+ * about work they were told about weeks ago. Closing one action re-notifies the
+ * rest of the list.
+ *
+ * Hashing the row's own describing fields buys the opposite mistake: rewording
+ * an action reads as a new row and re-mails its owner. That is one message to
+ * one person on the rarer event, against a cascade to everyone below the
+ * commoner one.
+ *
+ * Only the fields that say WHAT the assignment is and WHO it belongs to. Status
+ * and progress are deliberately excluded — moving a row to in-progress must not
+ * change what it is. Two rows identical in all of them collide, and should: for
+ * notification purposes that is one assignment, and one mail is the right
+ * number.
+ */
+const IDENTIFYING = ['action', 'description', 'title', 'defect', 'desc', 'owner', 'ownerName', 'responsible', 'assignedTo', 'due', 'dueDate']
+
+const rowKey = (row) =>
+  createHash('sha1')
+    .update(IDENTIFYING.map((k) => String(row?.[k] ?? '')).join('\u0000'))
+    .digest('hex')
+    .slice(0, 16)
+
+const rowId = (row) => String(row?.id ?? row?.actionId ?? rowKey(row))
 
 /**
  * Everyone a single CAPA row is addressed to, as recipient references.
@@ -139,7 +170,7 @@ export const rowsOf = (data, meta) => {
   if (!meta) return new Map()
   if (meta.rows) return new Map(meta.rows(data || {}))
   const arr = Array.isArray(data?.[meta.field]) ? data[meta.field] : []
-  return new Map(arr.filter(Boolean).map((row, i) => [rowId(row, i), row]))
+  return new Map(arr.filter(Boolean).map((row) => [rowId(row), row]))
 }
 
 /**

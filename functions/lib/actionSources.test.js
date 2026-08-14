@@ -136,3 +136,52 @@ describe('audit findings', () => {
     expect(newAssignments('auditFindings', null, audit({ taskDetails: {}, auditor: '' }))).toEqual([])
   })
 })
+
+// Drill CAPA and consultation rows carry no id of their own, so before this the
+// array index WAS the identity — and an index is a position, not an identity.
+describe('rows that carry no id of their own', () => {
+  const rows = [
+    { description: 'Clear the exit', owner: 'Ravi' },
+    { description: 'Test the alarm', owner: 'Priya' },
+    { description: 'Refill the hoses', owner: 'Anil' },
+  ]
+
+  it('does not re-mail the rows below one that was deleted', () => {
+    const before = drill(rows)
+    const after = drill([rows[0], rows[2]])
+    // Under index identity, 'Refill the hoses' moved from slot 2 to slot 1 and
+    // read as a brand new assignment, so Anil was told again about work he was
+    // given weeks ago. Closing one action re-notified the rest of the list.
+    expect(newAssignments('mockDrills', before, after)).toEqual([])
+  })
+
+  it('does not re-mail anyone when a row is inserted above them', () => {
+    const before = drill(rows)
+    const after = drill([{ description: 'Prop the fire door', owner: 'Meena' }, ...rows])
+    const out = newAssignments('mockDrills', before, after)
+    expect(out).toHaveLength(1)
+    expect(out[0].refs[0].name).toBe('Meena')
+  })
+
+  it('still reports a genuinely new row', () => {
+    const out = newAssignments('mockDrills', drill(rows), drill([...rows, { description: 'Log the drill', owner: 'Sita' }]))
+    expect(out).toHaveLength(1)
+    expect(out[0].refs[0].name).toBe('Sita')
+  })
+
+  // The cost of content identity, stated so it is a decision and not a surprise:
+  // rewording an action reads as a new row. One mail to one person, against a
+  // cascade to everyone below a deletion.
+  it('treats a reworded action as a new one', () => {
+    const after = drill([{ description: 'Clear the exit route', owner: 'Ravi' }, rows[1], rows[2]])
+    const out = newAssignments('mockDrills', drill(rows), after)
+    expect(out).toHaveLength(1)
+    expect(out[0].refs[0].name).toBe('Ravi')
+  })
+
+  // Status is deliberately not part of the identity.
+  it('says nothing when a row only changes status', () => {
+    const after = drill([{ ...rows[0], actionStatus: 'in-progress' }, rows[1], rows[2]])
+    expect(newAssignments('mockDrills', drill(rows), after)).toEqual([])
+  })
+})
