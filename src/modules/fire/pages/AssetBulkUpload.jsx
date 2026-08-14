@@ -154,7 +154,7 @@ export default function AssetBulkUpload() {
               </div>
               <p className="font-bold text-ink-800">{fileName || 'Click to upload or drag & drop'}</p>
               <p className="text-sm text-ink-500">.xlsx or .csv using the {cfg.label} template columns</p>
-              <input ref={inputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={(e) => handleFile(e.target.files?.[0])} />
+              <input ref={inputRef} type="file" accept=".csv" className="hidden" onChange={(e) => handleFile(e.target.files?.[0])} />
             </div>
 
             {result && (

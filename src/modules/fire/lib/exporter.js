@@ -8,6 +8,7 @@ import {
 import { severityLabel, toDate } from './extinguisherLogic'
 import { tokenFromQrValue } from './qr'
 import { assertWorkbookSize, assertRowCount } from '../../../shared/lib/workbookGuard'
+import { parseCsvFile } from '../../../shared/lib/parseTable'
 
 /**
  * Map an exported "Status" label back to its stored key.
@@ -119,9 +120,7 @@ export async function parseAssetUpload(kind, file) {
   // Wrap in Uint8Array: with a bare ArrayBuffer, SheetJS can misread the xlsx
   // zip container as a text sheet and silently return garbage rows instead of
   // failing — which looks like a bad spreadsheet rather than a parsing bug.
-  const buf = new Uint8Array(await file.arrayBuffer())
-  const wb = XLSX.read(buf, { type: 'array', cellDates: true })
-  const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' })
+  const { rows } = await parseCsvFile(file)
   assertRowCount(rows.length)
   const valid = []
   const errors = []
@@ -188,10 +187,7 @@ export async function parseUpload(file) {
   // Wrap in Uint8Array: with a bare ArrayBuffer, SheetJS can misread the xlsx
   // zip container as a text sheet and silently return garbage rows instead of
   // failing — which looks like a bad spreadsheet rather than a parsing bug.
-  const buf = new Uint8Array(await file.arrayBuffer())
-  const wb = XLSX.read(buf, { type: 'array', cellDates: true })
-  const ws = wb.Sheets[wb.SheetNames[0]]
-  const rows = XLSX.utils.sheet_to_json(ws, { defval: '' })
+  const { rows } = await parseCsvFile(file)
   assertRowCount(rows.length)
 
   const valid = []

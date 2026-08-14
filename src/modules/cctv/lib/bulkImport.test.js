@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import * as XLSX from 'xlsx'
+import Papa from 'papaparse'
 import {
   normalizeStatus, nameIndex, validateDvrRows, validateCameraRows, parseWorkbook, parseImport,
 } from './bulkImport'
@@ -14,12 +14,11 @@ const dvrs = [
   { id: 'd2', name: 'DVR-Yard-02', siteId: 's2', siteName: 'North Plant' },
 ]
 
-const sheet = (rows) => {
-  const ws = XLSX.utils.json_to_sheet(rows)
-  const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, ws, 'S')
-  return XLSX.write(wb, { type: 'array', bookType: 'xlsx' })
-}
+// CSV text, not a workbook: imports parse CSV now, because the npm xlsx package
+// carries an unfixable prototype-pollution advisory and an upload is untrusted
+// input. Exports still write real .xlsx — writing our own data is not a parsing
+// surface.
+const sheet = (rows) => Papa.unparse(rows)
 
 describe('normalizeStatus', () => {
   it('accepts the words people actually type', () => {
@@ -149,8 +148,15 @@ describe('parseWorkbook', () => {
   // People rename columns; the import should survive the ones they'd plausibly use.
   it('accepts reasonable alternative headings', () => {
     const buf = sheet([{ DVR: 'DVR-1', IP: '10.0.0.1', Branch: 'Hosur', Ports: 8 }])
-    expect(parseWorkbook(buf, 'dvrs').rows[0]).toMatchObject({ name: 'DVR-1', ipAddress: '10.0.0.1', siteName: 'Hosur', channels: 8 })
+    // channels comes back as the STRING '8'. CSV is untyped and dynamic typing
+    // is deliberately off, so a serial like 007 survives as written — the parser
+    // now returns what the file said rather than guessing. parseImport coerces
+    // it, which is what the stored record depends on and is asserted below.
+    expect(parseWorkbook(buf, 'dvrs').rows[0]).toMatchObject({
+      name: 'DVR-1', ipAddress: '10.0.0.1', siteName: 'Hosur', channels: '8',
+    })
   })
+
 
   it('reads camera sheets, including the DVR link column', () => {
     const buf = sheet([{ 'Camera Name': 'CAM-1', Location: 'Gate', DVR: 'DVR-Gate-01' }])
@@ -171,7 +177,7 @@ describe('parseWorkbook', () => {
   })
 
   // SheetJS parses on the main thread, so an oversized workbook is a frozen tab.
-  // Refused before XLSX.read sees it.
+  // Refused before the parser sees it.
   it('refuses a workbook past the size cap', () => {
     const huge = new ArrayBuffer(MAX_WORKBOOK_BYTES + 1)
     expect(() => parseWorkbook(huge, 'dvrs')).toThrow(/limit is 15 MB/)

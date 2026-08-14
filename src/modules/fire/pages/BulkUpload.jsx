@@ -169,7 +169,7 @@ export default function BulkUpload() {
               <input
                 ref={inputRef}
                 type="file"
-                accept=".xlsx,.xls,.csv"
+                accept=".csv"
                 className="hidden"
                 onChange={(e) => handleFile(e.target.files?.[0])}
               />

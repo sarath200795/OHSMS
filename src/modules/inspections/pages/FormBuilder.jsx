@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import * as XLSX from 'xlsx'
+import Papa from 'papaparse'
 import toast from 'react-hot-toast'
 import {
   ClipboardCheck, Plus, Trash2, GripVertical, Download, FileUp, Save, ArrowLeft, Tag,
@@ -15,6 +15,7 @@ import {
   normalizeCategory, templateCategories, isOnDemand,
 } from '../lib/schedule'
 import { assertWorkbookSize, assertRowCount } from '../../../shared/lib/workbookGuard'
+import { parseCsvFile } from '../../../shared/lib/parseTable'
 
 export default function FormBuilder() {
   const { id } = useParams()
@@ -56,9 +57,24 @@ export default function FormBuilder() {
   const removeOption = (f, i) => updateField(f.id, { options: fieldOptions(f).filter((_, idx) => idx !== i) })
   const isChoice = (t) => CHOICE_TYPES.includes(t)
 
+  /**
+   * The template, as CSV.
+   *
+   * Imports parse CSV now — the npm xlsx package carries an unfixable
+   * prototype-pollution advisory and an upload is untrusted input — so a
+   * workbook template would hand people a file the picker then refuses.
+   *
+   * CSV has one sheet, and the old second sheet listed the allowed values. They
+   * move into the header comment rather than being dropped: someone filling
+   * this in offline has no other way to know what 'Answer Type' accepts, and
+   * losing that would trade a security fix for a support burden.
+   */
   const downloadQuestionTemplate = () => {
-    const wb = XLSX.utils.book_new()
-    const questions = XLSX.utils.aoa_to_sheet([
+    const rows = [
+      [`# Allowed Answer Type: ${QUESTION_TYPES.join(' | ')}`],
+      [`# Allowed Photo Requirement: ${PHOTO_REQUIREMENTS.join(' | ')}`],
+      ['# Category is free text. Questions sharing one are grouped under it when the inspection is run; blank files under General.'],
+      ['# Delete these comment lines before importing.'],
       ['Question / Check Requirement (Required)', 'Category (Optional)', 'Answer Type (Required)', 'Photo Requirement (Optional)', 'Options (separate with ;)'],
       ['Are fire exits clear and unobstructed?', 'Fire Safety', 'Pass/Fail', 'Optional', ''],
       ['Is the extinguisher within its service date?', 'Fire Safety', 'Pass/Fail', 'Mandatory', ''],
@@ -66,20 +82,16 @@ export default function FormBuilder() {
       ['Which PPE was worn?', 'PPE', 'Multiple Choice', 'Not Required', 'Helmet; Gloves; Goggles; Boots'],
       ['Current pressure reading?', 'Plant & Equipment', 'Number', 'Not Required', ''],
       ['General observations of the work area:', '', 'Text Input', 'Mandatory', ''],
-    ])
-    questions['!cols'] = [{ wch: 60 }, { wch: 22 }, { wch: 25 }, { wch: 24 }, { wch: 40 }]
-    const allowed = XLSX.utils.aoa_to_sheet([
-      ['Allowed Answer Types'], ...QUESTION_TYPES.map((t) => [t]), [],
-      ['Allowed Photo Requirement Values'], ...PHOTO_REQUIREMENTS.map((t) => [t]), [],
-      ['Category'],
-      ['Free text — anything you like.'],
-      ['Questions sharing a category are grouped under it when the inspection is run.'],
-      ['Leave blank to file the question under General.'],
-    ])
-    allowed['!cols'] = [{ wch: 80 }]
-    XLSX.utils.book_append_sheet(wb, questions, 'Inspection_Questions')
-    XLSX.utils.book_append_sheet(wb, allowed, 'Allowed_Values')
-    XLSX.writeFile(wb, 'Inspection_Questions_Template.xlsx')
+    ]
+    const csv = Papa.unparse(rows)
+    // BOM so Excel opens it as UTF-8 rather than mojibake.
+    const blob = new Blob(['﻿', csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'Inspection_Questions_Template.csv'
+    a.click()
+    URL.revokeObjectURL(url)
   }
 
   const handleImport = async (e) => {
@@ -90,9 +102,7 @@ export default function FormBuilder() {
       assertWorkbookSize(file.size, file.name)
       // Bytes rather than a binary string: the string form holds the whole file
       // twice over and is the slower parser path, and this parse blocks the tab.
-      const wb = XLSX.read(new Uint8Array(await file.arrayBuffer()), { type: 'array' })
-      const ws = wb.Sheets[wb.SheetNames[0]]
-      const rows = XLSX.utils.sheet_to_json(ws)
+      const { rows } = await parseCsvFile(file)
       if (rows.length === 0) throw new Error('Sheet is empty.')
       assertRowCount(rows.length)
       const newFields = []
@@ -124,7 +134,7 @@ export default function FormBuilder() {
         toast.success(`Imported ${newFields.length} question${newFields.length === 1 ? '' : 's'}`)
       }
     } catch (err) {
-      toast.error('Failed to parse Excel: ' + err.message)
+      toast.error('Could not read that CSV: ' + err.message)
     }
     input.value = null
   }
@@ -281,8 +291,8 @@ export default function FormBuilder() {
             <div className="flex gap-2">
               <button className="btn-ghost text-xs" onClick={downloadQuestionTemplate}><Download size={14} /> Template</button>
               <label className="btn-soft cursor-pointer text-xs">
-                <FileUp size={14} /> Import Excel
-                <input type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={handleImport} />
+                <FileUp size={14} /> Import CSV
+                <input type="file" accept=".csv" className="hidden" onChange={handleImport} />
               </label>
             </div>
           </div>

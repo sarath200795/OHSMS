@@ -15,8 +15,8 @@
 // Everything here is pure: rows in, validated rows out. Nothing writes.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import * as XLSX from 'xlsx'
 import { assertWorkbookSize, assertRowCount } from '../../../shared/lib/workbookGuard'
+import { parseCsvText } from '../../../shared/lib/parseTable'
 
 const clean = (v) => String(v ?? '').trim()
 const key = (v) => clean(v).toLowerCase()
@@ -209,13 +209,16 @@ export function validateCameraRows(raw = [], { sites = [], dvrs = [], cameras = 
 export function parseWorkbook(buffer, kind) {
   const aliases = kind === 'dvrs' ? DVR_ALIASES : CAMERA_ALIASES
   assertWorkbookSize(buffer?.byteLength)
-  const wb = XLSX.read(buffer, { type: 'array' })
-  const ws = wb.Sheets[wb.SheetNames[0]]
-  if (!ws) return { headerOk: false, rows: [], headers: [] }
-
-  const table = XLSX.utils.sheet_to_json(ws, { defval: '' })
+  // CSV, not a workbook: the npm xlsx package carries an unfixable
+  // prototype-pollution advisory and this is an untrusted upload. See
+  // shared/lib/parseTable.
+  const text = typeof buffer === 'string'
+    ? buffer
+    : new TextDecoder().decode(buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer || []))
+  const { rows: table, fields } = parseCsvText(text)
+  if (!fields.length) return { headerOk: false, rows: [], headers: [] }
   assertRowCount(table.length)
-  const headers = Object.keys(table[0] || {})
+  const headers = fields
   const map = headerMap(headers, aliases)
 
   // Without these two the sheet is not the template, and every row would fail
