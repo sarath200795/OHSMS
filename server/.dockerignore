@@ -1,0 +1,48 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# What never reaches the build context.
+#
+# A .dockerignore miss is not just a bigger image — every excluded line here is
+# something that would otherwise be readable inside a container that holds Admin
+# SDK credentials. The list mirrors `functions.ignore` in firebase.json, which
+# already drops node_modules, **/*.test.js and vitest.config.js for the same
+# reasons, so the two deploy surfaces stay ignorable by the same rules.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Installed fresh from the lockfile inside the image. Copying the host's tree
+# would drag a Windows/macOS install into a Linux image — firebase-admin's gRPC
+# stack is the usual casualty — and would do it silently, because the files are
+# there and only fail at require time.
+node_modules
+
+# Secrets, first and loudest. Nothing in server/ has one today; this line is
+# here so that the day somebody adds server/.env it does not become a layer in
+# a pushed image, where it stays readable forever even if the next commit
+# deletes the file. Cloud Run gets its configuration from the environment and
+# its credentials from the metadata server. Neither is ever baked in.
+.env
+.env.*
+
+# Tests and their config. vitest is not installed in the image (--omit=dev), so
+# these could not run there anyway — and they are a precise written description
+# of which checks guard which write, which is not something to ship to anyone
+# who pulls the image.
+**/*.test.js
+vitest.config.js
+
+# Docs and build inputs — the image is not where anyone reads these.
+README.md
+Dockerfile
+.dockerignore
+
+# Local noise that has no meaning inside a container.
+.git
+.gitignore
+*.log
+npm-debug.log*
+coverage
+.DS_Store
+Thumbs.db
+
+# Vitest writes these transient snapshots next to its config (see the repo's
+# .gitignore, same entry, same reason).
+vitest.config.js.timestamp-*
