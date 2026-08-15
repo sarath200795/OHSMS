@@ -4,6 +4,8 @@ import toast from 'react-hot-toast'
 import { Modal, Spinner } from './ui'
 import { updateExtinguisher } from '../lib/firestore'
 import { TYPES, CAPACITIES, ENTITIES, REGIONS } from '../lib/constants'
+import { useFleet } from '../context/FleetContext'
+import SiteScopePicker from '../../../shared/org/SiteScopePicker'
 
 function Field({ label, children }) {
   return (
@@ -22,6 +24,7 @@ function Field({ label, children }) {
  * Props: open, onClose, ext, orgId, orgName
  */
 export default function EditExtinguisherModal({ open, onClose, ext, orgId, orgName, actor }) {
+  const { siteInventory } = useFleet()
   const [form, setForm] = useState(null)
   const [busy, setBusy] = useState(false)
 
@@ -32,6 +35,8 @@ export default function EditExtinguisherModal({ open, onClose, ext, orgId, orgNa
         capacity: ext.capacity || CAPACITIES[0],
         entity: ext.entity || ENTITIES[0],
         region: ext.region || REGIONS[0],
+        siteId: ext.siteId || '',
+        site: ext.site || ext.centerName || '',
         centerName: ext.centerName || '',
         dateOfDeployment: ext.dateOfDeployment || '',
         dateOfNextRefill: ext.dateOfNextRefill || '',
@@ -88,8 +93,13 @@ export default function EditExtinguisherModal({ open, onClose, ext, orgId, orgNa
             {REGIONS.map((rg) => <option key={rg}>{rg}</option>)}
           </select>
         </Field>
-        <Field label="Center Name *">
-          <input className="input" value={form.centerName} onChange={set('centerName')} required />
+        <Field label="Site *">
+          <SiteScopePicker
+            module="equipment"
+            sites={siteInventory}
+            value={form}
+            onChange={(v) => setForm((f) => ({ ...f, ...v, centerName: v.site }))}
+          />
         </Field>
       </div>
 
