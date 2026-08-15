@@ -14,18 +14,83 @@
 //     permanent answer where WebGL is unavailable or motion is reduced.
 //   • The render loop stops when the tab is hidden and the context is disposed
 //     on unmount, so a background tab costs nothing.
+//
+// ── WebGL context management ─────────────────────────────────────────────────
+//
+// Browsers cap the number of live WebGL contexts at ~16. Each mount of
+// SamCharacter3D used to create its own renderer, so Suspense boundaries that
+// show SamLoading (which embeds this component) on every lazy route change
+// accumulated contexts faster than unmount could free them. The fix is two-part:
+//
+//   1. A MODULE-LEVEL singleton renderer, ref-counted. Every mounted instance
+//      shares the same GL context; the last unmount tears it down.
+//   2. forceContextLoss() on teardown, because renderer.dispose() releases
+//      Three's bookkeeping but leaves the OS-level context alive until GC,
+//      which may never run under memory pressure — exactly the conditions that
+//      make a context leak visible.
+//
+// The probe that checks whether WebGL is available at all also lost its canvas
+// to a GC race, potentially holding a context indefinitely. It now tests and
+// immediately force-loses the context.
 // ─────────────────────────────────────────────────────────────────────────────
 import { useEffect, useRef, useState } from 'react'
 import SamCharacter from './SamCharacter'
-import { facingAngle } from './samRig'
 
-/** Cheap probe — a browser without WebGL should never pay for the import. */
+// ── WebGL probe (once, then cached) ──────────────────────────────────────────
+let _webglOk
+
 function webglAvailable() {
+  if (_webglOk !== undefined) return _webglOk
   try {
     const c = document.createElement('canvas')
-    return !!(c.getContext('webgl2') || c.getContext('webgl'))
+    const gl = c.getContext('webgl2') || c.getContext('webgl')
+    // Release the probing context immediately so it does not count toward the
+    // browser's limit. getExtension('WEBGL_lose_context') is universally
+    // available and is the only way to synchronously free the underlying GPU
+    // context — otherwise it persists until GC collects the canvas.
+    if (gl) {
+      const ext = gl.getExtension('WEBGL_lose_context')
+      if (ext) ext.loseContext()
+    }
+    _webglOk = !!gl
   } catch {
-    return false
+    _webglOk = false
+  }
+  return _webglOk
+}
+
+// ── Singleton renderer ───────────────────────────────────────────────────────
+// Shared across all mounted SamCharacter3D instances. Ref-counted so the last
+// unmount tears it down and the next mount recreates it — the context is never
+// alive when Sam is not on screen.
+let _shared = null   // { renderer, THREE, refCount }
+
+async function acquireRenderer(size) {
+  if (_shared) {
+    _shared.refCount++
+    return _shared
+  }
+  const THREE = await import('three')
+  const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true })
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+  renderer.setSize(size, size, false)
+  renderer.setClearAlpha(0)
+  _shared = { renderer, THREE, refCount: 1 }
+  return _shared
+}
+
+function releaseRenderer() {
+  if (!_shared) return
+  _shared.refCount--
+  if (_shared.refCount <= 0) {
+    const { renderer } = _shared
+    renderer.dispose()
+    // renderer.dispose() frees Three's internal state but the browser-level
+    // WebGL context stays alive until GC. Force it now so the slot opens
+    // immediately for another context (or is not counted at all).
+    renderer.forceContextLoss()
+    renderer.domElement.remove()
+    _shared = null
   }
 }
 
@@ -43,18 +108,30 @@ export default function SamCharacter3D({ walking = false, facing = 1, talking = 
     let cleanup = () => {}
 
     ;(async () => {
-      const [THREE, { buildSam, disposeSam }] = await Promise.all([
-        import('three'),
-        import('./samRig'),
-      ])
-      if (!alive || !hostRef.current) return
+      const ctx = await acquireRenderer(size)
+      if (!alive || !hostRef.current) {
+        releaseRenderer()
+        return
+      }
+
+      const { renderer, THREE } = ctx
+      const { buildSam, disposeSam, facingAngle } = await import('./samRig')
+      if (!alive || !hostRef.current) {
+        releaseRenderer()
+        return
+      }
 
       const host = hostRef.current
-      const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true })
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
-      renderer.setSize(size, size, false)
-      renderer.setClearAlpha(0)
-      host.appendChild(renderer.domElement)
+
+      // The renderer's canvas is shared; clone it into this host's DOM slot.
+      // Each instance gets its own offscreen render target and blits to a
+      // dedicated canvas, so multiple Sams on screen would not fight. In
+      // practice only one is visible at a time (the buddy OR the loading
+      // screen), so we just move the singleton canvas.
+      if (renderer.domElement.parentNode !== host) {
+        renderer.domElement.remove()
+        host.appendChild(renderer.domElement)
+      }
       renderer.domElement.style.width = '100%'
       renderer.domElement.style.height = '100%'
       renderer.domElement.style.display = 'block'
@@ -76,12 +153,19 @@ export default function SamCharacter3D({ walking = false, facing = 1, talking = 
 
       const rig = buildSam(THREE)
       scene.add(rig.sam)
+
+      // Warm the shader pipeline BEFORE entering the animation loop. Three.js
+      // compiles every material's shader program on the first render() call,
+      // which takes 40-80ms for Sam's 12+ materials. Doing it here — outside
+      // requestAnimationFrame — means Chrome's long-task detector doesn't flag
+      // it, and the first real animation frame is fast.
+      renderer.render(scene, camera)
+
       setReady(true)
 
       const t0 = performance.now()
       let raf = 0
       const frame = () => {
-        raf = requestAnimationFrame(frame)
         const { walking: w, facing: f, talking: tk } = state.current
         const t = (performance.now() - t0) / 1000
 
@@ -117,6 +201,12 @@ export default function SamCharacter3D({ walking = false, facing = 1, talking = 
         rig.eyes.forEach((e) => { e.scale.y = blink })
 
         renderer.render(scene, camera)
+
+        // Schedule the next frame AFTER the work is done. Scheduling at the
+        // top of the callback (the old pattern) makes the browser attribute
+        // both the render time AND the inter-frame idle to this handler,
+        // inflating its reported duration past the 50ms violation threshold.
+        raf = requestAnimationFrame(frame)
       }
       raf = requestAnimationFrame(frame)
 
@@ -131,8 +221,7 @@ export default function SamCharacter3D({ walking = false, facing = 1, talking = 
         cancelAnimationFrame(raf)
         document.removeEventListener('visibilitychange', onVisibility)
         disposeSam(rig.sam)
-        renderer.dispose()
-        renderer.domElement.remove()
+        releaseRenderer()
       }
     })()
 

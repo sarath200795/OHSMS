@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import Modal from '../ui/Modal'
 import Button from '../ui/Button'
 
+const EMPTY_LOCK_SET = new Set()
 const fieldCls =
   'w-full rounded-xl bg-clay px-3.5 py-2.5 font-mono text-steel-100 shadow-clay-inset outline-none ring-2 ring-transparent focus:ring-hazard/50'
 const plainCls =
@@ -46,7 +47,7 @@ export default function GroupLockDialog({
     }
   }, [open, currentMethod])
 
-  const inUse = inUseLockNos || new Set()
+  const inUse = inUseLockNos || EMPTY_LOCK_SET
   const isBox = method === 'box'
   const list = technicians.filter((t) => t.active !== false && !excludeIds.includes(t.id))
   const selectedTech = list.find((t) => t.id === techId)

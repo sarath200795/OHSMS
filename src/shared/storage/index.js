@@ -121,8 +121,12 @@ export function dataUrlToBlob(dataUrl) {
   const type = m[1] || 'application/octet-stream'
   try {
     const raw = m[2] ? atob(m[3]) : decodeURIComponent(m[3])
-    const bytes = new Uint8Array(raw.length)
-    for (let i = 0; i < raw.length; i += 1) bytes[i] = raw.charCodeAt(i)
+    // Base64 payloads are binary-safe (charCodeAt is always ≤ 255). Non-base64
+    // payloads are decoded UTF-16 strings where charCodeAt can exceed 255,
+    // truncating non-ASCII characters. Use TextEncoder for those.
+    const bytes = m[2]
+      ? Uint8Array.from(raw, (c) => c.charCodeAt(0))
+      : new TextEncoder().encode(raw)
     return new Blob([bytes], { type })
   } catch {
     return null

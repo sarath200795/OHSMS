@@ -103,7 +103,7 @@ export default function ModulePage({ module, config }) {
         if (f.key === key) return
         const offered =
           (!f.when || f.when(next)) &&
-          f.options(lookups, records || [], next).some((o) => o.value === (next[f.key] ?? ''))
+          f.options(lookups, records || [], next).some((o) => (o.value ?? o) === (next[f.key] ?? ''))
         if (!offered) delete next[f.key]
       })
       return next
@@ -228,8 +228,8 @@ export default function ModulePage({ module, config }) {
                 onChange={(e) => setFacet(f.key, e.target.value)}
               >
                 {f.options(lookups, records || [], facets).map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
+                  <option key={o.value ?? o} value={o.value ?? o}>
+                    {o.label ?? o}
                   </option>
                 ))}
               </Select>

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
-import { Settings, Save, Activity, Plus, X, Layers, ChevronUp, ChevronDown, Lock, Building2, PhoneCall, LifeBuoy, Hash, Wrench } from 'lucide-react'
+import { Settings, Save, Activity, Plus, X, Layers, ChevronUp, ChevronDown, Lock, Building2, PhoneCall, LifeBuoy } from 'lucide-react'
 import { ERP_ROLES, normalizeErpRoleLabels } from '../../shared/org/erpRoles'
 import { DEPARTMENTS } from '../../shared/auth/access'
 import { useAuth } from '../../shared/auth/AuthContext'
@@ -12,14 +12,11 @@ import {
   normalizeScopeConfig, moduleLevelKeys, distinctSiteValues, toFieldKey,
 } from '../../shared/org/scopeConfig'
 import { PageHeader, Card, Field, Input, Select, Button, MultiSelect, SkeletonCard } from '../../shared/ui'
-import DocumentIds from './DocumentIds'
-import Maintenance from './Maintenance'
+
 
 const TABS = [
   { key: 'general', label: 'General', icon: Settings },
   { key: 'scope', label: 'Scope & Granularity', icon: Layers },
-  { key: 'docids', label: 'Document IDs', icon: Hash },
-  { key: 'maintenance', label: 'Maintenance', icon: Wrench },
 ]
 
 export default function OrgSettings() {
@@ -461,8 +458,7 @@ export default function OrgSettings() {
         </div>
       )}
 
-      {tab === 'docids' && <DocumentIds />}
-      {tab === 'maintenance' && <Maintenance />}
+
     </>
   )
 }

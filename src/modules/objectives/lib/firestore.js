@@ -62,6 +62,7 @@ export async function seedDefaultTargets(orgId, period, actor) {
   for (const k of KPIS) {
     batch.set(doc(col(orgId)), {
       ...clean({ kpi: k.key, level: 'org', scope: '', scopeLabel: 'Organization', entity: 'all', target: k.defaultTarget, period }),
+      docId: await reserveDocId(orgId, 'objectives'),
       createdAt: serverTimestamp(), createdBy: actor?.uid || null,
     })
   }

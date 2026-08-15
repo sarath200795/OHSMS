@@ -135,7 +135,7 @@ function Folders({ records, lookups, facets, setFacet, openNew }) {
     )
   }
 
-  const Row = ({ id, name, count, active, onOpen, onAdd }) => (
+  const Row = ({ name, count, active, onOpen, onAdd }) => (
     <li className={`flex items-center gap-2 border-b border-ink-100 last:border-0 ${active ? 'bg-brand-50' : ''}`}>
       <button
         type="button"
@@ -180,12 +180,11 @@ function Folders({ records, lookups, facets, setFacet, openNew }) {
       <ul className="max-h-[22rem] overflow-y-auto border-t border-ink-100">
         {/* Everything not filed to a site. No add button: "organization-wide"
             is a level someone chooses deliberately, not a folder to drop into. */}
-        <Row id="org" name="Organization-wide" count={orgWide} active={false}
+        <Row name="Organization-wide" count={orgWide} active={false}
           onOpen={() => setFacet('siteId', '')} />
         {visible.map((f) => (
           <Row
             key={f.id}
-            id={f.id}
             name={f.name}
             count={f.count}
             active={openSite === f.id}

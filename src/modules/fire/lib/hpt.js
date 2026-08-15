@@ -79,7 +79,7 @@ export function validateHpt({ testedOn, result, nextDueOn, vendor } = {}) {
  * the date is left exactly where it was, so the unit stays on the list until
  * somebody deals with it.
  */
-export function hptUpdate({ testedOn, result, nextDueOn }) {
+export function hptUpdate({ result, nextDueOn }) {
   const passed = result === HPT_RESULT.PASS
   return passed ? { dateOfNextHPT: nextDueOn } : {}
 }

@@ -156,7 +156,7 @@ export default function Signages() {
   const matrixPager = usePagination(visibleSites)
 
   // List records: every record matching all active filters.
-  const recordMatches = (s) => {
+  const filtered = useMemo(() => signages.filter((s) => {
     if (f.regions.length && !f.regions.includes(s.region)) return false
     if (f.entities.length && !f.entities.includes(s.entity || siteEntity[s.centerName])) return false
     if (f.types.length && !f.types.includes(s.type)) return false
@@ -166,8 +166,7 @@ export default function Signages() {
       if (!`${s.centerName} ${s.type} ${s.location}`.toLowerCase().includes(q)) return false
     }
     return true
-  }
-  const filtered = useMemo(() => signages.filter(recordMatches), [signages, filters])
+  }), [signages, f.regions, f.entities, f.types, f.conditions, f.search, siteEntity])
   const listPager = usePagination(filtered)
 
   // A matrix cell: records for (site, type) that pass the Region + Condition filters.

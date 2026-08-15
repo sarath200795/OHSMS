@@ -57,10 +57,13 @@ export function safeHref(value) {
   // returned as-is; that is a broken link, not a dangerous one.
   try {
     const parsed = new URL(url, 'https://invalid.example')
+    // If it was parsed against the dummy base, the URL was relative — safe to
+    // return as-is. Absolute URLs must present an allowed scheme and get
+    // reconstructed from the parser so odd encodings cannot survive the check
+    // and mean something else later.
+    if (parsed.origin === 'https://invalid.example') return url
     if (!LINK_SCHEMES.includes(parsed.protocol)) return FALLBACK
-    // Reconstruct from the parser rather than echoing the input, so odd
-    // encodings cannot survive the check and mean something else later.
-    return url.includes(':') ? parsed.href : url
+    return parsed.href
   } catch {
     return FALLBACK
   }
@@ -87,5 +90,7 @@ export function safeSrc(value) {
 export function isExternal(value) {
   const url = safeHref(value)
   if (!url) return false
-  return /^https?:/i.test(url)
+  // Protocol-relative URLs (//evil.com) are also external — they inherit the
+  // page scheme and navigate off-site just as effectively as https://evil.com.
+  return url.startsWith('//') || /^https?:/i.test(url)
 }

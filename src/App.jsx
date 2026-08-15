@@ -5,6 +5,7 @@ import ProtectedRoute from './shared/auth/ProtectedRoute'
 import AppChrome from './shared/layout/AppChrome'
 import ModuleLoading from './shared/layout/ModuleLoading'
 import SamLoading from './shared/layout/SamLoading'
+import ErrorBoundary from './shared/ErrorBoundary'
 
 // Public QR landing for equipment labels — no auth, so it stays outside the shell.
 const QrLanding = lazy(() => import('./modules/fire/pages/QrLanding'))
@@ -76,7 +77,9 @@ function Protected({ children, ...guard }) {
   return (
     <ProtectedRoute {...guard}>
       <AppChrome>
-        <Suspense fallback={<ModuleLoading />}>{children}</Suspense>
+        <ErrorBoundary>
+          <Suspense fallback={<ModuleLoading />}>{children}</Suspense>
+        </ErrorBoundary>
       </AppChrome>
     </ProtectedRoute>
   )
@@ -109,10 +112,10 @@ export default function App() {
       <Route path="/signup" element={<Signup />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
       {/* Scanned from a printed extinguisher label — deliberately public. */}
-      <Route path="/qr/:token" element={<QrLanding />} />
+      <Route path="/qr/:token" element={<ErrorBoundary><Suspense fallback={<SamLoading />}><QrLanding /></Suspense></ErrorBoundary>} />
       {/* The QR printed on every work permit. Public: whoever scans a permit
           taped to a scaffold has no account. */}
-      <Route path="/permit/:token" element={<PublicPermit />} />
+      <Route path="/permit/:token" element={<ErrorBoundary><Suspense fallback={<SamLoading />}><PublicPermit /></Suspense></ErrorBoundary>} />
       <Route path="/pending" element={<PendingApproval />} />
 
       {/* The QR printed on a LOTO isolation procedure. It has always encoded
@@ -136,7 +139,7 @@ export default function App() {
           It reads a public MIRROR (/procedureQr), never the procedure document,
           because rules cannot restrict which fields a read returns and the
           procedure carries the names of the people who locked it. */}
-      <Route path="/p/:id" element={<PublicProcedure />} />
+      <Route path="/p/:id" element={<ErrorBoundary><Suspense fallback={<SamLoading />}><PublicProcedure /></Suspense></ErrorBoundary>} />
 
       {/* The tag hung at an isolation point. Opens the live operation rather
           than the procedure: a tag is printed when the lock goes on and can
