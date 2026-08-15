@@ -32,6 +32,12 @@ function makeDb(seed = {}) {
   const docRef = (path) => ({
     path,
     collection: (name) => query(`${path}/${name}`),
+    // The purge reads a QR mirror before deleting it, to prove the mirror
+    // belongs to the org being purged. /qr is shared by every tenant.
+    async get() {
+      const data = store.get(path)
+      return { exists: data !== undefined, data: () => data }
+    },
     async delete() {
       log.push(`doc:${path}`)
       store.delete(path)
@@ -158,6 +164,50 @@ describe('purging a record whose attachments live in Cloud Storage', () => {
     })
     expect(bucket.deleted).toEqual([])
     expect(db.log).toEqual([])
+  })
+
+  // The sweep runs with Admin SDK privileges that never consult storage.rules,
+  // and the fields it follows are written by clients. Both of these were live:
+  // a plain member could name any object in the bucket, or any tenant's QR
+  // token, and have the nightly job destroy it on their behalf.
+  it('refuses a file path outside the org being purged', async () => {
+    const db = makeDb({
+      'organizations/orgA/incidents/i1': { deletedAt: daysAgo(40) },
+      'organizations/orgA/incidents/i1/photos/p1': { path: 'orgs/orgB/incidents/victim.jpg' },
+    })
+    const bucket = fakeBucket(db.log)
+    await purgeOrgCollection(db, 'orgA', specFor('incidents'), NOW, bucket)
+    expect(bucket.deleted).toEqual([])
+    // The record still goes; only the foreign file is spared.
+    expect(db.store.has('organizations/orgA/incidents/i1')).toBe(false)
+  })
+
+  it('refuses a path that climbs out of the org prefix', async () => {
+    const db = makeDb({
+      'organizations/orgA/incidents/i1': { deletedAt: daysAgo(40) },
+      'organizations/orgA/incidents/i1/photos/p1': { path: 'orgs/orgA/../orgB/secret.jpg' },
+    })
+    const bucket = fakeBucket(db.log)
+    await purgeOrgCollection(db, 'orgA', specFor('incidents'), NOW, bucket)
+    expect(bucket.deleted).toEqual([])
+  })
+
+  it('refuses a QR mirror belonging to another tenant', async () => {
+    const db = makeDb({
+      'organizations/orgA/extinguishers/e1': { qrToken: 'tokVictim', deletedAt: daysAgo(40) },
+      'qr/tokVictim': { orgId: 'orgB' },
+    })
+    await purgeOrgCollection(db, 'orgA', specFor('extinguishers'), NOW, fakeBucket(db.log))
+    expect(db.store.has('qr/tokVictim')).toBe(true)
+  })
+
+  it('still deletes a QR mirror that does belong to this org', async () => {
+    const db = makeDb({
+      'organizations/orgA/extinguishers/e1': { qrToken: 'tokMine', deletedAt: daysAgo(40) },
+      'qr/tokMine': { orgId: 'orgA' },
+    })
+    await purgeOrgCollection(db, 'orgA', specFor('extinguishers'), NOW, fakeBucket(db.log))
+    expect(db.store.has('qr/tokMine')).toBe(false)
   })
 
   it('still cascades the public QR mirror of an asset that has no files', async () => {

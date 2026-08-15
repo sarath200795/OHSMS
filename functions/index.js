@@ -423,6 +423,19 @@ const getBucket = () => (bucket ||= getStorage().bucket())
  * a record 30 days past its retention window survives because a bucket had a bad
  * minute — and the next run will not find the file either way.
  */
+/**
+ * Is this Storage path inside the org being purged?
+ *
+ * Every upload goes through storagePath() in src/shared/storage/index.js, which
+ * builds `orgs/<orgId>/<kind>/<file>`. Anything else was either hand-written by
+ * a client or points somewhere it has no business pointing. Rejecting '..' as
+ * well, because a path that climbs out of the prefix defeats the prefix.
+ */
+function ownedByOrg(path, orgId) {
+  const p = String(path || '')
+  return p.startsWith(`orgs/${orgId}/`) && !p.includes('..')
+}
+
 async function purgeStoredFile(store, path, ctx) {
   try {
     await store.file(path).delete({ ignoreNotFound: true })
@@ -480,9 +493,20 @@ export async function purgeOrgCollection(db, orgId, spec, now, store = null) {
         // An attachment small enough to inline is base64 on the document
         // itself and has no object behind it, which is not a failure.
         const path = String(kid.data()?.path || '').trim()
-        if (path) {
+        // The path is CLIENT-WRITABLE and this runs with Admin SDK
+        // privileges that never consult storage.rules. Without this check a
+        // plain member — a role storage.rules forbids from deleting anything —
+        // could write a document with deletedAt backdated past the retention
+        // window and a path naming ANY object in the bucket, including another
+        // tenant's, and the nightly sweep would delete it for them. Confining
+        // the sweep to its own org's prefix makes that impossible to express.
+        if (path && ownedByOrg(path, orgId)) {
           const ctx = { orgId, collection: spec.collection, docId: id }
           if (await purgeStoredFile(store || getBucket(), path, ctx)) files += 1
+        } else if (path) {
+          logger.error('retention: refused a file path outside the org', {
+            orgId, collection: spec.collection, docId: id, path,
+          })
         }
         await kid.ref.delete()
       }
@@ -491,8 +515,27 @@ export async function purgeOrgCollection(db, orgId, spec, now, store = null) {
     // The public QR mirror lives outside the org path, keyed by token. Leaving
     // it behind means a world-readable record of equipment that no longer
     // exists, reachable by anyone who photographed the label.
+    // Same trap, different collection: qrToken is client-writable and /qr is a
+    // TOP-LEVEL collection shared by every tenant, so an unchecked delete here
+    // lets anyone who photographs another org's sticker destroy its public
+    // record. The mirror already carries the org that owns it — require it.
     if (spec.qrMirror && row?.data?.qrToken) {
-      await db.collection('qr').doc(String(row.data.qrToken)).delete().catch(() => {})
+      const token = String(row.data.qrToken)
+      const mirrorRef = db.collection('qr').doc(token)
+      try {
+        const mirror = await mirrorRef.get()
+        if (!mirror.exists) {
+          // Nothing to remove. Not a fault: the asset may never have had one.
+        } else if (mirror.data()?.orgId === orgId) {
+          await mirrorRef.delete()
+        } else {
+          logger.error('retention: refused a QR mirror belonging to another org', {
+            orgId, token, mirrorOrgId: mirror.data()?.orgId ?? null,
+          })
+        }
+      } catch (e) {
+        logger.error('retention: could not check a QR mirror', { orgId, token, error: e?.message || String(e) })
+      }
     }
 
     await ref.delete()
