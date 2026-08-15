@@ -24,7 +24,7 @@
   "dependencies": {
     "@fontsource/inter": "^5.0.18",
     "@fortawesome/fontawesome-free": "^7.3.1",
-    "@sentry/react": "^10.69.0",
+    "@sentry/browser": "^10.69.0",
     "@xyflow/react": "^12.0.4",
     "date-fns": "^3.6.0",
     "firebase": "^10.12.4",

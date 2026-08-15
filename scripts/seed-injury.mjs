@@ -1,5 +1,11 @@
 // Adds one incident-ira incident WITH an injury report (body parts) so the
 // body-part map in the printable report can be verified. Requires emulators.
+//
+// Two documents, because that is the shape the app writes now: the incident
+// keeps the join key (personId/personName/firstAidDone) and the clinical detail
+// goes to /injuries, which is gated to admin and manager. Seeding the old
+// single-document shape would demo a body map that the running code no longer
+// draws — it reads body parts from /injuries.
 import { initializeApp } from 'firebase/app'
 import { getAuth, connectAuthEmulator, signInWithEmailAndPassword } from 'firebase/auth'
 import {
@@ -32,18 +38,7 @@ await setDoc(ref, {
   probableCause: 'Guard interlock bypassed',
   affectedPersonnel: [{ kind: 'internal', name: 'Priya Nair', id: 'EMP-104' }],
   photoCount: 0,
-  injuryReports: [
-    {
-      personId: 'EMP-104',
-      personName: 'Priya Nair',
-      firstAidDone: true,
-      firstAidDetail: 'Wound dressed on site',
-      injuryType: 'Laceration',
-      bodyParts: ['hand_l', 'wrist_l', 'arm_l', 'head'],
-      medication: 'Analgesic',
-      daysToReturnToWork: 5,
-    },
-  ],
+  injuryReports: [{ personId: 'EMP-104', personName: 'Priya Nair', firstAidDone: true }],
   team: [],
   investigations: [],
   capa: [],
@@ -51,6 +46,29 @@ await setDoc(ref, {
   createdBy: uid,
   createdByName: 'Alex Admin',
   createdAt: serverTimestamp(),
+  updatedAt: serverTimestamp(),
+})
+
+// The clinical half, in the only collection that holds it. The id is the one
+// syncIncidentInjuries derives, so a re-save from the wizard updates this
+// document instead of adding a second one.
+await setDoc(doc(db, 'organizations', orgId, 'injuries', `${ref.id}__EMP-104`), {
+  incidentId: ref.id,
+  incidentRefNo: 'IRA-2026-9001',
+  personId: 'EMP-104',
+  personName: 'Priya Nair',
+  firstAidDone: true,
+  firstAidDetail: 'Wound dressed on site',
+  injuryType: 'Laceration',
+  bodyParts: ['hand_l', 'wrist_l', 'arm_l', 'head'],
+  medication: 'Analgesic',
+  daysToReturnToWork: 5,
+  recordFileIds: [],
+  incidentDate: '2026-07-20',
+  incidentType: 'lost_time',
+  severity: 'high',
+  location: 'Assembly line 2',
+  deletedAt: null,
   updatedAt: serverTimestamp(),
 })
 
