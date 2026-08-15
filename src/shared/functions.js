@@ -45,6 +45,23 @@ export async function backfillQrMirrors({ dryRun = true } = {}) {
   return (await fn({ dryRun })).data
 }
 
+/**
+ * Remove medical detail from incident documents that still carry it.
+ *
+ * Every field was written twice: once to /injuries, which is manager-only, and
+ * once onto the incident, which every member and the external auditor can list.
+ * New records no longer do that. This is the history.
+ *
+ * Reports without writing unless `dryRun: false`. It refuses to strip a field
+ * it cannot first find in the matching /injuries record — losing an injury
+ * record is worse than the exposure being closed — and reports those as
+ * `blocked` for a human.
+ */
+export async function stripIncidentMedicalDetail({ dryRun = true } = {}) {
+  const fn = await callable('stripIncidentMedicalDetail')
+  return (await fn({ dryRun })).data
+}
+
 /** Put orgId on every member's ID token, so Storage rules can read it. */
 export async function backfillClaims() {
   const fn = await callable('backfillClaims')

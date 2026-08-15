@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import toast from 'react-hot-toast'
-import { ShieldCheck, FileStack, Play, Check, Bug, Unlock, QrCode } from 'lucide-react'
+import { ShieldCheck, FileStack, Play, Check, Bug, Unlock, QrCode, HeartPulse } from 'lucide-react'
 import { Card, Button } from '../../shared/ui'
-import { backfillDocumentVisibility, backfillClaims, clearOrphanedDefectLocks, backfillQrMirrors } from '../../shared/functions'
+import { backfillDocumentVisibility, backfillClaims, clearOrphanedDefectLocks, backfillQrMirrors, stripIncidentMedicalDetail } from '../../shared/functions'
 import { reportError } from '../../shared/monitoring'
 import { useAuth } from '../../shared/auth/AuthContext'
 import { backfillProcedureMirrors } from '../../modules/loto/services/procedures'
@@ -23,6 +23,7 @@ export default function Maintenance() {
     <div className="space-y-4">
       <DocumentVisibility />
       <QrMirrors />
+      <MedicalDetail />
       <OrgClaims />
       <ProcedureMirrors />
       <DefectLocks />
@@ -260,6 +261,74 @@ function Job({ icon: Icon, title, children, result, actions }) {
       )}
       <div className="mt-3 flex flex-wrap gap-2">{actions}</div>
     </Card>
+  )
+}
+
+function MedicalDetail() {
+  const [busy, setBusy] = useState('')
+  const [preview, setPreview] = useState(null)
+  const [done, setDone] = useState(false)
+
+  const run = async (dryRun) => {
+    setBusy(dryRun ? 'dry' : 'write')
+    try {
+      const r = await stripIncidentMedicalDetail({ dryRun })
+      setPreview(r)
+      if (!dryRun) {
+        setDone(true)
+        toast.success(`Cleaned ${r.written} incident${r.written === 1 ? '' : 's'}`)
+      } else if (r.wouldWrite === 0) {
+        toast.success('Nothing to do — no incident still carries medical detail')
+      }
+    } catch (err) {
+      toast.error(err?.message || 'Failed')
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const nothingToDo = preview && preview.wouldWrite === 0
+  // Rows it will NOT touch, because the detail is not safely in /injuries yet.
+  // Writing past these would delete an injury record rather than move it.
+  const blocked = preview?.blockedTotal || 0
+
+  return (
+    <Job
+      icon={HeartPulse}
+      title="Clean medical detail off incidents"
+      result={preview && [
+        `${preview.incidents} incident${preview.incidents === 1 ? '' : 's'} in this organization`,
+        `${preview.wouldWrite} still carrying medical detail`,
+        blocked ? `\n  ⚠ ${blocked} cannot be cleaned yet — the detail is not in the injury record, so removing it would lose it` : '',
+        preview.blockedFields?.length ? `  · fields involved: ${preview.blockedFields.join(', ')}` : '',
+      ].filter(Boolean).join('\n')}
+      actions={
+        <>
+          <Button variant="ghost" icon={Play} loading={busy === 'dry'} disabled={Boolean(busy)} onClick={() => run(true)}>
+            Check first
+          </Button>
+          <Button
+            icon={done ? Check : undefined}
+            loading={busy === 'write'}
+            disabled={Boolean(busy) || !preview || nothingToDo}
+            onClick={() => run(false)}
+          >
+            {done ? 'Cleaned' : 'Clean them'}
+          </Button>
+        </>
+      }
+    >
+      <p>
+        Injury detail — body parts, injury type, medication, first-aid notes, days lost —
+        used to be saved twice: once to the injury record, which only managers can read,
+        and once onto the incident, which every member and any external auditor can list.
+      </p>
+      <p>
+        New incidents no longer do this. Existing ones still hold the second copy. This
+        removes it, keeping only the name and person needed to link the two. A row whose
+        detail is not safely in the injury record is skipped and reported, never deleted.
+      </p>
+    </Job>
   )
 }
 
