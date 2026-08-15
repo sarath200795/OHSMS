@@ -345,17 +345,21 @@ export async function createSite(orgId, data, actor) {
  * (every row needs a name + numeric lat/lng); this writes what it's given.
  */
 export async function bulkCreateSites(orgId, rows, actor) {
-  const batch = writeBatch(db)
   const names = []
   const created = []
-  rows.forEach((r) => {
-    const ref = doc(moduleCol(orgId, 'sites'))
-    const fields = siteFields(r)
-    batch.set(ref, { ...fields, createdAt: serverTimestamp() })
-    names.push(r.name)
-    created.push({ id: ref.id, ...fields })
-  })
-  await batch.commit()
+  // Firestore limits a single writeBatch to 500 operations. Chunk into slices
+  // of 400 (matching deleteSites) so large CSV imports don't fail outright.
+  for (let i = 0; i < rows.length; i += 400) {
+    const batch = writeBatch(db)
+    rows.slice(i, i + 400).forEach((r) => {
+      const ref = doc(moduleCol(orgId, 'sites'))
+      const fields = siteFields(r)
+      batch.set(ref, { ...fields, createdAt: serverTimestamp() })
+      names.push(r.name)
+      created.push({ id: ref.id, ...fields })
+    })
+    await batch.commit()
+  }
   await logAudit(orgId, actor, AUDIT.SITE_CREATE, {
     target: 'site',
     summary: `Bulk imported ${names.length} site(s): ${names.slice(0, 6).join(', ')}${names.length > 6 ? '…' : ''}`,

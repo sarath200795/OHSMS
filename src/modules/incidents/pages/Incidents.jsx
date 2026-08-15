@@ -59,11 +59,18 @@ export default function Incidents() {
     try {
       const { exportIncidents } = await import('../lib/exporter')
       const { incidents: n, actions } = exportIncidents(filtered, `incidents-${filtered.length}.xlsx`)
-      // A copy of the incident register — narratives, root causes, and the
-      // injury detail behind them — has just left the system on someone's
-      // disk. There is no preventive control available for that in a
-      // browser-only architecture: an export is a read the reader is entitled
-      // to make. What remains is a record that it happened, and by whom.
+      // A copy of the incident register — narratives, root causes and the state
+      // of every action — has just left the system on someone's disk. There is
+      // no preventive control available for that in a browser-only
+      // architecture: an export is a read the reader is entitled to make. What
+      // remains is a record that it happened, and by whom.
+      //
+      // It carries no injury columns, and must not grow any. This comment used
+      // to claim "the injury detail behind them", which was never true of
+      // exporter.js and would have been the wrong thing to build: the detail
+      // lives in /injuries, which most people holding this button cannot read,
+      // so a medical column here would be blank for them — and a blank medical
+      // cell is indistinguishable from an uninjured person.
       logAudit(orgId, { uid: user?.uid, name: profile?.name }, AUDIT.EXPORT, {
         module: 'incidents',
         targetLabel: `${n} incidents, ${actions} actions`,

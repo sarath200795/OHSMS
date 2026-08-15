@@ -61,8 +61,16 @@ export default function IllnessWizard() {
   const step = params.get('step') && STEPS.includes(params.get('step')) ? params.get('step') : 'initial'
   const goStep = (s) => setParams({ step: s })
 
-  const addFile = async (f) => { if (illness) await addIllnessFile(orgId, illness.id, { ...f, uploadedBy: actor.name }) }
-  const removeFile = async (fid) => { if (illness) await deleteIllnessFile(orgId, illness.id, fid) }
+  const addFile = async (f) => {
+    if (!illness) return
+    try { await addIllnessFile(orgId, illness.id, { ...f, uploadedBy: actor.name }) }
+    catch (e) { toast.error(e?.message || 'File upload failed') }
+  }
+  const removeFile = async (fid) => {
+    if (!illness) return
+    try { await deleteIllnessFile(orgId, illness.id, fid) }
+    catch (e) { toast.error(e?.message || 'File removal failed') }
+  }
 
   const saveInitial = async () => {
     if (!draft.exposedToAgent) return toast.error('Select the agent exposed to')

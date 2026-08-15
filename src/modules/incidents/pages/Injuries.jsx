@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { HeartPulse, Search, CheckCircle2, Clock, ShieldCheck, RotateCcw, ExternalLink, Pencil, Lock } from 'lucide-react'
+import { HeartPulse, Search, CheckCircle2, Clock, ShieldCheck, RotateCcw, ExternalLink, Pencil, Lock, EyeOff } from 'lucide-react'
 import { PageHeader, Badge, EmptyState, Modal } from '../components/ui'
 import BodyMap from '../components/BodyMap'
 import { useIncidents } from '../context/IncidentContext'
@@ -17,7 +17,7 @@ const FILTERS = [
 ]
 
 export default function Injuries() {
-  const { injuries } = useIncidents()
+  const { injuries, canReadHealth } = useIncidents()
   const { profile, orgId } = useAuth()
   const mayVerify = can(profile?.role, 'injury.verify')
   const mayEdit = can(profile?.role, 'incident.report') // reporter / investigator / admin
@@ -76,6 +76,24 @@ export default function Injuries() {
   const counts = {
     pending: injuries.filter((i) => injuryStatus(i) !== 'verified').length,
     verified: injuries.filter((i) => injuryStatus(i) === 'verified').length,
+  }
+
+  // The listener behind `injuries` is only opened for admin and manager, so for
+  // anyone else this list is empty for a reason that has nothing to do with how
+  // many people have been hurt. Saying "No injury reports" to them would report
+  // an absence that was never checked — and now that /injuries is the only copy
+  // of the clinical detail, that sentence would be the only thing they ever see.
+  if (!canReadHealth) {
+    return (
+      <div>
+        <PageHeader title="Injury Reports" subtitle="Per-person injuries from all incidents." icon={HeartPulse} tourId="injuries-header" />
+        <EmptyState
+          icon={EyeOff}
+          title="Not available to your role"
+          hint="Injury reports hold a named colleague's medical detail — body parts, injury type, medication and days to return to work — and are readable by admins and managers only. This is not an empty register. You can still file an injury from an incident's Step 1a."
+        />
+      </div>
+    )
   }
 
   return (

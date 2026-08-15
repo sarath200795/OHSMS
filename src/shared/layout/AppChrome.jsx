@@ -23,6 +23,7 @@ import { initials } from '../lib/format'
 import RequestAccessModal from './RequestAccessModal'
 import Sam from '../sam/Sam'
 import HomeBar from './HomeBar'
+import { useIdleTimeout } from '../auth/useIdleTimeout'
 
 const ROLE_LABEL = {
   admin: 'Administrator',
@@ -35,6 +36,13 @@ export default function AppChrome({ children }) {
   const { profile, orgName, role, signOut } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
+  const { isWarning, isExpired, remainingSeconds, resetActivity } = useIdleTimeout()
+
+  useEffect(() => {
+    if (isExpired && signOut) {
+      signOut()
+    }
+  }, [isExpired, signOut])
   const reduce = useReducedMotion()
   const [menuOpen, setMenuOpen] = useState(false)
   const [reqOpen, setReqOpen] = useState(false)
@@ -146,6 +154,33 @@ export default function AppChrome({ children }) {
       <RequestAccessModal open={reqOpen} onClose={() => setReqOpen(false)} />
       {/* Sam the Buddy — the ISO 45001 assistant, available on every screen. */}
       <Sam />
+
+      {isWarning && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/40 p-4 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-sm rounded-2xl bg-clay-surface p-6 shadow-clay-lg">
+            <h2 className="mb-2 text-lg font-bold text-ink-900">Session Expiring Soon</h2>
+            <p className="mb-6 text-[14px] text-ink-600">
+              You have been inactive for a while. You will be signed out in <span className="font-bold text-red-600">{remainingSeconds}</span> seconds to protect your account.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => signOut?.()}
+                className="rounded-xl px-4 py-2 text-[13px] font-bold text-ink-600 hover:bg-clay-100 transition-colors"
+              >
+                Sign Out
+              </button>
+              <button
+                type="button"
+                onClick={resetActivity}
+                className="rounded-xl bg-brand-600 px-4 py-2 text-[13px] font-bold text-white shadow-brand-sm hover:bg-brand-500 transition-colors"
+              >
+                Stay Signed In
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

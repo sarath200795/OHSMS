@@ -50,6 +50,7 @@ export default function BulkImport() {
 
   const handleFile = (f) => {
     if (!f) return
+    if (f.size > 15 * 1024 * 1024) return toast.error('File size exceeds 15MB limit.')
     setFileName(f.name)
     setFile(f)
   }

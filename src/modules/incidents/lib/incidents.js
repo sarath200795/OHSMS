@@ -25,6 +25,7 @@ import { db } from '../firebase'
 import { logAudit } from './firestore'
 import { AUDIT, diffSummary } from './audit'
 import { statsDeltaFor, emptyStats, BUCKETS } from './stats'
+import { incidentInjuryStubs } from './injuries'
 import { reserveDocId } from '../../../shared/docId/reserve'
 import { putFile, removeFile, MAX_INLINE_BYTES, tooLargeForInline } from '../../../shared/storage'
 
@@ -173,8 +174,11 @@ export async function createIncident(orgId, actor, initial = {}) {
     probableCause: initial.probableCause || '',
     affectedPersonnel: initial.affectedPersonnel || [],
     photoCount: 0,
-    // Step 1a
-    injuryReports: initial.injuryReports || [],
+    // Step 1a — the join key only. The clinical detail that used to sit here
+    // goes to /injuries (see injuries.js): this document is readable by every
+    // approved member and by the external auditor, so anything on it is
+    // published to all of them.
+    injuryReports: incidentInjuryStubs(initial.injuryReports),
     // Step 2
     team: initial.team || [],
     // Step 3
@@ -204,18 +208,27 @@ export async function createIncident(orgId, actor, initial = {}) {
  * summary, silent } drives the audit entry. Supports dotted-path updates for
  * nested fields (e.g. 'investigation.method', 'stagesDone.team') — those are
  * passed straight through to updateDoc.
+ *
+ * `injuryReports` is narrowed to the join key on the way through. Doing it at
+ * this seam rather than at each call site is the point: the medical detail
+ * reached every member and the external auditor because ONE writer put it on
+ * this document, and a rule that lives in the caller is a rule the next caller
+ * will not know about.
  */
 export async function updateIncident(orgId, id, updates, opts = {}) {
   const current = await getDoc(incidentRef(orgId, id))
   if (!current.exists()) throw new Error('Incident not found')
   const before = current.data()
+  const safe = 'injuryReports' in updates
+    ? { ...updates, injuryReports: incidentInjuryStubs(updates.injuryReports) }
+    : updates
   // Build a shallow "merged" view for the stats delta (only top-level dimension
   // fields matter: type/severity/category/location/lifecycle/deletedAt).
   const merged = { ...before }
-  for (const [k, v] of Object.entries(updates)) {
+  for (const [k, v] of Object.entries(safe)) {
     if (!k.includes('.')) merged[k] = v
   }
-  await updateDoc(incidentRef(orgId, id), { ...updates, updatedAt: serverTimestamp() })
+  await updateDoc(incidentRef(orgId, id), { ...safe, updatedAt: serverTimestamp() })
   await bumpStats(orgId, statsDeltaFor(before, merged))
   if (!opts.silent) {
     await logAudit(orgId, opts.actor, opts.action || AUDIT.INCIDENT_UPDATE, {

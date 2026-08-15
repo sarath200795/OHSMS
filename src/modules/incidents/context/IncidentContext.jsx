@@ -17,7 +17,7 @@ const IncidentContext = createContext(null)
  * Marshal's FleetContext.
  */
 export function IncidentProvider({ children }) {
-  const { orgId, user, profile, isAdmin } = useAuth()
+  const { orgId, user, profile, isAdmin, isInvestigator } = useAuth()
   const [incidents, setIncidents] = useState([])
   const [illnesses, setIllnesses] = useState([])
   const [injuries, setInjuries] = useState([])
@@ -28,11 +28,17 @@ export function IncidentProvider({ children }) {
   const [loading, setLoading] = useState(true)
 
   // Injuries and illnesses carry a named colleague's body parts, injury type,
-  // medication and days off. The rules now restrict them to admin and manager;
-  // this stops everyone else opening a listener that can only ever be refused,
-  // which would fill the console with permission errors on a page that is
-  // working correctly and make the real ones harder to see.
-  const canReadHealth = isAdmin || profile?.role === 'manager'
+  // medication and days off. The rules restrict them to admin and manager; this
+  // stops everyone else opening a listener that can only ever be refused, which
+  // would fill the console with permission errors on a page that is working
+  // correctly and make the real ones harder to see.
+  //
+  // isInvestigator, not profile.role: this module renames the platform's roles
+  // for its own permission matrix (manager → investigator, AuthContext.jsx), so
+  // comparing profile.role against 'manager' was false for every manager alive —
+  // silently, because a manager saw the same empty health data a member did. It
+  // matters more now that these collections are the only copy.
+  const canReadHealth = isAdmin || isInvestigator
 
   useEffect(() => {
     if (!orgId) return
@@ -69,11 +75,21 @@ export function IncidentProvider({ children }) {
     const myAssignedActions = allActions.filter((a) => a.ownerUid && a.ownerUid === user?.uid && a.status !== 'closed')
 
     // Body-part aggregate (injuries + illnesses) for the dashboard heatmap.
+    //
+    // Injury body parts are read from /injuries now, not from
+    // incident.injuryReports — that array was how a named colleague's body parts
+    // reached every approved member and the external auditor. Both sources are
+    // manager-gated, which also settles an inconsistency: illness body parts
+    // already came from the gated collection while injury ones came from the
+    // open one. Anyone who cannot read them gets {} here, and the dashboard says
+    // so rather than drawing an empty body.
+    const activeIncidentIds = new Set(active.map((i) => i.id))
     const bodyPartCounts = {}
-    for (const inc of active) {
-      for (const r of inc.injuryReports || []) {
-        for (const key of r.bodyParts || []) bodyPartCounts[key] = (bodyPartCounts[key] || 0) + 1
-      }
+    for (const inj of injuries) {
+      // An injury whose incident is in the recycle bin is not counted, matching
+      // what the incident-side aggregate did before.
+      if (inj.incidentId && !activeIncidentIds.has(inj.incidentId)) continue
+      for (const key of inj.bodyParts || []) bodyPartCounts[key] = (bodyPartCounts[key] || 0) + 1
     }
     for (const ill of activeIll) {
       for (const key of ill.affectedBodyParts || []) bodyPartCounts[key] = (bodyPartCounts[key] || 0) + 1
@@ -87,6 +103,10 @@ export function IncidentProvider({ children }) {
       stats,
       users,
       sites,
+      // Every screen that shows injury or illness detail has to be able to tell
+      // "nothing recorded" from "not yours to see", so the flag travels with the
+      // data rather than being re-derived from roles at each one.
+      canReadHealth,
       pendingUsers: users.filter((u) => u.status === 'pending'),
       incidents: active,
       deletedIncidents,
@@ -102,7 +122,7 @@ export function IncidentProvider({ children }) {
       capped: incidents.length >= INCIDENT_LOAD_CAP,
       loadCap: INCIDENT_LOAD_CAP,
     }
-  }, [incidents, illnesses, injuries, users, sites, org, stats, loading, user])
+  }, [incidents, illnesses, injuries, users, sites, org, stats, loading, user, canReadHealth])
 
   return <IncidentContext.Provider value={value}>{children}</IncidentContext.Provider>
 }

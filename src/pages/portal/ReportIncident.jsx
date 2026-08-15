@@ -15,6 +15,7 @@ import { AlertTriangle, ArrowRight, Check, Info, LifeBuoy } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAuth } from '../../shared/auth/AuthContext'
 import { createIncident, getIncident } from '../../modules/incidents/lib/incidents'
+import { syncIncidentInjuries } from '../../modules/incidents/lib/injuries'
 import {
   INCIDENT_TYPES, SEVERITY, INJURY_TYPES, typeRequiresInjury,
 } from '../../modules/incidents/lib/constants'
@@ -92,6 +93,23 @@ export default function ReportIncident() {
     setBusy(true)
     try {
       const [date, time] = form.when.split('T')
+      // The reporter IS the injured person on this form, and the uid is what
+      // keys their injury report — /injuries doc ids are `${incidentId}__${personId}`.
+      // This screen used to write `name`/`uid` instead, which is why nothing it
+      // captured ever reached that collection: syncIncidentInjuries skips an
+      // entry with no personId. The whole of a portal-reported injury lived on
+      // the incident document, where everyone could read it.
+      const personId = profile?.uid || actor?.uid || ''
+      const personName = profile?.name || 'Reporter'
+      const injury = form.hurt
+        ? {
+            personId,
+            personName,
+            firstAidDone: false,
+            injuryType: form.injuryType,
+            bodyParts: form.bodyParts,
+          }
+        : null
       const id = await createIncident(orgId, actor, {
         incidentDate: date || '',
         incidentTime: time || '',
@@ -101,20 +119,18 @@ export default function ReportIncident() {
         narrative: form.narrative.trim(),
         site: profile?.site || '',
         siteId: profile?.siteId || '',
-        injuryReports: form.hurt
-          ? [{
-              name: profile?.name || 'Reporter',
-              uid: profile?.uid || '',
-              injuryType: form.injuryType,
-              bodyParts: form.bodyParts,
-            }]
-          : [],
+        // createIncident narrows this to the join key on its own; the clinical
+        // half of the same object goes to /injuries below.
+        injuryReports: injury ? [injury] : [],
       })
       // createIncident returns only the doc id, but the record numbers itself
       // from the org counter (IRA-YYYY-NNNN) and that is the number the HSE team
       // will search on. Showing the id instead would hand the reporter a
       // reference nobody upstream can find, so read the real one back.
       const saved = await getIncident(orgId, id).catch(() => null)
+      // A report that says someone was hurt and stores nothing about the injury
+      // is worse than one that refuses, so this failure is not swallowed.
+      if (injury) await syncIncidentInjuries(orgId, { id, ...(saved || {}) }, [injury], actor)
       setDone({ id, refNo: saved?.refNo || '' })
       toast.success('Reported — the HSE team has it')
     } catch (e) {

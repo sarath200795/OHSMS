@@ -67,6 +67,9 @@ export default function Courses() {
     const picked = e.target.files?.[0]
     e.target.value = ''
     if (!picked) return
+    if (!/^(image|video|audio)\/|application\/(pdf|msword|vnd\.openxmlformats-officedocument|vnd\.ms-excel|vnd\.ms-powerpoint)/.test(picked.type)) {
+      return toast.error('Invalid file type. Please upload a PDF, image, video, audio, or document.')
+    }
     // Cloud storage first: no meaningful size ceiling (rules cap at 20MB) and
     // the course document stays small however much material it carries.
     if (picked.size <= MAX_UPLOAD_BYTES) {
@@ -258,7 +261,7 @@ export default function Courses() {
                 onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addLink() } }} />
               <Button type="button" variant="soft" icon={Link2} onClick={addLink}>Add link</Button>
               <Button type="button" variant="soft" icon={Paperclip} onClick={() => fileRef.current?.click()}>Add file</Button>
-              <input ref={fileRef} type="file" className="hidden" onChange={addFile} />
+              <input ref={fileRef} type="file" accept="image/*,video/*,audio/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.*,application/vnd.ms-excel,application/vnd.ms-powerpoint" className="hidden" onChange={addFile} />
             </div>
             <p className="mt-1 text-xs text-ink-400">Files up to 10 MB. Link anything larger (videos, e-learning).</p>
           </div>

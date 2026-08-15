@@ -7,6 +7,17 @@
 // also ships to Sentry — loaded dynamically, so projects that never configure it
 // pay zero bundle bytes for it.
 //
+// Uses @sentry/browser rather than @sentry/react because:
+//   • We only call init() and captureException() — no React ErrorBoundary,
+//     Profiler, or component-name integrations.
+//   • @sentry/react v10 bundles Preact, a feedback widget, screenshot capture,
+//     and replay infrastructure (~494 KB). Its Preact rendering scheduler hooks
+//     into requestAnimationFrame at module evaluation time, causing Chrome
+//     violations ("requestAnimationFrame handler took 163ms") even when those
+//     features are disabled via init() config.
+//   • @sentry/browser is the errors-only core (~90 KB), with none of that
+//     overhead.
+//
 // reportError never throws and never awaits: it is called from the paths where
 // things are already going wrong, and the last thing a crash handler may do is
 // crash.
@@ -19,7 +30,7 @@ let loading = null
 
 function loadSentry() {
   if (!DSN || sentry || loading) return loading
-  loading = import('@sentry/react')
+  loading = import('@sentry/browser')
     .then((mod) => {
       mod.init({
         dsn: DSN,
@@ -29,6 +40,18 @@ function loadSentry() {
         // Errors only. Tracing and replay are paid-volume features to opt into
         // deliberately, not defaults to discover on an invoice.
         tracesSampleRate: 0,
+        // No performance integrations — we only capture errors.
+        integrations(defaults) {
+          return defaults.filter((i) => {
+            const name = i.name
+            return (
+              name !== 'BrowserTracing' &&
+              name !== 'BrowserProfiling' &&
+              name !== 'Replay' &&
+              name !== 'Feedback'
+            )
+          })
+        },
       })
       sentry = mod
     })

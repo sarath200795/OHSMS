@@ -156,11 +156,11 @@ const AuditScheduler = ({ setView, session, sites, users, locations = [], siteIn
               </div>
               <div>
                 <label className={lbl}>Center / Point</label>
-                <input value={plan.centerCode} onChange={(e) => setPlan({ ...plan, centerCode: e.target.value })} className={fld} placeholder="Optional" />
+                <input value={plan.centerCode} onChange={(e) => setPlan({ ...plan, centerCode: e.target.value })} className={fld} maxLength={500} placeholder="Optional" />
               </div>
               <div>
                 <label className={lbl}>Standard</label>
-                <input value={plan.standard} onChange={(e) => setPlan({ ...plan, standard: e.target.value })} className={fld} />
+                <input value={plan.standard} onChange={(e) => setPlan({ ...plan, standard: e.target.value })} className={fld} maxLength={500} />
               </div>
             </div>
             <div className="space-y-4">
@@ -182,7 +182,7 @@ const AuditScheduler = ({ setView, session, sites, users, locations = [], siteIn
               <label className={lbl}>Audit Team Members</label>
               <div className="relative mb-3">
                 <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input type="text" placeholder="Search name or email..." value={teamSearch} onChange={(e) => setTeamSearch(e.target.value)} className={`${fld} pl-9`} />
+                <input type="text" placeholder="Search name or email..." value={teamSearch} onChange={(e) => setTeamSearch(e.target.value)} className={`${fld} pl-9`} maxLength={500} />
               </div>
               <div className="max-h-[160px] flex-1 space-y-1.5 overflow-y-auto">
                 {filteredAuditors.map((u) => (
@@ -239,10 +239,10 @@ const AuditScheduler = ({ setView, session, sites, users, locations = [], siteIn
                     </td>
                     <td className="p-2"><DepartmentSelect className={`${fld} text-xs`} value={row.dept} onChange={(e) => updateRow(i, 'dept', e.target.value)} placeholder="Dept…" /></td>
                     <td className="p-2">
-                      <input className={`${fld} text-xs`} list="audit-locations" placeholder="Area" value={row.area} onChange={(e) => updateRow(i, 'area', e.target.value)} />
+                      <input className={`${fld} text-xs`} list="audit-locations" placeholder="Area" value={row.area} onChange={(e) => updateRow(i, 'area', e.target.value)} maxLength={500} />
                       {i === 0 && <datalist id="audit-locations">{locations.map((l) => <option key={l} value={l} />)}</datalist>}
                     </td>
-                    <td className="p-2"><input className={`${fld} text-xs`} placeholder="Scope / clause..." value={row.aspect} onChange={(e) => updateRow(i, 'aspect', e.target.value)} /></td>
+                    <td className="p-2"><input className={`${fld} text-xs`} placeholder="Scope / clause..." value={row.aspect} onChange={(e) => updateRow(i, 'aspect', e.target.value)} maxLength={500} /></td>
                     <td className="p-2"><input type="date" className={`${fld} text-xs font-mono`} value={row.date} onChange={(e) => updateRow(i, 'date', e.target.value)} /></td>
                     <td className="p-2"><input type="time" className={`${fld} text-xs font-mono`} value={row.time} onChange={(e) => updateRow(i, 'time', e.target.value)} /></td>
                     <td className="p-2 text-center"><button onClick={() => removeRow(i)} className="flex h-8 w-8 items-center justify-center rounded-lg bg-rose-50 text-rose-500 transition hover:bg-rose-500 hover:text-white"><i className="fas fa-trash-alt" /></button></td>
@@ -327,6 +327,8 @@ const AuditorWorkplace = ({ setView, session, isGlobalOwner, plans, findings, si
   const updateRow = (i, f, v) => { const u = [...findingRows]; u[i][f] = v; setFindingRows(u) }
   const handleFile = async (i, file) => {
     if (!file) return
+    if (file.size > 10 * 1024 * 1024) return alert('File size exceeds 10MB limit.')
+    if (!file.type.match('^(image/.*|application/pdf)$')) return alert('Only PDF and image files are allowed.')
     const b64 = await fileToBase64(file)
     const u = [...findingRows]; u[i].evidence = b64; u[i].fileName = file.name; setFindingRows(u)
   }
@@ -380,9 +382,9 @@ const AuditorWorkplace = ({ setView, session, isGlobalOwner, plans, findings, si
           <>
             <div className={`${panel} mb-6 flex flex-wrap items-center gap-3 p-4`}>
               <input type="date" className={`${fld} w-36`} value={filters.date} onChange={(e) => setFilters({ ...filters, date: e.target.value })} />
-              <input type="text" placeholder="Auditor" className={`${fld} w-36`} value={filters.auditor} onChange={(e) => setFilters({ ...filters, auditor: e.target.value })} />
-              <input type="text" placeholder="Auditee" className={`${fld} w-36`} value={filters.auditee} onChange={(e) => setFilters({ ...filters, auditee: e.target.value })} />
-              <input type="text" placeholder="Doc ID" className={`${fld} w-28`} value={filters.id} onChange={(e) => setFilters({ ...filters, id: e.target.value })} />
+              <input type="text" placeholder="Auditor" className={`${fld} w-36`} value={filters.auditor} onChange={(e) => setFilters({ ...filters, auditor: e.target.value })} maxLength={500} />
+              <input type="text" placeholder="Auditee" className={`${fld} w-36`} value={filters.auditee} onChange={(e) => setFilters({ ...filters, auditee: e.target.value })} maxLength={500} />
+              <input type="text" placeholder="Doc ID" className={`${fld} w-28`} value={filters.id} onChange={(e) => setFilters({ ...filters, id: e.target.value })} maxLength={500} />
               <button onClick={() => setFilters({ date: '', auditor: '', auditee: '', id: '' })} className="rounded-lg bg-slate-100 px-3 py-2 text-xs font-bold uppercase tracking-wider text-slate-600 hover:bg-slate-200"><i className="fas fa-undo mr-1" />Reset</button>
             </div>
             <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -433,7 +435,7 @@ const AuditorWorkplace = ({ setView, session, isGlobalOwner, plans, findings, si
                 {[['Site', siteName(currentTask.siteId)], ['Auditor', currentTask.auditor], ['Auditee', currentTask.auditee], ['Date', currentTask.date]].map(([k, v]) => (
                   <div key={k}><label className={lbl}>{k}</label><div className="rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-sm font-bold text-ink-800">{v || '—'}</div></div>
                 ))}
-                <div className="col-span-2 md:col-span-4"><label className={lbl}>Standard / Criteria Applied</label><input value={criteria} onChange={(e) => setCriteria(e.target.value)} className={fld} placeholder="e.g. ISO 45001:2018 Clause 8.1..." /></div>
+                <div className="col-span-2 md:col-span-4"><label className={lbl}>Standard / Criteria Applied</label><input value={criteria} onChange={(e) => setCriteria(e.target.value)} className={fld} maxLength={500} placeholder="e.g. ISO 45001:2018 Clause 8.1..." /></div>
               </div>
             </div>
             <div className={`${panel} p-7`}>
@@ -455,17 +457,17 @@ const AuditorWorkplace = ({ setView, session, isGlobalOwner, plans, findings, si
                           <option value="Major NC">Major Non-Conformance</option>
                         </select>
                       </div>
-                      <div className="col-span-12 md:col-span-3"><label className={lbl}>Ref Clause</label><input value={f.clause} onChange={(e) => updateRow(i, 'clause', e.target.value)} className={fld} placeholder="e.g. 9.1.2" /></div>
+                      <div className="col-span-12 md:col-span-3"><label className={lbl}>Ref Clause</label><input value={f.clause} onChange={(e) => updateRow(i, 'clause', e.target.value)} className={fld} maxLength={500} placeholder="e.g. 9.1.2" /></div>
                       <div className="col-span-12 md:col-span-6">
                         <label className={lbl}>Objective Evidence <span className="text-rose-500">*</span></label>
-                        <input type="file" onChange={(e) => handleFile(i, e.target.files[0])} className="w-full text-[10px] text-slate-500 file:mr-3 file:rounded-lg file:border-none file:bg-slate-200 file:px-4 file:py-1.5 file:font-bold file:text-slate-600" />
+                        <input type="file" accept="application/pdf,image/*" onChange={(e) => handleFile(i, e.target.files[0])} className="w-full text-[10px] text-slate-500 file:mr-3 file:rounded-lg file:border-none file:bg-slate-200 file:px-4 file:py-1.5 file:font-bold file:text-slate-600" />
                         {f.fileName ? (
                           <div className="mt-2 truncate text-[10px] font-bold text-emerald-600"><i className="fas fa-check-circle mr-1" />Attached: {f.fileName}</div>
                         ) : (
                           <div className="mt-2 text-[10px] font-bold text-rose-500"><i className="fas fa-exclamation-circle mr-1" />Required — attach objective evidence for this finding.</div>
                         )}
                       </div>
-                      <div className="col-span-12"><label className={lbl}>Detailed Description of Finding</label><textarea value={f.desc} onChange={(e) => updateRow(i, 'desc', e.target.value)} rows="3" className={fld} placeholder="Describe the specific observation or non-conformance..." /></div>
+                      <div className="col-span-12"><label className={lbl}>Detailed Description of Finding</label><textarea value={f.desc} onChange={(e) => updateRow(i, 'desc', e.target.value)} rows="3" className={fld} maxLength={2000} placeholder="Describe the specific observation or non-conformance..." /></div>
                     </div>
                     <button onClick={() => removeRow(i)} className="absolute bottom-4 right-4 flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-400 transition hover:bg-rose-50 hover:text-rose-500"><i className="fas fa-trash-alt" /></button>
                   </div>
@@ -540,7 +542,11 @@ const AuditeeWorkplace = ({ session, users, findings }) => {
 
   const handleFile = async (e) => {
     const file = e.target.files[0]
-    if (file) { const b64 = await fileToBase64(file); setForm({ ...form, evidenceFile: b64, evidenceFileName: file.name }) }
+    if (file) {
+      if (file.size > 10 * 1024 * 1024) return alert('File size exceeds 10MB limit.')
+      if (!file.type.match('^(image/.*|application/pdf)$')) return alert('Only PDF and image files are allowed.')
+      const b64 = await fileToBase64(file); setForm({ ...form, evidenceFile: b64, evidenceFileName: file.name })
+    }
   }
 
   const saveResponse = () => {
@@ -668,9 +674,9 @@ const AuditeeWorkplace = ({ session, users, findings }) => {
                 <span className={lbl}>Auditor’s Finding</span>
                 <p className="border-l-4 border-amber-300 py-1 pl-4 text-sm text-slate-700">“{current.desc}”</p>
               </div>
-              <div><label className={lbl}>1. Root Cause Analysis</label><textarea rows="3" className={fld} value={form.rootCause} onChange={(e) => setForm({ ...form, rootCause: e.target.value })} placeholder="Why did this happen?" /></div>
-              <div><label className={lbl}>2. Immediate Correction</label><input className={fld} value={form.correction} onChange={(e) => setForm({ ...form, correction: e.target.value })} placeholder="What was done immediately?" /></div>
-              <div><label className={lbl}>3. Corrective / Preventive Action (CAPA)</label><textarea rows="2" className={fld} value={form.capa} onChange={(e) => setForm({ ...form, capa: e.target.value })} placeholder="Long-term action to prevent recurrence" /></div>
+              <div><label className={lbl}>1. Root Cause Analysis</label><textarea rows="3" className={fld} value={form.rootCause} onChange={(e) => setForm({ ...form, rootCause: e.target.value })} maxLength={2000} placeholder="Why did this happen?" /></div>
+              <div><label className={lbl}>2. Immediate Correction</label><input className={fld} value={form.correction} onChange={(e) => setForm({ ...form, correction: e.target.value })} maxLength={500} placeholder="What was done immediately?" /></div>
+              <div><label className={lbl}>3. Corrective / Preventive Action (CAPA)</label><textarea rows="2" className={fld} value={form.capa} onChange={(e) => setForm({ ...form, capa: e.target.value })} maxLength={2000} placeholder="Long-term action to prevent recurrence" /></div>
               <div className="grid grid-cols-2 gap-5">
                 <div><label className={lbl}>4. CAPA Owner</label>
                   <select className={fld} value={form.owner} onChange={(e) => setForm({ ...form, owner: e.target.value })}>
@@ -682,7 +688,7 @@ const AuditeeWorkplace = ({ session, users, findings }) => {
                 <div><label className={lbl}>5. Target Closure Date</label><input type="date" className={`${fld} font-mono`} value={form.targetDate} onChange={(e) => setForm({ ...form, targetDate: e.target.value })} /></div>
               </div>
               <div><label className={lbl}>6. Objective Evidence (Optional)</label>
-                <input type="file" onChange={handleFile} className="w-full text-xs text-slate-500 file:mr-3 file:rounded-lg file:border-none file:bg-amber-500 file:px-4 file:py-2 file:font-bold file:text-white" />
+                <input type="file" accept="application/pdf,image/*" onChange={handleFile} className="w-full text-xs text-slate-500 file:mr-3 file:rounded-lg file:border-none file:bg-amber-500 file:px-4 file:py-2 file:font-bold file:text-white" />
                 {form.evidenceFileName && <span className="mt-2 inline-block text-[10px] font-bold text-emerald-600"><i className="fas fa-check-circle mr-1" />{form.evidenceFileName}</span>}
               </div>
             </div>

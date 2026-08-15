@@ -24,6 +24,7 @@ import { planBackfill } from './lib/docVisibility.js'
 import { classifyLocks } from './lib/defectLocks.js'
 import { PURGEABLE, PURGE_AFTER_DAYS, MAX_PURGES_PER_RUN, planPurge } from './lib/retention.js'
 import { planQrBackfill, QR_SOURCES } from './lib/qrMirrors.js'
+import { planMedicalStrip } from './lib/incidentMedical.js'
 
 initializeApp()
 
@@ -337,6 +338,116 @@ export const backfillQrMirrors = onCall({ region: REGION, timeoutSeconds: 540 },
     foreign: plan.foreign,
     missingMirror: plan.missingMirror.slice(0, 50),
     missingMirrorTotal: plan.missingMirror.length,
+  }
+})
+
+/**
+ * Take the medical detail off incident documents that already carry a copy.
+ *
+ * /injuries is gated on isManagerOf rather than isElevatedOf specifically to
+ * keep the external auditor out of colleagues' health records. That gate was
+ * decorative: the same detail was ALSO written onto the parent incident as
+ * injuryReports[], and /incidents falls through to the generic read — every
+ * approved member, plus the auditor. One getDocs on the incident collection
+ * returned bodyParts, injuryType, medication, firstAidDetail and
+ * daysToReturnToWork for every injured person in the tenant. ISO 27001 audit
+ * MEDIUM-31, and the manager-only rule never touched it.
+ *
+ * Closing the write path closes nothing already stored, and every incident
+ * filed before that fix still answers the query. Same reasoning already
+ * recorded for the visibility backfill: this migration is a PREREQUISITE of the
+ * rules and UI change, not a tidy-up afterwards.
+ *
+ * It cannot be done by re-syncing from the incident, because
+ * syncIncidentInjuries skips a record that is already verified.
+ *
+ * NEVER strips a field it has not first found in /injuries — see
+ * planMedicalStrip. /injuries is about to be the only copy, so an unproved
+ * removal deletes an injury record rather than confining it. Everything
+ * unproved is kept and reported for a human.
+ *
+ * dryRun defaults to TRUE. Report first, write when asked.
+ */
+export const stripIncidentMedicalDetail = onCall({ region: REGION, timeoutSeconds: 540 }, async (request) => {
+  const callerUid = request.auth?.uid
+  if (!callerUid) throw new HttpsError('unauthenticated', 'Sign in first.')
+
+  const db = getFirestore()
+  const caller = (await db.doc(`users/${callerUid}`).get()).data()
+  if (!caller || caller.status !== 'approved' || caller.role !== 'admin') {
+    throw new HttpsError('permission-denied', 'Administrators only.')
+  }
+  const orgId = caller.orgId
+  const base = `organizations/${orgId}`
+
+  // Both sides of the join, whole. Soft-deleted incidents are included
+  // deliberately — the generic read rule does not filter on deletedAt, so a
+  // record in the Recycle Bin is exposed exactly like a live one.
+  const [incSnap, injSnap] = await Promise.all([
+    db.collection(`${base}/incidents`).get(),
+    db.collection(`${base}/injuries`).get(),
+  ])
+
+  const incidents = incSnap.docs.map((d) => ({
+    id: d.id,
+    refNo: d.data()?.refNo,
+    injuryReports: d.data()?.injuryReports,
+  }))
+  const injuries = new Map(injSnap.docs.map((d) => [d.id, d.data()]))
+
+  const plan = planMedicalStrip(incidents, injuries)
+
+  const dryRun = request.data?.dryRun !== false
+  if (!dryRun) {
+    // Chunked: a batch takes 500 writes and an org's incident register exceeds
+    // that long before anyone runs this.
+    for (let i = 0; i < plan.writes.length; i += 400) {
+      const batch = db.batch()
+      plan.writes.slice(i, i + 400).forEach((w) => {
+        // The patch replaces injuryReports and nothing else. updatedAt is
+        // deliberately NOT stamped: this is not an edit anybody made, and
+        // moving every incident in the tenant to the top of "recently changed"
+        // would bury whatever a human actually touched that day.
+        batch.update(db.doc(`${base}/incidents/${w.id}`), w.patch)
+      })
+      await batch.commit()
+    }
+  }
+
+  // Counts only. The blocked rows name fields, never values, and this log line
+  // does not even name the fields — a migration report must not become one more
+  // copy of the thing it is confining.
+  logger.info('incidents: medical detail strip', {
+    orgId, dryRun, incidents: incSnap.size, injuries: injSnap.size,
+    toWrite: plan.writes.length, confined: plan.confined,
+    blocked: plan.blocked.length, stillExposed: plan.stillExposed,
+  })
+
+  return {
+    orgId,
+    dryRun,
+    incidents: incSnap.size,
+    injuries: injSnap.size,
+    alreadyClean: plan.alreadyClean,
+    // The number this whole run is for: incidents that will STILL carry medical
+    // detail afterwards. Until it is 0 the exposure is open, and the rules and
+    // UI change must not ship on the strength of a big `confined` count.
+    stillExposed: plan.stillExposed,
+    written: dryRun ? 0 : plan.writes.length,
+    wouldWrite: plan.writes.length,
+    // Split on purpose: `confined` is real medical values proved present in
+    // /injuries and then removed here, `emptied` is blank keys that never held
+    // anything. "600 fields removed" reads like a much bigger migration than it
+    // is when most of them were empty strings.
+    confined: plan.confined,
+    emptied: plan.emptied,
+    // The part that needs a person. Each row is an injury whose detail could
+    // NOT be proved to exist anywhere else, so it was left where it is —
+    // exposed, but not destroyed. Field names only, never values.
+    blocked: plan.blocked.slice(0, 50),
+    blockedTotal: plan.blocked.length,
+    blockedFields: plan.blockedFields,
+    sample: plan.writes.slice(0, 25).map((w) => ({ id: w.id, refNo: w.refNo, confined: w.confined })),
   }
 })
 

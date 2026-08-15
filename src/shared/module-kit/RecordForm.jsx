@@ -25,6 +25,7 @@ export default function RecordForm({ fields, value, onChange, lookups }) {
               required={f.required}
               value={value[f.key] ?? ''}
               onChange={set(f.key)}
+              maxLength={f.maxLength || 2000}
               placeholder={f.placeholder}
             />
           ) : f.type === 'file' ? (
@@ -50,6 +51,7 @@ export default function RecordForm({ fields, value, onChange, lookups }) {
               required={f.required}
               value={value[f.key] ?? ''}
               onChange={set(f.key)}
+              maxLength={f.maxLength || 500}
               placeholder={f.placeholder}
               min={f.min}
               max={f.max}

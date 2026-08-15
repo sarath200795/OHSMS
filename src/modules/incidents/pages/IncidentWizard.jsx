@@ -24,7 +24,7 @@ import {
   createIncident, updateIncident, getIncident, closeIncident,
   subscribeIncidentPhotos, addIncidentPhoto, deleteIncidentPhoto,
 } from '../lib/incidents'
-import { syncIncidentInjuries } from '../lib/injuries'
+import { syncIncidentInjuries, mergeInjuryDetail } from '../lib/injuries'
 
 // Forward-only lifecycle: never downgrade when revisiting an earlier step.
 const forwardLifecycle = (current, target) =>
@@ -44,7 +44,7 @@ export default function IncidentWizard() {
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
   const { user, profile, role, orgId } = useAuth()
-  const { users, org, injuries, sites } = useIncidents()
+  const { users, org, injuries, sites, canReadHealth } = useIncidents()
   const actor = useMemo(() => ({ uid: user?.uid, name: profile?.name || '' }), [user, profile])
 
   const [incident, setIncident] = useState(null)
@@ -101,11 +101,38 @@ export default function IncidentWizard() {
   const isAdmin = role === 'admin'
   // Once an incident is SAVED, its submitted facts (Step 1) are admin-only to edit.
   const lockInitial = Boolean(incident) && !isAdmin
-  // Verified injuries are locked everywhere (unverify on the Injury Reports page to change).
-  const verifiedPersonIds = useMemo(
-    () => new Set(injuries.filter((j) => j.incidentId === incident?.id && j.status === 'verified').map((j) => j.personId)),
+  const incidentInjuries = useMemo(
+    () => injuries.filter((j) => j.incidentId === incident?.id),
     [injuries, incident]
   )
+  // Verified injuries are locked everywhere (unverify on the Injury Reports page to change).
+  const verifiedPersonIds = useMemo(
+    () => new Set(incidentInjuries.filter((j) => j.status === 'verified').map((j) => j.personId)),
+    [incidentInjuries]
+  )
+
+  // Step 1a is repopulated from /injuries, not from the incident: the incident
+  // carries only personId/personName/firstAidDone now. Hydrating once per
+  // incident stops a later snapshot from overwriting what is being typed — and
+  // the listener is app-wide, so it has almost always delivered before this page
+  // is even opened.
+  const hydratedFor = useRef(null)
+  useEffect(() => {
+    if (!incident || !canReadHealth) return
+    if (hydratedFor.current === incident.id || incidentInjuries.length === 0) return
+    hydratedFor.current = incident.id
+    setInjuryReports((stubs) => mergeInjuryDetail(stubs, incidentInjuries))
+  }, [incident, incidentInjuries, canReadHealth])
+
+  // People whose injury is on file but whose detail this user may not read.
+  // A member is the intended author of Step 1a and the rules do let them WRITE
+  // an injury report — but not read one back. Handing them an empty form for a
+  // person already recorded would save blanks over a colleague's medical record
+  // on the next click, so those people are shown as recorded and left alone.
+  const hiddenPersonIds = useMemo(() => {
+    if (canReadHealth) return new Set()
+    return new Set((incident?.injuryReports || []).map((r) => r.personId).filter(Boolean))
+  }, [canReadHealth, incident])
 
   // ── Photo helpers ──
   const addPhoto = async (fileObj) => {
@@ -158,13 +185,17 @@ export default function IncidentWizard() {
 
   const saveInjury = async () => {
     setSaving(true)
+    const gen = ++persistGen.current
     try {
+      // Order matters, and so does the missing .catch(). The clinical detail is
+      // written to /injuries FIRST because the incident write below keeps only
+      // the join key: strip first and a failed sync would have deleted the only
+      // copy. A sync that fails has to fail the save, out loud — it used to warn
+      // to the console and report success.
+      await syncIncidentInjuries(orgId, incident, injuryReports, actor)
       await updateIncident(orgId, incident.id, { injuryReports }, { actor, summary: 'Updated injury reports' })
       const fresh = await getIncident(orgId, incident.id)
-      setIncident(fresh)
-      // Mirror each injury into the standalone, verifiable Injury Reports collection.
-      await syncIncidentInjuries(orgId, fresh, injuryReports, actor).catch((e) =>
-        console.warn('[Incident IRA] injury sync skipped:', e?.message || e))
+      if (gen === persistGen.current) setIncident(fresh)
       toast.success('Injury reports saved')
       goStep(nextStep())
     } catch (e) {
@@ -174,12 +205,17 @@ export default function IncidentWizard() {
     }
   }
 
+  // Guard against stale fetch responses: each persist/save bumps a counter,
+  // and only the response matching the latest request updates state.
+  const persistGen = useRef(0)
+
   const persist = async (updates, opts, nextKey) => {
     setSaving(true)
+    const gen = ++persistGen.current
     try {
       await updateIncident(orgId, incident.id, updates, { actor, ...opts })
       const fresh = await getIncident(orgId, incident.id)
-      setIncident(fresh)
+      if (gen === persistGen.current) setIncident(fresh)
       toast.success('Saved')
       if (nextKey) goStep(nextKey)
     } catch (e) {
@@ -197,6 +233,7 @@ export default function IncidentWizard() {
     { summary: 'Updated CAPA actions' }, nextStep())
   const saveInvestigation = async (investigations, { activeId, png } = {}) => {
     setSaving(true)
+    const gen = ++persistGen.current
     try {
       // Re-export the diagram PNG only for the currently active investigation;
       // every other entry keeps its previously captured image.
@@ -218,7 +255,7 @@ export default function IncidentWizard() {
         lifecycle: forwardLifecycle(incident.lifecycle, 'investigation'),
       }, { actor, summary: `Investigation saved (${next.map((e) => e.method).join(', ') || 'none'})` })
       const fresh = await getIncident(orgId, incident.id)
-      setIncident(fresh)
+      if (gen === persistGen.current) setIncident(fresh)
       toast.success('Investigation saved')
       goStep(nextStep())
     } catch (e) {
@@ -337,6 +374,7 @@ export default function IncidentWizard() {
             onRemovePhoto={removePhoto}
             canEdit={Boolean(incident)}
             lockedPersonIds={verifiedPersonIds}
+            hiddenPersonIds={hiddenPersonIds}
           />
         )}
 
@@ -395,10 +433,12 @@ export default function IncidentWizard() {
         </div>
       </div>
 
-      {/* Hidden printables */}
+      {/* Hidden printables. The injury detail is passed in from /injuries — it is
+          no longer on the incident, and a report that quietly printed a blank
+          medical block would read as "nobody was hurt". */}
       <div className="hidden">
-        <IncidentReportDoc ref={printRef} incident={incident} photos={photos} org={org} full={false} />
-        <IncidentReportDoc ref={fullRef} incident={incident} photos={photos} org={org} full diagramUrl={diagramPhoto?.dataUrl} />
+        <IncidentReportDoc ref={printRef} incident={incident} photos={photos} org={org} full={false} injuries={incidentInjuries} medicalAvailable={canReadHealth} />
+        <IncidentReportDoc ref={fullRef} incident={incident} photos={photos} org={org} full diagramUrl={diagramPhoto?.dataUrl} injuries={incidentInjuries} medicalAvailable={canReadHealth} />
       </div>
     </div>
   )

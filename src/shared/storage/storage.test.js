@@ -131,7 +131,11 @@ describe('dataUrlToBlob', () => {
 // anyone holding it, signed in or not, forever, and storage.rules never sees
 // it. fileUrl exists to prefer an authenticated fetch over that — while never
 // letting the secure path turn a working image into a broken one.
-describe('resolving a stored file to a governed URL', () => {
+// 20s, not the 5s default: every case here awaits loadAdapter(), which is a
+// DYNAMIC import. Alone it resolves in well under a second; inside a full run
+// competing with 80 other files it does not, and the suite went red for a
+// reason that had nothing to do with the behaviour under test.
+describe('resolving a stored file to a governed URL', { timeout: 20000 }, () => {
   const STORED = 'https://firebasestorage.googleapis.com/o/x?alt=media&token=perm'
 
   it('falls back to the stored URL when the record predates paths', async () => {

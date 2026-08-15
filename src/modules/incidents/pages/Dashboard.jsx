@@ -5,7 +5,7 @@ import {
   PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, LabelList, Legend,
 } from 'recharts'
 import {
-  LayoutDashboard, ClipboardList, ShieldCheck, ListChecks, AlertTriangle, Activity, Filter, X, Search, CheckCircle2,
+  LayoutDashboard, ClipboardList, ShieldCheck, ListChecks, AlertTriangle, Activity, Filter, X, Search, CheckCircle2, EyeOff,
 } from 'lucide-react'
 import { PageHeader } from '../components/ui'
 import CountUp from '../components/CountUp'
@@ -55,10 +55,26 @@ function renderPieValue({ cx, cy, midAngle, innerRadius, outerRadius, value }) {
   return <text x={x} y={y} fill="#fff" fontSize={14} fontWeight={800} textAnchor="middle" dominantBaseline="central">{value}</text>
 }
 
-const incidentBodyKeys = (inc) => {
-  const s = new Set()
-  for (const r of inc.injuryReports || []) for (const k of r.bodyParts || []) s.add(k)
-  return s
+const NO_KEYS = new Set()
+
+/**
+ * Injured body parts per incident, built from /injuries.
+ *
+ * They used to be read straight off incident.injuryReports, which is what put a
+ * named colleague's body parts in front of every member and the external
+ * auditor. /injuries is manager-gated, so for anyone else this map is empty —
+ * and an empty map must never be presented as "no injuries" (see the body-map
+ * card below).
+ */
+function bodyKeysByIncident(injuries) {
+  const m = new Map()
+  for (const j of injuries) {
+    if (!j.incidentId) continue
+    const s = m.get(j.incidentId) || new Set()
+    for (const k of j.bodyParts || []) s.add(k)
+    m.set(j.incidentId, s)
+  }
+  return m
 }
 
 function chipMeta(dim, value) {
@@ -71,9 +87,10 @@ function chipMeta(dim, value) {
 }
 
 export default function Dashboard() {
-  const { incidents, illnesses, allActions, bodyPartCounts } = useIncidents()
+  const { incidents, illnesses, injuries, allActions, bodyPartCounts, canReadHealth } = useIncidents()
   const [filters, setFilters] = useState(emptyFilters)
   const [search, setSearch] = useState('')
+  const bodyKeys = useMemo(() => bodyKeysByIncident(injuries), [injuries])
 
   const toggle = (dim, value) => setFilters((prev) => {
     const next = { ...prev, [dim]: new Set(prev[dim]) }
@@ -95,14 +112,14 @@ export default function Dashboard() {
       if (filters.category.size && !filters.category.has(i.category)) return false
       if (filters.location.size && !filters.location.has(i.location)) return false
       if (filters.body.size) {
-        const keys = incidentBodyKeys(i)
+        const keys = bodyKeys.get(i.id) || NO_KEYS
         let any = false
         for (const b of filters.body) if (keys.has(b)) { any = true; break }
         if (!any) return false
       }
       return true
     })
-  }, [incidents, search, filters])
+  }, [incidents, search, filters, bodyKeys])
 
   // Body-map counts derived from the CURRENTLY FILTERED set, so changing any
   // filter (category, severity, …) updates the heatmap. Illnesses lack the
@@ -110,7 +127,11 @@ export default function Dashboard() {
   // is active (still honouring an active location filter).
   const bodyCounts = useMemo(() => {
     const c = {}
-    for (const inc of filtered) for (const r of inc.injuryReports || []) for (const k of r.bodyParts || []) c[k] = (c[k] || 0) + 1
+    const shown = new Set(filtered.map((i) => i.id))
+    for (const j of injuries) {
+      if (!shown.has(j.incidentId)) continue
+      for (const k of j.bodyParts || []) c[k] = (c[k] || 0) + 1
+    }
     const incidentDimActive = filters.severity.size || filters.type.size || filters.category.size
     if (!incidentDimActive) {
       for (const ill of illnesses) {
@@ -119,7 +140,7 @@ export default function Dashboard() {
       }
     }
     return c
-  }, [filtered, illnesses, filters])
+  }, [filtered, injuries, illnesses, filters])
 
   const sevData = useMemo(() => SEVERITY.map((s) => ({ name: s.label, key: s.key, value: filtered.filter((i) => i.severity === s.key).length, color: s.color })).filter((d) => d.value), [filtered])
   const typeData = useMemo(() => INCIDENT_TYPES.map((t) => ({ name: t.label, key: t.key, value: filtered.filter((i) => i.type === t.key).length, color: t.color })).filter((d) => d.value), [filtered])
@@ -272,8 +293,25 @@ export default function Dashboard() {
           ) : <Empty />}
         </ChartCard>
 
-        <ChartCard title="Injury / Illness Body Map" subtitle="Heat = affected count · click to filter">
-          {Object.keys(bodyPartCounts).length ? (
+        {/* Three states, and the third one is the point. Body parts come from
+            /injuries and /illnesses, which are admin/manager only — so for a
+            member or the external auditor this card has no data to draw. Drawing
+            an empty body and captioning it "No injuries recorded" would report
+            an absence that was never checked. */}
+        <ChartCard
+          title="Injury / Illness Body Map"
+          subtitle={canReadHealth ? 'Heat = affected count · click to filter' : 'Restricted'}
+        >
+          {!canReadHealth ? (
+            <div className="flex h-52 flex-col items-center justify-center px-6 text-center text-ink-400">
+              <EyeOff size={34} />
+              <p className="mt-2 font-bold text-ink-600">Not available to your role</p>
+              <p className="mt-1 text-xs leading-relaxed">
+                Injured body parts belong to a colleague&rsquo;s medical record and are readable by admins
+                and managers only. This is not a count of zero.
+              </p>
+            </div>
+          ) : Object.keys(bodyPartCounts).length ? (
             <BodyHeatmap counts={bodyCounts} onSelect={(key) => toggle('body', key)} height={260} />
           ) : (
             <div className="flex h-52 flex-col items-center justify-center text-ink-400"><ShieldCheck size={36} /><p className="mt-2 font-bold text-green-600">No injuries recorded</p></div>

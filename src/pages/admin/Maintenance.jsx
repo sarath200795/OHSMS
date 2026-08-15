@@ -2,7 +2,7 @@ import { useState } from 'react'
 import toast from 'react-hot-toast'
 import { ShieldCheck, FileStack, Play, Check, Bug, Unlock, QrCode } from 'lucide-react'
 import { Card, Button } from '../../shared/ui'
-import { backfillDocumentVisibility, backfillClaims, clearOrphanedDefectLocks } from '../../shared/functions'
+import { backfillDocumentVisibility, backfillClaims, clearOrphanedDefectLocks, backfillQrMirrors } from '../../shared/functions'
 import { reportError } from '../../shared/monitoring'
 import { useAuth } from '../../shared/auth/AuthContext'
 import { backfillProcedureMirrors } from '../../modules/loto/services/procedures'
@@ -22,6 +22,7 @@ export default function Maintenance() {
   return (
     <div className="space-y-4">
       <DocumentVisibility />
+      <QrMirrors />
       <OrgClaims />
       <ProcedureMirrors />
       <DefectLocks />
@@ -259,6 +260,80 @@ function Job({ icon: Icon, title, children, result, actions }) {
       )}
       <div className="mt-3 flex flex-wrap gap-2">{actions}</div>
     </Card>
+  )
+}
+
+function QrMirrors() {
+  const [busy, setBusy] = useState('')
+  const [preview, setPreview] = useState(null)
+  const [done, setDone] = useState(false)
+
+  const run = async (dryRun) => {
+    setBusy(dryRun ? 'dry' : 'write')
+    try {
+      const r = await backfillQrMirrors({ dryRun })
+      setPreview(r)
+      if (!dryRun) {
+        setDone(true)
+        toast.success(`Stamped ${r.written} mirror${r.written === 1 ? '' : 's'}`)
+      } else if (r.wouldWrite === 0) {
+        toast.success('Nothing to do — every mirror already names this organization')
+      }
+    } catch (err) {
+      toast.error(err?.message || 'Failed')
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const nothingToDo = preview && preview.wouldWrite === 0
+  // A mirror naming a different organization is a token collision, and the job
+  // refuses to rewrite one. Stopping here rather than writing around it: the
+  // alternative is handing this tenant an asset that answers to somebody else's
+  // printed label.
+  const foreign = preview?.foreign?.length || 0
+
+  return (
+    <Job
+      icon={QrCode}
+      title="Repair QR codes"
+      result={preview && [
+        `${preview.assets} tagged asset${preview.assets === 1 ? '' : 's'} in this organization`,
+        `${preview.alreadyStamped} already correct`,
+        `${preview.wouldWrite} to repair`,
+        foreign ? `\n  ⚠ ${foreign} belong to another organization and will NOT be touched` : '',
+        preview.missingMirrorTotal ? `  · ${preview.missingMirrorTotal} asset(s) point at a QR record that no longer exists` : '',
+      ].filter(Boolean).join('\n')}
+      actions={
+        <>
+          <Button variant="ghost" icon={Play} loading={busy === 'dry'} disabled={Boolean(busy)} onClick={() => run(true)}>
+            Check first
+          </Button>
+          <Button
+            icon={done ? Check : undefined}
+            loading={busy === 'write'}
+            // Same gate as the others, plus: if anything foreign turned up, that
+            // needs a human before anything is written.
+            disabled={Boolean(busy) || !preview || nothingToDo || foreign > 0}
+            onClick={() => run(false)}
+          >
+            {done ? 'Repaired' : 'Repair them'}
+          </Button>
+        </>
+      }
+    >
+      <p>
+        Every extinguisher, AED and fire-alarm panel has a public QR record. Records
+        created before those carried an organization marker cannot be updated by anyone —
+        the security rule reads the marker directly, and reading a marker that is not
+        there denies the write.
+      </p>
+      <p>
+        Because a bulk upload saves each asset and its QR record together, one old record
+        refuses the whole file. This repairs them. It changes nothing else, and running it
+        twice does nothing the second time.
+      </p>
+    </Job>
   )
 }
 

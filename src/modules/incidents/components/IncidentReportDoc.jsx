@@ -35,14 +35,23 @@ function Field({ label, value }) {
  * Printable incident report. `full=false` → Initial Incident Report (Step 1 +
  * injuries). `full=true` → adds team, investigation (+ diagram image), CAPA and
  * horizontal deployment. Photos/diagram images are passed in.
+ *
+ * So are `injuries`: the incident carries only the join key now, so the medical
+ * block is rendered from the /injuries documents the caller holds. When the
+ * reader is not allowed those (`medicalAvailable` false, i.e. anyone below
+ * manager) the block states that detail has been omitted. It does not print
+ * half a medical record — a reader cannot tell an empty field from an
+ * uninjured person, and this document gets filed.
  */
-const IncidentReportDoc = forwardRef(function IncidentReportDoc({ incident, photos = [], org, full = false, diagramUrl }, ref) {
+const IncidentReportDoc = forwardRef(function IncidentReportDoc({ incident, photos = [], org, full = false, diagramUrl, injuries = [], medicalAvailable = false }, ref) {
   if (!incident) return <div ref={ref} />
   const type = INCIDENT_TYPE_BY_KEY[incident.type]
   const sev = SEVERITY_BY_KEY[incident.severity]
   const cat = HSE_CATEGORY_BY_KEY[incident.category]
   const evidence = photos.filter((p) => p.kind === 'photo' && p.type?.startsWith('image/'))
   const investigations = incidentInvestigations(incident)
+  const detailFor = (personId) =>
+    (medicalAvailable && injuries.find((j) => j.personId === personId)) || null
 
   return (
     <div ref={ref} className="mx-auto max-w-[800px] bg-white p-8 text-ink-900">
@@ -89,26 +98,39 @@ const IncidentReportDoc = forwardRef(function IncidentReportDoc({ incident, phot
 
       {(incident.injuryReports || []).length > 0 && (
         <Section title="Injury Reports">
-          {incident.injuryReports.map((r) => (
-            <div key={r.personId} className="print-block mb-3 rounded border border-ink-200 p-3">
-              <p className="font-bold">{r.personName || 'Injured person'}</p>
-              <div className="mt-1 grid grid-cols-2 gap-x-8">
-                <Field label="First aid done" value={r.firstAidDone ? `Yes${r.firstAidDetail ? ` — ${r.firstAidDetail}` : ''}` : 'No'} />
-                <Field label="Injury type" value={r.injuryType} />
-                <Field label="Body part(s)" value={(r.bodyParts || []).map(bodyPartLabel).join(', ')} />
-                <Field label="Medication" value={r.medication} />
-                <Field label="Days to return to work" value={r.daysToReturnToWork} />
-              </div>
-              {(r.bodyParts || []).length > 0 && (
-                <div className="mt-3">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-400">
-                    Injured body-part map
+          {incident.injuryReports.map((r, i) => {
+            const d = detailFor(r.personId)
+            return (
+              <div key={r.personId || i} className="print-block mb-3 rounded border border-ink-200 p-3">
+                <p className="font-bold">{r.personName || 'Injured person'}</p>
+                {d ? (
+                  <>
+                    <div className="mt-1 grid grid-cols-2 gap-x-8">
+                      <Field label="First aid done" value={d.firstAidDone ? `Yes${d.firstAidDetail ? ` — ${d.firstAidDetail}` : ''}` : 'No'} />
+                      <Field label="Injury type" value={d.injuryType} />
+                      <Field label="Body part(s)" value={(d.bodyParts || []).map(bodyPartLabel).join(', ')} />
+                      <Field label="Medication" value={d.medication} />
+                      <Field label="Days to return to work" value={d.daysToReturnToWork} />
+                    </div>
+                    {(d.bodyParts || []).length > 0 && (
+                      <div className="mt-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-400">
+                          Injured body-part map
+                        </p>
+                        <BodyMapStatic parts={d.bodyParts} />
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <p className="mt-1 text-sm text-ink-500">
+                    {medicalAvailable
+                      ? 'No injury report has been filed for this person yet. Injury detail is captured in the Injury Reports record.'
+                      : 'An injury report is on file. Its detail — injury type, body part(s), medication, first aid and days to return to work — is part of this person’s medical record, readable by admins and managers only, and has been omitted from this copy.'}
                   </p>
-                  <BodyMapStatic parts={r.bodyParts} />
-                </div>
-              )}
-            </div>
-          ))}
+                )}
+              </div>
+            )
+          })}
         </Section>
       )}
 

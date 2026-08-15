@@ -881,13 +881,13 @@ export default function Consultation() {
                                 </div>
                                 <div className="md:col-span-3">
                                     <label className="text-[10px] uppercase font-bold text-ink-400 block mb-2 tracking-widest ml-1">Subject / Primary Agenda</label>
-                                    <input value={formData.subject} onChange={e => setFormData({ ...formData, subject: e.target.value })} placeholder="Main topic of discussion..." disabled={!canEditForm} className="w-full bg-clay-surface border border-clay-200 p-4 rounded-xl text-base font-bold text-ink-900 focus:border-green-500 outline-none shadow-inner transition-colors" />
+                                    <input value={formData.subject} onChange={e => setFormData({ ...formData, subject: e.target.value })} placeholder="Main topic of discussion..." disabled={!canEditForm} maxLength={200} className="w-full bg-clay-surface border border-clay-200 p-4 rounded-xl text-base font-bold text-ink-900 focus:border-green-500 outline-none shadow-inner transition-colors" />
                                 </div>
                             </div>
 
                             <div className="mb-10 bg-clay-surface p-8 rounded-2xl border border-clay-200/70 shadow-inner">
                                 <label className="text-xs uppercase font-bold text-green-700 tracking-widest mb-3 block flex items-center gap-2"><i className="fas fa-clipboard-list"></i> Pre-Requisites / Inputs</label>
-                                <textarea value={formData.preRequisites} onChange={e => setFormData({ ...formData, preRequisites: e.target.value })} className="w-full bg-clay-surface border border-clay-200 p-5 rounded-xl text-sm font-medium text-ink-600 focus:border-green-500 resize-none custom-scroll outline-none shadow-inner transition-colors leading-relaxed" placeholder="Record reference materials, incident IDs, or data inputs required for this meeting..." disabled={!canEditForm} rows="3"></textarea>
+                                <textarea value={formData.preRequisites} onChange={e => setFormData({ ...formData, preRequisites: e.target.value })} className="w-full bg-clay-surface border border-clay-200 p-5 rounded-xl text-sm font-medium text-ink-600 focus:border-green-500 resize-none custom-scroll outline-none shadow-inner transition-colors leading-relaxed" placeholder="Record reference materials, incident IDs, or data inputs required for this meeting..." disabled={!canEditForm} rows="3" maxLength={5000}></textarea>
                             </div>
 
                             <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 mb-10">
@@ -919,7 +919,7 @@ export default function Consultation() {
                                             <div>
                                                 <label className="text-[10px] font-bold text-ink-400 uppercase tracking-widest block mb-2 ml-1">External Contractor</label>
                                                 <div className="flex gap-2">
-                                                    <input value={externalName} onChange={e => setExternalName(e.target.value)} placeholder="Type Contractor Name..." className="w-full text-sm font-bold bg-clay-surface border border-clay-200 rounded-xl p-3 focus:border-pink-500 text-ink-900 outline-none shadow-inner transition-colors" />
+                                                    <input value={externalName} onChange={e => setExternalName(e.target.value)} placeholder="Type Contractor Name..." maxLength={200} className="w-full text-sm font-bold bg-clay-surface border border-clay-200 rounded-xl p-3 focus:border-pink-500 text-ink-900 outline-none shadow-inner transition-colors" />
                                                     <button type="button" onClick={() => handleAddAttendee('external')} className="bg-pink-600 hover:bg-pink-500 text-white px-5 rounded-xl font-bold shadow-lg shadow-pink-600/20 transition-transform active:scale-95 whitespace-nowrap"><i className="fas fa-plus"></i></button>
                                                 </div>
                                             </div>
@@ -953,7 +953,7 @@ export default function Consultation() {
                                 {/* Minutes */}
                                 <div className="bg-clay-surface p-8 rounded-2xl border border-clay-200/70 shadow-inner flex flex-col h-[500px]">
                                     <label className="text-xs uppercase font-bold text-green-700 tracking-widest mb-4 block border-b border-clay-200/70 pb-3 flex items-center gap-2"><i className="fas fa-comments"></i> Official Discussion Minutes</label>
-                                    <textarea value={formData.minutes} onChange={e => setFormData({ ...formData, minutes: e.target.value })} className="w-full flex-1 bg-clay-surface border border-clay-200 p-5 rounded-xl text-sm font-medium text-ink-900 focus:border-green-500 resize-none custom-scroll outline-none shadow-inner transition-colors leading-relaxed" placeholder="Record the general discussion points, topics covered, and any feedback received from participants here..." disabled={!canEditForm}></textarea>
+                                    <textarea value={formData.minutes} onChange={e => setFormData({ ...formData, minutes: e.target.value })} className="w-full flex-1 bg-clay-surface border border-clay-200 p-5 rounded-xl text-sm font-medium text-ink-900 focus:border-green-500 resize-none custom-scroll outline-none shadow-inner transition-colors leading-relaxed" placeholder="Record the general discussion points, topics covered, and any feedback received from participants here..." maxLength={5000} disabled={!canEditForm}></textarea>
                                 </div>
                             </div>
 
@@ -969,7 +969,7 @@ export default function Consultation() {
                                     <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-8 bg-clay-surface p-5 rounded-xl border border-clay-200 shadow-inner relative z-10">
                                         <div className="md:col-span-2">
                                             <label className="text-[10px] uppercase font-bold text-ink-400 tracking-widest block mb-2 ml-1">Corrective Action Description</label>
-                                            <input value={newActionLine.action} onChange={e => setNewActionLine({ ...newActionLine, action: e.target.value })} placeholder="What needs to be done?..." className="w-full bg-clay-surface border border-clay-200 p-3 rounded-xl text-sm text-ink-900 focus:border-blue-500 outline-none transition-colors" />
+                                            <input value={newActionLine.action} onChange={e => setNewActionLine({ ...newActionLine, action: e.target.value })} placeholder="What needs to be done?..." maxLength={500} className="w-full bg-clay-surface border border-clay-200 p-3 rounded-xl text-sm text-ink-900 focus:border-blue-500 outline-none transition-colors" />
                                         </div>
                                         <div className="md:col-span-1">
                                             <label className="text-[10px] uppercase font-bold text-ink-400 tracking-widest block mb-2 ml-1">Owner / Assignee — Department · Person</label>
@@ -1003,7 +1003,7 @@ export default function Consultation() {
                                                 return (
                                                     <tr key={i} className="hover:bg-clay-100 transition-colors">
                                                         <td className="p-3 pl-6">
-                                                            <input value={c.action} onChange={e => updateAction(i, 'action', e.target.value)} placeholder="Task details..." className="w-full bg-transparent border-b border-transparent hover:border-clay-200 focus:border-blue-500 text-sm font-medium px-2 py-1.5 outline-none text-ink-900 transition-colors" disabled={!canEditForm} />
+                                                            <input value={c.action} onChange={e => updateAction(i, 'action', e.target.value)} placeholder="Task details..." maxLength={500} className="w-full bg-transparent border-b border-transparent hover:border-clay-200 focus:border-blue-500 text-sm font-medium px-2 py-1.5 outline-none text-ink-900 transition-colors" disabled={!canEditForm} />
                                                         </td>
                                                         <td className="p-3">
                                                             <select value={c.owner} onChange={e => updateAction(i, 'owner', e.target.value)} className="w-full bg-clay-surface border border-clay-200 rounded-lg p-2 text-xs font-bold text-blue-600 outline-none focus:border-blue-500 transition-colors shadow-inner" disabled={!canEditForm}>

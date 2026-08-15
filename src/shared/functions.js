@@ -28,6 +28,23 @@ export async function backfillDocumentVisibility({ dryRun = true } = {}) {
   return (await fn({ dryRun })).data
 }
 
+/**
+ * Stamp orgId onto QR mirrors written before the field existed.
+ *
+ * Those mirrors cannot be updated by anyone: the rule reads
+ * resource.data.orgId directly, an absent field raises, and a raising rule
+ * denies. Since the bulk extinguisher import writes each asset and its mirror
+ * in one batch, a single stale mirror refuses the entire upload.
+ *
+ * Reports without writing unless `dryRun: false`. Read `foreign` before
+ * committing — a mirror naming another org is a token collision, and this
+ * deliberately refuses to rewrite one.
+ */
+export async function backfillQrMirrors({ dryRun = true } = {}) {
+  const fn = await callable('backfillQrMirrors')
+  return (await fn({ dryRun })).data
+}
+
 /** Put orgId on every member's ID token, so Storage rules can read it. */
 export async function backfillClaims() {
   const fn = await callable('backfillClaims')
