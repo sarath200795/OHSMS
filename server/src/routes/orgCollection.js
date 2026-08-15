@@ -76,16 +76,45 @@ const asyncRoute = (fn) => (req, res, next) => {
  * `__anything__` is reserved. Without this the caller gets a 500 carrying a
  * stack trace from the storage layer for what is plainly a bad request.
  */
-function assertUsableDocId(id) {
+/**
+ * One Firestore path segment, and nothing that pretends to be one.
+ *
+ * A rule matches `/organizations/{orgId}/{col}/{docId}` where each brace binds
+ * exactly ONE segment, so a slash cannot smuggle a value past the match. The
+ * Admin SDK has no such property: `.doc('a/b')` expands into two segments and
+ * lands somewhere the tenancy comparison above never looked at. Rejecting the
+ * separator is what makes the server's comparison the same comparison the rule
+ * was making.
+ *
+ * Control characters go too. A NUL survives percent-decoding and Firestore
+ * accepts it, so `nul%00id` and `nulid` become two documents that are
+ * indistinguishable in any log, console or export anyone would use to
+ * investigate them.
+ */
+function assertSegment(value, what, code) {
   const bad =
-    typeof id !== 'string' ||
-    id === '' ||
-    id === '.' ||
-    id === '..' ||
-    id.includes('/') ||
-    /^__.*__$/.test(id) ||
-    Buffer.byteLength(id, 'utf8') > 1500
-  if (bad) throw new ApiError(400, 'invalid_document_id', `document id: ${String(id).slice(0, 64)}`)
+    typeof value !== 'string' ||
+    value === '' ||
+    value === '.' ||
+    value === '..' ||
+    value.includes('/') ||
+    // eslint-disable-next-line no-control-regex
+    /[\u0000-\u001f\u007f]/.test(value) ||
+    /^__.*__$/.test(value) ||
+    Buffer.byteLength(value, 'utf8') > 1500
+  if (bad) throw new ApiError(400, code, `${what}: ${String(value).slice(0, 64)}`)
+}
+
+function assertUsableDocId(id) {
+  assertSegment(id, 'document id', 'invalid_document_id')
+}
+
+/**
+ * The tenant id decides everything downstream, so it gets the same treatment
+ * BEFORE it is compared against the caller's profile or used to build a ref.
+ */
+function assertUsableOrgId(orgId) {
+  assertSegment(orgId, 'organization id', 'invalid_organization_id')
 }
 
 /**
@@ -178,6 +207,7 @@ function collectionRouter(spec, { db }) {
     canWrite,
     asyncRoute(async (req, res) => {
       const orgId = req.params.orgId
+      assertUsableOrgId(orgId)
       // Before any I/O. A body that will be refused should not cost a
       // transaction, and a refusal that arrives after a read is a refusal that
       // can be made to cost something by whoever sends the worst body.
@@ -212,6 +242,7 @@ function collectionRouter(spec, { db }) {
     canWrite,
     asyncRoute(async (req, res) => {
       const orgId = req.params.orgId
+      assertUsableOrgId(orgId)
       assertUsableDocId(req.params.id)
       const data = readDocumentFields(req.body, spec.fields)
       const store = db()
@@ -247,6 +278,7 @@ function collectionRouter(spec, { db }) {
     canWrite,
     asyncRoute(async (req, res) => {
       const orgId = req.params.orgId
+      assertUsableOrgId(orgId)
       assertUsableDocId(req.params.id)
       const data = readDocumentFields(req.body, spec.fields)
       const merge = req.body?.merge === true
@@ -308,6 +340,7 @@ function collectionRouter(spec, { db }) {
     canWrite,
     asyncRoute(async (req, res) => {
       const orgId = req.params.orgId
+      assertUsableOrgId(orgId)
       assertUsableDocId(req.params.id)
       const data = readDocumentFields(req.body, spec.fields)
       const store = db()
@@ -352,6 +385,7 @@ function collectionRouter(spec, { db }) {
     canDelete,
     asyncRoute(async (req, res) => {
       const orgId = req.params.orgId
+      assertUsableOrgId(orgId)
       assertUsableDocId(req.params.id)
       const store = db()
       const ref = collectionRef(store, orgId, spec.collection).doc(req.params.id)

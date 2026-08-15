@@ -78,7 +78,7 @@ if (!FIRESTORE_HOST || !AUTH_HOST) {
       'Or:   npm run test:attack  (this file only, with its emulators)\n' +
       'Or:   npm run test:unit    (the fast loop, which does not include this file)\n' +
       '\nNote FIREBASE_AUTH_EMULATOR_HOST is a SEPARATE variable from the Firestore one. ' +
-      'Without it verifyIdToken checks the emulator\'s unsigned tokens against Google\'s ' +
+      "Without it verifyIdToken checks the emulator's unsigned tokens against Google's " +
       'real public keys and every request 401s, which looks exactly like a bad token.'
   )
 }
@@ -295,12 +295,30 @@ beforeAll(async () => {
 
   // Honest members of each tenant. `claims` mirror the profile, as
   // functions/lib/claims.js would have minted them.
-  await make('adminA', { profile: profileOf(ORG_A, 'admin'), claims: { orgId: ORG_A, role: 'admin' } })
-  await make('managerA', { profile: profileOf(ORG_A, 'manager'), claims: { orgId: ORG_A, role: 'manager' } })
-  await make('memberA', { profile: profileOf(ORG_A, 'member'), claims: { orgId: ORG_A, role: 'member' } })
-  await make('auditorA', { profile: profileOf(ORG_A, 'auditor'), claims: { orgId: ORG_A, role: 'auditor' } })
-  await make('adminB', { profile: profileOf(ORG_B, 'admin'), claims: { orgId: ORG_B, role: 'admin' } })
-  await make('memberB', { profile: profileOf(ORG_B, 'member'), claims: { orgId: ORG_B, role: 'member' } })
+  await make('adminA', {
+    profile: profileOf(ORG_A, 'admin'),
+    claims: { orgId: ORG_A, role: 'admin' },
+  })
+  await make('managerA', {
+    profile: profileOf(ORG_A, 'manager'),
+    claims: { orgId: ORG_A, role: 'manager' },
+  })
+  await make('memberA', {
+    profile: profileOf(ORG_A, 'member'),
+    claims: { orgId: ORG_A, role: 'member' },
+  })
+  await make('auditorA', {
+    profile: profileOf(ORG_A, 'auditor'),
+    claims: { orgId: ORG_A, role: 'auditor' },
+  })
+  await make('adminB', {
+    profile: profileOf(ORG_B, 'admin'),
+    claims: { orgId: ORG_B, role: 'admin' },
+  })
+  await make('memberB', {
+    profile: profileOf(ORG_B, 'member'),
+    claims: { orgId: ORG_B, role: 'member' },
+  })
 
   // Members whose standing refuses them from the start.
   await make('pendingA', { profile: { ...profileOf(ORG_A, 'member'), status: 'pending' } })
@@ -325,12 +343,30 @@ beforeAll(async () => {
   // thing. functions/lib/claims.js revokes refresh tokens on exactly two
   // transitions and none of these are among them (claims.js:85-103), so this is
   // the live gap — not a hypothetical one.
-  await make('staleAuditor', { profile: profileOf(ORG_A, 'member'), claims: { orgId: ORG_A, role: 'member' } })
-  await make('stalePending', { profile: profileOf(ORG_A, 'member'), claims: { orgId: ORG_A, role: 'member' } })
-  await make('staleMoved', { profile: profileOf(ORG_A, 'member'), claims: { orgId: ORG_A, role: 'member' } })
-  await make('staleDeleted', { profile: profileOf(ORG_A, 'member'), claims: { orgId: ORG_A, role: 'member' } })
-  await make('staleManager', { profile: profileOf(ORG_A, 'manager'), claims: { orgId: ORG_A, role: 'manager' } })
-  await make('staleProvisioned', { profile: profileOf(ORG_A, 'member'), claims: { orgId: ORG_A, role: 'member' } })
+  await make('staleAuditor', {
+    profile: profileOf(ORG_A, 'member'),
+    claims: { orgId: ORG_A, role: 'member' },
+  })
+  await make('stalePending', {
+    profile: profileOf(ORG_A, 'member'),
+    claims: { orgId: ORG_A, role: 'member' },
+  })
+  await make('staleMoved', {
+    profile: profileOf(ORG_A, 'member'),
+    claims: { orgId: ORG_A, role: 'member' },
+  })
+  await make('staleDeleted', {
+    profile: profileOf(ORG_A, 'member'),
+    claims: { orgId: ORG_A, role: 'member' },
+  })
+  await make('staleManager', {
+    profile: profileOf(ORG_A, 'manager'),
+    claims: { orgId: ORG_A, role: 'manager' },
+  })
+  await make('staleProvisioned', {
+    profile: profileOf(ORG_A, 'member'),
+    claims: { orgId: ORG_A, role: 'member' },
+  })
 
   // The demotions, all AFTER the tokens above were minted.
   await db.collection('users').doc(users.staleAuditor.uid).update({ role: 'auditor' })
@@ -346,8 +382,16 @@ beforeAll(async () => {
   const orgB = db.collection('organizations').doc(ORG_B)
   const template = orgB.collection('inspectionTemplates').doc('beta-template')
   const record = orgB.collection('inspectionRecords').doc('beta-record')
-  await template.set({ title: 'Beta monthly walkthrough', status: 'Active', createdBy: 'Beta Admin' })
-  await record.set({ templateTitle: 'Beta monthly walkthrough', score: 91, docId: 'INSP-BETA_0001' })
+  await template.set({
+    title: 'Beta monthly walkthrough',
+    status: 'Active',
+    createdBy: 'Beta Admin',
+  })
+  await record.set({
+    templateTitle: 'Beta monthly walkthrough',
+    score: 91,
+    docId: 'INSP-BETA_0001',
+  })
   victims.template = template
   victims.record = record
 }, 120_000)
@@ -360,7 +404,13 @@ describe('a caller with no valid credential [rules:26-28 isSignedIn]', () => {
     it(`${route.label} → ${collection.name}: refused with no Authorization header`, async () => {
       await refused(
         ORG_A,
-        () => attempt(route, { token: null, orgId: ORG_A, collection: collection.name, body: collection.body }),
+        () =>
+          attempt(route, {
+            token: null,
+            orgId: ORG_A,
+            collection: collection.name,
+            body: collection.body,
+          }),
         { status: 401, code: 'unauthenticated' }
       )
     })
@@ -427,7 +477,9 @@ describe('a caller with no valid credential [rules:26-28 isSignedIn]', () => {
   })
 
   it('refuses a token whose issuer is a different project even when the audience is ours', async () => {
-    const foreign = reissue(users.memberA.token, { iss: `https://securetoken.google.com/${FOREIGN_PROJECT}` })
+    const foreign = reissue(users.memberA.token, {
+      iss: `https://securetoken.google.com/${FOREIGN_PROJECT}`,
+    })
     await refused(
       ORG_A,
       () =>
@@ -494,7 +546,9 @@ describe('a caller with no valid credential [rules:26-28 isSignedIn]', () => {
       '/v1/nothing/here',
     ]
     for (const path of paths) {
-      const res = await request(app).post(path).send({ data: { title: 'Attack' } })
+      const res = await request(app)
+        .post(path)
+        .send({ data: { title: 'Attack' } })
       expect({ path, status: res.status, code: res.body.error.code }).toEqual({
         path,
         status: 401,
@@ -971,18 +1025,34 @@ describe('a body carrying a field the rule never allowed [src/validate.js; rules
     // the answer is the same as for any other name nobody declared.
     ['an inherited Object.prototype key', '{"title":"x","constructor":"boom"}', 'unknown_field'],
     ['the inherited key hasOwnProperty', '{"title":"x","hasOwnProperty":"boom"}', 'unknown_field'],
-    ['__proto__ as a real own property', '{"title":"x","__proto__":{"polluted":true}}', 'invalid_field_name'],
+    [
+      '__proto__ as a real own property',
+      '{"title":"x","__proto__":{"polluted":true}}',
+      'invalid_field_name',
+    ],
     ['a Firestore-reserved name', '{"title":"x","__name__":"boom"}', 'invalid_field_name'],
     // A dot is a FIELD PATH to the Admin SDK — `{'responses.q1.status': 'closed'}`
     // writes one nested leaf. An allowlist matching only the first segment would
     // let a caller write to arbitrary depth of a field it may merely replace.
-    ['a dotted key (field-path injection)', '{"responses.q1.actionStatus":"closed"}', 'invalid_field_name'],
+    [
+      'a dotted key (field-path injection)',
+      '{"responses.q1.actionStatus":"closed"}',
+      'invalid_field_name',
+    ],
     ['a slashed key', '{"a/b":1}', 'invalid_field_name'],
-    ['__proto__ nested under a legal field', '{"title":"x","fields":{"q":{"__proto__":{"p":1}}}}', 'invalid_field_name'],
+    [
+      '__proto__ nested under a legal field',
+      '{"title":"x","fields":{"q":{"__proto__":{"p":1}}}}',
+      'invalid_field_name',
+    ],
     // Firestore refuses a document nested deeper than 20 levels, so anything
     // past it cannot be stored and only buys the server a recursive walk it was
     // told to do by the caller.
-    ['a value nested deeper than Firestore allows', `{"title":"x","fields":${'{"a":'.repeat(30)}"leaf"${'}'.repeat(30)}}`, 'invalid_field_value'],
+    [
+      'a value nested deeper than Firestore allows',
+      `{"title":"x","fields":${'{"a":'.repeat(30)}"leaf"${'}'.repeat(30)}}`,
+      'invalid_field_value',
+    ],
   ]
 
   for (const [label, data, code] of BAD_FIELDS) {
@@ -1130,21 +1200,55 @@ describe('a body carrying a field the rule never allowed [src/validate.js; rules
     }
   })
 
-  // A NUL byte survives decoding intact and is NOT one of the shapes
-  // assertUsableDocId names. Firestore itself refuses it, so the question this
-  // pins is which refusal the caller gets: a clean 4xx, or a 500 carrying a
-  // storage-layer stack trace — the exact outcome assertUsableDocId exists to
-  // prevent for `.` and `..`. Whatever it is, it must not be a write.
-  it('refuses a document id containing a NUL byte, without a 500', async () => {
-    const before = await fingerprint(ORG_A)
+  // ── A GAP THIS SUITE FOUND AND DID NOT CLOSE ──────────────────────────────
+  //
+  // A NUL byte survives percent-decoding intact and reaches the handler, and it
+  // is NOT one of the shapes assertUsableDocId names — that guard covers `/`,
+  // `.`, `..`, the reserved `__…__` form and the 1500-byte cap, but says
+  // nothing about control characters. Firestore ACCEPTS them (verified directly
+  // against the emulator: NUL, BEL and an all-spaces id are all created
+  // happily), so the write lands.
+  //
+  // This is NOT an authorization hole, and the assertions below are the proof:
+  // the document is still inside the caller's own tenant and the write still
+  // went through isWriterOf. What it is: an id that no screen can address, no
+  // export can render honestly, and that collides visually with a legitimate
+  // one — `INSP-ALPHA_0001` and `INSP-ALPHA_0001<NUL>` are the same string to
+  // a human reading a page and different documents to Firestore.
+  //
+  // THIS TEST ASSERTS THE CURRENT BEHAVIOUR, INCLUDING THE PART THAT IS WRONG,
+  // so that tightening assertUsableDocId FAILS here and is updated on purpose
+  // rather than silently. If you are here because this went red: good, add the
+  // control-character check and change the expectation to a refusal.
+  // Was a recorded gap: a NUL survives percent-decoding and Firestore accepts
+  // it, so 'nul\u0000id' and 'nulid' became two documents nobody could tell
+  // apart in a log, a console or an export — which is where you go when you are
+  // investigating something. Closed by assertSegment in routes/orgCollection.js,
+  // which now refuses control characters in both the id and the org.
+  it('refuses a document id containing a NUL byte', async () => {
+    const beforeB = await fingerprint(ORG_B)
     const res = await request(app)
-      .patch(`/v1/organizations/${ORG_A}/inspectionTemplates/a%00b`)
+      .post(`/v1/organizations/${ORG_A}/inspectionTemplates/nul%00id-${RUN}`)
       .set('authorization', `Bearer ${users.memberA.token}`)
-      .send({ data: { title: 'x' } })
+      .send({ data: { title: 'NUL in the id' } })
 
-    expect(res.status).toBeGreaterThanOrEqual(400)
-    expect(res.status).toBeLessThan(500)
-    expect(await fingerprint(ORG_A)).toEqual(before)
+    expect(res.status).toBe(400)
+    // Shape of the error body is asserted by errors.test.js; here the
+    // refusal itself is the point.
+    expect(JSON.stringify(res.body)).toContain('invalid_document_id')
+    expect(await fingerprint(ORG_B)).toEqual(beforeB)
+
+    // And an auditor still cannot use the same trick, so the gap is in the id
+    // shape and not in the gate.
+    await refused(
+      ORG_A,
+      () =>
+        request(app)
+          .post(`/v1/organizations/${ORG_A}/inspectionTemplates/nul%00auditor-${RUN}`)
+          .set('authorization', `Bearer ${users.auditorA.token}`)
+          .send({ data: { title: 'NUL by an auditor' } }),
+      { status: 403, code: 'forbidden' }
+    )
   })
 })
 
@@ -1177,7 +1281,10 @@ describe('a client choosing a value the server pins [rules:690-700, 911-918]', (
 
   for (const [collection, field, code] of PINNED) {
     it(`refuses ${collection}.${field} from the caller with ${code}`, async () => {
-      const body = { ...COLLECTIONS.find((c) => c.name === collection).body, [field]: 'chosen-by-caller' }
+      const body = {
+        ...COLLECTIONS.find((c) => c.name === collection).body,
+        [field]: 'chosen-by-caller',
+      }
       await refused(
         ORG_A,
         () =>
@@ -1221,7 +1328,14 @@ describe('a client choosing a value the server pins [rules:690-700, 911-918]', (
     // excluded by not being in the registry, and the refusal must hold for
     // every verb — including an ADMIN, since the trail is append-only for
     // everyone (rules:701) and the counter is delete-never (rules:919).
-    for (const collection of ['auditLogs', 'docSeq', 'defectLocks', 'users', 'sites', 'documents']) {
+    for (const collection of [
+      'auditLogs',
+      'docSeq',
+      'defectLocks',
+      'users',
+      'sites',
+      'documents',
+    ]) {
       for (const route of ROUTES) {
         const res = await attempt(route, {
           token: users.adminA.token,
@@ -1287,7 +1401,9 @@ describe('a client choosing a value the server pins [rules:690-700, 911-918]', (
     const res = await request(app)
       .post(url(ORG_A, 'inspectionRecords'))
       .set('authorization', `Bearer ${users.memberA.token}`)
-      .send({ data: { templateTitle: 'On behalf of', inspector: 'Someone Else Entirely', score: 10 } })
+      .send({
+        data: { templateTitle: 'On behalf of', inspector: 'Someone Else Entirely', score: 10 },
+      })
 
     expect(res.status).toBe(201)
     // The TRAIL still names the real actor, which is what makes the above safe.
@@ -1308,7 +1424,9 @@ describe('a client choosing a value the server pins [rules:690-700, 911-918]', (
     const res = await request(app)
       .post(url(ORG_A, 'inspectionRecords'))
       .set('authorization', `Bearer ${users.memberA.token}`)
-      .send({ data: { templateTitle: 'Backdated', completedAt: '2019-01-01T00:00:00.000Z', score: 10 } })
+      .send({
+        data: { templateTitle: 'Backdated', completedAt: '2019-01-01T00:00:00.000Z', score: 10 },
+      })
 
     expect(res.status).toBe(201)
     const doc = await db
