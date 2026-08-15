@@ -223,6 +223,13 @@ export async function addExtinguisher(orgId, orgName, data, actor) {
     entity: data.entity,
     region: data.region || '',
     centerName: data.centerName,
+    // The form carries these and SiteScopePicker fills them, but this object
+    // literal used to drop them, so every unit added here was created unlinked
+    // and the backlog grew faster than any repair pass could clear it. AEDs and
+    // FAS already carry the same line, with the same comment, for the same
+    // reason -- see cleanAed and cleanFas below.
+    siteId: data.siteId || '',
+    siteName: data.site || data.centerName || '',
     dateOfDeployment: data.dateOfDeployment || '',
     dateOfNextRefill: data.dateOfNextRefill || '',
     dateOfNextHPT: data.dateOfNextHPT || '',
@@ -318,6 +325,10 @@ const UPSERT_FIELDS = [
   'entity',
   'region',
   'centerName',
+  // Carried on an upsert too, so re-importing an export does not strip a link
+  // a repair pass just established.
+  'siteId',
+  'siteName',
   'serialNo',
   'dateOfDeployment',
   'dateOfNextRefill',
@@ -351,6 +362,11 @@ export async function bulkUpsertExtinguishers(orgId, orgName, { creates = [], up
         entity: data.entity,
         region: data.region || '',
         centerName: data.centerName,
+        // Same omission as addExtinguisher had: a CSV can carry a resolved site,
+        // and dropping it here is why a bulk upload of hundreds of units left
+        // every one of them unlinked.
+        siteId: data.siteId || '',
+        siteName: data.site || data.centerName || '',
         dateOfDeployment: data.dateOfDeployment || '',
         dateOfNextRefill: data.dateOfNextRefill || '',
         dateOfNextHPT: data.dateOfNextHPT || '',
