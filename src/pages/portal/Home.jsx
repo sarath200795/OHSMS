@@ -11,9 +11,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts'
-import {
-  AlertTriangle, ArrowRight, MapPin, Building2, ScrollText, UsersRound, Settings, BarChart3,
-} from 'lucide-react'
+import { AlertTriangle, ArrowRight, MapPin, Building2, ScrollText, UsersRound, Settings, BarChart3, Wrench } from 'lucide-react'
 import { useAuth } from '../../shared/auth/AuthContext'
 import { subscribeCollections, emptyCollections, subscribeOrgUsers } from '../../shared/org/orgData'
 import { useAccessibleSites } from '../../shared/org/useAccessibleSites'
@@ -54,6 +52,7 @@ const ADMIN_TOOLS = [
   { key: 'users', label: 'Employees', title: 'Roles, access and bulk upload', path: '/users', icon: UsersRound, tone: 'green' },
   { key: 'settings', label: 'Org Settings', title: 'Organization profile and preferences', path: '/settings', icon: Settings, tone: 'amber' },
   { key: 'audit-log', label: 'Audit Log', title: 'Append-only record of every action', path: '/audit-log', icon: ScrollText, tone: 'violet' },
+  { key: 'maintenance', label: 'Maintenance', title: 'One-off data repair jobs, each with a dry run', path: '/maintenance', icon: Wrench, tone: 'slate' },
 ]
 
 /**

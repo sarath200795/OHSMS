@@ -27,6 +27,7 @@ const Users = lazy(() => import('./pages/admin/Users'))
 const Sites = lazy(() => import('./pages/admin/Sites'))
 const OrgSettings = lazy(() => import('./pages/admin/OrgSettings'))
 const AuditLog = lazy(() => import('./pages/admin/AuditLog'))
+const Maintenance = lazy(() => import('./pages/admin/Maintenance'))
 
 // Modules (lazy — several pull heavy libs like react-flow / three / xlsx).
 const Incidents = lazy(() => import('./modules/incidents'))
@@ -185,6 +186,7 @@ export default function App() {
       <Route path="/analytics" element={<Protected><Analytics /></Protected>} />
       <Route path="/sites" element={<Protected requireCap="record.view"><Sites /></Protected>} />
       <Route path="/audit-log" element={<Protected requireCap="audit.view"><AuditLog /></Protected>} />
+      <Route path="/maintenance" element={<Protected requireCap="org.settings"><Maintenance /></Protected>} />
       <Route path="/users" element={<Protected requireAdmin><Users /></Protected>} />
       <Route path="/settings" element={<Protected requireAdmin><OrgSettings /></Protected>} />
 
