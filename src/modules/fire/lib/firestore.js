@@ -50,6 +50,7 @@ import { statsDeltaFor, accumulate } from './stats'
 // member may read a drill record. What stays readable is what the scorecard and
 // the KPI roll-ups group by: score, outcome, eventType, scenario, the timings.
 import { sealDoc, openDocs, openSnapshots } from '../../../shared/crypto'
+import { resolveSealedFiles } from '../../../shared/storage/resolveFiles'
 
 /** Policy keys for the drill collections. See src/shared/crypto/policy.js. */
 const SEALED_DRILLS = 'mockDrills'
@@ -958,14 +959,19 @@ export async function addMockDrill(orgId, data, actor) {
   // Cloud storage first — the photo doc then holds a URL instead of ~700KB of
   // base64 — falling back to the inline form when the bucket is unavailable.
   for (const dataUrl of valid) {
-    const up = await putFile(orgId, 'drill-evidence', dataUrl, 'evidence.jpg')
+    const up = await putFile(orgId, 'drill-evidence', dataUrl, 'evidence.jpg', { collection: SEALED_DRILL_PHOTOS })
     // Only the INLINE copy is sealed. The bucket object is not — the recorder,
     // the detail modal and the printed report all render `.dataUrl` (normalised
     // from `.url` by getMockDrillPhotos) straight into an <img>, so sealing the
     // object would show a broken picture everywhere with nothing to explain it.
     // Written up above the table in src/shared/crypto/policy.js.
     await addDoc(drillPhotoCol(orgId, ref.id), up
-      ? { url: up.url, path: up.path, createdAt: serverTimestamp() }
+      ? {
+        url: up.url,
+        path: up.path,
+        createdAt: serverTimestamp(),
+        ...(up.encIv ? { encScheme: up.encScheme, encKeyId: up.encKeyId, encIv: up.encIv, ...(up.encWrapped ? { encWrapped: up.encWrapped } : {}) } : {}),
+      }
       : await sealDoc(orgId, SEALED_DRILL_PHOTOS, { dataUrl, createdAt: serverTimestamp() }))
   }
   await logAudit(orgId, actor, 'mockdrill.create', {
@@ -988,7 +994,15 @@ export async function getMockDrillPhotos(orgId, drillId) {
   // dataUrl is sealed, and the fallback run first would see an envelope, find
   // it truthy, and hand every renderer a base64 string in place of an image.
   const rows = await openDocs(orgId, SEALED_DRILL_PHOTOS, snap.docs.map((d) => ({ id: d.id, ...d.data() })))
-  return rows.map((r) => ({ id: r.id, path: r.path || '', dataUrl: r.dataUrl || r.url || '' }))
+  const normalised = rows.map((r) => ({ ...r, id: r.id, path: r.path || '', dataUrl: r.dataUrl || r.url || '' }))
+  // A sealed object becomes a blob: URL, which pins its bytes until revoked.
+  // Unlike the subscriptions, this is a one-shot read with no unsubscribe to
+  // hang the cleanup on — so the revoke comes back with the rows and the caller
+  // holds it. `revoke` is a no-op when nothing was encrypted, which is every
+  // drill recorded before sealing was switched on.
+  const { rows: resolved, revoke } = await resolveSealedFiles(orgId, SEALED_DRILL_PHOTOS, normalised)
+  resolved.revoke = revoke
+  return resolved
 }
 
 export async function deleteMockDrill(orgId, id, actor, label) {

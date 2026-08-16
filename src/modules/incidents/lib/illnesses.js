@@ -36,6 +36,7 @@ import { putFile, removeFile, MAX_INLINE_BYTES, tooLargeForInline } from '../../
 // reports an occupational illness and cannot read one back. A symmetric key
 // would have had to give every writer the key that opens every record.
 import { sealDoc, openDoc, openSnapshots } from '../../../shared/crypto'
+import { resolveSubscription } from '../../../shared/storage/resolveFiles'
 
 /** Policy keys for this collection and its attachments. See shared/crypto/policy.js. */
 const SEALED = 'illnesses'
@@ -164,7 +165,9 @@ export async function purgeIllness(orgId, id, actor, label) {
 // ── Files (base64 subcollection) ──────────────────────────────────────────────
 export async function addIllnessFile(orgId, id, file) {
   // Same cloud-first-with-inline-fallback contract as incident photos.
-  const up = file.dataUrl ? await putFile(orgId, 'illness-files', file.dataUrl, file.name) : null
+  const up = file.dataUrl
+    ? await putFile(orgId, 'illness-files', file.dataUrl, file.name, { collection: SEALED_FILES })
+    : null
   if (!up && file.dataUrl && (file.size || 0) > MAX_INLINE_BYTES) {
     throw new Error(tooLargeForInline(file.name))
   }
@@ -178,6 +181,7 @@ export async function addIllnessFile(orgId, id, file) {
     caption: file.caption || '',
     uploadedBy: file.uploadedBy || '',
     uploadedAt: serverTimestamp(),
+    ...(up?.encIv ? { encScheme: up.encScheme, encKeyId: up.encKeyId, encIv: up.encIv, ...(up.encWrapped ? { encWrapped: up.encWrapped } : {}) } : {}),
   }))
   await updateDoc(illnessRef(orgId, id), { fileCount: increment(1), updatedAt: serverTimestamp() })
   return ref.id
@@ -188,10 +192,12 @@ export function subscribeIllnessFiles(orgId, id, cb) {
   // Opened BEFORE the dataUrl normalisation, not after: the inline copy is
   // sealed, so `data.dataUrl || data.url` run first would see an envelope, find
   // it truthy, and hand the renderer a base64 string in place of an image.
-  const opened = openSnapshots(orgId, SEALED_FILES, (rows) => cb(
+  const resolve = resolveSubscription(orgId, SEALED_FILES, cb)
+  const opened = openSnapshots(orgId, SEALED_FILES, (rows) => resolve(
     rows.map((r) => ({ ...r, dataUrl: r.dataUrl || r.url || '' })),
   ))
-  return onSnapshot(q, (snap) => opened(snap.docs.map((d) => ({ id: d.id, ...d.data() }))))
+  const stop = onSnapshot(q, (snap) => opened(snap.docs.map((d) => ({ id: d.id, ...d.data() }))))
+  return () => { resolve.stop(); stop() }
 }
 
 export async function deleteIllnessFile(orgId, id, fileId) {

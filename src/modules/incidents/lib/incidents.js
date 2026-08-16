@@ -34,6 +34,7 @@ import { putFile, removeFile, MAX_INLINE_BYTES, tooLargeForInline } from '../../
 // reaches the STORE rather than the app. The clinical detail that used to ride
 // on this document is in /injuries under the medical keypair instead.
 import { sealDoc, openDoc, openSnapshots } from '../../../shared/crypto'
+import { resolveSubscription } from '../../../shared/storage/resolveFiles'
 
 /** The policy key for this collection. See src/shared/crypto/policy.js. */
 const SEALED = 'incidents'
@@ -316,14 +317,16 @@ export async function addIncidentPhoto(orgId, id, photo) {
   // Cloud first; the photo document then holds a URL instead of the image.
   // putFile returning null (bucket not enabled, offline) keeps the legacy
   // inline path, so evidence upload never fails harder than it used to.
-  const up = photo.dataUrl ? await putFile(orgId, 'incident-photos', photo.dataUrl, photo.name) : null
+  const up = photo.dataUrl
+    ? await putFile(orgId, 'incident-photos', photo.dataUrl, photo.name, { collection: SEALED_PHOTOS })
+    : null
   // No bucket: the file would be written base64 INSIDE this document, and
   // Firestore rejects anything over 1MB with an error nobody can act on. Refuse
   // it here with a sentence that says what to do instead.
   if (!up && photo.dataUrl && (photo.size || 0) > MAX_INLINE_BYTES) {
     throw new Error(tooLargeForInline(photo.name))
   }
-  const ref = await addDoc(photoCol(orgId, id), {
+  const ref = await addDoc(photoCol(orgId, id), await sealDoc(orgId, SEALED_PHOTOS, {
     name: photo.name || '',
     type: photo.type || '',
     dataUrl: up ? '' : photo.dataUrl,
@@ -334,7 +337,8 @@ export async function addIncidentPhoto(orgId, id, photo) {
     kind: photo.kind || 'photo', // 'photo' | 'medical_record' | 'diagram'
     uploadedBy: photo.uploadedBy || '',
     uploadedAt: serverTimestamp(),
-  })
+    ...(up?.encIv ? { encScheme: up.encScheme, encKeyId: up.encKeyId, encIv: up.encIv, ...(up.encWrapped ? { encWrapped: up.encWrapped } : {}) } : {}),
+  }))
   await updateDoc(incidentRef(orgId, id), { photoCount: increment(1), updatedAt: serverTimestamp() })
   return ref.id
 }
@@ -342,11 +346,19 @@ export async function addIncidentPhoto(orgId, id, photo) {
 export function subscribeIncidentPhotos(orgId, id, cb) {
   const q = query(photoCol(orgId, id), orderBy('uploadedAt', 'asc'))
   // Normalised at the seam: every renderer (gallery, report doc, PDF) reads
-  // .dataUrl, whichever era the photo was saved in.
-  return onSnapshot(q, (snap) => cb(snap.docs.map((d) => {
-    const data = d.data()
-    return { id: d.id, ...data, dataUrl: data.dataUrl || data.url || '' }
-  })))
+  // .dataUrl, whichever era the photo was saved in — and now whether or not the
+  // object behind it is encrypted. resolveSubscription fetches and decrypts the
+  // sealed ones, hands back blob: URLs under that same field name, and revokes
+  // the previous batch on every new snapshot and the last on unsubscribe. An
+  // unsealed photo costs nothing: it keeps the `.url` it always had.
+  const resolve = resolveSubscription(orgId, SEALED_PHOTOS, cb)
+  // Field metadata first (captions and filenames are sealed under the policy),
+  // then the bytes. Two different keys, two different steps, one field name out.
+  const opened = openSnapshots(orgId, SEALED_PHOTOS, (rows) => resolve(
+    rows.map((r) => ({ ...r, dataUrl: r.dataUrl || r.url || '' })),
+  ))
+  const stop = onSnapshot(q, (snap) => opened(snap.docs.map((d) => ({ id: d.id, ...d.data() }))))
+  return () => { resolve.stop(); stop() }
 }
 
 export async function deleteIncidentPhoto(orgId, id, photoId) {

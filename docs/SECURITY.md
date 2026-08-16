@@ -71,15 +71,26 @@ which can unwrap both key classes, and it must seal-then-verify-then-replace so
 an interrupted run leaves a record readable rather than neither readable nor
 recoverable.
 
-**Bucket objects are sealed for medical records only.** Incident photos, drill
-evidence and illness attachments upload unencrypted because their galleries
-render `data.dataUrl || data.url` straight into an `<img>` or a PDF cell, so
-sealing the object would show a broken picture with nothing to explain it. Their
-pointer metadata — filename, caption, and the inline `dataUrl` that *is* the file
-under the no-bucket fallback — is sealed. The fix is ordered: move those readers
-onto `useFileUrl` (which already handles both eras), *then* set `files: true` in
-`policy.js`, then backfill. Setting the flag first breaks every gallery on the
-next upload.
+**Bucket objects already stored are still plaintext.** *Closed for new uploads.*
+Incident photos, drill evidence and illness attachments now encrypt their bytes
+too, alongside medical records. The obstacle was that every gallery reads one
+field — `.dataUrl`, normalised from `data.dataUrl || data.url` — and an
+encrypted object breaks that: `.url` points at ciphertext, and an `<img>` given
+it renders a broken picture. Rather than move a dozen renderers including the
+three PDF paths, the decryption happens at the seam
+(`src/shared/storage/resolveFiles.js`), so no renderer changed. Turning it on
+was safe for history because an unsealed object carries no encryption metadata,
+so nothing is fetched and it keeps the URL it always had.
+
+What remains is the objects *already in the bucket*. The field backfill
+re-writes documents, not bytes, so every photo and attachment uploaded before
+the switch is still readable to anyone who reaches the bucket. Closing it needs
+a job that downloads each object, seals it, uploads it, and updates the pointer
+— write-then-verify-then-replace, like `confineMedicalRecords`, because an
+interrupted run must leave the file readable rather than neither readable nor
+recoverable. It also cannot use the browser backfill's trick of sealing through
+the app's own code path, because the bytes are too large to round-trip through a
+tab at any scale.
 
 **`/users` is not sealed.** Names are personal data and they are in the clear
 there. This is deliberate rather than missed: `firestore.rules` reads that

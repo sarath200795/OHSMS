@@ -103,32 +103,35 @@ export const fileLabel = (keyClass) => `file:${keyClass}`
  * subcollection and the wildcard id segments dropped: `injuries/records` is
  * `organizations/{orgId}/injuries/{injuryId}/records/{recordId}`.
  *
- * ── `files: true` is set on ONE collection, and that is a limitation ─────────
+ * ── `files: true` seals the BYTES, not just the pointer ─────────────────────
  *
  * Sealing a FIELD is invisible to the renderers, because openDoc hands them the
- * plaintext back. Sealing the BYTES in the bucket is not: the reader has to
- * fetch the object through getBlob, decrypt it, and build its own object URL,
- * which is what useFileUrl now does.
+ * plaintext back. Sealing the bytes in the bucket is not: something has to fetch
+ * the object through getBlob, decrypt it, and build a URL from the plaintext.
  *
- * Only injuries/records goes through that path. Every other gallery in the app
- * — incident photos, drill evidence, illness attachments — renders
- * `data.dataUrl || data.url` STRAIGHT into an <img> or a PDF cell, where
- * `data.url` is a permanent download URL pointing at the object. Sealing those
- * bytes without first moving those readers onto useFileUrl would render
- * ciphertext as an image: a broken picture in every gallery and every exported
- * report, with nothing on screen to say why.
+ * Every gallery in this app reads one field — `.dataUrl` — because the data
+ * layer normalises `data.dataUrl || data.url` before anything sees it. That
+ * contract is why the incident gallery, the drill recorder, the detail modals
+ * and all three printed PDF documents need no knowledge of where bytes live,
+ * and it is exactly what an encrypted object breaks: `.url` points at
+ * ciphertext, and an <img> given that URL renders a broken image.
  *
- * So for those three, the pointer's METADATA is sealed — the filename, the
- * caption, and the inline `dataUrl` that IS the file when the bucket was
- * unavailable — and the bucket object is not. What that leaves readable is a
- * scene photograph, drill evidence and an illness attachment to anyone who
- * reaches the bucket. It is written down here, in docs/SECURITY.md, rather than
- * being quietly true.
+ * Rather than move a dozen renderers — including the three PDF paths, which are
+ * the outputs people rely on for compliance and the hardest thing here to test —
+ * the decryption happens at the SEAM, in shared/storage/resolveFiles.js. The
+ * pointer list goes in and a list with usable `.dataUrl` values comes out, so
+ * not one renderer changed.
  *
- * Closing it is a self-contained follow-up: move those galleries onto
- * useFileUrl (which already handles both eras), then set `files: true` here and
- * run the backfill. The order matters — set the flag first and the old readers
- * break the moment somebody uploads.
+ * Turning this on is safe for history. An unsealed object has no encryption
+ * metadata, so isSealedFile is false, nothing is fetched, and it keeps the
+ * `.url` it always had. Only new uploads take the new path — which means the
+ * flag can be set before the objects already in the bucket are re-encrypted.
+ *
+ * What each `files: true` costs is a blob: URL per sealed object, and a blob URL
+ * pins its bytes until revoked. resolveFiles hands back a `revoke` and the
+ * callers have somewhere natural to put it: a subscription already returns an
+ * unsubscribe, so the previous batch is released when a new snapshot arrives and
+ * the last when the listener stops.
  */
 export const POLICY = {
   // ── Incidents ──────────────────────────────────────────────────────────────
@@ -168,6 +171,7 @@ export const POLICY = {
   'incidents/photos': {
     keyClass: GENERAL,
     fields: ['caption', 'name'],
+    files: true,
   },
 
   // ── Injuries: a named colleague's clinical record ──────────────────────────
@@ -225,6 +229,7 @@ export const POLICY = {
   'illnesses/files': {
     keyClass: MEDICAL,
     fields: ['name', 'caption', 'dataUrl'],
+    files: true,
   },
 
   // ── HSE committee meetings ─────────────────────────────────────────────────
@@ -271,6 +276,7 @@ export const POLICY = {
   'mockDrills/photos': {
     keyClass: GENERAL,
     fields: ['dataUrl'],
+    files: true,
   },
 }
 

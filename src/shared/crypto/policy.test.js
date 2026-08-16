@@ -77,15 +77,25 @@ describe('the table itself', () => {
     expect(policyFor(undefined)).toBe(null)
   })
 
-  it('seals file bytes for medical records and nothing else', () => {
-    // The limitation written up above the table. Every other gallery renders
-    // `data.dataUrl || data.url` straight into an <img>, so sealing those
-    // objects would show a broken picture with nothing to explain it. Setting
-    // one of these to true without first moving that gallery onto useFileUrl is
-    // the change this test exists to stop.
-    const sealing = Object.keys(POLICY).filter(sealsFiles)
-    expect(sealing).toEqual(['injuries/records'])
+  it('seals the bytes of every collection that stores files', () => {
+    // Setting this on a collection whose read path does not resolve sealed
+    // objects renders ciphertext into an <img> — a broken picture in every
+    // gallery and every exported PDF, with nothing on screen to say why. Each
+    // entry here has a read path through shared/storage/resolveFiles.js:
+    //   injuries/records   useFileUrl
+    //   incidents/photos   subscribeIncidentPhotos
+    //   illnesses/files    subscribeIllnessFiles
+    //   mockDrills/photos  getMockDrillPhotos
+    const sealing = Object.keys(POLICY).filter(sealsFiles).sort()
+    expect(sealing).toEqual([
+      'illnesses/files', 'incidents/photos', 'injuries/records', 'mockDrills/photos',
+    ])
+  })
+
+  it('seals no bytes for a collection that stores none', () => {
     expect(sealsFiles('injuries')).toBe(false)
+    expect(sealsFiles('incidents')).toBe(false)
+    expect(sealsFiles('consultations')).toBe(false)
   })
 
   it('still seals the inline dataUrl of the galleries it leaves alone', () => {
