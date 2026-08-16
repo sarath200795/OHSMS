@@ -27,11 +27,19 @@ const FOCUSABLE = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(',')
 
-/** Tabbable descendants of `root`, in document order, skipping hidden ones. */
+/**
+ * Tabbable descendants of `root`, in document order.
+ *
+ * Hidden elements are excluded by attribute rather than by measuring layout:
+ * every dialog in this app conditionally renders its contents instead of hiding
+ * them with CSS, so geometry buys nothing here — and `offsetParent`/
+ * `getClientRects()` report nothing under jsdom, which would quietly turn the
+ * whole trap off in tests while looking fine in a browser.
+ */
 export function focusableWithin(root) {
   if (!root) return []
   return Array.from(root.querySelectorAll(FOCUSABLE)).filter(
-    (el) => !el.hasAttribute('inert') && (el.offsetParent !== null || el.getClientRects().length > 0)
+    (el) => !el.closest('[hidden],[inert],[aria-hidden="true"]')
   )
 }
 

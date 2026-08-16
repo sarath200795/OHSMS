@@ -10,9 +10,9 @@
 import { forwardRef, useId } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
 import { Loader2, X, Check } from 'lucide-react'
+// Import from './useFocusTrap' directly if another component needs it — it is
+// not re-exported here so this file stays components-only for fast refresh.
 import { useFocusTrap } from './useFocusTrap'
-
-export { useFocusTrap, focusableWithin } from './useFocusTrap'
 
 const cx = (...c) => c.filter(Boolean).join(' ')
 
