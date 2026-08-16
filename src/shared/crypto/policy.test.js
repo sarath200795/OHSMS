@@ -98,6 +98,25 @@ describe('the table itself', () => {
     expect(sealsFiles('consultations')).toBe(false)
   })
 
+  it('seals the inline dataUrl of EVERY collection that stores files', () => {
+    // Found in production, not here, which is why this test exists.
+    //
+    // When the bucket is unavailable putFile returns null and the file is
+    // written base64 INSIDE its pointer document. That copy has no Storage
+    // object, so the object backfill skips it — correctly, there is nothing in
+    // a bucket to seal. If `dataUrl` is also missing from the field policy,
+    // NOTHING seals it: both migrations run, both report success, and the
+    // photograph stays in the clear.
+    //
+    // incidents/photos was the one collection missing it. Every file-bearing
+    // collection is checked here so the next one added cannot repeat it.
+    for (const [name, entry] of Object.entries(POLICY)) {
+      if (!entry.files) continue
+      expect(entry.fields, `${name} stores files but does not seal its inline dataUrl`)
+        .toContain('dataUrl')
+    }
+  })
+
   it('still seals the inline dataUrl of the galleries it leaves alone', () => {
     // Under the inline fallback the pointer IS the file, and that copy goes
     // through openDoc — so it can be sealed even where the bucket object cannot.

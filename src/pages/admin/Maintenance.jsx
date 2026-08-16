@@ -521,10 +521,17 @@ function SealStoredFiles() {
       result={preview && [
         `${preview.scannedTotal} stored file${preview.scannedTotal === 1 ? '' : 's'} checked`,
         `${preview.sealedTotal} ${preview.dryRun ? 'to encrypt' : 'encrypted'}, ${preview.alreadySealedTotal} already encrypted`,
+        // Reported separately from "already encrypted", because they are not.
+        // These are held base64 inside their own record rather than in file
+        // storage, so there is no stored file for this job to encrypt — the
+        // record encryption above is what covers them.
+        preview.inlineTotal
+          ? `${preview.inlineTotal} held inside the record itself — encrypted by "Encrypt existing records", not here`
+          : '',
         '',
         ...preview.results
           .filter((r) => r.scanned || r.sealed)
-          .map((r) => `  · ${r.collection}: ${r.sealed} of ${r.scanned}`),
+          .map((r) => `  · ${r.collection}: ${r.sealed} of ${r.scanned}${r.inline ? ` (${r.inline} held in-record)` : ''}`),
         preview.remaining ? `\n  · ${preview.remaining} more than one run may do — run it again to finish` : '',
         // Never a filename, here or in the function's response. A migration
         // report that named the files it handled would be one more copy of the

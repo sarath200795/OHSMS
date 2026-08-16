@@ -168,9 +168,17 @@ export const POLICY = {
       'horizontal.details',
     ],
   },
+  // `dataUrl` is on this list for the same reason it is on the other three
+  // file-bearing collections, and leaving it off was a real gap found by running
+  // the migration against production: when the bucket is unavailable, putFile
+  // returns null and the image is written base64 INSIDE this document. That
+  // copy has no Storage object, so the object backfill skips it — correctly,
+  // there is nothing in a bucket to seal — and with `dataUrl` unlisted the FIELD
+  // backfill ignored it too. The photograph stayed in the clear while both jobs
+  // reported success, which is the one outcome worse than an error.
   'incidents/photos': {
     keyClass: GENERAL,
-    fields: ['caption', 'name'],
+    fields: ['caption', 'name', 'dataUrl'],
     files: true,
   },
 

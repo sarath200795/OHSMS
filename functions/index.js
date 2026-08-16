@@ -387,6 +387,7 @@ export const sealStoredObjects = onCall(
       let scanned = 0
       let sealed = 0
       let already = 0
+      let inline = 0
 
       const parents = await db.collection(`${base}/${target.parent}`).get()
       for (const parent of parents.docs) {
@@ -394,6 +395,13 @@ export const sealStoredObjects = onCall(
         for (const p of pointers.docs) {
           scanned += 1
           const data = p.data()
+          // Counted apart from `already`, because conflating them is what hid a
+          // real gap. A pointer with no `path` holds the image base64 INSIDE the
+          // document — the no-bucket fallback — so there is nothing here to
+          // seal, and reporting it as "already encrypted" told an operator the
+          // opposite of the truth. It is the FIELD policy that covers those, and
+          // whether it does is worth being able to see from this report.
+          if (!String(data.path ?? '').trim()) { inline += 1; continue }
           if (!needsObjectSealing(data)) { already += 1; continue }
           if (budget <= 0) { remaining += 1; continue }
 
@@ -454,7 +462,7 @@ export const sealStoredObjects = onCall(
           }
         }
       }
-      results.push({ collection: target.collection, scanned, sealed, alreadySealed: already })
+      results.push({ collection: target.collection, scanned, sealed, alreadySealed: already, inline })
     }
 
     logger.info('objects: seal run complete', {
@@ -469,6 +477,10 @@ export const sealStoredObjects = onCall(
       scannedTotal: results.reduce((n, r) => n + r.scanned, 0),
       sealedTotal: results.reduce((n, r) => n + r.sealed, 0),
       alreadySealedTotal: results.reduce((n, r) => n + r.alreadySealed, 0),
+      // Files held base64 inside their pointer instead of in the bucket. Not an
+      // error and not sealed by THIS job — the field policy owns them — but a
+      // number an operator has to be able to see rather than infer.
+      inlineTotal: results.reduce((n, r) => n + r.inline, 0),
       remaining,
       blocked,
       blockedTotal: blocked.length,
