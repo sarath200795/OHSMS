@@ -6,6 +6,13 @@ import {
     PieChart, Pie, Cell, BarChart, Bar, AreaChart, Area, XAxis, YAxis, CartesianGrid,
     Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
+// Chart icons use lucide's Chart* names — PieChart/AreaChart are recharts components here.
+import {
+    AlertCircle, ArrowLeft, Calendar, ChartArea, ChartColumn, ChartPie, CheckCircle2, ChevronLeft,
+    ChevronRight, ClipboardList, Clock, Eye, FileSpreadsheet, FolderOpen, Handshake, ListChecks,
+    ListOrdered, ListTodo, Loader2, MapPin, MessagesSquare, Pencil, Plus, Printer, Save, Target,
+    Trash2, Users,
+} from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import SiteScopePicker from '../../../shared/org/SiteScopePicker';
 import DeptPersonPicker from '../../../shared/org/DeptPersonPicker';
@@ -54,12 +61,12 @@ const MeetingDetailModal = ({ meeting, siteLabel, onClose, onUpdateStatus, onPri
             <div className="bg-clay-surface border border-clay-200 w-full max-w-5xl rounded-3xl flex flex-col shadow-2xl relative min-h-[50vh] max-h-[90vh] overflow-hidden">
                 <div className="p-6 border-b border-clay-200 flex justify-between items-center bg-clay-100">
                     <div>
-                        <h1 className="text-2xl font-bold uppercase text-green-700 flex items-center gap-3"><i className="fas fa-handshake"></i> Minutes of Meeting</h1>
+                        <h1 className="text-2xl font-bold uppercase text-green-700 flex items-center gap-3"><Handshake size={20} /> Minutes of Meeting</h1>
                         <p className="text-sm text-ink-500 mt-1 font-mono">Ref: {meeting.docId || meeting.id}</p>
                     </div>
                     <div className="text-right text-xs text-ink-500 font-bold uppercase tracking-widest bg-clay-surface p-3 rounded-xl border border-clay-200">
-                        <p className="mb-1 text-green-700"><i className="far fa-calendar-alt mr-1"></i> {meeting.date}</p>
-                        <p><i className="fas fa-map-marker-alt mr-1"></i> Site: {siteLabel || meeting.siteId}</p>
+                        <p className="mb-1 text-green-700"><Calendar size={16} className="inline mr-1" /> {meeting.date}</p>
+                        <p><MapPin size={16} className="inline mr-1" /> Site: {siteLabel || meeting.siteId}</p>
                     </div>
                 </div>
 
@@ -73,11 +80,11 @@ const MeetingDetailModal = ({ meeting, siteLabel, onClose, onUpdateStatus, onPri
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="flex flex-col">
-                            <h3 className="text-xs uppercase text-green-700 font-bold mb-3 tracking-widest"><i className="fas fa-bullseye mr-2"></i>Subject / Agenda</h3>
+                            <h3 className="text-xs uppercase text-green-700 font-bold mb-3 tracking-widest"><Target size={14} className="inline mr-2" />Subject / Agenda</h3>
                             <div className="bg-clay-100 p-4 rounded-xl border border-clay-200 text-sm flex-1 text-ink-900 shadow-inner font-medium leading-relaxed">{meeting.subject || meeting.agenda || 'N/A'}</div>
                         </div>
                         <div>
-                            <h3 className="text-xs uppercase text-green-700 font-bold mb-3 tracking-widest"><i className="fas fa-users mr-2"></i>Attendees</h3>
+                            <h3 className="text-xs uppercase text-green-700 font-bold mb-3 tracking-widest"><Users size={14} className="inline mr-2" />Attendees</h3>
                             <div className="flex flex-wrap gap-2 bg-clay-surface p-4 rounded-xl border border-clay-200/70 shadow-inner min-h-[80px]">
                                 {(meeting.attendees || []).map((a, i) => (
                                     <span key={i} className="bg-clay-100 px-3 py-1.5 rounded-lg text-xs font-bold border border-clay-200 text-ink-900 shadow-sm">
@@ -91,17 +98,17 @@ const MeetingDetailModal = ({ meeting, siteLabel, onClose, onUpdateStatus, onPri
                     </div>
 
                     <div>
-                        <h3 className="text-xs uppercase text-green-700 font-bold mb-3 tracking-widest"><i className="fas fa-clipboard-list mr-2"></i>Pre-Requisites / Inputs</h3>
+                        <h3 className="text-xs uppercase text-green-700 font-bold mb-3 tracking-widest"><ClipboardList size={14} className="inline mr-2" />Pre-Requisites / Inputs</h3>
                         <div className="bg-clay-surface p-5 rounded-xl border border-clay-200/70 text-sm whitespace-pre-wrap text-ink-600 shadow-inner leading-relaxed min-h-[100px]">{meeting.preRequisites || 'None specified.'}</div>
                     </div>
 
                     <div>
-                        <h3 className="text-xs uppercase text-green-700 font-bold mb-3 tracking-widest"><i className="fas fa-comments mr-2"></i>Discussion Minutes</h3>
+                        <h3 className="text-xs uppercase text-green-700 font-bold mb-3 tracking-widest"><MessagesSquare size={14} className="inline mr-2" />Discussion Minutes</h3>
                         <div className="bg-clay-surface p-5 rounded-xl border border-clay-200/70 text-sm whitespace-pre-wrap text-ink-900 shadow-inner leading-relaxed min-h-[150px]">{meeting.minutes || 'No minutes recorded.'}</div>
                     </div>
 
                     <div>
-                        <h3 className="text-xs uppercase text-green-700 font-bold mb-4 border-b border-green-500/20 pb-2 tracking-widest"><i className="fas fa-tasks mr-2"></i>Action Plan (CAPA)</h3>
+                        <h3 className="text-xs uppercase text-green-700 font-bold mb-4 border-b border-green-500/20 pb-2 tracking-widest"><ListTodo size={14} className="inline mr-2" />Action Plan (CAPA)</h3>
                         <div className="overflow-x-auto rounded-xl border border-clay-200 shadow-xl">
                             <table className="w-full text-left text-sm whitespace-nowrap">
                                 <thead className="bg-clay-surface text-[10px] uppercase font-bold text-ink-400 tracking-widest">
@@ -146,7 +153,7 @@ const MeetingDetailModal = ({ meeting, siteLabel, onClose, onUpdateStatus, onPri
                 </div>
 
                 <div className="p-6 border-t border-clay-200/70 flex justify-end gap-4 bg-clay-surface flex-shrink-0">
-                    <button onClick={() => onPrint(meeting)} className="bg-clay-100 hover:bg-clay-200 text-ink-900 px-6 py-2.5 rounded-xl font-bold text-sm transition-colors shadow-lg flex items-center gap-2"><i className="fas fa-print"></i> Print Minutes</button>
+                    <button onClick={() => onPrint(meeting)} className="bg-clay-100 hover:bg-clay-200 text-ink-900 px-6 py-2.5 rounded-xl font-bold text-sm transition-colors shadow-lg flex items-center gap-2"><Printer size={16} /> Print Minutes</button>
                     <button onClick={onClose} className="bg-green-600 hover:bg-green-500 text-white px-8 py-2.5 rounded-xl font-bold text-sm shadow-lg shadow-green-900/50 transition-transform active:scale-95">Close Window</button>
                 </div>
             </div>
@@ -536,9 +543,9 @@ export default function Consultation() {
                     </h1>
                     <p className="text-sm text-ink-500">HSE committees, management reviews and consultations.</p>
                 </div>
-                {permissions.viewOnly && <span className="chip bg-yellow-100 text-yellow-700 ml-1"><i className="fas fa-eye mr-1"></i> Read Only</span>}
+                {permissions.viewOnly && <span className="chip bg-yellow-100 text-yellow-700 ml-1"><Eye size={16} className="inline mr-1" /> Read Only</span>}
                 {view !== 'list' && (
-                    <button type="button" onClick={() => setView('list')} className="ml-auto bg-clay-100 hover:bg-clay-200 text-ink-900 px-4 py-2.5 rounded-xl font-bold text-xs shadow flex items-center gap-2 transition-colors border border-clay-300"><i className="fas fa-arrow-left"></i> Dashboard</button>
+                    <button type="button" onClick={() => setView('list')} className="ml-auto bg-clay-100 hover:bg-clay-200 text-ink-900 px-4 py-2.5 rounded-xl font-bold text-xs shadow flex items-center gap-2 transition-colors border border-clay-300"><ArrowLeft size={14} /> Dashboard</button>
                 )}
             </div>
 
@@ -567,10 +574,10 @@ export default function Consultation() {
                                 <button type="button" onClick={() => {
                                     const dataToExport = filteredList.map(m => ({ ID: m.docId, Site: siteName(m.siteId), Date: m.date, Type: m.type, Subject: m.subject, Attendees: (m.attendees || []).length, Actions: (m.actions || []).length }));
                                     const ws = XLSX.utils.json_to_sheet(dataToExport); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Meetings"); XLSX.writeFile(wb, "Meetings_Export.xlsx");
-                                }} className="bg-clay-100 hover:bg-clay-200 text-ink-900 px-4 py-2.5 rounded-xl font-bold text-xs shadow flex items-center gap-2 transition-colors border border-clay-300"><i className="fas fa-file-excel text-emerald-600"></i> Export</button>
-                                <button type="button" onClick={() => setView('calendar')} className="bg-clay-100 hover:bg-clay-200 text-ink-900 px-4 py-2.5 rounded-xl font-bold text-xs shadow flex items-center gap-2 transition-colors border border-clay-300"><i className="fas fa-calendar-alt text-brand-600"></i> Calendar</button>
+                                }} className="bg-clay-100 hover:bg-clay-200 text-ink-900 px-4 py-2.5 rounded-xl font-bold text-xs shadow flex items-center gap-2 transition-colors border border-clay-300"><FileSpreadsheet size={14} className="text-emerald-600" /> Export</button>
+                                <button type="button" onClick={() => setView('calendar')} className="bg-clay-100 hover:bg-clay-200 text-ink-900 px-4 py-2.5 rounded-xl font-bold text-xs shadow flex items-center gap-2 transition-colors border border-clay-300"><Calendar size={14} className="text-brand-600" /> Calendar</button>
                                 {canEditForm && (
-                                    <button type="button" onClick={openNewMeeting} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2.5 rounded-xl font-bold text-xs shadow-glow flex items-center gap-2 transition-colors"><i className="fas fa-plus"></i> New Meeting</button>
+                                    <button type="button" onClick={openNewMeeting} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2.5 rounded-xl font-bold text-xs shadow-glow flex items-center gap-2 transition-colors"><Plus size={14} /> New Meeting</button>
                                 )}
                             </div>
                         </div>
@@ -578,29 +585,29 @@ export default function Consultation() {
                         <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
                             <div className="glass-panel p-6 rounded-3xl border-l-4 border-green-500 shadow-xl flex justify-between items-center group hover:border-green-400 transition-colors">
                                 <div><p className="text-xs text-ink-500 uppercase font-bold tracking-widest mb-1">Meetings Held</p><h3 className="text-4xl font-black text-ink-900">{filteredList.length}</h3></div>
-                                <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center text-green-600/50 group-hover:text-green-700 transition-colors"><i className="fas fa-handshake text-2xl"></i></div>
+                                <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center text-green-600/50 group-hover:text-green-700 transition-colors"><Handshake size={24} /></div>
                             </div>
                             <div className="glass-panel p-6 rounded-3xl border-l-4 border-sky-500 shadow-xl flex justify-between items-center group hover:border-sky-400 transition-colors">
                                 <div><p className="text-xs text-ink-500 uppercase font-bold tracking-widest mb-1">Action Points</p><h3 className="text-4xl font-black text-sky-600">{totalActions}</h3></div>
-                                <div className="w-12 h-12 rounded-full bg-sky-100 flex items-center justify-center text-sky-600/50 group-hover:text-sky-600 transition-colors"><i className="fas fa-list-ol text-2xl"></i></div>
+                                <div className="w-12 h-12 rounded-full bg-sky-100 flex items-center justify-center text-sky-600/50 group-hover:text-sky-600 transition-colors"><ListOrdered size={24} /></div>
                             </div>
                             <div className="glass-panel p-6 rounded-3xl border-l-4 border-emerald-500 shadow-xl flex justify-between items-center group hover:border-emerald-400 transition-colors">
                                 <div><p className="text-xs text-ink-500 uppercase font-bold tracking-widest mb-1">Actions Closed</p><h3 className="text-4xl font-black text-emerald-600">{filteredList.reduce((acc, curr) => acc + (curr.actions ? curr.actions.filter(a => a.status === 'Closed').length : 0), 0)}</h3></div>
-                                <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600/50 group-hover:text-emerald-600 transition-colors"><i className="fas fa-check-circle text-2xl"></i></div>
+                                <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600/50 group-hover:text-emerald-600 transition-colors"><CheckCircle2 size={24} /></div>
                             </div>
                             <div className="glass-panel p-6 rounded-3xl border-l-4 border-yellow-500 shadow-xl flex justify-between items-center group hover:border-yellow-400 transition-colors">
                                 <div><p className="text-xs text-ink-500 uppercase font-bold tracking-widest mb-1">Pending Actions</p><h3 className="text-4xl font-black text-yellow-600">{filteredList.reduce((acc, curr) => acc + (curr.actions ? curr.actions.filter(a => a.status !== 'Closed').length : 0), 0)}</h3></div>
-                                <div className="w-12 h-12 rounded-full bg-yellow-100 flex items-center justify-center text-yellow-600/50 group-hover:text-yellow-600 transition-colors"><i className="fas fa-clock text-2xl"></i></div>
+                                <div className="w-12 h-12 rounded-full bg-yellow-100 flex items-center justify-center text-yellow-600/50 group-hover:text-yellow-600 transition-colors"><Clock size={24} /></div>
                             </div>
                         </div>
 
                         {/* -------------------- ANALYTICS / CHARTS -------------------- */}
                         <div className="space-y-6">
-                            <h3 className="text-xs uppercase text-ink-500 font-bold tracking-widest flex items-center gap-2"><i className="fas fa-chart-simple text-green-600"></i> Analytics Overview</h3>
+                            <h3 className="text-xs uppercase text-ink-500 font-bold tracking-widest flex items-center gap-2"><ChartColumn size={14} className="text-green-600" /> Analytics Overview</h3>
 
                             {filteredList.length === 0 && (
                                 <div className="glass-panel p-10 rounded-3xl shadow-xl text-center text-ink-400">
-                                    <i className="fas fa-chart-pie text-3xl text-clay-300 mb-3"></i>
+                                    <ChartPie size={28} className="mx-auto mb-3 text-clay-300" />
                                     <p className="text-sm font-medium">No data to chart yet. Charts populate automatically as you log meetings.</p>
                                 </div>
                             )}
@@ -610,7 +617,7 @@ export default function Consultation() {
                                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                                         {/* Donut — meetings by type */}
                                         <div className="glass-panel p-6 rounded-3xl shadow-xl">
-                                            <h4 className="text-xs uppercase text-ink-500 font-bold mb-4 tracking-widest"><i className="fas fa-chart-pie mr-2 text-green-600"></i>Meetings by Type</h4>
+                                            <h4 className="text-xs uppercase text-ink-500 font-bold mb-4 tracking-widest"><ChartPie size={14} className="inline mr-2 text-green-600" />Meetings by Type</h4>
                                             <ResponsiveContainer width="100%" height={260}>
                                                 <PieChart>
                                                     <Pie data={meetingsByType} dataKey="value" nameKey="name" innerRadius={55} outerRadius={95} paddingAngle={2}>
@@ -624,7 +631,7 @@ export default function Consultation() {
 
                                         {/* Donut — action status */}
                                         <div className="glass-panel p-6 rounded-3xl shadow-xl">
-                                            <h4 className="text-xs uppercase text-ink-500 font-bold mb-4 tracking-widest"><i className="fas fa-list-check mr-2 text-green-600"></i>Overall Action Status</h4>
+                                            <h4 className="text-xs uppercase text-ink-500 font-bold mb-4 tracking-widest"><ListChecks size={14} className="inline mr-2 text-green-600" />Overall Action Status</h4>
                                             {actionStatusData.length > 0 ? (
                                                 <ResponsiveContainer width="100%" height={260}>
                                                     <PieChart>
@@ -643,7 +650,7 @@ export default function Consultation() {
 
                                     {/* Stacked bar — action status per meeting */}
                                     <div className="glass-panel p-6 rounded-3xl shadow-xl">
-                                        <h4 className="text-xs uppercase text-ink-500 font-bold mb-4 tracking-widest"><i className="fas fa-chart-column mr-2 text-green-600"></i>Action Status per Meeting <span className="text-ink-400 normal-case font-medium tracking-normal">(latest {perMeetingActions.length})</span></h4>
+                                        <h4 className="text-xs uppercase text-ink-500 font-bold mb-4 tracking-widest"><ChartColumn size={14} className="inline mr-2 text-green-600" />Action Status per Meeting <span className="text-ink-400 normal-case font-medium tracking-normal">(latest {perMeetingActions.length})</span></h4>
                                         <ResponsiveContainer width="100%" height={320}>
                                             <BarChart data={perMeetingActions} margin={{ top: 8, right: 12, left: -10, bottom: 8 }}>
                                                 <CartesianGrid strokeDasharray="3 3" stroke="#e3ccbf" vertical={false} />
@@ -661,7 +668,7 @@ export default function Consultation() {
                                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                                         {/* Bar — points (action items) per meeting */}
                                         <div className="glass-panel p-6 rounded-3xl shadow-xl">
-                                            <h4 className="text-xs uppercase text-ink-500 font-bold mb-4 tracking-widest"><i className="fas fa-list-ol mr-2 text-green-600"></i>Points per Meeting</h4>
+                                            <h4 className="text-xs uppercase text-ink-500 font-bold mb-4 tracking-widest"><ListOrdered size={14} className="inline mr-2 text-green-600" />Points per Meeting</h4>
                                             <ResponsiveContainer width="100%" height={280}>
                                                 <BarChart data={pointsPerMeeting} margin={{ top: 8, right: 12, left: -10, bottom: 8 }}>
                                                     <CartesianGrid strokeDasharray="3 3" stroke="#e3ccbf" vertical={false} />
@@ -677,7 +684,7 @@ export default function Consultation() {
 
                                         {/* Bar — meetings by site */}
                                         <div className="glass-panel p-6 rounded-3xl shadow-xl">
-                                            <h4 className="text-xs uppercase text-ink-500 font-bold mb-4 tracking-widest"><i className="fas fa-map-marker-alt mr-2 text-green-600"></i>Meetings by Site</h4>
+                                            <h4 className="text-xs uppercase text-ink-500 font-bold mb-4 tracking-widest"><MapPin size={14} className="inline mr-2 text-green-600" />Meetings by Site</h4>
                                             <ResponsiveContainer width="100%" height={280}>
                                                 <BarChart data={meetingsBySite} margin={{ top: 8, right: 12, left: -10, bottom: 8 }}>
                                                     <CartesianGrid strokeDasharray="3 3" stroke="#e3ccbf" vertical={false} />
@@ -692,7 +699,7 @@ export default function Consultation() {
 
                                     {/* Area — meetings logged over time */}
                                     <div className="glass-panel p-6 rounded-3xl shadow-xl">
-                                        <h4 className="text-xs uppercase text-ink-500 font-bold mb-4 tracking-widest"><i className="fas fa-chart-area mr-2 text-green-600"></i>Meetings Over Time</h4>
+                                        <h4 className="text-xs uppercase text-ink-500 font-bold mb-4 tracking-widest"><ChartArea size={14} className="inline mr-2 text-green-600" />Meetings Over Time</h4>
                                         <ResponsiveContainer width="100%" height={240}>
                                             <AreaChart data={meetingsOverTime} margin={{ top: 8, right: 12, left: -10, bottom: 8 }}>
                                                 <defs>
@@ -713,7 +720,7 @@ export default function Consultation() {
                             )}
                         </div>
 
-                        <h3 className="text-xs uppercase text-ink-500 font-bold tracking-widest flex items-center gap-2 pt-2"><i className="fas fa-folder-open text-green-600"></i> Meeting Records</h3>
+                        <h3 className="text-xs uppercase text-ink-500 font-bold tracking-widest flex items-center gap-2 pt-2"><FolderOpen size={14} className="text-green-600" /> Meeting Records</h3>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                             {pageItems.map(m => {
                                 const totalAct = m.actions ? m.actions.length : 0;
@@ -722,25 +729,25 @@ export default function Consultation() {
                                     <div key={m.firebaseKey} className="glass-panel p-6 rounded-3xl border-t-4 border-green-500 flex flex-col shadow-xl hover:shadow-2xl hover:-translate-y-1 transition-all cursor-pointer group" onClick={() => { setFormData(m); setView('detail'); }}>
                                         <div className="flex justify-between items-start mb-4">
                                             <span className="font-mono text-[10px] font-bold text-green-700 bg-green-100 px-2 py-1 rounded-lg border border-green-500/30">{m.docId}</span>
-                                            <span className="text-[10px] bg-clay-surface text-ink-600 px-2 py-1 rounded-lg border border-clay-200 font-bold shadow-inner"><i className="far fa-calendar-alt mr-1"></i> {m.date}</span>
+                                            <span className="text-[10px] bg-clay-surface text-ink-600 px-2 py-1 rounded-lg border border-clay-200 font-bold shadow-inner"><Calendar size={12} className="inline mr-1" /> {m.date}</span>
                                         </div>
                                         <h3 className="font-bold text-ink-900 text-lg mb-2 line-clamp-2 leading-tight group-hover:text-green-700 transition-colors">{m.subject}</h3>
                                         <p className="text-[10px] text-ink-500 mb-6 uppercase tracking-widest font-bold">{siteName(m.siteId)} • {m.type}</p>
                                         <div className="mt-auto flex justify-between items-center border-t border-clay-200/70 pt-4">
                                             <div className="flex items-center gap-2">
-                                                <span className="text-[10px] font-bold text-ink-500 bg-clay-surface px-2.5 py-1 rounded-lg border border-clay-200/70"><i className="fas fa-users text-purple-700 mr-1.5"></i> {(m.attendees || []).length}</span>
+                                                <span className="text-[10px] font-bold text-ink-500 bg-clay-surface px-2.5 py-1 rounded-lg border border-clay-200/70"><Users size={12} className="inline text-purple-700 mr-1.5" /> {(m.attendees || []).length}</span>
                                                 <span className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border ${totalAct > 0 && closedAct === totalAct ? 'bg-emerald-100 text-emerald-600 border-emerald-500/30' : 'bg-clay-surface text-ink-500 border-clay-200/70'}`}>
-                                                    <i className="fas fa-tasks text-blue-600 mr-1.5"></i> CAPA: {closedAct}/{totalAct}
+                                                    <ListTodo size={12} className="inline text-blue-600 mr-1.5" /> CAPA: {closedAct}/{totalAct}
                                                 </span>
                                             </div>
                                             <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                                 {permissions.canEditCreate ? (
-                                                    <button type="button" onClick={e => { e.stopPropagation(); setFormData(m); setView('form'); }} className="text-blue-600 hover:text-white bg-clay-100 hover:bg-blue-600 w-8 h-8 rounded-lg flex items-center justify-center transition-colors shadow-lg"><i className="fas fa-edit"></i></button>
+                                                    <button type="button" onClick={e => { e.stopPropagation(); setFormData(m); setView('form'); }} className="text-blue-600 hover:text-white bg-clay-100 hover:bg-blue-600 w-8 h-8 rounded-lg flex items-center justify-center transition-colors shadow-lg"><Pencil size={16} /></button>
                                                 ) : (
-                                                    <button type="button" onClick={e => { e.stopPropagation(); setFormData(m); setView('form'); }} className="text-ink-500 hover:text-ink-900 bg-clay-100 hover:bg-clay-200 w-8 h-8 rounded-lg flex items-center justify-center transition-colors shadow-lg"><i className="fas fa-eye"></i></button>
+                                                    <button type="button" onClick={e => { e.stopPropagation(); setFormData(m); setView('form'); }} className="text-ink-500 hover:text-ink-900 bg-clay-100 hover:bg-clay-200 w-8 h-8 rounded-lg flex items-center justify-center transition-colors shadow-lg"><Eye size={16} /></button>
                                                 )}
 
-                                                {permissions.canDelete && <button type="button" onClick={e => { e.stopPropagation(); deleteRecord(m.firebaseKey); }} className="text-red-600 hover:text-white bg-clay-100 hover:bg-red-600 w-8 h-8 rounded-lg flex items-center justify-center transition-colors shadow-lg"><i className="fas fa-trash"></i></button>}
+                                                {permissions.canDelete && <button type="button" onClick={e => { e.stopPropagation(); deleteRecord(m.firebaseKey); }} className="text-red-600 hover:text-white bg-clay-100 hover:bg-red-600 w-8 h-8 rounded-lg flex items-center justify-center transition-colors shadow-lg"><Trash2 size={16} /></button>}
                                             </div>
                                         </div>
                                     </div>
@@ -767,15 +774,15 @@ export default function Consultation() {
                                 </select>
                             </div>
                             <div className="flex items-center gap-2 bg-clay-surface rounded-xl p-1.5 border border-clay-200/70 shadow-inner">
-                                <button type="button" onClick={() => { if (calMonth === 0) { setCalMonth(11); setCalYear(y => y - 1) } else { setCalMonth(m => m - 1) } }} className="px-4 py-2 hover:bg-clay-100 rounded-lg text-ink-600 transition-colors"><i className="fas fa-chevron-left"></i></button>
+                                <button type="button" onClick={() => { if (calMonth === 0) { setCalMonth(11); setCalYear(y => y - 1) } else { setCalMonth(m => m - 1) } }} className="px-4 py-2 hover:bg-clay-100 rounded-lg text-ink-600 transition-colors"><ChevronLeft size={16} className="inline" /></button>
                                 <span className="font-bold w-40 text-center text-ink-900 text-sm tracking-wide">{["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"][calMonth]} {calYear}</span>
-                                <button type="button" onClick={() => { if (calMonth === 11) { setCalMonth(0); setCalYear(y => y + 1) } else { setCalMonth(m => m + 1) } }} className="px-4 py-2 hover:bg-clay-100 rounded-lg text-ink-600 transition-colors"><i className="fas fa-chevron-right"></i></button>
+                                <button type="button" onClick={() => { if (calMonth === 11) { setCalMonth(0); setCalYear(y => y + 1) } else { setCalMonth(m => m + 1) } }} className="px-4 py-2 hover:bg-clay-100 rounded-lg text-ink-600 transition-colors"><ChevronRight size={16} className="inline" /></button>
                             </div>
                         </div>
 
                         {calSiteFilter && calSiteFilter !== 'All' ? (
                             <div className="mb-8">
-                                <h3 className="text-lg font-bold text-orange-600 mb-4 flex items-center gap-2"><i className="fas fa-exclamation-circle"></i> Mandatory Compliance Tracking</h3>
+                                <h3 className="text-lg font-bold text-orange-600 mb-4 flex items-center gap-2"><AlertCircle size={18} /> Mandatory Compliance Tracking</h3>
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                                     {pendingMeetings.map((p, idx) => (
                                         <div key={idx} className="bg-clay-surface border border-orange-500/30 p-5 rounded-2xl flex flex-col justify-between shadow-xl relative overflow-hidden group hover:border-orange-500 transition-colors">
@@ -789,7 +796,7 @@ export default function Consultation() {
                                             {permissions.canEditCreate && <button type="button" onClick={() => handleLogPending(p)} className="w-full bg-orange-100 hover:bg-orange-600 text-orange-600 hover:text-white border border-orange-500/20 px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors shadow-sm">Log Meeting Now</button>}
                                         </div>
                                     ))}
-                                    {pendingMeetings.length === 0 && <div className="text-emerald-600 font-bold p-6 bg-emerald-50 rounded-2xl border border-emerald-500/20 w-full col-span-full flex items-center gap-3 shadow-inner"><i className="fas fa-check-circle text-3xl"></i> All mandated statutory meetings for this period are completely up to date!</div>}
+                                    {pendingMeetings.length === 0 && <div className="text-emerald-600 font-bold p-6 bg-emerald-50 rounded-2xl border border-emerald-500/20 w-full col-span-full flex items-center gap-3 shadow-inner"><CheckCircle2 size={28} /> All mandated statutory meetings for this period are completely up to date!</div>}
                                 </div>
                             </div>
                         ) : (
@@ -840,14 +847,14 @@ export default function Consultation() {
                         <div className="glass-panel p-8 md:p-10 rounded-3xl border border-clay-200 shadow-2xl">
                             <div className="flex justify-between items-center mb-10 border-b border-clay-200 pb-6">
                                 <div>
-                                    <h2 className="text-3xl font-bold text-green-700 flex items-center gap-4"><i className="fas fa-edit"></i> {formData.firebaseKey ? (canEditForm ? 'Edit Consultation Record' : 'View Consultation Record') : 'Log New Meeting'}</h2>
+                                    <h2 className="text-3xl font-bold text-green-700 flex items-center gap-4"><Pencil size={24} /> {formData.firebaseKey ? (canEditForm ? 'Edit Consultation Record' : 'View Consultation Record') : 'Log New Meeting'}</h2>
                                     <p className="text-sm text-ink-500 font-mono mt-2 ml-10">Ref: {formData.docId || 'DRAFT'}</p>
                                 </div>
                                 <div className="flex gap-3">
                                     <button type="button" onClick={() => setView('list')} className="text-ink-500 hover:text-ink-900 px-5 py-2.5 rounded-xl font-bold text-sm transition-colors">Cancel</button>
-                                    {formData.firebaseKey && <button type="button" onClick={() => triggerPrint(formData)} className="bg-clay-100 hover:bg-clay-200 text-ink-900 px-6 py-2.5 rounded-xl font-bold text-sm shadow-lg transition-colors flex items-center gap-2"><i className="fas fa-print"></i> Print</button>}
+                                    {formData.firebaseKey && <button type="button" onClick={() => triggerPrint(formData)} className="bg-clay-100 hover:bg-clay-200 text-ink-900 px-6 py-2.5 rounded-xl font-bold text-sm shadow-lg transition-colors flex items-center gap-2"><Printer size={16} /> Print</button>}
                                     {canEditForm && (
-                                        <button type="button" onClick={saveRecord} disabled={saving} className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white font-bold px-6 py-2.5 rounded-xl text-sm shadow-lg shadow-green-900/30 transition-transform active:scale-95 flex items-center gap-2 disabled:opacity-50"><i className={`fas ${saving ? 'fa-spinner fa-spin' : 'fa-save'}`}></i> Save</button>
+                                        <button type="button" onClick={saveRecord} disabled={saving} className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white font-bold px-6 py-2.5 rounded-xl text-sm shadow-lg shadow-green-900/30 transition-transform active:scale-95 flex items-center gap-2 disabled:opacity-50">{saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Save</button>
                                     )}
                                 </div>
                             </div>
@@ -886,7 +893,7 @@ export default function Consultation() {
                             </div>
 
                             <div className="mb-10 bg-clay-surface p-8 rounded-2xl border border-clay-200/70 shadow-inner">
-                                <label className="text-xs uppercase font-bold text-green-700 tracking-widest mb-3 block flex items-center gap-2"><i className="fas fa-clipboard-list"></i> Pre-Requisites / Inputs</label>
+                                <label className="text-xs uppercase font-bold text-green-700 tracking-widest mb-3 block flex items-center gap-2"><ClipboardList size={14} /> Pre-Requisites / Inputs</label>
                                 <textarea value={formData.preRequisites} onChange={e => setFormData({ ...formData, preRequisites: e.target.value })} className="w-full bg-clay-surface border border-clay-200 p-5 rounded-xl text-sm font-medium text-ink-600 focus:border-green-500 resize-none custom-scroll outline-none shadow-inner transition-colors leading-relaxed" placeholder="Record reference materials, incident IDs, or data inputs required for this meeting..." disabled={!canEditForm} rows="3" maxLength={5000}></textarea>
                             </div>
 
@@ -894,7 +901,7 @@ export default function Consultation() {
                                 {/* Attendees List */}
                                 <div className="bg-clay-surface p-8 rounded-2xl border border-clay-200/70 shadow-inner flex flex-col h-[500px]">
                                     <div className="flex justify-between items-center mb-6 border-b border-clay-200/70 pb-3">
-                                        <h3 className="font-bold text-purple-700 uppercase text-xs tracking-widest flex items-center gap-2"><i className="fas fa-users"></i> Attendance Roster <span className="bg-purple-100 text-ink-900 px-2 py-0.5 rounded border border-purple-500/50 text-[10px] ml-1">{(formData.attendees || []).length}</span></h3>
+                                        <h3 className="font-bold text-purple-700 uppercase text-xs tracking-widest flex items-center gap-2"><Users size={14} /> Attendance Roster <span className="bg-purple-100 text-ink-900 px-2 py-0.5 rounded border border-purple-500/50 text-[10px] ml-1">{(formData.attendees || []).length}</span></h3>
                                     </div>
 
                                     {canEditForm && (
@@ -913,14 +920,14 @@ export default function Consultation() {
                                                             selectClass="w-full text-sm font-bold bg-clay-surface border border-clay-200 rounded-xl p-3 focus:border-purple-500 text-ink-900 outline-none shadow-inner transition-colors"
                                                         />
                                                     </div>
-                                                    <button type="button" onClick={() => handleAddAttendee('internal')} className="bg-purple-600 hover:bg-purple-500 text-white px-5 rounded-xl font-bold shadow-lg shadow-purple-600/20 transition-transform active:scale-95 whitespace-nowrap"><i className="fas fa-plus"></i></button>
+                                                    <button type="button" onClick={() => handleAddAttendee('internal')} className="bg-purple-600 hover:bg-purple-500 text-white px-5 rounded-xl font-bold shadow-lg shadow-purple-600/20 transition-transform active:scale-95 whitespace-nowrap"><Plus size={16} className="inline" /></button>
                                                 </div>
                                             </div>
                                             <div>
                                                 <label className="text-[10px] font-bold text-ink-400 uppercase tracking-widest block mb-2 ml-1">External Contractor</label>
                                                 <div className="flex gap-2">
                                                     <input value={externalName} onChange={e => setExternalName(e.target.value)} placeholder="Type Contractor Name..." maxLength={200} className="w-full text-sm font-bold bg-clay-surface border border-clay-200 rounded-xl p-3 focus:border-pink-500 text-ink-900 outline-none shadow-inner transition-colors" />
-                                                    <button type="button" onClick={() => handleAddAttendee('external')} className="bg-pink-600 hover:bg-pink-500 text-white px-5 rounded-xl font-bold shadow-lg shadow-pink-600/20 transition-transform active:scale-95 whitespace-nowrap"><i className="fas fa-plus"></i></button>
+                                                    <button type="button" onClick={() => handleAddAttendee('external')} className="bg-pink-600 hover:bg-pink-500 text-white px-5 rounded-xl font-bold shadow-lg shadow-pink-600/20 transition-transform active:scale-95 whitespace-nowrap"><Plus size={16} className="inline" /></button>
                                                 </div>
                                             </div>
                                         </div>
@@ -940,7 +947,7 @@ export default function Consultation() {
                                                         </td>
                                                         <td className="p-4 text-xs text-ink-500">{att.role}</td>
                                                         <td className="p-4 text-center">
-                                                            {canEditForm && <button type="button" onClick={() => removeAttendee(idx)} className="text-red-600 hover:text-white bg-red-100 hover:bg-red-600 w-8 h-8 rounded-lg flex items-center justify-center transition-colors shadow-sm"><i className="fas fa-trash-alt"></i></button>}
+                                                            {canEditForm && <button type="button" onClick={() => removeAttendee(idx)} className="text-red-600 hover:text-white bg-red-100 hover:bg-red-600 w-8 h-8 rounded-lg flex items-center justify-center transition-colors shadow-sm"><Trash2 size={16} /></button>}
                                                         </td>
                                                     </tr>
                                                 ))}
@@ -952,7 +959,7 @@ export default function Consultation() {
 
                                 {/* Minutes */}
                                 <div className="bg-clay-surface p-8 rounded-2xl border border-clay-200/70 shadow-inner flex flex-col h-[500px]">
-                                    <label className="text-xs uppercase font-bold text-green-700 tracking-widest mb-4 block border-b border-clay-200/70 pb-3 flex items-center gap-2"><i className="fas fa-comments"></i> Official Discussion Minutes</label>
+                                    <label className="text-xs uppercase font-bold text-green-700 tracking-widest mb-4 block border-b border-clay-200/70 pb-3 flex items-center gap-2"><MessagesSquare size={14} /> Official Discussion Minutes</label>
                                     <textarea value={formData.minutes} onChange={e => setFormData({ ...formData, minutes: e.target.value })} className="w-full flex-1 bg-clay-surface border border-clay-200 p-5 rounded-xl text-sm font-medium text-ink-900 focus:border-green-500 resize-none custom-scroll outline-none shadow-inner transition-colors leading-relaxed" placeholder="Record the general discussion points, topics covered, and any feedback received from participants here..." maxLength={5000} disabled={!canEditForm}></textarea>
                                 </div>
                             </div>
@@ -962,7 +969,7 @@ export default function Consultation() {
                                 <div className="absolute top-0 right-0 w-32 h-32 bg-blue-100 rounded-full blur-3xl pointer-events-none"></div>
 
                                 <div className="flex justify-between items-center mb-6 border-b border-clay-200/70 pb-3 relative z-10">
-                                    <label className="text-sm uppercase font-bold text-blue-600 tracking-widest flex items-center gap-2"><i className="fas fa-list-check"></i> Formulated Action Plan (CAPA)</label>
+                                    <label className="text-sm uppercase font-bold text-blue-600 tracking-widest flex items-center gap-2"><ListChecks size={16} /> Formulated Action Plan (CAPA)</label>
                                 </div>
 
                                 {canEditForm && (
@@ -987,7 +994,7 @@ export default function Consultation() {
                                                 <label className="text-[10px] uppercase font-bold text-ink-400 tracking-widest block mb-2 ml-1">Target Date</label>
                                                 <input type="date" value={newActionLine.due} onChange={e => setNewActionLine({ ...newActionLine, due: e.target.value })} className="w-full bg-clay-surface border border-clay-200 p-3 rounded-xl text-sm font-mono text-ink-900 focus:border-blue-500 outline-none transition-colors" />
                                             </div>
-                                            <button type="button" onClick={addAction} className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-3 rounded-xl shadow-lg transition-transform active:scale-95 font-bold uppercase tracking-widest text-xs h-[46px] flex items-center justify-center gap-2"><i className="fas fa-plus"></i> Add</button>
+                                            <button type="button" onClick={addAction} className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-3 rounded-xl shadow-lg transition-transform active:scale-95 font-bold uppercase tracking-widest text-xs h-[46px] flex items-center justify-center gap-2"><Plus size={14} /> Add</button>
                                         </div>
                                     </div>
                                 )}
@@ -1020,7 +1027,7 @@ export default function Consultation() {
                                                             </select>
                                                         </td>
                                                         <td className="p-3 text-center">
-                                                            {canEditForm && <button type="button" onClick={() => removeAction(i)} className="text-red-600 hover:text-white bg-red-100 hover:bg-red-600 w-8 h-8 rounded-lg flex items-center justify-center transition-colors shadow-sm"><i className="fas fa-trash-alt"></i></button>}
+                                                            {canEditForm && <button type="button" onClick={() => removeAction(i)} className="text-red-600 hover:text-white bg-red-100 hover:bg-red-600 w-8 h-8 rounded-lg flex items-center justify-center transition-colors shadow-sm"><Trash2 size={16} /></button>}
                                                         </td>
                                                     </tr>
                                                 )
@@ -1034,7 +1041,7 @@ export default function Consultation() {
                             {canEditForm && (
                                 <div className="flex justify-end mt-10 border-t border-clay-200/70 pt-8">
                                     <button type="button" onClick={saveRecord} disabled={saving} className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white font-bold py-4 px-12 rounded-xl shadow-lg shadow-green-900/50 transition-transform transform active:scale-95 flex items-center gap-3 uppercase tracking-widest text-sm">
-                                        {saving ? <i className="fas fa-spinner fa-spin text-lg"></i> : <i className="fas fa-save text-lg"></i>} Save Official Record
+                                        {saving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />} Save Official Record
                                     </button>
                                 </div>
                             )}

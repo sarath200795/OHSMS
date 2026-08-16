@@ -1,4 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react'
+import {
+  AlertCircle, AlertTriangle, ArrowLeft, Calendar, CalendarDays, Check, CheckCheck, CheckCircle2,
+  ChevronLeft, ChevronRight, ClipboardCheck, ClipboardList, Download, FileDown, FileSignature,
+  FileText, Hourglass, Inbox, Info, Layers, List, ListChecks, Pencil, PieChart, Play, Plus, Printer,
+  Reply, RotateCcw, Save, Search, Send, Target, Trash2, User, UserPen, UserRound, X,
+} from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { useOrgData } from '../../context/OrgDataContext'
 import SiteScopePicker from '../../../../shared/org/SiteScopePicker'
@@ -124,16 +130,16 @@ const AuditScheduler = ({ setView, session, sites, users, locations = [], siteIn
       <div className="mb-6 flex items-center justify-between print:hidden">
         <div>
           <h2 className="text-2xl font-extrabold text-ink-800">
-            <i className="fas fa-calendar-alt mr-2 text-brand-500" /> Audit Scheduler
+            <Calendar size={20} className="inline mr-2 text-brand-500" /> Audit Scheduler
           </h2>
           <p className="text-sm text-slate-500">Plan and assign audits across the organization.</p>
         </div>
         <div className="flex gap-2">
           <button onClick={() => window.print()} className="rounded-xl bg-slate-100 px-5 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-200">
-            <i className="fas fa-print mr-2" />Print Plan
+            <Printer size={16} className="inline mr-2" />Print Plan
           </button>
           <button onClick={handleSave} className="rounded-xl bg-brand-gradient px-5 py-2.5 text-sm font-bold text-white shadow-brand transition active:scale-95">
-            <i className="fas fa-save mr-2" />Save Plan
+            <Save size={16} className="inline mr-2" />Save Plan
           </button>
         </div>
       </div>
@@ -181,14 +187,14 @@ const AuditScheduler = ({ setView, session, sites, users, locations = [], siteIn
             <div className="flex flex-col rounded-2xl border border-slate-200 bg-slate-50 p-5">
               <label className={lbl}>Audit Team Members</label>
               <div className="relative mb-3">
-                <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input type="text" placeholder="Search name or email..." value={teamSearch} onChange={(e) => setTeamSearch(e.target.value)} className={`${fld} pl-9`} maxLength={500} />
               </div>
               <div className="max-h-[160px] flex-1 space-y-1.5 overflow-y-auto">
                 {filteredAuditors.map((u) => (
                   <div key={u.id} onClick={() => toggleTeam(u.name)} className={`flex cursor-pointer items-center gap-3 rounded-lg border p-2.5 transition ${plan.team.includes(u.name) ? 'border-brand-300 bg-brand-50' : 'border-transparent hover:bg-white'}`}>
                     <div className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border ${plan.team.includes(u.name) ? 'border-brand-500 bg-brand-500 text-white' : 'border-slate-300 bg-white'}`}>
-                      {plan.team.includes(u.name) && <i className="fas fa-check text-[10px]" />}
+                      {plan.team.includes(u.name) && <Check size={10} className="inline" />}
                     </div>
                     <div className="truncate">
                       <div className={`truncate text-xs font-bold ${plan.team.includes(u.name) ? 'text-brand-700' : 'text-slate-700'}`}>{u.name}</div>
@@ -207,7 +213,7 @@ const AuditScheduler = ({ setView, session, sites, users, locations = [], siteIn
           <div className="mb-6 flex items-center justify-between">
             <h3 className="text-lg font-bold text-emerald-600">Section 2: Audit Execution Matrix</h3>
             <button onClick={addRow} className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-100">
-              <i className="fas fa-plus mr-2 text-emerald-500" />Add Row
+              <Plus size={16} className="inline mr-2 text-emerald-500" />Add Row
             </button>
           </div>
           <div className="overflow-x-auto rounded-xl border border-slate-200">
@@ -245,7 +251,7 @@ const AuditScheduler = ({ setView, session, sites, users, locations = [], siteIn
                     <td className="p-2"><input className={`${fld} text-xs`} placeholder="Scope / clause..." value={row.aspect} onChange={(e) => updateRow(i, 'aspect', e.target.value)} maxLength={500} /></td>
                     <td className="p-2"><input type="date" className={`${fld} text-xs font-mono`} value={row.date} onChange={(e) => updateRow(i, 'date', e.target.value)} /></td>
                     <td className="p-2"><input type="time" className={`${fld} text-xs font-mono`} value={row.time} onChange={(e) => updateRow(i, 'time', e.target.value)} /></td>
-                    <td className="p-2 text-center"><button onClick={() => removeRow(i)} className="flex h-8 w-8 items-center justify-center rounded-lg bg-rose-50 text-rose-500 transition hover:bg-rose-500 hover:text-white"><i className="fas fa-trash-alt" /></button></td>
+                    <td className="p-2 text-center"><button onClick={() => removeRow(i)} className="flex h-8 w-8 items-center justify-center rounded-lg bg-rose-50 text-rose-500 transition hover:bg-rose-500 hover:text-white"><Trash2 size={16} /></button></td>
                   </tr>
                 ))}
               </tbody>
@@ -372,7 +378,7 @@ const AuditorWorkplace = ({ setView, session, isGlobalOwner, plans, findings, si
     <div className="animate-fade-in">
       <div className="mb-6 flex items-center justify-between print:hidden">
         <div>
-          <h2 className="text-2xl font-extrabold text-ink-800"><i className="fas fa-clipboard-list mr-2 text-emerald-500" /> Auditor Workplace</h2>
+          <h2 className="text-2xl font-extrabold text-ink-800"><ClipboardList size={20} className="inline mr-2 text-emerald-500" /> Auditor Workplace</h2>
           <p className="text-sm text-slate-500">Execute your assigned audits and raise findings.</p>
         </div>
       </div>
@@ -385,7 +391,7 @@ const AuditorWorkplace = ({ setView, session, isGlobalOwner, plans, findings, si
               <input type="text" placeholder="Auditor" className={`${fld} w-36`} value={filters.auditor} onChange={(e) => setFilters({ ...filters, auditor: e.target.value })} maxLength={500} />
               <input type="text" placeholder="Auditee" className={`${fld} w-36`} value={filters.auditee} onChange={(e) => setFilters({ ...filters, auditee: e.target.value })} maxLength={500} />
               <input type="text" placeholder="Doc ID" className={`${fld} w-28`} value={filters.id} onChange={(e) => setFilters({ ...filters, id: e.target.value })} maxLength={500} />
-              <button onClick={() => setFilters({ date: '', auditor: '', auditee: '', id: '' })} className="rounded-lg bg-slate-100 px-3 py-2 text-xs font-bold uppercase tracking-wider text-slate-600 hover:bg-slate-200"><i className="fas fa-undo mr-1" />Reset</button>
+              <button onClick={() => setFilters({ date: '', auditor: '', auditee: '', id: '' })} className="rounded-lg bg-slate-100 px-3 py-2 text-xs font-bold uppercase tracking-wider text-slate-600 hover:bg-slate-200"><RotateCcw size={14} className="inline mr-1" />Reset</button>
             </div>
             <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {filtered.length === 0 ? (
@@ -393,27 +399,27 @@ const AuditorWorkplace = ({ setView, session, isGlobalOwner, plans, findings, si
               ) : (
                 filtered.map((task, i) => {
                   const map = {
-                    Planned: ['border-t-sky-500', 'bg-sky-50 text-sky-700', 'Needs Audit', 'fas fa-play'],
-                    Reported: ['border-t-rose-500', 'bg-rose-50 text-rose-700', 'Correction Pending', 'fas fa-hourglass-half'],
-                    'Submitted for Verification': ['border-t-orange-500', 'bg-orange-50 text-orange-700', 'Verify Now', 'fas fa-check-double'],
-                    Closed: ['border-t-emerald-500', 'bg-emerald-50 text-emerald-700', 'Closed', 'fas fa-file-contract'],
+                    Planned: ['border-t-sky-500', 'bg-sky-50 text-sky-700', 'Needs Audit', Play],
+                    Reported: ['border-t-rose-500', 'bg-rose-50 text-rose-700', 'Correction Pending', Hourglass],
+                    'Submitted for Verification': ['border-t-orange-500', 'bg-orange-50 text-orange-700', 'Verify Now', CheckCheck],
+                    Closed: ['border-t-emerald-500', 'bg-emerald-50 text-emerald-700', 'Closed', FileText],
                   }
-                  const [brd, chip, label, icon] = map[task.status] || map.Planned
+                  const [brd, chip, label, Icon] = map[task.status] || map.Planned
                   return (
                     <div key={i} onClick={() => openTask(task)} className={`${panel} cursor-pointer border-t-4 ${brd} p-6 transition hover:-translate-y-1 hover:shadow-md`}>
                       <div className="mb-4 flex items-start justify-between">
                         <span className={`rounded px-2 py-1 text-[9px] font-bold uppercase tracking-widest ${chip}`}>{label}</span>
-                        <span className="rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-bold text-slate-500"><i className="far fa-calendar-alt mr-1" />{task.date || '—'}</span>
+                        <span className="rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-bold text-slate-500"><Calendar size={12} className="inline mr-1" />{task.date || '—'}</span>
                       </div>
                       <h3 className="mb-1 truncate text-lg font-bold text-ink-800">{task.dept} - {task.area}</h3>
-                      <p className="mb-5 truncate text-xs text-slate-400"><i className="fas fa-bullseye mr-1.5" />{task.aspect}</p>
+                      <p className="mb-5 truncate text-xs text-slate-400"><Target size={14} className="inline mr-1.5" />{task.aspect}</p>
                       <div className="space-y-2 rounded-xl border border-slate-100 bg-slate-50 p-3 text-[11px] text-slate-600">
                         <div className="flex justify-between"><span>Site:</span><span className="font-bold text-ink-800">{siteName(task.siteId)}</span></div>
                         <div className="flex justify-between"><span>Auditor:</span><span className="font-bold text-emerald-600">{task.auditor}</span></div>
                         <div className="flex justify-between"><span>Auditee:</span><span className="font-bold text-amber-600">{task.auditee}</span></div>
                       </div>
                       <div className="mt-4 border-t border-slate-100 pt-3 text-center text-[10px] font-bold uppercase tracking-widest text-slate-500">
-                        <i className={`${icon} mr-2`} />{label}
+                        <Icon size={12} className="inline mr-2" />{label}
                       </div>
                     </div>
                   )
@@ -426,11 +432,11 @@ const AuditorWorkplace = ({ setView, session, isGlobalOwner, plans, findings, si
         {view === 'perform' && currentTask && (
           <div className="mx-auto max-w-5xl animate-fade-in">
             <div className="mb-6 flex items-center justify-between">
-              <button onClick={() => setWView('list')} className="text-sm font-bold text-slate-500 hover:text-slate-800"><i className="fas fa-arrow-left mr-2" />Back to Audit List</button>
-              <button onClick={handleSave} className="rounded-xl bg-emerald-600 px-8 py-3 text-sm font-bold text-white shadow-lg transition active:scale-95 hover:bg-emerald-500"><i className="fas fa-paper-plane mr-2" />Save & Send to Auditee</button>
+              <button onClick={() => setWView('list')} className="text-sm font-bold text-slate-500 hover:text-slate-800"><ArrowLeft size={16} className="inline mr-2" />Back to Audit List</button>
+              <button onClick={handleSave} className="rounded-xl bg-emerald-600 px-8 py-3 text-sm font-bold text-white shadow-lg transition active:scale-95 hover:bg-emerald-500"><Send size={16} className="inline mr-2" />Save & Send to Auditee</button>
             </div>
             <div className={`${panel} mb-8 p-7`}>
-              <h3 className="mb-6 border-b border-slate-100 pb-3 text-xs font-bold uppercase tracking-widest text-emerald-600"><i className="fas fa-info-circle mr-2" />Section 1: Audit Context</h3>
+              <h3 className="mb-6 border-b border-slate-100 pb-3 text-xs font-bold uppercase tracking-widest text-emerald-600"><Info size={14} className="inline mr-2" />Section 1: Audit Context</h3>
               <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
                 {[['Site', siteName(currentTask.siteId)], ['Auditor', currentTask.auditor], ['Auditee', currentTask.auditee], ['Date', currentTask.date]].map(([k, v]) => (
                   <div key={k}><label className={lbl}>{k}</label><div className="rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-sm font-bold text-ink-800">{v || '—'}</div></div>
@@ -440,8 +446,8 @@ const AuditorWorkplace = ({ setView, session, isGlobalOwner, plans, findings, si
             </div>
             <div className={`${panel} p-7`}>
               <div className="mb-6 flex items-center justify-between border-b border-slate-100 pb-4">
-                <h3 className="text-xs font-bold uppercase tracking-widest text-brand-600"><i className="fas fa-list-check mr-2" />Section 2: Audit Findings Register</h3>
-                <button onClick={addRow} className="rounded-xl bg-brand-gradient px-5 py-2 text-xs font-bold text-white shadow-brand transition active:scale-95"><i className="fas fa-plus mr-2" />Log New Finding</button>
+                <h3 className="text-xs font-bold uppercase tracking-widest text-brand-600"><ListChecks size={14} className="inline mr-2" />Section 2: Audit Findings Register</h3>
+                <button onClick={addRow} className="rounded-xl bg-brand-gradient px-5 py-2 text-xs font-bold text-white shadow-brand transition active:scale-95"><Plus size={14} className="inline mr-2" />Log New Finding</button>
               </div>
               <div className="space-y-6">
                 {findingRows.map((f, i) => (
@@ -462,14 +468,14 @@ const AuditorWorkplace = ({ setView, session, isGlobalOwner, plans, findings, si
                         <label className={lbl}>Objective Evidence <span className="text-rose-500">*</span></label>
                         <input type="file" accept="application/pdf,image/*" onChange={(e) => handleFile(i, e.target.files[0])} className="w-full text-[10px] text-slate-500 file:mr-3 file:rounded-lg file:border-none file:bg-slate-200 file:px-4 file:py-1.5 file:font-bold file:text-slate-600" />
                         {f.fileName ? (
-                          <div className="mt-2 truncate text-[10px] font-bold text-emerald-600"><i className="fas fa-check-circle mr-1" />Attached: {f.fileName}</div>
+                          <div className="mt-2 truncate text-[10px] font-bold text-emerald-600"><CheckCircle2 size={12} className="inline mr-1" />Attached: {f.fileName}</div>
                         ) : (
-                          <div className="mt-2 text-[10px] font-bold text-rose-500"><i className="fas fa-exclamation-circle mr-1" />Required — attach objective evidence for this finding.</div>
+                          <div className="mt-2 text-[10px] font-bold text-rose-500"><AlertCircle size={12} className="inline mr-1" />Required — attach objective evidence for this finding.</div>
                         )}
                       </div>
                       <div className="col-span-12"><label className={lbl}>Detailed Description of Finding</label><textarea value={f.desc} onChange={(e) => updateRow(i, 'desc', e.target.value)} rows="3" className={fld} maxLength={2000} placeholder="Describe the specific observation or non-conformance..." /></div>
                     </div>
-                    <button onClick={() => removeRow(i)} className="absolute bottom-4 right-4 flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-400 transition hover:bg-rose-50 hover:text-rose-500"><i className="fas fa-trash-alt" /></button>
+                    <button onClick={() => removeRow(i)} className="absolute bottom-4 right-4 flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-400 transition hover:bg-rose-50 hover:text-rose-500"><Trash2 size={16} /></button>
                   </div>
                 ))}
                 {findingRows.length === 0 && <div className="rounded-3xl border-2 border-dashed border-slate-200 p-12 text-center italic text-slate-400">No findings logged. The audit is completely clean!</div>}
@@ -481,10 +487,10 @@ const AuditorWorkplace = ({ setView, session, isGlobalOwner, plans, findings, si
         {(view === 'readOnly' || view === 'verify') && rec && (
           <div className="mx-auto max-w-5xl animate-fade-in">
             <div className="mb-6 flex items-center justify-between">
-              <button onClick={() => setWView('list')} className="text-sm font-bold text-slate-500 hover:text-slate-800"><i className="fas fa-arrow-left mr-2" />Back to Audit List</button>
+              <button onClick={() => setWView('list')} className="text-sm font-bold text-slate-500 hover:text-slate-800"><ArrowLeft size={16} className="inline mr-2" />Back to Audit List</button>
               <div className="flex gap-3">
-                <button onClick={() => window.print()} className="rounded-xl bg-slate-100 px-5 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-200"><i className="fas fa-print mr-2" />Print Report</button>
-                {view === 'verify' && <button onClick={handleVerifyClose} className="rounded-xl bg-orange-600 px-6 py-2.5 text-sm font-bold text-white shadow-lg transition active:scale-95 hover:bg-orange-500"><i className="fas fa-check-double mr-2" />Verify & Close Audit</button>}
+                <button onClick={() => window.print()} className="rounded-xl bg-slate-100 px-5 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-200"><Printer size={16} className="inline mr-2" />Print Report</button>
+                {view === 'verify' && <button onClick={handleVerifyClose} className="rounded-xl bg-orange-600 px-6 py-2.5 text-sm font-bold text-white shadow-lg transition active:scale-95 hover:bg-orange-500"><CheckCheck size={16} className="inline mr-2" />Verify & Close Audit</button>}
               </div>
             </div>
             <div className={`${panel} p-7`}>
@@ -574,7 +580,7 @@ const AuditeeWorkplace = ({ session, users, findings }) => {
     <div className="animate-fade-in">
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-extrabold text-ink-800"><i className="fas fa-user-edit mr-2 text-amber-500" /> Auditee Workplace</h2>
+          <h2 className="text-2xl font-extrabold text-ink-800"><UserPen size={20} className="inline mr-2 text-amber-500" /> Auditee Workplace</h2>
           <p className="text-sm text-slate-500">Respond to findings and submit corrective actions.</p>
         </div>
       </div>
@@ -583,7 +589,7 @@ const AuditeeWorkplace = ({ session, users, findings }) => {
         {/* inbox */}
         <div className={`${panel} flex w-full flex-col overflow-hidden lg:w-1/3`}>
           <div className="border-b border-slate-100 bg-slate-50 p-5">
-            <h3 className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-ink-800"><i className="fas fa-inbox text-amber-500" /> Action Inbox <span className="rounded-full bg-amber-500 px-2 py-0.5 text-[10px] text-white">{myAudits.length}</span></h3>
+            <h3 className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-ink-800"><Inbox size={14} className="text-amber-500" /> Action Inbox <span className="rounded-full bg-amber-500 px-2 py-0.5 text-[10px] text-white">{myAudits.length}</span></h3>
           </div>
           <div className="max-h-[60vh] space-y-3 overflow-y-auto p-4">
             {myAudits.length === 0 && <div className="mx-2 mt-6 rounded-2xl border-2 border-dashed border-slate-200 p-6 text-center text-sm italic text-slate-400">No audits in your inbox.</div>}
@@ -598,7 +604,7 @@ const AuditeeWorkplace = ({ session, users, findings }) => {
                   </div>
                   <h3 className="mb-1 truncate text-base font-bold text-ink-800">{a.taskDetails?.dept} - {a.taskDetails?.area}</h3>
                   <div className="mt-3 flex justify-between border-t border-slate-100 pt-3 text-xs text-slate-400">
-                    <span><i className="fas fa-list-ul mr-1.5 text-brand-500" />{a.findings?.length || 0} Findings</span>
+                    <span><List size={16} className="inline mr-1.5 text-brand-500" />{a.findings?.length || 0} Findings</span>
                     <span className="font-mono">{(a.auditDate || '').split('T')[0]}</span>
                   </div>
                 </div>
@@ -611,7 +617,7 @@ const AuditeeWorkplace = ({ session, users, findings }) => {
         <div className={`${panel} flex w-full flex-col overflow-hidden lg:w-2/3`}>
           {!selected ? (
             <div className="flex h-full flex-col items-center justify-center p-16 text-center text-slate-400">
-              <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-3xl bg-slate-100 text-3xl text-amber-500"><i className="fas fa-file-signature" /></div>
+              <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-3xl bg-slate-100 text-3xl text-amber-500"><FileSignature size={24} /></div>
               <p className="mb-1 text-lg font-bold text-ink-800">No Audit Selected</p>
               <p className="text-sm">Select an assignment from your inbox to respond.</p>
             </div>
@@ -623,7 +629,7 @@ const AuditeeWorkplace = ({ session, users, findings }) => {
                     <h2 className="mb-1 text-2xl font-extrabold text-ink-800">Audit Findings</h2>
                     <p className="inline-block rounded-lg border border-amber-200 bg-amber-50 px-3 py-1 font-mono text-sm font-bold text-amber-600">Ref: {selected.docId}</p>
                   </div>
-                  <div className="text-right text-xs text-slate-500"><div className="font-bold text-ink-800"><i className="fas fa-user-tie mr-1 text-brand-500" />{selected.auditor}</div><div className="font-mono">{(selected.auditDate || '').split('T')[0]}</div></div>
+                  <div className="text-right text-xs text-slate-500"><div className="font-bold text-ink-800"><UserRound size={16} className="inline mr-1 text-brand-500" />{selected.auditor}</div><div className="font-mono">{(selected.auditDate || '').split('T')[0]}</div></div>
                 </div>
               </div>
               <div className="max-h-[55vh] flex-1 space-y-6 overflow-y-auto p-6">
@@ -638,7 +644,7 @@ const AuditeeWorkplace = ({ session, users, findings }) => {
                           <span className={`rounded-lg px-3 py-1 text-[10px] font-bold uppercase tracking-widest ${getTypeClass(f.type)}`}>{f.type}</span>
                           {f.auditeeDueDate && !has && <span className={`rounded-lg border px-3 py-1 text-[10px] font-bold uppercase ${overdue ? 'border-rose-300 bg-rose-50 text-rose-600' : 'border-orange-200 bg-orange-50 text-orange-600'}`}>Due: {f.auditeeDueDate}{overdue && ' !'}</span>}
                         </div>
-                        {editable && <button onClick={() => openResp(f)} className={`rounded-xl px-5 py-2.5 text-xs font-bold uppercase tracking-widest text-white transition active:scale-95 ${has ? 'bg-slate-500 hover:bg-slate-600' : 'bg-gradient-to-r from-amber-500 to-orange-500'}`}>{has ? <><i className="fas fa-edit mr-1" />Edit Reply</> : <><i className="fas fa-reply mr-1" />Respond Now</>}</button>}
+                        {editable && <button onClick={() => openResp(f)} className={`rounded-xl px-5 py-2.5 text-xs font-bold uppercase tracking-widest text-white transition active:scale-95 ${has ? 'bg-slate-500 hover:bg-slate-600' : 'bg-gradient-to-r from-amber-500 to-orange-500'}`}>{has ? <><Pencil size={16} className="inline mr-1" />Edit Reply</> : <><Reply size={16} className="inline mr-1" />Respond Now</>}</button>}
                       </div>
                       <div className="mb-2 rounded-r-lg border-l-4 border-slate-300 bg-slate-50 py-1 pl-4 text-sm text-slate-700">“{f.desc}”</div>
                       {has && <CapaSummary r={f.response} />}
@@ -648,7 +654,7 @@ const AuditeeWorkplace = ({ session, users, findings }) => {
               </div>
               <div className="flex justify-end border-t border-slate-100 bg-slate-50 p-5">
                 {editable ? (
-                  <button onClick={submit} disabled={!(selected.findings || []).every((f) => f.response?.status === 'Completed')} className="rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 px-10 py-3 text-sm font-bold uppercase tracking-widest text-white shadow-lg transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"><i className="fas fa-paper-plane mr-2" />Submit Responses to Auditor</button>
+                  <button onClick={submit} disabled={!(selected.findings || []).every((f) => f.response?.status === 'Completed')} className="rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 px-10 py-3 text-sm font-bold uppercase tracking-widest text-white shadow-lg transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"><Send size={16} className="inline mr-2" />Submit Responses to Auditor</button>
                 ) : (
                   <span className={`rounded-xl border px-6 py-3 text-sm font-bold uppercase tracking-widest ${selected.status === 'Closed' ? 'border-emerald-200 bg-emerald-50 text-emerald-600' : 'border-orange-200 bg-orange-50 text-orange-600'}`}>Status: {selected.status}</span>
                 )}
@@ -664,10 +670,10 @@ const AuditeeWorkplace = ({ session, users, findings }) => {
           <div className="flex max-h-[95vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-100 p-6">
               <div>
-                <h2 className="flex items-center gap-3 text-xl font-extrabold text-amber-600"><i className="fas fa-reply" /> Submit Corrective Action</h2>
+                <h2 className="flex items-center gap-3 text-xl font-extrabold text-amber-600"><Reply size={18} /> Submit Corrective Action</h2>
                 <p className="mt-1 font-mono text-xs text-slate-400">Finding ID: <span className="font-bold text-ink-800">{current.id}</span></p>
               </div>
-              <button onClick={() => setModal(false)} className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-500 hover:bg-slate-200"><i className="fas fa-times text-xl" /></button>
+              <button onClick={() => setModal(false)} className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-500 hover:bg-slate-200"><X size={20} /></button>
             </div>
             <div className="flex-1 space-y-5 overflow-y-auto p-6">
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
@@ -689,12 +695,12 @@ const AuditeeWorkplace = ({ session, users, findings }) => {
               </div>
               <div><label className={lbl}>6. Objective Evidence (Optional)</label>
                 <input type="file" accept="application/pdf,image/*" onChange={handleFile} className="w-full text-xs text-slate-500 file:mr-3 file:rounded-lg file:border-none file:bg-amber-500 file:px-4 file:py-2 file:font-bold file:text-white" />
-                {form.evidenceFileName && <span className="mt-2 inline-block text-[10px] font-bold text-emerald-600"><i className="fas fa-check-circle mr-1" />{form.evidenceFileName}</span>}
+                {form.evidenceFileName && <span className="mt-2 inline-block text-[10px] font-bold text-emerald-600"><CheckCircle2 size={12} className="inline mr-1" />{form.evidenceFileName}</span>}
               </div>
             </div>
             <div className="flex justify-end gap-3 border-t border-slate-100 p-5">
               <button onClick={() => setModal(false)} className="rounded-xl bg-slate-100 px-8 py-3 text-sm font-bold text-slate-700 hover:bg-slate-200">Cancel</button>
-              <button onClick={saveResponse} className="rounded-xl bg-amber-600 px-10 py-3 text-sm font-bold text-white shadow-lg transition active:scale-95 hover:bg-amber-500"><i className="fas fa-save mr-2" />Save Response</button>
+              <button onClick={saveResponse} className="rounded-xl bg-amber-600 px-10 py-3 text-sm font-bold text-white shadow-lg transition active:scale-95 hover:bg-amber-500"><Save size={16} className="inline mr-2" />Save Response</button>
             </div>
           </div>
         </div>
@@ -740,20 +746,20 @@ const AuditReports = ({ plans, findings, sites = [] }) => {
       <style>{`@media print { @page { size: A4 ${printPlan ? 'landscape' : 'portrait'}; margin: 10mm; } }`}</style>
       <div className="mb-6 flex items-center justify-between print:hidden">
         <div>
-          <h2 className="text-2xl font-extrabold text-ink-800"><i className="fas fa-file-contract mr-2 text-purple-500" /> Audit Reports & Schedules</h2>
+          <h2 className="text-2xl font-extrabold text-ink-800"><FileText size={20} className="inline mr-2 text-purple-500" /> Audit Reports & Schedules</h2>
           <p className="text-sm text-slate-500">Access and generate PDFs for all audits.</p>
         </div>
       </div>
 
       <div className="space-y-6 print:hidden">
         <div className="flex gap-3">
-          <button onClick={() => setTab('findings')} className={`rounded-xl px-6 py-3 text-xs font-bold uppercase tracking-widest transition ${tab === 'findings' ? 'bg-purple-600 text-white shadow-lg' : 'bg-white text-slate-500 border border-slate-200'}`}><i className="fas fa-search mr-2" />Findings Reports</button>
-          <button onClick={() => setTab('schedules')} className={`rounded-xl px-6 py-3 text-xs font-bold uppercase tracking-widest transition ${tab === 'schedules' ? 'bg-purple-600 text-white shadow-lg' : 'bg-white text-slate-500 border border-slate-200'}`}><i className="fas fa-calendar-alt mr-2" />Master Schedules</button>
+          <button onClick={() => setTab('findings')} className={`rounded-xl px-6 py-3 text-xs font-bold uppercase tracking-widest transition ${tab === 'findings' ? 'bg-purple-600 text-white shadow-lg' : 'bg-white text-slate-500 border border-slate-200'}`}><Search size={14} className="inline mr-2" />Findings Reports</button>
+          <button onClick={() => setTab('schedules')} className={`rounded-xl px-6 py-3 text-xs font-bold uppercase tracking-widest transition ${tab === 'schedules' ? 'bg-purple-600 text-white shadow-lg' : 'bg-white text-slate-500 border border-slate-200'}`}><Calendar size={14} className="inline mr-2" />Master Schedules</button>
         </div>
 
         <div className={`${panel} flex flex-wrap items-center gap-4 p-5`}>
           <div className="relative min-w-[240px] flex-1">
-            <i className="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+            <Search size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
             <input placeholder="Search ID, Auditor, Site..." value={filters.search} onChange={(e) => setFilters({ ...filters, search: e.target.value })} className={`${fld} pl-11`} />
           </div>
           {tab === 'findings' && (
@@ -764,7 +770,7 @@ const AuditReports = ({ plans, findings, sites = [] }) => {
               </select>
             </>
           )}
-          <button onClick={() => setFilters({ search: '', status: '', dept: '' })} className="rounded-xl bg-slate-100 px-5 py-2.5 text-xs font-bold uppercase tracking-widest text-slate-600 hover:bg-slate-200"><i className="fas fa-undo mr-1" />Reset</button>
+          <button onClick={() => setFilters({ search: '', status: '', dept: '' })} className="rounded-xl bg-slate-100 px-5 py-2.5 text-xs font-bold uppercase tracking-widest text-slate-600 hover:bg-slate-200"><RotateCcw size={14} className="inline mr-1" />Reset</button>
         </div>
 
         <div className={`${panel} overflow-x-auto`}>
@@ -778,10 +784,10 @@ const AuditReports = ({ plans, findings, sites = [] }) => {
                   <tr key={i} className="hover:bg-slate-50/60">
                     <td className="p-5 font-mono text-xs font-bold text-brand-600">{r.docId}</td>
                     <td className="p-5 font-mono text-xs text-slate-500">{(r.auditDate || '').split('T')[0]}</td>
-                    <td className="p-5"><div className="font-bold text-ink-800">{r.taskDetails?.dept}</div><div className="text-[10px] uppercase tracking-widest text-slate-400"><i className="fas fa-user mr-1" />{r.taskDetails?.auditee}</div></td>
+                    <td className="p-5"><div className="font-bold text-ink-800">{r.taskDetails?.dept}</div><div className="text-[10px] uppercase tracking-widest text-slate-400"><User size={12} className="inline mr-1" />{r.taskDetails?.auditee}</div></td>
                     <td className="p-5 text-center"><span className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold">{r.findings?.length || 0}</span></td>
                     <td className="p-5 text-center"><span className={`rounded-lg border px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest ${statusColor(r.status)}`}>{r.status === 'Submitted for Verification' ? 'Pending Verif.' : r.status}</span></td>
-                    <td className="p-5 text-right"><button onClick={() => doPrint(r)} className="ml-auto flex items-center gap-2 rounded-xl bg-purple-600 px-5 py-2.5 text-xs font-bold uppercase tracking-widest text-white hover:bg-purple-500"><i className="fas fa-file-pdf" />Gen PDF</button></td>
+                    <td className="p-5 text-right"><button onClick={() => doPrint(r)} className="ml-auto flex items-center gap-2 rounded-xl bg-purple-600 px-5 py-2.5 text-xs font-bold uppercase tracking-widest text-white hover:bg-purple-500"><FileDown size={14} />Gen PDF</button></td>
                   </tr>
                 ))}
                 {fReports.length === 0 && <tr><td colSpan="6" className="p-16 text-center text-lg italic text-slate-400">No reports match your filters.</td></tr>}
@@ -800,7 +806,7 @@ const AuditReports = ({ plans, findings, sites = [] }) => {
                     <td className="p-5 font-bold text-purple-600">{p.standard}</td>
                     <td className="p-5">{p.leadAuditor}</td>
                     <td className="p-5 font-mono text-xs text-slate-500">{p.startDate} to {p.endDate}</td>
-                    <td className="p-5 text-right"><button onClick={() => doPrintPlan(p)} className="ml-auto flex items-center gap-2 rounded-xl bg-purple-600 px-5 py-2.5 text-xs font-bold uppercase tracking-widest text-white hover:bg-purple-500"><i className="fas fa-file-pdf" />Gen PDF</button></td>
+                    <td className="p-5 text-right"><button onClick={() => doPrintPlan(p)} className="ml-auto flex items-center gap-2 rounded-xl bg-purple-600 px-5 py-2.5 text-xs font-bold uppercase tracking-widest text-white hover:bg-purple-500"><FileDown size={14} />Gen PDF</button></td>
                   </tr>
                 ))}
                 {fPlans.length === 0 && <tr><td colSpan="6" className="p-16 text-center text-lg italic text-slate-400">No schedules match your filters.</td></tr>}
@@ -833,26 +839,26 @@ const AuditDashboard = ({ findings, sites = [] }) => {
   const label = (s) => (s === 'Reported' ? 'Open Finding' : s === 'Submitted for Verification' ? 'Verif. Pending' : s)
 
   const cards = [
-    ['Open Findings', stats.open, 'fas fa-triangle-exclamation', 'text-rose-600', 'bg-rose-100'],
-    ['In Progress', stats.inProgress, 'fas fa-hourglass-half', 'text-orange-600', 'bg-orange-100'],
-    ['Closed', stats.closed, 'fas fa-circle-check', 'text-emerald-600', 'bg-emerald-100'],
-    ['Total Audits', stats.total, 'fas fa-layer-group', 'text-brand-600', 'bg-brand-100'],
+    ['Open Findings', stats.open, AlertTriangle, 'text-rose-600', 'bg-rose-100'],
+    ['In Progress', stats.inProgress, Hourglass, 'text-orange-600', 'bg-orange-100'],
+    ['Closed', stats.closed, CheckCircle2, 'text-emerald-600', 'bg-emerald-100'],
+    ['Total Audits', stats.total, Layers, 'text-brand-600', 'bg-brand-100'],
   ]
 
   return (
     <div className="animate-fade-in">
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-extrabold text-ink-800"><i className="fas fa-chart-pie mr-2 text-orange-500" /> Audit Dashboard</h2>
+          <h2 className="text-2xl font-extrabold text-ink-800"><PieChart size={20} className="inline mr-2 text-orange-500" /> Audit Dashboard</h2>
           <p className="text-sm text-slate-500">Real-time status of all organizational audits.</p>
         </div>
       </div>
 
       <div className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-4">
-        {cards.map(([l, v, icon, txt, chipBg], i) => (
+        {cards.map(([l, v, Icon, txt, chipBg], i) => (
           <div key={l} style={{ animationDelay: `${i * 55}ms` }} className="clay-rise flex items-center gap-4 p-5">
-            <span className={`clay-chip grid h-12 w-12 shrink-0 place-items-center rounded-2xl text-xl ${chipBg} ${txt}`}>
-              <i className={icon} />
+            <span className={`clay-chip grid h-12 w-12 shrink-0 place-items-center rounded-2xl ${chipBg} ${txt}`}>
+              <Icon size={20} />
             </span>
             <div className="min-w-0">
               <div className="text-[11px] font-bold uppercase tracking-widest text-slate-400">{l}</div>
@@ -864,7 +870,7 @@ const AuditDashboard = ({ findings, sites = [] }) => {
 
       <div className={`${panel} overflow-x-auto`}>
         <div className="flex items-center justify-between border-b border-slate-100 p-5">
-          <h3 className="flex items-center gap-2 text-base font-bold text-ink-800"><i className="fas fa-list text-brand-500" /> Live Audit Records</h3>
+          <h3 className="flex items-center gap-2 text-base font-bold text-ink-800"><List size={16} className="text-brand-500" /> Live Audit Records</h3>
           <span className="text-[10px] uppercase tracking-widest text-slate-400">Click row for details</span>
         </div>
         <table className="w-full min-w-[800px] text-left text-sm">
@@ -893,7 +899,7 @@ const AuditDashboard = ({ findings, sites = [] }) => {
           <div className="flex max-h-[95vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
             <div className="flex items-start justify-between border-b border-slate-100 bg-slate-50 p-6">
               <div><h2 className="mb-1 text-2xl font-extrabold text-ink-800">Audit Details</h2><p className="inline-block rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1 font-mono text-sm font-bold text-emerald-600">Ref: {selected.docId}</p></div>
-              <button onClick={() => setSelected(null)} className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-500 hover:bg-slate-200"><i className="fas fa-times text-xl" /></button>
+              <button onClick={() => setSelected(null)} className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-500 hover:bg-slate-200"><X size={20} /></button>
             </div>
             <div className="flex-1 overflow-y-auto p-6">
               <div className="mb-8 grid grid-cols-2 gap-5 rounded-2xl border border-slate-200 bg-slate-50 p-6 md:grid-cols-4">
@@ -941,7 +947,7 @@ const AuditCalendar = ({ sites, plans, findings }) => {
     <div className="animate-fade-in">
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-extrabold text-ink-800"><i className="fas fa-calendar-days mr-2 text-indigo-500" /> Audit Calendar</h2>
+          <h2 className="text-2xl font-extrabold text-ink-800"><CalendarDays size={20} className="inline mr-2 text-indigo-500" /> Audit Calendar</h2>
           <p className="text-sm text-slate-500">Visual timeline of audit schedules and milestones.</p>
         </div>
       </div>
@@ -955,9 +961,9 @@ const AuditCalendar = ({ sites, plans, findings }) => {
           </select>
         </div>
         <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-1.5">
-          <button onClick={() => { if (month === 0) { setMonth(11); setYear((y) => y - 1) } else setMonth((m) => m - 1) }} className="rounded-lg px-4 py-2 text-slate-500 hover:bg-white"><i className="fas fa-chevron-left" /></button>
+          <button onClick={() => { if (month === 0) { setMonth(11); setYear((y) => y - 1) } else setMonth((m) => m - 1) }} className="rounded-lg px-4 py-2 text-slate-500 hover:bg-white"><ChevronLeft size={16} className="inline" /></button>
           <span className="w-40 text-center text-sm font-bold text-ink-800">{months[month]} {year}</span>
-          <button onClick={() => { if (month === 11) { setMonth(0); setYear((y) => y + 1) } else setMonth((m) => m + 1) }} className="rounded-lg px-4 py-2 text-slate-500 hover:bg-white"><i className="fas fa-chevron-right" /></button>
+          <button onClick={() => { if (month === 11) { setMonth(0); setYear((y) => y + 1) } else setMonth((m) => m + 1) }} className="rounded-lg px-4 py-2 text-slate-500 hover:bg-white"><ChevronRight size={16} className="inline" /></button>
         </div>
       </div>
 
@@ -1004,13 +1010,13 @@ const AuditCalendar = ({ sites, plans, findings }) => {
 function CapaSummary({ r }) {
   return (
     <div className="mt-4 rounded-xl border-l-4 border-orange-400 bg-orange-50/50 p-5">
-      <div className="mb-4 flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-orange-600"><i className="fas fa-reply" /> Auditee Corrective Action Plan</div>
+      <div className="mb-4 flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-orange-600"><Reply size={14} /> Auditee Corrective Action Plan</div>
       <div className="mb-4 grid grid-cols-1 gap-4 md:grid-cols-2">
         <div className="rounded-xl border border-slate-200 bg-white p-4"><span className={lbl}>Root Cause</span><span className="text-sm font-medium text-ink-800">{r.rootCause}</span></div>
         <div className="rounded-xl border border-slate-200 bg-white p-4"><span className={lbl}>CAPA</span><span className="text-sm font-medium text-ink-800">{r.capa}</span></div>
       </div>
       <div className="flex items-center justify-between border-t border-orange-200 pt-3">
-        {r.evidenceFileName ? <a href={safeHref(r.evidenceFile)} download={r.evidenceFileName} className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs font-bold text-emerald-600 hover:bg-emerald-600 hover:text-white"><i className="fas fa-download" />View Evidence</a> : <span className="text-xs italic text-slate-400">No Evidence Provided</span>}
+        {r.evidenceFileName ? <a href={safeHref(r.evidenceFile)} download={r.evidenceFileName} className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs font-bold text-emerald-600 hover:bg-emerald-600 hover:text-white"><Download size={14} />View Evidence</a> : <span className="text-xs italic text-slate-400">No Evidence Provided</span>}
         <div className="flex gap-6 text-right">
           <div><span className={lbl}>Owner</span><span className="text-xs font-bold text-ink-800">{r.owner}</span></div>
           <div><span className={lbl}>Target</span><span className="font-mono text-xs text-ink-800">{r.targetDate}</span></div>
@@ -1023,7 +1029,7 @@ function CapaSummary({ r }) {
 function FindingList({ findings }) {
   return (
     <>
-      <h3 className="mb-6 flex items-center gap-2 border-b border-slate-100 pb-2 text-xs font-bold uppercase tracking-widest text-brand-600"><i className="fas fa-list-check" /> Documented Findings ({(findings || []).length})</h3>
+      <h3 className="mb-6 flex items-center gap-2 border-b border-slate-100 pb-2 text-xs font-bold uppercase tracking-widest text-brand-600"><ListChecks size={14} /> Documented Findings ({(findings || []).length})</h3>
       <div className="space-y-6">
         {(findings || []).map((f, i) => (
           <div key={i} className="rounded-2xl border border-slate-200 bg-slate-50/60 p-6">
@@ -1158,12 +1164,12 @@ export default function InternalAudit() {
   const shared = { setView, session, isGlobalOwner: isAdmin, sites, users, plans, findings, locations, siteInventory }
 
   const TILES = [
-    ['scheduler', 'Scheduler', 'fas fa-calendar-alt', 'text-sky-600', 'bg-sky-100', 'Plan annual audits & assign auditors'],
-    ['auditor', 'Auditor Workplace', 'fas fa-clipboard-list', 'text-emerald-600', 'bg-emerald-100', 'Execute audits & record findings'],
-    ['auditee', 'Auditee Workplace', 'fas fa-user-edit', 'text-amber-600', 'bg-amber-100', 'Submit corrections & evidence'],
-    ['reports', 'Reports', 'fas fa-file-contract', 'text-purple-600', 'bg-purple-100', 'Verify closure & generate PDFs'],
-    ['calendar', 'Calendar', 'fas fa-calendar-days', 'text-indigo-600', 'bg-indigo-100', 'Visual lifecycle timeline'],
-    ['dashboard', 'Dashboard', 'fas fa-chart-pie', 'text-orange-600', 'bg-orange-100', 'Analytics & trends'],
+    ['scheduler', 'Scheduler', Calendar, 'text-sky-600', 'bg-sky-100', 'Plan annual audits & assign auditors'],
+    ['auditor', 'Auditor Workplace', ClipboardList, 'text-emerald-600', 'bg-emerald-100', 'Execute audits & record findings'],
+    ['auditee', 'Auditee Workplace', UserPen, 'text-amber-600', 'bg-amber-100', 'Submit corrections & evidence'],
+    ['reports', 'Reports', FileText, 'text-purple-600', 'bg-purple-100', 'Verify closure & generate PDFs'],
+    ['calendar', 'Calendar', CalendarDays, 'text-indigo-600', 'bg-indigo-100', 'Visual lifecycle timeline'],
+    ['dashboard', 'Dashboard', PieChart, 'text-orange-600', 'bg-orange-100', 'Analytics & trends'],
   ]
 
   const moduleEl = {
@@ -1183,7 +1189,7 @@ export default function InternalAudit() {
           onClick={() => setView('hub')}
           className="mb-4 inline-flex items-center gap-2 rounded-xl bg-slate-100 px-4 py-2 text-sm font-bold text-slate-600 transition hover:bg-slate-200 print:hidden"
         >
-          <i className="fas fa-arrow-left" /> Back to Hub
+          <ArrowLeft size={16} /> Back to Hub
         </button>
         {moduleEl}
       </div>
@@ -1194,11 +1200,11 @@ export default function InternalAudit() {
   return (
     <div className="animate-fade-in">
       <div className="mb-8">
-        <h1 className="text-2xl font-extrabold tracking-tight text-ink-800"><i className="fas fa-clipboard-check mr-2 text-brand-500" /> Internal Audit Hub</h1>
+        <h1 className="text-2xl font-extrabold tracking-tight text-ink-800"><ClipboardCheck size={20} className="inline mr-2 text-brand-500" /> Internal Audit Hub</h1>
         <p className="mt-1 text-sm text-slate-500">ISO 45001 audit lifecycle — plan, execute, correct, verify and report.</p>
       </div>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {TILES.map(([key, title, icon, color, chipBg, desc], i) => (
+        {TILES.map(([key, title, Icon, color, chipBg, desc], i) => (
           <button
             key={key}
             data-tour={key}
@@ -1206,8 +1212,8 @@ export default function InternalAudit() {
             style={{ animationDelay: `${i * 55}ms` }}
             className="clay-tile flex items-center gap-4 p-4 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400/50"
           >
-            <span className={`clay-chip grid h-14 w-14 shrink-0 place-items-center rounded-2xl text-2xl ${chipBg} ${color}`}>
-              <i className={icon} />
+            <span className={`clay-chip grid h-14 w-14 shrink-0 place-items-center rounded-2xl ${chipBg} ${color}`}>
+              <Icon size={24} />
             </span>
             <span className="min-w-0">
               <span className="block text-base font-bold text-ink-800">{title}</span>
