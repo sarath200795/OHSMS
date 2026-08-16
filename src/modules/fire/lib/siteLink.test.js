@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { resolveSite, planSiteLinks, indexSites, suggestSite, SITE_NAME_OVERRIDES } from './siteLink'
+import { resolveSite, planSiteLinks, indexSites, suggestSite, linkImportRows, SITE_NAME_OVERRIDES } from './siteLink'
 
 // Names below are real values from the Cult site master and the Fire Marshal
 // export, so these cases reflect the data rather than invented shapes.
@@ -204,5 +204,89 @@ describe('planSiteLinks — assets with no center name', () => {
     ], SITES)
     expect(plan.unmatched).toHaveLength(2)
     expect(plan.unmatchedCenters).toEqual(['(no center name)'])
+  })
+})
+
+describe('linkImportRows', () => {
+  const row = (centerName, extra = {}) => ({ serialNo: 'FE-1', type: 'CO2', centerName, ...extra })
+
+  it('stamps the resolved siteId onto a row that matches', () => {
+    const { rows } = linkImportRows([row('Cult Gym Shaikpet')], SITES)
+    expect(rows[0].siteId).toBe('s2')
+  })
+
+  it('links through normalisation and the override table, not just exact names', () => {
+    const { rows } = linkImportRows(
+      [row('Cult Ameerpet'), row('Cult Suchitra Hybrid')],
+      SITES
+    )
+    expect(rows[0].siteId).toBe('s1')
+    expect(rows[1].siteId).toBe('s8')
+  })
+
+  it("rewrites the centre to the registry's wording and takes its entity", () => {
+    const { rows } = linkImportRows([row('Cult Ameerpet', { entity: 'WRONG' })], SITES)
+    expect(rows[0].centerName).toBe('Cult Gym Ameerpet')
+    expect(rows[0].entity).toBe('FOCO')
+  })
+
+  it('keeps the row entity when the matched site has none', () => {
+    const sites = [{ id: 'sX', name: 'Bare Site', entity: '' }]
+    const { rows } = linkImportRows([row('Bare Site', { entity: 'COCO' })], sites)
+    expect(rows[0].entity).toBe('COCO')
+  })
+
+  // The regression that matters: an empty siteId would blank a link that the
+  // repair pass had already established, because bulkUpsertExtinguishers writes
+  // every upsert field that is `!== undefined`.
+  it('leaves siteId ABSENT on an unmatched row rather than empty', () => {
+    const { rows } = linkImportRows([row('Some Gym That Does Not Exist')], SITES)
+    expect('siteId' in rows[0]).toBe(false)
+    expect(rows[0].siteId).toBeUndefined()
+  })
+
+  it('does not touch an unmatched row at all', () => {
+    const original = row('Some Gym That Does Not Exist', { entity: 'COCO' })
+    const { rows } = linkImportRows([original], SITES)
+    expect(rows[0]).toEqual(original)
+  })
+
+  it('reports each unmatched centre once, however many rows carry it', () => {
+    const { unmatched } = linkImportRows(
+      [row('Nowhere Fitness'), row('Nowhere Fitness'), row('Nowhere Fitness')],
+      SITES
+    )
+    expect(unmatched).toHaveLength(1)
+    expect(unmatched[0].given).toBe('Nowhere Fitness')
+  })
+
+  it('offers a suggestion when one is close enough', () => {
+    const { unmatched } = linkImportRows([row('Raptor Fitness (Bowenpaly)')], SITES)
+    expect(unmatched[0].suggestion?.id).toBe('s12')
+  })
+
+  it('offers no suggestion when nothing is close', () => {
+    const { unmatched } = linkImportRows([row('Zzz Unrelated Warehouse')], SITES)
+    expect(unmatched[0].suggestion).toBeNull()
+  })
+
+  it('ignores rows with no centre name instead of reporting a blank', () => {
+    const { rows, unmatched } = linkImportRows([row(''), row('   '), row(undefined)], SITES)
+    expect(unmatched).toEqual([])
+    expect(rows).toHaveLength(3)
+  })
+
+  it('passes every row through untouched when the org has no site registry', () => {
+    const rowsIn = [row('Cult Gym Shaikpet')]
+    const { rows, unmatched } = linkImportRows(rowsIn, [])
+    expect(rows).toBe(rowsIn)
+    expect(unmatched).toEqual([])
+  })
+
+  it('does not mutate the caller\'s rows', () => {
+    const original = row('Cult Gym Shaikpet')
+    const copy = { ...original }
+    linkImportRows([original], SITES)
+    expect(original).toEqual(copy)
   })
 })

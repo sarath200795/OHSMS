@@ -173,6 +173,52 @@ export function suggestSite(name, sites, idx = indexSites(sites)) {
 }
 
 /**
+ * Stamp the resolved site onto rows that are about to be imported.
+ *
+ * The import-time counterpart to planSiteLinks below: that one repairs records
+ * already written, this one stops them needing repair at all. A bulk upload
+ * that skips this writes centerName as free text and no siteId, which is how
+ * several hundred units came to exist that nothing could match to a site.
+ *
+ * A row whose centre resolves takes the registry's name, id and entity, so it
+ * reads the same as every other record pointing at that site. A row that does
+ * not resolve is returned UNCHANGED — deliberately without a siteId key rather
+ * than an empty one, because bulkUpsertExtinguishers only writes upsert fields
+ * that are `!== undefined`; an empty string would blank a link an earlier
+ * repair pass had established.
+ *
+ * With no registry to check against, every row passes through untouched — an
+ * org that has not set up sites can still upload.
+ *
+ * @returns {{ rows: object[], unmatched: {given: string, suggestion: object|null}[] }}
+ */
+export function linkImportRows(rows = [], sites = [], idx = indexSites(sites)) {
+  if (!sites.length) return { rows, unmatched: [] }
+  const unmatched = new Map()
+
+  const out = rows.map((row) => {
+    const hit = resolveSite(row.centerName, sites, idx)
+    if (hit) {
+      return {
+        ...row,
+        centerName: hit.site.name,
+        siteId: hit.site.id,
+        entity: hit.site.entity || row.entity || '',
+      }
+    }
+    const given = String(row.centerName ?? '').trim()
+    // Reported once per distinct spelling, not once per row: a 900-row file
+    // with one bad centre name is one thing to fix, not 900.
+    if (given && !unmatched.has(given)) {
+      unmatched.set(given, { given, suggestion: suggestSite(given, sites, idx)?.site || null })
+    }
+    return row
+  })
+
+  return { rows: out, unmatched: [...unmatched.values()] }
+}
+
+/**
  * Work out what linking would change, without writing anything.
  *
  * Entity is taken from the matched site rather than a lookup table: the two

@@ -1,6 +1,6 @@
 import { useRef, useState, useMemo } from 'react'
 import { motion } from 'framer-motion'
-import { Upload, Download, FileSpreadsheet, CheckCircle2, AlertTriangle, X, Loader2, RefreshCw, PlusCircle } from 'lucide-react'
+import { Upload, Download, FileSpreadsheet, CheckCircle2, AlertTriangle, X, Loader2, RefreshCw, PlusCircle, MapPin } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { PageHeader, Spinner } from '../components/ui'
 import { Pager } from '../../../shared/ui'
@@ -9,6 +9,8 @@ import { useAuth } from '../context/AuthContext'
 import { useFleet } from '../context/FleetContext'
 import { downloadTemplate, parseUpload } from '../lib/exporter'
 import { bulkUpsertExtinguishers } from '../lib/firestore'
+import { linkImportRows } from '../lib/siteLink'
+import { useAccessibleSites } from '../../../shared/org/useAccessibleSites'
 import { assignSerials } from '../lib/serial'
 import { BULK_COLUMNS } from '../lib/constants'
 import { writeErrorMessage } from '../../../shared/lib/writeError'
@@ -16,6 +18,7 @@ import { writeErrorMessage } from '../../../shared/lib/writeError'
 export default function BulkUpload() {
   const { orgId, orgName, profile } = useAuth()
   const { extinguishers } = useFleet()
+  const orgSites = useAccessibleSites()
   const inputRef = useRef(null)
   const [fileName, setFileName] = useState('')
   const [parsing, setParsing] = useState(false)
@@ -35,11 +38,18 @@ export default function BulkUpload() {
 
   // Split parsed rows into creates (new) + updates (matched existing serial),
   // assigning auto-serials to blank-serial creates.
+  //
+  // Rows are resolved against the site registry FIRST, so an import arrives
+  // already linked. Without that step this page wrote centerName as free text
+  // and no siteId, and every unit it created needed the linking pass afterwards
+  // — the same omission addExtinguisher had, and the AED/FAS uploader avoids.
   const plan = useMemo(() => {
     if (!result?.valid) return null
+    const { rows: linkedRows, unmatched } = linkImportRows(result.valid, orgSites)
     const updates = []
     const newRows = []
-    for (const row of result.valid) {
+
+    for (const row of linkedRows) {
       const s = (row.serialNo || '').trim().toLowerCase()
       const match = s ? bySerial.get(s) : null
       if (match) {
@@ -56,8 +66,8 @@ export default function BulkUpload() {
     }
     const existingSerials = extinguishers.map((e) => e.serialNo).filter(Boolean)
     const creates = assignSerials(newRows, existingSerials)
-    return { creates, updates }
-  }, [result, bySerial, extinguishers])
+    return { creates, updates, unmatched }
+  }, [result, bySerial, extinguishers, orgSites])
 
   const handleFile = async (file) => {
     if (!file) return
@@ -189,8 +199,38 @@ export default function BulkUpload() {
                       <AlertTriangle size={14} /> {result.errors.length} with issues
                     </span>
                   )}
+                  {plan.unmatched.length > 0 && (
+                    <span className="chip bg-amber-100 text-amber-700">
+                      <MapPin size={14} /> {plan.unmatched.length} site(s) unmatched
+                    </span>
+                  )}
                   <span className="text-sm text-ink-500">{result.total} total rows</span>
                 </div>
+
+                {/* Named, not just counted: "3 unmatched" tells nobody which
+                    spelling to correct, and these import unlinked. */}
+                {plan.unmatched.length > 0 && (
+                  <div className="card border border-amber-200 bg-amber-50/40 p-4">
+                    <p className="text-sm font-bold text-amber-800">
+                      These site names are not in the registry
+                    </p>
+                    <p className="mt-1 text-xs text-amber-700">
+                      Their rows still import, but arrive with no site link and will need the
+                      linking pass afterwards. Correcting the spelling in the file — or adding the
+                      site first — imports them already linked.
+                    </p>
+                    <ul className="mt-3 space-y-1.5">
+                      {plan.unmatched.map((u) => (
+                        <li key={u.given} className="text-sm text-ink-700">
+                          <span className="font-semibold">{u.given}</span>
+                          {u.suggestion && (
+                            <span className="text-ink-500"> — did you mean “{u.suggestion.name}”?</span>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
 
                 {previewRows.length > 0 && (
                   <div className="card overflow-hidden">
