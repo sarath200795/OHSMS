@@ -1,4 +1,4 @@
-import { STATUS, derivePermitStatus } from './permitStatus'
+import { STATUS, derivePermitStatus, effectiveValidTo } from './permitStatus'
 
 /**
  * What a scanned permit QR tells a stranger.
@@ -25,6 +25,44 @@ import { STATUS, derivePermitStatus } from './permitStatus'
 export const TERMINAL_STATUSES = [STATUS.CLOSED, STATUS.CLOSED_NONCOMPLIANCE]
 
 export const isTerminal = (status) => TERMINAL_STATUSES.includes(status)
+
+/**
+ * How long an EXPIRED permit keeps serving its detail.
+ *
+ * Expiry is deliberately not terminal: a permit that lapsed while work carried
+ * on is exactly the one a person at the barrier should be able to read and
+ * challenge, and blanking it would remove the means to do that. That reasoning
+ * is sound and it is why `isTerminal` does not include NOT_CLOSED.
+ *
+ * But it is an argument with a clock in it. Somebody may need to challenge
+ * yesterday's lapsed permit; nobody needs to challenge one from 2023. The
+ * reasoning was written without a bound, so in practice the detail — the job,
+ * the location, the hazards, and the name it was issued to — stayed on an
+ * unauthenticated URL forever, for exactly the permits nobody ever came back to
+ * close. The failure selected for neglect: a permit closed properly was
+ * withdrawn, and one everybody forgot was published indefinitely.
+ *
+ * A week covers any plausible challenge and ends the indefinite half.
+ */
+export const STALE_AFTER_DAYS = 7
+
+/**
+ * Has an expired permit outlived the window in which challenging it makes sense?
+ *
+ * Uses the EFFECTIVE end date, so an approved extension moves the clock — a
+ * permit extended to Friday is not stale on Wednesday.
+ *
+ * A permit with no usable end date is never stale. That is the safe direction:
+ * such a permit is treated as in-progress everywhere else, and withdrawing the
+ * detail of something the system still considers live would remove a barrier
+ * check on live work to fix a privacy problem it does not have.
+ */
+export function isStale(permit = {}, now = Date.now(), days = STALE_AFTER_DAYS) {
+  const to = effectiveValidTo(permit)
+  const end = to ? Date.parse(to) : NaN
+  if (Number.isNaN(end)) return false
+  return now > end + days * 24 * 60 * 60 * 1000
+}
 
 /** The crew, as counts. */
 export function crewSummary(permit = {}) {
@@ -93,5 +131,6 @@ export function liveFields(permit = {}) {
  * it was.
  */
 export function mirrorDisplayFields(permit = {}, now = Date.now()) {
-  return isTerminal(derivePermitStatus(permit, now)) ? withdrawnFields() : liveFields(permit)
+  const over = isTerminal(derivePermitStatus(permit, now)) || isStale(permit, now)
+  return over ? withdrawnFields() : liveFields(permit)
 }

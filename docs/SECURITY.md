@@ -232,6 +232,57 @@ manager whose profile has since been suspended, demoted or moved) and in
 assert that **no** client may delete — if any of those starts passing, the
 callable has been bypassed.
 
+### S-20 · The public permit page published an abandoned job forever — MEDIUM
+
+**Closed.** `/permitQr/{token}` is world-readable by design: someone at the
+barrier scans the printed code and sees that the work is authorised, what it is,
+what the hazards are and until when. Two protections were already in place — the
+crew is published as **counts** rather than names, and a permit reaching Closed
+has every describing field blanked on the write that closes it.
+
+Neither reached the permits that actually leak.
+
+**Expiry is deliberately not terminal.** A permit that lapsed while work carried
+on is exactly the one somebody should be able to read and challenge, so
+`TERMINAL_STATUSES` excludes it and a test pins that. The reasoning is right.
+But it is an argument with a clock in it, written without one: somebody may need
+to challenge yesterday's lapsed permit, nobody needs to challenge one from 2023.
+
+**And withdrawal only ever happened on a write.** The decision lives inside
+`mirrorDisplayFields`, which runs when the mirror is updated — and nothing
+updates a permit everybody forgot. So the job description, location, hazards and
+the name it was issued to stayed on an unauthenticated URL indefinitely.
+
+Put together, **the behaviour selected for neglect**: a permit closed properly
+went quiet, and a permit nobody came back to close published forever. The
+population most likely to leak was the one least likely to be cleaned up, which
+is the shape worth recognising — a control that only fires on the happy path is
+not a control, it is a courtesy.
+
+Fixed in two halves, because either alone leaves it open:
+
+1. `isStale()` — 7 days past the *effective* end date (extensions included), the
+   write path withdraws even though the status is not terminal.
+2. `withdrawStalePermitMirrors`, a nightly sweep, which is the only thing that
+   reaches a mirror nobody will ever write again.
+
+Every ambiguity resolves toward keeping the detail: no readable end date means
+never withdrawn, and an extension delays withdrawal without its approval state
+being consulted. Taking information off a safety page is the direction that can
+hurt somebody.
+
+`issuedToName` is still published while a permit is live, deliberately —
+challenging a job means asking whether the person in front of you is the one it
+was issued to, and the paper permit at the barrier carries that name anyway.
+
+**A note on how this was nearly missed.** The ISO register described this as
+"publishes worker names and employers, never withdrawn", which was ~90% stale —
+the crew exposure had already been closed. A first triage pass then recorded "no
+withdrawal logic found", concluding from a grep that could not have matched the
+names the code actually uses. The real defect was narrower than the register
+said and invisible from its description. *Concluding from an absence of search
+hits is how both the original finding and its triage went wrong.*
+
 ## Closed
 
 ### S-01 · Cloud Storage was not tenant-isolated — HIGH

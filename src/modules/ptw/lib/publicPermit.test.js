@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import {
   crewSummary, withdrawnFields, liveFields, mirrorDisplayFields, isTerminal, TERMINAL_STATUSES,
+  isStale, STALE_AFTER_DAYS,
 } from './publicPermit'
-import { STATUS } from './permitStatus'
+import { STATUS, derivePermitStatus } from './permitStatus'
 
 const approved = { status: 'approved', by: 'x', at: '2026-01-01' }
 
@@ -128,5 +129,81 @@ describe('the job detail is withdrawn when the job is over', () => {
     const wire = JSON.stringify(mirrorDisplayFields(closed))
     for (const name of NAMES) expect(wire, name).not.toContain(name)
     expect(wire).not.toContain('R. Osei')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The bound on the challenge window.
+//
+// Expiry is deliberately not terminal — a permit that lapsed while work carried
+// on is exactly the one somebody should be able to read and challenge, and the
+// test above pins that. But the reasoning has a clock in it and was written
+// without one: in practice the job, the location, the hazards and the name it
+// was issued to stayed on an unauthenticated URL forever, for exactly the
+// permits nobody came back to close. The failure selected for neglect.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('an expired permit stops publishing eventually', () => {
+  const NOW = Date.parse('2026-08-16T00:00:00.000Z')
+  const daysAgo = (n) => new Date(NOW - n * 86400000).toISOString()
+  const daysAhead = (n) => new Date(NOW + n * 86400000).toISOString()
+  const approved = {
+    engineering: { status: 'approved' }, operations: { status: 'approved' },
+    issuedToName: 'R. Osei', jobDescription: 'Hot work on line 3',
+  }
+
+  it('stays readable while a challenge could still make sense', () => {
+    expect(isStale({ validTo: daysAhead(1) }, NOW)).toBe(false)
+    expect(isStale({ validTo: daysAgo(1) }, NOW)).toBe(false)
+    expect(isStale({ validTo: daysAgo(6) }, NOW)).toBe(false)
+  })
+
+  it('goes quiet once nobody could plausibly be challenging it', () => {
+    expect(isStale({ validTo: daysAgo(8) }, NOW)).toBe(true)
+    expect(isStale({ validTo: daysAgo(400) }, NOW)).toBe(true)
+  })
+
+  it('holds the boundary day open rather than closing it early', () => {
+    expect(isStale({ validTo: daysAgo(STALE_AFTER_DAYS) }, NOW)).toBe(false)
+  })
+
+  // An extension moves the clock, so a permit extended to next week is not
+  // stale on the strength of its original end date.
+  it('respects an approved extension', () => {
+    const p = {
+      ...approved,
+      validTo: daysAgo(30),
+      extension: {
+        engineering: { status: 'approved' }, operations: { status: 'approved' },
+        newValidTo: daysAhead(1),
+      },
+    }
+    expect(isStale(p, NOW)).toBe(false)
+  })
+
+  // The app treats a permit with no window as in progress everywhere else.
+  // Withdrawing it would take a barrier check away from work still considered
+  // live, to fix a privacy problem it does not have.
+  it('never goes quiet when there is no end date to judge it by', () => {
+    expect(isStale({}, NOW)).toBe(false)
+    expect(isStale({ validTo: null }, NOW)).toBe(false)
+    expect(isStale({ validTo: 'nonsense' }, NOW)).toBe(false)
+  })
+
+  // The behaviour that actually closes the exposure: the write path withdraws a
+  // long-abandoned permit even though its STATUS is not terminal.
+  it('withdraws the detail of a long-abandoned permit, status notwithstanding', () => {
+    const abandoned = { ...approved, validTo: daysAgo(400) }
+    expect(isTerminal(derivePermitStatus(abandoned, NOW))).toBe(false)
+    const fields = mirrorDisplayFields(abandoned, NOW)
+    expect(fields.withdrawn).toBe(true)
+    expect(fields.issuedToName).toBe('')
+    expect(fields.jobDescription).toBe('')
+  })
+
+  it('still publishes one that lapsed yesterday, so it can be challenged', () => {
+    const yesterday = { ...approved, validTo: daysAgo(1) }
+    const fields = mirrorDisplayFields(yesterday, NOW)
+    expect(fields.withdrawn).toBe(false)
+    expect(fields.issuedToName).toBe('R. Osei')
   })
 })

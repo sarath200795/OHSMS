@@ -26,6 +26,7 @@ import { classifyLocks } from './lib/defectLocks.js'
 import { PURGEABLE, PURGE_AFTER_DAYS, MAX_PURGES_PER_RUN, planPurge, summarizeFailures } from './lib/retention.js'
 import { mayDeleteFile } from './lib/fileDelete.js'
 import { planExport, planScan, scanFeasibility, classifyErasure } from './lib/subjectData.js'
+import { planWithdrawals, withdrawnFields, MAX_WITHDRAWALS_PER_RUN } from './lib/permitMirror.js'
 import { planQrBackfill, QR_SOURCES } from './lib/qrMirrors.js'
 import { planMedicalStrip, planInjurySeed } from './lib/incidentMedical.js'
 import { planSiteLinks, LINKABLE_COLLECTIONS } from './lib/siteLinks.js'
@@ -1760,3 +1761,71 @@ export const exportSubjectData = onCall({ region: REGION, timeoutSeconds: 540 },
     problems,
   }
 })
+
+/**
+ * Withdraw the public detail of permits nobody came back to close.
+ *
+ * `/permitQr/{token}` is world-readable so a person at the barrier can scan the
+ * code and see the work is authorised. The crew is already published as counts
+ * rather than names, and a permit that reaches Closed has its describing fields
+ * blanked on the write that closes it.
+ *
+ * That covers every permit somebody touches. It covers nothing about the
+ * permits nobody touches again — and those are the whole problem. A permit that
+ * lapses at 18:00 and is never formally closed gets no further writes, so its
+ * job description, location, hazards and the name it was issued to stayed on an
+ * unauthenticated URL indefinitely. The behaviour selected for neglect: close a
+ * permit properly and it was withdrawn, forget it and it was published forever.
+ *
+ * Expiry alone is deliberately not grounds for withdrawal — a permit that
+ * lapsed while work carried on is exactly the one somebody should still be able
+ * to read and challenge. That holds for days, not years. This ends the years.
+ *
+ * 04:15, after the retention sweep, so two unattended destructive-ish jobs do
+ * not interleave in the logs. retryCount 0 and the same do-all-the-work-then-
+ * fail shape as the retention sweep, for the same reason: a job that quietly
+ * stops working must not look identical to one with nothing to do.
+ */
+export const withdrawStalePermitMirrors = onSchedule(
+  { schedule: '15 4 * * *', timeZone: SCHEDULE_TZ, region: REGION, retryCount: 0, timeoutSeconds: 540 },
+  async () => {
+    const db = getFirestore()
+    const now = Date.now()
+
+    // The mirrors are a TOP-LEVEL collection shared by every tenant, so this is
+    // one query rather than one per org. Only documents not already withdrawn
+    // are candidates; `withdrawn` is absent on mirrors written before the field
+    // existed, so the filter is applied in planWithdrawals rather than here —
+    // a `where('withdrawn','==',false)` would silently skip every legacy
+    // mirror, which is precisely the population this exists for.
+    const snap = await db.collection('permitQr').limit(MAX_WITHDRAWALS_PER_RUN * 4).get()
+    const mirrors = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+    const { withdraw, capped } = planWithdrawals(mirrors, { now })
+
+    if (capped) {
+      logger.info('permitQr: capped', { cap: MAX_WITHDRAWALS_PER_RUN })
+    }
+
+    const failures = []
+    for (const token of withdraw) {
+      try {
+        await db.collection('permitQr').doc(token).set(withdrawnFields(), { merge: true })
+      } catch (e) {
+        // One bad mirror must not stop the rest, and must not retry the whole
+        // sweep — but it must not vanish either.
+        logger.error('permitQr: could not withdraw', { token, error: e?.message || String(e) })
+        failures.push({ kind: 'withdraw-failed', token, error: e?.message || String(e) })
+      }
+    }
+
+    logger.info('permitQr: run complete', {
+      scanned: mirrors.length, withdrawn: withdraw.length - failures.length, failures: failures.length,
+    })
+
+    const summary = summarizeFailures(failures)
+    if (summary) {
+      logger.error('permitQr: run had failures', { byKind: summary.byKind, total: summary.total })
+      throw new Error(summary.message)
+    }
+  }
+)

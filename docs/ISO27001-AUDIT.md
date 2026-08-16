@@ -137,12 +137,63 @@ the file exists before you spend a day on the finding.
 |---|---|---|
 | 2 | `getDownloadURL` mints permanent unauthenticated bearer links | Real. `useFileUrl` is the migration path and it is incomplete (PRODUCTION.md §10) |
 | 3, 13 | MFA built but no rule requires it | `firestore.rules` never reads a second-factor claim |
-| 7, 39 | Public permit mirror publishes names and is never withdrawn on close/expiry | No withdrawal logic found. **Worth doing next** — it is an unauthenticated page naming real people |
+| ~~7, 39~~ | ~~Public permit mirror publishes names and is never withdrawn~~ | **Closed 2026-08-16 — and my own triage entry here was wrong.** See below |
 | 14 | Nothing checks the live ruleset matches reviewed source | Real |
 | 16 | Audit entries are written by the client; no rule requires one | Structural. A mutation can be made with no trace |
 | 30 | Production deploy has no approval gate, dispatchable from any ref | Real — GitHub Environments with required reviewers would close it |
 | 33 | Purge incomplete for medical records | Not re-verified in this pass |
 | 35 | Cloud Storage has no backup, versioning or soft-delete | Real, and now more serious: the bucket holds the evidence |
+
+### MEDIUM-7 / 39 — closed, with a correction worth reading
+
+The triage row above originally said "no withdrawal logic found". **That was
+wrong, and it was wrong the same way the audit itself is wrong elsewhere: I
+grepped for `delete|close|expire` near `permitQr` and concluded from an absence.**
+The logic existed the whole time, in `src/modules/ptw/lib/publicPermit.js`,
+under names my search could not have matched.
+
+What was already true before this session:
+
+- The crew is published as **counts**, not names — `participantCount`,
+  `fireWatcherCount`, `hasConfinedWatcher`. The register's "participants with
+  employer, fire watchers" exposure had already been closed.
+- `issuedToName` is retained **deliberately**, with the reasoning written down:
+  challenging a job means asking whether the person in front of you is the one
+  it was issued to, and the paper permit at the barrier carries that name anyway.
+- A permit reaching Closed has every describing field actively blanked on the
+  write that closes it, rather than left behind by a status-only merge.
+
+So the finding as written was about 90% stale. What was genuinely left is
+narrower and was **not** visible from the register's description:
+
+**The withdrawal had no time bound, and it only ever happened on a write.**
+
+`TERMINAL_STATUSES` excludes `NOT_CLOSED` (expired) on purpose — an expired
+permit that was never closed is exactly the one somebody should still be able to
+read and challenge. Sound, and the test pinned it. But it is an argument with a
+clock in it and it was written without one, so an expired permit published its
+job, location, hazards and issued-to name **indefinitely**. Worse, withdrawal
+runs inside `mirrorDisplayFields`, which only executes when something writes the
+mirror — and nothing ever writes an abandoned permit again.
+
+**The behaviour therefore selected for neglect**: close a permit properly and it
+went quiet; forget it entirely and it published forever.
+
+Fixed in two halves, because either alone leaves the hole:
+
+1. `isStale()` in `publicPermit.js` — after `STALE_AFTER_DAYS` (7) past the
+   *effective* end date, extensions included, the write path withdraws even
+   though the status is not terminal. The challenge window is preserved intact.
+2. `withdrawStalePermitMirrors`, a nightly sweep in `functions/index.js`, which
+   is the half that reaches permits nobody will ever write again.
+
+Both resolve every ambiguity toward keeping the detail: a permit with no
+readable end date is never withdrawn, and an extension delays withdrawal without
+its approval state being consulted. Removing information from a safety page is
+the direction that can hurt somebody.
+
+Covered by `functions/lib/permitMirror.test.js` (21) and the new block in
+`publicPermit.test.js`.
 
 ### Partially closed
 
