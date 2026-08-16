@@ -7,9 +7,12 @@
 // from their trigger, durations < 300ms, transform/opacity only, reduced-motion
 // respected globally in index.css.
 // ─────────────────────────────────────────────────────────────────────────────
-import { forwardRef } from 'react'
+import { forwardRef, useId } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
 import { Loader2, X, Check } from 'lucide-react'
+import { useFocusTrap } from './useFocusTrap'
+
+export { useFocusTrap, focusableWithin } from './useFocusTrap'
 
 const cx = (...c) => c.filter(Boolean).join(' ')
 
@@ -47,9 +50,9 @@ export function Card({ className, children, as: Tag = 'div', ...rest }) {
 }
 
 // ── Form controls ─────────────────────────────────────────────────────────────
-export function Field({ label, hint, error, children, htmlFor }) {
+export function Field({ label, hint, error, children, htmlFor, className }) {
   return (
-    <div>
+    <div className={className}>
       {label && (
         <label className="label" htmlFor={htmlFor}>
           {label}
@@ -114,17 +117,50 @@ export function MultiSelect({ options = [], value = [], onChange, empty = 'No op
 }
 
 // ── Badge / Chip ──────────────────────────────────────────────────────────────
+// Tailwind's palette names are aliased alongside the semantic ones because
+// module data tables store a raw colour name (cctv's health bands say
+// `tone: 'emerald'`, defect tables say `'slate'`). Those used to miss the map
+// and silently fall back to grey, so a "Healthy 98%" pill read the same as
+// "Not reported". Keep an alias here for every name any constants file emits.
 const TONE = {
   brand: 'bg-brand-50 text-brand-700',
   gray: 'bg-ink-100 text-ink-600',
+  slate: 'bg-ink-100 text-ink-600',
   green: 'bg-emerald-50 text-emerald-700',
+  emerald: 'bg-emerald-50 text-emerald-700',
   amber: 'bg-amber-50 text-amber-700',
+  orange: 'bg-orange-50 text-orange-700',
   red: 'bg-red-50 text-red-700',
   blue: 'bg-sky-50 text-sky-700',
+  sky: 'bg-sky-50 text-sky-700',
   violet: 'bg-violet-50 text-violet-700',
 }
-export function Badge({ tone = 'gray', className, children }) {
-  return <span className={cx('chip', TONE[tone] || TONE.gray, className)}>{children}</span>
+
+/**
+ * Two ways to colour a chip:
+ *   <Badge tone="red">…</Badge>          design-system tone (preferred)
+ *   <Badge color="#f59e0b">…</Badge>     arbitrary hex + leading dot, for the
+ *                                        module registers whose statuses carry
+ *                                        their own colour in Firestore.
+ */
+export function Badge({ tone = 'gray', color, soft = true, className, children, ...rest }) {
+  if (color) {
+    return (
+      <span
+        className={cx('chip', className)}
+        style={soft ? { backgroundColor: `${color}1a`, color } : { backgroundColor: color, color: '#fff' }}
+        {...rest}
+      >
+        <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: soft ? color : '#fff' }} />
+        {children}
+      </span>
+    )
+  }
+  return (
+    <span className={cx('chip', TONE[tone] || TONE.gray, className)} {...rest}>
+      {children}
+    </span>
+  )
 }
 
 // ── Stat card (dashboard KPI tile) ────────────────────────────────────────────
@@ -147,9 +183,16 @@ export function StatCard({ label, value, icon: Icon, tone = 'brand', hint, class
 }
 
 // ── Page header ───────────────────────────────────────────────────────────────
-export function PageHeader({ title, subtitle, icon: Icon, actions }) {
+// `children` and `tour`/`tourId` exist because the module page headers this
+// replaced took the action buttons as children and carried a product-tour
+// anchor. Both spellings of the tour prop were in use.
+export function PageHeader({ title, subtitle, icon: Icon, actions, children, tourId, tour }) {
+  const trailing = actions ?? children
   return (
-    <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div
+      data-tour={tourId ?? tour}
+      className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+    >
       <div className="flex items-center gap-3">
         {Icon && (
           <span className="grid h-11 w-11 place-items-center rounded-2xl bg-brand-50 text-brand-700 shadow-clay-sm">
@@ -161,13 +204,15 @@ export function PageHeader({ title, subtitle, icon: Icon, actions }) {
           {subtitle && <p className="text-sm text-ink-500">{subtitle}</p>}
         </div>
       </div>
-      {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+      {trailing && <div className="flex flex-wrap items-center gap-2">{trailing}</div>}
     </div>
   )
 }
 
 // ── Empty state ───────────────────────────────────────────────────────────────
-export function EmptyState({ icon: Icon, title, description, action, className }) {
+// `hint` is the module spelling of `description`.
+export function EmptyState({ icon: Icon, title, description, hint, action, className }) {
+  const body = description ?? hint
   return (
     <div className={cx('card flex flex-col items-center gap-3 p-10 text-center', className)}>
       {Icon && (
@@ -177,7 +222,7 @@ export function EmptyState({ icon: Icon, title, description, action, className }
       )}
       <div>
         <h3 className="font-semibold text-ink-800">{title}</h3>
-        {description && <p className="mt-1 text-sm text-ink-500">{description}</p>}
+        {body && <p className="mt-1 text-sm text-ink-500">{body}</p>}
       </div>
       {action}
     </div>
@@ -272,9 +317,14 @@ export function SkeletonDetail() {
 // NOTE: deliberately no exit animation / AnimatePresence. A stuck exit left the
 // overlay mounted at opacity 0, which silently swallowed every click on the page
 // after any modal closed. Unmounting straight off `open` keeps that impossible.
-export function Modal({ open, onClose, title, children, footer, size = 'md' }) {
+// `maxWidth` takes a raw Tailwind class and is what the module-local modals
+// this replaced accepted; `size` is the design-system spelling. Escape-to-close,
+// Tab containment, and focus restore all come from useFocusTrap.
+export function Modal({ open, onClose, title, children, footer, size = 'md', maxWidth }) {
   const reduce = useReducedMotion()
   const widths = { sm: 'max-w-md', md: 'max-w-lg', lg: 'max-w-2xl', xl: 'max-w-4xl' }
+  const titleId = useId()
+  const { ref, onKeyDown } = useFocusTrap(open, onClose)
   return (
     <>
       {open && (
@@ -286,15 +336,19 @@ export function Modal({ open, onClose, title, children, footer, size = 'md' }) {
         >
           <div className="absolute inset-0 bg-ink-950/40 backdrop-blur-sm" onClick={onClose} />
           <motion.div
+            ref={ref}
+            onKeyDown={onKeyDown}
+            tabIndex={-1}
             role="dialog"
             aria-modal="true"
-            className={cx('card relative z-10 w-full p-0', widths[size])}
+            aria-labelledby={titleId}
+            className={cx('card relative z-10 w-full p-0 outline-none', maxWidth || widths[size])}
             initial={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.96 }}
             animate={reduce ? { opacity: 1 } : { opacity: 1, scale: 1 }}
             transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}
           >
             <div className="flex items-center justify-between gap-4 border-b border-ink-100 px-6 py-4">
-              <h2 className="text-lg font-semibold text-ink-900">{title}</h2>
+              <h2 id={titleId} className="text-lg font-semibold text-ink-900">{title}</h2>
               <button
                 onClick={onClose}
                 aria-label="Close"
