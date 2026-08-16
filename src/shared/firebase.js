@@ -27,6 +27,21 @@ const EMU_FS_PORT = Number(clean(import.meta.env.VITE_EMULATOR_FIRESTORE_PORT)) 
 
 const projectId = clean(import.meta.env.VITE_FIREBASE_PROJECT_ID)
 
+// Which Firestore database inside the project to talk to. Empty means the
+// project's `(default)`, which is what every normal deployment uses.
+//
+// This exists because of what a restore drill found. Firestore CANNOT restore
+// a backup over an existing database — a restore only ever lands in a NEW one,
+// named at restore time. So on the day a backup is actually needed, the
+// recovered data sits in `restored-2026-08-16` while the app is hardwired to
+// `(default)`, and getting the two to meet required a code change and a
+// redeploy. That is recovery time spent editing source under pressure, which
+// is the worst possible moment to do it.
+//
+// With this, recovery is: restore → set this variable → rebuild → deploy.
+// See PRODUCTION.md §3a.
+const DATABASE_ID = clean(import.meta.env.VITE_FIREBASE_DATABASE_ID)
+
 const firebaseConfig = {
   apiKey: clean(import.meta.env.VITE_FIREBASE_API_KEY),
   authDomain: clean(import.meta.env.VITE_FIREBASE_AUTH_DOMAIN),
@@ -155,22 +170,42 @@ export const auth = app ? getAuth(app) : null
 // end and confirmed to show stale-but-real data rather than nothing.
 const OFFLINE_CACHE = clean(import.meta.env.VITE_OFFLINE_CACHE) === 'true'
 
+// initializeFirestore's third argument is the database id, and it is OPTIONAL —
+// passing undefined is not the same as passing '(default)' in every SDK path,
+// so omit the argument entirely unless a database was actually named.
+const start = (settings) =>
+  DATABASE_ID ? initializeFirestore(app, settings, DATABASE_ID) : initializeFirestore(app, settings)
+
 function buildDb() {
   if (!app) return null
   const base = { experimentalAutoDetectLongPolling: true }
-  if (!OFFLINE_CACHE) return initializeFirestore(app, base)
+  if (!OFFLINE_CACHE) return start(base)
   try {
-    return initializeFirestore(app, {
+    return start({
       ...base,
       localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
     })
   } catch (e) {
     // eslint-disable-next-line no-console
     console.warn('[OHS MS] persistent cache unavailable, running memory-only:', e?.message || e)
-    return initializeFirestore(app, base)
+    return start(base)
   }
 }
 export const db = buildDb()
+
+// Say it loudly. A build pointed at a non-default database is a RECOVERY state:
+// either a drill or the aftermath of a restore. It is not a configuration
+// anyone should discover months later while wondering why writes are missing
+// from the database they were watching. Silence here would let a recovery build
+// become the permanent deployment by accident.
+if (DATABASE_ID) {
+  // eslint-disable-next-line no-console
+  console.warn(
+    `[OHS MS] Firestore is pointed at the non-default database "${DATABASE_ID}". ` +
+    'This is a recovery/drill configuration — unset VITE_FIREBASE_DATABASE_ID to ' +
+    'return to (default).'
+  )
+}
 
 if (app && USE_EMULATORS) {
   try {
