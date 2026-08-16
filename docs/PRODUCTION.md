@@ -662,7 +662,23 @@ skip — a skip reads as "staging is not set up yet", and this is the opposite.
    and residency behave the same way they will in production.
 4. Project settings → Service accounts → **Generate new private key** → GitHub →
    Settings → Secrets → `STAGING_FIREBASE_SERVICE_ACCOUNT`.
-5. GitHub → Settings → **Variables**, from the web app config in step 2:
+5. **Give the staging project its own `DATA_KEY_MASTER`, before the first merge.**
+   This step is not optional and it is not cosmetic: `getDataKeys` declares
+   `defineSecret('DATA_KEY_MASTER')`, Firebase resolves declared secrets at
+   *deploy* time, and this workflow deploys functions with `--non-interactive` —
+   so a missing secret is a hard error, not a prompt. Functions are the FIRST
+   deploy step, so the whole run fails and nothing ships.
+
+   ```bash
+   node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))" | npx firebase functions:secrets:set DATA_KEY_MASTER --project weehs-staging
+   ```
+
+   A **different** value from production, deliberately. Staging is a project with
+   weaker access by design, and one master key across both would mean a leak
+   there is a leak of every production tenant's records. Nothing is shared
+   between the two: keys are per organization and per project, so a distinct
+   master costs nothing and contains the blast radius.
+6. GitHub → Settings → **Variables**, from the web app config in step 2:
 
 ```
 STAGING_FIREBASE_PROJECT_ID          # must NOT equal the production id
@@ -676,9 +692,22 @@ STAGING_SENTRY_DSN                   # optional — see below
 STAGING_ENCRYPTION                   # off | on
 ```
 
-6. Merge anything to `main` and watch the run. It prints the resolved target
+7. Merge anything to `main` and watch the run. It prints the resolved target
    before deploying, so the first thing to check is that it names the staging
    project.
+
+**`STAGING_ENCRYPTION=on` is the point of having staging at all.** Production
+ships with sealing off, so staging is the only place the encryption path gets
+exercised before customer data depends on it — a real callable, a real keyset
+minted on first sign-in, a real backfill run over seeded records. Turning it on
+in production without that rehearsal means the first time `getDataKeys` is
+called for real is against live health records.
+
+Note that the same variable is missing for production: `VITE_ENCRYPTION` is read
+by `deploy.yml` but no repository variable of that name exists yet, so a
+production tag today builds with sealing off regardless of what `.env.production`
+says locally. That is correct for now and will be the thing that silently does
+nothing on the day it is meant to be switched on.
 
 **Give staging its own Sentry DSN, or none.** Sentry tags each event with
 `import.meta.env.MODE`, which is `production` for any `vite build` — staging
