@@ -19,6 +19,7 @@ import {
   limit,
 } from 'firebase/firestore'
 import { db } from '../../../shared/firebase'
+import { isSessionEnd } from '../../../shared/sessionEnd'
 import { reserveDocId } from '../../../shared/docId/reserve'
 
 // ── Path helpers ─────────────────────────────────────────────────────────────
@@ -31,6 +32,7 @@ const assessmentRef = (orgId, id) => doc(db, 'organizations', orgId, 'assessment
 // Default snapshot error handler: log a warning instead of letting Firestore
 // raise an "Uncaught Error in snapshot listener" that can hang/blank the UI.
 const onSnapErr = (label) => (err) => {
+  if (isSessionEnd(label, err)) return
   // eslint-disable-next-line no-console
   console.warn(`[HIRA] ${label} listener error:`, err?.code || err?.message || err)
 }

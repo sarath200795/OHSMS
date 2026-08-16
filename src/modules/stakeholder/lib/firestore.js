@@ -14,6 +14,7 @@ import {
   collection, doc, addDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy, limit, serverTimestamp,
 } from 'firebase/firestore'
 import { db } from '../../../shared/firebase'
+import { isSessionEnd } from '../../../shared/sessionEnd'
 import { logAudit } from '../../../shared/org/orgData'
 import { reserveDocId } from '../../../shared/docId/reserve'
 import { shapeAttachments } from './attachments'
@@ -37,8 +38,10 @@ function subscribe(orgId, name, cb) {
     q,
     (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
     (err) => {
-      // eslint-disable-next-line no-console
-      console.error(`[Stakeholder] ${name} listener failed:`, err?.message || err)
+      if (!isSessionEnd(name, err)) {
+        // eslint-disable-next-line no-console
+        console.error(`[Stakeholder] ${name} listener failed:`, err?.message || err)
+      }
       cb(null, err)
     }
   )

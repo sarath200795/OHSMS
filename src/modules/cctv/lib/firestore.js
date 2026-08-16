@@ -18,6 +18,7 @@ import {
   writeBatch, getDocs,
 } from 'firebase/firestore'
 import { db } from '../../../shared/firebase'
+import { isSessionEnd } from '../../../shared/sessionEnd'
 import { logAudit } from '../../../shared/org/orgData'
 import { standardMerakiPayloads } from './provision'
 import { asReportedOn } from './defectDate'
@@ -45,8 +46,10 @@ function subscribe(orgId, name, cb) {
     // A listener that dies silently leaves the page showing an empty estate,
     // which reads as "no cameras" rather than "not loaded".
     (err) => {
-      // eslint-disable-next-line no-console
-      console.error(`[CCTV] ${name} listener failed:`, err?.message || err)
+      if (!isSessionEnd(name, err)) {
+        // eslint-disable-next-line no-console
+        console.error(`[CCTV] ${name} listener failed:`, err?.message || err)
+      }
       cb(null, err)
     }
   )

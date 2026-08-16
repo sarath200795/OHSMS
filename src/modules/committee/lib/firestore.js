@@ -13,6 +13,7 @@ import {
   serverTimestamp,
 } from 'firebase/firestore'
 import { db } from '../../../shared/firebase'
+import { isSessionEnd } from '../../../shared/sessionEnd'
 import { reserveDocId } from '../../../shared/docId/reserve'
 // Minutes name people and record what was said about them, so the subject, the
 // body, the attendee list and the action owners are sealed under the GENERAL
@@ -69,7 +70,12 @@ export function subscribeConsultations(orgId, cb, onError) {
   const opened = openSnapshots(orgId, SEALED, cb)
   return onSnapshot(consultationCol(orgId),
     (snap) => opened(snap.docs.map((d) => ({ firebaseKey: d.id, ...d.data() }))),
-    (err) => { console.warn('[HSE] consultations read failed:', err?.message || err); onError?.(err) },
+    (err) => {
+      if (!isSessionEnd('consultations', err)) {
+        console.warn('[HSE] consultations read failed:', err?.message || err)
+      }
+      onError?.(err)
+    },
   )
 }
 

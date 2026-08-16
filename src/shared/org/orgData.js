@@ -21,7 +21,8 @@ import {
   writeBatch,
   limit,
 } from 'firebase/firestore'
-import { db, auth } from '../firebase'
+import { db } from '../firebase'
+import { isSessionEnd } from '../sessionEnd'
 import { AUDIT } from '../audit/audit'
 import { createSharedSubscription } from './sharedSubscription'
 import { notifySiteCreated } from './siteHooks'
@@ -186,8 +187,10 @@ const sharedOrgCollection = createSharedSubscription((key, emit) => {
       status: snap.size >= COLLECTION_READ_CAP ? 'capped' : 'ok',
     }),
     (err) => {
-      // eslint-disable-next-line no-console
-      console.warn(`[OHS MS] ${name} read failed:`, err?.message || err)
+      if (!isSessionEnd(name, err)) {
+        // eslint-disable-next-line no-console
+        console.warn(`[OHS MS] ${name} read failed:`, err?.message || err)
+      }
       emit({ rows: [], status: 'failed' })
     }
   )
@@ -274,14 +277,9 @@ const sharedSites = createSharedSubscription((orgId, emit) => {
       // A permission-denied while nobody is signed in is a session ENDING, not
       // a fault: this listener is shared app-wide, so one component unmounting
       // does not close it, and it can outlive auth by a moment on sign-out or a
-      // token refresh. Shouting about it there taught people to discount a
-      // message that is genuine the rest of the time — which is the same way a
-      // dropped connection came to read as a permissions bug.
-      const signedOut = !auth?.currentUser
-      if (err?.code === 'permission-denied' && signedOut) {
-        // eslint-disable-next-line no-console
-        console.debug('[OHS MS] sites listener closed with the session')
-      } else {
+      // token refresh. See isSessionEnd — every live listener in the app now
+      // makes the same distinction this one did.
+      if (!isSessionEnd('sites', err)) {
         // eslint-disable-next-line no-console
         console.error('[OHS MS] sites read failed — every site picker will look empty:', err?.message || err)
       }
@@ -524,8 +522,10 @@ export function subscribeCollections(orgId, names, cb) {
       (err) => {
         // A read that failed is not an empty collection. Reporting [] here is
         // how a permission error used to render as a confident zero.
-        // eslint-disable-next-line no-console
-        console.warn(`[OHS MS] ${name} read failed:`, err?.message || err)
+        if (!isSessionEnd(name, err)) {
+          // eslint-disable-next-line no-console
+          console.warn(`[OHS MS] ${name} read failed:`, err?.message || err)
+        }
         data[name] = []
         status[name] = 'failed'
         emit()

@@ -20,6 +20,7 @@ import {
   increment,
 } from 'firebase/firestore'
 import { db } from '../../../shared/firebase'
+import { isSessionEnd } from '../../../shared/sessionEnd'
 
 // ── Read-only demo guard ─────────────────────────────────────────────────────
 // When the demo account is signed in, every Firestore write is blocked
@@ -869,7 +870,7 @@ export function subscribeSignages(orgId, cb) {
     q,
     (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
     // Missing-field/order errors shouldn't crash the app before any data exists.
-    (err) => console.warn('[Fire Marshal] signage subscribe failed:', err?.message || err)
+    (err) => { if (!isSessionEnd('signage', err)) console.warn('[Fire Marshal] signage subscribe failed:', err?.message || err) }
   )
 }
 
@@ -928,7 +929,7 @@ export function subscribeMockDrills(orgId, cb) {
   return onSnapshot(
     q,
     (snap) => opened(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
-    (err) => console.warn('[Fire Marshal] mock drill subscribe failed:', err?.message || err)
+    (err) => { if (!isSessionEnd('mock drills', err)) console.warn('[Fire Marshal] mock drill subscribe failed:', err?.message || err) }
   )
 }
 
@@ -1033,7 +1034,7 @@ export function subscribeAeds(orgId, cb) {
   return onSnapshot(
     q,
     (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
-    (err) => console.warn('[Fire Marshal] AED subscribe failed:', err?.message || err)
+    (err) => { if (!isSessionEnd('AEDs', err)) console.warn('[Fire Marshal] AED subscribe failed:', err?.message || err) }
   )
 }
 
@@ -1192,7 +1193,7 @@ export function subscribeFas(orgId, cb) {
   return onSnapshot(
     q,
     (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
-    (err) => console.warn('[Fire Marshal] FAS subscribe failed:', err?.message || err)
+    (err) => { if (!isSessionEnd('fire alarm devices', err)) console.warn('[Fire Marshal] FAS subscribe failed:', err?.message || err) }
   )
 }
 
