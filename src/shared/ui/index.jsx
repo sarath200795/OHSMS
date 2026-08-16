@@ -17,20 +17,29 @@ import { useFocusTrap } from './useFocusTrap'
 const cx = (...c) => c.filter(Boolean).join(' ')
 
 // ── Button ──────────────────────────────────────────────────────────────────
+// `steel` is the loto module's spelling of a quiet secondary button; it maps to
+// the design system's `soft` rather than making every loto call site change.
 const VARIANT = {
   primary: 'btn-primary',
   ghost: 'btn-ghost',
   soft: 'btn-soft',
+  steel: 'btn-soft',
   danger: 'btn-danger',
 }
+// `md` is .btn's own px-4 py-2.5 text-sm, so it adds nothing.
+const SIZE = {
+  sm: 'px-3.5 py-1.5 text-sm',
+  md: '',
+  lg: 'px-6 py-3 text-base',
+}
 export const Button = forwardRef(function Button(
-  { as: Tag = 'button', variant = 'primary', loading = false, icon: Icon, children, className, disabled, ...rest },
+  { as: Tag = 'button', variant = 'primary', size = 'md', loading = false, icon: Icon, children, className, disabled, ...rest },
   ref
 ) {
   return (
     <Tag
       ref={ref}
-      className={cx(VARIANT[variant] || 'btn-primary', className)}
+      className={cx(VARIANT[variant] || 'btn-primary', SIZE[size], className)}
       disabled={disabled || loading}
       {...rest}
     >
@@ -50,13 +59,27 @@ export function Card({ className, children, as: Tag = 'div', ...rest }) {
 }
 
 // ── Form controls ─────────────────────────────────────────────────────────────
-export function Field({ label, hint, error, children, htmlFor, className }) {
+// `action` puts a control opposite the label ("Forgot password?", "Clear").
+// Only then is the label wrapped in a row, so every existing label-only Field
+// renders exactly the markup it did before.
+export function Field({ label, hint, error, action, children, htmlFor, className }) {
   return (
     <div className={className}>
-      {label && (
-        <label className="label" htmlFor={htmlFor}>
-          {label}
-        </label>
+      {action ? (
+        <div className="mb-1.5 flex items-center justify-between gap-2">
+          {label && (
+            <label className="label !mb-0" htmlFor={htmlFor}>
+              {label}
+            </label>
+          )}
+          {action}
+        </div>
+      ) : (
+        label && (
+          <label className="label" htmlFor={htmlFor}>
+            {label}
+          </label>
+        )
       )}
       {children}
       {hint && !error && <p className="mt-1 text-xs text-ink-400">{hint}</p>}
@@ -126,6 +149,10 @@ const TONE = {
   brand: 'bg-brand-50 text-brand-700',
   gray: 'bg-ink-100 text-ink-600',
   slate: 'bg-ink-100 text-ink-600',
+  // Opt out of the tone map entirely: the chip keeps its shape but takes every
+  // colour from `className`. Used by the loto register tables, whose statuses
+  // carry a full set of Tailwind colour classes in the constants file.
+  none: '',
   green: 'bg-emerald-50 text-emerald-700',
   emerald: 'bg-emerald-50 text-emerald-700',
   amber: 'bg-amber-50 text-amber-700',
@@ -156,8 +183,10 @@ export function Badge({ tone = 'gray', color, soft = true, className, children, 
       </span>
     )
   }
+  // `??`, not `||`: tone="none" maps to an empty string, which must not fall
+  // through to grey the way an unknown tone does.
   return (
-    <span className={cx('chip', TONE[tone] || TONE.gray, className)} {...rest}>
+    <span className={cx('chip', TONE[tone] ?? TONE.gray, className)} {...rest}>
       {children}
     </span>
   )
@@ -210,9 +239,10 @@ export function PageHeader({ title, subtitle, icon: Icon, actions, children, tou
 }
 
 // ── Empty state ───────────────────────────────────────────────────────────────
-// `hint` is the module spelling of `description`.
-export function EmptyState({ icon: Icon, title, description, hint, action, className }) {
-  const body = description ?? hint
+// `hint` (fire/incidents/hira/ptw/inspections) and `message` (audit) are the
+// module spellings of `description`.
+export function EmptyState({ icon: Icon, title, description, hint, message, action, className }) {
+  const body = description ?? hint ?? message
   return (
     <div className={cx('card flex flex-col items-center gap-3 p-10 text-center', className)}>
       {Icon && (
@@ -317,10 +347,10 @@ export function SkeletonDetail() {
 // NOTE: deliberately no exit animation / AnimatePresence. A stuck exit left the
 // overlay mounted at opacity 0, which silently swallowed every click on the page
 // after any modal closed. Unmounting straight off `open` keeps that impossible.
-// `maxWidth` takes a raw Tailwind class and is what the module-local modals
-// this replaced accepted; `size` is the design-system spelling. Escape-to-close,
-// Tab containment, and focus restore all come from useFocusTrap.
-export function Modal({ open, onClose, title, children, footer, size = 'md', maxWidth }) {
+// `maxWidth` / `maxW` take a raw Tailwind class and are what the module-local
+// modals this replaced accepted; `size` is the design-system spelling. Escape-to-
+// close, Tab containment, and focus restore all come from useFocusTrap.
+export function Modal({ open, onClose, title, subtitle, children, footer, size = 'md', maxWidth, maxW }) {
   const reduce = useReducedMotion()
   const widths = { sm: 'max-w-md', md: 'max-w-lg', lg: 'max-w-2xl', xl: 'max-w-4xl' }
   const titleId = useId()
@@ -342,17 +372,25 @@ export function Modal({ open, onClose, title, children, footer, size = 'md', max
             role="dialog"
             aria-modal="true"
             aria-labelledby={titleId}
-            className={cx('card relative z-10 w-full p-0 outline-none', maxWidth || widths[size])}
+            className={cx('card relative z-10 w-full p-0 outline-none', maxWidth || maxW || widths[size])}
             initial={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.96 }}
             animate={reduce ? { opacity: 1 } : { opacity: 1, scale: 1 }}
             transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}
           >
-            <div className="flex items-center justify-between gap-4 border-b border-ink-100 px-6 py-4">
-              <h2 id={titleId} className="text-lg font-semibold text-ink-900">{title}</h2>
+            <div
+              className={cx(
+                'flex justify-between gap-4 border-b border-ink-100 px-6 py-4',
+                subtitle ? 'items-start' : 'items-center'
+              )}
+            >
+              <div className="min-w-0">
+                <h2 id={titleId} className="text-lg font-semibold text-ink-900">{title}</h2>
+                {subtitle && <p className="mt-0.5 text-sm text-ink-500">{subtitle}</p>}
+              </div>
               <button
                 onClick={onClose}
                 aria-label="Close"
-                className="grid h-8 w-8 place-items-center rounded-xl text-ink-400 transition hover:bg-clay-100 hover:text-ink-700 active:scale-95"
+                className="grid h-8 w-8 shrink-0 place-items-center rounded-xl text-ink-400 transition hover:bg-clay-100 hover:text-ink-700 active:scale-95"
               >
                 <X size={18} />
               </button>

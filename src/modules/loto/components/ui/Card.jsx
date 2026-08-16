@@ -1,21 +1,25 @@
 import { motion } from 'framer-motion'
+import { Card as SharedCard } from '../../../../shared/ui'
+
+// The surface is the shared card. `animate` is the loto-specific part: most of
+// this module's cards opt out, but the ones that don't rise into place on mount.
+const ENTER = {
+  initial: { opacity: 0, y: 12 },
+  animate: { opacity: 1, y: 0 },
+  transition: { duration: 0.3, ease: [0.23, 1, 0.32, 1] },
+}
 
 export default function Card({ children, className = '', animate = true, ...props }) {
-  const Comp = animate ? motion.div : 'div'
-  const motionProps = animate
-    ? {
-        initial: { opacity: 0, y: 12 },
-        animate: { opacity: 1, y: 0 },
-        transition: { duration: 0.3, ease: [0.23, 1, 0.32, 1] },
-      }
-    : {}
+  if (!animate) {
+    return (
+      <SharedCard className={className} {...props}>
+        {children}
+      </SharedCard>
+    )
+  }
   return (
-    <Comp
-      className={`rounded-2xl bg-claySurface shadow-clay ${className}`}
-      {...motionProps}
-      {...props}
-    >
+    <SharedCard as={motion.div} className={className} {...ENTER} {...props}>
       {children}
-    </Comp>
+    </SharedCard>
   )
 }

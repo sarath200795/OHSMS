@@ -220,7 +220,7 @@ export default function Inventory() {
             }
           />
         ) : (
-          <Card animate={false} className="overflow-hidden p-0">
+          <Card animate={false} className="overflow-hidden !p-0">
             <div className="overflow-x-auto">
               <table className="w-full min-w-[820px] text-left text-sm">
                 <thead className="bg-steel-800 text-xs uppercase tracking-wider text-steel-300">

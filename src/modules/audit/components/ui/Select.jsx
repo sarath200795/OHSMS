@@ -1,38 +1,35 @@
-import { forwardRef } from 'react'
+import { forwardRef, useId } from 'react'
 import { ChevronDown } from 'lucide-react'
+import { Field, Select as BaseSelect } from '../../../../shared/ui'
 
+/**
+ * Labeled select. Shared field chrome and control; the icon overlays and the
+ * chevron are local, since the shared Select is a bare control (it reserves the
+ * right-hand padding but draws no arrow of its own).
+ */
 const Select = forwardRef(function Select(
   { label, icon: Icon, error, className = '', id, children, ...props },
   ref,
 ) {
-  const selectId = id || props.name
+  const generatedId = useId()
+  const selectId = id || props.name || generatedId
   return (
-    <div className={className}>
-      {label && (
-        <label htmlFor={selectId} className="field-label">
-          {label}
-        </label>
-      )}
+    <Field className={className} label={label} htmlFor={selectId} error={error}>
       <div className="relative">
         {Icon && (
-          <Icon className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <Icon className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
         )}
-        <select
+        <BaseSelect
           ref={ref}
           id={selectId}
-          className={`input-base appearance-none pr-10 ${Icon ? '' : '!pl-4'} ${
-            error ? 'border-rose-300' : ''
-          }`}
+          className={`${Icon ? 'pl-10' : ''} ${error ? 'border-red-300' : ''}`}
           {...props}
         >
           {children}
-        </select>
-        <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+        </BaseSelect>
+        <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
       </div>
-      {error && (
-        <p className="mt-1.5 text-xs font-medium text-rose-600">{error}</p>
-      )}
-    </div>
+    </Field>
   )
 })
 

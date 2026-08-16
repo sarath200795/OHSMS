@@ -1,10 +1,5 @@
-export default function Card({ className = '', children, ...props }) {
-  return (
-    <div className={`card p-5 ${className}`} {...props}>
-      {children}
-    </div>
-  )
-}
+// The card surface is the shared one. CardHeader is the audit-specific bit.
+export { Card as default } from '../../../../shared/ui'
 
 export function CardHeader({ title, subtitle, action }) {
   return (

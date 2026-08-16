@@ -72,7 +72,7 @@ export default function Operations() {
             const status = p.lockSummary?.status || LOCK_STATUS.UNLOCKED
             const lm = LOCK_STATUS_META[status]
             return (
-              <Card key={p.id} animate={false} className="p-0">
+              <Card key={p.id} animate={false} className="!p-0">
                 <button
                   onClick={() => navigate(`/loto/operations/${p.id}`)}
                   className="flex w-full items-center justify-between gap-3 p-5 text-left"

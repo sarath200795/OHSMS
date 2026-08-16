@@ -80,7 +80,7 @@ export default function Technicians() {
       />
 
       {/* Add form */}
-      <Card animate={false} className="mt-6 p-5">
+      <Card animate={false} className="mt-6 !p-5">
         <form onSubmit={onAdd} className="grid gap-3 sm:grid-cols-[1fr_180px_180px_auto] sm:items-end">
           <Input
             label="Technician name"
@@ -118,7 +118,7 @@ export default function Technicians() {
             icon={<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></svg>}
           />
         ) : (
-          <Card animate={false} className="overflow-hidden p-0">
+          <Card animate={false} className="overflow-hidden !p-0">
             <ul className="divide-y divide-steel-700/60">
               {technicians.map((t) => (
                 <li key={t.id} className="flex items-center justify-between gap-3 px-5 py-3">

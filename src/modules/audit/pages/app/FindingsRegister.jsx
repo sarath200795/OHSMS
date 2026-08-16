@@ -101,7 +101,7 @@ export default function FindingsRegister() {
           <p className="py-6 text-center text-sm text-slate-400">No findings match your filters.</p>
         </Card>
       ) : (
-        <Card className="overflow-x-auto p-0">
+        <Card className="overflow-x-auto !p-0">
           <table className="w-full min-w-[820px] text-left text-sm">
             <thead className="border-b border-slate-100 text-[10px] uppercase tracking-widest text-slate-500">
               <tr>

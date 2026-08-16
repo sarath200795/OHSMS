@@ -47,7 +47,7 @@ const LOCK_COLORS = { unlocked: '#a39d91', partial: '#f5b400', locked: '#e5484d'
 
 function ChartCard({ title, subtitle, children }) {
   return (
-    <Card animate={false} className="p-5">
+    <Card animate={false} className="!p-5">
       <h3 className="font-bold text-steel-50">{title}</h3>
       {subtitle && <p className="mb-3 text-xs text-steel-400">{subtitle}</p>}
       <div className="mt-3">{children}</div>
@@ -57,7 +57,7 @@ function ChartCard({ title, subtitle, children }) {
 
 function StatCard({ value, label, tile, icon }) {
   return (
-    <Card animate={false} className="p-4">
+    <Card animate={false} className="!p-4">
       <span className={`grid h-9 w-9 place-items-center rounded-xl ${tile}`}>{icon}</span>
       <div className="mt-3 text-3xl font-extrabold tracking-tight text-steel-50">{value}</div>
       <div className="text-xs font-medium text-steel-400">{label}</div>
@@ -253,7 +253,7 @@ export default function Home() {
           </div>
 
           {/* Energy legend */}
-          <Card animate={false} className="mt-4 p-4">
+          <Card animate={false} className="mt-4 !p-4">
             <div className="mb-2 text-xs font-bold uppercase tracking-widest text-steel-400">
               Energy sources in use
             </div>
@@ -334,7 +334,7 @@ export default function Home() {
           </div>
 
           {/* Locked equipment list */}
-          <Card animate={false} className="mt-4 p-5">
+          <Card animate={false} className="mt-4 !p-5">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="font-bold text-steel-50">Locked Equipment</h3>

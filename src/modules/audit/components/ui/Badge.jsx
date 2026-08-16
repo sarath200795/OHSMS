@@ -1,21 +1,8 @@
-const TONES = {
-  slate: 'bg-slate-100 text-slate-700 ring-slate-200',
-  brand: 'bg-brand-50 text-brand-700 ring-brand-200',
-  green: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
-  amber: 'bg-amber-50 text-amber-700 ring-amber-200',
-  red: 'bg-rose-50 text-rose-700 ring-rose-200',
-  blue: 'bg-sky-50 text-sky-700 ring-sky-200',
-}
-
-export default function Badge({ tone = 'slate', children, className = '' }) {
-  return (
-    <span
-      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset ${TONES[tone]} ${className}`}
-    >
-      {children}
-    </span>
-  )
-}
+// Internal-audit badge. The pill itself is the shared chip — this module's tone
+// names (slate/brand/green/amber/red/blue) are all already in the shared map, so
+// nothing here needs its own copy of the markup. The status→tone tables below
+// are audit vocabulary and stay local.
+export { Badge as default } from '../../../../shared/ui'
 
 // Shared status -> tone/label mappings used across findings, CAPA and audits.
 export const STATUS_TONES = {

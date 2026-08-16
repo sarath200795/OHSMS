@@ -172,7 +172,7 @@ function LiveStatus({ loading, stats, filter, setFilter, filtered, navigate }) {
             const remaining = points.filter((pt) => !pt.lockState?.locked)
             return (
               <motion.div key={p.id} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }}>
-                <Card animate={false} className="p-5">
+                <Card animate={false} className="!p-5">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <button
@@ -269,7 +269,7 @@ function ActivityLog({ loading, events }) {
     )
   }
   return (
-    <Card animate={false} className="mt-6 overflow-hidden p-0">
+    <Card animate={false} className="mt-6 overflow-hidden !p-0">
       <div className="overflow-x-auto">
         <table className="w-full text-left text-sm">
           <thead className="bg-steel-800 text-xs uppercase tracking-wider text-steel-300">

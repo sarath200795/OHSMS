@@ -1,12 +1,16 @@
+import { Badge as SharedBadge } from '../../../../shared/ui'
 import { ROLE_META, USER_STATUS } from '../../constants/roles'
 
-export default function Badge({ children, className = '' }) {
+/**
+ * The shared chip, colourless. Every loto caller passes a full set of colour
+ * classes — `PROCEDURE_STATUS_META.accent`, `ROLE_META.accent` and the rest —
+ * so `tone="none"` keeps the shared shape without a tone fighting them.
+ */
+export default function Badge({ children, className = '', ...rest }) {
   return (
-    <span
-      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${className}`}
-    >
+    <SharedBadge tone="none" className={className} {...rest}>
       {children}
-    </span>
+    </SharedBadge>
   )
 }
 
