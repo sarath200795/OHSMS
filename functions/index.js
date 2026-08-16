@@ -25,11 +25,16 @@ import { planBackfill } from './lib/docVisibility.js'
 import { classifyLocks } from './lib/defectLocks.js'
 import { PURGEABLE, PURGE_AFTER_DAYS, MAX_PURGES_PER_RUN, planPurge, summarizeFailures } from './lib/retention.js'
 import { mayDeleteFile } from './lib/fileDelete.js'
+import { planExport, planScan, scanFeasibility, classifyErasure } from './lib/subjectData.js'
 import { planQrBackfill, QR_SOURCES } from './lib/qrMirrors.js'
 import { planMedicalStrip, planInjurySeed } from './lib/incidentMedical.js'
 import { planSiteLinks, LINKABLE_COLLECTIONS } from './lib/siteLinks.js'
 import { planMedicalRecordMove, landedIntact, MEDICAL_RECORD_KIND } from './lib/medicalRecords.js'
-import { KEY_DOC_PATH, generateKeyset, releaseKeyset, grantsFor } from './lib/dataKeys.js'
+import { KEY_DOC_PATH, generateKeyset, releaseKeyset, grantsFor, unwrapKey, fromB64u } from './lib/dataKeys.js'
+import {
+  FILE_TARGETS, MAX_OBJECTS_PER_RUN, needsObjectSealing, sealedPath,
+  sealObjectBytes, openObjectBytes, sameBytes, pointerUpdate,
+} from './lib/objectSeal.js'
 
 initializeApp()
 
@@ -302,6 +307,175 @@ export const getDataKeys = onCall({ region: REGION, secrets: [DATA_KEY_MASTER] }
 
   return releaseKeyset(master, orgId, keyset, caller)
 })
+
+/**
+ * Encrypt the objects already sitting in the bucket.
+ *
+ * `files: true` in the client policy sealed every NEW upload. Every photo,
+ * drill evidence shot and attachment uploaded before that is still lying in
+ * Cloud Storage in the clear — readable by anything that reaches the bucket
+ * rather than the app. Same sentence as every migration above it: closing the
+ * write path closes nothing already written.
+ *
+ * This is the ONE part of the encryption work that runs server-side. The field
+ * backfill deliberately runs in the browser to avoid duplicating the policy
+ * across the functions/ seam; that argument does not survive gigabytes of
+ * objects, so this pays the duplication price instead — narrowed to four
+ * constants and held in step by a test that seals with this code and opens with
+ * the client's (src/shared/crypto/objectSeal.crossSeam.test.js).
+ *
+ * Reports without touching anything unless `dryRun: false`.
+ *
+ * ORDERING IS THE SAFETY PROPERTY, and it is the same one confineMedicalRecords
+ * uses: write the sealed copy to a new path, download it back and decrypt it,
+ * re-point the document, and only then delete the original. Sealing in place
+ * would overwrite the only copy with bytes nobody has read back — one truncated
+ * upload and the photograph is gone with the pointer still naming it.
+ */
+export const sealStoredObjects = onCall(
+  { region: REGION, timeoutSeconds: 540, memory: '1GiB', secrets: [DATA_KEY_MASTER] },
+  async (request) => {
+    const dryRun = request.data?.dryRun !== false
+    const callerUid = request.auth?.uid
+    if (!callerUid) throw new HttpsError('unauthenticated', 'Sign in first.')
+
+    const db = getFirestore()
+    const caller = (await db.doc(`users/${callerUid}`).get()).data()
+    if (!caller || caller.status !== 'approved' || caller.role !== 'admin') {
+      throw new HttpsError('permission-denied', 'Administrators only.')
+    }
+    const orgId = caller.orgId
+    if (!orgId) throw new HttpsError('failed-precondition', 'Your profile names no organization.')
+
+    // The keyset, unwrapped once for the whole run. Both halves of the medical
+    // keypair: the public one seals, and the private one is held ONLY to verify
+    // — nothing below writes with it.
+    const master = DATA_KEY_MASTER.value()
+    const keyset = (await db.doc(KEY_DOC_PATH(orgId)).get()).data()
+    if (!keyset) {
+      // Nothing has ever been sealed in this tenant, so there is no key these
+      // objects could be sealed under. Creating one here would work, and would
+      // be the wrong moment: the app has not been switched on, and a keyset
+      // minted by a migration is one nobody knows exists.
+      throw new HttpsError(
+        'failed-precondition',
+        'This organization has no encryption keys yet. Sign in with encryption switched on first.',
+      )
+    }
+    const keys = {
+      general: {
+        keyId: keyset.general.keyId,
+        key: await unwrapKey(master, orgId, keyset.general.keyId, keyset.general.wrappedKey),
+      },
+      medical: {
+        keyId: keyset.medical.keyId,
+        publicKey: fromB64u(keyset.medical.publicKey),
+        privateKey: await unwrapKey(master, orgId, keyset.medical.keyId, keyset.medical.wrappedPrivateKey),
+      },
+    }
+
+    const bucket = getBucket()
+    const base = `organizations/${orgId}`
+    const results = []
+    const blocked = []
+    const failed = []
+    let budget = MAX_OBJECTS_PER_RUN
+    let remaining = 0
+
+    for (const target of FILE_TARGETS) {
+      let scanned = 0
+      let sealed = 0
+      let already = 0
+
+      const parents = await db.collection(`${base}/${target.parent}`).get()
+      for (const parent of parents.docs) {
+        const pointers = await db.collection(`${base}/${target.parent}/${parent.id}/${target.sub}`).get()
+        for (const p of pointers.docs) {
+          scanned += 1
+          const data = p.data()
+          if (!needsObjectSealing(data)) { already += 1; continue }
+          if (budget <= 0) { remaining += 1; continue }
+
+          // NEVER the filename, here or in any report below. "MRI-left-knee —
+          // A Kumar.pdf" is the record; a migration log must not become one more
+          // copy of the thing it is confining. The collection and the document
+          // id find any row and carry nothing clinical.
+          const row = { collection: target.collection, id: p.id }
+
+          const toPath = sealedPath(data.path, orgId)
+          if (!toPath) { blocked.push({ ...row, reason: 'foreign-path' }); continue }
+          if (dryRun) { sealed += 1; budget -= 1; continue }
+
+          try {
+            const [plain] = await bucket.file(data.path).download()
+            const out = await sealObjectBytes(keys, orgId, target.keyClass, new Uint8Array(plain))
+
+            // 1. The bytes, to a NEW path. The original is untouched.
+            await bucket.file(toPath).save(Buffer.from(out.bytes), {
+              contentType: 'application/octet-stream',
+              resumable: false,
+            })
+
+            // 2. Read it back and decrypt it. This is what licences the delete:
+            //    a truncated upload or a wrong key fails here, with the original
+            //    still exactly where it was.
+            const [written] = await bucket.file(toPath).download()
+            const reopened = await openObjectBytes(keys, orgId, target.keyClass, out, new Uint8Array(written))
+            if (!sameBytes(new Uint8Array(plain), reopened)) {
+              failed.push({ ...row, reason: 'failed-verify' })
+              await bucket.file(toPath).delete({ ignoreNotFound: true })
+              continue
+            }
+
+            // 3. The pointer, now that the sealed object is proven readable.
+            await p.ref.update(pointerUpdate(out, toPath))
+
+            // 4. The plaintext original, last of all. A failure here is an
+            //    orphan — a cost, not a correctness bug — but it is the one
+            //    that leaves the exposure open, so it is reported rather than
+            //    swallowed.
+            try {
+              await bucket.file(data.path).delete({ ignoreNotFound: true })
+            } catch (e) {
+              failed.push({ ...row, reason: 'original-left-behind' })
+              logger.error('objects: sealed but could not delete the plaintext', {
+                orgId, collection: target.collection, id: p.id, error: e?.message || String(e),
+              })
+            }
+
+            sealed += 1
+            budget -= 1
+          } catch (e) {
+            failed.push({ ...row, reason: 'failed' })
+            logger.error('objects: could not seal', {
+              orgId, collection: target.collection, id: p.id, error: e?.message || String(e),
+            })
+          }
+        }
+      }
+      results.push({ collection: target.collection, scanned, sealed, alreadySealed: already })
+    }
+
+    logger.info('objects: seal run complete', {
+      orgId, dryRun,
+      sealed: results.reduce((n, r) => n + r.sealed, 0),
+      blocked: blocked.length, failed: failed.length, remaining,
+    })
+
+    return {
+      dryRun,
+      results,
+      scannedTotal: results.reduce((n, r) => n + r.scanned, 0),
+      sealedTotal: results.reduce((n, r) => n + r.sealed, 0),
+      alreadySealedTotal: results.reduce((n, r) => n + r.alreadySealed, 0),
+      remaining,
+      blocked,
+      blockedTotal: blocked.length,
+      failed,
+      failedTotal: failed.length,
+    }
+  },
+)
 
 /**
  * Stamp `visibility` onto documents written before site scoping existed.
@@ -1487,4 +1661,102 @@ export const deleteOrgFile = onCall({ region: REGION }, async (request) => {
   await getBucket().file(path).delete({ ignoreNotFound: true })
   logger.info('deleteOrgFile: deleted', { uid, orgId: profile.orgId, path })
   return { deleted: true }
+})
+
+/**
+ * A subject access request: everything this organization holds about one person.
+ *
+ * Manager-only and org-scoped. The people who may run it are exactly the people
+ * `firestore.rules` already lets read /injuries and /illnesses (isManagerOf) —
+ * anything less would be a member assembling a colleague's medical history in
+ * one call, which is the concentration risk that makes a bulk export different
+ * from the screens it draws on.
+ *
+ * ── What it returns, and what it deliberately does not claim ────────────────
+ *
+ * `records` is COMPLETE for everything joined by a key — personId on injuries,
+ * employeeUid on training, actorUid in the audit log, the uid on the account.
+ *
+ * `mentions` is a LIST OF PLACES TO LOOK, not results. A person's name is also
+ * free text inside array objects (`affectedPersonnel[].name`,
+ * `attendees[].name`, `commanders[]`), and Firestore cannot query inside those.
+ * Reporting them as "not found" would make an incomplete export look
+ * authoritative, so they come back named and unsearched, with the exact field
+ * paths a human has to review.
+ *
+ * That honesty is the feature. A subject access response that quietly omitted
+ * the committee minutes naming someone is a failed response, not a partial one.
+ */
+export const exportSubjectData = onCall({ region: REGION, timeoutSeconds: 540 }, async (request) => {
+  const callerUid = request.auth?.uid
+  if (!callerUid) throw new HttpsError('unauthenticated', 'Sign in first.')
+
+  const db = getFirestore()
+  const caller = (await db.doc(`users/${callerUid}`).get()).data()
+  if (!caller || caller.status !== 'approved' || !['admin', 'manager'].includes(caller.role)) {
+    throw new HttpsError('permission-denied', 'Administrators and managers only.')
+  }
+  const orgId = caller.orgId
+  if (!orgId) throw new HttpsError('failed-precondition', 'Your profile names no organization.')
+
+  const uid = String(request.data?.uid || '').trim()
+  const personId = String(request.data?.personId || '').trim()
+  if (!uid && !personId) {
+    throw new HttpsError('invalid-argument', 'Give a uid, a personId, or both.')
+  }
+
+  // Tenancy: the subject must belong to the CALLER's org. Without this, a
+  // manager of any tenant could export any uid in the system — the export is
+  // by uid, and a uid is not secret.
+  if (uid) {
+    const subject = (await db.doc(`users/${uid}`).get()).data()
+    if (!subject || subject.orgId !== orgId) {
+      throw new HttpsError('permission-denied', 'That person is not in your organization.')
+    }
+  }
+
+  const plan = planExport({ uid, personId })
+  const records = {}
+  const problems = []
+
+  for (const q of plan) {
+    try {
+      if (q.kind === 'docId') {
+        const snap = await db.doc(`${q.path}/${q.value}`).get()
+        records[q.path] = snap.exists ? [{ id: snap.id, ...snap.data() }] : []
+        continue
+      }
+
+      // Subcollections are reached through their parent, so a source with a
+      // `parent` is gathered by the parent's own query rather than a
+      // collectionGroup scan — a collectionGroup would cross tenants, and the
+      // rules that normally prevent that do not apply to the Admin SDK.
+      const col = q.topLevel ? db.collection(q.path) : db.collection(`organizations/${orgId}/${q.path}`)
+      const snap = await col.where(q.field, '==', q.value).limit(2000).get()
+      records[q.path] = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+    } catch (e) {
+      // One unreachable collection must not lose the rest of the response, but
+      // it must be visible in it — an export with a silent hole is the failure
+      // this whole function exists to avoid.
+      logger.error('exportSubjectData: source failed', { orgId, path: q.path, error: e?.message || String(e) })
+      problems.push({ path: q.path, error: e?.message || String(e) })
+    }
+  }
+
+  const encryptionOn = Boolean(request.data?.encryptionOn)
+  logger.info('exportSubjectData: ran', {
+    orgId, callerUid, subjectUid: uid || null, personId: personId || null,
+    collections: Object.keys(records).length,
+  })
+
+  return {
+    subject: { uid: uid || null, personId: personId || null },
+    generatedFor: orgId,
+    records,
+    // Named, not searched. See the note above.
+    mentions: planScan(),
+    scan: scanFeasibility({ encryptionOn }),
+    erasure: classifyErasure(),
+    problems,
+  }
 })

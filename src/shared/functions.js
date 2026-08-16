@@ -153,6 +153,32 @@ export async function confineMedicalRecords({ dryRun = true } = {}) {
   return (await fn({ dryRun })).data
 }
 
+/**
+ * Encrypt the objects already sitting in the bucket.
+ *
+ * Sealing new uploads left every photo, drill evidence shot and attachment
+ * uploaded before the switch lying in Cloud Storage in the clear. This is the
+ * history — the counterpart to the Firestore backfill, which re-writes
+ * documents and never touches bytes.
+ *
+ * Reports without touching anything unless `dryRun: false`. Read `failedTotal`
+ * before believing a run finished: the ordering is write, verify, re-point,
+ * THEN delete, so a failure leaves the original readable rather than the file
+ * corrupt in one place and gone from the other.
+ *
+ * Capped per run — each object is six network operations on payloads up to ten
+ * megabytes — so a large estate is a series of finished runs. `remaining` says
+ * how many are left.
+ *
+ * What it cannot undo: a getDownloadURL handed out before an object was sealed
+ * is a bearer link no rule is consulted for. Deleting the plaintext stops that
+ * link working, but nothing recalls a copy somebody already downloaded.
+ */
+export async function sealStoredObjects({ dryRun = true } = {}) {
+  const fn = await callable('sealStoredObjects')
+  return (await fn({ dryRun })).data
+}
+
 /** Put orgId on every member's ID token, so Storage rules can read it. */
 export async function backfillClaims() {
   const fn = await callable('backfillClaims')
@@ -184,4 +210,27 @@ export async function clearOrphanedDefectLocks({ dryRun = true } = {}) {
 export async function deleteOrgFile(path) {
   const fn = await callable('deleteOrgFile')
   return (await fn({ path })).data
+}
+
+/**
+ * Everything this organization holds about one person — a subject access request.
+ *
+ * Manager-only server-side, and scoped to the caller's own organization: the
+ * subject must be a member of it, because a uid is not a secret and an export
+ * keyed on one would otherwise reach across tenants.
+ *
+ * Read what comes back carefully, because it has two halves that mean different
+ * things. `records` is COMPLETE — everything joined by a key. `mentions` is a
+ * list of PLACES TO LOOK, not results: a person's name is also free text inside
+ * array objects (`affectedPersonnel[].name`, `attendees[].name`), which
+ * Firestore cannot query. Presenting those as "none found" would make an
+ * incomplete response look authoritative.
+ *
+ * Pass `encryptionOn` so the reply can say whether a scan of those fields could
+ * have read anything at all — over sealed data it would return zero matches,
+ * which is indistinguishable from a person who is genuinely not mentioned.
+ */
+export async function exportSubjectData({ uid, personId, encryptionOn } = {}) {
+  const fn = await callable('exportSubjectData')
+  return (await fn({ uid, personId, encryptionOn })).data
 }

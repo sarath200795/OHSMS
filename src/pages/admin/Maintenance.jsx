@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import toast from 'react-hot-toast'
-import { ShieldCheck, FileStack, Play, Check, Bug, Unlock, QrCode, HeartPulse, Stethoscope, FileLock2, MapPin, Lock } from 'lucide-react'
+import { ShieldCheck, FileStack, Play, Check, Bug, Unlock, QrCode, HeartPulse, Stethoscope, FileLock2, MapPin, Lock, UserSearch, Download } from 'lucide-react'
 import { Card, Button } from '../../shared/ui'
-import { backfillDocumentVisibility, backfillClaims, clearOrphanedDefectLocks, backfillQrMirrors, seedInjuryRecords, stripIncidentMedicalDetail, confineMedicalRecords, linkEquipmentSites } from '../../shared/functions'
+import { backfillDocumentVisibility, backfillClaims, clearOrphanedDefectLocks, backfillQrMirrors, seedInjuryRecords, stripIncidentMedicalDetail, confineMedicalRecords, linkEquipmentSites, sealStoredObjects, exportSubjectData } from '../../shared/functions'
 import { reportError } from '../../shared/monitoring'
 import { useAuth } from '../../shared/auth/AuthContext'
 import { backfillProcedureMirrors } from '../../modules/loto/services/procedures'
 import { backfillAll } from '../../shared/crypto/backfill'
+import { sealingEnabled } from '../../shared/crypto/keyring'
 
 /**
  * One-off migrations, run by an admin for their own organization.
@@ -28,11 +29,127 @@ export default function Maintenance() {
       <MedicalDetail />
       <MedicalRecordFiles />
       <SealHistory />
+      <SealStoredFiles />
       <OrgClaims />
       <ProcedureMirrors />
       <DefectLocks />
+      <SubjectAccess />
       <ErrorReporting />
     </div>
+  )
+}
+
+/**
+ * A subject access request — everything the organization holds about one person.
+ *
+ * This stores injuries, illnesses and medical records, which under GDPR and
+ * India's DPDP Act is sensitive personal data a person may ask to see. Until
+ * now the only answer was somebody opening screens one at a time and hoping
+ * they had thought of all of them.
+ *
+ * Two things this screen is careful about, both of which are the difference
+ * between a real answer and a plausible one:
+ *
+ * It shows the MENTIONS list even though it is empty of results. A name is also
+ * free text inside array objects — who attended a committee meeting, who was
+ * affected by an incident — and Firestore cannot query inside those. Showing
+ * only the queryable half would present an incomplete export as a finished one.
+ *
+ * And it shows what CANNOT be erased, next to what can. In an occupational
+ * health system the honest response to "delete everything about me" is mostly
+ * a refusal with reasons: the injury record is the worker's own evidence of
+ * what happened to them, and the law requires it be kept.
+ */
+function SubjectAccess() {
+  const { orgId } = useAuth()
+  const [uid, setUid] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [result, setResult] = useState(null)
+
+  const run = async () => {
+    const subject = uid.trim()
+    if (!subject) return toast.error('Enter the person’s user id.')
+    setBusy(true)
+    try {
+      const r = await exportSubjectData({ uid: subject, encryptionOn: sealingEnabled })
+      setResult(r)
+      const found = Object.values(r.records || {}).reduce((n, rows) => n + rows.length, 0)
+      toast.success(`${found} record${found === 1 ? '' : 's'} found by key`)
+    } catch (err) {
+      reportError(err, { where: 'exportSubjectData' })
+      toast.error(err?.message || 'Failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const download = () => {
+    // A subject access response is a document that gets sent to a person, so it
+    // has to leave the browser as a file rather than as something to screenshot.
+    const blob = new Blob([JSON.stringify(result, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `subject-access-${uid.trim() || 'export'}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const counts = result && Object.entries(result.records || {})
+    .map(([path, rows]) => `  · ${path}: ${rows.length}`)
+    .join('\n')
+
+  return (
+    <Job
+      icon={UserSearch}
+      title="Subject access request"
+      result={result && [
+        `Found by key — complete:\n${counts || '  (nothing)'}`,
+        `\nNeeds a human to review — cannot be queried:`,
+        ...(result.mentions || []).map((m) => `  · ${m.path}: ${m.fields.join(', ')}`),
+        result.scan?.feasible === false ? `\n⚠ ${result.scan.note}` : '',
+        `\nErasure: ${result.erasure?.refused?.length || 0} source(s) must be RETAINED by law, ` +
+        `${result.erasure?.anonymise?.length || 0} anonymised, ${result.erasure?.erasable?.length || 0} erasable.`,
+        ...(result.erasure?.refused || []).map((r) => `  · ${r.path} — ${r.why}`),
+        result.problems?.length ? `\n⚠ ${result.problems.length} source(s) failed to read` : '',
+      ].filter(Boolean).join('\n')}
+      actions={
+        <>
+          <input
+            aria-label="User id of the person"
+            className="min-w-[18rem] flex-1 rounded-xl border border-ink-200 px-3 py-1.5 text-xs"
+            placeholder="User id (uid) of the person"
+            value={uid}
+            onChange={(e) => setUid(e.target.value)}
+          />
+          <Button icon={Play} loading={busy} disabled={busy || !orgId} onClick={run}>
+            Gather
+          </Button>
+          {result && (
+            <Button variant="ghost" icon={Download} onClick={download}>
+              Download JSON
+            </Button>
+          )}
+        </>
+      }
+    >
+      <p>
+        Gathers everything held about one member of this organization, for a subject
+        access request. Managers and admins only, and only for people in your own
+        organization.
+      </p>
+      <p>
+        <strong>The two halves mean different things.</strong> What is found by key is
+        complete. What is listed underneath cannot be searched at all — a person’s name
+        also sits as free text inside lists like who attended a meeting or who was
+        affected by an incident, and those need a person to read them.
+      </p>
+      <p>
+        Erasure is shown but not offered. Most of an occupational-health record cannot
+        lawfully be deleted on request, and the reasons listed are the ones to send back
+        to the person asking.
+      </p>
+    </Job>
   )
 }
 
@@ -351,6 +468,104 @@ function SealHistory() {
         This runs in this browser tab rather than on the server, so leave the page open until
         it finishes. Large organizations take several runs — the count of what is left is
         reported each time.
+      </p>
+    </Job>
+  )
+}
+
+/**
+ * Encrypt the files already in the bucket.
+ *
+ * The card above re-writes DOCUMENTS. This one re-writes BYTES, and they are
+ * genuinely separate jobs: the field backfill runs in this tab, and a tenant's
+ * objects run to gigabytes, so this is the one part of the encryption work that
+ * had to be a Cloud Function.
+ *
+ * Run the document card first. Not a hard dependency — they touch different
+ * things — but a run that seals the pointers and not the files leaves the
+ * confusing state where a filename is encrypted and the photograph it names is
+ * not, and the order below is the one an operator can reason about.
+ */
+function SealStoredFiles() {
+  const [busy, setBusy] = useState('')
+  const [preview, setPreview] = useState(null)
+  const [done, setDone] = useState(false)
+
+  const run = async (dryRun) => {
+    setBusy(dryRun ? 'dry' : 'write')
+    try {
+      const r = await sealStoredObjects({ dryRun })
+      setPreview(r)
+      if (!dryRun) {
+        setDone(r.remaining === 0 && r.failedTotal === 0 && r.blockedTotal === 0)
+        toast.success(`Encrypted ${r.sealedTotal} file${r.sealedTotal === 1 ? '' : 's'}`)
+      } else if (r.sealedTotal === 0) {
+        toast.success('Nothing to encrypt — every stored file is already sealed')
+      }
+    } catch (err) {
+      toast.error(err?.message || 'Failed')
+      reportError(err, { source: 'maintenance.sealStoredFiles' })
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const nothingToDo = preview && preview.sealedTotal === 0 && preview.remaining === 0
+  const blocked = preview?.blockedTotal || 0
+  const failed = preview?.failedTotal || 0
+
+  return (
+    <Job
+      icon={FileLock2}
+      title="Encrypt existing files"
+      result={preview && [
+        `${preview.scannedTotal} stored file${preview.scannedTotal === 1 ? '' : 's'} checked`,
+        `${preview.sealedTotal} ${preview.dryRun ? 'to encrypt' : 'encrypted'}, ${preview.alreadySealedTotal} already encrypted`,
+        '',
+        ...preview.results
+          .filter((r) => r.scanned || r.sealed)
+          .map((r) => `  · ${r.collection}: ${r.sealed} of ${r.scanned}`),
+        preview.remaining ? `\n  · ${preview.remaining} more than one run may do — run it again to finish` : '',
+        // Never a filename, here or in the function's response. A migration
+        // report that named the files it handled would be one more copy of the
+        // thing being confined.
+        blocked ? `\n  ⚠ ${blocked} name a file outside this organization and ${blocked === 1 ? 'was' : 'were'} not touched:` : '',
+        ...(blocked ? preview.blocked.slice(0, 20).map((b) => `      ${b.collection} · ${b.id} · ${b.reason}`) : []),
+        failed ? `\n  ⚠ ${failed} could not be encrypted. The original is still readable — nothing was lost:` : '',
+        ...(failed ? preview.failed.slice(0, 20).map((b) => `      ${b.collection} · ${b.id} · ${b.reason}`) : []),
+      ].filter(Boolean).join('\n')}
+      actions={
+        <>
+          <Button variant="ghost" icon={Play} loading={busy === 'dry'} disabled={Boolean(busy)} onClick={() => run(true)}>
+            Check first
+          </Button>
+          <Button
+            icon={done ? Check : undefined}
+            loading={busy === 'write'}
+            disabled={Boolean(busy) || !preview || nothingToDo}
+            onClick={() => run(false)}
+          >
+            {done ? 'Encrypted' : 'Encrypt them'}
+          </Button>
+        </>
+      }
+    >
+      <p>
+        Photographs, drill evidence and attachments uploaded from now on are encrypted before
+        they leave the browser. Everything uploaded before that is still stored readable by
+        anything that reaches the file storage rather than the app — a backup, a
+        misconfiguration, an account with read access to the project.
+      </p>
+      <p>
+        Each file is written to a new encrypted copy, downloaded back and decrypted to prove it
+        is intact, and only then is the readable original deleted. If anything fails at any
+        point the original is left exactly where it is, so an interrupted run never loses a
+        file. Running it twice is safe.
+      </p>
+      <p>
+        Run the record encryption above first. This one is capped per run because each file is
+        downloaded and re-uploaded — large sites will need several, and the count of what is
+        left is reported each time.
       </p>
     </Job>
   )

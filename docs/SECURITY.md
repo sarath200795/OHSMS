@@ -96,15 +96,27 @@ three PDF paths, the decryption happens at the seam
 was safe for history because an unsealed object carries no encryption metadata,
 so nothing is fetched and it keeps the URL it always had.
 
-What remains is the objects *already in the bucket*. The field backfill
-re-writes documents, not bytes, so every photo and attachment uploaded before
-the switch is still readable to anyone who reaches the bucket. Closing it needs
-a job that downloads each object, seals it, uploads it, and updates the pointer
-— write-then-verify-then-replace, like `confineMedicalRecords`, because an
-interrupted run must leave the file readable rather than neither readable nor
-recoverable. It also cannot use the browser backfill's trick of sealing through
-the app's own code path, because the bytes are too large to round-trip through a
-tab at any scale.
+The objects *already in the bucket* are handled by `sealStoredObjects`
+(`functions/lib/objectSeal.js`), from a second card on the Maintenance page.
+Write the sealed copy to a new path, download it back and decrypt it, re-point
+the document, and only then delete the plaintext — the ordering
+`confineMedicalRecords` uses, because sealing in place would overwrite the only
+copy with bytes nobody has read back. One truncated upload and the photograph is
+gone with the pointer still confidently naming it.
+
+This is the **one** part of the encryption work that runs server-side, and it
+therefore pays the duplication cost the Firestore backfill refused: the AAD
+format string, the per-class file label, the two scheme tags and the pointer
+field names all exist twice. That is four constants rather than a table of forty
+field paths — and it is not left to a comment. `objectSeal.crossSeam.test.js` is
+the only test in the project that imports across the package seam, deliberately:
+it seals with the server code and opens with the client code, in both key
+classes, both directions. If the two ever disagree about a byte it goes red
+there instead of silently producing a bucket nothing can open.
+
+**Neither backfill has been run against production.** Encryption is still off
+there; the field job refuses to start with sealing disabled, and the object job
+refuses an organization that has no keyset yet.
 
 **`/users` is not sealed.** Names are personal data and they are in the clear
 there. This is deliberate rather than missed: `firestore.rules` reads that
@@ -123,6 +135,9 @@ answers to no rule, and anything already downloaded is simply gone.
 ---
 
 ### S-19 · Storage honours a revoked token for up to an hour — MEDIUM
+
+*Deletion: closed. Reading: bounded and accepted. Stays here until read is
+closed too, or until someone decides it never will be.*
 
 The two enforcement surfaces learn about a person differently, and that
 difference is the whole finding.

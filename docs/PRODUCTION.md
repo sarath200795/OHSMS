@@ -56,6 +56,22 @@ So: `firebase deploy --only firestore:rules` first, confirm, then
 `--only hosting`. Never the single combined command for a release that changes
 both, and never hosting first.
 
+**The same ordering now carries file deletion, and functions come first.**
+`storage.rules` refuses client deletes outright (`canDeleteFrom` is `false`);
+deletion happens in the `deleteOrgFile` callable, which checks the caller's live
+profile — see SECURITY.md S-19. So the function must be deployed **before** the
+rules that assume it exists, or deleting anything fails for everyone.
+`deploy.yml` already does functions → rules → hosting, which is the correct
+order for this and was chosen for `syncUserClaims` for the same reason.
+
+There is a small, benign window between the rules deploy and the hosting deploy:
+the still-live old client calls `deleteObject` directly and is refused. Deletion
+is best-effort by design (`removeFile` swallows the failure — an orphaned object
+is a cost, not a correctness bug), so the visible effect is a file that stays in
+the bucket after its record is gone, for the few minutes until hosting catches
+up. Worth knowing rather than worth avoiding; the alternative ordering breaks
+the security control instead.
+
 ```bash
 npx firebase deploy --only firestore:rules --project weehs-4eb28
 ```
@@ -616,9 +632,74 @@ politely until credentials exist:
    `VITE_APPCHECK_SITE_KEY` / `VITE_SENTRY_DSN` once you have them).
 3. Release: `git tag v1.0.0 && git push --tags`.
 
-Staging: create a second Firebase project (`weehs-staging`), repeat the above
-in a `deploy-staging.yml` copy triggered on pushes to `main`, and stop using
-`firebase deploy` from a laptop for anything but emergencies.
+## 5a. Staging  ⚠️ second Firebase project required (Blaze)
+
+`.github/workflows/deploy-staging.yml` exists and ships **every merge to main**
+to a separate project. It skips politely until the secret below is set, so
+nothing happens until you have created the project. The relationship is: merge →
+staging automatically, tag → production deliberately.
+
+**Why every variable is named `STAGING_*` rather than reusing the `VITE_*` ones
+through a GitHub Environment.** Repository variables are the *fallback* for
+anything an environment does not define. So one missing key or one mistyped name
+in a `staging` environment resolves silently to the **production** values — and
+this workflow runs on every merge, so it would deploy over production from a
+merge commit. Distinct names cannot fail that way: an unset `STAGING_` variable
+is empty, and empty stops the run. Uglier names, safer failure.
+
+The workflow refuses to run if `STAGING_FIREBASE_PROJECT_ID` is empty or equal
+to `VITE_FIREBASE_PROJECT_ID`, and that refusal is a hard failure rather than a
+skip — a skip reads as "staging is not set up yet", and this is the opposite.
+
+**One-time setup:**
+
+1. Firebase console → **Add project** → `weehs-staging`. Upgrade it to **Blaze**;
+   Cloud Functions require it, and without functions there are no auth claims,
+   so `storage.rules` denies everything and file deletion has no route at all.
+2. Add a **Web app** to it → copy the config values.
+3. Enable **Authentication → Email/Password**, create **Firestore** and
+   **Storage** — pick the same region as production (`asia-south1`) so latency
+   and residency behave the same way they will in production.
+4. Project settings → Service accounts → **Generate new private key** → GitHub →
+   Settings → Secrets → `STAGING_FIREBASE_SERVICE_ACCOUNT`.
+5. GitHub → Settings → **Variables**, from the web app config in step 2:
+
+```
+STAGING_FIREBASE_PROJECT_ID          # must NOT equal the production id
+STAGING_FIREBASE_API_KEY
+STAGING_FIREBASE_AUTH_DOMAIN
+STAGING_FIREBASE_STORAGE_BUCKET
+STAGING_FIREBASE_MESSAGING_SENDER_ID
+STAGING_FIREBASE_APP_ID
+STAGING_APPCHECK_SITE_KEY            # optional
+STAGING_SENTRY_DSN                   # optional — see below
+STAGING_ENCRYPTION                   # off | on
+```
+
+6. Merge anything to `main` and watch the run. It prints the resolved target
+   before deploying, so the first thing to check is that it names the staging
+   project.
+
+**Give staging its own Sentry DSN, or none.** Sentry tags each event with
+`import.meta.env.MODE`, which is `production` for any `vite build` — staging
+included. Pointing staging at the production DSN therefore files staging noise
+in the production inbox *under the production label*, and the first thing it
+costs is trust in the alerts. Leaving `STAGING_SENTRY_DSN` unset ships no Sentry
+at all, which is a fine default.
+
+**Never copy production data into staging.** This system holds injuries,
+illnesses and medical records; a copy in a project with weaker access is a
+second place to breach and it is not covered by any consent the data was
+collected under. Seed synthetic data instead — `scripts/seed.mjs` and the
+`seed-*` scripts exist for exactly this, and `scripts/_firebase.mjs` already
+refuses to run against a real project without `--prod`.
+
+**What staging is for, concretely:** it is where the ordering hazards in §0b and
+§0c get rehearsed against a real project rather than an emulator — rules before
+hosting, functions before rules, backfill before rules — and where a restore
+drill (§3a) can be run without touching anything a customer depends on.
+
+Stop using `firebase deploy` from a laptop for anything but emergencies.
 
 ## Known gaps this runbook does not cover
 
@@ -775,17 +856,35 @@ the switch says, so nothing already sealed becomes unreadable — the app simply
 stops sealing new writes. This is a safe rollback at any hour, which is the
 whole reason the switch governs writes only.
 
+### 5. Encrypt the history
+
+Turning the switch on seals **new writes only**. Everything already stored stays
+readable until it is re-written, and that is two separate jobs on the
+**Maintenance** page, in this order:
+
+1. **Encrypt existing records** — the Firestore documents. Runs in the browser
+   tab, so leave the page open. Capped per run; run it again until `remaining`
+   is zero.
+2. **Encrypt existing files** — the bytes in Cloud Storage. Runs as a Cloud
+   Function. Also capped, because each file is downloaded and re-uploaded.
+
+Both have a **Check first** button that does the full work and the full
+verification without writing, so the numbers it reports are the numbers a real
+run would produce. Read `blocked` and `failed` before treating a run as
+finished.
+
+Neither can lose data. The record job decrypts each sealed copy and compares it
+field by field against the plaintext *before* overwriting; the file job writes
+the sealed object to a new path and downloads it back before deleting the
+original. Anything that fails either check is left exactly as it was and
+reported.
+
 ### What is NOT covered
 
-Turning this on seals **new writes only**. Everything already in Firestore stays
-in plaintext until a backfill re-writes it, and no such backfill exists yet —
-see "Known gaps" below and `docs/SECURITY.md`.
-
-Bucket objects are sealed for medical records only. Incident photos, drill
-evidence and illness attachments still upload unencrypted, because their
-galleries render the download URL straight into an `<img>`; the reasoning and
-the sequence for closing it are written above the table in
-`src/shared/crypto/policy.js`.
-
 `/users` is not sealed at all. Names there are load-bearing for sign-in,
-provisioning and the rules themselves.
+provisioning and the rules themselves — see `docs/SECURITY.md` S-07.
+
+A `getDownloadURL` handed out before an object was sealed is a permanent bearer
+link that answers to no rule. Deleting the plaintext stops that link working,
+which the file job does — but nothing recalls a copy somebody already
+downloaded.
