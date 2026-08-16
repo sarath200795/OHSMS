@@ -15,6 +15,7 @@ import {
 import { auth, isFirebaseConfigured } from '../firebase'
 import { clearKeyring } from '../crypto'
 import { isMfaRequired, resolverFor, completeTotpSignIn } from './mfa'
+import { startSession, endSession } from './sessionConstants'
 import {
   createOrganization,
   createPendingMember,
@@ -94,7 +95,12 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     if (!isFirebaseConfigured) return
-    getRedirectResult(auth).catch((err) => {
+    getRedirectResult(auth).then((cred) => {
+      // A result here means a sign-in just completed on the other side of the
+      // redirect. It never reaches adopt() — the session arrives with the page
+      // load — so this is the only place that can start its clock.
+      if (cred) startSession()
+    }).catch((err) => {
       if (isMfaRequired(err)) {
         setPendingMfa(resolverFor(err))
         return
@@ -132,6 +138,7 @@ export function AuthProvider({ children }) {
       await updateProfile(cred.user, { displayName: name })
       await createOrganization({ orgName, address, uid: cred.user.uid, name, email })
       setUser(cred.user)
+      startSession()
       await withRetry(() => refreshProfile(cred.user.uid))
     } catch (err) {
       await deleteUser(cred.user).catch(() => {})
@@ -147,6 +154,7 @@ export function AuthProvider({ children }) {
       await updateProfile(cred.user, { displayName: name })
       await createPendingMember({ uid: cred.user.uid, name, email, orgId, orgName: orgName || '', department })
       setUser(cred.user)
+      startSession()
       await withRetry(() => refreshProfile(cred.user.uid))
     } catch (err) {
       await deleteUser(cred.user).catch(() => {})
@@ -160,6 +168,9 @@ export function AuthProvider({ children }) {
     // Set user immediately so isAuthed is true right away — don't wait for the
     // async listener, which would let the redirect bounce off ProtectedRoute.
     setUser(cred.user)
+    // The inactivity clock belongs to this session from here, not to whatever
+    // was last done in this browser. See startSession.
+    startSession()
     // Force a fresh ID token so any custom claim set since the last sign-in is
     // on it. The orgId claim is what lets Cloud Storage rules tell one tenant
     // from another, and a cached token can be up to an hour stale — which for a
@@ -222,6 +233,9 @@ export function AuthProvider({ children }) {
     // and the keys must be gone either way. onAuthStateChanged clears them too,
     // but only once it fires — which it will not do if this throws.
     clearKeyring()
+    // Same reasoning, and the same order: a timestamp left behind is what the
+    // next sign-in would be measured against.
+    endSession()
     await fbSignOut(auth)
     setUser(null)
     setProfile(null)

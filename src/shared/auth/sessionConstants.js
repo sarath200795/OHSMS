@@ -15,6 +15,41 @@ export const LAST_ACTIVITY_KEY = 'hecp:lastActivity'
 export const SESSION_EXPIRED_KEY = 'hecp:sessionExpired'
 
 /**
+ * Start the inactivity clock. Call this where a session BEGINS — a sign-in, not
+ * a page load.
+ *
+ * The timestamp is in localStorage so every tab shares one clock, which also
+ * means it outlives the session that wrote it. Someone who signs in on Tuesday
+ * therefore arrives carrying Monday's timestamp, and without this the first tick
+ * after their sign-in reads a day of inactivity and signs them straight back
+ * out — a login that bounces to the login screen a second later.
+ *
+ * Deliberately not called on a refresh or a page load: those continue a session
+ * that is already running, and resetting there would let a forgotten tab hold a
+ * session open indefinitely by reloading itself.
+ */
+export function startSession() {
+  try {
+    localStorage.setItem(LAST_ACTIVITY_KEY, Date.now().toString())
+  } catch {
+    /* private mode or a full quota — the timer still runs, it just starts at mount */
+  }
+}
+
+/**
+ * End it. Nothing reads a cleared key, so the next session starts from its own
+ * sign-in rather than inheriting the last one's — including when that next
+ * session belongs to someone else on a shared site laptop.
+ */
+export function endSession() {
+  try {
+    localStorage.removeItem(LAST_ACTIVITY_KEY)
+  } catch {
+    /* see above */
+  }
+}
+
+/**
  * Pure idle-state calculation (no DOM/storage) so it can be unit-tested.
  * @returns {{ phase: 'active'|'warn'|'expired', secondsLeft: number }}
  *   secondsLeft is the whole seconds until logout (0 once expired).
