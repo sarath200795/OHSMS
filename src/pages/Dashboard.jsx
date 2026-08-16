@@ -8,16 +8,37 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../shared/auth/AuthContext'
 import { createModuleService } from '../shared/module-kit/service'
+import { dataProvider } from '../shared/data'
 import { subscribeAuditLogs } from '../shared/org/orgData'
 import { MODULES } from '../shared/modules/registry'
 import { auditLabel } from '../shared/audit/audit'
+import { riskLists } from '../modules/hira/lib/raStats'
 import { StatCard, Card, PageHeader, SkeletonStat, Skeleton, Badge } from '../shared/ui'
-import { fromNow, daysUntil } from '../shared/lib/format'
+import { fromNow } from '../shared/lib/format'
 
+// Only the two collections whose documents are actually needed are streamed:
+// incidents feeds the severity chart, and a risk band is derived per hazard at
+// read time rather than stored, so the assessments have to be here to be
+// counted. Permits and certificates are pure tallies and go through the
+// server-side aggregate instead of downloading a thousand documents to call
+// .length on them.
 const incidentsSvc = createModuleService('incidents')
-const hiraSvc = createModuleService('riskAssessments')
-const permitsSvc = createModuleService('permits')
-const trainingSvc = createModuleService('trainingRecords')
+const assessmentsSvc = createModuleService('assessments', 'hira')
+
+// Permits do not have an 'active' status — the vocabulary is draft / pending /
+// approved / rejected / extended / closed — so a permit counts as live when it
+// is approved, or approved and since extended.
+const LIVE_PERMIT_STATUS = ['approved', 'extended']
+
+// A record that never expires stores expiresOn: ''. The lower bound drops those
+// without also dropping genuinely overdue certificates, which must still count.
+const NEVER_EXPIRES = '1970-01-01'
+
+function isoInDays(n) {
+  const d = new Date()
+  d.setDate(d.getDate() + n)
+  return d.toISOString().slice(0, 10)
+}
 
 const MODULE_CARD_TONE = {
   red: 'bg-red-50 text-red-600',
@@ -32,36 +53,58 @@ export default function Dashboard() {
   const { orgId, profile } = useAuth()
   const [incidents, setIncidents] = useState(null)
   const [risks, setRisks] = useState(null)
-  const [permits, setPermits] = useState(null)
-  const [training, setTraining] = useState(null)
+  const [tallies, setTallies] = useState(null)
   const [logs, setLogs] = useState(null)
 
   useEffect(() => {
     if (!orgId) return
     const unsubs = [
       incidentsSvc.subscribe(orgId, setIncidents),
-      hiraSvc.subscribe(orgId, setRisks),
-      permitsSvc.subscribe(orgId, setPermits),
-      trainingSvc.subscribe(orgId, setTraining),
+      assessmentsSvc.subscribe(orgId, setRisks),
       subscribeAuditLogs(orgId, setLogs, 8),
     ]
     return () => unsubs.forEach((u) => u && u())
   }, [orgId])
 
-  const loading = incidents === null || risks === null || permits === null || training === null
+  useEffect(() => {
+    if (!orgId) return undefined
+    let live = true
+    const cutoff = isoInDays(30)
+    Promise.all([
+      dataProvider.count(`organizations/${orgId}/permits`, {
+        where: [{ field: 'status', op: 'in', value: LIVE_PERMIT_STATUS }],
+      }),
+      dataProvider.count(`organizations/${orgId}/trainingRecords`, {
+        where: [
+          { field: 'expiresOn', op: '>=', value: NEVER_EXPIRES },
+          { field: 'expiresOn', op: '<=', value: cutoff },
+        ],
+      }),
+    ])
+      .then(([activePermits, expiringCerts]) => {
+        if (live) setTallies({ activePermits, expiringCerts })
+      })
+      // A refused or failed aggregate must not read as "zero of them" on a
+      // safety dashboard — show the tile as unavailable instead.
+      .catch(() => live && setTallies({ activePermits: null, expiringCerts: null }))
+    return () => {
+      live = false
+    }
+  }, [orgId])
+
+  const loading = incidents === null || risks === null || tallies === null
 
   const kpis = useMemo(() => {
     const openIncidents = (incidents || []).filter((i) => i.status && i.status !== 'closed').length
-    const highRisks = (risks || []).filter(
-      (r) => ['High', 'Extreme'].includes(r.riskLevel) && r.status !== 'controlled'
-    ).length
-    const activePermits = (permits || []).filter((p) => ['approved', 'active'].includes(p.status)).length
-    const expiringCerts = (training || []).filter((t) => {
-      const d = daysUntil(t.expiryDate)
-      return d != null && d <= 30
-    }).length
-    return { openIncidents, highRisks, activePermits, expiringCerts }
-  }, [incidents, risks, permits, training])
+    // A band is a property of a hazard, not of the assessment that contains it.
+    const { high, critical } = riskLists(risks || [])
+    return {
+      openIncidents,
+      highRisks: high.length + critical.length,
+      activePermits: tallies?.activePermits,
+      expiringCerts: tallies?.expiringCerts,
+    }
+  }, [incidents, risks, tallies])
 
   const severityData = useMemo(() => {
     const buckets = { Low: 0, Medium: 0, High: 0, Critical: 0 }
@@ -89,9 +132,9 @@ export default function Dashboard() {
         ) : (
           <>
             <StatCard label="Open incidents" value={kpis.openIncidents} icon={AlertTriangle} tone="red" hint="Not yet closed" />
-            <StatCard label="High / extreme risks" value={kpis.highRisks} icon={ShieldAlert} tone="amber" hint="Uncontrolled" />
-            <StatCard label="Active permits" value={kpis.activePermits} icon={FileCheck} tone="green" hint="Approved or active" />
-            <StatCard label="Certs expiring ≤30d" value={kpis.expiringCerts} icon={GraduationCap} tone="brand" hint="Includes overdue" />
+            <StatCard label="High / critical risks" value={kpis.highRisks} icon={ShieldAlert} tone="amber" hint="Residual band" />
+            <StatCard label="Active permits" value={kpis.activePermits ?? '—'} icon={FileCheck} tone="green" hint="Approved or extended" />
+            <StatCard label="Certs expiring ≤30d" value={kpis.expiringCerts ?? '—'} icon={GraduationCap} tone="brand" hint="Includes overdue" />
           </>
         )}
       </div>

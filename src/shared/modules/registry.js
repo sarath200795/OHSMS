@@ -42,7 +42,7 @@ export const MODULES = [
     icon: ShieldAlert,
     tone: 'amber',
     description: 'Hazard register with a likelihood × severity risk matrix and controls.',
-    collection: 'riskAssessments',
+    collection: 'assessments',
   },
   {
     key: 'inspections',
