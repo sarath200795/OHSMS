@@ -13,23 +13,6 @@ export function Spinner({ size = 24, className = '' }) {
   )
 }
 
-export function FullScreenLoader({ label = 'Loading…' }) {
-  return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-clay-bg text-ink-500">
-      <div className="grid h-16 w-16 place-items-center rounded-2xl bg-brand-500 text-white shadow-glow">
-        <Spinner size={28} />
-      </div>
-      <motion.p
-        className="text-sm font-medium"
-        animate={{ opacity: [0.4, 1, 0.4] }}
-        transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
-      >
-        {label}
-      </motion.p>
-    </div>
-  )
-}
-
 // ── Pill badge with a dot color ───────────────────────────────────────────────
 export function Badge({ color = '#64748b', children, soft = true, className = '' }) {
   return (

@@ -1,7 +1,6 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import { X } from 'lucide-react'
 import { useEffect } from 'react'
-import IncidentLoader from './IncidentLoader'
 
 // ── Loading spinner ─────────────────────────────────────────────────────────
 export function Spinner({ size = 24, className = '' }) {
@@ -11,21 +10,6 @@ export function Spinner({ size = 24, className = '' }) {
       style={{ width: size, height: size }}
       aria-label="Loading"
     />
-  )
-}
-
-export function FullScreenLoader({ label = 'Loading…' }) {
-  return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-clay-bg text-ink-500">
-      <IncidentLoader size={170} />
-      <motion.p
-        className="text-sm font-medium"
-        animate={{ opacity: [0.4, 1, 0.4] }}
-        transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
-      >
-        {label}
-      </motion.p>
-    </div>
   )
 }
 
