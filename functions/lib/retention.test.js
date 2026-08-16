@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   PURGE_AFTER_DAYS, MAX_PURGES_PER_RUN, PURGEABLE,
-  toMillis, isExpired, daysRemaining, planPurge,
+  toMillis, isExpired, daysRemaining, planPurge, summarizeFailures,
 } from './retention.js'
 
 const NOW = Date.parse('2026-08-14T00:00:00.000Z')
@@ -119,5 +119,51 @@ describe('what has to go with each record', () => {
     for (const col of ['extinguishers', 'aeds', 'fas', 'signages']) {
       expect(PURGEABLE.find((p) => p.collection === col)?.qrMirror, col).toBe(true)
     }
+  })
+})
+
+// The sweep catches every error so one bad org cannot stop the rest. That is
+// correct and stays. What was wrong is that it then reported success anyway, so
+// a sweep failing for months was indistinguishable from one with nothing to do.
+describe('deciding whether a run should report failure', () => {
+  it('stays silent when the run was clean', () => {
+    expect(summarizeFailures([])).toBeNull()
+    expect(summarizeFailures()).toBeNull()
+  })
+
+  it('counts failures by kind so the alert says what broke', () => {
+    const s = summarizeFailures([
+      { kind: 'file-left-behind', path: 'orgs/orgA/x.pdf' },
+      { kind: 'file-left-behind', path: 'orgs/orgA/y.pdf' },
+      { kind: 'collection-failed', collection: 'illnesses' },
+    ])
+    expect(s.total).toBe(3)
+    expect(s.byKind).toEqual({ 'file-left-behind': 2, 'collection-failed': 1 })
+    expect(s.message).toMatch(/3 failure\(s\)/)
+  })
+
+  // An alert that rewords itself run to run defeats grouping on the other side.
+  it('orders kinds identically regardless of the order they were hit in', () => {
+    const a = summarizeFailures([{ kind: 'b' }, { kind: 'a' }])
+    const b = summarizeFailures([{ kind: 'a' }, { kind: 'b' }])
+    expect(a.message).toBe(b.message)
+  })
+
+  // A cross-tenant path or mirror is not a glitch — it is a member who cannot
+  // delete anything under storage.rules trying to make the Admin-SDK sweep do
+  // it for them. It must never be filtered out as noise.
+  it('treats the cross-tenant refusals as failures like any other', () => {
+    const s = summarizeFailures([
+      { kind: 'foreign-file-path', path: 'orgs/orgB/secret.pdf' },
+      { kind: 'foreign-qr-mirror', token: 'tok9' },
+    ])
+    expect(s.total).toBe(2)
+    expect(s.byKind).toEqual({ 'foreign-file-path': 1, 'foreign-qr-mirror': 1 })
+  })
+
+  it('survives a malformed entry rather than crashing the run it is reporting on', () => {
+    const s = summarizeFailures([null, undefined, {}, { kind: 'file-left-behind' }])
+    expect(s.total).toBe(2)
+    expect(s.byKind).toEqual({ unknown: 1, 'file-left-behind': 1 })
   })
 })

@@ -111,3 +111,46 @@ export function planPurge(docs = [], { now = Date.now(), days = PURGE_AFTER_DAYS
 
   return { purge, keep, capped: keep.some((k) => k.reason === 'over the per-run cap') }
 }
+
+/**
+ * Turn a run's collected failures into the decision "does this invocation fail?"
+ *
+ * The sweep is deliberately resilient: one bad org must not stop the rest, so
+ * every error inside it is caught. For a long time that was the whole story,
+ * and it meant the most dangerous code in the system — unattended, irreversible
+ * deletion of occupational-health records — reported success no matter what
+ * happened inside it. `retryCount` is 0 and nothing ever threw, so a sweep that
+ * had been failing for months looked exactly like one with nothing to do, while
+ * the app went on telling users their data is purged after 30 days.
+ *
+ * So: do all the work, then fail. The resilience is unchanged; only the
+ * reporting is. A thrown error at the end marks the invocation FAILED, which is
+ * the signal Cloud Monitoring alerts on without any extra instrumentation
+ * (PRODUCTION.md 2a).
+ *
+ * Pure so the "when do we shout" decision is testable without a database —
+ * which is the same reason planPurge lives here rather than in index.js.
+ *
+ * Returns null when the run was clean.
+ */
+export function summarizeFailures(failures = []) {
+  const list = (failures || []).filter(Boolean)
+  if (!list.length) return null
+
+  const byKind = {}
+  for (const f of list) {
+    const kind = f?.kind || 'unknown'
+    byKind[kind] = (byKind[kind] || 0) + 1
+  }
+
+  return {
+    total: list.length,
+    byKind,
+    // Kinds are sorted so the same failures always produce the same message —
+    // an alert that reworded itself run to run would defeat any grouping the
+    // alerting side does.
+    message:
+      `retention sweep completed with ${list.length} failure(s): ` +
+      Object.keys(byKind).sort().map((k) => `${k}=${byKind[k]}`).join(', '),
+  }
+}
