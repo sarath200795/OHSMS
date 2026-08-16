@@ -719,9 +719,19 @@ at all, which is a fine default.
 **Never copy production data into staging.** This system holds injuries,
 illnesses and medical records; a copy in a project with weaker access is a
 second place to breach and it is not covered by any consent the data was
-collected under. Seed synthetic data instead — `scripts/seed.mjs` and the
-`seed-*` scripts exist for exactly this, and `scripts/_firebase.mjs` already
-refuses to run against a real project without `--prod`.
+collected under. Seed synthetic data instead.
+
+Note what that does **not** mean, because this runbook implied otherwise and it
+cost time during the staging build-out: `scripts/seed.mjs` and
+`scripts/seed-injury.mjs` are **emulator-only**. They hardcode
+`projectId: 'ohsms-demo'` and call `connectFirestoreEmulator`, so they cannot
+populate a real project at all. Only the scripts built on
+`scripts/_firebase.mjs` read the `VITE_*` variables and can target one, and
+that file refuses a real project without `--prod`.
+
+For a fresh staging project the practical path is the app's own sign-up: the
+first user becomes admin of a new organization, which is the real onboarding
+flow and a better rehearsal than a seed anyway.
 
 **What staging is for, concretely:** it is where the ordering hazards in §0b and
 §0c get rehearsed against a real project rather than an emulator — rules before
@@ -813,6 +823,50 @@ the stored URL permanently — only re-upload closes those.
 ---
 
 ## 11. Application-layer encryption  ⚠️ secret required BEFORE the switch
+
+> ### LIVE IN PRODUCTION SINCE 2026-08-16 (v1.1.1)
+>
+> | | |
+> |---|---|
+> | Sealing new writes | **yes** — `VITE_ENCRYPTION=on` |
+> | Production org | `WYI4ZEQIM5Sew3XqPM9d`, keyset minted 17:18 UTC |
+> | `DATA_KEY_MASTER` (prod) | version 1, ENABLED, **never rotated** |
+> | Staging | `weehs-staging`, its own distinct master key |
+> | History (Firestore) | **still plaintext — backfill not run** |
+> | History (bucket objects) | **still plaintext — backfill not run** |
+>
+> **The two backfills have not been run against production.** Every incident,
+> injury, illness, meeting, drill, photo and attachment stored before
+> 2026-08-16 is readable in the database and the bucket. Sealing new writes
+> closed the door; it did nothing about what was already through it. Both jobs
+> are on the Maintenance page and both are idempotent.
+>
+> **The switch takes effect per browser, not per estate.** Anyone with the app
+> already open keeps writing plaintext until they reload, so a backfill run
+> immediately after the switch seals what exists and leaves a trickle behind
+> it. Run it a day later, once people have cycled onto the new bundle.
+>
+> **`DATA_KEY_MASTER` has no rotation date and no named owner.** Losing it
+> destroys every sealed record in the tenant — it is not derived from anything
+> and the wrapped keys in Firestore are useless without it. Secret Manager
+> keeps versions; never disable version 1 until a rotation has been verified
+> against real data. Record the owner here when one is agreed.
+>
+> **What was verified before the switch**, on staging against a live project
+> and then in production: the keyset mints exactly once inside a transaction;
+> an admin receives the medical private key and a member receives only the
+> public half (`medicalPrivate: false` in the logs); writes seal under the
+> right scheme per class (`enc:` general, `enk:` medical); a malformed master
+> key is refused before any data is sealed; the record backfill sealed four
+> plaintext records with zero failures and was a no-op on re-run; and a sealed
+> photo renders in both the gallery and the exported PDF.
+>
+> **What was NOT verified before the switch:** the object backfill
+> (`sealStoredObjects`) has never run anywhere. It deletes the plaintext
+> original after verifying the sealed copy, so a first run against real photos
+> is also its first real test. Upload one disposable photo, run the job, and
+> confirm it still renders before trusting it with history.
+
 
 The sensitive fields listed in `src/shared/crypto/policy.js` are sealed in the
 browser before they reach Firestore. Two keys per organization, generated on
@@ -907,6 +961,34 @@ field by field against the plaintext *before* overwriting; the file job writes
 the sealed object to a new path and downloads it back before deleting the
 original. Anything that fails either check is left exactly as it was and
 reported.
+
+### Two things the go-live proved that this runbook had wrong
+
+**Piping a secret from PowerShell corrupts it.** `DATA_KEY_MASTER` was first set
+on staging with a PowerShell pipe, which encodes text as UTF-16 — so a
+43-character key arrived as 94 bytes and `getDataKeys` refused it on first use.
+Use **Git Bash**, and `process.stdout.write` rather than `console.log` so no
+trailing newline travels with it:
+
+```bash
+node -e "process.stdout.write(require('crypto').randomBytes(32).toString('base64url'))" | npx firebase-tools functions:secrets:set DATA_KEY_MASTER --project <project>
+```
+
+That refusal is the most valuable line in `functions/lib/dataKeys.js`. Had
+`masterKey()` stretched or truncated the value instead, records would have been
+sealed under a key nobody could reproduce, and it would have surfaced weeks
+later.
+
+**A `defineSecret` breaks the first functions deploy on any new project.**
+Firebase resolves declared secrets at *deploy* time, so the deploying service
+account needs `secretmanager.secrets.get` before `getDataKeys` can ship —
+`roles/secretmanager.admin`. Production's account had never deployed a function
+and failed on exactly this. Grant it before tagging, not after.
+
+Two adjacent traps on a brand-new project, both hit on staging: the App Engine
+default service account may not exist until an App Engine app is created, and
+the first 2nd-gen deploy provisions a source bucket and Eventarc agents that can
+fail once and succeed on retry. Retry before diagnosing.
 
 ### What is NOT covered
 
