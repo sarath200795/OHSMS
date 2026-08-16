@@ -67,6 +67,16 @@ jobs:
           VITE_FIREBASE_APP_ID: ${{ vars.VITE_FIREBASE_APP_ID }}
           VITE_APPCHECK_SITE_KEY: ${{ vars.VITE_APPCHECK_SITE_KEY }}
           VITE_SENTRY_DSN: ${{ vars.VITE_SENTRY_DSN }}
+          # Whether the shipped bundle SEALS what it writes. Absent here it
+          # resolves to '' — which is 'off' — so a value set only in a local
+          # .env.production would build a bundle that quietly stores every
+          # incident narrative, meeting minute and injury record in plaintext
+          # while the operator believed encryption was live. That is the exact
+          # shape of audit finding LOW-12: this step names seven variables and
+          # the local file defines more, so anything not named here is silently
+          # dropped. Decryption is unaffected either way, so a bundle built
+          # without it still reads everything already sealed.
+          VITE_ENCRYPTION: ${{ vars.VITE_ENCRYPTION }}
         run: npm run build
 
       # Functions FIRST, and they were previously deployed by nothing at all —

@@ -1,0 +1,23 @@
+[
+  {
+    "origin": [
+      "https://weehs-4eb28.web.app",
+      "https://weehs-4eb28.firebaseapp.com",
+      "http://localhost:5173"
+    ],
+    "method": ["GET", "HEAD"],
+    "responseHeader": [
+      "Content-Type",
+      "Content-Length",
+      "Content-Encoding",
+      "Content-Disposition",
+      "Content-Range",
+      "Accept-Ranges",
+      "Authorization",
+      "Range",
+      "X-Firebase-Storage-Version",
+      "X-Goog-Upload-Status"
+    ],
+    "maxAgeSeconds": 3600
+  }
+]

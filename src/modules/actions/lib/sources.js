@@ -13,6 +13,12 @@ import { doc, getDoc, updateDoc } from 'firebase/firestore'
 import { db } from '../../../shared/firebase'
 import { subscribeOrgCollection, incompleteReadNotice } from '../../../shared/org/orgData'
 import { releaseDefectLocks } from '../../fire/lib/firestore'
+// The tracker is a cross-module READER, so it has to open what each module
+// sealed. Its writes need nothing: updateActionStatus rewrites the `capa`/
+// `actions` array with only `status` and `closedAt` changed, and every sealed
+// value in it passes through untouched — sealDoc is idempotent, and these
+// writes never go through it at all.
+import { openSnapshots } from '../../../shared/crypto'
 
 const dref = (orgId, name, id) => doc(db, 'organizations', orgId, name, id)
 
@@ -369,11 +375,24 @@ export function subscribeActions(orgId, cb) {
   }
   // Shared listeners: these collections are already watched by their own
   // modules, so the tracker adds no extra reads when they're mounted too.
+  // Each source is opened against its OWN collection policy before `extract`
+  // sees it. Several of these collections seal the very fields the tracker
+  // reads — `capa[].description` and `capa[].owner` on incidents,
+  // `actions[].owner` on illnesses and consultations — so without this the
+  // tracker would list a page of base64 where the action titles should be.
+  //
+  // One opener per source, not one shared: they are independent listeners on
+  // independent collections, and a single sequence guard across all of them
+  // would let a fast source silently discard a slow source's batch.
+  const openers = Object.fromEntries(SOURCES.map((src) => [
+    src.key,
+    openSnapshots(orgId, src.collection, (rows) => { latest[src.key] = rows; emit() }),
+  ]))
+
   const unsubs = SOURCES.map((src) =>
     subscribeOrgCollection(orgId, src.collection, ({ rows, status: st }) => {
-      latest[src.key] = rows
       status[src.collection] = st
-      emit()
+      openers[src.key](rows)
     }),
   )
   return () => unsubs.forEach((u) => u())

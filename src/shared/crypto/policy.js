@@ -1,0 +1,412 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// WHICH fields are encrypted, and under which of the two keys.
+//
+// One table, read by the client on every write and every read, and by the
+// backfill in functions/ when it encrypts what is already stored. It is the only
+// place any of that is decided; a field that is not named here is stored in the
+// clear, and that has to be a decision somebody made rather than a file somebody
+// forgot to edit.
+//
+// ── The two key classes, and why they are the two ────────────────────────────
+//
+// They are not a severity scale. Each one is a copy of a boundary firestore.rules
+// already enforces, because a key class that does not line up with a rule either
+// locks people out of data they are entitled to or hands it to people the rules
+// refuse — and in both cases the rule and the key would have to be reasoned
+// about separately forever after.
+//
+//   general   Readable and writable by every approved member, auditor included.
+//             Symmetric: one org data key, held by anyone who can read the
+//             collection anyway. It buys nothing against a member, and it is not
+//             meant to — it is what stands between this data and everything that
+//             reaches the STORE rather than the app: an exported backup, a
+//             misconfigured bucket, a support engineer with project Viewer, and
+//             the next rule that turns out to be one `match` too wide.
+//
+//   medical   `allow read: if isManagerOf(orgId)` — /injuries, its /records
+//             subcollection, and /illnesses (firestore.rules). Members WRITE
+//             these and cannot read them back, so this class is hybrid: the
+//             public half goes to writers, the private half only to admin and
+//             manager. See the header of envelope.js for why a symmetric key
+//             cannot express that and would quietly undo the control.
+//
+// The auditor is the case worth stating plainly, because it is the finding this
+// whole exercise came out of. An auditor is an outside party with a login. They
+// get the general key, because inspecting the safety record is their job. They
+// are refused the medical private key by the same test that refuses them the
+// documents — so if the injuries rule is ever widened by accident, they get
+// ciphertext instead of a colleague's medication.
+//
+// ── Path syntax ──────────────────────────────────────────────────────────────
+//
+//     field                a top-level field
+//     parent.child         a nested object
+//     list[].child         `child` on every element of the `list` array
+//     list[]               every element of `list`, when they are scalars
+//
+// The path as WRITTEN here is what gets bound into the ciphertext — never the
+// concrete index. `capa[].owner` is the binding for every element, so reordering
+// the array, inserting at the front, or deleting an entry leaves the rest
+// readable. Binding `capa[3].owner` would make a drag-to-reorder into silent
+// data loss.
+//
+// ── What is deliberately NOT encrypted ───────────────────────────────────────
+//
+//   · Anything a query filters or orders on. Every `where` in this app is on a
+//     structural key (orgId, incidentId, personId, sessionId, permitId,
+//     employeeUid, deletedAt) and every `orderBy` is on a timestamp — which is
+//     the reason this change needs no query rewrites at all. Encrypting one of
+//     them would mean a client-side scan of the whole collection instead.
+//   · Anything firestore.rules reads. `myProfile()` tests orgId, status, role
+//     and mustChangePassword on /users; rules cannot decrypt, so a sealed value
+//     there would raise, and a rule that raises denies — locking every member
+//     out of the app at once.
+//   · The /users directory itself. Names ARE personal data and this leaves them
+//     in the clear, which is a real limitation and not an oversight: the name of
+//     a person is denormalised onto dozens of records (`createdByName`,
+//     `personName`, `loggedBy`, `owner`, `attendees[].name`), and sealing the
+//     directory while fifty copies stay readable is precisely the mistake the
+//     injury/incident split was made to correct — confining one copy and
+//     calling it confined. The copies are what this table seals. Sealing the
+//     directory as well is a separate change that has to take email, sign-in
+//     and provisioning with it.
+//   · Reference numbers, ids, dates, sites, regions, entities, lifecycle and
+//     status. Operational context that every list, filter and roll-up groups by,
+//     and none of it is special-category data on its own.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** The two classes. Values are the ids the callable and the keyring use. */
+export const GENERAL = 'general'
+export const MEDICAL = 'medical'
+export const KEY_CLASSES = [GENERAL, MEDICAL]
+
+/** Hybrid for medical, symmetric for general. Derived here so nothing guesses. */
+export const isHybridClass = (keyClass) => keyClass === MEDICAL
+
+/**
+ * The AAD label for file BYTES.
+ *
+ * Per class rather than per collection, deliberately. Files in this app move
+ * between collections — confineMedicalRecords lifts an object from the
+ * `incident-photos` prefix to `medical-records` and its pointer from
+ * incidents/{id}/photos to injuries/{id}/records — and a label naming the
+ * collection would turn that migration into an unopenable file. Naming the
+ * class keeps the one binding that matters: a medical object replayed as a
+ * general one still fails.
+ */
+export const fileLabel = (keyClass) => `file:${keyClass}`
+
+/**
+ * Collection → what to seal.
+ *
+ * Keys are the collection path under `organizations/{orgId}/`, with `/` for a
+ * subcollection and the wildcard id segments dropped: `injuries/records` is
+ * `organizations/{orgId}/injuries/{injuryId}/records/{recordId}`.
+ *
+ * ── `files: true` is set on ONE collection, and that is a limitation ─────────
+ *
+ * Sealing a FIELD is invisible to the renderers, because openDoc hands them the
+ * plaintext back. Sealing the BYTES in the bucket is not: the reader has to
+ * fetch the object through getBlob, decrypt it, and build its own object URL,
+ * which is what useFileUrl now does.
+ *
+ * Only injuries/records goes through that path. Every other gallery in the app
+ * — incident photos, drill evidence, illness attachments — renders
+ * `data.dataUrl || data.url` STRAIGHT into an <img> or a PDF cell, where
+ * `data.url` is a permanent download URL pointing at the object. Sealing those
+ * bytes without first moving those readers onto useFileUrl would render
+ * ciphertext as an image: a broken picture in every gallery and every exported
+ * report, with nothing on screen to say why.
+ *
+ * So for those three, the pointer's METADATA is sealed — the filename, the
+ * caption, and the inline `dataUrl` that IS the file when the bucket was
+ * unavailable — and the bucket object is not. What that leaves readable is a
+ * scene photograph, drill evidence and an illness attachment to anyone who
+ * reaches the bucket. It is written down here, in docs/SECURITY.md, rather than
+ * being quietly true.
+ *
+ * Closing it is a self-contained follow-up: move those galleries onto
+ * useFileUrl (which already handles both eras), then set `files: true` here and
+ * run the backfill. The order matters — set the flag first and the old readers
+ * break the moment somebody uploads.
+ */
+export const POLICY = {
+  // ── Incidents ──────────────────────────────────────────────────────────────
+  // The clinical detail that used to ride along here is gone (see injuries.js);
+  // what is left is the account of what happened and who was involved.
+  incidents: {
+    keyClass: GENERAL,
+    fields: [
+      'narrative',
+      'probableCause',
+      'createdByName',
+      // Both use PersonEditor's shape: { id, kind, uid, name, dept, company,
+      // contact, role }. `id` and `uid` are join keys and stay readable.
+      'affectedPersonnel[].name',
+      'affectedPersonnel[].contact',
+      'affectedPersonnel[].company',
+      'affectedPersonnel[].dept',
+      'team[].name',
+      'team[].contact',
+      'team[].company',
+      'team[].dept',
+      // The stub the incident is allowed to keep. personId is the join key into
+      // /injuries and must stay readable; the NAME beside it need not.
+      'injuryReports[].personName',
+      'investigations[].summary',
+      // The Action Tracker reads these across every module. It filters and sorts
+      // on them in the browser, after decryption, so sealing them costs nothing
+      // — see actions/lib/sources.js.
+      'capa[].description',
+      'capa[].title',
+      'capa[].owner',
+      'capa[].ownerName',
+      'capa[].responsible',
+      'horizontal.details',
+    ],
+  },
+  'incidents/photos': {
+    keyClass: GENERAL,
+    fields: ['caption', 'name'],
+  },
+
+  // ── Injuries: a named colleague's clinical record ──────────────────────────
+  // MEDICAL_FIELDS from src/modules/incidents/lib/injuries.js, plus the name.
+  // `personId`, `incidentId` and `incidentRefNo` are joins and stay readable:
+  // purgeIncidentMedicalRecords and the retention sweep both find records by
+  // querying on them, and a record nothing can find is a record nothing can
+  // delete when the law says it must be.
+  injuries: {
+    keyClass: MEDICAL,
+    fields: [
+      'bodyParts',
+      'injuryType',
+      'medication',
+      'firstAidDetail',
+      'daysToReturnToWork',
+      'recordFileIds',
+      'personName',
+    ],
+  },
+  // The GP letter, the fit note, the discharge summary. `name` is on the list
+  // because a filename is the record — "MRI-left-knee — A Kumar.pdf" needs no
+  // opening — and `dataUrl` because under the inline fallback the pointer IS
+  // the file.
+  'injuries/records': {
+    keyClass: MEDICAL,
+    fields: ['name', 'caption', 'dataUrl'],
+    files: true,
+  },
+
+  // ── Illnesses: occupational health ─────────────────────────────────────────
+  illnesses: {
+    keyClass: MEDICAL,
+    fields: [
+      'healthIssue',
+      'affectedBodyParts',
+      'exposedToAgent',
+      'exposureDuration',
+      'ppe',
+      'createdByName',
+      'affectedPersonnel[].name',
+      'affectedPersonnel[].contact',
+      'affectedPersonnel[].company',
+      'affectedPersonnel[].dept',
+      'actions[].description',
+      'actions[].title',
+      'actions[].owner',
+      'actions[].ownerName',
+    ],
+  },
+  // No `files: true` — see the note above the table. subscribeIllnessFiles
+  // normalises `data.dataUrl || data.url` and the renderers put that straight
+  // into an <img>, so sealing the bucket object would show a broken picture.
+  // The inline `dataUrl` IS sealed, because that one goes through openDoc.
+  'illnesses/files': {
+    keyClass: MEDICAL,
+    fields: ['name', 'caption', 'dataUrl'],
+  },
+
+  // ── HSE committee meetings ─────────────────────────────────────────────────
+  // Minutes name people and record what was said about them. `type`, `date`,
+  // `siteId` and `docId` stay readable — the calendar and the site filter are
+  // built on them.
+  consultations: {
+    keyClass: GENERAL,
+    fields: [
+      'subject',
+      'minutes',
+      'preRequisites',
+      'createdBy',
+      'attendees[].name',
+      'attendees[].company',
+      'attendees[].designation',
+      'actions[].action',
+      'actions[].owner',
+    ],
+  },
+
+  // ── Mock drills / emergency response records ───────────────────────────────
+  // `score`, `outcome`, `eventType`, `scenario` and the timing numbers stay
+  // readable: the scorecard, the KPI roll-ups and the site filters group by
+  // them, and none of them names anybody.
+  mockDrills: {
+    keyClass: GENERAL,
+    fields: [
+      'debrief',
+      'commander',
+      'commanders[]',
+      'loggedBy',
+      'actionLog[].action',
+      'actionLog[].observation',
+      'capa[].action',
+      'capa[].owner',
+      'capa[].department',
+      'capa[].assignees[].name',
+    ],
+  },
+  // Same as illnesses/files: getMockDrillPhotos normalises onto `.dataUrl` and
+  // the recorder, the detail modal and the printed report all render it
+  // directly. The inline copy is sealed; the bucket object is not.
+  'mockDrills/photos': {
+    keyClass: GENERAL,
+    fields: ['dataUrl'],
+  },
+}
+
+/** The policy for a collection path, or null when nothing there is sealed. */
+export function policyFor(collection) {
+  return POLICY[String(collection || '')] || null
+}
+
+/** Every collection this table covers — the backfill iterates it. */
+export const SEALED_COLLECTIONS = Object.keys(POLICY)
+
+/** Does this collection store encrypted file bytes as well as fields? */
+export const sealsFiles = (collection) => Boolean(policyFor(collection)?.files)
+
+/** The key class a collection's values are sealed under, or null. */
+export const keyClassFor = (collection) => policyFor(collection)?.keyClass || null
+
+// ── Walking a document ───────────────────────────────────────────────────────
+
+/**
+ * Returned from a transform to mean "drop this field entirely".
+ *
+ * Used for a value the reader is not entitled to. The alternative — leaving a
+ * null, or the raw ciphertext — is worse in a way that is easy to miss:
+ * `(injury.bodyParts || []).map(...)` throws on a null and prints an envelope
+ * on a string, so an auditor opening an injury record would get a blank screen
+ * or a page of base64 rather than a record with the clinical columns absent.
+ * Deleting the key makes every existing `|| ''` and `|| []` in the renderers do
+ * the right thing without one of them being edited.
+ */
+export const OMIT = Symbol('omit')
+
+/**
+ * A copy that can be edited without touching the caller's object.
+ *
+ * NOT structuredClone, and not JSON round-tripping. A Firestore document holds
+ * Timestamp instances, and both of those either throw on them or flatten them
+ * to plain objects — at which point `.toDate()` is gone, sixteen files that
+ * read `.seconds` still work, and three sorts that compare `.seconds` silently
+ * return 0 for every pair and leave the list in its original order. A list that
+ * looks sorted and is not is the failure mode this avoids.
+ *
+ * So: plain objects and arrays are rebuilt, and anything with a prototype of
+ * its own — Timestamp, Date, Blob, a FieldValue sentinel like serverTimestamp()
+ * — is carried across by reference, untouched.
+ */
+export function cloneForEdit(value) {
+  if (Array.isArray(value)) return value.map(cloneForEdit)
+  if (value && typeof value === 'object') {
+    const proto = Object.getPrototypeOf(value)
+    if (proto === Object.prototype || proto === null) {
+      const out = {}
+      for (const k of Object.keys(value)) out[k] = cloneForEdit(value[k])
+      return out
+    }
+  }
+  return value
+}
+
+/**
+ * Every place a path spec lands, as `{ parent, key }` pairs.
+ *
+ * Missing intermediate objects and missing keys are skipped rather than
+ * created: a policy naming `horizontal.details` must not add a `horizontal` to
+ * a document that has none, or every save would grow the document with empty
+ * scaffolding for fields nobody filled in.
+ */
+export function leafRefs(root, spec) {
+  const parts = String(spec).split('.')
+  let nodes = [root]
+  for (let i = 0; i < parts.length; i += 1) {
+    const raw = parts[i]
+    const isArray = raw.endsWith('[]')
+    const name = isArray ? raw.slice(0, -2) : raw
+    const last = i === parts.length - 1
+    const next = []
+    for (const node of nodes) {
+      if (node == null || typeof node !== 'object') continue
+      if (name && !(name in node)) continue
+      const child = name ? node[name] : node
+      if (isArray) {
+        if (!Array.isArray(child)) continue
+        for (let j = 0; j < child.length; j += 1) {
+          if (last) next.push({ parent: child, key: j })
+          else next.push(child[j])
+        }
+      } else if (last) {
+        next.push({ parent: node, key: name })
+      } else {
+        next.push(child)
+      }
+    }
+    nodes = next
+  }
+  return nodes
+}
+
+/**
+ * Apply `fn(fieldPath, value)` at every path a collection's policy names.
+ *
+ * Returns a NEW document; the input is not modified. `fn` may return OMIT to
+ * have the field removed. Order is not significant and every value is
+ * transformed concurrently — sealing forty fields one await at a time is forty
+ * round trips through the crypto engine on the main thread.
+ */
+export async function mapSealed(collection, doc, fn) {
+  const policy = policyFor(collection)
+  if (!policy || doc == null || typeof doc !== 'object') return doc
+
+  const copy = cloneForEdit(doc)
+  const jobs = []
+  for (const spec of policy.fields || []) {
+    for (const ref of leafRefs(copy, spec)) {
+      jobs.push(
+        Promise.resolve(fn(spec, ref.parent[ref.key])).then((next) => {
+          if (next === OMIT) {
+            // Splicing an array here would shift every later index while other
+            // jobs still hold one. Arrays get undefined and are compacted below.
+            if (Array.isArray(ref.parent)) ref.parent[ref.key] = undefined
+            else delete ref.parent[ref.key]
+          } else {
+            ref.parent[ref.key] = next
+          }
+        }),
+      )
+    }
+  }
+  await Promise.all(jobs)
+  return compact(copy)
+}
+
+/** Drop the holes OMIT left in arrays, after every job has finished. */
+function compact(value) {
+  if (Array.isArray(value)) return value.filter((v) => v !== undefined).map(compact)
+  if (value && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype) {
+    for (const k of Object.keys(value)) value[k] = compact(value[k])
+  }
+  return value
+}

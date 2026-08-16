@@ -32,10 +32,21 @@ vi.mock('../../../shared/org/orgData', async () => {
 
 const { subscribeActions, SOURCES } = await import('./sources')
 
+// The tracker now DECRYPTS each source before emitting — several of these
+// collections seal the very fields it reads (capa[].description on incidents,
+// actions[].owner on illnesses and consultations), so a callback that fired
+// synchronously would be handing screens ciphertext. Feeding a listener is
+// therefore no longer enough to have been called back; the tests await a turn
+// of the microtask queue first. openSnapshots also drops any batch that is no
+// longer the latest, which is why each feed is settled before the next.
+const settle = () => new Promise((r) => setTimeout(r, 0))
+
 // Every source's collection, deduplicated — two sources can share one.
 const COLLECTIONS = [...new Set(SOURCES.map((s) => s.collection))]
-const feedAll = (status = 'ok') =>
+const feedAll = async (status = 'ok') => {
   COLLECTIONS.forEach((c) => listeners[c]?.({ rows: [], status }))
+  await settle()
+}
 
 beforeEach(() => {
   Object.keys(listeners).forEach((k) => delete listeners[k])
@@ -47,61 +58,66 @@ describe('subscribeActions', () => {
     COLLECTIONS.forEach((c) => expect(listeners[c]).toBeTypeOf('function'))
   })
 
-  it('always emits rows and the reason together', () => {
-    const cb = vi.fn()
+  it('always emits rows and the reason together', async () => {
+const cb = vi.fn()
     subscribeActions('orgA', cb)
-    feedAll('ok')
+    await feedAll('ok')
     const payload = cb.mock.calls.at(-1)[0]
     expect(payload).toHaveProperty('rows')
     expect(payload).toHaveProperty('incomplete')
     expect(Array.isArray(payload.rows)).toBe(true)
   })
 
-  it('says nothing when every source came back whole', () => {
-    const cb = vi.fn()
+  it('says nothing when every source came back whole', async () => {
+const cb = vi.fn()
     subscribeActions('orgA', cb)
-    feedAll('ok')
+    await feedAll('ok')
     expect(cb.mock.calls.at(-1)[0].incomplete).toBeNull()
   })
 
-  it('reports a capped source', () => {
-    const cb = vi.fn()
+  it('reports a capped source', async () => {
+const cb = vi.fn()
     subscribeActions('orgA', cb)
-    feedAll('ok')
+    await feedAll('ok')
     listeners.incidents({ rows: [], status: 'capped' })
+    await settle()
     const { incomplete } = cb.mock.calls.at(-1)[0]
     expect(incomplete).not.toBeNull()
     expect(incomplete.capped).toContain('incidents')
   })
 
   // The one that used to render as "no outstanding actions".
-  it('reports a failed source rather than an empty list', () => {
-    const cb = vi.fn()
+  it('reports a failed source rather than an empty list', async () => {
+const cb = vi.fn()
     subscribeActions('orgA', cb)
-    feedAll('ok')
+    await feedAll('ok')
     listeners.mockDrills({ rows: [], status: 'failed' })
+    await settle()
     const { incomplete } = cb.mock.calls.at(-1)[0]
     expect(incomplete.failed).toContain('mockDrills')
   })
 
-  it('clears the notice when a failed source recovers', () => {
-    const cb = vi.fn()
+  it('clears the notice when a failed source recovers', async () => {
+const cb = vi.fn()
     subscribeActions('orgA', cb)
-    feedAll('ok')
+    await feedAll('ok')
     listeners.incidents({ rows: [], status: 'failed' })
+    await settle()
     expect(cb.mock.calls.at(-1)[0].incomplete).not.toBeNull()
     listeners.incidents({ rows: [], status: 'ok' })
+    await settle()
     expect(cb.mock.calls.at(-1)[0].incomplete).toBeNull()
   })
 
-  it('still flattens actions out of the rows it did get', () => {
+  it('still flattens actions out of the rows it did get', async () => {
     const cb = vi.fn()
     subscribeActions('orgA', cb)
-    feedAll('ok')
+    await feedAll('ok')
     listeners.incidents({
       status: 'capped',
       rows: [{ id: 'i1', refNo: 'INC-1', capa: [{ id: 'a1', description: 'Fix it', status: 'open' }] }],
     })
+    await settle()
     const { rows, incomplete } = cb.mock.calls.at(-1)[0]
     expect(rows).toHaveLength(1)
     expect(rows[0].title).toBe('Fix it')

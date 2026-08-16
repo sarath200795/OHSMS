@@ -14,6 +14,15 @@ import {
 } from 'firebase/firestore'
 import { db } from '../firebase'
 import { reserveDocId } from '../../../shared/docId/reserve'
+// Minutes name people and record what was said about them, so the subject, the
+// body, the attendee list and the action owners are sealed under the GENERAL
+// class — every approved member may read a meeting record, so the key follows.
+// What stays readable is what the calendar and the site filter group by: type,
+// date, siteId, docId.
+import { sealDoc, openSnapshots } from '../../../shared/crypto'
+
+/** The policy key for this collection. See src/shared/crypto/policy.js. */
+const SEALED = 'consultations'
 
 // ── Path helpers ─────────────────────────────────────────────────────────────
 const consultationCol = (orgId) => collection(db, 'organizations', orgId, 'consultations')
@@ -54,19 +63,31 @@ export { subscribeSites } from '../../../shared/org/orgData'
 // ── Consultations / meetings (organizations/{orgId}/consultations) ──────────────
 
 export function subscribeConsultations(orgId, cb, onError) {
+  // openSnapshots drops any batch that is no longer the latest — decryption is
+  // async and this listener has no orderBy, so a re-emission can overtake the
+  // batch before it and put an older list on screen.
+  const opened = openSnapshots(orgId, SEALED, cb)
   return onSnapshot(consultationCol(orgId),
-    (snap) => cb(snap.docs.map((d) => ({ firebaseKey: d.id, ...d.data() }))),
+    (snap) => opened(snap.docs.map((d) => ({ firebaseKey: d.id, ...d.data() }))),
     (err) => { console.warn('[HSE] consultations read failed:', err?.message || err); onError?.(err) },
   )
 }
 
 export async function addConsultation(orgId, data) {
-  const ref = await addDoc(consultationCol(orgId), { ...data, docId: await reserveDocId(orgId, 'committee'), createdAt: serverTimestamp() })
+  const ref = await addDoc(consultationCol(orgId), {
+    ...await sealDoc(orgId, SEALED, data),
+    // Sealed AFTER the spread so these two cannot be overwritten by a caller's
+    // payload, and outside it because neither is in the policy: docId is the
+    // org-wide reference the calendar and the printed minutes quote, and
+    // createdAt is a write sentinel with no plaintext to seal.
+    docId: await reserveDocId(orgId, 'committee'),
+    createdAt: serverTimestamp(),
+  })
   return ref.id
 }
 
 export async function updateConsultation(orgId, id, data) {
-  await setDoc(consultationRef(orgId, id), data, { merge: true })
+  await setDoc(consultationRef(orgId, id), await sealDoc(orgId, SEALED, data), { merge: true })
 }
 
 export async function deleteConsultation(orgId, id) {

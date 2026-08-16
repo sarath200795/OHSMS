@@ -30,6 +30,16 @@ import { AUDIT, diffSummary } from './audit'
 import { reserveRefNo } from './incidents'
 import { reserveDocId } from '../../../shared/docId/reserve'
 import { putFile, removeFile, MAX_INLINE_BYTES, tooLargeForInline } from '../../../shared/storage'
+// Sealed under the MEDICAL class — the hybrid keypair. /illnesses is
+// `allow read: if isManagerOf(orgId)` in firestore.rules while its writes come
+// through the generic isWriterOf rule, exactly as /injuries does: a member
+// reports an occupational illness and cannot read one back. A symmetric key
+// would have had to give every writer the key that opens every record.
+import { sealDoc, openDoc, openSnapshots } from '../../../shared/crypto'
+
+/** Policy keys for this collection and its attachments. See shared/crypto/policy.js. */
+const SEALED = 'illnesses'
+const SEALED_FILES = 'illnesses/files'
 
 const illnessCol = (orgId) => collection(db, 'organizations', orgId, 'illnesses')
 const illnessRef = (orgId, id) => doc(db, 'organizations', orgId, 'illnesses', id)
@@ -78,7 +88,7 @@ export async function createIllness(orgId, actor, initial = {}) {
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   }
-  await setDoc(ref, illness)
+  await setDoc(ref, await sealDoc(orgId, SEALED, illness))
   await logAudit(orgId, actor, AUDIT.ILLNESS_CREATE, {
     target: 'illness',
     targetId: ref.id,
@@ -92,7 +102,7 @@ export async function updateIllness(orgId, id, updates, opts = {}) {
   const current = await getDoc(illnessRef(orgId, id))
   if (!current.exists()) throw new Error('Illness not found')
   const before = current.data()
-  await updateDoc(illnessRef(orgId, id), { ...updates, updatedAt: serverTimestamp() })
+  await updateDoc(illnessRef(orgId, id), { ...await sealDoc(orgId, SEALED, updates), updatedAt: serverTimestamp() })
   if (!opts.silent) {
     const merged = { ...before }
     for (const [k, v] of Object.entries(updates)) if (!k.includes('.')) merged[k] = v
@@ -107,12 +117,13 @@ export async function updateIllness(orgId, id, updates, opts = {}) {
 
 export async function getIllness(orgId, id) {
   const snap = await getDoc(illnessRef(orgId, id))
-  return snap.exists() ? { id, ...snap.data() } : null
+  return snap.exists() ? openDoc(orgId, SEALED, { id, ...snap.data() }) : null
 }
 
 export function subscribeIllnesses(orgId, cb, max = ILLNESS_LOAD_CAP) {
   const q = query(illnessCol(orgId), orderBy('createdAt', 'desc'), limit(max))
-  return onSnapshot(q, (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))))
+  const opened = openSnapshots(orgId, SEALED, cb)
+  return onSnapshot(q, (snap) => opened(snap.docs.map((d) => ({ id: d.id, ...d.data() }))))
 }
 
 export async function closeIllness(orgId, id, actor) {
@@ -157,7 +168,7 @@ export async function addIllnessFile(orgId, id, file) {
   if (!up && file.dataUrl && (file.size || 0) > MAX_INLINE_BYTES) {
     throw new Error(tooLargeForInline(file.name))
   }
-  const ref = await addDoc(fileCol(orgId, id), {
+  const ref = await addDoc(fileCol(orgId, id), await sealDoc(orgId, SEALED_FILES, {
     name: file.name || '',
     type: file.type || '',
     dataUrl: up ? '' : file.dataUrl,
@@ -167,17 +178,20 @@ export async function addIllnessFile(orgId, id, file) {
     caption: file.caption || '',
     uploadedBy: file.uploadedBy || '',
     uploadedAt: serverTimestamp(),
-  })
+  }))
   await updateDoc(illnessRef(orgId, id), { fileCount: increment(1), updatedAt: serverTimestamp() })
   return ref.id
 }
 
 export function subscribeIllnessFiles(orgId, id, cb) {
   const q = query(fileCol(orgId, id), orderBy('uploadedAt', 'asc'))
-  return onSnapshot(q, (snap) => cb(snap.docs.map((d) => {
-    const data = d.data()
-    return { id: d.id, ...data, dataUrl: data.dataUrl || data.url || '' }
-  })))
+  // Opened BEFORE the dataUrl normalisation, not after: the inline copy is
+  // sealed, so `data.dataUrl || data.url` run first would see an envelope, find
+  // it truthy, and hand the renderer a base64 string in place of an image.
+  const opened = openSnapshots(orgId, SEALED_FILES, (rows) => cb(
+    rows.map((r) => ({ ...r, dataUrl: r.dataUrl || r.url || '' })),
+  ))
+  return onSnapshot(q, (snap) => opened(snap.docs.map((d) => ({ id: d.id, ...d.data() }))))
 }
 
 export async function deleteIllnessFile(orgId, id, fileId) {

@@ -45,6 +45,15 @@ import { reportError } from '../../../shared/monitoring'
 import { AUDIT, diffSummary } from './audit'
 import { hptUpdate, hptSummary } from './hpt'
 import { statsDeltaFor, accumulate } from './stats'
+// Mock drills name the incident commander, the people alerted, and what the
+// debrief said about them. Sealed under the GENERAL class — every approved
+// member may read a drill record. What stays readable is what the scorecard and
+// the KPI roll-ups group by: score, outcome, eventType, scenario, the timings.
+import { sealDoc, openDocs, openSnapshots } from '../../../shared/crypto'
+
+/** Policy keys for the drill collections. See src/shared/crypto/policy.js. */
+const SEALED_DRILLS = 'mockDrills'
+const SEALED_DRILL_PHOTOS = 'mockDrills/photos'
 
 // ── Path helpers ─────────────────────────────────────────────────────────────
 const orgRef = (orgId) => doc(db, 'organizations', orgId)
@@ -914,9 +923,10 @@ export async function deleteSignage(orgId, id, actor, label) {
 
 export function subscribeMockDrills(orgId, cb) {
   const q = query(drillCol(orgId), orderBy('createdAt', 'desc'), limit(1000))
+  const opened = openSnapshots(orgId, SEALED_DRILLS, cb)
   return onSnapshot(
     q,
-    (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    (snap) => opened(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
     (err) => console.warn('[Fire Marshal] mock drill subscribe failed:', err?.message || err)
   )
 }
@@ -938,15 +948,25 @@ export async function addMockDrill(orgId, data, actor) {
   }))
   payload.createdAt = serverTimestamp()
   payload.docId = await reserveDocId(orgId, 'drills')
-  const ref = await addDoc(drillCol(orgId), payload)
+  // Sealed AFTER the JSON round-trip above, not before: that round-trip exists
+  // to strip undefined values, and JSON.parse(JSON.stringify(...)) on sealed
+  // data would be harmless but the ORDER matters the other way round — a
+  // payload sealed first and then passed through JSON would still be sealed,
+  // while an unsealed `undefined` reaching Firestore is a rejected write.
+  const ref = await addDoc(drillCol(orgId), await sealDoc(orgId, SEALED_DRILLS, payload))
   // Evidence photos, one doc each (fetched on demand when viewing / printing).
   // Cloud storage first — the photo doc then holds a URL instead of ~700KB of
   // base64 — falling back to the inline form when the bucket is unavailable.
   for (const dataUrl of valid) {
     const up = await putFile(orgId, 'drill-evidence', dataUrl, 'evidence.jpg')
+    // Only the INLINE copy is sealed. The bucket object is not — the recorder,
+    // the detail modal and the printed report all render `.dataUrl` (normalised
+    // from `.url` by getMockDrillPhotos) straight into an <img>, so sealing the
+    // object would show a broken picture everywhere with nothing to explain it.
+    // Written up above the table in src/shared/crypto/policy.js.
     await addDoc(drillPhotoCol(orgId, ref.id), up
       ? { url: up.url, path: up.path, createdAt: serverTimestamp() }
-      : { dataUrl, createdAt: serverTimestamp() })
+      : await sealDoc(orgId, SEALED_DRILL_PHOTOS, { dataUrl, createdAt: serverTimestamp() }))
   }
   await logAudit(orgId, actor, 'mockdrill.create', {
     target: 'mockdrill',
@@ -964,10 +984,11 @@ export async function addMockDrill(orgId, data, actor) {
  */
 export async function getMockDrillPhotos(orgId, drillId) {
   const snap = await getDocs(drillPhotoCol(orgId, drillId))
-  return snap.docs.map((d) => {
-    const data = d.data()
-    return { id: d.id, path: data.path || '', dataUrl: data.dataUrl || data.url || '' }
-  })
+  // Opened BEFORE the `.dataUrl || .url` normalisation: an inline photo's
+  // dataUrl is sealed, and the fallback run first would see an envelope, find
+  // it truthy, and hand every renderer a base64 string in place of an image.
+  const rows = await openDocs(orgId, SEALED_DRILL_PHOTOS, snap.docs.map((d) => ({ id: d.id, ...d.data() })))
+  return rows.map((r) => ({ id: r.id, path: r.path || '', dataUrl: r.dataUrl || r.url || '' }))
 }
 
 export async function deleteMockDrill(orgId, id, actor, label) {

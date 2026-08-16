@@ -54,6 +54,47 @@ Client-side denial of service by an authenticated member.
 prototype-pollution sink was tested and is unreachable; the ReDoS is reachable
 but only against a workbook the user chose to open in their own browser.
 
+### S-07 · Encryption covers new writes only — MEDIUM
+
+Application-layer encryption is in (`src/shared/crypto/`, docs/PRODUCTION.md §11)
+and seals the fields named in `policy.js` before they reach Firestore. Three
+things it does not yet reach, listed here so none of them becomes folklore:
+
+**History is still plaintext.** Turning `VITE_ENCRYPTION=on` seals new writes.
+Every incident, injury, illness, meeting and drill already stored stays readable
+in the database until a backfill re-writes it, and no backfill exists yet. This
+is the same shape as every other finding closed here — `stripIncidentMedicalDetail`,
+`backfillDocumentVisibility`, `confineMedicalRecords` — and the same reasoning
+applies: *closing the write path closes nothing already stored, and what is
+already stored is the exposure.* The migration has to run with the Admin SDK,
+which can unwrap both key classes, and it must seal-then-verify-then-replace so
+an interrupted run leaves a record readable rather than neither readable nor
+recoverable.
+
+**Bucket objects are sealed for medical records only.** Incident photos, drill
+evidence and illness attachments upload unencrypted because their galleries
+render `data.dataUrl || data.url` straight into an `<img>` or a PDF cell, so
+sealing the object would show a broken picture with nothing to explain it. Their
+pointer metadata — filename, caption, and the inline `dataUrl` that *is* the file
+under the no-bucket fallback — is sealed. The fix is ordered: move those readers
+onto `useFileUrl` (which already handles both eras), *then* set `files: true` in
+`policy.js`, then backfill. Setting the flag first breaks every gallery on the
+next upload.
+
+**`/users` is not sealed.** Names are personal data and they are in the clear
+there. This is deliberate rather than missed: `firestore.rules` reads that
+document on every evaluation and cannot decrypt, and a name is denormalised onto
+dozens of records (`createdByName`, `personName`, `loggedBy`, `owner`,
+`attendees[].name`). Those copies *are* sealed. Sealing the directory too is a
+separate change that has to take email, sign-in and provisioning with it —
+and sealing it while the copies stayed readable would be exactly the
+"confine one copy and call it confined" mistake the injury/incident split was
+made to correct.
+
+One thing no encryption can undo, recorded because it will be asked: any
+`getDownloadURL` handed out before an object was sealed is a bearer link that
+answers to no rule, and anything already downloaded is simply gone.
+
 ---
 
 ## Closed

@@ -34,6 +34,17 @@ import {
 import { db } from '../firebase'
 import { logAudit } from './firestore'
 import { AUDIT } from './audit'
+// The clinical fields are sealed under the MEDICAL key class — a keypair, not a
+// shared secret, precisely because of the asymmetry this collection is built on:
+// a member WRITES an injury report (isWriterOf, through the generic rule) and
+// cannot READ one (isManagerOf, the match above it). Sealing with a symmetric
+// key would have had to hand every writer the key that opens every colleague's
+// record, undoing the gate this file exists to enforce. See
+// src/shared/crypto/policy.js.
+import { sealDoc, openDoc, openSnapshots } from '../../../shared/crypto'
+
+/** The collection path shared/crypto/policy.js keys this collection's rules on. */
+const SEALED = 'injuries'
 
 const injuryCol = (orgId) => collection(db, 'organizations', orgId, 'injuries')
 const injuryRef = (orgId, id) => doc(db, 'organizations', orgId, 'injuries', id)
@@ -171,7 +182,7 @@ export async function syncIncidentInjuries(orgId, incident, reports = [], actor)
     const id = injuryId(incident.id, r.personId)
     keep.add(id)
     if (verified.has(id)) continue // never overwrite a verified injury report
-    await setDoc(injuryRef(orgId, id), injuryPayload(incident, r), { merge: true })
+    await setDoc(injuryRef(orgId, id), await sealDoc(orgId, SEALED, injuryPayload(incident, r)), { merge: true })
   }
   // Cleanup: delete injury docs for this incident whose person was removed
   // (but keep verified ones for the record).
@@ -192,9 +203,15 @@ export async function syncIncidentInjuries(orgId, incident, reports = [], actor)
 export function subscribeInjuries(orgId, cb) {
   // Order by updatedAt (every write stamps it); newest first.
   const q = query(injuryCol(orgId), orderBy('updatedAt', 'desc'), limit(2000))
+  // openSnapshots decrypts each batch and drops any that is no longer the
+  // latest — a busy collection re-emits faster than two thousand records
+  // decrypt, and without the guard an older list can land on top of a newer one.
+  // `deletedAt` is filtered BEFORE decryption because it is not sealed, so
+  // deleted records cost nothing to skip.
+  const opened = openSnapshots(orgId, SEALED, cb)
   return onSnapshot(
     q,
-    (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((x) => !x.deletedAt)),
+    (snap) => opened(snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((x) => !x.deletedAt)),
     () => cb([]) // non-fatal: missing index / permissions → empty
   )
 }
@@ -210,11 +227,18 @@ const EDITABLE = ['firstAidDone', 'firstAidDetail', 'bodyParts', 'injuryType', '
 export async function updateInjury(orgId, id, fields, actor) {
   const snap = await getDoc(injuryRef(orgId, id))
   if (!snap.exists()) throw new Error('Injury report not found')
+  // Not opened. Nothing below reads a sealed field off it — `status` and the
+  // two join keys are all in the clear — and opening it here would decrypt a
+  // colleague's record for an editor who may hold no key at all.
   const cur = snap.data()
   if (injuryStatus(cur) === 'verified') throw new Error('This injury report is verified and locked. Unverify it first to make changes.')
   const clean = {}
   for (const k of EDITABLE) if (k in fields) clean[k] = fields[k]
-  await updateDoc(injuryRef(orgId, id), { ...clean, updatedAt: serverTimestamp() })
+  // `joinable` is taken from the PLAINTEXT edit, below, before this seals it:
+  // what goes back onto the incident is governed by the incident's own policy,
+  // and a value sealed for /injuries would fail its AAD binding there anyway.
+  const sealed = await sealDoc(orgId, SEALED, clean)
+  await updateDoc(injuryRef(orgId, id), { ...sealed, updatedAt: serverTimestamp() })
   // Mirror the join key back onto the incident. This used to spread the whole
   // edit — `{ ...r, ...clean }` — which re-wrote body parts, injury type,
   // medication and days off onto the widely-readable incident document every
@@ -236,8 +260,15 @@ export async function updateInjury(orgId, id, fields, actor) {
       console.warn('[Incident IRA] injury→incident sync skipped:', e?.message || e)
     }
   }
+  // The label used to be `${cur.personName} · ${cur.incidentRefNo}`, and
+  // personName is now sealed. Neither available option was to write it here:
+  // the ciphertext would put an unreadable string in front of whoever reads the
+  // log, and decrypting it would copy a name out of the manager-only collection
+  // into /auditLogs, which is a different audience — the same "confine the
+  // fields, publish the second copy" mistake this collection was split to fix.
+  // The document id and the incident reference find the record and name nobody.
   await logAudit(orgId, actor, AUDIT.INJURY_UPDATE, {
-    target: 'injury', targetId: id, targetLabel: `${cur.personName} · ${cur.incidentRefNo}`, summary: 'Injury report edited',
+    target: 'injury', targetId: id, targetLabel: cur.incidentRefNo || id, summary: 'Injury report edited',
   })
 }
 

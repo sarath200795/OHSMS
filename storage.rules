@@ -72,12 +72,35 @@ service firebase.storage {
     // delete rather than keeping it, and gets it back on the next sign-in
     // (AuthContext forces getIdToken(true), and sessions do not outlive the
     // browser session). Failing closed is the right direction for a delete.
-    function canDeleteFrom(orgId) {
+    //
+    // One function rather than two identical role lists, because it now gates
+    // two different things — deleting anything, and READING a medical record —
+    // and two copies of `in ['admin','manager']` is two places to drift.
+    function isManagerIn(orgId) {
       return inOrg(orgId) && myRole() in ['admin', 'manager'];
     }
 
+    function canDeleteFrom(orgId) {
+      return isManagerIn(orgId);
+    }
+
+    // Medical records are excluded from the read below and granted narrowly
+    // underneath. The exclusion is the load-bearing half: this file is a
+    // permissive union exactly like firestore.rules, so a narrower match added
+    // on its own would restrict nothing — the generic `inOrg` here would still
+    // hand the bytes to every member of the tenant and to the auditor, and the
+    // new match would be decorative. `kind` is a single path SEGMENT, so this
+    // comparison works; the Firestore side could not do the same because its
+    // {sub=**} captures a whole Path the rules language cannot compare, which
+    // is why the pointers had to move collection instead.
+    //
+    // Only `read` is excluded, deliberately. create/update/delete below already
+    // say the right thing for this prefix — an auditor cannot upload, nothing
+    // may be overwritten in place, and only a manager may delete — so adding
+    // `kind != 'medical-records'` to any of them would break the upload rather
+    // than tighten it.
     match /orgs/{orgId}/{kind}/{fileName} {
-      allow read: if inOrg(orgId);
+      allow read: if inOrg(orgId) && kind != 'medical-records';
 
       // `resource == null` is what actually prevents an overwrite, and it is
       // here because the emulator proved the obvious version does not work:
@@ -94,6 +117,30 @@ service firebase.storage {
       allow update: if false;
 
       allow delete: if canDeleteFrom(orgId);
+    }
+
+    // The bytes behind a medical record — a GP letter, a fit note, a discharge
+    // summary — read by the same people who may read the pointer to it.
+    //
+    // A pointer nobody can read is worth nothing while the file behind it is
+    // readable by anyone in the tenant. These used to be uploaded under the
+    // `incident-photos` kind, byte-identical in path to a photograph of a
+    // damaged guard rail and so impossible to tell apart by any rule; they now
+    // get their own kind, which is what makes them addressable here at all.
+    //
+    // isManagerIn mirrors isManagerOf, the predicate that gates
+    // /injuries/{id}/records in firestore.rules. The two surfaces must agree
+    // about the same person or the weaker one is the real answer — which is the
+    // lesson from HIGH-1, where Firestore required a manager to delete and this
+    // file let any member do it.
+    //
+    // No create rule, no delete rule: the generic match above already covers
+    // this path (`kind` binds to 'medical-records') with exactly the terms
+    // wanted — isWriterOf-equivalent create with the overwrite guard and the
+    // 20 MB cap, update denied, delete manager-only. A second create grant here
+    // could only widen them.
+    match /orgs/{orgId}/medical-records/{fileName} {
+      allow read: if isManagerIn(orgId);
     }
 
     // Everything else is closed. New areas get their own explicit match rather

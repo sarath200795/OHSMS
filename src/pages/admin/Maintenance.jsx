@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import toast from 'react-hot-toast'
-import { ShieldCheck, FileStack, Play, Check, Bug, Unlock, QrCode, HeartPulse } from 'lucide-react'
+import { ShieldCheck, FileStack, Play, Check, Bug, Unlock, QrCode, HeartPulse, Stethoscope, FileLock2, MapPin } from 'lucide-react'
 import { Card, Button } from '../../shared/ui'
-import { backfillDocumentVisibility, backfillClaims, clearOrphanedDefectLocks, backfillQrMirrors, stripIncidentMedicalDetail } from '../../shared/functions'
+import { backfillDocumentVisibility, backfillClaims, clearOrphanedDefectLocks, backfillQrMirrors, seedInjuryRecords, stripIncidentMedicalDetail, confineMedicalRecords, linkEquipmentSites } from '../../shared/functions'
 import { reportError } from '../../shared/monitoring'
 import { useAuth } from '../../shared/auth/AuthContext'
 import { backfillProcedureMirrors } from '../../modules/loto/services/procedures'
@@ -23,7 +23,9 @@ export default function Maintenance() {
     <div className="space-y-4">
       <DocumentVisibility />
       <QrMirrors />
+      <EquipmentSites />
       <MedicalDetail />
+      <MedicalRecordFiles />
       <OrgClaims />
       <ProcedureMirrors />
       <DefectLocks />
@@ -264,12 +266,83 @@ function Job({ icon: Icon, title, children, result, actions }) {
   )
 }
 
+/**
+ * Why a row could not be handled, said the way an admin can act on.
+ *
+ * The reason codes are the whole point of the report and none of them used to
+ * reach the screen: this card printed `blockedFields.join(', ')`, and
+ * blockedFields is a COUNT, so the line silently rendered nothing and `reason`
+ * was never shown at all. A run that reported one blocked row looked, on screen,
+ * like a run that had simply found nothing to do.
+ */
+const BLOCK_REASONS = {
+  'no-injury-record': 'no injury record exists yet — run step 1',
+  'missing-in-injury': 'the injury record does not hold this detail yet — run step 1',
+  'no-person-id': 'the row names no person, so there is no injury record to write to',
+  'sign-in-id-only': 'the person is identified only by sign-in id — set the person on the incident first',
+  'injury-record-verified': 'the injury record is verified and locked',
+  'injury-record-deleted': 'the injury record is in the Recycle Bin',
+  'differs-in-injury': 'the injury record says something different — only a person can say which is right',
+  // Step 3's reasons. It files each document under the injured person it belongs
+  // to, and the old shape never recorded whose it was.
+  'several-people': 'more than one person was injured, and nothing says whose document this is',
+  'foreign-path': 'the file is stored outside this organization — it will not be touched',
+}
+
+/** Blocked rows collapsed to "n × plain english", newest concern first. */
+const blockedLines = (rows = []) => {
+  const counts = new Map()
+  for (const r of rows) counts.set(r.reason, (counts.get(r.reason) || 0) + 1)
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([reason, n]) => `  · ${n} × ${BLOCK_REASONS[reason] || reason}`)
+}
+
+/**
+ * The medical-detail migration, in the order it has to run.
+ *
+ * Two steps, two callables, two buttons, deliberately. Step 2 refuses to take a
+ * field off an incident unless it can first find that field in the matching
+ * injury record — because /injuries is the only copy left afterwards, and an
+ * unproved removal destroys a medical record instead of confining it. On real
+ * data that guard fired with an injury record already present (1 incident,
+ * 1 injury record, 0 to write, 1 blocked): the record existed and was not
+ * COMPLETE, and nothing in the app fills that gap.
+ *
+ * So step 1 writes the missing detail into the injury record, and step 2 is
+ * held shut until step 1 reports nothing left to write. Both share one state
+ * here so the gate cannot be got around by scrolling.
+ */
 function MedicalDetail() {
   const [busy, setBusy] = useState('')
+  const [seed, setSeed] = useState(null)
+  const [seeded, setSeeded] = useState(false)
   const [preview, setPreview] = useState(null)
   const [done, setDone] = useState(false)
 
-  const run = async (dryRun) => {
+  const runSeed = async (dryRun) => {
+    setBusy(dryRun ? 'seed-dry' : 'seed-write')
+    try {
+      const r = await seedInjuryRecords({ dryRun })
+      setSeed(r)
+      // A strip preview taken before this seed described a world that no longer
+      // exists. Clearing it forces step 2 to be checked again rather than
+      // committing on the strength of a stale count.
+      setPreview(null)
+      if (!dryRun) {
+        setSeeded(true)
+        toast.success(`Filled in ${r.written} injury record${r.written === 1 ? '' : 's'}`)
+      } else if (r.wouldWrite === 0) {
+        toast.success('Nothing to fill in — every injury record already holds its detail')
+      }
+    } catch (err) {
+      toast.error(err?.message || 'Failed')
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const runStrip = async (dryRun) => {
     setBusy(dryRun ? 'dry' : 'write')
     try {
       const r = await stripIncidentMedicalDetail({ dryRun })
@@ -287,20 +360,184 @@ function MedicalDetail() {
     }
   }
 
+  // Step 2 stays shut until step 1 has been RUN and reports nothing outstanding.
+  // Not merely until it reports zero: never having looked and having looked and
+  // found nothing are different states, and only one of them is evidence.
+  const needsSeeding = !seed || seed.wouldWrite > 0
   const nothingToDo = preview && preview.wouldWrite === 0
-  // Rows it will NOT touch, because the detail is not safely in /injuries yet.
+  // Rows step 2 will NOT touch, because the detail is not in the injury record.
   // Writing past these would delete an injury record rather than move it.
   const blocked = preview?.blockedTotal || 0
 
   return (
+    <>
+      <Job
+        icon={Stethoscope}
+        title="Step 1 — Fill in the injury records"
+        result={seed && [
+          `${seed.incidents} incident${seed.incidents === 1 ? '' : 's'}, ${seed.injuries} injury record${seed.injuries === 1 ? '' : 's'}`,
+          `${seed.wouldWrite} injury record${seed.wouldWrite === 1 ? '' : 's'} to write — ${seed.created} to create, ${seed.completed} to complete`,
+          `${seed.seeded} field${seed.seeded === 1 ? '' : 's'} of detail would be copied in; ${seed.alreadyHeld} already there`,
+          seed.blockedTotal ? `\n  ⚠ ${seed.blockedTotal} ${seed.blockedTotal === 1 ? 'row needs' : 'rows need'} a person, not a migration:` : '',
+          ...(seed.blockedTotal ? blockedLines(seed.blocked) : []),
+          seed.orphanInjuryTotal
+            ? `\n  · ${seed.orphanInjuryTotal} ${seed.orphanInjuryTotal === 1 ? 'injury record belongs' : 'injury records belong'} to nobody named on their incident — left alone`
+            : '',
+        ].filter(Boolean).join('\n')}
+        actions={
+          <>
+            <Button variant="ghost" icon={Play} loading={busy === 'seed-dry'} disabled={Boolean(busy)} onClick={() => runSeed(true)}>
+              Check first
+            </Button>
+            <Button
+              icon={seeded ? Check : undefined}
+              loading={busy === 'seed-write'}
+              disabled={Boolean(busy) || !seed || seed.wouldWrite === 0}
+              onClick={() => runSeed(false)}
+            >
+              {seeded ? 'Filled in' : 'Fill them in'}
+            </Button>
+          </>
+        }
+      >
+        <p>
+          This writes injury detail — body parts, injury type, medication, first-aid notes,
+          days lost — <strong>into</strong> the injury record, which only managers can read.
+          It changes nothing else: it does not touch the incident, and step 2 below is what
+          removes the copy that everyone can see.
+        </p>
+        <p>
+          Only gaps are filled. Where the injury record already has an answer it is left
+          exactly as it is, even if the incident says something different — that
+          disagreement is reported for a person to settle. A verified record, one in the
+          Recycle Bin, and a row that names no person are all reported and never written to.
+        </p>
+        <p>
+          Records written here are marked pending, because a migration copied them and
+          nobody has reviewed them. Read them on the Injuries page before running step 2.
+        </p>
+      </Job>
+
+      <Job
+        icon={HeartPulse}
+        title="Step 2 — Clean medical detail off incidents"
+        result={[
+          needsSeeding && (seed
+            ? `Step 1 still has ${seed.wouldWrite} injury record${seed.wouldWrite === 1 ? '' : 's'} to write. Finish it first — anything cleaned before then would be deleted, not moved.`
+            : 'Run step 1 first. Until it reports nothing left to write, there is no way to tell whether cleaning an incident moves the detail or destroys it.'),
+          preview && [
+            `${preview.incidents} incident${preview.incidents === 1 ? '' : 's'} in this organization`,
+            `${preview.wouldWrite} still carrying medical detail`,
+            `${preview.confined} field${preview.confined === 1 ? '' : 's'} proved to be in the injury record already, ${preview.emptied} blank`,
+            blocked ? `\n  ⚠ ${blocked} cannot be cleaned — the detail is not in the injury record, so removing it would lose it:` : '',
+            ...(blocked ? blockedLines(preview.blocked) : []),
+          ].filter(Boolean).join('\n'),
+        ].filter(Boolean).join('\n\n') || null}
+        actions={
+          <>
+            <Button variant="ghost" icon={Play} loading={busy === 'dry'} disabled={Boolean(busy) || needsSeeding} onClick={() => runStrip(true)}>
+              Check first
+            </Button>
+            <Button
+              icon={done ? Check : undefined}
+              loading={busy === 'write'}
+              // Same gate as its neighbours — you must look before you write —
+              // plus the sequencing one: step 1 has to be finished, or this
+              // removes the only copy of somebody's injury.
+              disabled={Boolean(busy) || needsSeeding || !preview || nothingToDo}
+              onClick={() => runStrip(false)}
+            >
+              {done ? 'Cleaned' : 'Clean them'}
+            </Button>
+          </>
+        }
+      >
+        <p>
+          Injury detail used to be saved twice: once to the injury record, which only
+          managers can read, and once onto the incident, which every member and any
+          external auditor can list. New incidents no longer do this. Existing ones still
+          hold the second copy.
+        </p>
+        <p>
+          This removes that second copy, keeping only the person and name needed to link
+          the two. Nothing is removed until it has been found in the injury record, field
+          by field — a row that fails that check is skipped and reported, never deleted.
+        </p>
+      </Job>
+    </>
+  )
+}
+
+/**
+ * Step 3 — the attached DOCUMENTS, which steps 1 and 2 do not touch.
+ *
+ * Steps 1 and 2 move the injury FIELDS. The files attached to them — a GP
+ * letter, a fit note, a discharge summary — were filed as incident photos, in a
+ * subcollection every member and the external auditor can list, so one query
+ * returned the filename, caption and download link of every medical document in
+ * the organization. The document IS the record; confining the fields and leaving
+ * the scan behind closed half of it.
+ *
+ * A separate card rather than a third button inside MedicalDetail: this moves
+ * files rather than fields, it can run before or after step 2 without changing
+ * what either does, and it has one consequence of its own — an old download link
+ * stops working — that has to be read before it is triggered rather than
+ * scrolled past on the way to a familiar button.
+ *
+ * Blocked rows do NOT gate the write, unlike the equipment card. There the rows
+ * that need a human are the reason to stop and look; here every record left
+ * behind stays listable by the whole organization, so refusing to move forty
+ * records because the forty-first cannot be attributed keeps forty medical
+ * documents exposed to protect nothing. They are reported, and they are never
+ * touched.
+ */
+function MedicalRecordFiles() {
+  const [busy, setBusy] = useState('')
+  const [preview, setPreview] = useState(null)
+  const [done, setDone] = useState(false)
+
+  const run = async (dryRun) => {
+    setBusy(dryRun ? 'dry' : 'write')
+    try {
+      const r = await confineMedicalRecords({ dryRun })
+      setPreview(r)
+      if (!dryRun) {
+        // `remaining` is not a failure — a run is capped so it can finish. Say
+        // so, or the second run looks like the first one not having worked.
+        setDone(r.remaining === 0)
+        toast.success(`Moved ${r.moved} record${r.moved === 1 ? '' : 's'}`)
+      } else if (r.wouldMove === 0) {
+        toast.success('Nothing to move — no medical record is filed with the incident photos')
+      }
+    } catch (err) {
+      toast.error(err?.message || 'Failed')
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const nothingToDo = preview && preview.wouldMove === 0
+  const blocked = preview?.blockedTotal || 0
+  const failed = preview?.failedTotal || 0
+
+  return (
     <Job
-      icon={HeartPulse}
-      title="Clean medical detail off incidents"
+      icon={FileLock2}
+      title="Step 3 — Move the medical record files"
       result={preview && [
-        `${preview.incidents} incident${preview.incidents === 1 ? '' : 's'} in this organization`,
-        `${preview.wouldWrite} still carrying medical detail`,
-        blocked ? `\n  ⚠ ${blocked} cannot be cleaned yet — the detail is not in the injury record, so removing it would lose it` : '',
-        preview.blockedFields?.length ? `  · fields involved: ${preview.blockedFields.join(', ')}` : '',
+        `${preview.records} medical record${preview.records === 1 ? '' : 's'} filed with the incident photos, out of ${preview.photos} attachment${preview.photos === 1 ? '' : 's'}`,
+        `${preview.wouldMove} to move${preview.moved ? `, ${preview.moved} moved` : ''}`,
+        `${preview.filesToMove} file${preview.filesToMove === 1 ? '' : 's'} still stored where everyone in this organization can read ${preview.filesToMove === 1 ? 'it' : 'them'}`,
+        preview.urlsDropped
+          ? `${preview.urlsDropped} carr${preview.urlsDropped === 1 ? 'ies' : 'y'} a permanent download link — see below for what that does and does not fix`
+          : '',
+        preview.inlineRecords ? `  · ${preview.inlineRecords} held inside the record itself, with no separate file` : '',
+        preview.underDeletedInjury ? `  · ${preview.underDeletedInjury} belong to an injury record in the Recycle Bin — moved anyway` : '',
+        preview.remaining ? `\n  · ${preview.remaining} more than one run may move — run it again to finish` : '',
+        blocked ? `\n  ⚠ ${blocked} cannot be moved without guessing whose ${blocked === 1 ? 'it is' : 'they are'}:` : '',
+        ...(blocked ? blockedLines(preview.blocked) : []),
+        failed ? `\n  ⚠ ${failed} could not be moved and ${failed === 1 ? 'was' : 'were'} left exactly where ${failed === 1 ? 'it was' : 'they were'}` : '',
+        preview.tokensLeft ? `  · ${preview.tokensLeft} moved but kept an unused download token` : '',
       ].filter(Boolean).join('\n')}
       actions={
         <>
@@ -313,20 +550,39 @@ function MedicalDetail() {
             disabled={Boolean(busy) || !preview || nothingToDo}
             onClick={() => run(false)}
           >
-            {done ? 'Cleaned' : 'Clean them'}
+            {done ? 'Moved' : 'Move them'}
           </Button>
         </>
       }
     >
       <p>
-        Injury detail — body parts, injury type, medication, first-aid notes, days lost —
-        used to be saved twice: once to the injury record, which only managers can read,
-        and once onto the incident, which every member and any external auditor can list.
+        Documents attached to an injury — a GP letter, a fit note, a discharge summary —
+        were saved alongside the incident photos, where every member and any external
+        auditor can list them by name. This files each one under the injured person&apos;s
+        injury record instead, and moves the file itself to storage only managers can read.
       </p>
       <p>
-        New incidents no longer do this. Existing ones still hold the second copy. This
-        removes it, keeping only the name and person needed to link the two. A row whose
-        detail is not safely in the injury record is skipped and reported, never deleted.
+        Each document is moved before the old copy is removed, and only after the new one
+        has been read back and checked. If a run is interrupted, a record is left in both
+        places — never in neither. Run it again to finish.
+      </p>
+      <p>
+        <strong>About the download links.</strong> Every one of these records carries a link
+        that works in any browser, signed in or not, with no account and no permission
+        check. Moving the file deletes it from the old location, so that link stops working
+        — that, or deleting the file outright, is the only thing that revokes one. What
+        nothing here can undo is a link that has already been used: a document somebody
+        downloaded last March is on their computer, and no migration reaches it. If a record
+        went to someone who should not have had it, that is an incident to handle, not a
+        button. Records this cannot move keep their link until their file is deleted or its
+        download token is rotated.
+      </p>
+      <p>
+        A document on an incident that injured more than one person is reported, not filed:
+        nothing recorded whose it was, and filing one colleague&apos;s discharge summary
+        under another&apos;s name is worse than leaving it where it is for another day. Each
+        document is filed under an injury record that already exists, so anything reported
+        as waiting on step 1 will move once step 1 has been run.
       </p>
     </Job>
   )
@@ -401,6 +657,107 @@ function QrMirrors() {
         Because a bulk upload saves each asset and its QR record together, one old record
         refuses the whole file. This repairs them. It changes nothing else, and running it
         twice does nothing the second time.
+      </p>
+    </Job>
+  )
+}
+
+/**
+ * Link equipment to the site whose name it already carries.
+ *
+ * The two counts this card exists to show are `ambiguous` and `conflicting`,
+ * and they are the reason the write button is gated on more than "have you
+ * looked". Every other job here reports things it will skip; these are things it
+ * cannot tell apart. A centre name matching two sites is a coin flip, and a
+ * record already linked somewhere else may have been linked by hand, correctly,
+ * with the printed name being the stale half.
+ *
+ * The job itself never writes those rows, so the gate is not what makes the run
+ * safe — it is what makes a person look. Equipment filed at the wrong site is an
+ * access-control error the day equipment is scoped by site, and nobody re-reads
+ * a migration that reported success.
+ */
+function EquipmentSites() {
+  const [busy, setBusy] = useState('')
+  const [preview, setPreview] = useState(null)
+  const [done, setDone] = useState(false)
+
+  const run = async (dryRun) => {
+    setBusy(dryRun ? 'dry' : 'write')
+    try {
+      const r = await linkEquipmentSites({ dryRun })
+      setPreview(r)
+      if (!dryRun) {
+        setDone(true)
+        toast.success(`Linked ${r.written} record${r.written === 1 ? '' : 's'}`)
+      } else if (r.wouldWrite === 0) {
+        toast.success('Nothing to link — every record that can be matched already is')
+      }
+    } catch (err) {
+      toast.error(err?.message || 'Failed')
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const nothingToDo = preview && preview.wouldWrite === 0
+  const ambiguous = preview?.ambiguousTotal || 0
+  const conflicting = preview?.conflictingTotal || 0
+  const needsAHuman = ambiguous > 0 || conflicting > 0
+
+  return (
+    <Job
+      icon={MapPin}
+      title="Link equipment to its site"
+      result={preview && [
+        `${preview.equipment} extinguisher, AED and alarm record${preview.equipment === 1 ? '' : 's'}, against ${preview.sites} site${preview.sites === 1 ? '' : 's'}`,
+        `${preview.alreadyLinked} already linked`,
+        `${preview.wouldWrite} to link`,
+        // Both blocks lead with the count and then name the rows, because the
+        // count decides whether anything can be written and the names are what
+        // somebody has to go and settle.
+        ambiguous ? `\n  ⚠ ${ambiguous} whose name matches more than one site — nothing is written until these are settled` : '',
+        ...(preview.ambiguous || []).map((a) => `  · ${a.centerName || '(no name)'} → ${(a.siteNames || []).join('  /  ')}`),
+        conflicting ? `\n  ⚠ ${conflicting} already linked to a different site than the name says — never overwritten` : '',
+        ...(preview.conflicting || []).map((c) => `  · ${c.centerName || '(no name)'} → linked to ${c.currentSiteId}, name says ${c.resolvedName}`),
+        preview.unmatchedTotal
+          ? `\n  ${preview.unmatchedTotal} match no site at all, under ${preview.unmatchedNameTotal} name${preview.unmatchedNameTotal === 1 ? '' : 's'}:`
+          : '',
+        ...(preview.unmatchedNames || []).map((n) => `  · ${n}`),
+        preview.noName ? `\n  ${preview.noName} carry no centre name and cannot be matched this way` : '',
+      ].filter(Boolean).join('\n')}
+      actions={
+        <>
+          <Button variant="ghost" icon={Play} loading={busy === 'dry'} disabled={Boolean(busy)} onClick={() => run(true)}>
+            Check first
+          </Button>
+          <Button
+            icon={done ? Check : undefined}
+            loading={busy === 'write'}
+            // Same gate as the others, plus the two that need a person. Filing a
+            // fire extinguisher at the wrong site is not a cosmetic mistake.
+            disabled={Boolean(busy) || !preview || nothingToDo || needsAHuman}
+            onClick={() => run(false)}
+          >
+            {done ? 'Linked' : 'Link them'}
+          </Button>
+        </>
+      }
+    >
+      <p>
+        Extinguishers, AEDs and fire-alarm devices added before sites existed as records
+        carry only the centre name printed on the label. Anything that works by site — the
+        site filters, the roll-ups, the blanks filled in on a record — cannot see them.
+      </p>
+      <p>
+        This matches that name against your site list and stores the link. It changes no
+        name, on the equipment or on the site: the name on a physical label must not move
+        because a link was missing. Running it twice does nothing the second time.
+      </p>
+      <p>
+        A name matching two sites, or a record already linked somewhere the name disagrees
+        with, is listed and left alone — and blocks the write until you have settled it.
+        Guessing here would file equipment at a site it is not at.
       </p>
     </Job>
   )

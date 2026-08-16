@@ -13,20 +13,47 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { initializeApp } from 'firebase-admin/app'
 import { getAuth } from 'firebase-admin/auth'
-import { getFirestore } from 'firebase-admin/firestore'
+import { getFirestore, FieldValue } from 'firebase-admin/firestore'
 import { getStorage } from 'firebase-admin/storage'
 import { onDocumentWritten } from 'firebase-functions/v2/firestore'
 import { onSchedule } from 'firebase-functions/v2/scheduler'
 import { onCall, HttpsError } from 'firebase-functions/v2/https'
+import { defineSecret } from 'firebase-functions/params'
 import { logger } from 'firebase-functions'
 import { claimsFor, claimsChanged, mergeClaims, revokesAccess } from './lib/claims.js'
 import { planBackfill } from './lib/docVisibility.js'
 import { classifyLocks } from './lib/defectLocks.js'
-import { PURGEABLE, PURGE_AFTER_DAYS, MAX_PURGES_PER_RUN, planPurge } from './lib/retention.js'
+import { PURGEABLE, PURGE_AFTER_DAYS, MAX_PURGES_PER_RUN, planPurge, summarizeFailures } from './lib/retention.js'
 import { planQrBackfill, QR_SOURCES } from './lib/qrMirrors.js'
-import { planMedicalStrip } from './lib/incidentMedical.js'
+import { planMedicalStrip, planInjurySeed } from './lib/incidentMedical.js'
+import { planSiteLinks, LINKABLE_COLLECTIONS } from './lib/siteLinks.js'
+import { planMedicalRecordMove, landedIntact, MEDICAL_RECORD_KIND } from './lib/medicalRecords.js'
+import { KEY_DOC_PATH, generateKeyset, releaseKeyset, grantsFor } from './lib/dataKeys.js'
 
 initializeApp()
+
+/**
+ * The master key every organization's data keys are wrapped under.
+ *
+ * defineSecret, not process.env. With firebase-functions v2 a plain env var
+ * lives in the Cloud Run service configuration in cleartext, readable by anyone
+ * with project Viewer, absent from Secret Manager's versioning, access log and
+ * rotation — which is ISO 27001 audit finding LOW-13, recorded against a mail
+ * API key that no longer exists. This one opens every sealed field in every
+ * tenant, so it is the last credential in this project that should repeat it.
+ *
+ * Set it once with:
+ *
+ *   node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))" \
+ *     | firebase functions:secrets:set DATA_KEY_MASTER
+ *
+ * LOSING THIS VALUE DESTROYS EVERY ENCRYPTED RECORD IN EVERY TENANT. It is not
+ * derived from anything and it is not recoverable from the database — the
+ * wrapped keys in Firestore are useless without it. Secret Manager keeps
+ * versions, so the operational rule is: never disable an old version until the
+ * rotation that replaced it has been verified against real data.
+ */
+const DATA_KEY_MASTER = defineSecret('DATA_KEY_MASTER')
 
 // Keep the functions beside the data they trigger on. This project's Firestore
 // is in asia-south1 (Mumbai), and a Firestore trigger's Eventarc plumbing is
@@ -43,6 +70,14 @@ const REGION = 'asia-south1'
 // UTC would move around the working day twice a year for everyone reading the
 // logs, and "03:30" is chosen to be the quiet part of THEIR night.
 const SCHEDULE_TZ = 'Asia/Kolkata'
+
+// The bucket, resolved on first use rather than at import. Two jobs reach it —
+// the retention sweep, which deletes the object behind a purged pointer, and the
+// medical-record move, which copies one from the photo prefix to the manager-only
+// one — and neither runs at deploy time, so nothing here should touch Storage
+// while the module is merely being loaded.
+let bucket = null
+const getBucket = () => (bucket ||= getStorage().bucket())
 
 /**
  * Mirror /users/{uid} onto the ID token.
@@ -187,6 +222,84 @@ export const backfillClaims = onCall({ region: REGION }, async (request) => {
     ...skipped,
     failed,
   }
+})
+
+/**
+ * Hand the signed-in member the encryption keys their role entitles them to.
+ *
+ * Called once per session by src/shared/crypto/keyring.js, which caches the
+ * result in memory for the life of the tab and never persists it.
+ *
+ * This callable IS the access control for encrypted data. The rules decide who
+ * can read a DOCUMENT; this decides who can read what is inside it, and the two
+ * are written to agree line for line — see grantsFor() in lib/dataKeys.js,
+ * where every branch names the rules helper it copies. The one that matters is
+ * the medical private key: `role in ['admin','manager']`, which is isManagerOf,
+ * which is what /injuries, /injuries/records and /illnesses are gated on. An
+ * auditor is an outside party with a login and does not get it, so if that rule
+ * is ever widened by accident they are handed ciphertext rather than a named
+ * colleague's medication.
+ *
+ * The keyset is created on first call rather than at sign-up, so no
+ * organization needs a migration to start using this and an org that never
+ * writes an encrypted field never gets a key. It is created INSIDE A
+ * TRANSACTION because two tabs opening at once would otherwise each generate a
+ * keyset and the second would overwrite the first — leaving every value written
+ * in the intervening seconds sealed under a key no longer stored anywhere.
+ * That is unrecoverable data loss from a race that would show up once in a
+ * thousand sign-ins and never in testing.
+ *
+ * Notably absent: any parameter. The caller does not name an organization, a
+ * role or a key class — all three are read from their own /users profile, so
+ * there is nothing to tamper with in the request.
+ */
+export const getDataKeys = onCall({ region: REGION, secrets: [DATA_KEY_MASTER] }, async (request) => {
+  const callerUid = request.auth?.uid
+  if (!callerUid) throw new HttpsError('unauthenticated', 'Sign in first.')
+
+  const db = getFirestore()
+  const caller = (await db.doc(`users/${callerUid}`).get()).data()
+  const grants = grantsFor(caller)
+  if (!grants.general) {
+    // Covers unapproved, suspended, and anyone still on a temporary password.
+    // Deliberately says nothing about which: a probe should not learn its own
+    // status from the error text.
+    throw new HttpsError('permission-denied', 'Approved members only.')
+  }
+
+  const orgId = caller.orgId
+  if (!orgId) throw new HttpsError('failed-precondition', 'Your profile names no organization.')
+
+  const master = DATA_KEY_MASTER.value()
+  const ref = db.doc(KEY_DOC_PATH(orgId))
+
+  // The common path: the keyset exists, and this is one read outside any
+  // transaction. Only the first caller in an organization's life pays for the
+  // transaction below.
+  let keyset = (await ref.get()).data()
+  if (!keyset) {
+    keyset = await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref)
+      if (snap.exists) return snap.data()
+      const fresh = await generateKeyset(master, orgId, 1)
+      tx.set(ref, { ...fresh, createdAt: FieldValue.serverTimestamp() })
+      return fresh
+    })
+    logger.info('crypto: keyset created', { orgId })
+  }
+
+  // Cloud Logging, not the app's audit log. This runs on every session start,
+  // so an /auditLogs entry per call would bury the actions people actually
+  // review under one row per page load — and the audit log is read in the app
+  // by the very roles this is recording.
+  logger.info('crypto: keys released', {
+    orgId,
+    uid: callerUid,
+    role: caller.role || null,
+    medicalPrivate: grants.medicalPrivate,
+  })
+
+  return releaseKeyset(master, orgId, keyset, caller)
 })
 
 /**
@@ -342,7 +455,280 @@ export const backfillQrMirrors = onCall({ region: REGION, timeoutSeconds: 540 },
 })
 
 /**
+ * Give equipment the siteId it was created without.
+ *
+ * Extinguishers, AEDs and FAS devices predate sites being first-class. They came
+ * from a system that knew a site only as a free-text "Center Name", so much of
+ * the estate carries a centre name printed on a physical label and no siteId at
+ * all. Everything that joins through the site registry — the display fill-in in
+ * siteResolve.js, the analytics roll-ups, the site filters — sees nothing for
+ * those records.
+ *
+ * What it does NOT do, said plainly because the name invites the wrong
+ * expectation: no rule in firestore.rules reads a siteId on any of these three
+ * collections today, so this grants nobody access and hides nothing. It repairs
+ * the joins, and it is the prerequisite for scoping equipment by site later —
+ * which is exactly why a wrong link is expensive. A guess made today becomes an
+ * access decision the day that scoping lands, and nobody re-checks a backfill
+ * that already reported success.
+ *
+ * siteId and nothing else is ever written. The centre name on an extinguisher is
+ * stencilled on the extinguisher; it must not change because a link was missing.
+ *
+ * Every decision is planSiteLinks' — see functions/lib/siteLinks.js for why a
+ * name resolving to two sites, or a record whose existing link disagrees with
+ * its name, is reported instead of resolved. This function does the reading and
+ * the writing and decides nothing.
+ *
+ * dryRun defaults to TRUE. Report first, write when asked.
+ */
+export const linkEquipmentSites = onCall({ region: REGION, timeoutSeconds: 540 }, async (request) => {
+  const callerUid = request.auth?.uid
+  if (!callerUid) throw new HttpsError('unauthenticated', 'Sign in first.')
+
+  const db = getFirestore()
+  const caller = (await db.doc(`users/${callerUid}`).get()).data()
+  if (!caller || caller.status !== 'approved' || caller.role !== 'admin') {
+    throw new HttpsError('permission-denied', 'Administrators only.')
+  }
+  const orgId = caller.orgId
+  const base = `organizations/${orgId}`
+
+  // The site registry read straight from the collection, NOT the way the app
+  // reads it: subscribeSites orders by name (src/shared/org/orgData.js:258) and
+  // Firestore drops documents missing the ordered field, so a site saved without
+  // a name is invisible to every reader in the browser. Sourcing the registry
+  // through that listener would make a nameless site silently absent here too,
+  // and every piece of equipment naming it would be reported as unmatched with
+  // no hint why. indexSites skips nameless sites explicitly instead.
+  const [sitesSnap, ...equipSnaps] = await Promise.all([
+    db.collection(`${base}/sites`).get(),
+    ...LINKABLE_COLLECTIONS.map((c) => db.collection(`${base}/${c}`).get()),
+  ])
+
+  const sites = sitesSnap.docs.map((d) => ({ id: d.id, name: d.data()?.name }))
+  const equipment = []
+  equipSnaps.forEach((snap, i) => {
+    snap.docs.forEach((d) => {
+      const data = d.data()
+      equipment.push({
+        collection: LINKABLE_COLLECTIONS[i],
+        id: d.id,
+        centerName: data?.centerName,
+        siteId: data?.siteId,
+        deletedAt: data?.deletedAt,
+      })
+    })
+  })
+
+  const plan = planSiteLinks(equipment, sites)
+
+  const dryRun = request.data?.dryRun !== false
+  if (!dryRun) {
+    // Chunked: a batch takes 500 writes, and three equipment collections across
+    // an estate this size exceed that comfortably.
+    for (let i = 0; i < plan.writes.length; i += 400) {
+      const batch = db.batch()
+      plan.writes.slice(i, i + 400).forEach((w) => {
+        // The patch is spelled out rather than spread from the row. A row also
+        // carries matchedName, for the report, and spreading it would write the
+        // registry's wording onto equipment as a new field — the one thing this
+        // job promised not to do. updatedAt is left alone for the same reason as
+        // the medical strip: nobody edited these, and stamping every asset in
+        // the tenant would bury whatever a person actually touched that day.
+        batch.update(db.doc(`${base}/${w.collection}/${w.id}`), { siteId: w.siteId })
+      })
+      await batch.commit()
+    }
+  }
+
+  // Not refused server-side when ambiguous or conflicting rows exist, and that
+  // is deliberate: they are never in plan.writes, so writing is already safe,
+  // and one permanently ambiguous pair of site names would otherwise block every
+  // sound link in the org forever. The Maintenance card disables the write
+  // button on those counts — the point is that a person sees them, not that the
+  // run is impossible.
+  logger.info('equipment: site link backfill', {
+    orgId, dryRun, sites: sitesSnap.size, equipment: equipment.length,
+    toWrite: plan.writes.length, ambiguous: plan.ambiguous.length,
+    conflicting: plan.conflicting.length, unmatched: plan.unmatched.length,
+  })
+
+  return {
+    orgId,
+    dryRun,
+    // Reported because 0 sites explains a page of "unmatched" far better than
+    // the page of unmatched names does.
+    sites: sitesSnap.size,
+    equipment: equipment.length,
+    alreadyLinked: plan.alreadyLinked,
+    deleted: plan.deleted,
+    written: dryRun ? 0 : plan.writes.length,
+    wouldWrite: plan.writes.length,
+    // The two that need a human, each with its own total so the card can gate on
+    // a count without paging through the samples. A name resolving to two sites
+    // is a coin flip; a record already linked elsewhere may have been linked by
+    // hand, correctly, with the free text being the stale half. Neither is
+    // guessed at.
+    ambiguous: plan.ambiguous.slice(0, 50),
+    ambiguousTotal: plan.ambiguous.length,
+    conflicting: plan.conflicting.slice(0, 50),
+    conflictingTotal: plan.conflicting.length,
+    // Names rather than rows: a few hundred unmatched records collapse to a
+    // couple of dozen centre names, and a name is what somebody can go and fix.
+    unmatchedNames: plan.unmatchedNames.slice(0, 50),
+    unmatchedNameTotal: plan.unmatchedNames.length,
+    unmatchedTotal: plan.unmatched.length,
+    // No centre name at all, so unmatchable by name however the rules are
+    // loosened. These need another route entirely.
+    noName: plan.noName.length,
+    sample: plan.writes.slice(0, 25).map((w) => ({
+      collection: w.collection, id: w.id, matchedName: w.matchedName,
+    })),
+  }
+})
+
+/**
+ * Put the medical detail INTO /injuries, so the strip below has a copy to prove
+ * against. Step one of two; it removes nothing.
+ *
+ * stripIncidentMedicalDetail refuses to take a field off an incident unless it
+ * can first find that field in the matching /injuries record, because /injuries
+ * is about to be the only copy and an unproved removal destroys a medical
+ * record. On production data that guard fired with an injury document already
+ * present:
+ *
+ *   incidents: 1  injuries: 1  toWrite: 0  blocked: 1  stillExposed: 1
+ *
+ * A record existing is not a record being complete, and nothing in the product
+ * closes the gap: syncIncidentInjuries writes from the wizard's live form, not
+ * from what is already stored, and it skips a verified record outright. Left
+ * alone, that incident carries a colleague's injury type and body parts for
+ * every approved member and the external auditor to list, permanently.
+ *
+ * Deliberately a SEPARATE callable rather than a mode of the strip. Seeding
+ * copies clinical detail into the system of record; an admin has to be able to
+ * run it, open the Injuries page, read what actually landed, and only then
+ * strip. Folding it into one button would make that copy reviewable only in the
+ * moment before the original was deleted.
+ *
+ * Fills gaps and creates missing records. Never overwrites an answer /injuries
+ * already holds, never touches a verified or soft-deleted record, and never
+ * invents a document id for a row that names no person — see planInjurySeed for
+ * why each of those is a human's decision and not this job's.
+ *
+ * dryRun defaults to TRUE. Report first, write when asked.
+ */
+export const seedInjuryRecords = onCall({ region: REGION, timeoutSeconds: 540 }, async (request) => {
+  const callerUid = request.auth?.uid
+  if (!callerUid) throw new HttpsError('unauthenticated', 'Sign in first.')
+
+  const db = getFirestore()
+  const caller = (await db.doc(`users/${callerUid}`).get()).data()
+  if (!caller || caller.status !== 'approved' || caller.role !== 'admin') {
+    throw new HttpsError('permission-denied', 'Administrators only.')
+  }
+  const orgId = caller.orgId
+  const base = `organizations/${orgId}`
+
+  const [incSnap, injSnap] = await Promise.all([
+    db.collection(`${base}/incidents`).get(),
+    db.collection(`${base}/injuries`).get(),
+  ])
+
+  // More of the incident than the strip reads, and that is the point: a new
+  // injury record needs the date, type, severity and location to render as
+  // anything but a blank row on the Injuries page. A medical record nobody can
+  // place is not a record.
+  const incidents = incSnap.docs.map((d) => {
+    const data = d.data() || {}
+    return {
+      id: d.id,
+      refNo: data.refNo,
+      incidentDate: data.incidentDate,
+      type: data.type,
+      severity: data.severity,
+      location: data.location,
+      injuryReports: data.injuryReports,
+    }
+  })
+  const injuries = new Map(injSnap.docs.map((d) => [d.id, d.data()]))
+
+  const plan = planInjurySeed(incidents, injuries)
+
+  const dryRun = request.data?.dryRun !== false
+  if (!dryRun) {
+    for (let i = 0; i < plan.writes.length; i += 400) {
+      const batch = db.batch()
+      plan.writes.slice(i, i + 400).forEach((w) => {
+        // merge, always. On a create there is nothing to merge with; on a
+        // completion the patch holds only the fields /injuries had no answer
+        // for, and set() without merge would replace the whole document —
+        // deleting the verification, the incident context and every answer this
+        // job promised not to touch.
+        //
+        // updatedAt is stamped here rather than in the plan because a pure
+        // function cannot mint a server timestamp, and it is NOT optional:
+        // subscribeInjuries orders by updatedAt and Firestore drops documents
+        // missing the ordered field, so a seeded record without one would be a
+        // medical record that shows on no screen. Unlike the strip below, this
+        // genuinely changes what the record says, so moving it to the top of
+        // "recently changed" is honest.
+        batch.set(
+          db.doc(`${base}/injuries/${w.id}`),
+          { ...w.patch, updatedAt: FieldValue.serverTimestamp() },
+          { merge: true },
+        )
+      })
+      await batch.commit()
+    }
+  }
+
+  // Counts and reasons. No field names and certainly no values: a migration log
+  // must not become one more copy of the thing being confined.
+  logger.info('incidents: injury record seed', {
+    orgId, dryRun, incidents: incSnap.size, injuries: injSnap.size,
+    toWrite: plan.writes.length, created: plan.created, completed: plan.completed,
+    blocked: plan.blocked.length, orphans: plan.orphanInjuries.length,
+  })
+
+  return {
+    orgId,
+    dryRun,
+    incidents: incSnap.size,
+    injuries: injSnap.size,
+    written: dryRun ? 0 : plan.writes.length,
+    wouldWrite: plan.writes.length,
+    // The gate the strip is sequenced behind: while this is above zero, medical
+    // detail is on incidents that /injuries cannot yet account for.
+    created: plan.created,
+    completed: plan.completed,
+    // Kept apart from the strip's `confined` on purpose. `confined` claims the
+    // detail was already in /injuries and merely removed from the incident;
+    // `seeded` is detail this migration COPIED there, proved by nothing but the
+    // incident it came from.
+    seeded: plan.seeded,
+    alreadyHeld: plan.alreadyHeld,
+    alreadyComplete: plan.alreadyComplete,
+    // The rows a human has to resolve, by reason. Field names only.
+    blocked: plan.blocked.slice(0, 50),
+    blockedTotal: plan.blocked.length,
+    blockedFields: plan.blockedFields,
+    // Injury records for an incident that has rows, which no row names —
+    // usually one person holding a record under one id and a row under another.
+    // Reported, never reconciled: merging them writes one colleague's clinical
+    // detail into another's record.
+    orphanInjuries: plan.orphanInjuries.slice(0, 50),
+    orphanInjuryTotal: plan.orphanInjuries.length,
+    sample: plan.writes.slice(0, 25).map((w) => ({
+      id: w.id, refNo: w.refNo, create: w.create, fields: w.fields.length,
+    })),
+  }
+})
+
+/**
  * Take the medical detail off incident documents that already carry a copy.
+ * Step two of two — run seedInjuryRecords first.
  *
  * /injuries is gated on isManagerOf rather than isElevatedOf specifically to
  * keep the external auditor out of colleagues' health records. That gate was
@@ -365,6 +751,11 @@ export const backfillQrMirrors = onCall({ region: REGION, timeoutSeconds: 540 },
  * planMedicalStrip. /injuries is about to be the only copy, so an unproved
  * removal deletes an injury record rather than confining it. Everything
  * unproved is kept and reported for a human.
+ *
+ * That guard is what makes seedInjuryRecords above a prerequisite rather than a
+ * convenience: a run reporting `blocked` has found detail whose only copy is
+ * the exposed one, and running this again will report exactly the same thing
+ * forever. Seed first, read what landed, then strip.
  *
  * dryRun defaults to TRUE. Report first, write when asked.
  */
@@ -452,6 +843,321 @@ export const stripIncidentMedicalDetail = onCall({ region: REGION, timeoutSecond
 })
 
 /**
+ * Copy the bytes of one medical record to the manager-only prefix.
+ *
+ * An object already at the destination is the RESUMED run — a previous attempt
+ * copied the file and died before it could delete the source — so it is left
+ * alone rather than copied over. What matters either way is that the destination
+ * is confirmed present before anything is destroyed.
+ *
+ * A GCS copy is server-side and atomic: it either completes or raises. So
+ * "exists at the destination" is the whole proof, and a size comparison would
+ * only re-assert what the absence of an error already said.
+ *
+ * Throws when the file is in NEITHER place. That means somebody has been
+ * deleting objects out from under the database, and this job is not the place to
+ * paper over it — the record is reported and left where it is, with its pointer
+ * intact, rather than moved as though the file had come along.
+ */
+async function copyStoredRecord(store, fromPath, toPath) {
+  const source = store.file(fromPath)
+  const dest = store.file(toPath)
+  const [already] = await dest.exists()
+  if (!already) {
+    const [there] = await source.exists()
+    if (!there) throw new Error('the file this record names is in neither place')
+    await source.copy(dest)
+    const [landed] = await dest.exists()
+    if (!landed) throw new Error('the copied file did not arrive in the bucket')
+  }
+
+  // Strip the download token from the copy.
+  //
+  // firebaseStorageDownloadTokens is what makes a getDownloadURL link work
+  // without any credential, and a copy carries the source's metadata across. No
+  // URL has ever been minted for this new path, so the token is unused — but an
+  // unused bearer token on a confined medical file is a door left unlocked in a
+  // room nobody has been shown yet. Removing it means the only way in is
+  // getBlob, which storage.rules actually decides on.
+  //
+  // Best-effort on purpose: the record is already confined on both surfaces by
+  // the time this runs, and failing the whole move over the metadata would leave
+  // it in the photo album where every member can list it. Counted and logged
+  // instead, by the caller.
+  await dest.setMetadata({ metadata: { firebaseStorageDownloadTokens: null } })
+}
+
+/**
+ * Move medical records out of the photo album — the destructive half.
+ *
+ * THE ORDER IS THE POINT, and it is this:
+ *
+ *   1. copy the object to the medical-records prefix, and confirm it arrived
+ *   2. write the new pointer at injuries/{injuryId}/records/{recordId}
+ *   3. READ IT BACK and prove it landed intact (landedIntact)
+ *   4. only then delete the old object
+ *   5. and last, delete the old pointer
+ *
+ * Every gap between those steps leaves the record reachable in at least one
+ * whole place. A crash after 1 leaves two copies of the file and the original
+ * pointer; after 2, two pointers; after 4, the old pointer names a path that has
+ * gone while the new pointer names the live copy. Nothing anywhere leaves the
+ * record findable by nothing — losing a medical record is a worse outcome than
+ * the exposure staying open another day, which is the same rule planMedicalStrip
+ * follows for the clinical fields.
+ *
+ * 4 before 5 rather than the other way round, deliberately. Deleting the pointer
+ * first and then dying would strand the object under the member-readable photo
+ * prefix with nothing left in the database naming it: invisible to this job
+ * forever, invisible to the retention sweep, and still readable by anyone who
+ * knows the path. A dead path on a pointer that is about to be deleted is
+ * recoverable by re-running; an orphan in the bucket is not.
+ *
+ * The destination document id is the SOURCE document id (planMedicalRecordMove),
+ * so every step above is idempotent: a re-run after any crash lands on the same
+ * document rather than making a second copy of somebody's discharge summary.
+ *
+ * One failure never stops the rest. Each record is independent, and a run that
+ * abandoned forty confinable records because the forty-first had a bad path
+ * would leave them exposed for no reason.
+ *
+ * Exported for index.test.js, not for deploy: function discovery only picks up
+ * exports carrying an __endpoint, which a plain function does not.
+ */
+export async function moveMedicalRecords(db, store, orgId, moves) {
+  const base = `organizations/${orgId}`
+  const failed = []
+  const perIncident = new Map()
+  let moved = 0
+  let filesMoved = 0
+  let tokensLeft = 0
+
+  for (const m of moves) {
+    const ctx = { orgId, incidentId: m.incidentId, recordId: m.photoId }
+    try {
+      // 1. The bytes, first, so the new pointer never names a file that is not
+      //    there yet.
+      if (m.toPath && m.toPath !== m.fromPath) {
+        try {
+          await copyStoredRecord(store, m.fromPath, m.toPath)
+        } catch (e) {
+          // Only the metadata strip is survivable; a failed copy is not, and
+          // both arrive here. Telling them apart by message would be brittle, so
+          // the destination is asked directly: present means the file is
+          // confined and only the token strip failed.
+          const [there] = await store.file(m.toPath).exists()
+          if (!there) throw e
+          tokensLeft += 1
+          logger.error('medical records: could not remove the download token from a moved file', {
+            ...ctx, error: e?.message || String(e),
+          })
+        }
+        filesMoved += 1
+      }
+
+      // 2. The pointer.
+      const doc = { ...m.doc }
+      // A pointer with no uploadedAt is dropped by the only query that reads
+      // this collection (subscribeMedicalRecords orders by it), so a record
+      // moved without one would be confined onto no screen at all. Stamped here
+      // rather than in the plan because a pure function cannot mint one.
+      if (m.needsUploadedAt) doc.uploadedAt = FieldValue.serverTimestamp()
+      const target = db.doc(`${base}/injuries/${m.injuryId}/records/${m.photoId}`)
+      await target.set(doc)
+
+      // 3. The proof. Read back out of Firestore, not trusted from the write.
+      const check = await target.get()
+      if (!landedIntact(m.doc, check.exists ? check.data() : null)) {
+        throw new Error('the moved record did not read back intact')
+      }
+
+      // 4. and 5. Nothing above this line was destructive.
+      if (m.fromPath && m.toPath && m.toPath !== m.fromPath) {
+        await store.file(m.fromPath).delete({ ignoreNotFound: true })
+      }
+      await db.doc(`${base}/incidents/${m.incidentId}/photos/${m.photoId}`).delete()
+
+      moved += 1
+      perIncident.set(m.incidentId, (perIncident.get(m.incidentId) || 0) + 1)
+    } catch (e) {
+      // Named by id, never by filename: a failure report must not become one
+      // more copy of the thing being confined.
+      failed.push({
+        incidentId: m.incidentId, refNo: m.refNo, photoId: m.photoId,
+        error: e?.message || String(e),
+      })
+      logger.error('medical records: left where it was', { ...ctx, error: e?.message || String(e) })
+    }
+  }
+
+  // photoCount is maintained by addIncidentPhoto and deleteIncidentPhoto, so a
+  // migration that removes pointers without it leaves a counter that no longer
+  // counts anything. updatedAt is deliberately not stamped, for the reason the
+  // medical strip records: nobody edited these incidents, and moving every one
+  // of them to the top of "recently changed" would bury whatever a person
+  // actually touched that day.
+  for (const [incidentId, n] of perIncident) {
+    try {
+      await db.doc(`${base}/incidents/${incidentId}`).update({ photoCount: FieldValue.increment(-n) })
+    } catch (e) {
+      // The records have already moved. A stale count is not worth reporting the
+      // run as failed over.
+      logger.error('medical records: photo count left stale', {
+        orgId, incidentId, error: e?.message || String(e),
+      })
+    }
+  }
+
+  return { moved, filesMoved, tokensLeft, failed }
+}
+
+/**
+ * Move the medical record FILES out of the shared photo subcollection.
+ *
+ * stripIncidentMedicalDetail confined the injury FIELDS. The documents stayed
+ * where they were — incidents/{id}/photos, kind:'medical_record' — and the
+ * generic {sub=**} at the foot of firestore.rules hands that subtree to every
+ * approved member AND to the external auditor, by get and by list. One getDocs
+ * returned the filename, caption, size and download URL of every medical
+ * document in the tenant. A GP letter, a fit note, a discharge summary IS the
+ * record: the fields were confined and the scan of the same information was not.
+ *
+ * The rules change moved the boundary to the collection itself, because rules
+ * cannot filter which documents a list returns. Closing the write path closes
+ * nothing already stored, and what is already stored is the exposure — this
+ * migration is a PREREQUISITE of that change, not a tidy-up after it.
+ *
+ * It moves both halves, because a pointer nobody can read is worth nothing while
+ * the file behind it is readable by anyone in the tenant: the pointer into
+ * injuries/{injuryId}/records, and the object from the `incident-photos` Storage
+ * prefix to `medical-records`, which is the one prefix storage.rules excludes
+ * from its generic member-wide read.
+ *
+ * WHAT IT CANNOT DO, said plainly because the count of moved records invites the
+ * wrong conclusion: a getDownloadURL already handed out is a bearer link that no
+ * rule is ever consulted for. Deleting the object it names is what kills it, and
+ * this does delete it — so a link in someone's history stops working for every
+ * file this run moves. Nothing recalls the ones that were already FOLLOWED. A
+ * file downloaded last March is on somebody's laptop, and no migration reaches
+ * it. If a record was exposed to a person who should not have had it, the
+ * remedy is the incident process, not this button.
+ *
+ * Sequenced AFTER seedInjuryRecords: a record is filed under the injury document
+ * for the person it belongs to, and one filed under an injury that does not
+ * exist outlives the purge of its own incident, unreachable by any query in the
+ * product. Those are reported as `no-injury-record` rather than filed anyway.
+ *
+ * dryRun defaults to TRUE. Report first, write when asked.
+ */
+export const confineMedicalRecords = onCall({ region: REGION, timeoutSeconds: 540 }, async (request) => {
+  const callerUid = request.auth?.uid
+  if (!callerUid) throw new HttpsError('unauthenticated', 'Sign in first.')
+
+  const db = getFirestore()
+  const caller = (await db.doc(`users/${callerUid}`).get()).data()
+  if (!caller || caller.status !== 'approved' || caller.role !== 'admin') {
+    throw new HttpsError('permission-denied', 'Administrators only.')
+  }
+  const orgId = caller.orgId
+  const base = `organizations/${orgId}`
+
+  // Existence and deletedAt, and not one clinical field. This job decides where
+  // a file goes, never what is wrong with anybody, so select() keeps the answer
+  // to that question out of its memory and out of anything that might log it.
+  const [incSnap, injSnap] = await Promise.all([
+    db.collection(`${base}/incidents`).get(),
+    db.collection(`${base}/injuries`).select('deletedAt').get(),
+  ])
+  const injuries = new Map(injSnap.docs.map((d) => [d.id, d.data() || {}]))
+
+  // One photos query per incident rather than one collectionGroup query for the
+  // lot. A collectionGroup('photos') spans EVERY tenant, and this runs with
+  // Admin SDK privileges that never consult firestore.rules — the same trap the
+  // retention sweep's ownedByOrg() guards. Twenty at a time so a large register
+  // does not open a query per incident all at once.
+  const incidents = []
+  for (let i = 0; i < incSnap.docs.length; i += 20) {
+    const wave = incSnap.docs.slice(i, i + 20)
+    const photoSnaps = await Promise.all(wave.map((d) => d.ref.collection('photos').get()))
+    wave.forEach((d, j) => {
+      const data = d.data() || {}
+      incidents.push({
+        id: d.id,
+        refNo: data.refNo,
+        injuryReports: data.injuryReports,
+        photos: photoSnaps[j].docs.map((p) => ({ id: p.id, ...p.data() })),
+      })
+    })
+  }
+
+  const plan = planMedicalRecordMove(incidents, injuries, orgId)
+
+  const dryRun = request.data?.dryRun !== false
+  const run = dryRun
+    ? { moved: 0, filesMoved: 0, tokensLeft: 0, failed: [] }
+    : await moveMedicalRecords(db, getBucket(), orgId, plan.moves)
+
+  // Counts, ids and reasons. No filenames, here or in the response: "MRI-left-
+  // knee — A Kumar.pdf" is the record, and a migration log must not become one
+  // more copy of the thing it is confining.
+  logger.info('incidents: medical record confinement', {
+    orgId, dryRun, incidents: incSnap.size, records: plan.records,
+    toMove: plan.moves.length, moved: run.moved, filesMoved: run.filesMoved,
+    blocked: plan.blocked.length, failed: run.failed.length, remaining: plan.remaining,
+  })
+
+  return {
+    orgId,
+    dryRun,
+    incidents: incSnap.size,
+    // Every medical record still filed in the shared photo subcollection —
+    // readable, by get and by list, by every member and the auditor.
+    records: plan.records,
+    photos: plan.photos,
+    moved: run.moved,
+    wouldMove: plan.moves.length,
+    // Bytes still under the prefix storage.rules hands to the whole tenant. The
+    // pointer move alone would leave the storage rule decorative for history.
+    filesToMove: plan.filesToMove,
+    filesMoved: run.filesMoved,
+    // Base64 on the pointer itself, with nothing in the bucket — for these the
+    // document IS the medical record, and Firestore rules are the only control.
+    inlineRecords: plan.inlineRecords,
+    // Permanent bearer links this run removes from the database. It does NOT
+    // mean they are recalled: see the note above the function and the card text.
+    urlsDropped: plan.urlsDropped,
+    // Records whose injury document is in the Recycle Bin. Moved anyway — the
+    // file is not destroyed by moving it, and leaving it in the photo album is
+    // the exposure — but counted, because nothing purges /injuries yet.
+    underDeletedInjury: plan.underDeletedInjury,
+    // Above the cap, so a second run finishes the job.
+    remaining: plan.remaining,
+    // The rows that need a person, by reason, and never by filename:
+    //   several-people    the incident injured more than one, and the pointer
+    //                     says nothing about whose record this is
+    //   no-person-id      no injury row names a person to file it against
+    //   no-injury-record  run seedInjuryRecords first
+    //   foreign-path      the file path is not inside this org's own prefix
+    blocked: plan.blocked.slice(0, 50),
+    blockedTotal: plan.blocked.length,
+    blockedReasons: plan.blockedReasons,
+    // Attempted and refused mid-flight. Each one still has its pointer and its
+    // file exactly where they were — nothing is deleted until the copy has been
+    // read back intact.
+    failed: run.failed.slice(0, 50),
+    failedTotal: run.failed.length,
+    // Files that arrived confined but kept an unused download token. Nobody has
+    // ever been given a URL for the new path, so this is a door in a room nobody
+    // has been shown — but it is worth knowing about.
+    tokensLeft: run.tokensLeft,
+    prefix: MEDICAL_RECORD_KIND,
+    sample: plan.moves.slice(0, 25).map((m) => ({
+      incidentId: m.incidentId, refNo: m.refNo, personId: m.personId, recordId: m.photoId,
+    })),
+  }
+})
+
+/**
  * Delete defect locks that no longer describe a live fault.
  *
  * A lock outlived its defect whenever the Action Tracker resolved one — that
@@ -514,9 +1220,6 @@ export const clearOrphanedDefectLocks = onCall({ region: REGION }, async (reques
     ids: orphaned.slice(0, 25).map((l) => l.id),
   }
 })
-
-let bucket = null
-const getBucket = () => (bucket ||= getStorage().bucket())
 
 /**
  * Destroy the stored object a file pointer names, before the pointer goes.
@@ -591,6 +1294,15 @@ export async function purgeOrgCollection(db, orgId, spec, now, store = null) {
   }
 
   let files = 0
+  // Everything that went wrong but did not stop the sweep. Each of these used
+  // to be a logger.error and nothing else, which meant the most dangerous code
+  // in this codebase — unattended, irreversible deletion of health records —
+  // failed in total silence. Two of these are also ATTACK INDICATORS: a member
+  // who cannot delete anything under storage.rules trying to get this
+  // Admin-SDK sweep to delete it for them, in another tenant. Collected here,
+  // returned to the caller, and turned into a failed invocation at the end of
+  // the run so that something outside Cloud Logging finally notices.
+  const problems = []
   for (const id of purge) {
     const ref = col.doc(id)
     const row = docs.find((d) => d.id === id)
@@ -614,10 +1326,16 @@ export async function purgeOrgCollection(db, orgId, spec, now, store = null) {
         if (path && ownedByOrg(path, orgId)) {
           const ctx = { orgId, collection: spec.collection, docId: id }
           if (await purgeStoredFile(store || getBucket(), path, ctx)) files += 1
+          // The pointer is about to be deleted regardless — see purgeStoredFile.
+          // So this is the case where the record says the file is gone and the
+          // file is still in the bucket, which is precisely the shape of a
+          // failed erasure request. It has to be louder than a log line.
+          else problems.push({ kind: 'file-left-behind', docId: id, path })
         } else if (path) {
           logger.error('retention: refused a file path outside the org', {
             orgId, collection: spec.collection, docId: id, path,
           })
+          problems.push({ kind: 'foreign-file-path', docId: id, path })
         }
         await kid.ref.delete()
       }
@@ -643,16 +1361,18 @@ export async function purgeOrgCollection(db, orgId, spec, now, store = null) {
           logger.error('retention: refused a QR mirror belonging to another org', {
             orgId, token, mirrorOrgId: mirror.data()?.orgId ?? null,
           })
+          problems.push({ kind: 'foreign-qr-mirror', docId: id, token })
         }
       } catch (e) {
         logger.error('retention: could not check a QR mirror', { orgId, token, error: e?.message || String(e) })
+        problems.push({ kind: 'qr-mirror-error', docId: id, token })
       }
     }
 
     await ref.delete()
   }
 
-  return { purged: purge.length, kept: keep.length, files }
+  return { purged: purge.length, kept: keep.length, files, problems }
 }
 
 export const purgeSoftDeleted = onSchedule(
@@ -664,14 +1384,19 @@ export const purgeSoftDeleted = onSchedule(
     let total = 0
     let totalFiles = 0
 
+    const failures = []
+
     for (const org of orgs.docs) {
       for (const spec of PURGEABLE) {
         try {
-          const { purged, kept, files } = await purgeOrgCollection(db, org.id, spec, now)
+          const { purged, kept, files, problems } = await purgeOrgCollection(db, org.id, spec, now)
           total += purged
           totalFiles += files
           if (purged > 0) {
             logger.info('retention: purged', { orgId: org.id, collection: spec.collection, purged, kept, files })
+          }
+          for (const p of problems || []) {
+            failures.push({ orgId: org.id, collection: spec.collection, ...p })
           }
         } catch (e) {
           // One bad collection must not stop the rest, and must not retry the
@@ -679,10 +1404,44 @@ export const purgeSoftDeleted = onSchedule(
           logger.error('retention: skipped', {
             orgId: org.id, collection: spec.collection, error: e?.message || String(e),
           })
+          failures.push({
+            kind: 'collection-failed',
+            orgId: org.id,
+            collection: spec.collection,
+            error: e?.message || String(e),
+          })
         }
       }
     }
 
-    logger.info('retention: run complete', { organizations: orgs.size, purged: total, files: totalFiles })
+    logger.info('retention: run complete', {
+      organizations: orgs.size, purged: total, files: totalFiles, failures: failures.length,
+    })
+
+    // Do all the work, THEN fail. Both halves matter.
+    //
+    // The work has to finish first because a retention sweep that stops at the
+    // first bad org leaves every later org's expired health records sitting
+    // there — the resilience this handler was written with is correct and is
+    // preserved exactly.
+    //
+    // But it used to end here, having swallowed everything, and that made the
+    // most dangerous code in the system perfectly silent: retryCount is 0, no
+    // exception ever escaped, and the invocation was recorded as a success no
+    // matter what happened inside it. A sweep that had been failing for months
+    // looked identical to one that had nothing to do. Meanwhile the app keeps
+    // promising users their data is purged after 30 days.
+    //
+    // Throwing at the very end marks the invocation FAILED, which is a signal
+    // Cloud Monitoring already knows how to alert on with no extra
+    // instrumentation (PRODUCTION.md §2a) — and with retryCount 0 it costs
+    // nothing but the alert. Tomorrow's run still picks up whatever was missed.
+    const summary = summarizeFailures(failures)
+    if (summary) {
+      logger.error('retention: run had failures', {
+        failures: failures.slice(0, 50), byKind: summary.byKind, total: summary.total,
+      })
+      throw new Error(summary.message)
+    }
   }
 )

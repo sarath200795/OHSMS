@@ -13,6 +13,7 @@ import {
   getRedirectResult,
 } from 'firebase/auth'
 import { auth, isFirebaseConfigured } from '../firebase'
+import { clearKeyring } from '../crypto'
 import { isMfaRequired, resolverFor, completeTotpSignIn } from './mfa'
 import {
   createOrganization,
@@ -67,7 +68,18 @@ export function AuthProvider({ children }) {
     const unsub = onAuthStateChanged(auth, async (u) => {
       setUser(u)
       if (u) await refreshProfile(u.uid)
-      else setProfile(null)
+      else {
+        setProfile(null)
+        // Every identity change drops the encryption keys, not just an explicit
+        // sign-out: a token revoked by the claims trigger, an expired session,
+        // a switch of account on a shared site laptop all arrive here and
+        // nowhere else. Without this, a manager's medical private key — and the
+        // content keys derived from it — would still be in memory when a member
+        // signed in next, and their session would open records their own role
+        // is refused. The keys are non-extractable, so dropping the reference
+        // is the only way they go.
+        clearKeyring()
+      }
       setLoading(false)
     })
     return unsub
@@ -206,6 +218,10 @@ export function AuthProvider({ children }) {
   }
 
   const signOut = async () => {
+    // Before the network call, not after: fbSignOut can fail or hang offline,
+    // and the keys must be gone either way. onAuthStateChanged clears them too,
+    // but only once it fires — which it will not do if this throws.
+    clearKeyring()
     await fbSignOut(auth)
     setUser(null)
     setProfile(null)

@@ -88,6 +88,35 @@ service cloud.firestore {
       return isApprovedMemberOf(orgId) && myProfile().role != 'auditor';
     }
 
+    // ── The encryption keyset ────────────────────────────────────────────────
+    // organizations/{orgId}/meta/cryptoKeys holds the organization's wrapped
+    // data keys (functions/lib/dataKeys.js). NO CLIENT OPERATION IS ALLOWED ON
+    // IT — not read, not write. The keys reach a member through the getDataKeys
+    // callable, which decides class by class what their role entitles them to;
+    // a client that could read this document would be going round that decision.
+    //
+    // Why it is a conjunct on the generic rules rather than a `match` of its
+    // own: rules are a permissive union, so a narrow match denying everything
+    // restricts nothing while `match /{col}/{docId}` still grants the same
+    // access. The exclusion has to live where the grant lives, exactly as
+    // auditLogs, defectLocks and docSeq do.
+    //
+    // Why the docId and not the whole `meta` collection: /meta also holds
+    // meta/stats and the reference-number counters, which bumpStats and
+    // reserveRefNo need every member to write. Excluding the collection would
+    // stop anyone filing an incident.
+    //
+    // The WRITE side is the sharper of the two. The keys stored here are
+    // wrapped under a Secret Manager master key and are useless to whoever
+    // reads them, but the generic `allow create, update` grants isWriterOf on
+    // /meta — so before this line any member could overwrite the keyset, and
+    // every value already sealed under the replaced keys would become
+    // permanently unreadable. Destroying a tenant's health records is a worse
+    // outcome than reading one, and it was one setDoc away.
+    function notKeyset(col, docId) {
+      return !(col == 'meta' && docId == 'cryptoKeys');
+    }
+
     // A length cap that survives a null.
     //
     // The caps on the public QR surface were written as
@@ -959,6 +988,50 @@ service cloud.firestore {
       // decorative.
       match /injuries/{injuryId} {
         allow read: if isManagerOf(orgId);
+
+        // The attached FILES, not just the fields.
+        //
+        // The split above moved the clinical fields here and left the DOCUMENTS
+        // behind in incidents/{id}/photos, filed as kind:'medical_record' — a
+        // subcollection the generic {sub=**} at the foot of this file hands to
+        // every approved member AND to the external auditor, by get and by
+        // list. A GP letter, a fit note, a discharge summary IS the record; the
+        // fields were confined and the scan of the same information was not, so
+        // one getDocs on an incident's photos returned filename, caption and a
+        // download URL for every medical document in the tenant.
+        //
+        // A `kind` field could never have fixed that. Rules cannot filter WHICH
+        // documents a list returns — a query is allowed or refused whole — so
+        // the boundary has to be the collection itself, not a label on rows
+        // inside a shared one.
+        //
+        // Nested under /injuries rather than given a top-level name of its own,
+        // deliberately: `col` binds to 'injuries' for this entire subtree, and
+        // 'injuries' is ALREADY excluded from the generic read below and from
+        // its recursive wildcard. A new top-level collection would have to be
+        // added to both of those lists, and one added to one list is the hole
+        // shipped. This way there is nothing to remember. The doc id is
+        // `${incidentId}__${personId}` (src/modules/incidents/lib/injuries.js),
+        // so the path itself carries the person the record belongs to.
+        //
+        // isManagerOf, not isElevatedOf — the same reason as the injury record
+        // it hangs off: 'auditor' is an outside party, and confirming injuries
+        // are recorded does not require reading a named colleague's discharge
+        // summary.
+        //
+        // Reads nothing off the document, for the reason given above: a field
+        // access here raises on any pointer written before that field existed,
+        // and a raising rule denies.
+        //
+        // WRITES are intentionally absent. The generic rule below already grants
+        // create/update to isWriterOf under col == 'injuries' (so the member
+        // filling in Step 1a can attach the letter they cannot read back, and
+        // the auditor is refused) and restricts delete to isManagerOf, which
+        // mirrors canDeleteFrom in storage.rules. Adding a write match here
+        // could only widen that — rules are a permissive union.
+        match /records/{recordId} {
+          allow read: if isManagerOf(orgId);
+        }
       }
 
       match /illnesses/{illnessId} {
@@ -1039,7 +1112,7 @@ service cloud.firestore {
         //
         // `read` is split out from create/update for one reason: documents are
         // read through the site-scoped rule above and written through this one.
-        allow read: if col != 'auditLogs' && col != 'defectLocks' && col != 'docSeq' && col != 'documents' && col != 'injuries' && col != 'illnesses' && col != 'notifications' && isApprovedMemberOf(orgId);
+        allow read: if col != 'auditLogs' && col != 'defectLocks' && col != 'docSeq' && col != 'documents' && col != 'injuries' && col != 'illnesses' && col != 'notifications' && notKeyset(col, docId) && isApprovedMemberOf(orgId);
         // The manager gate lives INSIDE this rule rather than in a new match of
         // its own. Rules are a permissive union: a narrow per-collection match
         // restricts nothing while this one still grants the same write, so the
@@ -1052,11 +1125,12 @@ service cloud.firestore {
         // reaches much further than the row it edits. `site.manage` is manager
         // in can(); this is that, enforced.
         allow create, update: if col != 'auditLogs' && col != 'defectLocks' && col != 'docSeq'
+          && notKeyset(col, docId)
           && isWriterOf(orgId)
           && (isElevatedOf(orgId) || keepsClassification(col))
           && (isManagerOf(orgId)
               || (col != 'sites' && keepsDecision(col, beforeData(), request.resource.data)));
-        allow delete: if col != 'auditLogs' && col != 'docSeq' && isManagerOf(orgId);
+        allow delete: if col != 'auditLogs' && col != 'docSeq' && notKeyset(col, docId) && isManagerOf(orgId);
 
         // Nested subcollections (e.g. incidents/{id}/photos).
         // The recursive wildcard also matches the parent {col}/{docId} itself, so
@@ -1067,13 +1141,14 @@ service cloud.firestore {
         // and to the manager gate above, which this would otherwise hand back
         // for the parent document of every gated collection.
         match /{sub=**} {
-          allow read: if col != 'auditLogs' && col != 'defectLocks' && col != 'docSeq' && col != 'documents' && col != 'injuries' && col != 'illnesses' && col != 'notifications' && isApprovedMemberOf(orgId);
+          allow read: if col != 'auditLogs' && col != 'defectLocks' && col != 'docSeq' && col != 'documents' && col != 'injuries' && col != 'illnesses' && col != 'notifications' && notKeyset(col, docId) && isApprovedMemberOf(orgId);
           allow create, update: if col != 'auditLogs' && col != 'defectLocks' && col != 'docSeq'
+            && notKeyset(col, docId)
             && isWriterOf(orgId)
             && (isElevatedOf(orgId) || keepsClassification(col))
             && (isManagerOf(orgId)
                 || (col != 'sites' && keepsDecision(col, beforeData(), request.resource.data)));
-          allow delete: if col != 'auditLogs' && col != 'docSeq' && isManagerOf(orgId);
+          allow delete: if col != 'auditLogs' && col != 'docSeq' && notKeyset(col, docId) && isManagerOf(orgId);
         }
       }
     }

@@ -16,6 +16,7 @@
 // app keeps working un-degraded while infrastructure catches up.
 // ─────────────────────────────────────────────────────────────────────────────
 import { reportError } from '../monitoring'
+import { isSealedFile, openFileBytes, sealFileBytes } from '../crypto'
 
 const DRIVER = String(import.meta.env.VITE_STORAGE_DRIVER || 'firebase')
   .trim()
@@ -138,7 +139,7 @@ export function dataUrlToBlob(dataUrl) {
  * `{ url, path, size, contentType, name }` — or null, meaning "store it the
  * old way instead".
  */
-export async function putFile(orgId, kind, file, fileName) {
+export async function putFile(orgId, kind, file, fileName, { collection } = {}) {
   try {
     const adapter = await loadAdapter()
     if (!adapter) return null
@@ -146,9 +147,33 @@ export async function putFile(orgId, kind, file, fileName) {
     if (!blob) return null
     const name = safeFileName(fileName || file?.name)
     const path = storagePath(orgId, kind, name)
-    const result = await adapter.put(path, blob)
+
+    // Sealing is opt-in per collection (shared/crypto/policy.js) and returns the
+    // bytes untouched with meta:null for everything else, so the common path is
+    // unchanged. `collection` is passed by the caller rather than derived from
+    // `kind` because the two are different vocabularies: `kind` is a Storage
+    // path segment ('medical-records') and the policy is keyed by the Firestore
+    // collection the POINTER lives in ('injuries/records'). Guessing one from
+    // the other is how a file ends up sealed under the wrong class.
+    const { bytes, meta } = await sealFileBytes(orgId, collection, new Uint8Array(await blob.arrayBuffer()))
+    // Uploaded as octet-stream when sealed, so nothing downstream — a browser,
+    // a thumbnailer, a virus scanner — tries to interpret ciphertext as a PDF.
+    // The real type stays on the pointer for the reader to rebuild the Blob.
+    const upload = meta ? new Blob([bytes], { type: 'application/octet-stream' }) : blob
+
+    const result = await adapter.put(path, upload)
     if (!result?.url) return null
-    return { url: result.url, path, size: blob.size, contentType: blob.type || '', name }
+    return {
+      url: result.url,
+      path,
+      // The ORIGINAL size and type, not the ciphertext's. Every screen that
+      // prints a file size means the file the person chose, and the reader
+      // needs the real type to rebuild a Blob the browser will render.
+      size: blob.size,
+      contentType: blob.type || '',
+      name,
+      ...(meta || {}),
+    }
   } catch (e) {
     // Expected while the bucket/rules are not yet enabled in the console —
     // report once-per-kind noise is acceptable, silence is not.
@@ -181,10 +206,34 @@ export async function removeFile(path) {
  * URL pins its blob in memory until it is released, and a gallery that forgets
  * leaks every photo the user scrolls past.
  */
-export async function fileUrl(record) {
+export async function fileUrl(record, { orgId, collection } = {}) {
   const stored = typeof record === 'string' ? null : record?.url || null
   const path = typeof record === 'string' ? record : record?.path || null
   if (!path) return { url: stored, revoke: () => {} }
+
+  // A sealed object takes a different route, and MUST NOT fall back to the
+  // stored URL when anything goes wrong. That URL points at the ciphertext, so
+  // the fallback would render a broken image and — worse — would look to a
+  // manager exactly like a record whose file had gone missing, when in fact
+  // they simply have no key loaded yet. Encrypted objects fail loudly by
+  // returning no URL at all; the caller shows "restricted" rather than a
+  // blank frame.
+  if (isSealedFile(record)) {
+    try {
+      const adapter = await loadAdapter()
+      const blob = adapter?.resolveBlob ? await adapter.resolveBlob(path) : null
+      if (!blob) return { url: null, revoke: () => {}, restricted: true }
+      const plain = await openFileBytes(orgId, collection, record, new Uint8Array(await blob.arrayBuffer()))
+      // The real content type is on the POINTER, not on the object: the object
+      // was uploaded as application/octet-stream so nothing tries to render
+      // ciphertext as a PDF.
+      const url = URL.createObjectURL(new Blob([plain], { type: record?.type || 'application/octet-stream' }))
+      return { url, revoke: () => URL.revokeObjectURL(url) }
+    } catch (e) {
+      reportError(e, { source: 'storage.fileUrl.sealed', collection })
+      return { url: null, revoke: () => {}, restricted: true }
+    }
+  }
 
   try {
     const adapter = await loadAdapter()

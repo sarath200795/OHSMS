@@ -55,11 +55,23 @@ export default {
   // throwing; the caller falls back to the stored URL, because a photo that
   // fails to render is a worse outcome than one served the old way.
   async resolve(path) {
+    const blob = await this.resolveBlob(path)
+    return blob ? URL.createObjectURL(blob) : null
+  },
+
+  // The same fetch, stopping one step earlier.
+  //
+  // resolve() hands back an object URL, which is exactly the wrong shape for an
+  // encrypted object: the bytes behind that URL are ciphertext, and a browser
+  // asked to render them shows a broken image with no explanation. Anything
+  // that may be sealed has to get at the BYTES, decrypt them, and build its own
+  // URL from the plaintext — so the two steps are separated here rather than in
+  // three callers that each have to remember.
+  async resolveBlob(path) {
     const loaded = await loadStorage()
     if (!loaded?.mod.getBlob) return null
     try {
-      const blob = await loaded.mod.getBlob(loaded.mod.ref(loaded.storage, path))
-      return URL.createObjectURL(blob)
+      return await loaded.mod.getBlob(loaded.mod.ref(loaded.storage, path))
     } catch {
       // Denied by rules, gone, or the bucket has no CORS rule for this origin
       // yet (getBlob needs one; <img src> never did). See PRODUCTION.md.

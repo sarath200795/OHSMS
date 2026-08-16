@@ -28,6 +28,16 @@ import { statsDeltaFor, emptyStats, BUCKETS } from './stats'
 import { incidentInjuryStubs } from './injuries'
 import { reserveDocId } from '../../../shared/docId/reserve'
 import { putFile, removeFile, MAX_INLINE_BYTES, tooLargeForInline } from '../../../shared/storage'
+// Sealed under the GENERAL class — a symmetric org key held by everyone who can
+// read an incident anyway, auditor included. It buys nothing against a member,
+// and is not meant to: what it stands between is this data and everything that
+// reaches the STORE rather than the app. The clinical detail that used to ride
+// on this document is in /injuries under the medical keypair instead.
+import { sealDoc, openDoc, openSnapshots } from '../../../shared/crypto'
+
+/** The policy key for this collection. See src/shared/crypto/policy.js. */
+const SEALED = 'incidents'
+const SEALED_PHOTOS = 'incidents/photos'
 
 const BUCKET_NAMES = Object.keys(BUCKETS)
 
@@ -192,7 +202,12 @@ export async function createIncident(orgId, actor, initial = {}) {
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   }
-  await setDoc(ref, incident)
+  await setDoc(ref, await sealDoc(orgId, SEALED, incident))
+  // The delta is computed from the PLAINTEXT incident, not the sealed copy.
+  // Every dimension it counts — type, severity, category, location, lifecycle —
+  // is left readable by the policy, so the two agree today; passing the sealed
+  // copy would still be wrong the first time a counted field is added to the
+  // policy, and the counters would drift with nothing to show for it.
   await bumpStats(orgId, statsDeltaFor(null, incident))
   await logAudit(orgId, actor, AUDIT.INCIDENT_CREATE, {
     target: 'incident',
@@ -228,7 +243,12 @@ export async function updateIncident(orgId, id, updates, opts = {}) {
   for (const [k, v] of Object.entries(safe)) {
     if (!k.includes('.')) merged[k] = v
   }
-  await updateDoc(incidentRef(orgId, id), { ...safe, updatedAt: serverTimestamp() })
+  await updateDoc(incidentRef(orgId, id), { ...await sealDoc(orgId, SEALED, safe), updatedAt: serverTimestamp() })
+  // `before` is as stored — sealed — and `merged` mixes it with plaintext
+  // updates. Neither is opened, and neither needs to be: every dimension the
+  // delta counts is left readable by the policy. diffSummary below handles the
+  // mismatch itself, reporting a sealed field as changed without printing
+  // either side into /auditLogs.
   await bumpStats(orgId, statsDeltaFor(before, merged))
   if (!opts.silent) {
     await logAudit(orgId, opts.actor, opts.action || AUDIT.INCIDENT_UPDATE, {
@@ -242,12 +262,13 @@ export async function updateIncident(orgId, id, updates, opts = {}) {
 
 export async function getIncident(orgId, id) {
   const snap = await getDoc(incidentRef(orgId, id))
-  return snap.exists() ? { id, ...snap.data() } : null
+  return snap.exists() ? openDoc(orgId, SEALED, { id, ...snap.data() }) : null
 }
 
 export function subscribeIncidents(orgId, cb, max = INCIDENT_LOAD_CAP) {
   const q = query(incidentCol(orgId), orderBy('createdAt', 'desc'), limit(max))
-  return onSnapshot(q, (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))))
+  const opened = openSnapshots(orgId, SEALED, cb)
+  return onSnapshot(q, (snap) => opened(snap.docs.map((d) => ({ id: d.id, ...d.data() }))))
 }
 
 /** Mark an incident closed (after horizontal-deployment step). */

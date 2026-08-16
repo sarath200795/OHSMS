@@ -413,27 +413,83 @@ describe('older documents still open', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Where the confinement stops, stated rather than left to be discovered.
+// The attachments — which is where the confinement USED to stop.
 //
-// Attachments filed as kind:'medical_record' live at incidents/{id}/photos and
-// are reached by the generic rule's {sub=**}, so every approved member and the
-// auditor can list them. Moving files is a rules change and a storage change,
-// not this one. What must hold meanwhile is that the photo METADATA carries no
-// clinical field of its own — a caption or a filename is not what this file is
-// about, but a bodyParts key appearing here would reopen the finding in a new
-// place, one collection along.
+// This block previously asserted that a member and the auditor could read a
+// kind:'medical_record' document at incidents/{id}/photos, with a comment
+// explaining that moving the files was somebody else's change. That was the
+// hole written down as expected behaviour, the third time this repo has done
+// it (`a member deletes their own org files`, and the backdated audit entry).
+// A GP letter is the record; confining the fields and publishing the scan of
+// them confined nothing.
+//
+// Medical records now live at injuries/{injuryId}/records — the whole of who
+// may read them, by get and by list, on both surfaces, is proved in
+// tests/medicalRecords.rules.test.js. Two things are still this file's job:
+//
+//   · the pointer must stay clean. Wherever it lives, a bodyParts key on the
+//     ATTACHMENT metadata would reopen the finding one collection along.
+//   · what is left behind must be stated. A rules change cannot reach documents
+//     already written, and the old pointers are still sitting in
+//     incidents/{id}/photos, still readable by everyone, exactly as before —
+//     the same lesson as the unmigrated incident above. The migration is the
+//     fix; the rules only stop it happening again.
 // ─────────────────────────────────────────────────────────────────────────────
-describe('the medical-record attachment metadata carries no clinical field', () => {
-  it('holds a kind and a caption, and nothing from MEDICAL_FIELDS', async () => {
+describe('the medical-record pointer carries no clinical field', () => {
+  it('holds a name and a caption, and nothing from MEDICAL_FIELDS', async () => {
     await testEnv.withSecurityRulesDisabled(async (ctx) => {
-      await setDoc(doc(ctx.firestore(), 'organizations', ORG, 'incidents', 'i1', 'photos', 'ph1'), {
+      await setDoc(
+        doc(ctx.firestore(), 'organizations', ORG, 'injuries', injuryDocId('i1', 'p-osei'), 'records', 'r1'),
+        {
+          name: 'gp-letter.pdf', type: 'application/pdf', caption: 'GP letter',
+          path: `orgs/${ORG}/medical-records/ab12cd34-gp-letter.pdf`, uploadedBy: 'member1',
+        }
+      )
+    })
+    const snap = await assertSucceeds(
+      getDoc(doc(as('manager1'), 'organizations', ORG, 'injuries', injuryDocId('i1', 'p-osei'), 'records', 'r1'))
+    )
+    expect(clinicalFields(snap.data())).toEqual([])
+    // And no permanent bearer link. getDownloadURL mints one that works from
+    // any browser, signed in or not, forever, and keeps working after the
+    // holder leaves the organization — so a stored `url` would be the access,
+    // and every rule guarding this collection would decide nothing.
+    expect(snap.data().url).toBeUndefined()
+  })
+
+  it('was, and still is, refused to a member and the auditor', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(
+        doc(ctx.firestore(), 'organizations', ORG, 'injuries', injuryDocId('i1', 'p-osei'), 'records', 'r1'),
+        { name: 'gp-letter.pdf', caption: 'GP letter' }
+      )
+    })
+    for (const uid of ['member1', 'auditor1']) {
+      const rec = collection(as(uid), 'organizations', ORG, 'injuries', injuryDocId('i1', 'p-osei'), 'records')
+      await assertFails(getDoc(doc(rec, 'r1')))
+      await assertFails(getDocs(rec))
+    }
+  })
+
+  // The uncomfortable one, and the reason it is here rather than deleted along
+  // with the old assertion. Nothing in firestore.rules can close this: scene
+  // photos legitimately live in that subcollection and are legitimately
+  // readable, so the old pointers beside them stay readable too. Only moving
+  // them fixes it, and their Storage objects — filed under the same
+  // incident-photos prefix as a photograph of a bent guard rail — need copying
+  // and deleting on top. Their download URLs survive even that.
+  it('a pointer left behind in incidents/photos is still handed to everyone', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'organizations', ORG, 'incidents', 'i1', 'photos', 'legacy'), {
         name: 'gp-letter.pdf', type: 'application/pdf', kind: 'medical_record',
         caption: 'GP letter', url: 'https://example.test/x', uploadedBy: 'member1',
       })
     })
     for (const uid of ['member1', 'auditor1']) {
-      const snap = await assertSucceeds(getDoc(doc(as(uid), 'organizations', ORG, 'incidents', 'i1', 'photos', 'ph1')))
-      expect(clinicalFields(snap.data())).toEqual([])
+      const photos = collection(as(uid), 'organizations', ORG, 'incidents', 'i1', 'photos')
+      const snap = await assertSucceeds(getDoc(doc(photos, 'legacy')))
+      expect(snap.data().url).toBe('https://example.test/x')
+      await assertSucceeds(getDocs(photos))
     }
   })
 })

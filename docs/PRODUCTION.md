@@ -276,28 +276,224 @@ The SDK is dynamically imported — builds without the DSN carry zero Sentry
 bytes. Verify in a deployed build by triggering any error and checking the
 Sentry inbox. In dev, `?__crash=1` on any URL exercises the boundary itself.
 
-## 3. Backups  ⚠️ CLI/console required — do this before real data exists
+**Sentry covers the browser only.** Nothing that happens in `functions/` reaches
+it, which is the subject of the next section.
 
-Firestore has no undo. Two layers, both needed:
+## 2a. The server side: alerting on the nightly sweep  ⚠️ console required
 
-**Point-in-time recovery** (7-day rewind for fat-fingered writes):
+Sentry watches the tier where a failure is *visible* — a user sees a broken
+screen and complains. Nothing watched the tier where a failure is **invisible**,
+which is the one that actually needed watching.
+
+`purgeSoftDeleted` runs unattended at 03:30 every night with Admin SDK
+privileges and hard-deletes occupational-health records. It is written to be
+resilient: every error inside it is caught so that one bad organization cannot
+stop the rest. That is correct. But it used to end there — nothing ever threw,
+`retryCount` is 0, and so **the invocation was recorded as a success no matter
+what happened inside it**. A sweep that had been failing for months was
+indistinguishable from one with nothing to do, while the app went on telling
+users their data is purged after 30 days.
+
+That is fixed in code (`functions/lib/retention.js` `summarizeFailures`): the
+sweep still does all the work, and then throws if any part of it failed, which
+marks the invocation FAILED. Four things now count as a failure:
+
+| Kind | Meaning |
+|---|---|
+| `collection-failed` | one org/collection threw; the rest of the sweep continued |
+| `file-left-behind` | the pointer was deleted and the object was NOT — the shape of a failed erasure request |
+| `foreign-file-path` | **attack indicator**: a record named a file outside its own org |
+| `foreign-qr-mirror` | **attack indicator**: a record named a public QR mirror owned by another tenant |
+
+The last two are not glitches. A member cannot delete anything under
+`storage.rules`; these are what it looks like when someone tries to get the
+Admin-SDK sweep to do it for them, in someone else's tenant. They should page a
+human, not sit in a log.
+
+**The console half — do this, or the code change above changes nothing.** A
+failed invocation is only useful if something is listening:
+
+1. Google Cloud console → **Monitoring** → **Alerting** → *Create policy*.
+2. Condition on the Cloud Functions metric
+   `cloudfunctions.googleapis.com/function/execution_count`, filtered to
+   `function_name = purgeSoftDeleted` and `status != ok`. Threshold: above 0.
+3. Notification channel: an email that a person actually reads.
+
+Add a second policy for the case error alerting can never catch — **the sweep
+not running at all**. A missing scheduled execution produces no error, no log
+and no signal of any kind. Alert on `execution_count` for `purgeSoftDeleted`
+being **absent for 26 hours** (the job is daily; 26h tolerates a late run
+without crying wolf).
+
+**Uptime check** — while in Monitoring, add one against the hosted app so a
+white screen is not discovered by a user:
+
+Monitoring → **Uptime checks** → *Create*: HTTPS, host `weehs-4eb28.web.app`,
+path `/`, 5-minute interval, alert after 2 consecutive failures, to the same
+notification channel. The SPA returns `index.html` at every path, so `/` is a
+sufficient liveness probe — it proves hosting is serving, not that Firestore is
+answering, and that distinction is worth remembering when it goes green during
+an incident.
+
+**Verify the alerting, do not assume it.** In the Cloud console, run
+`purgeSoftDeleted` manually via *Testing* while an org holds a record with a
+deliberately bad file path, and confirm the alert email arrives. An alert policy
+nobody has ever seen fire is the same class of belief as an untested backup.
+
+## 3. Backups — CONFIGURED. State as of 2026-08-16
+
+Firestore has no undo. Two layers, both in place. `gcloud` is **not** required;
+the Firebase CLI does all of this, which matters because nobody here has gcloud
+installed.
+
+| Layer | Setting | Verified |
+|---|---|---|
+| Point-in-time recovery | `POINT_IN_TIME_RECOVERY_ENABLED`, 7-day window | 2026-08-16 |
+| Scheduled export | Weekly (Sunday), 30-day retention | 2026-08-16 |
+| Delete protection | `DELETE_PROTECTION_ENABLED` | 2026-08-16 |
+
+Read the current state — do this before believing any of the above:
 
 ```bash
-gcloud firestore databases update --database="(default)" \
-  --enable-pitr --project=weehs-4eb28
+npx firebase-tools firestore:databases:get "(default)" --project weehs-4eb28
 ```
-
-**Scheduled exports** (survives project-level disasters; needs a bucket):
 
 ```bash
-gsutil mb -l asia-south1 gs://weehs-4eb28-backups
-gcloud firestore backups schedules create --database="(default)" \
-  --recurrence=daily --retention=14d --project=weehs-4eb28
+npx firebase-tools firestore:backups:schedules:list --project weehs-4eb28
 ```
 
-Verify: `gcloud firestore backups list --project=weehs-4eb28` shows entries
-after the first cycle. Restore drill: restore one backup into a scratch
-database once, so the first restore you ever do is not the one that matters.
+```bash
+npx firebase-tools firestore:backups:list --project weehs-4eb28
+```
+
+**Known RPO gap.** The export runs *weekly*. PITR covers any point in the last
+7 days continuously, so an ordinary bad write is fully recoverable — but if the
+**project itself** were lost, PITR goes with it and the exports are the only
+survivor, making the worst case up to 7 days of loss. Moving to daily is one
+command and was consciously deferred:
+
+```bash
+npx firebase-tools firestore:backups:schedules:update <scheduleId> --recurrence DAILY --project weehs-4eb28
+```
+
+## 3a. Restore — what the drill found  ⚠️ read before you need it
+
+A drill was performed on 2026-08-16: backup `c2573b10` was restored into a
+scratch database `restore-drill`. It succeeded and took **about 15 minutes**
+end to end. Four things came out of it that are not obvious and cost real
+recovery time — or a false alarm — if met for the first time during an incident.
+
+**0. The database appears instantly and is EMPTY for most of the restore.**
+This is the one that will fool you. `firestore:databases:get` returns a healthy
+record within seconds of starting a restore, and the console will happily show
+you the new database with no collections in it. That is not a failed restore or
+an empty backup; the data import is still running. During the drill this
+produced exactly the wrong conclusion — "the backup is empty" — from an
+operation that was working correctly.
+
+The database record is not the signal. **`sourceInfo.progress` is**, and it is
+only visible in the JSON:
+
+```bash
+npx firebase-tools firestore:databases:get restore-drill --project weehs-4eb28 --json
+```
+
+It reads `IN_PROGRESS` until the import finishes, then `COMPLETED`. Do not judge
+a restore, and do not start the steps below, before it says `COMPLETED`.
+
+**1. You cannot restore over an existing database.** Firestore restores only
+ever create a NEW database, named at restore time. There is no "restore
+production back to Tuesday" — there is only "make a second database that looks
+like Tuesday". The `(default)` database the app talks to is untouched by a
+restore, which is safe, but it means a restore alone recovers nothing users
+can see.
+
+**2. So the app has to be pointed at the restored database.** It used to be
+hardwired to `(default)`, so this meant editing source under pressure. It is now
+`VITE_FIREBASE_DATABASE_ID` (`src/shared/firebase.js`) — set it, rebuild,
+deploy. The app logs a warning on every boot while it is set, so a recovery
+build cannot quietly become the permanent one.
+
+**3. A restored database comes up with CLOSED rules and PITR disabled.** The
+restore copies data, not configuration. Until rules and indexes are deployed to
+it, every client request is denied — which during a recovery reads exactly like
+the restore having failed. It has not; it is unconfigured.
+
+Recovery sequence, therefore:
+
+```bash
+npx firebase-tools firestore:databases:restore --database restored-YYYY-MM-DD --backup <backupName> --project weehs-4eb28
+```
+
+Then, in this order: deploy rules and indexes to the new database → set
+`VITE_FIREBASE_DATABASE_ID=restored-YYYY-MM-DD` → rebuild → deploy hosting →
+re-enable PITR and delete protection on the new database. Only then is the data
+actually back in front of users.
+
+**Stated targets** (previously undeclared, which is its own audit finding):
+RPO 7 days worst case (project loss) / near-zero for data errors within the PITR
+window. RTO is the ~15-minute restore **plus** the rules-and-redeploy sequence
+above — call it under an hour with someone who has read this section, and
+several hours without. The 15 minutes scales with data volume, so re-measure it
+as tenants grow rather than quoting this number forever.
+
+**Delete protection is now ENABLED**, so the scratch-database cleanup and any
+future `firestore:databases:delete` against `(default)` will refuse until it is
+consciously disabled:
+
+```bash
+npx firebase-tools firestore:databases:update "(default)" --delete-protection DISABLED --project weehs-4eb28
+```
+
+Re-run the drill after any change to how the app connects to Firestore, and at
+least annually. A backup nobody has restored is a belief, not a control.
+
+## 3b. Composite indexes — audited, complete. Why the file looks too short
+
+`firestore.indexes.json` defines three composite indexes for a twelve-module
+app, which looks alarming and has now been raised as a gap twice. It is not one,
+and this section exists so it stops being re-raised.
+
+**Firestore builds single-field indexes automatically, ascending and
+descending.** A composite index is only required when a query combines an
+equality or `in` filter with an `orderBy` on a *different* field (or mixes
+inequalities across fields). This app almost never does that: the prevailing
+pattern is `query(col, orderBy(x, 'desc'), limit(n))` with filtering done in the
+browser. Those need nothing declared.
+
+**Audit method — repeat this rather than eyeballing it.** Grepping is not
+sufficient: a query is built across several lines and `where(` nested inside
+`query(` defeats a naive regex, which on the first attempt produced the
+confident and completely wrong answer of "zero compound queries". Match
+parentheses instead:
+
+```bash
+node -e "const fs=require('fs'),p=require('path');const F=[];(function w(d){for(const e of fs.readdirSync(d,{withFileTypes:true})){const q=p.join(d,e.name);if(e.isDirectory()){if(e.name!=='node_modules')w(q)}else if(/\.(js|jsx)$/.test(e.name)&&!/\.test\./.test(e.name))F.push(q)}})('src');for(const f of F){const s=fs.readFileSync(f,'utf8');for(let i=0;i<s.length;i++){if(!s.startsWith('query(',i)||/[A-Za-z0-9_$.]/.test(s[i-1]||''))continue;let d=0,j=i+5;for(;j<s.length;j++){if(s[j]==='(')d++;else if(s[j]===')'){d--;if(!d)break}}const b=s.slice(i+6,j);if(/where\(/.test(b)&&/orderBy\(/.test(b))console.log(f+':'+s.slice(0,i).split('\n').length+' '+b.replace(/\s+/g,' ').slice(0,160))}}"
+```
+
+As of 2026-08-16 it prints exactly one site: `src/modules/documents/lib/service.js`,
+which emits `visibility == 'all'` and `siteId in [...]`, each with
+`orderBy('createdAt','desc')`. Both indexes are declared. Coverage is complete.
+
+**Two things this audit also found, neither urgent:**
+
+- The declared `users` index (`orgId` + `createdAt`) is **unused** — both `users`
+  queries filter on `orgId` with no `orderBy`. It costs a little write
+  amplification per user document and nothing else. Left in place deliberately:
+  removing an index is the kind of change that fails at runtime, in production,
+  on the one query nobody remembered.
+- The reason the index file is short is the reason the *read* volume is high.
+  Avoiding compound queries means reading whole collections (`COLLECTION_READ_CAP`
+  = 5000) and filtering client-side. That is the real scaling ceiling, it is
+  tracked as S-04 in `SECURITY.md`, and it is a separate piece of work from
+  indexing. The app already signals a truncated read (`incompleteReadNotice`)
+  rather than silently showing a partial list, which is the important half.
+
+**The standing rule:** any new `query()` that puts a `where` and an `orderBy` on
+different fields needs an entry in `firestore.indexes.json` in the same commit.
+CI deploys indexes ahead of hosting (`deploy.yml`), so a declared index is live
+before the client that needs it — but only if it was declared at all. A missing
+one is a `FAILED_PRECONDITION` at runtime that the emulator never reproduces.
 
 ## 4. Cloud Storage for files  ⚠️ one console click
 
@@ -426,8 +622,9 @@ in a `deploy-staging.yml` copy triggered on pushes to `main`, and stop using
 
 ## Known gaps this runbook does not cover
 
-- Composite Firestore indexes are unaudited beyond the one defined; test each
-  module against production-sized data and capture the index-creation links.
+- Composite Firestore indexes: **audited 2026-08-16, complete — no action.**
+  See §3b for the method and the standing rule, because the low count in
+  `firestore.indexes.json` invites this being raised again as a gap. It is not.
 - Admin accounts have no MFA (email/password only).
 - LOTO's collections live outside the org tenancy model.
 - Three dependency advisories are knowingly open, so `npm audit` is not expected
@@ -502,3 +699,93 @@ printf '[{"origin":["https://weehs-4eb28.web.app","https://weehs-4eb28.firebasea
 Then migrate render sites to `useFileUrl` module by module, checking images still
 appear after each. Records written before uploads recorded a `path` keep using
 the stored URL permanently — only re-upload closes those.
+
+---
+
+## 11. Application-layer encryption  ⚠️ secret required BEFORE the switch
+
+The sensitive fields listed in `src/shared/crypto/policy.js` are sealed in the
+browser before they reach Firestore. Two keys per organization, generated on
+first use and stored wrapped in `organizations/{orgId}/meta/cryptoKeys`, which
+no client rule grants any access to.
+
+**What this protects against, and what it does not.** It stands between the data
+and everything that reaches the *store* rather than the app: an exported backup,
+a bucket left open, a support engineer with project Viewer, and the next rule
+that turns out to be one `match` too wide. It does **not** put the data beyond
+this project — whoever holds `DATA_KEY_MASTER` and the Firestore documents can
+recover every key. That is the deliberate trade: a zero-knowledge scheme would
+also put occupational injury records beyond recovery when an administrator
+forgets a passphrase, and those carry a statutory minimum retention.
+
+The one boundary it enforces *inside* the app is the medical class. `/injuries`,
+`/injuries/records` and `/illnesses` are `allow read: if isManagerOf(orgId)`
+while their writes come through the generic `isWriterOf` rule — a member files a
+colleague's injury and cannot read it back. That class is therefore an RSA
+keypair, not a shared secret: the public half goes to writers, the private half
+only to admin and manager. An auditor is refused it by the same test that
+refuses them the documents, so if that rule is ever widened by accident they get
+ciphertext instead of a named colleague's medication.
+
+### Setup, in order
+
+**1. Mint the master secret.** Once per project. Everything else depends on it.
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))" | firebase functions:secrets:set DATA_KEY_MASTER
+```
+
+> **Losing this value destroys every sealed record in every tenant.** It is not
+> derived from anything and cannot be recovered from the database — the keys in
+> Firestore are wrapped under it. Secret Manager keeps versions; never disable an
+> old version until the rotation replacing it has been verified against real
+> data. Record the rotation owner here alongside the App Check notes in §1.
+
+**2. Deploy the rules and the callable.** Rules first, for the same reason as
+§0b: the rules change is what stops a member overwriting a tenant's keyset.
+
+```bash
+firebase deploy --only firestore:rules,functions:getDataKeys
+```
+
+**3. Verify before switching anything on.** Sign in as an admin and confirm the
+callable answers. It creates the keyset on first call, inside a transaction, so
+the first sign-in of each organization is what mints its keys.
+
+```bash
+firebase functions:log --only getDataKeys
+```
+
+Look for `crypto: keyset created` then `crypto: keys released`. A
+`permission-denied` here means the caller is not an approved member; a
+`failed-precondition` means their profile names no organization.
+
+**4. Turn writing on.** Only now, and per environment:
+
+```
+VITE_ENCRYPTION=on
+```
+
+Then rebuild and deploy hosting. New writes are sealed from that moment.
+
+### Rolling back
+
+Set `VITE_ENCRYPTION=off` and redeploy. Decryption is always attempted whatever
+the switch says, so nothing already sealed becomes unreadable — the app simply
+stops sealing new writes. This is a safe rollback at any hour, which is the
+whole reason the switch governs writes only.
+
+### What is NOT covered
+
+Turning this on seals **new writes only**. Everything already in Firestore stays
+in plaintext until a backfill re-writes it, and no such backfill exists yet —
+see "Known gaps" below and `docs/SECURITY.md`.
+
+Bucket objects are sealed for medical records only. Incident photos, drill
+evidence and illness attachments still upload unencrypted, because their
+galleries render the download URL straight into an `<img>`; the reasoning and
+the sequence for closing it are written above the table in
+`src/shared/crypto/policy.js`.
+
+`/users` is not sealed at all. Names there are load-bearing for sign-in,
+provisioning and the rules themselves.
