@@ -7,6 +7,7 @@ import { authErrorMessage } from '../../shared/lib/authErrors'
 import { SSO_PROVIDERS, hasSso } from '../../shared/auth/sso'
 import { isCodeComplete } from '../../shared/auth/mfa'
 import { Button, Field, Input } from '../../shared/ui'
+import { safeInternalPath } from '../../shared/safeUrl'
 import AuthLayout from './AuthLayout'
 
 export default function Login() {
@@ -27,13 +28,21 @@ export default function Login() {
     if (pendingMfa) setResolver(pendingMfa)
   }, [pendingMfa])
 
+  // Where ProtectedRoute bounced us from, if anywhere. Run through
+  // safeInternalPath because this is the classic open-redirect sink: the
+  // destination is derived from where the browser was pointed, so it is
+  // attacker-influenceable, and it is followed at the exact moment the user has
+  // just proved who they are. `//evil.com` and `/\evil.com` are paths to
+  // react-router and other origins to the browser.
+  const back = safeInternalPath(location.state?.from?.pathname, '/portal')
+
   // Only redirect once the profile has loaded — redirecting on isAuthed alone
   // races ProtectedRoute (which needs the profile) and causes a redirect loop.
-  if (isAuthed && profile) return <Navigate to={location.state?.from?.pathname || '/portal'} replace />
+  if (isAuthed && profile) return <Navigate to={back} replace />
 
   const land = () => {
     toast.success('Welcome back')
-    navigate(location.state?.from?.pathname || '/portal', { replace: true })
+    navigate(back, { replace: true })
   }
 
   const handle = (result) => {

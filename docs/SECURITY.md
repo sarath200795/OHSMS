@@ -42,17 +42,53 @@ not enforced on the public write surfaces, admin accounts have no MFA, Firestore
 backups are not configured, and the referrer restrictions on the Maps API key
 that ships in the bundle are unverified.
 
-### S-06 · Deferred dependency advisories — MEDIUM
+### S-06 · Deferred dependency advisories — LOW
 
-`jspdf` 2.5.2 (rated critical) and `jspdf-autotable` — fixes are two major
-versions up on each. The headline advisories are unreachable: the app never calls
-`AcroForm` or `addJS`. What is reachable is `addImage`, which takes user-uploaded
-LOTO photos, so a crafted BMP or GIF hangs the tab of whoever generates the PDF.
-Client-side denial of service by an authenticated member.
+Re-checked 2026-08-16. The runtime tree (`npm audit --omit=dev`) holds **one
+high and two moderate**, and the entry below was stale on the worst of them.
 
-`xlsx` 0.18.5 has no fix on npm — SheetJS publishes to its own CDN now. The
-prototype-pollution sink was tested and is unreachable; the ReDoS is reachable
-but only against a workbook the user chose to open in their own browser.
+**`jspdf` — CLOSED.** This entry described 2.5.2 with a critical advisory. The
+installed version is **4.2.1**, with `jspdf-autotable` at **5.0.8**; the
+migration that was described as "two major versions up" has been done, and
+neither package appears in the audit any more.
+
+**`xlsx` 0.18.5 — open, allowlisted, and correctly so.** No fix on npm; SheetJS
+publishes to its own CDN now. The prototype-pollution sink is unreachable
+because no import parses an untrusted file any more — every upload goes through
+`shared/lib/parseTable` (papaparse). What remains uses `xlsx` only to WRITE
+exports from data already held, which is not a parsing surface.
+`scripts/audit-gate.mjs` names it, with the reason and what would close it.
+
+**`react-router` 6.30.4 — two moderates, newly present, and NOT previously
+recorded here.** Both need react-router **>= 7.18.0**, a major-version migration
+across 29 routes. Assessed rather than deferred:
+
+- *Arbitrary constructor injection via `deserializeErrors()` in SSR hydration*
+  (GHSA-337j-9hxr-rhxg) — **structurally unreachable.** This is a client-only
+  Vite SPA; there is no `renderToString`, no `hydrateRoot`, no `StaticRouter`.
+  No amount of router version changes that.
+- *Open redirect via a backslash in `<Link>` and `useNavigate`*
+  (GHSA-wrjc-x8rr-h8h6) — **had exactly one reachable sink**, and it is now
+  closed. Every other `navigate()` and `to=` in the app is either a string
+  literal or a template around a Firestore id. The exception was the post-login
+  redirect in `src/pages/auth/Login.jsx`, which sent the user back to
+  `location.state.from.pathname` — a value derived from where the browser was
+  pointed, followed at the moment they had just typed their password.
+
+  Closed with `safeInternalPath()` in `src/shared/safeUrl.js`, which requires a
+  single leading slash and refuses backslashes anywhere. It sits beside
+  `safeHref` deliberately: same file, same reasoning, same habit of allow-listing
+  the shape that is acceptable rather than hunting for the shapes that are not.
+
+  This is a defence the router version cannot take away again, which is why it
+  was preferred to a v7 migration for two moderates.
+
+**A gap in the gate worth knowing.** `scripts/audit-gate.mjs` blocks at **high**,
+so these two moderates never appeared in CI at all — they were found by running
+`npm audit` by hand. A moderate with `fixAvailable: true` sitting unnoticed is
+the state the gate exists to prevent. Raising the threshold to `moderate` is not
+obviously right (it would demand a major migration for an unreachable SSR bug),
+but *reporting* moderates without blocking on them would have surfaced this.
 
 ### S-07 · Encryption covers new writes only — MEDIUM
 

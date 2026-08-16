@@ -64,6 +64,33 @@ for (const name of Object.keys(ALLOWED)) {
   }
 }
 
+// ── Moderates: reported, never blocking ──────────────────────────────────────
+//
+// This gate blocks at high, which is the right threshold: raising it to
+// moderate would demand a major-version migration for advisories that are
+// sometimes structurally unreachable, and a gate that is red on the day it
+// ships teaches everyone to ignore it.
+//
+// But "does not block" was being implemented as "is not mentioned", and those
+// are different things. Two moderate react-router advisories sat in the runtime
+// tree — one of them with a fix available and a genuinely reachable sink in the
+// post-login redirect — and CI never said a word about either. They were found
+// by running `npm audit` by hand (SECURITY.md S-06).
+//
+// So they are printed, with whether a fix exists, which is the fact that decides
+// whether anyone should care. Nothing here changes the exit code.
+const moderates = Object.values(report.vulnerabilities || {})
+  .filter((v) => v.severity === 'moderate')
+
+if (moderates.length) {
+  console.log(`\nmoderate advisories in the runtime tree (reported, not blocking):`)
+  for (const v of moderates) {
+    const fix = v.fixAvailable === false ? 'no fix published' : 'FIX AVAILABLE'
+    console.log(`  ${v.name} — ${fix}`)
+  }
+  console.log('  Assess reachability before acting; record the verdict in docs/SECURITY.md S-06.')
+}
+
 if (unexpected.length) {
   console.error(`\naudit-gate: ${unexpected.length} unallowed high/critical advisory in the runtime tree:`)
   for (const v of unexpected) {

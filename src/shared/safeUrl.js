@@ -94,3 +94,44 @@ export function isExternal(value) {
   // page scheme and navigate off-site just as effectively as https://evil.com.
   return url.startsWith('//') || /^https?:/i.test(url)
 }
+
+/**
+ * An in-app path safe to hand to `navigate()` or `<Navigate to>`.
+ *
+ * The sink this exists for is the post-login redirect: ProtectedRoute stores
+ * the location it bounced you from, and Login sends you back there afterwards.
+ * That is the classic open-redirect shape — the destination is derived from
+ * where the browser was pointed, so it is attacker-influenceable, and it is
+ * followed at the exact moment the user has just proved who they are.
+ *
+ * react-router 6.30.4 carries an advisory for precisely this class
+ * (GHSA-wrjc-x8rr-h8h6 — open redirect via a backslash in `<Link>` and
+ * `useNavigate`). Its fix is react-router >= 7.18.0, a major-version migration
+ * across 29 routes. This closes the app's only reachable sink without one, and
+ * keeps it closed regardless of what the router does with odd input later.
+ *
+ * Refused, and why each:
+ *   `//evil.com`  protocol-relative — another origin wearing a path's clothes
+ *   `/\evil.com`  the advisory's own bypass; browsers fold `\` to `/`
+ *   `https://…`   absolute, so it leaves the app by definition
+ *   `foo/bar`     no leading slash, so it resolves against wherever you happen
+ *                 to be — not a destination anybody chose
+ *
+ * Anything refused falls back rather than throwing: the redirect is a
+ * convenience, and the landing page is always a valid answer.
+ */
+export function safeInternalPath(value, fallback = '/portal') {
+  if (typeof value !== 'string') return fallback
+  // Strip the same control characters safeHref does, and for the same reason:
+  // the consumer drops them, which would make a refused string live again
+  // after it had been inspected.
+  // eslint-disable-next-line no-control-regex -- deliberate: the bytes the URL parser drops
+  const raw = value.replace(/[\u0000-\u001F\u007F]/g, '').trim()
+
+  if (!raw.startsWith('/')) return fallback
+  // A second leading slash — or a backslash anywhere — makes it protocol-
+  // relative once the browser has folded the separators.
+  if (raw.startsWith('//')) return fallback
+  if (raw.includes('\\')) return fallback
+  return raw
+}

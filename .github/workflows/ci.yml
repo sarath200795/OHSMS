@@ -60,6 +60,15 @@ jobs:
         # stay that way. If this ever goes red, fix it rather than exempting it.
         run: npm ci && npm audit --omit=dev --audit-level=high
 
+      # Same reasoning as the moderate report in scripts/audit-gate.mjs: "does
+      # not block" was being implemented as "is not mentioned", and those are
+      # different things. The step above passes while the tree holds 8 moderate
+      # advisories that nothing has ever printed. Never fails.
+      - name: Cloud Functions, moderate and below (advisory only)
+        if: always()
+        working-directory: functions
+        run: npm audit --omit=dev || true
+
       - name: Whole tree, including tooling (advisory only)
         if: always()
         run: npm audit || true
