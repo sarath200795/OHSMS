@@ -999,7 +999,13 @@ export async function deleteMockDrill(orgId, id, actor, label) {
     for (const d of snap.docs) {
       if (d.data().path) removeFile(d.data().path)
     }
-    await Promise.all(snap.docs.map((d) => deleteDoc(d.ref)))
+    // One write each, so chunk well inside the 500-op batch limit. A drill with
+    // a hundred evidence photos used to fire a hundred separate deletes.
+    for (let i = 0; i < snap.docs.length; i += 400) {
+      const batch = writeBatch(db)
+      for (const d of snap.docs.slice(i, i + 400)) batch.delete(d.ref)
+      await batch.commit()
+    }
   } catch (e) {
     console.warn('[Fire Marshal] drill photo cleanup skipped:', e?.message || e)
   }
