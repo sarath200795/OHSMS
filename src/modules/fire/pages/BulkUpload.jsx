@@ -43,9 +43,12 @@ export default function BulkUpload() {
   // already linked. Without that step this page wrote centerName as free text
   // and no siteId, and every unit it created needed the linking pass afterwards
   // — the same omission addExtinguisher had, and the AED/FAS uploader avoids.
+  //
+  // Rows whose centre does not resolve never reach `creates`/`updates`, so
+  // there is no path from here that writes an unlinked record.
   const plan = useMemo(() => {
     if (!result?.valid) return null
-    const { rows: linkedRows, unmatched } = linkImportRows(result.valid, orgSites)
+    const { rows: linkedRows, blocked, unmatched } = linkImportRows(result.valid, orgSites)
     const updates = []
     const newRows = []
 
@@ -66,7 +69,7 @@ export default function BulkUpload() {
     }
     const existingSerials = extinguishers.map((e) => e.serialNo).filter(Boolean)
     const creates = assignSerials(newRows, existingSerials)
-    return { creates, updates, unmatched }
+    return { creates, updates, blocked, unmatched }
   }, [result, bySerial, extinguishers, orgSites])
 
   const handleFile = async (file) => {
@@ -94,7 +97,9 @@ export default function BulkUpload() {
     setCommitting(true)
     try {
       const res = await bulkUpsertExtinguishers(orgId, orgName, plan, { uid: profile?.uid, name: profile?.name })
-      setDone(res)
+      // Carry the held-back count into the summary: `plan` is cleared below, and
+      // "42 added" on a 50-row file should not be the only thing the person sees.
+      setDone({ ...res, heldBack: plan.blocked.length })
       toast.success(`${res.created} added, ${res.updated} updated`)
       setResult(null)
       setFileName('')
@@ -151,6 +156,11 @@ export default function BulkUpload() {
             <strong>{done.created}</strong> added · <strong>{done.updated}</strong> updated. New records
             have unique QR codes; updated records keep their existing QR.
           </p>
+          {done.heldBack > 0 && (
+            <p className="mt-2 text-sm font-medium text-amber-700">
+              {done.heldBack} row(s) were held back — their site is not in the registry.
+            </p>
+          )}
           <div className="mt-6 flex justify-center gap-3">
             <button className="btn-primary" onClick={reset}>Import more</button>
             <a className="btn-ghost" href="/equipment/repository">View repository</a>
@@ -199,30 +209,31 @@ export default function BulkUpload() {
                       <AlertTriangle size={14} /> {result.errors.length} with issues
                     </span>
                   )}
-                  {plan.unmatched.length > 0 && (
+                  {plan.blocked.length > 0 && (
                     <span className="chip bg-amber-100 text-amber-700">
-                      <MapPin size={14} /> {plan.unmatched.length} site(s) unmatched
+                      <MapPin size={14} /> {plan.blocked.length} held back
                     </span>
                   )}
                   <span className="text-sm text-ink-500">{result.total} total rows</span>
                 </div>
 
-                {/* Named, not just counted: "3 unmatched" tells nobody which
-                    spelling to correct, and these import unlinked. */}
+                {/* Named and counted, not just counted: "3 held back" tells
+                    nobody which spelling to correct. */}
                 {plan.unmatched.length > 0 && (
                   <div className="card border border-amber-200 bg-amber-50/40 p-4">
                     <p className="text-sm font-bold text-amber-800">
-                      These site names are not in the registry
+                      {plan.blocked.length} row(s) will not be imported — site not in the registry
                     </p>
                     <p className="mt-1 text-xs text-amber-700">
-                      Their rows still import, but arrive with no site link and will need the
-                      linking pass afterwards. Correcting the spelling in the file — or adding the
-                      site first — imports them already linked.
+                      A record with no site cannot be traced back to a location, so these are held
+                      back rather than imported unlinked. Correct the spelling in the file, or add
+                      the site to the registry first, then upload again.
                     </p>
                     <ul className="mt-3 space-y-1.5">
                       {plan.unmatched.map((u) => (
                         <li key={u.given} className="text-sm text-ink-700">
                           <span className="font-semibold">{u.given}</span>
+                          <span className="text-ink-400"> · {u.count} row(s)</span>
                           {u.suggestion && (
                             <span className="text-ink-500"> — did you mean “{u.suggestion.name}”?</span>
                           )}

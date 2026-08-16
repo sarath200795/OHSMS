@@ -181,41 +181,61 @@ export function suggestSite(name, sites, idx = indexSites(sites)) {
  * several hundred units came to exist that nothing could match to a site.
  *
  * A row whose centre resolves takes the registry's name, id and entity, so it
- * reads the same as every other record pointing at that site. A row that does
- * not resolve is returned UNCHANGED — deliberately without a siteId key rather
- * than an empty one, because bulkUpsertExtinguishers only writes upsert fields
- * that are `!== undefined`; an empty string would blank a link an earlier
- * repair pass had established.
+ * reads the same as every other record pointing at that site.
  *
- * With no registry to check against, every row passes through untouched — an
- * org that has not set up sites can still upload.
+ * A row that does not resolve is BLOCKED rather than imported unlinked.
+ * Importing a centre the registry has never heard of is precisely what
+ * produced the records nothing could be matched to, and a row held back is
+ * a spelling to fix, where a row let through is a repair pass to run. Blocked
+ * rows are returned unchanged so the caller can list them; nothing writes them.
  *
- * @returns {{ rows: object[], unmatched: {given: string, suggestion: object|null}[] }}
+ * With no registry to check against there is nothing to block against either,
+ * so every row passes — an org that has not set up sites can still upload.
+ *
+ * @returns {{
+ *   rows: object[],
+ *   blocked: object[],
+ *   unmatched: {given: string, suggestion: object|null, count: number}[]
+ * }}
  */
 export function linkImportRows(rows = [], sites = [], idx = indexSites(sites)) {
-  if (!sites.length) return { rows, unmatched: [] }
+  if (!sites.length) return { rows, blocked: [], unmatched: [] }
   const unmatched = new Map()
+  const linked = []
+  const blocked = []
 
-  const out = rows.map((row) => {
+  for (const row of rows) {
     const hit = resolveSite(row.centerName, sites, idx)
     if (hit) {
-      return {
+      linked.push({
         ...row,
         centerName: hit.site.name,
         siteId: hit.site.id,
         entity: hit.site.entity || row.entity || '',
-      }
+      })
+      continue
     }
-    const given = String(row.centerName ?? '').trim()
-    // Reported once per distinct spelling, not once per row: a 900-row file
-    // with one bad centre name is one thing to fix, not 900.
-    if (given && !unmatched.has(given)) {
-      unmatched.set(given, { given, suggestion: suggestSite(given, sites, idx)?.site || null })
-    }
-    return row
-  })
 
-  return { rows: out, unmatched: [...unmatched.values()] }
+    blocked.push(row)
+    const raw = String(row.centerName ?? '').trim()
+    // A row with no centre at all cannot be linked either, and is labelled
+    // rather than listed as an empty string the reader cannot act on — the
+    // same wording planSiteLinks uses for the repair report.
+    const given = raw || '(no site name)'
+    // Grouped by distinct spelling, not per row: a 900-row file with one bad
+    // centre name is one thing to fix, not 900. The count says how much of
+    // the upload each one is holding back.
+    if (!unmatched.has(given)) {
+      unmatched.set(given, {
+        given,
+        suggestion: raw ? suggestSite(raw, sites, idx)?.site || null : null,
+        count: 0,
+      })
+    }
+    unmatched.get(given).count++
+  }
+
+  return { rows: linked, blocked, unmatched: [...unmatched.values()] }
 }
 
 /**

@@ -216,12 +216,8 @@ describe('linkImportRows', () => {
   })
 
   it('links through normalisation and the override table, not just exact names', () => {
-    const { rows } = linkImportRows(
-      [row('Cult Ameerpet'), row('Cult Suchitra Hybrid')],
-      SITES
-    )
-    expect(rows[0].siteId).toBe('s1')
-    expect(rows[1].siteId).toBe('s8')
+    const { rows } = linkImportRows([row('Cult Ameerpet'), row('Cult Suchitra Hybrid')], SITES)
+    expect(rows.map((r) => r.siteId)).toEqual(['s1', 's8'])
   })
 
   it("rewrites the centre to the registry's wording and takes its entity", () => {
@@ -236,28 +232,46 @@ describe('linkImportRows', () => {
     expect(rows[0].entity).toBe('COCO')
   })
 
-  // The regression that matters: an empty siteId would blank a link that the
-  // repair pass had already established, because bulkUpsertExtinguishers writes
-  // every upsert field that is `!== undefined`.
-  it('leaves siteId ABSENT on an unmatched row rather than empty', () => {
-    const { rows } = linkImportRows([row('Some Gym That Does Not Exist')], SITES)
-    expect('siteId' in rows[0]).toBe(false)
-    expect(rows[0].siteId).toBeUndefined()
+  // The point of the whole helper: there is no path from here that writes a
+  // record with no site. An unmatched row is held back, not imported unlinked.
+  it('keeps an unmatched row out of the importable rows entirely', () => {
+    const { rows, blocked } = linkImportRows(
+      [row('Cult Gym Shaikpet'), row('Some Gym That Does Not Exist')],
+      SITES
+    )
+    expect(rows).toHaveLength(1)
+    expect(rows[0].siteId).toBe('s2')
+    expect(blocked).toHaveLength(1)
+    expect(blocked[0].centerName).toBe('Some Gym That Does Not Exist')
   })
 
-  it('does not touch an unmatched row at all', () => {
+  it('never puts a siteId on a blocked row', () => {
+    const { blocked } = linkImportRows([row('Some Gym That Does Not Exist')], SITES)
+    expect('siteId' in blocked[0]).toBe(false)
+  })
+
+  it('returns blocked rows untouched, so the caller can list them as written', () => {
     const original = row('Some Gym That Does Not Exist', { entity: 'COCO' })
-    const { rows } = linkImportRows([original], SITES)
-    expect(rows[0]).toEqual(original)
+    const { blocked } = linkImportRows([original], SITES)
+    expect(blocked[0]).toEqual(original)
   })
 
-  it('reports each unmatched centre once, however many rows carry it', () => {
+  it('blocks a row with no centre name and labels it rather than showing a blank', () => {
+    const { rows, blocked, unmatched } = linkImportRows([row(''), row('   ')], SITES)
+    expect(rows).toHaveLength(0)
+    expect(blocked).toHaveLength(2)
+    expect(unmatched).toHaveLength(1)
+    expect(unmatched[0].given).toBe('(no site name)')
+    expect(unmatched[0].suggestion).toBeNull()
+  })
+
+  it('groups unmatched centres by spelling and counts the rows each holds back', () => {
     const { unmatched } = linkImportRows(
       [row('Nowhere Fitness'), row('Nowhere Fitness'), row('Nowhere Fitness')],
       SITES
     )
     expect(unmatched).toHaveLength(1)
-    expect(unmatched[0].given).toBe('Nowhere Fitness')
+    expect(unmatched[0]).toMatchObject({ given: 'Nowhere Fitness', count: 3 })
   })
 
   it('offers a suggestion when one is close enough', () => {
@@ -270,20 +284,17 @@ describe('linkImportRows', () => {
     expect(unmatched[0].suggestion).toBeNull()
   })
 
-  it('ignores rows with no centre name instead of reporting a blank', () => {
-    const { rows, unmatched } = linkImportRows([row(''), row('   '), row(undefined)], SITES)
-    expect(unmatched).toEqual([])
-    expect(rows).toHaveLength(3)
-  })
-
-  it('passes every row through untouched when the org has no site registry', () => {
-    const rowsIn = [row('Cult Gym Shaikpet')]
-    const { rows, unmatched } = linkImportRows(rowsIn, [])
+  // Blocking needs something to block against. An org with no registry yet must
+  // still be able to upload, so nothing is held back in that case.
+  it('blocks nothing when the org has no site registry', () => {
+    const rowsIn = [row('Cult Gym Shaikpet'), row('Anything At All')]
+    const { rows, blocked, unmatched } = linkImportRows(rowsIn, [])
     expect(rows).toBe(rowsIn)
+    expect(blocked).toEqual([])
     expect(unmatched).toEqual([])
   })
 
-  it('does not mutate the caller\'s rows', () => {
+  it("does not mutate the caller's rows", () => {
     const original = row('Cult Gym Shaikpet')
     const copy = { ...original }
     linkImportRows([original], SITES)
