@@ -11,6 +11,19 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 const listeners = {}
 
 vi.mock('../../../shared/firebase', () => ({ db: {} }))
+// The tracker opens each source before emitting. What that decryption DOES is
+// covered by src/shared/crypto/index.test.js against the real crypto; what
+// matters here is only that the callback is asynchronous, because the notice
+// contract below is about what arrives and in what order.
+//
+// Stubbed rather than left real because the real path calls getDataKeys, which
+// dynamically imports firebase/functions and fails against this file's mocks.
+// That works in isolation and takes an unpredictable number of ticks under a
+// full-suite run — a test that passes alone and fails in CI, which is worse
+// than no test.
+vi.mock('../../../shared/crypto', () => ({
+  openSnapshots: (orgId, collection, cb) => (rows) => Promise.resolve(rows).then(cb),
+}))
 vi.mock('firebase/firestore', () => ({ doc: () => ({}), getDoc: vi.fn(), updateDoc: vi.fn() }))
 vi.mock('../../../shared/org/orgData', async () => {
   // The real notice builder — the wording is not what is under test here, but
@@ -39,7 +52,7 @@ const { subscribeActions, SOURCES } = await import('./sources')
 // therefore no longer enough to have been called back; the tests await a turn
 // of the microtask queue first. openSnapshots also drops any batch that is no
 // longer the latest, which is why each feed is settled before the next.
-const settle = () => new Promise((r) => setTimeout(r, 0))
+const settle = async () => { for (let i = 0; i < 5; i += 1) await Promise.resolve() }
 
 // Every source's collection, deduplicated — two sources can share one.
 const COLLECTIONS = [...new Set(SOURCES.map((s) => s.collection))]
@@ -59,7 +72,7 @@ describe('subscribeActions', () => {
   })
 
   it('always emits rows and the reason together', async () => {
-const cb = vi.fn()
+    const cb = vi.fn()
     subscribeActions('orgA', cb)
     await feedAll('ok')
     const payload = cb.mock.calls.at(-1)[0]
@@ -69,14 +82,14 @@ const cb = vi.fn()
   })
 
   it('says nothing when every source came back whole', async () => {
-const cb = vi.fn()
+    const cb = vi.fn()
     subscribeActions('orgA', cb)
     await feedAll('ok')
     expect(cb.mock.calls.at(-1)[0].incomplete).toBeNull()
   })
 
   it('reports a capped source', async () => {
-const cb = vi.fn()
+    const cb = vi.fn()
     subscribeActions('orgA', cb)
     await feedAll('ok')
     listeners.incidents({ rows: [], status: 'capped' })
@@ -88,7 +101,7 @@ const cb = vi.fn()
 
   // The one that used to render as "no outstanding actions".
   it('reports a failed source rather than an empty list', async () => {
-const cb = vi.fn()
+    const cb = vi.fn()
     subscribeActions('orgA', cb)
     await feedAll('ok')
     listeners.mockDrills({ rows: [], status: 'failed' })
@@ -98,7 +111,7 @@ const cb = vi.fn()
   })
 
   it('clears the notice when a failed source recovers', async () => {
-const cb = vi.fn()
+    const cb = vi.fn()
     subscribeActions('orgA', cb)
     await feedAll('ok')
     listeners.incidents({ rows: [], status: 'failed' })

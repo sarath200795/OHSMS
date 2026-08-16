@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import toast from 'react-hot-toast'
-import { ShieldCheck, FileStack, Play, Check, Bug, Unlock, QrCode, HeartPulse, Stethoscope, FileLock2, MapPin } from 'lucide-react'
+import { ShieldCheck, FileStack, Play, Check, Bug, Unlock, QrCode, HeartPulse, Stethoscope, FileLock2, MapPin, Lock } from 'lucide-react'
 import { Card, Button } from '../../shared/ui'
 import { backfillDocumentVisibility, backfillClaims, clearOrphanedDefectLocks, backfillQrMirrors, seedInjuryRecords, stripIncidentMedicalDetail, confineMedicalRecords, linkEquipmentSites } from '../../shared/functions'
 import { reportError } from '../../shared/monitoring'
 import { useAuth } from '../../shared/auth/AuthContext'
 import { backfillProcedureMirrors } from '../../modules/loto/services/procedures'
+import { backfillAll } from '../../shared/crypto/backfill'
 
 /**
  * One-off migrations, run by an admin for their own organization.
@@ -26,6 +27,7 @@ export default function Maintenance() {
       <EquipmentSites />
       <MedicalDetail />
       <MedicalRecordFiles />
+      <SealHistory />
       <OrgClaims />
       <ProcedureMirrors />
       <DefectLocks />
@@ -239,6 +241,116 @@ function ErrorReporting() {
       <p>
         This sends one deliberate error through the same path a real crash takes,
         so it proves the whole funnel rather than just the connection.
+      </p>
+    </Job>
+  )
+}
+
+/**
+ * Encrypt what was stored before encryption was switched on.
+ *
+ * Turning it on seals new writes and nothing else, so every record filed before
+ * that moment is still in plaintext in the database — and what is already stored
+ * IS the exposure. Same reasoning as the three jobs above it, which is why it
+ * sits with them.
+ *
+ * Unlike those, this one runs IN THE BROWSER rather than as a Cloud Function.
+ * The reason is in the header of src/shared/crypto/backfill.js and is worth
+ * repeating here because it explains the slow progress bar: the field path is
+ * bound into every sealed value, so a server-side copy of the policy that
+ * drifted by one character would seal records nothing could ever open again.
+ * Running it here means there is one implementation and it cannot disagree with
+ * itself.
+ */
+function SealHistory() {
+  const { orgId } = useAuth()
+  const [busy, setBusy] = useState('')
+  const [preview, setPreview] = useState(null)
+  const [at, setAt] = useState('')
+  const [done, setDone] = useState(false)
+
+  const run = async (dryRun) => {
+    setBusy(dryRun ? 'dry' : 'write')
+    setAt('')
+    try {
+      const r = await backfillAll(orgId, { dryRun, onProgress: setAt })
+      setPreview(r)
+      if (!dryRun) {
+        // `remaining` is not a failure — a run is capped so it can finish. Say
+        // so, or the second run looks like the first one not having worked.
+        setDone(r.remainingTotal === 0 && r.blockedTotal === 0)
+        toast.success(`Encrypted ${r.sealedTotal} record${r.sealedTotal === 1 ? '' : 's'}`)
+      } else if (r.sealedTotal === 0) {
+        toast.success('Nothing to encrypt — every record is already sealed')
+      }
+    } catch (err) {
+      toast.error(err?.message || 'Failed')
+      reportError(err, { source: 'maintenance.sealHistory' })
+    } finally {
+      setBusy('')
+      setAt('')
+    }
+  }
+
+  const nothingToDo = preview && preview.sealedTotal === 0 && preview.remainingTotal === 0
+  const blocked = preview?.blockedTotal || 0
+
+  return (
+    <Job
+      icon={Lock}
+      title="Encrypt existing records"
+      result={preview && [
+        `${preview.scannedTotal} record${preview.scannedTotal === 1 ? '' : 's'} checked`,
+        `${preview.sealedTotal} ${preview.dryRun ? 'to encrypt' : 'encrypted'}, ${preview.alreadySealedTotal} already encrypted`,
+        '',
+        ...preview.results
+          .filter((r) => r.scanned || r.sealed)
+          .map((r) => `  · ${r.collection}: ${r.sealed} of ${r.scanned}`),
+        preview.remainingTotal
+          ? `\n  · ${preview.remainingTotal} more than one run may do — run it again to finish`
+          : '',
+        // Never the field values and never a filename: a report that named what
+        // it could not seal would be one more copy of the thing being confined.
+        // The collection and the document id find any row and carry nothing
+        // clinical — the same rule planMedicalStrip follows.
+        blocked ? `\n  ⚠ ${blocked} could not be encrypted and ${blocked === 1 ? 'was' : 'were'} left exactly as ${blocked === 1 ? 'it is' : 'they are'}:` : '',
+        ...(blocked ? preview.blocked.slice(0, 20).map((b) => `      ${b.collection} · ${b.id} · ${b.reason}`) : []),
+        blocked > 20 ? `      …and ${blocked - 20} more` : '',
+      ].filter(Boolean).join('\n')}
+      actions={
+        <>
+          <Button variant="ghost" icon={Play} loading={busy === 'dry'} disabled={Boolean(busy)} onClick={() => run(true)}>
+            Check first
+          </Button>
+          <Button
+            icon={done ? Check : undefined}
+            loading={busy === 'write'}
+            disabled={Boolean(busy) || !preview || nothingToDo}
+            onClick={() => run(false)}
+          >
+            {done ? 'Encrypted' : 'Encrypt them'}
+          </Button>
+          {busy && at && <span className="self-center text-xs text-ink-500">Reading {at}…</span>}
+        </>
+      }
+    >
+      <p>
+        Incident narratives, injury and illness records, meeting minutes and drill debriefs
+        are encrypted in the browser before they are saved. That applies to records saved
+        from now on. Everything filed before it was switched on is still stored in readable
+        form, and that is where the risk actually sits — closing the door does nothing about
+        what is already through it.
+      </p>
+      <p>
+        Nothing is replaced until it has been decrypted again and checked against the original,
+        field by field. A record that fails that check is left exactly as it was and listed
+        below, so an interrupted or imperfect run can never leave you with a record nobody
+        can read. Running it twice is safe: anything already encrypted is skipped.
+      </p>
+      <p>
+        This runs in this browser tab rather than on the server, so leave the page open until
+        it finishes. Large organizations take several runs — the count of what is left is
+        reported each time.
       </p>
     </Job>
   )

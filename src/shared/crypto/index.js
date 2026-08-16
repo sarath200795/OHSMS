@@ -36,7 +36,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { openValue, openBytes, SealedValueError, SCHEME } from './envelope'
 import { mapSealed, policyFor, keyClassFor, fileLabel, OMIT } from './policy'
-import { sealerFor, resolverFor, contentKeyCache, sealingEnabled, NoKeyError } from './keyring'
+import { sealerFor, resolverFor, contentKeyCache, sealingEnabled } from './keyring'
 import { reportError } from '../monitoring'
 
 export { sealingEnabled, NoKeyError, clearKeyring, canOpen, loadKeys } from './keyring'
