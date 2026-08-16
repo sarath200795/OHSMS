@@ -111,6 +111,10 @@ jobs:
           VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ vars.STAGING_FIREBASE_MESSAGING_SENDER_ID }}
           VITE_FIREBASE_APP_ID: ${{ vars.STAGING_FIREBASE_APP_ID }}
           VITE_APPCHECK_SITE_KEY: ${{ vars.STAGING_APPCHECK_SITE_KEY }}
+          # Same silent-drop as production's build step: not named here means
+          # not in the bundle, and the emergency-services lookup degrades
+          # quietly rather than failing loudly.
+          VITE_GOOGLE_MAPS_API_KEY: ${{ vars.STAGING_GOOGLE_MAPS_API_KEY }}
           # Deliberately its own DSN, and fine to leave unset. Sentry tags an
           # event with import.meta.env.MODE, which is "production" for any
           # `vite build` — so pointing staging at the production DSN files

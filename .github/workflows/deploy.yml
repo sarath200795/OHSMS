@@ -86,18 +86,31 @@ jobs:
           VITE_FIREBASE_API_KEY: ${{ vars.VITE_FIREBASE_API_KEY }}
           VITE_FIREBASE_AUTH_DOMAIN: ${{ vars.VITE_FIREBASE_AUTH_DOMAIN }}
           VITE_FIREBASE_PROJECT_ID: ${{ vars.VITE_FIREBASE_PROJECT_ID }}
+          # Where every uploaded file lives. Missing here until now, while
+          # deploy-staging.yml passed it — so a CI-built production bundle
+          # initialised Firebase with no bucket and every upload and download
+          # failed. .env.production carries it and warns in its own comment that
+          # this is how production once shipped pointing at the emulator bucket;
+          # that file is gitignored, so CI has never seen it.
+          VITE_FIREBASE_STORAGE_BUCKET: ${{ vars.VITE_FIREBASE_STORAGE_BUCKET }}
           VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ vars.VITE_FIREBASE_MESSAGING_SENDER_ID }}
           VITE_FIREBASE_APP_ID: ${{ vars.VITE_FIREBASE_APP_ID }}
           VITE_APPCHECK_SITE_KEY: ${{ vars.VITE_APPCHECK_SITE_KEY }}
           VITE_SENTRY_DSN: ${{ vars.VITE_SENTRY_DSN }}
+          # The nearest-emergency-services lookup. Absent it resolves to '' and
+          # the feature degrades rather than crashing, which is why nothing has
+          # ever reported it — the same silent-drop as the bucket above.
+          VITE_GOOGLE_MAPS_API_KEY: ${{ vars.VITE_GOOGLE_MAPS_API_KEY }}
           # Whether the shipped bundle SEALS what it writes. Absent here it
           # resolves to '' — which is 'off' — so a value set only in a local
           # .env.production would build a bundle that quietly stores every
           # incident narrative, meeting minute and injury record in plaintext
           # while the operator believed encryption was live. That is the exact
-          # shape of audit finding LOW-12: this step names seven variables and
-          # the local file defines more, so anything not named here is silently
-          # dropped. Decryption is unaffected either way, so a bundle built
+          # shape of audit finding LOW-12: anything the local file defines and
+          # this step does not name is silently dropped. That comment was
+          # written here and then only this one variable was added, which is how
+          # the bucket above stayed missing. Decryption is unaffected either
+          # way, so a bundle built
           # without it still reads everything already sealed.
           VITE_ENCRYPTION: ${{ vars.VITE_ENCRYPTION }}
         run: npm run build
