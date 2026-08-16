@@ -44,6 +44,14 @@ jobs:
           node-version: 20
           cache: npm
 
+      # The Firestore emulator is a Java process, and the rules suite below
+      # cannot run without it.
+      - uses: actions/setup-java@v4
+        if: steps.creds.outputs.configured == 'true'
+        with:
+          distribution: temurin
+          java-version: 17
+
       - name: Install
         if: steps.creds.outputs.configured == 'true'
         run: npm ci
@@ -56,6 +64,21 @@ jobs:
           npx vitest run
           npm --prefix functions ci
           npm --prefix functions test
+
+      # The rules suite, which this step claimed to cover and did not.
+      #
+      # This job deploys firestore.rules and storage.rules — the only
+      # enforcement boundary this app has — and it re-runs the other gates
+      # precisely so a tag cannot ship past them. It ran the unit tests and
+      # skipped the 422 tests that exercise the thing being deployed.
+      #
+      # CI covers this on pushes to main, which is why it was easy to miss. But
+      # a tag is not a push: it can point at any commit, including one whose
+      # rules job never ran or ran red. The artifact that ships must be the one
+      # that passed, and for a ruleset that means these tests.
+      - name: Rules tests
+        if: steps.creds.outputs.configured == 'true'
+        run: npm run test:rules
 
       - name: Build
         if: steps.creds.outputs.configured == 'true'
