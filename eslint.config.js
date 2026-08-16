@@ -18,7 +18,13 @@ const vitestGlobals = {
 }
 
 export default [
-  { ignores: ['dist', '.vendor', 'node_modules', 'emulator-data'] },
+  // `.claude` holds tooling state, and `.claude/worktrees/*` is a full second
+  // checkout of this repository. Without it here, every file in the project is
+  // linted twice and the duplicate copy reports ~270 no-undef errors, because
+  // the Node globals configured below are matched by path and those paths do
+  // not match. CI never saw it — a fresh checkout has no worktrees — so the
+  // only casualty was the local run, which is the one a person actually reads.
+  { ignores: ['dist', '.vendor', 'node_modules', 'emulator-data', '.claude'] },
   js.configs.recommended,
   {
     files: ['**/*.{js,jsx}'],
