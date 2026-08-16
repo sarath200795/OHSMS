@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
+  BarChart, Bar, XAxis, YAxis, Tooltip, Cell,
 } from 'recharts'
+import ChartFrame from '../shared/ui/ChartFrame'
 import {
   AlertTriangle, ShieldAlert, FileCheck, GraduationCap, ArrowRight, Activity,
 } from 'lucide-react'
@@ -149,7 +150,7 @@ export default function Dashboard() {
             <div className="grid h-56 place-items-center text-sm text-ink-400">No incidents recorded yet</div>
           ) : (
             <div className="h-56">
-              <ResponsiveContainer width="100%" height="100%">
+              <ChartFrame width="100%" height="100%">
                 <BarChart data={severityData} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
                   <XAxis dataKey="name" tick={{ fontSize: 12, fill: '#64748b' }} axisLine={false} tickLine={false} />
                   <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: '#64748b' }} axisLine={false} tickLine={false} />
@@ -160,7 +161,7 @@ export default function Dashboard() {
                     ))}
                   </Bar>
                 </BarChart>
-              </ResponsiveContainer>
+              </ChartFrame>
             </div>
           )}
         </Card>

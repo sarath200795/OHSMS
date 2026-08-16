@@ -1,4 +1,5 @@
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
+import { BarChart, Bar, XAxis, YAxis, Tooltip, Cell } from 'recharts'
+import ChartFrame from '../../shared/ui/ChartFrame'
 import { Panel, NoData } from './ui'
 
 const axis = { tickLine: false, axisLine: false, fontSize: 11, tick: { fill: '#8a7660' } }
@@ -18,7 +19,7 @@ export default function Breakdown({ title, subtitle, rows = [], color = '#c74a33
       {rows.length === 0 ? (
         <NoData height={160}>Nothing recorded in this scope.</NoData>
       ) : (
-        <ResponsiveContainer width="100%" height={height}>
+        <ChartFrame width="100%" height={height}>
           <BarChart data={rows} layout="vertical" margin={{ top: 0, right: 28, left: 0, bottom: 0 }}>
             <XAxis type="number" allowDecimals={false} hide />
             <YAxis
@@ -30,7 +31,7 @@ export default function Breakdown({ title, subtitle, rows = [], color = '#c74a33
               {rows.map((d) => <Cell key={d.key} fill={d.color || color} />)}
             </Bar>
           </BarChart>
-        </ResponsiveContainer>
+        </ChartFrame>
       )}
     </Panel>
   )

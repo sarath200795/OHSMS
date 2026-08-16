@@ -3,9 +3,9 @@ import { useLocation } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import toast from 'react-hot-toast';
 import {
-    PieChart, Pie, Cell, BarChart, Bar, AreaChart, Area, XAxis, YAxis, CartesianGrid,
-    Tooltip, Legend, ResponsiveContainer,
-} from 'recharts';
+  PieChart, Pie, Cell, BarChart, Bar, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
+} from 'recharts'
+import ChartFrame from '../../../shared/ui/ChartFrame';
 // Chart icons use lucide's Chart* names — PieChart/AreaChart are recharts components here.
 import {
     AlertCircle, ArrowLeft, Calendar, ChartArea, ChartColumn, ChartPie, CheckCircle2, ChevronLeft,
@@ -618,7 +618,7 @@ export default function Consultation() {
                                         {/* Donut — meetings by type */}
                                         <div className="glass-panel p-6 rounded-3xl shadow-xl">
                                             <h4 className="text-xs uppercase text-ink-500 font-bold mb-4 tracking-widest"><ChartPie size={14} className="inline mr-2 text-green-600" />Meetings by Type</h4>
-                                            <ResponsiveContainer width="100%" height={260}>
+                                            <ChartFrame width="100%" height={260}>
                                                 <PieChart>
                                                     <Pie data={meetingsByType} dataKey="value" nameKey="name" innerRadius={55} outerRadius={95} paddingAngle={2}>
                                                         {meetingsByType.map((e, i) => <Cell key={i} fill={TYPE_COLORS[i % TYPE_COLORS.length]} />)}
@@ -626,14 +626,14 @@ export default function Consultation() {
                                                     <Tooltip />
                                                     <Legend wrapperStyle={{ fontSize: 11 }} />
                                                 </PieChart>
-                                            </ResponsiveContainer>
+                                            </ChartFrame>
                                         </div>
 
                                         {/* Donut — action status */}
                                         <div className="glass-panel p-6 rounded-3xl shadow-xl">
                                             <h4 className="text-xs uppercase text-ink-500 font-bold mb-4 tracking-widest"><ListChecks size={14} className="inline mr-2 text-green-600" />Overall Action Status</h4>
                                             {actionStatusData.length > 0 ? (
-                                                <ResponsiveContainer width="100%" height={260}>
+                                                <ChartFrame width="100%" height={260}>
                                                     <PieChart>
                                                         <Pie data={actionStatusData} dataKey="value" nameKey="name" innerRadius={55} outerRadius={95} paddingAngle={2}>
                                                             {actionStatusData.map((e, i) => <Cell key={i} fill={STATUS_COLORS[e.name]} />)}
@@ -641,7 +641,7 @@ export default function Consultation() {
                                                         <Tooltip />
                                                         <Legend wrapperStyle={{ fontSize: 11 }} />
                                                     </PieChart>
-                                                </ResponsiveContainer>
+                                                </ChartFrame>
                                             ) : (
                                                 <div className="flex items-center justify-center h-[260px] text-ink-400 italic text-sm">No CAPA actions recorded yet.</div>
                                             )}
@@ -651,7 +651,7 @@ export default function Consultation() {
                                     {/* Stacked bar — action status per meeting */}
                                     <div className="glass-panel p-6 rounded-3xl shadow-xl">
                                         <h4 className="text-xs uppercase text-ink-500 font-bold mb-4 tracking-widest"><ChartColumn size={14} className="inline mr-2 text-green-600" />Action Status per Meeting <span className="text-ink-400 normal-case font-medium tracking-normal">(latest {perMeetingActions.length})</span></h4>
-                                        <ResponsiveContainer width="100%" height={320}>
+                                        <ChartFrame width="100%" height={320}>
                                             <BarChart data={perMeetingActions} margin={{ top: 8, right: 12, left: -10, bottom: 8 }}>
                                                 <CartesianGrid strokeDasharray="3 3" stroke="#e3ccbf" vertical={false} />
                                                 <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#62718c' }} angle={-25} textAnchor="end" height={72} interval={0} />
@@ -662,14 +662,14 @@ export default function Consultation() {
                                                 <Bar dataKey="In Progress" stackId="a" fill="#facc15" />
                                                 <Bar dataKey="Closed" stackId="a" fill="#22c55e" radius={[4, 4, 0, 0]} />
                                             </BarChart>
-                                        </ResponsiveContainer>
+                                        </ChartFrame>
                                     </div>
 
                                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                                         {/* Bar — points (action items) per meeting */}
                                         <div className="glass-panel p-6 rounded-3xl shadow-xl">
                                             <h4 className="text-xs uppercase text-ink-500 font-bold mb-4 tracking-widest"><ListOrdered size={14} className="inline mr-2 text-green-600" />Points per Meeting</h4>
-                                            <ResponsiveContainer width="100%" height={280}>
+                                            <ChartFrame width="100%" height={280}>
                                                 <BarChart data={pointsPerMeeting} margin={{ top: 8, right: 12, left: -10, bottom: 8 }}>
                                                     <CartesianGrid strokeDasharray="3 3" stroke="#e3ccbf" vertical={false} />
                                                     <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#62718c' }} angle={-25} textAnchor="end" height={70} interval={0} />
@@ -679,13 +679,13 @@ export default function Consultation() {
                                                     <Bar dataKey="Points" fill="#0ea5e9" radius={[5, 5, 0, 0]} />
                                                     <Bar dataKey="Attendees" fill="#8b5cf6" radius={[5, 5, 0, 0]} />
                                                 </BarChart>
-                                            </ResponsiveContainer>
+                                            </ChartFrame>
                                         </div>
 
                                         {/* Bar — meetings by site */}
                                         <div className="glass-panel p-6 rounded-3xl shadow-xl">
                                             <h4 className="text-xs uppercase text-ink-500 font-bold mb-4 tracking-widest"><MapPin size={14} className="inline mr-2 text-green-600" />Meetings by Site</h4>
-                                            <ResponsiveContainer width="100%" height={280}>
+                                            <ChartFrame width="100%" height={280}>
                                                 <BarChart data={meetingsBySite} margin={{ top: 8, right: 12, left: -10, bottom: 8 }}>
                                                     <CartesianGrid strokeDasharray="3 3" stroke="#e3ccbf" vertical={false} />
                                                     <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#62718c' }} />
@@ -693,14 +693,14 @@ export default function Consultation() {
                                                     <Tooltip />
                                                     <Bar dataKey="value" name="Meetings" fill="#16a34a" radius={[6, 6, 0, 0]} />
                                                 </BarChart>
-                                            </ResponsiveContainer>
+                                            </ChartFrame>
                                         </div>
                                     </div>
 
                                     {/* Area — meetings logged over time */}
                                     <div className="glass-panel p-6 rounded-3xl shadow-xl">
                                         <h4 className="text-xs uppercase text-ink-500 font-bold mb-4 tracking-widest"><ChartArea size={14} className="inline mr-2 text-green-600" />Meetings Over Time</h4>
-                                        <ResponsiveContainer width="100%" height={240}>
+                                        <ChartFrame width="100%" height={240}>
                                             <AreaChart data={meetingsOverTime} margin={{ top: 8, right: 12, left: -10, bottom: 8 }}>
                                                 <defs>
                                                     <linearGradient id="mtg" x1="0" y1="0" x2="0" y2="1">
@@ -714,7 +714,7 @@ export default function Consultation() {
                                                 <Tooltip />
                                                 <Area type="monotone" dataKey="Meetings" stroke="#16a34a" strokeWidth={2} fill="url(#mtg)" />
                                             </AreaChart>
-                                        </ResponsiveContainer>
+                                        </ChartFrame>
                                     </div>
                                 </>
                             )}

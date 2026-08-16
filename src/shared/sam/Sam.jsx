@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
 import { Send, X } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
+import { useDeferredMount } from '../lib/useDeferredMount'
 import { answer, isoMap } from './brain'
 import { getStats } from './liveStats'
 import SamCharacter3D from './SamCharacter3D'
@@ -145,6 +146,14 @@ export default function Sam() {
 
   useEffect(() => () => clearTimeout(walkTimer.current), [])
 
+  // Sam does not render in the same commit as the page he floats over: `drag`
+  // below makes framer-motion measure scroll offsets the moment it attaches its
+  // listeners, which forces the layout of the whole screen that was just built
+  // (see useDeferredMount). Waiting for an idle moment costs the same
+  // measurement against a settled layout, and a mascot arriving a beat after the
+  // content is the right order anyway.
+  const awake = useDeferredMount({ idle: true })
+
   // Idle wander: when the chat is closed, walk somewhere new every 25–45 s.
   useEffect(() => {
     if (open || reduce) return undefined
@@ -192,7 +201,7 @@ export default function Sam() {
     [profile]
   )
 
-  if (!isApproved) return null
+  if (!isApproved || !awake) return null
 
   return (
     <div className="pointer-events-none fixed inset-0 z-40 print:hidden" aria-live="polite">

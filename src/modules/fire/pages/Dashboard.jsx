@@ -2,9 +2,9 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
-  PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip,
-  RadialBarChart, RadialBar, Legend, LabelList,
+  PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, RadialBarChart, RadialBar, Legend, LabelList,
 } from 'recharts'
+import ChartFrame from '../../../shared/ui/ChartFrame'
 import {
   LayoutDashboard, ShieldCheck, RefreshCw, Truck, Wrench, CheckCircle2, Boxes, Filter, X, Search, AlertTriangle, MapPin,
 } from 'lucide-react'
@@ -292,11 +292,11 @@ export default function Dashboard() {
         {/* Fleet health gauge */}
         <ChartCard title="Fleet Health" subtitle="Share of healthy extinguishers">
           <div className="relative h-56">
-            <ResponsiveContainer width="100%" height="100%">
+            <ChartFrame width="100%" height="100%">
               <RadialBarChart innerRadius="70%" outerRadius="100%" data={healthRadial} startAngle={90} endAngle={-270}>
                 <RadialBar background={{ fill: '#efe0d7' }} dataKey="value" cornerRadius={20} />
               </RadialBarChart>
-            </ResponsiveContainer>
+            </ChartFrame>
             <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
               <span className="text-4xl font-black text-green-600"><CountUp value={healthPct} />%</span>
               <span className="text-xs text-ink-400">{summary.healthy} of {summary.total} healthy</span>
@@ -307,7 +307,7 @@ export default function Dashboard() {
         {/* By type donut */}
         <ChartCard title="By Type" subtitle="Click a slice to filter">
           {typeData.length ? (
-            <ResponsiveContainer width="100%" height={224}>
+            <ChartFrame width="100%" height={224}>
               <PieChart>
                 <Pie data={typeData} dataKey="value" nameKey="name" innerRadius={50} outerRadius={88} paddingAngle={3}
                   label={renderPieValue} labelLine={false} onClick={(d) => toggle('type', d.name)} className="cursor-pointer">
@@ -316,14 +316,14 @@ export default function Dashboard() {
                 <Tooltip />
                 <Legend iconType="circle" />
               </PieChart>
-            </ResponsiveContainer>
+            </ChartFrame>
           ) : <Empty />}
         </ChartCard>
 
         {/* By Region donut */}
         <ChartCard title="By Region" subtitle="Click a slice to filter">
           {regionData.length ? (
-            <ResponsiveContainer width="100%" height={224}>
+            <ChartFrame width="100%" height={224}>
               <PieChart>
                 <Pie data={regionData} dataKey="value" nameKey="name" innerRadius={50} outerRadius={88} paddingAngle={3}
                   label={renderPieValue} labelLine={false} onClick={(d) => toggle('region', d.name)} className="cursor-pointer">
@@ -332,13 +332,13 @@ export default function Dashboard() {
                 <Tooltip />
                 <Legend iconType="circle" />
               </PieChart>
-            </ResponsiveContainer>
+            </ChartFrame>
           ) : <Empty />}
         </ChartCard>
 
         {/* By entity bar */}
         <ChartCard title="By Entity" subtitle="Click a bar to filter">
-          <ResponsiveContainer width="100%" height={224}>
+          <ChartFrame width="100%" height={224}>
             <BarChart data={entityData} margin={{ top: 24, right: 8, left: 0, bottom: 0 }}>
               <XAxis dataKey="name" tickLine={false} axisLine={false} fontSize={12} tick={{ fill: '#1c2230' }} />
               <YAxis allowDecimals={false} tickLine={false} axisLine={false} fontSize={12} width={28} tick={{ fill: '#62718c' }} />
@@ -348,13 +348,13 @@ export default function Dashboard() {
                 <LabelList dataKey="value" position="top" fontSize={13} fontWeight={800} fill="#1c2230" />
               </Bar>
             </BarChart>
-          </ResponsiveContainer>
+          </ChartFrame>
         </ChartCard>
 
         {/* Status breakdown */}
         <ChartCard title="Lifecycle Status" subtitle="Click a slice to filter">
           {statusData.length ? (
-            <ResponsiveContainer width="100%" height={224}>
+            <ChartFrame width="100%" height={224}>
               <PieChart>
                 <Pie data={statusData} dataKey="value" nameKey="name" outerRadius={88}
                   label={renderPieValue} labelLine={false} onClick={(d) => toggle('status', d.key)} className="cursor-pointer">
@@ -363,14 +363,14 @@ export default function Dashboard() {
                 <Tooltip />
                 <Legend iconType="circle" />
               </PieChart>
-            </ResponsiveContainer>
+            </ChartFrame>
           ) : <Empty />}
         </ChartCard>
 
         {/* Defect / due distribution */}
         <ChartCard title="Conditions & Due Items" subtitle="Click a bar to filter">
           {categoryData.length ? (
-            <ResponsiveContainer width="100%" height={224}>
+            <ChartFrame width="100%" height={224}>
               <BarChart data={categoryData} layout="vertical" margin={{ left: 8, right: 28 }}>
                 <XAxis type="number" allowDecimals={false} hide />
                 <YAxis type="category" dataKey="name" width={130} tickLine={false} axisLine={false} fontSize={11} tick={{ fill: '#1c2230' }} />
@@ -380,7 +380,7 @@ export default function Dashboard() {
                   <LabelList dataKey="value" position="right" fontSize={13} fontWeight={800} fill="#1c2230" />
                 </Bar>
               </BarChart>
-            </ResponsiveContainer>
+            </ChartFrame>
           ) : (
             <div className="flex h-56 flex-col items-center justify-center text-green-600">
               <ShieldCheck size={40} />

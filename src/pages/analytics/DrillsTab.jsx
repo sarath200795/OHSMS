@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, Cell, PieChart, Pie,
+  BarChart, Bar, XAxis, YAxis, Tooltip, Legend, Cell, PieChart, Pie,
 } from 'recharts'
+import ChartFrame from '../../shared/ui/ChartFrame'
 import { Siren, ClipboardList, AlertTriangle, ListChecks } from 'lucide-react'
 import { Panel, Stat, NoData } from './ui'
 import { drillAnalytics, attachSites, facetsOf } from './moduleAnalytics'
@@ -35,7 +36,7 @@ export default function DrillsTab({ drills, sites, keepUnplaced = true }) {
       <div className="mb-5 grid gap-4 lg:grid-cols-[1.4fr_1fr]">
         <Panel title="Drills over time" subtitle="Drills and real emergencies by month">
           {a.byMonth.length === 0 ? <NoData>No dated drills in this scope.</NoData> : (
-            <ResponsiveContainer width="100%" height={260}>
+            <ChartFrame width="100%" height={260}>
               <BarChart data={a.byMonth} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
                 <XAxis dataKey="label" {...axis} />
                 <YAxis allowDecimals={false} {...axis} />
@@ -44,13 +45,13 @@ export default function DrillsTab({ drills, sites, keepUnplaced = true }) {
                 <Bar dataKey="drills" name="Mock drills" stackId="d" fill="#0ea5e9" />
                 <Bar dataKey="emergencies" name="Real emergencies" stackId="d" fill="#dc2626" />
               </BarChart>
-            </ResponsiveContainer>
+            </ChartFrame>
           )}
         </Panel>
 
         <Panel title="Observations" subtitle="Across every drill in scope">
           {a.observationTotal === 0 ? <NoData>No observations raised.</NoData> : (
-            <ResponsiveContainer width="100%" height={260}>
+            <ChartFrame width="100%" height={260}>
               <PieChart>
                 <Pie data={a.observations.filter((s) => s.value > 0)} dataKey="value" nameKey="name" outerRadius={88} innerRadius={50} paddingAngle={2}>
                   {a.observations.filter((s) => s.value > 0).map((d) => <Cell key={d.key} fill={d.color} />)}
@@ -58,7 +59,7 @@ export default function DrillsTab({ drills, sites, keepUnplaced = true }) {
                 <Tooltip />
                 <Legend iconType="circle" wrapperStyle={{ fontSize: 11 }} />
               </PieChart>
-            </ResponsiveContainer>
+            </ChartFrame>
           )}
         </Panel>
       </div>

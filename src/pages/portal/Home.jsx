@@ -9,8 +9,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
-  PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer,
+  PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, Legend,
 } from 'recharts'
+import ChartFrame from '../../shared/ui/ChartFrame'
 import { AlertTriangle, ArrowRight, MapPin, Building2, ScrollText, UsersRound, Settings, BarChart3, Wrench } from 'lucide-react'
 import { useAuth } from '../../shared/auth/AuthContext'
 import { subscribeCollections, emptyCollections, subscribeOrgUsers } from '../../shared/org/orgData'
@@ -347,7 +348,7 @@ export default function PortalHome() {
           {pie.length === 0 ? (
             <EmptyChart>No incidents recorded for this scope — which is the result you want.</EmptyChart>
           ) : (
-            <ResponsiveContainer width="100%" height={240}>
+            <ChartFrame width="100%" height={240}>
               <PieChart>
                 <Pie data={pie} dataKey="value" nameKey="name" outerRadius={82} innerRadius={46} paddingAngle={2}>
                   {pie.map((d) => <Cell key={d.name} fill={d.color} />)}
@@ -355,7 +356,7 @@ export default function PortalHome() {
                 <Tooltip />
                 <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
               </PieChart>
-            </ResponsiveContainer>
+            </ChartFrame>
           )}
         </Raised>
 
@@ -367,7 +368,7 @@ export default function PortalHome() {
           {bars.length === 0 ? (
             <EmptyChart>No equipment is linked to these sites yet.</EmptyChart>
           ) : (
-            <ResponsiveContainer width="100%" height={240}>
+            <ChartFrame width="100%" height={240}>
               <BarChart data={bars} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
                 <XAxis
                   dataKey="name" tickLine={false} axisLine={false} fontSize={11}
@@ -380,7 +381,7 @@ export default function PortalHome() {
                 <Bar dataKey="aeds" name="AED" fill="#7fc4bb" radius={[6, 6, 0, 0]} />
                 <Bar dataKey="fas" name="Fire alarm" fill="#e8a33d" radius={[6, 6, 0, 0]} />
               </BarChart>
-            </ResponsiveContainer>
+            </ChartFrame>
           )}
         </Raised>
       </div>

@@ -2,8 +2,9 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
-  PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, LabelList, Legend,
+  PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, LabelList, Legend,
 } from 'recharts'
+import ChartFrame from '../../../shared/ui/ChartFrame'
 import {
   LayoutDashboard, ClipboardList, ShieldCheck, ListChecks, AlertTriangle, Activity, Filter, X, Search, CheckCircle2, EyeOff,
 } from 'lucide-react'
@@ -222,40 +223,40 @@ export default function Dashboard() {
       <div data-tour="dash-charts" className="grid gap-4 lg:grid-cols-3">
         <ChartCard title="By Level (Severity)" subtitle="Click a slice to filter">
           {sevData.length ? (
-            <ResponsiveContainer width="100%" height={224}>
+            <ChartFrame width="100%" height={224}>
               <PieChart>
                 <Pie data={sevData} dataKey="value" nameKey="name" outerRadius={88} label={renderPieValue} labelLine={false} onClick={(d) => toggle('severity', d.key)} className="cursor-pointer">
                   {sevData.map((d) => <Cell key={d.key} fill={d.color} fillOpacity={segOpacity(filters.severity, d.key)} />)}
                 </Pie>
                 <Tooltip /><Legend iconType="circle" />
               </PieChart>
-            </ResponsiveContainer>
+            </ChartFrame>
           ) : <Empty />}
         </ChartCard>
 
         <ChartCard title="By Type" subtitle="Click a slice to filter">
           {typeData.length ? (
-            <ResponsiveContainer width="100%" height={224}>
+            <ChartFrame width="100%" height={224}>
               <PieChart>
                 <Pie data={typeData} dataKey="value" nameKey="name" innerRadius={48} outerRadius={88} paddingAngle={3} label={renderPieValue} labelLine={false} onClick={(d) => toggle('type', d.key)} className="cursor-pointer">
                   {typeData.map((d) => <Cell key={d.key} fill={d.color} fillOpacity={segOpacity(filters.type, d.key)} />)}
                 </Pie>
                 <Tooltip /><Legend iconType="circle" />
               </PieChart>
-            </ResponsiveContainer>
+            </ChartFrame>
           ) : <Empty />}
         </ChartCard>
 
         <ChartCard title="Action Status" subtitle="Corrective & preventive actions">
           {actionData.length ? (
-            <ResponsiveContainer width="100%" height={224}>
+            <ChartFrame width="100%" height={224}>
               <PieChart>
                 <Pie data={actionData} dataKey="value" nameKey="name" innerRadius={48} outerRadius={88} paddingAngle={3} label={renderPieValue} labelLine={false}>
                   {actionData.map((d) => <Cell key={d.key} fill={d.color} />)}
                 </Pie>
                 <Tooltip /><Legend iconType="circle" />
               </PieChart>
-            </ResponsiveContainer>
+            </ChartFrame>
           ) : (
             <div className="flex h-52 flex-col items-center justify-center text-green-600"><CheckCircle2 size={36} /><p className="mt-2 font-bold">No open actions 🎉</p></div>
           )}
@@ -263,7 +264,7 @@ export default function Dashboard() {
 
         <ChartCard title="By HSE Category" subtitle="Click a bar to filter">
           {catData.length ? (
-            <ResponsiveContainer width="100%" height={Math.max(224, catData.length * 34)}>
+            <ChartFrame width="100%" height={Math.max(224, catData.length * 34)}>
               <BarChart data={catData} layout="vertical" margin={{ left: 8, right: 28 }}>
                 <XAxis type="number" allowDecimals={false} hide />
                 <YAxis type="category" dataKey="name" width={150} tickLine={false} axisLine={false} fontSize={11} tick={{ fill: '#1c2230' }} />
@@ -273,13 +274,13 @@ export default function Dashboard() {
                   <LabelList dataKey="value" position="right" fontSize={13} fontWeight={800} fill="#1c2230" />
                 </Bar>
               </BarChart>
-            </ResponsiveContainer>
+            </ChartFrame>
           ) : <Empty />}
         </ChartCard>
 
         <ChartCard title="By Location" subtitle="Click a bar to filter">
           {locData.length ? (
-            <ResponsiveContainer width="100%" height={224}>
+            <ChartFrame width="100%" height={224}>
               <BarChart data={locData} margin={{ top: 24, right: 8, left: 0, bottom: 0 }}>
                 <XAxis dataKey="name" tickLine={false} axisLine={false} fontSize={10} tick={{ fill: '#1c2230' }} interval={0} angle={-20} textAnchor="end" height={50} />
                 <YAxis allowDecimals={false} tickLine={false} axisLine={false} fontSize={12} width={28} tick={{ fill: '#62718c' }} />
@@ -289,7 +290,7 @@ export default function Dashboard() {
                   <LabelList dataKey="value" position="top" fontSize={12} fontWeight={800} fill="#1c2230" />
                 </Bar>
               </BarChart>
-            </ResponsiveContainer>
+            </ChartFrame>
           ) : <Empty />}
         </ChartCard>
 

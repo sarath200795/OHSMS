@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
+  BarChart, Bar, XAxis, YAxis, Tooltip, Cell,
 } from 'recharts'
+import ChartFrame from '../../shared/ui/ChartFrame'
 import { ClipboardCheck, ListChecks, CircleAlert, Gauge } from 'lucide-react'
 import { Panel, Stat, NoData, Picker } from './ui'
 import { attachSites, facetsOf } from './moduleAnalytics'
@@ -81,7 +82,7 @@ export default function InspectionsTab({ records = [], sites = [], keepUnplaced 
           {cats.length === 0 ? (
             <NoData>No completed checks in this range.</NoData>
           ) : (
-            <ResponsiveContainer width="100%" height={Math.max(240, cats.length * 42)}>
+            <ChartFrame width="100%" height={Math.max(240, cats.length * 42)}>
               <BarChart data={cats} layout="vertical" margin={{ left: 8, right: 24 }}>
                 <XAxis type="number" allowDecimals={false} {...axis} />
                 <YAxis type="category" dataKey="category" width={120} {...axis} />
@@ -96,7 +97,7 @@ export default function InspectionsTab({ records = [], sites = [], keepUnplaced 
                   {cats.map((c) => <Cell key={c.category} fill={heat(c.failRate)} />)}
                 </Bar>
               </BarChart>
-            </ResponsiveContainer>
+            </ChartFrame>
           )}
         </Panel>
 
