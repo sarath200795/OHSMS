@@ -787,11 +787,33 @@ Credentials → the browser key:
    host when one exists). A key lifted from the bundle then fails from anywhere
    else, which removes the quota-abuse and phishing-clone uses of it.
 2. *API restrictions* → **Restrict key**, and select only what the app calls:
-   Identity Toolkit, Token Service, Firestore, Cloud Storage, and — while the
-   map is in use — Maps JavaScript.
+   Identity Toolkit, Token Service, Firestore and Cloud Storage.
 
-**Maps JavaScript key** — restrict the same way. This one is billable, so an
-unrestricted key is somebody else's map bill. Tracked as S-05 in SECURITY.md.
+**`VITE_GOOGLE_MAPS_API_KEY`** — a SEPARATE key from the Firebase one above, and
+a separate one per environment, so a leaked or abused key can be rotated without
+signing everybody out of the other environment. Despite the variable's name this
+app does not use Maps JavaScript at all: the map is Leaflet over OpenStreetMap
+tiles, and the only Google call is `places.googleapis.com/v1/places:searchNearby`
+from modules/emergency (nearest hospital, police and fire station). So:
+
+1. Google Cloud console → *APIs & Services* → **Enable** "Places API (New)". The
+   older "Places API" is a different product and this endpoint will 403 on it.
+2. *Credentials* → **Create credentials → API key**.
+3. *Application restrictions* → **HTTP referrers** → `weehs-4eb28.web.app/*` and
+   `weehs-4eb28.firebaseapp.com/*` for production. Staging gets its own key and
+   its own referrers.
+4. *API restrictions* → **Restrict key** → Places API (New), and nothing else.
+   This one is billable, so an unrestricted key is somebody else's bill.
+5. Set it as a repo Variable — not a Secret. It ships in the bundle and is
+   protected by the referrer restriction, exactly like the Firebase key:
+
+   ```
+   gh variable set VITE_GOOGLE_MAPS_API_KEY --body '<the new key>'
+   ```
+
+Without it the module falls back to OpenStreetMap, which this repo measured as
+unreliable for emergency contacts (see modules/emergency/lib/providers/
+googlePlaces.js). Tracked as S-05 in SECURITY.md.
 
 Neither restriction changes anything in this repository, and neither is a
 substitute for the rules. They bound what a copied key can be pointed at.
