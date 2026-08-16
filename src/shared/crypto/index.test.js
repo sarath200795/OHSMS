@@ -13,9 +13,12 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 
 const keysMock = vi.hoisted(() => ({ current: {} }))
+// Every getDataKeys call is recorded, so a test can assert that reading data
+// which is NOT encrypted costs no network round trip at all.
+const calls = vi.hoisted(() => [])
 
 vi.mock('../functions', () => ({
-  getDataKeys: async () => keysMock.current,
+  getDataKeys: async () => { calls.push(1); return keysMock.current },
 }))
 vi.mock('../monitoring', () => ({ reportError: vi.fn() }))
 
@@ -254,6 +257,51 @@ describe('who can read a health record', () => {
     const sealedIll = await sealDoc(ORG, 'illnesses', { actions: inc.capa.map((c) => ({ owner: c.owner })) })
     const opened = await openDoc(ORG, 'illnesses', sealedIll)
     expect(opened[RESTRICTED_KEY]).toEqual(['actions[].owner'])
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Reading unsealed data must not touch the network.
+//
+// This shipped broken. openDoc fetched the keyring up front, so every screen
+// reading a covered collection called getDataKeys whether or not anything on it
+// was encrypted — and where the callable is not deployed (a fresh project, the
+// emulator, the Playwright smoke run) that failed and logged a console error on
+// every route. The console-sweep smoke test caught it after the merge.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('what reading costs when nothing is sealed', () => {
+  it('does not ask for keys to open a document with no sealed values', async () => {
+    signIn('admin')
+    calls.length = 0
+    await openDoc(ORG, 'injuries', INJURY) // plain, never sealed
+    expect(calls).toEqual([])
+  })
+
+  it('does not ask for keys to open a whole list of unsealed rows', async () => {
+    signIn('admin')
+    calls.length = 0
+    await openDocs(ORG, 'incidents', [INCIDENT, INCIDENT, INCIDENT])
+    expect(calls).toEqual([])
+  })
+
+  it('does ask once when there IS something sealed', async () => {
+    signIn('admin')
+    const sealed = await sealDoc(ORG, 'injuries', INJURY)
+    signIn('manager') // clears the cache, so the next read must fetch
+    calls.length = 0
+    await openDoc(ORG, 'injuries', sealed)
+    expect(calls).toHaveLength(1)
+  })
+
+  it('asks once for a whole list, not once per row', async () => {
+    // loadKeys caches the PROMISE, so rows decrypting concurrently await one
+    // call rather than racing it.
+    signIn('admin')
+    const sealed = await sealDoc(ORG, 'injuries', INJURY)
+    signIn('manager')
+    calls.length = 0
+    await openDocs(ORG, 'injuries', [sealed, sealed, sealed, sealed])
+    expect(calls).toHaveLength(1)
   })
 })
 

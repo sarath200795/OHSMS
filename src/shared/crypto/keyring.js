@@ -206,9 +206,21 @@ export function clearKeyring() {
  * SealedValueError with reason 'restricted', and the document layer drops the
  * field.
  */
-export async function resolverFor(orgId) {
-  const keys = await loadKeys(orgId)
-  return (keyId, scheme) => {
+export function resolverFor(orgId) {
+  // SYNCHRONOUS, and the keys are fetched inside the returned function rather
+  // than here. That is the difference between "this app calls getDataKeys once
+  // per session" and "this app calls getDataKeys on every screen that reads a
+  // covered collection, whether or not anything on it is encrypted".
+  //
+  // openValue only consults a resolver when it has actually parsed an envelope,
+  // so with this shape an organization holding no sealed data never asks for a
+  // key at all. Before it, opening any incident fetched keys eagerly — and in
+  // an environment where the callable is not deployed (a fresh project, the
+  // emulator, the Playwright smoke run) that failed and reported an error on
+  // every route. It also meant every tenant paid a callable round trip to
+  // decrypt nothing.
+  return async (keyId, scheme) => {
+    const keys = await loadKeys(orgId)
     if (scheme === HYBRID_SCHEME) {
       // The member's case: they hold medical.publicKey and no privateKey, so
       // this is null and the clinical fields are redacted — which is precisely

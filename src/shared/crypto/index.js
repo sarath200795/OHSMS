@@ -79,7 +79,10 @@ export async function sealDoc(orgId, collection, data) {
 export async function openDoc(orgId, collection, data) {
   if (!policyFor(collection) || !orgId || data == null) return data
 
-  const resolve = await resolverFor(orgId)
+  // Not awaited: resolverFor is synchronous and fetches keys only if a value
+  // turns out to be sealed. A document with nothing encrypted on it must not
+  // cost a callable round trip.
+  const resolve = resolverFor(orgId)
   const cache = contentKeyCache()
   const restricted = []
 
@@ -111,16 +114,14 @@ export async function openDoc(orgId, collection, data) {
   return out
 }
 
-/**
- * The same, for a list. One resolver and one cache across the whole batch.
- *
- * Worth its own function rather than `list.map(openDoc)`: openDoc awaits the
- * keyring on every call, and a two-thousand-row snapshot would await it two
- * thousand times before decrypting anything.
- */
+/** The same, for a list, sharing one content-key cache across the batch. */
 export async function openDocs(orgId, collection, list) {
   if (!Array.isArray(list) || !policyFor(collection) || !orgId) return list
-  await resolverFor(orgId) // warm the keyring once, not per row
+  // No pre-warm. Fetching the keyring up front here would undo the laziness in
+  // resolverFor and put a callable round trip in front of every list, sealed or
+  // not — which is the regression this shape exists to prevent. The first
+  // sealed value in the batch fetches; loadKeys caches the PROMISE, so the rest
+  // await that one call rather than racing it.
   return Promise.all(list.map((d) => openDoc(orgId, collection, d)))
 }
 
@@ -217,7 +218,7 @@ export async function openFileBytes(orgId, collection, pointer, bytes) {
   if (!policy) return bytes
 
   const scheme = pointer.encScheme || SCHEME
-  const resolve = await resolverFor(orgId)
+  const resolve = resolverFor(orgId)
   const key = await resolve(pointer.encKeyId, scheme)
   return openBytes(
     key,
