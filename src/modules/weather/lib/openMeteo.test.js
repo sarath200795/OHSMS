@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { normalizeOpenMeteo, fetchWeather, _clearWeatherCache } from './openMeteo'
+import { normalizeOpenMeteo, fetchWeather, _clearWeatherCache, _reloadWeatherCache } from './openMeteo'
 
 // A trimmed real response. `hourly.time` starts at local midnight, which is the
 // detail that makes index-0 the wrong reading to take.
@@ -62,9 +62,15 @@ describe('normalizeOpenMeteo', () => {
 describe('fetchWeather', () => {
   beforeEach(() => {
     _clearWeatherCache()
+    // The cool-off and the TTL are both clock-driven; shouldAdvanceTime keeps
+    // awaited promises resolving normally while the tests move the clock.
+    vi.useFakeTimers({ shouldAdvanceTime: true })
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => RESPONSE })))
   })
-  afterEach(() => vi.unstubAllGlobals())
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+  })
 
   it('rounds the coordinate before sending it, so an exact workplace position never leaves', async () => {
     await fetchWeather(17.438765432, 78.398765432)
@@ -127,6 +133,59 @@ describe('fetchWeather', () => {
     await fetchWeather(3, 3)
     await fetchWeather(3, 3)
     expect(fetch).toHaveBeenCalledTimes(2)
+  })
+
+  it('stops asking after a 429 — a rate-limited service stays rate-limited', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 429 })))
+    await fetchWeather(4, 4)
+    await fetchWeather(5, 5) // a different square, so not a cache hit
+    await fetchWeather(6, 6)
+    expect(fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('serves the last good reading through the cool-off rather than blanking the card', async () => {
+    const good = await fetchWeather(7, 7)
+    vi.setSystemTime(Date.now() + 16 * 60 * 1000) // the reading is now stale
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 429 })))
+    await fetchWeather(8, 8) // another square trips the cool-off
+    expect(await fetchWeather(7, 7)).toEqual(good)
+    expect(fetch).toHaveBeenCalledTimes(1) // the stale reading, not a new request
+  })
+
+  it('asks again once the cool-off has passed', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 429 })))
+    await fetchWeather(9, 9)
+    vi.setSystemTime(Date.now() + 61_000)
+    await fetchWeather(10, 10)
+    expect(fetch).toHaveBeenCalledTimes(2)
+  })
+
+  it('honours Retry-After when the service sends one', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: false,
+      status: 429,
+      headers: { get: (h) => (h === 'Retry-After' ? '600' : null) },
+    })))
+    await fetchWeather(11, 11)
+    vi.setSystemTime(Date.now() + 5 * 60 * 1000) // inside the 10 minutes it asked for
+    await fetchWeather(12, 12)
+    expect(fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('survives a reload — the readings outlive the page, because the quota does', async () => {
+    await fetchWeather(17.44, 78.4)
+    expect(fetch).toHaveBeenCalledTimes(1)
+    _reloadWeatherCache() // what a fresh page load sees
+    await fetchWeather(17.44, 78.4)
+    expect(fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('never carries a failure across a reload', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 500 })))
+    await fetchWeather(13, 13)
+    _reloadWeatherCache()
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => RESPONSE })))
+    expect(await fetchWeather(13, 13)).not.toBeNull()
   })
 
   it('makes no request at all for a site with no coordinates', async () => {
