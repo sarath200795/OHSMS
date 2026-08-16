@@ -10,7 +10,7 @@
 import { initializeApp } from 'firebase/app'
 import { getAuth, connectAuthEmulator, createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth'
 import {
-  getFirestore, connectFirestoreEmulator, doc, getDoc, addDoc, collection,
+  getFirestore, connectFirestoreEmulator, doc, getDoc, addDoc, setDoc, collection,
   serverTimestamp, writeBatch, getDocs,
 } from 'firebase/firestore'
 
@@ -87,6 +87,70 @@ async function main() {
   await add('documents', { title: 'Lockout/Tagout Policy', docType: 'Policy', version: '2.1', owner: 'HSE Manager', reviewDate: daysFromNow(-10).toISOString().slice(0, 10), status: 'active' })
 
   await addDoc(collection(db, 'organizations', orgId, 'auditLogs'), { at: serverTimestamp(), actorUid: uid, actorName: ADMIN.name, action: 'record.create', module: 'core', target: 'org', summary: 'Seeded demo organization' })
+
+  // ── Public QR mirrors, with tokens the e2e suite can actually scan ─────────
+  //
+  // Until these existed, both public-surface e2e tests pointed at a made-up
+  // token and asserted "code not recognised". That passes just as happily when
+  // the page is broken for EVERY token, which is the failure it was written
+  // after: the comment in smoke.spec.js records that a non-resolving public
+  // page was a real shipped bug, and the test written in response covered only
+  // the not-found branch.
+  //
+  // Two permits, because the interesting behaviour is the difference between
+  // them (SECURITY.md S-20):
+  //
+  //   live      inside its window — a stranger at the barrier sees the job,
+  //             the location, the hazards and who it was issued to.
+  //   withdrawn long past its window — the same page must still answer, and
+  //             must no longer describe the job or name anybody.
+  //
+  // Fixed tokens rather than random ones: the e2e suite navigates to these URLs
+  // by hand, and a seeded value nobody can predict is a value nobody can visit.
+  const iso = (n) => daysFromNow(n).toISOString()
+  const mirror = (token, extra) => ({
+    orgId, orgName: ORG, token,
+    site: 'North Plant', typeOfWork: 'Hot Work',
+    engineering: { status: 'approved' }, operations: { status: 'approved' },
+    closure: null, extension: null, closedDueToObservation: null,
+    updatedAt: serverTimestamp(),
+    ...extra,
+  })
+
+  const livePermit = await add('permits', {
+    permitNo: 'PTW-E2E-LIVE', typeOfWork: 'Hot Work', site: 'North Plant',
+    jobLocation: 'Bay 3 mezzanine', jobDescription: 'Welding a handrail section.',
+    issuedToName: 'Jordan Kim', qrToken: 'e2e-live-permit',
+    validFrom: iso(-1), validTo: iso(1),
+    engineering: { status: 'approved' }, operations: { status: 'approved' },
+  })
+  await setDoc(doc(db, 'permitQr', 'e2e-live-permit'), mirror('e2e-live-permit', {
+    permitId: livePermit.id, permitNo: 'PTW-E2E-LIVE', docId: 'PTW-0001',
+    jobLocation: 'Bay 3 mezzanine', jobDescription: 'Welding a handrail section.',
+    issuingDepartment: 'Engineering', issuedToName: 'Jordan Kim',
+    hazards: ['Hot work', 'Working at height'], ppe: ['Face shield'], precautions: ['Fire watch'],
+    jsa: [], participantCount: 3, fireWatcherCount: 1, hasConfinedWatcher: false,
+    withdrawn: false, storedStatus: 'in_progress', validFrom: iso(-1), validTo: iso(1),
+  }))
+
+  // Blanked exactly as withdrawnFields() writes it. The permit number, site,
+  // type and status survive so a scan says "this is over" rather than 404 —
+  // a 404 reads as a wrong code and sends someone hunting for a permit that
+  // did its job properly.
+  const stalePermit = await add('permits', {
+    permitNo: 'PTW-E2E-OLD', typeOfWork: 'Hot Work', site: 'North Plant',
+    jobLocation: 'Bay 1', jobDescription: 'Long-finished pipe weld.',
+    issuedToName: 'Sam Lee', qrToken: 'e2e-stale-permit',
+    validFrom: iso(-400), validTo: iso(-399),
+    engineering: { status: 'approved' }, operations: { status: 'approved' },
+  })
+  await setDoc(doc(db, 'permitQr', 'e2e-stale-permit'), mirror('e2e-stale-permit', {
+    permitId: stalePermit.id, permitNo: 'PTW-E2E-OLD', docId: 'PTW-0002',
+    jobLocation: '', jobDescription: '', issuingDepartment: '', issuedToName: '',
+    hazards: [], ppe: [], precautions: [], jsa: [],
+    participantCount: 0, fireWatcherCount: 0, hasConfinedWatcher: false,
+    withdrawn: true, storedStatus: 'not_closed', validFrom: iso(-400), validTo: iso(-399),
+  }))
 
   // sanity read
   const snap = await getDocs(collection(db, 'organizations', orgId, 'incidents'))
