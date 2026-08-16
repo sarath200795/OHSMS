@@ -10,7 +10,7 @@
 import { initializeApp } from 'firebase/app'
 import { getAuth, connectAuthEmulator, createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth'
 import {
-  getFirestore, connectFirestoreEmulator, doc, addDoc, collection,
+  getFirestore, connectFirestoreEmulator, doc, getDoc, addDoc, collection,
   serverTimestamp, writeBatch, getDocs,
 } from 'firebase/firestore'
 
@@ -38,13 +38,32 @@ async function main() {
     } else throw e
   }
 
-  const orgRef = doc(collection(db, 'organizations'))
-  const orgId = orgRef.id
-  const batch = writeBatch(db)
-  batch.set(orgRef, { name: ORG, nameLower: ORG.toLowerCase(), createdBy: uid, notificationEmail: ADMIN.email, createdAt: serverTimestamp() })
-  batch.set(doc(db, 'users', uid), { name: ADMIN.name, email: ADMIN.email, orgId, orgName: ORG, role: 'admin', status: 'approved', createdAt: serverTimestamp() })
-  batch.set(doc(db, 'orgIndex', ORG.toLowerCase()), { orgId, name: ORG })
-  await batch.commit()
+  // ── Reuse the organization this admin already belongs to ──────────────────
+  //
+  // This used to mint a fresh org id on every run and re-point the admin's
+  // profile at it. That works exactly once. On the second run the profile
+  // already exists, so the write is an UPDATE, and self-update pins `orgId`
+  // (SECURITY.md S-10 — a member must not be able to move themselves between
+  // tenants). The seed was refused.
+  //
+  // CI never noticed because its emulator is always brand new. A developer
+  // re-seeding a running emulator got PERMISSION_DENIED listing a dozen rule
+  // line numbers, none of which say "you have already seeded this one".
+  const meRef = doc(db, 'users', uid)
+  const existing = await getDoc(meRef)
+  let orgId = existing.exists() ? existing.data()?.orgId || null : null
+
+  if (orgId) {
+    console.log(`  Reusing existing organization ${orgId} — re-seeding adds samples to it.`)
+  } else {
+    const orgRef = doc(collection(db, 'organizations'))
+    orgId = orgRef.id
+    const batch = writeBatch(db)
+    batch.set(orgRef, { name: ORG, nameLower: ORG.toLowerCase(), createdBy: uid, notificationEmail: ADMIN.email, createdAt: serverTimestamp() })
+    batch.set(meRef, { name: ADMIN.name, email: ADMIN.email, orgId, orgName: ORG, role: 'admin', status: 'approved', createdAt: serverTimestamp() })
+    batch.set(doc(db, 'orgIndex', ORG.toLowerCase()), { orgId, name: ORG })
+    await batch.commit()
+  }
 
   const add = (col, data) =>
     addDoc(collection(db, 'organizations', orgId, col), {
