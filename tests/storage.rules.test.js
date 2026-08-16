@@ -168,23 +168,25 @@ describe('the auditor is read-only in Storage too, not only in Firestore', () =>
   })
 })
 
-describe('deleting a file needs the same standing Firestore asks for', () => {
+// Deleting is no longer a client operation at all. It moved to the
+// `deleteOrgFile` callable, which reads the caller's profile LIVE — see
+// SECURITY.md S-19 and the block at the foot of this file. These tests exist to
+// keep that door shut: if any of them starts passing, the callable has been
+// bypassed and the stale-token window is open again.
+describe('no client may delete, whatever their token claims', () => {
   it('refuses an ordinary member, who can still upload', async () => {
     await assertFails(deleteObject(ref(asRole('mem', 'member'), p(A))))
     await assertSucceeds(uploadBytes(ref(asRole('mem', 'member'), `orgs/${A}/docs/mem.pdf`), bytes()))
   })
 
-  it('allows a manager and an admin', async () => {
-    await assertSucceeds(deleteObject(ref(asRole('mgr', 'manager'), p(A))))
-    await testEnv.withSecurityRulesDisabled(async (ctx) => {
-      await uploadBytes(ref(ctx.storage(), p(A)), bytes())
-    })
-    await assertSucceeds(deleteObject(ref(asRole('adm', 'admin'), p(A))))
+  // These two used to be the ONLY ones allowed, on the strength of a claim that
+  // could be an hour out of date. Now the bucket refuses them too and the
+  // callable decides, against the database, at the moment of the request.
+  it('refuses a manager and an admin — the callable decides, not the token', async () => {
+    await assertFails(deleteObject(ref(asRole('mgr', 'manager'), p(A))))
+    await assertFails(deleteObject(ref(asRole('adm', 'admin'), p(A))))
   })
 
-  // A session stamped before role was a claim yields '' — not in the allowed
-  // list, so it loses delete rather than keeping it, and gets it back on the
-  // next sign-in. Failing closed is the right direction for an unrecoverable op.
   it('refuses a token carrying an org but no role at all', async () => {
     const stale = testEnv.authenticatedContext('stale', { orgId: A }).storage()
     await assertFails(deleteObject(ref(stale, p(A))))
@@ -195,6 +197,14 @@ describe('deleting a file needs the same standing Firestore asks for', () => {
   it('does not let an admin of another org delete anything here', async () => {
     const adminOfB = testEnv.authenticatedContext('badm', { orgId: B, role: 'admin' }).storage()
     await assertFails(deleteObject(ref(adminOfB, p(A))))
+  })
+
+  // Closing delete must not have closed anything else. Reads and uploads are
+  // still the client's to do, and the auditor is still excluded from uploading.
+  it('leaves reading and uploading exactly as they were', async () => {
+    await assertSucceeds(getBytes(ref(asRole('mgr', 'manager'), p(A))))
+    await assertSucceeds(uploadBytes(ref(asRole('mgr', 'manager'), `orgs/${A}/docs/m.pdf`), bytes()))
+    await assertFails(uploadBytes(ref(asRole('aud', 'auditor'), `orgs/${A}/docs/a.pdf`), bytes()))
   })
 })
 

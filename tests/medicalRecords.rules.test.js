@@ -343,10 +343,15 @@ describe('the medical-record FILE is manager-only', () => {
     await assertFails(uploadBytes(ref(stAs('aud', 'auditor'), MEDICAL(ORG, 'aud.pdf')), bytes()))
   })
 
-  it('keeps the manager-only delete and the no-overwrite guard on the new prefix', async () => {
+  // Client deletes are closed everywhere now, including for the manager — they
+  // go through the deleteOrgFile callable, which checks the LIVE profile rather
+  // than an ID token that may be an hour out of date (SECURITY.md S-19). The
+  // no-overwrite guard is unchanged and still the thing stopping evidence being
+  // replaced in place.
+  it('refuses every client delete on the new prefix, and still refuses overwrites', async () => {
     await assertFails(deleteObject(ref(stAs('mem', 'member'), MEDICAL(ORG))))
     await assertFails(uploadBytes(ref(stAs('mem', 'member'), MEDICAL(ORG)), bytes(16)))
-    await assertSucceeds(deleteObject(ref(stAs('mgr', 'manager'), MEDICAL(ORG))))
+    await assertFails(deleteObject(ref(stAs('mgr', 'manager'), MEDICAL(ORG))))
   })
 
   it('keeps the 20 MB cap on the new prefix', async () => {
@@ -379,9 +384,9 @@ describe('no other storage prefix changed', () => {
     await assertFails(getBytes(ref(stAs('mem', 'member'), PHOTO(OTHER))))
   })
 
-  it('still lets a member upload evidence and still refuses them the delete', async () => {
+  it('still lets a member upload evidence, and refuses every client delete', async () => {
     await assertSucceeds(uploadBytes(ref(stAs('mem', 'member'), PHOTO(ORG, 'new.jpg')), bytes()))
     await assertFails(deleteObject(ref(stAs('mem', 'member'), PHOTO(ORG))))
-    await assertSucceeds(deleteObject(ref(stAs('mgr', 'manager'), PHOTO(ORG))))
+    await assertFails(deleteObject(ref(stAs('mgr', 'manager'), PHOTO(ORG))))
   })
 })
