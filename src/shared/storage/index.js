@@ -182,10 +182,32 @@ export async function putFile(orgId, kind, file, fileName, { collection } = {}) 
   }
 }
 
-/** Delete by path. Best-effort: an orphaned file is a cost, not a correctness bug. */
+/**
+ * Delete by path. Best-effort: an orphaned file is a cost, not a correctness bug.
+ *
+ * On the Firebase driver this goes through the `deleteOrgFile` CALLABLE rather
+ * than straight to the bucket, and `storage.rules` refuses client deletes
+ * outright so there is no second route.
+ *
+ * The reason is SECURITY.md S-19. Storage rules can only read the caller's org
+ * and role off their ID TOKEN — a Storage rule cannot query Firestore — and a
+ * token stays valid for up to an hour. So a manager who had just been
+ * suspended, demoted or moved to another tenant could still delete any file in
+ * their old organization until it expired. Deleting is irreversible, the files
+ * ARE the evidence, and nothing about it reaches the audit trail. The callable
+ * reads the profile live on every request, so the database has the last word.
+ *
+ * Other drivers keep deleting directly: the callable is Firebase-specific, and
+ * an S3-backed deployment has its own presign endpoint to authorise against.
+ */
 export async function removeFile(path) {
   if (!path) return
   try {
+    if (storageDriver === 'firebase') {
+      const { deleteOrgFile } = await import('../functions')
+      await deleteOrgFile(path)
+      return
+    }
     const adapter = await loadAdapter()
     if (!adapter) return
     await adapter.remove(path)

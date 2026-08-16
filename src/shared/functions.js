@@ -167,3 +167,21 @@ export async function clearOrphanedDefectLocks({ dryRun = true } = {}) {
   const fn = await callable('clearOrphanedDefectLocks')
   return (await fn({ dryRun })).data
 }
+
+/**
+ * Delete one stored file, with the caller's standing checked against their LIVE
+ * profile instead of their ID token.
+ *
+ * `storage.rules` refuses client deletes outright, so this is the only route.
+ * It exists because a Storage rule can only read the org and role a token
+ * CLAIMS, and a token stays valid for up to an hour after the account behind it
+ * is suspended, demoted or moved — an hour in which the evidence could still be
+ * destroyed. See SECURITY.md S-19.
+ *
+ * Called by shared/storage removeFile(), which stays best-effort: an orphaned
+ * object is a cost, a failed delete is not a correctness bug.
+ */
+export async function deleteOrgFile(path) {
+  const fn = await callable('deleteOrgFile')
+  return (await fn({ path })).data
+}

@@ -80,29 +80,32 @@ service firebase.storage {
       return inOrg(orgId) && myRole() in ['admin', 'manager'];
     }
 
-    // Closing the stale-token window on delete (SECURITY.md S-19) was attempted
-    // here with a cross-service `firestore.get()` on the live /users profile,
-    // and reverted. Recorded so it is not attempted a third time without
-    // knowing this:
+    // NO CLIENT MAY DELETE. Deletion moved to the `deleteOrgFile` callable
+    // (functions/lib/fileDelete.js), and this refusal is what makes that the
+    // only route rather than merely the polite one.
     //
-    // THE STORAGE EMULATOR DOES NOT EVALUATE CROSS-SERVICE CALLS. It denies
-    // firestore.get()/exists() unconditionally rather than resolving them. A
-    // minimal probe confirmed it: an identical rule reading nothing passed,
-    // the same rule guarded by firestore.exists() refused a caller whose
-    // document was definitely there.
+    // Why it could not stay here. A Storage rule cannot query Firestore, so it
+    // can only read the org and role the caller's ID TOKEN claims — and a token
+    // stays valid until it expires, up to an hour. Stripping the claim does not
+    // reach back into a token already issued, and revoking refresh tokens does
+    // not either, because rules never consult tokensValidAfterTime. So a
+    // manager suspended, demoted or moved to another tenant kept the ability to
+    // destroy that organization's evidence for the rest of the hour
+    // (SECURITY.md S-19). Deleting is irreversible, the files ARE the evidence,
+    // and none of it reaches the audit trail.
     //
-    // The consequence is not that the rule is wrong — in production, with the
-    // cross-service IAM grant, it would work. It is that the rule cannot be
-    // TESTED, in the one file that is the only enforcement boundary this app
-    // has, whose failure mode here is every manager silently losing the ability
-    // to delete. Every negative test still passed while the feature was broken,
-    // because everything denied. That is precisely the shape of S-17.
+    // The obvious fix — a cross-service firestore.get() on the live profile,
+    // right here — was written and reverted. THE STORAGE EMULATOR DOES NOT
+    // EVALUATE CROSS-SERVICE CALLS: it denies firestore.get()/exists() outright
+    // instead of resolving them. A minimal probe confirmed it. So the rule
+    // could not be tested at all, in the one file that is the only enforcement
+    // boundary this app has — and while it was in place every refusal test
+    // still passed, because everything was refusing. That is S-17 again.
     //
-    // If this window is to be closed, do it somewhere testable — a callable
-    // that checks the live profile with the Admin SDK and deletes on the
-    // caller's behalf. See SECURITY.md S-19.
+    // The callable reads the profile LIVE on every request and runs under the
+    // functions test suite, so the control is both current and exercised.
     function canDeleteFrom(orgId) {
-      return isManagerIn(orgId);
+      return false;
     }
 
     // Medical records are excluded from the read below and granted narrowly

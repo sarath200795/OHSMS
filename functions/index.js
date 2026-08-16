@@ -24,6 +24,7 @@ import { claimsFor, claimsChanged, mergeClaims, revokesAccess } from './lib/clai
 import { planBackfill } from './lib/docVisibility.js'
 import { classifyLocks } from './lib/defectLocks.js'
 import { PURGEABLE, PURGE_AFTER_DAYS, MAX_PURGES_PER_RUN, planPurge, summarizeFailures } from './lib/retention.js'
+import { mayDeleteFile } from './lib/fileDelete.js'
 import { planQrBackfill, QR_SOURCES } from './lib/qrMirrors.js'
 import { planMedicalStrip, planInjurySeed } from './lib/incidentMedical.js'
 import { planSiteLinks, LINKABLE_COLLECTIONS } from './lib/siteLinks.js'
@@ -1445,3 +1446,45 @@ export const purgeSoftDeleted = onSchedule(
     }
   }
 )
+
+/**
+ * Delete one file from Cloud Storage, on behalf of a caller whose standing is
+ * checked against the LIVE profile rather than their ID token.
+ *
+ * This is the only way a signed-in user can delete a file: `storage.rules`
+ * refuses client deletes outright. See functions/lib/fileDelete.js for why the
+ * check could not stay in the rules, and SECURITY.md S-19 for what it closes —
+ * the hour in which a suspended, demoted or transferred manager could still
+ * destroy their former organization's evidence using a token issued before
+ * anyone touched their account.
+ *
+ * `ignoreNotFound` because callers treat deletion as best-effort — an already
+ * absent object is the expected state of a retry, not a failure. What is NOT
+ * best-effort is the authorisation above it.
+ */
+export const deleteOrgFile = onCall({ region: REGION }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in first.')
+
+  const path = String(request.data?.path || '').trim()
+  if (!path) throw new HttpsError('invalid-argument', 'A file path is required.')
+
+  const db = getFirestore()
+  const profile = (await db.doc(`users/${uid}`).get()).data() || null
+
+  const decision = mayDeleteFile(profile, path)
+  if (!decision.ok) {
+    // Logged with the reason, answered without it. "Your profile says member"
+    // and "that file belongs to another organization" are both just "no" to
+    // somebody probing — but the difference is exactly what an operator needs
+    // when a legitimate manager reports that deleting stopped working.
+    logger.warn('deleteOrgFile: refused', {
+      uid, path, reason: decision.reason, orgId: profile?.orgId ?? null, role: profile?.role ?? null,
+    })
+    throw new HttpsError('permission-denied', 'You cannot delete this file.')
+  }
+
+  await getBucket().file(path).delete({ ignoreNotFound: true })
+  logger.info('deleteOrgFile: deleted', { uid, orgId: profile.orgId, path })
+  return { deleted: true }
+})
