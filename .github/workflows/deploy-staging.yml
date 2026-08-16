@@ -1,0 +1,156 @@
+# Staging: every merge to main lands here first, so the first time a change
+# meets a real Firebase project is not the time a customer meets it.
+#
+# Production (deploy.yml) is unchanged and still ships on a version tag. The
+# relationship is: merge → staging automatically, tag → production deliberately.
+#
+# ── Why every variable here is prefixed STAGING_ ────────────────────────────
+#
+# The obvious design is a GitHub Environment named `staging` overriding the same
+# VITE_* names production already uses. It is tidier, and it has one failure
+# mode that rules it out: repository variables are the FALLBACK for anything an
+# environment does not define. So a half-configured environment — one missing
+# key, one typo in a name — resolves silently to the PRODUCTION values, and this
+# workflow, which runs on every merge to main, deploys straight over production.
+#
+# Distinct names cannot do that. An unset STAGING_ variable is empty, not
+# production, and the guard below turns empty into a stopped run. The names are
+# uglier; the failure mode is "nothing happened" instead of "we overwrote
+# production from a merge commit".
+name: Deploy (staging)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+# Never let two merges race each other into the same project. Unlike the
+# production deploy, cancelling a superseded staging run is fine — the next one
+# ships a strictly newer commit.
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: true
+
+jobs:
+  staging:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Skip politely until staging exists, exactly as deploy.yml does, so CI
+      # stays green for forks and for the period before the project is created.
+      - name: Check credentials are configured
+        id: creds
+        env:
+          SA: ${{ secrets.STAGING_FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          if [ -z "$SA" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::STAGING_FIREBASE_SERVICE_ACCOUNT not set — skipping staging deploy."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # ── The guard that makes this workflow safe to run on every merge ──────
+      #
+      # Three ways this could point at production, all of them checked, because
+      # this runs unattended and the damage is not recoverable by re-running:
+      #
+      #   1. the staging project id was never set          → empty
+      #   2. someone pasted the production id into it      → equal
+      #   3. the service account belongs to production      → cannot be checked
+      #      here, which is why step 4 re-reads the project from the deploy
+      #      itself rather than trusting this variable alone
+      #
+      # A mismatch is a HARD FAILURE, not a skip. A skip would be indistinguishable
+      # from "staging is not set up yet" and this is the opposite: it is set up
+      # wrong, and someone has to look.
+      - name: Refuse to deploy if this is not a distinct project
+        if: steps.creds.outputs.configured == 'true'
+        env:
+          STAGING_ID: ${{ vars.STAGING_FIREBASE_PROJECT_ID }}
+          PROD_ID: ${{ vars.VITE_FIREBASE_PROJECT_ID }}
+        run: |
+          if [ -z "$STAGING_ID" ]; then
+            echo "::error::STAGING_FIREBASE_PROJECT_ID is not set. Refusing to deploy."
+            exit 1
+          fi
+          if [ "$STAGING_ID" = "$PROD_ID" ]; then
+            echo "::error::STAGING_FIREBASE_PROJECT_ID equals the production project ($PROD_ID). Refusing."
+            exit 1
+          fi
+          echo "Staging target: $STAGING_ID (production is $PROD_ID)"
+
+      - uses: actions/setup-node@v4
+        if: steps.creds.outputs.configured == 'true'
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install
+        if: steps.creds.outputs.configured == 'true'
+        run: npm ci
+
+      # The same gates production runs. Staging is where a bad change is
+      # supposed to be caught, which it cannot be if it was never checked.
+      - name: Lint and test
+        if: steps.creds.outputs.configured == 'true'
+        run: |
+          npx eslint src
+          npx vitest run
+          npm --prefix functions ci
+          npm --prefix functions test
+
+      - name: Build
+        if: steps.creds.outputs.configured == 'true'
+        env:
+          VITE_FIREBASE_API_KEY: ${{ vars.STAGING_FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ vars.STAGING_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID: ${{ vars.STAGING_FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_STORAGE_BUCKET: ${{ vars.STAGING_FIREBASE_STORAGE_BUCKET }}
+          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ vars.STAGING_FIREBASE_MESSAGING_SENDER_ID }}
+          VITE_FIREBASE_APP_ID: ${{ vars.STAGING_FIREBASE_APP_ID }}
+          VITE_APPCHECK_SITE_KEY: ${{ vars.STAGING_APPCHECK_SITE_KEY }}
+          # Deliberately its own DSN, and fine to leave unset. Sentry tags an
+          # event with import.meta.env.MODE, which is "production" for any
+          # `vite build` — so pointing staging at the production DSN files
+          # staging noise in the production inbox under the production label,
+          # and the first thing it costs you is trust in the alerts.
+          VITE_SENTRY_DSN: ${{ vars.STAGING_SENTRY_DSN }}
+          VITE_ENCRYPTION: ${{ vars.STAGING_ENCRYPTION }}
+        run: npm run build
+
+      # Same order as production, for the same reasons (PRODUCTION.md 0b):
+      # functions before rules, because rules depend on claims and on the
+      # deleteOrgFile callable; rules and indexes before hosting, because the
+      # client depends on both.
+      - name: Deploy functions
+        if: steps.creds.outputs.configured == 'true'
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa-staging.json
+        run: |
+          echo '${{ secrets.STAGING_FIREBASE_SERVICE_ACCOUNT }}' > "$GOOGLE_APPLICATION_CREDENTIALS"
+          npx firebase-tools deploy --only functions \
+            --project "${{ vars.STAGING_FIREBASE_PROJECT_ID }}" --non-interactive --force
+
+      - name: Deploy rules + indexes
+        if: steps.creds.outputs.configured == 'true'
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa-staging.json
+        run: |
+          echo '${{ secrets.STAGING_FIREBASE_SERVICE_ACCOUNT }}' > "$GOOGLE_APPLICATION_CREDENTIALS"
+          npx firebase-tools deploy --only firestore:rules,firestore:indexes,storage \
+            --project "${{ vars.STAGING_FIREBASE_PROJECT_ID }}" --non-interactive
+
+      - name: Deploy hosting
+        if: steps.creds.outputs.configured == 'true'
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa-staging.json
+        run: |
+          npx firebase-tools deploy --only hosting \
+            --project "${{ vars.STAGING_FIREBASE_PROJECT_ID }}" --non-interactive
+
+      - name: Where it went
+        if: steps.creds.outputs.configured == 'true'
+        run: |
+          echo "::notice::Staging updated: https://${{ vars.STAGING_FIREBASE_PROJECT_ID }}.web.app"
