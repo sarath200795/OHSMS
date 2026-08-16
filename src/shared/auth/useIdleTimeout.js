@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { idleStatus, LAST_ACTIVITY_KEY, IDLE_TIMEOUT_MS, IDLE_WARNING_MS } from '../../modules/loto/constants/session'
+import { idleStatus, LAST_ACTIVITY_KEY, IDLE_TIMEOUT_MS, IDLE_WARNING_MS } from './sessionConstants'
 
 export function useIdleTimeout() {
   const [phase, setPhase] = useState('active')

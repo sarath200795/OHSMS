@@ -1,4 +1,4 @@
-import { idleStatus } from './session'
+import { idleStatus } from './sessionConstants'
 
 const IDLE = 30 * 60_000 // 30 min
 const WARN = 60_000 // 60 s
