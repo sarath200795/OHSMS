@@ -97,6 +97,84 @@ answers to no rule, and anything already downloaded is simply gone.
 
 ---
 
+### S-19 · Storage honours a revoked token for up to an hour — MEDIUM
+
+The two enforcement surfaces learn about a person differently, and that
+difference is the whole finding.
+
+`firestore.rules` re-reads `/users/{uid}` on **every** rule evaluation, so
+suspending, moving or demoting someone bites the instant the document is
+written. `storage.rules` cannot read Firestore, so it reads `orgId` and `role`
+off the **presented ID token** — and an ID token stays valid, cryptographically,
+until it expires. Up to an hour.
+
+So a person who has just been suspended keeps whatever Storage access their
+cached token still claims. If they were a manager, that includes deleting any
+file in the tenant: incident photos, permit documents, isolation procedure
+photos, drill evidence. Deletion is unrecoverable and leaves nothing in the
+audit trail, which only records what the app chose to write.
+
+**What already narrows it.** `syncUserClaims` strips the claims and, on a
+*reduction*, calls `revokeRefreshTokens(uid)`. That does not shorten the window
+— rules do not consult `tokensValidAfterTime`, so the current token remains
+valid to its expiry either way — but it changes the ending: the session
+terminates rather than quietly continuing in a downgraded state, and no new
+token can be minted.
+
+**One reduction it did not recognise, now fixed.** `revokesAccess` decided
+"reduction" by asking whether the person had been `admin`/`manager` and no
+longer was — which models the DELETE right and nothing else. `storage.rules`
+gates two rights on role, and the second was invisible to it: a **member demoted
+to auditor** loses the right to write (`canWriteTo` excludes auditors) while
+never having been elevated, so no reduction was detected, no session was
+revoked, and an outside party given a login to inspect the safety record could
+keep uploading into the tenant for the rest of the hour. The rule itself was
+correct and tested (`tests/storage.rules.test.js` refuses an auditor's upload);
+only the revocation disagreed with it.
+
+Fixed by deriving the decision from a single `storageRights(role)` mapping that
+states what `storage.rules` grants, so the two files cannot drift again without
+a test failing. `functions/lib/claims.test.js` covers every role transition in
+both directions.
+
+**Still open: the hour itself. The obvious fix was tried and reverted — read
+this before trying it again.**
+
+The natural close is a cross-service `firestore.get()` on the live `/users`
+profile inside `canDeleteFrom()`, spending the read only on `delete` (rare,
+manager-only, irreversible) and leaving `read` on the cheap claim. That was
+written in full, mirroring `isManagerOf()` including the `mustChangePassword`
+clause the claim cannot carry, with seven tests.
+
+**It cannot be tested. The Storage emulator does not evaluate cross-service
+calls** — it refuses `firestore.get()` / `firestore.exists()` outright instead
+of resolving them. Confirmed with a minimal probe: a rule reading nothing
+passed; the identical rule guarded by `firestore.exists()` refused a caller
+whose document was definitely present.
+
+The rule is probably *correct* — in production, with the cross-service IAM
+grant, it would work. That is not the same as being safe to ship. It would go
+into the only enforcement boundary this app has, unverifiable, with a failure
+mode of every manager silently losing the ability to delete.
+
+**And the way it failed is the real lesson.** With the rule in place, every
+*refusal* test still passed — because everything was refusing. Only the two
+tests asserting that a legitimate manager CAN delete went red. A suite of green
+negatives is exactly how a rule that enforces nothing, or everything, reaches
+production unnoticed; it is S-17 again in a different file. The tempting repair
+— delete the two failing positives to get a green suite — would not have tested
+the control, it would have removed the only thing that noticed.
+
+**Where to close it instead, if it is judged worth closing:** somewhere
+testable. A callable that verifies the live profile with the Admin SDK and
+performs the delete on the caller's behalf, with `storage.rules` refusing client
+deletes entirely. That runs under the functions test suite, needs no IAM grant,
+costs nothing on reads, and closes the window completely rather than narrowing
+it. The cost is routing every delete call site through it.
+
+Until then this stays open and bounded: claims stripped immediately, refresh
+tokens revoked, and at most one token lifetime of exposure.
+
 ## Closed
 
 ### S-01 · Cloud Storage was not tenant-isolated — HIGH

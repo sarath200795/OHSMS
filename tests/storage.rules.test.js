@@ -197,3 +197,23 @@ describe('deleting a file needs the same standing Firestore asks for', () => {
     await assertFails(deleteObject(ref(adminOfB, p(A))))
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SECURITY.md S-19 — the hour after a revocation — is NOT closed here, and this
+// note is where the next person finds out why before spending the afternoon.
+//
+// The obvious fix is a cross-service firestore.get() on the live /users profile
+// in canDeleteFrom(). It was written, and reverted, because the STORAGE
+// EMULATOR DOES NOT EVALUATE CROSS-SERVICE CALLS — it denies them outright
+// instead of resolving them, so the rule cannot be exercised here at all.
+//
+// What made that dangerous rather than merely inconvenient: with the rule in
+// place, every REFUSAL test below still passed, because everything was
+// refusing. Only the two tests asserting a legitimate manager CAN delete
+// failed. A suite full of green negatives is exactly how a rule that enforces
+// nothing — or enforces everything — reaches production unnoticed. See S-17.
+//
+// A tempting variant to also avoid: keeping the rule and deleting the two
+// positive tests to make the suite green. That does not test the control, it
+// removes the only thing that noticed.
+// ─────────────────────────────────────────────────────────────────────────────

@@ -90,14 +90,46 @@ export function revokesAccess(before, next) {
   // much as the first: a stale token still names the OLD org, so until it
   // expires the person can reach the files of a tenant they have left.
   if (had && had !== now) return true
+  if (!had) return false
 
-  // Same org, less authority. storage.rules gates delete on admin/manager, so a
-  // demotion that only takes effect at the next refresh leaves an ex-manager
-  // able to destroy evidence for the rest of the hour.
-  const ELEVATED = ['admin', 'manager']
-  const wasElevated = ELEVATED.includes((before || {}).role)
-  const isElevated = ELEVATED.includes((next || {}).role)
-  if (had && had === now && wasElevated && !isElevated) return true
+  // Same org, less authority — decided by comparing the RIGHTS rather than by
+  // testing one hardcoded role list.
+  //
+  // It used to ask only "were they admin/manager, and are they no longer?",
+  // which models the delete right and nothing else. storage.rules gates two
+  // different things on role, and the second one was missed entirely: a member
+  // demoted to AUDITOR loses the right to write (canWriteTo excludes auditors)
+  // while never having been elevated, so no reduction was detected and no
+  // session was revoked. The auditor is described in firestore.rules as an
+  // outside party given a login to inspect the safety record — and for up to an
+  // hour after being made one, they could still upload into the tenant on a
+  // stale `member` claim.
+  const was = storageRights((before || {}).role)
+  const is = storageRights((next || {}).role)
+  return (was.write && !is.write) || (was.remove && !is.remove)
+}
 
-  return false
+/**
+ * What `storage.rules` actually grants a role.
+ *
+ * One mapping, in one place, because two enforcement surfaces disagreeing about
+ * the same person is precisely how S-01 happened — and how the auditor gap
+ * above survived a green test suite. If storage.rules changes what a role may
+ * do, this changes with it, and `revokesAccess` follows for free.
+ *
+ * These mirror the RULE as written, not the intent behind it. An unknown or
+ * absent role returns write:true because `myRole() != 'auditor'` is true for
+ * the empty string — that is what the deployed rule does, and a model that
+ * quietly disagreed with it would be worse than no model. The case it seems to
+ * miss (a revoked user, whose role is null) is caught by the org check above
+ * before this is ever consulted.
+ */
+export function storageRights(role) {
+  const r = typeof role === 'string' ? role : ''
+  return {
+    // canWriteTo(): an auditor reads the record, never edits it.
+    write: r !== 'auditor',
+    // isManagerIn(): deleting anything, and reading a medical record.
+    remove: r === 'admin' || r === 'manager',
+  }
 }

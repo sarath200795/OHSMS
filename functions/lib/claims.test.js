@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { claimsFor, claimsChanged, mergeClaims, isScoped, CLAIM_KEYS, revokesAccess } from './claims.js'
+import { claimsFor, claimsChanged, mergeClaims, isScoped, CLAIM_KEYS, revokesAccess, storageRights } from './claims.js'
 
 const approved = { orgId: 'orgA', role: 'member', status: 'approved' }
 
@@ -143,5 +143,48 @@ describe('when a claim change has to end the session', () => {
   // admin -> manager keeps the delete right, so there is nothing to close.
   it('does not revoke a demotion that keeps the same Storage rights', () => {
     expect(revokesAccess(c('orgA', 'admin'), c('orgA', 'manager'))).toBe(false)
+  })
+
+  // The gap the old ELEVATED-list version could not see. A member was never
+  // elevated, so "were they admin/manager and are they no longer?" answered no
+  // — while storage.rules had just stopped letting them upload. An auditor is
+  // an outside party given a login to inspect the safety record, and this left
+  // them able to write into the tenant for the rest of the token's hour.
+  it('revokes when a member is demoted to auditor and loses the right to write', () => {
+    expect(revokesAccess(c('orgA', 'member'), c('orgA', 'auditor'))).toBe(true)
+  })
+
+  // The mirror of it: an auditor promoted to member GAINS the write right, and
+  // interrupting them buys nothing.
+  it('does not revoke when an auditor is promoted into a writing role', () => {
+    expect(revokesAccess(c('orgA', 'auditor'), c('orgA', 'member'))).toBe(false)
+    expect(revokesAccess(c('orgA', 'auditor'), c('orgA', 'manager'))).toBe(false)
+  })
+})
+
+// This mapping is the contract between two files that must never disagree about
+// the same person. If storage.rules changes, these change with it.
+describe('storageRights — what storage.rules grants a role', () => {
+  it('lets everyone but the auditor write', () => {
+    expect(storageRights('admin').write).toBe(true)
+    expect(storageRights('manager').write).toBe(true)
+    expect(storageRights('member').write).toBe(true)
+    expect(storageRights('auditor').write).toBe(false)
+  })
+
+  it('lets only admin and manager delete and read medical records', () => {
+    expect(storageRights('admin').remove).toBe(true)
+    expect(storageRights('manager').remove).toBe(true)
+    expect(storageRights('member').remove).toBe(false)
+    expect(storageRights('auditor').remove).toBe(false)
+  })
+
+  // Mirrors the deployed rule rather than the intent: `myRole() != 'auditor'`
+  // is TRUE for the empty string a pre-claims token yields. Modelling it as
+  // false would be a nicer story and a lie about what is enforced.
+  it('reports an absent role exactly as the deployed rule evaluates it', () => {
+    expect(storageRights(null)).toEqual({ write: true, remove: false })
+    expect(storageRights(undefined)).toEqual({ write: true, remove: false })
+    expect(storageRights('')).toEqual({ write: true, remove: false })
   })
 })

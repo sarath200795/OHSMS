@@ -80,6 +80,27 @@ service firebase.storage {
       return inOrg(orgId) && myRole() in ['admin', 'manager'];
     }
 
+    // Closing the stale-token window on delete (SECURITY.md S-19) was attempted
+    // here with a cross-service `firestore.get()` on the live /users profile,
+    // and reverted. Recorded so it is not attempted a third time without
+    // knowing this:
+    //
+    // THE STORAGE EMULATOR DOES NOT EVALUATE CROSS-SERVICE CALLS. It denies
+    // firestore.get()/exists() unconditionally rather than resolving them. A
+    // minimal probe confirmed it: an identical rule reading nothing passed,
+    // the same rule guarded by firestore.exists() refused a caller whose
+    // document was definitely there.
+    //
+    // The consequence is not that the rule is wrong — in production, with the
+    // cross-service IAM grant, it would work. It is that the rule cannot be
+    // TESTED, in the one file that is the only enforcement boundary this app
+    // has, whose failure mode here is every manager silently losing the ability
+    // to delete. Every negative test still passed while the feature was broken,
+    // because everything denied. That is precisely the shape of S-17.
+    //
+    // If this window is to be closed, do it somewhere testable — a callable
+    // that checks the live profile with the Admin SDK and deletes on the
+    // caller's behalf. See SECURITY.md S-19.
     function canDeleteFrom(orgId) {
       return isManagerIn(orgId);
     }
