@@ -9,6 +9,7 @@ const linkEquipmentSites = vi.fn()
 const seedInjuryRecords = vi.fn()
 const stripIncidentMedicalDetail = vi.fn()
 const confineMedicalRecords = vi.fn()
+const exportSubjectData = vi.fn()
 
 vi.mock('../../shared/functions', () => ({
   backfillDocumentVisibility: (...a) => backfillDocumentVisibility(...a),
@@ -18,7 +19,9 @@ vi.mock('../../shared/functions', () => ({
   seedInjuryRecords: (...a) => seedInjuryRecords(...a),
   stripIncidentMedicalDetail: (...a) => stripIncidentMedicalDetail(...a),
   confineMedicalRecords: (...a) => confineMedicalRecords(...a),
+  exportSubjectData: (...a) => exportSubjectData(...a),
 }))
+vi.mock('../../shared/crypto/keyring', () => ({ sealingEnabled: false }))
 // The procedure-mirror job runs in the browser rather than as a callable, so
 // unlike its neighbours it needs the caller's org and reaches the LOTO service
 // directly. Both are mocked here — importing the real service would stand up
@@ -584,5 +587,87 @@ describe('moving the medical record files', () => {
 
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('permission-denied'))
     expect(moveBtn().disabled).toBe(true)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Subject access.
+//
+// The thing worth testing here is not that it fetches — it is that it refuses
+// to present the half it CAN fetch as the whole answer. A person's name is also
+// free text inside array objects, which Firestore cannot query, so an export
+// that showed only the keyed records would look authoritative and be incomplete.
+// That is a failed response to a legal request, not a partial one.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('subject access request', () => {
+  const job = () => within(screen.getByRole('region', { name: /Subject access request/ }))
+
+  const RESULT = {
+    subject: { uid: 'u1', personId: null },
+    records: { users: [{ id: 'u1' }], injuries: [{ id: 'a' }, { id: 'b' }], auditLogs: [] },
+    mentions: [
+      { path: 'consultations', fields: ['attendees[].name'] },
+      { path: 'incidents', fields: ['affectedPersonnel[].name'] },
+    ],
+    scan: { feasible: true, note: 'Fields are stored in the clear.' },
+    erasure: {
+      refused: [{ path: 'injuries', why: 'Statutory retention; it is the person’s own evidence.' }],
+      anonymise: [{ path: 'users', why: 'Removing it orphans authored records.' }],
+      erasable: [{ path: 'erpContacts', why: 'A contact list entry.' }],
+    },
+    problems: [],
+  }
+
+  beforeEach(() => exportSubjectData.mockReset())
+
+  it('will not run without a person to look up', async () => {
+    render(<Maintenance />)
+    await act(async () => fireEvent.click(job().getByRole('button', { name: /Gather/ })))
+    expect(exportSubjectData).not.toHaveBeenCalled()
+  })
+
+  it('counts what it found by key, per collection', async () => {
+    exportSubjectData.mockResolvedValue(RESULT)
+    render(<Maintenance />)
+    fireEvent.change(job().getByLabelText(/User id/), { target: { value: 'u1' } })
+    await act(async () => fireEvent.click(job().getByRole('button', { name: /Gather/ })))
+    await waitFor(() => expect(job().getByText(/injuries: 2/)).toBeTruthy())
+    expect(job().getByText(/users: 1/)).toBeTruthy()
+  })
+
+  // The whole point. These are places to look, not results, and they have to
+  // reach the screen or the export overstates itself.
+  it('names the places a query cannot reach, rather than omitting them', async () => {
+    exportSubjectData.mockResolvedValue(RESULT)
+    render(<Maintenance />)
+    fireEvent.change(job().getByLabelText(/User id/), { target: { value: 'u1' } })
+    await act(async () => fireEvent.click(job().getByRole('button', { name: /Gather/ })))
+    await waitFor(() => expect(job().getByText(/attendees\[\]\.name/)).toBeTruthy())
+    expect(job().getByText(/affectedPersonnel\[\]\.name/)).toBeTruthy()
+  })
+
+  // A refusal is part of the answer, and the reason is what gets sent back to
+  // the person asking.
+  it('shows what cannot lawfully be erased, with the reason', async () => {
+    exportSubjectData.mockResolvedValue(RESULT)
+    render(<Maintenance />)
+    fireEvent.change(job().getByLabelText(/User id/), { target: { value: 'u1' } })
+    await act(async () => fireEvent.click(job().getByRole('button', { name: /Gather/ })))
+    await waitFor(() => expect(job().getByText(/must be RETAINED by law/)).toBeTruthy())
+    expect(job().getByText(/own evidence/)).toBeTruthy()
+  })
+
+  // Once encryption is on, a scan of those fields reads ciphertext and finds
+  // nothing — which looks exactly like a person who is not mentioned. Silence
+  // here would be a wrong answer to a legal request.
+  it('warns when the unsearchable half could not have been searched at all', async () => {
+    exportSubjectData.mockResolvedValue({
+      ...RESULT,
+      scan: { feasible: false, reason: 'encrypted', note: 'Sealed fields would report zero mentions.' },
+    })
+    render(<Maintenance />)
+    fireEvent.change(job().getByLabelText(/User id/), { target: { value: 'u1' } })
+    await act(async () => fireEvent.click(job().getByRole('button', { name: /Gather/ })))
+    await waitFor(() => expect(job().getByText(/zero mentions/)).toBeTruthy())
   })
 })
