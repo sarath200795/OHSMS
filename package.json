@@ -19,7 +19,8 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "deploy:staging": "node scripts/deploy-staging.mjs"
   },
   "dependencies": {
     "@fontsource/inter": "^5.0.18",
