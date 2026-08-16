@@ -3,8 +3,8 @@ import { Save, Hash } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { Modal, Spinner } from './ui'
 import { updateExtinguisher } from '../lib/firestore'
-import { TYPES, CAPACITIES, ENTITIES, REGIONS } from '../lib/constants'
-import { useFleet } from '../context/FleetContext'
+import { TYPES, CAPACITIES } from '../lib/constants'
+import { useAccessibleSites } from '../../../shared/org/useAccessibleSites'
 import SiteScopePicker from '../../../shared/org/SiteScopePicker'
 
 function Field({ label, children }) {
@@ -24,20 +24,19 @@ function Field({ label, children }) {
  * Props: open, onClose, ext, orgId, orgName
  */
 export default function EditExtinguisherModal({ open, onClose, ext, orgId, orgName, actor }) {
-  const { siteInventory } = useFleet()
   const [form, setForm] = useState(null)
   const [busy, setBusy] = useState(false)
+  const sites = useAccessibleSites()
 
   useEffect(() => {
     if (ext) {
       setForm({
         type: ext.type || TYPES[0],
         capacity: ext.capacity || CAPACITIES[0],
-        entity: ext.entity || ENTITIES[0],
-        region: ext.region || REGIONS[0],
-        siteId: ext.siteId || '',
-        site: ext.site || ext.centerName || '',
+        entity: ext.entity || '',
+        region: ext.region || '',
         centerName: ext.centerName || '',
+        siteId: ext.siteId || '',
         dateOfDeployment: ext.dateOfDeployment || '',
         dateOfNextRefill: ext.dateOfNextRefill || '',
         dateOfNextHPT: ext.dateOfNextHPT || '',
@@ -48,8 +47,19 @@ export default function EditExtinguisherModal({ open, onClose, ext, orgId, orgNa
   if (!ext || !form) return null
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value })
 
+  // SiteScopePicker returns a flat map with siteId, site (name), region, entity, etc.
+  const handleSiteChange = (scope) => {
+    setForm({
+      ...form,
+      siteId: scope.siteId || '',
+      centerName: scope.site || '',
+      region: scope.region || '',
+      entity: scope.entity || '',
+    })
+  }
+
   const save = async () => {
-    if (!form.centerName.trim()) return toast.error('Center name is required')
+    if (!form.centerName.trim()) return toast.error('Site is required')
     setBusy(true)
     try {
       await updateExtinguisher(orgId, orgName, ext.id, form, { actor })
@@ -83,24 +93,23 @@ export default function EditExtinguisherModal({ open, onClose, ext, orgId, orgNa
             {CAPACITIES.map((c) => <option key={c}>{c}</option>)}
           </select>
         </Field>
-        <Field label="Entity">
-          <select className="input" value={form.entity} onChange={set('entity')}>
-            {ENTITIES.map((en) => <option key={en}>{en}</option>)}
-          </select>
-        </Field>
-        <Field label="Region">
-          <select className="input" value={form.region} onChange={set('region')}>
-            {REGIONS.map((rg) => <option key={rg}>{rg}</option>)}
-          </select>
-        </Field>
-        <Field label="Site *">
-          <SiteScopePicker
-            module="equipment"
-            sites={siteInventory}
-            value={form}
-            onChange={(v) => setForm((f) => ({ ...f, ...v, centerName: v.site }))}
-          />
-        </Field>
+      </div>
+
+      {/* Site scope picker replaces the old free-text "Center Name" input.
+          It populates Region, Entity, and Site from the org's site registry,
+          filtered by the user's site-scope permissions. */}
+      <div className="mt-4">
+        <SiteScopePicker
+          sites={sites}
+          module="fire"
+          value={{
+            siteId: form.siteId,
+            site: form.centerName,
+            region: form.region,
+            entity: form.entity,
+          }}
+          onChange={handleSiteChange}
+        />
       </div>
 
       <div className="mt-4 grid gap-4 sm:grid-cols-3">
