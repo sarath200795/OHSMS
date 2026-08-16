@@ -60,16 +60,30 @@ Application-layer encryption is in (`src/shared/crypto/`, docs/PRODUCTION.md §1
 and seals the fields named in `policy.js` before they reach Firestore. Three
 things it does not yet reach, listed here so none of them becomes folklore:
 
-**History is still plaintext.** Turning `VITE_ENCRYPTION=on` seals new writes.
-Every incident, injury, illness, meeting and drill already stored stays readable
-in the database until a backfill re-writes it, and no backfill exists yet. This
-is the same shape as every other finding closed here — `stripIncidentMedicalDetail`,
-`backfillDocumentVisibility`, `confineMedicalRecords` — and the same reasoning
-applies: *closing the write path closes nothing already stored, and what is
-already stored is the exposure.* The migration has to run with the Admin SDK,
-which can unwrap both key classes, and it must seal-then-verify-then-replace so
-an interrupted run leaves a record readable rather than neither readable nor
-recoverable.
+**History in Firestore.** *Closed — needs running.* Turning `VITE_ENCRYPTION=on`
+seals new writes only, so every incident, injury, illness, meeting and drill
+already stored stayed readable in the database. Same shape as every other
+finding closed here — `stripIncidentMedicalDetail`, `backfillDocumentVisibility`,
+`confineMedicalRecords` — and the same reasoning: *closing the write path closes
+nothing already stored, and what is already stored is the exposure.*
+
+`src/shared/crypto/backfill.js` does it, from a card on the Maintenance page.
+Nothing is written until the sealed copy has been decrypted again and compared
+field by field against the plaintext it would replace — and that check runs
+*before* the destructive write, not after, because this migration overwrites
+rather than copies, so there is no moment afterwards where the plaintext still
+exists to compare against.
+
+It runs in the browser, not as a Cloud Function like its neighbours, and that is
+the one decision worth knowing about. The AAD bound into every sealed value *is*
+the policy path string, so a server-side copy of the policy table drifting by one
+character would seal records that nothing could ever open again — silent,
+permanent, and undetectable at both write and read time. Running it through the
+app's own `sealDoc` means there is one implementation and it cannot disagree with
+itself.
+
+**It has not been run against production.** Encryption is still off there, and
+the job refuses to start with sealing disabled.
 
 **Bucket objects already stored are still plaintext.** *Closed for new uploads.*
 Incident photos, drill evidence and illness attachments now encrypt their bytes
@@ -148,43 +162,60 @@ states what `storage.rules` grants, so the two files cannot drift again without
 a test failing. `functions/lib/claims.test.js` covers every role transition in
 both directions.
 
-**Still open: the hour itself. The obvious fix was tried and reverted — read
-this before trying it again.**
+**The hour itself: CLOSED for deletion, by moving the check off the rules.**
 
-The natural close is a cross-service `firestore.get()` on the live `/users`
-profile inside `canDeleteFrom()`, spending the read only on `delete` (rare,
-manager-only, irreversible) and leaving `read` on the cheap claim. That was
-written in full, mirroring `isManagerOf()` including the `mustChangePassword`
-clause the claim cannot carry, with seven tests.
+`storage.rules` now refuses client deletes outright — `canDeleteFrom` is
+`false`, for everyone, including a manager. Deletion goes through the
+`deleteOrgFile` callable, which reads the caller's `/users` profile **live** on
+every request and applies `mayDeleteFile` (`functions/lib/fileDelete.js`):
+approved, not on a provisioning password, `admin`/`manager`, and the path inside
+that org's own prefix. The database decides at the moment of the request, so a
+token issued before the account changed carries no weight at all.
 
-**It cannot be tested. The Storage emulator does not evaluate cross-service
-calls** — it refuses `firestore.get()` / `firestore.exists()` outright instead
-of resolving them. Confirmed with a minimal probe: a rule reading nothing
-passed; the identical rule guarded by `firestore.exists()` refused a caller
-whose document was definitely present.
+The client change was one file, because every delete in the app already funnels
+through `removeFile` in `src/shared/storage/index.js`. Non-Firebase drivers keep
+deleting directly — the callable is Firebase-specific, and an S3 deployment
+authorises at its own presign endpoint.
 
-The rule is probably *correct* — in production, with the cross-service IAM
-grant, it would work. That is not the same as being safe to ship. It would go
-into the only enforcement boundary this app has, unverifiable, with a failure
-mode of every manager silently losing the ability to delete.
+This also closes a clause a custom claim could never carry: `isManagerOf` in
+`firestore.rules` refuses an account still holding the password a provisioning
+admin typed for it, so such an account reaches nothing in Firestore — while
+Storage let it delete, because `mustChangePassword` is not on the token.
 
-**And the way it failed is the real lesson.** With the rule in place, every
+**Read this before ever moving the check back into the rules.** The obvious fix
+— a cross-service `firestore.get()` inside `canDeleteFrom()` — was written in
+full, with tests, and reverted. **The Storage emulator does not evaluate
+cross-service calls**: it refuses `firestore.get()` / `firestore.exists()`
+outright instead of resolving them. Confirmed with a minimal probe — a rule
+reading nothing passed; the identical rule guarded by `firestore.exists()`
+refused a caller whose document was definitely present.
+
+The rule was probably *correct*; in production with the IAM grant it would
+work. That is not the same as safe to ship. It would have gone into the only
+enforcement boundary this app has, unverifiable, with a failure mode of every
+manager silently losing the ability to delete.
+
+**And how it failed is the lesson worth keeping.** With that rule in place every
 *refusal* test still passed — because everything was refusing. Only the two
-tests asserting that a legitimate manager CAN delete went red. A suite of green
+tests asserting a legitimate manager CAN delete went red. A suite of green
 negatives is exactly how a rule that enforces nothing, or everything, reaches
-production unnoticed; it is S-17 again in a different file. The tempting repair
-— delete the two failing positives to get a green suite — would not have tested
-the control, it would have removed the only thing that noticed.
+production unnoticed; it is S-17 in a different file. The tempting repair —
+delete the two failing positives to get green — would not have tested the
+control, it would have removed the only thing that noticed.
 
-**Where to close it instead, if it is judged worth closing:** somewhere
-testable. A callable that verifies the live profile with the Admin SDK and
-performs the delete on the caller's behalf, with `storage.rules` refusing client
-deletes entirely. That runs under the functions test suite, needs no IAM grant,
-costs nothing on reads, and closes the window completely rather than narrowing
-it. The cost is routing every delete call site through it.
+**What is still bounded rather than closed:** READ. A stale token can still read
+files of the org it names until it expires. That is deliberate: routing reads
+through a callable would put a function invocation behind every photograph the
+app renders, and an hour of continued read access to files the person could
+already see is a far smaller thing than destroying the evidence. Claims are
+stripped immediately and refresh tokens revoked, so it remains at most one token
+lifetime.
 
-Until then this stays open and bounded: claims stripped immediately, refresh
-tokens revoked, and at most one token lifetime of exposure.
+Verified in `functions/lib/fileDelete.test.js` (every branch, including the
+manager whose profile has since been suspended, demoted or moved) and in
+`tests/storage.rules.test.js` / `tests/medicalRecords.rules.test.js`, which now
+assert that **no** client may delete — if any of those starts passing, the
+callable has been bypassed.
 
 ## Closed
 
