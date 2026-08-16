@@ -22,7 +22,7 @@ import {
   runTransaction,
   arrayUnion,
 } from 'firebase/firestore'
-import { db } from '../firebase'
+import { db } from '../../../shared/firebase'
 import { reserveDocId } from '../../../shared/docId/reserve'
 import { putFile, removeFile, MAX_INLINE_BYTES, tooLargeForInline } from '../../../shared/storage'
 import { AUDIT } from './audit'

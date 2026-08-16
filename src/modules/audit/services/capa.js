@@ -9,7 +9,7 @@ import {
   updateDoc,
   limit,
 } from 'firebase/firestore'
-import { db } from '../lib/firebase'
+import { db } from '../../../shared/firebase'
 
 const col = (orgId) => collection(db, 'organizations', orgId, 'capas')
 

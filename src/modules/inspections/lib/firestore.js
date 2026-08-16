@@ -15,7 +15,7 @@ import {
   serverTimestamp,
   limit,
 } from 'firebase/firestore'
-import { db } from '../firebase'
+import { db } from '../../../shared/firebase'
 import { reserveDocId } from '../../../shared/docId/reserve'
 
 // ── Path helpers ─────────────────────────────────────────────────────────────

@@ -12,7 +12,7 @@ import {
   onSnapshot,
   serverTimestamp,
 } from 'firebase/firestore'
-import { db } from '../firebase'
+import { db } from '../../../shared/firebase'
 import { reserveDocId } from '../../../shared/docId/reserve'
 // Minutes name people and record what was said about them, so the subject, the
 // body, the attendee list and the action owners are sealed under the GENERAL

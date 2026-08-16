@@ -6,7 +6,7 @@ import {
   serverTimestamp,
   updateDoc,
 } from 'firebase/firestore'
-import { db } from '../lib/firebase'
+import { db } from '../../../shared/firebase'
 import { reserveDocId } from '../../../shared/docId/reserve'
 
 // Faithful to the original portal's Internal Audit data model:

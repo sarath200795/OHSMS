@@ -16,7 +16,7 @@ import {
   serverTimestamp,
   limit,
 } from 'firebase/firestore'
-import { db } from '../firebase'
+import { db } from '../../../shared/firebase'
 import { AUDIT } from './audit'
 
 // ── Path helpers ─────────────────────────────────────────────────────────────

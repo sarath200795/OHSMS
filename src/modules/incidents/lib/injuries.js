@@ -31,7 +31,7 @@ import {
   serverTimestamp,
   limit,
 } from 'firebase/firestore'
-import { db } from '../firebase'
+import { db } from '../../../shared/firebase'
 import { logAudit } from './firestore'
 import { AUDIT } from './audit'
 // The clinical fields are sealed under the MEDICAL key class — a keypair, not a

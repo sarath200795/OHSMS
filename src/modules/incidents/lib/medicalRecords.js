@@ -54,7 +54,7 @@ import {
   onSnapshot,
   serverTimestamp,
 } from 'firebase/firestore'
-import { db } from '../firebase'
+import { db } from '../../../shared/firebase'
 import { putFile, removeFile, MAX_INLINE_BYTES, tooLargeForInline } from '../../../shared/storage'
 // Sealed under the MEDICAL class — the hybrid keypair — so the member who
 // attaches a colleague's discharge summary cannot open it afterwards. That is

@@ -19,7 +19,7 @@ import {
   limit,
   increment,
 } from 'firebase/firestore'
-import { db } from '../firebase'
+import { db } from '../../../shared/firebase'
 
 // ── Read-only demo guard ─────────────────────────────────────────────────────
 // When the demo account is signed in, every Firestore write is blocked

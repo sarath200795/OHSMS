@@ -22,7 +22,7 @@ import {
   limit,
   increment,
 } from 'firebase/firestore'
-import { db } from '../firebase'
+import { db } from '../../../shared/firebase'
 import { logAudit } from './firestore'
 import { AUDIT, diffSummary } from './audit'
 // Reference numbers are issued by the same transactional reserver incidents

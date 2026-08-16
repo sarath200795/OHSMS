@@ -11,7 +11,7 @@ import {
   writeBatch,
   limit,
 } from 'firebase/firestore'
-import { db } from '../firebase/config'
+import { db } from '../../../shared/firebase'
 import { putFile, removeFile } from '../../../shared/storage'
 import { PROCEDURE_STATUS, computeLockSummary, mergeRevisedPoints } from '../constants/procedures'
 import { PUBLIC_COL, publicProcedure } from '../utils/publicProcedure'
