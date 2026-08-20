@@ -167,6 +167,34 @@ export function AuthProvider({ children }) {
     return subscribePlatformAdmin(user.uid, setPlatformAdmin)
   }, [user?.uid])
 
+  /**
+   * Wait for the orgId custom claim to reach the session token.
+   *
+   * syncUserClaims is a FIRESTORE TRIGGER on users/{uid}: it cannot run until
+   * the profile has been written, and it stamps the claim on the auth record,
+   * not on the token already in this tab. So a single refresh straight after
+   * the write is a race — usually lost — and the cost of losing it is an hour
+   * of Cloud Storage refusing every upload, because storage.rules identifies
+   * the tenant from that claim and nothing else.
+   *
+   * Polling rather than waiting a fixed time: the first attempt usually wins,
+   * and the loop exists for the times it does not. Best-effort throughout — a
+   * registration must not fail because a claim was slow.
+   */
+  const awaitOrgClaim = async (fbUser, tries = 4) => {
+    for (let i = 0; i < tries; i++) {
+      try {
+        const { claims } = await fbUser.getIdTokenResult(true)
+        if (claims?.orgId) return true
+      } catch {
+        // Offline, or the token endpoint is briefly unhappy. Try again.
+      }
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise((r) => { setTimeout(r, 300 * (i + 1)) })
+    }
+    return false
+  }
+
   // Register a brand new organization; caller becomes admin. Create the auth
   // user FIRST so the org-name lookup runs authenticated (rules require sign-in).
   const registerOrganization = async ({ orgName, address, name, email, password }) => {
@@ -180,6 +208,18 @@ export function AuthProvider({ children }) {
       await createOrganization({ orgName, address, uid: cred.user.uid, name, email })
       setUser(cred.user)
       startSession()
+      // The one place this MUST happen on the register path. This caller is an
+      // approved admin from the moment the org exists, so syncUserClaims will
+      // stamp them — but the token minted by createUserWithEmailAndPassword
+      // above predates it, and login() is the only other place that refreshes.
+      // Without this a brand-new admin cannot upload a single file until their
+      // token happens to expire.
+      //
+      // signUpMember below deliberately does NOT do this: a joiner is pending,
+      // syncUserClaims mints nothing for them (see storage.rules), and there
+      // would be no claim to wait for. They get one at their first sign-in
+      // after approval, which login() already forces.
+      await awaitOrgClaim(cred.user)
       await withRetry(() => refreshProfile(cred.user.uid))
     } catch (err) {
       await deleteUser(cred.user).catch(() => {})
