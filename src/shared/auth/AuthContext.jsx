@@ -15,7 +15,9 @@ import {
 import { auth, isFirebaseConfigured } from '../firebase'
 import { clearKeyring } from '../crypto'
 import { isMfaRequired, resolverFor, completeTotpSignIn } from './mfa'
+import { subscribePlatformAdmin } from './platformAdmin'
 import { startSession, endSession } from './sessionConstants'
+import { normalizeEntitlement, subscribeEntitlement, isModuleEnabled } from '../modules/entitlements'
 import {
   createOrganization,
   createPendingMember,
@@ -54,6 +56,15 @@ export function AuthProvider({ children }) {
   const [profile, setProfile] = useState(null) // users/{uid} doc
   const [org, setOrg] = useState(null) // organizations/{orgId} doc (live)
   const [loading, setLoading] = useState(true)
+  // Which modules this organization may see. Defaults to the full product, so
+  // every screen behaves exactly as it did before entitlements existed until
+  // the document says otherwise — including during the moment before it loads.
+  const [moduleMap, setModuleMap] = useState(() => normalizeEntitlement(null))
+  const [modulesReady, setModulesReady] = useState(false)
+  // null while the grant is still being read. The difference matters: the guard
+  // on the console shows a not-found page to everyone who is not an operator,
+  // and doing that before the answer is known would show it to the operator.
+  const [platformAdmin, setPlatformAdmin] = useState(null)
 
   const refreshProfile = useCallback(async (uid) => {
     const p = await getUserProfile(uid)
@@ -125,6 +136,36 @@ export function AuthProvider({ children }) {
     }
     return subscribeOrg(orgId, setOrg)
   }, [profile?.orgId])
+
+  // Which modules this tenant has been given. Only an APPROVED member may read
+  // the document — the rule is isApprovedMemberOf — so a pending joiner must
+  // not subscribe, or the listener errors on every render of the waiting room.
+  // They see no modules either way; /pending is the whole of their app.
+  useEffect(() => {
+    const orgId = profile?.orgId
+    if (!orgId || profile?.status !== 'approved') {
+      setModuleMap(normalizeEntitlement(null))
+      setModulesReady(true)
+      return undefined
+    }
+    setModulesReady(false)
+    return subscribeEntitlement(orgId, (map) => {
+      setModuleMap(map)
+      setModulesReady(true)
+    })
+  }, [profile?.orgId, profile?.status])
+
+  // Whether this account operates the platform. Watched rather than fetched
+  // once, so a grant added or removed in the Firebase console takes effect in
+  // an open tab without a sign-out.
+  useEffect(() => {
+    if (!user?.uid) {
+      setPlatformAdmin(false) // resolved, and resolved to no.
+      return undefined
+    }
+    setPlatformAdmin(null)
+    return subscribePlatformAdmin(user.uid, setPlatformAdmin)
+  }, [user?.uid])
 
   // Register a brand new organization; caller becomes admin. Create the auth
   // user FIRST so the org-name lookup runs authenticated (rules require sign-in).
@@ -255,6 +296,14 @@ export function AuthProvider({ children }) {
     isAdmin: role === 'admin',
     isManager: role === 'admin' || role === 'manager',
     isReadOnly: role === 'auditor',
+    // Operator of the platform, not of this tenant. Deliberately NOT folded
+    // into isAdmin: every admin-only screen in the product is about configuring
+    // one organization, and the platform console is the one screen that is not.
+    isPlatformAdmin: platformAdmin === true,
+    platformAdminReady: platformAdmin !== null,
+    moduleMap,
+    modulesReady,
+    moduleEnabled: (key) => isModuleEnabled(moduleMap, key),
     orgId: profile?.orgId || null,
     orgName: profile?.orgName || '',
     actor: { uid: user?.uid, name: profile?.name || user?.displayName || 'Unknown' },

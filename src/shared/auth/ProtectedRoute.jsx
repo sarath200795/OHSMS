@@ -13,11 +13,15 @@ import ForcePasswordChange from '../../pages/auth/ForcePasswordChange'
  *   - requireCap & lacking it  → /dashboard
  */
 export default function ProtectedRoute({ children, requireAdmin = false, requireCap = null }) {
-  const { loading, isAuthed, profile, isApproved, isAdmin, role } = useAuth()
+  const { loading, isAuthed, profile, isApproved, isAdmin, role, isPlatformAdmin, platformAdminReady } = useAuth()
   const location = useLocation()
 
   if (loading) return <SamLoading label="Getting your workspace ready…" />
   if (!isAuthed) return <Navigate to="/login" state={{ from: location }} replace />
+  // A platform operator belongs to no organization ON PURPOSE, so it has no
+  // profile and never will — the wait below would never end for them. Send them
+  // to their own console instead of a loading screen that never resolves.
+  if (!profile && platformAdminReady && isPlatformAdmin) return <Navigate to="/platform" replace />
   // Authenticated but the profile is still resolving — wait, don't bounce to
   // /login (bouncing races the login redirect and causes a loop).
   if (!profile) return <SamLoading label="Loading your profile…" />

@@ -2,6 +2,8 @@ import { lazy, Suspense } from 'react'
 import { Routes, Route, Navigate, useParams } from 'react-router-dom'
 import { isFirebaseConfigured } from './shared/firebase'
 import ProtectedRoute from './shared/auth/ProtectedRoute'
+import PlatformRoute from './shared/auth/PlatformRoute'
+import ModuleGate from './shared/modules/ModuleGate'
 import AppChrome from './shared/layout/AppChrome'
 import ModuleLoading from './shared/layout/ModuleLoading'
 import SamLoading from './shared/layout/SamLoading'
@@ -28,6 +30,17 @@ const Sites = lazy(() => import('./pages/admin/Sites'))
 const OrgSettings = lazy(() => import('./pages/admin/OrgSettings'))
 const AuditLog = lazy(() => import('./pages/admin/AuditLog'))
 const Maintenance = lazy(() => import('./pages/admin/Maintenance'))
+
+// The platform console — which modules each ORGANIZATION may use.
+//
+// A separate application in every sense that matters: its own sign-in page, its
+// own shell, its own guard, and an account that belongs to no organization. It
+// shares this bundle and nothing else. Deciding what other customers may use
+// while signed in as an admin of one of them is how the wrong organization gets
+// edited, so the tenant app offers no way in and this offers no way out.
+const PlatformLogin = lazy(() => import('./pages/platform/PlatformLogin'))
+const PlatformShell = lazy(() => import('./pages/platform/PlatformShell'))
+const PlatformModuleAccess = lazy(() => import('./pages/platform/ModuleAccess'))
 
 // Modules (lazy — several pull heavy libs like react-flow / three / xlsx).
 const Incidents = lazy(() => import('./modules/incidents'))
@@ -74,12 +87,20 @@ function TagScanRedirect() {
   return <Navigate to={`/loto/operations/${id}#point-${point}`} replace />
 }
 
-function Protected({ children, ...guard }) {
+/**
+ * `moduleKey` names the registry module a route belongs to, and mounting it
+ * behind ModuleGate is what stops a bookmark reaching a module the organization
+ * has not been given. Routes without one — the dashboard, admin screens, the
+ * portal — are part of the product every tenant has.
+ */
+function Protected({ children, moduleKey, ...guard }) {
   return (
     <ProtectedRoute {...guard}>
       <AppChrome>
         <ErrorBoundary>
-          <Suspense fallback={<ModuleLoading />}>{children}</Suspense>
+          <Suspense fallback={<ModuleLoading />}>
+            {moduleKey ? <ModuleGate moduleKey={moduleKey}>{children}</ModuleGate> : children}
+          </Suspense>
         </ErrorBoundary>
       </AppChrome>
     </ProtectedRoute>
@@ -164,23 +185,23 @@ export default function App() {
       <Route path="/hub" element={<Navigate to="/portal" replace />} />
       <Route path="/dashboard" element={<Protected><Dashboard /></Protected>} />
       <Route path="/security" element={<Protected><Security /></Protected>} />
-      <Route path="/incidents/*" element={<Protected><Incidents /></Protected>} />
-      <Route path="/hira/*" element={<Protected><Hira /></Protected>} />
-      <Route path="/inspections/*" element={<Protected><Inspections /></Protected>} />
-      <Route path="/audit/*" element={<Protected><Audit /></Protected>} />
-      <Route path="/permits/*" element={<Protected><Permits /></Protected>} />
-      <Route path="/loto/*" element={<Protected><Loto /></Protected>} />
-      <Route path="/equipment/*" element={<Protected><Equipment /></Protected>} />
-      <Route path="/mock-drills/*" element={<Protected><Drills /></Protected>} />
-      <Route path="/committee/*" element={<Protected><Committee /></Protected>} />
-      <Route path="/training/*" element={<Protected><Training /></Protected>} />
-      <Route path="/documents/*" element={<Protected><Documents /></Protected>} />
-      <Route path="/actions/*" element={<Protected><Actions /></Protected>} />
-      <Route path="/emergency-response/*" element={<Protected><Emergency /></Protected>} />
-      <Route path="/objectives/*" element={<Protected><Objectives /></Protected>} />
-      <Route path="/weather/*" element={<Protected><Weather /></Protected>} />
-      <Route path="/cctv/*" element={<Protected><Cctv /></Protected>} />
-      <Route path="/stakeholder/*" element={<Protected><Stakeholder /></Protected>} />
+      <Route path="/incidents/*" element={<Protected moduleKey="incidents"><Incidents /></Protected>} />
+      <Route path="/hira/*" element={<Protected moduleKey="hira"><Hira /></Protected>} />
+      <Route path="/inspections/*" element={<Protected moduleKey="inspections"><Inspections /></Protected>} />
+      <Route path="/audit/*" element={<Protected moduleKey="audit"><Audit /></Protected>} />
+      <Route path="/permits/*" element={<Protected moduleKey="ptw"><Permits /></Protected>} />
+      <Route path="/loto/*" element={<Protected moduleKey="loto"><Loto /></Protected>} />
+      <Route path="/equipment/*" element={<Protected moduleKey="equipment"><Equipment /></Protected>} />
+      <Route path="/mock-drills/*" element={<Protected moduleKey="drills"><Drills /></Protected>} />
+      <Route path="/committee/*" element={<Protected moduleKey="committee"><Committee /></Protected>} />
+      <Route path="/training/*" element={<Protected moduleKey="training"><Training /></Protected>} />
+      <Route path="/documents/*" element={<Protected moduleKey="documents"><Documents /></Protected>} />
+      <Route path="/actions/*" element={<Protected moduleKey="actions"><Actions /></Protected>} />
+      <Route path="/emergency-response/*" element={<Protected moduleKey="emergency"><Emergency /></Protected>} />
+      <Route path="/objectives/*" element={<Protected moduleKey="objectives"><Objectives /></Protected>} />
+      <Route path="/weather/*" element={<Protected moduleKey="weather"><Weather /></Protected>} />
+      <Route path="/cctv/*" element={<Protected moduleKey="cctv"><Cctv /></Protected>} />
+      <Route path="/stakeholder/*" element={<Protected moduleKey="stakeholder"><Stakeholder /></Protected>} />
 
       {/* Administration */}
       <Route path="/analytics" element={<Protected><Analytics /></Protected>} />
@@ -189,6 +210,32 @@ export default function App() {
       <Route path="/maintenance" element={<Protected requireCap="org.settings"><Maintenance /></Protected>} />
       <Route path="/users" element={<Protected requireAdmin><Users /></Protected>} />
       <Route path="/settings" element={<Protected requireAdmin><OrgSettings /></Protected>} />
+
+      {/* ── Platform operator ────────────────────────────────────────────────
+          Outside Protected and outside AppChrome entirely. ProtectedRoute
+          demands a tenant profile the operator deliberately does not have, and
+          AppChrome would put a customer's name above a list of every other
+          customer. */}
+      <Route
+        path="/platform/login"
+        element={
+          <ErrorBoundary>
+            <Suspense fallback={<SamLoading />}><PlatformLogin /></Suspense>
+          </ErrorBoundary>
+        }
+      />
+      <Route
+        path="/platform"
+        element={
+          <Suspense fallback={<SamLoading />}>
+            <PlatformRoute>
+              <PlatformShell>
+                <PlatformModuleAccess />
+              </PlatformShell>
+            </PlatformRoute>
+          </Suspense>
+        }
+      />
 
       {/* Fallbacks */}
       {/* The portal is everyone's home. Anyone with a role above plain member
