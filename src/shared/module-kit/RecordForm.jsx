@@ -83,6 +83,23 @@ export default function RecordForm({ fields, value, onChange, lookups }) {
  * must never look like an attachment, so nothing is written until the upload
  * resolves, and a failure clears back to empty rather than leaving a filename
  * with nothing behind it.
+ *
+ * ── `defer` ──────────────────────────────────────────────────────────────────
+ *
+ * A field may instead set `defer: true`, which keeps the raw File in the form
+ * and uploads NOTHING here — the module does it inside its own save, and the
+ * value it receives is a File rather than an upload result.
+ *
+ * Why that exists: uploading on pick puts bytes in the bucket before there is
+ * any record pointing at them, and every path that ends without a save — a
+ * validation error, an expired session, a closed dialog — strands them. Storage
+ * rules forbid clients deleting, so nothing can tidy up afterwards. Deferring
+ * shrinks that window from "however long the form is open" to the moment
+ * between the upload resolving and the write.
+ *
+ * Opt-in, because it is a real trade: the wait moves from filling the form to
+ * pressing Save, which is the slower-feeling half. Modules that do not set it
+ * behave exactly as before.
  */
 function FileField({ field, value, form, lookups, onChange }) {
   const [busy, setBusy] = useState(false)
@@ -92,6 +109,13 @@ function FileField({ field, value, form, lookups, onChange }) {
     if (!file) return
     if (field.maxBytes && file.size > field.maxBytes) {
       toast.error(`That file is too large (max ${Math.round(field.maxBytes / 1024 / 1024)} MB)`)
+      if (inputRef.current) inputRef.current.value = ''
+      return
+    }
+    // Deferred: hold the File and let the module store it at save time. Nothing
+    // reaches the bucket here, so abandoning the form leaves nothing behind.
+    if (field.defer) {
+      onChange(file)
       if (inputRef.current) inputRef.current.value = ''
       return
     }
@@ -113,11 +137,16 @@ function FileField({ field, value, form, lookups, onChange }) {
     return <p className="rounded-xl bg-clay-surface px-3 py-2.5 text-sm text-ink-500 shadow-clay-inset">Uploading…</p>
   }
 
-  if (value?.url) {
+  // Either an upload result ({url, name}) or, when deferred, the File itself —
+  // both carry a name, and both mean "something is attached".
+  if (value?.url || value?.name) {
     return (
       <div className="flex items-center gap-2 rounded-xl bg-clay-surface px-3 py-2 shadow-clay-inset">
         <Paperclip size={15} className="flex-none text-ink-400" />
         <span className="truncate text-sm text-ink-700">{value.name || 'Attached file'}</span>
+        {/* Nothing is stored yet, and saying so is what stops someone closing
+            the dialog believing the file is safe. */}
+        {!value.url && <span className="flex-none text-xs font-semibold text-ink-400">saved on submit</span>}
         <button
           type="button"
           onClick={() => onChange(null)}

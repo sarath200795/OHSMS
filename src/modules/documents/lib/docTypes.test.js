@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   DOC_TYPES, docTypeTone, docTypeLabel,
   SOURCE_UPLOAD, SOURCE_LINK, isSafeDocumentUrl, documentHref, hasDocument,
-  documentLabel, documentFolder, siteFolders, FOLDER_PREFIX, matchesScope,
+  documentLabel, storageKindFor, FOLDER_PREFIX,
 } from './docTypes'
 
 describe('the document types', () => {
@@ -102,115 +102,29 @@ describe('where a document opens', () => {
   })
 })
 
-describe('a folder for every site', () => {
-  const sites = [
-    { id: 's2', name: 'Plant 2' },
-    { id: 's1', name: 'Alpha Depot' },
-  ]
-
-  it('files a site document under that site', () => {
-    expect(documentFolder({ level: 'site', siteId: 's1' })).toBe(`${FOLDER_PREFIX}-s1`)
+describe('where a file is uploaded', () => {
+  // One storage folder per REGION, plus one for org level — NOT one per folder
+  // in the tree. The tree lives in Firestore and can be reorganised freely; the
+  // bytes stay where they were put.
+  it('gives org level, and anything with no region, its own folder', () => {
+    expect(storageKindFor(null)).toBe(`${FOLDER_PREFIX}-org`)
+    expect(storageKindFor('')).toBe(`${FOLDER_PREFIX}-org`)
+    expect(storageKindFor('   ')).toBe(`${FOLDER_PREFIX}-org`)
   })
 
-  it('files everything else in the root folder', () => {
-    expect(documentFolder({ level: 'org' })).toBe(FOLDER_PREFIX)
-    expect(documentFolder({ level: 'region', region: 'South' })).toBe(FOLDER_PREFIX)
-    expect(documentFolder({})).toBe(FOLDER_PREFIX)
+  it('gives a region one folder for everything beneath it', () => {
+    expect(storageKindFor('South')).toBe(`${FOLDER_PREFIX}-region-South`)
   })
 
-  // A site level with no site named is a half-finished record, not a folder.
-  it('does not invent a folder from a blank site id', () => {
-    expect(documentFolder({ level: 'site', siteId: '   ' })).toBe(FOLDER_PREFIX)
+  // storagePath() sanitises every segment the same way; computing it here means
+  // the folder recorded on the document is the path the file actually went to.
+  it('sanitises a region name exactly as the path builder would', () => {
+    expect(storageKindFor('South East / 2')).toBe(`${FOLDER_PREFIX}-region-South_East___2`)
   })
 
-  // The whole point: an empty folder says "nothing has been filed for this
-  // site", which is the finding an audit is looking for. A view built only from
-  // documents that exist can never show an absence.
-  it('lists every site, including the ones with nothing in them', () => {
-    const { folders } = siteFolders(sites, [{ level: 'site', siteId: 's1' }])
-    expect(folders.map((f) => [f.name, f.count])).toEqual([['Alpha Depot', 1], ['Plant 2', 0]])
-  })
-
-  it('counts everything not filed to a site as organization-wide', () => {
-    const { orgWide } = siteFolders(sites, [
-      { level: 'org' }, { level: 'region' }, { level: 'site', siteId: 's1' },
-    ])
-    expect(orgWide).toBe(2)
-  })
-
-  it('copes with no sites and no documents', () => {
-    expect(siteFolders()).toEqual({ folders: [], orgWide: 0 })
-    expect(siteFolders(sites, [null]).folders).toHaveLength(2)
-  })
-})
-
-describe('narrowing by region, entity and site', () => {
-  const sites = [
-    { id: 's1', name: 'Alpha', region: 'South', entity: 'COCO' },
-    { id: 's2', name: 'Beta', region: 'North', entity: 'FOFO' },
-  ]
-  const at = (level, extra = {}) => ({ level, ...extra })
-
-  it('matches everything when nothing is chosen', () => {
-    expect(matchesScope(at('site', { siteId: 's1' }), {}, sites)).toBe(true)
-  })
-
-  it('narrows a site document by its own site', () => {
-    expect(matchesScope(at('site', { siteId: 's1' }), { siteId: 's1' }, sites)).toBe(true)
-    expect(matchesScope(at('site', { siteId: 's2' }), { siteId: 's1' }, sites)).toBe(false)
-  })
-
-  // Entity and region are answered through the registry, because a document has
-  // no entity of its own — its site does.
-  it('narrows a site document by the region and entity of its site', () => {
-    expect(matchesScope(at('site', { siteId: 's1' }), { region: 'South' }, sites)).toBe(true)
-    expect(matchesScope(at('site', { siteId: 's1' }), { region: 'North' }, sites)).toBe(false)
-    expect(matchesScope(at('site', { siteId: 's1' }), { entity: 'COCO' }, sites)).toBe(true)
-    expect(matchesScope(at('site', { siteId: 's1' }), { entity: 'FOFO' }, sites)).toBe(false)
-  })
-
-  it('combines them', () => {
-    expect(matchesScope(at('site', { siteId: 's1' }), { region: 'South', entity: 'COCO' }, sites)).toBe(true)
-    expect(matchesScope(at('site', { siteId: 's1' }), { region: 'South', entity: 'FOFO' }, sites)).toBe(false)
-  })
-
-  // Losing the org-wide policy the moment you look at one site is how somebody
-  // concludes that site has no policy.
-  it('keeps an org-wide document under every narrowing', () => {
-    expect(matchesScope(at('org'), { siteId: 's1', region: 'South', entity: 'COCO' }, sites)).toBe(true)
-  })
-
-  it('answers a region question for a region document, and nothing narrower', () => {
-    const doc = at('region', { region: 'South' })
-    expect(matchesScope(doc, { region: 'South' }, sites)).toBe(true)
-    expect(matchesScope(doc, { region: 'North' }, sites)).toBe(false)
-    // It names a region, not a site, so it cannot be attributed to one.
-    expect(matchesScope(doc, { siteId: 's1' }, sites)).toBe(false)
-    expect(matchesScope(doc, { entity: 'COCO' }, sites)).toBe(false)
-  })
-
-  it('does not throw on a site that has left the registry', () => {
-    expect(matchesScope(at('site', { siteId: 'gone' }), { region: 'South' }, sites)).toBe(false)
-    expect(matchesScope(null, { region: 'South' }, sites)).toBe(false)
-  })
-})
-
-describe('the snapshot the rules read is what the filter reads', () => {
-  // classificationFields stamps siteRegion/siteEntity onto the document, and
-  // firestore.rules decides who may READ the row from those same fields. If the
-  // filter used a different source the two could disagree about which region a
-  // document is in — the filter showing a row the rule would refuse.
-  it('prefers the document snapshot over the registry', () => {
-    const doc = { level: 'site', siteId: 's1', siteRegion: 'South', siteEntity: 'COCO' }
-    expect(matchesScope(doc, { region: 'South' }, [])).toBe(true)
-    expect(matchesScope(doc, { entity: 'COCO' }, [])).toBe(true)
-    // A site since moved to another region does not retro-move its documents.
-    expect(matchesScope(doc, { region: 'South' }, [{ id: 's1', region: 'North' }])).toBe(true)
-  })
-
-  it('falls back to the registry for a document written before the snapshot', () => {
-    const legacy = { level: 'site', siteId: 's1' }
-    expect(matchesScope(legacy, { region: 'South' }, [{ id: 's1', region: 'South' }])).toBe(true)
-    expect(matchesScope(legacy, { region: 'North' }, [{ id: 's1', region: 'South' }])).toBe(false)
+  // A name that sanitises to nothing would make storagePath throw, which would
+  // fail the upload rather than merely misfile it.
+  it('never produces a segment that carries no information', () => {
+    expect(storageKindFor('北部')).toBe(`${FOLDER_PREFIX}-region`)
   })
 })
