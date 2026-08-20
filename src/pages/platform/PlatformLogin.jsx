@@ -24,7 +24,7 @@ import { Navigate, useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { ShieldCheck, SlidersHorizontal } from 'lucide-react'
 import { useAuth } from '../../shared/auth/AuthContext'
-import { authErrorMessage } from '../../shared/lib/authErrors'
+import { operatorLoginMessage, REFUSED } from './loginErrors'
 import { isCodeComplete } from '../../shared/auth/mfa'
 import { platformAdminRef } from '../../shared/auth/platformAdmin'
 import { getDoc } from 'firebase/firestore'
@@ -68,10 +68,12 @@ export default function PlatformLogin() {
       setResolver(null)
       setCode('')
       setForm({ email: '', password: '' })
-      // One message for "no such account", "wrong password" and "not an
-      // operator". Distinguishing them here would let anyone test whether an
-      // address is one of the handful that can reconfigure every customer.
-      setRefused('That account cannot sign in here.')
+      // The same sentence a wrong password gets — see loginErrors. This branch
+      // is the one that must not be distinguishable: reaching it means the
+      // credentials were RIGHT, so a different message here would confirm a
+      // working account and tell the holder it is not an operator, which is
+      // half of what they would need to find one that is.
+      setRefused(REFUSED)
       return
     }
 
@@ -86,7 +88,7 @@ export default function PlatformLogin() {
     try {
       await admit(await fn())
     } catch (err) {
-      setRefused(authErrorMessage(err))
+      setRefused(operatorLoginMessage(err))
     } finally {
       setBusy(false)
     }
