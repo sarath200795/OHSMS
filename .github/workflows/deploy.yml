@@ -80,6 +80,47 @@ jobs:
         if: steps.creds.outputs.configured == 'true'
         run: npm run test:rules
 
+      # The browser gate, and the one this job was missing.
+      #
+      # A tag deployed straight past Playwright, so the only tests that open the
+      # PUBLIC surfaces — the permit a stranger scans at a barrier, the
+      # equipment QR — never ran before a release. That is not hypothetical: a
+      # seeded fixture contradicted itself for four days, the two permit tests
+      # failed on every push to main, and three tagged releases shipped green
+      # over the top of it because this job could not see them.
+      #
+      # The trade-off is real and deliberate. A browser test can now block a
+      # release, and browser tests fail for reasons that have nothing to do with
+      # the change — a slow runner, a cold dev server. Retries are already
+      # configured for CI (playwright.config.js sets retries: 1 when CI is set),
+      # which absorbs the genuinely transient ones. What it does not absorb is a
+      # test that is actually red, and stopping there is the point: these cover
+      # a page somebody reads to decide whether it is safe to start work.
+      #
+      # Placed BEFORE the build and every deploy step, so a failure costs a
+      # cancelled release rather than a half-deployed one.
+      - name: Install Chromium
+        if: steps.creds.outputs.configured == 'true'
+        run: npx playwright install --with-deps chromium
+
+      - name: Smoke tests
+        if: steps.creds.outputs.configured == 'true'
+        env:
+          # Emulator config, scoped to THIS step. It must not reach the build
+          # below, which takes its VITE_* values from repository variables and
+          # would otherwise ship a production bundle pointed at an emulator that
+          # only ever existed on the runner.
+          VITE_USE_EMULATORS: 'true'
+          VITE_FIREBASE_PROJECT_ID: ohsms-demo
+          # Not a credential — the Auth emulator accepts any key and validates
+          # none. Present because the Firebase app does not initialise without
+          # one, and every flow would then fail at whatever it touched first.
+          VITE_FIREBASE_API_KEY: demo-api-key
+        run: >
+          npx firebase-tools emulators:exec --only auth,firestore
+          --project ohsms-demo
+          "node scripts/seed.mjs && npx playwright test"
+
       - name: Build
         if: steps.creds.outputs.configured == 'true'
         env:
