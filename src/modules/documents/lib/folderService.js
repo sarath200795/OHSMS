@@ -1,0 +1,126 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// The subfolders people create, in organizations/{orgId}/documentFolders.
+//
+// Only SUBFOLDERS are stored. The roots — Org Level Documents and one per
+// region — are derived from the site registry on every render (see tree.js), so
+// there is nothing here to keep in step with it.
+//
+// No entry in firestore.rules. `documentFolders` is a new collection name, so
+// the generic /organizations/{orgId}/{col}/{docId} rule already covers it, and
+// covers it correctly: any approved member reads, a writer creates and renames,
+// and only a MANAGER may delete. That last one is not an accident of the
+// generic rule — deleting a folder is the destructive operation here, and it is
+// the same bar the rules put on deleting any other record.
+//
+// A folder record is metadata and nothing else: a name, the root it hangs off,
+// and its parent. The documents inside it point AT it; it does not list them.
+// That is what makes renaming a folder free and moving one cheap.
+// ─────────────────────────────────────────────────────────────────────────────
+
+import { dataProvider } from '../../../shared/data'
+import { logAudit } from '../../../shared/org/orgData'
+import { AUDIT } from '../../../shared/audit/audit'
+
+const COLLECTION = 'documentFolders'
+const path = (orgId) => `organizations/${orgId}/${COLLECTION}`
+
+// Generous, because this is the whole tree for the org and it is small: a
+// folder is a name and two ids. An org with more than this many folders has a
+// problem the cap would only hide.
+const MAX = 2000
+
+const clean = (v) => String(v ?? '').trim()
+
+const audit = (orgId, actor, action, folder, summary) =>
+  logAudit(orgId, actor, action, {
+    module: 'documents',
+    target: COLLECTION,
+    targetId: folder?.id || null,
+    targetLabel: clean(folder?.name),
+    summary,
+  })
+
+export const documentFolderService = {
+  collectionName: COLLECTION,
+
+  /**
+   * Every folder in the org, live.
+   *
+   * Not narrowed by root or by the viewer's sites, on purpose. The whole tree
+   * is needed to draw a breadcrumb or roll a count up through ancestors, and a
+   * partial tree renders a folder whose parent is missing — which the walks in
+   * tree.js survive, but as a wrong answer rather than a crash.
+   *
+   * A folder name is not sensitive in the way a document is: the DOCUMENTS are
+   * scoped on read by firestore.rules, so an empty folder is all an
+   * out-of-region member can see inside one.
+   */
+  subscribe(orgId, cb) {
+    if (!orgId) return () => {}
+    return dataProvider.subscribe(
+      path(orgId),
+      { orderBy: ['createdAt', 'desc'], limit: MAX },
+      cb,
+      (err) => {
+        // The generic service turns a read failure into an empty list, which
+        // here would render as "this org has no folders" — indistinguishable
+        // from the truth, and the tree would silently flatten. Say it instead.
+        // eslint-disable-next-line no-console
+        console.error('[Documents] folder listener failed:', err?.message || err)
+        cb([])
+      }
+    )
+  },
+
+  /**
+   * @param folder { name, parentId } — parentId is the id of the node it hangs
+   *        off: the Org Level root, a site's Pre Launch / Others bucket, or
+   *        another manual folder. buildTree drops a folder whose parent does
+   *        not allow children, so a bad parentId makes the folder invisible
+   *        rather than putting it somewhere surprising.
+   *
+   * The caller validates the name against its siblings (folderNameError) and
+   * the depth against MAX_DEPTH. Neither can be enforced here without reading
+   * the tree back, and neither is a security boundary: the worst a bad write
+   * does is make a folder somebody has to rename.
+   */
+  async create(orgId, folder, actor) {
+    const record = {
+      name: clean(folder?.name),
+      parentId: clean(folder?.parentId),
+      createdAt: dataProvider.serverTimestamp(),
+      updatedAt: dataProvider.serverTimestamp(),
+      createdBy: actor?.uid || null,
+      createdByName: actor?.name || 'Unknown',
+    }
+    const id = await dataProvider.create(path(orgId), record)
+    await audit(orgId, actor, AUDIT.CREATE, { id, name: record.name },
+      `Created folder "${record.name}"`)
+    return id
+  },
+
+  async rename(orgId, folder, name, actor) {
+    const next = clean(name)
+    await dataProvider.update(path(orgId), folder.id, {
+      name: next,
+      updatedAt: dataProvider.serverTimestamp(),
+    })
+    await audit(orgId, actor, AUDIT.UPDATE, { id: folder.id, name: next },
+      `Renamed folder "${clean(folder.name)}" to "${next}"`)
+  },
+
+  /**
+   * Delete a folder. Manager-only, enforced by firestore.rules rather than
+   * here — this call simply fails for anyone else, which is the right place for
+   * that decision to live.
+   *
+   * The caller refuses to reach this point while the folder holds anything.
+   * There is no recursive delete and no trash: a folder is cheap to recreate
+   * and its contents are not, so the destructive version of this operation is
+   * one the product does not offer.
+   */
+  async remove(orgId, folder, actor) {
+    await dataProvider.remove(path(orgId), folder.id)
+    await audit(orgId, actor, AUDIT.DELETE, folder, `Deleted folder "${clean(folder.name)}"`)
+  },
+}

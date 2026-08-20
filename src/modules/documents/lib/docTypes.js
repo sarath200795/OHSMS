@@ -1,12 +1,12 @@
-import { SITE } from './classification'
-
 /**
- * What a document IS, where its file lives, and how it is reached.
+ * What a document IS, how it is reached, and where its bytes are stored.
  *
- * Two things a library needs that this one did not have: somewhere to put the
- * actual document, and somewhere to file it. A record that carries a title, a
- * version and a review date but no way to open the thing it describes is an
- * index of documents nobody can read.
+ * A record carrying a title, a version and a review date but no way to open the
+ * thing it describes is an index of documents nobody can read — so the source
+ * (an upload or a link) lives here, next to the type.
+ *
+ * WHERE a document is filed is not here: that is tree.js, which imports this
+ * file for the storage path and nothing else. The dependency runs one way.
  */
 
 // The four the library started with, then the engineering records a site
@@ -78,92 +78,34 @@ export function documentLabel(doc) {
   return doc?.file?.name || ''
 }
 
-// ── Folders ──────────────────────────────────────────────────────────────────
+// ── Where the bytes go ───────────────────────────────────────────────────────
 
 export const FOLDER_PREFIX = 'documents'
 
 /**
- * The storage folder a document's file belongs in — one per site.
+ * The storage folder a file is uploaded into — one per REGION, plus one for org
+ * level. NOT one per folder in the tree.
  *
- * Encoded into the single `kind` segment rather than as a nested path, because
- * storagePath() sanitises every segment (a slash becomes an underscore) and
- * storage.rules matches exactly orgs/{orgId}/{kind}/{fileName}. A deeper path
- * would be silently flattened by one and refused by the other.
+ * The bucket layout deliberately does not mirror the tree. storagePath()
+ * sanitises every path segment (a slash becomes an underscore) and storage.rules
+ * matches exactly orgs/{orgId}/{kind}/{fileName}, so a nested path would be
+ * silently flattened by one and refused by the other — and encoding a whole
+ * region/entity/site/bucket chain into the single `kind` segment would produce a
+ * key that changes the moment anybody renames a site. The tree lives in
+ * Firestore, where it can be reorganised freely; the bytes stay where they were
+ * put, and the document record is what connects the two.
  *
- * Everything not filed to a site shares the root folder. Region is deliberately
- * not given its own: a region is a set of sites, not a place a document lives,
- * and inventing a second axis of folders makes a file's home ambiguous.
+ * The region is sanitised HERE, by the same rule storagePath() applies, so the
+ * folder recorded on the document is byte-identical to the path the file went
+ * to. A region name that survives none of it — nothing in A-Za-z0-9 at all —
+ * would make storagePath throw, so those share one region folder rather than
+ * failing the upload outright.
+ *
+ * @param region the region name, or null/'' for org level and unfiled
  */
-export function documentFolder(doc = {}) {
-  const siteId = doc.level === SITE ? String(doc.siteId || '').trim() : ''
-  return siteId ? `${FOLDER_PREFIX}-${siteId}` : FOLDER_PREFIX
-}
-
-/**
- * A folder for every site, whether or not anything has been filed there yet.
- *
- * An empty folder is the useful half of this: it says "nothing has been filed
- * for this site", which is the finding an audit is looking for. A view built
- * only from documents that exist can never show an absence.
- */
-export function siteFolders(sites = [], docs = []) {
-  const counts = new Map()
-  let orgWide = 0
-  for (const d of docs || []) {
-    if (!d) continue
-    const id = d.level === SITE ? String(d.siteId || '').trim() : ''
-    if (id) counts.set(id, (counts.get(id) || 0) + 1)
-    else orgWide += 1
-  }
-  const folders = (sites || []).filter(Boolean).map((s) => ({
-    id: s.id,
-    name: s.name,
-    folder: `${FOLDER_PREFIX}-${s.id}`,
-    count: counts.get(s.id) || 0,
-  }))
-  folders.sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')))
-  return { folders, orgWide }
-}
-
-/**
- * Narrow the library by region, entity and site.
- *
- * A document is filed at org, region or site level — there is no entity level —
- * so entity and region are answered through the SITE REGISTRY: a site-level
- * document belongs to whatever region and entity its site belongs to. That is
- * the only way an entity filter can mean anything without inventing a fourth
- * level and making a document's home ambiguous.
- *
- * An org-wide document matches every narrowing, because it genuinely applies
- * everywhere: filtering to one site and losing the org-wide policy that governs
- * it is how someone concludes a site has no policy.
- */
-export function matchesScope(doc, { region = '', entity = '', siteId = '' } = {}, sites = []) {
-  if (!region && !entity && !siteId) return true
-  if (!doc) return false
-
-  const level = doc.level || ''
-  if (level !== SITE && level !== 'region') return true // org-wide, or unclassified
-
-  if (level === 'region') {
-    // A region-level document answers a region question and nothing narrower:
-    // it names a region, not a site, so it cannot be attributed to one.
-    if (siteId || entity) return false
-    return String(doc.region || '') === region
-  }
-
-  if (siteId && doc.siteId !== siteId) return false
-
-  // The document's OWN snapshot first. classificationFields stamps siteRegion
-  // and siteEntity at write time, and firestore.rules reads those same fields
-  // to decide who may read the row — so filtering on them means the filter and
-  // the rule agree about which region a document is in. The registry is the
-  // fallback for documents written before the snapshot existed.
-  const site = (sites || []).find((s) => s && s.id === doc.siteId)
-  const docRegion = String(doc.siteRegion || site?.region || '')
-  const docEntity = String(doc.siteEntity || site?.entity || '')
-
-  if (region && docRegion !== region) return false
-  if (entity && docEntity !== entity) return false
-  return true
+export function storageKindFor(region) {
+  const name = String(region ?? '').trim()
+  if (!name) return `${FOLDER_PREFIX}-org`
+  const slug = name.replace(/[^A-Za-z0-9_-]/g, '_')
+  return /[A-Za-z0-9]/.test(slug) ? `${FOLDER_PREFIX}-region-${slug}` : `${FOLDER_PREFIX}-region`
 }

@@ -46,7 +46,11 @@ function emptyRecord(config) {
  *   useLookups  hook returning live reference data (sites, people…) handed to
  *               field options, column renderers, filters and compute
  *   filters     { key, label, when, options(lookups, records, facets),
- *                 match(record, value, facets) } — selects beside the search box
+ *                 match(record, value, facets, lookups) } — selects beside the
+ *                 search box. `lookups` is handed over so a filter can resolve
+ *                 a record against live reference data: the documents library
+ *                 needs the site registry to place a document written before it
+ *                 started snapshotting its site's region onto itself.
  */
 export default function ModulePage({ module, config }) {
   const { orgId, actor, role } = useAuth()
@@ -115,11 +119,11 @@ export default function ModulePage({ module, config }) {
     const q = search.trim().toLowerCase()
     return records.filter((r) => {
       if (statusFilter !== 'all' && r.status !== statusFilter) return false
-      if (activeFilters.some((f) => !f.match(r, facets[f.key] ?? '', facets))) return false
+      if (activeFilters.some((f) => !f.match(r, facets[f.key] ?? '', facets, lookups))) return false
       if (!q) return true
       return JSON.stringify(r).toLowerCase().includes(q)
     })
-  }, [records, search, statusFilter, activeFilters, facets])
+  }, [records, search, statusFilter, activeFilters, facets, lookups])
 
   // `prefill` lets a module open the form already pointed somewhere — the
   // documents library uses it so "add to this folder" arrives with the site
