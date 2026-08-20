@@ -19,7 +19,7 @@ import { useAccessibleSites } from '../../shared/org/useAccessibleSites'
 import { subscribeActions, NORM_BY_KEY } from '../../modules/actions/lib/sources'
 import { subscribeAssignments } from '../../modules/training/lib/firestore'
 import { INCIDENT_TYPE_BY_KEY } from '../../modules/incidents/lib/constants'
-import { MODULES } from '../../shared/modules/registry'
+import { enabledModules } from '../../shared/modules/entitlements'
 import { Raised, Inset, SectionLabel } from './ui'
 import { myActions } from './myWork'
 import { portalStats, pendingWork } from './portalStats'
@@ -154,7 +154,10 @@ const greeting = (d = new Date()) => {
 }
 
 export default function PortalHome() {
-  const { orgId, profile, isAdmin } = useAuth()
+  const { orgId, profile, isAdmin, moduleMap } = useAuth()
+  // The grid shows what this organization actually has. A tile leading to a
+  // route that refuses to open is worse than no tile at all.
+  const modules = useMemo(() => enabledModules(moduleMap), [moduleMap])
   const navigate = useNavigate()
   const sites = useAccessibleSites()
   const { keys: widgetKeys, save: saveWidgets } = useWidgetPrefs()
@@ -425,7 +428,7 @@ export default function PortalHome() {
           title="Trends and breakdowns across your sites"
           logoKey="analytics"
         />
-        {MODULES.map((m, i) => (
+        {modules.map((m, i) => (
           <Tile
             key={m.key}
             to={m.path}

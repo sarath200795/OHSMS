@@ -11,7 +11,7 @@ import { useAuth } from '../shared/auth/AuthContext'
 import { createModuleService } from '../shared/module-kit/service'
 import { dataProvider } from '../shared/data'
 import { subscribeAuditLogs } from '../shared/org/orgData'
-import { MODULES } from '../shared/modules/registry'
+import { enabledModules } from '../shared/modules/entitlements'
 import { auditLabel } from '../shared/audit/audit'
 import { riskLists } from '../modules/hira/lib/raStats'
 import { StatCard, Card, PageHeader, SkeletonStat, Skeleton, Badge } from '../shared/ui'
@@ -51,7 +51,8 @@ const MODULE_CARD_TONE = {
 }
 
 export default function Dashboard() {
-  const { orgId, profile } = useAuth()
+  const { orgId, profile, moduleMap } = useAuth()
+  const modules = useMemo(() => enabledModules(moduleMap), [moduleMap])
   const [incidents, setIncidents] = useState(null)
   const [risks, setRisks] = useState(null)
   const [tallies, setTallies] = useState(null)
@@ -206,7 +207,7 @@ export default function Dashboard() {
       {/* Module grid */}
       <h3 className="mb-3 mt-8 font-semibold text-ink-800">Modules</h3>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {MODULES.map((m, i) => (
+        {modules.map((m, i) => (
           <Link
             key={m.key}
             to={m.path}

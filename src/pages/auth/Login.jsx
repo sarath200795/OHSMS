@@ -11,7 +11,10 @@ import { safeInternalPath } from '../../shared/safeUrl'
 import AuthLayout from './AuthLayout'
 
 export default function Login() {
-  const { login, loginWithSso, completeMfa, pendingMfa, clearPendingMfa, isAuthed, profile } = useAuth()
+  const {
+    login, loginWithSso, completeMfa, pendingMfa, clearPendingMfa, isAuthed, profile,
+    isPlatformAdmin, platformAdminReady,
+  } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const [form, setForm] = useState({ email: '', password: '' })
@@ -39,6 +42,14 @@ export default function Login() {
   // Only redirect once the profile has loaded — redirecting on isAuthed alone
   // races ProtectedRoute (which needs the profile) and causes a redirect loop.
   if (isAuthed && profile) return <Navigate to={back} replace />
+  // An operator who typed their credentials into the CUSTOMER door. They have
+  // no profile and never will, so the line above can never fire for them and
+  // the form would simply sit there having apparently done nothing. Sending
+  // them to their own console is not a second entrance — they are already
+  // signed in and already hold the grant — it just avoids a dead end.
+  if (isAuthed && !profile && platformAdminReady && isPlatformAdmin) {
+    return <Navigate to="/platform" replace />
+  }
 
   const land = () => {
     toast.success('Welcome back')

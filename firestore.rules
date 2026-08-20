@@ -88,6 +88,21 @@ service cloud.firestore {
       return isApprovedMemberOf(orgId) && myProfile().role != 'auditor';
     }
 
+    // The operator of the platform itself, as opposed to an administrator of a
+    // tenant inside it. The distinction is the whole point: an org admin
+    // configures their own organization, and must not be able to hand their
+    // organization modules it has not been given.
+    //
+    // Membership is a document under /platformAdmins that NO client operation
+    // can write — see the match block below. It is deliberately not a role on
+    // /users and not a custom claim derived from one, because an org admin
+    // already edits /users for their own tenant (setUserRole) and a claim
+    // mirrored from a document they control is a claim they control.
+    function isPlatformAdmin() {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/platformAdmins/$(request.auth.uid));
+    }
+
     // ── The encryption keyset ────────────────────────────────────────────────
     // organizations/{orgId}/meta/cryptoKeys holds the organization's wrapped
     // data keys (functions/lib/dataKeys.js). NO CLIENT OPERATION IS ALLOWED ON
@@ -589,6 +604,66 @@ service cloud.firestore {
             || keepsDecision(legacyCol, resource.data, request.resource.data));
       allow delete: if isLegacyOrgCollection(legacyCol)
         && resource != null && isManagerOf(resource.data.orgId);
+    }
+
+    // ── Platform ownership ────────────────────────────────────────────────────
+    // One document per person who operates the platform. Existence IS the
+    // grant; the body is only there so a human reading the console can tell
+    // whose uid it is.
+    //
+    // Nothing in the app can create, edit or remove one. That is not an
+    // oversight to be fixed later — it is the reason the collection is
+    // trustworthy. A path that could write it would be a path an org admin
+    // could be tricked into, or find. The only ways in are the Firebase console
+    // and the Admin SDK, both of which already require project-level access,
+    // which is the same authority this collection is standing in for.
+    //
+    // `get` and not `read`: a signed-in member may ask whether THEY hold the
+    // grant, which is what the client needs to decide whether to offer the
+    // console. `list` would turn that into a roster of the platform's operators
+    // — a target list — for anyone with an account.
+    match /platformAdmins/{uid} {
+      allow get: if isSignedIn() && request.auth.uid == uid;
+      allow list: if false;
+      allow write: if false;
+    }
+
+    // ── Per-organization module entitlements ──────────────────────────────────
+    // Which of the modules in the registry an organization may see and use.
+    //
+    // A top-level collection rather than a field on /organizations, because
+    // `allow update: if isAdminOf(orgId)` governs that document — so an org
+    // admin could switch their own modules back on, and an entitlement a tenant
+    // can grant itself is not an entitlement.
+    //
+    // Every approved member reads it: the shell has to know which tiles to draw
+    // and which routes to refuse, and that decision belongs to the person
+    // sitting in front of the app. Only the platform operator writes it.
+    //
+    // ABSENT MEANS ENABLED. An organization with no document here gets the full
+    // product, which is what every organization had before this collection
+    // existed — so shipping it changed nothing for anyone until an operator
+    // says otherwise. It also means a module added to the registry later is on
+    // by default rather than silently withheld from every existing tenant until
+    // someone re-saves each one.
+    match /moduleEntitlements/{orgId} {
+      allow get: if isApprovedMemberOf(orgId) || isPlatformAdmin();
+      allow list: if isPlatformAdmin();
+      // The shape is pinned so a stray write cannot park unrelated data in a
+      // document every member of the tenant can read.
+      // hasAll BEFORE the field is read. Reading an absent field raises rather
+      // than evaluating false — the same shape that turned a missing orgId on a
+      // QR mirror into a denial nobody could explain — so a payload with no
+      // `modules` key has to be refused by the key check, not by touching it.
+      allow create, update: if isPlatformAdmin()
+        && request.resource.data.keys().hasAll(['modules', 'updatedBy'])
+        && request.resource.data.keys().hasOnly(['modules', 'updatedAt', 'updatedBy', 'updatedByEmail'])
+        && request.resource.data.modules is map
+        && request.resource.data.updatedBy == request.auth.uid;
+      // Deleting the document restores the default — the full product — which
+      // is a legitimate thing for an operator to want, and is not a way to
+      // gain anything: it is the state every org starts in.
+      allow delete: if isPlatformAdmin();
     }
 
     // ── User profiles ─────────────────────────────────────────────────────────

@@ -131,6 +131,10 @@ export default function AppChrome({ children }) {
               <MenuItem icon={ShieldCheck} onClick={() => { setMenuOpen(false); navigate('/security') }}>
                 Security &amp; two-factor
               </MenuItem>
+              {/* No link to the platform console lives here, deliberately. It
+                  is a separate application with its own sign-in, and a door to
+                  it inside a tenant's menu is the confusion the separation
+                  exists to remove. */}
               <MenuItem icon={LogOut} danger onClick={() => signOut?.()}>
                 Sign out
               </MenuItem>

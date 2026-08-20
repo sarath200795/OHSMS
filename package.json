@@ -11,6 +11,7 @@
     "emulators": "firebase emulators:start",
     "emulators:rules": "node scripts/reload-emulator-rules.mjs",
     "seed": "node scripts/seed.mjs",
+    "platform:grant": "node scripts/grant-platform-admin.mjs",
     "dev:full": "concurrently -k -n emu,web -c magenta,cyan \"npm:emulators\" \"npm:dev\"",
     "test": "vitest run",
     "test:watch": "vitest",
