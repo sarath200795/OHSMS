@@ -117,19 +117,64 @@ async function main() {
     ...extra,
   })
 
+  // ── The live permit ───────────────────────────────────────────────────────
+  // The permit and its public mirror are built from ONE object, and that is the
+  // whole point of the shape below.
+  //
+  // They used to be two hand-written literals: a permit carrying no hazards and
+  // no crew, beside a mirror announcing two hazards and four people. Nothing
+  // read the two together, so nothing noticed they disagreed — until the app
+  // regenerated the mirror from the permit and the disagreement resolved itself
+  // the only way it could, in favour of the permit. Which was empty.
+  //
+  // The regeneration is ordinary behaviour, not a bug. PermitContext auto-
+  // expires permits whose stored status has drifted, and reconcilePermitStatus
+  // rewrites the mirror's display half through liveFields(permit) on the way
+  // past. A permit created through the app carries its own hazards and crew, so
+  // the rewrite is a no-op there. Only this fixture claimed things its own
+  // permit could not support, so only this fixture lost them — which is why the
+  // two public-permit smoke tests failed intermittently rather than always:
+  // they were racing a background write that blanked the very cards they assert.
+  //
+  // Counts are computed from the arrays here for the same reason crewSummary()
+  // computes them from the arrays there. A literal `participantCount: 3` beside
+  // a three-element list is a number that can go stale on its own.
+  const liveWork = {
+    hazards: ['Hot work', 'Working at height'],
+    ppe: ['Face shield'],
+    precautions: ['Fire watch'],
+    jsa: [],
+    // Names live on the permit, behind sign-in. The mirror gets counts only —
+    // publishing a roster to an unauthenticated URL is the exposure the counts
+    // exist to prevent, and the smoke suite asserts that difference.
+    participants: [{ name: 'Jordan Kim' }, { name: 'Priya Raman' }, { name: 'Tom Okafor' }],
+    fireWatchers: [{ name: 'Dev Sharma' }],
+    confinedWatcher: null,
+  }
+
   const livePermit = await add('permits', {
     permitNo: 'PTW-E2E-LIVE', typeOfWork: 'Hot Work', site: 'North Plant',
     jobLocation: 'Bay 3 mezzanine', jobDescription: 'Welding a handrail section.',
-    issuedToName: 'Jordan Kim', qrToken: 'e2e-live-permit',
+    issuingDepartment: 'Engineering', issuedToName: 'Jordan Kim',
+    qrToken: 'e2e-live-permit',
+    ...liveWork,
     validFrom: iso(-1), validTo: iso(1),
+    // Both approved and inside its window derives to IN_PROGRESS. Storing that
+    // is what stops the auto-expire effect firing at all: it only writes when
+    // the stored status has drifted from the live one, and an absent field
+    // drifts from everything.
+    storedStatus: 'in_progress',
     engineering: { status: 'approved' }, operations: { status: 'approved' },
   })
   await setDoc(doc(db, 'permitQr', 'e2e-live-permit'), mirror('e2e-live-permit', {
     permitId: livePermit.id, permitNo: 'PTW-E2E-LIVE', docId: 'PTW-0001',
     jobLocation: 'Bay 3 mezzanine', jobDescription: 'Welding a handrail section.',
     issuingDepartment: 'Engineering', issuedToName: 'Jordan Kim',
-    hazards: ['Hot work', 'Working at height'], ppe: ['Face shield'], precautions: ['Fire watch'],
-    jsa: [], participantCount: 3, fireWatcherCount: 1, hasConfinedWatcher: false,
+    hazards: liveWork.hazards, ppe: liveWork.ppe, precautions: liveWork.precautions,
+    jsa: liveWork.jsa,
+    participantCount: liveWork.participants.length,
+    fireWatcherCount: liveWork.fireWatchers.length,
+    hasConfinedWatcher: Boolean(liveWork.confinedWatcher),
     withdrawn: false, storedStatus: 'in_progress', validFrom: iso(-1), validTo: iso(1),
   }))
 
@@ -142,6 +187,11 @@ async function main() {
     jobLocation: 'Bay 1', jobDescription: 'Long-finished pipe weld.',
     issuedToName: 'Sam Lee', qrToken: 'e2e-stale-permit',
     validFrom: iso(-400), validTo: iso(-399),
+    // Long past its window derives to NOT_CLOSED. Stored for the same reason as
+    // the live one: so nothing reconciles it in the background mid-suite. Its
+    // display fields need no such care — a permit this stale regenerates to
+    // withdrawnFields either way, which is exactly what the mirror below says.
+    storedStatus: 'not_closed',
     engineering: { status: 'approved' }, operations: { status: 'approved' },
   })
   await setDoc(doc(db, 'permitQr', 'e2e-stale-permit'), mirror('e2e-stale-permit', {
