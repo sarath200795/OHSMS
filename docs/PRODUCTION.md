@@ -783,9 +783,14 @@ There is still a worthwhile restriction to apply, and it is console-only.
 **Firebase Web API key** — Google Cloud console → APIs & Services →
 Credentials → the browser key:
 1. *Application restrictions* → **HTTP referrers**, and list only
-   `weehs-4eb28.web.app/*` and `weehs-4eb28.firebaseapp.com/*` (add a staging
-   host when one exists). A key lifted from the bundle then fails from anywhere
-   else, which removes the quota-abuse and phishing-clone uses of it.
+   `suite.weehs.org/*`, `weehs-4eb28.web.app/*` and
+   `weehs-4eb28.firebaseapp.com/*` (add a staging host when one exists). A key
+   lifted from the bundle then fails from anywhere else, which removes the
+   quota-abuse and phishing-clone uses of it.
+
+   **A domain missing from this list cannot sign anybody in** — the sign-in
+   call is refused at Google's edge before any password is checked. That is
+   what `suite.weehs.org` did on the day it was pointed here. See §9b.
 2. *API restrictions* → **Restrict key**, and select only what the app calls:
    Identity Toolkit, Token Service, Firestore and Cloud Storage.
 
@@ -799,9 +804,9 @@ from modules/emergency (nearest hospital, police and fire station). So:
 1. Google Cloud console → *APIs & Services* → **Enable** "Places API (New)". The
    older "Places API" is a different product and this endpoint will 403 on it.
 2. *Credentials* → **Create credentials → API key**.
-3. *Application restrictions* → **HTTP referrers** → `weehs-4eb28.web.app/*` and
-   `weehs-4eb28.firebaseapp.com/*` for production. Staging gets its own key and
-   its own referrers.
+3. *Application restrictions* → **HTTP referrers** → `suite.weehs.org/*`,
+   `weehs-4eb28.web.app/*` and `weehs-4eb28.firebaseapp.com/*` for production.
+   Staging gets its own key and its own referrers.
 4. *API restrictions* → **Restrict key** → Places API (New), and nothing else.
    This one is billable, so an unrestricted key is somebody else's bill.
 5. Set it as a repo Variable — not a Secret. It ships in the bundle and is
@@ -817,6 +822,61 @@ googlePlaces.js). Tracked as S-05 in SECURITY.md.
 
 Neither restriction changes anything in this repository, and neither is a
 substitute for the rules. They bound what a copied key can be pointed at.
+
+## 9b. Custom domains — four allowlists, and one of them locks people out  ⚠️ console required
+
+**Production is served at `suite.weehs.org`** (Firebase Hosting custom domain on
+`weehs-4eb28`). `weehs-4eb28.web.app` still serves the same build.
+
+Adding a domain under Hosting → Custom domains gets a certificate and routes
+traffic. It does **not** tell the four separate Google allowlists that pin this
+project to a host, and every one of them is keyed on the origin the browser
+sends. Three degrade quietly. The first stops sign-in dead.
+
+Work this list *before* announcing a new domain, not after.
+
+| # | Where | If missed |
+| --- | --- | --- |
+| 1 | Cloud console → Credentials → browser API key → HTTP referrers (§9) | **nobody can log in** |
+| 2 | Firebase → Authentication → Settings → Authorised domains | SSO and password-reset links fail (`auth/unauthorized-domain`) |
+| 3 | Bucket CORS — `scripts/storage-cors.json` (§10) | authenticated file reads fall back to stored URLs |
+| 4 | reCAPTCHA admin → the App Check site key → Domains (§1) | `Invalid domain` in the console; blocks nothing while App Check is unenforced |
+
+Plus the Places key's own referrer list (§9, step 3) if the emergency lookup is
+expected to work from the new host.
+
+**Why #1 is the one that hurts.** That restriction is enforced by Google at the
+edge, on `identitytoolkit.googleapis.com`, before any credential is examined. So
+the login page loads perfectly — same bundle, same everything — and every
+attempt fails. `authErrorMessage` has no entry for the code, so it falls through
+to Firebase's raw text and the form says *"Requests from referer https://… are
+blocked."* Verbatim, in the red box. That sentence is the diagnosis: it means
+this section, not a bad password.
+
+Prove it either way without touching a real account — a nonexistent address is
+enough, because what matters is which error comes back:
+
+```bash
+K=$(grep '^VITE_FIREBASE_API_KEY=' .env.production | cut -d= -f2)
+curl -s -X POST "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=$K" \
+  -H "Content-Type: application/json" -H "Referer: https://suite.weehs.org/" \
+  -d '{"email":"probe@invalid.test","password":"xxxxxxxxxx","returnSecureToken":true}'
+```
+
+| Response | Meaning |
+| --- | --- |
+| `400 INVALID_LOGIN_CREDENTIALS` | the key accepts this origin — sign-in works; that probe account simply does not exist |
+| `403 API_KEY_HTTP_REFERRER_BLOCKED` | the domain is not on the list. Add it, then allow a few minutes to propagate |
+
+Swap the `Referer` header to test any host. The same restriction is why Hosting
+**preview channels** cannot sign in: each gets a one-off
+`…--<channel>-<hash>.web.app` host that no allowlist can hold in advance. Test
+releases on production or staging, never on a preview URL.
+
+Nothing else in this repository changes when a domain is added. In particular
+`VITE_FIREBASE_AUTH_DOMAIN` stays `weehs-4eb28.firebaseapp.com` — it names the
+project's auth backend, not the site people visit, and repointing it at the
+custom domain breaks sign-in rather than fixing it.
 
 ## 10. Bucket CORS — required before authenticated file reads take effect
 
@@ -835,7 +895,15 @@ bucket without CORS.
 To turn it on:
 
 ```bash
-printf '[{"origin":["https://weehs-4eb28.web.app","https://weehs-4eb28.firebaseapp.com"],"method":["GET"],"maxAgeSeconds":3600,"responseHeader":["Content-Type"]}]' > cors.json && gsutil cors set cors.json gs://weehs-4eb28.firebasestorage.app
+gsutil cors set scripts/storage-cors.json gs://weehs-4eb28.firebasestorage.app
+```
+
+`scripts/storage-cors.json` is the checked-in origin list — edit it there rather
+than inlining a `printf`, so a new domain is added once and the file stays the
+record of what the bucket actually allows.
+
+```bash
+gsutil cors get gs://weehs-4eb28.firebasestorage.app
 ```
 
 Then migrate render sites to `useFileUrl` module by module, checking images still
