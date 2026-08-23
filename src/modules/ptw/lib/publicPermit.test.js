@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { describe, it, expect } from 'vitest'
 import {
   crewSummary, withdrawnFields, liveFields, mirrorDisplayFields, isTerminal, TERMINAL_STATUSES,

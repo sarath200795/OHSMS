@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { normalizeOpenMeteo, fetchWeather, _clearWeatherCache, _reloadWeatherCache } from './openMeteo'
 

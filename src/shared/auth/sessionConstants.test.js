@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { idleStatus, startSession, endSession, LAST_ACTIVITY_KEY, IDLE_TIMEOUT_MS } from './sessionConstants'
 
 const IDLE = 30 * 60_000 // 30 min
