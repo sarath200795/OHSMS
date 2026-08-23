@@ -4,7 +4,7 @@ import toast from 'react-hot-toast'
 import {
   ClipboardCheck, ArrowLeft, Check, X, Minus, Camera, Trash2, Send, MapPin, Tag,
 } from 'lucide-react'
-import { PageHeader, Spinner } from '../components/ui'
+import { PageHeader, Spinner, Field } from '../components/ui'
 import { useAuth } from '../context/AuthContext'
 import { useData } from '../context/DataContext'
 import { addRecord } from '../lib/firestore'
@@ -223,7 +223,9 @@ export default function Execute() {
         </div>
         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
-            <label className="label"><MapPin size={12} className="mr-1 inline" /> Site</label>
+            {/* A heading: what follows is either a read-only div or a picker, decided at
+              render time, so there is no control this can name in every case. */}
+            <span className="label"><MapPin size={12} className="mr-1 inline" /> Site</span>
             {task.siteId && task.siteName ? (
               <div className="input flex items-center bg-clay-bg font-semibold text-ink-700">{task.siteName}</div>
             ) : (
@@ -233,10 +235,9 @@ export default function Execute() {
               </select>
             )}
           </div>
-          <div>
-            <label className="label">Area / sub-location (optional)</label>
+          <Field label="Area / sub-location (optional)">
             <input className="input" value={inspArea} placeholder="e.g. Warehouse B" onChange={(e) => setInspArea(e.target.value)} />
-          </div>
+          </Field>
         </div>
       </div>
 

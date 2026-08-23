@@ -67,7 +67,7 @@ export default function IncidentsTab({ incidents, sites, keepUnplaced = true }) 
           {a.byMonth.length === 0 ? (
             <NoData>No dated incidents in this scope.</NoData>
           ) : (
-            <ChartFrame width="100%" height={260}>
+            <ChartFrame label="Monthly incident trend by type" width="100%" height={260}>
               <BarChart data={a.byMonth} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
                 <XAxis dataKey="label" {...axis} />
                 <YAxis allowDecimals={false} {...axis} />
@@ -88,7 +88,7 @@ export default function IncidentsTab({ incidents, sites, keepUnplaced = true }) 
           {a.byStatus.length === 0 ? (
             <NoData>Nothing to show.</NoData>
           ) : (
-            <ChartFrame width="100%" height={260}>
+            <ChartFrame label="Incident status: where each incident sits in the pipeline" width="100%" height={260}>
               <PieChart>
                 <Pie data={a.byStatus} dataKey="value" nameKey="name" outerRadius={88} innerRadius={50} paddingAngle={2}>
                   {a.byStatus.map((d) => <Cell key={d.key} fill={d.color} />)}

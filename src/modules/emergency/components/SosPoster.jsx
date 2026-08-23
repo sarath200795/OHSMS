@@ -42,15 +42,26 @@ export default function SosPoster({ site, contacts, accent = 'pink', onAccent, o
   return (
     <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto p-4">
       <PrintIsolate id="sos-poster" />
-      <div className="absolute inset-0 bg-ink-950/60 backdrop-blur-sm print:hidden" onClick={onClose} />
+      {/* Decorative scrim. It is not a tab stop and must not be: the keyboard way
+          out of a dialog is Escape, which useFocusTrap handles, and making the
+          backdrop focusable would put a nameless control in the tab order in
+          front of the dialog it is dimming. */}
+      {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
+      <div aria-hidden="true" className="absolute inset-0 bg-ink-950/60 backdrop-blur-sm print:hidden" onClick={onClose} />
 
       <div className="relative z-10 w-full max-w-[640px]">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2 print:hidden">
           <div className="flex items-center gap-1.5">
             {ACCENTS.map((a) => (
+              // A colour swatch has no text at all, and which one is chosen is
+              // carried purely by a scale-110 and a brighter border — neither of
+              // which is a state anything but an eye can read. aria-pressed is
+              // the selection; the label is the colour's name.
               <button
                 key={a.key}
                 onClick={() => onAccent?.(a.key)}
+                aria-label={`${a.label} banner`}
+                aria-pressed={accent === a.key}
                 title={`${a.label} banner`}
                 className={`h-7 w-7 rounded-full border-2 transition ${accent === a.key ? 'border-white scale-110' : 'border-white/40'}`}
                 style={{ backgroundColor: a.color }}

@@ -25,8 +25,11 @@ function DueCell({ value }) {
     )
   }
   if (state === 'missing') {
+    // amber-700, not amber-600: on amber-50 the 600 measures 3.07:1 against a
+    // 4.5:1 requirement, and this chip is the only thing marking a unit whose
+    // refill date nobody recorded.
     return (
-      <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-1.5 py-0.5 text-[11px] font-semibold text-amber-600" title="No date recorded — add one to track this unit's due status.">
+      <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-1.5 py-0.5 text-[11px] font-semibold text-amber-700" title="No date recorded — add one to track this unit's due status.">
         Not set
       </span>
     )
@@ -86,6 +89,7 @@ export default function ExtinguisherTable({
                     className="h-4 w-4 cursor-pointer accent-brand-500"
                     checked={allSelected}
                     onChange={() => onToggleAll?.(items.map((e) => e.id))}
+                    aria-label="Select all extinguishers on this page"
                   />
                 </th>
               )}
@@ -123,6 +127,7 @@ export default function ExtinguisherTable({
                         className="h-4 w-4 cursor-pointer accent-brand-500"
                         checked={!!selected}
                         onChange={() => onToggle?.(ext.id)}
+                        aria-label={`Select extinguisher ${ext.serialNo || ext.id}`}
                       />
                     </td>
                   )}

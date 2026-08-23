@@ -166,7 +166,7 @@ export default function Users() {
                 <th className="px-5 py-3 font-semibold">Role</th>
                 <th className="px-5 py-3 font-semibold">Site access</th>
                 <th className="px-5 py-3 font-semibold">Status</th>
-                <th className="px-5 py-3" />
+                <th className="px-5 py-3"><span className="sr-only">Actions</span></th>
               </tr>
             </thead>
             <tbody>
@@ -177,7 +177,10 @@ export default function Users() {
                   <tr key={u.uid} className="hover:bg-clay-100">
                     <td className="px-5 py-3.5">
                       <div className="flex items-center gap-3">
-                        <span className="grid h-9 w-9 place-items-center rounded-xl bg-brand-600 text-xs font-bold text-white">
+                        {/* Decorative: the initials are a visual restatement of the
+                            name sitting immediately beside them, so announcing
+                            both reads every row as "S M Sarath Menon". */}
+                        <span aria-hidden="true" className="grid h-9 w-9 place-items-center rounded-xl bg-brand-600 text-xs font-bold text-white">
                           {initials(u.name) || 'U'}
                         </span>
                         <div>

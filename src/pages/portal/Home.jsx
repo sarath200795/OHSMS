@@ -351,7 +351,7 @@ export default function PortalHome() {
           {pie.length === 0 ? (
             <EmptyChart>No incidents recorded for this scope — which is the result you want.</EmptyChart>
           ) : (
-            <ChartFrame width="100%" height={240}>
+            <ChartFrame label="Incidents by type" width="100%" height={240}>
               <PieChart>
                 <Pie data={pie} dataKey="value" nameKey="name" outerRadius={82} innerRadius={46} paddingAngle={2}>
                   {pie.map((d) => <Cell key={d.name} fill={d.color} />)}
@@ -371,7 +371,7 @@ export default function PortalHome() {
           {bars.length === 0 ? (
             <EmptyChart>No equipment is linked to these sites yet.</EmptyChart>
           ) : (
-            <ChartFrame width="100%" height={240}>
+            <ChartFrame label="Equipment by site" width="100%" height={240}>
               <BarChart data={bars} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
                 <XAxis
                   dataKey="name" tickLine={false} axisLine={false} fontSize={11}

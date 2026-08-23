@@ -133,6 +133,9 @@ export default function PlatformLogin() {
                   id="op-code"
                   inputMode="numeric"
                   autoComplete="one-time-code"
+                  // Second step, replacing the credentials form. See the
+                  // no-autofocus note in eslint.config.js.
+                  // eslint-disable-next-line jsx-a11y/no-autofocus
                   autoFocus
                   maxLength={7}
                   required
@@ -164,6 +167,9 @@ export default function PlatformLogin() {
                   type="email"
                   autoComplete="username"
                   required
+                  // The operator console's sign-in page does nothing else. See
+                  // the no-autofocus note in eslint.config.js.
+                  // eslint-disable-next-line jsx-a11y/no-autofocus
                   autoFocus
                   value={form.email}
                   onChange={(e) => setForm({ ...form, email: e.target.value })}

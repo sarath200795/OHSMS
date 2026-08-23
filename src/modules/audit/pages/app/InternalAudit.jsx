@@ -9,6 +9,7 @@ import { useAuth } from '../../context/AuthContext'
 import { useOrgData } from '../../context/OrgDataContext'
 import SiteScopePicker from '../../../../shared/org/SiteScopePicker'
 import DepartmentSelect from '../../../../shared/org/DepartmentSelect'
+import { Field } from '../../../../shared/ui'
 import { safeHref } from '../../../../shared/safeUrl'
 import {
   subscribeAuditPlans,
@@ -150,8 +151,7 @@ const AuditScheduler = ({ setView, session, sites, users, locations = [], siteIn
           <h3 className="mb-6 text-lg font-bold text-brand-600">Section 1: General Information</h3>
           <div className="grid grid-cols-1 gap-8 md:grid-cols-3">
             <div className="space-y-4">
-              <div>
-                <label className={lbl}>Target Site (Region · Entity · Site)</label>
+              <Field label="Target Site (Region · Entity · Site)" labelClassName={lbl}>
                 <SiteScopePicker
                   module="audit"
                   cols={1}
@@ -159,40 +159,39 @@ const AuditScheduler = ({ setView, session, sites, users, locations = [], siteIn
                   value={plan}
                   onChange={(v) => setPlan({ ...plan, ...v })}
                 />
-              </div>
-              <div>
-                <label className={lbl}>Center / Point</label>
+              </Field>
+              <Field label="Center / Point" labelClassName={lbl}>
                 <input value={plan.centerCode} onChange={(e) => setPlan({ ...plan, centerCode: e.target.value })} className={fld} maxLength={500} placeholder="Optional" />
-              </div>
-              <div>
-                <label className={lbl}>Standard</label>
+              </Field>
+              <Field label="Standard" labelClassName={lbl}>
                 <input value={plan.standard} onChange={(e) => setPlan({ ...plan, standard: e.target.value })} className={fld} maxLength={500} />
-              </div>
+              </Field>
             </div>
             <div className="space-y-4">
-              <div>
-                <label className={lbl}>Lead Auditor</label>
+              <Field label="Lead Auditor" labelClassName={lbl}>
                 <select value={plan.leadAuditor} onChange={(e) => setPlan({ ...plan, leadAuditor: e.target.value })} className={fld}>
                   <option value="">Select...</option>
                   <option value={myName}>➡️ Assign to Me ({myName})</option>
                   {users.map((u) => <option key={u.id} value={u.name}>{u.name}{u.email ? ` (${u.email})` : ''}</option>)}
                 </select>
-              </div>
+              </Field>
               <div className="grid grid-cols-2 gap-4">
-                <div><label className={lbl}>Start Date</label><input type="date" value={plan.startDate} onChange={(e) => setPlan({ ...plan, startDate: e.target.value })} className={`${fld} font-mono`} /></div>
-                <div><label className={lbl}>End Date</label><input type="date" value={plan.endDate} onChange={(e) => setPlan({ ...plan, endDate: e.target.value })} className={`${fld} font-mono`} /></div>
+                <Field label="Start Date" labelClassName={lbl}><input type="date" value={plan.startDate} onChange={(e) => setPlan({ ...plan, startDate: e.target.value })} className={`${fld} font-mono`} /></Field>
+                <Field label="End Date" labelClassName={lbl}><input type="date" value={plan.endDate} onChange={(e) => setPlan({ ...plan, endDate: e.target.value })} className={`${fld} font-mono`} /></Field>
               </div>
               {plan.docId && <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">Ref ID: <span className="font-mono font-bold text-slate-700">{plan.docId}</span></div>}
             </div>
             <div className="flex flex-col rounded-2xl border border-slate-200 bg-slate-50 p-5">
-              <label className={lbl}>Audit Team Members</label>
+              {/* A heading, not a <label>: what follows is a search box and a list of
+                  checkboxes, so there is no single control for it to name. */}
+              <span className={lbl}>Audit Team Members</span>
               <div className="relative mb-3">
                 <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input type="text" placeholder="Search name or email..." value={teamSearch} onChange={(e) => setTeamSearch(e.target.value)} className={`${fld} pl-9`} maxLength={500} />
               </div>
               <div className="max-h-[160px] flex-1 space-y-1.5 overflow-y-auto">
                 {filteredAuditors.map((u) => (
-                  <div key={u.id} onClick={() => toggleTeam(u.name)} className={`flex cursor-pointer items-center gap-3 rounded-lg border p-2.5 transition ${plan.team.includes(u.name) ? 'border-brand-300 bg-brand-50' : 'border-transparent hover:bg-white'}`}>
+                  <button type="button" key={u.id} onClick={() => toggleTeam(u.name)} aria-pressed={plan.team.includes(u.name)} className={`flex w-full cursor-pointer items-center gap-3 rounded-lg border p-2.5 text-left transition ${plan.team.includes(u.name) ? 'border-brand-300 bg-brand-50' : 'border-transparent hover:bg-white'}`}>
                     <div className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border ${plan.team.includes(u.name) ? 'border-brand-500 bg-brand-500 text-white' : 'border-slate-300 bg-white'}`}>
                       {plan.team.includes(u.name) && <Check size={10} className="inline" />}
                     </div>
@@ -200,7 +199,7 @@ const AuditScheduler = ({ setView, session, sites, users, locations = [], siteIn
                       <div className={`truncate text-xs font-bold ${plan.team.includes(u.name) ? 'text-brand-700' : 'text-slate-700'}`}>{u.name}</div>
                       <div className="truncate text-[9px] text-slate-400">{u.email || 'No email'}</div>
                     </div>
-                  </div>
+                  </button>
                 ))}
                 {filteredAuditors.length === 0 && <div className="py-4 text-center text-xs italic text-slate-400">No auditors found.</div>}
               </div>
@@ -222,7 +221,7 @@ const AuditScheduler = ({ setView, session, sites, users, locations = [], siteIn
                 <tr>
                   <th className="p-3">Auditor</th><th className="p-3">Auditee</th><th className="p-3">Department</th>
                   <th className="p-3">Area</th><th className="p-3">Aspect / Process</th><th className="p-3 w-36">Date</th>
-                  <th className="p-3 w-28">Time</th><th className="p-3 w-10" />
+                  <th className="p-3 w-28">Time</th><th className="p-3 w-10"><span className="sr-only">Actions</span></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -246,12 +245,17 @@ const AuditScheduler = ({ setView, session, sites, users, locations = [], siteIn
                     <td className="p-2"><DepartmentSelect className={`${fld} text-xs`} value={row.dept} onChange={(e) => updateRow(i, 'dept', e.target.value)} placeholder="Dept…" /></td>
                     <td className="p-2">
                       <input className={`${fld} text-xs`} list="audit-locations" placeholder="Area" value={row.area} onChange={(e) => updateRow(i, 'area', e.target.value)} maxLength={500} />
-                      {i === 0 && <datalist id="audit-locations">{locations.map((l) => <option key={l} value={l} />)}</datalist>}
+                      {i === 0 && <datalist id="audit-locations">{locations.map((l) => <option key={l} value={l}>{l}</option>)}</datalist>}
                     </td>
-                    <td className="p-2"><input className={`${fld} text-xs`} placeholder="Scope / clause..." value={row.aspect} onChange={(e) => updateRow(i, 'aspect', e.target.value)} maxLength={500} /></td>
-                    <td className="p-2"><input type="date" className={`${fld} text-xs font-mono`} value={row.date} onChange={(e) => updateRow(i, 'date', e.target.value)} /></td>
-                    <td className="p-2"><input type="time" className={`${fld} text-xs font-mono`} value={row.time} onChange={(e) => updateRow(i, 'time', e.target.value)} /></td>
-                    <td className="p-2 text-center"><button onClick={() => removeRow(i)} className="flex h-8 w-8 items-center justify-center rounded-lg bg-rose-50 text-rose-500 transition hover:bg-rose-500 hover:text-white"><Trash2 size={16} /></button></td>
+                    {/* The column header names the field but is not tied to it, and
+                        a date input has no placeholder to fall back on — so these
+                        read as three unlabelled boxes per row. The row number is
+                        in each name because there are as many rows as the plan has
+                        sessions. */}
+                    <td className="p-2"><input className={`${fld} text-xs`} aria-label={`Scope or clause, row ${i + 1}`} placeholder="Scope / clause..." value={row.aspect} onChange={(e) => updateRow(i, 'aspect', e.target.value)} maxLength={500} /></td>
+                    <td className="p-2"><input type="date" className={`${fld} text-xs font-mono`} aria-label={`Date, row ${i + 1}`} value={row.date} onChange={(e) => updateRow(i, 'date', e.target.value)} /></td>
+                    <td className="p-2"><input type="time" className={`${fld} text-xs font-mono`} aria-label={`Time, row ${i + 1}`} value={row.time} onChange={(e) => updateRow(i, 'time', e.target.value)} /></td>
+                    <td className="p-2 text-center"><button onClick={() => removeRow(i)} aria-label={`Remove schedule row ${i + 1}${row.aspect ? `: ${row.aspect}` : ''}`} className="flex h-8 w-8 items-center justify-center rounded-lg bg-rose-50 text-rose-500 transition hover:bg-rose-500 hover:text-white"><Trash2 size={16} /></button></td>
                   </tr>
                 ))}
               </tbody>
@@ -406,7 +410,7 @@ const AuditorWorkplace = ({ setView, session, isGlobalOwner, plans, findings, si
                   }
                   const [brd, chip, label, Icon] = map[task.status] || map.Planned
                   return (
-                    <div key={i} onClick={() => openTask(task)} className={`${panel} cursor-pointer border-t-4 ${brd} p-6 transition hover:-translate-y-1 hover:shadow-md`}>
+                    <button type="button" key={i} onClick={() => openTask(task)} className={`${panel} w-full cursor-pointer border-t-4 ${brd} p-6 text-left transition hover:-translate-y-1 hover:shadow-md`}>
                       <div className="mb-4 flex items-start justify-between">
                         <span className={`rounded px-2 py-1 text-[9px] font-bold uppercase tracking-widest ${chip}`}>{label}</span>
                         <span className="rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-bold text-slate-500"><Calendar size={12} className="inline mr-1" />{task.date || '—'}</span>
@@ -421,7 +425,7 @@ const AuditorWorkplace = ({ setView, session, isGlobalOwner, plans, findings, si
                       <div className="mt-4 border-t border-slate-100 pt-3 text-center text-[10px] font-bold uppercase tracking-widest text-slate-500">
                         <Icon size={12} className="inline mr-2" />{label}
                       </div>
-                    </div>
+                    </button>
                   )
                 })
               )}
@@ -441,7 +445,7 @@ const AuditorWorkplace = ({ setView, session, isGlobalOwner, plans, findings, si
                 {[['Site', siteName(currentTask.siteId)], ['Auditor', currentTask.auditor], ['Auditee', currentTask.auditee], ['Date', currentTask.date]].map(([k, v]) => (
                   <div key={k}><label className={lbl}>{k}</label><div className="rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-sm font-bold text-ink-800">{v || '—'}</div></div>
                 ))}
-                <div className="col-span-2 md:col-span-4"><label className={lbl}>Standard / Criteria Applied</label><input value={criteria} onChange={(e) => setCriteria(e.target.value)} className={fld} maxLength={500} placeholder="e.g. ISO 45001:2018 Clause 8.1..." /></div>
+                <Field label="Standard / Criteria Applied" labelClassName={lbl} className="col-span-2 md:col-span-4"><input value={criteria} onChange={(e) => setCriteria(e.target.value)} className={fld} maxLength={500} placeholder="e.g. ISO 45001:2018 Clause 8.1..." /></Field>
               </div>
             </div>
             <div className={`${panel} p-7`}>
@@ -454,26 +458,25 @@ const AuditorWorkplace = ({ setView, session, isGlobalOwner, plans, findings, si
                   <div key={i} className="relative rounded-2xl border border-slate-200 bg-slate-50/60 p-6">
                     <div className="absolute right-4 top-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1 font-mono text-[10px] font-bold text-emerald-600">{f.id}</div>
                     <div className="mt-2 grid grid-cols-12 gap-6">
-                      <div className="col-span-12 md:col-span-3">
-                        <label className={lbl}>Finding Type</label>
+                      <Field label="Finding Type" labelClassName={lbl} className="col-span-12 md:col-span-3">
                         <select value={f.type} onChange={(e) => updateRow(i, 'type', e.target.value)} className={`w-full rounded-xl p-3 text-xs font-bold ${getTypeClass(f.type)}`}>
                           <option value="Observation">Observation</option>
                           <option value="OFI">Opp. for Improv. (OFI)</option>
                           <option value="Minor NC">Minor Non-Conformance</option>
                           <option value="Major NC">Major Non-Conformance</option>
                         </select>
-                      </div>
-                      <div className="col-span-12 md:col-span-3"><label className={lbl}>Ref Clause</label><input value={f.clause} onChange={(e) => updateRow(i, 'clause', e.target.value)} className={fld} maxLength={500} placeholder="e.g. 9.1.2" /></div>
+                      </Field>
+                      <Field label="Ref Clause" labelClassName={lbl} className="col-span-12 md:col-span-3"><input value={f.clause} onChange={(e) => updateRow(i, 'clause', e.target.value)} className={fld} maxLength={500} placeholder="e.g. 9.1.2" /></Field>
                       <div className="col-span-12 md:col-span-6">
-                        <label className={lbl}>Objective Evidence <span className="text-rose-500">*</span></label>
-                        <input type="file" accept="application/pdf,image/*" onChange={(e) => handleFile(i, e.target.files[0])} className="w-full text-[10px] text-slate-500 file:mr-3 file:rounded-lg file:border-none file:bg-slate-200 file:px-4 file:py-1.5 file:font-bold file:text-slate-600" />
+                        <label className={lbl} htmlFor={`finding-evidence-${i}`}>Objective Evidence <span className="text-rose-500">*</span></label>
+                        <input id={`finding-evidence-${i}`} type="file" accept="application/pdf,image/*" onChange={(e) => handleFile(i, e.target.files[0])} className="w-full text-[10px] text-slate-500 file:mr-3 file:rounded-lg file:border-none file:bg-slate-200 file:px-4 file:py-1.5 file:font-bold file:text-slate-600" />
                         {f.fileName ? (
                           <div className="mt-2 truncate text-[10px] font-bold text-emerald-600"><CheckCircle2 size={12} className="inline mr-1" />Attached: {f.fileName}</div>
                         ) : (
                           <div className="mt-2 text-[10px] font-bold text-rose-500"><AlertCircle size={12} className="inline mr-1" />Required — attach objective evidence for this finding.</div>
                         )}
                       </div>
-                      <div className="col-span-12"><label className={lbl}>Detailed Description of Finding</label><textarea value={f.desc} onChange={(e) => updateRow(i, 'desc', e.target.value)} rows="3" className={fld} maxLength={2000} placeholder="Describe the specific observation or non-conformance..." /></div>
+                      <Field label="Detailed Description of Finding" labelClassName={lbl} className="col-span-12"><textarea value={f.desc} onChange={(e) => updateRow(i, 'desc', e.target.value)} rows="3" className={fld} maxLength={2000} placeholder="Describe the specific observation or non-conformance..." /></Field>
                     </div>
                     <button onClick={() => removeRow(i)} className="absolute bottom-4 right-4 flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-400 transition hover:bg-rose-50 hover:text-rose-500"><Trash2 size={16} /></button>
                   </div>
@@ -589,7 +592,7 @@ const AuditeeWorkplace = ({ session, users, findings }) => {
         {/* inbox */}
         <div className={`${panel} flex w-full flex-col overflow-hidden lg:w-1/3`}>
           <div className="border-b border-slate-100 bg-slate-50 p-5">
-            <h3 className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-ink-800"><Inbox size={14} className="text-amber-500" /> Action Inbox <span className="rounded-full bg-amber-500 px-2 py-0.5 text-[10px] text-white">{myAudits.length}</span></h3>
+            <h3 className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-ink-800"><Inbox size={14} className="text-amber-500" /> Action Inbox <span className="rounded-full bg-amber-700 px-2 py-0.5 text-[10px] text-white">{myAudits.length}</span></h3>
           </div>
           <div className="max-h-[60vh] space-y-3 overflow-y-auto p-4">
             {myAudits.length === 0 && <div className="mx-2 mt-6 rounded-2xl border-2 border-dashed border-slate-200 p-6 text-center text-sm italic text-slate-400">No audits in your inbox.</div>}
@@ -597,7 +600,7 @@ const AuditeeWorkplace = ({ session, users, findings }) => {
               const tone = a.status === 'Reported' ? 'border-l-rose-500' : a.status === 'Submitted for Verification' ? 'border-l-orange-500' : 'border-l-emerald-500'
               const label = a.status === 'Reported' ? 'Action Required' : a.status === 'Submitted for Verification' ? 'Pending Approval' : 'Closed'
               return (
-                <div key={a.firebaseKey} onClick={() => setSelected(a)} className={`cursor-pointer rounded-2xl border border-l-4 border-slate-200 ${tone} p-5 transition hover:bg-slate-50 ${selected?.firebaseKey === a.firebaseKey ? 'ring-2 ring-amber-300' : ''}`}>
+                <button type="button" key={a.firebaseKey} onClick={() => setSelected(a)} className={`w-full cursor-pointer rounded-2xl border border-l-4 border-slate-200 ${tone} p-5 text-left transition hover:bg-slate-50 ${selected?.firebaseKey === a.firebaseKey ? 'ring-2 ring-amber-300' : ''}`}>
                   <div className="mb-3 flex items-start justify-between">
                     <span className="rounded border border-slate-200 bg-slate-50 px-2 py-1 font-mono text-[10px] font-bold text-slate-600">{a.docId}</span>
                     <span className="rounded bg-slate-100 px-2 py-1 text-[9px] font-bold uppercase tracking-widest text-slate-600">{label}</span>
@@ -607,7 +610,7 @@ const AuditeeWorkplace = ({ session, users, findings }) => {
                     <span><List size={16} className="inline mr-1.5 text-brand-500" />{a.findings?.length || 0} Findings</span>
                     <span className="font-mono">{(a.auditDate || '').split('T')[0]}</span>
                   </div>
-                </div>
+                </button>
               )
             })}
           </div>
@@ -680,27 +683,27 @@ const AuditeeWorkplace = ({ session, users, findings }) => {
                 <span className={lbl}>Auditor’s Finding</span>
                 <p className="border-l-4 border-amber-300 py-1 pl-4 text-sm text-slate-700">“{current.desc}”</p>
               </div>
-              <div><label className={lbl}>1. Root Cause Analysis</label><textarea rows="3" className={fld} value={form.rootCause} onChange={(e) => setForm({ ...form, rootCause: e.target.value })} maxLength={2000} placeholder="Why did this happen?" /></div>
-              <div><label className={lbl}>2. Immediate Correction</label><input className={fld} value={form.correction} onChange={(e) => setForm({ ...form, correction: e.target.value })} maxLength={500} placeholder="What was done immediately?" /></div>
-              <div><label className={lbl}>3. Corrective / Preventive Action (CAPA)</label><textarea rows="2" className={fld} value={form.capa} onChange={(e) => setForm({ ...form, capa: e.target.value })} maxLength={2000} placeholder="Long-term action to prevent recurrence" /></div>
+              <Field label="1. Root Cause Analysis" labelClassName={lbl}><textarea rows="3" className={fld} value={form.rootCause} onChange={(e) => setForm({ ...form, rootCause: e.target.value })} maxLength={2000} placeholder="Why did this happen?" /></Field>
+              <Field label="2. Immediate Correction" labelClassName={lbl}><input className={fld} value={form.correction} onChange={(e) => setForm({ ...form, correction: e.target.value })} maxLength={500} placeholder="What was done immediately?" /></Field>
+              <Field label="3. Corrective / Preventive Action (CAPA)" labelClassName={lbl}><textarea rows="2" className={fld} value={form.capa} onChange={(e) => setForm({ ...form, capa: e.target.value })} maxLength={2000} placeholder="Long-term action to prevent recurrence" /></Field>
               <div className="grid grid-cols-2 gap-5">
-                <div><label className={lbl}>4. CAPA Owner</label>
-                  <select className={fld} value={form.owner} onChange={(e) => setForm({ ...form, owner: e.target.value })}>
+                <div><label className={lbl} htmlFor="capa-owner">4. CAPA Owner</label>
+                  <select id="capa-owner" className={fld} value={form.owner} onChange={(e) => setForm({ ...form, owner: e.target.value })}>
                     <option value="">Select Assignee...</option>
                     <option value={myName}>➡️ Assign to Me</option>
                     {users.map((u) => <option key={u.id} value={u.name}>{u.name}</option>)}
                   </select>
                 </div>
-                <div><label className={lbl}>5. Target Closure Date</label><input type="date" className={`${fld} font-mono`} value={form.targetDate} onChange={(e) => setForm({ ...form, targetDate: e.target.value })} /></div>
+                <Field label="5. Target Closure Date" labelClassName={lbl}><input type="date" className={`${fld} font-mono`} value={form.targetDate} onChange={(e) => setForm({ ...form, targetDate: e.target.value })} /></Field>
               </div>
-              <div><label className={lbl}>6. Objective Evidence (Optional)</label>
-                <input type="file" accept="application/pdf,image/*" onChange={handleFile} className="w-full text-xs text-slate-500 file:mr-3 file:rounded-lg file:border-none file:bg-amber-500 file:px-4 file:py-2 file:font-bold file:text-white" />
+              <div><label className={lbl} htmlFor="capa-evidence">6. Objective Evidence (Optional)</label>
+                <input id="capa-evidence" type="file" accept="application/pdf,image/*" onChange={handleFile} className="w-full text-xs text-slate-500 file:mr-3 file:rounded-lg file:border-none file:bg-amber-700 file:px-4 file:py-2 file:font-bold file:text-white" />
                 {form.evidenceFileName && <span className="mt-2 inline-block text-[10px] font-bold text-emerald-600"><CheckCircle2 size={12} className="inline mr-1" />{form.evidenceFileName}</span>}
               </div>
             </div>
             <div className="flex justify-end gap-3 border-t border-slate-100 p-5">
               <button onClick={() => setModal(false)} className="rounded-xl bg-slate-100 px-8 py-3 text-sm font-bold text-slate-700 hover:bg-slate-200">Cancel</button>
-              <button onClick={saveResponse} className="rounded-xl bg-amber-600 px-10 py-3 text-sm font-bold text-white shadow-lg transition active:scale-95 hover:bg-amber-500"><Save size={16} className="inline mr-2" />Save Response</button>
+              <button onClick={saveResponse} className="rounded-xl bg-amber-700 px-10 py-3 text-sm font-bold text-white shadow-lg transition active:scale-95 hover:bg-amber-500"><Save size={16} className="inline mr-2" />Save Response</button>
             </div>
           </div>
         </div>
@@ -954,8 +957,8 @@ const AuditCalendar = ({ sites, plans, findings }) => {
 
       <div className={`${panel} mb-5 flex flex-wrap items-center justify-between gap-4 p-5`}>
         <div className="flex items-center gap-3">
-          <label className="text-xs font-bold uppercase tracking-widest text-slate-500">Site View:</label>
-          <select className={`${fld} w-56`} value={siteFilter} onChange={(e) => setSiteFilter(e.target.value)}>
+          <label className="text-xs font-bold uppercase tracking-widest text-slate-500" htmlFor="audit-site-view">Site View:</label>
+          <select id="audit-site-view" className={`${fld} w-56`} value={siteFilter} onChange={(e) => setSiteFilter(e.target.value)}>
             <option value="All">All Sites</option>
             {sites.map((s) => <option key={s.code} value={s.code}>{s.name}</option>)}
           </select>
@@ -1086,7 +1089,7 @@ function PrintReport({ data, fallbackFindings, currentTask, docId, siteName }) {
           ) : <div className="text-sm font-bold italic text-red-600">No corrective action submitted yet.</div>}
         </div>
       ))}
-      <table className="mt-24 w-full text-sm"><tbody><tr><td className="w-[45%] border-t-2 border-black pt-2 text-center font-bold uppercase tracking-widest">Auditor Signature</td><td className="w-[10%]" /><td className="w-[45%] border-t-2 border-black pt-2 text-center font-bold uppercase tracking-widest">Auditee Signature</td></tr></tbody></table>
+      <table className="mt-24 w-full text-sm" role="presentation"><tbody><tr><td className="w-[45%] border-t-2 border-black pt-2 text-center font-bold uppercase tracking-widest">Auditor Signature</td><td className="w-[10%]" aria-hidden="true" /><td className="w-[45%] border-t-2 border-black pt-2 text-center font-bold uppercase tracking-widest">Auditee Signature</td></tr></tbody></table>
     </div>
   )
 }
@@ -1112,7 +1115,7 @@ function PrintPlan({ plan, rows, siteName }) {
         <thead><tr className="bg-gray-200"><th className="border border-black p-2 text-left">Auditor</th><th className="border border-black p-2 text-left">Auditee</th><th className="border border-black p-2 text-left">Department</th><th className="border border-black p-2 text-left">Area</th><th className="border border-black p-2 text-left">Aspect</th><th className="border border-black p-2">Date</th><th className="border border-black p-2">Time</th></tr></thead>
         <tbody>{(rows || []).map((r, i) => <tr key={i}><td className="border border-black p-2 font-bold">{r.auditor}</td><td className="border border-black p-2 font-bold">{r.auditee}</td><td className="border border-black p-2">{r.dept}</td><td className="border border-black p-2">{r.area}</td><td className="border border-black p-2">{r.aspect}</td><td className="border border-black p-2 text-center font-mono">{r.date}</td><td className="border border-black p-2 text-center font-mono">{r.time}</td></tr>)}</tbody>
       </table>
-      <table className="mt-24 w-full text-sm"><tbody><tr><td className="w-[45%] border-t-2 border-black pt-2 text-center font-bold uppercase tracking-widest">Lead Auditor Signature</td><td className="w-[10%]" /><td className="w-[45%] border-t-2 border-black pt-2 text-center font-bold uppercase tracking-widest">Management Rep Signature</td></tr></tbody></table>
+      <table className="mt-24 w-full text-sm" role="presentation"><tbody><tr><td className="w-[45%] border-t-2 border-black pt-2 text-center font-bold uppercase tracking-widest">Lead Auditor Signature</td><td className="w-[10%]" aria-hidden="true" /><td className="w-[45%] border-t-2 border-black pt-2 text-center font-bold uppercase tracking-widest">Management Rep Signature</td></tr></tbody></table>
     </div>
   )
 }

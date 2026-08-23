@@ -19,7 +19,10 @@ export default function Breakdown({ title, subtitle, rows = [], color = '#c74a33
       {rows.length === 0 ? (
         <NoData height={160}>Nothing recorded in this scope.</NoData>
       ) : (
-        <ChartFrame width="100%" height={height}>
+        // The panel's own title IS the chart's name here — this component is
+        // reused for a dozen different breakdowns and has no other way to say
+        // what it is showing.
+        <ChartFrame label={subtitle ? `${title}: ${subtitle}` : title} width="100%" height={height}>
           <BarChart data={rows} layout="vertical" margin={{ top: 0, right: 28, left: 0, bottom: 0 }}>
             <XAxis type="number" allowDecimals={false} hide />
             <YAxis

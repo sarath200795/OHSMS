@@ -4,6 +4,7 @@ import BodyMap from '../BodyMap'
 import FileUploader from '../FileUploader'
 import { HSE_HEALTH_AGENTS, PPE_OPTIONS } from '../../lib/constants'
 import SiteScopePicker from '../../../../shared/org/SiteScopePicker'
+import { Field } from '../ui'
 
 function FieldLabel({ icon: Icon, children }) {
   return <label className="label flex items-center gap-1.5"><Icon size={13} /> {children}</label>
@@ -89,10 +90,9 @@ export default function StepIllnessInitial({ value, onChange, users, incidents =
         <textarea className="input min-h-[100px] resize-y" placeholder="Describe the health issue / symptoms triggered by the exposure…" value={value.healthIssue || ''} onChange={(e) => set({ healthIssue: e.target.value })} />
       </div>
 
-      <div className="card p-6">
-        <label className="label">Affected body part(s) — internal & external</label>
+      <Field label="Affected body part(s) — internal & external" className="card p-6">
         <BodyMap value={value.affectedBodyParts || []} onChange={(affectedBodyParts) => set({ affectedBodyParts })} />
-      </div>
+      </Field>
 
       <div className="card p-6">
         <FieldLabel icon={Paperclip}>Attachments</FieldLabel>

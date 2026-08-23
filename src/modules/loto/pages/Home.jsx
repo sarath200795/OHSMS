@@ -360,8 +360,13 @@ export default function Home() {
                   const meta = LOCK_STATUS_META[status]
                   return (
                     <li key={p.id}>
+                      {/* The visible content is five nested spans — equipment,
+                          site, code, point count, status badge — which a screen
+                          reader runs together into one unpunctuated string. One
+                          name, in the order a person would say it. */}
                       <button
                         onClick={() => navigate(`/loto/procedures/${p.id}`)}
+                        aria-label={`Open isolation procedure ${p.procedureCode} for ${p.equipment} at ${p.site} — ${meta.label}, ${p.lockSummary?.lockedCount || 0} of ${p.lockSummary?.total || 0} points locked`}
                         className="flex w-full items-center justify-between gap-3 py-2.5 text-left transition-colors hover:bg-steel-800/40"
                       >
                         <span className="flex min-w-0 items-center gap-3">

@@ -6,6 +6,7 @@ import { METHODS } from '../../lib/diagramMethods'
 import { exportDiagramPng } from '../../lib/diagramExport'
 import { INVESTIGATION_METHODS } from '../../lib/constants'
 import { incidentInvestigations } from '../../lib/incidents'
+import { Field } from '../ui'
 
 const rid = () => (crypto?.randomUUID ? crypto.randomUUID().slice(0, 8) : Math.random().toString(36).slice(2, 10))
 const labelOf = (key) => INVESTIGATION_METHODS.find((m) => m.key === key)?.label || key
@@ -150,10 +151,9 @@ export default function StepInvestigation({ incident, onPersist, saving }) {
             />
           </div>
 
-          <div className="card p-5">
-            <label className="label">Investigation summary / findings</label>
+          <Field label="Investigation summary / findings" className="card p-5">
             <textarea className="input min-h-[90px] resize-y" placeholder="Summarize the root cause(s) and key findings…" value={active.summary || ''} onChange={(e) => setActiveSummary(e.target.value)} />
-          </div>
+          </Field>
 
           <div className="flex justify-end">
             <button className="btn-primary" onClick={save} disabled={saving}>

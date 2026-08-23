@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { QRCodeCanvas } from 'qrcode.react'
 import { PlusCircle, CheckCircle2, RotateCcw, Printer, Hash } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { PageHeader, Spinner } from '../components/ui'
+import { PageHeader, Spinner, Field } from '../components/ui'
 import { useAuth } from '../context/AuthContext'
 import { useFleet } from '../context/FleetContext'
 import { addExtinguisher } from '../lib/firestore'
@@ -25,15 +25,6 @@ const EMPTY = {
   dateOfNextRefill: '',
   dateOfNextHPT: '',
   qrLink: '',
-}
-
-function Field({ label, children }) {
-  return (
-    <div>
-      <label className="label">{label}</label>
-      {children}
-    </div>
-  )
 }
 
 export default function AddExtinguisher() {
@@ -141,15 +132,14 @@ export default function AddExtinguisher() {
                     {CAPACITIES.map((c) => <option key={c}>{c}</option>)}
                   </select>
                 </Field>
-                <div className="sm:col-span-2">
-                  <label className="label">Site — Region · Entity · Site</label>
+                <Field label="Site — Region · Entity · Site" className="sm:col-span-2">
                   <SiteScopePicker
                     module="equipment"
                     sites={siteInventory}
                     value={form}
                     onChange={(v) => setForm((f) => ({ ...f, ...v, centerName: v.site }))}
                   />
-                </div>
+                </Field>
               </div>
 
               <h3 className="pt-2 text-sm font-bold uppercase tracking-wide text-ink-500">Compliance dates</h3>

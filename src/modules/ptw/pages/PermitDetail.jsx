@@ -24,6 +24,7 @@ import { STATUS, statusMeta } from '../lib/permitStatus'
 import { fileToDataUrl, formatBytes } from '../lib/files'
 import { publicPermitUrl } from '../lib/qr'
 import { safeHref } from '../../../shared/safeUrl'
+import { readableOnTint } from '../../../shared/lib/contrast'
 
 const fmt = (iso) => {
   if (!iso) return '—'
@@ -437,7 +438,7 @@ export default function PermitDetail() {
                   return (
                     <div key={o.id} className="rounded-2xl bg-clay-surface p-3 shadow-clay-inset">
                       <div className="flex items-center gap-2 text-sm">
-                        <span className="chip" style={{ backgroundColor: `${color}1a`, color }}>{unsafe ? 'Unsafe' : 'Safe'}</span>
+                        <span className="chip" style={{ backgroundColor: `${color}1a`, color: readableOnTint(color) }}>{unsafe ? 'Unsafe' : 'Safe'}</span>
                         <span className="text-ink-500">{o.observedByName}</span>
                         <span className="ml-auto text-xs text-ink-400">{o.source === 'qr' ? 'QR' : 'Portal'}</span>
                       </div>

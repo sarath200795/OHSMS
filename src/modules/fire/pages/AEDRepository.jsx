@@ -3,8 +3,8 @@ import { Link } from 'react-router-dom'
 import { HeartPulse, Plus, Pencil, Trash2, Search, Filter, X, Download, QrCode, Wrench, Upload, AlertTriangle, MapPin } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import toast from 'react-hot-toast'
-import { PageHeader, EmptyState, Modal, Badge, Spinner } from '../components/ui'
-import { Pager } from '../../../shared/ui'
+import { PageHeader, EmptyState, Modal, Badge, Spinner, Field } from '../components/ui'
+import { Pager, IconButton } from '../../../shared/ui'
 import { usePagination } from '../../../shared/ui/usePagination'
 import { useAuth } from '../context/AuthContext'
 import { useFleet } from '../context/FleetContext'
@@ -45,9 +45,6 @@ const EMPTY = {
 }
 const STATUSES = Object.values(AED_STATUS)
 
-function Field({ label, children }) {
-  return <div><label className="label">{label}</label>{children}</div>
-}
 function ChipRow({ label, options, selected, onToggle, render }) {
   return (
     <div className="flex flex-wrap items-center gap-2 border-t border-ink-100 pt-3">
@@ -293,7 +290,7 @@ export default function AEDRepository() {
             <table className="w-full min-w-[860px] text-sm">
               <thead className="bg-clay-100/70 text-left text-xs uppercase tracking-wide text-ink-500">
                 <tr>
-                  <th className="px-4 py-3"><input type="checkbox" className="h-4 w-4 cursor-pointer accent-brand-500" checked={allOnPage} onChange={toggleAllOnPage} title="Select all on this page" /></th>
+                  <th className="px-4 py-3"><input type="checkbox" className="h-4 w-4 cursor-pointer accent-brand-500" checked={allOnPage} onChange={toggleAllOnPage} aria-label="Select all AEDs on this page" title="Select all on this page" /></th>
                   <th className="px-4 py-3">Asset ID</th><th className="px-4 py-3">Site</th><th className="px-4 py-3">Region</th>
                   <th className="px-4 py-3">Battery Exp</th><th className="px-4 py-3">Pad Exp</th><th className="px-4 py-3">Next Inspection</th>
                   <th className="px-4 py-3">Status</th><th className="px-4 py-3 text-right">Actions</th>
@@ -302,7 +299,7 @@ export default function AEDRepository() {
               <tbody className="divide-y divide-clay-200/60">
                 {pageItems.map((a) => (
                   <tr key={a.id} className={`hover:bg-ink-50/70 ${selected.has(a.id) ? 'bg-brand-50/60' : ''}`} style={{ boxShadow: `inset 4px 0 0 ${aedColor(a, today)}` }}>
-                    <td className="px-4 py-3"><input type="checkbox" className="h-4 w-4 cursor-pointer accent-brand-500" checked={selected.has(a.id)} onChange={() => toggleSel(a.id)} /></td>
+                    <td className="px-4 py-3"><input type="checkbox" className="h-4 w-4 cursor-pointer accent-brand-500" checked={selected.has(a.id)} onChange={() => toggleSel(a.id)} aria-label={`Select ${a.assetId || 'this AED'}`} /></td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1.5 font-bold text-ink-900">
                         {a.assetId || '—'}
@@ -321,11 +318,15 @@ export default function AEDRepository() {
                     <td className="px-4 py-3"><DateCell value={a.nextInspection} /></td>
                     <td className="px-4 py-3"><Badge color={AED_STATUS_COLOR[a.status] || '#64748b'}>{AED_STATUS_LABEL[a.status] || a.status}</Badge></td>
                     <td className="px-4 py-3">
+                      {/* Every label names the ROW, not just the verb. A screen
+                          reader reads these out of the surrounding table, so
+                          four rows of "Edit, Delete, Edit, Delete" is a list
+                          with no way to tell which AED is about to be removed. */}
                       <div className="flex justify-end gap-1">
-                        <button className="btn bg-green-600 px-2 py-1.5 text-xs text-white hover:bg-green-700" onClick={() => openService(a)} title="Log inspection / service"><Wrench size={14} /></button>
-                        <button className="btn-soft px-2 py-1.5" onClick={() => showQr(a)} disabled={busy || (!a.qrToken && !isAdmin)} title={a.qrToken ? 'View QR code' : (isAdmin ? 'Generate QR code' : 'Only an admin can generate QR codes')}><QrCode size={15} /></button>
-                        <button className="btn-soft px-2 py-1.5" onClick={() => setEditing(a)} title="Edit"><Pencil size={15} /></button>
-                        <button className="btn-soft px-2 py-1.5 text-red-600" onClick={() => setRemoving(a)} title="Delete"><Trash2 size={15} /></button>
+                        <IconButton icon={Wrench} iconSize={14} label={`Log inspection / service for ${a.assetId || 'this AED'}`} className="!bg-green-600 !text-white hover:!bg-green-700" onClick={() => openService(a)} />
+                        <IconButton icon={QrCode} iconSize={15} variant="soft" label={a.qrToken ? `View QR code for ${a.assetId || 'this AED'}` : isAdmin ? `Generate QR code for ${a.assetId || 'this AED'}` : 'Only an admin can generate QR codes'} onClick={() => showQr(a)} disabled={busy || (!a.qrToken && !isAdmin)} />
+                        <IconButton icon={Pencil} iconSize={15} variant="soft" label={`Edit ${a.assetId || 'this AED'}`} onClick={() => setEditing(a)} />
+                        <IconButton icon={Trash2} iconSize={15} variant="soft" label={`Delete ${a.assetId || 'this AED'}`} className="!text-red-600" onClick={() => setRemoving(a)} />
                       </div>
                     </td>
                   </tr>
@@ -349,15 +350,14 @@ export default function AEDRepository() {
           <form onSubmit={save} className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Asset ID (auto)"><input className="input bg-ink-50 text-ink-500" value={editing.assetId} readOnly title="Automatically assigned — unique per AED" /></Field>
-              <div className="sm:col-span-2">
-                <label className="label">Site — Region · Entity · Site</label>
+              <Field label="Site — Region · Entity · Site" className="sm:col-span-2">
                 <SiteScopePicker
                   module="equipment"
                   sites={siteInventory}
                   value={{ ...editing, site: editing.centerName }}
                   onChange={(v) => setEditing((p) => ({ ...p, ...v, centerName: v.site }))}
                 />
-              </div>
+              </Field>
               <Field label="Brand"><input className="input" value={editing.brand} onChange={set('brand')} placeholder="e.g. Philips" /></Field>
               <Field label="Model"><input className="input" value={editing.model} onChange={set('model')} placeholder="e.g. HeartStart FRx" /></Field>
               <Field label="Location / placement"><input className="input" value={editing.location} onChange={set('location')} placeholder="e.g. Reception wall cabinet" /></Field>

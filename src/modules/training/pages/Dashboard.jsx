@@ -228,7 +228,10 @@ export default function Dashboard() {
                   </td>
                   <td className="px-4 py-2.5">
                     <div className="flex items-center gap-2">
-                      <div className="h-2.5 w-28 overflow-hidden rounded-full bg-clay-200">
+                      {/* A bare div conveys a percentage by width alone. role="progressbar"
+                          plus the value attributes is what makes the same figure
+                          available to anyone not looking at the pixels. */}
+                      <div className="h-2.5 w-28 overflow-hidden rounded-full bg-clay-200" role="progressbar" aria-valuenow={d.pct} aria-valuemin={0} aria-valuemax={100} aria-label={`${d.name || 'Department'} training completion`}>
                         <div className="h-full rounded-full" style={{ width: `${d.pct}%`, backgroundColor: d.pct >= 90 ? '#16a34a' : d.pct >= 60 ? '#d97706' : '#dc2626' }} />
                       </div>
                       <span className="text-xs font-semibold text-ink-600">{d.pct}%</span>

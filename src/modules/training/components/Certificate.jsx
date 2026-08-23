@@ -14,7 +14,12 @@ export default function CertificateModal({ record, orgName, onClose }) {
   return (
     <div className="fixed inset-0 z-50 grid place-items-center p-4">
       <PrintIsolate id="wehs-certificate" landscape />
-      <div className="absolute inset-0 bg-ink-950/50 backdrop-blur-sm" onClick={onClose} />
+      {/* Decorative scrim. It is not a tab stop and must not be: the keyboard way
+          out of a dialog is Escape, which useFocusTrap handles, and making the
+          backdrop focusable would put a nameless control in the tab order in
+          front of the dialog it is dimming. */}
+      {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
+      <div aria-hidden="true" className="absolute inset-0 bg-ink-950/50 backdrop-blur-sm" onClick={onClose} />
 
       <div className="relative z-10 w-full max-w-4xl">
         <div className="mb-3 flex items-center justify-end gap-2">

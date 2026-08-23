@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { CalendarPlus, Repeat, Clock, Trash2, Check, Globe } from 'lucide-react'
-import { Modal, StatusPill } from '../../components/ui'
+import { Modal, StatusPill, Field } from '../../components/ui'
 import { useData } from '../../context/DataContext'
 import { ASSIGNMENT_FREQUENCIES, formatDateOnly } from '../../lib/schedule'
 
@@ -154,7 +154,7 @@ export default function InspectionAssignmentsModal({ template, currentUserEmail,
         {sites.length > 0 && (
           <div className="mb-3">
             <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
-              <label className="label !mb-0">Sites *</label>
+              <span className="label !mb-0">Sites *</span>
               {sites.length > 6 && (
                 <input
                   className="input !w-56 !py-1.5 !text-xs"
@@ -206,34 +206,30 @@ export default function InspectionAssignmentsModal({ template, currentUserEmail,
           </div>
         )}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div className="sm:col-span-2">
-            <label className="label">Area / sub-location (optional)</label>
+          <Field label="Area / sub-location (optional)" className="sm:col-span-2">
             <input className="input" value={newArea} placeholder="e.g. Warehouse B"
               onChange={(e) => setNewArea(e.target.value)} />
-          </div>
-          <div>
-            <label className="label">Frequency</label>
+          </Field>
+          <Field label="Frequency">
             <select className="input" value={newFrequency} onChange={(e) => setNewFrequency(e.target.value)}>
               {ASSIGNMENT_FREQUENCIES.map((f) => <option key={f} value={f}>{f}</option>)}
             </select>
-          </div>
+          </Field>
           <div>
             <label className="label">{newFrequency === 'One-off' ? 'Scheduled date' : 'Start date'} *</label>
             <input type="date" className="input font-mono" value={newDate} min={todayIso}
               onChange={(e) => setNewDate(e.target.value)} />
           </div>
           {newFrequency !== 'One-off' && (
-            <div>
-              <label className="label">End date (optional)</label>
+            <Field label="End date (optional)">
               <input type="date" className="input font-mono" value={newEndDate} min={newDate || todayIso}
                 onChange={(e) => setNewEndDate(e.target.value)} />
-            </div>
+            </Field>
           )}
-          <div className="sm:col-span-2">
-            <label className="label">Notes (optional)</label>
+          <Field label="Notes (optional)" className="sm:col-span-2">
             <input className="input" value={newNotes} placeholder="e.g. End-of-quarter compliance check"
               onChange={(e) => setNewNotes(e.target.value)} />
-          </div>
+          </Field>
         </div>
         <button className="btn-primary mt-3" disabled={busy || !newDate || (sites.length > 0 && newSiteIds.length === 0)} onClick={handleAdd}>
           <CalendarPlus size={16} /> {sites.length > 0 && newSiteIds.length > 1 ? `Add ${newSiteIds.length} assignments` : 'Add assignment'}

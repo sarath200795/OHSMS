@@ -110,7 +110,7 @@ export default function AuthShell({ title, subtitle, children, footer }) {
         </div>
 
         <div className="relative space-y-2 text-xs text-white/45">
-          <nav className="flex flex-wrap gap-x-4 gap-y-1">
+          <nav aria-label="Legal and policy" className="flex flex-wrap gap-x-4 gap-y-1">
             {LEGAL.map((l) => (
               <Link key={l.to} to={l.to} className="transition-colors hover:text-amber-400">
                 {l.label}
@@ -144,7 +144,7 @@ export default function AuthShell({ title, subtitle, children, footer }) {
         </motion.div>
 
         {/* Legal links (kept reachable on mobile where the brand panel is hidden) */}
-        <nav className="mt-6 flex max-w-md flex-wrap justify-center gap-x-4 gap-y-1 text-xs text-steel-500 lg:hidden">
+        <nav aria-label="Legal and policy" className="mt-6 flex max-w-md flex-wrap justify-center gap-x-4 gap-y-1 text-xs text-steel-500 lg:hidden">
           {LEGAL.map((l) => (
             <Link key={l.to} to={l.to} className="hover:text-amber-600">
               {l.label}

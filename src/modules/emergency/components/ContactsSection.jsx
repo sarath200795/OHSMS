@@ -242,8 +242,7 @@ export default function ContactsSection({ site, contacts, users }) {
           </div>
 
           {form.kind === 'internal' && (
-            <div>
-              <label className="label">Pick from employee directory — Department · Person</label>
+            <Field label="Pick from employee directory — Department · Person">
               <DeptPersonPicker
                 users={users}
                 value={form.employeeUid}
@@ -255,7 +254,7 @@ export default function ContactsSection({ site, contacts, users }) {
                 }))}
                 personPlaceholder="Select employee…"
               />
-            </div>
+            </Field>
           )}
 
           <div className="grid gap-4 sm:grid-cols-2">

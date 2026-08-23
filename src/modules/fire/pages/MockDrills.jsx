@@ -4,8 +4,8 @@ import {
   Siren, Plus, Trash2, FileText, X, ShieldCheck, UserPlus, ListChecks, ImagePlus, Image as ImageIcon,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { PageHeader, EmptyState, Modal, Badge, Spinner } from '../components/ui'
-import { Pager } from '../../../shared/ui'
+import { PageHeader, EmptyState, Modal, Badge, Spinner, Field } from '../components/ui'
+import { Pager, IconButton } from '../../../shared/ui'
 import { usePagination } from '../../../shared/ui/usePagination'
 import { useAuth } from '../context/AuthContext'
 import { useFleet } from '../context/FleetContext'
@@ -23,6 +23,7 @@ import SiteScopePicker from '../../../shared/org/SiteScopePicker'
 import DeptPersonPicker from '../../../shared/org/DeptPersonPicker'
 import { subscribeContacts as subscribeErpContacts } from '../../emergency/lib/firestore'
 import { safeSrc } from '../../../shared/safeUrl'
+import IncompleteNotice from '../../../shared/ui/IncompleteNotice'
 
 const nowTime = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
 const today = () => new Date().toISOString().slice(0, 10)
@@ -35,10 +36,6 @@ const freshForm = () => ({
   debrief: '', outcome: 'Pass',
 })
 
-function Field({ label, children }) {
-  return <div><label className="label">{label}</label>{children}</div>
-}
-
 function scoreOf(checks, checklist) {
   const done = Object.values(checks).filter(Boolean).length
   return checklist.length ? Math.round((done / checklist.length) * 100) : 0
@@ -46,7 +43,7 @@ function scoreOf(checks, checklist) {
 
 export default function MockDrills() {
   const { orgId, profile } = useAuth()
-  const { mockDrills, sites, siteInventory, users, org, loading } = useFleet()
+  const { mockDrills, sites, siteInventory, users, org, incomplete, loading } = useFleet()
   // Org-configured departments UNION those actually on people, same as the
   // shared DeptPersonPicker — otherwise back-filling a person's department
   // writes a value the select has no option for, which renders as empty.
@@ -268,6 +265,8 @@ export default function MockDrills() {
         </select>
       </PageHeader>
 
+
+      <IncompleteNotice incomplete={incomplete} className="mb-4" />
       {/* Scenario picker */}
       <div className="mb-8">
         <p className="mb-3 text-sm font-bold uppercase tracking-wide text-ink-500">Initiate a scenario</p>
@@ -328,8 +327,8 @@ export default function MockDrills() {
                     <td className="px-4 py-2.5"><Badge color={scoreColor(d.score || 0)}>{d.score ?? 0}%</Badge></td>
                     <td className="px-4 py-2.5">
                       <div className="flex justify-end gap-1">
-                        <button className="btn-soft px-2 py-1.5" title="Download PDF" onClick={() => downloadPdf(d)}><FileText size={15} /></button>
-                        <button className="btn-soft px-2 py-1.5 text-red-600" title="Delete" onClick={() => setRemoving(d)}><Trash2 size={15} /></button>
+                        <IconButton icon={FileText} iconSize={15} variant="soft" label={`Download PDF of the ${d.scenario} drill on ${d.date}`} onClick={() => downloadPdf(d)} />
+                        <IconButton icon={Trash2} iconSize={15} variant="soft" className="!text-red-600" label={`Delete the ${d.scenario} drill on ${d.date}`} onClick={() => setRemoving(d)} />
                       </div>
                     </td>
                   </tr>
@@ -360,15 +359,14 @@ export default function MockDrills() {
 
             {/* context */}
             <div className="grid gap-4 sm:grid-cols-3">
-              <div className="sm:col-span-3">
-                <label className="label">Site — Region · Entity · Site</label>
+              <Field label="Site — Region · Entity · Site" className="sm:col-span-3">
                 <SiteScopePicker
                   module="drills"
                   sites={siteInventory}
                   value={{ ...form, site: form.centerName }}
                   onChange={(v) => setForm((f) => ({ ...f, ...v, centerName: v.site }))}
                 />
-              </div>
+              </Field>
               <Field label="Outcome">
                 <select className="input" value={form.outcome} onChange={set('outcome')}>{DRILL_OUTCOMES.map((o) => <option key={o}>{o}</option>)}</select>
               </Field>
@@ -569,7 +567,7 @@ export default function MockDrills() {
               <div className="flex flex-wrap gap-2">
                 {photos.map((p) => (
                   <div key={p.id} className="group relative">
-                    <img src={safeSrc(p.dataUrl)} alt="Drill evidence" className="h-20 w-20 cursor-pointer rounded-lg border border-clay-200 object-cover" onClick={() => setEnlarge(p.dataUrl)} />
+                    <button type="button" onClick={() => setEnlarge(p.dataUrl)} aria-label="Enlarge drill evidence photo" className="block"><img src={safeSrc(p.dataUrl)} alt="Drill evidence" className="h-20 w-20 cursor-pointer rounded-lg border border-clay-200 object-cover" /></button>
                     <button type="button" onClick={() => removeDrillPhoto(p.id)} className="absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full bg-red-600 text-white shadow" title="Remove"><X size={11} /></button>
                   </div>
                 ))}
@@ -633,7 +631,7 @@ export default function MockDrills() {
                 ) : viewPhotos.length > 0 ? (
                   <div className="flex flex-wrap gap-2">
                     {viewPhotos.map((p) => (
-                      <img key={p.id} src={safeSrc(p.dataUrl)} alt="Drill evidence" className="h-20 w-20 cursor-pointer rounded-lg border border-clay-200 object-cover" onClick={() => setEnlarge(p.dataUrl)} />
+                      <button key={p.id} type="button" onClick={() => setEnlarge(p.dataUrl)} aria-label="Enlarge drill evidence photo" className="block"><img src={safeSrc(p.dataUrl)} alt="Drill evidence" className="h-20 w-20 cursor-pointer rounded-lg border border-clay-200 object-cover" /></button>
                     ))}
                   </div>
                 ) : (

@@ -1,20 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { FileText, Send, Paperclip, X } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { Modal, Spinner } from './ui'
+import { Modal, Spinner, Field } from './ui'
 import { submitQuotation } from '../lib/firestore'
 import { readFileAsDataUrl, MAX_ATTACHMENT_BYTES } from '../../../shared/lib/files'
 import { formatSize } from '../../../shared/storage'
 import { safeHref } from '../../../shared/safeUrl'
-
-function Field({ label, children }) {
-  return (
-    <div>
-      <label className="label">{label}</label>
-      {children}
-    </div>
-  )
-}
 
 /**
  * Submit a vendor quotation for a defective / refill-due extinguisher. A
@@ -122,8 +113,8 @@ export default function SubmitQuotationModal({ open, onClose, ext, orgId, orgNam
       </div>
 
       <div className="mt-4">
-        <label className="label">Quotation document (optional)</label>
-        <input
+        <label htmlFor="quotation-file" className="label">Quotation document (optional)</label>
+        <input id="quotation-file"
           ref={fileInputRef}
           type="file"
           accept="application/pdf,image/*"

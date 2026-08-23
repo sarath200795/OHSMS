@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Truck, CheckCircle2, QrCode, Download } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { PageHeader, EmptyState, Modal, Spinner } from '../components/ui'
+import { PageHeader, EmptyState, Modal, Spinner, Field } from '../components/ui'
 import ExtinguisherTable from '../components/ExtinguisherTable'
 import ListFilters from '../components/ListFilters'
 import { TableSkeleton } from '../components/Skeleton'
@@ -91,14 +91,12 @@ export default function InProcess() {
           due dates. Any active defects will be cleared and the unit reactivated.
         </p>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div>
-            <label className="label">New Next Refill date</label>
+          <Field label="New Next Refill date">
             <input type="date" className="input" value={dates.dateOfNextRefill} onChange={(e) => setDates({ ...dates, dateOfNextRefill: e.target.value })} />
-          </div>
-          <div>
-            <label className="label">New Next HPT date</label>
+          </Field>
+          <Field label="New Next HPT date">
             <input type="date" className="input" value={dates.dateOfNextHPT} onChange={(e) => setDates({ ...dates, dateOfNextHPT: e.target.value })} />
-          </div>
+          </Field>
         </div>
         <div className="mt-5 flex justify-end gap-2">
           <button className="btn-ghost" onClick={() => setClosing(null)}>Cancel</button>

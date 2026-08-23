@@ -66,6 +66,17 @@ export default function AppChrome({ children }) {
 
   return (
     <div className="min-h-screen bg-clay-bg">
+      {/* Skip link. The header carries the wordmark, the module switcher, the
+          notification bell and the account menu, and it is sticky — so on every
+          single route a keyboard user tabbed through all of it before reaching
+          the page they had just navigated to. Visually hidden until focused,
+          which is the point: it costs nothing to anyone who does not need it. */}
+      <a
+        href="#main"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-xl focus:bg-brand-600 focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-white"
+      >
+        Skip to main content
+      </a>
       <header className="sticky top-0 z-30 flex items-center gap-3.5 border-b border-ink-100 bg-clay-bg/90 px-5 py-3 backdrop-blur-md sm:px-7">
         {/* aria-label rather than leaning on the wordmark beside it: that text
             is hidden below sm, and without this the only way home on a phone
@@ -143,7 +154,7 @@ export default function AppChrome({ children }) {
         </div>
       </header>
 
-      <main className="mx-auto max-w-[1180px] px-5 pb-24 pt-6 sm:px-7">
+      <main id="main" tabIndex={-1} className="mx-auto max-w-[1180px] px-5 pb-24 pt-6 sm:px-7">
         <HomeBar />
         <motion.div
           key={location.pathname}

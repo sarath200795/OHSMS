@@ -202,7 +202,7 @@ export default function Injuries() {
           <div className="grid gap-5 lg:grid-cols-2">
             <div className="space-y-4">
               <div>
-                <label className="label">First aid done?</label>
+                <span className="label">First aid done?</span>
                 <div className="flex gap-2">
                   {[{ v: true, l: 'Yes' }, { v: false, l: 'No' }].map((o) => (
                     <button key={o.l} type="button" onClick={() => setForm({ ...form, firstAidDone: o.v })}
@@ -213,29 +213,25 @@ export default function Injuries() {
                   <input className="input mt-2" placeholder="First aid details" value={form.firstAidDetail} onChange={(e) => setForm({ ...form, firstAidDetail: e.target.value })} />
                 )}
               </div>
-              <div>
-                <label className="label">Type of injury</label>
+              <Field label="Type of injury">
                 <select className="input" value={form.injuryType} onChange={(e) => setForm({ ...form, injuryType: e.target.value })}>
                   <option value="">Select injury type…</option>
                   {INJURY_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
                 </select>
-              </div>
+              </Field>
               <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="label">Medication</label>
+                <Field label="Medication">
                   <input className="input" placeholder="If any" value={form.medication} onChange={(e) => setForm({ ...form, medication: e.target.value })} />
-                </div>
-                <div>
-                  <label className="label">Days to return to work</label>
+                </Field>
+                <Field label="Days to return to work">
                   <input type="number" min="0" className="input" value={form.daysToReturnToWork} onChange={(e) => setForm({ ...form, daysToReturnToWork: e.target.value })} />
-                </div>
+                </Field>
               </div>
               <p className="text-xs text-ink-400">Medical record files are managed on the incident’s injury step.</p>
             </div>
-            <div>
-              <label className="label">Injured body part(s)</label>
+            <Field label="Injured body part(s)">
               <BodyMap value={form.bodyParts} onChange={(bodyParts) => setForm({ ...form, bodyParts })} />
-            </div>
+            </Field>
           </div>
         )}
         <div className="mt-5 flex justify-end gap-2">

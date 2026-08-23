@@ -150,11 +150,15 @@ function WidgetPicker({ selected, onClose, onSave }) {
     setChosen((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]))
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-ink-900/40 p-4 backdrop-blur-sm" onClick={onClose}>
-      <div
-        className="max-h-[85vh] w-full max-w-2xl overflow-auto rounded-3xl bg-clay-bg p-6 shadow-clay-lg"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <div className="fixed inset-0 z-50 grid place-items-center p-4">
+      {/* The scrim is its own element rather than the dialog's parent. It was
+          the parent, which meant the panel needed an onClick just to stop its
+          own clicks reaching the dismiss handler — a click trap the keyboard
+          could not see and could not use. Now the scrim is a sibling, decorative
+          and aria-hidden, and Escape is the keyboard route out (useFocusTrap). */}
+      {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
+      <div aria-hidden="true" className="absolute inset-0 bg-ink-900/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative max-h-[85vh] w-full max-w-2xl overflow-auto rounded-3xl bg-clay-bg p-6 shadow-clay-lg">
         <div className="mb-4 flex items-start justify-between gap-3">
           <div>
             <h2 className="text-lg font-extrabold tracking-[-0.02em] text-ink-900">Choose your widgets</h2>

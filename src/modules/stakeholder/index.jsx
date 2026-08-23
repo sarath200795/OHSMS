@@ -20,7 +20,7 @@ const TABS = [
 export default function StakeholderModule() {
   return (
     <StakeholderProvider>
-      <nav className="mb-4 flex flex-wrap gap-2">
+      <nav aria-label="Stakeholder sections" className="mb-4 flex flex-wrap gap-2">
         {TABS.map((t) => (
           <NavLink
             key={t.to}

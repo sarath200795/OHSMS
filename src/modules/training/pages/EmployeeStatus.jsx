@@ -267,7 +267,9 @@ export default function EmployeeStatus() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
-                        <div className="h-2.5 w-28 overflow-hidden rounded-full bg-clay-200">
+                        {/* See Dashboard.jsx: width alone is not a value anyone
+                            can read but a sighted user. */}
+                        <div className="h-2.5 w-28 overflow-hidden rounded-full bg-clay-200" role="progressbar" aria-valuenow={r.pct} aria-valuemin={0} aria-valuemax={100} aria-label={`${r.name || 'Employee'} training completion`}>
                           <div className="h-full rounded-full" style={{ width: `${r.pct}%`, backgroundColor: r.pct >= 90 ? '#16a34a' : r.pct >= 60 ? '#d97706' : '#dc2626' }} />
                         </div>
                         <span className="text-xs font-semibold text-ink-600">{r.pct}%</span>

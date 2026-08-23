@@ -121,7 +121,7 @@ export default function Targets() {
                   <th className="px-4 py-3 text-center">Target</th>
                   <th className="px-4 py-3">Period</th>
                   <th className="px-4 py-3">Owner</th>
-                  {isManager && <th className="px-4 py-3" />}
+                  {isManager && <th className="px-4 py-3"><span className="sr-only">Actions</span></th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-clay-200/60">

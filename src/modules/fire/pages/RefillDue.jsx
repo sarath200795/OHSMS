@@ -96,7 +96,7 @@ export default function RefillDue() {
                 </button>
               ) : (
                 <button
-                  className="btn bg-cyan-600 px-2.5 py-1.5 text-xs text-white hover:bg-cyan-700"
+                  className="btn bg-cyan-700 px-2.5 py-1.5 text-xs text-white hover:bg-cyan-800"
                   onClick={() => setQuoteFor(ext)}
                   title="Submit a vendor quotation before this can move forward"
                 >

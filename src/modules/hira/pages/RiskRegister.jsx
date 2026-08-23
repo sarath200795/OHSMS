@@ -12,6 +12,7 @@ import { useAuth } from '../context/AuthContext'
 import { updateAssessment, logActivity } from '../lib/firestore'
 import { riskLists, isNonAcceptable } from '../lib/raStats'
 import { categoryLabel } from '../lib/constants'
+import { readableOnTint, solidBackground } from '../../../shared/lib/contrast'
 
 const GROUPS = [
   { label: 'By severity', tabs: [
@@ -85,7 +86,7 @@ export default function RiskRegister() {
                   key={t.key}
                   onClick={() => setTab(t.key)}
                   className="chip transition hover:scale-105"
-                  style={active ? { backgroundColor: t.color, color: '#fff' } : { backgroundColor: `${t.color}1a`, color: t.color }}
+                  style={active ? { backgroundColor: solidBackground(t.color), color: '#fff' } : { backgroundColor: `${t.color}1a`, color: readableOnTint(t.color) }}
                 >
                   {t.label}
                   <span className="ml-1 rounded-full bg-white/80 px-1.5 text-[10px] font-extrabold text-ink-700">{count}</span>

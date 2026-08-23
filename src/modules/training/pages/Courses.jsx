@@ -189,8 +189,7 @@ export default function Courses() {
           </div>
           {/* How the course is delivered decides what else it needs: only a
               classroom course has a time, a place and a request queue. */}
-          <div>
-            <label className="label">How is it delivered?</label>
+          <Field label="How is it delivered?">
             <div className="grid gap-2 sm:grid-cols-2">
               {DELIVERY_MODES.map((d) => {
                 const on = (form.deliveryMode || 'module') === d.key
@@ -209,7 +208,7 @@ export default function Courses() {
                 )
               })}
             </div>
-          </div>
+          </Field>
 
           <label className="flex cursor-pointer items-center gap-2.5 text-sm font-medium text-ink-700">
             <input type="checkbox" checked={form.mandatory} onChange={(e) => setForm({ ...form, mandatory: e.target.checked })} />
@@ -220,8 +219,7 @@ export default function Courses() {
           </Field>
 
           {/* Thumbnail (YouTube-style course card art) */}
-          <div>
-            <label className="label">Thumbnail (optional)</label>
+          <Field label="Thumbnail (optional)">
             <div className="flex items-center gap-3">
               <div className="w-40 shrink-0"><CourseThumb course={form} /></div>
               <div className="flex flex-col gap-1.5">
@@ -238,11 +236,11 @@ export default function Courses() {
               </div>
               <input ref={thumbRef} type="file" accept="image/*" className="hidden" onChange={onThumb} />
             </div>
-          </div>
+          </Field>
 
           {/* Learning material shown to employees in My Learning */}
           <div>
-            <label className="label">Learning material (optional)</label>
+            <span className="label">Learning material (optional)</span>
             {(form.content || []).length > 0 && (
               <div className="mb-2 flex flex-wrap gap-1.5">
                 {form.content.map((c) => (

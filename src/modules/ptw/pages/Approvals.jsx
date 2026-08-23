@@ -4,6 +4,7 @@ import { ClipboardCheck, MapPin, ChevronRight, Clock, Lock, TimerReset } from 'l
 import { PageHeader, EmptyState } from '../components/ui'
 import StatusBadge from '../components/StatusBadge'
 import { usePermits } from '../context/PermitContext'
+import { readableOnTint } from '../../../shared/lib/contrast'
 
 const fmt = (iso) => {
   if (!iso) return '—'
@@ -61,7 +62,7 @@ export default function Approvals() {
                   <span className="inline-flex items-center gap-1"><MapPin size={12} /> {p.jobLocation || '—'}</span>
                   <span>Valid {fmt(p.validFrom)}</span>
                 </div>
-                <div className="mt-3 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold" style={{ backgroundColor: `${kind.color}1a`, color: kind.color }}>
+                <div className="mt-3 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold" style={{ backgroundColor: `${kind.color}1a`, color: readableOnTint(kind.color) }}>
                   <Icon size={13} /> {kind.label} needed
                 </div>
               </motion.button>

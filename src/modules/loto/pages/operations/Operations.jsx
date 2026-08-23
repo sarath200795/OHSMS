@@ -75,6 +75,7 @@ export default function Operations() {
               <Card key={p.id} animate={false} className="!p-0">
                 <button
                   onClick={() => navigate(`/loto/operations/${p.id}`)}
+                  aria-label={`Open operations for ${p.equipment} at ${p.site}, procedure ${p.procedureCode} — ${lm.label}, ${p.lockSummary?.lockedCount || 0} of ${p.lockSummary?.total || 0} points locked`}
                   className="flex w-full items-center justify-between gap-3 p-5 text-left"
                 >
                   <div className="min-w-0">

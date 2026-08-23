@@ -20,6 +20,7 @@ import { useAccessibleSites } from '../../../shared/org/useAccessibleSites'
 import { emptyFilters, applyListFilters, hasActiveFilters } from '../lib/listFilter'
 import { CATEGORY_LIST, PHYSICAL_DEFECT_KEYS } from '../lib/constants'
 import { safeHref } from '../../../shared/safeUrl'
+import { readableOnTint, solidBackground } from '../../../shared/lib/contrast'
 
 export default function Repository() {
   const { org, extinguishers, loading, capped, loadCap } = useFleet()
@@ -215,7 +216,7 @@ ${linkPlan.unmatched.length} unit(s) across ${linkPlan.unmatchedCenters.length} 
                 key={c.key}
                 onClick={() => toggleCat(c.key)}
                 className="chip transition"
-                style={on ? { backgroundColor: c.color, color: '#fff' } : { backgroundColor: `${c.color}1a`, color: c.color }}
+                style={on ? { backgroundColor: solidBackground(c.color), color: '#fff' } : { backgroundColor: `${c.color}1a`, color: readableOnTint(c.color) }}
               >
                 <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: on ? '#fff' : c.color }} />
                 {c.label}
@@ -225,7 +226,7 @@ ${linkPlan.unmatched.length} unit(s) across ${linkPlan.unmatchedCenters.length} 
           {issueCount > 0 && (
             <button
               onClick={() => setOnlyIssues((v) => !v)}
-              className={`chip transition ${onlyIssues ? 'bg-amber-500 text-white' : 'bg-amber-100 text-amber-700 hover:bg-amber-200'}`}
+              className={`chip transition ${onlyIssues ? 'bg-amber-700 text-white' : 'bg-amber-100 text-amber-700 hover:bg-amber-200'}`}
               title="Units with a missing or invalid refill/HPT date"
             >
               <CalendarX size={13} /> Date issues ({issueCount})
@@ -284,7 +285,7 @@ ${linkPlan.unmatched.length} unit(s) across ${linkPlan.unmatchedCenters.length} 
               return (
                 <>
                   {needsQuote && (
-                    <button className="btn bg-cyan-600 px-2.5 py-1.5 text-xs text-white hover:bg-cyan-700" onClick={() => setQuoteFor(ext)} title="Submit a vendor quotation before this can move forward">
+                    <button className="btn bg-cyan-700 px-2.5 py-1.5 text-xs text-white hover:bg-cyan-800" onClick={() => setQuoteFor(ext)} title="Submit a vendor quotation before this can move forward">
                       <FileText size={14} /> Submit quotation
                     </button>
                   )}

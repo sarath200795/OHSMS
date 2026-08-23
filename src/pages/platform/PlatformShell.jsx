@@ -45,7 +45,7 @@ export default function PlatformShell({ children }) {
         </button>
       </header>
 
-      <main className="mx-auto max-w-[1180px] px-5 pb-24 pt-6 sm:px-7">
+      <main id="main" tabIndex={-1} className="mx-auto max-w-[1180px] px-5 pb-24 pt-6 sm:px-7">
         <ErrorBoundary>{children}</ErrorBoundary>
       </main>
     </div>

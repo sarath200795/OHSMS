@@ -220,8 +220,7 @@ export default function Sessions() {
             </Select>
           </Field>
 
-          <div>
-            <label className="label">Where does it run?</label>
+          <Field label="Where does it run?">
             <div className="grid grid-cols-2 gap-2">
               {SESSION_MODES.map((m) => (
                 <button
@@ -236,7 +235,7 @@ export default function Sessions() {
                 </button>
               ))}
             </div>
-          </div>
+          </Field>
 
           {form.mode === 'online' ? (
             <Field label="Meeting link *" htmlFor="slink" hint="Teams, Meet or Zoom — employees join from here">

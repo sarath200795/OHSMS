@@ -16,6 +16,7 @@ import { summariseDefectsBySite } from '../lib/siteDefectSummary'
 import { deriveStatus, hasQuotation } from '../lib/extinguisherLogic'
 import { DEFECT_BY_KEY, PHYSICAL_DEFECT_KEYS } from '../lib/constants'
 import { safeHref } from '../../../shared/safeUrl'
+import { readableOnTint } from '../../../shared/lib/contrast'
 
 export default function PhysicalDefects() {
   const { physicalDefects, siteInventory, loading } = useFleet()
@@ -93,7 +94,7 @@ export default function PhysicalDefects() {
                   <CheckCircle2 size={14} /> Resolve
                 </button>
               ) : (
-                <button className="btn bg-cyan-600 px-2.5 py-1.5 text-xs text-white hover:bg-cyan-700" onClick={() => setQuoteFor(ext)} title="Submit a vendor quotation before resolving">
+                <button className="btn bg-cyan-700 px-2.5 py-1.5 text-xs text-white hover:bg-cyan-800" onClick={() => setQuoteFor(ext)} title="Submit a vendor quotation before resolving">
                   <FileText size={14} /> Submit quotation
                 </button>
               )}
@@ -144,7 +145,7 @@ export default function PhysicalDefects() {
             </p>
             <div className="mt-3 flex flex-wrap gap-1.5">
               {physical(resolving).map((k) => (
-                <span key={k} className="chip" style={{ backgroundColor: `${DEFECT_BY_KEY[k].color}1a`, color: DEFECT_BY_KEY[k].color }}>
+                <span key={k} className="chip" style={{ backgroundColor: `${DEFECT_BY_KEY[k].color}1a`, color: readableOnTint(DEFECT_BY_KEY[k].color) }}>
                   {DEFECT_BY_KEY[k].label}
                 </span>
               ))}

@@ -221,15 +221,14 @@ export default function Records() {
             label="Employees *"
           />
 
-          <div>
-            <label className="label">Site scope</label>
+          <Field label="Site scope">
             <SiteScopePicker
               module="training"
               sites={siteInventory}
               value={form}
               onChange={(v) => setForm((p) => ({ ...p, ...v }))}
             />
-          </div>
+          </Field>
 
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Trainer (optional)" htmlFor="rtrainer">

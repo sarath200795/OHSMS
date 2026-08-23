@@ -14,6 +14,12 @@ import { can, roleLabel } from '../../shared/auth/permissions'
 import {
   PageHeader, Button, Modal, Field, Input, Select, SkeletonTable, EmptyState, Badge, StatCard,
 } from '../../shared/ui'
+// This page used to declare its own IncompleteNotice — same amber panel, same
+// role="status", a different prop name (`notice` rather than `incomplete`) and
+// a different sentence ("These counts are incomplete" vs "These figures are
+// incomplete"). Two answers to one question, and the divergence was invisible
+// because the two are 700 lines apart in different files.
+import IncompleteNotice from '../../shared/ui/IncompleteNotice'
 import { initials } from '../../shared/lib/format'
 import { regionsOf, entitiesOf } from '../../shared/auth/access'
 import { normalizeScopeConfig } from '../../shared/org/scopeConfig'
@@ -28,24 +34,6 @@ const EMPTY = { name: '', region: '', entity: '', address: '', lat: '', lng: '',
 
 // The asset registers behind every per-site rollup on this page.
 const COLLECTIONS = ['extinguishers', 'aeds', 'fas', 'incidents']
-
-/**
- * Says that a rollup on this screen is short. Rendered wherever a number built
- * from the capped registers appears — the page, the site summary and the delete
- * confirmation each stand alone, and a warning only on the page behind a modal
- * is a warning the reader of that modal never sees.
- */
-function IncompleteNotice({ notice, className = '' }) {
-  if (!notice) return null
-  return (
-    <div role="status" className={`flex items-start gap-2.5 rounded-2xl bg-amber-50 px-4 py-3 ${className}`}>
-      <AlertTriangle size={16} className="mt-0.5 flex-none text-amber-700" />
-      <p className="text-[12.5px] leading-relaxed text-amber-900">
-        <b>These counts are incomplete.</b> {notice.message}
-      </p>
-    </div>
-  )
-}
 
 export default function Sites() {
   const { orgId, actor, role, org } = useAuth()
@@ -302,7 +290,7 @@ export default function Sites() {
         }
       />
 
-      <IncompleteNotice notice={store.incomplete} className="mb-4 shadow-clay-sm" />
+      <IncompleteNotice incomplete={store.incomplete} className="mb-4 shadow-clay-sm" />
 
       {/* Tabs */}
       <div className="mb-5 flex gap-1.5 border-b border-ink-100 pb-3">
@@ -361,16 +349,17 @@ export default function Sites() {
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-400" />
             <Input
               className="!py-2 pl-9"
+              aria-label="Search sites"
               placeholder="Search sites…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          <Select className="!py-2 sm:!w-44" value={regionFilter} onChange={(e) => setRegionFilter(e.target.value)}>
+          <Select aria-label="Filter by region" className="!py-2 sm:!w-44" value={regionFilter} onChange={(e) => setRegionFilter(e.target.value)}>
             <option value="">All regions</option>
             {regionOptions.map((r) => <option key={r} value={r}>{r}</option>)}
           </Select>
-          <Select className="!py-2 sm:!w-52" value={entityFilter} onChange={(e) => setEntityFilter(e.target.value)}>
+          <Select aria-label="Filter by entity" className="!py-2 sm:!w-52" value={entityFilter} onChange={(e) => setEntityFilter(e.target.value)}>
             <option value="">All entities</option>
             {entityOptions.map((en) => <option key={en} value={en}>{en}</option>)}
           </Select>
@@ -536,7 +525,7 @@ export default function Sites() {
       >
         {selected && stats && (
           <div className="space-y-5">
-            <IncompleteNotice notice={store.incomplete} />
+            <IncompleteNotice incomplete={store.incomplete} />
 
             {/* Equipment + safety KPIs */}
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -745,7 +734,7 @@ export default function Sites() {
               capped or failed to load, the linked-records tally can read zero
               for sites that do have records, and this is the only thing that
               would tell you. */}
-          <IncompleteNotice notice={store.incomplete} />
+          <IncompleteNotice incomplete={store.incomplete} />
 
           {(pickedImpact.extinguishers + pickedImpact.aeds + pickedImpact.fas + pickedImpact.incidents + pickedImpact.users) > 0 && (
             <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">

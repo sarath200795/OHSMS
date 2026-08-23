@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useId, useMemo } from 'react'
 import { useAuth } from '../auth/AuthContext'
 import { moduleLevels, defaultLevels, siteLevelValue, distinctSiteValues, SITE_LEVEL_KEY } from './scopeConfig'
 
@@ -21,6 +21,15 @@ export default function SiteScopePicker({
   module: moduleKey,
 }) {
   const { org } = useAuth()
+
+  // One prefix per mounted picker, suffixed by level key. These labels sat
+  // beside their selects with nothing joining them, and because the label text
+  // is an expression — {lv.label} — no static rule reports it, so it survived
+  // every lint pass. This component is mounted by six modules, which is how one
+  // unattached label became several dozen unnamed dropdowns: a permit form read
+  // as "combo box, combo box, combo box" with no way to tell region from site.
+  const uid = useId()
+  const fieldId = (key) => `${uid}-${key}`
 
   const levels = useMemo(() => {
     if (levelsProp && levelsProp.length) return levelsProp
@@ -69,8 +78,8 @@ export default function SiteScopePicker({
           const siteList = filteredUpTo(i)
           return (
             <div key={lv.key}>
-              <label className="label">{lv.label}</label>
-              <select className="input" disabled={disabled} value={value.siteId || ''} onChange={(e) => setSite(e.target.value)}>
+              <label className="label" htmlFor={fieldId(lv.key)}>{lv.label}</label>
+              <select id={fieldId(lv.key)} className="input" disabled={disabled} value={value.siteId || ''} onChange={(e) => setSite(e.target.value)}>
                 <option value="">{siteList.length ? 'Select site…' : 'No sites you can access'}</option>
                 {siteList.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
@@ -84,8 +93,8 @@ export default function SiteScopePicker({
         const opts = [...predefined, ...siteVals.filter((v) => !predefined.includes(v))]
         return (
           <div key={lv.key}>
-            <label className="label">{lv.label}</label>
-            <select className="input" disabled={disabled} value={value[lv.key] || ''} onChange={(e) => setLevel(i, e.target.value)}>
+            <label className="label" htmlFor={fieldId(lv.key)}>{lv.label}</label>
+            <select id={fieldId(lv.key)} className="input" disabled={disabled} value={value[lv.key] || ''} onChange={(e) => setLevel(i, e.target.value)}>
               <option value="">{opts.length ? `Select ${lv.label.toLowerCase()}…` : `No ${lv.label.toLowerCase()}`}</option>
               {opts.map((o) => <option key={o} value={o}>{o}</option>)}
             </select>

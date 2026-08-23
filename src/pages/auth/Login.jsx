@@ -135,6 +135,11 @@ export default function Login() {
               // Not type="number": it strips leading zeros and shows spinners.
               inputMode="numeric"
               autoComplete="one-time-code"
+              // The password step has just been submitted and this field replaced
+              // it. Without focus the screen reader stays where the old form was
+              // and the user is told nothing about what is now being asked of
+              // them. See the no-autofocus note in eslint.config.js.
+              // eslint-disable-next-line jsx-a11y/no-autofocus
               autoFocus
               maxLength={7}
               required

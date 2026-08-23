@@ -1,20 +1,11 @@
 import { useEffect, useState } from 'react'
 import { Save, Hash } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { Modal, Spinner } from './ui'
+import { Modal, Spinner, Field } from './ui'
 import { updateExtinguisher } from '../lib/firestore'
 import { TYPES, CAPACITIES } from '../lib/constants'
 import { useAccessibleSites } from '../../../shared/org/useAccessibleSites'
 import SiteScopePicker from '../../../shared/org/SiteScopePicker'
-
-function Field({ label, children }) {
-  return (
-    <div>
-      <label className="label">{label}</label>
-      {children}
-    </div>
-  )
-}
 
 /**
  * Edit an existing extinguisher's spec/dates. Serial No is read-only (it's the
@@ -74,13 +65,12 @@ export default function EditExtinguisherModal({ open, onClose, ext, orgId, orgNa
 
   return (
     <Modal open={open} onClose={onClose} title="Edit extinguisher" maxWidth="max-w-2xl">
-      <div className="mb-4">
-        <label className="label">Serial No (read-only)</label>
+      <Field label="Serial No (read-only)" className="mb-4">
         <div className="relative">
           <Hash size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-400" />
           <input className="input pl-9 text-ink-500" value={ext.serialNo || '—'} readOnly disabled />
         </div>
-      </div>
+      </Field>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Type">

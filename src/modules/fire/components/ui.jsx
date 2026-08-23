@@ -9,4 +9,14 @@
 // ModuleLoading replaced it, and keeping a second one meant two answers to
 // 'what does this app look like while it is loading'.
 
-export { Spinner, Badge, EmptyState, Modal, PageHeader } from '../../../shared/ui'
+// Field is here for the same reason as the rest. Eight files in this module
+// each declared their own
+//   function Field({ label, children }) {
+//     return <div><label className="label">{label}</label>{children}</div>
+//   }
+// — the same four lines, eight times, and every one of them rendered a <label>
+// with no htmlFor beside a control with no id. So the label was on screen and
+// attached to nothing: a screen reader read the Add Extinguisher form as eight
+// unnamed boxes. The shared Field generates the id and puts it on the child, so
+// deleting those eight copies is the fix, not just tidying.
+export { Spinner, Badge, EmptyState, Modal, PageHeader, Field, IconButton } from '../../../shared/ui'
