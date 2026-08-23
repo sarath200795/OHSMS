@@ -153,6 +153,17 @@ jobs:
           distribution: temurin
           java-version: 17
 
+      # The ROOT install is not redundant. `npm test` here is unit + attack, and
+      # the attack half shells out to `firebase emulators:exec` — firebase-tools
+      # is a root devDependency, not one of server's, and npm puts every
+      # ancestor node_modules/.bin on PATH. That is why this passes on a laptop
+      # with no root install step in sight, and why the job needs one.
+      #
+      # server/package.json already reaches up for ../firebase.servertest.json,
+      # so the coupling to the repo root is the design, not an accident here.
+      - name: Install (root, for the firebase CLI)
+        run: npm ci
+
       - name: Install
         working-directory: server
         run: npm ci
