@@ -24,6 +24,7 @@ import DeptPersonPicker from '../../../shared/org/DeptPersonPicker'
 import { subscribeContacts as subscribeErpContacts } from '../../emergency/lib/firestore'
 import { safeSrc } from '../../../shared/safeUrl'
 import IncompleteNotice from '../../../shared/ui/IncompleteNotice'
+import { isFutureDate, todayISO } from '../../../shared/lib/dates'
 
 const nowTime = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
 const today = () => new Date().toISOString().slice(0, 10)
@@ -162,6 +163,10 @@ export default function MockDrills() {
 
   const submit = async () => {
     if (!form.centerName.trim()) return toast.error('Site is required')
+    // A drill is a record of one that was RUN. Dating it ahead turns a plan
+    // into evidence of a completed drill, which is the compliance figure this
+    // module exists to report.
+    if (isFutureDate(form.date)) return toast.error('The drill date cannot be in the future')
     if (commanders.length === 0) return toast.error('Add at least one incident commander')
     if (scenario.title === 'Fire Emergency' && !form.fireSource) return toast.error('Select the source of fire')
     if (scenario.title === 'Medical Emergency' && !form.medicalIncidentType) return toast.error('Select the medical incident type')
@@ -370,7 +375,7 @@ export default function MockDrills() {
               <Field label="Outcome">
                 <select className="input" value={form.outcome} onChange={set('outcome')}>{DRILL_OUTCOMES.map((o) => <option key={o}>{o}</option>)}</select>
               </Field>
-              <Field label="Date"><input type="date" className="input" value={form.date} onChange={set('date')} /></Field>
+              <Field label="Date"><input type="date" className="input" max={todayISO()} value={form.date} onChange={set('date')} /></Field>
               <Field label="Time"><input type="time" className="input" value={form.time} onChange={set('time')} /></Field>
               <Field label="Head count"><input type="number" min={0} className="input" value={form.headCount} onChange={set('headCount')} /></Field>
               <Field label="Evacuation time (min)"><input type="number" min={0} className="input" value={form.evacTimeMin} onChange={set('evacTimeMin')} /></Field>

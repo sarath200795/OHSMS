@@ -21,6 +21,7 @@ import { Pager } from '../../../shared/ui';
 import { usePagination } from '../../../shared/ui/usePagination';
 import Logo from '../components/Logo';
 import LogoLoader from '../components/LogoLoader';
+import { isFutureDate, todayISO } from '../../../shared/lib/dates';
 import {
     subscribeSites,
     subscribeOrgUsers,
@@ -414,6 +415,9 @@ export default function Consultation() {
     const saveRecord = async () => {
         if (!canEditForm) return toast.error("You do not have permission to edit records.");
         if (!formData.subject) return toast.error("Subject is required.");
+        // Minutes record a meeting that HAS taken place. A future date files
+        // an unheld meeting as held, with its attendees and its actions.
+        if (isFutureDate(formData.date)) return toast.error("The meeting date cannot be in the future.");
         if (scopeHasSite && !formData.siteId) return toast.error("Site is required.");
 
         setSaving(true);
@@ -880,7 +884,7 @@ export default function Consultation() {
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
                                         <label htmlFor="consult-date" className="text-[10px] uppercase font-bold text-ink-400 block mb-2 tracking-widest ml-1">Date</label>
-                                        <input id="consult-date" type="date" value={formData.date} onChange={e => setFormData({ ...formData, date: e.target.value })} disabled={!canEditForm} className="w-full bg-clay-surface border border-clay-200 p-3.5 rounded-xl text-sm text-ink-900 outline-none shadow-inner font-mono transition-colors focus:border-green-500" />
+                                        <input id="consult-date" type="date" max={todayISO()} value={formData.date} onChange={e => setFormData({ ...formData, date: e.target.value })} disabled={!canEditForm} className="w-full bg-clay-surface border border-clay-200 p-3.5 rounded-xl text-sm text-ink-900 outline-none shadow-inner font-mono transition-colors focus:border-green-500" />
                                     </div>
                                     <div>
                                         <label htmlFor="consult-time" className="text-[10px] uppercase font-bold text-ink-400 block mb-2 tracking-widest ml-1">Time</label>

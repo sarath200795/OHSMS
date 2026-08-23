@@ -10,6 +10,7 @@ import ActionEditor from '../components/ActionEditor'
 import IllnessReportDoc from '../components/IllnessReportDoc'
 import { useAuth } from '../context/AuthContext'
 import { useIncidents } from '../context/IncidentContext'
+import { isFutureDate } from '../../../shared/lib/dates'
 import {
   createIllness, updateIllness, getIllness, closeIllness,
   subscribeIllnessFiles, addIllnessFile, deleteIllnessFile,
@@ -74,6 +75,10 @@ export default function IllnessWizard() {
 
   const saveInitial = async () => {
     if (!draft.exposedToAgent) return toast.error('Select the agent exposed to')
+    // A recorded illness has already been identified; a future date is a typo
+    // or a wrong device clock, and it reaches the register and the exports as
+    // a real case on a day that has not happened.
+    if (isFutureDate(draft.date)) return toast.error('The illness date cannot be in the future')
     if ((draft.affectedPersonnel || []).length === 0) return toast.error('Add at least one affected person')
     setSaving(true)
     try {

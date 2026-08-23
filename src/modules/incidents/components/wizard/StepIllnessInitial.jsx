@@ -5,6 +5,7 @@ import FileUploader from '../FileUploader'
 import { HSE_HEALTH_AGENTS, PPE_OPTIONS } from '../../lib/constants'
 import SiteScopePicker from '../../../../shared/org/SiteScopePicker'
 import { Field } from '../ui'
+import { todayISO } from '../../../../shared/lib/dates'
 
 function FieldLabel({ icon: Icon, children }) {
   return <label className="label flex items-center gap-1.5"><Icon size={13} /> {children}</label>
@@ -44,7 +45,7 @@ export default function StepIllnessInitial({ value, onChange, users, incidents =
       <div className="card grid grid-cols-1 gap-4 p-6 sm:grid-cols-2">
         <div>
           <FieldLabel icon={Calendar}>Date</FieldLabel>
-          <input type="date" className="input" value={value.date || ''} onChange={(e) => set({ date: e.target.value })} />
+          <input type="date" className="input" max={todayISO()} value={value.date || ''} onChange={(e) => set({ date: e.target.value })} />
         </div>
         <div>
           <FieldLabel icon={Clock}>Time</FieldLabel>
