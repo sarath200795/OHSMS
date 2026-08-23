@@ -18,10 +18,6 @@ export const ROLE_OPTIONS = [
   { value: ROLES.TECHNICIAN, label: 'Technician', color: '#64748b', hint: 'Create permits only' },
 ]
 
-export function roleMeta(role) {
-  return ROLE_OPTIONS.find((r) => r.value === role) || { value: role, label: role || 'User', color: '#64748b', hint: '' }
-}
-
 // The two approving teams. Admin can act on behalf of either.
 export const TEAMS = { ENGINEERING: 'engineering', OPERATIONS: 'operations' }
 

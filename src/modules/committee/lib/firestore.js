@@ -15,6 +15,7 @@ import {
 import { db } from '../../../shared/firebase'
 import { isSessionEnd } from '../../../shared/sessionEnd'
 import { reserveDocId } from '../../../shared/docId/reserve'
+import { orgIndexRef } from '../../../shared/org/orgData'
 // Minutes name people and record what was said about them, so the subject, the
 // body, the attendee list and the action owners are sealed under the GENERAL
 // class — every approved member may read a meeting record, so the key follows.
@@ -30,8 +31,8 @@ const consultationCol = (orgId) => collection(db, 'organizations', orgId, 'consu
 const consultationRef = (orgId, id) => doc(db, 'organizations', orgId, 'consultations', id)
 // Public, minimal name→org index so signup can look up an org by name WITHOUT
 // reading the (member-only) organizations collection.
-const orgIndexKey = (name) => (name || '').trim().toLowerCase()
-const orgIndexRef = (name) => doc(db, 'orgIndex', orgIndexKey(name))
+// orgIndexRef comes from shared/org/orgData — this file used to carry a
+// byte-identical private copy.
 
 // ── Organizations & users ─────────────────────────────────────────────────────
 

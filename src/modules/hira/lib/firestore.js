@@ -45,11 +45,6 @@ export function subscribeOrg(orgId, cb, onError) {
   return onSnapshot(orgRef(orgId), (snap) => cb(snap.exists() ? { id: snap.id, ...snap.data() } : null), onError || onSnapErr('org'))
 }
 
-/** Replace the org's list of sites/facilities. */
-export async function updateOrgSites(orgId, sites) {
-  await updateDoc(orgRef(orgId), { sites })
-}
-
 // ── Activity log (append-only audit trail) ────────────────────────────────────
 const activityCol = (orgId) => collection(db, 'organizations', orgId, 'activity')
 

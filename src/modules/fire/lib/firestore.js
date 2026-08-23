@@ -44,6 +44,7 @@ import { putFile, removeFile, MAX_INLINE_BYTES, tooLargeForInline } from '../../
 import { reserveDocId } from '../../../shared/docId/reserve'
 import { reportError } from '../../../shared/monitoring'
 import { AUDIT, diffSummary } from './audit'
+import { logAudit as logOrgAudit, auditCol, orgIndexRef } from '../../../shared/org/orgData'
 import { hptUpdate, hptSummary } from './hpt'
 import { statsDeltaFor, accumulate } from './stats'
 // Mock drills name the incident commander, the people alerted, and what the
@@ -66,7 +67,6 @@ const reportRef = (orgId, id) => doc(db, 'organizations', orgId, 'reports', id)
 const defectLockRef = (orgId, extId, defectType) =>
   doc(db, 'organizations', orgId, 'defectLocks', lockId(extId, defectType))
 const qrRef = (token) => doc(db, 'qr', token)
-const auditCol = (orgId) => collection(db, 'organizations', orgId, 'auditLogs')
 const statsRef = (orgId) => doc(db, 'organizations', orgId, 'meta', 'stats')
 const signageCol = (orgId) => collection(db, 'organizations', orgId, 'signages')
 const signageRef = (orgId, id) => doc(db, 'organizations', orgId, 'signages', id)
@@ -79,32 +79,17 @@ const fasRef = (orgId, id) => doc(db, 'organizations', orgId, 'fas', id)
 // Mock-drill evidence photos live in a per-drill subcollection (one doc each, ≤~700 KB)
 // so the live drill list never carries the image blobs.
 const drillPhotoCol = (orgId, drillId) => collection(db, 'organizations', orgId, 'mockDrills', drillId, 'photos')
-// Public, minimal name→org index so signup can look up an org by name WITHOUT
-// reading the (member-only) organizations collection.
-const orgIndexKey = (name) => (name || '').trim().toLowerCase()
-const orgIndexRef = (name) => doc(db, 'orgIndex', orgIndexKey(name))
 
 // ── Audit log ──────────────────────────────────────────────────────────────────
-// Append-only trail. Never let an audit failure break the primary write.
-async function logAudit(orgId, actor, action, details = {}) {
-  if (!orgId) return
-  try {
-    await addDoc(auditCol(orgId), {
-      at: serverTimestamp(),
-      actorUid: actor?.uid || null,
-      actorName: actor?.name || 'Unknown',
-      action,
-      target: details.target || 'extinguisher',
-      targetId: details.targetId || null,
-      targetLabel: details.targetLabel || '',
-      summary: details.summary || '',
-      source: details.source || 'portal',
-    })
-  } catch (e) {
-    // eslint-disable-next-line no-console
-    console.warn('[Fire Marshal] audit log failed:', e?.message || e)
-  }
-}
+// The trail is written by ONE implementation, in shared/org/orgData. This
+// wrapper adds only what is specific to this module.
+//
+// The private copy it replaces omitted `module`, and Admin → Audit Log renders
+// MODULE_BY_KEY[l.module] — so every entry the fleet wrote displayed as "Core",
+// and the log could not be filtered back to the module that produced it. Drill
+// writes pass module: 'drills' at the call site; this file serves both keys.
+const logAudit = (orgId, actor, action, details = {}) =>
+  logOrgAudit(orgId, actor, action, { module: 'equipment', target: 'extinguisher', ...details })
 
 export function subscribeAuditLogs(orgId, cb) {
   const q = query(auditCol(orgId), orderBy('at', 'desc'), limit(200))
@@ -976,6 +961,7 @@ export async function addMockDrill(orgId, data, actor) {
       : await sealDoc(orgId, SEALED_DRILL_PHOTOS, { dataUrl, createdAt: serverTimestamp() }))
   }
   await logAudit(orgId, actor, 'mockdrill.create', {
+    module: 'drills',
     target: 'mockdrill',
     targetId: ref.id,
     targetLabel: `${data.scenario} @ ${data.centerName || '—'}`,
@@ -1025,7 +1011,7 @@ export async function deleteMockDrill(orgId, id, actor, label) {
     console.warn('[Fire Marshal] drill photo cleanup skipped:', e?.message || e)
   }
   await deleteDoc(drillRef(orgId, id))
-  await logAudit(orgId, actor, 'mockdrill.delete', { target: 'mockdrill', targetId: id, targetLabel: label || '' })
+  await logAudit(orgId, actor, 'mockdrill.delete', { module: 'drills', target: 'mockdrill', targetId: id, targetLabel: label || '' })
 }
 
 // ── AED (Automated External Defibrillator) inventory (org-scoped) ──────────────

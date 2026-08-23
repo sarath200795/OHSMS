@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { Upload, X, FileText, Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { readFileAsDataUrl } from '../lib/fileToDataUrl'
+import { readFileAsDataUrl } from '../../../shared/lib/files'
 import { MAX_FILE_BYTES } from '../lib/constants'
 import { safeSrc } from '../../../shared/safeUrl'
 

@@ -9,6 +9,7 @@ import {
   PROVISION_ROLES, provisionEmployee, provisionEmployees,
   parseEmployeesCsv, EMPLOYEES_CSV_TEMPLATE,
 } from '../../shared/auth/provisioning'
+import { downloadText } from '../../shared/lib/download'
 
 const EMPTY = { name: '', email: '', role: 'member', department: '' }
 
@@ -115,13 +116,7 @@ export default function EmployeeProvisioning({ orgId, orgName, actor, existingEm
   }
 
   const downloadTemplate = () => {
-    const blob = new Blob([EMPLOYEES_CSV_TEMPLATE], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'employees-template.csv'
-    a.click()
-    URL.revokeObjectURL(url)
+    downloadText(EMPLOYEES_CSV_TEMPLATE, 'employees-template.csv', { bom: false })
   }
 
   const runBulk = async () => {

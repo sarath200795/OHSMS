@@ -345,7 +345,10 @@ service cloud.firestore {
     //
     // This is not a rate limit — rules cannot count requests. It bounds WHO can
     // write and WHAT they can touch, not how often. App Check is what bounds
-    // volume, and it is still a console toggle away (docs/PRODUCTION.md §1).
+    // volume, and it is ENFORCED (docs/PRODUCTION.md §1). Read that as a
+    // division of labour rather than belt-and-braces: nothing below here will
+    // ever stop the same valid write arriving a million times, so if App Check
+    // is ever turned off, these surfaces lose their only volume control.
     function hasToken(data) {
       return data.keys().hasAll(['token']) && data.token is string && data.token.size() > 0;
     }
@@ -857,7 +860,9 @@ service cloud.firestore {
       // create is allowed, but only in the exact shape the QR page produces:
       // a pending defect report that an approver must still accept. It cannot
       // be used to write an approved record, change status, or edit anything.
-      // Note this is a public write surface; enable App Check to stop abuse.
+      // Note this is a public write surface. App Check is enforced and is what
+      // bounds the volume of abuse; the shape constraints below are what bound
+      // its reach.
       // hasOnly matters more here than anywhere else: this rule validated a
       // handful of named fields but never the key SET, so an anonymous writer
       // could attach anything else they liked and fill a document to Firestore's
@@ -949,7 +954,9 @@ service cloud.firestore {
       // that here would put a stop-work button on a token printed on a sheet of
       // paper, so the scan reports and a person decides.
       //
-      // Note this is a public write surface; enable App Check to stop abuse.
+      // Note this is a public write surface. App Check is enforced and is what
+      // bounds the volume of abuse; the shape constraints below are what bound
+      // its reach.
       // Same two gaps as /reports, closed the same way: the key set was never
       // constrained, and the permit being observed was a string the writer
       // invented in a tenant they chose by editing the path.
@@ -1137,6 +1144,56 @@ service cloud.firestore {
         allow read: if false;
       }
 
+    // ── The generic collection gate, in one place ────────────────────────────
+    //
+    // Below, `match /{col}/{docId}` and its nested `match /{sub=**}` both grant
+    // the same three operations, and the exclusion list for each was written
+    // out INLINE IN BOTH — eight copies of a conjunct chain that has to agree
+    // with itself to mean anything.
+    //
+    // It had already stopped agreeing. `delete` excluded auditLogs and docSeq
+    // but not defectLocks, while `read` and `create/update` excluded all three;
+    // defectLocks survived only because its own match block above grants the
+    // delete separately. That is the failure mode of a list kept in eight
+    // places: not a dramatic hole, a quiet asymmetry nobody can see because the
+    // two copies are forty lines apart.
+    //
+    // These two functions ARE that list. Write and delete share one predicate
+    // because they exclude the same set; read adds to it. The difference is
+    // deliberate and load-bearing, so it is stated rather than left to be
+    // inferred by diffing two long lines:
+    //
+    //   structural   auditLogs (append-only), defectLocks (create-only, because
+    //                the create failing on an existing document IS the duplicate
+    //                check) and docSeq (monotonic). A generic write would defeat
+    //                each of those guarantees, so all three are excluded from
+    //                every operation.
+    //   read         structural, PLUS the four confidential collections —
+    //                documents, injuries, illnesses, notifications — each of
+    //                which has its own narrower read rule above.
+    //   write        structural only. The confidential four are deliberately NOT
+    //                excluded: a writer must be able to attach a record they are
+    //                not entitled to read back.
+    //   delete       structural only.
+    //
+    // delete previously omitted defectLocks from its list. Adding it takes away
+    // nothing: the defectLocks block above already grants delete to
+    // isWriterOf(orgId), which is a superset of the isManagerOf(orgId) this
+    // generic rule paired it with. The asymmetry closes without a permission
+    // moving.
+    //
+    // Changing one of these changes both match blocks at once, which is the
+    // entire point. tests/firestore.rules.test.js is what proves it.
+    function structuralOnly(col, docId) {
+      return col != 'auditLogs' && col != 'defectLocks' && col != 'docSeq'
+        && notKeyset(col, docId);
+    }
+    function genericReadable(col, docId) {
+      return structuralOnly(col, docId)
+        && col != 'documents' && col != 'injuries' && col != 'illnesses'
+        && col != 'notifications';
+    }
+
     // A document's classification is enforced on READ and was unprotected on
     // WRITE, so any member who could legitimately reach a restricted document —
     // via their own site access — could publish it org-wide, and any member who
@@ -1187,7 +1244,7 @@ service cloud.firestore {
         //
         // `read` is split out from create/update for one reason: documents are
         // read through the site-scoped rule above and written through this one.
-        allow read: if col != 'auditLogs' && col != 'defectLocks' && col != 'docSeq' && col != 'documents' && col != 'injuries' && col != 'illnesses' && col != 'notifications' && notKeyset(col, docId) && isApprovedMemberOf(orgId);
+        allow read: if genericReadable(col, docId) && isApprovedMemberOf(orgId);
         // The manager gate lives INSIDE this rule rather than in a new match of
         // its own. Rules are a permissive union: a narrow per-collection match
         // restricts nothing while this one still grants the same write, so the
@@ -1199,13 +1256,12 @@ service cloud.firestore {
         // visibility snapshot resolve through it, so renaming or deleting a site
         // reaches much further than the row it edits. `site.manage` is manager
         // in can(); this is that, enforced.
-        allow create, update: if col != 'auditLogs' && col != 'defectLocks' && col != 'docSeq'
-          && notKeyset(col, docId)
+        allow create, update: if structuralOnly(col, docId)
           && isWriterOf(orgId)
           && (isElevatedOf(orgId) || keepsClassification(col))
           && (isManagerOf(orgId)
               || (col != 'sites' && keepsDecision(col, beforeData(), request.resource.data)));
-        allow delete: if col != 'auditLogs' && col != 'docSeq' && notKeyset(col, docId) && isManagerOf(orgId);
+        allow delete: if structuralOnly(col, docId) && isManagerOf(orgId);
 
         // Nested subcollections (e.g. incidents/{id}/photos).
         // The recursive wildcard also matches the parent {col}/{docId} itself, so
@@ -1216,14 +1272,13 @@ service cloud.firestore {
         // and to the manager gate above, which this would otherwise hand back
         // for the parent document of every gated collection.
         match /{sub=**} {
-          allow read: if col != 'auditLogs' && col != 'defectLocks' && col != 'docSeq' && col != 'documents' && col != 'injuries' && col != 'illnesses' && col != 'notifications' && notKeyset(col, docId) && isApprovedMemberOf(orgId);
-          allow create, update: if col != 'auditLogs' && col != 'defectLocks' && col != 'docSeq'
-            && notKeyset(col, docId)
+          allow read: if genericReadable(col, docId) && isApprovedMemberOf(orgId);
+          allow create, update: if structuralOnly(col, docId)
             && isWriterOf(orgId)
             && (isElevatedOf(orgId) || keepsClassification(col))
             && (isManagerOf(orgId)
                 || (col != 'sites' && keepsDecision(col, beforeData(), request.resource.data)));
-          allow delete: if col != 'auditLogs' && col != 'docSeq' && notKeyset(col, docId) && isManagerOf(orgId);
+          allow delete: if structuralOnly(col, docId) && isManagerOf(orgId);
         }
       }
     }

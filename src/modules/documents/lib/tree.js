@@ -70,7 +70,6 @@ export const MAX_NAME = 80
 // never collide with one of the prefixed ids below.
 
 const enc = encodeURIComponent
-const dec = decodeURIComponent
 
 export const ORG_NODE = 'org'
 export const UNFILED_NODE = 'unfiled'
@@ -92,7 +91,6 @@ export const siteNode = (siteId) => `site:${clean(siteId)}`
 export const bucketNode = (siteId, bucket) => `site:${clean(siteId)}/${bucket}`
 
 export const isRegionNode = (id) => String(id || '').startsWith('region:')
-export const regionOfNode = (id) => (isRegionNode(id) ? dec(String(id).slice(7)) : '')
 
 // ── Building the tree ────────────────────────────────────────────────────────
 

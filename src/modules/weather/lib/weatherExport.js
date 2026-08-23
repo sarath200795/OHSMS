@@ -3,6 +3,7 @@
 // with a wind problem, or every site over a rain alert of Medium.
 import * as XLSX from 'xlsx'
 import { BAND_LABEL } from './weatherRisk'
+import { downloadBlob } from '../../../shared/lib/download'
 
 export const WEATHER_COLUMNS = [
   'Site', 'Region', 'Entity', 'Risk', 'Feels Like (°C)', 'Wind (km/h)',
@@ -57,12 +58,5 @@ export function exportWeatherRisk(rows, filename = 'weather-risk.xlsx') {
   XLSX.utils.book_append_sheet(wb, ws, 'Weather Risk')
 
   const out = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
-  const url = URL.createObjectURL(new Blob([out], { type: 'application/octet-stream' }))
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  setTimeout(() => URL.revokeObjectURL(url), 1000)
+  downloadBlob(new Blob([out], { type: 'application/octet-stream' }), filename)
 }

@@ -35,13 +35,6 @@ with no limit. Cost and browser memory grow with tenant size, and the analytics
 page opens eleven of them at once. Fine at current scale; worth capping before a
 tenant with tens of thousands of records arrives.
 
-### S-05 · Console-only hardening not yet applied — MEDIUM
-
-Tracked in `PRODUCTION.md`; listed here so the register is complete. App Check is
-not enforced on the public write surfaces, admin accounts have no MFA, Firestore
-backups are not configured, and the referrer restrictions on the Maps API key
-that ships in the bundle are unverified.
-
 ### S-06 · Deferred dependency advisories — LOW
 
 Re-checked 2026-08-16. The runtime tree (`npm audit --omit=dev`) holds **one
@@ -321,6 +314,29 @@ hits is how both the original finding and its triage went wrong.*
 
 ## Closed
 
+### S-05 · Console-only hardening — CLOSED
+
+Moved to Closed. Recorded here in full because "it is a console toggle" is the
+reason this sat open, and the toggles are not visible from the repository —
+nothing in a diff will ever tell the next reader whether they were flipped.
+
+Applied: **App Check is enforced** on the public write surfaces, **admin MFA
+(TOTP) is enabled**, **application-layer encryption is on**, Firestore backups
+are configured (PITR 7d plus a weekly schedule at 30d retention, `PRODUCTION.md`
+§3), and the API key referrer restrictions are in place (`PRODUCTION.md` §9,
+§9b).
+
+Two things this does NOT close, kept visible on purpose:
+
+- **App Check is the only volume control the anonymous QR surfaces have.**
+  Rules cannot count requests. `/reports`, `/observations` and `/defectLocks`
+  bound who may write and what they may say, never how often. Turning App Check
+  off does not weaken those rules; it removes the only thing standing between a
+  photographed QR sticker and unlimited writes on your bill.
+- **Console state is not under version control.** There is no test, no CI job
+  and no diff that fails if one of these is switched off later. Re-checking them
+  belongs in whatever periodic review this project keeps, not in a code review.
+
 ### S-01 · Cloud Storage was not tenant-isolated — HIGH
 
 `storage.rules` captured `{orgId}` in the path and checked it against nothing.
@@ -539,7 +555,11 @@ first round of URL-scheme validation before binding to `href`/`src`.
 
 ## Testing
 
-`npm run test:rules` — 149 tests against the emulator.
+`npm run test:rules` — **448 tests across 12 files** against the emulator. Needs
+a JDK; the Firestore emulator is a JVM process.
+
+A count in prose goes stale, and this one had: it read 149 for long enough to be
+quoted as a fact in two other documents. Run the suite for the real number.
 
 Two files matter most. `tests/hardening.rules.test.js` covers the write-boundary
 fixes, and `tests/documents.rules.test.js` covers site scoping. Both **list as

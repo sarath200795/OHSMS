@@ -12,7 +12,6 @@ export const INCIDENT_TYPES = [
   { key: 'reportable', label: 'Reportable Injury', color: '#ef4444' },
   { key: 'property_damage', label: 'Property Damage', color: '#a855f7' },
 ]
-export const INCIDENT_TYPE_KEYS = INCIDENT_TYPES.map((t) => t.key)
 export const INCIDENT_TYPE_BY_KEY = Object.fromEntries(INCIDENT_TYPES.map((t) => [t.key, t]))
 // Types that warrant a per-person injury report (everything except near-miss /
 // property damage).
@@ -26,7 +25,6 @@ export const SEVERITY = [
   { key: 'high', label: 'High', color: '#f97316' },
   { key: 'critical', label: 'Critical', color: '#dc2626' },
 ]
-export const SEVERITY_KEYS = SEVERITY.map((s) => s.key)
 export const SEVERITY_BY_KEY = Object.fromEntries(SEVERITY.map((s) => [s.key, s]))
 
 // ── HSE "kind of accident" categories (RIDDOR-aligned) ────────────────────────
@@ -43,7 +41,6 @@ export const HSE_CATEGORIES = [
   { key: 'assault', label: 'Act of Violence / Assault', color: '#9333ea' },
   { key: 'other', label: 'Other', color: '#64748b' },
 ]
-export const HSE_CATEGORY_KEYS = HSE_CATEGORIES.map((c) => c.key)
 export const HSE_CATEGORY_BY_KEY = Object.fromEntries(HSE_CATEGORIES.map((c) => [c.key, c]))
 
 // ── Locations (controlled enum — keeps byLocation stat keys clean) ────────────
@@ -73,7 +70,6 @@ export const LIFECYCLE = [
 export const LIFECYCLE_KEYS = LIFECYCLE.map((l) => l.key)
 export const LIFECYCLE_BY_KEY = Object.fromEntries(LIFECYCLE.map((l) => [l.key, l]))
 // Wizard step order ↔ lifecycle stage the step completes.
-export const STAGE_KEYS = ['initial', 'team', 'investigation', 'capa', 'horizontal']
 
 // ── Action (CAPA + illness corrective) status ─────────────────────────────────
 export const ACTION_STATUS = [
@@ -81,7 +77,6 @@ export const ACTION_STATUS = [
   { key: 'in_progress', label: 'In Progress', color: '#f59e0b' },
   { key: 'closed', label: 'Closed', color: '#22c55e' },
 ]
-export const ACTION_STATUS_KEYS = ACTION_STATUS.map((s) => s.key)
 export const ACTION_STATUS_BY_KEY = Object.fromEntries(ACTION_STATUS.map((s) => [s.key, s]))
 export const ACTION_KINDS = [
   { key: 'corrective', label: 'Corrective' },
@@ -96,11 +91,9 @@ export const INVESTIGATION_METHODS = [
   { key: 'fta', label: 'Fault Tree Analysis', desc: 'Top-down logic gates (AND/OR) to basic events.' },
   { key: 'eta', label: 'Event Tree Analysis', desc: 'Initiating event branching by success/failure.' },
 ]
-export const INVESTIGATION_METHOD_KEYS = INVESTIGATION_METHODS.map((m) => m.key)
 export const INVESTIGATION_METHOD_BY_KEY = Object.fromEntries(INVESTIGATION_METHODS.map((m) => [m.key, m]))
 
 // Fishbone 6M categories.
-export const FISHBONE_CATEGORIES = ['Man', 'Machine', 'Method', 'Material', 'Measurement', 'Environment']
 
 // ── Injury reference ──────────────────────────────────────────────────────────
 export const INJURY_TYPES = [

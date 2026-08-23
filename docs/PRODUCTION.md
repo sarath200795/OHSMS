@@ -745,24 +745,32 @@ Stop using `firebase deploy` from a laptop for anything but emergencies.
 - Composite Firestore indexes: **audited 2026-08-16, complete — no action.**
   See §3b for the method and the standing rule, because the low count in
   `firestore.indexes.json` invites this being raised again as a gap. It is not.
-- Admin accounts have no MFA (email/password only).
+- ~~Admin accounts have no MFA~~ — **closed.** TOTP is enabled in Identity
+  Platform. §1b is still the reference for the order of operations, because
+  enforcing MFA against a client build without the challenge handling locks
+  users out rather than protecting them.
 - LOTO's collections live outside the org tenancy model.
-- Three dependency advisories are knowingly open, so `npm audit` is not expected
-  to come back clean. Check new findings against this list rather than assuming
-  the noise is the usual noise:
-  - **jspdf 2.5.2** (rated critical) and **jspdf-autotable 3.8.4**. The fixes are
-    two major versions up on each and need a migration. Most of the advisories —
-    `AcroForm`/`addJS` arbitrary JS execution, HTML injection, path traversal —
-    are unreachable because the app never calls those APIs. What is reachable is
-    `addImage` in `src/modules/loto/utils/pdf.js`, which takes user-uploaded
-    procedure photos: a crafted BMP/GIF hangs the tab of whoever generates the
-    PDF. Client-side DoS by an authenticated member, not disclosure.
-  - **xlsx 0.18.5**, no fix on npm — SheetJS publishes to its own CDN now. The
-    prototype-pollution sink was tested and is unreachable; the ReDoS is, but
-    only against a workbook the user chose to open in their own browser.
+- Dependency advisories are knowingly open, so `npm audit` is not expected to
+  come back clean. **`docs/SECURITY.md` S-06 is the authority** — it carries the
+  reachability verdict for each one, and duplicating that list here is how the
+  two copies end up disagreeing. This entry existed as a second copy and did:
+  it described jspdf 2.5.2 as an open critical long after the migration to 4.2.1
+  had removed it from the audit entirely.
+
+  What the runbook needs you to know is the shape, not the list:
+  - `scripts/audit-gate.mjs` blocks at **high** on the runtime tree
+    (`--omit=dev`) and allows a **named** list rather than lowering the
+    threshold. Each allowlist entry has to say why it is tolerable and what
+    would close it, and a stale entry is reported.
+  - Moderates are **reported but not blocking**. Read that output — a moderate
+    with `fixAvailable: true` sitting unnoticed is exactly the state the gate
+    exists to prevent, and two of them once went unseen for that reason.
   - `undici` is pinned in `overrides` because Firebase holds it at a vulnerable
     version. It never reaches the browser bundle, so the pin keeps `npm audit`
     readable rather than closing a hole in the shipped app.
+
+  Run `node scripts/audit-gate.mjs` for the current state rather than trusting
+  any prose, here or anywhere else.
 
 ## 9. API key restrictions  ⚠️ console required
 

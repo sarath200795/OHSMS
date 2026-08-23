@@ -99,8 +99,6 @@ export function enrolledFactors(user) {
   }
 }
 
-export const hasMfa = (user) => enrolledFactors(user).length > 0
-
 /**
  * Begin enrolment: returns the shared secret plus the otpauth:// URI that a QR
  * code is drawn from.

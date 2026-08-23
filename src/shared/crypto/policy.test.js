@@ -80,12 +80,18 @@ describe('the table itself', () => {
   it('seals the bytes of every collection that stores files', () => {
     // Setting this on a collection whose read path does not resolve sealed
     // objects renders ciphertext into an <img> — a broken picture in every
-    // gallery and every exported PDF, with nothing on screen to say why. Each
-    // entry here has a read path through shared/storage/resolveFiles.js:
-    //   injuries/records   useFileUrl
+    // gallery and every exported PDF, with nothing on screen to say why.
     //   incidents/photos   subscribeIncidentPhotos
     //   illnesses/files    subscribeIllnessFiles
     //   mockDrills/photos  getMockDrillPhotos
+    //
+    // injuries/records is the exception and is listed separately on purpose:
+    // NOTHING in the client reads those bytes back. Injuries.jsx shows the
+    // COUNT of recordFileIds, not the files, and the reader this comment used
+    // to name (useFileUrl) had already stopped being imported by anything.
+    // Sealing it is still right — the bytes exist and the callable moves them —
+    // but if a screen is ever built to display them, it has to resolve sealed
+    // objects or it will render ciphertext.
     const sealing = Object.keys(POLICY).filter(sealsFiles).sort()
     expect(sealing).toEqual([
       'illnesses/files', 'incidents/photos', 'injuries/records', 'mockDrills/photos',

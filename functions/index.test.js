@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { logger } from 'firebase-functions'
 import { FieldValue } from 'firebase-admin/firestore'
-import { purgeOrgCollection, moveMedicalRecords } from './index.js'
+import { purgeOrgCollection, moveMedicalRecords, assertPathSegment } from './index.js'
 import { PURGEABLE } from './lib/retention.js'
 import { planMedicalRecordMove } from './lib/medicalRecords.js'
 
@@ -510,5 +510,51 @@ describe('moving a medical record out of the photo album', () => {
     ])
     // And it is the last thing that happens, after every record has moved.
     expect(db.log.at(-1)).toBe('update:organizations/orgA/incidents/inc1')
+  })
+})
+
+// ── Path segments ──────────────────────────────────────────────────
+// exportSubjectData takes a uid from the caller and builds `users/{uid}` from
+// it. A slash inside that value silently addresses a different document, so
+// the tenancy check made about the uid stops describing what the queries then
+// read. Read-only, and the org comparison still contains it — but the id no
+// longer names the person the permission was granted for.
+describe('validating a caller-supplied path segment', () => {
+  it('accepts an ordinary Firebase uid', () => {
+    expect(() => assertPathSegment('7bQ2xKmLp0Xf3nYc', 'uid')).not.toThrow()
+  })
+
+  it('rejects a value carrying a slash, which would re-target the document', () => {
+    expect(() => assertPathSegment('abc/sub/def', 'uid')).toThrow(/not a usable id/)
+  })
+
+  it('rejects the traversal segments', () => {
+    expect(() => assertPathSegment('.', 'uid')).toThrow()
+    expect(() => assertPathSegment('..', 'uid')).toThrow()
+  })
+
+  it('rejects the reserved __name__ shape', () => {
+    expect(() => assertPathSegment('__name__', 'uid')).toThrow()
+  })
+
+  // A control character renders as nothing in a log, so the two ids below
+  // would be indistinguishable to anyone investigating afterwards.
+  it('rejects control characters', () => {
+    expect(() => assertPathSegment('nul\u0000id', 'uid')).toThrow()
+    expect(() => assertPathSegment('tab\u0009id', 'uid')).toThrow()
+  })
+
+  it('rejects an empty or non-string value', () => {
+    expect(() => assertPathSegment('', 'uid')).toThrow()
+    expect(() => assertPathSegment(null, 'uid')).toThrow()
+    expect(() => assertPathSegment(42, 'uid')).toThrow()
+  })
+
+  it('rejects a segment over the 1500-byte limit', () => {
+    expect(() => assertPathSegment('a'.repeat(1501), 'uid')).toThrow()
+  })
+
+  it('names the field it rejected, so the caller can tell uid from personId', () => {
+    expect(() => assertPathSegment('a/b', 'personId')).toThrow(/personId/)
   })
 })

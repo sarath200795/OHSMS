@@ -10,7 +10,7 @@ import {
 } from 'lucide-react'
 import { PageHeader } from '../components/ui'
 import { KpiSkeleton, ChartSkeleton, FilterBarSkeleton } from '../components/Skeleton'
-import CountUp from '../components/CountUp'
+import CountUp from '../../../shared/ui/CountUp'
 import { useFleet } from '../context/FleetContext'
 import {
   fleetSummary, isToBeRefilled, isInProcess, isPhysicalDefect, isRefilledClosed, deriveStatus,

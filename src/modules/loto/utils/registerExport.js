@@ -1,4 +1,5 @@
 import { numberIsolationPoints } from './codes'
+import { downloadText } from '../../../shared/lib/download'
 
 const fmt = (iso) => {
   if (!iso) return ''
@@ -102,15 +103,7 @@ export function downloadEventsCsv(events = []) {
     }).join(','),
   )
   const csv = [header, ...lines].join('\n')
-  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `LOTO_ActivityLog_${new Date().toISOString().slice(0, 10)}.csv`
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  URL.revokeObjectURL(url)
+  downloadText(csv, `LOTO_ActivityLog_${new Date().toISOString().slice(0, 10)}.csv`)
 }
 
 /** Build and download the LOTO register as a CSV file. */
@@ -119,14 +112,5 @@ export function downloadRegisterCsv(procedures) {
   const header = COLUMNS.map((c) => c[1]).join(',')
   const lines = rows.map((r) => COLUMNS.map((c) => csvCell(r[c[0]])).join(','))
   const csv = [header, ...lines].join('\n')
-  // BOM so Excel reads UTF-8 correctly.
-  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `LOTO_Register_${new Date().toISOString().slice(0, 10)}.csv`
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  URL.revokeObjectURL(url)
+  downloadText(csv, `LOTO_Register_${new Date().toISOString().slice(0, 10)}.csv`)
 }

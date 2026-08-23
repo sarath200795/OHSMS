@@ -123,6 +123,44 @@ jobs:
         working-directory: functions
         run: npm test
 
+  # The API server owns no traffic yet — nothing deploys server/, and it will
+  # not until the first module's writes move behind it. That is exactly why its
+  # tests belong here rather than in a developer's habit of remembering to run
+  # them: unreachable code is code nothing tells you about when it breaks.
+  #
+  # What it protects is specific. server/src/authz/policy.js is a SECOND copy of
+  # eight firestore.rules role helpers, written in JS because firebase-admin does
+  # not evaluate rules at all. Each is annotated with the rules line range it
+  # mirrors, and nothing mechanically ties the two together — so the two can
+  # drift silently, and the day the server starts serving is the day that drift
+  # becomes a hole the rules cannot see in order to backstop it. These tests,
+  # and test/attack.test.js in particular, are what notices.
+  server:
+    name: API server tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # `npm test` here is unit + attack, and the attack suite runs against the
+      # Firestore emulator — a JVM process, same as the rules job below.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Install
+        working-directory: server
+        run: npm ci
+
+      - name: Unit and attack tests
+        working-directory: server
+        run: npm test
+
   rules:
     name: Firestore rules
     runs-on: ubuntu-latest

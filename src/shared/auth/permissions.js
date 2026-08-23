@@ -55,6 +55,3 @@ export const isReadOnly = (role) => role === 'auditor'
  * per-action gates (create/edit/close) handle finer control. `adminOnly`
  * modules (Users, Org Settings) are gated separately in the registry.
  */
-export function canAccessModule(role /* , moduleKey */) {
-  return Boolean(role)
-}

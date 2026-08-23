@@ -9,7 +9,7 @@ import {
   LayoutDashboard, ClipboardList, ShieldCheck, ListChecks, AlertTriangle, Activity, Filter, X, Search, CheckCircle2, EyeOff,
 } from 'lucide-react'
 import { PageHeader } from '../components/ui'
-import CountUp from '../components/CountUp'
+import CountUp from '../../../shared/ui/CountUp'
 import { BodyHeatmap } from '../components/BodyMap'
 import { useIncidents } from '../context/IncidentContext'
 import { summarizeActions } from '../lib/actions'

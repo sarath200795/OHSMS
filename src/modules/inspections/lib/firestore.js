@@ -17,34 +17,21 @@ import {
 } from 'firebase/firestore'
 import { db } from '../../../shared/firebase'
 import { reserveDocId } from '../../../shared/docId/reserve'
+import { logAudit as logOrgAudit } from '../../../shared/org/orgData'
 
 // ── Path helpers ─────────────────────────────────────────────────────────────
 const templateCol = (orgId) => collection(db, 'organizations', orgId, 'inspectionTemplates')
 const templateRef = (orgId, id) => doc(db, 'organizations', orgId, 'inspectionTemplates', id)
 const recordCol = (orgId) => collection(db, 'organizations', orgId, 'inspectionRecords')
 const recordRef = (orgId, id) => doc(db, 'organizations', orgId, 'inspectionRecords', id)
-const auditCol = (orgId) => collection(db, 'organizations', orgId, 'auditLogs')
 
 // ── Audit log ────────────────────────────────────────────────────────────────
-// Append-only trail. Never let an audit failure break the primary write.
-async function logAudit(orgId, actor, action, details = {}) {
-  if (!orgId) return
-  try {
-    await addDoc(auditCol(orgId), {
-      at: serverTimestamp(),
-      actorUid: actor?.uid || null,
-      actorName: actor?.name || 'Unknown',
-      action,
-      target: details.target || 'template',
-      targetId: details.targetId || null,
-      targetLabel: details.targetLabel || '',
-      summary: details.summary || '',
-    })
-  } catch (e) {
-    // eslint-disable-next-line no-console
-    console.warn('[Inspections] audit log failed:', e?.message || e)
-  }
-}
+// One implementation, in shared/org/orgData; this wrapper adds only the module
+// key and the default target. The private copy it replaces omitted both
+// `module` and `source`, so inspection entries read as "Core" in the unified
+// Audit Log with no origin recorded.
+const logAudit = (orgId, actor, action, details = {}) =>
+  logOrgAudit(orgId, actor, action, { module: 'inspections', target: 'template', ...details })
 
 // ── Organizations & users ──────────────────────────────────────────────────────
 

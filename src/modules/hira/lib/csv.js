@@ -8,6 +8,7 @@ import Papa from 'papaparse'
 import { uid } from './id'
 import { CONTROL_HIERARCHY, CONTROL_STATUS, HAZARD_CATEGORIES, HAZARD_TYPES } from './constants'
 import { riskLevel } from './riskMatrix'
+import { downloadText } from '../../../shared/lib/download'
 
 export const CSV_COLUMNS = [
   'Assessment Name',
@@ -116,13 +117,7 @@ export function downloadTemplate(kind = 'site') {
     },
   ]
   const csv = Papa.unparse({ fields: columns, data: example.map((r) => columns.map((c) => r[c] ?? '')) })
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = isBaseline ? 'hira-baseline-template.csv' : 'hira-site-template.csv'
-  a.click()
-  URL.revokeObjectURL(url)
+  downloadText(csv, isBaseline ? 'hira-baseline-template.csv' : 'hira-site-template.csv', { bom: false })
 }
 
 /**

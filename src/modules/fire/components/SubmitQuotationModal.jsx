@@ -3,7 +3,7 @@ import { FileText, Send, Paperclip, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { Modal, Spinner } from './ui'
 import { submitQuotation } from '../lib/firestore'
-import { readFileAsDataUrl, MAX_QUOTE_FILE_BYTES } from '../lib/fileToDataUrl'
+import { readFileAsDataUrl, MAX_ATTACHMENT_BYTES } from '../../../shared/lib/files'
 import { formatSize } from '../../../shared/storage'
 import { safeHref } from '../../../shared/safeUrl'
 
@@ -161,7 +161,7 @@ export default function SubmitQuotationModal({ open, onClose, ext, orgId, orgNam
           </button>
         )}
         <p className="mt-1 text-xs text-ink-400">
-          PDF or image, up to {formatSize(MAX_QUOTE_FILE_BYTES)}.
+          PDF or image, up to {formatSize(MAX_ATTACHMENT_BYTES)}.
         </p>
       </div>
 

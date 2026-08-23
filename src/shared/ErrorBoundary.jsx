@@ -1,6 +1,40 @@
 import { Component } from 'react'
 import { reportError } from './monitoring'
 
+// A failed dynamic import almost always means the person is on an OLD build
+// whose chunk filenames no longer exist in Hosting. Every module in this app is
+// lazy-loaded, so after a deploy anyone with a tab still open hits this the
+// first time they open a module they had not already visited — and what they
+// see is a crash screen, for a problem one reload fixes completely.
+//
+// This came from src/modules/loto/components/ErrorBoundary.jsx, which had it
+// and which nothing imported. It belongs here: the trigger is a deploy, not
+// anything about LOTO, and here it covers all seventeen modules.
+const CHUNK_ERROR =
+  /dynamically imported module|Loading chunk|Importing a module script failed|Failed to fetch/i
+const RELOAD_KEY = 'hecp:chunkReloadAt'
+
+// Reload once, not in a loop. If the reload does not fix it — a genuinely
+// broken deploy, an offline device — the second crash within the window falls
+// through to the recovery screen instead of cycling the tab forever.
+function reloadOnceForStaleChunk(error) {
+  if (!CHUNK_ERROR.test(String(error?.message || ''))) return
+  let last = 0
+  try {
+    last = Number(sessionStorage.getItem(RELOAD_KEY) || 0)
+  } catch {
+    /* private mode: no memory of a previous reload, so fall through */
+  }
+  if (Date.now() - last <= 10000) return
+  try {
+    sessionStorage.setItem(RELOAD_KEY, String(Date.now()))
+  } catch {
+    /* see above — without the stamp we must NOT reload, or it loops */
+    return
+  }
+  window.location.reload()
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // The root error boundary.
 //
@@ -24,6 +58,7 @@ export default class ErrorBoundary extends Component {
 
   componentDidCatch(error, info) {
     reportError(error, { source: 'ErrorBoundary', componentStack: info?.componentStack })
+    reloadOnceForStaleChunk(error)
   }
 
   render() {

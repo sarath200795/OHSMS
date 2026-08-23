@@ -4,7 +4,7 @@ import toast from 'react-hot-toast'
 import { Modal, Spinner } from './ui'
 import { submitHpt } from '../lib/firestore'
 import { validateHpt, nextHptDate, HPT_RESULT } from '../lib/hpt'
-import { readFileAsDataUrl } from '../lib/fileToDataUrl'
+import { readFileAsDataUrl } from '../../../shared/lib/files'
 import { safeHref } from '../../../shared/safeUrl'
 
 function Field({ label, children }) {

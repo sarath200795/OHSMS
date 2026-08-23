@@ -63,8 +63,6 @@ export const LOTO_DEVICES = [
 
 // Group-lock hardware key (added to the "devices in use" tally, NOT selectable
 // as a per-point isolation device).
-export const GROUP_LOTO_BOX = 'group_loto_box'
-
 // Labels for non-selectable + legacy device keys.
 const EXTRA_DEVICE_LABELS = {
   group_loto_box: 'Group LOTO Box',

@@ -1,17 +1,7 @@
-// Adapter: map the unified platform roles onto this module's admin/member model.
-import { useAuth as useSharedAuth } from '../../../shared/auth/AuthContext'
+// Adapter: map the unified platform roles onto this module's admin/member
+// model. See shared/auth/moduleAuth.js for why this indirection exists.
+import { createModuleAuth, ADMIN_MEMBER_ROLES } from '../../../shared/auth/moduleAuth'
 
 export { AuthProvider } from '../../../shared/auth/AuthContext'
 
-const ROLE_MAP = { admin: 'admin', manager: 'admin', member: 'member', auditor: 'member' }
-
-export function useAuth() {
-  const a = useSharedAuth()
-  const role = ROLE_MAP[a.role] || 'member'
-  return {
-    ...a,
-    role,
-    profile: a.profile ? { ...a.profile, role } : a.profile,
-    isAdmin: a.isAdmin,
-  }
-}
+export const useAuth = createModuleAuth(ADMIN_MEMBER_ROLES, 'member')
