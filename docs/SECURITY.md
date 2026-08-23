@@ -28,12 +28,83 @@ recognising on sight:
 
 ## Open
 
-### S-04 · Unbounded collection listeners — LOW
+### S-04 · Unbounded collection listeners — CLOSED
 
-`subscribeCollection` (`src/shared/org/orgData.js:354`) reads whole collections
-with no limit. Cost and browser memory grow with tenant size, and the analytics
-page opens eleven of them at once. Fine at current scale; worth capping before a
-tenant with tens of thousands of records arrives.
+Every live collection listener in the app is now capped at
+`COLLECTION_READ_CAP`, and every screen that totals one renders
+`<IncompleteNotice>` when the cap is reached.
+
+The shared seam — `subscribeCollections`, `subscribeOrgCollection`,
+`incompleteReadNotice` — already existed and was already honest. What was left
+was **adoption**, and the gaps were exactly where they hurt most:
+
+- **`objectives` threw the signal away.** `ObjectivesContext` destructured
+  `{ rows }` from `subscribeOrgCollection` and dropped `status`, so the KPI
+  scorecard — the one screen whose numbers get quoted upward — reported a capped
+  count as a real one.
+- **The fire module capped SILENTLY, at five different ceilings.** Reports and
+  mock drills at 1 000; signage, AEDs and FAS at 2 000; extinguishers at 2 000
+  with a banner. So the dashboard said "the most recent 2 000 extinguishers"
+  while the four other registers on the same page were being truncated with no
+  mention — a caveat naming one of five short numbers reads as an assurance
+  about the other four.
+- **CCTV, committee, emergency, LOTO, audit and objectives had no cap at all.**
+
+`e2e/capped-reads.spec.js` is what keeps this closed. It runs with
+`VITE_TEST_READ_CAP` lowered so the seeded org is already past the ceiling, and
+asserts the notice on every screen that totals a capped register. Without it,
+"the notice exists and is unit tested" would keep being mistaken for "the page
+asks for it".
+
+### S-21 · The API server was removed — CLOSED
+
+`server/` was an Express + firebase-admin service intended to take over the
+write path. Nothing deployed it and no traffic reached it, but its
+`src/authz/policy.js` was a hand-maintained second copy of eight
+`firestore.rules` role helpers, annotated with the line ranges it mirrored and
+tied to them by nothing. A silent divergence there would have become a hole on
+the day the server first served — and the rules could not backstop it, because
+the whole point of the service was to bypass them.
+
+Removed rather than maintained: a standing drift risk paid for every month
+against a benefit with no date on it. Recoverable from git history at
+`b08dc1c` if the migration is revived. Note that `assertSegment` in
+`functions/index.js` was the other half of that mirror and is now the only copy.
+
+### S-22 · Root `/sites` was a granted collection nothing used — CLOSED
+
+`isLegacyOrgCollection` in `firestore.rules` listed `sites`, granting read,
+create, update and delete on a **top-level** `/sites` collection to any approved
+member of any org. The site registry has always lived at
+`/organizations/{orgId}/sites`; the only code that ever read the root one was
+`src/modules/loto/services/sites.js`, which was imported by nothing.
+
+So this was a whole collection's worth of permission that no code exercised —
+the kind nobody can notice is wrong, because nothing fails when it is. Both the
+dead file and the grant are gone, and `tests/firestore.rules.test.js` now
+asserts the root path is denied for every role, with controls proving the real
+org-scoped registry and the remaining LOTO top-level collections still work.
+
+This moved the rules-test count by +7, which is the intended semantic change
+`AGENTS.md` asks to be stated rather than assumed.
+
+### S-23 · Colour contrast failed WCAG AA across the design system — CLOSED
+
+Found by the axe pass added in `e2e/accessibility.spec.js`, and by nothing else
+— the markup was correct, the colours were not.
+
+`text-ink-400` (494 uses, the app's standard secondary text) measured **2.12:1**
+on `clay-bg` against a 4.5:1 requirement; `text-ink-500` (372 uses, every field
+label) measured 3.29:1. 43 offending nodes on the portal home alone. The
+`ink-400`–`ink-900` ramp was re-spaced — same hue and saturation, lightness
+lowered — and `50`–`300` left alone as the surface and border tones they are.
+
+Two derived patterns had the same fault and are now computed rather than
+hand-picked, in `src/shared/lib/contrast.js`:
+
+- the soft badge used one colour as both its 10% fill and its text
+  (`readableOnTint`), and
+- the solid badge wrote white on a mid-tone fill (`solidBackground`).
 
 ### S-06 · Deferred dependency advisories — LOW
 

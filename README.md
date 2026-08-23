@@ -39,7 +39,7 @@ not share a name.
 
 ## Architecture
 
-Three deployable units, plus one that is built but not yet deployed:
+Three deployable units:
 
 - **Frontend** (`src/`) — one Vite React SPA. A shared shell (auth, nav,
   dashboard) mounts each module as a lazily-loaded feature area under
@@ -51,10 +51,12 @@ Three deployable units, plus one that is built but not yet deployed:
   drives. Has its own lockfile, test config and CI job.
 - **Security rules** (`firestore.rules`, `storage.rules`) — where tenant
   isolation is actually enforced, with a dedicated emulator-backed test suite.
-- **API server** (`server/`) — an Express + firebase-admin service that will
-  eventually own the write path (see `server/README.md`). **Nothing deploys it
-  yet.** It runs and tests locally, and CI runs its suite, but no traffic
-  reaches it.
+
+There used to be a fourth, `server/` — an Express + firebase-admin service
+intended to take over the write path. It served no traffic, nothing deployed it,
+and it carried a hand-maintained second copy of eight `firestore.rules` role
+helpers that could drift silently. It was removed rather than maintained; the
+history has it if the write-path migration is ever revived.
 
 Other cross-cutting pieces:
 
@@ -84,9 +86,8 @@ src/
   modules/      incidents hira inspections audit ptw loto fire committee training
                 documents emergency objectives weather cctv stakeholder actions
 functions/      Cloud Functions (own package)
-server/         API server, not yet deployed (own package)
 tests/          Firestore + Storage rules suite (needs the emulator)
-e2e/            Playwright smoke + console sweep
+e2e/            Playwright smoke, accessibility (axe) + console sweep
 scripts/        seed and one-off ops scripts (.mjs, Node only)
 docs/           production runbook, security register, compliance
 ```
@@ -112,8 +113,8 @@ Prefer two terminals? Run `npm run emulators` and `npm run dev` separately.
 
 **A JDK is required** for anything that starts the Firestore, Auth or Storage
 emulator — they are JVM processes. That covers `npm run emulators`,
-`npm run dev:full`, `npm run test:rules`, the Playwright suite and the API
-server's attack tests. Java 17 is what CI uses.
+`npm run dev:full`, `npm run test:rules` and the Playwright suite. Java 17 is
+what CI uses.
 
 Seed a demo organization with `npm run seed`.
 
@@ -123,8 +124,7 @@ Seed a demo organization with `npm run seed`.
 docker compose up
 ```
 
-Runs the Vite app and the Firebase Emulator Suite in containers. It does **not**
-build `server/`.
+Runs the Vite app and the Firebase Emulator Suite in containers.
 
 ### First run
 
@@ -156,19 +156,26 @@ switch-on. Read §0 before deploying anything.
 | `npm run deploy:staging` | Deploy to the staging project |
 | `npm run lint` / `npm run format` | Lint / format |
 
-`functions/` and `server/` have their own `npm test`; the root `npm test` does
-not reach them, which is why CI runs all three.
+`functions/` has its own `npm test`; the root `npm test` does not reach it,
+which is why CI runs both.
 
 ## Testing
 
 - **Unit** — colocated `*.test.js(x)` beside the source, weighted towards pure
   logic: risk matrices, RBAC, crypto, the data/storage adapters, CSV and PDF
-  export, scheduling, energy sources. Run them with `--no-file-parallelism`; the
-  parallel run reports phantom failures.
+  export, scheduling, energy sources. They run in parallel and are stable there;
+  DOM tests carry a `// @vitest-environment jsdom` docblock and the default is
+  `node`.
 - **Rules** — `npm run test:rules` spins up the emulator and asserts tenant
   isolation (org A cannot read org B), role-gated writes, medical-record
   confinement and the limits of the anonymous QR write surfaces. These send
   hostile payloads, not well-behaved ones.
 - **Functions** — `cd functions && npm test`.
-- **API server** — `cd server && npm test` (unit plus an attack suite).
+- **Accessibility** — `e2e/accessibility.spec.js` runs axe against the rendered
+  DOM and fails on any serious or critical WCAG 2.1 AA violation. It is the half
+  of the gate `eslint-plugin-jsx-a11y` cannot be: this app binds most labels to
+  their controls at runtime, which a static rule cannot see.
+- **Capped reads** — `e2e/capped-reads.spec.js`, run with `VITE_TEST_READ_CAP`
+  set low, asserts that every screen totalling a capped collection actually
+  renders the "these figures are incomplete" notice.
 - **End-to-end** — `e2e/` under Playwright, against seeded emulators.
