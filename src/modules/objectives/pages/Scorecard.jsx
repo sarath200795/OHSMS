@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Target, Building2, MapPin, Landmark, TrendingUp, TrendingDown, Info, ChevronDown, ChevronUp } from 'lucide-react'
 import { PageHeader, Card, Select, Badge, EmptyState, SkeletonCard, StatCard } from '../../../shared/ui'
+import IncompleteNotice from '../../../shared/ui/IncompleteNotice'
 import { useObjectives } from '../context/ObjectivesContext'
 import { LEVELS, buildScorecard, breakdown, RAG } from '../lib/kpis'
 
@@ -33,7 +34,7 @@ function Gauge({ row }) {
 }
 
 export default function Scorecard() {
-  const { loading, objectives, data, entities, regionScopes, siteScopes } = useObjectives()
+  const { loading, objectives, data, incomplete, entities, regionScopes, siteScopes } = useObjectives()
   const [level, setLevel] = useState('org')
   const [scope, setScope] = useState('')
   const [entity, setEntity] = useState('all')
@@ -94,6 +95,10 @@ export default function Scorecard() {
           </div>
         }
       />
+
+      {/* Above the figures, not below them: a KPI is read and then quoted, and
+          a caveat underneath arrives after the decision has been made. */}
+      <IncompleteNotice incomplete={incomplete} className="mb-5" />
 
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard label="KPIs tracked" value={summary.tracked} icon={Target} tone="brand" />

@@ -10,12 +10,14 @@ import {
   addDoc,
   deleteDoc,
   onSnapshot,
+  query,
+  limit,
   serverTimestamp,
 } from 'firebase/firestore'
 import { db } from '../../../shared/firebase'
 import { isSessionEnd } from '../../../shared/sessionEnd'
 import { reserveDocId } from '../../../shared/docId/reserve'
-import { orgIndexRef } from '../../../shared/org/orgData'
+import { orgIndexRef, COLLECTION_READ_CAP } from '../../../shared/org/orgData'
 // Minutes name people and record what was said about them, so the subject, the
 // body, the attendee list and the action owners are sealed under the GENERAL
 // class — every approved member may read a meeting record, so the key follows.
@@ -69,7 +71,10 @@ export function subscribeConsultations(orgId, cb, onError) {
   // async and this listener has no orderBy, so a re-emission can overtake the
   // batch before it and put an older list on screen.
   const opened = openSnapshots(orgId, SEALED, cb)
-  return onSnapshot(consultationCol(orgId),
+  // Capped: minutes accumulate for the life of the organization and nothing
+  // ever removes them, so this is the collection most certain to grow without
+  // bound. No orderBy, deliberately — see subscribeCollections in orgData.
+  return onSnapshot(query(consultationCol(orgId), limit(COLLECTION_READ_CAP)),
     (snap) => opened(snap.docs.map((d) => ({ firebaseKey: d.id, ...d.data() }))),
     (err) => {
       if (!isSessionEnd('consultations', err)) {

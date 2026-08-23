@@ -14,12 +14,12 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import {
-  collection, doc, addDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy, serverTimestamp,
+  collection, doc, addDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy, limit, serverTimestamp,
   writeBatch, getDocs,
 } from 'firebase/firestore'
 import { db } from '../../../shared/firebase'
 import { isSessionEnd } from '../../../shared/sessionEnd'
-import { logAudit } from '../../../shared/org/orgData'
+import { logAudit, COLLECTION_READ_CAP } from '../../../shared/org/orgData'
 import { standardMerakiPayloads } from './provision'
 import { asReportedOn } from './defectDate'
 
@@ -39,7 +39,10 @@ function subscribe(orgId, name, cb) {
   // register, where people scan for a device by its label, not by when it was
   // added. Documents missing the field are dropped by Firestore's ordering, so
   // every writer below always sets it.
-  const q = query(col(orgId, name), orderBy('name'))
+  // Capped like every other live register in the app. A camera estate is the
+  // one inventory here that genuinely can run to thousands, and an uncapped
+  // listener bills a document read for every one of them on every page load.
+  const q = query(col(orgId, name), orderBy('name'), limit(COLLECTION_READ_CAP))
   return onSnapshot(
     q,
     (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),

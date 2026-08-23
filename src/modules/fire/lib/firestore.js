@@ -44,7 +44,7 @@ import { putFile, removeFile, MAX_INLINE_BYTES, tooLargeForInline } from '../../
 import { reserveDocId } from '../../../shared/docId/reserve'
 import { reportError } from '../../../shared/monitoring'
 import { AUDIT, diffSummary } from './audit'
-import { logAudit as logOrgAudit, auditCol, orgIndexRef } from '../../../shared/org/orgData'
+import { logAudit as logOrgAudit, auditCol, orgIndexRef, COLLECTION_READ_CAP } from '../../../shared/org/orgData'
 import { hptUpdate, hptSummary } from './hpt'
 import { statsDeltaFor, accumulate } from './stats'
 // Mock drills name the incident commander, the people alerted, and what the
@@ -488,10 +488,17 @@ export async function purgeExtinguisher(orgId, id, qrToken, actor, label) {
   await logAudit(orgId, actor, AUDIT.EXT_PURGE, { targetId: id, targetLabel: label || '' })
 }
 
-// Max extinguishers loaded into the live in-memory set. The dashboard + all
-// lists derive from this set client-side, so we cap it for scale; a banner warns
-// when the cap is hit. (Full server-side pagination is a future enhancement.)
-export const EXT_LOAD_CAP = 2000
+// Max records loaded into the live in-memory set. The dashboard and all lists
+// derive from these sets client-side, so they are capped for scale.
+//
+// This used to be a private 2000 while reports and mock drills capped at 1000
+// and signage, AEDs and FAS at 2000 — five different silent ceilings, only ONE
+// of which (extinguishers) ever told anyone it had been reached. An org past
+// 1000 drills saw a dashboard built on the most recent 1000 and no indication
+// of it. They are now all COLLECTION_READ_CAP, the same ceiling the rest of the
+// app uses, and FleetContext reports every one of them through the shared
+// incompleteReadNotice.
+export const EXT_LOAD_CAP = COLLECTION_READ_CAP
 
 export function subscribeExtinguishers(orgId, cb, max = EXT_LOAD_CAP) {
   const q = query(extCol(orgId), orderBy('createdAt', 'desc'), limit(max))
@@ -633,7 +640,7 @@ function logReportCreated(orgId, report) {
 }
 
 export function subscribeReports(orgId, cb) {
-  const q = query(reportCol(orgId), orderBy('reportedAt', 'desc'), limit(1000))
+  const q = query(reportCol(orgId), orderBy('reportedAt', 'desc'), limit(COLLECTION_READ_CAP))
   return onSnapshot(q, (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))))
 }
 
@@ -850,7 +857,7 @@ export async function resolveDefects(orgId, orgName, id, remainingDefects = [], 
 // mirror or stats — these are simple records read live and edited in place.
 
 export function subscribeSignages(orgId, cb) {
-  const q = query(signageCol(orgId), orderBy('createdAt', 'desc'), limit(2000))
+  const q = query(signageCol(orgId), orderBy('createdAt', 'desc'), limit(COLLECTION_READ_CAP))
   return onSnapshot(
     q,
     (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
@@ -909,7 +916,7 @@ export async function deleteSignage(orgId, id, actor, label) {
 // ── Mock drills / emergency response records (org-scoped, site-wise) ───────────
 
 export function subscribeMockDrills(orgId, cb) {
-  const q = query(drillCol(orgId), orderBy('createdAt', 'desc'), limit(1000))
+  const q = query(drillCol(orgId), orderBy('createdAt', 'desc'), limit(COLLECTION_READ_CAP))
   const opened = openSnapshots(orgId, SEALED_DRILLS, cb)
   return onSnapshot(
     q,
@@ -1016,7 +1023,7 @@ export async function deleteMockDrill(orgId, id, actor, label) {
 
 // ── AED (Automated External Defibrillator) inventory (org-scoped) ──────────────
 export function subscribeAeds(orgId, cb) {
-  const q = query(aedCol(orgId), orderBy('createdAt', 'desc'), limit(2000))
+  const q = query(aedCol(orgId), orderBy('createdAt', 'desc'), limit(COLLECTION_READ_CAP))
   return onSnapshot(
     q,
     (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
@@ -1175,7 +1182,7 @@ export async function bulkDeleteAeds(orgId, items, actor) {
 
 // ── FAS (Fire Alarm System) device inventory (org-scoped) ─────────────────────
 export function subscribeFas(orgId, cb) {
-  const q = query(fasCol(orgId), orderBy('createdAt', 'desc'), limit(2000))
+  const q = query(fasCol(orgId), orderBy('createdAt', 'desc'), limit(COLLECTION_READ_CAP))
   return onSnapshot(
     q,
     (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),

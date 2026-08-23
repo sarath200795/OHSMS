@@ -9,6 +9,7 @@ import { decideAssetReport } from '../lib/firestore'
 import { fasSummary, fasCondition } from '../lib/assetLogic'
 import { FAS_STATUS_LABEL, FAS_STATUS_COLOR, FAS_DEVICE_TYPES, FAS_STATUS } from '../lib/constants'
 import { HealthBar, OpenDefectsPanel } from '../components/AssetHealth'
+import IncompleteNotice from '../../../shared/ui/IncompleteNotice'
 
 function Stat({ icon: Icon, label, value, color }) {
   return (
@@ -20,7 +21,7 @@ function Stat({ icon: Icon, label, value, color }) {
 }
 
 export default function FASDashboard() {
-  const { fas, pendingReports, loading } = useFleet()
+  const { fas, pendingReports, incomplete, loading } = useFleet()
   const { orgId, profile, isManager } = useAuth()
   const [busyId, setBusyId] = useState(null)
   const today = useMemo(() => new Date(), [])
@@ -72,6 +73,8 @@ export default function FASDashboard() {
         <Link to="/equipment/fas" className="btn-soft">Open FAS Repository <ArrowRight size={15} /></Link>
       </PageHeader>
 
+
+      <IncompleteNotice incomplete={incomplete} className="mb-4" />
       {fas.length === 0 ? (
         <EmptyState icon={BellRing} title="No FAS devices yet" hint="Add fire-alarm devices in the FAS Repository to see system health here."
           action={<Link to="/equipment/fas" className="btn-primary">Go to FAS Repository</Link>} />

@@ -9,6 +9,7 @@ import { decideAssetReport } from '../lib/firestore'
 import { aedSummary, aedCondition } from '../lib/assetLogic'
 import { AED_STATUS_LABEL, AED_STATUS_COLOR } from '../lib/constants'
 import { HealthBar, OpenDefectsPanel } from '../components/AssetHealth'
+import IncompleteNotice from '../../../shared/ui/IncompleteNotice'
 
 function Stat({ icon: Icon, label, value, color }) {
   return (
@@ -25,7 +26,7 @@ function Stat({ icon: Icon, label, value, color }) {
 }
 
 export default function AEDDashboard() {
-  const { aeds, pendingReports, loading } = useFleet()
+  const { aeds, pendingReports, incomplete, loading } = useFleet()
   const { orgId, profile, isManager } = useAuth()
   const [busyId, setBusyId] = useState(null)
   const today = useMemo(() => new Date(), [])
@@ -65,6 +66,8 @@ export default function AEDDashboard() {
         <Link to="/equipment/aed" className="btn-soft">Open AED Repository <ArrowRight size={15} /></Link>
       </PageHeader>
 
+
+      <IncompleteNotice incomplete={incomplete} className="mb-4" />
       {aeds.length === 0 ? (
         <EmptyState icon={HeartPulse} title="No AEDs yet" hint="Add defibrillators in the AED Repository to see readiness here."
           action={<Link to="/equipment/aed" className="btn-primary">Go to AED Repository</Link>} />

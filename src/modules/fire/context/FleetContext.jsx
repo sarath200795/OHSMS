@@ -25,7 +25,7 @@ import {
 import { derivePhysicalDefectLog } from '../lib/defectReports'
 import { aedCondition, fasCondition } from '../lib/assetLogic'
 import { EXT_LOAD_CAP } from '../lib/firestore'
-import { subscribeSites } from '../../../shared/org/orgData'
+import { subscribeSites, incompleteReadNotice } from '../../../shared/org/orgData'
 import { resolveAccessibleSites } from '../../../shared/auth/access'
 import { withSites } from '../lib/siteResolve'
 
@@ -163,6 +163,21 @@ export function FleetProvider({ children }) {
       // True when the live load hit the cap (full set may be larger).
       capped: extinguishers.length >= EXT_LOAD_CAP,
       loadCap: EXT_LOAD_CAP,
+      // Every capped register in this module, in the app's standard shape.
+      //
+      // `capped` above covers extinguishers alone, and the Dashboard's banner
+      // said "the most recent 2 000 extinguishers" while the same page's AED,
+      // FAS, signage and drill figures were being truncated in silence beside
+      // it. A caveat that names one of five short numbers is worse than none: it
+      // reads as an assurance about the other four.
+      incomplete: incompleteReadNotice({
+        extinguishers: extinguishers.length >= EXT_LOAD_CAP ? 'capped' : 'ok',
+        aeds: aeds.length >= EXT_LOAD_CAP ? 'capped' : 'ok',
+        fas: fas.length >= EXT_LOAD_CAP ? 'capped' : 'ok',
+        signages: signages.length >= EXT_LOAD_CAP ? 'capped' : 'ok',
+        mockDrills: mockDrills.length >= EXT_LOAD_CAP ? 'capped' : 'ok',
+        reports: reports.length >= EXT_LOAD_CAP ? 'capped' : 'ok',
+      }, EXT_LOAD_CAP),
       reports,
       users,
       summary,

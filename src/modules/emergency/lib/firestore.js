@@ -8,9 +8,10 @@
 import {
   addDoc, collection, deleteDoc, doc, onSnapshot, orderBy, query,
   serverTimestamp, setDoc, updateDoc, writeBatch,
+  limit,
 } from 'firebase/firestore'
 import { db } from '../../../shared/firebase'
-import { logAudit } from '../../../shared/org/orgData'
+import { logAudit, COLLECTION_READ_CAP } from '../../../shared/org/orgData'
 import { ERP_ROLE_KEYS } from '../../../shared/org/erpRoles'
 import { reserveDocId } from '../../../shared/docId/reserve'
 
@@ -28,7 +29,7 @@ export const EXTERNAL_ROLES = [
 export const INTERNAL_ROLES = ERP_ROLE_KEYS
 
 export function subscribeContacts(orgId, cb) {
-  const q = query(col(orgId), orderBy('role'))
+  const q = query(col(orgId), orderBy('role'), limit(COLLECTION_READ_CAP))
   return onSnapshot(q, (s) => cb(s.docs.map((d) => ({ id: d.id, ...d.data() }))), () => cb([]))
 }
 
@@ -79,8 +80,11 @@ const layoutRef = (orgId, siteId) => doc(db, 'organizations', orgId, 'erpLayouts
 const layoutCol = (orgId) => collection(db, 'organizations', orgId, 'erpLayouts')
 
 export function subscribeLayouts(orgId, cb) {
+  // One layout per site, so this is bounded by the site registry rather than
+  // by activity — but bounded by something the customer controls is not the
+  // same as bounded.
   return onSnapshot(
-    layoutCol(orgId),
+    query(layoutCol(orgId), limit(COLLECTION_READ_CAP)),
     (s) => cb(Object.fromEntries(s.docs.map((d) => [d.id, d.data()]))),
     () => cb({})
   )
@@ -159,7 +163,7 @@ export const PLAN_STATUS = [
 ]
 
 export function subscribeRescuePlans(orgId, cb) {
-  const q = query(planCol(orgId), orderBy('scenario'))
+  const q = query(planCol(orgId), orderBy('scenario'), limit(COLLECTION_READ_CAP))
   return onSnapshot(q, (s) => cb(s.docs.map((d) => ({ id: d.id, ...d.data() }))), () => cb([]))
 }
 
