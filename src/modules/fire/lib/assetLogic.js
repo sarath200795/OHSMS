@@ -36,6 +36,28 @@ export function dueState(value, today = new Date()) {
 }
 const flagged = (s) => s === 'expired' || s === 'due'
 
+/**
+ * Text colour for a due state, on a clay surface.
+ *
+ * Three tables wrote this palette out for themselves — the extinguisher table
+ * and the AED and FAS date cells — and all three failed WCAG AA. The neutral
+ * slate-500 measured 4.24:1 and the expired red-600 4.30:1 against a 4.5:1
+ * requirement, and the "due" amber-500 was 2.15:1, which is not a colour so much
+ * as a suggestion of one. On a screen whose entire job is to say which
+ * extinguishers are overdue, the overdue ones were the hardest to read.
+ *
+ * Darkened one or two stops, and put HERE rather than in three files, because
+ * three copies is how they drifted below the line together without anyone
+ * comparing them. Ratios on clay-surface / clay-bg:
+ *   ok 6.75 / 5.75   due 6.31 / 5.38   expired 7.40 / 6.31
+ */
+export const DUE_TEXT_COLOR = {
+  expired: '#991b1b',
+  due: '#92400e',
+  ok: '#475569',
+}
+export const dueTextColor = (state) => DUE_TEXT_COLOR[state] || DUE_TEXT_COLOR.ok
+
 // ── AED ──────────────────────────────────────────────────────────────────────
 export function aedCondition(a, today = new Date()) {
   const states = [dueState(a.batteryExpiry, today), dueState(a.padExpiry, today), dueState(a.nextInspection, today)]

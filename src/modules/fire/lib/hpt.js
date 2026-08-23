@@ -1,4 +1,4 @@
-import { daysUntil, toDate } from './extinguisherLogic'
+import { daysUntil, toDate, hasQuotation } from './extinguisherLogic'
 import { DUE_SOON_DAYS } from './constants'
 
 /**
@@ -88,4 +88,29 @@ export function hptUpdate({ result, nextDueOn }) {
 export function hptSummary({ testedOn, result, vendor } = {}) {
   const verdict = result === HPT_RESULT.PASS ? 'passed' : 'FAILED'
   return `HPT ${verdict} on ${testedOn || 'unknown date'}${vendor ? ` · ${vendor}` : ''}`
+}
+
+/**
+ * What the workflow needs from this unit before it can move on.
+ *
+ * THE RULE IS HERE, ONCE, because it was not. RefillDue asked HPT-due units for
+ * the test; PhysicalDefects and Repository asked the same units for a vendor
+ * quotation, because each page decided for itself and two of them did not know
+ * about the test. So the same cylinder was told two different things depending
+ * on which list you reached it from.
+ *
+ * HPT OUTRANKS QUOTATION, and not as a matter of taste. A hydrostatic test can
+ * CONDEMN the cylinder. Until it has passed, the unit can neither be refilled
+ * nor returned to service with a defect repaired — so a quotation raised first
+ * buys work on a cylinder that may be scrap, and worse, resolving against that
+ * quotation marks the unit as handled while the test is still outstanding.
+ *
+ * The test settles the question. Everything else waits for it.
+ */
+export const WORKFLOW_STEP = { HPT: 'hpt', QUOTATION: 'quotation', NONE: 'none' }
+
+export function requiredStep(ext, today = new Date()) {
+  if (isHptDue(ext, today)) return WORKFLOW_STEP.HPT
+  if (!hasQuotation(ext)) return WORKFLOW_STEP.QUOTATION
+  return WORKFLOW_STEP.NONE
 }

@@ -15,7 +15,7 @@ import { useAccessibleSites } from '../../../shared/org/useAccessibleSites'
 import { exportRows } from '../lib/exporter'
 import { publicQrUrl } from '../lib/qr'
 import SiteScopePicker from '../../../shared/org/SiteScopePicker'
-import { dueState, fasColor, fasIncomplete, nextAssetId, highestAssetSeq, formatAssetId } from '../lib/assetLogic'
+import { dueState, dueTextColor, fasColor, fasIncomplete, nextAssetId, highestAssetSeq, formatAssetId } from '../lib/assetLogic'
 import { toDate } from '../lib/extinguisherLogic'
 import { REGIONS, FAS_DEVICE_TYPES, FAS_STATUS, FAS_STATUS_LABEL, FAS_STATUS_COLOR } from '../lib/constants'
 
@@ -56,7 +56,7 @@ function ChipRow({ label, options, selected, onToggle, render }) {
 function DateCell({ value }) {
   const s = dueState(value)
   if (!value) return <span className="text-ink-300">—</span>
-  const color = s === 'expired' ? '#dc2626' : s === 'due' ? '#f59e0b' : '#64748b'
+  const color = dueTextColor(s)
   return <span style={{ color }} className="font-medium">{fmtDate(value)}</span>
 }
 

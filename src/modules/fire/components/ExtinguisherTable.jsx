@@ -6,6 +6,7 @@ import { usePagination } from '../../../shared/ui/usePagination'
 import CategoryBadges from './CategoryBadges'
 import { healthColor, toDate, daysUntil, dateFieldState, hasDateIssue } from '../lib/extinguisherLogic'
 import { STATUS_LABEL, STATUS_COLOR, REGION_COLORS } from '../lib/constants'
+import { dueTextColor } from '../lib/assetLogic'
 import { Badge } from './ui'
 
 function fmt(value) {
@@ -35,9 +36,7 @@ function DueCell({ value }) {
     )
   }
   const days = daysUntil(value)
-  let color = '#64748b'
-  if (days <= 0) color = '#dc2626'
-  else if (days <= 30) color = '#f59e0b'
+  const color = dueTextColor(days <= 0 ? 'expired' : days <= 30 ? 'due' : 'ok')
   return (
     <div className="leading-tight">
       <div className="font-medium text-ink-800">{fmt(value)}</div>

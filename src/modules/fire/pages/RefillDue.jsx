@@ -12,7 +12,7 @@ import { useFleet } from '../context/FleetContext'
 import { useAuth } from '../context/AuthContext'
 import { markReceivedByVendor } from '../lib/firestore'
 import { hasQuotation } from '../lib/extinguisherLogic'
-import { isHptDue } from '../lib/hpt'
+import { requiredStep, WORKFLOW_STEP } from '../lib/hpt'
 import { emptyFilters, applyListFilters } from '../lib/listFilter'
 import { exportExtinguishers } from '../lib/exporter'
 import { safeHref } from '../../../shared/safeUrl'
@@ -77,7 +77,7 @@ export default function RefillDue() {
                   and passing it is what clears the unit from this list. Where
                   both a refill and an HPT are due the test takes precedence —
                   the cylinder cannot be refilled until it has passed. */}
-              {isHptDue(ext, today) ? (
+              {requiredStep(ext, today) === WORKFLOW_STEP.HPT ? (
                 <button
                   className="btn bg-violet-600 px-2.5 py-1.5 text-xs text-white hover:bg-violet-700"
                   onClick={() => setHptFor(ext)}

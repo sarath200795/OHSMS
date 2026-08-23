@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  isHptDue, nextHptDate, hasHpt, validateHpt, hptUpdate, hptSummary,
+  isHptDue, nextHptDate, hasHpt, validateHpt, hptUpdate, hptSummary, requiredStep, WORKFLOW_STEP,
   HPT_RESULT, HPT_INTERVAL_YEARS,
 } from './hpt'
 
@@ -113,5 +113,44 @@ describe('whether a test has been recorded', () => {
     expect(hasHpt({})).toBe(false)
     expect(hasHpt({ hpt: {} })).toBe(false)
     expect(hasHpt({ hpt: { submittedAt: '2026-06-01' } })).toBe(true)
+  })
+})
+
+// The rule three pages disagreed about. RefillDue asked an HPT-due unit for the
+// test; Physical Defects and the Repository asked the same unit for a vendor
+// quotation, because each decided for itself. These pin the order so a fourth
+// list cannot quietly invent a fourth answer.
+describe('what the workflow asks a unit for next', () => {
+  const quoted = { quotation: { submittedAt: '2026-06-01' } }
+
+  it('asks for the TEST when the hydrostatic test is due', () => {
+    expect(requiredStep({ dateOfNextHPT: inDays(-40) }, TODAY)).toBe(WORKFLOW_STEP.HPT)
+    expect(requiredStep({ dateOfNextHPT: iso(TODAY) }, TODAY)).toBe(WORKFLOW_STEP.HPT)
+  })
+
+  it('asks for a quotation when no test is due and none has been submitted', () => {
+    expect(requiredStep({ dateOfNextHPT: inDays(400) }, TODAY)).toBe(WORKFLOW_STEP.QUOTATION)
+    expect(requiredStep({}, TODAY)).toBe(WORKFLOW_STEP.QUOTATION)
+  })
+
+  it('asks for nothing once a quotation is in and no test is due', () => {
+    expect(requiredStep({ dateOfNextHPT: inDays(400), ...quoted }, TODAY)).toBe(WORKFLOW_STEP.NONE)
+  })
+
+  // The whole point. A cylinder that may be condemned must not have money spent
+  // on repairing it, and a quotation already on file must not let it past.
+  it('still asks for the TEST even when a quotation has already been submitted', () => {
+    expect(requiredStep({ dateOfNextHPT: inDays(-1), ...quoted }, TODAY)).toBe(WORKFLOW_STEP.HPT)
+  })
+
+  it('uses the same window as the list itself, so no row disagrees with its own reason', () => {
+    // DUE_SOON_DAYS is 30: inside it the test is asked for, outside it is not.
+    expect(requiredStep({ dateOfNextHPT: inDays(30) }, TODAY)).toBe(WORKFLOW_STEP.HPT)
+    expect(requiredStep({ dateOfNextHPT: inDays(31) }, TODAY)).toBe(WORKFLOW_STEP.QUOTATION)
+  })
+
+  it('a unit with no HPT date recorded is not treated as due', () => {
+    expect(requiredStep({ dateOfNextHPT: '' }, TODAY)).toBe(WORKFLOW_STEP.QUOTATION)
+    expect(requiredStep(null, TODAY)).toBe(WORKFLOW_STEP.QUOTATION)
   })
 })

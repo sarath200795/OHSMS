@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Boxes, Download, Trash2, QrCode, AlertTriangle, Filter, Pencil, CheckCircle2, Truck, FileText, CalendarX, Plus, Upload } from 'lucide-react'
+import { Boxes, Download, Trash2, QrCode, AlertTriangle, Filter, Pencil, CheckCircle2, Truck, FileText, CalendarX, Plus, Upload, Gauge } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { PageHeader, EmptyState, Modal, Spinner } from '../components/ui'
 import { TableSkeleton } from '../components/Skeleton'
@@ -9,10 +9,12 @@ import ExtinguisherTable from '../components/ExtinguisherTable'
 import ReportDefectModal from '../components/ReportDefectModal'
 import EditExtinguisherModal from '../components/EditExtinguisherModal'
 import SubmitQuotationModal from '../components/SubmitQuotationModal'
+import SubmitHptModal from '../components/SubmitHptModal'
 import ListFilters from '../components/ListFilters'
 import { useAuth } from '../context/AuthContext'
 import { useFleet } from '../context/FleetContext'
 import { deriveStatus, isToBeRefilled, hasQuotation, hasDateIssue } from '../lib/extinguisherLogic'
+import { requiredStep, WORKFLOW_STEP } from '../lib/hpt'
 import { exportExtinguishers } from '../lib/exporter'
 import { bulkDeleteExtinguishers, markReceivedByVendor, resolveDefects, backfillExtinguisherQr, linkExtinguishersToSites } from '../lib/firestore'
 import { planSiteLinks } from '../lib/siteLink'
@@ -40,6 +42,7 @@ export default function Repository() {
   const [selected, setSelected] = useState(new Set())
   const [reportFor, setReportFor] = useState(null)
   const [quoteFor, setQuoteFor] = useState(null)
+  const [hptFor, setHptFor] = useState(null)
   const [editFor, setEditFor] = useState(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -281,9 +284,26 @@ ${linkPlan.unmatched.length} unit(s) across ${linkPlan.unmatchedCenters.length} 
               const canResolve = d.hasPhysicalDefect && !d.isClosed
               const canSendToVendor = isToBeRefilled(ext, today) && !d.inProcess && !d.isClosed
               const quoted = hasQuotation(ext)
-              const needsQuote = (canResolve || canSendToVendor) && !quoted
+              // A unit whose hydrostatic test is due is asked for the TEST, not
+              // for a quotation — the same branch RefillDue and PhysicalDefects
+              // make. An HPT can condemn the cylinder, so it settles whether
+              // there is anything worth quoting for; and it outranks BOTH the
+              // paths here, because a cylinder that has not passed can neither
+              // be refilled nor returned to service with its defect repaired.
+              const step = requiredStep(ext, today)
+              const hptDue = step === WORKFLOW_STEP.HPT
+              const needsQuote = (canResolve || canSendToVendor) && !quoted && !hptDue
               return (
                 <>
+                  {(canResolve || canSendToVendor) && hptDue && (
+                    <button
+                      className="btn bg-violet-600 px-2.5 py-1.5 text-xs text-white hover:bg-violet-700"
+                      onClick={() => setHptFor(ext)}
+                      title={`Hydrostatic test due ${ext.dateOfNextHPT || ''} — record the test and its certificate before this can move forward`}
+                    >
+                      <Gauge size={14} /> Submit HPT
+                    </button>
+                  )}
                   {needsQuote && (
                     <button className="btn bg-cyan-700 px-2.5 py-1.5 text-xs text-white hover:bg-cyan-800" onClick={() => setQuoteFor(ext)} title="Submit a vendor quotation before this can move forward">
                       <FileText size={14} /> Submit quotation
@@ -348,6 +368,15 @@ ${linkPlan.unmatched.length} unit(s) across ${linkPlan.unmatchedCenters.length} 
         open={!!quoteFor}
         onClose={() => setQuoteFor(null)}
         ext={quoteFor}
+        orgId={orgId}
+        orgName={org?.name || orgName}
+        actor={{ uid: profile?.uid, name: profile?.name }}
+      />
+
+      <SubmitHptModal
+        open={!!hptFor}
+        onClose={() => setHptFor(null)}
+        ext={hptFor}
         orgId={orgId}
         orgName={org?.name || orgName}
         actor={{ uid: profile?.uid, name: profile?.name }}

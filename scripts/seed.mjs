@@ -95,9 +95,18 @@ async function main() {
   // e2e/capped-reads.spec.js can prove the "these figures are incomplete" notice
   // is actually wired to the page rather than merely existing.
   const nextYear = daysFromNow(300).toISOString().slice(0, 10)
-  await add('extinguishers', { serialNo: 'FE-0001', type: 'CO2', capacity: '4.5kg', centerName: 'North Plant', region: 'North', entity: '1P', status: 'active', nextRefillDate: nextYear, nextHptDate: nextYear })
-  await add('extinguishers', { serialNo: 'FE-0002', type: 'DCP', capacity: '9kg', centerName: 'South Warehouse', region: 'South', entity: '1P', status: 'active', nextRefillDate: nextYear, nextHptDate: nextYear })
-  await add('extinguishers', { serialNo: 'FE-0003', type: 'Foam', capacity: '9L', centerName: 'North Plant', region: 'North', entity: '2P', status: 'to_be_refilled', nextRefillDate: daysFromNow(-5).toISOString().slice(0, 10), nextHptDate: nextYear })
+  // Field names matter: the module reads dateOfNextRefill / dateOfNextHPT.
+  // Seeding nextRefillDate / nextHptDate left every unit with NO dates at all,
+  // which is the state the lists treat as a data-quality fault — so the fixture
+  // exercised the broken path and nothing else.
+  await add('extinguishers', { serialNo: 'FE-0001', type: 'CO2', capacity: '4.5 Kg', centerName: 'North Plant', region: 'North', entity: '1P', status: 'active', dateOfNextRefill: nextYear, dateOfNextHPT: nextYear })
+  await add('extinguishers', { serialNo: 'FE-0002', type: 'DCP', capacity: '9 Kg', centerName: 'South Warehouse', region: 'South', entity: '1P', status: 'active', dateOfNextRefill: nextYear, dateOfNextHPT: nextYear })
+  // Refill overdue AND a physical defect, but the HPT is years out — this is the
+  // unit that should be asked for a QUOTATION.
+  await add('extinguishers', { serialNo: 'FE-0003', type: 'Foam', capacity: '9 Ltr', centerName: 'North Plant', region: 'North', entity: '2P', status: 'to_be_refilled', physicalDefects: ['pin'], dateOfNextRefill: daysFromNow(-5).toISOString().slice(0, 10), dateOfNextHPT: nextYear })
+  // Hydrostatic test overdue and a physical defect open — this is the unit that
+  // must be asked for the TEST, not a quotation, on every list it appears in.
+  await add('extinguishers', { serialNo: 'FE-0004', type: 'ABC', capacity: '5 Kg', centerName: 'South Warehouse', region: 'South', entity: '1P', status: 'active', physicalDefects: ['stand'], dateOfNextRefill: nextYear, dateOfNextHPT: daysFromNow(-40).toISOString().slice(0, 10) })
 
   await add('aeds', { assetId: 'AED-0001', brand: 'Zoll', centerName: 'North Plant', region: 'North', entity: '1P', status: 'ready', batteryExpiry: nextYear, padExpiry: nextYear, nextInspection: nextYear })
   await add('aeds', { assetId: 'AED-0002', brand: 'Philips', centerName: 'South Warehouse', region: 'South', entity: '1P', status: 'ready', batteryExpiry: nextYear, padExpiry: nextYear, nextInspection: nextYear })
