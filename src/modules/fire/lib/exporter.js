@@ -9,6 +9,7 @@ import { severityLabel, toDate } from './extinguisherLogic'
 import { tokenFromQrValue } from './qr'
 import { assertWorkbookSize, assertRowCount } from '../../../shared/lib/workbookGuard'
 import { parseCsvFile } from '../../../shared/lib/parseTable'
+import { downloadBlob } from '../../../shared/lib/download'
 
 /**
  * Map an exported "Status" label back to its stored key.
@@ -50,17 +51,12 @@ function toISODate(v) {
 // temporary link. (XLSX.writeFile can fail silently in some bundled builds.)
 function downloadWorkbook(wb, filename) {
   const out = XLSX.write(wb, { type: 'array', bookType: 'xlsx' })
-  const blob = new Blob([out], {
-    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  setTimeout(() => URL.revokeObjectURL(url), 1000)
+  downloadBlob(
+    new Blob([out], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    }),
+    filename,
+  )
 }
 
 function bookFromRows(rows, sheetName = 'Extinguishers') {
@@ -278,15 +274,7 @@ export function exportExtinguishers(list, filename = 'extinguishers.xlsx', today
 
 /** Download an arbitrary object as a pretty-printed .json file (full backup snapshot). */
 export function downloadJsonBackup(data, filename = 'backup.json') {
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  setTimeout(() => URL.revokeObjectURL(url), 1000)
+  downloadBlob(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }), filename)
 }
 
 /**

@@ -1,17 +1,9 @@
-import {
-  addDoc,
-  collection,
-  deleteDoc,
-  doc,
-  onSnapshot,
-  orderBy,
-  query,
-  serverTimestamp,
-  updateDoc,
-  limit,
-} from 'firebase/firestore'
+import { collection, onSnapshot, orderBy, query, limit } from 'firebase/firestore'
 import { db } from '../../../shared/firebase'
 
+// Reads only — see the note in audits.js. subscribeFinding, createFinding,
+// updateFinding and deleteFinding were part of the superseded data model and
+// had no callers.
 const col = (orgId) => collection(db, 'organizations', orgId, 'findings')
 
 export function subscribeFindings(orgId, callback) {
@@ -19,28 +11,4 @@ export function subscribeFindings(orgId, callback) {
   return onSnapshot(q, (snap) => {
     callback(snap.docs.map((d) => ({ id: d.id, ...d.data() })))
   })
-}
-
-export function subscribeFinding(orgId, findingId, callback) {
-  const ref = doc(db, 'organizations', orgId, 'findings', findingId)
-  return onSnapshot(ref, (snap) => {
-    callback(snap.exists() ? { id: snap.id, ...snap.data() } : null)
-  })
-}
-
-export function createFinding(orgId, data) {
-  return addDoc(col(orgId), {
-    status: 'open',
-    severity: 'minor',
-    ...data,
-    raisedAt: serverTimestamp(),
-  })
-}
-
-export function updateFinding(orgId, findingId, data) {
-  return updateDoc(doc(db, 'organizations', orgId, 'findings', findingId), data)
-}
-
-export function deleteFinding(orgId, findingId) {
-  return deleteDoc(doc(db, 'organizations', orgId, 'findings', findingId))
 }

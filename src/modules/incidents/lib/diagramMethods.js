@@ -186,5 +186,3 @@ export const METHODS = {
     },
   },
 }
-
-export const methodKeys = Object.keys(METHODS)

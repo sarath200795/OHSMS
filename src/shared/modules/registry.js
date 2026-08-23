@@ -1,7 +1,12 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Module registry — the single source of truth for the 10 OHS modules. Drives
-// the sidebar nav, the dashboard module grid, and route mounting in App.jsx.
-// Each module's feature code lives in src/modules/<key>/.
+// Module registry — the single source of truth for the OHS modules. Drives the
+// sidebar nav, the dashboard module grid, and route mounting in App.jsx.
+// Each module's feature code lives in src/modules/<key>/, with one exception:
+// 'equipment' and 'drills' are two entries served by src/modules/fire/.
+//
+// The count is deliberately not written down here. It said "10" while this
+// array held 17, and a number in a comment beside the array it describes is a
+// fact that goes stale the first time someone adds an entry. Count the array.
 // ─────────────────────────────────────────────────────────────────────────────
 import {
   Cctv,

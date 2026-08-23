@@ -20,6 +20,7 @@ import { normalizeScopeConfig } from '../../shared/org/scopeConfig'
 import { siteStats, linkAssets } from './siteStats'
 import { AUDIT } from '../../shared/audit/audit'
 import { parseSitesCsv, sitesCsvTemplate, sitesToCsv, hasCoordinates } from './parseSitesCsv'
+import { downloadText } from '../../shared/lib/download'
 
 const SitesMap = lazy(() => import('./SitesMap'))
 
@@ -147,16 +148,7 @@ export default function Sites() {
   }
 
   const saveCsv = (text, filename) => {
-    // BOM so Excel opens it as UTF-8. Without it a site name carrying an
-    // accent or a non-Latin script arrives mojibake, which is exactly the
-    // register most likely to be checked by someone who did not write it.
-    const blob = new Blob(['﻿', text], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = filename
-    a.click()
-    URL.revokeObjectURL(url)
+    downloadText(text, filename)
   }
 
   const downloadTemplate = () => saveCsv(sitesCsvTemplate(customFields), 'sites-template.csv')

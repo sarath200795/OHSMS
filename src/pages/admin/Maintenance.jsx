@@ -8,6 +8,7 @@ import { useAuth } from '../../shared/auth/AuthContext'
 import { backfillProcedureMirrors } from '../../modules/loto/services/procedures'
 import { backfillAll } from '../../shared/crypto/backfill'
 import { sealingEnabled } from '../../shared/crypto/keyring'
+import { downloadBlob } from '../../shared/lib/download'
 
 /**
  * One-off migrations, run by an admin for their own organization.
@@ -86,13 +87,10 @@ function SubjectAccess() {
   const download = () => {
     // A subject access response is a document that gets sent to a person, so it
     // has to leave the browser as a file rather than as something to screenshot.
-    const blob = new Blob([JSON.stringify(result, null, 2)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `subject-access-${uid.trim() || 'export'}.json`
-    a.click()
-    URL.revokeObjectURL(url)
+    downloadBlob(
+      new Blob([JSON.stringify(result, null, 2)], { type: 'application/json' }),
+      `subject-access-${uid.trim() || 'export'}.json`,
+    )
   }
 
   const counts = result && Object.entries(result.records || {})

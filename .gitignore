@@ -39,6 +39,12 @@ coverage/
 .firebaserc
 .env.production
 
+# Training videos. ~151 MB across four files — about 99% of everything this
+# repository tracked, paid for by every clone and every CI checkout, for content
+# no code imports. They stay on disk and belong in Firebase Storage or a CDN.
+# Untracking does not shrink history; the existing 151 MB is still in there.
+Vedio/
+
 # Playwright artifacts
 test-results/
 playwright-report/

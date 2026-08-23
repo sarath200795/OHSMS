@@ -1,5 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
-import ErrorBoundary from './components/ErrorBoundary'
+import ErrorBoundary from '../../shared/ErrorBoundary'
 import Consultation from './pages/Consultation'
 
 // HSE Committee Meetings (ported from hse-committee-meeting), mounted at /committee.

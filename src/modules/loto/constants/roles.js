@@ -14,18 +14,6 @@ export const PERMISSIONS = {
   USERS_MANAGE: 'users.manage',
 }
 
-// Human-readable labels for the permission toggles in the admin UI.
-export const PERMISSION_LABELS = {
-  [PERMISSIONS.PROCEDURE_VIEW]: 'View procedures',
-  [PERMISSIONS.PROCEDURE_CREATE]: 'Create LOTO procedures',
-  [PERMISSIONS.PROCEDURE_REVISE]: 'Revise procedures',
-  [PERMISSIONS.PROCEDURE_SEND_FOR_APPROVAL]: 'Send for approval',
-  [PERMISSIONS.PROCEDURE_APPROVE]: 'Approve procedures',
-  [PERMISSIONS.PROCEDURE_DELETE]: 'Delete procedures',
-  [PERMISSIONS.LOTO_PERFORM]: 'Perform LOTO actions',
-  [PERMISSIONS.USERS_MANAGE]: 'Manage users',
-}
-
 export const ROLES = {
   ADMIN: 'admin',
   SAFETY: 'safety',
@@ -88,29 +76,10 @@ export const ROLE_META = {
   },
 }
 
-export const ASSIGNABLE_ROLES = [
-  ROLES.SAFETY,
-  ROLES.ENGINEERING,
-  ROLES.TECHNICIAN,
-  ROLES.ADMIN,
-]
-
 export const USER_STATUS = {
   PENDING: 'pending',
   APPROVED: 'approved',
   REJECTED: 'rejected',
-}
-
-/** Returns the default permissions for a role (empty array for unknown). */
-export function permissionsForRole(role) {
-  return ROLE_PERMISSIONS[role] ? [...ROLE_PERMISSIONS[role]] : []
-}
-
-/** Union of default permissions across several roles (multi-role users). */
-export function permissionsForRoles(roles) {
-  const set = new Set()
-  ;(roles || []).forEach((r) => permissionsForRole(r).forEach((p) => set.add(p)))
-  return [...set]
 }
 
 /** Normalise a profile to multi-role: ensure roles[] and admin flag. */
@@ -119,7 +88,7 @@ export function rolesOf(profile) {
   return profile?.role ? [profile.role] : []
 }
 
-/** True when the given permission list contains the key. */
-export function hasPermission(permissions, key) {
-  return Array.isArray(permissions) && permissions.includes(key)
-}
+// PERMISSION_LABELS, ASSIGNABLE_ROLES, permissionsForRole, permissionsForRoles
+// and hasPermission were removed: they were the API for a per-user permission
+// toggle screen that was never built, and nothing imported any of them. The
+// model above (PERMISSIONS / ROLE_PERMISSIONS / ROLE_META) is what is live.

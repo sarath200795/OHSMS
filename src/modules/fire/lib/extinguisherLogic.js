@@ -138,15 +138,6 @@ export function hasQuotation(ext) {
   return Boolean(ext.quotation && ext.quotation.submittedAt)
 }
 
-/**
- * The item needs a quotation before it may progress to its next step.
- * Applies to everything in To Be Refilled AND every physical-defect item that
- * doesn't yet have a quotation. Cleared once a cycle completes (refill/resolve).
- */
-export function needsQuotation(ext, today = new Date()) {
-  return (isToBeRefilled(ext, today) || isPhysicalDefect(ext)) && !hasQuotation(ext)
-}
-
 /** Soft-deleted (in the recycle bin) — excluded from all normal lists. */
 export function isDeleted(ext) {
   return Boolean(ext.deletedAt)

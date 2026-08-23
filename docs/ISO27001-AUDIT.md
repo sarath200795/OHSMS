@@ -39,6 +39,18 @@ be inverted on the way through, and both are worth noting: `a member deletes
 their own org files` and an audit entry written with `Date.now()` were each the
 vulnerability written down as expected behaviour.
 
+### Later closures
+
+| Finding | What changed |
+| --- | --- |
+| **Documentation** — DEPLOYMENT.md contradicted docs/PRODUCTION.md on project names, test counts and index claims | DEPLOYMENT.md reduced to the three things the runbook does not cover (first-org bootstrap, per-deploy verification, rollback) and made to point at docs/PRODUCTION.md as the operational record. The duplicated setup instructions were removed rather than corrected, since a second copy is what drifted in the first place. |
+| **Console-only hardening** (`SECURITY.md` S-05) | App Check enforced, admin TOTP enabled, application-layer encryption on, API key referrer restrictions applied, backups configured and a restore drilled. Closed in the register with a note that console state is invisible to version control. |
+| **Audit trail attribution** | `logAudit` existed as five copy-pasted copies and four omitted the `module` field, so entries from Fire, PTW, Inspections and the Incidents service layer all displayed as "Core" in the unified Audit Log. One implementation now, in `shared/org/orgData.js`, with per-module wrappers supplying the registry key. Relevant to A.8.15: a trail that cannot attribute an action to a source is not fully serving its purpose. |
+| **Path segments in `exportSubjectData`** | A caller-supplied `uid` was interpolated into a Firestore document path without segment validation, so a value containing `/` addressed a different document than the one the tenancy check had been made about. Now validated, mirroring `assertSegment` in the API server, with tests. |
+
+The rules suite is **448 tests across 12 files** as of this update. The count in
+prose goes stale — run `npm run test:rules` for the real number.
+
 ## HIGH (3)
 
 ### HIGH-1 · A.8.3 Information access restriction · `app`

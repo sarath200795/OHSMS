@@ -10,6 +10,7 @@ import {
   buildMatrix, assignmentStatus,
   buildStatusReport, toCsv, REPORT_COLUMNS, todayISO,
 } from '../lib/status'
+import { downloadText } from '../../../shared/lib/download'
 
 const CELL_TONE = { valid: 'green', expiring: 'amber', expired: 'red', none: 'green', missing: 'gray' }
 const CELL_LABEL = { valid: 'Valid', expiring: 'Expiring soon', expired: 'Expired', none: 'Completed', missing: 'Not trained' }
@@ -115,15 +116,9 @@ export default function EmployeeStatus() {
       })
       if (!report.length) return toast.error('Nothing to export — add employees and courses first')
       const csv = toCsv(report, REPORT_COLUMNS)
-      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = exportMode === 'range'
+      downloadText(csv, exportMode === 'range'
         ? `training-status-${from || 'start'}-to-${to}.csv`
-        : `training-status-as-of-${to}.csv`
-      a.click()
-      URL.revokeObjectURL(url)
+        : `training-status-as-of-${to}.csv`, { bom: false })
       toast.success(`Exported ${report.length} rows (${users.length} employees × ${courses.length} courses)`)
     } catch (e) {
       toast.error(e?.message || 'Export failed')

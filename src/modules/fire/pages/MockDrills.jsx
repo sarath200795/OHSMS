@@ -10,7 +10,7 @@ import { usePagination } from '../../../shared/ui/usePagination'
 import { useAuth } from '../context/AuthContext'
 import { useFleet } from '../context/FleetContext'
 import { addMockDrill, deleteMockDrill, getMockDrillPhotos } from '../lib/firestore'
-import { readFileAsDataUrl } from '../lib/fileToDataUrl'
+import { readFileAsDataUrl } from '../../../shared/lib/files'
 import { orgDepartments } from '../../../shared/auth/access'
 import MockDrillReport from '../components/MockDrillReport'
 

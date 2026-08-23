@@ -48,11 +48,15 @@ export const LEGACY_KIND = 'medical_record'
 /**
  * The Storage prefix the bytes move to.
  *
- * MUST stay identical to MEDICAL_RECORD_KIND in
- * src/modules/incidents/lib/medicalRecords.js and to the literal in
- * storage.rules, which excludes this exact string from its generic read. Three
- * copies of one string, in three deployable units that cannot import from each
- * other — the same seam, and the same duty to stay in step, as REGION.
+ * MUST stay identical to the literal in storage.rules, which excludes this
+ * exact string from its generic read. Two copies of one string, in two
+ * deployable units that cannot import from each other — the same seam, and the
+ * same duty to stay in step, as REGION.
+ *
+ * There was a third copy in src/modules/incidents/lib/medicalRecords.js. That
+ * file was superseded by this one and by the confineMedicalRecords callable,
+ * and had stopped being imported by anything, so it was removed rather than
+ * left to drift out of step unnoticed.
  */
 export const MEDICAL_RECORD_KIND = 'medical-records'
 

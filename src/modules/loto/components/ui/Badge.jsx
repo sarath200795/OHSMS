@@ -1,5 +1,5 @@
 import { Badge as SharedBadge } from '../../../../shared/ui'
-import { ROLE_META, USER_STATUS } from '../../constants/roles'
+import { USER_STATUS } from '../../constants/roles'
 
 /**
  * The shared chip, colourless. Every loto caller passes a full set of colour
@@ -12,14 +12,6 @@ export default function Badge({ children, className = '', ...rest }) {
       {children}
     </SharedBadge>
   )
-}
-
-export function RoleBadge({ role }) {
-  const meta = ROLE_META[role]
-  if (!meta) {
-    return <Badge className="border-steel-600 bg-steel-800 text-steel-300">No role</Badge>
-  }
-  return <Badge className={meta.accent}>{meta.short}</Badge>
 }
 
 const STATUS_STYLES = {

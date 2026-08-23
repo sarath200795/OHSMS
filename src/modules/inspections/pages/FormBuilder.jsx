@@ -16,6 +16,7 @@ import {
 } from '../lib/schedule'
 import { assertWorkbookSize, assertRowCount } from '../../../shared/lib/workbookGuard'
 import { parseCsvFile } from '../../../shared/lib/parseTable'
+import { downloadText } from '../../../shared/lib/download'
 
 export default function FormBuilder() {
   const { id } = useParams()
@@ -84,14 +85,7 @@ export default function FormBuilder() {
       ['General observations of the work area:', '', 'Text Input', 'Mandatory', ''],
     ]
     const csv = Papa.unparse(rows)
-    // BOM so Excel opens it as UTF-8 rather than mojibake.
-    const blob = new Blob(['﻿', csv], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'Inspection_Questions_Template.csv'
-    a.click()
-    URL.revokeObjectURL(url)
+    downloadText(csv, 'Inspection_Questions_Template.csv')
   }
 
   const handleImport = async (e) => {

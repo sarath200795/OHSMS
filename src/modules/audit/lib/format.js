@@ -37,9 +37,3 @@ export function isOverdue(dueDate, closed = false) {
   return d.getTime() < Date.now()
 }
 
-// "YYYY-MM-DD" string for <input type="date"> default values.
-export function dateInputValue(value) {
-  const d = toDate(value)
-  if (!d) return ''
-  return d.toISOString().slice(0, 10)
-}

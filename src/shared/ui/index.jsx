@@ -259,20 +259,10 @@ export function EmptyState({ icon: Icon, title, description, hint, message, acti
   )
 }
 
-// ── Spinner + full-page loader ────────────────────────────────────────────────
+// ── Spinner ───────────────────────────────────────────────────────────────────
 // Fast spin — a quicker spinner makes loads feel faster (perceived performance).
 export function Spinner({ size = 20, className }) {
   return <Loader2 size={size} className={cx('animate-spin text-brand-600', className)} />
-}
-export function FullPageLoader({ label = 'Loading…' }) {
-  return (
-    <div className="grid min-h-screen place-items-center bg-clay-bg">
-      <div className="flex flex-col items-center gap-3">
-        <Spinner size={30} />
-        <p className="text-sm text-ink-500">{label}</p>
-      </div>
-    </div>
-  )
 }
 
 // ── Skeleton loaders ──────────────────────────────────────────────────────────

@@ -1,6 +1,6 @@
 import { Routes, Route, Navigate, Outlet } from 'react-router-dom'
 import { IncidentProvider } from './context/IncidentContext'
-import ErrorBoundary from './components/ErrorBoundary'
+import ErrorBoundary from '../../shared/ErrorBoundary'
 import ModuleNav from './ModuleNav'
 import Incidents from './pages/Incidents'
 import IncidentWizard from './pages/IncidentWizard'

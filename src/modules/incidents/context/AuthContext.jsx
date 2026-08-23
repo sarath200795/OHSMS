@@ -1,8 +1,8 @@
 // Adapter: the ported incident-ira code imports `useAuth` from its own
 // AuthContext (role vocabulary: reporter < investigator < admin). Map the
-// unified platform roles (admin/manager/member/auditor) onto that vocabulary so
-// the module's permission checks (can(role, …)) and role gates work unchanged.
-import { useAuth as useSharedAuth } from '../../../shared/auth/AuthContext'
+// unified platform roles onto that vocabulary so the module's permission checks
+// (can(role, …)) and role gates work unchanged.
+import { createModuleAuth } from '../../../shared/auth/moduleAuth'
 
 export { AuthProvider } from '../../../shared/auth/AuthContext'
 
@@ -13,14 +13,9 @@ const ROLE_MAP = {
   auditor: 'auditor', // read-only: unknown to the module's can() → all checks false
 }
 
-export function useAuth() {
-  const a = useSharedAuth()
-  const role = ROLE_MAP[a.role] || 'reporter'
-  return {
-    ...a,
-    role,
-    profile: a.profile ? { ...a.profile, role } : a.profile,
-    isAdmin: a.isAdmin,
-    isInvestigator: a.role === 'admin' || a.role === 'manager',
-  }
-}
+export const useAuth = createModuleAuth(ROLE_MAP, 'reporter', (a) => ({
+  // Deliberately derived from the PLATFORM role, not the mapped one: 'auditor'
+  // maps to a role the module's can() does not know, and this flag must stay
+  // false for them rather than accidentally following the mapping.
+  isInvestigator: a.role === 'admin' || a.role === 'manager',
+}))

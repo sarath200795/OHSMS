@@ -29,6 +29,7 @@ import { AUDIT } from './audit'
 import { computeWindow, derivePermitStatus } from './permitStatus'
 import { mirrorDisplayFields } from './publicPermit'
 import { generateQrToken } from './qr'
+import { logAudit as logOrgAudit, orgIndexRef } from '../../../shared/org/orgData'
 
 // ── Path helpers ─────────────────────────────────────────────────────────────
 const orgRef = (orgId) => doc(db, 'organizations', orgId)
@@ -38,30 +39,15 @@ const docCol = (orgId, permitId) => collection(db, 'organizations', orgId, 'perm
 const docRef = (orgId, permitId, docId) => doc(db, 'organizations', orgId, 'permits', permitId, 'documents', docId)
 const obsCol = (orgId) => collection(db, 'organizations', orgId, 'observations')
 const qrRef = (token) => doc(db, 'permitQr', token)
-const auditCol = (orgId) => collection(db, 'organizations', orgId, 'auditLogs')
 const countersRef = (orgId) => doc(db, 'organizations', orgId, 'meta', 'counters')
-const orgIndexKey = (name) => (name || '').trim().toLowerCase()
-const orgIndexRef = (name) => doc(db, 'orgIndex', orgIndexKey(name))
 
 // ── Audit log ─────────────────────────────────────────────────────────────────
-async function logAudit(orgId, actor, action, details = {}) {
-  if (!orgId) return
-  try {
-    await addDoc(auditCol(orgId), {
-      at: serverTimestamp(),
-      actorUid: actor?.uid || null,
-      actorName: actor?.name || 'Unknown',
-      action,
-      target: details.target || 'permit',
-      targetId: details.targetId || null,
-      targetLabel: details.targetLabel || '',
-      summary: details.summary || '',
-    })
-  } catch (e) {
-    // eslint-disable-next-line no-console
-    console.warn('[Permit to Work] audit log failed:', e?.message || e)
-  }
-}
+// One implementation, in shared/org/orgData; this wrapper adds only the module
+// key and the default target. The private copy it replaces omitted BOTH
+// `module` and `source`, so permit entries read as "Core" in Admin → Audit Log
+// and carried no origin at all.
+const logAudit = (orgId, actor, action, details = {}) =>
+  logOrgAudit(orgId, actor, action, { module: 'ptw', target: 'permit', ...details })
 
 // ── Organizations & users ──────────────────────────────────────────────────────
 

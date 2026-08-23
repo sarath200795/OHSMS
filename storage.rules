@@ -68,14 +68,16 @@ service firebase.storage {
     }
 
     // Mirrors isManagerOf. A token stamped before role was a claim yields '',
-    // which is not in this list — so a stale session loses the ability to
-    // delete rather than keeping it, and gets it back on the next sign-in
+    // which is not in this list — so a stale session loses the medical-record
+    // read rather than keeping it, and gets it back on the next sign-in
     // (AuthContext forces getIdToken(true), and sessions do not outlive the
-    // browser session). Failing closed is the right direction for a delete.
+    // browser session). Failing closed is the right direction here.
     //
-    // One function rather than two identical role lists, because it now gates
-    // two different things — deleting anything, and READING a medical record —
-    // and two copies of `in ['admin','manager']` is two places to drift.
+    // It gates ONE thing now: reading a medical record, below. It used to gate
+    // deleting as well, until deletion moved to the deleteOrgFile callable and
+    // canDelete() became an unconditional refusal. Kept as a named predicate
+    // rather than inlined, because `in ['admin','manager']` appearing in the
+    // rule body is how the second copy starts.
     function isManagerIn(orgId) {
       return inOrg(orgId) && myRole() in ['admin', 'manager'];
     }
@@ -104,7 +106,11 @@ service firebase.storage {
     //
     // The callable reads the profile LIVE on every request and runs under the
     // functions test suite, so the control is both current and exercised.
-    function canDeleteFrom(orgId) {
+    //
+    // It takes no orgId. It used to, and ignored it — a parameter that reads
+    // like the refusal is scoped to one tenant when it is absolute. Dropping it
+    // makes the signature say what the body does.
+    function canDelete() {
       return false;
     }
 
@@ -140,7 +146,7 @@ service firebase.storage {
 
       allow update: if false;
 
-      allow delete: if canDeleteFrom(orgId);
+      allow delete: if canDelete();
     }
 
     // The bytes behind a medical record — a GP letter, a fit note, a discharge

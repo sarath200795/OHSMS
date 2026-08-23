@@ -42,8 +42,10 @@ export const moduleDoc = (orgId, name, id) => doc(db, 'organizations', orgId, na
 
 // Public, minimal name→org index so signup can resolve an org by name WITHOUT
 // read access to the member-only organizations collection.
-const orgIndexKey = (name) => (name || '').trim().toLowerCase()
-const orgIndexRef = (name) => doc(db, 'orgIndex', orgIndexKey(name))
+// Exported because five module service layers each carried a byte-identical
+// private copy of this pair. One name-to-key rule, in one place.
+export const orgIndexKey = (name) => (name || '').trim().toLowerCase()
+export const orgIndexRef = (name) => doc(db, 'orgIndex', orgIndexKey(name))
 
 // ── Audit log ───────────────────────────────────────────────────────────────
 // Append-only trail. Never let an audit failure break the primary write.

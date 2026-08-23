@@ -12,6 +12,19 @@ import { defineConfig } from 'vitest/config'
 // as it does from here. A test suite that only passes from one directory is a
 // test suite somebody eventually stops running.
 export default defineConfig({
+  // Same upward walk, third victim, and functions/vitest.config.js carries this
+  // exact line with the same explanation: vite finds the ROOT postcss.config.js
+  // and tries to load tailwindcss, which lives in the root node_modules. On a
+  // laptop that resolves, because Node walks up into it. In a checkout where
+  // only this package is installed, the module is not there and the whole run
+  // dies before a single test — "Cannot find module 'tailwindcss'" from a
+  // package that serves no CSS at all.
+  //
+  // This went unnoticed until these tests ran in CI for the first time, which is
+  // the argument for running them there.
+  //
+  // An empty inline config stops the search rather than satisfying it.
+  css: { postcss: {} },
   test: {
     root: fileURLToPath(new URL('.', import.meta.url)),
     // `test/` as well as `src/`, because the attack suite is not a unit test of

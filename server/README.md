@@ -10,8 +10,17 @@ injuries and health records. That works, and it is well tested, but it means the
 authorization model can only ever live in one database's rule language. This
 process is where it moves to.
 
-Right now it is a **skeleton**. It authenticates callers, loads their live
-profile, and serves no business routes at all.
+**Nothing deploys this yet.** `firebase.json` has no Cloud Run entry, neither
+deploy workflow builds it, and `docker-compose.yml` starts only the emulators and
+Vite. `Dockerfile` is the sole deployment artifact and no traffic reaches it. CI
+does run its tests (`.github/workflows/ci.yml`, the `server` job), which is what
+keeps the authorization mirror below from drifting unnoticed.
+
+Step 1 of the strangler fig has landed: it authenticates callers, loads their
+live profile, and serves **inspections** — `inspectionTemplates` and
+`inspectionRecords` — through `createOrgCollectionRouter`, mounted at
+`/organizations` in `src/routes/index.js`. Everything else still writes directly
+to Firestore under `firestore.rules`, and must keep working.
 
 ---
 
@@ -25,10 +34,14 @@ are — that is what makes the screens live, and replacing them with polling
 against this server would be a downgrade the users would feel immediately. This
 is a *hybrid*: the server owns writes, the rules keep owning reads.
 
-**It does not own writes yet either.** One module's writes move at a time
-(strangler fig, below). Everything not yet migrated keeps writing directly to
-Firestore and **must keep working**. A change here that breaks a module which
-has not moved yet is a regression, not progress.
+**It does not own most writes.** One module's writes move at a time (strangler
+fig, below) and only **inspections** has moved. Everything not yet migrated keeps
+writing directly to Firestore and **must keep working**. A change here that
+breaks a module which has not moved yet is a regression, not progress.
+
+And because nothing is deployed, even the migrated module still writes through
+`firestore.rules` in production today. The route exists and is tested; it is not
+yet the path traffic takes.
 
 **It is not a place to relax a rule.** `firebase-admin` does not evaluate
 `firestore.rules` — not a lenient version of them, *none of them*. Every rule
@@ -55,7 +68,8 @@ server/
     firestore.js    the Admin SDK handles, and the guard that keeps tests off prod
     errors.js       what a client is told, and what it is never told
     log.js          structured logging shaped for Cloud Run
-    routes/         where module routes get mounted (empty, on purpose)
+    routes/         module routes — index.js mounts them; orgCollection.js is the
+                    generic org-scoped CRUD router; inspections.js is module #1
   Dockerfile        the Cloud Run image
   package.json      separate from the repo root and from functions/
 ```
@@ -271,4 +285,6 @@ and the `SIGTERM` handler in `src/index.js` actually runs — in shell form
 `/bin/sh` is PID 1, does not forward signals, and every in-flight request is cut
 when Cloud Run recycles an instance.
 
-**Nothing here is deployed yet.** Build and test locally only.
+**Nothing here is deployed yet.** Build and test locally only. The image is
+ready; the decision to run it has not been made, and until it is, the value of
+this tree is entirely in `src/authz/` staying honest against `firestore.rules`.

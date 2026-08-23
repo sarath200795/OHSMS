@@ -87,6 +87,41 @@ let bucket = null
 const getBucket = () => (bucket ||= getStorage().bucket())
 
 /**
+ * Reject a caller-supplied value that is about to become ONE segment of a
+ * Firestore path.
+ *
+ * The Admin SDK happily accepts a slash inside what the caller believes is a
+ * document id, so a doc() built from uid = "a/b/c" silently addresses a
+ * different document in a different collection — the id stops naming the thing
+ * the surrounding permission check was made about. The same applies to "." and
+ * ".." (path traversal), to the reserved __name__ shape, and to control
+ * characters, which render invisibly in every log and console anyone would use
+ * to investigate afterwards.
+ *
+ * Mirrors assertSegment in server/src/routes/orgCollection.js. Kept as a
+ * separate copy because the two trees are separate npm packages with no shared
+ * module — if you change the rule, change it in both.
+ *
+ * Exported for index.test.js, not for deploy: function discovery only picks up
+ * exports carrying an __endpoint, which a plain function does not.
+ */
+export function assertPathSegment(value, what) {
+  const bad =
+    typeof value !== 'string' ||
+    value === '' ||
+    value === '.' ||
+    value === '..' ||
+    value.includes('/') ||
+    // eslint-disable-next-line no-control-regex
+    /[\u0000-\u001f\u007f]/.test(value) ||
+    /^__.*__$/.test(value) ||
+    Buffer.byteLength(value, 'utf8') > 1500
+  if (bad) {
+    throw new HttpsError('invalid-argument', `${what} is not a usable id.`)
+  }
+}
+
+/**
  * Mirror /users/{uid} onto the ID token.
  *
  * Triggered on every write to a profile, including deletion. `claimsFor`
@@ -1717,6 +1752,12 @@ export const exportSubjectData = onCall({ region: REGION, timeoutSeconds: 540 },
   if (!uid && !personId) {
     throw new HttpsError('invalid-argument', 'Give a uid, a personId, or both.')
   }
+  // Both become path segments below — uid in the tenancy check immediately
+  // after, and either of them as the document id in a `docId` source. Validate
+  // BEFORE the tenancy check, so the value that check is made about is the same
+  // value the queries then use.
+  if (uid) assertPathSegment(uid, 'uid')
+  if (personId) assertPathSegment(personId, 'personId')
 
   // Tenancy: the subject must belong to the CALLER's org. Without this, a
   // manager of any tenant could export any uid in the system — the export is
@@ -1744,7 +1785,18 @@ export const exportSubjectData = onCall({ region: REGION, timeoutSeconds: 540 },
       // `parent` is gathered by the parent's own query rather than a
       // collectionGroup scan — a collectionGroup would cross tenants, and the
       // rules that normally prevent that do not apply to the Admin SDK.
-      const col = q.topLevel ? db.collection(q.path) : db.collection(`organizations/${orgId}/${q.path}`)
+      //
+      // A top-level source is NOT org-scoped, so a field query against one
+      // reads every tenant's rows. Only `users` is top-level today and it joins
+      // on `docId`, which never reaches this line — so this guard is currently
+      // unreachable, and that is exactly why it is here: the next top-level
+      // source added with a field join would otherwise cross tenants silently.
+      if (q.topLevel) {
+        throw new Error(
+          `source ${q.path} is top-level and cannot be reached by a field query without crossing tenants`,
+        )
+      }
+      const col = db.collection(`organizations/${orgId}/${q.path}`)
       const snap = await col.where(q.field, '==', q.value).limit(2000).get()
       records[q.path] = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
     } catch (e) {

@@ -12,7 +12,6 @@ export const DELIVERY_MODES = [
   { key: 'module', label: 'Module-based', hint: 'Self-paced material an employee completes on their own.' },
   { key: 'classroom', label: 'Classroom session', hint: 'Runs at a set time, online or at a site.' },
 ]
-export const DELIVERY_KEYS = DELIVERY_MODES.map((d) => d.key)
 export const isClassroom = (course) => course?.deliveryMode === 'classroom'
 
 export const SESSION_MODES = [

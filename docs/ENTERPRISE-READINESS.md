@@ -4,23 +4,13 @@ An honest assessment of what this app would meet, and what it would fail, in a
 mid-to-large enterprise procurement or security review. Written against what is
 in the repository today, not what is planned.
 
-**Short answer: not yet — but the gap is a list, not a rewrite.**
+**Short answer: yes for the security review, with caveats on data lifecycle and
+compliance paperwork.** The two items that used to stop a deal on their own —
+no backups, and file storage that was not tenant-isolated — are both closed.
 
-The engineering foundation is genuinely good. Tenancy is enforced at the only
-layer that counts, the audit trail is append-only and now attributable, the
-security rules carry 149 tests, and the whole app builds and tests clean on every
-push. What is missing is almost entirely *operational* — the things a buyer's
-security questionnaire asks about and a developer never has to think about until
-someone does.
-
-Two things below would stop a deal on their own: no backups, and file storage
-that is not tenant-isolated.
-
-SSO and MFA were on that list and are now built — SAML/OIDC sign-in and
-self-service TOTP enrolment, including the sign-in challenge handling without
-which enforcing MFA locks users out. Both are inert until switched on in the
-Identity Platform console; see `PRODUCTION.md` §1b, which also explains why the
-client has to be deployed before MFA is enforced.
+**Read this next to `SECURITY.md`, not instead of it.** That file is the
+authority on what is open; this one is the buyer-facing summary. Where they
+disagree, `SECURITY.md` is right.
 
 ---
 
@@ -28,135 +18,130 @@ client has to be deployed before MFA is enforced.
 
 | Area | State | Verdict |
 |---|---|---|
-| Tenant isolation (database) | Org-scoped paths, enforced in rules, 149 tests | **Ready** |
-| Tenant isolation (files) | orgId claim on the token, enforced in storage.rules | **Ready** |
-| Authentication | SAML/OIDC implemented; needs console config | **Ready in code** |
-| MFA | TOTP implemented, self-service enrolment; needs console config | **Ready in code** |
+| Tenant isolation (database) | Org-scoped paths, enforced in rules, 448 rules tests | **Ready** |
+| Tenant isolation (files) | `orgId` claim on the token, enforced in `storage.rules` | **Ready** |
+| Authentication | SAML/OIDC implemented and configured | **Ready** |
+| MFA | TOTP, self-service enrolment, enabled | **Ready** |
 | Authorization | 4 roles, site scoping, manager-only decisions — all in rules | **Ready** |
 | Audit trail | Append-only, immutable, actor pinned to caller | **Ready** |
-| Backups / disaster recovery | PITR (7d) + weekly schedule (30d retention). No restore drill yet | **Nearly** |
-| Observability | Sentry wired, DSN unset. No metrics, no alerting, no uptime check | **Gap** |
-| Data lifecycle (export, deletion, retention) | None | **Gap** |
-| Testing | 1075 unit, 149 rules, 1 e2e smoke | **Mostly ready** |
-| CI/CD | Lint + test + build on push; ordered deploy | **Mostly ready** |
-| Environments | Production only — no staging | **Gap** |
+| Encryption at rest (application layer) | Envelope encryption, escrowed master key in Secret Manager, on | **Ready** |
+| Abuse control on public surfaces | App Check enforced | **Ready** |
+| Backups / disaster recovery | PITR (7d) + weekly schedule (30d), delete protection, **restore drilled** 2026-08-16 | **Ready** |
+| Observability | Sentry wired with a DSN. No metrics, no uptime check, no on-call path | **Partial** |
+| Data lifecycle — export | Subject access implemented (`exportSubjectData`) | **Ready** |
+| Data lifecycle — erasure & retention | Classified, not executed. No retention periods | **Gap** |
+| Testing | 1754 unit, 448 rules, 357 functions, server suite, e2e smoke | **Ready** |
+| CI/CD | Lint, tests (all four suites), build, audit gate; ordered deploy | **Ready** |
+| Environments | Staging pipeline built; production ships on a version tag | **Ready in code** |
 | Secrets handling | Nothing committed; client keys are appropriately public | **Ready** |
-| Scalability | Uncapped collection listeners | **Gap** |
-| Compliance artifacts | None | **Gap** |
+| Scalability | Uncapped collection listeners (`SECURITY.md` S-04) | **Gap** |
+| Compliance artifacts | ISO 27001 self-audit written. No DPA, no subprocessor list, no pen test, no certification | **Gap** |
 
 ---
 
-## The blockers
+## What closed, and what it took
 
-### 1. No backups, no disaster recovery
+**File storage is tenant-isolated.** The blocker was that `storage.rules` could
+only see what the ID token claimed, and the token carried no `orgId`. Only the
+Admin SDK can set a custom claim, and there was no `functions/` tier to do it.
+`syncUserClaims` and `backfillClaims` are live in `asia-south1`, the claim is on
+the token, and the stricter ruleset is deployed. `SECURITY.md` S-01.
 
-Firestore has no automatic backups on the free tier and none are configured. If a
-tenant's data is deleted — a bad script, a compromised admin, a bug — it is
-gone. There is no point-in-time recovery, no tested restore, and no stated RPO or
-RTO.
+**Manager-only actions are enforced in rules.** Approving permits, deciding
+defect reports and managing sites were gated in React only, so an ordinary
+member could do them from the SDK. For a safety system that mattered more than
+it sounds: the value of an approval is that only the approver could have made
+it. `SECURITY.md` S-02.
 
-This is the cheapest blocker to fix and the most expensive to leave. `PRODUCTION.md`
-§3 has the steps; what is missing beyond enabling it is a *restore that has
-actually been performed once*, because a backup nobody has restored is a belief,
-not a control.
+**Backups exist and a restore has actually been performed.** PITR with a 7-day
+window, a weekly scheduled export at 30-day retention, and delete protection —
+plus a drill on 2026-08-16 that restored a real backup into a scratch database
+in about 15 minutes. That distinction is the whole point: a backup nobody has
+restored is a belief, not a control. `PRODUCTION.md` §3 and §3a, and §3a is
+worth reading *before* you need it, because a restore in progress looks exactly
+like an empty backup for most of its run.
 
-### 2. File storage is not tenant-isolated — mechanism now deployed, cutover outstanding
-
-Any signed-in user of any tenant can read and delete any other tenant's uploaded
-files if they know the path — incident photos, permit documents, LOTO procedure
-photos. See `SECURITY.md` S-01.
-
-**Still true today, but no longer blocked.** The missing piece was an `orgId`
-custom claim on the ID token, which only the Admin SDK can set — and the
-`functions/` tier had no entry point, so there was nothing to deploy. That is
-done: `syncUserClaims` and `backfillClaims` are live in `asia-south1`.
-
-Three steps remain, and the order is load-bearing because a token with no
-`orgId` fails every rule in the stricter set — swapping it in first locks the
-organization out of its own files:
-
-1. run `backfillClaims` once per organization
-2. let people get a fresh token (sign-in forces one)
-3. swap in the ruleset written out at the bottom of `storage.rules`
-
-`PRODUCTION.md` §4b has the commands and how to verify it actually closed.
+**Console hardening is applied.** App Check on the public write surfaces, TOTP
+for admins, application-layer encryption on, API key referrer restrictions.
+`SECURITY.md` S-05, now closed.
 
 ---
 
-## The gaps
+## The remaining gaps
 
-**Authorization has a hole in it.** Approving permits, deciding defect reports and
-managing sites are gated in React only, so an ordinary member can do them from
-the SDK (`SECURITY.md` S-02). For a safety system this is more serious than it
-sounds: the value of an approval is that only the approver could have made it.
+**No data lifecycle beyond export.** Subject access works: `exportSubjectData`
+gathers a person's records, manager-gated and org-scoped, and reports the
+collections it could not read rather than omitting them silently. Erasure is
+*classified but not executed*, and that is deliberate — in an occupational
+health system the honest answer to "delete everything about me" is mostly "most
+of this cannot be deleted, and here is each part and why". What is genuinely
+missing is **retention periods**: a record classed `STATUTORY` is currently kept
+forever, and indefinite retention is not lawful merely because some retention
+is. See `DATA-RIGHTS.md`, including the warning that the retention table is an
+engineering reading of the law and needs someone with legal authority to sign it
+off. A buyer's privacy review will ask.
 
-**Nothing is watching.** Sentry is integrated but has no DSN, so no error reaches
-anyone. There are no metrics, no alerts, no uptime monitoring and no on-call
-path. Today, the way you find out production is broken is that a user tells you.
+**One trap worth naming, because encryption is now on.** Every field the
+subject-access "mentions" scan would search is a field the crypto policy seals.
+A server-side scan for a name therefore reads ciphertext and finds nothing — and
+**zero matches is indistinguishable from a person who is genuinely not
+mentioned**. That is a silent wrong answer to a legal request.
+`scanFeasibility()` exists to say so out loud; the mentions half must be done in
+the browser of somebody entitled to the keys, or recorded as not performed. It
+must never be reported as "none found". `DATA-RIGHTS.md` §2.
 
-**No data lifecycle.** This app stores occupational health records — injuries,
-illnesses, medical restrictions. Under GDPR and India's DPDP Act that is
-sensitive personal data, and there is currently no way to export a person's
-records, delete them on request, or expire them on a retention schedule. A buyer's
-privacy review will ask for all three, and "we would do it by hand in the console"
-is not an answer that survives.
-
-**Production is the only environment.** There is no staging, so the first time a
-change meets real data is when a customer does. The deploy workflow is sound —
-rules and indexes ship ahead of the client — but it deploys straight to
-production on merge.
+**Nothing is watching in real time.** Sentry has a DSN, so errors reach
+somebody. There are still no metrics, no uptime check and no on-call path, so
+the way you find out production is *down* — as opposed to throwing — is that a
+user tells you.
 
 **Scalability has a known ceiling.** Whole collections are read with no limit
-(`SECURITY.md` S-04) and aggregation happens in the browser. Fine now; a tenant
-with tens of thousands of records will find the edge.
+(`SECURITY.md` S-04) and aggregation happens in the browser. The analytics page
+opens eleven such listeners at once. Fine now; a tenant with tens of thousands
+of records will find the edge.
 
-**One e2e test.** `e2e/smoke.spec.js` covers the critical path. Unit and rules
-coverage are strong, but there is little proof that the assembled app works
-end-to-end across the twelve modules.
-
-**No compliance artifacts.** No DPA template, no data-flow or subprocessor list,
-no security whitepaper, no penetration test, no SOC 2 or ISO 27001. Not code, but
-these are what actually gets asked for, and assembling them takes months of
+**Compliance artifacts are thin.** `ISO27001-AUDIT.md` is a substantial internal
+self-audit, which is real work and worth showing. It is not a certification. No
+DPA template, no data-flow or subprocessor list, no security whitepaper, no
+penetration test, no SOC 2 or ISO 27001. Assembling these takes months of
 calendar time — worth starting before the first enterprise deal, not during it.
+
+**Console state is invisible to version control.** App Check, MFA, the API key
+restrictions, backups — all of them are toggles in a console, and nothing in
+this repository fails if one is switched off later. There is no test for it and
+no diff that shows it. Re-verifying them belongs in a periodic review.
 
 ---
 
 ## What is genuinely strong
 
-Worth saying, because the list above is long and the foundation is not the
-problem:
+Worth saying plainly, because gap lists read worse than the system is:
 
-- **Tenancy is enforced where it cannot be bypassed.** Not in a middleware
-  someone can forget to call — in rules, with tests that send hostile payloads
+- **Tenancy is enforced where it cannot be bypassed.** Not in middleware someone
+  can forget to call — in rules, with 448 tests that send hostile payloads
   rather than well-behaved ones.
-- **The audit trail is real.** Append-only, no updates, no deletes, and entries
-  are now pinned to the caller so the name on one means something.
-- **The public QR surfaces are tightly bound.** Anonymous writes must present a
-  token that resolves to the org and asset being written to, which ties a write
-  to physical access to the equipment. That is a sharper control than most
-  products manage on an unauthenticated endpoint.
-- **The seams are real.** Storage and data are behind adapters with a
-  documented contract, so swapping infrastructure is a file, not a project.
+- **The audit trail is real.** Append-only, no updates, no deletes, entries
+  pinned to the caller.
+- **The public QR surfaces are tightly bound.** An anonymous write must present
+  a token that resolves to the org and the asset being written to, so a write is
+  tied to physical access to the equipment. Sharper than most products manage on
+  an unauthenticated endpoint.
+- **The seams are real.** Storage and data sit behind adapters with a documented
+  contract, so swapping infrastructure is a file, not a project.
 - **The deploy order is understood and written down**, including the failure
-  modes that motivated it.
+  modes that motivated it — rules before hosting, backfill before rules.
+- **The security register is kept honestly.** Findings are written up with what
+  the attacker actually gets, including the ones that are still open.
 
 ---
 
 ## Suggested order
 
-1. Turn on backups and **perform one restore** (hours; removes a blocker)
-2. Set the Sentry DSN and add an uptime check (hours; you stop finding out from users)
-3. Enforce App Check on the public write surfaces (a console toggle, already documented)
-4. Identity Platform: switch on TOTP and your SAML/OIDC provider — the client
-   side is built, so this is console work plus one env var (`PRODUCTION.md` §1b).
-   Deploy the client first; enforcing MFA against a build without the challenge
-   handling locks users out rather than protecting them.
-5. Deploy `functions/`, then the `orgId` claim and the stronger `storage.rules` (removes a blocker)
-6. Move manager-only transitions into the rules (`SECURITY.md` S-02)
-7. A staging project and a staging deploy on merge
-8. Data export / deletion / retention
-9. Cap the unbounded listeners
-10. Compliance artifacts, and a penetration test once 1–8 are done
-
-Items 1–4 are hours of work between them and clear a blocker apiece. That is the
-cheapest security the project will ever buy.
+1. Retention periods and an erasure decision signed off by someone with legal
+   authority (`DATA-RIGHTS.md` §3) — the largest remaining gap, and the one a
+   privacy review will find first
+2. An uptime check and one alert, so a total outage is not user-reported
+3. Cap the unbounded listeners (`SECURITY.md` S-04) before a large tenant arrives
+4. DPA template, data-flow diagram and subprocessor list — paperwork, but it is
+   what actually gets asked for
+5. A penetration test, once 1–4 are done

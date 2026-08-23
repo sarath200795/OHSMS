@@ -12,7 +12,6 @@ export const IDLE_WARNING_MS = (Number.isFinite(warnSeconds) && warnSeconds > 0 
 
 // localStorage keys (shared across tabs in the same browser).
 export const LAST_ACTIVITY_KEY = 'hecp:lastActivity'
-export const SESSION_EXPIRED_KEY = 'hecp:sessionExpired'
 
 /**
  * Start the inactivity clock. Call this where a session BEGINS — a sign-in, not
