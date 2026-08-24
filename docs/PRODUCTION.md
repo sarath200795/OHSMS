@@ -154,7 +154,13 @@ wired; without the steps below it ships no tokens and nothing is enforced.
    | --- | --- |
    | `recaptcha/api.js` loads, badge renders, no errors | the key is **classic v3** |
    | `recaptcha/enterprise.js` returns **400**, `appCheck/recaptcha-error` | an Enterprise provider on a **v3 key** |
+   | `recaptcha/api.js` loads, badge renders, **but** `appCheck/recaptcha-error` | provider and key are both right — **this host is not on the key's Domains list** (§9b, item 4) |
    | Everything loads but verified stays **0%** | provider and key agree, but the **registration** does not |
+
+   That third row is the trap: every signal that would accuse the provider or
+   the key looks healthy, so the instinct is to swap the provider again. Run the
+   domain probe below against the host you are actually serving from before
+   changing a line of code — it answers in one command.
 
    **Test the key before wiring it in.** Two provider swaps and a production
    lockout were spent on a mismatch that did not exist, because nobody asked
