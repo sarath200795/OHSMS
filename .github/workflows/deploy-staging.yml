@@ -35,7 +35,7 @@ jobs:
   staging:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Skip politely until staging exists, exactly as deploy.yml does, so CI
       # stays green for forks and for the period before the project is created.
@@ -81,7 +81,7 @@ jobs:
           fi
           echo "Staging target: $STAGING_ID (production is $PROD_ID)"
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         if: steps.creds.outputs.configured == 'true'
         with:
           node-version: 20
