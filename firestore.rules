@@ -562,8 +562,21 @@ service cloud.firestore {
     // below, and because rules are a permissive UNION a narrower match would
     // restrict nothing while this wildcard still granted the collection — the
     // same reason the generic org rule excludes auditLogs.
+    //
+    // `sites` USED to be in this list and is not any more. The site registry
+    // lives at /organizations/{orgId}/sites and always has — every module reads
+    // it through subscribeSites in shared/org/orgData.js. The only code that
+    // ever touched a ROOT /sites collection was loto/services/sites.js, which
+    // was imported by nothing: LOTO's own CreateProcedure page uses the shared
+    // registry like everyone else. So this granted read and write on a
+    // top-level collection that no code in the app has ever used, which is the
+    // worst kind of permission — one nobody can notice is wrong, because
+    // nothing exercises it. Removing it takes nothing away from the app and
+    // takes a whole collection away from an attacker.
+    //
+    // This is an intended semantic change: the rules test count MOVES here.
     function isLegacyOrgCollection(col) {
-      return col in ['procedures', 'procedurePhotos', 'locks', 'technicians', 'sites'];
+      return col in ['procedures', 'procedurePhotos', 'locks', 'technicians'];
     }
 
     // ── LOTO activity trail ───────────────────────────────────────────────────

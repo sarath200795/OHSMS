@@ -64,11 +64,23 @@ body {
      Raised = paper-white top-left highlight + warm brown bottom-right drop.
      Inputs are recessed (inset). Pressable controls sink on :active (Emil press
      feedback: scale + pressed shadow). Coral = accent. Durations < 300ms. */
+  /* The focus-visible ring is not decoration. Every clay surface is a soft warm
+     grey against a warm background, so the browser's default outline — drawn
+     tight to a rounded-2xl edge it does not follow — was very nearly invisible
+     on .btn-ghost and .btn-soft, and a keyboard user tabbing a permit approval
+     screen could not tell which control they were on. It matches .input's
+     `ring-2 ring-brand-200` below deliberately: focus should look like one
+     thing in this app, not two.
+
+     focus-visible rather than focus, so a mouse click does not leave a ring
+     behind on a button the user has already finished with. */
   .btn {
     @apply inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-semibold
       transition-all duration-200 ease-emil shadow-clay-sm
       disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none
-      active:scale-[0.97] active:shadow-clay-pressed;
+      active:scale-[0.97] active:shadow-clay-pressed
+      focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400
+      focus-visible:ring-offset-2 focus-visible:ring-offset-clay-bg;
   }
   .btn-primary { @apply btn bg-brand-600 text-white hover:bg-brand-700 shadow-clay-brand; }
   .btn-ghost   { @apply btn bg-clay-surface text-ink-700 hover:bg-clay-100; }

@@ -43,7 +43,7 @@ function ModuleShell() {
 
   return (
     <>
-      <nav className="mb-4 flex flex-wrap gap-2">
+      <nav aria-label="CCTV sections" className="mb-4 flex flex-wrap gap-2">
         {TABS.map((t) => (
           <NavLink
             key={t.to}

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { AlertTriangle, Send } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { Modal, Spinner } from './ui'
+import { Modal, Spinner, Field } from './ui'
 import { ASSET_DEFECTS, OTHER_DEFECT, REPORTER_ROLES } from '../lib/constants'
 import { createAssetReport } from '../lib/firestore'
 
@@ -83,13 +83,12 @@ export default function ReportAssetDefectModal({ open, onClose, asset, kind }) {
         })}
       </div>
 
-      <div className="mt-4">
-        <label className="label">Reported by *</label>
+      <Field label="Reported by *" className="mt-4">
         <select className="input" value={role} onChange={(e) => setRole(e.target.value)} required>
           <option value="" disabled>Select who is reporting…</option>
           {REPORTER_ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
         </select>
-      </div>
+      </Field>
 
       <div className="mt-4">
         <label className="label">{needsNote ? 'Describe the problem *' : 'Note (optional)'}</label>

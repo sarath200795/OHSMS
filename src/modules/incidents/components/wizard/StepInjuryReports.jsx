@@ -2,6 +2,7 @@ import { HeartPulse, Stethoscope, Lock, EyeOff } from 'lucide-react'
 import BodyMap from '../BodyMap'
 import FileUploader from '../FileUploader'
 import { INJURY_TYPES } from '../../lib/constants'
+import { Field } from '../ui'
 
 const personName = (p) => p.name || (p.kind === 'internal' ? 'Internal member' : 'External person')
 
@@ -80,7 +81,7 @@ export default function StepInjuryReports({ persons = [], value = [], onChange, 
               <fieldset disabled={locked} className="grid gap-5 lg:grid-cols-2">
                 <div className="space-y-4">
                   <div>
-                    <label className="label">First aid done?</label>
+                    <span className="label">First aid done?</span>
                     <div className="flex gap-2">
                       {[{ v: true, l: 'Yes' }, { v: false, l: 'No' }].map((o) => (
                         <button
@@ -98,23 +99,20 @@ export default function StepInjuryReports({ persons = [], value = [], onChange, 
                     )}
                   </div>
 
-                  <div>
-                    <label className="label">Type of injury</label>
+                  <Field label="Type of injury">
                     <select className="input" value={r.injuryType || ''} onChange={(e) => setReport(p, { injuryType: e.target.value })}>
                       <option value="">Select injury type…</option>
                       {INJURY_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
                     </select>
-                  </div>
+                  </Field>
 
                   <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="label">Medication</label>
+                    <Field label="Medication">
                       <input className="input" placeholder="If any" value={r.medication || ''} onChange={(e) => setReport(p, { medication: e.target.value })} />
-                    </div>
-                    <div>
-                      <label className="label">Days to return to work</label>
+                    </Field>
+                    <Field label="Days to return to work">
                       <input type="number" min="0" className="input" placeholder="0" value={r.daysToReturnToWork ?? ''} onChange={(e) => setReport(p, { daysToReturnToWork: e.target.value })} />
-                    </div>
+                    </Field>
                   </div>
 
                   <div>
@@ -123,7 +121,8 @@ export default function StepInjuryReports({ persons = [], value = [], onChange, 
                         leaves readable by every approved member and the auditor —
                         a medical record is a file here, and moving files needs a
                         rule this change cannot make. Tracked, not fixed. */}
-                    <label className="label flex items-center gap-1.5"><Stethoscope size={13} /> Medical records</label>
+                    {/* A heading: FileUploader is a drop zone plus a file list, not one control. */}
+        <span className="label flex items-center gap-1.5"><Stethoscope size={13} /> Medical records</span>
                     <FileUploader
                       accept="any"
                       label="Attach medical record"
@@ -136,10 +135,9 @@ export default function StepInjuryReports({ persons = [], value = [], onChange, 
                   </div>
                 </div>
 
-                <div>
-                  <label className="label">Injured body part(s)</label>
+                <Field label="Injured body part(s)">
                   <BodyMap value={r.bodyParts || []} onChange={(bodyParts) => setReport(p, { bodyParts })} />
-                </div>
+                </Field>
               </fieldset>
             )}
           </div>

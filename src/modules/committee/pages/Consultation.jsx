@@ -21,6 +21,7 @@ import { Pager } from '../../../shared/ui';
 import { usePagination } from '../../../shared/ui/usePagination';
 import Logo from '../components/Logo';
 import LogoLoader from '../components/LogoLoader';
+import { isFutureDate, todayISO } from '../../../shared/lib/dates';
 import {
     subscribeSites,
     subscribeOrgUsers,
@@ -132,6 +133,7 @@ const MeetingDetailModal = ({ meeting, siteLabel, onClose, onUpdateStatus, onPri
                                                 </td>
                                                 <td className="p-4 pr-6 text-right">
                                                     <select
+                                                        aria-label={`Status of action: ${row.action || `row ${idx + 1}`}`}
                                                         value={row.status || 'Open'}
                                                         onChange={e => onUpdateStatus(meeting.firebaseKey, idx, e.target.value)}
                                                         disabled={!canEditStatus(row)}
@@ -413,6 +415,9 @@ export default function Consultation() {
     const saveRecord = async () => {
         if (!canEditForm) return toast.error("You do not have permission to edit records.");
         if (!formData.subject) return toast.error("Subject is required.");
+        // Minutes record a meeting that HAS taken place. A future date files
+        // an unheld meeting as held, with its attendees and its actions.
+        if (isFutureDate(formData.date)) return toast.error("The meeting date cannot be in the future.");
         if (scopeHasSite && !formData.siteId) return toast.error("Site is required.");
 
         setSaving(true);
@@ -618,7 +623,7 @@ export default function Consultation() {
                                         {/* Donut — meetings by type */}
                                         <div className="glass-panel p-6 rounded-3xl shadow-xl">
                                             <h4 className="text-xs uppercase text-ink-500 font-bold mb-4 tracking-widest"><ChartPie size={14} className="inline mr-2 text-green-600" />Meetings by Type</h4>
-                                            <ChartFrame width="100%" height={260}>
+                                            <ChartFrame label="Meetings by type" width="100%" height={260}>
                                                 <PieChart>
                                                     <Pie data={meetingsByType} dataKey="value" nameKey="name" innerRadius={55} outerRadius={95} paddingAngle={2}>
                                                         {meetingsByType.map((e, i) => <Cell key={i} fill={TYPE_COLORS[i % TYPE_COLORS.length]} />)}
@@ -633,7 +638,7 @@ export default function Consultation() {
                                         <div className="glass-panel p-6 rounded-3xl shadow-xl">
                                             <h4 className="text-xs uppercase text-ink-500 font-bold mb-4 tracking-widest"><ListChecks size={14} className="inline mr-2 text-green-600" />Overall Action Status</h4>
                                             {actionStatusData.length > 0 ? (
-                                                <ChartFrame width="100%" height={260}>
+                                                <ChartFrame label="Overall action status" width="100%" height={260}>
                                                     <PieChart>
                                                         <Pie data={actionStatusData} dataKey="value" nameKey="name" innerRadius={55} outerRadius={95} paddingAngle={2}>
                                                             {actionStatusData.map((e, i) => <Cell key={i} fill={STATUS_COLORS[e.name]} />)}
@@ -651,7 +656,7 @@ export default function Consultation() {
                                     {/* Stacked bar — action status per meeting */}
                                     <div className="glass-panel p-6 rounded-3xl shadow-xl">
                                         <h4 className="text-xs uppercase text-ink-500 font-bold mb-4 tracking-widest"><ChartColumn size={14} className="inline mr-2 text-green-600" />Action Status per Meeting <span className="text-ink-400 normal-case font-medium tracking-normal">(latest {perMeetingActions.length})</span></h4>
-                                        <ChartFrame width="100%" height={320}>
+                                        <ChartFrame label="Action status per meeting" width="100%" height={320}>
                                             <BarChart data={perMeetingActions} margin={{ top: 8, right: 12, left: -10, bottom: 8 }}>
                                                 <CartesianGrid strokeDasharray="3 3" stroke="#e3ccbf" vertical={false} />
                                                 <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#62718c' }} angle={-25} textAnchor="end" height={72} interval={0} />
@@ -669,7 +674,7 @@ export default function Consultation() {
                                         {/* Bar — points (action items) per meeting */}
                                         <div className="glass-panel p-6 rounded-3xl shadow-xl">
                                             <h4 className="text-xs uppercase text-ink-500 font-bold mb-4 tracking-widest"><ListOrdered size={14} className="inline mr-2 text-green-600" />Points per Meeting</h4>
-                                            <ChartFrame width="100%" height={280}>
+                                            <ChartFrame label="Points per meeting" width="100%" height={280}>
                                                 <BarChart data={pointsPerMeeting} margin={{ top: 8, right: 12, left: -10, bottom: 8 }}>
                                                     <CartesianGrid strokeDasharray="3 3" stroke="#e3ccbf" vertical={false} />
                                                     <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#62718c' }} angle={-25} textAnchor="end" height={70} interval={0} />
@@ -685,7 +690,7 @@ export default function Consultation() {
                                         {/* Bar — meetings by site */}
                                         <div className="glass-panel p-6 rounded-3xl shadow-xl">
                                             <h4 className="text-xs uppercase text-ink-500 font-bold mb-4 tracking-widest"><MapPin size={14} className="inline mr-2 text-green-600" />Meetings by Site</h4>
-                                            <ChartFrame width="100%" height={280}>
+                                            <ChartFrame label="Meetings by site" width="100%" height={280}>
                                                 <BarChart data={meetingsBySite} margin={{ top: 8, right: 12, left: -10, bottom: 8 }}>
                                                     <CartesianGrid strokeDasharray="3 3" stroke="#e3ccbf" vertical={false} />
                                                     <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#62718c' }} />
@@ -700,7 +705,7 @@ export default function Consultation() {
                                     {/* Area — meetings logged over time */}
                                     <div className="glass-panel p-6 rounded-3xl shadow-xl">
                                         <h4 className="text-xs uppercase text-ink-500 font-bold mb-4 tracking-widest"><ChartArea size={14} className="inline mr-2 text-green-600" />Meetings Over Time</h4>
-                                        <ChartFrame width="100%" height={240}>
+                                        <ChartFrame label="Meetings over time" width="100%" height={240}>
                                             <AreaChart data={meetingsOverTime} margin={{ top: 8, right: 12, left: -10, bottom: 8 }}>
                                                 <defs>
                                                     <linearGradient id="mtg" x1="0" y1="0" x2="0" y2="1">
@@ -726,7 +731,7 @@ export default function Consultation() {
                                 const totalAct = m.actions ? m.actions.length : 0;
                                 const closedAct = m.actions ? m.actions.filter(a => a.status === 'Closed').length : 0;
                                 return (
-                                    <div key={m.firebaseKey} className="glass-panel p-6 rounded-3xl border-t-4 border-green-500 flex flex-col shadow-xl hover:shadow-2xl hover:-translate-y-1 transition-all cursor-pointer group" onClick={() => { setFormData(m); setView('detail'); }}>
+                                    <button type="button" key={m.firebaseKey} className="glass-panel p-6 rounded-3xl border-t-4 border-green-500 flex flex-col w-full text-left shadow-xl hover:shadow-2xl hover:-translate-y-1 transition-all cursor-pointer group" onClick={() => { setFormData(m); setView('detail'); }}>
                                         <div className="flex justify-between items-start mb-4">
                                             <span className="font-mono text-[10px] font-bold text-green-700 bg-green-100 px-2 py-1 rounded-lg border border-green-500/30">{m.docId}</span>
                                             <span className="text-[10px] bg-clay-surface text-ink-600 px-2 py-1 rounded-lg border border-clay-200 font-bold shadow-inner"><Calendar size={12} className="inline mr-1" /> {m.date}</span>
@@ -750,7 +755,7 @@ export default function Consultation() {
                                                 {permissions.canDelete && <button type="button" onClick={e => { e.stopPropagation(); deleteRecord(m.firebaseKey); }} className="text-red-600 hover:text-white bg-clay-100 hover:bg-red-600 w-8 h-8 rounded-lg flex items-center justify-center transition-colors shadow-lg"><Trash2 size={16} /></button>}
                                             </div>
                                         </div>
-                                    </div>
+                                    </button>
                                 );
                             })}
                             {filteredList.length === 0 && <div className="col-span-full text-center p-16 text-ink-400 italic text-lg border-2 border-dashed border-clay-200/70 rounded-3xl bg-clay-100/60 shadow-inner">No meeting records found matching your filters.</div>}
@@ -767,8 +772,8 @@ export default function Consultation() {
                     <div className="max-w-7xl mx-auto space-y-6 animate-in fade-in duration-500 pb-20">
                         <div className="flex justify-between items-center bg-clay-surface p-6 rounded-3xl border border-clay-200 shadow-xl">
                             <div className="flex items-center gap-4">
-                                <label className="text-xs uppercase font-bold text-ink-500 tracking-widest">Compliance Site</label>
-                                <select className="bg-clay-surface p-3 rounded-xl w-64 border border-clay-200/70 text-sm font-bold text-green-700 outline-none focus:border-green-500 shadow-inner transition-colors" value={calSiteFilter} onChange={handleCalSiteFilterChange}>
+                                <label htmlFor="consult-compliance-site" className="text-xs uppercase font-bold text-ink-500 tracking-widest">Compliance Site</label>
+                                <select id="consult-compliance-site" className="bg-clay-surface p-3 rounded-xl w-64 border border-clay-200/70 text-sm font-bold text-green-700 outline-none focus:border-green-500 shadow-inner transition-colors" value={calSiteFilter} onChange={handleCalSiteFilterChange}>
                                     {(isGlobalUser || visibleSites.length > 1) && <option value="All">All Authorized Sites</option>}
                                     {visibleSites.map((s, idx) => <option key={s.id || idx} value={s.code || s.id}>{s.name}</option>)}
                                 </select>
@@ -826,9 +831,9 @@ export default function Consultation() {
                                                 <span className="font-bold text-ink-400 block text-right mb-2 text-sm group-hover:text-ink-600 transition-colors">{d}</span>
                                                 <div className="flex-1 space-y-2 overflow-y-auto custom-scroll pr-1">
                                                     {dayMeetings.map((m, i) => (
-                                                        <div key={i} onClick={() => { setFormData(m); setView('detail'); }} className="text-[10px] font-bold bg-green-100 text-green-700 p-2 rounded-lg leading-tight border border-green-500/30 cursor-pointer shadow-sm hover:bg-green-600 hover:text-white transition-colors truncate uppercase tracking-wider" title={m.subject}>
+                                                        <button type="button" key={i} onClick={() => { setFormData(m); setView('detail'); }} className="text-[10px] font-bold bg-green-100 text-green-700 p-2 rounded-lg leading-tight border border-green-500/30 cursor-pointer shadow-sm hover:bg-green-600 hover:text-white transition-colors truncate uppercase tracking-wider w-full text-left" title={m.subject}>
                                                             {m.type}
-                                                        </div>
+                                                        </button>
                                                     ))}
                                                 </div>
                                             </div>
@@ -861,7 +866,7 @@ export default function Consultation() {
 
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-10 bg-clay-surface p-8 rounded-2xl border border-clay-200/70 shadow-inner">
                                 <div className="md:col-span-3">
-                                    <label className="text-[10px] uppercase font-bold text-ink-400 block mb-2 tracking-widest ml-1">Facility / Site Scope</label>
+                                    <span className="text-[10px] uppercase font-bold text-ink-400 block mb-2 tracking-widest ml-1">Facility / Site Scope</span>
                                     <SiteScopePicker
                                         module="committee"
                                         sites={visibleSites}
@@ -871,30 +876,30 @@ export default function Consultation() {
                                     />
                                 </div>
                                 <div>
-                                    <label className="text-[10px] uppercase font-bold text-ink-400 block mb-2 tracking-widest ml-1">Meeting Category</label>
-                                    <select className="w-full bg-clay-surface border border-clay-200 p-3.5 rounded-xl text-sm font-bold text-green-700 focus:border-green-500 outline-none shadow-inner transition-colors" value={formData.type} onChange={e => setFormData({ ...formData, type: e.target.value })} disabled={!canEditForm}>
+                                    <label htmlFor="consult-category" className="text-[10px] uppercase font-bold text-ink-400 block mb-2 tracking-widest ml-1">Meeting Category</label>
+                                    <select id="consult-category" className="w-full bg-clay-surface border border-clay-200 p-3.5 rounded-xl text-sm font-bold text-green-700 focus:border-green-500 outline-none shadow-inner transition-colors" value={formData.type} onChange={e => setFormData({ ...formData, type: e.target.value })} disabled={!canEditForm}>
                                         {MEETING_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                                     </select>
                                 </div>
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
-                                        <label className="text-[10px] uppercase font-bold text-ink-400 block mb-2 tracking-widest ml-1">Date</label>
-                                        <input type="date" value={formData.date} onChange={e => setFormData({ ...formData, date: e.target.value })} disabled={!canEditForm} className="w-full bg-clay-surface border border-clay-200 p-3.5 rounded-xl text-sm text-ink-900 outline-none shadow-inner font-mono transition-colors focus:border-green-500" />
+                                        <label htmlFor="consult-date" className="text-[10px] uppercase font-bold text-ink-400 block mb-2 tracking-widest ml-1">Date</label>
+                                        <input id="consult-date" type="date" max={todayISO()} value={formData.date} onChange={e => setFormData({ ...formData, date: e.target.value })} disabled={!canEditForm} className="w-full bg-clay-surface border border-clay-200 p-3.5 rounded-xl text-sm text-ink-900 outline-none shadow-inner font-mono transition-colors focus:border-green-500" />
                                     </div>
                                     <div>
-                                        <label className="text-[10px] uppercase font-bold text-ink-400 block mb-2 tracking-widest ml-1">Time</label>
-                                        <input type="time" value={formData.time} onChange={e => setFormData({ ...formData, time: e.target.value })} disabled={!canEditForm} className="w-full bg-clay-surface border border-clay-200 p-3.5 rounded-xl text-sm text-ink-900 outline-none shadow-inner font-mono transition-colors focus:border-green-500" />
+                                        <label htmlFor="consult-time" className="text-[10px] uppercase font-bold text-ink-400 block mb-2 tracking-widest ml-1">Time</label>
+                                        <input id="consult-time" type="time" value={formData.time} onChange={e => setFormData({ ...formData, time: e.target.value })} disabled={!canEditForm} className="w-full bg-clay-surface border border-clay-200 p-3.5 rounded-xl text-sm text-ink-900 outline-none shadow-inner font-mono transition-colors focus:border-green-500" />
                                     </div>
                                 </div>
                                 <div className="md:col-span-3">
-                                    <label className="text-[10px] uppercase font-bold text-ink-400 block mb-2 tracking-widest ml-1">Subject / Primary Agenda</label>
-                                    <input value={formData.subject} onChange={e => setFormData({ ...formData, subject: e.target.value })} placeholder="Main topic of discussion..." disabled={!canEditForm} maxLength={200} className="w-full bg-clay-surface border border-clay-200 p-4 rounded-xl text-base font-bold text-ink-900 focus:border-green-500 outline-none shadow-inner transition-colors" />
+                                    <label htmlFor="consult-subject" className="text-[10px] uppercase font-bold text-ink-400 block mb-2 tracking-widest ml-1">Subject / Primary Agenda</label>
+                                    <input id="consult-subject" value={formData.subject} onChange={e => setFormData({ ...formData, subject: e.target.value })} placeholder="Main topic of discussion..." disabled={!canEditForm} maxLength={200} className="w-full bg-clay-surface border border-clay-200 p-4 rounded-xl text-base font-bold text-ink-900 focus:border-green-500 outline-none shadow-inner transition-colors" />
                                 </div>
                             </div>
 
                             <div className="mb-10 bg-clay-surface p-8 rounded-2xl border border-clay-200/70 shadow-inner">
-                                <label className="text-xs uppercase font-bold text-green-700 tracking-widest mb-3 block flex items-center gap-2"><ClipboardList size={14} /> Pre-Requisites / Inputs</label>
-                                <textarea value={formData.preRequisites} onChange={e => setFormData({ ...formData, preRequisites: e.target.value })} className="w-full bg-clay-surface border border-clay-200 p-5 rounded-xl text-sm font-medium text-ink-600 focus:border-green-500 resize-none custom-scroll outline-none shadow-inner transition-colors leading-relaxed" placeholder="Record reference materials, incident IDs, or data inputs required for this meeting..." disabled={!canEditForm} rows="3" maxLength={5000}></textarea>
+                                <label htmlFor="consult-prereqs" className="text-xs uppercase font-bold text-green-700 tracking-widest mb-3 block flex items-center gap-2"><ClipboardList size={14} /> Pre-Requisites / Inputs</label>
+                                <textarea id="consult-prereqs" value={formData.preRequisites} onChange={e => setFormData({ ...formData, preRequisites: e.target.value })} className="w-full bg-clay-surface border border-clay-200 p-5 rounded-xl text-sm font-medium text-ink-600 focus:border-green-500 resize-none custom-scroll outline-none shadow-inner transition-colors leading-relaxed" placeholder="Record reference materials, incident IDs, or data inputs required for this meeting..." disabled={!canEditForm} rows="3" maxLength={5000}></textarea>
                             </div>
 
                             <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 mb-10">
@@ -907,7 +912,7 @@ export default function Consultation() {
                                     {canEditForm && (
                                         <div className="space-y-4 mb-6">
                                             <div>
-                                                <label className="text-[10px] font-bold text-ink-400 uppercase tracking-widest block mb-2 ml-1">Internal Staff — Department · Employee</label>
+                                                <span className="text-[10px] font-bold text-ink-400 uppercase tracking-widest block mb-2 ml-1">Internal Staff — Department · Employee</span>
                                                 <div className="flex gap-2">
                                                     <div className="flex-1">
                                                         <DeptPersonPicker
@@ -924,7 +929,7 @@ export default function Consultation() {
                                                 </div>
                                             </div>
                                             <div>
-                                                <label className="text-[10px] font-bold text-ink-400 uppercase tracking-widest block mb-2 ml-1">External Contractor</label>
+                                                <span className="text-[10px] font-bold text-ink-400 uppercase tracking-widest block mb-2 ml-1">External Contractor</span>
                                                 <div className="flex gap-2">
                                                     <input value={externalName} onChange={e => setExternalName(e.target.value)} placeholder="Type Contractor Name..." maxLength={200} className="w-full text-sm font-bold bg-clay-surface border border-clay-200 rounded-xl p-3 focus:border-pink-500 text-ink-900 outline-none shadow-inner transition-colors" />
                                                     <button type="button" onClick={() => handleAddAttendee('external')} className="bg-pink-600 hover:bg-pink-500 text-white px-5 rounded-xl font-bold shadow-lg shadow-pink-600/20 transition-transform active:scale-95 whitespace-nowrap"><Plus size={16} className="inline" /></button>
@@ -936,7 +941,7 @@ export default function Consultation() {
                                     <div className="flex-1 overflow-y-auto custom-scroll border border-clay-200 rounded-xl bg-clay-surface shadow-inner">
                                         <table className="w-full text-left text-sm text-ink-600">
                                             <thead className="bg-clay-surface uppercase font-bold text-ink-400 text-[10px] tracking-widest sticky top-0 shadow-sm border-b border-clay-200/70">
-                                                <tr><th className="p-4 pl-5">Name</th><th className="p-4">Role</th><th className="p-4 w-10 text-center"></th></tr>
+                                                <tr><th className="p-4 pl-5">Name</th><th className="p-4">Role</th><th className="p-4 w-10 text-center"><span className="sr-only">Actions</span></th></tr>
                                             </thead>
                                             <tbody className="divide-y divide-clay-200/60">
                                                 {(formData.attendees || []).map((att, idx) => (
@@ -959,8 +964,8 @@ export default function Consultation() {
 
                                 {/* Minutes */}
                                 <div className="bg-clay-surface p-8 rounded-2xl border border-clay-200/70 shadow-inner flex flex-col h-[500px]">
-                                    <label className="text-xs uppercase font-bold text-green-700 tracking-widest mb-4 block border-b border-clay-200/70 pb-3 flex items-center gap-2"><MessagesSquare size={14} /> Official Discussion Minutes</label>
-                                    <textarea value={formData.minutes} onChange={e => setFormData({ ...formData, minutes: e.target.value })} className="w-full flex-1 bg-clay-surface border border-clay-200 p-5 rounded-xl text-sm font-medium text-ink-900 focus:border-green-500 resize-none custom-scroll outline-none shadow-inner transition-colors leading-relaxed" placeholder="Record the general discussion points, topics covered, and any feedback received from participants here..." maxLength={5000} disabled={!canEditForm}></textarea>
+                                    <label htmlFor="consult-minutes" className="text-xs uppercase font-bold text-green-700 tracking-widest mb-4 block border-b border-clay-200/70 pb-3 flex items-center gap-2"><MessagesSquare size={14} /> Official Discussion Minutes</label>
+                                    <textarea id="consult-minutes" value={formData.minutes} onChange={e => setFormData({ ...formData, minutes: e.target.value })} className="w-full flex-1 bg-clay-surface border border-clay-200 p-5 rounded-xl text-sm font-medium text-ink-900 focus:border-green-500 resize-none custom-scroll outline-none shadow-inner transition-colors leading-relaxed" placeholder="Record the general discussion points, topics covered, and any feedback received from participants here..." maxLength={5000} disabled={!canEditForm}></textarea>
                                 </div>
                             </div>
 
@@ -969,17 +974,17 @@ export default function Consultation() {
                                 <div className="absolute top-0 right-0 w-32 h-32 bg-blue-100 rounded-full blur-3xl pointer-events-none"></div>
 
                                 <div className="flex justify-between items-center mb-6 border-b border-clay-200/70 pb-3 relative z-10">
-                                    <label className="text-sm uppercase font-bold text-blue-600 tracking-widest flex items-center gap-2"><ListChecks size={16} /> Formulated Action Plan (CAPA)</label>
+                                    <span className="text-sm uppercase font-bold text-blue-600 tracking-widest flex items-center gap-2"><ListChecks size={16} /> Formulated Action Plan (CAPA)</span>
                                 </div>
 
                                 {canEditForm && (
                                     <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-8 bg-clay-surface p-5 rounded-xl border border-clay-200 shadow-inner relative z-10">
                                         <div className="md:col-span-2">
-                                            <label className="text-[10px] uppercase font-bold text-ink-400 tracking-widest block mb-2 ml-1">Corrective Action Description</label>
-                                            <input value={newActionLine.action} onChange={e => setNewActionLine({ ...newActionLine, action: e.target.value })} placeholder="What needs to be done?..." maxLength={500} className="w-full bg-clay-surface border border-clay-200 p-3 rounded-xl text-sm text-ink-900 focus:border-blue-500 outline-none transition-colors" />
+                                            <label htmlFor="consult-action-desc" className="text-[10px] uppercase font-bold text-ink-400 tracking-widest block mb-2 ml-1">Corrective Action Description</label>
+                                            <input id="consult-action-desc" value={newActionLine.action} onChange={e => setNewActionLine({ ...newActionLine, action: e.target.value })} placeholder="What needs to be done?..." maxLength={500} className="w-full bg-clay-surface border border-clay-200 p-3 rounded-xl text-sm text-ink-900 focus:border-blue-500 outline-none transition-colors" />
                                         </div>
                                         <div className="md:col-span-1">
-                                            <label className="text-[10px] uppercase font-bold text-ink-400 tracking-widest block mb-2 ml-1">Owner / Assignee — Department · Person</label>
+                                            <span className="text-[10px] uppercase font-bold text-ink-400 tracking-widest block mb-2 ml-1">Owner / Assignee — Department · Person</span>
                                             <DeptPersonPicker
                                                 users={siteUsers}
                                                 value={newActionLine.owner}
@@ -991,8 +996,8 @@ export default function Consultation() {
                                         </div>
                                         <div className="md:col-span-2 flex items-end gap-3">
                                             <div className="flex-1">
-                                                <label className="text-[10px] uppercase font-bold text-ink-400 tracking-widest block mb-2 ml-1">Target Date</label>
-                                                <input type="date" value={newActionLine.due} onChange={e => setNewActionLine({ ...newActionLine, due: e.target.value })} className="w-full bg-clay-surface border border-clay-200 p-3 rounded-xl text-sm font-mono text-ink-900 focus:border-blue-500 outline-none transition-colors" />
+                                                <label htmlFor="consult-action-due" className="text-[10px] uppercase font-bold text-ink-400 tracking-widest block mb-2 ml-1">Target Date</label>
+                                                <input id="consult-action-due" type="date" value={newActionLine.due} onChange={e => setNewActionLine({ ...newActionLine, due: e.target.value })} className="w-full bg-clay-surface border border-clay-200 p-3 rounded-xl text-sm font-mono text-ink-900 focus:border-blue-500 outline-none transition-colors" />
                                             </div>
                                             <button type="button" onClick={addAction} className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-3 rounded-xl shadow-lg transition-transform active:scale-95 font-bold uppercase tracking-widest text-xs h-[46px] flex items-center justify-center gap-2"><Plus size={14} /> Add</button>
                                         </div>
@@ -1002,7 +1007,7 @@ export default function Consultation() {
                                 <div className="overflow-x-auto rounded-xl border border-clay-200 shadow-2xl relative z-10 custom-scroll max-h-[400px]">
                                     <table className="w-full text-left text-sm whitespace-nowrap min-w-[800px]">
                                         <thead className="bg-clay-surface text-[10px] uppercase font-bold text-ink-400 tracking-widest sticky top-0 z-20 shadow-sm border-b border-clay-200/70">
-                                            <tr><th className="p-4 pl-6">Action Description</th><th className="p-4 w-1/4">Owner / Assignee</th><th className="p-4 w-40">Due Date</th><th className="p-4 w-40 text-center">Status</th><th className="p-4 w-16 text-center"></th></tr>
+                                            <tr><th className="p-4 pl-6">Action Description</th><th className="p-4 w-1/4">Owner / Assignee</th><th className="p-4 w-40">Due Date</th><th className="p-4 w-40 text-center">Status</th><th className="p-4 w-16 text-center"><span className="sr-only">Actions</span></th></tr>
                                         </thead>
                                         <tbody className="divide-y divide-clay-200/60 bg-ink-950/40">
                                             {(formData.actions || []).map((c, i) => {
@@ -1010,19 +1015,19 @@ export default function Consultation() {
                                                 return (
                                                     <tr key={i} className="hover:bg-clay-100 transition-colors">
                                                         <td className="p-3 pl-6">
-                                                            <input value={c.action} onChange={e => updateAction(i, 'action', e.target.value)} placeholder="Task details..." maxLength={500} className="w-full bg-transparent border-b border-transparent hover:border-clay-200 focus:border-blue-500 text-sm font-medium px-2 py-1.5 outline-none text-ink-900 transition-colors" disabled={!canEditForm} />
+                                                            <input aria-label={`Action ${i + 1} description`} value={c.action} onChange={e => updateAction(i, 'action', e.target.value)} placeholder="Task details..." maxLength={500} className="w-full bg-transparent border-b border-transparent hover:border-clay-200 focus:border-blue-500 text-sm font-medium px-2 py-1.5 outline-none text-ink-900 transition-colors" disabled={!canEditForm} />
                                                         </td>
                                                         <td className="p-3">
-                                                            <select value={c.owner} onChange={e => updateAction(i, 'owner', e.target.value)} className="w-full bg-clay-surface border border-clay-200 rounded-lg p-2 text-xs font-bold text-blue-600 outline-none focus:border-blue-500 transition-colors shadow-inner" disabled={!canEditForm}>
+                                                            <select aria-label={`Owner of action ${i + 1}`} value={c.owner} onChange={e => updateAction(i, 'owner', e.target.value)} className="w-full bg-clay-surface border border-clay-200 rounded-lg p-2 text-xs font-bold text-blue-600 outline-none focus:border-blue-500 transition-colors shadow-inner" disabled={!canEditForm}>
                                                                 <option value="">Select...</option>
                                                                 {siteUsers.map(u => <option key={u.id} value={u.name || u.email}>{u.name || u.email}</option>)}
                                                             </select>
                                                         </td>
                                                         <td className="p-3">
-                                                            <input type="date" value={c.due} onChange={e => updateAction(i, 'due', e.target.value)} className="w-full bg-clay-surface border border-clay-200 rounded-lg p-2 text-xs font-mono text-ink-900 outline-none focus:border-blue-500 transition-colors shadow-inner" disabled={!canEditForm} />
+                                                            <input type="date" aria-label={`Due date for action ${i + 1}`} value={c.due} onChange={e => updateAction(i, 'due', e.target.value)} className="w-full bg-clay-surface border border-clay-200 rounded-lg p-2 text-xs font-mono text-ink-900 outline-none focus:border-blue-500 transition-colors shadow-inner" disabled={!canEditForm} />
                                                         </td>
                                                         <td className="p-3 text-center">
-                                                            <select value={c.status} onChange={e => updateAction(i, 'status', e.target.value)} disabled={!canEditRowStatus} className={`w-full text-xs font-bold tracking-widest uppercase rounded-lg p-2 outline-none border shadow-inner transition-colors ${canEditRowStatus ? 'cursor-pointer' : 'cursor-not-allowed opacity-80'} ${c.status === 'Closed' ? 'bg-emerald-100 text-emerald-600 border-emerald-500/30 focus:border-emerald-500' : c.status === 'In Progress' ? 'bg-yellow-100 text-yellow-600 border-yellow-500/30 focus:border-yellow-500' : 'bg-clay-surface text-ink-600 border-clay-200 focus:border-clay-300'}`}>
+                                                            <select aria-label={`Status of action ${i + 1}`} value={c.status} onChange={e => updateAction(i, 'status', e.target.value)} disabled={!canEditRowStatus} className={`w-full text-xs font-bold tracking-widest uppercase rounded-lg p-2 outline-none border shadow-inner transition-colors ${canEditRowStatus ? 'cursor-pointer' : 'cursor-not-allowed opacity-80'} ${c.status === 'Closed' ? 'bg-emerald-100 text-emerald-600 border-emerald-500/30 focus:border-emerald-500' : c.status === 'In Progress' ? 'bg-yellow-100 text-yellow-600 border-yellow-500/30 focus:border-yellow-500' : 'bg-clay-surface text-ink-600 border-clay-200 focus:border-clay-300'}`}>
                                                                 <option>Open</option><option>In Progress</option><option>Closed</option>
                                                             </select>
                                                         </td>
@@ -1110,7 +1115,7 @@ export default function Consultation() {
                                         <td className="border border-black p-3 text-center font-bold">{i + 1}</td>
                                         <td className="border border-black p-3 font-bold">{a.name} {a.userId === 'External' ? '(Contractor/EXT)' : ''}</td>
                                         <td className="border border-black p-3">{a.role}</td>
-                                        <td className="border border-black p-3 h-12"></td>
+                                        <td className="border border-black p-3 h-12"><span className="sr-only">Signature — signed on the printed copy</span></td>
                                     </tr>
                                 ))}
                                 {(!printData.attendees || printData.attendees.length === 0) && <tr><td colSpan="4" className="border border-black p-6 text-center italic text-gray-500">No attendees recorded.</td></tr>}
@@ -1150,11 +1155,12 @@ export default function Consultation() {
                         </table>
                     </div>
 
-                    <table className="w-full border-none mt-24 text-sm page-break-inside-avoid">
+                    {/* Layout only: two signature rules side by side on the printed minutes. */}
+                    <table role="presentation" className="w-full border-none mt-24 text-sm page-break-inside-avoid">
                         <tbody>
                             <tr>
                                 <td className="w-[45%] border-none border-t-2 border-black pt-2 text-center font-bold uppercase tracking-widest">Prepared By / Chairperson</td>
-                                <td className="w-[10%] border-none"></td>
+                                <td className="w-[10%] border-none" aria-hidden="true"></td>
                                 <td className="w-[45%] border-none border-t-2 border-black pt-2 text-center font-bold uppercase tracking-widest">Site Manager / EHS Lead Approval</td>
                             </tr>
                         </tbody>

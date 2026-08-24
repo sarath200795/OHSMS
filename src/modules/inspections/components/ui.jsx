@@ -13,7 +13,7 @@
 // it maps THIS module's inspection vocabulary — Pending, Completed, Cancelled,
 // PASS, FAIL — to colours, and no other module has those states.
 
-export { Spinner, Badge, EmptyState, Modal, PageHeader } from '../../../shared/ui'
+export { Spinner, Badge, EmptyState, Modal, PageHeader, Field, IconButton } from '../../../shared/ui'
 
 // ── Status pill (inspection statuses) ────────────────────────────────────────
 const STATUS_PILL = {

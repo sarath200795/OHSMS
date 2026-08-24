@@ -5,7 +5,7 @@ import {
   FilePlus2, Save, Plus, Trash2, Shield, UserPlus, AlertTriangle,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { PageHeader, Spinner } from '../components/ui'
+import { PageHeader, Spinner, Field } from '../components/ui'
 import { RiskBadge, MiniMatrix } from '../components/RiskBits'
 import { useAuth } from '../context/AuthContext'
 import { useRa } from '../context/RaContext'
@@ -245,10 +245,9 @@ export default function CreateAssessment() {
       {/* ── Section 1: Details ── */}
       <Section n={1} title="Assessment details">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="lg:col-span-2">
-            <label className="label">Name of Risk Assessment *</label>
+          <Field label="Name of Risk Assessment *" className="lg:col-span-2">
             <input className="input" placeholder="e.g. Loading Dock Operations" value={form.name} onChange={(e) => setField('name', e.target.value)} />
-          </div>
+          </Field>
           {form.kind === 'baseline' ? (
             <div className="lg:col-span-2">
               <div className="rounded-2xl bg-brand-50 px-4 py-3 text-sm text-brand-800">
@@ -258,7 +257,11 @@ export default function CreateAssessment() {
             </div>
           ) : (
             <div className="lg:col-span-2">
-              <label className="label">Facility / Site — Region · Entity · Site</label>
+              {/* A heading, not a <label>: SiteScopePicker renders three selects
+                  and names each one itself, so there is no single control for
+                  this to point at. A <label> that labels nothing is worse than
+                  none — it is announced as a name with no owner. */}
+              <span className="label">Facility / Site — Region · Entity · Site</span>
               <SiteScopePicker
                 module="hira"
                 sites={siteInventory}
@@ -272,28 +275,26 @@ export default function CreateAssessment() {
               )}
             </div>
           )}
-          <div>
-            <label className="label">Risk Assessment Date</label>
+          <Field label="Risk Assessment Date">
             <input type="date" className="input" value={form.assessmentDate} onChange={(e) => setField('assessmentDate', e.target.value)} />
-          </div>
-          <div className="lg:col-span-2">
-            <label className="label">Location</label>
-            <input className="input" list="org-locations" placeholder="e.g. Inbound Dock" value={form.location} onChange={(e) => setField('location', e.target.value)} />
+          </Field>
+          {/* htmlFor is explicit here because the <datalist> is a second child,
+              so Field cannot tell which element the label means. */}
+          <Field label="Location" htmlFor="ra-location" className="lg:col-span-2">
+            <input id="ra-location" className="input" list="org-locations" placeholder="e.g. Inbound Dock" value={form.location} onChange={(e) => setField('location', e.target.value)} />
             <datalist id="org-locations">
-              {(org?.locations || []).map((l) => <option key={l} value={l} />)}
+              {(org?.locations || []).map((l) => <option key={l} value={l}>{l}</option>)}
             </datalist>
-          </div>
-          <div>
-            <label className="label">Status</label>
+          </Field>
+          <Field label="Status">
             <select className="input" value={form.status} onChange={(e) => setField('status', e.target.value)}>
               {ASSESSMENT_STATUS.map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
-          </div>
+          </Field>
           {form.refId && (
-            <div>
-              <label className="label">Reference ID</label>
+            <Field label="Reference ID">
               <input className="input bg-clay-100 text-ink-500" value={form.refId} readOnly />
-            </div>
+            </Field>
           )}
         </div>
       </Section>
@@ -306,8 +307,7 @@ export default function CreateAssessment() {
               <motion.div key={m.id} initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
                 className="grid items-end gap-2 rounded-2xl bg-clay-bg/40 p-3 shadow-clay-inset sm:grid-cols-12">
                 {m.type === 'internal' && (
-                  <div className="sm:col-span-12">
-                    <label className="label">Pick from employee directory — Department · Person</label>
+                  <Field label="Pick from employee directory — Department · Person" className="sm:col-span-12">
                     <DeptPersonPicker
                       users={orgUsers.filter((u) => u.status === 'approved')}
                       value={m.uid || ''}
@@ -321,31 +321,26 @@ export default function CreateAssessment() {
                       }
                       personPlaceholder="Select employee…"
                     />
-                  </div>
+                  </Field>
                 )}
-                <div className="sm:col-span-2">
-                  <label className="label">Type</label>
+                <Field label="Type" className="sm:col-span-2">
                   <select className="input" value={m.type} onChange={(e) => updateMember(m.id, { type: e.target.value })}>
                     {MEMBER_TYPES.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
                   </select>
-                </div>
-                <div className="sm:col-span-3">
-                  <label className="label">Name</label>
+                </Field>
+                <Field label="Name" className="sm:col-span-3">
                   <input className="input" placeholder="Full name" value={m.name} onChange={(e) => updateMember(m.id, { name: e.target.value })} />
-                </div>
-                <div className="sm:col-span-3">
-                  <label className="label">Email</label>
+                </Field>
+                <Field label="Email" className="sm:col-span-3">
                   <input className="input" placeholder="email@company.com" value={m.email} onChange={(e) => updateMember(m.id, { email: e.target.value })} />
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="label">Role</label>
+                </Field>
+                <Field label="Role" className="sm:col-span-2">
                   <input className="input" placeholder="Role" value={m.role} onChange={(e) => updateMember(m.id, { role: e.target.value })} />
-                </div>
+                </Field>
                 <div className="sm:col-span-2 flex items-end gap-2">
-                  <div className="flex-1">
-                    <label className="label">Department</label>
+                  <Field label="Department" className="flex-1">
                     <DepartmentSelect value={m.department} onChange={(e) => updateMember(m.id, { department: e.target.value })} />
-                  </div>
+                  </Field>
                   <button type="button" onClick={() => removeMember(m.id)} className="mb-0.5 rounded-xl p-2.5 text-red-500 shadow-clay-sm transition hover:bg-red-50" title="Remove"><Trash2 size={16} /></button>
                 </div>
               </motion.div>
@@ -399,16 +394,14 @@ function ActivityCard({ activity, index, internalMembers, canRemove, onTitle, on
     <div className="rounded-2xl border border-clay-200 bg-clay-surface/60 p-4">
       <div className="mb-3 flex items-end gap-2">
         <span className="mb-2.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-ink-900 text-xs font-bold text-white">{index + 1}</span>
-        <div className="flex-1">
-          <label className="label">Activity / Task / Process</label>
+        <Field label="Activity / Task / Process" className="flex-1">
           <input className="input" placeholder="e.g. Unloading trailers" value={activity.title} onChange={(e) => onTitle(e.target.value)} />
-        </div>
-        <div className="w-40">
-          <label className="label">Nature</label>
+        </Field>
+        <Field label="Nature" className="w-40">
           <select className="input" value={activity.nature || 'Routine'} onChange={(e) => onNature(e.target.value)}>
             {ACTIVITY_NATURE.map((n) => <option key={n} value={n}>{n}</option>)}
           </select>
-        </div>
+        </Field>
         {canRemove && (
           <button type="button" onClick={onRemove} className="mb-0.5 rounded-xl p-2.5 text-red-500 shadow-clay-sm transition hover:bg-red-50" title="Remove activity"><Trash2 size={16} /></button>
         )}
@@ -455,62 +448,54 @@ function HazardCard({ hazard: h, index, internalMembers, canRemove, onUpdate, on
 
       {/* Cascading group → category → type */}
       <div className="grid gap-3 sm:grid-cols-3">
-        <div>
-          <label className="label">Hazard Group</label>
+        <Field label="Hazard Group">
           <select className="input" value={h.hazardGroup} onChange={(e) => onUpdate({ hazardGroup: e.target.value, hazardCategory: '', hazardType: '' })}>
             <option value="">Select group…</option>
             {HAZARD_GROUPS.map((g) => <option key={g}>{g}</option>)}
           </select>
-        </div>
-        <div>
-          <label className="label">Hazard Category</label>
+        </Field>
+        <Field label="Hazard Category">
           <select className="input" value={h.hazardCategory} disabled={!h.hazardGroup} onChange={(e) => onUpdate({ hazardCategory: e.target.value, hazardType: '' })}>
             <option value="">{h.hazardGroup ? 'Select category…' : 'Pick a group first'}</option>
             {categories.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
           </select>
-        </div>
-        <div>
-          <label className="label">Hazard Type</label>
+        </Field>
+        <Field label="Hazard Type">
           <select className="input" value={h.hazardType} disabled={!h.hazardCategory} onChange={(e) => onUpdate({ hazardType: e.target.value })}>
             <option value="">{h.hazardCategory ? 'Select type…' : 'Pick a category first'}</option>
             {types.map((t) => <option key={t}>{t}</option>)}
           </select>
-        </div>
+        </Field>
       </div>
 
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
-        <div>
-          <label className="label">Who might be harmed</label>
+        <Field label="Who might be harmed">
           <input className="input" placeholder="e.g. Dock associates, visitors" value={h.whoMightBeHarmed} onChange={(e) => onUpdate({ whoMightBeHarmed: e.target.value })} />
-        </div>
-        <div>
-          <label className="label">Specific location</label>
+        </Field>
+        <Field label="Specific location">
           <input className="input" placeholder="e.g. Dock door 12" value={h.specificLocation} onChange={(e) => onUpdate({ specificLocation: e.target.value })} />
-        </div>
+        </Field>
       </div>
 
-      <div className="mt-3">
-        <label className="label">Hazard description (optional)</label>
+      <Field label="Hazard description (optional)" className="mt-3">
         <input className="input" placeholder="Describe the hazard / how harm occurs" value={h.description} onChange={(e) => onUpdate({ description: e.target.value })} />
-      </div>
+      </Field>
 
       {/* Risk scoring */}
       <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_auto]">
         <div className="grid gap-3 sm:grid-cols-2">
-          <div>
-            <label className="label">Probability</label>
+          <Field label="Probability">
             <select className="input" value={h.probability} onChange={(e) => onUpdate({ probability: e.target.value })}>
               <option value="">Select…</option>
               {PROBABILITY.map((p) => <option key={p.value} value={p.value}>{p.value} — {p.label}</option>)}
             </select>
-          </div>
-          <div>
-            <label className="label">Severity</label>
+          </Field>
+          <Field label="Severity">
             <select className="input" value={h.severity} onChange={(e) => onUpdate({ severity: e.target.value })}>
               <option value="">Select…</option>
               {SEVERITY.map((s) => <option key={s.value} value={s.value}>{s.value} — {s.label}</option>)}
             </select>
-          </div>
+          </Field>
           <div className="sm:col-span-2 flex items-center gap-3">
             <span className="text-sm font-semibold text-ink-600">Risk level:</span>
             <RiskBadge risk={initial} />
@@ -543,20 +528,18 @@ function HazardCard({ hazard: h, index, internalMembers, canRemove, onUpdate, on
         onRemove={(cid) => onRemoveControl('additionalControls', cid)}
       />
       <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <div>
-          <label className="label">Projected Probability</label>
+        <Field label="Projected Probability">
           <select className="input" value={h.projectedProbability} onChange={(e) => onUpdate({ projectedProbability: e.target.value })}>
             <option value="">Select…</option>
             {PROBABILITY.map((p) => <option key={p.value} value={p.value}>{p.value} — {p.label}</option>)}
           </select>
-        </div>
-        <div>
-          <label className="label">Projected Severity</label>
+        </Field>
+        <Field label="Projected Severity">
           <select className="input" value={h.projectedSeverity} onChange={(e) => onUpdate({ projectedSeverity: e.target.value })}>
             <option value="">Select…</option>
             {SEVERITY.map((s) => <option key={s.value} value={s.value}>{s.value} — {s.label}</option>)}
           </select>
-        </div>
+        </Field>
         <div className="flex items-center gap-2">
           <span className="text-sm font-semibold text-ink-600">Projected (residual) risk:</span>
           <RiskBadge risk={projected} />
@@ -580,41 +563,35 @@ function ControlBlock({ title, controls, internalMembers, onAdd, onUpdate, onRem
       <div className="space-y-2">
         {controls.map((c) => (
           <div key={c.id} className="grid items-end gap-2 rounded-xl bg-clay-surface p-2.5 shadow-clay-sm sm:grid-cols-12">
-            <div className="sm:col-span-3">
-              <label className="label">Hierarchy</label>
+            <Field label="Hierarchy" className="sm:col-span-3">
               <select className="input" value={c.hierarchy} onChange={(e) => onUpdate(c.id, { hierarchy: e.target.value })}>
                 {CONTROL_HIERARCHY.map((x) => <option key={x.key} value={x.key}>{x.label}</option>)}
               </select>
-            </div>
-            <div className="sm:col-span-4">
-              <label className="label">Control description</label>
+            </Field>
+            <Field label="Control description" className="sm:col-span-4">
               <input className="input" placeholder="Describe the control" value={c.description} onChange={(e) => onUpdate(c.id, { description: e.target.value })} />
-            </div>
-            <div className="sm:col-span-2">
-              <label className="label">Responsible (internal)</label>
+            </Field>
+            <Field label="Responsible (internal)" className="sm:col-span-2">
               <select className="input" value={c.responsibleMemberId} onChange={(e) => onUpdate(c.id, { responsibleMemberId: e.target.value })}>
                 <option value="">—</option>
                 {internalMembers.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
               </select>
-            </div>
-            <div className="sm:col-span-2">
-              <label className="label">Status</label>
+            </Field>
+            <Field label="Status" className="sm:col-span-2">
               <select className="input" value={c.status} onChange={(e) => onUpdate(c.id, { status: e.target.value })}>
                 {CONTROL_STATUS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
               </select>
-            </div>
+            </Field>
             <div className="sm:col-span-1 flex items-end">
               <button type="button" onClick={() => onRemove(c.id)} className="mb-0.5 rounded-xl p-2.5 text-red-500 shadow-clay-sm transition hover:bg-red-50" title="Remove control"><Trash2 size={15} /></button>
             </div>
-            <div className="sm:col-span-3">
-              <label className="label">Department</label>
+            <Field label="Department" className="sm:col-span-3">
               <DepartmentSelect value={c.department} onChange={(e) => onUpdate(c.id, { department: e.target.value })} />
-            </div>
+            </Field>
             {showDueDate && (
-              <div className="sm:col-span-3">
-                <label className="label">Due date</label>
+              <Field label="Due date" className="sm:col-span-3">
                 <input type="date" className="input" value={c.dueDate || ''} onChange={(e) => onUpdate(c.id, { dueDate: e.target.value })} />
-              </div>
+              </Field>
             )}
           </div>
         ))}

@@ -118,10 +118,17 @@ const app = isFirebaseConfigured ? initializeApp(firebaseConfig) : null
 //
 // This is ReCaptchaV3Provider because VITE_APPCHECK_SITE_KEY is a CLASSIC v3
 // key. That is measured, not assumed. With this provider the page loads
-// recaptcha/api.js, grecaptcha initialises and the badge renders with nothing
-// in the console; switching to ReCaptchaEnterpriseProvider made it load
-// recaptcha/enterprise.js instead, which answered HTTP 400 and raised
-// appCheck/recaptcha-error on every refresh.
+// recaptcha/api.js, grecaptcha initialises and the badge renders; switching to
+// ReCaptchaEnterpriseProvider made it load recaptcha/enterprise.js instead,
+// which answered HTTP 400 and raised appCheck/recaptcha-error on every refresh.
+//
+// Note what that does NOT prove. api.js loading and the badge rendering only
+// say the provider matches the key; they say nothing about whether reCAPTCHA
+// will mint a token for THIS host. A site key is scoped to a list of domains,
+// so a correct provider on a correct key still raises appCheck/recaptcha-error
+// from any hostname the key does not list — which is what production did the
+// day it moved from weehs-4eb28.web.app to suite.weehs.org. Check the Domains
+// list before touching this line.
 //
 // The console registration currently SAYS reCAPTCHA Enterprise, and that label
 // is the half that is wrong — fixing it is a console change, not a code one.
@@ -132,13 +139,38 @@ const APPCHECK_KEY = clean(import.meta.env.VITE_APPCHECK_SITE_KEY)
 if (app && APPCHECK_KEY && !USE_EMULATORS) {
   // Dynamic so the App Check SDK costs nothing until a key is configured.
   import('firebase/app-check')
-    .then(({ initializeAppCheck, ReCaptchaV3Provider }) => {
+    .then(({ initializeAppCheck, ReCaptchaV3Provider, getToken }) => {
       const debug = clean(import.meta.env.VITE_APPCHECK_DEBUG_TOKEN)
       // The documented escape hatch for local dev against a real project.
       if (debug) self.FIREBASE_APPCHECK_DEBUG_TOKEN = debug
-      initializeAppCheck(app, {
+      const appCheck = initializeAppCheck(app, {
         provider: new ReCaptchaV3Provider(APPCHECK_KEY),
         isTokenAutoRefreshEnabled: true,
+      })
+      // initializeAppCheck is synchronous and does not throw when reCAPTCHA
+      // refuses the key, so the .catch below never fires for the most common
+      // App Check failure there is. What surfaces instead is a bare
+      // `appCheck/recaptcha-error`, repeated on every refresh, naming neither
+      // the host nor the cause — which is why diagnosing it meant probing
+      // reCAPTCHA by hand from a checkout.
+      //
+      // Ask for one token up front purely so the cause gets named once, in the
+      // console, beside the host that failed. The likeliest cause by a wide
+      // margin is this host missing from the Domains list on the reCAPTCHA site
+      // key: that list is per-hostname, so the day production moves to a new
+      // domain every token starts failing while every symptom that would
+      // implicate the key or the provider stays green — api.js still loads,
+      // grecaptcha still initialises, the badge still renders.
+      return getToken(appCheck).catch((e) => {
+        // eslint-disable-next-line no-console
+        console.error(
+          `[OHS MS] App Check could not mint a token for ${self.location?.origin}: ` +
+          `${e?.code || e?.message || e}. Most likely this host is missing from the ` +
+          'Domains list on the reCAPTCHA site key — add it in the reCAPTCHA admin ' +
+          'console (docs/PRODUCTION.md §1). While App Check is unenforced this blocks ' +
+          'nothing, but verified requests stay at 0%, so it can never be enforced and ' +
+          'the public write surfaces stay unprotected.'
+        )
       })
     })
     .catch((e) => {

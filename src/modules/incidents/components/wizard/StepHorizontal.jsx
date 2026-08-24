@@ -1,5 +1,6 @@
 import { Share2 } from 'lucide-react'
 import { LOCATIONS } from '../../lib/constants'
+import { Field } from '../ui'
 
 /**
  * Step 5 — Horizontal deployment. Verify whether the corrective action should be
@@ -21,7 +22,7 @@ export default function StepHorizontal({ value = {}, onChange }) {
         </div>
       </div>
 
-      <label className="label">Requires horizontal deployment?</label>
+      <span className="label">Requires horizontal deployment?</span>
       <div className="mb-4 flex gap-2">
         {[{ v: true, l: 'Yes' }, { v: false, l: 'No' }].map((o) => (
           <button key={o.l} type="button" onClick={() => set({ required: o.v })}
@@ -32,8 +33,7 @@ export default function StepHorizontal({ value = {}, onChange }) {
       </div>
 
       {value.required && (
-        <div className="mb-4">
-          <label className="label">Deploy to locations</label>
+        <Field label="Deploy to locations" className="mb-4">
           <div className="flex flex-wrap gap-2">
             {LOCATIONS.map((l) => {
               const on = (value.locations || []).includes(l)
@@ -45,11 +45,11 @@ export default function StepHorizontal({ value = {}, onChange }) {
               )
             })}
           </div>
-        </div>
+        </Field>
       )}
 
-      <label className="label">Details / deployment plan</label>
-      <textarea className="input min-h-[100px] resize-y" placeholder="Describe how and where this learning will be applied…" value={value.details || ''} onChange={(e) => set({ details: e.target.value })} />
+      <label htmlFor="horiz-details" className="label">Details / deployment plan</label>
+      <textarea id="horiz-details" className="input min-h-[100px] resize-y" placeholder="Describe how and where this learning will be applied…" value={value.details || ''} onChange={(e) => set({ details: e.target.value })} />
     </div>
   )
 }

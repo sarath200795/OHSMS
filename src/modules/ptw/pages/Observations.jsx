@@ -5,6 +5,7 @@ import { Eye, CheckCircle2, AlertTriangle, FileText, QrCode, Monitor } from 'luc
 import { PageHeader, EmptyState, Spinner } from '../components/ui'
 import { useAuth } from '../context/AuthContext'
 import { subscribeObservations } from '../lib/firestore'
+import { readableOnTint } from '../../../shared/lib/contrast'
 
 const fmt = (ts) => {
   if (!ts) return ''
@@ -61,7 +62,7 @@ export default function Observations() {
               <motion.div key={o.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(i * 0.02, 0.3) }}
                 className="card p-4" style={{ borderLeft: `4px solid ${color}` }}>
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="chip" style={{ backgroundColor: `${color}1a`, color }}><Icon size={13} /> {unsafe ? 'Unsafe' : 'Safe'}</span>
+                  <span className="chip" style={{ backgroundColor: `${color}1a`, color: readableOnTint(color) }}><Icon size={13} /> {unsafe ? 'Unsafe' : 'Safe'}</span>
                   <Link to={`/permits/${o.permitId}`} className="inline-flex items-center gap-1 font-bold text-ink-900 hover:text-brand-600">
                     <FileText size={14} /> {o.permitNo || o.permitId}
                   </Link>

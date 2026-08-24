@@ -14,6 +14,9 @@
 //     permanent answer where WebGL is unavailable or motion is reduced.
 //   • The render loop stops when the tab is hidden and the context is disposed
 //     on unmount, so a background tab costs nothing.
+//   • worthTheBytes() declines the whole thing on the devices where it is the
+//     wrong trade — Save-Data, 2g, low memory, and phones (where Sam's
+//     group-hover animations cannot fire at all). See its own note below.
 //
 // ── WebGL context management ─────────────────────────────────────────────────
 //
@@ -57,6 +60,42 @@ function webglAvailable() {
     _webglOk = false
   }
   return _webglOk
+}
+
+// ── Should this device pay for Sam at all? ───────────────────────────────────
+//
+// three.js is 734 kB — the single largest asset this app ships, larger than the
+// Firebase SDK — and Sam is mounted app-wide, including in the Suspense
+// fallback of every lazy route. So in practice every session fetched it.
+//
+// It buys a character. That is a real thing to want on a desktop, and it is the
+// wrong trade on a phone in a plant room on a weak connection, which is a
+// setting this product is specifically for. Worse, Sam's whole repertoire is
+// group-hover: on a touch screen the animations never fire at all, so the bytes
+// buy nothing whatsoever.
+//
+// Everything declined here still gets Sam — the CSS version, which renders
+// immediately, is already the permanent answer under reduced motion and without
+// WebGL, and is what the 3D one fades in over. Nobody loses the character; some
+// devices stop paying three quarters of a megabyte for its polish.
+function worthTheBytes() {
+  if (typeof window === 'undefined') return false
+
+  // Save-Data is the user asking, explicitly, not to be sent this.
+  const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection
+  if (conn) {
+    if (conn.saveData) return false
+    if (/(^|-)2g$/.test(conn.effectiveType || '')) return false
+  }
+  // deviceMemory is coarse (2/4/8) and only Chromium reports it; absent means
+  // "do not know", which is not the same as "low" and must not be treated as it.
+  if (typeof navigator.deviceMemory === 'number' && navigator.deviceMemory <= 2) return false
+
+  // Coarse pointer below the md breakpoint: a phone. Sam's animations are
+  // group-hover only, so there is nothing here for a finger to trigger.
+  if (window.matchMedia?.('(pointer: coarse)').matches && window.innerWidth < 768) return false
+
+  return true
 }
 
 // ── Singleton renderer ───────────────────────────────────────────────────────
@@ -103,7 +142,7 @@ export default function SamCharacter3D({ walking = false, facing = 1, talking = 
   state.current = { walking, facing, talking }
 
   useEffect(() => {
-    if (reduce || !webglAvailable()) return undefined
+    if (reduce || !worthTheBytes() || !webglAvailable()) return undefined
     let alive = true
     let cleanup = () => {}
 

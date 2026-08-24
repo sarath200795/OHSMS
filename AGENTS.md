@@ -19,17 +19,18 @@ arbitrary.
   `docs/PRODUCTION.md` on operating the deployed system. When another document
   restates either, it drifts. Link instead of copying.
 
-## Four deployable units, three of them separate npm packages
+## Three deployable units, two of them separate npm packages
 
-`src/` (the SPA), `functions/`, and `server/` each have their own
-`package.json`, lockfile and test config. The root `npm test` only reaches
-`src/**`. CI runs all of them; a local check that only runs the root script has
-tested a third of the repository.
+`src/` (the SPA) and `functions/` each have their own `package.json`, lockfile
+and test config. The root `npm test` only reaches `src/**`. CI runs both; a
+local check that only runs the root script has tested half the repository.
 
-`server/` is **not deployed**. Its `src/authz/policy.js` is a second copy of
-eight `firestore.rules` role helpers, each annotated with the rules line range
-it mirrors, and nothing ties them together mechanically. If you change one of
-those predicates in the rules, change it there too.
+There was a third package, `server/`, an Express + firebase-admin service meant
+to take over the write path. It is **gone**. It served no traffic, nothing
+deployed it, and its `src/authz/policy.js` was a hand-maintained second copy of
+eight `firestore.rules` role helpers — a drift risk paid for every month against
+a benefit with no date on it. If the write-path migration is revived, take it
+out of the history rather than out of memory.
 
 ## The audit trail
 
@@ -72,16 +73,52 @@ factory. Prefer it over hand-rolling `collection(db, 'organizations', orgId, …
 
 ## Testing
 
-- Run unit tests with `--no-file-parallelism`. The parallel run reports one to
-  four phantom failures; treating those as a regression wastes an afternoon.
-- `npm run test:rules`, the Playwright suite, and `server`'s attack tests all
-  need a **JDK** — the emulators are JVM processes. CI uses Java 17.
+- Unit tests run in parallel and are stable there. They were not: the suite
+  reported one to four phantom failures under `vitest run`, and the standing
+  advice was `--no-file-parallelism`. The cause was `environment: 'jsdom'` set
+  globally — 86 of 99 files are pure logic and needed no DOM, and building one
+  per file per worker was both the flakiness and 90 seconds of a 160-second run.
+  The default is now `node` and the DOM files opt in with a
+  `// @vitest-environment jsdom` docblock. **Put that docblock on any new test
+  that touches the DOM**; without it the failure is immediate and obvious, which
+  is the point.
+- `npm run test:rules` and the Playwright suite need a **JDK** — the emulators
+  are JVM processes. CI uses Java 17.
 - Rules tests send hostile payloads, not well-behaved ones. A new rule needs a
   test that tries to defeat it, not one that confirms it works when used
   correctly.
 - After changing `firestore.rules`, the result count must be **unchanged** unless
   you intended a semantic change. A refactor that moves the number changed
   meaning.
+
+## Accessibility is enforced, in two places that do not overlap
+
+`eslint-plugin-jsx-a11y` runs at **`error`** and is at zero. It is not advisory
+and it is not a style rule: the sweep that got it to zero found the bulk-upload
+drop zones were `<div onClick>` and therefore the only way to import a
+spreadsheet was a mouse, and that a fishbone node could be selected, deleted and
+gate-flipped from the keyboard but never renamed.
+
+What lint cannot see, `e2e/accessibility.spec.js` does — axe against the rendered
+DOM, failing on serious and critical. That division is deliberate:
+
+- **Lint** sees the JSX: an icon-only button with no name, a `<label>` with no
+  `htmlFor`, an element that answers a click and nothing else.
+- **axe** sees the result: whether the label actually attached, whether the
+  contrast is real. `<Field label="Date"><input /></Field>` is the app's dominant
+  form control and `Field` binds the two at RUNTIME, which no static rule can
+  check. Contrast is the same shape — it found the palette failing AA at its two
+  most-used text stops while every line of markup was correct.
+
+Three components take a **required** label and throw in development without one:
+`Field`, `IconButton` and `ChartFrame`. That is on purpose. An optional
+correctness step spread over hundreds of call sites is one most of them will
+skip — which is exactly how ~50 unnamed icon buttons and 174 unattached labels
+happened. Do not add a default to make the error go away; give it a name.
+
+For colour, do not hand-pick a shade. `src/shared/lib/contrast.js` computes one:
+`readableOnTint` for text on its own tinted chip, `solidBackground` for a fill
+that has to carry white text.
 
 ## Two failure patterns worth recognising on sight
 

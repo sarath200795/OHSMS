@@ -7,12 +7,13 @@
 // from their trigger, durations < 300ms, transform/opacity only, reduced-motion
 // respected globally in index.css.
 // ─────────────────────────────────────────────────────────────────────────────
-import { forwardRef, useId } from 'react'
+import { cloneElement, forwardRef, isValidElement, useId } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
 import { Loader2, X, Check } from 'lucide-react'
 // Import from './useFocusTrap' directly if another component needs it — it is
 // not re-exported here so this file stays components-only for fast refresh.
 import { useFocusTrap } from './useFocusTrap'
+import { readableOnTint, solidBackground } from '../lib/contrast'
 
 const cx = (...c) => c.filter(Boolean).join(' ')
 
@@ -49,6 +50,48 @@ export const Button = forwardRef(function Button(
   )
 })
 
+// ── Icon button ─────────────────────────────────────────────────────────────
+// A button whose whole content is an icon has no accessible name. `Button`
+// takes `icon` alongside `children` and the children ARE the name, so it has
+// never covered this case — which is why roughly fifty call sites hand-rolled
+// `<button><Trash2 /></button>` instead, and why a screen reader announced the
+// delete control on a LOTO isolation procedure and the close control on a
+// dialog identically, as "button".
+//
+// `label` is REQUIRED and throws in development when it is missing. A default
+// would make the unlabelled case work silently, which is precisely how the
+// unlabelled case became the norm — the point of this component is that the
+// mistake is not expressible. It is also rendered as `title`, so the same
+// string is the tooltip a sighted user gets; two sources for one meaning drift.
+const ICON_SIZE = { sm: 'h-8 w-8', md: 'h-9 w-9', lg: 'h-10 w-10' }
+export const IconButton = forwardRef(function IconButton(
+  { icon: Icon, label, variant = 'ghost', size = 'md', loading = false, className, disabled, iconSize = 16, ...rest },
+  ref
+) {
+  if (import.meta.env.DEV && !label) {
+    throw new Error('IconButton requires a `label` — it is the button\'s only accessible name.')
+  }
+  const Glyph = loading ? Loader2 : Icon
+  return (
+    <button
+      ref={ref}
+      type="button"
+      aria-label={label}
+      title={label}
+      className={cx(
+        VARIANT[variant] || 'btn-ghost',
+        'justify-center !px-0',
+        ICON_SIZE[size] || ICON_SIZE.md,
+        className
+      )}
+      disabled={disabled || loading}
+      {...rest}
+    >
+      {Glyph ? <Glyph size={iconSize} className={loading ? 'animate-spin' : undefined} /> : null}
+    </button>
+  )
+})
+
 // ── Surfaces ──────────────────────────────────────────────────────────────────
 export function Card({ className, children, as: Tag = 'div', ...rest }) {
   return (
@@ -62,13 +105,48 @@ export function Card({ className, children, as: Tag = 'div', ...rest }) {
 // `action` puts a control opposite the label ("Forgot password?", "Clear").
 // Only then is the label wrapped in a row, so every existing label-only Field
 // renders exactly the markup it did before.
-export function Field({ label, hint, error, action, children, htmlFor, className }) {
+//
+// THE LABEL IS NOW ACTUALLY ATTACHED TO THE CONTROL. It was not: `htmlFor` is
+// optional and 174 of the 277 call sites never passed it, so `<Field label="Date
+// *"><input type="date" /></Field>` rendered a <label> pointing at nothing and
+// an input with no accessible name. A screen reader read the permit form as a
+// column of unlabelled boxes — the label was on screen, doing nothing, which is
+// worse than absent because it looks correct in review.
+//
+// The id is generated here and cloned onto the child rather than demanded from
+// every call site, for the same reason logAudit has one implementation: an
+// optional correctness step that 277 places have to remember is one that most
+// of them will not. An explicit `htmlFor` still wins, so the call sites that
+// already pass one are untouched, as is any child that brings its own id.
+//
+// Only a single element child is cloned. Fragments, arrays and bare strings are
+// left alone — there is no single control to point at, and guessing would
+// attach the label to whichever happened to be first.
+//
+// `labelClassName` exists for the modules that carry their own label styling —
+// the internal-audit register's `lbl` is a different size, weight and colour
+// from `.label`, and was written that way on purpose. Without this they would
+// have kept hand-rolling a <div><label/>{control}</div> to preserve the look,
+// which is exactly the shape that had no htmlFor in it. Trading a styling hook
+// for the association is the right way round.
+export function Field({ label, hint, error, action, children, htmlFor, className, labelClassName = 'label' }) {
+  const generatedId = useId()
+  const onlyChild = isValidElement(children) ? children : null
+  // An explicit htmlFor is the caller saying which control they mean; a child
+  // that already has an id is one it is being referenced by elsewhere. Neither
+  // gets overridden.
+  const controlId = htmlFor || onlyChild?.props?.id || (onlyChild ? generatedId : undefined)
+  const body =
+    onlyChild && !htmlFor && !onlyChild.props.id
+      ? cloneElement(onlyChild, { id: controlId })
+      : children
+
   return (
     <div className={className}>
       {action ? (
         <div className="mb-1.5 flex items-center justify-between gap-2">
           {label && (
-            <label className="label !mb-0" htmlFor={htmlFor}>
+            <label className={`${labelClassName} !mb-0`} htmlFor={controlId}>
               {label}
             </label>
           )}
@@ -76,12 +154,12 @@ export function Field({ label, hint, error, action, children, htmlFor, className
         </div>
       ) : (
         label && (
-          <label className="label" htmlFor={htmlFor}>
+          <label className={labelClassName} htmlFor={controlId}>
             {label}
           </label>
         )
       )}
-      {children}
+      {body}
       {hint && !error && <p className="mt-1 text-xs text-ink-400">{hint}</p>}
       {error && <p className="mt-1 text-xs font-medium text-red-600">{error}</p>}
     </div>
@@ -175,7 +253,7 @@ export function Badge({ tone = 'gray', color, soft = true, className, children, 
     return (
       <span
         className={cx('chip', className)}
-        style={soft ? { backgroundColor: `${color}1a`, color } : { backgroundColor: color, color: '#fff' }}
+        style={soft ? { backgroundColor: `${color}1a`, color: readableOnTint(color) } : { backgroundColor: solidBackground(color), color: '#fff' }}
         {...rest}
       >
         <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: soft ? color : '#fff' }} />
@@ -354,7 +432,12 @@ export function Modal({ open, onClose, title, subtitle, children, footer, size =
           animate={{ opacity: 1 }}
           transition={{ duration: 0.15 }}
         >
-          <div className="absolute inset-0 bg-ink-950/40 backdrop-blur-sm" onClick={onClose} />
+          {/* Decorative scrim. It is not a tab stop and must not be: the keyboard way
+              out of a dialog is Escape, which useFocusTrap handles, and making the
+              backdrop focusable would put a nameless control in the tab order in
+              front of the dialog it is dimming. */}
+          {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
+          <div aria-hidden="true" className="absolute inset-0 bg-ink-950/40 backdrop-blur-sm" onClick={onClose} />
           <motion.div
             ref={ref}
             onKeyDown={onKeyDown}

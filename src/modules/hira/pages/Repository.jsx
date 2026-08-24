@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { FolderOpen, Filter, Search, X, FilePlus2, Eye, Pencil, Trash2, AlertTriangle, FileDown, Layers, Upload, ArrowRight } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { PageHeader, EmptyState, Modal, Skeleton } from '../components/ui'
+import { PageHeader, EmptyState, Modal, Skeleton, Field } from '../components/ui'
 import { Pager } from '../../../shared/ui'
 import { usePagination } from '../../../shared/ui/usePagination'
 import { RiskBadge } from '../components/RiskBits'
@@ -174,10 +174,13 @@ export default function Repository() {
                       <td className="px-4 py-3"><RiskBadge risk={r} size="sm" /></td>
                       <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-end gap-1 opacity-100 transition-opacity duration-150 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
-                          <Link to={`/hira/assessment/${a.id}`} className="rounded-lg p-2 text-ink-500 shadow-clay-sm transition hover:bg-clay-100 hover:text-ink-800" title="View"><Eye size={16} /></Link>
-                          <button onClick={() => { try { exportAssessmentPdf(a) } catch (err) { toast.error(err.message || 'Could not export PDF') } }} className="rounded-lg p-2 text-ink-500 shadow-clay-sm transition hover:bg-clay-100 hover:text-ink-800" title="Export PDF"><FileDown size={16} /></button>
-                          <Link to={`/hira/create/${a.id}`} className="rounded-lg p-2 text-ink-500 shadow-clay-sm transition hover:bg-clay-100 hover:text-ink-800" title="Edit"><Pencil size={16} /></Link>
-                          <button onClick={() => setToDelete(a)} className="rounded-lg p-2 text-red-500 shadow-clay-sm transition hover:bg-red-50" title="Delete"><Trash2 size={16} /></button>
+                          {/* Named by the assessment, not the verb: four rows of
+                              "View, Export, Edit, Delete" read out of the table
+                              give no way to tell which assessment is which. */}
+                          <Link to={`/hira/assessment/${a.id}`} className="rounded-lg p-2 text-ink-500 shadow-clay-sm transition hover:bg-clay-100 hover:text-ink-800" aria-label={`View assessment ${a.name || a.docId || a.id}`} title="View"><Eye size={16} /></Link>
+                          <button onClick={() => { try { exportAssessmentPdf(a) } catch (err) { toast.error(err.message || 'Could not export PDF') } }} className="rounded-lg p-2 text-ink-500 shadow-clay-sm transition hover:bg-clay-100 hover:text-ink-800" aria-label={`Export assessment ${a.name || a.docId || a.id} as PDF`} title="Export PDF"><FileDown size={16} /></button>
+                          <Link to={`/hira/create/${a.id}`} className="rounded-lg p-2 text-ink-500 shadow-clay-sm transition hover:bg-clay-100 hover:text-ink-800" aria-label={`Edit assessment ${a.name || a.docId || a.id}`} title="Edit"><Pencil size={16} /></Link>
+                          <button onClick={() => setToDelete(a)} className="rounded-lg p-2 text-red-500 shadow-clay-sm transition hover:bg-red-50" aria-label={`Delete assessment ${a.name || a.docId || a.id}`} title="Delete"><Trash2 size={16} /></button>
                         </div>
                       </td>
                     </tr>
@@ -251,8 +254,7 @@ export default function Repository() {
           </div>
 
           {baselinePick === 'open' && (
-            <div className="clay-inset rounded-2xl p-4">
-              <label className="label">Choose a baseline to build from</label>
+            <Field label="Choose a baseline to build from" className="clay-inset rounded-2xl p-4">
               {baselines.length === 0 ? (
                 <p className="text-sm text-ink-500">
                   No baselines yet.{' '}
@@ -279,7 +281,7 @@ export default function Repository() {
                   ))}
                 </div>
               )}
-            </div>
+            </Field>
           )}
         </div>
       </Modal>

@@ -2,6 +2,7 @@ import { Calendar, Clock, AlertTriangle, Tag, Layers, FileText, Users, Lightbulb
 import PersonEditor from '../PersonEditor'
 import { INCIDENT_TYPES, SEVERITY, HSE_CATEGORIES } from '../../lib/constants'
 import SiteScopePicker from '../../../../shared/org/SiteScopePicker'
+import { todayISO } from '../../../../shared/lib/dates'
 
 function FieldLabel({ icon: Icon, children }) {
   return <label className="label flex items-center gap-1.5"><Icon size={13} /> {children}</label>
@@ -15,7 +16,7 @@ export default function StepInitialReport({ value, onChange, users, sites = [], 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
           <FieldLabel icon={Calendar}>Date of incident</FieldLabel>
-          <input type="date" className="input" value={value.incidentDate || ''} onChange={(e) => set({ incidentDate: e.target.value })} />
+          <input type="date" className="input" max={todayISO()} value={value.incidentDate || ''} onChange={(e) => set({ incidentDate: e.target.value })} />
         </div>
         <div>
           <FieldLabel icon={Clock}>Time of incident</FieldLabel>

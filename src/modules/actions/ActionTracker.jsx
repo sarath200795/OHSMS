@@ -8,6 +8,7 @@ import { PageHeader, Card, Select, StatCard, EmptyState, SkeletonTable, Pager } 
 import { usePagination } from '../../shared/ui/usePagination'
 import { SOURCES, NORM_STATUS, NORM_BY_KEY, subscribeActions, updateActionStatus, isOverdue, todayISO } from './lib/sources'
 import IncompleteNotice from '../../shared/ui/IncompleteNotice'
+import { readableOnTint } from '../../shared/lib/contrast'
 
 const fmtDue = (due) => (due ? due : '—')
 
@@ -158,7 +159,7 @@ export default function ActionTracker() {
                       style={{ boxShadow: `inset 4px 0 0 ${r.tone}` }}
                     >
                       <td className="px-4 py-3">
-                        <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-bold" style={{ backgroundColor: `${r.tone}1a`, color: r.tone }}>
+                        <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-bold" style={{ backgroundColor: `${r.tone}1a`, color: readableOnTint(r.tone) }}>
                           {r.sourceLabel}
                         </span>
                         <div className="mt-1 max-w-[180px] truncate text-xs text-ink-400" title={r.context}>{r.context}</div>

@@ -261,6 +261,9 @@ export default function Security() {
                 id="enrolcode"
                 inputMode="numeric"
                 autoComplete="one-time-code"
+                // Last step of enrolment, revealed only after the QR code has
+                // been scanned. See the no-autofocus note in eslint.config.js.
+                // eslint-disable-next-line jsx-a11y/no-autofocus
                 autoFocus
                 maxLength={7}
                 required
@@ -294,6 +297,10 @@ export default function Security() {
                 id="reauthpw"
                 type="password"
                 autoComplete="current-password"
+                // Re-authentication prompt: it appears in place of whatever the
+                // user was doing, and it is the only thing on it. See the
+                // no-autofocus note in eslint.config.js.
+                // eslint-disable-next-line jsx-a11y/no-autofocus
                 autoFocus
                 required
                 className="max-w-sm"

@@ -36,6 +36,9 @@ vi.mock('../../../shared/org/orgData', async () => {
       const failed = Object.keys(status).filter((k) => status[k] === 'failed')
       return capped.length || failed.length ? { capped, failed, message: 'incomplete' } : null
     }),
+    // The cap constant travels with the seam: sources.js does not read it, but
+    // orgData exports it and a partial mock of a module that does is an error.
+    COLLECTION_READ_CAP: actual?.COLLECTION_READ_CAP ?? 5000,
     subscribeOrgCollection: (orgId, name, cb) => {
       listeners[name] = cb
       return () => { listeners[name] = null }

@@ -34,7 +34,7 @@ export default function CommitteeTab({ consultations, sites, keepUnplaced = true
       <div className="mb-5 grid gap-4 lg:grid-cols-[1.4fr_1fr]">
         <Panel title="Meetings per month" subtitle="With observations raised, by status">
           {a.byMonth.length === 0 ? <NoData>No dated meetings in this scope.</NoData> : (
-            <ChartFrame width="100%" height={260}>
+            <ChartFrame label="Meetings per month, with observations raised, by status" width="100%" height={260}>
               <BarChart data={a.byMonth} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
                 <XAxis dataKey="label" {...axis} />
                 <YAxis allowDecimals={false} {...axis} />
@@ -51,7 +51,7 @@ export default function CommitteeTab({ consultations, sites, keepUnplaced = true
 
         <Panel title="Observations" subtitle="Across every meeting in scope">
           {a.actionTotal === 0 ? <NoData>No observations raised.</NoData> : (
-            <ChartFrame width="100%" height={260}>
+            <ChartFrame label="Committee observations across every meeting in scope" width="100%" height={260}>
               <PieChart>
                 <Pie data={a.observations.filter((s) => s.value > 0)} dataKey="value" nameKey="name" outerRadius={88} innerRadius={50} paddingAngle={2}>
                   {a.observations.filter((s) => s.value > 0).map((d) => <Cell key={d.key} fill={d.color} />)}

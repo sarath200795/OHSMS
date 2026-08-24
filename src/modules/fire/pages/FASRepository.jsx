@@ -4,8 +4,8 @@ import { BellRing, Plus, Pencil, Trash2, Search, Filter, X, Download, QrCode, Wr
 import { QRCodeSVG } from 'qrcode.react'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
-import { PageHeader, EmptyState, Modal, Badge, Spinner } from '../components/ui'
-import { Pager } from '../../../shared/ui'
+import { PageHeader, EmptyState, Modal, Badge, Spinner, Field } from '../components/ui'
+import { Pager, IconButton } from '../../../shared/ui'
 import { usePagination } from '../../../shared/ui/usePagination'
 import { useAuth } from '../context/AuthContext'
 import { useFleet } from '../context/FleetContext'
@@ -15,7 +15,7 @@ import { useAccessibleSites } from '../../../shared/org/useAccessibleSites'
 import { exportRows } from '../lib/exporter'
 import { publicQrUrl } from '../lib/qr'
 import SiteScopePicker from '../../../shared/org/SiteScopePicker'
-import { dueState, fasColor, fasIncomplete, nextAssetId, highestAssetSeq, formatAssetId } from '../lib/assetLogic'
+import { dueState, dueTextColor, fasColor, fasIncomplete, nextAssetId, highestAssetSeq, formatAssetId } from '../lib/assetLogic'
 import { toDate } from '../lib/extinguisherLogic'
 import { REGIONS, FAS_DEVICE_TYPES, FAS_STATUS, FAS_STATUS_LABEL, FAS_STATUS_COLOR } from '../lib/constants'
 
@@ -42,7 +42,6 @@ const EMPTY = {
 }
 const STATUSES = Object.values(FAS_STATUS)
 
-function Field({ label, children }) { return <div><label className="label">{label}</label>{children}</div> }
 function ChipRow({ label, options, selected, onToggle, render }) {
   return (
     <div className="flex flex-wrap items-center gap-2 border-t border-ink-100 pt-3">
@@ -57,7 +56,7 @@ function ChipRow({ label, options, selected, onToggle, render }) {
 function DateCell({ value }) {
   const s = dueState(value)
   if (!value) return <span className="text-ink-300">—</span>
-  const color = s === 'expired' ? '#dc2626' : s === 'due' ? '#f59e0b' : '#64748b'
+  const color = dueTextColor(s)
   return <span style={{ color }} className="font-medium">{fmtDate(value)}</span>
 }
 
@@ -284,7 +283,7 @@ export default function FASRepository() {
             <table className="w-full min-w-[860px] text-sm">
               <thead className="bg-clay-100/70 text-left text-xs uppercase tracking-wide text-ink-500">
                 <tr>
-                  <th className="px-4 py-3"><input type="checkbox" className="h-4 w-4 cursor-pointer accent-brand-500" checked={allOnPage} onChange={toggleAllOnPage} title="Select all on this page" /></th>
+                  <th className="px-4 py-3"><input type="checkbox" className="h-4 w-4 cursor-pointer accent-brand-500" checked={allOnPage} onChange={toggleAllOnPage} aria-label="Select all devices on this page" title="Select all on this page" /></th>
                   <th className="px-4 py-3">Device</th><th className="px-4 py-3">Site</th><th className="px-4 py-3">Zone</th>
                   <th className="px-4 py-3">Next Service</th><th className="px-4 py-3">AMC Vendor</th>
                   <th className="px-4 py-3">Status</th><th className="px-4 py-3 text-right">Actions</th>
@@ -293,7 +292,7 @@ export default function FASRepository() {
               <tbody className="divide-y divide-clay-200/60">
                 {pageItems.map((a) => (
                   <tr key={a.id} className={`hover:bg-ink-50/70 ${selected.has(a.id) ? 'bg-brand-50/60' : ''}`} style={{ boxShadow: `inset 4px 0 0 ${fasColor(a, today)}` }}>
-                    <td className="px-4 py-3"><input type="checkbox" className="h-4 w-4 cursor-pointer accent-brand-500" checked={selected.has(a.id)} onChange={() => toggleSel(a.id)} /></td>
+                    <td className="px-4 py-3"><input type="checkbox" className="h-4 w-4 cursor-pointer accent-brand-500" checked={selected.has(a.id)} onChange={() => toggleSel(a.id)} aria-label={`Select ${a.deviceId || a.deviceType || 'this device'}`} /></td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1.5 font-bold text-ink-900">
                         {a.deviceId || a.deviceType}
@@ -311,11 +310,15 @@ export default function FASRepository() {
                     <td className="px-4 py-3 text-ink-600">{a.amcVendor || '—'}</td>
                     <td className="px-4 py-3"><Badge color={FAS_STATUS_COLOR[a.status] || '#64748b'}>{FAS_STATUS_LABEL[a.status] || a.status}</Badge></td>
                     <td className="px-4 py-3">
+                      {/* Every label names the DEVICE, not just the verb. Read out
+                          of the surrounding table by a screen reader, four rows of
+                          "Edit, Delete, Edit, Delete" give no way to tell which
+                          panel is about to be removed. */}
                       <div className="flex justify-end gap-1">
-                        <button className="btn bg-green-600 px-2 py-1.5 text-xs text-white hover:bg-green-700" onClick={() => openService(a)} title="Log service"><Wrench size={14} /></button>
-                        <button className="btn-soft px-2 py-1.5" onClick={() => showQr(a)} disabled={busy || (!a.qrToken && (!isAdmin || a.deviceType !== 'Control Panel'))} title={a.qrToken ? 'View QR code' : (a.deviceType !== 'Control Panel' ? 'QR codes are only for Control Panels' : (isAdmin ? 'Generate QR code' : 'Only an admin can generate QR codes'))}><QrCode size={15} /></button>
-                        <button className="btn-soft px-2 py-1.5" onClick={() => setEditing(a)} title="Edit"><Pencil size={15} /></button>
-                        <button className="btn-soft px-2 py-1.5 text-red-600" onClick={() => setRemoving(a)} title="Delete"><Trash2 size={15} /></button>
+                        <IconButton icon={Wrench} iconSize={14} label={`Log service for ${a.deviceId || a.deviceType || 'this device'}`} className="!bg-green-600 !text-white hover:!bg-green-700" onClick={() => openService(a)} />
+                        <IconButton icon={QrCode} iconSize={15} variant="soft" label={a.qrToken ? `View QR code for ${a.deviceId || a.deviceType || 'this device'}` : a.deviceType !== 'Control Panel' ? 'QR codes are only for Control Panels' : isAdmin ? `Generate QR code for ${a.deviceId || 'this device'}` : 'Only an admin can generate QR codes'} onClick={() => showQr(a)} disabled={busy || (!a.qrToken && (!isAdmin || a.deviceType !== 'Control Panel'))} />
+                        <IconButton icon={Pencil} iconSize={15} variant="soft" label={`Edit ${a.deviceId || a.deviceType || 'this device'}`} onClick={() => setEditing(a)} />
+                        <IconButton icon={Trash2} iconSize={15} variant="soft" label={`Delete ${a.deviceId || a.deviceType || 'this device'}`} className="!text-red-600" onClick={() => setRemoving(a)} />
                       </div>
                     </td>
                   </tr>
@@ -340,15 +343,14 @@ export default function FASRepository() {
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Device ID (auto)"><input className="input bg-ink-50 text-ink-500" value={editing.deviceId} readOnly title="Automatically assigned — unique per device" /></Field>
               <Field label="Device type"><select className="input" value={editing.deviceType} onChange={set('deviceType')}>{FAS_DEVICE_TYPES.map((t) => <option key={t}>{t}</option>)}</select></Field>
-              <div className="sm:col-span-2">
-                <label className="label">Site — Region · Entity · Site</label>
+              <Field label="Site — Region · Entity · Site" className="sm:col-span-2">
                 <SiteScopePicker
                   module="equipment"
                   sites={siteInventory}
                   value={{ ...editing, site: editing.centerName }}
                   onChange={(v) => setEditing((p) => ({ ...p, ...v, centerName: v.site }))}
                 />
-              </div>
+              </Field>
               <Field label="Zone / Loop"><input className="input" value={editing.zone} onChange={set('zone')} placeholder="e.g. Zone 4" /></Field>
               <Field label="Location / placement"><input className="input" value={editing.location} onChange={set('location')} placeholder="e.g. 3rd floor lift lobby" /></Field>
               <Field label="Status"><select className="input" value={editing.status} onChange={set('status')}>{STATUSES.map((s) => <option key={s} value={s}>{FAS_STATUS_LABEL[s]}</option>)}</select></Field>

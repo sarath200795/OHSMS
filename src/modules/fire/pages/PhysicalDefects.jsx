@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react'
-import { Wrench, AlertTriangle, QrCode, CheckCircle2, Download, FileText } from 'lucide-react'
+import { Wrench, AlertTriangle, QrCode, CheckCircle2, Download, FileText, Gauge } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { PageHeader, EmptyState, Modal, Spinner } from '../components/ui'
 import ExtinguisherTable from '../components/ExtinguisherTable'
 import ReportDefectModal from '../components/ReportDefectModal'
 import SubmitQuotationModal from '../components/SubmitQuotationModal'
+import SubmitHptModal from '../components/SubmitHptModal'
 import ListFilters from '../components/ListFilters'
 import { TableSkeleton } from '../components/Skeleton'
 import { useFleet } from '../context/FleetContext'
@@ -14,8 +15,10 @@ import { emptyFilters, applyListFilters } from '../lib/listFilter'
 import { exportSiteDefects } from '../lib/exporter'
 import { summariseDefectsBySite } from '../lib/siteDefectSummary'
 import { deriveStatus, hasQuotation } from '../lib/extinguisherLogic'
+import { requiredStep, WORKFLOW_STEP } from '../lib/hpt'
 import { DEFECT_BY_KEY, PHYSICAL_DEFECT_KEYS } from '../lib/constants'
 import { safeHref } from '../../../shared/safeUrl'
+import { readableOnTint } from '../../../shared/lib/contrast'
 
 export default function PhysicalDefects() {
   const { physicalDefects, siteInventory, loading } = useFleet()
@@ -23,6 +26,7 @@ export default function PhysicalDefects() {
   const today = useMemo(() => new Date(), [])
   const [reportFor, setReportFor] = useState(null)
   const [quoteFor, setQuoteFor] = useState(null)
+  const [hptFor, setHptFor] = useState(null)
   const [resolving, setResolving] = useState(null)
   const [busy, setBusy] = useState(false)
   const [filters, setFilters] = useState(emptyFilters())
@@ -88,12 +92,30 @@ export default function PhysicalDefects() {
           today={today}
           renderActions={(ext) => (
             <>
-              {hasQuotation(ext) ? (
+              {/* A unit whose hydrostatic test is due is asked for the TEST, not
+                  for a quotation — the same branch RefillDue makes, for the same
+                  reason, and it belongs here too.
+
+                  An HPT can CONDEMN the cylinder. Raising a quotation to repair
+                  a defect on a unit that may be about to fail its pressure test
+                  is money spent on a cylinder that cannot legally return to
+                  service either way, and worse, resolving the defect afterwards
+                  reads as "this unit is fine" while the test is still
+                  outstanding. The test comes first and settles the question. */}
+              {requiredStep(ext, today) === WORKFLOW_STEP.HPT ? (
+                <button
+                  className="btn bg-violet-600 px-2.5 py-1.5 text-xs text-white hover:bg-violet-700"
+                  onClick={() => setHptFor(ext)}
+                  title={`Hydrostatic test due ${ext.dateOfNextHPT || ''} — record the test and its certificate before resolving`}
+                >
+                  <Gauge size={14} /> Submit HPT
+                </button>
+              ) : hasQuotation(ext) ? (
                 <button className="btn bg-green-600 px-2.5 py-1.5 text-xs text-white hover:bg-green-700" onClick={() => setResolving(ext)} title="Quotation submitted — resolve defects">
                   <CheckCircle2 size={14} /> Resolve
                 </button>
               ) : (
-                <button className="btn bg-cyan-600 px-2.5 py-1.5 text-xs text-white hover:bg-cyan-700" onClick={() => setQuoteFor(ext)} title="Submit a vendor quotation before resolving">
+                <button className="btn bg-cyan-700 px-2.5 py-1.5 text-xs text-white hover:bg-cyan-800" onClick={() => setQuoteFor(ext)} title="Submit a vendor quotation before resolving">
                   <FileText size={14} /> Submit quotation
                 </button>
               )}
@@ -136,6 +158,15 @@ export default function PhysicalDefects() {
         actor={{ uid: profile?.uid, name: profile?.name }}
       />
 
+      <SubmitHptModal
+        open={!!hptFor}
+        onClose={() => setHptFor(null)}
+        ext={hptFor}
+        orgId={orgId}
+        orgName={orgName}
+        actor={{ uid: profile?.uid, name: profile?.name }}
+      />
+
       <Modal open={!!resolving} onClose={() => setResolving(null)} title="Resolve physical defects">
         {resolving && (
           <>
@@ -144,7 +175,7 @@ export default function PhysicalDefects() {
             </p>
             <div className="mt-3 flex flex-wrap gap-1.5">
               {physical(resolving).map((k) => (
-                <span key={k} className="chip" style={{ backgroundColor: `${DEFECT_BY_KEY[k].color}1a`, color: DEFECT_BY_KEY[k].color }}>
+                <span key={k} className="chip" style={{ backgroundColor: `${DEFECT_BY_KEY[k].color}1a`, color: readableOnTint(DEFECT_BY_KEY[k].color) }}>
                   {DEFECT_BY_KEY[k].label}
                 </span>
               ))}

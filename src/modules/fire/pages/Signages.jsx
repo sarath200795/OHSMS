@@ -1,14 +1,15 @@
 import { useMemo, useState } from 'react'
 import { Signpost, Plus, Pencil, Trash2, MapPin, X, LayoutGrid, List, Download, Check, Search, Filter } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { PageHeader, EmptyState, Modal, Badge, Spinner } from '../components/ui'
-import { Pager } from '../../../shared/ui'
+import { PageHeader, EmptyState, Modal, Badge, Spinner, Field } from '../components/ui'
+import { Pager, IconButton } from '../../../shared/ui'
 import { usePagination } from '../../../shared/ui/usePagination'
 import { useAuth } from '../context/AuthContext'
 import { useFleet } from '../context/FleetContext'
 import { addSignage, updateSignage, deleteSignage } from '../lib/firestore'
 import { exportSignage } from '../lib/exporter'
 import SiteScopePicker from '../../../shared/org/SiteScopePicker'
+import IncompleteNotice from '../../../shared/ui/IncompleteNotice'
 import {
   SIGNAGE_TYPES,
   SIGNAGE_CONDITIONS,
@@ -51,15 +52,6 @@ const EXT_SIGN_TYPE = 'Fire Extinguisher Sign'
 
 const EMPTY_FILTERS = { search: '', regions: [], entities: [], types: [], conditions: [] }
 
-function Field({ label, children }) {
-  return (
-    <div>
-      <label className="label">{label}</label>
-      {children}
-    </div>
-  )
-}
-
 // One filter row of toggle chips (mirrors the Repository/Dashboard ListFilters style).
 function ChipRow({ label, options, selected, onToggle }) {
   return (
@@ -84,7 +76,7 @@ function ChipRow({ label, options, selected, onToggle }) {
 
 export default function Signages() {
   const { orgId, profile } = useAuth()
-  const { signages, sites, extinguishers, siteInventory, loading } = useFleet()
+  const { signages, sites, extinguishers, siteInventory, incomplete, loading } = useFleet()
 
   const [view, setView] = useState('matrix') // 'matrix' | 'list'
   const [filters, setFilters] = useState(EMPTY_FILTERS)
@@ -339,6 +331,8 @@ export default function Signages() {
         <button className="btn-primary" onClick={() => setEditing({ ...EMPTY })}><Plus size={16} /> Add signage</button>
       </PageHeader>
 
+
+      <IncompleteNotice incomplete={incomplete} className="mb-4" />
       {/* Filters — same chip style as the Dashboard / Repository */}
       {!loading && sites.length > 0 && (
         <div className="card mb-4 space-y-3 p-4">
@@ -484,8 +478,8 @@ export default function Signages() {
                         <td className="px-4 py-2.5 text-ink-500">{s.lastChecked || '—'}</td>
                         <td className="px-4 py-2.5">
                           <div className="flex justify-end gap-1">
-                            <button className="btn-soft px-2 py-1.5" onClick={() => setEditing(s)} title="Edit"><Pencil size={15} /></button>
-                            <button className="btn-soft px-2 py-1.5 text-red-600" onClick={() => setRemoving(s)} title="Delete"><Trash2 size={15} /></button>
+                            <IconButton icon={Pencil} iconSize={15} variant="soft" label={`Edit ${s.type} signage${s.location ? ` at ${s.location}` : ''}`} onClick={() => setEditing(s)} />
+                            <IconButton icon={Trash2} iconSize={15} variant="soft" className="!text-red-600" label={`Delete ${s.type} signage${s.location ? ` at ${s.location}` : ''}`} onClick={() => setRemoving(s)} />
                           </div>
                         </td>
                       </tr>
@@ -508,15 +502,14 @@ export default function Signages() {
         {editing && (
           <form onSubmit={save} className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
-              <div className="sm:col-span-2">
-                <label className="label">Site — Region · Entity · Site</label>
+              <Field label="Site — Region · Entity · Site" className="sm:col-span-2">
                 <SiteScopePicker
                   module="equipment"
                   sites={siteInventory}
                   value={editing}
                   onChange={(v) => setEditing((p) => ({ ...p, ...v, centerName: v.site }))}
                 />
-              </div>
+              </Field>
               <Field label="Signage type">
                 <select className="input" value={editing.type} onChange={set('type')}>
                   {SIGNAGE_TYPES.map((t) => <option key={t}>{t}</option>)}
@@ -553,10 +546,9 @@ export default function Signages() {
                   FERP available on all floors
                 </label>
                 {!editing.allFloors && (
-                  <div className="mt-2 max-w-[240px]">
-                    <label className="label">Floors with FERP available</label>
+                  <Field label="Floors with FERP available" className="mt-2 max-w-[240px]">
                     <input type="number" min={0} max={editing.totalFloors || undefined} className="input" placeholder="e.g. 6" value={editing.floorsCovered} onChange={set('floorsCovered')} />
-                  </div>
+                  </Field>
                 )}
                 <p className="mt-2 text-xs text-ink-400">A Fire Emergency Response Plan should be displayed on every floor.</p>
               </div>

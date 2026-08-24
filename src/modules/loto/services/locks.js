@@ -8,13 +8,15 @@ import {
   serverTimestamp,
   updateDoc,
   where,
+  limit,
 } from 'firebase/firestore'
 import { db } from '../../../shared/firebase'
+import { COLLECTION_READ_CAP } from '../../../shared/org/orgData'
 
 const COL = 'locks'
 
 export function subscribeLocks(orgId, cb, onError) {
-  const q = query(collection(db, COL), where('orgId', '==', orgId))
+  const q = query(collection(db, COL), where('orgId', '==', orgId), limit(COLLECTION_READ_CAP))
   return onSnapshot(
     q,
     (snap) => {

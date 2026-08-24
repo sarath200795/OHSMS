@@ -11,6 +11,7 @@ import { useRa } from '../context/RaContext'
 import { initialRisk, residualRisk } from '../lib/raStats'
 import { categoryLabel, CONTROL_STATUS } from '../lib/constants'
 import { exportAssessmentPdf } from '../lib/pdf'
+import { readableOnTint } from '../../../shared/lib/contrast'
 
 function memberName(members, id) {
   return members?.find((m) => m.id === id)?.name || '—'
@@ -44,7 +45,7 @@ function ControlTable({ controls, members, title }) {
                 <td className="px-3 py-2">{memberName(members, c.responsibleMemberId)}</td>
                 <td className="px-3 py-2">{c.department || '—'}</td>
                 <td className="px-3 py-2">
-                  <span className="chip" style={{ backgroundColor: `${statusColor(c.status)}1a`, color: statusColor(c.status) }}>
+                  <span className="chip" style={{ backgroundColor: `${statusColor(c.status)}1a`, color: readableOnTint(statusColor(c.status)) }}>
                     {c.status || 'Open'}
                   </span>
                 </td>

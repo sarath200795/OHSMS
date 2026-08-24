@@ -1,20 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { Gauge, Send, Paperclip, X, TriangleAlert } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { Modal, Spinner } from './ui'
+import { Modal, Spinner, Field } from './ui'
 import { submitHpt } from '../lib/firestore'
 import { validateHpt, nextHptDate, HPT_RESULT } from '../lib/hpt'
 import { readFileAsDataUrl } from '../../../shared/lib/files'
 import { safeHref } from '../../../shared/safeUrl'
-
-function Field({ label, children }) {
-  return (
-    <div>
-      <label className="label">{label}</label>
-      {children}
-    </div>
-  )
-}
 
 /**
  * Record the hydrostatic pressure test for a cylinder whose HPT has come due.
@@ -151,8 +142,7 @@ export default function SubmitHptModal({ open, onClose, ext, orgId, orgName, act
         </div>
       )}
 
-      <div className="mt-4">
-        <label className="label">Test certificate</label>
+      <Field label="Test certificate" className="mt-4">
         {file ? (
           <div className="flex items-center gap-2 rounded-2xl bg-clay-surface px-3 py-2 shadow-clay-inset">
             <Paperclip size={15} className="text-ink-400" />
@@ -173,12 +163,11 @@ export default function SubmitHptModal({ open, onClose, ext, orgId, orgName, act
             <input ref={fileInputRef} type="file" className="hidden" onChange={(e) => pickFile(e.target.files?.[0])} />
           </label>
         )}
-      </div>
+      </Field>
 
-      <div className="mt-4">
-        <label className="label">Notes</label>
+      <Field label="Notes" className="mt-4">
         <textarea className="input min-h-[64px]" value={form.notes} onChange={set('notes')} placeholder="Anything worth recording about the test" />
-      </div>
+      </Field>
 
       <div className="mt-5 flex justify-end gap-2">
         <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>

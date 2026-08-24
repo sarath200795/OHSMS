@@ -171,7 +171,7 @@ export default function ActionTracker() {
                   <th className="px-3 py-3">Assessment</th>
                   <th className="px-3 py-3">Responsible</th>
                   <th className="px-3 py-3">Due date</th>
-                  <th className="px-3 py-3"></th>
+                  <th className="px-3 py-3"><span className="sr-only">Actions</span></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-ink-100">

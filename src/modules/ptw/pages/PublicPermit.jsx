@@ -252,8 +252,8 @@ function ObservationForm({ permit, token }) {
       {type && (
         <>
           <div>
-            <label className="text-[10px] font-bold uppercase tracking-widest text-ink-400">You are</label>
-            <select
+            <label htmlFor="public-permit-role" className="text-[10px] font-bold uppercase tracking-widest text-ink-400">You are</label>
+            <select id="public-permit-role"
               className="mt-1 w-full rounded-xl bg-clay-surface px-3 py-2.5 text-sm shadow-clay-inset outline-none"
               value={role}
               onChange={(e) => setRole(e.target.value)}

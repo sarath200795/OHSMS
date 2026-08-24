@@ -223,7 +223,7 @@ export default function Dashboard() {
       <div data-tour="dash-charts" className="grid gap-4 lg:grid-cols-3">
         <ChartCard title="By Level (Severity)" subtitle="Click a slice to filter">
           {sevData.length ? (
-            <ChartFrame width="100%" height={224}>
+            <ChartFrame label="Incidents by severity level" width="100%" height={224}>
               <PieChart>
                 <Pie data={sevData} dataKey="value" nameKey="name" outerRadius={88} label={renderPieValue} labelLine={false} onClick={(d) => toggle('severity', d.key)} className="cursor-pointer">
                   {sevData.map((d) => <Cell key={d.key} fill={d.color} fillOpacity={segOpacity(filters.severity, d.key)} />)}
@@ -236,7 +236,7 @@ export default function Dashboard() {
 
         <ChartCard title="By Type" subtitle="Click a slice to filter">
           {typeData.length ? (
-            <ChartFrame width="100%" height={224}>
+            <ChartFrame label="Incidents by type" width="100%" height={224}>
               <PieChart>
                 <Pie data={typeData} dataKey="value" nameKey="name" innerRadius={48} outerRadius={88} paddingAngle={3} label={renderPieValue} labelLine={false} onClick={(d) => toggle('type', d.key)} className="cursor-pointer">
                   {typeData.map((d) => <Cell key={d.key} fill={d.color} fillOpacity={segOpacity(filters.type, d.key)} />)}
@@ -249,7 +249,7 @@ export default function Dashboard() {
 
         <ChartCard title="Action Status" subtitle="Corrective & preventive actions">
           {actionData.length ? (
-            <ChartFrame width="100%" height={224}>
+            <ChartFrame label="Corrective and preventive action status" width="100%" height={224}>
               <PieChart>
                 <Pie data={actionData} dataKey="value" nameKey="name" innerRadius={48} outerRadius={88} paddingAngle={3} label={renderPieValue} labelLine={false}>
                   {actionData.map((d) => <Cell key={d.key} fill={d.color} />)}
@@ -264,7 +264,7 @@ export default function Dashboard() {
 
         <ChartCard title="By HSE Category" subtitle="Click a bar to filter">
           {catData.length ? (
-            <ChartFrame width="100%" height={Math.max(224, catData.length * 34)}>
+            <ChartFrame label="Incidents by HSE category" width="100%" height={Math.max(224, catData.length * 34)}>
               <BarChart data={catData} layout="vertical" margin={{ left: 8, right: 28 }}>
                 <XAxis type="number" allowDecimals={false} hide />
                 <YAxis type="category" dataKey="name" width={150} tickLine={false} axisLine={false} fontSize={11} tick={{ fill: '#1c2230' }} />
@@ -280,7 +280,7 @@ export default function Dashboard() {
 
         <ChartCard title="By Location" subtitle="Click a bar to filter">
           {locData.length ? (
-            <ChartFrame width="100%" height={224}>
+            <ChartFrame label="Incidents by location" width="100%" height={224}>
               <BarChart data={locData} margin={{ top: 24, right: 8, left: 0, bottom: 0 }}>
                 <XAxis dataKey="name" tickLine={false} axisLine={false} fontSize={10} tick={{ fill: '#1c2230' }} interval={0} angle={-20} textAnchor="end" height={50} />
                 <YAxis allowDecimals={false} tickLine={false} axisLine={false} fontSize={12} width={28} tick={{ fill: '#62718c' }} />

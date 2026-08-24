@@ -82,7 +82,7 @@ export default function InspectionsTab({ records = [], sites = [], keepUnplaced 
           {cats.length === 0 ? (
             <NoData>No completed checks in this range.</NoData>
           ) : (
-            <ChartFrame width="100%" height={Math.max(240, cats.length * 42)}>
+            <ChartFrame label="Failed inspection checks grouped by category" width="100%" height={Math.max(240, cats.length * 42)}>
               <BarChart data={cats} layout="vertical" margin={{ left: 8, right: 24 }}>
                 <XAxis type="number" allowDecimals={false} {...axis} />
                 <YAxis type="category" dataKey="category" width={120} {...axis} />

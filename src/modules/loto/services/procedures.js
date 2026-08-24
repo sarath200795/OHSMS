@@ -15,6 +15,7 @@ import { db } from '../../../shared/firebase'
 import { putFile, removeFile } from '../../../shared/storage'
 import { PROCEDURE_STATUS, computeLockSummary, mergeRevisedPoints } from '../constants/procedures'
 import { PUBLIC_COL, publicProcedure } from '../utils/publicProcedure'
+import { COLLECTION_READ_CAP } from '../../../shared/org/orgData'
 
 const COL = 'procedures'
 const PHOTOS = 'procedurePhotos'
@@ -537,7 +538,7 @@ export function subscribeProcedure(id, cb, onError) {
 export function subscribeOrgEvents(orgId, cb, onError) {
   // Append-only LOTO activity log. No server-side orderBy (no index); sort by
   // timestamp on the client, newest first.
-  const q = query(collection(db, EVENTS), where('orgId', '==', orgId), limit(1000))
+  const q = query(collection(db, EVENTS), where('orgId', '==', orgId), limit(COLLECTION_READ_CAP))
   return onSnapshot(
     q,
     (snap) => {
@@ -551,7 +552,7 @@ export function subscribeOrgEvents(orgId, cb, onError) {
 
 export function subscribeOrgProcedures(orgId, cb, onError) {
   // No server-side orderBy (avoids a composite index); sort on the client.
-  const q = query(collection(db, COL), where('orgId', '==', orgId))
+  const q = query(collection(db, COL), where('orgId', '==', orgId), limit(COLLECTION_READ_CAP))
   return onSnapshot(
     q,
     (snap) => {

@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 
 // A stand-in Firestore with the one behaviour this fix depends on: a

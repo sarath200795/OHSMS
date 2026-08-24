@@ -17,7 +17,7 @@ vi.mock('../../../shared/storage', () => ({
   putFile: vi.fn(), removeFile: vi.fn(), MAX_INLINE_BYTES: 1, tooLargeForInline: () => false,
 }))
 vi.mock('../../../shared/docId/reserve', () => ({ reserveDocId: vi.fn(async () => 'DOC-1') }))
-vi.mock('../../../shared/org/orgData', () => ({ logAudit: vi.fn(), subscribeSites: vi.fn() }))
+vi.mock('../../../shared/org/orgData', () => ({ logAudit: vi.fn(), subscribeSites: vi.fn(), COLLECTION_READ_CAP: 5000 }))
 vi.mock('firebase/firestore', () => ({
   collection: () => ({}),
   doc: () => ({}),

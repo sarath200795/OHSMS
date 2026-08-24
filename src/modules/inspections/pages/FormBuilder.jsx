@@ -5,7 +5,7 @@ import toast from 'react-hot-toast'
 import {
   ClipboardCheck, Plus, Trash2, GripVertical, Download, FileUp, Save, ArrowLeft, Tag,
 } from 'lucide-react'
-import { PageHeader, Spinner } from '../components/ui'
+import { PageHeader, Spinner, Field } from '../components/ui'
 import { useAuth } from '../context/AuthContext'
 import { useData } from '../context/DataContext'
 import { addTemplate, updateTemplate } from '../lib/firestore'
@@ -198,19 +198,17 @@ export default function FormBuilder() {
         <div className="card p-6 lg:col-span-1">
           <h3 className="mb-4 text-sm font-bold text-ink-800">Form details</h3>
           <div className="space-y-4">
-            <div>
-              <label className="label">Title *</label>
+            <Field label="Title *">
               <input className="input" value={tpl.title} placeholder="Monthly Fire Safety Check"
                 onChange={(e) => set({ title: e.target.value })} />
-            </div>
-            <div>
-              <label className="label">Description</label>
+            </Field>
+            <Field label="Description">
               <textarea className="input min-h-[72px]" value={tpl.desc} placeholder="What this inspection covers…"
                 onChange={(e) => set({ desc: e.target.value })} />
-            </div>
+            </Field>
             <div>
-              <label className="label">Default site (optional)</label>
-              <select
+              <label htmlFor="form-default-site" className="label">Default site (optional)</label>
+              <select id="form-default-site"
                 className="input"
                 value={tpl.siteId || ''}
                 onChange={(e) => {
@@ -226,18 +224,16 @@ export default function FormBuilder() {
               </p>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="label">Frequency</label>
+              <Field label="Frequency">
                 <select className="input" value={tpl.frequency} onChange={(e) => set({ frequency: e.target.value })}>
                   {FREQUENCIES.map((f) => <option key={f} value={f}>{f}</option>)}
                 </select>
-              </div>
-              <div>
-                <label className="label">Status</label>
+              </Field>
+              <Field label="Status">
                 <select className="input" value={tpl.status} onChange={(e) => set({ status: e.target.value })}>
                   {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
                 </select>
-              </div>
+              </Field>
             </div>
             {/* An on-demand form has no cycle, so a recurring window has nothing
                 to repeat. Replaced rather than disabled: greyed-out date fields
@@ -256,16 +252,14 @@ export default function FormBuilder() {
               <div className="rounded-2xl bg-clay-surface p-3 shadow-clay-inset">
                 <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-ink-500">Recurring window (optional)</p>
                 <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="label">From</label>
+                  <Field label="From">
                     <input type="date" className="input font-mono" value={tpl.assignedFrom}
                       onChange={(e) => set({ assignedFrom: e.target.value })} />
-                  </div>
-                  <div>
-                    <label className="label">To</label>
+                  </Field>
+                  <Field label="To">
                     <input type="date" className="input font-mono" value={tpl.assignedTo} min={tpl.assignedFrom}
                       onChange={(e) => set({ assignedTo: e.target.value })} />
-                  </div>
+                  </Field>
                 </div>
                 <p className="mt-2 text-[11px] text-ink-400">
                   When set, an <strong>Active</strong> form auto-schedules on the calendar at its frequency. You can also assign one-off dates from the Forms list.
@@ -365,7 +359,7 @@ export default function FormBuilder() {
           {/* Suggestions only — the field stays free text, so a new category
               never needs a trip somewhere else to be created first. */}
           <datalist id="question-categories">
-            {categoriesInUse.map((c) => <option key={c} value={c} />)}
+            {categoriesInUse.map((c) => <option key={c} value={c}>{c}</option>)}
           </datalist>
         </div>
       </div>

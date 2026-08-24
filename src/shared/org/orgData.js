@@ -433,7 +433,12 @@ export async function grantAccessRequest(uid, request, orgId, actor, userLabel) 
 // incidents a site a month takes eight years to reach it — so a cap that hides
 // records is the rare case, not the normal one. It also bounds the worst case:
 // the eleven listeners analytics opens can pull 55 000 documents and no more.
-export const COLLECTION_READ_CAP = 5000
+// VITE_TEST_READ_CAP lowers the ceiling so e2e/capped-reads.spec.js can prove
+// that every screen totalling a capped register actually renders the notice.
+// There is no other way to check that wiring: at 5 000 no fixture can trip it,
+// and "the notice exists and is unit tested" is not the same claim as "the page
+// asks for it". Unset in every real environment, so production reads 5 000.
+export const COLLECTION_READ_CAP = Number(import.meta.env?.VITE_TEST_READ_CAP) || 5000
 
 // Used in the "your numbers are short" sentence, so these read as the thing the
 // user sees on screen rather than as the Firestore path.

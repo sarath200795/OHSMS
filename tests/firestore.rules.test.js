@@ -1374,3 +1374,72 @@ describe('an audit entry cannot be signed with another person name', () => {
     await assertSucceeds(entry(alice, 'n5', {}))
   })
 })
+
+// The site registry lives at /organizations/{orgId}/sites and always has.
+// A ROOT `sites` collection was nonetheless in isLegacyOrgCollection, granting
+// read, create, update and delete on it to any approved member of any org — and
+// nothing in the app has ever written there. The one file that read it,
+// loto/services/sites.js, was imported by nothing; LOTO's CreateProcedure uses
+// the shared registry like every other module.
+//
+// A permission nothing exercises is a permission nobody notices is wrong, which
+// is why this test asserts the CLOSED state directly rather than trusting the
+// list to stay short. Adding a collection back to that wildcard has to break
+// something.
+describe('the root sites collection is not a surface at all', () => {
+  const rootSite = { orgId: 'orgA', name: 'Ghost Plant' }
+
+  it('an admin of the org CANNOT create one', async () => {
+    const alice = testEnv.authenticatedContext('alice').firestore()
+    await assertFails(setDoc(doc(alice, 'sites', 's1'), rootSite))
+  })
+
+  it('a member CANNOT create one', async () => {
+    const bob = testEnv.authenticatedContext('bob').firestore()
+    await assertFails(setDoc(doc(bob, 'sites', 's2'), { orgId: 'orgB', name: 'Ghost' }))
+  })
+
+  it('nobody can read one, even one seeded behind the rules', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'sites', 'legacy'), rootSite)
+    })
+    const alice = testEnv.authenticatedContext('alice').firestore()
+    await assertFails(getDoc(doc(alice, 'sites', 'legacy')))
+    const bob = testEnv.authenticatedContext('bob').firestore()
+    await assertFails(getDoc(doc(bob, 'sites', 'legacy')))
+  })
+
+  it('nobody can list them', async () => {
+    const alice = testEnv.authenticatedContext('alice').firestore()
+    await assertFails(getDocs(collection(alice, 'sites')))
+  })
+
+  it('an admin CANNOT delete one', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'sites', 'legacy'), rootSite)
+    })
+    const alice = testEnv.authenticatedContext('alice').firestore()
+    await assertFails(deleteDoc(doc(alice, 'sites', 'legacy')))
+  })
+
+  // The registry that IS real must keep working — this is the control that says
+  // the change closed the unused path and not the used one.
+  it('but the real org-scoped registry still works', async () => {
+    const alice = testEnv.authenticatedContext('alice').firestore()
+    await assertSucceeds(
+      setDoc(doc(alice, 'organizations', 'orgA', 'sites', 's1'), { name: 'North Plant' })
+    )
+    await assertSucceeds(getDoc(doc(alice, 'organizations', 'orgA', 'sites', 's1')))
+  })
+
+  // The collections that ARE still legacy must be untouched by this change.
+  it('and the LOTO collections that are still top-level still work', async () => {
+    const alice = testEnv.authenticatedContext('alice').firestore()
+    await assertSucceeds(
+      setDoc(doc(alice, 'procedures', 'p1'), { orgId: 'orgA', equipment: 'Press 4' })
+    )
+    await assertSucceeds(
+      setDoc(doc(alice, 'technicians', 't1'), { orgId: 'orgA', name: 'Sam' })
+    )
+  })
+})

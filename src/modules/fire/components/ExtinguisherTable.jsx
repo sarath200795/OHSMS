@@ -6,6 +6,7 @@ import { usePagination } from '../../../shared/ui/usePagination'
 import CategoryBadges from './CategoryBadges'
 import { healthColor, toDate, daysUntil, dateFieldState, hasDateIssue } from '../lib/extinguisherLogic'
 import { STATUS_LABEL, STATUS_COLOR, REGION_COLORS } from '../lib/constants'
+import { dueTextColor } from '../lib/assetLogic'
 import { Badge } from './ui'
 
 function fmt(value) {
@@ -25,16 +26,17 @@ function DueCell({ value }) {
     )
   }
   if (state === 'missing') {
+    // amber-700, not amber-600: on amber-50 the 600 measures 3.07:1 against a
+    // 4.5:1 requirement, and this chip is the only thing marking a unit whose
+    // refill date nobody recorded.
     return (
-      <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-1.5 py-0.5 text-[11px] font-semibold text-amber-600" title="No date recorded — add one to track this unit's due status.">
+      <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-1.5 py-0.5 text-[11px] font-semibold text-amber-700" title="No date recorded — add one to track this unit's due status.">
         Not set
       </span>
     )
   }
   const days = daysUntil(value)
-  let color = '#64748b'
-  if (days <= 0) color = '#dc2626'
-  else if (days <= 30) color = '#f59e0b'
+  const color = dueTextColor(days <= 0 ? 'expired' : days <= 30 ? 'due' : 'ok')
   return (
     <div className="leading-tight">
       <div className="font-medium text-ink-800">{fmt(value)}</div>
@@ -86,6 +88,7 @@ export default function ExtinguisherTable({
                     className="h-4 w-4 cursor-pointer accent-brand-500"
                     checked={allSelected}
                     onChange={() => onToggleAll?.(items.map((e) => e.id))}
+                    aria-label="Select all extinguishers on this page"
                   />
                 </th>
               )}
@@ -123,6 +126,7 @@ export default function ExtinguisherTable({
                         className="h-4 w-4 cursor-pointer accent-brand-500"
                         checked={!!selected}
                         onChange={() => onToggle?.(ext.id)}
+                        aria-label={`Select extinguisher ${ext.serialNo || ext.id}`}
                       />
                     </td>
                   )}

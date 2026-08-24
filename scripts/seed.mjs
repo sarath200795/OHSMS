@@ -86,6 +86,45 @@ async function main() {
   await add('trainingRecords', { title: 'Working at Height', employee: 'Jordan Kim', trainer: 'SafetyCo', completedDate: daysFromNow(-350).toISOString().slice(0, 10), expiryDate: daysFromNow(15).toISOString().slice(0, 10), status: 'completed' })
   await add('documents', { title: 'Lockout/Tagout Policy', docType: 'Policy', version: '2.1', owner: 'HSE Manager', reviewDate: daysFromNow(-10).toISOString().slice(0, 10), status: 'active' })
 
+  // ── Emergency equipment ────────────────────────────────────────────────────
+  //
+  // The largest module in the app had no fixture at all, so its four dashboards
+  // seeded to empty and every e2e assertion about them was really an assertion
+  // about the empty state. Enough rows here to exercise the real thing: each
+  // register has more than one row, so a lowered VITE_TEST_READ_CAP trips it and
+  // e2e/capped-reads.spec.js can prove the "these figures are incomplete" notice
+  // is actually wired to the page rather than merely existing.
+  const nextYear = daysFromNow(300).toISOString().slice(0, 10)
+  // Field names matter: the module reads dateOfNextRefill / dateOfNextHPT.
+  // Seeding nextRefillDate / nextHptDate left every unit with NO dates at all,
+  // which is the state the lists treat as a data-quality fault — so the fixture
+  // exercised the broken path and nothing else.
+  await add('extinguishers', { serialNo: 'FE-0001', type: 'CO2', capacity: '4.5 Kg', centerName: 'North Plant', region: 'North', entity: '1P', status: 'active', dateOfNextRefill: nextYear, dateOfNextHPT: nextYear })
+  await add('extinguishers', { serialNo: 'FE-0002', type: 'DCP', capacity: '9 Kg', centerName: 'South Warehouse', region: 'South', entity: '1P', status: 'active', dateOfNextRefill: nextYear, dateOfNextHPT: nextYear })
+  // Refill overdue AND a physical defect, but the HPT is years out — this is the
+  // unit that should be asked for a QUOTATION.
+  await add('extinguishers', { serialNo: 'FE-0003', type: 'Foam', capacity: '9 Ltr', centerName: 'North Plant', region: 'North', entity: '2P', status: 'to_be_refilled', physicalDefects: ['pin'], dateOfNextRefill: daysFromNow(-5).toISOString().slice(0, 10), dateOfNextHPT: nextYear })
+  // Hydrostatic test overdue and a physical defect open — this is the unit that
+  // must be asked for the TEST, not a quotation, on every list it appears in.
+  await add('extinguishers', { serialNo: 'FE-0004', type: 'ABC', capacity: '5 Kg', centerName: 'South Warehouse', region: 'South', entity: '1P', status: 'active', physicalDefects: ['stand'], dateOfNextRefill: nextYear, dateOfNextHPT: daysFromNow(-40).toISOString().slice(0, 10) })
+  // Test due in ten days — NOT crossed. The boundary case: it is on the To Be
+  // Refilled list because the date is inside the 30-day window, and it is still
+  // asked for a quotation, because a test that has not fallen due cannot be
+  // recorded without waiting or backdating it.
+  await add('extinguishers', { serialNo: 'FE-0005', type: 'CO2', capacity: '4.5 Kg', centerName: 'North Plant', region: 'North', entity: '1P', status: 'active', physicalDefects: ['handle'], dateOfNextRefill: nextYear, dateOfNextHPT: daysFromNow(10).toISOString().slice(0, 10) })
+
+  await add('aeds', { assetId: 'AED-0001', brand: 'Zoll', centerName: 'North Plant', region: 'North', entity: '1P', status: 'ready', batteryExpiry: nextYear, padExpiry: nextYear, nextInspection: nextYear })
+  await add('aeds', { assetId: 'AED-0002', brand: 'Philips', centerName: 'South Warehouse', region: 'South', entity: '1P', status: 'ready', batteryExpiry: nextYear, padExpiry: nextYear, nextInspection: nextYear })
+
+  await add('fas', { deviceId: 'FAS-0001', deviceType: 'Control Panel', zone: 'Zone 1', centerName: 'North Plant', region: 'North', entity: '1P', status: 'operational', nextService: nextYear })
+  await add('fas', { deviceId: 'FAS-0002', deviceType: 'Smoke Detector', zone: 'Zone 2', centerName: 'South Warehouse', region: 'South', entity: '1P', status: 'operational', nextService: nextYear })
+
+  await add('signages', { centerName: 'North Plant', region: 'North', entity: '1P', type: 'Fire Extinguisher Sign', location: 'Bay 3', condition: 'OK', quantity: 2 })
+  await add('signages', { centerName: 'South Warehouse', region: 'South', entity: '1P', type: 'Assembly Point Signage', location: 'Car park', condition: 'OK', quantity: 1 })
+
+  await add('mockDrills', { scenario: 'Fire', centerName: 'North Plant', date: daysFromNow(-20).toISOString().slice(0, 10), time: '10:00', commander: ADMIN.name, score: 88 })
+  await add('mockDrills', { scenario: 'Medical Emergency', centerName: 'South Warehouse', date: daysFromNow(-8).toISOString().slice(0, 10), time: '14:30', commander: ADMIN.name, score: 72 })
+
   await addDoc(collection(db, 'organizations', orgId, 'auditLogs'), { at: serverTimestamp(), actorUid: uid, actorName: ADMIN.name, action: 'record.create', module: 'core', target: 'org', summary: 'Seeded demo organization' })
 
   // ── Public QR mirrors, with tokens the e2e suite can actually scan ─────────

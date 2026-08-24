@@ -98,9 +98,10 @@ const getBucket = () => (bucket ||= getStorage().bucket())
  * characters, which render invisibly in every log and console anyone would use
  * to investigate afterwards.
  *
- * Mirrors assertSegment in server/src/routes/orgCollection.js. Kept as a
- * separate copy because the two trees are separate npm packages with no shared
- * module — if you change the rule, change it in both.
+ * This used to mirror an assertSegment in server/src/routes/orgCollection.js.
+ * That package is gone — it served no traffic and was removed rather than
+ * maintained — so this is now the only copy and nothing needs keeping in step
+ * with it.
  *
  * Exported for index.test.js, not for deploy: function discovery only picks up
  * exports carrying an __endpoint, which a plain function does not.

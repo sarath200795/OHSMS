@@ -1,18 +1,18 @@
 // Targets live in organizations/{orgId}/objectives; actuals are always computed
 // live from the owning modules, never entered by hand.
 import {
-  addDoc, collection, deleteDoc, doc, onSnapshot, orderBy, query, serverTimestamp, updateDoc, writeBatch,
+  addDoc, collection, deleteDoc, doc, limit, onSnapshot, orderBy, query, serverTimestamp, updateDoc, writeBatch,
 } from 'firebase/firestore'
 import { db } from '../../../shared/firebase'
 import { reserveDocId } from '../../../shared/docId/reserve'
-import { logAudit } from '../../../shared/org/orgData'
+import { logAudit, COLLECTION_READ_CAP } from '../../../shared/org/orgData'
 import { KPIS } from './kpis'
 
 const col = (orgId) => collection(db, 'organizations', orgId, 'objectives')
 const ref = (orgId, id) => doc(db, 'organizations', orgId, 'objectives', id)
 
 export function subscribeObjectives(orgId, cb) {
-  return onSnapshot(query(col(orgId), orderBy('kpi')),
+  return onSnapshot(query(col(orgId), orderBy('kpi'), limit(COLLECTION_READ_CAP)),
     (s) => cb(s.docs.map((d) => ({ id: d.id, ...d.data() }))), () => cb([]))
 }
 

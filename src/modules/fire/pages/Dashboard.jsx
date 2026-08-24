@@ -6,7 +6,7 @@ import {
 } from 'recharts'
 import ChartFrame from '../../../shared/ui/ChartFrame'
 import {
-  LayoutDashboard, ShieldCheck, RefreshCw, Truck, Wrench, CheckCircle2, Boxes, Filter, X, Search, AlertTriangle, MapPin,
+  LayoutDashboard, ShieldCheck, RefreshCw, Truck, Wrench, CheckCircle2, Boxes, Filter, X, Search, MapPin,
 } from 'lucide-react'
 import { PageHeader } from '../components/ui'
 import { KpiSkeleton, ChartSkeleton, FilterBarSkeleton } from '../components/Skeleton'
@@ -19,6 +19,8 @@ import {
   TYPES, CAPACITIES, ENTITIES, REGIONS, TYPE_COLORS, ENTITY_COLORS, ENTITY_FALLBACK_COLOR, REGION_COLORS,
   STATUS, STATUS_LABEL, STATUS_COLOR, CATEGORY_LIST, CATEGORIES,
 } from '../lib/constants'
+import { readableOnTint, solidBackground } from '../../../shared/lib/contrast'
+import IncompleteNotice from '../../../shared/ui/IncompleteNotice'
 
 // Dimensions we can cross-filter on. Each is a Set of selected values.
 const DIMS = ['type', 'capacity', 'entity', 'region', 'status', 'category']
@@ -82,7 +84,7 @@ function chipMeta(dim, value) {
 }
 
 export default function Dashboard() {
-  const { extinguishers, capped, loadCap, loading } = useFleet()
+  const { extinguishers, incomplete, loading } = useFleet()
   const today = useMemo(() => new Date(), [])
 
   const [filters, setFilters] = useState(emptyFilters)
@@ -184,12 +186,10 @@ export default function Dashboard() {
     <div>
       <PageHeader title="Dashboard" subtitle="Click any chart segment to filter. Selections stack across charts." icon={LayoutDashboard} />
 
-      {capped && (
-        <div className="mb-4 flex items-center gap-2 rounded-xl bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
-          <AlertTriangle size={16} />
-          <span>The charts below are based on the most recent <strong>{loadCap.toLocaleString()}</strong> extinguishers.</span>
-        </div>
-      )}
+      {/* Replaces a banner that named extinguishers only, while the AED, FAS,
+          signage and drill figures on this same page were being truncated
+          silently beside it. */}
+      <IncompleteNotice incomplete={incomplete} className="mb-4" />
 
       {/* Filter bar (dropdowns mirror the same Sets) */}
       <div className="card mb-4 flex flex-wrap items-center gap-3 p-4">
@@ -230,7 +230,7 @@ export default function Dashboard() {
           {activeChips.map(({ dim, value }) => {
             const m = chipMeta(dim, value)
             return (
-              <button key={`${dim}:${value}`} className="chip" style={{ backgroundColor: m.color, color: '#fff' }} onClick={() => toggle(dim, value)}>
+              <button key={`${dim}:${value}`} className="chip" style={{ backgroundColor: solidBackground(m.color), color: '#fff' }} onClick={() => toggle(dim, value)}>
                 {m.label} <X size={12} />
               </button>
             )
@@ -276,7 +276,7 @@ export default function Dashboard() {
                 key={c.key}
                 onClick={() => toggle('category', c.key)}
                 className="chip transition hover:scale-105"
-                style={on ? { backgroundColor: c.color, color: '#fff' } : { backgroundColor: `${c.color}1a`, color: c.color }}
+                style={on ? { backgroundColor: solidBackground(c.color), color: '#fff' } : { backgroundColor: `${c.color}1a`, color: readableOnTint(c.color) }}
               >
                 <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: on ? '#fff' : c.color }} />
                 {c.label}
@@ -292,7 +292,7 @@ export default function Dashboard() {
         {/* Fleet health gauge */}
         <ChartCard title="Fleet Health" subtitle="Share of healthy extinguishers">
           <div className="relative h-56">
-            <ChartFrame width="100%" height="100%">
+            <ChartFrame label="Fleet health: share of healthy extinguishers" width="100%" height="100%">
               <RadialBarChart innerRadius="70%" outerRadius="100%" data={healthRadial} startAngle={90} endAngle={-270}>
                 <RadialBar background={{ fill: '#efe0d7' }} dataKey="value" cornerRadius={20} />
               </RadialBarChart>
@@ -307,7 +307,7 @@ export default function Dashboard() {
         {/* By type donut */}
         <ChartCard title="By Type" subtitle="Click a slice to filter">
           {typeData.length ? (
-            <ChartFrame width="100%" height={224}>
+            <ChartFrame label="Extinguishers by type" width="100%" height={224}>
               <PieChart>
                 <Pie data={typeData} dataKey="value" nameKey="name" innerRadius={50} outerRadius={88} paddingAngle={3}
                   label={renderPieValue} labelLine={false} onClick={(d) => toggle('type', d.name)} className="cursor-pointer">
@@ -323,7 +323,7 @@ export default function Dashboard() {
         {/* By Region donut */}
         <ChartCard title="By Region" subtitle="Click a slice to filter">
           {regionData.length ? (
-            <ChartFrame width="100%" height={224}>
+            <ChartFrame label="Extinguishers by region" width="100%" height={224}>
               <PieChart>
                 <Pie data={regionData} dataKey="value" nameKey="name" innerRadius={50} outerRadius={88} paddingAngle={3}
                   label={renderPieValue} labelLine={false} onClick={(d) => toggle('region', d.name)} className="cursor-pointer">
@@ -338,7 +338,7 @@ export default function Dashboard() {
 
         {/* By entity bar */}
         <ChartCard title="By Entity" subtitle="Click a bar to filter">
-          <ChartFrame width="100%" height={224}>
+          <ChartFrame label="Extinguishers by entity" width="100%" height={224}>
             <BarChart data={entityData} margin={{ top: 24, right: 8, left: 0, bottom: 0 }}>
               <XAxis dataKey="name" tickLine={false} axisLine={false} fontSize={12} tick={{ fill: '#1c2230' }} />
               <YAxis allowDecimals={false} tickLine={false} axisLine={false} fontSize={12} width={28} tick={{ fill: '#62718c' }} />
@@ -354,7 +354,7 @@ export default function Dashboard() {
         {/* Status breakdown */}
         <ChartCard title="Lifecycle Status" subtitle="Click a slice to filter">
           {statusData.length ? (
-            <ChartFrame width="100%" height={224}>
+            <ChartFrame label="Extinguishers by lifecycle status" width="100%" height={224}>
               <PieChart>
                 <Pie data={statusData} dataKey="value" nameKey="name" outerRadius={88}
                   label={renderPieValue} labelLine={false} onClick={(d) => toggle('status', d.key)} className="cursor-pointer">
@@ -370,7 +370,7 @@ export default function Dashboard() {
         {/* Defect / due distribution */}
         <ChartCard title="Conditions & Due Items" subtitle="Click a bar to filter">
           {categoryData.length ? (
-            <ChartFrame width="100%" height={224}>
+            <ChartFrame label="Extinguisher conditions and due items" width="100%" height={224}>
               <BarChart data={categoryData} layout="vertical" margin={{ left: 8, right: 28 }}>
                 <XAxis type="number" allowDecimals={false} hide />
                 <YAxis type="category" dataKey="name" width={130} tickLine={false} axisLine={false} fontSize={11} tick={{ fill: '#1c2230' }} />

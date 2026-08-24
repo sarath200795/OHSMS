@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { describe, it, expect } from 'vitest'
 import { safeHeaders, toRows, parseCsvText, parseCsvFile } from './parseTable'
 

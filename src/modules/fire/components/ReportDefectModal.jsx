@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { AlertTriangle, Send } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { Modal, Spinner } from './ui'
+import { Modal, Spinner, Field } from './ui'
 import { DEFECTS, REPORTER_ROLES } from '../lib/constants'
 import { createReport } from '../lib/firestore'
 import { lockedDefects } from '../lib/defectLock'
@@ -116,24 +116,22 @@ export default function ReportDefectModal({ open, onClose, ext, orgId, reporter,
       </div>
 
       {isQr && (
-        <div className="mt-4">
-          <label className="label">Reported by *</label>
+        <Field label="Reported by *" className="mt-4">
           <select className="input" value={role} onChange={(e) => setRole(e.target.value)} required>
             <option value="" disabled>Select who is reporting…</option>
             {REPORTER_ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
           </select>
-        </div>
+        </Field>
       )}
 
-      <div className="mt-4">
-        <label className="label">Note (optional)</label>
+      <Field label="Note (optional)" className="mt-4">
         <textarea
           className="input min-h-[72px]"
           placeholder="Describe what you observed…"
           value={note}
           onChange={(e) => setNote(e.target.value)}
         />
-      </div>
+      </Field>
 
       <div className="mt-5 flex justify-end gap-2">
         <button className="btn-ghost" onClick={onClose}>Cancel</button>

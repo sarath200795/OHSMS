@@ -225,7 +225,7 @@ export default function SiteRepository() {
                   <th className="px-4 py-3 text-center">FERP plan</th>
                   <th className="px-4 py-3 text-center">Rescue plans</th>
                   <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3" />
+                  <th className="px-4 py-3"><span className="sr-only">Actions</span></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-clay-200/60">

@@ -25,6 +25,7 @@ import {
   subscribeIncidentPhotos, addIncidentPhoto, deleteIncidentPhoto,
 } from '../lib/incidents'
 import { syncIncidentInjuries, mergeInjuryDetail } from '../lib/injuries'
+import { isFutureDate } from '../../../shared/lib/dates'
 
 // Forward-only lifecycle: never downgrade when revisiting an earlier step.
 const forwardLifecycle = (current, target) =>
@@ -150,6 +151,12 @@ export default function IncidentWizard() {
     if (!draft.severity) return 'Select a severity level'
     if (!draft.category) return 'Select an HSE category'
     if (!draft.incidentDate) return 'Pick the date of the incident'
+    // An incident is something that HAS happened. A future date here is either
+    // a typo or a mis-set device clock, and either way it lands in the register,
+    // the exports and the regulator-facing counts as a real event on a day that
+    // has not occurred. The max= on the input is a hint the browser may or may
+    // not honour; this is the check that decides.
+    if (isFutureDate(draft.incidentDate)) return 'The incident date cannot be in the future'
     return null
   }
 

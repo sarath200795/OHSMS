@@ -170,14 +170,15 @@ export default function BulkUpload() {
         <div className="grid gap-6 lg:grid-cols-3">
           {/* Drop zone */}
           <div className="lg:col-span-2 space-y-4">
-            <div
+            <button
+              type="button"
               onClick={() => inputRef.current?.click()}
               onDragOver={(e) => e.preventDefault()}
               onDrop={(e) => {
                 e.preventDefault()
                 handleFile(e.dataTransfer.files?.[0])
               }}
-              className="flex cursor-pointer flex-col items-center justify-center gap-3 rounded-3xl bg-clay-surface px-6 py-14 text-center shadow-clay-inset transition hover:bg-brand-50/40"
+              className="flex w-full cursor-pointer flex-col items-center justify-center gap-3 rounded-3xl bg-clay-surface px-6 py-14 text-center shadow-clay-inset transition hover:bg-brand-50/40"
             >
               <div className="grid h-14 w-14 place-items-center rounded-2xl bg-brand-50 text-brand-500">
                 {parsing ? <Loader2 className="animate-spin" /> : <FileSpreadsheet size={26} />}
@@ -186,14 +187,16 @@ export default function BulkUpload() {
                 {fileName || 'Click to upload or drag & drop'}
               </p>
               <p className="text-sm text-ink-500">.xlsx or .csv using the template columns</p>
-              <input
-                ref={inputRef}
-                type="file"
-                accept=".csv"
-                className="hidden"
-                onChange={(e) => handleFile(e.target.files?.[0])}
-              />
-            </div>
+            </button>
+            {/* Outside the button: a <button> may not contain a form control,
+                and the picker is opened through the ref either way. */}
+            <input
+              ref={inputRef}
+              type="file"
+              accept=".csv"
+              className="hidden"
+              onChange={(e) => handleFile(e.target.files?.[0])}
+            />
 
             {result && plan && (
               <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">

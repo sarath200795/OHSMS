@@ -118,7 +118,7 @@ no diff that shows it. Re-verifying them belongs in a periodic review.
 Worth saying plainly, because gap lists read worse than the system is:
 
 - **Tenancy is enforced where it cannot be bypassed.** Not in middleware someone
-  can forget to call — in rules, with 448 tests that send hostile payloads
+  can forget to call — in rules, with 455 tests that send hostile payloads
   rather than well-behaved ones.
 - **The audit trail is real.** Append-only, no updates, no deletes, entries
   pinned to the caller.
@@ -141,7 +141,54 @@ Worth saying plainly, because gap lists read worse than the system is:
    authority (`DATA-RIGHTS.md` §3) — the largest remaining gap, and the one a
    privacy review will find first
 2. An uptime check and one alert, so a total outage is not user-reported
-3. Cap the unbounded listeners (`SECURITY.md` S-04) before a large tenant arrives
-4. DPA template, data-flow diagram and subprocessor list — paperwork, but it is
+3. DPA template, data-flow diagram and subprocessor list — paperwork, but it is
    what actually gets asked for
-5. A penetration test, once 1–4 are done
+4. A penetration test, once 1–3 are done
+
+---
+
+## Decisions taken, so they are not re-litigated
+
+Written down because each of these looks like an oversight from the outside, and
+each one is a choice.
+
+### Accessibility — WCAG 2.1 AA, enforced two ways
+
+A buyer asking for a VPAT or an accessibility statement can be pointed at
+something real rather than an intention:
+
+- **`eslint-plugin-jsx-a11y` at `error`, not `warn`.** Every rule in the
+  recommended set, plus `control-has-associated-label`, is enforced and at zero.
+  The gate was built as a ratchet — each rule sat at `warn` while its backlog was
+  cleared and moved to `error` in the change that cleared it — and the ratchet is
+  now fully wound. It cannot regress without failing CI.
+- **`@axe-core/playwright` against the rendered DOM** (`e2e/accessibility.spec.js`),
+  failing on any serious or critical WCAG 2.1 A/AA violation, over the portal, a
+  list page, a form and an open dialog.
+
+Both halves are load-bearing and neither is redundant. The dominant form control
+in this app binds its label to its input at runtime, which is invisible to a
+static rule and plain to axe; an icon-only button with no name is the reverse.
+Static lint for what is statically visible, axe for the rest.
+
+What this found that no review had: the colour palette failed AA at its two
+most-used text stops (`SECURITY.md` S-23). The markup was right and the colours
+were wrong, which is precisely the class of defect a code review cannot see.
+
+### Offline — not supported, deliberately
+
+Firestore's `persistentLocalCache` is enabled, so data survives a connection
+drop and the app keeps working while it is open. There is **no service worker
+and no web app manifest**: the app is not installable, and a hard refresh with no
+signal is a blank page.
+
+That is a known limit, not an omission. It was assessed and declined: the users
+are online in practice, and a service worker brings a cache-invalidation surface
+that has to be right on every deploy — a real cost against a benefit nobody has
+asked for.
+
+If a customer does require offline capture — field inspections in a plant room
+with no signal is the plausible case — treat it as a project, not a patch. The
+data path is the easy half; the hard half is conflict resolution on a permit or
+an isolation procedure that two people edited while apart, and that is a safety
+decision before it is a technical one.

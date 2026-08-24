@@ -198,14 +198,19 @@ export default function MockDrillReport({ record }) {
         </div>
       )}
 
-      {/* Signatures */}
-      <table className="mt-16 w-full text-sm">
+      {/* Signatures.
+          role="presentation": this table arranges two signature rules side by
+          side on a printed page. It holds no data and has no header row, so
+          announcing it as a table — "table with 1 row and 3 columns, column 2
+          empty" — describes the layout rather than the document. */}
+      <table className="mt-16 w-full text-sm" role="presentation">
         <tbody>
           <tr>
             <td className="w-[45%] border-t-2 border-black pt-2 text-center font-bold uppercase tracking-widest">
               Incident Commander Signature
             </td>
-            <td className="w-[10%]" />
+            {/* Pure gutter between the two signature rules — nothing to announce. */}
+            <td className="w-[10%]" aria-hidden="true" />
             <td className="w-[45%] border-t-2 border-black pt-2 text-center font-bold uppercase tracking-widest">
               EHS Manager Signature
             </td>

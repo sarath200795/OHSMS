@@ -72,7 +72,16 @@ export default function ForcePasswordChange() {
         </div>
         <form onSubmit={submit} className="card space-y-4 p-6 sm:p-8">
           <Field label="Temporary password" htmlFor="cpw" hint="The one you were given">
-            <Input id="cpw" type="password" autoFocus value={current} onChange={(e) => setCurrent(e.target.value)} />
+            <Input
+              id="cpw"
+              type="password"
+              // This screen interrupts sign-in and the user cannot leave it. See
+              // the no-autofocus note in eslint.config.js.
+              // eslint-disable-next-line jsx-a11y/no-autofocus
+              autoFocus
+              value={current}
+              onChange={(e) => setCurrent(e.target.value)}
+            />
           </Field>
           <Field label="New password" htmlFor="npw" hint="At least 8 characters">
             <Input id="npw" type="password" value={pw} onChange={(e) => setPw(e.target.value)} />

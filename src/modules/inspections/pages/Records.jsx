@@ -116,7 +116,7 @@ export default function Records() {
                 <th className="px-4 py-3">Inspector</th>
                 <th className="px-4 py-3">Completed</th>
                 <th className="px-4 py-3">Result</th>
-                <th className="px-4 py-3" />
+                <th className="px-4 py-3"><span className="sr-only">Actions</span></th>
               </tr>
             </thead>
             <tbody>

@@ -433,7 +433,7 @@ export default function RescuePlans({ site, plans, users, contacts = [], baselin
           {/* Response steps */}
           <div>
             <div className="mb-1.5 flex items-center justify-between">
-              <label className="label !mb-0">Response steps *</label>
+              <span className="label !mb-0">Response steps *</span>
               <Button type="button" variant="soft" icon={Plus} className="!py-1.5 text-xs" onClick={() => setForm((f) => ({ ...f, steps: [...f.steps, newStep()] }))}>
                 Add step
               </Button>
@@ -475,7 +475,7 @@ export default function RescuePlans({ site, plans, users, contacts = [], baselin
           {/* Rescue team */}
           <div>
             <div className="mb-1.5 flex items-center justify-between">
-              <label className="label !mb-0">Rescue team</label>
+              <span className="label !mb-0">Rescue team</span>
               <Button type="button" variant="soft" icon={Plus} className="!py-1.5 text-xs" onClick={() => setForm((f) => ({ ...f, team: [...f.team, newMember()] }))}>
                 Add responder
               </Button>
@@ -510,7 +510,7 @@ export default function RescuePlans({ site, plans, users, contacts = [], baselin
 
           {/* Equipment */}
           <div>
-            <label className="label">Rescue equipment</label>
+            <span className="label">Rescue equipment</span>
             {form.equipment.length > 0 && (
               <div className="mb-2 flex flex-wrap gap-1.5">
                 {form.equipment.map((eq) => (

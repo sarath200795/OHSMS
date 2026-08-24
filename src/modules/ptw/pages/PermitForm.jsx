@@ -242,7 +242,7 @@ export default function PermitForm() {
               </select>
             </Field>
             <div className="sm:col-span-2">
-              <label className="label">Site &amp; location scope *</label>
+              <span className="label">Site &amp; location scope *</span>
               <SiteScopePicker
                 module="ptw"
                 sites={siteInventory}

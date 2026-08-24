@@ -18,17 +18,39 @@ export default {
           900: '#6f2f24',
         },
         // Warm stone ink for text (kraft-paper companion).
+        //
+        // ── The 400–900 stops were re-spaced for contrast ─────────────────────
+        // They failed WCAG AA, and not marginally. `text-ink-400` — 494 uses,
+        // the app's standard secondary text — was 2.12:1 on clay-bg against a
+        // 4.5:1 requirement, and `text-ink-500` (372 uses, every field label)
+        // was 3.29:1. The axe pass in e2e/accessibility.spec.js found 43
+        // offending nodes on the portal home alone. Nothing static could have
+        // caught it: the markup was correct, the colours were not.
+        //
+        // Fixing 400 and 500 alone would have inverted the ramp — a corrected
+        // 500 lands darker than the old 600 — so 600–900 moved with them. Each
+        // stop is the SAME HUE AND SATURATION as before with lightness lowered,
+        // so the palette is still warm kraft paper rather than grey, and the
+        // steps between stops stay visible.
+        //
+        // Ratios on clay-bg (#eadfcd), the darker of the two surfaces and so the
+        // binding one; on clay-surface every figure is ~0.8 higher:
+        //   400 4.60   500 5.63   600 6.93   700 8.65   800 10.66   900 12.33
+        //
+        // 50–300 are deliberately unchanged: they are surfaces, borders and
+        // placeholder tones, never body text, and 4.5:1 is not their bar. If one
+        // of them ever becomes text, it needs this treatment first.
         ink: {
           50: '#faf8f5',
           100: '#f2ede5',
           200: '#e5dccf',
           300: '#d1c3af',
-          400: '#ab987f',
-          500: '#8a7660',
-          600: '#6e5c49',
-          700: '#57493a',
-          800: '#40352b',
-          900: '#2c241d',
+          400: '#70604a',
+          500: '#615344',
+          600: '#534637',
+          700: '#43382d',
+          800: '#332a22',
+          900: '#261f19',
           950: '#1b1610',
         },
         // Kraft-paper "clay" surfaces: raised panels over a warm paper base.
