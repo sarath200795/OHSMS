@@ -136,8 +136,8 @@ export function isClosed(ext) {
 /**
  * A vendor quotation has been submitted for the current defect/refill cycle.
  *
- * Optional-chained because requiredStep() calls this beside isHptDue(), which
- * has always tolerated a missing unit. Two predicates used in the same
+ * Optional-chained because requiredStep() calls this beside isHptOverdue(),
+ * which has always tolerated a missing unit. Two predicates used in the same
  * expression, one of which throws on null and one of which does not, is a trap
  * with no upside — nothing has ever wanted this to throw.
  */

@@ -107,6 +107,11 @@ async function main() {
   // Hydrostatic test overdue and a physical defect open — this is the unit that
   // must be asked for the TEST, not a quotation, on every list it appears in.
   await add('extinguishers', { serialNo: 'FE-0004', type: 'ABC', capacity: '5 Kg', centerName: 'South Warehouse', region: 'South', entity: '1P', status: 'active', physicalDefects: ['stand'], dateOfNextRefill: nextYear, dateOfNextHPT: daysFromNow(-40).toISOString().slice(0, 10) })
+  // Test due in ten days — NOT crossed. The boundary case: it is on the To Be
+  // Refilled list because the date is inside the 30-day window, and it is still
+  // asked for a quotation, because a test that has not fallen due cannot be
+  // recorded without waiting or backdating it.
+  await add('extinguishers', { serialNo: 'FE-0005', type: 'CO2', capacity: '4.5 Kg', centerName: 'North Plant', region: 'North', entity: '1P', status: 'active', physicalDefects: ['handle'], dateOfNextRefill: nextYear, dateOfNextHPT: daysFromNow(10).toISOString().slice(0, 10) })
 
   await add('aeds', { assetId: 'AED-0001', brand: 'Zoll', centerName: 'North Plant', region: 'North', entity: '1P', status: 'ready', batteryExpiry: nextYear, padExpiry: nextYear, nextInspection: nextYear })
   await add('aeds', { assetId: 'AED-0002', brand: 'Philips', centerName: 'South Warehouse', region: 'South', entity: '1P', status: 'ready', batteryExpiry: nextYear, padExpiry: nextYear, nextInspection: nextYear })

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  isHptDue, nextHptDate, hasHpt, validateHpt, hptUpdate, hptSummary, requiredStep, WORKFLOW_STEP,
+  isHptOverdue, nextHptDate, hasHpt, validateHpt, hptUpdate, hptSummary, requiredStep, WORKFLOW_STEP,
   HPT_RESULT, HPT_INTERVAL_YEARS,
 } from './hpt'
 
@@ -8,23 +8,32 @@ const TODAY = new Date('2026-06-15T00:00:00Z')
 const iso = (d) => d.toISOString().slice(0, 10)
 const inDays = (n) => iso(new Date(TODAY.getTime() + n * 86400000))
 
-describe('knowing an HPT is what put the unit on the list', () => {
-  it('is due when the date has passed, or falls inside the 30-day window', () => {
-    expect(isHptDue({ dateOfNextHPT: inDays(-1) }, TODAY)).toBe(true)
-    expect(isHptDue({ dateOfNextHPT: iso(TODAY) }, TODAY)).toBe(true)
-    expect(isHptDue({ dateOfNextHPT: inDays(30) }, TODAY)).toBe(true)
+describe('knowing the hydrostatic test date has been crossed', () => {
+  it('is overdue once the date is past', () => {
+    expect(isHptOverdue({ dateOfNextHPT: inDays(-1) }, TODAY)).toBe(true)
+    expect(isHptOverdue({ dateOfNextHPT: inDays(-400) }, TODAY)).toBe(true)
   })
 
-  it('is not due beyond that window', () => {
-    expect(isHptDue({ dateOfNextHPT: inDays(31) }, TODAY)).toBe(false)
+  // Day zero counts, the same way dueState calls it expired: a compliance date
+  // is satisfied before it arrives, not on the day.
+  it('counts the due date itself as crossed', () => {
+    expect(isHptOverdue({ dateOfNextHPT: iso(TODAY) }, TODAY)).toBe(true)
+  })
+
+  // The tightening. These used to be treated as due, and are not: a test that
+  // has not fallen due yet cannot be recorded without waiting or backdating.
+  it('is NOT overdue while the date is still ahead, however close', () => {
+    expect(isHptOverdue({ dateOfNextHPT: inDays(1) }, TODAY)).toBe(false)
+    expect(isHptOverdue({ dateOfNextHPT: inDays(30) }, TODAY)).toBe(false)
+    expect(isHptOverdue({ dateOfNextHPT: inDays(31) }, TODAY)).toBe(false)
   })
 
   // A unit with no date is a data problem, flagged elsewhere as a date issue.
-  // Claiming its HPT is due would put a made-up test on a real cylinder.
+  // Claiming its HPT is overdue would put a made-up test on a real cylinder.
   it('says nothing about a unit with no date at all', () => {
-    expect(isHptDue({}, TODAY)).toBe(false)
-    expect(isHptDue({ dateOfNextHPT: '' }, TODAY)).toBe(false)
-    expect(isHptDue(null, TODAY)).toBe(false)
+    expect(isHptOverdue({}, TODAY)).toBe(false)
+    expect(isHptOverdue({ dateOfNextHPT: '' }, TODAY)).toBe(false)
+    expect(isHptOverdue(null, TODAY)).toBe(false)
   })
 })
 
@@ -123,7 +132,7 @@ describe('whether a test has been recorded', () => {
 describe('what the workflow asks a unit for next', () => {
   const quoted = { quotation: { submittedAt: '2026-06-01' } }
 
-  it('asks for the TEST when the hydrostatic test is due', () => {
+  it('asks for the TEST once the hydrostatic date has been crossed', () => {
     expect(requiredStep({ dateOfNextHPT: inDays(-40) }, TODAY)).toBe(WORKFLOW_STEP.HPT)
     expect(requiredStep({ dateOfNextHPT: iso(TODAY) }, TODAY)).toBe(WORKFLOW_STEP.HPT)
   })
@@ -143,10 +152,12 @@ describe('what the workflow asks a unit for next', () => {
     expect(requiredStep({ dateOfNextHPT: inDays(-1), ...quoted }, TODAY)).toBe(WORKFLOW_STEP.HPT)
   })
 
-  it('uses the same window as the list itself, so no row disagrees with its own reason', () => {
-    // DUE_SOON_DAYS is 30: inside it the test is asked for, outside it is not.
-    expect(requiredStep({ dateOfNextHPT: inDays(30) }, TODAY)).toBe(WORKFLOW_STEP.HPT)
-    expect(requiredStep({ dateOfNextHPT: inDays(31) }, TODAY)).toBe(WORKFLOW_STEP.QUOTATION)
+  // STRICTLY overdue. A unit whose test falls due within the month is on the To
+  // Be Refilled list for that reason, and is still asked for the quotation —
+  // deliberately, because the test cannot be recorded before it has happened.
+  it('does not ask for the test while the date is still ahead', () => {
+    expect(requiredStep({ dateOfNextHPT: inDays(1) }, TODAY)).toBe(WORKFLOW_STEP.QUOTATION)
+    expect(requiredStep({ dateOfNextHPT: inDays(30) }, TODAY)).toBe(WORKFLOW_STEP.QUOTATION)
   })
 
   it('a unit with no HPT date recorded is not treated as due', () => {
