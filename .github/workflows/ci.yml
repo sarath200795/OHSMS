@@ -194,7 +194,41 @@ jobs:
           # isFirebaseConfigured only requires a projectId under emulators
           # (src/shared/firebase.js), so nothing warns that this is missing.
           VITE_FIREBASE_API_KEY: demo-api-key
+        # The specs are named rather than left to the default glob, so that
+        # capped-reads is visibly the OTHER step's job. Run as a glob it would
+        # skip itself here and report "7 skipped", which reads like something is
+        # broken and hides the fact that it runs properly a few lines below.
         run: >
           npx firebase-tools emulators:exec --only auth,firestore
           --project ohsms-demo
-          "node scripts/seed.mjs && npx playwright test"
+          "node scripts/seed.mjs && npx playwright test
+          e2e/smoke.spec.js e2e/accessibility.spec.js e2e/console-sweep.spec.js"
+
+      # e2e/capped-reads.spec.js asserts that every screen totalling a capped
+      # collection actually RENDERS the "these figures are incomplete" notice —
+      # the difference between the notice existing and the page asking for it.
+      #
+      # It skips itself unless VITE_TEST_READ_CAP is set, because at the real
+      # 5 000 no fixture can trip the cap. The step above did not set it, so all
+      # seven of those tests reported as "skipped" and the gate protected
+      # nothing in CI — which is exactly the failure the spec was written to
+      # catch, wearing the spec's own clothes.
+      #
+      # A SEPARATE step, not another grep on the one above, because the cap is a
+      # Vite env var baked into the dev server at start-up: the two runs need
+      # two dev servers, and Playwright tears its webServer down at the end of a
+      # run so this one starts clean. (playwright.config.js sets
+      # reuseExistingServer, so a leftover server from the step above would
+      # otherwise be reused with the wrong cap and every assertion would pass
+      # for the wrong reason.)
+      - name: Capped-read notices
+        env:
+          VITE_USE_EMULATORS: 'true'
+          VITE_FIREBASE_PROJECT_ID: ohsms-demo
+          VITE_FIREBASE_API_KEY: demo-api-key
+          # Two, so the seeded org is already past it on every register.
+          VITE_TEST_READ_CAP: '2'
+        run: >
+          npx firebase-tools emulators:exec --only auth,firestore
+          --project ohsms-demo
+          "node scripts/seed.mjs && npx playwright test e2e/capped-reads.spec.js"
