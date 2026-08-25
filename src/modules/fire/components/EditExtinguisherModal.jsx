@@ -27,6 +27,7 @@ export default function EditExtinguisherModal({ open, onClose, ext, orgId, orgNa
         entity: ext.entity || '',
         region: ext.region || '',
         centerName: ext.centerName || '',
+        siteName: ext.siteName || '',
         siteId: ext.siteId || '',
         dateOfDeployment: ext.dateOfDeployment || '',
         dateOfNextRefill: ext.dateOfNextRefill || '',
@@ -44,6 +45,7 @@ export default function EditExtinguisherModal({ open, onClose, ext, orgId, orgNa
       ...form,
       siteId: scope.siteId || '',
       centerName: scope.site || '',
+      siteName: scope.site || '',
       region: scope.region || '',
       entity: scope.entity || '',
     })
@@ -91,7 +93,7 @@ export default function EditExtinguisherModal({ open, onClose, ext, orgId, orgNa
       <div className="mt-4">
         <SiteScopePicker
           sites={sites}
-          module="fire"
+          module="equipment"
           value={{
             siteId: form.siteId,
             site: form.centerName,

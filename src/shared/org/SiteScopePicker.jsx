@@ -80,7 +80,7 @@ export default function SiteScopePicker({
             <div key={lv.key}>
               <label className="label" htmlFor={fieldId(lv.key)}>{lv.label}</label>
               <select id={fieldId(lv.key)} className="input" disabled={disabled} value={value.siteId || ''} onChange={(e) => setSite(e.target.value)}>
-                <option value="">{siteList.length ? 'Select site…' : 'No sites you can access'}</option>
+                <option value="">{siteList.length ? 'Select site…' : sites.length ? 'No site matches the levels above' : 'No sites you can access'}</option>
                 {siteList.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
             </div>
@@ -91,6 +91,13 @@ export default function SiteScopePicker({
         const predefined = lv.options || []
         const siteVals = distinctSiteValues(filteredUpTo(i), lv.key)
         const opts = [...predefined, ...siteVals.filter((v) => !predefined.includes(v))]
+        // A value the site registry does not know — free text carried in on a
+        // CSV import, or a level renamed after the record was written. Without
+        // this it is filtered out of its own dropdown: the select renders blank
+        // while still narrowing every later level to nothing, so the Site list
+        // reads "no sites" with no visible cause and no obvious way back.
+        const current = value[lv.key]
+        if (current && !opts.includes(current)) opts.push(current)
         return (
           <div key={lv.key}>
             <label className="label" htmlFor={fieldId(lv.key)}>{lv.label}</label>

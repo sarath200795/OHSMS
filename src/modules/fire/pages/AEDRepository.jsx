@@ -11,6 +11,9 @@ import { useFleet } from '../context/FleetContext'
 import { addAed, updateAed, deleteAed, serviceAed, bulkAddAeds, generateAedQr, bulkDeleteAeds, linkAedsToSites } from '../lib/firestore'
 import { planSiteLinks } from '../lib/siteLink'
 import { useAccessibleSites } from '../../../shared/org/useAccessibleSites'
+import { listLinkedAssets, filterByLinkState, siteIdSet, isLinkedToSite } from '../lib/linkedSites'
+import LinkSitesModal from '../components/LinkSitesModal'
+import LinkStateChips from '../components/LinkStateChips'
 import { exportRows } from '../lib/exporter'
 import { publicQrUrl } from '../lib/qr'
 import SiteScopePicker from '../../../shared/org/SiteScopePicker'
@@ -82,6 +85,9 @@ export default function AEDRepository() {
   const [serviceFor, setServiceFor] = useState(null)
   const [nextDate, setNextDate] = useState('')
   const [busy, setBusy] = useState(false)
+  const [linkOpen, setLinkOpen] = useState(false)
+  const [linkTab, setLinkTab] = useState('linked')
+  const [linkState, setLinkState] = useState(null)
   const [selected, setSelected] = useState(() => new Set())
   const [bulkRemoving, setBulkRemoving] = useState(false)
 
@@ -105,24 +111,11 @@ export default function AEDRepository() {
 
   const doLinkSites = async () => {
     if (!linkPlan?.linked.length) return
-    const sample = linkPlan.linked
-      .filter((l) => l.nameChanged)
-      .slice(0, 8)
-      .map((l) => `  ${l.asset.centerName || '(no name)'} → ${l.site.name}`)
-      .join('\n')
-    const msg = `Link ${linkPlan.linked.length} AED(s) to their site?\n\n`
-      + `${linkPlan.nameChanges} will be renamed to the site registry's name`
-      + `, and ${linkPlan.entityChanges} will have Entity corrected.`
-      + (sample ? `\n\n${sample}${linkPlan.nameChanges > 8 ? `\n  …and ${linkPlan.nameChanges - 8} more` : ''}` : '')
-      + (linkPlan.unmatched.length
-        ? `\n\n${linkPlan.unmatched.length} AED(s) across ${linkPlan.unmatchedCenters.length} name(s) have no matching site and will be left alone:\n`
-          + linkPlan.unmatchedCenters.slice(0, 12).join(', ')
-        : '')
-    if (!window.confirm(msg)) return
     setBusy(true)
     try {
       const r = await linkAedsToSites(orgId, orgName, linkPlan, { uid: profile?.uid, name: profile?.name })
       toast.success(`${r.linked} linked · ${r.nameChanges} renamed · ${r.entityChanges} entity value(s) corrected`)
+      setLinkOpen(false)
     } catch (e) {
       toast.error(e?.message || 'Could not link to sites')
     } finally { setBusy(false) }
@@ -148,16 +141,30 @@ export default function AEDRepository() {
   const anyActive = f.search || f.regions.length || f.entities.length || f.statuses.length
   const clear = () => setF({ search: '', regions: [], entities: [], statuses: [] })
 
+  // Counts for the link-state chips, over the whole register rather than the
+  // filtered view — a chip that renumbered itself as you filtered would be
+  // reporting the filter back to you.
+  const linkCounts = useMemo(() => {
+    const ids = siteIdSet(orgSites)
+    let linked = 0
+    for (const a of aeds) if (isLinkedToSite(a, ids)) linked += 1
+    return { linked, unlinked: aeds.length - linked }
+  }, [aeds, orgSites])
+
+  // The units already attached to a site — the half of the question the link
+  // button answers once there is nothing left to propose.
+  const linkedRows = useMemo(() => listLinkedAssets(aeds, orgSites), [aeds, orgSites])
+
   const visible = useMemo(() => {
     const q = f.search.trim().toLowerCase()
-    return aeds.filter((a) => {
+    return filterByLinkState(aeds, orgSites, linkState).filter((a) => {
       if (f.regions.length && !f.regions.includes(a.region)) return false
       if (f.entities.length && !f.entities.includes(a.entity)) return false
       if (f.statuses.length && !f.statuses.includes(a.status)) return false
       if (q && !`${a.assetId} ${a.brand} ${a.model} ${a.centerName} ${a.location}`.toLowerCase().includes(q)) return false
       return true
     })
-  }, [aeds, f])
+  }, [aeds, f, orgSites, linkState])
 
   // Changing a filter drops the selection — the rows it referred to may no
   // longer be on screen. (The page itself needs no reset; usePagination clamps.)
@@ -241,10 +248,15 @@ export default function AEDRepository() {
             <QrCode size={16} /> Generate for 1P/2P sites ({missingSites.length})
           </button>
         )}
-        {isAdmin && linkPlan?.linked.length > 0 && (
-          <button className="btn-soft !bg-brand-100 !text-brand-800" onClick={doLinkSites} disabled={busy}
-            title="Attach each AED to its site, rename it to the site registry's name, and take Entity from there">
-            <MapPin size={16} /> Link {linkPlan.linked.length} to sites
+        {isAdmin && (
+          <button
+            className={linkPlan?.linked.length ? 'btn-soft !bg-brand-100 !text-brand-800' : 'btn-soft'}
+            onClick={() => { setLinkTab(linkPlan?.linked.length ? 'pending' : 'linked'); setLinkOpen(true) }}
+            disabled={busy}
+            title="Which AEDs are attached to a site, and which can still be matched to one"
+          >
+            <MapPin size={16} />
+            {linkPlan?.linked.length ? `Link ${linkPlan.linked.length} to sites` : `Site links (${linkedRows.length})`}
           </button>
         )}
         {isAdmin && <Link to="/equipment/asset-bulk-upload" state={{ kind: 'aed' }} className="btn-soft"><Upload size={16} /> Bulk upload</Link>}
@@ -265,6 +277,17 @@ export default function AEDRepository() {
           <ChipRow label="Region" options={REGIONS} selected={f.regions} onToggle={(v) => toggle('regions', v)} />
           <ChipRow label="Entity" options={ENTITIES} selected={f.entities} onToggle={(v) => toggle('entities', v)} />
           <ChipRow label="Status" options={STATUSES} selected={f.statuses} onToggle={(v) => toggle('statuses', v)} render={(s) => AED_STATUS_LABEL[s]} />
+          {linkCounts.linked > 0 && linkCounts.unlinked > 0 && (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-bold uppercase tracking-wide text-ink-400">Site link</span>
+              <LinkStateChips
+                value={linkState}
+                onChange={setLinkState}
+                linkedCount={linkCounts.linked}
+                unlinkedCount={linkCounts.unlinked}
+              />
+            </div>
+          )}
         </div>
       )}
 
@@ -384,6 +407,19 @@ export default function AEDRepository() {
           <button className="btn-danger" onClick={confirmDelete}>Delete</button>
         </div>
       </Modal>
+
+      <LinkSitesModal
+        open={linkOpen}
+        onClose={() => setLinkOpen(false)}
+        plan={linkPlan}
+        linkedRows={linkedRows}
+        initialTab={linkTab}
+        onConfirm={doLinkSites}
+        busy={busy}
+        noun="AED"
+        nounPlural="AEDs"
+        idLabel="Asset ID"
+      />
 
       <Modal open={bulkRemoving} onClose={() => setBulkRemoving(false)} title={`Delete ${selected.size} AED(s)?`}>
         <p className="text-sm text-ink-600">Permanently remove <span className="font-semibold">{selected.size}</span> selected AED{selected.size === 1 ? '' : 's'} and their QR codes? This can’t be undone.</p>

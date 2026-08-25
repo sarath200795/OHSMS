@@ -12,6 +12,9 @@ import { useFleet } from '../context/FleetContext'
 import { addFas, updateFas, deleteFas, serviceFas, bulkAddFas, generateFasQr, bulkDeleteFas, linkFasToSites } from '../lib/firestore'
 import { planSiteLinks } from '../lib/siteLink'
 import { useAccessibleSites } from '../../../shared/org/useAccessibleSites'
+import { listLinkedAssets, filterByLinkState, siteIdSet, isLinkedToSite } from '../lib/linkedSites'
+import LinkSitesModal from '../components/LinkSitesModal'
+import LinkStateChips from '../components/LinkStateChips'
 import { exportRows } from '../lib/exporter'
 import { publicQrUrl } from '../lib/qr'
 import SiteScopePicker from '../../../shared/org/SiteScopePicker'
@@ -73,6 +76,9 @@ export default function FASRepository() {
   const [serviceFor, setServiceFor] = useState(null)
   const [nextDate, setNextDate] = useState('')
   const [busy, setBusy] = useState(false)
+  const [linkOpen, setLinkOpen] = useState(false)
+  const [linkTab, setLinkTab] = useState('linked')
+  const [linkState, setLinkState] = useState(null)
   const [selected, setSelected] = useState(() => new Set())
   const [bulkRemoving, setBulkRemoving] = useState(false)
 
@@ -96,24 +102,11 @@ export default function FASRepository() {
 
   const doLinkSites = async () => {
     if (!linkPlan?.linked.length) return
-    const sample = linkPlan.linked
-      .filter((l) => l.nameChanged)
-      .slice(0, 8)
-      .map((l) => `  ${l.asset.centerName || '(no name)'} → ${l.site.name}`)
-      .join('\n')
-    const msg = `Link ${linkPlan.linked.length} FAS device(s) to their site?\n\n`
-      + `${linkPlan.nameChanges} will be renamed to the site registry's name`
-      + `, and ${linkPlan.entityChanges} will have Entity corrected.`
-      + (sample ? `\n\n${sample}${linkPlan.nameChanges > 8 ? `\n  …and ${linkPlan.nameChanges - 8} more` : ''}` : '')
-      + (linkPlan.unmatched.length
-        ? `\n\n${linkPlan.unmatched.length} device(s) across ${linkPlan.unmatchedCenters.length} name(s) have no matching site and will be left alone:\n`
-          + linkPlan.unmatchedCenters.slice(0, 12).join(', ')
-        : '')
-    if (!window.confirm(msg)) return
     setBusy(true)
     try {
       const r = await linkFasToSites(orgId, orgName, linkPlan, { uid: profile?.uid, name: profile?.name })
       toast.success(`${r.linked} linked · ${r.nameChanges} renamed · ${r.entityChanges} entity value(s) corrected`)
+      setLinkOpen(false)
     } catch (e) {
       toast.error(e?.message || 'Could not link to sites')
     } finally { setBusy(false) }
@@ -139,16 +132,30 @@ export default function FASRepository() {
   const anyActive = f.search || f.regions.length || f.types.length || f.statuses.length
   const clear = () => setF({ search: '', regions: [], types: [], statuses: [] })
 
+  // Counts for the link-state chips, over the whole register rather than the
+  // filtered view — a chip that renumbered itself as you filtered would be
+  // reporting the filter back to you.
+  const linkCounts = useMemo(() => {
+    const ids = siteIdSet(orgSites)
+    let linked = 0
+    for (const a of fas) if (isLinkedToSite(a, ids)) linked += 1
+    return { linked, unlinked: fas.length - linked }
+  }, [fas, orgSites])
+
+  // The units already attached to a site — the half of the question the link
+  // button answers once there is nothing left to propose.
+  const linkedRows = useMemo(() => listLinkedAssets(fas, orgSites), [fas, orgSites])
+
   const visible = useMemo(() => {
     const q = f.search.trim().toLowerCase()
-    return fas.filter((a) => {
+    return filterByLinkState(fas, orgSites, linkState).filter((a) => {
       if (f.regions.length && !f.regions.includes(a.region)) return false
       if (f.types.length && !f.types.includes(a.deviceType)) return false
       if (f.statuses.length && !f.statuses.includes(a.status)) return false
       if (q && !`${a.deviceId} ${a.deviceType} ${a.zone} ${a.centerName} ${a.location} ${a.amcVendor}`.toLowerCase().includes(q)) return false
       return true
     })
-  }, [fas, f])
+  }, [fas, f, orgSites, linkState])
 
   // Changing a filter drops the selection — the rows it referred to may no
   // longer be on screen. (The page itself needs no reset; usePagination clamps.)
@@ -234,10 +241,15 @@ export default function FASRepository() {
             <QrCode size={16} /> Generate panels for 1P/2P sites ({missingSites.length})
           </button>
         )}
-        {isAdmin && linkPlan?.linked.length > 0 && (
-          <button className="btn-soft !bg-brand-100 !text-brand-800" onClick={doLinkSites} disabled={busy}
-            title="Attach each device to its site, rename it to the site registry's name, and take Entity from there">
-            <MapPin size={16} /> Link {linkPlan.linked.length} to sites
+        {isAdmin && (
+          <button
+            className={linkPlan?.linked.length ? 'btn-soft !bg-brand-100 !text-brand-800' : 'btn-soft'}
+            onClick={() => { setLinkTab(linkPlan?.linked.length ? 'pending' : 'linked'); setLinkOpen(true) }}
+            disabled={busy}
+            title="Which devices are attached to a site, and which can still be matched to one"
+          >
+            <MapPin size={16} />
+            {linkPlan?.linked.length ? `Link ${linkPlan.linked.length} to sites` : `Site links (${linkedRows.length})`}
           </button>
         )}
         {isAdmin && <Link to="/equipment/asset-bulk-upload" state={{ kind: 'fas' }} className="btn-soft"><Upload size={16} /> Bulk upload</Link>}
@@ -258,6 +270,17 @@ export default function FASRepository() {
           <ChipRow label="Region" options={REGIONS} selected={f.regions} onToggle={(v) => toggle('regions', v)} />
           <ChipRow label="Type" options={FAS_DEVICE_TYPES} selected={f.types} onToggle={(v) => toggle('types', v)} />
           <ChipRow label="Status" options={STATUSES} selected={f.statuses} onToggle={(v) => toggle('statuses', v)} render={(s) => FAS_STATUS_LABEL[s]} />
+          {linkCounts.linked > 0 && linkCounts.unlinked > 0 && (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-bold uppercase tracking-wide text-ink-400">Site link</span>
+              <LinkStateChips
+                value={linkState}
+                onChange={setLinkState}
+                linkedCount={linkCounts.linked}
+                unlinkedCount={linkCounts.unlinked}
+              />
+            </div>
+          )}
         </div>
       )}
 
@@ -407,6 +430,19 @@ export default function FASRepository() {
           </div>
         )}
       </Modal>
+      <LinkSitesModal
+        open={linkOpen}
+        onClose={() => setLinkOpen(false)}
+        plan={linkPlan}
+        linkedRows={linkedRows}
+        initialTab={linkTab}
+        onConfirm={doLinkSites}
+        busy={busy}
+        noun="FAS device"
+        nounPlural="FAS devices"
+        idLabel="Device ID"
+      />
+
     </div>
   )
 }
