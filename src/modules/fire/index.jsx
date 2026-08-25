@@ -1,5 +1,5 @@
 import { Routes, Route, Navigate, Outlet, NavLink } from 'react-router-dom'
-import { LayoutDashboard, Boxes, Wrench, Stamp } from 'lucide-react'
+import { LayoutDashboard, Boxes, Wrench, Stamp, MapPin } from 'lucide-react'
 import { FleetProvider } from './context/FleetContext'
 import EquipmentHub from './EquipmentHub'
 import EquipmentRepository from './EquipmentRepository'
@@ -7,6 +7,7 @@ import DefectRepository from './DefectRepository'
 import Dashboard from './pages/Dashboard'
 import Repository from './pages/Repository'
 import Signages from './pages/Signages'
+import LinkedSites from './pages/LinkedSites'
 import AEDRepository from './pages/AEDRepository'
 import AEDDashboard from './pages/AEDDashboard'
 import FASRepository from './pages/FASRepository'
@@ -31,6 +32,7 @@ const TABS = [
   { to: '/equipment', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/equipment/repository', label: 'Repository', icon: Boxes },
   { to: '/equipment/defects', label: 'Defects', icon: Wrench },
+  { to: '/equipment/sites', label: 'Sites', icon: MapPin },
   { to: '/equipment/approvals', label: 'Approvals', icon: Stamp },
 ]
 
@@ -83,6 +85,7 @@ export default function EquipmentModule() {
           <Route path="extinguishers" element={<Repository />} />
           <Route path="defects" element={<DefectRepository />} />
           <Route path="signages" element={<Signages />} />
+          <Route path="sites" element={<LinkedSites />} />
           <Route path="aed" element={<AEDRepository />} />
           <Route path="aed-dashboard" element={<AEDDashboard />} />
           <Route path="fas" element={<FASRepository />} />

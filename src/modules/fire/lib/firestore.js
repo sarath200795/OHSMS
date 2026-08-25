@@ -296,11 +296,18 @@ export async function linkExtinguishersToSites(orgId, orgName, plan, actor) {
   for (let i = 0; i < items.length; i += 200) {
     const batch = writeBatch(db)
     for (const { ext, site } of items.slice(i, i + 200)) {
-      const merged = { ...ext, siteId: site.id, siteName: site.name, entity: site.entity }
+      // A site record is not obliged to carry a name or an entity, and Firestore
+      // rejects an undefined field value outright — so one registry row with a
+      // blank entity threw before the first batch committed and took the whole
+      // link action down with a message about "invalid data", naming a document
+      // id and nothing a reader could act on. Coerce, and a blank stays blank.
+      const siteName = site.name || ''
+      const entity = site.entity || ''
+      const merged = { ...ext, siteId: site.id, siteName, entity }
       batch.update(extRef(orgId, ext.id), {
         siteId: site.id,
-        siteName: site.name,
-        entity: site.entity,
+        siteName,
+        entity,
         updatedAt: serverTimestamp(),
       })
       if (ext.qrToken) batch.set(qrRef(ext.qrToken), mirrorPayload(orgId, orgName, ext.id, merged))
@@ -1085,11 +1092,15 @@ async function linkKindToSites(orgId, orgName, plan, actor, kind) {
   for (let i = 0; i < items.length; i += 200) {
     const batch = writeBatch(db)
     for (const { asset, site } of items.slice(i, i + 200)) {
+      // Same coercion as the extinguisher pass: a registry row is not obliged
+      // to carry a name or an entity, and Firestore rejects undefined outright,
+      // so one blank field failed the whole batch rather than that one asset.
+      const siteName = site.name || ''
       const update = {
         siteId: site.id,
-        siteName: site.name,
-        centerName: site.name,
-        entity: site.entity,
+        siteName,
+        centerName: siteName,
+        entity: site.entity || '',
         updatedAt: serverTimestamp(),
       }
       if (!asset.sourceCenterName && asset.centerName) update.sourceCenterName = asset.centerName
