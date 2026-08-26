@@ -29,6 +29,10 @@ import { Modal, Spinner, Badge } from './ui'
 // way listLinkedAssets already does for the linked ones.
 const assetLabel = (a) => (a?.serialNo || a?.assetId || a?.deviceId || '').trim() || '—'
 
+// Set when one modal covers every register at once, so a row says which one it
+// came from — a bare serial does not.
+const KIND_LABEL = { ext: 'Ext', aed: 'AED', fas: 'FAS' }
+
 const HOW_LABEL = {
   exact: 'Exact name',
   normalised: 'Normalised',
@@ -51,6 +55,8 @@ export default function LinkSitesModal({
   noun = 'extinguisher',
   nounPlural,
   idLabel = 'Serial',
+  showKind = false,
+  title,
 }) {
   const plural = nounPlural || `${noun}s`
   const unit = (n) => `${n} ${n === 1 ? noun : plural}`
@@ -72,7 +78,7 @@ export default function LinkSitesModal({
     <Modal
       open={open}
       onClose={onClose}
-      title={`${plural[0].toUpperCase()}${plural.slice(1)} and their sites`}
+      title={title || `${plural[0].toUpperCase()}${plural.slice(1)} and their sites`}
       subtitle={
         showing === 'pending'
           ? `${unit(linked.length)} will be attached to a site in the registry`
@@ -107,6 +113,7 @@ export default function LinkSitesModal({
             <table className="w-full text-sm">
               <thead className="sticky top-0 bg-clay-100 text-left text-[11px] uppercase tracking-wide text-ink-500">
                 <tr>
+                  {showKind && <th className="px-3 py-2">Type</th>}
                   <th className="px-3 py-2">{idLabel}</th>
                   <th className="px-3 py-2">Site</th>
                   <th className="px-3 py-2">Region</th>
@@ -114,8 +121,9 @@ export default function LinkSitesModal({
                 </tr>
               </thead>
               <tbody className="divide-y divide-clay-200/60">
-                {linkedRows.map(({ asset, site, label }) => (
-                  <tr key={asset.id} className="hover:bg-clay-100/40">
+                {linkedRows.map(({ asset, site, label, kind }) => (
+                  <tr key={`${kind || ''}${asset.id}`} className="hover:bg-clay-100/40">
+                    {showKind && <td className="px-3 py-2 text-xs font-semibold text-ink-500">{KIND_LABEL[kind] || '—'}</td>}
                     <td className="px-3 py-2 font-semibold text-ink-900">{label}</td>
                     <td className="px-3 py-2 text-ink-800">{site.name || site.id}</td>
                     <td className="px-3 py-2 text-ink-500">{site.region || '—'}</td>
@@ -149,6 +157,7 @@ export default function LinkSitesModal({
             <table className="w-full text-sm">
               <thead className="sticky top-0 bg-clay-100 text-left text-[11px] uppercase tracking-wide text-ink-500">
                 <tr>
+                  {showKind && <th className="px-3 py-2">Type</th>}
                   <th className="px-3 py-2">{idLabel}</th>
                   <th className="px-3 py-2">Name on the asset</th>
                   <th className="px-3 py-2">Links to site</th>
@@ -156,8 +165,9 @@ export default function LinkSitesModal({
                 </tr>
               </thead>
               <tbody className="divide-y divide-clay-200/60">
-                {linked.map(({ asset, site, how, entityChanged, nameChanged }) => (
-                  <tr key={asset.id} className="hover:bg-clay-100/40">
+                {linked.map(({ asset, site, how, entityChanged, nameChanged, kind }) => (
+                  <tr key={`${kind || ''}${asset.id}`} className="hover:bg-clay-100/40">
+                    {showKind && <td className="px-3 py-2 text-xs font-semibold text-ink-500">{KIND_LABEL[kind] || '—'}</td>}
                     <td className="px-3 py-2 font-semibold text-ink-900">{assetLabel(asset)}</td>
                     <td className="px-3 py-2 text-ink-600">{asset.centerName || <span className="text-ink-300">(no name)</span>}</td>
                     <td className="px-3 py-2">

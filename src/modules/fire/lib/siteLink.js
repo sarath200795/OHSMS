@@ -282,3 +282,64 @@ export function planSiteLinks(assets, sites) {
     nameChanges: linked.filter((l) => l.nameChanged).length,
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// One pass over every equipment register.
+//
+// Each kind keeps its own plan, because the writes differ — an extinguisher
+// keeps the center name it arrived with, while an AED or a fire-alarm device
+// adopts the registry's wording and files the original as sourceCenterName.
+// What is shared is the matching and the reading: one list to check, one
+// action, rather than the same errand run three times in three places.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const EQUIPMENT_KINDS = [
+  { key: 'ext', label: 'Extinguisher', short: 'Ext' },
+  { key: 'aed', label: 'AED', short: 'AED' },
+  { key: 'fas', label: 'Fire alarm', short: 'FAS' },
+]
+
+/**
+ * Plan the link for every register at once.
+ *
+ * @param {{extinguishers?: array, aeds?: array, fas?: array}} registers
+ * @param {array} sites
+ * @returns {{
+ *   byKind: {ext: object, aed: object, fas: object},
+ *   combined: object,   // one plan-shaped object, rows tagged with `kind`
+ *   total: number,      // assets that would be written
+ * }}
+ */
+export function planAllSiteLinks(registers = {}, sites = []) {
+  const source = {
+    ext: registers.extinguishers || [],
+    aed: registers.aeds || [],
+    fas: registers.fas || [],
+  }
+  const byKind = {}
+  for (const { key } of EQUIPMENT_KINDS) byKind[key] = planSiteLinks(source[key], sites)
+
+  // Rows carry their kind so one table can show all three without the reader
+  // having to guess which register a serial came from.
+  const linked = EQUIPMENT_KINDS.flatMap(({ key }) =>
+    byKind[key].linked.map((row) => ({ ...row, kind: key }))
+  )
+  const unmatched = EQUIPMENT_KINDS.flatMap(({ key }) =>
+    byKind[key].unmatched.map((asset) => ({ asset, kind: key }))
+  )
+  const unmatchedCenters = [...new Set(
+    EQUIPMENT_KINDS.flatMap(({ key }) => byKind[key].unmatchedCenters)
+  )].sort()
+
+  return {
+    byKind,
+    combined: {
+      linked,
+      unmatched,
+      unmatchedCenters,
+      entityChanges: EQUIPMENT_KINDS.reduce((n, { key }) => n + byKind[key].entityChanges, 0),
+      nameChanges: EQUIPMENT_KINDS.reduce((n, { key }) => n + byKind[key].nameChanges, 0),
+    },
+    total: linked.length,
+  }
+}
