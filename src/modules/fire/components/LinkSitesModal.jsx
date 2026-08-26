@@ -27,11 +27,15 @@ import { Modal, Spinner, Badge } from './ui'
 
 // Whichever id the register uses. Kept here so the pending rows label the same
 // way listLinkedAssets already does for the linked ones.
-const assetLabel = (a) => (a?.serialNo || a?.assetId || a?.deviceId || '').trim() || '—'
+// Mirrors listLinkedAssets: signage carries no id of any kind, so it is named
+// by what it is and where it hangs rather than shown as a dash.
+const assetLabel = (a) => (a?.serialNo || a?.assetId || a?.deviceId || '').trim()
+  || [(a?.type || '').trim(), (a?.location || '').trim() || (a?.floor || '').trim()].filter(Boolean).join(' · ')
+  || '—'
 
 // Set when one modal covers every register at once, so a row says which one it
 // came from — a bare serial does not.
-const KIND_LABEL = { ext: 'Ext', aed: 'AED', fas: 'FAS' }
+const KIND_LABEL = { ext: 'Ext', aed: 'AED', fas: 'FAS', sign: 'Sign' }
 
 const HOW_LABEL = {
   exact: 'Exact name',
