@@ -1,10 +1,15 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { MapPin, Flame, HeartPulse, BellRing, Boxes, TriangleAlert, ArrowRight } from 'lucide-react'
+import toast from 'react-hot-toast'
 import { PageHeader, EmptyState, Spinner } from '../components/ui'
 import { useFleet } from '../context/FleetContext'
+import { useAuth } from '../context/AuthContext'
 import { useAccessibleSites } from '../../../shared/org/useAccessibleSites'
-import { summariseLinkedSites } from '../lib/linkedSites'
+import { summariseLinkedSites, listLinkedAssets } from '../lib/linkedSites'
+import { planAllSiteLinks } from '../lib/siteLink'
+import { linkAllEquipmentToSites } from '../lib/firestore'
+import LinkSitesModal from '../components/LinkSitesModal'
 
 // Which registry sites the equipment is actually keyed to. The repository can
 // already link unmatched units; this is the other half — what that linking has
@@ -31,14 +36,50 @@ function Stat({ label, value, tone = 'text-ink-900' }) {
 const Count = ({ n }) => (n ? <span className="font-semibold text-ink-800">{n}</span> : <span className="text-ink-300">—</span>)
 
 export default function LinkedSites() {
-  const { extinguishers, aeds, fas, loading } = useFleet()
+  const { org, extinguishers, aeds, fas, loading } = useFleet()
+  const { orgId, orgName, profile } = useAuth()
   const sites = useAccessibleSites()
+  const [linkOpen, setLinkOpen] = useState(false)
+  const [linkTab, setLinkTab] = useState('pending')
+  const [busy, setBusy] = useState(false)
 
   const summary = useMemo(
     () => summariseLinkedSites({ extinguishers, aeds, fas }, sites),
     [extinguishers, aeds, fas, sites]
   )
   const { linked, empty, unlinked, orphaned, totals } = summary
+
+  // One pass over all three registers. Each still writes through its own
+  // function — this is the reading and the decision brought together, so the
+  // same errand is not run three times in three places.
+  const plan = useMemo(
+    () => (sites.length ? planAllSiteLinks({ extinguishers, aeds, fas }, sites) : null),
+    [extinguishers, aeds, fas, sites]
+  )
+  const linkedRows = useMemo(() => [
+    ...listLinkedAssets(extinguishers, sites).map((r) => ({ ...r, kind: 'ext' })),
+    ...listLinkedAssets(aeds, sites).map((r) => ({ ...r, kind: 'aed' })),
+    ...listLinkedAssets(fas, sites).map((r) => ({ ...r, kind: 'fas' })),
+  ], [extinguishers, aeds, fas, sites])
+
+  const openLink = (tab) => { setLinkTab(tab); setLinkOpen(true) }
+
+  const doLinkAll = async () => {
+    if (!plan?.total) return
+    setBusy(true)
+    try {
+      const r = await linkAllEquipmentToSites(orgId, org?.name || orgName, plan.byKind, { uid: profile?.uid, name: profile?.name })
+      if (r.linked) toast.success(`${r.linked} linked to sites · ${r.entityChanges} entity value(s) corrected`)
+      // A kind that failed is named, because "some of it worked" is not an
+      // outcome anyone can act on without knowing which part.
+      for (const f of r.failed) toast.error(`${f.kind.toUpperCase()}: ${f.message}`)
+      if (!r.failed.length) setLinkOpen(false)
+    } catch (e) {
+      toast.error(e?.message || 'Could not link to sites')
+    } finally {
+      setBusy(false)
+    }
+  }
 
   if (loading) return <div className="grid place-items-center py-20"><Spinner size={28} /></div>
 
@@ -49,7 +90,15 @@ export default function LinkedSites() {
         subtitle={`${totals.sitesLinked} of ${totals.sitesTotal} site${totals.sitesTotal === 1 ? '' : 's'} have equipment linked · extinguishers, AEDs and fire-alarm devices`}
         icon={MapPin}
       >
-        <Link to="/equipment/repository" className="btn-ghost"><Boxes size={16} /> Repository</Link>
+        {plan?.total > 0 && (
+          <button className="btn-soft !bg-brand-100 !text-brand-800" onClick={() => openLink('pending')} disabled={busy}
+            title="Match every register against the site registry in one pass">
+            <MapPin size={16} /> Link {plan.total} to sites
+          </button>
+        )}
+        <button className="btn-ghost" onClick={() => openLink('linked')}>
+          <Boxes size={16} /> Site links ({linkedRows.length})
+        </button>
       </PageHeader>
 
       <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -108,7 +157,13 @@ export default function LinkedSites() {
                 name{unlinked.length === 1 ? '' : 's'}. These carry a typed-in name only, so they cannot be picked by site.
               </p>
             </div>
-            <Link to="/equipment/repository" className="btn-soft px-3 py-1.5 text-xs">Link them <ArrowRight size={14} /></Link>
+            {plan?.total > 0
+              ? (
+                <button className="btn-soft px-3 py-1.5 text-xs" onClick={() => openLink('pending')} disabled={busy}>
+                  Link {plan.total} now <ArrowRight size={14} />
+                </button>
+              )
+              : <Link to="/equipment/repository" className="btn-soft px-3 py-1.5 text-xs">Open register <ArrowRight size={14} /></Link>}
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -162,6 +217,21 @@ export default function LinkedSites() {
           </div>
         </div>
       )}
+
+      <LinkSitesModal
+        open={linkOpen}
+        onClose={() => setLinkOpen(false)}
+        plan={plan?.combined}
+        linkedRows={linkedRows}
+        initialTab={linkTab}
+        onConfirm={doLinkAll}
+        busy={busy}
+        noun="asset"
+        nounPlural="assets"
+        idLabel="ID"
+        title="Equipment and their sites"
+        showKind
+      />
 
       {empty.length > 0 && (
         <div className="card p-4">

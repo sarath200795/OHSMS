@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { resolveSite, planSiteLinks, indexSites, suggestSite, linkImportRows, SITE_NAME_OVERRIDES } from './siteLink'
+import { resolveSite, planSiteLinks, indexSites, suggestSite, linkImportRows, SITE_NAME_OVERRIDES, planAllSiteLinks, EQUIPMENT_KINDS } from './siteLink'
 
 // Names below are real values from the Cult site master and the Fire Marshal
 // export, so these cases reflect the data rather than invented shapes.
@@ -299,5 +299,58 @@ describe('linkImportRows', () => {
     const copy = { ...original }
     linkImportRows([original], SITES)
     expect(original).toEqual(copy)
+  })
+})
+
+describe('planAllSiteLinks', () => {
+  const sites = [
+    { id: 's1', name: 'North Plant', region: 'North', entity: 'COCO' },
+    { id: 's2', name: 'South Warehouse', region: 'South', entity: 'FOCO' },
+  ]
+  const registers = {
+    extinguishers: [{ id: 'e1', serialNo: 'FE-1', centerName: 'North Plant' }],
+    aeds: [{ id: 'a1', assetId: 'AED-1', centerName: 'South Warehouse' }],
+    fas: [{ id: 'f1', deviceId: 'FAS-1', centerName: 'Nowhere At All' }],
+  }
+
+  it('plans each register separately, keyed by kind', () => {
+    const { byKind } = planAllSiteLinks(registers, sites)
+    expect(byKind.ext.linked).toHaveLength(1)
+    expect(byKind.aed.linked).toHaveLength(1)
+    expect(byKind.fas.linked).toHaveLength(0)
+  })
+
+  // One table shows all three, so a bare serial has to say where it came from.
+  it('tags every combined row with its kind', () => {
+    const { combined, total } = planAllSiteLinks(registers, sites)
+    expect(total).toBe(2)
+    expect(combined.linked.map((l) => [l.kind, l.site.name])).toEqual([
+      ['ext', 'North Plant'],
+      ['aed', 'South Warehouse'],
+    ])
+  })
+
+  it('pools the unmatched across registers, without repeating a name', () => {
+    const { combined } = planAllSiteLinks(
+      { ...registers, aeds: [{ id: 'a2', assetId: 'AED-2', centerName: 'Nowhere At All' }] },
+      sites
+    )
+    expect(combined.unmatchedCenters).toEqual(['Nowhere At All'])
+    expect(combined.unmatched.map((u) => u.kind)).toEqual(['aed', 'fas'])
+  })
+
+  it('sums the corrections each register would make', () => {
+    const { combined } = planAllSiteLinks(registers, sites)
+    expect(combined.entityChanges).toBe(2)
+  })
+
+  it('survives a register that is simply absent', () => {
+    const { total, byKind } = planAllSiteLinks({ aeds: registers.aeds }, sites)
+    expect(total).toBe(1)
+    expect(byKind.ext.linked).toEqual([])
+  })
+
+  it('covers every kind the modal can label', () => {
+    expect(EQUIPMENT_KINDS.map((k) => k.key)).toEqual(['ext', 'aed', 'fas'])
   })
 })

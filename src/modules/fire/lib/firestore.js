@@ -1125,6 +1125,42 @@ export const linkAedsToSites = (orgId, orgName, plan, actor) =>
 export const linkFasToSites = (orgId, orgName, plan, actor) =>
   linkKindToSites(orgId, orgName, plan, actor, { name: 'fas', label: 'FAS device', ref: fasRef, mirror: fasMirror })
 
+/**
+ * Link every register in one action, from the plans planAllSiteLinks produced.
+ *
+ * Each kind still writes through its own function, because the writes differ —
+ * this only saves the reader running the same errand in three places. A kind
+ * with nothing to do is skipped rather than called with an empty plan, so its
+ * audit entry is not written either.
+ *
+ * Failures are per kind and reported, not swallowed: linking the AEDs is a real
+ * outcome worth keeping even if the fire-alarm pass then fails, and a caller
+ * that saw one error for the whole action could not tell you which of the three
+ * actually landed.
+ */
+export async function linkAllEquipmentToSites(orgId, orgName, byKind, actor) {
+  const runners = [
+    ['ext', linkExtinguishersToSites],
+    ['aed', linkAedsToSites],
+    ['fas', linkFasToSites],
+  ]
+  const totals = { linked: 0, entityChanges: 0, nameChanges: 0 }
+  const failed = []
+  for (const [key, run] of runners) {
+    const plan = byKind?.[key]
+    if (!plan?.linked?.length) continue
+    try {
+      const r = await run(orgId, orgName, plan, actor)
+      totals.linked += r.linked || 0
+      totals.entityChanges += r.entityChanges || 0
+      totals.nameChanges += r.nameChanges || 0
+    } catch (e) {
+      failed.push({ kind: key, message: e?.message || String(e) })
+    }
+  }
+  return { ...totals, failed }
+}
+
 export async function addAed(orgId, orgName, data, actor) {
   // Records are created WITHOUT a QR — generating one is an admin-only action.
   const ref = doc(aedCol(orgId))
