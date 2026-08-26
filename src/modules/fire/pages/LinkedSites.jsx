@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { MapPin, Flame, HeartPulse, BellRing, Boxes, TriangleAlert, ArrowRight } from 'lucide-react'
+import { MapPin, Flame, HeartPulse, BellRing, SignpostBig, Boxes, TriangleAlert, ArrowRight } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { PageHeader, EmptyState, Spinner } from '../components/ui'
 import { useFleet } from '../context/FleetContext'
@@ -15,13 +15,11 @@ import LinkSitesModal from '../components/LinkSitesModal'
 // already link unmatched units; this is the other half — what that linking has
 // achieved so far, and what is still floating on a free-text name.
 //
-// Signages are absent on purpose: they carry a center name but no siteId, so
-// there is no link to report. Counting them here would inflate every total.
-
 const KINDS = [
   { key: 'ext', label: 'Extinguishers', short: 'Ext', icon: Flame },
   { key: 'aed', label: 'AED', short: 'AED', icon: HeartPulse },
   { key: 'fas', label: 'Fire alarm', short: 'FAS', icon: BellRing },
+  { key: 'sign', label: 'Signage', short: 'Sign', icon: SignpostBig },
 ]
 
 function Stat({ label, value, tone = 'text-ink-900' }) {
@@ -36,7 +34,7 @@ function Stat({ label, value, tone = 'text-ink-900' }) {
 const Count = ({ n }) => (n ? <span className="font-semibold text-ink-800">{n}</span> : <span className="text-ink-300">—</span>)
 
 export default function LinkedSites() {
-  const { org, extinguishers, aeds, fas, loading } = useFleet()
+  const { org, extinguishers, aeds, fas, signages, loading } = useFleet()
   const { orgId, orgName, profile } = useAuth()
   const sites = useAccessibleSites()
   const [linkOpen, setLinkOpen] = useState(false)
@@ -44,8 +42,8 @@ export default function LinkedSites() {
   const [busy, setBusy] = useState(false)
 
   const summary = useMemo(
-    () => summariseLinkedSites({ extinguishers, aeds, fas }, sites),
-    [extinguishers, aeds, fas, sites]
+    () => summariseLinkedSites({ extinguishers, aeds, fas, signages }, sites),
+    [extinguishers, aeds, fas, signages, sites]
   )
   const { linked, empty, unlinked, orphaned, totals } = summary
 
@@ -53,14 +51,15 @@ export default function LinkedSites() {
   // function — this is the reading and the decision brought together, so the
   // same errand is not run three times in three places.
   const plan = useMemo(
-    () => (sites.length ? planAllSiteLinks({ extinguishers, aeds, fas }, sites) : null),
-    [extinguishers, aeds, fas, sites]
+    () => (sites.length ? planAllSiteLinks({ extinguishers, aeds, fas, signages }, sites) : null),
+    [extinguishers, aeds, fas, signages, sites]
   )
   const linkedRows = useMemo(() => [
     ...listLinkedAssets(extinguishers, sites).map((r) => ({ ...r, kind: 'ext' })),
     ...listLinkedAssets(aeds, sites).map((r) => ({ ...r, kind: 'aed' })),
     ...listLinkedAssets(fas, sites).map((r) => ({ ...r, kind: 'fas' })),
-  ], [extinguishers, aeds, fas, sites])
+    ...listLinkedAssets(signages, sites).map((r) => ({ ...r, kind: 'sign' })),
+  ], [extinguishers, aeds, fas, signages, sites])
 
   const openLink = (tab) => { setLinkTab(tab); setLinkOpen(true) }
 
@@ -87,7 +86,7 @@ export default function LinkedSites() {
     <div>
       <PageHeader
         title="Sites"
-        subtitle={`${totals.sitesLinked} of ${totals.sitesTotal} site${totals.sitesTotal === 1 ? '' : 's'} have equipment linked · extinguishers, AEDs and fire-alarm devices`}
+        subtitle={`${totals.sitesLinked} of ${totals.sitesTotal} site${totals.sitesTotal === 1 ? '' : 's'} have equipment linked · extinguishers, AEDs, fire-alarm devices and signage`}
         icon={MapPin}
       >
         {plan?.total > 0 && (

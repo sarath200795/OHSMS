@@ -297,6 +297,7 @@ export const EQUIPMENT_KINDS = [
   { key: 'ext', label: 'Extinguisher', short: 'Ext' },
   { key: 'aed', label: 'AED', short: 'AED' },
   { key: 'fas', label: 'Fire alarm', short: 'FAS' },
+  { key: 'sign', label: 'Signage', short: 'Sign' },
 ]
 
 /**
@@ -315,6 +316,7 @@ export function planAllSiteLinks(registers = {}, sites = []) {
     ext: registers.extinguishers || [],
     aed: registers.aeds || [],
     fas: registers.fas || [],
+    sign: registers.signages || [],
   }
   const byKind = {}
   for (const { key } of EQUIPMENT_KINDS) byKind[key] = planSiteLinks(source[key], sites)

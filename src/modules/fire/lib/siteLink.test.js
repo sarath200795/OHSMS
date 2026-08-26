@@ -351,6 +351,15 @@ describe('planAllSiteLinks', () => {
   })
 
   it('covers every kind the modal can label', () => {
-    expect(EQUIPMENT_KINDS.map((k) => k.key)).toEqual(['ext', 'aed', 'fas'])
+    expect(EQUIPMENT_KINDS.map((k) => k.key)).toEqual(['ext', 'aed', 'fas', 'sign'])
+  })
+
+  it('plans signage alongside the rest', () => {
+    const { byKind, total } = planAllSiteLinks(
+      { ...registers, signages: [{ id: 'g1', type: 'Fire Exit', centerName: 'North Plant' }] },
+      sites
+    )
+    expect(byKind.sign.linked).toHaveLength(1)
+    expect(total).toBe(3)
   })
 })

@@ -875,6 +875,11 @@ export function subscribeSignages(orgId, cb) {
 
 const cleanSignage = (data) => ({
   centerName: (data.centerName || '').trim(),
+  // The edit form has carried a SiteScopePicker all along, and this dropped the
+  // siteId it produced — so picking a site on a signage looked like it worked
+  // and stored nothing, leaving the record findable only by its typed name.
+  siteId: data.siteId || '',
+  siteName: data.siteName || data.site || '',
   region: data.region || '',
   entity: data.entity || '',
   type: data.type || 'Other',
@@ -1105,9 +1110,10 @@ async function linkKindToSites(orgId, orgName, plan, actor, kind) {
       }
       if (!asset.sourceCenterName && asset.centerName) update.sourceCenterName = asset.centerName
       batch.update(kind.ref(orgId, asset.id), update)
+      // Signage has no public QR page, so a kind may have no mirror at all.
       // The scanned label shows centerName and entity, so the public mirror has
       // to move in the same batch or a QR would keep showing the old site.
-      if (asset.qrToken) batch.set(qrRef(asset.qrToken), kind.mirror(orgId, orgName, asset.id, { ...asset, ...update }))
+      if (asset.qrToken && kind.mirror) batch.set(qrRef(asset.qrToken), kind.mirror(orgId, orgName, asset.id, { ...asset, ...update }))
     }
     await batch.commit()
   }
@@ -1124,6 +1130,10 @@ export const linkAedsToSites = (orgId, orgName, plan, actor) =>
 
 export const linkFasToSites = (orgId, orgName, plan, actor) =>
   linkKindToSites(orgId, orgName, plan, actor, { name: 'fas', label: 'FAS device', ref: fasRef, mirror: fasMirror })
+
+// No mirror: signage is an inventory record, not a scannable asset.
+export const linkSignagesToSites = (orgId, orgName, plan, actor) =>
+  linkKindToSites(orgId, orgName, plan, actor, { name: 'signage', label: 'signage', ref: signageRef })
 
 /**
  * Link every register in one action, from the plans planAllSiteLinks produced.
@@ -1143,6 +1153,7 @@ export async function linkAllEquipmentToSites(orgId, orgName, byKind, actor) {
     ['ext', linkExtinguishersToSites],
     ['aed', linkAedsToSites],
     ['fas', linkFasToSites],
+    ['sign', linkSignagesToSites],
   ]
   const totals = { linked: 0, entityChanges: 0, nameChanges: 0 }
   const failed = []

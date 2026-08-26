@@ -6,7 +6,11 @@ import { Pager, IconButton } from '../../../shared/ui'
 import { usePagination } from '../../../shared/ui/usePagination'
 import { useAuth } from '../context/AuthContext'
 import { useFleet } from '../context/FleetContext'
-import { addSignage, updateSignage, deleteSignage } from '../lib/firestore'
+import { addSignage, updateSignage, deleteSignage, linkSignagesToSites } from '../lib/firestore'
+import { planSiteLinks } from '../lib/siteLink'
+import { listLinkedAssets, filterByLinkState, siteIdSet, isLinkedToSite } from '../lib/linkedSites'
+import LinkSitesModal from '../components/LinkSitesModal'
+import LinkStateChips from '../components/LinkStateChips'
 import { exportSignage } from '../lib/exporter'
 import SiteScopePicker from '../../../shared/org/SiteScopePicker'
 import IncompleteNotice from '../../../shared/ui/IncompleteNotice'
@@ -75,7 +79,7 @@ function ChipRow({ label, options, selected, onToggle }) {
 }
 
 export default function Signages() {
-  const { orgId, profile } = useAuth()
+  const { orgId, orgName, profile } = useAuth()
   const { signages, sites, extinguishers, siteInventory, incomplete, loading } = useFleet()
 
   const [view, setView] = useState('matrix') // 'matrix' | 'list'
@@ -84,6 +88,9 @@ export default function Signages() {
   const [removing, setRemoving] = useState(null)
   const [cellView, setCellView] = useState(null) // { site, type } — matrix cell detail panel
   const [busy, setBusy] = useState(false)
+  const [linkOpen, setLinkOpen] = useState(false)
+  const [linkTab, setLinkTab] = useState('linked')
+  const [linkState, setLinkState] = useState(null)
 
   const f = filters
   const anyActive = f.search || f.regions.length || f.entities.length || f.types.length || f.conditions.length
@@ -148,7 +155,34 @@ export default function Signages() {
   const matrixPager = usePagination(visibleSites)
 
   // List records: every record matching all active filters.
-  const filtered = useMemo(() => signages.filter((s) => {
+  // Signage arrived from the same free-text world as the other registers, and
+  // until now was the only one with nowhere to record the match.
+  const linkPlan = useMemo(
+    () => (siteInventory.length ? planSiteLinks(signages, siteInventory) : null),
+    [signages, siteInventory]
+  )
+  const linkedRows = useMemo(() => listLinkedAssets(signages, siteInventory), [signages, siteInventory])
+  // Counts over the whole register, not the filtered view.
+  const linkCounts = useMemo(() => {
+    const ids = siteIdSet(siteInventory)
+    let linked = 0
+    for (const a of signages) if (isLinkedToSite(a, ids)) linked += 1
+    return { linked, unlinked: signages.length - linked }
+  }, [signages, siteInventory])
+
+  const doLinkSites = async () => {
+    if (!linkPlan?.linked.length) return
+    setBusy(true)
+    try {
+      const r = await linkSignagesToSites(orgId, orgName || '', linkPlan, { uid: profile?.uid, name: profile?.name })
+      toast.success(`${r.linked} linked · ${r.nameChanges} renamed · ${r.entityChanges} entity value(s) corrected`)
+      setLinkOpen(false)
+    } catch (e) {
+      toast.error(e?.message || 'Could not link to sites')
+    } finally { setBusy(false) }
+  }
+
+  const filtered = useMemo(() => filterByLinkState(signages, siteInventory, linkState).filter((s) => {
     if (f.regions.length && !f.regions.includes(s.region)) return false
     if (f.entities.length && !f.entities.includes(s.entity || siteEntity[s.centerName])) return false
     if (f.types.length && !f.types.includes(s.type)) return false
@@ -158,7 +192,7 @@ export default function Signages() {
       if (!`${s.centerName} ${s.type} ${s.location}`.toLowerCase().includes(q)) return false
     }
     return true
-  }), [signages, f.regions, f.entities, f.types, f.conditions, f.search, siteEntity])
+  }), [signages, f.regions, f.entities, f.types, f.conditions, f.search, siteEntity, siteInventory, linkState])
   const listPager = usePagination(filtered)
 
   // A matrix cell: records for (site, type) that pass the Region + Condition filters.
@@ -327,6 +361,15 @@ export default function Signages() {
           <button onClick={() => setView('matrix')} className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold ${view === 'matrix' ? 'bg-white text-ink-900 shadow-clay-sm' : 'text-ink-500'}`}><LayoutGrid size={14} /> Matrix</button>
           <button onClick={() => setView('list')} className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold ${view === 'list' ? 'bg-white text-ink-900 shadow-clay-sm' : 'text-ink-500'}`}><List size={14} /> List</button>
         </div>
+        <button
+          className={linkPlan?.linked.length ? 'btn-soft !bg-brand-100 !text-brand-800' : 'btn-soft'}
+          onClick={() => { setLinkTab(linkPlan?.linked.length ? 'pending' : 'linked'); setLinkOpen(true) }}
+          disabled={busy}
+          title="Which signage is attached to a site, and which can still be matched to one"
+        >
+          <MapPin size={16} />
+          {linkPlan?.linked.length ? `Link ${linkPlan.linked.length} to sites` : `Site links (${linkedRows.length})`}
+        </button>
         <button className="btn-soft" onClick={handleExport} disabled={loading || sites.length === 0}><Download size={16} /> Export</button>
         <button className="btn-primary" onClick={() => setEditing({ ...EMPTY })}><Plus size={16} /> Add signage</button>
       </PageHeader>
@@ -348,6 +391,17 @@ export default function Signages() {
           <ChipRow label="Entity" options={ENTITIES} selected={f.entities} onToggle={(v) => toggle('entities', v)} />
           <ChipRow label="Type" options={SIGNAGE_TYPES} selected={f.types} onToggle={(v) => toggle('types', v)} />
           <ChipRow label="Condition" options={SIGNAGE_CONDITIONS} selected={f.conditions} onToggle={(v) => toggle('conditions', v)} />
+          {linkCounts.linked > 0 && linkCounts.unlinked > 0 && (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-bold uppercase tracking-wide text-ink-400">Site link</span>
+              <LinkStateChips
+                value={linkState}
+                onChange={setLinkState}
+                linkedCount={linkCounts.linked}
+                unlinkedCount={linkCounts.unlinked}
+              />
+            </div>
+          )}
         </div>
       )}
 
@@ -640,6 +694,20 @@ export default function Signages() {
           )
         })()}
       </Modal>
+      <LinkSitesModal
+        open={linkOpen}
+        onClose={() => setLinkOpen(false)}
+        plan={linkPlan}
+        linkedRows={linkedRows}
+        initialTab={linkTab}
+        onConfirm={doLinkSites}
+        busy={busy}
+        noun="signage record"
+        nounPlural="signage records"
+        idLabel="Signage"
+        title="Signage and their sites"
+      />
+
     </div>
   )
 }

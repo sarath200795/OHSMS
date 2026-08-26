@@ -18,8 +18,8 @@ describe('summariseLinkedSites', () => {
       sites
     )
     expect(r.linked.map((l) => [l.site.id, l.counts])).toEqual([
-      ['s1', { ext: 2, aed: 1, fas: 0, total: 3 }],
-      ['s2', { ext: 0, aed: 0, fas: 1, total: 1 }],
+      ['s1', { ext: 2, aed: 1, fas: 0, sign: 0, total: 3 }],
+      ['s2', { ext: 0, aed: 0, fas: 1, sign: 0, total: 1 }],
     ])
   })
 
@@ -43,8 +43,8 @@ describe('summariseLinkedSites', () => {
       sites
     )
     expect(r.unlinked).toEqual([
-      { centerName: 'Cult Gym Miyapur', counts: { ext: 0, aed: 1, fas: 0, total: 1 } },
-      { centerName: 'Sunrise Miyapur', counts: { ext: 1, aed: 0, fas: 0, total: 1 } },
+      { centerName: 'Cult Gym Miyapur', counts: { ext: 0, aed: 1, fas: 0, sign: 0, total: 1 } },
+      { centerName: 'Sunrise Miyapur', counts: { ext: 1, aed: 0, fas: 0, sign: 0, total: 1 } },
     ])
     expect(r.totals.assetsUnlinked).toBe(2)
   })
@@ -59,7 +59,7 @@ describe('summariseLinkedSites', () => {
   it('separates a dangling siteId from a real link', () => {
     const r = summariseLinkedSites({ extinguishers: [ext({ siteId: 'gone' })] }, sites)
     expect(r.linked).toEqual([])
-    expect(r.orphaned).toEqual([{ siteId: 'gone', counts: { ext: 1, aed: 0, fas: 0, total: 1 } }])
+    expect(r.orphaned).toEqual([{ siteId: 'gone', counts: { ext: 1, aed: 0, fas: 0, sign: 0, total: 1 } }])
     expect(r.totals).toMatchObject({ sitesLinked: 0, assetsLinked: 0, assetsOrphaned: 1 })
   })
 
@@ -139,5 +139,34 @@ describe('filterByLinkState', () => {
   it('passes the register straight through when no state is set', () => {
     expect(filterByLinkState(register, sites, null)).toBe(register)
     expect(filterByLinkState(register, sites, 'anything else')).toBe(register)
+  })
+})
+
+describe('signage', () => {
+  const sign = (o = {}) => ({ id: 'g1', type: 'Fire Exit', location: 'Stairwell A', siteId: 's1', ...o })
+
+  it('counts into its own bucket', () => {
+    const r = summariseLinkedSites({ signages: [sign()] }, sites)
+    expect(r.linked[0].counts).toEqual({ ext: 0, aed: 0, fas: 0, sign: 1, total: 1 })
+  })
+
+  // Signage has no serial, asset id or device id — a column of dashes would
+  // make the linked list useless for the one register that most needs it.
+  it('is labelled by what it is and where it hangs', () => {
+    expect(listLinkedAssets([sign()], sites)[0].label).toBe('Fire Exit · Stairwell A')
+  })
+
+  it('falls back to the floor when there is no location', () => {
+    expect(listLinkedAssets([sign({ location: '', floor: '2nd' })], sites)[0].label).toBe('Fire Exit · 2nd')
+  })
+
+  it('still says something when it carries neither', () => {
+    expect(listLinkedAssets([sign({ location: '', floor: '', type: '' })], sites)[0].label).toBe('—')
+  })
+
+  it('filters by link state like every other register', () => {
+    const register = [sign(), sign({ id: 'g2', siteId: '' })]
+    expect(filterByLinkState(register, sites, 'linked').map((x) => x.id)).toEqual(['g1'])
+    expect(filterByLinkState(register, sites, 'unlinked').map((x) => x.id)).toEqual(['g2'])
   })
 })
