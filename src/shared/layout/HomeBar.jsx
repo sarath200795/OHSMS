@@ -1,6 +1,7 @@
 import { Link, useLocation } from 'react-router-dom'
 import { ChevronRight } from 'lucide-react'
 import { moduleForPath } from '../modules/registry'
+import { OrgMark } from '../branding/OrgMark'
 
 /**
  * Where you are, and the two ways out.
@@ -47,13 +48,12 @@ export default function HomeBar() {
         className="flex items-center gap-2 rounded-xl px-2 py-1 text-ink-800 transition-colors hover:bg-clay-100 hover:text-brand-700"
       >
         {/* Decorative: the word "Home" already names this link, so announcing
-            the mark as well would just make the trail read twice. */}
-        <img
-          src="/wehs.svg"
-          alt=""
-          aria-hidden="true"
-          className="h-6 w-6 flex-none rounded-md shadow-clay-sm"
-        />
+            the mark as well would just make the trail read twice.
+
+            The org's own logo, matching the header — the trail and the corner
+            it points back to have to be the same shape, or the mark stops
+            working as "the way home". */}
+        <OrgMark className="h-6 w-6 rounded-md shadow-clay-sm" />
         Home
       </Link>
 

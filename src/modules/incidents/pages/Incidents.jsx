@@ -58,7 +58,7 @@ export default function Incidents() {
     if (!filtered.length) return toast.error('Nothing to export')
     try {
       const { exportIncidents } = await import('../lib/exporter')
-      const { incidents: n, actions } = exportIncidents(filtered, `incidents-${filtered.length}.xlsx`)
+      const { incidents: n, actions, chronology } = exportIncidents(filtered, `incidents-${filtered.length}.xlsx`)
       // A copy of the incident register — narratives, root causes and the state
       // of every action — has just left the system on someone's disk. There is
       // no preventive control available for that in a browser-only
@@ -73,10 +73,10 @@ export default function Incidents() {
       // cell is indistinguishable from an uninjured person.
       logAudit(orgId, { uid: user?.uid, name: profile?.name }, AUDIT.EXPORT, {
         module: 'incidents',
-        targetLabel: `${n} incidents, ${actions} actions`,
+        targetLabel: `${n} incidents, ${actions} actions, ${chronology} chronology events`,
         summary: `Exported ${n} incidents (${filtered.length === incidents.length ? 'whole register' : 'filtered'})`,
       })
-      toast.success(`Exported ${n} incident${n === 1 ? '' : 's'} and ${actions} action${actions === 1 ? '' : 's'}`)
+      toast.success(`Exported ${n} incident${n === 1 ? '' : 's'}, ${actions} action${actions === 1 ? '' : 's'} and ${chronology} chronology event${chronology === 1 ? '' : 's'}`)
     } catch (err) {
       toast.error(err?.message || 'Export failed')
     }

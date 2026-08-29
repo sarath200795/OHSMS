@@ -4,16 +4,18 @@ import {
   INVESTIGATION_METHOD_BY_KEY,
 } from './constants'
 import { incidentInvestigations } from './incidents'
+import { incidentChronology, sortChronology, formatChronologyMoment } from './chronology'
 
 /**
  * The incident register as a spreadsheet.
  *
- * Two sheets, because two different questions get asked of this data and one
- * shape cannot answer both. "What happened, and where did it get to" is one row
- * per incident. "What are we supposed to be doing about it, and is it done" is
- * one row per action — and flattening several actions into a single cell makes
- * that second question un-pivotable, which is the one people actually take to a
- * meeting.
+ * Three sheets, because three different questions get asked of this data and
+ * one shape cannot answer any two of them. "What happened, and where did it get
+ * to" is one row per incident. "What are we supposed to be doing about it, and
+ * is it done" is one row per action. "In what order did it actually unfold" is
+ * one row per chronology event — and flattening several of either into a single
+ * cell makes those questions un-pivotable, which is what people actually take
+ * to a meeting.
  *
  * Labels, not keys. A column reading `investigation_team` is a database
  * artefact; the person opening this file wants "Team Formed".
@@ -115,6 +117,7 @@ export function incidentRows(incidents = []) {
       'Incident Type': label(INCIDENT_TYPE_BY_KEY, i.type),
       Severity: label(SEVERITY_BY_KEY, i.severity),
       Description: i.narrative || '',
+      Chronology: chronologySummary(i),
       'Root Cause': rootCauseOf(i),
       Actions: actionsSummary(i),
       'Actions Total': actions.length,
@@ -146,10 +149,53 @@ export function actionRows(incidents = []) {
   return out
 }
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sheet 3 — the chronology.
+//
+// Same argument as the actions sheet: a timeline flattened into one cell of the
+// incident row cannot be sorted, filtered or compared across incidents, and
+// "what does our sequence of events usually look like between the alarm and the
+// line stopping" is a question people take to a meeting. The summary cell on
+// the incident row stays as well, because most readers open sheet one and want
+// to see what happened without following a reference to another tab.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** One line per event, readable in a wrapped cell on the incident sheet. */
+export function chronologySummary(incident) {
+  return sortChronology(incidentChronology(incident))
+    .map((r) => `• ${formatChronologyMoment(r)} — ${r.event}${r.source ? ` (${r.source})` : ''}`)
+    .join('\n')
+}
+
+/** One row per established event, carrying its incident. */
+export function chronologyRows(incidents = []) {
+  const out = []
+  for (const i of (incidents || []).filter(Boolean)) {
+    // Numbered after sorting, so Seq is the order things HAPPENED rather than
+    // the order somebody typed them — the column exists to keep that order
+    // through a spreadsheet sort that lands on any other column.
+    sortChronology(incidentChronology(i)).forEach((r, n) => {
+      out.push({
+        Reference: i.refNo || i.docId || i.id || '',
+        Seq: n + 1,
+        Date: r.date || '',
+        Time: r.time || '',
+        Event: r.event || '',
+        'Established From': r.source || '',
+        Site: i.siteName || i.site || '',
+        'Incident Type': label(INCIDENT_TYPE_BY_KEY, i.type),
+      })
+    })
+  }
+  return out
+}
+
+const CHRONOLOGY_WIDTHS = [16, 6, 12, 8, 70, 24, 20, 18]
 // Wide enough to read without every reader resizing columns by hand; the free
 // text ones are capped because a 5000-character narrative would otherwise make
 // one column wider than the screen.
-const INCIDENT_WIDTHS = [16, 12, 8, 20, 20, 18, 12, 60, 45, 45, 12, 12, 18, 20]
+const INCIDENT_WIDTHS = [16, 12, 8, 20, 20, 18, 12, 60, 55, 45, 45, 12, 12, 18, 20]
 const ACTION_WIDTHS = [16, 12, 20, 18, 18, 50, 20, 12, 14]
 
 /**
@@ -161,11 +207,12 @@ const ACTION_WIDTHS = [16, 12, 20, 18, 18, 50, 20, 12, 14]
 export function exportIncidents(incidents = [], filename = 'incidents.xlsx') {
   const rows = incidentRows(incidents)
   const actions = actionRows(incidents)
+  const chronology = chronologyRows(incidents)
 
   const wb = XLSX.utils.book_new()
   const s1 = XLSX.utils.json_to_sheet(rows.length ? rows : [{
     Reference: '', Date: '', Time: '', Site: '', Location: '', 'Incident Type': '',
-    Severity: '', Description: '', 'Root Cause': '', Actions: '', 'Actions Total': '',
+    Severity: '', Description: '', Chronology: '', 'Root Cause': '', Actions: '', 'Actions Total': '',
     'Actions Closed': '', Status: '', 'Reported By': '',
   }])
   s1['!cols'] = INCIDENT_WIDTHS.map((wch) => ({ wch }))
@@ -178,6 +225,13 @@ export function exportIncidents(incidents = [], filename = 'incidents.xlsx') {
   s2['!cols'] = ACTION_WIDTHS.map((wch) => ({ wch }))
   XLSX.utils.book_append_sheet(wb, s2, 'Actions')
 
+  const s3 = XLSX.utils.json_to_sheet(chronology.length ? chronology : [{
+    Reference: '', Seq: '', Date: '', Time: '', Event: '', 'Established From': '',
+    Site: '', 'Incident Type': '',
+  }])
+  s3['!cols'] = CHRONOLOGY_WIDTHS.map((wch) => ({ wch }))
+  XLSX.utils.book_append_sheet(wb, s3, 'Chronology')
+
   XLSX.writeFile(wb, filename)
-  return { incidents: rows.length, actions: actions.length }
+  return { incidents: rows.length, actions: actions.length, chronology: chronology.length }
 }

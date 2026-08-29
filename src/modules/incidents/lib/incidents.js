@@ -192,7 +192,10 @@ export async function createIncident(orgId, actor, initial = {}) {
     injuryReports: incidentInjuryStubs(initial.injuryReports),
     // Step 2
     team: initial.team || [],
-    // Step 3
+    // Step 3 — the established sequence of events, and the analyses built on
+    // it. Both live on the incident; see lib/chronology.js for why the timeline
+    // belongs to the event rather than to any one investigation method.
+    chronology: [],
     investigations: [],
     // Step 4
     capa: [],

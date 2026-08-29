@@ -12,7 +12,7 @@
 // useAccessibleSites the modules use is the only source of that list.
 // ─────────────────────────────────────────────────────────────────────────────
 import { useEffect, useState } from 'react'
-import { BarChart3, AlertTriangle, Siren, FireExtinguisher, Users, Cctv, Scale, ListChecks, ClipboardCheck } from 'lucide-react'
+import { BarChart3, AlertTriangle, Siren, FireExtinguisher, Users, Cctv, Scale, ListChecks, ClipboardCheck, Radar } from 'lucide-react'
 import { useAuth } from '../../shared/auth/AuthContext'
 import { subscribeCollections, emptyCollections } from '../../shared/org/orgData'
 import { useAccessibleSites } from '../../shared/org/useAccessibleSites'
@@ -25,10 +25,15 @@ import CctvTab from './CctvTab'
 import StakeholderTab from './StakeholderTab'
 import ActionsTab from './ActionsTab'
 import InspectionsTab from './InspectionsTab'
+import OdinTab from './OdinTab'
 
 // Icons match the portal registry's, so a tab here and the tile it reports on
 // are recognisably the same thing.
 const TABS = [
+  // ODIN leads, because it is the cross-module Safety & Security picture the
+  // other tabs each show one slice of — and because it is the one that answers
+  // "where are we, right now" without the reader picking a module first.
+  { key: 'odin', label: 'ODIN', icon: Radar },
   { key: 'incidents', label: 'Incidents', icon: AlertTriangle },
   { key: 'inspections', label: 'Inspections', icon: ClipboardCheck },
   { key: 'drills', label: 'Mock Drills', icon: Siren },
@@ -51,9 +56,9 @@ const COLLECTIONS = [
 ]
 
 export default function Analytics() {
-  const { orgId, isAdmin } = useAuth()
+  const { orgId, isAdmin, actor } = useAuth()
   const sites = useAccessibleSites()
-  const [tab, setTab] = useState('incidents')
+  const [tab, setTab] = useState('odin')
   const [store, setStore] = useState(() => emptyCollections(COLLECTIONS))
 
   useEffect(() => {
@@ -111,7 +116,15 @@ export default function Analytics() {
         ))}
       </div>
 
-      {sites.length === 0 ? (
+      {/* One exemption from the no-sites screen: ODIN, for an admin. Every other
+          tab reads Firestore through the site scope, so an empty scope means an
+          empty page and saying why is the useful thing to do. ODIN's population
+          comes from Metabase instead, so an admin who has not created any sites
+          yet still has a dashboard — they just have no map.
+          A non-admin with no site grant keeps the message, because ODIN scopes
+          them to their sites too (keepUnplaced below) and an empty dashboard
+          with no explanation is the worst of both. */}
+      {sites.length === 0 && !(tab === 'odin' && isAdmin) ? (
         <div className="card px-6 py-14 text-center">
           <p className="text-[15px] font-bold text-ink-900">No sites are visible to you</p>
           <p className="mx-auto mt-1.5 max-w-[46ch] text-[13px] leading-relaxed text-ink-500">
@@ -119,6 +132,12 @@ export default function Analytics() {
             or grant you access to a region or entity.
           </p>
         </div>
+      ) : tab === 'odin' ? (
+        // The one tab whose data does not come from Firestore: ODIN queries
+        // Metabase through a callable. `sites` is still handed to it, because
+        // the site register is what puts a warehouse row on the map and what
+        // bounds a viewer to the sites they may see.
+        <OdinTab sites={sites} orgId={orgId} actor={actor} isAdmin={isAdmin} keepUnplaced={isAdmin} />
       ) : tab === 'incidents' ? (
         <IncidentsTab incidents={incidents} sites={sites} keepUnplaced={isAdmin} />
       ) : tab === 'inspections' ? (

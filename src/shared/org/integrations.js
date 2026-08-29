@@ -1,0 +1,43 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// Third-party connection settings, one document per integration.
+//
+// /organizations/{orgId}/integrations/{name}, admin-only on both sides — see the
+// match block in firestore.rules and tests/integrations.rules.test.js. The
+// collection is excluded from the generic member grant, which is the half that
+// does the work: a narrow rule restricts nothing while a broader one still
+// grants the same access.
+//
+// There is deliberately no subscribe() here, and no read helper either. The
+// settings screen reads the connection back through the `metabaseConfig`
+// callable, which strips the credential before it answers; a live client
+// subscription would hand the browser the API key on every snapshot, which is
+// exactly what the server-side design exists to avoid.
+// ─────────────────────────────────────────────────────────────────────────────
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore'
+import { db } from '../firebase'
+import { logAudit } from './orgData'
+import { AUDIT } from '../audit/audit'
+
+export const integrationRef = (orgId, name) =>
+  doc(db, 'organizations', orgId, 'integrations', name)
+
+/**
+ * Save (or update) an integration's settings.
+ *
+ * Merged, not replaced, so an admin who changes only the question IDs does not
+ * have to re-type the API key — and so a caller can never accidentally clear a
+ * credential by omitting it. Clearing is explicit: pass `apiKey: ''`.
+ *
+ * The audit entry names the FIELDS that changed and never their values. A
+ * credential written into the append-only trail is a credential that outlives
+ * every rotation of it.
+ */
+export async function saveIntegration(orgId, name, settings, actor) {
+  await setDoc(integrationRef(orgId, name), { ...settings, updatedAt: serverTimestamp() }, { merge: true })
+  await logAudit(orgId, actor, AUDIT.ORG_SETTINGS, {
+    target: 'integration',
+    targetId: name,
+    targetLabel: name,
+    summary: `Updated ${name} integration settings: ${Object.keys(settings).join(', ')}`,
+  })
+}

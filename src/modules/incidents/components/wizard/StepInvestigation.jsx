@@ -6,6 +6,8 @@ import { METHODS } from '../../lib/diagramMethods'
 import { exportDiagramPng } from '../../lib/diagramExport'
 import { INVESTIGATION_METHODS } from '../../lib/constants'
 import { incidentInvestigations } from '../../lib/incidents'
+import { incidentChronology, blankChronologyEntry, meaningfulChronology } from '../../lib/chronology'
+import ChronologyEditor from './ChronologyEditor'
 import { Field } from '../ui'
 
 const rid = () => (crypto?.randomUUID ? crypto.randomUUID().slice(0, 8) : Math.random().toString(36).slice(2, 10))
@@ -15,10 +17,22 @@ const labelOf = (key) => INVESTIGATION_METHODS.find((m) => m.key === key)?.label
  * Step 3 — Investigation. Supports MULTIPLE investigation methods per incident:
  * add as many as needed, switch between them via tabs, change a method (full
  * picker), and Save (serializes every diagram + re-exports a PNG for the active
- * one). `onPersist(investigationsArray, { activeId, png })` is provided by the wizard.
+ * one). `onPersist(investigationsArray, { activeId, png, chronology })` is
+ * provided by the wizard.
+ *
+ * The chronology sits ABOVE the diagram rather than beside the summary, because
+ * that is the order the work happens in: you establish the sequence, then you
+ * ask why it went that way. It belongs to the incident, not to any one method —
+ * adding a second analysis does not give the event a second timeline — so it is
+ * held once here and saved alongside whatever methods are open.
  */
 export default function StepInvestigation({ incident, onPersist, saving }) {
   const [list, setList] = useState(() => incidentInvestigations(incident).map((e) => ({ ...e, id: e.id || `inv_${rid()}` })))
+  const [chronology, setChronology] = useState(() => {
+    const saved = incidentChronology(incident)
+    // Always one empty row to type into — see ChronologyEditor.
+    return saved.length ? [...saved, blankChronologyEntry(incident)] : [blankChronologyEntry(incident)]
+  })
   const [activeId, setActiveId] = useState(() => incidentInvestigations(incident)[0]?.id || null)
   const [picking, setPicking] = useState(() => incidentInvestigations(incident).length === 0)
   const [changingId, setChangingId] = useState(null) // entry whose method is being changed
@@ -91,7 +105,7 @@ export default function StepInvestigation({ incident, onPersist, saving }) {
       try { png = await exportDiagramPng(flowRef.current) } catch { toast.error('Could not capture diagram image; saving data only.') }
     }
     setList(next)
-    await onPersist(next, { activeId, png })
+    await onPersist(next, { activeId, png, chronology: meaningfulChronology(chronology) })
   }
 
   // Method picker (shown initially, on "Add method", and on "Change method").
@@ -122,6 +136,10 @@ export default function StepInvestigation({ incident, onPersist, saving }) {
 
   return (
     <div className="space-y-4">
+      {/* Established sequence first, analysis second — a 5-Why built on a
+          timeline nobody wrote down is built on somebody's memory of one. */}
+      <ChronologyEditor incident={incident} rows={chronology} onChange={setChronology} />
+
       {/* Tabs for each added investigation method */}
       {list.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
@@ -162,6 +180,18 @@ export default function StepInvestigation({ incident, onPersist, saving }) {
           </div>
         </>
       ) : Picker}
+
+      {/* The method picker has no Save of its own, so a chronology typed before
+          an analysis method was chosen had nowhere to go — and leaving the step
+          would have discarded it silently. This is that Save, and it appears
+          only when there is something in the table to lose. */}
+      {picking && meaningfulChronology(chronology).length > 0 && (
+        <div className="flex justify-end">
+          <button className="btn-primary" onClick={save} disabled={saving}>
+            {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />} Save chronology
+          </button>
+        </div>
+      )}
     </div>
   )
 }

@@ -1,5 +1,6 @@
 import { forwardRef } from 'react'
 import { incidentInvestigations } from '../lib/incidents'
+import { incidentChronology, sortChronology, formatChronologyMoment, chronologySpan } from '../lib/chronology'
 import { BodyMapStatic } from './BodyMap'
 import {
   INCIDENT_TYPE_BY_KEY, SEVERITY_BY_KEY, HSE_CATEGORY_BY_KEY, INVESTIGATION_METHOD_BY_KEY,
@@ -50,6 +51,11 @@ const IncidentReportDoc = forwardRef(function IncidentReportDoc({ incident, phot
   const cat = HSE_CATEGORY_BY_KEY[incident.category]
   const evidence = photos.filter((p) => p.kind === 'photo' && p.type?.startsWith('image/'))
   const investigations = incidentInvestigations(incident)
+  // Sorted here rather than trusted from the document: an incident whose
+  // chronology was written before the wizard started sorting on save, or edited
+  // straight in the database, must still print in the order things happened.
+  const chronology = sortChronology(incidentChronology(incident))
+  const chronoSpan = chronologySpan(chronology)
   const detailFor = (personId) =>
     (medicalAvailable && injuries.find((j) => j.personId === personId)) || null
 
@@ -146,6 +152,44 @@ const IncidentReportDoc = forwardRef(function IncidentReportDoc({ incident, phot
 
       {full && (
         <>
+          {/* Opens the investigation half of the report, because it is what the
+              rest of it is reasoned from: a root-cause analysis is only as good
+              as the sequence it was built on, and a reader has to be able to
+              check that sequence before they are asked to accept a conclusion
+              drawn from it. */}
+          <Section title="Chronology of the Event">
+            {chronology.length === 0 ? (
+              <p className="text-sm text-ink-400">No chronology recorded.</p>
+            ) : (
+              <>
+                <table className="w-full border-collapse text-sm">
+                  <thead>
+                    <tr className="border-b border-ink-300 text-left text-[11px] uppercase text-ink-500">
+                      <th className="w-[9.5rem] py-1 pr-2">When</th>
+                      <th className="py-1 pr-2">What happened</th>
+                      <th className="w-[10rem] py-1">Established from</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {chronology.map((row) => (
+                      <tr key={row.id} className="border-b border-ink-100 align-top">
+                        <td className="whitespace-nowrap py-1 pr-2 font-semibold">{formatChronologyMoment(row)}</td>
+                        <td className="whitespace-pre-wrap py-1 pr-2">{row.event}</td>
+                        <td className="py-1 text-ink-600">{fmt(row.source)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {chronoSpan && (
+                  <p className="mt-2 text-[11px] text-ink-500">
+                    {chronology.length} recorded event{chronology.length === 1 ? '' : 's'}, spanning {chronoSpan} from
+                    the first to the last established moment.
+                  </p>
+                )}
+              </>
+            )}
+          </Section>
+
           <Section title="Investigation Team">
             {(incident.team || []).length === 0 ? <p className="text-sm text-ink-400">No team recorded.</p> : (
               <ul className="list-disc pl-5 text-sm">{incident.team.map((p) => <li key={p.id}>{personLine(p)}</li>)}</ul>

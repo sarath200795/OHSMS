@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
-import { Settings, Save, Activity, Plus, X, Layers, ChevronUp, ChevronDown, Lock, Building2, PhoneCall, LifeBuoy } from 'lucide-react'
+import { Settings, Save, Activity, Plus, X, Layers, ChevronUp, ChevronDown, Lock, Building2, PhoneCall, LifeBuoy, ImageUp, Trash2, Plug } from 'lucide-react'
 import { ERP_ROLES, normalizeErpRoleLabels } from '../../shared/org/erpRoles'
 import { DEPARTMENTS } from '../../shared/auth/access'
 import { useAuth } from '../../shared/auth/AuthContext'
@@ -11,13 +11,24 @@ import {
   BUILTIN_FIELDS, SITE_LEVEL, SITE_LEVEL_KEY, DEFAULT_LEVEL_KEYS,
   normalizeScopeConfig, moduleLevelKeys, distinctSiteValues, toFieldKey,
 } from '../../shared/org/scopeConfig'
+import {
+  putFile, removeFile, MAX_INLINE_BYTES, tooLargeForInline, formatSize,
+} from '../../shared/storage'
+import { fileToDataUrl } from '../../shared/lib/files'
+import { safeSrc } from '../../shared/safeUrl'
 import { PageHeader, Card, Field, Input, Select, Button, MultiSelect, SkeletonCard } from '../../shared/ui'
+import MetabaseSettings from './MetabaseSettings'
 
 
 const TABS = [
   { key: 'general', label: 'General', icon: Settings },
   { key: 'scope', label: 'Scope & Granularity', icon: Layers },
+  { key: 'integrations', label: 'Integrations', icon: Plug },
 ]
+
+// A logo rides on every page load for every member, so it gets a far tighter
+// ceiling than the 10MB an evidence photo may be. 2MB is generous for a mark.
+const MAX_LOGO_BYTES = 2 * 1024 * 1024
 
 export default function OrgSettings() {
   const { orgId, actor } = useAuth()
@@ -33,6 +44,14 @@ export default function OrgSettings() {
   const [customActivity, setCustomActivity] = useState('')
   const [newDept, setNewDept] = useState('')
   const [busy, setBusy] = useState(false)
+
+  // The logo is NOT part of `form`, deliberately. subscribeOrg below rewrites
+  // `form` on every snapshot, so a picked-but-unsaved logo would vanish the
+  // moment anyone touched the org document — and "I uploaded it and it went
+  // away" is the worst possible failure for a one-click action. It is written
+  // the instant it is chosen, and read back off the live `org`.
+  const [logoBusy, setLogoBusy] = useState(false)
+  const logoRef = useRef(null)
 
   // Scope granularity state
   const [customFields, setCustomFields] = useState([]) // [{ key, label, options }]
@@ -89,6 +108,60 @@ export default function OrgSettings() {
     setNewDept('')
   }
   const removeDept = (d) => setForm({ ...form, departments: form.departments.filter((x) => x !== d) })
+
+  // ── Organization logo ───────────────────────────────────────────────────────
+  //
+  // Cloud storage first, inline data URL as the fallback — the same bargain
+  // every other upload in this app makes, and it matters more here: the org
+  // document is read by every member on every page load, so an inline logo is
+  // bytes on all of those reads. The fallback exists so a deployment whose
+  // bucket is not enabled yet can still be branded, under the tighter cap a
+  // Firestore document imposes.
+  const saveLogo = async (patch) => {
+    const previousPath = org?.logoPath || ''
+    await updateOrgSettings(orgId, patch, actor)
+    // Only after the document points somewhere else. Deleting first would leave
+    // the header pointing at bytes that are already gone if the write failed.
+    if (previousPath && previousPath !== patch.logoPath) removeFile(previousPath)
+  }
+
+  const onLogo = async (e) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    if (!file.type.startsWith('image/')) return toast.error('Pick an image file — PNG or SVG works best')
+    if (file.size > MAX_LOGO_BYTES) {
+      return toast.error(`Logo too large — keep it under ${formatSize(MAX_LOGO_BYTES)}`)
+    }
+    setLogoBusy(true)
+    try {
+      const up = await putFile(orgId, 'org-logo', file, file.name)
+      if (up) {
+        await saveLogo({ logoUrl: up.url, logoPath: up.path })
+      } else {
+        if (file.size > MAX_INLINE_BYTES) return toast.error(tooLargeForInline(file.name))
+        const dataUrl = await fileToDataUrl(file)
+        await saveLogo({ logoUrl: dataUrl, logoPath: '' })
+      }
+      toast.success('Logo updated')
+    } catch (err) {
+      toast.error(err?.message || 'Could not save the logo')
+    } finally {
+      setLogoBusy(false)
+    }
+  }
+
+  const clearLogo = async () => {
+    setLogoBusy(true)
+    try {
+      await saveLogo({ logoUrl: '', logoPath: '' })
+      toast.success('Logo removed — the WE EHS mark is back in the header')
+    } catch (err) {
+      toast.error(err?.message || 'Could not remove the logo')
+    } finally {
+      setLogoBusy(false)
+    }
+  }
 
   const saveGeneral = async (e) => {
     e.preventDefault()
@@ -199,7 +272,7 @@ export default function OrgSettings() {
 
   return (
     <>
-      <PageHeader title="Organization settings" subtitle="Profile, activities & scope granularity" icon={Settings} />
+      <PageHeader title="Organization settings" subtitle="Profile, branding, scope granularity & integrations" icon={Settings} />
 
       {/* Tab bar */}
       <div className="mb-5 flex flex-wrap gap-1.5 border-b border-ink-100 pb-3">
@@ -231,6 +304,59 @@ export default function OrgSettings() {
               <Field label="Notification email" htmlFor="email" hint="Where safety notifications are sent">
                 <Input id="email" type="email" value={form.notificationEmail} onChange={(e) => setForm({ ...form, notificationEmail: e.target.value })} />
               </Field>
+            </div>
+          </Card>
+
+          {/* Brand mark. Saved on pick rather than on Submit — see the comment
+              on logoBusy above. */}
+          <Card>
+            <h3 className="flex items-center gap-2 font-semibold text-ink-800">
+              <ImageUp size={17} className="text-brand-600" /> Organization logo
+            </h3>
+            <p className="mb-4 mt-1 text-sm text-ink-500">
+              Shown in the top-left corner of every screen, in place of the WE EHS mark — which moves
+              to a small badge in the bottom-right corner. PNG or SVG with a transparent background
+              looks best; up to {formatSize(MAX_LOGO_BYTES)}.
+            </p>
+            <div className="flex flex-wrap items-center gap-4">
+              <div className="grid h-20 w-20 flex-none place-items-center rounded-2xl bg-clay-surface shadow-clay-inset">
+                {org?.logoUrl ? (
+                  <img
+                    src={safeSrc(org.logoUrl)}
+                    alt={`${form.name || 'Organization'} logo`}
+                    className="h-16 w-16 rounded-xl bg-white object-contain"
+                  />
+                ) : (
+                  <span className="px-2 text-center text-[10.5px] font-semibold leading-tight text-ink-400">
+                    No logo yet
+                  </span>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {/* type="button" on both: this card sits inside the General
+                    form, and a bare <button> there submits it. */}
+                <Button
+                  type="button"
+                  variant="soft"
+                  icon={logoBusy ? undefined : ImageUp}
+                  loading={logoBusy}
+                  onClick={() => logoRef.current?.click()}
+                >
+                  {org?.logoUrl ? 'Replace logo' : 'Upload logo'}
+                </Button>
+                {org?.logoUrl && (
+                  <Button type="button" variant="ghost" icon={Trash2} disabled={logoBusy} onClick={clearLogo}>
+                    Remove
+                  </Button>
+                )}
+                <input
+                  ref={logoRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={onLogo}
+                />
+              </div>
             </div>
           </Card>
 
@@ -458,6 +584,7 @@ export default function OrgSettings() {
         </div>
       )}
 
+      {tab === 'integrations' && <MetabaseSettings orgId={orgId} actor={actor} />}
 
     </>
   )

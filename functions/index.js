@@ -33,6 +33,10 @@ import { planSiteLinks, LINKABLE_COLLECTIONS } from './lib/siteLinks.js'
 import { planMedicalRecordMove, landedIntact, MEDICAL_RECORD_KIND } from './lib/medicalRecords.js'
 import { KEY_DOC_PATH, generateKeyset, releaseKeyset, grantsFor, unwrapKey, fromB64u } from './lib/dataKeys.js'
 import {
+  configPath, normalizeConfig, redactConfig, readiness, checkBaseUrl, sourcesFor,
+  cardQueryUrl, currentUserUrl, normalizeRows, capRows,
+} from './lib/metabase.js'
+import {
   FILE_TARGETS, MAX_OBJECTS_PER_RUN, needsObjectSealing, sealedPath,
   sealObjectBytes, openObjectBytes, sameBytes, pointerUpdate,
 } from './lib/objectSeal.js'
@@ -1894,3 +1898,279 @@ export const withdrawStalePermitMirrors = onSchedule(
     }
   }
 )
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ODIN — the Metabase connector.
+//
+// Three callables, and the split between them is the security model.
+//
+//   metabaseConfig  reads the connection settings back to an ADMIN, with the
+//                   API key removed. Not "masked" — removed. See redactConfig.
+//   metabaseTest    proves the URL and key work, without running a question.
+//   metabaseQuery   runs one of the configured saved questions and returns its
+//                   rows to ANY approved member of the organization.
+//
+// That last line is the point of the whole design. The dashboard is for the
+// safety team; the credential is not. A key that reached the browser would be a
+// bearer token for the entire analytics warehouse handed to everyone who can
+// open a tab, and no Firestore rule can un-hand it. So the key never leaves the
+// server, and firestore.rules keeps /integrations admin-only on top of that, so
+// even the document holding it is out of an ordinary member's reach.
+//
+// Everything decidable without a network lives in lib/metabase.js and is tested
+// there. This is the part that talks to Firestore, to Metabase, and to the
+// caller.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** How long we will wait on someone else's Metabase before giving up on it. */
+const METABASE_TIMEOUT_MS = 25_000
+
+/** The caller's live profile, or a refusal. Never their ID token's claims. */
+async function metabaseCaller(request, { adminOnly = false } = {}) {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in first.')
+  const db = getFirestore()
+  const profile = (await db.doc(`users/${uid}`).get()).data() || null
+  if (!profile || profile.status !== 'approved' || !profile.orgId) {
+    throw new HttpsError('permission-denied', 'Your account is not an approved member of an organization.')
+  }
+  if (adminOnly && profile.role !== 'admin') {
+    throw new HttpsError('permission-denied', 'Administrators only.')
+  }
+  // An account still on the password an admin typed for it reaches nothing in
+  // Firestore (passwordIsOwn in firestore.rules). That rule is repeated here
+  // because a callable bypasses rules entirely, and this would otherwise be the
+  // one door left open to a credential the provisioning admin still knows.
+  if (profile.mustChangePassword === true) {
+    throw new HttpsError('permission-denied', 'Change your password before using this.')
+  }
+  return { uid, profile, db }
+}
+
+/**
+ * Ask Metabase, with a timeout, and without ever putting the key in a URL.
+ *
+ * The key travels in the `x-api-key` header. A query parameter would land in
+ * the instance's access log, in any proxy in front of it, and in the referrer
+ * of whatever it redirects to.
+ */
+async function metabaseFetch(url, apiKey, { method = 'GET', body } = {}) {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), METABASE_TIMEOUT_MS)
+  try {
+    return await fetch(url, {
+      method,
+      headers: {
+        'x-api-key': apiKey,
+        accept: 'application/json',
+        ...(body ? { 'content-type': 'application/json' } : {}),
+      },
+      body: body ? JSON.stringify(body) : undefined,
+      signal: controller.signal,
+    })
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/**
+ * Turn a Metabase failure into something an admin can act on.
+ *
+ * The instance's own error body is deliberately NOT forwarded: it can quote the
+ * SQL of the question, which names tables and columns in a warehouse the member
+ * reading this dashboard has no business seeing. The status code is the
+ * actionable part, and it is enough to tell "your key is wrong" apart from
+ * "that question no longer exists".
+ */
+function metabaseFailure(status) {
+  if (status === 401 || status === 403) {
+    return 'Metabase rejected the API key. Check it has not been revoked, and that its permission group can read the question.'
+  }
+  if (status === 404) return 'Metabase has no saved question with that ID.'
+  if (status === 429) return 'Metabase is rate-limiting these requests. Try again shortly.'
+  if (status >= 500) return 'Metabase returned a server error while running the question.'
+  return `Metabase refused the request (HTTP ${status}).`
+}
+
+/** The connection settings, for the admin screen. Without the key. */
+export const metabaseConfig = onCall({ region: REGION }, async (request) => {
+  const { profile, db } = await metabaseCaller(request, { adminOnly: true })
+  const snap = await db.doc(configPath(profile.orgId)).get()
+  return { config: redactConfig(snap.exists ? snap.data() : null) }
+})
+
+/**
+ * Does this connection work?
+ *
+ * Hits /api/user/current, which proves the URL resolves and the key is valid
+ * without running anybody's query — a test button that executes a warehouse
+ * question is a test button people stop pressing.
+ *
+ * Takes an optional `apiKey` so an admin can verify a key BEFORE saving it.
+ * That key is used for this one request and written nowhere.
+ *
+ * `sourceId` names WHICH instance is being tested, so a row whose key box is
+ * empty is tested with the key that instance would actually use — its own if it
+ * has one, the shared key otherwise. Without it, testing an unedited row would
+ * fall back to the first source's key and report a pass for a credential that
+ * instance never uses.
+ */
+export const metabaseTest = onCall({ region: REGION }, async (request) => {
+  const { profile, db } = await metabaseCaller(request, { adminOnly: true })
+  const stored = normalizeConfig((await db.doc(configPath(profile.orgId)).get()).data())
+  const sourceId = String(request.data?.sourceId || '')
+  const source = stored.sources.find((s) => s.id === sourceId) || stored.sources[0] || null
+
+  const url = checkBaseUrl(request.data?.baseUrl || source?.baseUrl)
+  if (!url.ok) return { ok: false, message: url.reason }
+  const apiKey = String(request.data?.apiKey || '') || source?.apiKey || stored.apiKey
+  if (!apiKey) return { ok: false, message: 'No API key is saved yet.' }
+
+  try {
+    const res = await metabaseFetch(currentUserUrl(url.origin), apiKey)
+    if (!res.ok) return { ok: false, message: metabaseFailure(res.status) }
+    const me = await res.json()
+    return {
+      ok: true,
+      // Which account the key acts as. An admin who has just connected the
+      // wrong instance recognises it here and nowhere else.
+      message: `Connected as ${me?.common_name || me?.email || 'an API user'}.`,
+    }
+  } catch (e) {
+    logger.warn('metabaseTest: unreachable', { orgId: profile.orgId, error: e?.message || String(e) })
+    return {
+      ok: false,
+      message: e?.name === 'AbortError'
+        ? 'Metabase did not answer within 25 seconds.'
+        : 'Could not reach that address. Check the URL, and that the instance resolves publicly.',
+    }
+  }
+})
+
+/**
+ * Run one configured saved question and hand back its rows.
+ *
+ * Open to every approved member, because the dashboard is. What bounds it is
+ * that the caller chooses a DATASET NAME, not a card id and not a URL: the only
+ * questions reachable through here are the ones an admin of that same
+ * organization put in the settings. A caller cannot point this at card 913 and
+ * read the finance question.
+ */
+export const metabaseQuery = onCall({ region: REGION, timeoutSeconds: 120 }, async (request) => {
+  const { uid, profile, db } = await metabaseCaller(request)
+
+  const dataset = String(request.data?.dataset || '')
+  const config = normalizeConfig((await db.doc(configPath(profile.orgId)).get()).data())
+  const ready = readiness(config, dataset)
+  if (!ready.ok) {
+    // A reason, not a bare refusal: "nobody has connected Metabase yet" and
+    // "the audits question is not set" are different screens in the tab, and
+    // the member reading either needs to know which one to ask an admin for.
+    return { ok: false, reason: ready.reason, dataset }
+  }
+
+  // Every instance that has this question, asked at once. In parallel because
+  // they are independent hosts and the slowest one should set the wait, not the
+  // sum of them.
+  const targets = sourcesFor(config, dataset)
+  const results = await Promise.all(targets.map((s) => querySource(s, dataset, profile.orgId)))
+
+  const answered = results.filter((r) => r.ok)
+  if (answered.length === 0) {
+    // Everything failed. The first failure's reason is returned so the tab can
+    // still show a specific screen, with every source's own outcome beside it.
+    const first = results[0] || { reason: 'unreachable' }
+    logger.warn('metabaseQuery: every source failed', { orgId: profile.orgId, dataset, sources: results.length })
+    return { ok: false, reason: first.reason, message: first.message, dataset, sources: outcomes(results) }
+  }
+
+  // Merged, then capped — the cap is on what the browser is sent, and applying
+  // it per source would let a two-instance tenant receive twice as much as a
+  // one-instance tenant before anything said the figures were partial.
+  const merged = answered.flatMap((r) => r.rows)
+  const { rows, total, capped } = capRows(merged)
+  const unmapped = [...new Set(answered.flatMap((r) => r.unmapped))]
+
+  logger.info('metabaseQuery: ok', {
+    uid, orgId: profile.orgId, dataset, rows: rows.length, capped,
+    sources: `${answered.length}/${results.length}`,
+  })
+  return {
+    ok: true,
+    dataset,
+    rows,
+    unmapped,
+    total,
+    capped,
+    // Per source, always — including when they all succeeded. "These numbers
+    // are from two of your three instances" is a caveat the dashboard has to be
+    // able to print, and it cannot if only failures are reported.
+    sources: outcomes(results),
+    fetchedAt: new Date().toISOString(),
+  }
+})
+
+/** What the client is told about each instance. Never a URL it did not configure. */
+const outcomes = (results) => results.map((r) => ({
+  id: r.id, label: r.label, ok: r.ok, rows: r.rows?.length ?? 0, reason: r.reason, message: r.message,
+}))
+
+/**
+ * One instance, one question.
+ *
+ * Never throws: a source that is down is a RESULT, because the whole point of
+ * running several is that one of them failing does not take the dashboard with
+ * it. Rows come back tagged with where they came from, so a figure on the
+ * dashboard can be traced to the instance that produced it.
+ */
+async function querySource(source, dataset, orgId) {
+  const tag = { id: source.id, label: source.label || source.baseUrl }
+
+  const url = checkBaseUrl(source.baseUrl)
+  if (!url.ok) return { ...tag, ok: false, reason: 'bad-url', message: url.reason }
+
+  let res
+  try {
+    res = await metabaseFetch(cardQueryUrl(url.origin, source.cards[dataset]), source.apiKey, { method: 'POST' })
+  } catch (e) {
+    logger.warn('metabaseQuery: unreachable', { orgId, dataset, source: source.id, error: e?.message || String(e) })
+    return {
+      ...tag,
+      ok: false,
+      reason: 'unreachable',
+      message: e?.name === 'AbortError' ? 'Metabase did not answer in time.' : 'Could not reach Metabase.',
+    }
+  }
+  if (!res.ok) {
+    logger.warn('metabaseQuery: refused', { orgId, dataset, source: source.id, status: res.status })
+    return { ...tag, ok: false, reason: 'refused', message: metabaseFailure(res.status) }
+  }
+
+  let payload
+  try {
+    payload = await res.json()
+  } catch {
+    return { ...tag, ok: false, reason: 'query-failed', message: 'Metabase did not return JSON.' }
+  }
+  // /query/json answers with an array of row objects on success. Anything else
+  // is Metabase reporting a failed query inside a 200, which it does.
+  if (!Array.isArray(payload)) {
+    logger.warn('metabaseQuery: query error', { orgId, dataset, source: source.id })
+    // Capped, because that message can quote the question's SQL and the member
+    // reading this dashboard has no business seeing the warehouse's schema.
+    return {
+      ...tag,
+      ok: false,
+      reason: 'query-failed',
+      message: String(payload?.error || 'Metabase could not run that question.').slice(0, 200),
+    }
+  }
+
+  const mapped = normalizeRows(payload)
+  return {
+    ...tag,
+    ok: true,
+    rows: mapped.rows.map((r) => ({ ...r, sourceId: tag.id, sourceLabel: tag.label })),
+    unmapped: mapped.unmapped,
+  }
+}
