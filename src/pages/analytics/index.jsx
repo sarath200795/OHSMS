@@ -30,9 +30,9 @@ import OdinTab from './OdinTab'
 // Icons match the portal registry's, so a tab here and the tile it reports on
 // are recognisably the same thing.
 const TABS = [
-  // ODIN leads, because it is the cross-module Safety & Security picture the
-  // other tabs each show one slice of — and because it is the one that answers
-  // "where are we, right now" without the reader picking a module first.
+  // ODIN leads the LIST because it is the cross-module Safety & Security
+  // picture the other tabs each show one slice of. It is deliberately not the
+  // tab that OPENS — see the default below.
   { key: 'odin', label: 'ODIN', icon: Radar },
   { key: 'incidents', label: 'Incidents', icon: AlertTriangle },
   { key: 'inspections', label: 'Inspections', icon: ClipboardCheck },
@@ -58,7 +58,19 @@ const COLLECTIONS = [
 export default function Analytics() {
   const { orgId, isAdmin, actor } = useAuth()
   const sites = useAccessibleSites()
-  const [tab, setTab] = useState('odin')
+  // Incidents opens, not ODIN, and the reason is that ODIN is the one tab that
+  // reaches OFF this machine. Mounting it runs two callables against a
+  // Metabase nobody has necessarily connected — so making it the landing tab
+  // meant every visit to Analytics fired two requests that fail for every
+  // tenant which has not set the integration up, and showed them a "not
+  // connected" screen where their incident data used to be.
+  //
+  // It also broke the console sweep, which is how this was found: e2e runs the
+  // auth and Firestore emulators but not functions, so the calls came back
+  // ERR_CONNECTION_REFUSED and no amount of catching in JS suppresses a failed
+  // request in the console. A tab that only loads when someone asks for it has
+  // none of these problems.
+  const [tab, setTab] = useState('incidents')
   const [store, setStore] = useState(() => emptyCollections(COLLECTIONS))
 
   useEffect(() => {
