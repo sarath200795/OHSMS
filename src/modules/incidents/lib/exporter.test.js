@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { incidentRows, actionRows, rootCauseOf, actionsSummary, fiveWhyFindings } from './exporter'
+import {
+  incidentRows, actionRows, rootCauseOf, actionsSummary, fiveWhyFindings,
+  chronologyRows, chronologySummary,
+} from './exporter'
 
 const incident = {
   id: 'i1',
@@ -246,5 +249,63 @@ describe('where the root cause comes from, by method', () => {
 
   it('is blank only when the investigation recorded nothing at all', () => {
     expect(rootCauseOf({ investigations: [{ method: 'fishbone', diagram, summary: '' }] })).toBe('')
+  })
+})
+
+describe('the chronology sheet', () => {
+  const withTimeline = {
+    ...incident,
+    chronology: [
+      { id: 'c2', date: '2026-03-14', time: '09:15', event: 'Pallet fell', source: 'CCTV cam 4' },
+      { id: 'c1', date: '2026-03-14', time: '06:40', event: 'Rack reconfigured on night shift', source: 'Shift log' },
+      { id: 'c3', date: '2026-03-14', time: '', event: 'Beam found unseated', source: '' },
+    ],
+  }
+
+  it('gives every event its own row, carrying its incident', () => {
+    const rows = chronologyRows([withTimeline])
+    expect(rows).toHaveLength(3)
+    expect(rows[0].Reference).toBe('INC-2026-0007')
+    expect(rows[0].Site).toBe('Plant 2')
+    expect(rows[0]['Incident Type']).toBe('Near Miss')
+  })
+
+  it('numbers the rows in the order things HAPPENED, not the order they were typed', () => {
+    // Seq is what survives a reader sorting the sheet by any other column. If it
+    // followed entry order it would preserve nothing worth preserving.
+    //
+    // The untimed row leads its day: "on the 14th, time unknown" reads before
+    // "the 14th at 06:40" — see chronologyMoment.
+    const rows = chronologyRows([withTimeline])
+    expect(rows.map((r) => r.Event)).toEqual([
+      'Beam found unseated',
+      'Rack reconfigured on night shift',
+      'Pallet fell',
+    ])
+    expect(rows.map((r) => r.Seq)).toEqual([1, 2, 3])
+  })
+
+  it('keeps an event whose time was never established', () => {
+    const rows = chronologyRows([withTimeline])
+    expect(rows[0].Time).toBe('')
+    expect(rows[0].Event).toBe('Beam found unseated')
+  })
+
+  it('is empty, not broken, for the incidents raised before the field existed', () => {
+    expect(chronologyRows([incident])).toEqual([])
+    expect(chronologyRows()).toEqual([])
+  })
+
+  it('reads as a bulleted list on the incident sheet', () => {
+    const s = chronologySummary(withTimeline)
+    expect(s.split('\n')).toHaveLength(3)
+    expect(s).toContain('14 Mar 2026 · 06:40 — Rack reconfigured on night shift (Shift log)')
+    // No source recorded is no parenthesis, rather than an empty one.
+    expect(s).toContain('14 Mar 2026 — Beam found unseated')
+    expect(s).not.toContain('()')
+  })
+
+  it('leaves the incident-sheet cell blank when nothing was recorded', () => {
+    expect(incidentRows([incident])[0].Chronology).toBe('')
   })
 })

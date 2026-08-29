@@ -24,6 +24,22 @@ const USE_EMULATORS = clean(import.meta.env.VITE_USE_EMULATORS) === 'true'
 const EMU_HOST = clean(import.meta.env.VITE_EMULATOR_HOST) || '127.0.0.1'
 const EMU_AUTH_PORT = Number(clean(import.meta.env.VITE_EMULATOR_AUTH_PORT)) || 9099
 const EMU_FS_PORT = Number(clean(import.meta.env.VITE_EMULATOR_FIRESTORE_PORT)) || 8080
+const EMU_FN_PORT = Number(clean(import.meta.env.VITE_EMULATOR_FUNCTIONS_PORT)) || 5001
+
+/**
+ * Where the Functions emulator is, or null when we are not using emulators.
+ *
+ * Exported rather than wired up below, because firebase/functions is loaded
+ * LAZILY — shared/functions.js imports it on the first callable, so that its
+ * SDK stays out of every bundle that never calls one. The connection therefore
+ * has to be made there, and this is the one place that knows the address.
+ *
+ * Without it, every callable in local development went to the deployed
+ * production functions rather than the ones running on this machine: the
+ * emulator suite would start, register the functions, log nothing, and the app
+ * would report a bare "internal" error. Which is exactly what it did.
+ */
+export const emulatorFunctions = USE_EMULATORS ? { host: EMU_HOST, port: EMU_FN_PORT } : null
 
 const projectId = clean(import.meta.env.VITE_FIREBASE_PROJECT_ID)
 

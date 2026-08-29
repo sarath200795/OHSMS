@@ -157,6 +157,13 @@ export const POLICY = {
       // /injuries and must stay readable; the NAME beside it need not.
       'injuryReports[].personName',
       'investigations[].summary',
+      // The chronology of the event. `event` is the same class of text as
+      // `narrative` — it names people, describes injuries and quotes what was
+      // said — and `source` names the witness or the camera it came from.
+      // `date` and `time` stay readable: they are the sort key, and a timeline
+      // that can only be ordered after decryption cannot be ordered by a query.
+      'chronology[].event',
+      'chronology[].source',
       // The Action Tracker reads these across every module. It filters and sorts
       // on them in the browser, after decryption, so sealing them costs nothing
       // — see actions/lib/sources.js.

@@ -24,6 +24,7 @@ import {
   createIncident, updateIncident, getIncident, closeIncident,
   subscribeIncidentPhotos, addIncidentPhoto, deleteIncidentPhoto,
 } from '../lib/incidents'
+import { sortChronology } from '../lib/chronology'
 import { syncIncidentInjuries, mergeInjuryDetail } from '../lib/injuries'
 import { isFutureDate } from '../../../shared/lib/dates'
 
@@ -238,7 +239,7 @@ export default function IncidentWizard() {
   const saveCapa = () => persist(
     { capa, 'stagesDone.capa': true, lifecycle: forwardLifecycle(incident.lifecycle, 'capa') },
     { summary: 'Updated CAPA actions' }, nextStep())
-  const saveInvestigation = async (investigations, { activeId, png } = {}) => {
+  const saveInvestigation = async (investigations, { activeId, png, chronology = [] } = {}) => {
     setSaving(true)
     const gen = ++persistGen.current
     try {
@@ -258,9 +259,17 @@ export default function IncidentWizard() {
       }
       await updateIncident(orgId, incident.id, {
         investigations: next,
+        // Sorted on the way IN as well as on the way out. The editor keeps the
+        // order things were typed in so it does not move a row under someone's
+        // cursor; the stored record has no such constraint, and a document that
+        // reads chronologically is what anyone querying it directly expects.
+        chronology: sortChronology(chronology),
         'stagesDone.investigation': true,
         lifecycle: forwardLifecycle(incident.lifecycle, 'investigation'),
-      }, { actor, summary: `Investigation saved (${next.map((e) => e.method).join(', ') || 'none'})` })
+      }, {
+        actor,
+        summary: `Investigation saved (${next.map((e) => e.method).join(', ') || 'none'}) · ${chronology.length} chronology event${chronology.length === 1 ? '' : 's'}`,
+      })
       const fresh = await getIncident(orgId, incident.id)
       if (gen === persistGen.current) setIncident(fresh)
       toast.success('Investigation saved')

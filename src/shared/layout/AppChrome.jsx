@@ -23,6 +23,7 @@ import { initials } from '../lib/format'
 import RequestAccessModal from './RequestAccessModal'
 import Sam from '../sam/Sam'
 import HomeBar from './HomeBar'
+import { OrgMark, PoweredByWeEhs } from '../branding/OrgMark'
 import { useIdleTimeout } from '../auth/useIdleTimeout'
 
 const ROLE_LABEL = {
@@ -33,7 +34,7 @@ const ROLE_LABEL = {
 }
 
 export default function AppChrome({ children }) {
-  const { profile, orgName, role, signOut } = useAuth()
+  const { profile, org, orgName, role, signOut } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const { isWarning, isExpired, remainingSeconds, resetActivity } = useIdleTimeout()
@@ -63,6 +64,11 @@ export default function AppChrome({ children }) {
   }, [menuOpen])
 
   const name = profile?.name || 'There'
+  // The wordmark beside the mark names the ORGANIZATION once it has a logo of
+  // its own. Leaving "WEHS / Workplace Environment, Health & Safety" standing
+  // next to a customer's logo reads as a co-brand nobody agreed to; the vendor
+  // gets the badge in the opposite corner instead.
+  const branded = Boolean(org?.logoUrl)
 
   return (
     <div className="min-h-screen bg-clay-bg">
@@ -83,18 +89,17 @@ export default function AppChrome({ children }) {
             was a link announced as the single letter "W". */}
         <NavLink
           to="/portal"
-          aria-label="WEHS home"
+          aria-label={`${branded && orgName ? orgName : 'WEHS'} home`}
           className="flex flex-none items-center gap-2.5"
         >
-          <img
-            src="/wehs.svg"
-            alt=""
-            aria-hidden="true"
-            className="h-9 w-9 flex-none rounded-[10px] shadow-clay-sm"
-          />
+          <OrgMark className="h-9 w-9 rounded-[10px] shadow-clay-sm" />
           <span className="hidden leading-tight sm:block">
-            <span className="block text-[13px] font-extrabold tracking-[-0.01em] text-ink-900">WEHS</span>
-            <span className="block text-[11px] text-ink-400">Workplace Environment, Health &amp; Safety</span>
+            <span className="block text-[13px] font-extrabold tracking-[-0.01em] text-ink-900">
+              {branded ? orgName || 'Your organization' : 'WEHS'}
+            </span>
+            <span className="block text-[11px] text-ink-400">
+              {branded ? 'Occupational Health & Safety' : 'Workplace Environment, Health & Safety'}
+            </span>
           </span>
         </NavLink>
 
@@ -169,6 +174,11 @@ export default function AppChrome({ children }) {
       <RequestAccessModal open={reqOpen} onClose={() => setReqOpen(false)} />
       {/* Sam the Buddy — the ISO 45001 assistant, available on every screen. */}
       <Sam />
+
+      {/* Vendor attribution, bottom-right on every screen. Below Sam's panel
+          (z-40) and the session dialog (z-50), so it can never sit on top of
+          something a person is trying to use. */}
+      <PoweredByWeEhs />
 
       {isWarning && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/40 p-4 backdrop-blur-sm animate-fade-in">

@@ -6,17 +6,39 @@
 // anything naming the region — so this is the one place that knows, and callers
 // never pass it.
 //
-// Loaded lazily. The maintenance screen is the only caller, an admin opens it
-// rarely, and firebase/functions is dead weight in every other bundle.
+// Loaded lazily: firebase/functions is dead weight in every bundle that never
+// calls one, and most of them do not. The maintenance screen was once the only
+// caller; the ODIN analytics tab is the other one, and it is why the emulator
+// wiring below had to exist at all.
 // ─────────────────────────────────────────────────────────────────────────────
-import app from './firebase'
+import app, { emulatorFunctions } from './firebase'
 
 // Must match REGION in functions/index.js.
 export const FUNCTIONS_REGION = 'asia-south1'
 
+// The Functions instance, built once. The emulator connection has to happen
+// HERE rather than in firebase.js because this SDK is loaded lazily — and until
+// it did, every callable in local development quietly went to the DEPLOYED
+// production functions instead of the ones running on the developer's machine.
+// The suite would start, register the functions, log nothing, and the app would
+// report a bare "internal".
+let functionsPromise = null
+async function getFns() {
+  if (!functionsPromise) {
+    functionsPromise = import('firebase/functions').then((mod) => {
+      const fns = mod.getFunctions(app, FUNCTIONS_REGION)
+      if (emulatorFunctions) {
+        mod.connectFunctionsEmulator(fns, emulatorFunctions.host, emulatorFunctions.port)
+      }
+      return { mod, fns }
+    })
+  }
+  return functionsPromise
+}
+
 async function callable(name) {
-  const { getFunctions, httpsCallable } = await import('firebase/functions')
-  return httpsCallable(getFunctions(app, FUNCTIONS_REGION), name)
+  const { mod, fns } = await getFns()
+  return mod.httpsCallable(fns, name)
 }
 
 /**
@@ -233,4 +255,68 @@ export async function deleteOrgFile(path) {
 export async function exportSubjectData({ uid, personId, encryptionOn } = {}) {
   const fn = await callable('exportSubjectData')
   return (await fn({ uid, personId, encryptionOn })).data
+}
+
+// ── ODIN / Metabase ─────────────────────────────────────────────────────────
+//
+// Everything here goes through a callable rather than fetching Metabase from
+// the browser, for two reasons that both have to hold.
+//
+// The API key is a bearer credential for the whole analytics warehouse. Handing
+// it to a browser hands it to everyone who can open a tab, and no Firestore
+// rule can take it back — so it stays server-side, and none of these functions
+// can return it. metabaseSettings() reads the connection back for an admin with
+// the key REMOVED (functions/lib/metabase.js redactConfig), not masked.
+//
+// The second reason is duller and just as binding: a browser cannot call a
+// self-hosted Metabase at all unless that instance sets CORS headers for this
+// origin, which is an operator's problem in somebody else's infrastructure.
+
+/** The connection settings for the admin screen — never the key. */
+export async function metabaseSettings() {
+  const fn = await callable('metabaseConfig')
+  return (await fn()).data
+}
+
+/**
+ * Try the connection and say what happened, in words an admin can act on.
+ *
+ * Pass `{ baseUrl, apiKey }` to test a key BEFORE saving it — that value is
+ * used for the one request and written nowhere. Pass `sourceId` to say WHICH
+ * configured instance is being tested, so a row whose key box is empty is
+ * tested with the key that instance would actually use. Pass nothing to test
+ * the first stored source.
+ *
+ * Resolves either way: `{ ok, message }`. A failed connection test is an
+ * ANSWER, not an exception — it is the entire output of pressing the button.
+ */
+export async function metabaseTestConnection({ baseUrl, apiKey, sourceId } = {}) {
+  const fn = await callable('metabaseTest')
+  return (await fn({ baseUrl, apiKey, sourceId })).data
+}
+
+/**
+ * Run one of the configured saved questions.
+ *
+ * `dataset` is a NAME ('findings' | 'audits'), never a card id: the only
+ * questions reachable are the ones an admin of this organization put in the
+ * settings, so a caller cannot point this at another question in the instance.
+ *
+ * Resolves to `{ ok: true, rows, unmapped, total, capped, sources, fetchedAt }`,
+ * or to `{ ok: false, reason, message, sources }` — 'not-configured',
+ * 'no-card', 'unreachable', 'refused', 'query-failed'. Those are different
+ * screens in the tab, and the person reading one needs to know which thing to
+ * ask an admin for, so they come back as data rather than as one
+ * undifferentiated throw.
+ *
+ * When more than one instance is configured, the rows are MERGED and each
+ * carries `sourceId`/`sourceLabel`. `sources` reports each instance's outcome
+ * whether it succeeded or not, so "these figures are from two of your three
+ * instances" is a caveat the dashboard can actually print. `ok` is true when at
+ * least one answered: a single instance being down must not blank a dashboard
+ * the others can fill.
+ */
+export async function metabaseQuery(dataset) {
+  const fn = await callable('metabaseQuery')
+  return (await fn({ dataset })).data
 }
