@@ -2073,7 +2073,13 @@ export const metabaseQuery = onCall({ region: REGION, timeoutSeconds: 120 }, asy
   // they are independent hosts and the slowest one should set the wait, not the
   // sum of them.
   const targets = sourcesFor(config, dataset)
-  const results = await Promise.all(targets.map((s) => querySource(s, dataset, profile.orgId)))
+  // Metabase's own words about a failure reach an ADMIN and nobody else. They
+  // are the only thing that makes a broken question diagnosable — "server
+  // error" names no field, no parameter and no permission — and they can quote
+  // the question's SQL, which is a warehouse's schema and not something an
+  // ordinary member reading a safety dashboard should be shown.
+  const detailed = profile.role === 'admin'
+  const results = await Promise.all(targets.map((s) => querySource(s, dataset, profile.orgId, detailed)))
 
   const answered = results.filter((r) => r.ok)
   if (answered.length === 0) {
@@ -2081,7 +2087,11 @@ export const metabaseQuery = onCall({ region: REGION, timeoutSeconds: 120 }, asy
     // still show a specific screen, with every source's own outcome beside it.
     const first = results[0] || { reason: 'unreachable' }
     logger.warn('metabaseQuery: every source failed', { orgId: profile.orgId, dataset, sources: results.length })
-    return { ok: false, reason: first.reason, message: first.message, dataset, sources: outcomes(results) }
+    return {
+      ok: false, reason: first.reason, message: first.message, dataset,
+      ...(first.detail ? { detail: first.detail } : {}),
+      sources: outcomes(results),
+    }
   }
 
   // Merged, then capped — the cap is on what the browser is sent, and applying
@@ -2113,6 +2123,8 @@ export const metabaseQuery = onCall({ region: REGION, timeoutSeconds: 120 }, asy
 /** What the client is told about each instance. Never a URL it did not configure. */
 const outcomes = (results) => results.map((r) => ({
   id: r.id, label: r.label, ok: r.ok, rows: r.rows?.length ?? 0, reason: r.reason, message: r.message,
+  // Present only for an admin — querySource decides, this just carries it.
+  ...(r.detail ? { detail: r.detail } : {}),
 }))
 
 /**
@@ -2123,8 +2135,28 @@ const outcomes = (results) => results.map((r) => ({
  * it. Rows come back tagged with where they came from, so a figure on the
  * dashboard can be traced to the instance that produced it.
  */
-async function querySource(source, dataset, orgId) {
+async function querySource(source, dataset, orgId, detailed = false) {
   const tag = { id: source.id, label: source.label || source.baseUrl }
+  // Metabase's own account of a failure, for an admin only. `detail` is what
+  // turns "server error" into something fixable — a missing required
+  // parameter, a column that no longer exists, a permission on the underlying
+  // database rather than on the question.
+  const withDetail = async (base, response) => {
+    if (!detailed || !response) return base
+    try {
+      const body = await response.text()
+      if (!body) return base
+      let text = body
+      try {
+        const j = JSON.parse(body)
+        text = j?.message || j?.error || j?.error_message || body
+      } catch { /* not JSON — the raw body is what there is */ }
+      const detail = String(text).replace(/\s+/g, ' ').trim().slice(0, 500)
+      return detail ? { ...base, detail } : base
+    } catch {
+      return base
+    }
+  }
 
   const url = checkBaseUrl(source.baseUrl)
   if (!url.ok) return { ...tag, ok: false, reason: 'bad-url', message: url.reason }
@@ -2143,7 +2175,7 @@ async function querySource(source, dataset, orgId) {
   }
   if (!res.ok) {
     logger.warn('metabaseQuery: refused', { orgId, dataset, source: source.id, status: res.status })
-    return { ...tag, ok: false, reason: 'refused', message: metabaseFailure(res.status) }
+    return withDetail({ ...tag, ok: false, reason: 'refused', message: metabaseFailure(res.status) }, res)
   }
 
   let payload
@@ -2156,14 +2188,12 @@ async function querySource(source, dataset, orgId) {
   // is Metabase reporting a failed query inside a 200, which it does.
   if (!Array.isArray(payload)) {
     logger.warn('metabaseQuery: query error', { orgId, dataset, source: source.id })
-    // Capped, because that message can quote the question's SQL and the member
-    // reading this dashboard has no business seeing the warehouse's schema.
-    return {
-      ...tag,
-      ok: false,
-      reason: 'query-failed',
-      message: String(payload?.error || 'Metabase could not run that question.').slice(0, 200),
-    }
+    // The generic line for everyone; Metabase's own words only for an admin.
+    // This used to hand that text to every caller, which is the schema leak the
+    // rest of this function is careful about.
+    const base = { ...tag, ok: false, reason: 'query-failed', message: 'Metabase could not run that question.' }
+    const detail = String(payload?.error || payload?.message || '').replace(/\s+/g, ' ').trim().slice(0, 500)
+    return detailed && detail ? { ...base, detail } : base
   }
 
   const mapped = normalizeRows(payload)

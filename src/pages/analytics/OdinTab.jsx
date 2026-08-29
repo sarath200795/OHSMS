@@ -647,10 +647,14 @@ function findingsBlock(res, isAdmin) {
   return {
     title: 'Metabase could not answer',
     body: res.message || 'The findings question did not run. Check it still exists and that the API key can read it.',
+    // Metabase's own words, which the server sends only to an admin. Without
+    // them "server error" names no field, no parameter and no permission —
+    // there is nothing in it to act on.
+    detail: res.detail,
   }
 }
 
-function Blocked({ title, body, onRetry, onConnect, connectLabel = 'Connect Metabase' }) {
+function Blocked({ title, body, detail, onRetry, onConnect, connectLabel = 'Connect Metabase' }) {
   return (
     <div className="card grid place-items-center px-6 py-14 text-center">
       <span className="grid h-11 w-11 place-items-center rounded-2xl bg-brand-500/10 text-brand-600">
@@ -658,6 +662,13 @@ function Blocked({ title, body, onRetry, onConnect, connectLabel = 'Connect Meta
       </span>
       <p className="mt-3 text-[15px] font-bold text-ink-900">{title}</p>
       <p className="mx-auto mt-1.5 max-w-[52ch] text-[13px] leading-relaxed text-ink-500">{body}</p>
+      {detail && (
+        // Monospace and left-aligned: this is a machine's sentence, and
+        // centring it as prose makes a stack-trace-shaped thing unreadable.
+        <p className="mx-auto mt-3 max-w-[62ch] rounded-xl bg-clay-surface px-3 py-2 text-left font-mono text-[11.5px] leading-relaxed text-ink-600 shadow-clay-inset">
+          {detail}
+        </p>
+      )}
       <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
         {/* Leads, when it is offered. The retry is the answer to a transient
             failure; connecting is the answer to the state most people reading

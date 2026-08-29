@@ -30,7 +30,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
-import { Plug, Save, KeyRound, CheckCircle2, XCircle, Plus, Trash2, Server } from 'lucide-react'
+import { Plug, Save, KeyRound, CheckCircle2, XCircle, Plus, Trash2, Server, AlertTriangle } from 'lucide-react'
 import { Card, Field, Input, Button } from '../ui'
 import { saveIntegration } from '../org/integrations'
 import { metabaseSettings, metabaseTestConnection } from '../functions'
@@ -141,7 +141,16 @@ export default function MetabaseConnect({ orgId, actor, onSaved, compact = false
       const { config } = await metabaseSettings()
       setSaved(config)
       setForm(toForm(config))
-      toast.success('Metabase connection saved')
+      // Saved is not the same as working, and a plain success toast here said
+      // the second thing while meaning the first. A URL and a key make ODIN
+      // "connected"; without a findings question it still has nothing to run,
+      // and the dashboard reports that in words which do not obviously point
+      // back at the field that was left empty.
+      if (settings.sources.some((s) => s.cards.findings)) {
+        toast.success('Metabase connection saved')
+      } else {
+        toast('Saved — but no findings question is set, so ODIN has nothing to load yet.', { icon: '⚠️' })
+      }
       onSaved?.(config)
     } catch (err) {
       toast.error(err?.message || 'Could not save')
@@ -168,6 +177,16 @@ export default function MetabaseConnect({ orgId, actor, onSaved, compact = false
   }
 
   const many = form.sources.length > 1
+
+  // An instance with a URL but no findings question is the one configuration
+  // that saves perfectly cleanly and then dead-ends: ODIN reports "no findings
+  // question is configured" on a screen that cannot say which of three fields
+  // was the empty one, and the Test button passes, because a key and a URL are
+  // all it checks. Said HERE, while the form is open and the fix is one box
+  // away, rather than discovered on the dashboard afterwards.
+  //
+  // Only rows that have a URL: an untouched empty row is not a mistake yet.
+  const incomplete = form.sources.filter((s) => s.baseUrl.trim() && !s.findings.trim())
 
   return (
     <Card as="form" onSubmit={save} className="text-left">
@@ -251,6 +270,18 @@ export default function MetabaseConnect({ orgId, actor, onSaved, compact = false
           an instance that is down is named rather than silently dropped.
         </p>
       </div>
+
+      {incomplete.length > 0 && !loading && (
+        <div role="status" className="mt-5 flex items-start gap-2.5 rounded-2xl bg-amber-50 px-4 py-3">
+          <AlertTriangle size={16} className="mt-0.5 flex-none text-amber-700" />
+          <p className="text-[12.5px] leading-relaxed text-amber-900">
+            {many
+              ? `No findings question is set for ${incomplete.map((s) => s.label.trim() || `instance ${form.sources.indexOf(s) + 1}`).join(', ')}. ODIN loads nothing from ${incomplete.length === 1 ? 'it' : 'them'} until you add one.`
+              : 'ODIN has nothing to load until you set a findings question ID.'}
+            {' '}It is the number in the saved question&apos;s Metabase URL — <code>/question/412-safety-findings</code> is <b>412</b>.
+          </p>
+        </div>
+      )}
 
       <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-ink-100 pt-4">
         <Button type="submit" icon={Save} loading={busy} disabled={loading}>Save connection</Button>
