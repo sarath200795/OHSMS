@@ -121,6 +121,51 @@ const sourceId = (s, i) => String(s?.id || `src${i + 1}`)
  * `cards` are still returned as the FIRST source's, so every existing caller
  * and test keeps meaning what it meant.
  */
+// ── Keys that expire ─────────────────────────────────────────────────────────
+//
+// Some Metabase instances issue API keys with a short, fixed life — three days
+// is a real setting on a real installation. On one of those, a dashboard that
+// simply stops working every third day, with a 401 behind a generic "could not
+// run the question", is a support ticket a week.
+//
+// So the config records WHEN the key was last set and, optionally, how long
+// keys last here. Neither is a credential, both are shown to admins, and
+// together they turn "it broke again" into "this key expires tomorrow".
+// Nothing is enforced: the age is reported, never used to block a request that
+// might well still work.
+
+/** Milliseconds in a day, named because the arithmetic below reads better. */
+const DAY_MS = 86_400_000
+
+/** A Firestore Timestamp, an ISO string or a number, as epoch ms — or null. */
+export function asMillis(value) {
+  if (!value) return null
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null
+  if (typeof value?.toMillis === 'function') return value.toMillis()
+  if (typeof value?.seconds === 'number') return value.seconds * 1000
+  const t = Date.parse(String(value))
+  return Number.isFinite(t) ? t : null
+}
+
+/**
+ * How old the saved key is, and whether it is due for rotation.
+ *
+ * `maxAgeDays` of 0 means "these keys do not expire", which is the default and
+ * the common case — then `expiresInDays` and `stale` are null rather than
+ * invented, because a dashboard that warns about a key that never expires is a
+ * dashboard whose warnings get ignored.
+ */
+export function keyAge(config, now = Date.now()) {
+  const c = normalizeConfig(config)
+  if (!c.apiKey && !c.sources.some((s) => s.apiKey)) return { set: false, days: null, expiresInDays: null, stale: false }
+  const at = asMillis(c.apiKeyUpdatedAt)
+  if (at === null) return { set: true, days: null, expiresInDays: null, stale: false }
+  const days = Math.floor((now - at) / DAY_MS)
+  if (!c.apiKeyMaxAgeDays) return { set: true, days, expiresInDays: null, stale: false }
+  const expiresInDays = c.apiKeyMaxAgeDays - days
+  return { set: true, days, expiresInDays, stale: expiresInDays <= 0 }
+}
+
 export function normalizeConfig(data) {
   const apiKey = String(data?.apiKey || '')
   const listed = Array.isArray(data?.sources) ? data.sources.filter((s) => s && typeof s === 'object') : []
@@ -143,9 +188,16 @@ export function normalizeConfig(data) {
     cards: cardsOf(s),
   }))
 
+  // How long a key lasts on this instance, in days. Zero — the default — means
+  // "they do not expire", and is deliberately not a guess: an instance that
+  // issues permanent keys must not grow a warning that never stops.
+  const maxAge = Math.floor(Number(data?.apiKeyMaxAgeDays)) || 0
+
   return {
     apiKey,
     sources,
+    apiKeyUpdatedAt: data?.apiKeyUpdatedAt ?? null,
+    apiKeyMaxAgeDays: maxAge > 0 ? maxAge : 0,
     // The first source, flattened — the shape this config had before it held a
     // list, kept so single-instance callers read the same as they always did.
     baseUrl: sources[0]?.baseUrl || '',
@@ -173,6 +225,11 @@ export function redactConfig(config) {
     baseUrl: c.baseUrl,
     hasKey: Boolean(c.apiKey),
     cards: c.cards,
+    // When the key was last rotated and how long keys last here — both facts
+    // ABOUT the credential, neither any part of it.
+    apiKeyUpdatedAt: asMillis(c.apiKeyUpdatedAt),
+    apiKeyMaxAgeDays: c.apiKeyMaxAgeDays,
+    keyAge: keyAge(c),
     sources: c.sources.map((s) => ({
       id: s.id,
       label: s.label,
@@ -205,6 +262,102 @@ export function readiness(config, dataset) {
 /** The endpoint that runs a saved question and returns its rows as JSON. */
 export const cardQueryUrl = (origin, cardId) => `${origin}/api/card/${cardId}/query/json`
 
+/** The endpoint that describes a saved question — its parameters, mainly. */
+export const cardUrl = (origin, cardId) => `${origin}/api/card/${cardId}`
+
+// ── Date parameters ──────────────────────────────────────────────────────────
+//
+// A serious warehouse question is almost never "return everything". Both of the
+// questions this was first built against declare REQUIRED date variables, and a
+// bare POST to one of them comes back:
+//
+//   Cannot run the query: missing required parameters: #{"Start" "End"}
+//
+// So the dashboard was asking for a dataset that could not be produced. Sending
+// the range also stops a twelve-month question being run and thrown away every
+// time somebody wants a fortnight — the filtering happens in the warehouse,
+// where the data is, rather than over the wire.
+//
+// WHICH parameters get the range is inferred, and the inference is deliberately
+// dull: the question's date parameters, in the order the question declares
+// them, first is the start and second is the end. That is the shape of every
+// date-ranged question anyone writes, and the alternative — asking an admin to
+// type two variable names into the settings screen for each of two questions —
+// is four more fields to get wrong. What ran is reported back, so a question
+// whose parameters were guessed wrong shows it rather than hiding it.
+
+/** 'YYYY-MM-DD', or '' for anything that is not one. */
+export function asDay(value) {
+  const s = String(value || '').trim()
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return ''
+  // Rejects 2026-02-31 and friends, which Metabase would take and misread.
+  const t = Date.parse(`${s}T00:00:00Z`)
+  return Number.isFinite(t) && new Date(t).toISOString().slice(0, 10) === s ? s : ''
+}
+
+/** The date-typed parameters a saved question declares, in declaration order. */
+export const dateParameters = (card) =>
+  (Array.isArray(card?.parameters) ? card.parameters : [])
+    .filter((p) => p && typeof p.type === 'string' && p.type.startsWith('date/'))
+
+/**
+ * The `parameters` body that runs `card` over [from, to].
+ *
+ * Returns `{ parameters, bound }` — `bound` names what was filled, for the
+ * response. An empty array is a legitimate answer: a question with no date
+ * parameters is run exactly as it was before any of this existed.
+ */
+export function buildDateParams(card, { from = '', to = '' } = {}) {
+  const start = asDay(from)
+  const end = asDay(to)
+  const dates = dateParameters(card)
+  if (!dates.length || (!start && !end)) return { parameters: [], bound: [] }
+
+  // One date parameter is an "as at" or a "since", not a range. Binding the
+  // start to it would silently turn "up to today" into "from a year ago".
+  const pairs = dates.length === 1
+    ? [[dates[0], end || start]]
+    : [[dates[0], start], [dates[1], end]]
+
+  const parameters = []
+  const bound = []
+  for (const [p, value] of pairs) {
+    if (!value) continue
+    parameters.push({ id: p.id, type: p.type, target: p.target, value })
+    bound.push({ slug: p.slug || p.name || p.id, value })
+  }
+  return { parameters, bound }
+}
+
+/** [from, to] covering the last `days`, ending today. */
+export function defaultRange(now = Date.now(), days = 365) {
+  const to = new Date(now)
+  const from = new Date(now - days * 86_400_000)
+  return { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10) }
+}
+
+/**
+ * The range a caller asked for, clamped to something a warehouse can survive.
+ *
+ * An unbounded or inverted range is corrected rather than refused: this is a
+ * dashboard filter, and a date picker that returns an error is worse than one
+ * that returns the last year. MAX_RANGE_DAYS exists because these questions
+ * take tens of seconds per month of data and the callable has two minutes.
+ */
+export const MAX_RANGE_DAYS = 400
+
+export function safeRange({ from = '', to = '' } = {}, now = Date.now(), days = 365) {
+  const fallback = defaultRange(now, days)
+  let start = asDay(from) || fallback.from
+  let end = asDay(to) || fallback.to
+  if (start > end) [start, end] = [end, start]
+  const span = (Date.parse(`${end}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86_400_000
+  if (span > MAX_RANGE_DAYS) {
+    start = new Date(Date.parse(`${end}T00:00:00Z`) - MAX_RANGE_DAYS * 86_400_000).toISOString().slice(0, 10)
+  }
+  return { from: start, to: end, clamped: span > MAX_RANGE_DAYS }
+}
+
 /** The endpoint that proves a key works, without running anybody's query. */
 export const currentUserUrl = (origin) => `${origin}/api/user/current`
 
@@ -233,18 +386,50 @@ export const columnKey = (name) =>
   String(name || '').toLowerCase().replace(/%/g, ' pct ').replace(/[^a-z0-9]/g, '')
 
 export const COLUMN_ALIASES = {
-  siteId: ['siteid', 'sitecode', 'locationid'],
-  site: ['site', 'sitename', 'location', 'locationname', 'branch', 'store', 'facility'],
+  siteId: ['siteid', 'sitecode', 'locationid', 'centerid', 'centreid', 'centerserviceid', 'centreserviceid'],
+  site: ['site', 'sitename', 'location', 'locationname', 'branch', 'store', 'facility', 'center', 'centre', 'centername', 'centrename'],
   region: ['region', 'zone', 'area', 'cluster'],
   entity: ['entity', 'businessentity', 'businessunit', 'bu', 'company', 'division'],
-  status: ['status', 'issuestatus', 'findingstatus', 'state'],
-  category: ['category', 'findingcategory', 'maincategory', 'type', 'findingtype'],
-  subCategory: ['subcategory', 'subcat', 'findingsubcategory', 'subtype', 'subcategoryoffinding'],
-  auditDate: ['auditdate', 'date', 'auditedon', 'checkedon', 'observationdate', 'reporteddate', 'raiseddate'],
-  closedDate: ['closeddate', 'closedon', 'resolveddate', 'completedon'],
+  status: ['status', 'issuestatus', 'findingstatus', 'state', 'ticketstatus'],
+  category: ['category', 'findingcategory', 'maincategory', 'findingtype', 'l1tag', 'l1'],
+  subCategory: ['subcategory', 'subcat', 'findingsubcategory', 'subtype', 'subcategoryoffinding', 'l2tag', 'l2'],
+  auditDate: ['auditdate', 'date', 'auditedon', 'checkedon', 'observationdate', 'reporteddate', 'raiseddate', 'startdate', 'ticketdate', 'createdon', 'createdondate'],
+  closedDate: ['closeddate', 'closedon', 'resolveddate', 'completedon', 'closedat', 'closureDate', 'ticketclosuredate', 'ticketclosedtime'],
   lat: ['lat', 'latitude'],
   lng: ['lng', 'lon', 'long', 'longitude'],
   count: ['count', 'issues', 'findings', 'total', 'n'],
+
+  // ── The dimensions an estate is actually cut by ───────────────────────────
+  //
+  // `region` and `entity` were the whole vocabulary, and they are the wrong two
+  // for a business that runs hundreds of near-identical sites: those are sliced
+  // by city, by who owns the box, by which brand runs it and by what format it
+  // is. Each is its OWN field rather than aliased onto region, because folding
+  // a city into a column labelled "region" produces a chart that is confidently
+  // mislabelled — and the tab lets a reader pick which of them to group by, so
+  // nothing is lost by keeping them apart.
+  city: ['city', 'cityname', 'citynm', 'town'],
+  ownership: ['ownership', 'ownershiptype', 'ownedby', 'operatingmodel', 'ownermodel'],
+  businessLine: ['businessline', 'bizline', 'vertical', 'brand', 'productline'],
+  centerType: ['centertype', 'centretype', 'centertype1', 'centretype1', 'sitetype', 'format', 'formattype'],
+  tenant: ['tenant', 'tenanttype', 'tenantname', 'type'],
+  auditor: ['auditor', 'auditorname', 'inspector', 'inspectorname', 'assessor', 'checkedby', 'auditedby'],
+
+  // ── Remediation ───────────────────────────────────────────────────────────
+  //
+  // A findings question that carries a priority and an SLA verdict is stating
+  // which of its rows are the queue and which are noise. That is the single
+  // most useful thing a ticket dump has to say, and it had nowhere to land.
+  priority: ['priority', 'priorityflag', 'severity', 'criticality', 'urgency'],
+  sla: ['sla', 'slastatus', 'slaflag', 'slastate'],
+  tatHours: ['tat', 'tathours', 'tatclosurehour', 'turnaroundhours', 'closurehours'],
+  // The audit question behind a finding, verbatim. It is what tells an estate
+  // team what to fix everywhere rather than site by site.
+  checkpoint: ['checkpoint', 'question', 'checkpointname', 'checkitem', 'controlquestion'],
+  // What KIND of audit this is. `labels` sits here rather than on `category`
+  // because a ticket dump carries both, and two columns claiming one field
+  // means the later one is lost.
+  auditType: ['audittype', 'typeofaudit', 'labels', 'templatename'],
 
   // ── Pass rates, two ways of stating the same thing ────────────────────────
   //
@@ -257,8 +442,18 @@ export const COLUMN_ALIASES = {
   // 'Pass %' and 'Pass' are DIFFERENT columns and must never collapse together;
   // columnKey keeps the sign as `pct` so they cannot. A bare 'Pass' is read as
   // a count, because that is what a bare Pass beside a bare Fail means.
-  passPct: ['passpct', 'pctpass', 'passpercentage', 'passrate', 'score', 'scorepct', 'compliance', 'compliancepct', 'passpercentageday0', 'day0passpct'],
-  passPctN7: ['passpctn7', 'n7passpct', 'passpercentagen7', 'n7passpercentage', 'passraten7', 'retestpasspct', 'day7passpct'],
+  // 'oringinalcalcultatedcasscore' is not a typo here — it is the typo in the
+  // warehouse, and an alias table that refuses to match a misspelled column is
+  // an alias table that does not work on real questions.
+  passPct: ['passpct', 'pctpass', 'passpercentage', 'passrate', 'score', 'scorepct', 'compliance', 'compliancepct', 'passpercentageday0', 'day0passpct',
+    'casscore', 'originalcalculatedcasscore', 'oringinalcalcultatedcasscore'],
+  passPctN7: ['passpctn7', 'n7passpct', 'passpercentagen7', 'n7passpercentage', 'passraten7', 'retestpasspct', 'day7passpct',
+    'cassevendayscore', 'sevendaycasscore', 'updatedcasscore7day', 'casscoren7'],
+  // A third reading of the same audit: every remediation credited, right up to
+  // now. It is the most flattering of the three and the only one that MOVES on
+  // its own between refreshes, which is exactly why it is kept apart from the
+  // N+7 figure rather than quietly replacing it.
+  passPctToDate: ['passpcttodate', 'todatepasspct', 'cascurrentdayscore', 'currentdaycasscore', 'updatedcasscorecurrentday'],
   checksPassed: ['pass', 'passed', 'passes', 'passcount', 'checkspassed', 'passedchecks', 'compliantpoints', 'conformances'],
   checksFailed: ['fail', 'failed', 'fails', 'failcount', 'checksfailed', 'failedchecks', 'noncompliantpoints', 'nonconformances', 'nonconformities'],
   // The seven-day re-check, stated the same two ways. Symmetry matters here:
@@ -347,7 +542,13 @@ export function normalizeRow(row = {}) {
     if (!field) { out.extra[name] = value; continue }
     // First column wins. A question carrying both 'site' and 'site_name' would
     // otherwise depend on JSON key order, which is not a thing to depend on.
-    if (out[field] !== undefined) continue
+    //
+    // The RUNNER-UP is kept in `extra` rather than dropped. It used to vanish
+    // entirely, which meant a question carrying two columns that both mapped to
+    // one field silently lost the second — invisible on the dashboard and
+    // invisible in the settings screen's unmapped list, so there was nothing to
+    // see and nothing to fix.
+    if (out[field] !== undefined) { out.extra[name] = value; continue }
     out[field] = value
   }
   return {
@@ -359,6 +560,20 @@ export function normalizeRow(row = {}) {
     rawStatus: String(out.status ?? '').trim(),
     category: String(out.category ?? '').trim(),
     subCategory: String(out.subCategory ?? '').trim(),
+    city: String(out.city ?? '').trim(),
+    ownership: String(out.ownership ?? '').trim(),
+    businessLine: String(out.businessLine ?? '').trim(),
+    centerType: String(out.centerType ?? '').trim(),
+    tenant: String(out.tenant ?? '').trim(),
+    // Warehouse account names arrive with the company glued on the end
+    // ("Amit kumar Srivastava Curefit"), which makes every legend twice as wide
+    // as it needs to be for no added meaning.
+    auditor: String(out.auditor ?? '').trim().replace(/\s+(curefit|cultfit)$/i, ''),
+    priority: String(out.priority ?? '').trim(),
+    sla: String(out.sla ?? '').trim(),
+    checkpoint: String(out.checkpoint ?? '').trim(),
+    auditType: String(out.auditType ?? '').trim().replace(/^\[|\]$/g, ''),
+    tatHours: num(out.tatHours),
     auditDate: isoDate(out.auditDate),
     closedDate: isoDate(out.closedDate),
     lat: num(out.lat),
@@ -369,6 +584,7 @@ export function normalizeRow(row = {}) {
     count: num(out.count) ?? 1,
     passPct: num(out.passPct),
     passPctN7: num(out.passPctN7),
+    passPctToDate: num(out.passPctToDate),
     checksPassed: num(out.checksPassed),
     // A pass count on its own says nothing — 8 passed out of what? — so the
     // fail count beside it is what makes the pair usable, and the total is

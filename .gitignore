@@ -51,3 +51,10 @@ playwright-report/
 
 # Vitest writes these transient config snapshots next to the config file
 vitest.config.js.timestamp-*
+
+# The standalone FLS dashboard fetches raw warehouse dumps and caches an API key.
+tools/fls-dashboard/raw/*.json
+!tools/fls-dashboard/raw/card_*.json
+tools/fls-dashboard/.mbkey
+tools/fls-dashboard/data.json
+tools/fls-dashboard/fls-dashboard.html

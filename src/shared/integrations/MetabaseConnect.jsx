@@ -30,7 +30,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
-import { Plug, Save, KeyRound, CheckCircle2, XCircle, Plus, Trash2, Server } from 'lucide-react'
+import { Plug, Save, KeyRound, CheckCircle2, XCircle, Plus, Trash2, Server, AlertTriangle } from 'lucide-react'
 import { Card, Field, Input, Button } from '../ui'
 import { saveIntegration } from '../org/integrations'
 import { metabaseSettings, metabaseTestConnection } from '../functions'
@@ -52,7 +52,7 @@ function toForm(config) {
     findings: s.cards?.findings ? String(s.cards.findings) : '',
     audits: s.cards?.audits ? String(s.cards.audits) : '',
   } : blankSource()))
-  return { apiKey: '', sources }
+  return { apiKey: '', sources, maxAgeDays: config?.apiKeyMaxAgeDays ? String(config.apiKeyMaxAgeDays) : '' }
 }
 
 export default function MetabaseConnect({ orgId, actor, onSaved, compact = false }) {
@@ -137,11 +137,28 @@ export default function MetabaseConnect({ orgId, actor, onSaved, compact = false
         cards: { findings: null, audits: null },
       }
       if (form.apiKey.trim()) settings.apiKey = form.apiKey.trim()
+      // When the key was last rotated, recorded only when one was actually
+      // typed. An instance that issues short-lived keys turns "it stopped
+      // working again" into a date somebody can read — see keyAge in
+      // functions/lib/metabase.js. Never the key, only when it changed.
+      if (settings.apiKey || settings.sources.some((s) => s.apiKey)) {
+        settings.apiKeyUpdatedAt = new Date().toISOString()
+      }
+      settings.apiKeyMaxAgeDays = Number(form.maxAgeDays) > 0 ? Math.floor(Number(form.maxAgeDays)) : 0
       await saveIntegration(orgId, 'metabase', settings, actor)
       const { config } = await metabaseSettings()
       setSaved(config)
       setForm(toForm(config))
-      toast.success('Metabase connection saved')
+      // Saved is not the same as working, and a plain success toast here said
+      // the second thing while meaning the first. A URL and a key make ODIN
+      // "connected"; without a findings question it still has nothing to run,
+      // and the dashboard reports that in words which do not obviously point
+      // back at the field that was left empty.
+      if (settings.sources.some((s) => s.cards.findings)) {
+        toast.success('Metabase connection saved')
+      } else {
+        toast('Saved — but no findings question is set, so ODIN has nothing to load yet.', { icon: '⚠️' })
+      }
       onSaved?.(config)
     } catch (err) {
       toast.error(err?.message || 'Could not save')
@@ -168,6 +185,16 @@ export default function MetabaseConnect({ orgId, actor, onSaved, compact = false
   }
 
   const many = form.sources.length > 1
+
+  // An instance with a URL but no findings question is the one configuration
+  // that saves perfectly cleanly and then dead-ends: ODIN reports "no findings
+  // question is configured" on a screen that cannot say which of three fields
+  // was the empty one, and the Test button passes, because a key and a URL are
+  // all it checks. Said HERE, while the form is open and the fix is one box
+  // away, rather than discovered on the dashboard afterwards.
+  //
+  // Only rows that have a URL: an untouched empty row is not a mistake yet.
+  const incomplete = form.sources.filter((s) => s.baseUrl.trim() && !s.findings.trim())
 
   return (
     <Card as="form" onSubmit={save} className="text-left">
@@ -219,6 +246,32 @@ export default function MetabaseConnect({ orgId, actor, onSaved, compact = false
         />
       </Field>
 
+      {/* Rotation. Some instances issue keys with a fixed short life — three
+          days is real — and on one of those the dashboard breaks on a schedule
+          with a 401 nobody can read. Recording the life turns that into a
+          countdown an admin sees BEFORE it expires. Zero, the default, means
+          the keys here do not expire and no countdown is shown. */}
+      <Field
+        label="Key lifetime"
+        htmlFor="mb-maxage"
+        hint="How many days a key lasts on this Metabase, if they expire. Leave blank when they do not — a countdown that never ends is a warning people learn to ignore."
+      >
+        <div className="flex items-center gap-2">
+          <Input
+            id="mb-maxage"
+            type="number"
+            min="0"
+            max="365"
+            placeholder="never expires"
+            value={form.maxAgeDays}
+            onChange={(e) => setForm((f) => ({ ...f, maxAgeDays: e.target.value }))}
+            disabled={loading}
+          />
+          <span className="whitespace-nowrap text-[12px] text-ink-400">days</span>
+        </div>
+        <KeyAge age={saved?.keyAge} maxAgeDays={saved?.apiKeyMaxAgeDays} />
+      </Field>
+
       <div className="mt-5 space-y-3">
         <p className="text-[10.5px] font-bold uppercase tracking-[0.1em] text-ink-400">
           {many ? `Metabase instances (${form.sources.length})` : 'Metabase instance'}
@@ -251,6 +304,18 @@ export default function MetabaseConnect({ orgId, actor, onSaved, compact = false
           an instance that is down is named rather than silently dropped.
         </p>
       </div>
+
+      {incomplete.length > 0 && !loading && (
+        <div role="status" className="mt-5 flex items-start gap-2.5 rounded-2xl bg-amber-50 px-4 py-3">
+          <AlertTriangle size={16} className="mt-0.5 flex-none text-amber-700" />
+          <p className="text-[12.5px] leading-relaxed text-amber-900">
+            {many
+              ? `No findings question is set for ${incomplete.map((s) => s.label.trim() || `instance ${form.sources.indexOf(s) + 1}`).join(', ')}. ODIN loads nothing from ${incomplete.length === 1 ? 'it' : 'them'} until you add one.`
+              : 'ODIN has nothing to load until you set a findings question ID.'}
+            {' '}It is the number in the saved question&apos;s Metabase URL — <code>/question/412-safety-findings</code> is <b>412</b>.
+          </p>
+        </div>
+      )}
 
       <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-ink-100 pt-4">
         <Button type="submit" icon={Save} loading={busy} disabled={loading}>Save connection</Button>
@@ -386,5 +451,48 @@ function SourceRow({ source, index, many, loading, testing, result, sharedKey, o
         </div>
       </div>
     </div>
+  )
+}
+
+/**
+ * How old the saved key is, and how long it has left.
+ *
+ * Three states worth distinguishing, because they need three different
+ * reactions: expired (the dashboard is already broken), due soon (rotate before
+ * it breaks), and fine (say nothing loud). A key with no recorded rotation date
+ * — saved before this was tracked — says so plainly rather than guessing.
+ */
+export function KeyAge({ age, maxAgeDays }) {
+  if (!age?.set) return null
+
+  if (age.days === null) {
+    return (
+      <p className="mt-2 text-[11.5px] leading-relaxed text-ink-400">
+        A key is saved, but not when it was last changed. Save it again to start the countdown.
+      </p>
+    )
+  }
+
+  const ago = age.days === 0 ? 'today' : age.days === 1 ? 'yesterday' : `${age.days} days ago`
+
+  if (!maxAgeDays) {
+    return <p className="mt-2 text-[11.5px] text-ink-400">Key last changed {ago}.</p>
+  }
+
+  if (age.stale) {
+    return (
+      <p className="mt-2 text-[11.5px] font-semibold leading-relaxed text-red-600">
+        This key was set {ago} and these keys last {maxAgeDays} days — it has expired. Paste a new
+        one above and save; nothing else needs changing.
+      </p>
+    )
+  }
+
+  const soon = age.expiresInDays <= 1
+  return (
+    <p className={`mt-2 text-[11.5px] leading-relaxed ${soon ? 'font-semibold text-amber-600' : 'text-ink-400'}`}>
+      Key last changed {ago}.{' '}
+      {age.expiresInDays === 1 ? 'It expires tomorrow.' : `It expires in ${age.expiresInDays} days.`}
+    </p>
   )
 }

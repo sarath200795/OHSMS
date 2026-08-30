@@ -152,12 +152,23 @@ export default [
     languageOptions: { globals: { ...globals.node, ...vitestGlobals } },
   },
   // Seed / maintenance scripts are Node ESM — the main block only matches .js|.jsx.
+  //
+  // `tools/` is here for the same reason and was added the hard way: those
+  // files lint clean under `eslint src/ functions/` and fail under `eslint .`,
+  // which is what `npm run lint` and therefore CI actually runs. Forty-nine
+  // no-undef errors for `process`, `console` and `fetch` — a browser config
+  // judging Node scripts. Lint the whole repo, not the directory you were
+  // thinking about.
+  //
+  // es2021 alongside node for the reason given in the main block: the standard
+  // built-ins are not all declared by the node set, and `fetch`/`AbortSignal`
+  // in particular are language-level here rather than Node API.
   {
-    files: ['scripts/**/*.mjs', '*.config.js', '*.config.mjs'],
+    files: ['scripts/**/*.mjs', 'tools/**/*.mjs', '*.config.js', '*.config.mjs'],
     languageOptions: {
       ecmaVersion: 'latest',
       sourceType: 'module',
-      globals: { ...globals.node },
+      globals: { ...globals.node, ...globals.es2021 },
     },
   },
 ]

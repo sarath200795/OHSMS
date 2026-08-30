@@ -36,9 +36,21 @@ async function getFns() {
   return functionsPromise
 }
 
-async function callable(name) {
+/**
+ * A callable, with an optional client-side deadline.
+ *
+ * The Firebase client gives up after 70 seconds by default, which is generous
+ * for everything here except a warehouse query: a saved question over a quarter
+ * of a large estate takes a minute on its own, and the browser was abandoning
+ * calls the server went on to complete successfully. The tab then showed "the
+ * connector did not answer" about a request that had answered — the worst kind
+ * of wrong, because the logs say it worked.
+ *
+ * The deadline stays at the default for everything that does not ask.
+ */
+async function callable(name, { timeout } = {}) {
   const { mod, fns } = await getFns()
-  return mod.httpsCallable(fns, name)
+  return mod.httpsCallable(fns, name, timeout ? { timeout } : undefined)
 }
 
 /**
@@ -315,8 +327,27 @@ export async function metabaseTestConnection({ baseUrl, apiKey, sourceId } = {})
  * instances" is a caveat the dashboard can actually print. `ok` is true when at
  * least one answered: a single instance being down must not blank a dashboard
  * the others can fill.
+ *
+ * ── The range ────────────────────────────────────────────────────────────────
+ *
+ * `{ from, to }` as 'YYYY-MM-DD' runs the question over that window, bound to
+ * whatever date parameters the saved question declares. This is not an
+ * optimisation: a question with REQUIRED date variables — which serious ones
+ * usually have — cannot be run without them and answers "missing required
+ * parameters" to anything else. It also means the warehouse does the filtering,
+ * instead of a year of rows crossing the wire so the browser can throw most of
+ * them away.
+ *
+ * Omit it for the last twelve months. The response echoes `range` (what
+ * actually ran, after clamping) and `bound` (which of the question's parameters
+ * received it), because a figure that disagrees with Metabase is nearly always
+ * the two having been asked different questions.
  */
-export async function metabaseQuery(dataset) {
-  const fn = await callable('metabaseQuery')
-  return (await fn({ dataset })).data
+export async function metabaseQuery(dataset, { from, to } = {}) {
+  // Five minutes, matching the callable's own budget. The server waits up to
+  // 100s on Metabase and retries once on a server error, so a client that gave
+  // up at the default 70s would report a failure for a query still running —
+  // and would abandon the retry that exists to rescue it.
+  const fn = await callable('metabaseQuery', { timeout: 300_000 })
+  return (await fn({ dataset, from, to })).data
 }

@@ -12,7 +12,7 @@
 // useAccessibleSites the modules use is the only source of that list.
 // ─────────────────────────────────────────────────────────────────────────────
 import { useEffect, useState } from 'react'
-import { BarChart3, AlertTriangle, Siren, FireExtinguisher, Users, Cctv, Scale, ListChecks, ClipboardCheck, Radar } from 'lucide-react'
+import { BarChart3, AlertTriangle, Siren, FireExtinguisher, Users, Cctv, Scale, ListChecks, ClipboardCheck, Radar, UserCheck } from 'lucide-react'
 import { useAuth } from '../../shared/auth/AuthContext'
 import { subscribeCollections, emptyCollections } from '../../shared/org/orgData'
 import { useAccessibleSites } from '../../shared/org/useAccessibleSites'
@@ -26,6 +26,7 @@ import StakeholderTab from './StakeholderTab'
 import ActionsTab from './ActionsTab'
 import InspectionsTab from './InspectionsTab'
 import OdinTab from './OdinTab'
+import AuditorsTab from './AuditorsTab'
 
 // Icons match the portal registry's, so a tab here and the tile it reports on
 // are recognisably the same thing.
@@ -34,6 +35,9 @@ const TABS = [
   // picture the other tabs each show one slice of. It is deliberately not the
   // tab that OPENS — see the default below.
   { key: 'odin', label: 'ODIN', icon: Radar },
+  // Beside ODIN because it reads the same warehouse question. ODIN asks whether
+  // the estate is safe; this asks whether the audit programme actually ran.
+  { key: 'auditors', label: 'Auditors', icon: UserCheck },
   { key: 'incidents', label: 'Incidents', icon: AlertTriangle },
   { key: 'inspections', label: 'Inspections', icon: ClipboardCheck },
   { key: 'drills', label: 'Mock Drills', icon: Siren },
@@ -150,6 +154,8 @@ export default function Analytics() {
         // the site register is what puts a warehouse row on the map and what
         // bounds a viewer to the sites they may see.
         <OdinTab sites={sites} orgId={orgId} actor={actor} isAdmin={isAdmin} keepUnplaced={isAdmin} />
+      ) : tab === 'auditors' ? (
+        <AuditorsTab sites={sites} keepUnplaced={isAdmin} />
       ) : tab === 'incidents' ? (
         <IncidentsTab incidents={incidents} sites={sites} keepUnplaced={isAdmin} />
       ) : tab === 'inspections' ? (

@@ -7,7 +7,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../../shared/auth/AuthContext'
 import {
-  subscribeSites, createSite, updateSite, deleteSite, deleteSites, bulkCreateSites,
+  subscribeSites, createSite, updateSite, deleteSite, deleteSites, bulkUpsertSites,
   subscribeOrgUsers, subscribeCollections, emptyCollections, cleanAttributes, logAudit,
 } from '../../shared/org/orgData'
 import { can, roleLabel } from '../../shared/auth/permissions'
@@ -25,12 +25,14 @@ import { regionsOf, entitiesOf } from '../../shared/auth/access'
 import { normalizeScopeConfig } from '../../shared/org/scopeConfig'
 import { siteStats, linkAssets } from './siteStats'
 import { AUDIT } from '../../shared/audit/audit'
-import { parseSitesCsv, sitesCsvTemplate, sitesToCsv, hasCoordinates } from './parseSitesCsv'
+import {
+  parseSitesCsv, planImport, updatePayload, sitesCsvTemplate, sitesToCsv, hasCoordinates, duplicateCodes,
+} from './parseSitesCsv'
 import { downloadText } from '../../shared/lib/download'
 
 const SitesMap = lazy(() => import('./SitesMap'))
 
-const EMPTY = { name: '', region: '', entity: '', address: '', lat: '', lng: '', firstAidBoxes: '', attributes: {} }
+const EMPTY = { name: '', code: '', region: '', entity: '', address: '', lat: '', lng: '', firstAidBoxes: '', attributes: {} }
 
 // The asset registers behind every per-site rollup on this page.
 const COLLECTIONS = ['extinguishers', 'aeds', 'fas', 'incidents']
@@ -77,7 +79,7 @@ export default function Sites() {
   const openNew = () => { setForm(EMPTY); setEditing('new') }
   const openEdit = (s) => {
     setForm({
-      name: s.name || '', region: s.region || '', entity: s.entity || '', address: s.address || '',
+      name: s.name || '', code: s.code || '', region: s.region || '', entity: s.entity || '', address: s.address || '',
       lat: s.lat ?? '', lng: s.lng ?? '', firstAidBoxes: s.firstAidBoxes ?? '',
       attributes: s.attributes || {},
     })
@@ -87,6 +89,16 @@ export default function Sites() {
 
   const save = async (e) => {
     e.preventDefault()
+    // A colliding centre id is REFUSED, not warned about, for the same reason
+    // the CSV import refuses one: the column exists to be a key, and two sites
+    // claiming one makes every join on it ambiguous. The dashboard that results
+    // is wrong without saying so, which is the worst way for this to fail.
+    const code = String(form.code || '').trim()
+    const clash = code && (sites || []).find((x) => String(x.code || '').trim() === code && x.id !== editing?.id)
+    if (clash) {
+      toast.error(`Centre ID ${code} already belongs to “${clash.name}”.`)
+      return
+    }
     setBusy(true)
     try {
       if (editing === 'new') {
@@ -94,7 +106,7 @@ export default function Sites() {
         toast.success('Site added')
       } else {
         await updateSite(orgId, editing.id, {
-          name: form.name, region: form.region, entity: form.entity, address: form.address,
+          name: form.name, code: form.code, region: form.region, entity: form.entity, address: form.address,
           lat: form.lat === '' ? null : Number(form.lat),
           lng: form.lng === '' ? null : Number(form.lng),
           firstAidBoxes: Number(form.firstAidBoxes) || 0,
@@ -128,7 +140,7 @@ export default function Sites() {
     e.target.value = '' // allow re-selecting the same file
     if (!file) return
     try {
-      const res = await parseSitesCsv(file, customFields)
+      const res = planImport(await parseSitesCsv(file, customFields), sites || [])
       setBulkResult({ ...res, fileName: file.name })
     } catch {
       toast.error('Could not read that CSV file')
@@ -175,8 +187,26 @@ export default function Sites() {
     if (!bulkResult?.valid?.length) return
     setBulkBusy(true)
     try {
-      const n = await bulkCreateSites(orgId, bulkResult.valid, actor)
-      toast.success(`Imported ${n} site${n === 1 ? '' : 's'}`)
+      // Rows that matched an existing site become edits to it, carrying only
+      // the columns the file supplied — see updatePayload. Everything else is
+      // a new site. The counts are reported back so an import that updated
+      // when it was expected to insert says so rather than looking quiet.
+      const byId = new Map((sites || []).map((s) => [s.id, s]))
+      const updates = bulkResult.updates.map((r) => ({
+        id: r.__match.id,
+        // The name the REGISTER knows it by, not the spelling the spreadsheet
+        // used — a trail saying "updated north  plant" is hard to match against
+        // a site called North Plant. A genuine rename shows both.
+        name: r.__match.renameTo ? `${r.__match.name} → ${r.__match.renameTo}` : r.__match.name,
+        payload: updatePayload(r, byId.get(r.__match.id) || {}, bulkResult.present),
+      }))
+      const { created, updated } = await bulkUpsertSites(orgId, { creates: bulkResult.creates, updates }, actor)
+      toast.success(
+        [
+          created && `${created} site${created === 1 ? '' : 's'} added`,
+          updated && `${updated} updated`,
+        ].filter(Boolean).join(', ') || 'Nothing to import',
+      )
       setBulkOpen(false)
       setBulkResult(null)
     } catch (err) {
@@ -291,6 +321,8 @@ export default function Sites() {
       />
 
       <IncompleteNotice incomplete={store.incomplete} className="mb-4 shadow-clay-sm" />
+
+      <CentreIdNotice sites={sites} canManage={canManage} onExport={exportSites} onImport={() => setBulkOpen(true)} />
 
       {/* Tabs */}
       <div className="mb-5 flex gap-1.5 border-b border-ink-100 pb-3">
@@ -433,6 +465,11 @@ export default function Sites() {
               </div>
               <div>
                 <p className="font-semibold text-ink-900">{s.name}</p>
+                {/* The centre id, shown because the work of filling this column
+                    in is done by scanning for the sites that lack one. */}
+                {s.code && (
+                  <p className="mt-0.5 font-mono text-[11.5px] tracking-wide text-ink-400">ID {s.code}</p>
+                )}
                 {s.address && (
                   <p className="mt-0.5 flex items-center gap-1 text-sm text-ink-500">
                     <MapPin size={13} /> {s.address}
@@ -468,6 +505,10 @@ export default function Sites() {
               <Input id="name" required value={form.name} onChange={set('name')} placeholder="e.g. North Plant" />
             </Field>
           </div>
+          {/* Beside the name, because it identifies the same thing. */}
+          <Field label="Centre ID" htmlFor="code" hint={codeHint(form.code, editing, sites)}>
+            <Input id="code" value={form.code} onChange={set('code')} placeholder="e.g. 201" />
+          </Field>
           <Field label="Region" htmlFor="region">
             <Input id="region" value={form.region} onChange={set('region')} placeholder="e.g. North" />
           </Field>
@@ -605,7 +646,7 @@ export default function Sites() {
                 disabled={!bulkResult?.valid?.length}
                 onClick={importBulk}
               >
-                Import {bulkResult?.valid?.length || 0} site{bulkResult?.valid?.length === 1 ? '' : 's'}
+                {importLabel(bulkResult)}
               </Button>
             </div>
           </div>
@@ -614,8 +655,14 @@ export default function Sites() {
         <div className="space-y-4">
           <p className="text-sm text-ink-500">
             Upload a CSV with columns{' '}
-            <b>Site Name, Region, Entity, Address, Latitude, Longitude, First Aid Boxes{customFields.map((f) => `, ${f.label}`).join('')}</b>. Rows without
+            <b>Site Name, Centre ID, Region, Entity, Address, Latitude, Longitude, First Aid Boxes{customFields.map((f) => `, ${f.label}`).join('')}</b>. Rows without
             a valid <b>latitude and longitude</b> are rejected and will not be imported.
+          </p>
+          <p className="text-sm text-ink-500">
+            A row matching a site you already have — by <b>Centre ID</b>, or failing that by
+            <b> name</b> — updates that site instead of adding a second one. Only the columns your
+            file actually contains are touched, so a spreadsheet of names and IDs will not blank
+            the addresses. Every row is listed below before anything is written.
           </p>
 
           <label className="clay-inset flex cursor-pointer flex-col items-center gap-2 rounded-2xl p-6 text-center transition hover:bg-clay-100">
@@ -638,8 +685,14 @@ export default function Sites() {
             <>
               <div className="flex flex-wrap gap-2">
                 <Badge tone="green">
-                  <CheckCircle2 size={13} /> {bulkResult.valid.length} valid
+                  <CheckCircle2 size={13} /> {bulkResult.creates.length} new
                 </Badge>
+                {bulkResult.updates.length > 0 && (
+                  <Badge tone="amber">
+                    <Pencil size={13} /> {bulkResult.updates.length} existing site
+                    {bulkResult.updates.length === 1 ? '' : 's'} updated
+                  </Badge>
+                )}
                 {bulkResult.invalid.length > 0 && (
                   <Badge tone="red">
                     <AlertCircle size={13} /> {bulkResult.invalid.length} rejected (no coordinates)
@@ -652,6 +705,7 @@ export default function Sites() {
                     <tr className="text-xs uppercase tracking-wide text-ink-400">
                       <th className="px-4 py-2">Row</th>
                       <th className="px-4 py-2">Name</th>
+                      <th className="px-4 py-2">Centre ID</th>
                       <th className="px-4 py-2">Region / Entity</th>
                       <th className="px-4 py-2">Lat, Lng</th>
                       <th className="px-4 py-2">Status</th>
@@ -662,6 +716,7 @@ export default function Sites() {
                       <tr key={r.__row} className={r.__errors.length ? 'bg-red-50/40' : ''}>
                         <td className="px-4 py-2 text-ink-400">{r.__row}</td>
                         <td className="px-4 py-2 font-medium text-ink-800">{r.name || '—'}</td>
+                        <td className="px-4 py-2 font-mono text-[12px] text-ink-500">{r.code || '—'}</td>
                         <td className="px-4 py-2 text-ink-500">
                           {[r.region, r.entity].filter(Boolean).join(' · ') || '—'}
                         </td>
@@ -670,9 +725,23 @@ export default function Sites() {
                         </td>
                         <td className="px-4 py-2">
                           {r.__errors.length === 0 ? (
-                            <span className="inline-flex items-center gap-1 text-emerald-600">
-                              <CheckCircle2 size={14} /> OK
-                            </span>
+                            r.__match ? (
+                              <span className="inline-flex flex-col gap-0.5 text-amber-700">
+                                <span className="inline-flex items-center gap-1 font-medium">
+                                  <Pencil size={13} /> Updates “{r.__match.name}”
+                                  <span className="text-ink-400">
+                                    (matched on {r.__match.by === 'id' ? 'centre ID' : 'name'})
+                                  </span>
+                                </span>
+                                <span className="text-[11.5px] text-ink-500">
+                                  {changeSummary(r.__changes, r.__match.renameTo)}
+                                </span>
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-emerald-600">
+                                <CheckCircle2 size={14} /> New site
+                              </span>
+                            )
                           ) : (
                             <span className="inline-flex items-center gap-1 text-red-600">
                               <AlertCircle size={14} /> {r.__errors.join('; ')}
@@ -768,4 +837,115 @@ export default function Sites() {
 
     </>
   )
+}
+
+/**
+ * What an update would actually change, in a line.
+ *
+ * Named fields rather than a count, because "3 fields" tells nobody whether the
+ * import is about to correct a coordinate or rewrite every address. A rename
+ * leads, since it is the change most likely to be unintended.
+ */
+function changeSummary(changes = {}, renameTo = '') {
+  const keys = Object.keys(changes).filter((k) => k !== 'name')
+  const parts = []
+  if (renameTo) parts.push(`renames to “${renameTo}”`)
+  if (keys.length) {
+    const pretty = keys.map((k) => k.replace(/^attributes\./, '').replace(/([A-Z])/g, ' $1').toLowerCase())
+    parts.push(`changes ${pretty.slice(0, 4).join(', ')}${pretty.length > 4 ? `, +${pretty.length - 4} more` : ''}`)
+  }
+  return parts.length ? parts.join(' · ') : 'no change — the row matches what is stored'
+}
+
+/** The import button's label: what will happen, not how many rows were read. */
+function importLabel(result) {
+  const created = result?.creates?.length || 0
+  const updated = result?.updates?.length || 0
+  if (!created && !updated) return 'Import'
+  if (!created) return `Update ${updated}`
+  if (!updated) return `Add ${created}`
+  return `Add ${created}, update ${updated}`
+}
+
+/**
+ * How much of the register carries a centre id, and how to finish the job.
+ *
+ * Shown only while it is actionable: silent once every site has one, and
+ * silent for someone who cannot edit sites anyway. The route it names —
+ * export, paste the ids in beside the names, import the same file back — is
+ * the only realistic one for an estate of any size, and it is not discoverable
+ * from two buttons at opposite ends of a toolbar.
+ *
+ * A duplicate is called out separately and first. Missing ids make a join
+ * incomplete, which shows up as a thin map; duplicated ids make it WRONG, which
+ * shows up as one centre's audits filed under another and nothing saying so.
+ */
+function CentreIdNotice({ sites, canManage, onExport, onImport }) {
+  if (!canManage || !sites || sites.length === 0) return null
+  const withCode = sites.filter((s) => String(s.code || '').trim()).length
+  const dupes = duplicateCodes(sites)
+  if (withCode === sites.length && dupes.length === 0) return null
+
+  const missing = sites.length - withCode
+  const bad = dupes.length > 0
+
+  return (
+    <div
+      role="status"
+      className={`mb-4 rounded-2xl border p-4 shadow-clay-sm ${
+        bad ? 'border-red-200 bg-red-50' : 'border-amber-200 bg-amber-50'
+      }`}
+    >
+      <p className={`flex items-center gap-2 text-sm font-semibold ${bad ? 'text-red-900' : 'text-amber-900'}`}>
+        <AlertTriangle size={16} />
+        {bad
+          ? `${dupes.length} centre ID${dupes.length === 1 ? ' is' : 's are'} used by more than one site`
+          : `${missing} of ${sites.length} site${sites.length === 1 ? '' : 's'} have no centre ID`}
+      </p>
+      <p className={`mt-1 text-[13px] leading-relaxed ${bad ? 'text-red-900' : 'text-amber-900'}`}>
+        {bad ? (
+          <>
+            {dupes.slice(0, 3).map(([code, names]) => `${code} (${names.join(', ')})`).join('; ')}
+            {dupes.length > 3 ? `, and ${dupes.length - 3} more` : ''}. Analytics → ODIN matches
+            warehouse rows to a site on this ID, so a shared one files a centre’s audits under
+            whichever site the lookup happens to reach. Give each its own.
+          </>
+        ) : (
+          <>
+            Analytics → ODIN matches warehouse rows to a site on this ID; without one it falls back
+            to matching on name, which misses anything spelled differently. For more than a handful,
+            export the register, paste the IDs into the <b>Centre ID</b> column beside the names, and
+            import the same file back.
+          </>
+        )}
+      </p>
+      {!bad && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Button variant="ghost" icon={Download} className="!py-1.5 !text-[12.5px]" onClick={onExport}>
+            Export the register
+          </Button>
+          <Button variant="ghost" icon={Upload} className="!py-1.5 !text-[12.5px]" onClick={onImport}>
+            Import it back
+          </Button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * What sits under the Centre ID box.
+ *
+ * A live collision is the most useful thing this field can say, so it outranks
+ * the explanation — an admin who has just typed an id another site already
+ * holds needs to know now, not when a dashboard starts attributing one centre's
+ * audits to another.
+ */
+function codeHint(code, editing, sites) {
+  const value = String(code || '').trim()
+  const clash = value && (sites || []).find(
+    (s) => String(s.code || '').trim() === value && s.id !== editing?.id
+  )
+  if (clash) return `“${clash.name}” already uses this ID — two sites cannot share one.`
+  return 'This site’s ID in the system that owns it — a centre service ID, a store code. Analytics → ODIN matches warehouse rows to this site on it.'
 }
