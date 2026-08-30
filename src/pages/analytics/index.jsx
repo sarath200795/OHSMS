@@ -11,7 +11,7 @@
 // scoping mistake is least visible and most consequential, so the same
 // useAccessibleSites the modules use is the only source of that list.
 // ─────────────────────────────────────────────────────────────────────────────
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { BarChart3, AlertTriangle, Siren, FireExtinguisher, Users, Cctv, Scale, ListChecks, ClipboardCheck, Radar, UserCheck } from 'lucide-react'
 import { useAuth } from '../../shared/auth/AuthContext'
 import { subscribeCollections, emptyCollections } from '../../shared/org/orgData'
@@ -34,10 +34,28 @@ const TABS = [
   // ODIN leads the LIST because it is the cross-module Safety & Security
   // picture the other tabs each show one slice of. It is deliberately not the
   // tab that OPENS — see the default below.
-  { key: 'odin', label: 'ODIN', icon: Radar },
+  //
+  // ── needs, and why these two are the only tabs that have one ───────────────
+  //
+  // Every other tab reads Firestore, so every organization has something to put
+  // in it. These two read a Metabase warehouse, which almost no organization
+  // has. Shown unconditionally they were a chore inflicted on every tenant on
+  // the platform: a tab whose entire content was an invitation to connect a
+  // product they had never heard of, permanently, because they were never going
+  // to connect it.
+  //
+  // So they are an ADD-ON, granted per customer by the platform operator on
+  // Module access — see ADDONS in shared/modules/registry.js. Off unless
+  // switched on, which is the inverse of how a module behaves and is the whole
+  // reason add-ons are a separate list. An organization that is never going to
+  // use ODIN is never shown it and never has to decline it.
+  //
+  // Once granted, an admin connects Metabase in Settings → Integrations, which
+  // is also where the API key is rotated.
+  { key: 'odin', label: 'ODIN', icon: Radar, needs: 'odin' },
   // Beside ODIN because it reads the same warehouse question. ODIN asks whether
   // the estate is safe; this asks whether the audit programme actually ran.
-  { key: 'auditors', label: 'Auditors', icon: UserCheck },
+  { key: 'auditors', label: 'Auditors', icon: UserCheck, needs: 'odin' },
   { key: 'incidents', label: 'Incidents', icon: AlertTriangle },
   { key: 'inspections', label: 'Inspections', icon: ClipboardCheck },
   { key: 'drills', label: 'Mock Drills', icon: Siren },
@@ -60,7 +78,15 @@ const COLLECTIONS = [
 ]
 
 export default function Analytics() {
-  const { orgId, isAdmin, actor } = useAuth()
+  const { orgId, isAdmin, actor, moduleEnabled } = useAuth()
+
+  // The tabs this organization is licensed for. A tab with a `needs` is an
+  // add-on the platform operator grants per customer — see ADDONS in the
+  // module registry and the note on TABS below.
+  const tabs = useMemo(
+    () => TABS.filter((t) => !t.needs || moduleEnabled(t.needs)),
+    [moduleEnabled],
+  )
   const sites = useAccessibleSites()
   // Incidents opens, not ODIN, and the reason is that ODIN is the one tab that
   // reaches OFF this machine. Mounting it runs two callables against a
@@ -81,6 +107,14 @@ export default function Analytics() {
     if (!orgId) return undefined
     return subscribeCollections(orgId, COLLECTIONS, setStore)
   }, [orgId])
+
+  // The org document is live, so an integration can be disconnected while
+  // somebody is standing on the tab it feeds. Without this they keep the tab
+  // they can no longer see in the tab strip, which reads as the page having
+  // broken rather than as a setting having changed.
+  useEffect(() => {
+    if (!tabs.some((t) => t.key === tab)) setTab('incidents')
+  }, [tabs, tab])
 
   const {
     incidents, mockDrills: drills, consultations, extinguishers, aeds, fas,
@@ -115,7 +149,7 @@ export default function Analytics() {
         aria-label="Analytics modules"
         className="mb-5 flex gap-1.5 overflow-x-auto rounded-2xl bg-clay-surface p-2 shadow-clay-inset"
       >
-        {TABS.map((t) => (
+        {tabs.map((t) => (
           <button
             key={t.key}
             role="tab"

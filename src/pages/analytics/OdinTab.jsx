@@ -20,14 +20,14 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, Legend, Cell, PieChart, Pie, LabelList,
+  BarChart, Bar, XAxis, YAxis, Tooltip, Legend, Cell, LabelList,
   LineChart, Line, ReferenceLine, CartesianGrid,
 } from 'recharts'
 import { MapContainer, TileLayer, Marker, Tooltip as LeafletTooltip } from 'react-leaflet'
 import L from 'leaflet'
 import {
   RefreshCw, ShieldAlert, MapPinOff, Radar, AlertTriangle, Plug, Loader2,
-  CircleCheck, CircleX, SlidersHorizontal, X,
+  CircleCheck, CircleX, SlidersHorizontal, X, ClipboardCheck,
 } from 'lucide-react'
 import ChartFrame from '../../shared/ui/ChartFrame'
 import { metabaseQuery, metabaseSettings } from '../../shared/functions'
@@ -39,6 +39,24 @@ import {
 } from './odinAnalytics'
 
 const axis = { tickLine: false, axisLine: false, fontSize: 11, tick: { fill: '#8a7660' } }
+
+const num = (v) => (v == null ? '—' : Number(v).toLocaleString())
+
+/**
+ * The rule that separates the two halves of this page.
+ *
+ * Scores, then the tickets those scores raised. Without the split it is
+ * seventeen panels in a column and no indication that half of them count
+ * audits and half count tickets — two populations that must never be added up.
+ */
+function BandHead({ title, note }) {
+  return (
+    <div className="mb-3 mt-8 flex items-baseline gap-3 border-b border-ink-100 pb-2 first:mt-0">
+      <h2 className="text-[15px] font-bold tracking-tight text-ink-900">{title}</h2>
+      {note && <span className="text-[11.5px] text-ink-400">{note}</span>}
+    </div>
+  )
+}
 
 const EMPTY_FILTER = {
   region: 'all', entity: 'all', status: 'all', subCategory: 'all', source: 'all', from: '', to: '',
@@ -267,9 +285,47 @@ export default function OdinTab({ sites = [], orgId, actor, isAdmin = false, kee
   }
 
   const t = a.totals
-  const HEAD = [
-    { key: 'total', icon: Radar, label: 'Issues in scope', value: t.total, tone: '#0d9488' },
-    ...STATUS_META.map((s) => ({ key: s.key, icon: ShieldAlert, label: s.label, value: t[s.key], tone: s.color })),
+
+  // ── The two headline rows ──────────────────────────────────────────────────
+  //
+  // This used to be one row of five: issues in scope and a tile per status. It
+  // answered "how big is the backlog" and nothing else — you could read every
+  // tile and still not know whether the estate passes its audits, which is the
+  // question the page exists for.
+  //
+  // Two rows now, one per band. Scores first, because a ticket only means
+  // anything as the consequence of a failed check. Every tile is null-safe: a
+  // question that carries no pass data leaves the score row showing dashes
+  // rather than a confident zero.
+  const rec = a.recovery
+  const day0 = rec.stages[0]
+  const n7 = rec.stages[1]
+  const recovered = n7?.rate != null && day0?.rate != null ? Math.round((n7.rate - day0.rate) * 10) / 10 : null
+  const failing = rec.total && n7 ? rec.total - n7.passed : null
+
+  const AUDIT_KPIS = [
+    { key: 'audits', icon: ClipboardCheck, label: 'Audits completed', value: num(a.auditCount || rec.total), tone: '#0d9488' },
+    {
+      key: 'n7', icon: CircleCheck, label: `Pass rate after 7 days`,
+      value: n7?.rate == null ? '—' : `${n7.rate}%`,
+      sub: recovered == null ? undefined : `${recovered > 0 ? '+' : ''}${recovered} pts on the day-0 rate`,
+      tone: '#22c55e',
+    },
+    { key: 'day0', icon: Radar, label: 'Pass rate on the day', value: day0?.rate == null ? '—' : `${day0.rate}%`, tone: '#f59e0b' },
+    { key: 'failing', icon: CircleX, label: 'Failing after 7 days', value: failing == null ? '—' : num(failing), tone: '#ef4444' },
+  ]
+
+  const openTickets = t.total - t.closed
+  const codeRed = (a.byPriority || []).find((p) => /red/i.test(p.name))
+  const TICKET_KPIS = [
+    { key: 'raised', icon: ShieldAlert, label: 'Tickets raised', value: num(t.total), sub: `${num(t.closed)} closed`, tone: '#0d9488' },
+    { key: 'open', icon: AlertTriangle, label: 'Still open', value: num(openTickets), tone: '#f59e0b' },
+    {
+      key: 'breach', icon: AlertTriangle, label: 'SLA breached', value: num(a.breached),
+      sub: t.total ? `${Math.round((a.breached / t.total) * 100)}% of tickets in view` : undefined,
+      tone: '#ef4444',
+    },
+    { key: 'red', icon: ShieldAlert, label: 'Code red open', value: codeRed ? num(codeRed.open) : '—', sub: codeRed ? `${num(codeRed.value)} raised` : undefined, tone: '#dc2626' },
   ]
 
   const fetchedAt = findings?.fetchedAt ? new Date(findings.fetchedAt) : null
@@ -394,18 +450,53 @@ export default function OdinTab({ sites = [], orgId, actor, isAdmin = false, kee
 
       <Caveats findings={findings} audits={audits} totals={t} />
 
-      <div className="mb-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        {HEAD.map(({ key, ...s }) => <Stat key={key} {...s} />)}
+      <BandHead title="Audit scores" note={`Against the ${PASS_MARK}% pass mark`} />
+
+      <div className="mb-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {AUDIT_KPIS.map(({ key, ...s }) => <Stat key={key} {...s} />)}
       </div>
       <p className="mb-5 text-[11.5px] leading-relaxed text-ink-400">
-        Safety &amp; Security issues from Metabase
-        {fetchedAt ? `, as at ${fetchedAt.toLocaleString()}` : ''}.
-        {' '}These are a snapshot, not a live feed — press Refresh to run the questions again.
+        From Metabase{fetchedAt ? `, as at ${fetchedAt.toLocaleString()}` : ''}.
+        {' '}A snapshot, not a live feed — press Refresh to run the questions again.
       </p>
 
       <TrendPanel trend={a.trend} gran={f.gran} source={a.passSource} />
 
+      <div className="mb-5 grid gap-4 lg:grid-cols-[1fr_1fr]">
+        <RecoveryPanel recovery={a.recovery} />
+        <DistributionPanel distribution={a.distribution} />
+      </div>
+
+      <PassRates
+        audits={audits}
+        byGroup={a.passByGroup}
+        groupLabel={groupLabel}
+        overall={a.passOverall}
+        source={a.passSource}
+        isAdmin={isAdmin}
+        onConnect={isAdmin ? () => setConnecting(true) : null}
+      />
+
+      <BandHead title="Remediation tickets" note="Raised by the audits above" />
+
+      <div className="mb-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {TICKET_KPIS.map(({ key, ...s }) => <Stat key={key} {...s} />)}
+      </div>
+      <p className="mb-5 text-[11.5px] leading-relaxed text-ink-400">
+        One row per ticket the audits raised. Bucketed on the date the defect was RAISED, not
+        the date it closed — the two are different clocks.
+      </p>
+
       <TicketTrendPanel tickets={a.tickets} gran={f.gran} breached={a.breached} />
+
+      <div className="mb-5 grid gap-4 lg:grid-cols-[1fr_1fr]">
+        <SlaPanel rows={a.bySla} breached={a.breached} total={t.total} />
+        <PriorityPanel rows={a.byPriority} />
+      </div>
+
+      <CheckpointPanel rows={a.byCheckpoint} />
+
+      <BandHead title="Where" note="Joined to your site register" />
 
       <Panel
         title="Where the issues are"
@@ -501,7 +592,7 @@ export default function OdinTab({ sites = [], orgId, actor, isAdmin = false, kee
         )}
       </Panel>
 
-      <div className="mb-5 grid gap-4 lg:grid-cols-[1.4fr_1fr]">
+      <div className="mb-5">
         <Panel title="Sub-category of finding" subtitle="Every sub-category, most frequent first">
           {a.bySubCategoryAll.length === 0 ? (
             <NoData>Nothing to show.</NoData>
@@ -523,33 +614,9 @@ export default function OdinTab({ sites = [], orgId, actor, isAdmin = false, kee
             </ChartFrame>
           )}
         </Panel>
-
-        <Panel title="Share of findings" subtitle="Top 8 sub-categories; the rest are pooled">
-          {a.bySubCategoryTop.length === 0 ? (
-            <NoData>Nothing to show.</NoData>
-          ) : (
-            <ChartFrame label="Share of findings by sub-category" width="100%" height={300}>
-              <PieChart>
-                <Pie data={a.bySubCategoryTop} dataKey="value" nameKey="name" outerRadius={92} innerRadius={52} paddingAngle={2}>
-                  {a.bySubCategoryTop.map((d) => <Cell key={d.name} fill={d.color} />)}
-                </Pie>
-                <Tooltip />
-                <Legend iconType="circle" wrapperStyle={{ fontSize: 10.5 }} />
-              </PieChart>
-            </ChartFrame>
-          )}
-        </Panel>
       </div>
 
-      <PassRates
-        audits={audits}
-        byGroup={a.passByGroup}
-        groupLabel={groupLabel}
-        overall={a.passOverall}
-        source={a.passSource}
-        isAdmin={isAdmin}
-        onConnect={isAdmin ? () => setConnecting(true) : null}
-      />
+      <Watchlist rows={a.watchlist} join={a.join} />
     </div>
   )
 }
@@ -680,6 +747,295 @@ function TicketTrendPanel({ tickets, gran, breached }) {
         clocks, and mixing them into one bar produces a backlog chart that says nothing.
         {' '}{total.toLocaleString()} ticket{total === 1 ? '' : 's'} in scope.
         {undated > 0 && <> {undated.toLocaleString()} carry no date and are in none of these bars.</>}
+      </p>
+    </Panel>
+  )
+}
+
+// ── The FLS panels ───────────────────────────────────────────────────────────
+//
+// Everything here is fed by a column a findings or audits question MAY carry
+// and often does not, so each renders NOTHING at all when its column is absent
+// rather than an empty frame. A panel captioned "no data" for a tenant who was
+// never going to have that column is furniture on every load, forever.
+
+/**
+ * What the seven-day window recovers.
+ *
+ * An ordered progression, so one hue stepped rather than three unrelated
+ * colours, and the steps start dark enough to hold contrast on the surface.
+ * The shared denominator sits under every bar: "2,157 passed" is not a number
+ * anyone can act on without the total beside it.
+ */
+const RECOVERY_STEPS = ['#86b6ef', '#2a78d6', '#184f95']
+
+function RecoveryPanel({ recovery }) {
+  if (!recovery?.total) return null
+  const { total, stages } = recovery
+  return (
+    <Panel
+      title="What the 7-day window recovers"
+      subtitle="The same audits counted three times, as remediation is credited"
+    >
+      <div className="space-y-4">
+        {stages.map((st, i) => (
+          <div key={st.label}>
+            <div className="flex items-baseline justify-between gap-3">
+              <span className="text-[12.5px] font-medium text-ink-700">{st.label}</span>
+              <span className="text-[13px] font-bold tabular-nums text-ink-900">
+                {st.rate == null ? '—' : `${st.rate}%`}
+              </span>
+            </div>
+            <div className="mt-1.5 h-3.5 overflow-hidden rounded-full bg-clay-100">
+              <div
+                className="h-full rounded-full transition-[width] duration-500 ease-emil"
+                style={{ width: `${Math.max(1, st.rate || 0)}%`, background: RECOVERY_STEPS[i] || RECOVERY_STEPS[2] }}
+              />
+            </div>
+            <p className="mt-1 text-[11px] tabular-nums text-ink-400">
+              {st.passed.toLocaleString()} of {total.toLocaleString()}
+            </p>
+          </div>
+        ))}
+      </div>
+      <p className="mt-4 text-[11.5px] leading-relaxed text-ink-500">
+        A failed critical checkpoint counts as a pass once its ticket closes inside seven days of
+        being raised. The gap between the first two bars is what that window bought.
+      </p>
+    </Panel>
+  )
+}
+
+/** Audits by score band. Pass and fail are STATES, so they take status colours. */
+function DistributionPanel({ distribution }) {
+  if (!distribution?.scored) return null
+  const { bands, scored } = distribution
+  const max = Math.max(1, ...bands.map((b) => b.value))
+  return (
+    <Panel title="Score distribution" subtitle={`${scored.toLocaleString()} audits, after the 7-day window`}>
+      <div className="space-y-2">
+        {bands.map((b) => (
+          <div key={b.name} className="flex items-center gap-3">
+            <span className="w-16 shrink-0 text-right text-[11.5px] tabular-nums text-ink-500">{b.name}</span>
+            <div className="h-3.5 flex-1 overflow-hidden rounded-full bg-clay-100">
+              <div
+                className="h-full rounded-full"
+                style={{ width: `${(b.value / max) * 100}%`, background: b.passing ? '#0ca30c' : '#d03b3b' }}
+              />
+            </div>
+            <span className="w-12 shrink-0 text-right text-[12px] font-semibold tabular-nums text-ink-800">
+              {b.value.toLocaleString()}
+            </span>
+          </div>
+        ))}
+      </div>
+      <p className="mt-4 text-[11.5px] leading-relaxed text-ink-500">
+        The two bands either side of {PASS_MARK}% are the ones worth chasing — a near miss is a
+        different problem from a collapse, and an even histogram hides which one you have.
+      </p>
+    </Panel>
+  )
+}
+
+/** Where every ticket stands against its clock. Four states, worst first. */
+const SLA_ORDER = [
+  { match: /open.*breach/i, name: 'Open, SLA breached', color: '#d03b3b' },
+  { match: /clos.*breach/i, name: 'Closed late', color: '#ec835a' },
+  { match: /open.*within/i, name: 'Open, within SLA', color: '#fab219' },
+  { match: /clos.*within/i, name: 'Closed on time', color: '#0ca30c' },
+]
+
+function SlaPanel({ rows, breached, total }) {
+  if (!rows?.length) return null
+  const seen = new Set()
+  const ordered = SLA_ORDER.map((o) => {
+    const hit = rows.find((r) => o.match.test(r.name))
+    if (hit) seen.add(hit.name)
+    return { name: o.name, color: o.color, value: hit?.value || 0 }
+  }).filter((r) => r.value)
+  const other = rows.filter((r) => !seen.has(r.name)).reduce((n, r) => n + r.value, 0)
+  const all = other ? [...ordered, { name: 'Unclassified', color: '#8a8781', value: other }] : ordered
+  const sum = all.reduce((n, r) => n + r.value, 0)
+  if (!sum) return null
+
+  return (
+    <Panel
+      title="SLA position"
+      subtitle="Every ticket sits in exactly one of these"
+      right={
+        breached > 0 && total > 0 ? (
+          <span className="text-[11.5px] font-semibold text-red-600">
+            {Math.round((breached / total) * 100)}% breached
+          </span>
+        ) : null
+      }
+    >
+      <div className="flex h-7 overflow-hidden rounded-lg">
+        {all.map((r) => (
+          <div key={r.name} style={{ width: `${(r.value / sum) * 100}%`, background: r.color }} />
+        ))}
+      </div>
+      <div className="mt-4 space-y-2">
+        {all.map((r) => (
+          <div key={r.name} className="flex items-center gap-2.5 text-[12.5px]">
+            <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: r.color }} />
+            <span className="text-ink-600">{r.name}</span>
+            <span className="ml-auto font-semibold tabular-nums text-ink-900">{r.value.toLocaleString()}</span>
+            <span className="w-12 text-right tabular-nums text-ink-400">
+              {((r.value / sum) * 100).toFixed(1)}%
+            </span>
+          </div>
+        ))}
+      </div>
+    </Panel>
+  )
+}
+
+/** Priority mix. Four ordered tiers, so one hue stepped, not four hues. */
+const PRIORITY_STEPS = ['#0d366b', '#256abf', '#5598e7', '#9ec5f4']
+const PRIORITY_ORDER = [/code.?red/i, /high/i, /medium/i, /low/i]
+
+function PriorityPanel({ rows }) {
+  if (!rows?.length) return null
+  const seen = new Set()
+  const ranked = PRIORITY_ORDER.map((re, i) => {
+    const hit = rows.find((r) => re.test(r.name))
+    if (hit) seen.add(hit.name)
+    return hit ? { ...hit, color: PRIORITY_STEPS[i] } : null
+  }).filter(Boolean)
+  const rest = rows.filter((r) => !seen.has(r.name)).map((r) => ({ ...r, color: '#8a8781' }))
+  const all = [...ranked, ...rest]
+  const max = Math.max(1, ...all.map((r) => r.value))
+
+  return (
+    <Panel title="Priority mix" subtitle="Raised at each tier, and how many are still open">
+      <div className="space-y-3.5">
+        {all.map((r) => (
+          <div key={r.name}>
+            <div className="flex items-baseline justify-between gap-3">
+              <span className="text-[12.5px] font-medium text-ink-700">{r.name}</span>
+              <span className="text-[13px] font-bold tabular-nums text-ink-900">{r.value.toLocaleString()}</span>
+            </div>
+            <div className="mt-1.5 h-3 overflow-hidden rounded-full bg-clay-100">
+              <div className="h-full rounded-full" style={{ width: `${(r.value / max) * 100}%`, background: r.color }} />
+            </div>
+            <p className="mt-1 text-[11px] tabular-nums text-ink-400">{r.open.toLocaleString()} still open</p>
+          </div>
+        ))}
+      </div>
+    </Panel>
+  )
+}
+
+/**
+ * What actually fails, in the auditors own words.
+ *
+ * The most actionable list on the page: a checkpoint failing across the estate
+ * is a specification or a supply problem, not a centre problem, and fixing it
+ * once is a different and much cheaper kind of work than fixing it two hundred
+ * times. This is the list that tells the two apart.
+ */
+function CheckpointPanel({ rows }) {
+  if (!rows?.length) return null
+  const max = Math.max(1, ...rows.map((r) => r.value))
+  return (
+    <Panel
+      title="Most-failed checkpoints"
+      subtitle="The audit question behind each ticket, most frequent first"
+      className="mb-5"
+    >
+      <div className="space-y-3">
+        {rows.map((r) => (
+          <div key={r.name}>
+            <div className="flex items-baseline justify-between gap-4">
+              <span className="text-[12.5px] leading-snug text-ink-700">{r.name}</span>
+              <span className="shrink-0 text-[12.5px] font-bold tabular-nums text-ink-900">
+                {r.value.toLocaleString()}
+                <span className="ml-1.5 font-normal text-ink-400">{r.open.toLocaleString()} open</span>
+              </span>
+            </div>
+            <div className="mt-1.5 h-2.5 overflow-hidden rounded-full bg-clay-100">
+              <div className="h-full rounded-full bg-brand-500" style={{ width: `${(r.value / max) * 100}%` }} />
+            </div>
+          </div>
+        ))}
+      </div>
+    </Panel>
+  )
+}
+
+/**
+ * Every centre in scope, worst first.
+ *
+ * Capped at fifty on screen, and the cap is STATED: a table that quietly stops
+ * at fifty reads as "these are all of them", which is the wrong impression for
+ * a watchlist above all other tables.
+ */
+function Watchlist({ rows, join }) {
+  if (!rows?.length) return null
+  const shown = rows.slice(0, 50)
+
+  return (
+    <Panel
+      title="Centre watchlist"
+      subtitle="Audit scores and remediation tickets per centre, worst pass rate first"
+      className="mb-5"
+    >
+      <div className="table-crisp max-h-[26rem] overflow-auto">
+        <table className="w-full text-left text-[12.5px]">
+          <thead className="sticky top-0 bg-clay-surface">
+            <tr className="text-[10.5px] uppercase tracking-wide text-ink-400">
+              <th className="px-3 py-2">Centre</th>
+              <th className="px-3 py-2 text-right">Audits</th>
+              <th className="px-3 py-2 text-right">Pass rate</th>
+              <th className="px-3 py-2 text-right">Tickets</th>
+              <th className="px-3 py-2 text-right">Open</th>
+              <th className="px-3 py-2 text-right">SLA breached</th>
+              <th className="px-3 py-2 text-right">Code red</th>
+            </tr>
+          </thead>
+          <tbody>
+            {shown.map((r) => (
+              <tr key={r.key} className="border-t border-clay-100">
+                <td className="px-3 py-2">
+                  <span className="font-medium text-ink-800">{r.site}</span>
+                  {(r.city || r.region) && (
+                    <span className="ml-1.5 text-[11px] text-ink-400">{r.city || r.region}</span>
+                  )}
+                </td>
+                <td className="px-3 py-2 text-right tabular-nums text-ink-600">{r.audits.toLocaleString()}</td>
+                <td className="px-3 py-2 text-right tabular-nums">
+                  {r.passRate == null ? (
+                    <span className="text-ink-300">—</span>
+                  ) : (
+                    <span className={r.passRate >= PASS_MARK ? 'font-semibold text-emerald-600' : 'font-semibold text-red-600'}>
+                      {r.passRate}%
+                    </span>
+                  )}
+                </td>
+                <td className="px-3 py-2 text-right tabular-nums text-ink-600">{r.tickets.toLocaleString()}</td>
+                <td className="px-3 py-2 text-right tabular-nums text-ink-700">{r.open.toLocaleString()}</td>
+                <td className="px-3 py-2 text-right tabular-nums text-ink-700">{r.breached.toLocaleString()}</td>
+                <td className="px-3 py-2 text-right tabular-nums text-ink-700">{r.red.toLocaleString()}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="mt-3 text-[11.5px] leading-relaxed text-ink-500">
+        {rows.length > shown.length
+          ? `Showing the ${shown.length} worst of ${rows.length.toLocaleString()} centres. `
+          : `${rows.length.toLocaleString()} centre${rows.length === 1 ? '' : 's'} in scope. `}
+        Audit figures come from the audits question, ticket figures from the findings question,
+        joined on the site each row resolved to.
+        {join?.total > 0 && join.unmatched > 0 && (
+          <>
+            {' '}
+            {join.unmatched.toLocaleString()} of {join.total.toLocaleString()} rows matched no site
+            in your register — give those sites the warehouse&apos;s centre ID in Sites and they
+            will join by key instead of by name.
+          </>
+        )}
       </p>
     </Panel>
   )
