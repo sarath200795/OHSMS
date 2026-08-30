@@ -266,8 +266,32 @@ export const GROUP_DIMS = [
   { key: 'site', label: 'Centre' },
 ]
 
+/**
+ * Dimensions this app fills in itself, from the site register.
+ *
+ * Always offered and never filtered out, even when every row is currently
+ * blank. They are the two an operator can FIX — by setting a region on a site,
+ * or by giving it the centre ID that joins it to one — and hiding the option
+ * because the data is missing removes the very control that says what is
+ * missing. It also caused the concrete bug this guards: with no regions in the
+ * register, "Region" vanished from the picker and the chart silently
+ * re-grouped itself by city, which is a different question nobody asked.
+ */
+const ALWAYS_OFFERED = ['region', 'entity']
+
+/** True when at least one row actually carries a value for this dimension. */
+export const dimensionHasData = (rows = [], key) =>
+  (rows || []).some((r) => r && String(r[key] || '').trim())
+
+/**
+ * The dimensions the picker offers.
+ *
+ * Region and entity always; everything else only where the warehouse supplies
+ * it, so a tenant whose question has no city column is not offered a City
+ * option that groups everything under "(not stated)".
+ */
 export const dimensionsPresent = (rows = []) =>
-  GROUP_DIMS.filter((d) => (rows || []).some((r) => r && String(r[d.key] || '').trim()))
+  GROUP_DIMS.filter((d) => ALWAYS_OFFERED.includes(d.key) || dimensionHasData(rows, d.key))
 
 /**
  * The dimension to actually group by, given what the data supports.
@@ -848,7 +872,7 @@ export function odinAnalytics(rows = [], audits = [], sites = [], f = {}, { keep
  * Returns the groups actually present as `columns`, so the caller can build a
  * stacked bar without knowing the estate's regions in advance.
  */
-export function auditorMatrix(auditRows = [], dimKey = 'region') {
+export function auditorMatrix(auditRows = [], dimKey = 'region', { maxColumns = 8, otherLabel = 'groups' } = {}) {
   const columns = new Set()
   const byAuditor = new Map()
 
@@ -883,14 +907,38 @@ export function auditorMatrix(auditRows = [], dimKey = 'region') {
     }))
     .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name))
 
+  // Busiest group first, so the widest band of every stacked bar is the one
+  // nearest the axis and the chart reads left to right by size.
+  const volume = (g) => rows.reduce((t, r) => t + (r.groups[g] || 0), 0)
+  const ranked = [...columns].sort((x, y) => volume(y) - volume(x) || x.localeCompare(y))
+
+  // ── Why the tail is folded ─────────────────────────────────────────────────
+  //
+  // Split by city this returns twenty-eight groups, and the palette holds
+  // twelve — so city one and city thirteen come out the same colour, in a
+  // stacked bar where colour is the ONLY thing telling them apart. Past about
+  // eight bands the chart has stopped being readable anyway: the slices are a
+  // pixel wide and the legend is three rows deep.
+  //
+  // So the tail becomes one named band, the same way bySubCategory pools the
+  // long tail for the pie. Nothing is lost — the count is still in the bar and
+  // the table below still lists every group per auditor.
+  let final = ranked
+  if (maxColumns > 0 && ranked.length > maxColumns) {
+    const keep = ranked.slice(0, maxColumns - 1)
+    const tail = ranked.slice(maxColumns - 1)
+    const label = `Other (${tail.length} ${otherLabel})`
+    for (const r of rows) {
+      let n = 0
+      for (const g of tail) { n += r.groups[g] || 0; delete r.groups[g] }
+      if (n) r.groups[label] = n
+    }
+    final = [...keep, label]
+  }
+
   return {
     rows,
-    // Busiest group first, so the widest band of every stacked bar is the one
-    // nearest the axis and the chart reads left to right by size.
-    columns: [...columns].sort((x, y) => {
-      const n = (g) => rows.reduce((t, r) => t + (r.groups[g] || 0), 0)
-      return n(y) - n(x) || x.localeCompare(y)
-    }),
+    columns: final,
     total: rows.reduce((n, r) => n + r.total, 0),
   }
 }

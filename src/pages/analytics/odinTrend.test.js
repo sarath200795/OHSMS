@@ -9,8 +9,8 @@
 import { describe, it, expect } from 'vitest'
 import {
   bucketOf, passTrend, ticketTrend, countBy, toDateOf, isBreach,
-  dimensionsPresent, joinQuality, resolveOdinRows, filterOdinRows,
-  GRANULARITY_KEYS, PASS_MARK, recoveryStages, scoreBands, centreWatchlist,
+  dimensionsPresent, dimensionHasData, resolveGroupBy, joinQuality, resolveOdinRows, filterOdinRows,
+  GRANULARITY_KEYS, PASS_MARK, recoveryStages, scoreBands, centreWatchlist, auditorMatrix,
 } from './odinAnalytics'
 
 /** The shape functions/lib/metabase.js hands back, with the fields these tests need. */
@@ -341,5 +341,67 @@ describe('centreWatchlist', () => {
   it('survives a population with neither audits nor tickets', () => {
     expect(centreWatchlist([], [])).toEqual([])
     expect(centreWatchlist()).toEqual([])
+  })
+})
+
+describe("auditorMatrix folds a long tail", () => {
+  const many = (n) => Array.from({ length: n }, (_, i) =>
+    ({ ...row({ site: `S${i}`, city: `City ${i}`, auditor: "A" }), passPctN7: 95 }))
+
+  it("keeps every group when there are few enough to colour", () => {
+    const m = auditorMatrix(many(5), "city")
+    expect(m.columns).toHaveLength(5)
+    expect(m.columns.some((c) => /^Other/.test(c))).toBe(false)
+  })
+
+  it("pools the tail past the palette, because colour is the only cue a stack has", () => {
+    const m = auditorMatrix(many(28), "city")
+    expect(m.columns).toHaveLength(8)
+    expect(m.columns.at(-1)).toBe("Other (21 groups)")
+  })
+
+  it("loses no audits to the fold", () => {
+    const m = auditorMatrix(many(28), "city")
+    const charted = m.rows.reduce((t, r) => t + Object.values(r.groups).reduce((a, b) => a + b, 0), 0)
+    expect(charted).toBe(28)
+    expect(m.total).toBe(28)
+  })
+
+  it("names the tail after the dimension when told what it is", () => {
+    expect(auditorMatrix(many(28), "city", { otherLabel: "cities" }).columns.at(-1)).toBe("Other (21 cities)")
+  })
+
+  it("can be told not to fold at all", () => {
+    expect(auditorMatrix(many(28), "city", { maxColumns: 0 }).columns).toHaveLength(28)
+  })
+})
+
+describe("region is never swapped out from under the reader", () => {
+  // The bug: with no regions in the register, "Region" was filtered out of the
+  // picker and the chart silently re-grouped by city — a different question
+  // nobody asked, presented as if it were the one they did.
+  const noRegion = [row({ region: "", entity: "", city: "Pune" })]
+
+  it("offers region even when nothing currently has one", () => {
+    const keys = dimensionsPresent(noRegion).map((d) => d.key)
+    expect(keys).toContain("region")
+    expect(keys).toContain("entity")
+  })
+
+  it("still defaults to region rather than falling through to city", () => {
+    expect(resolveGroupBy(dimensionsPresent(noRegion), "region")).toBe("region")
+  })
+
+  it("still hides a warehouse dimension the question does not carry", () => {
+    // The other half of the rule: region and entity are ours to fill, so they
+    // stay; a missing city column is the warehouse’s and is not offered.
+    const keys = dimensionsPresent([row({ city: "", businessLine: "" })]).map((d) => d.key)
+    expect(keys).not.toContain("city")
+    expect(keys).not.toContain("businessLine")
+  })
+
+  it("reports emptiness so the page can say so instead of re-grouping", () => {
+    expect(dimensionHasData(noRegion, "region")).toBe(false)
+    expect(dimensionHasData(noRegion, "city")).toBe(true)
   })
 })
