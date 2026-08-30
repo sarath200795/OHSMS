@@ -1932,18 +1932,35 @@ export const withdrawStalePermitMirrors = onSchedule(
  * single month of data, so every real load timed out and reported "Metabase did
  * not answer in time" about an instance that was working perfectly.
  *
- * The ceiling is the callable's own 120s budget — this has to expire first, or
+ * The ceiling is the callable's own 300s budget — this has to expire first, or
  * the caller gets a transport error instead of the diagnosis below.
+ *
+ * 280s, not 100s, because 100s was not a timeout so much as a cap on how much
+ * history anyone could ask for. Timed against the live questions: the tickets
+ * question answers a 90-day window in 4 seconds and a 365-day window in 227.
+ * At 100s the second one could not complete, so widening the date pickers
+ * returned "Metabase did not answer in time" rather than the year of data the
+ * reader had just asked for — a filter that appears to work and cannot.
  */
-const METABASE_TIMEOUT_MS = 100_000
+const METABASE_TIMEOUT_MS = 280_000
 
 /**
  * How much history a dashboard load asks for when nobody said.
  *
  * A quarter. These are quarterly audit programmes, so a quarter is the period
- * people actually review, and it is also about as much as one of these
- * questions will return inside the timeout above. A reader who wants a year
- * asks for a year with the date pickers and waits accordingly.
+ * people actually review.
+ *
+ * It is also as much as a callable can physically carry, which is the harder
+ * constraint and the reason this is not simply set to a year. Measured against
+ * the live tickets question: 90 days is 8,529 rows and 6MB of response, and a
+ * year is 31,291 rows and roughly 24MB — well past the 10MB ceiling, so a
+ * 365-day default would not be slow, it would fail, or be truncated by capRows
+ * into a confidently wrong total. Showing a year needs the arithmetic to move
+ * server-side so that summaries cross the wire instead of rows.
+ *
+ * Whatever this is, the tab now PRINTS the window it ran, because the previous
+ * failure mode was silent: two empty date boxes look like "no filter", and the
+ * figures were being compared against Metabase tabs run over all of history.
  */
 const DEFAULT_RANGE_DAYS = 90
 
@@ -2130,6 +2147,10 @@ export const metabaseQuery = onCall({ region: REGION, timeoutSeconds: 300 }, asy
   const merged = answered.flatMap((r) => r.rows)
   const { rows, total, capped } = capRows(merged)
   const unmapped = [...new Set(answered.flatMap((r) => r.unmapped))]
+  // Columns that mapped onto a field another column had already filled. Carried
+  // separately from `unmapped` because the fix differs: an unmapped column needs
+  // a name ODIN knows, a shadowed one already has it and is losing a fight.
+  const shadowed = [...new Set(answered.flatMap((r) => r.shadowed || []))]
 
   logger.info('metabaseQuery: ok', {
     uid, orgId: profile.orgId, dataset, rows: rows.length, capped,
@@ -2146,6 +2167,7 @@ export const metabaseQuery = onCall({ region: REGION, timeoutSeconds: 300 }, asy
     bound: answered.flatMap((r) => r.bound || []),
     rows,
     unmapped,
+    shadowed,
     total,
     capped,
     // Per source, always — including when they all succeeded. "These numbers
@@ -2289,6 +2311,7 @@ async function querySource(source, dataset, orgId, detailed = false, range = nul
     ok: true,
     rows: mapped.rows.map((r) => ({ ...r, sourceId: tag.id, sourceLabel: tag.label })),
     unmapped: mapped.unmapped,
+    shadowed: mapped.shadowed,
     bound: bound.map((x) => ({ ...x, source: tag.id })),
   }
 }

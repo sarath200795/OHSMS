@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   resolveOdinRows, odinFacets, filterOdinRows, statusTotals, statusByRegion,
-  bySubCategory, sitePins, leadStatus, passRates, odinAnalytics,
+  bySubCategory, sitePins, cityPins, siteIssues, leadStatus, passRates, odinAnalytics,
   STATUS_KEYS, TERMINAL_STATUSES, isTerminal, isOutstanding, paletteColor, day0Of, n7Of, checksTotalOf, passTotals,
 } from './odinAnalytics'
 
@@ -192,6 +192,102 @@ describe('sitePins', () => {
       finding({ siteId: 's2' }), finding({ siteId: 's1' }), finding({ siteId: 's1' }),
     ], SITES)
     expect(sitePins(rows).pins[0].id).toBe('s1')
+  })
+})
+
+describe('cityPins', () => {
+  it('places a city from the sites in it that DO have coordinates', () => {
+    // The whole point: a site with no latitude still reaches the map through
+    // its city, as long as one site in that city is located. On real data that
+    // was the difference between dropping 76 sites and dropping almost none.
+    const rows = resolveOdinRows([
+      finding({ siteId: 's1', city: 'Bengaluru' }),                        // located
+      finding({ siteId: 's3', site: 'No Coords Yard', city: 'Bengaluru' }), // not
+    ], SITES)
+    expect(sitePins(rows).unplaced).toHaveLength(1)
+    const { pins, unplaced } = cityPins(rows)
+    expect(unplaced).toHaveLength(0)
+    expect(pins[0]).toMatchObject({ city: 'Bengaluru', total: 2, sites: 2 })
+    expect(pins[0].lat).toBeCloseTo(12.97)
+  })
+
+  it('puts the pin at the mean of its located sites', () => {
+    const rows = resolveOdinRows([
+      finding({ siteId: 's1', city: 'Everywhere' }),
+      finding({ siteId: 's2', city: 'Everywhere' }),
+    ], SITES)
+    const [pin] = cityPins(rows).pins
+    expect(pin.lat).toBeCloseTo((12.97 + 28.61) / 2)
+    expect(pin.lng).toBeCloseTo((77.59 + 77.21) / 2)
+  })
+
+  it('reports a city where nothing at all is located, rather than dropping it', () => {
+    const rows = resolveOdinRows([finding({ siteId: 's3', site: 'No Coords Yard', city: 'Nowhere' })], SITES)
+    const { pins, unplaced } = cityPins(rows)
+    expect(pins).toHaveLength(0)
+    expect(unplaced[0]).toMatchObject({ city: 'Nowhere', total: 1 })
+  })
+
+  it('groups case- and spacing-insensitively, so one city is one pin', () => {
+    const rows = resolveOdinRows([
+      finding({ siteId: 's1', city: 'Bengaluru' }),
+      finding({ siteId: 's1', city: '  bengaluru ' }),
+    ], SITES)
+    expect(cityPins(rows).pins).toHaveLength(1)
+    expect(cityPins(rows).pins[0].total).toBe(2)
+  })
+
+  it('busiest city first', () => {
+    const rows = resolveOdinRows([
+      finding({ siteId: 's2', city: 'Delhi' }),
+      finding({ siteId: 's1', city: 'Bengaluru' }),
+      finding({ siteId: 's1', city: 'Bengaluru' }),
+    ], SITES)
+    expect(cityPins(rows).pins.map((p) => p.city)).toEqual(['Bengaluru', 'Delhi'])
+  })
+})
+
+describe('siteIssues', () => {
+  it('includes a site with no coordinates — the whole reason it replaced the map', () => {
+    // sitePins drops this site into `unplaced` and the map never draws it. The
+    // list has no such requirement, and on real data that was 76 sites.
+    const rows = resolveOdinRows([finding({ siteId: 's3', site: 'No Coords Yard' })], SITES)
+    expect(sitePins(rows).pins).toHaveLength(0)
+    expect(siteIssues(rows).map((r) => r.site)).toEqual(['No Coords Yard'])
+  })
+
+  it('ranks by issue count, because the question is where the work is', () => {
+    const rows = resolveOdinRows([
+      finding({ siteId: 's2' }), finding({ siteId: 's1' }), finding({ siteId: 's1' }),
+    ], SITES)
+    const out = siteIssues(rows)
+    expect(out[0]).toMatchObject({ id: 's1', total: 2 })
+    expect(out[1]).toMatchObject({ id: 's2', total: 1 })
+  })
+
+  it('counts rejected as neither open nor closed, matching the KPI row', () => {
+    const rows = resolveOdinRows([
+      finding({ siteId: 's1', status: 'open' }),
+      finding({ siteId: 's1', status: 'closed' }),
+      finding({ siteId: 's1', status: 'rejected' }),
+    ], SITES)
+    expect(siteIssues(rows)[0]).toMatchObject({ total: 3, open: 1, closed: 1 })
+  })
+
+  it('counts an SLA breach off whatever wording the warehouse used', () => {
+    const rows = resolveOdinRows([
+      finding({ siteId: 's1', sla: 'open-SLA-Breached' }),
+      finding({ siteId: 's1', sla: 'Closed- Within SLA' }),
+    ], SITES)
+    expect(siteIssues(rows)[0].breached).toBe(1)
+  })
+
+  it('accounts for every row — no site is dropped for any reason', () => {
+    const rows = resolveOdinRows([
+      finding({ siteId: 's1' }), finding({ siteId: 's3', site: 'No Coords Yard' }),
+      finding({ siteId: '', site: 'Not In The Register' }),
+    ], SITES)
+    expect(siteIssues(rows).reduce((n, r) => n + r.total, 0)).toBe(3)
   })
 })
 

@@ -71,6 +71,10 @@ const isNum = (v) => typeof v === 'number' && Number.isFinite(v)
  */
 const norm = (s) => String(s || '').trim().toLowerCase().replace(/\s+/g, ' ')
 
+// The same name with punctuation and spacing thrown away, for the last-resort
+// pass of the site join. See resolveOdinRows.
+const looseKey = (s) => norm(s).replace(/[^a-z0-9]/g, '')
+
 const UNPLACED = '(not stated)'
 
 /**
@@ -116,9 +120,27 @@ export const SITE_CODE_FIELDS = ['code', 'siteCode', 'centerId', 'centreId', 'ce
 export function resolveOdinRows(rows = [], sites = [], { keepUnplaced = true } = {}) {
   const byId = new Map()
   const byName = new Map()
+  // A third index, on the name with every non-alphanumeric character removed,
+  // so "Cult - Pitampura", "Cult Pitampura" and "cult(pitampura)" are one site.
+  // Punctuation and spacing are where a warehouse name and a register name
+  // usually differ, and losing an audit to a hyphen is not a data problem
+  // anybody can be asked to go and fix.
+  //
+  // A loose key claimed by TWO different sites is set to null and matches
+  // nothing thereafter. Guessing between them would attribute an audit to the
+  // wrong centre — silently, and in a register the reader trusts — which is
+  // worse than leaving it unplaced and saying so.
+  const byLoose = new Map()
   for (const s of sites || []) {
     if (s?.id) byId.set(String(s.id), s)
-    if (s?.name) byName.set(norm(s.name), s)
+    if (s?.name) {
+      byName.set(norm(s.name), s)
+      const loose = looseKey(s.name)
+      if (loose) {
+        const seen = byLoose.get(loose)
+        byLoose.set(loose, seen === undefined || seen?.id === s.id ? s : null)
+      }
+    }
     // ── The centre id, wherever the register keeps it ──────────────────────
     //
     // A warehouse identifies a site by ITS key — a centre service id, a store
@@ -133,12 +155,16 @@ export function resolveOdinRows(rows = [], sites = [], { keepUnplaced = true } =
   }
 
   return (rows || []).filter(Boolean).map((r) => {
+    // Centre id first — an exact key beats a name every time — then the name
+    // exactly, then the name ignoring punctuation and spacing.
     const byCode = r.siteId ? byId.get(String(r.siteId).trim()) : null
-    const site = byCode || (r.site && byName.get(norm(r.site))) || null
+    const exact = !byCode && r.site ? byName.get(norm(r.site)) || null : null
+    const loose = !byCode && !exact && r.site ? byLoose.get(looseKey(r.site)) || null : null
+    const site = byCode || exact || loose
     return {
       // How the row found its site, so the tab can report the join rather than
       // leave "why is half my estate missing from the map" unanswerable.
-      matchedBy: byCode ? 'id' : site ? 'name' : '',
+      matchedBy: byCode ? 'id' : exact ? 'name' : loose ? 'name~' : '',
       ...r,
       site: r.site || site?.name || '',
       region: r.region || site?.region || '',
@@ -398,6 +424,108 @@ export function bySubCategory(rows = [], { limit = 0 } = {}) {
  * shows eleven of nineteen sites and says nothing is a map that will be read as
  * showing all nineteen.
  */
+/**
+ * One pin per CITY, placed at the mean of whatever coordinates that city has.
+ *
+ * The site-level map is honest but thin: coordinates come from the site
+ * register, most partner gyms have never had a latitude put on them, and on a
+ * real month it dropped 76 sites and 1,011 issues off the picture. City level
+ * rescues nearly all of them, because a city needs only ONE located site to be
+ * placeable and every city in this estate has several. `cityName` also comes
+ * off the question itself rather than the register, so no row is ever missing
+ * the grouping key the way it can be missing a region.
+ *
+ * The mean of member sites, not a gazetteer. A hardcoded table of city
+ * coordinates would be another list to maintain and would quietly be wrong for
+ * anyone whose "city" is a zone or a cluster rather than a place on a map.
+ * Averaging what the register already knows needs no maintenance and lands the
+ * pin among the sites it represents.
+ */
+export function cityPins(rows = []) {
+  const groups = new Map()
+  for (const r of rows) {
+    const key = norm(r.city) || UNPLACED
+    if (!groups.has(key)) groups.set(key, { key, city: r.city || UNPLACED, rows: [], lats: [], lngs: [] })
+    const g = groups.get(key)
+    g.rows.push(r)
+    if (isNum(r.lat) && isNum(r.lng)) { g.lats.push(r.lat); g.lngs.push(r.lng) }
+  }
+
+  const mean = (xs) => xs.reduce((n, x) => n + x, 0) / xs.length
+  const pins = []
+  const unplaced = []
+  for (const g of groups.values()) {
+    const totals = statusTotals(g.rows)
+    const entry = {
+      id: g.key,
+      site: g.city,
+      city: g.city,
+      // How many distinct sites the pin stands for, so a reader can tell one
+      // busy centre from twenty quiet ones.
+      sites: new Set(g.rows.map((r) => r.matchedSiteId || r.site)).size,
+      region: '',
+      entity: '',
+      total: totals.total,
+      byStatus: totals,
+    }
+    if (g.lats.length) pins.push({ ...entry, lat: mean(g.lats), lng: mean(g.lngs), placedFrom: 'city' })
+    else unplaced.push(entry)
+  }
+  pins.sort((a, b) => b.total - a.total)
+  unplaced.sort((a, b) => b.total - a.total)
+  return { pins, unplaced }
+}
+
+/**
+ * Every site in scope with its issue counts, busiest first.
+ *
+ * The list that replaced the map. A map can only show a site it has
+ * coordinates for, and coordinates come from the site register — the tickets
+ * question carries none — so on a real month it drew about 76 sites short and
+ * had to caption itself with an apology naming the ones it had dropped. A list
+ * has no such requirement: every site in scope appears, whether or not anyone
+ * has ever put a latitude on it.
+ *
+ * Grouped on the same key as sitePins, so the two agree about what a site is.
+ */
+export function siteIssues(rows = []) {
+  const groups = new Map()
+  for (const r of rows) {
+    const key = r.matchedSiteId || r.site || UNPLACED
+    if (!groups.has(key)) {
+      groups.set(key, {
+        id: key,
+        site: r.site || UNPLACED,
+        region: r.region || '',
+        entity: r.entity || '',
+        city: r.city || '',
+        rows: [],
+      })
+    }
+    groups.get(key).rows.push(r)
+  }
+
+  const out = []
+  for (const g of groups.values()) {
+    const totals = statusTotals(g.rows)
+    out.push({
+      id: g.id,
+      site: g.site,
+      region: g.region,
+      entity: g.entity,
+      city: g.city,
+      total: totals.total,
+      // Rejected is neither closed nor outstanding — the same arithmetic the
+      // KPI row uses, so the two cannot disagree.
+      open: totals.total - totals.closed - totals.rejected,
+      closed: totals.closed,
+      breached: g.rows.reduce((n, r) => n + (isBreach(r.sla) ? (isNum(r.count) ? r.count : 1) : 0), 0),
+    })
+  }
+  out.sort((a, b) => b.total - a.total || a.site.localeCompare(b.site))
+  return out
+}
+
 export function sitePins(rows = []) {
   const groups = new Map()
   for (const r of rows) {
@@ -944,6 +1072,8 @@ export function odinAnalytics(rows = [], audits = [], sites = [], f = {}, { keep
     bySubCategoryTop: bySubCategory(filtered, { limit: 8 }),
     pins,
     unplaced,
+    cities: cityPins(filtered),
+    siteIssues: siteIssues(filtered),
     passByRegion: passRates(passRows, 'region'),
     passByEntity: passRates(passRows, 'entity'),
     passOverall: passTotals(passRows),
@@ -979,6 +1109,14 @@ export function odinAnalytics(rows = [], audits = [], sites = [], f = {}, { keep
     // every region/entity chart depend on this join, so its quality is a
     // first-class number rather than something to infer from a thin map.
     join: joinQuality([...filtered, ...auditsFiltered]),
+
+    // Region coverage, measured BEFORE the filter and kept per population.
+    // Per population because the two tabs count different things and a caveat
+    // that says "audits" while quoting a ticket count is worse than no caveat.
+    coverage: {
+      findings: regionCoverage(resolved),
+      audits: regionCoverage(auditsResolved),
+    },
   }
 }
 
@@ -1189,8 +1327,59 @@ export function joinQuality(rows = []) {
   for (const r of rows || []) {
     if (!r) continue
     if (r.matchedBy === 'id') byId += 1
-    else if (r.matchedBy === 'name') byName += 1
+    // 'name~' is the punctuation-insensitive pass — still a name match, and
+    // counting it as unmatched would report a join failure that did not happen.
+    else if (r.matchedBy === 'name' || r.matchedBy === 'name~') byName += 1
     else unmatched += 1
   }
   return { byId, byName, unmatched, total: byId + byName + unmatched }
+}
+
+/**
+ * How many rows can be placed in a REGION, and precisely why the rest cannot.
+ *
+ * This exists because of the most confusing thing this dashboard does. The
+ * audits question carries no region column — it has a city and a centre id and
+ * nothing else — so every region on this page comes from THIS APP's site
+ * register, reached through the centre id. A row that cannot make that trip has
+ * no region, and the moment somebody picks a region it disappears, with nothing
+ * on screen to say it ever existed. Metabase says eighty, the dashboard says
+ * sixty, and both are right about different populations.
+ *
+ * The two ways it fails need DIFFERENT fixes, so they are counted separately
+ * rather than totalled into one unhelpful "unmatched":
+ *
+ *   noSite   — the centre id matched nothing in the register. Add that id to
+ *              the site, or add the site.
+ *   noRegion — it matched a site, and that site has no region recorded. Fill
+ *              the region in on the site itself.
+ *
+ * Computed on the UNFILTERED population deliberately. Measuring it after the
+ * filter would report zero every time somebody picked a region, which is the
+ * one moment the number matters.
+ */
+export function regionCoverage(rows = []) {
+  const noSite = new Map()
+  const noRegion = new Map()
+  let placed = 0
+  for (const r of rows || []) {
+    if (!r) continue
+    if (String(r.region || '').trim()) { placed += 1; continue }
+    // Named, not just counted. "Twenty audits have no region" is a fact nobody
+    // can act on; "Cult Jubilee Hills and three others" is a morning's work.
+    const label = String(r.site || '').trim() || (r.siteId ? `centre ${r.siteId}` : '(unnamed centre)')
+    const bucket = r.inScope ? noRegion : noSite
+    bucket.set(label, (bucket.get(label) || 0) + 1)
+  }
+  const size = (m) => [...m.values()].reduce((s, n) => s + n, 0)
+  const names = (m) => [...m.entries()].sort((a, b) => b[1] - a[1]).map(([k]) => k)
+  return {
+    placed,
+    noSite: size(noSite),
+    noRegion: size(noRegion),
+    missing: size(noSite) + size(noRegion),
+    total: placed + size(noSite) + size(noRegion),
+    noSiteCentres: names(noSite),
+    noRegionCentres: names(noRegion),
+  }
 }

@@ -26,12 +26,19 @@ import { metabaseQuery } from '../../shared/functions'
 import { Panel, Stat, NoData, Picker, FilterRow, DateField } from './ui'
 import {
   auditorMatrix, auditPopulation, odinFacets, resolveOdinRows, filterOdinRows, paletteColor,
-  GROUP_DIMS, dimensionsPresent, dimensionHasData, resolveGroupBy, PASS_MARK,
+  GROUP_DIMS, dimensionsPresent, dimensionHasData, resolveGroupBy, PASS_MARK, regionCoverage,
 } from './odinAnalytics'
 
 const axis = { tickLine: false, axisLine: false, fontSize: 11, tick: { fill: '#8a7660' } }
 
-const EMPTY = { auditType: 'all', region: 'all', entity: 'all', from: '', to: '', groupBy: 'region' }
+// Split by CITY, not region. This tab already tracks by auditor — that is what
+// its rows are — and the only question left is what colours the bars. Region
+// would be the natural answer except that the audits question does not carry
+// one: regions are looked up from the site register by centre id, and about a
+// third of audits in a real month fail that lookup and fall into no region at
+// all. City comes off the question itself, so it is the same geography without
+// the silent losses. Region is still one click away in the picker.
+const EMPTY = { auditType: 'all', region: 'all', entity: 'all', from: '', to: '', groupBy: 'city' }
 
 export default function AuditorsTab({ sites = [], keepUnplaced = true }) {
   const [f, setF] = useState(EMPTY)
@@ -85,6 +92,10 @@ export default function AuditorsTab({ sites = [], keepUnplaced = true }) {
   const dims = useMemo(() => dimensionsPresent(resolved).filter((d) => d.key !== 'auditor'), [resolved])
 
   const filtered = useMemo(() => filterOdinRows(resolved, f), [resolved, f])
+  // Measured on `resolved`, before the filter: an audit with no region drops
+  // out the instant a region is picked, so measuring after the filter reports
+  // zero at exactly the moment the number matters. See regionCoverage.
+  const cov = useMemo(() => regionCoverage(resolved), [resolved])
   // Region unless the data has no regions — see resolveGroupBy. Grouping by a
   // dimension the picker does not even offer is how you get one bar labelled
   // "(not stated)".
@@ -343,9 +354,19 @@ export default function AuditorsTab({ sites = [], keepUnplaced = true }) {
 
       <p className="mt-4 text-[11.5px] leading-relaxed text-ink-400">
         From your Metabase audits question{fetchedAt ? `, as at ${fetchedAt.toLocaleString()}` : ''}.
+        {audits?.range && <> Covering <strong className="font-semibold text-ink-600">{audits.range.from} to {audits.range.to}</strong>
+          {!f.from && !f.to && ' — the default window, because the date boxes are empty'}.</>}
         {' '}A snapshot, not a live feed — press Refresh to run it again.
         {audits?.capped && (
           <> Showing the first {audits.rows.length.toLocaleString()} of {audits.total.toLocaleString()} rows.</>
+        )}
+        {cov.missing > 0 && (
+          <> <strong className="font-semibold text-amber-800">{cov.missing.toLocaleString()} of {cov.total.toLocaleString()} audits
+          carry no region</strong> — the audits question has no region column, so every region here comes from your
+          site register by centre id.{' '}
+          {cov.noSite > 0 && <>{cov.noSite.toLocaleString()} sit at centres the register does not hold. </>}
+          {cov.noRegion > 0 && <>{cov.noRegion.toLocaleString()} sit at centres it holds with no region set. </>}
+          They are counted in the totals but vanish when you pick a Region.</>
         )}
       </p>
     </div>
