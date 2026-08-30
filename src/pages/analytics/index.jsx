@@ -44,15 +44,18 @@ const TABS = [
   // product they had never heard of, permanently, because they were never going
   // to connect it.
   //
-  // So they appear only once an admin HAS connected Metabase — see
-  // setIntegrationConnected, which mirrors that one boolean onto the org
-  // document where an ordinary member can read it. Connecting happens in
-  // Settings → Integrations, which is where an admin looking for it would go;
-  // it is not something a member should be prompted about from an empty tab.
-  { key: 'odin', label: 'ODIN', icon: Radar, needs: 'metabase' },
+  // So they are an ADD-ON, granted per customer by the platform operator on
+  // Module access — see ADDONS in shared/modules/registry.js. Off unless
+  // switched on, which is the inverse of how a module behaves and is the whole
+  // reason add-ons are a separate list. An organization that is never going to
+  // use ODIN is never shown it and never has to decline it.
+  //
+  // Once granted, an admin connects Metabase in Settings → Integrations, which
+  // is also where the API key is rotated.
+  { key: 'odin', label: 'ODIN', icon: Radar, needs: 'odin' },
   // Beside ODIN because it reads the same warehouse question. ODIN asks whether
   // the estate is safe; this asks whether the audit programme actually ran.
-  { key: 'auditors', label: 'Auditors', icon: UserCheck, needs: 'metabase' },
+  { key: 'auditors', label: 'Auditors', icon: UserCheck, needs: 'odin' },
   { key: 'incidents', label: 'Incidents', icon: AlertTriangle },
   { key: 'inspections', label: 'Inspections', icon: ClipboardCheck },
   { key: 'drills', label: 'Mock Drills', icon: Siren },
@@ -75,13 +78,14 @@ const COLLECTIONS = [
 ]
 
 export default function Analytics() {
-  const { orgId, isAdmin, actor, org } = useAuth()
+  const { orgId, isAdmin, actor, moduleEnabled } = useAuth()
 
-  // The tabs this organization can actually fill. A tab with a `needs` is
-  // offered only once that integration is connected — see the note on TABS.
+  // The tabs this organization is licensed for. A tab with a `needs` is an
+  // add-on the platform operator grants per customer — see ADDONS in the
+  // module registry and the note on TABS below.
   const tabs = useMemo(
-    () => TABS.filter((t) => !t.needs || org?.integrations?.[t.needs] === true),
-    [org],
+    () => TABS.filter((t) => !t.needs || moduleEnabled(t.needs)),
+    [moduleEnabled],
   )
   const sites = useAccessibleSites()
   // Incidents opens, not ODIN, and the reason is that ODIN is the one tab that

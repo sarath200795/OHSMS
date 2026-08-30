@@ -17,7 +17,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../../shared/auth/AuthContext'
 import { listOrganizations } from '../../shared/org/orgData'
-import { MODULES } from '../../shared/modules/registry'
+import { MODULES, ADDONS } from '../../shared/modules/registry'
 import {
   ALL_MODULE_KEYS,
   disabledKeys,
@@ -282,10 +282,35 @@ export default function ModuleAccess() {
               ))}
             </ul>
 
+            {/* Licensed the same way, listed apart, because the default is the
+                opposite: a module is on unless switched off, an add-on is off
+                unless switched on. Mixing them into one list would put two
+                different meanings under one set of switches. */}
+            {ADDONS.length > 0 && (
+              <>
+                <p className="border-y border-ink-100 bg-clay-50 px-5 py-2.5 text-[11px] font-bold uppercase tracking-wide text-ink-400">
+                  Add-ons · off unless switched on
+                </p>
+                <ul className="divide-y divide-ink-100">
+                  {ADDONS.map((a) => (
+                    <ModuleRow
+                      key={a.key}
+                      module={a}
+                      on={working[a.key] === true}
+                      changed={draft !== null && (stored[a.key] === true) !== (working[a.key] === true)}
+                      disabled={busy}
+                      onChange={(on) => setKey(a.key, on)}
+                    />
+                  ))}
+                </ul>
+              </>
+            )}
+
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-ink-100 p-5">
               <p className="max-w-md text-[11.5px] text-ink-400">
-                An organization with no record here gets the full product. Restoring the default deletes
-                its record rather than writing every module on, so modules added later stay on too.
+                An organization with no record here gets the full product — every module on, every
+                add-on off. Restoring the default deletes its record rather than writing each switch,
+                so modules added later stay on and add-ons added later stay off.
               </p>
               <Button
                 variant="ghost"

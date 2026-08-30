@@ -26,6 +26,7 @@ import {
   PhoneCall,
   Gauge,
   CloudSun,
+  Radar,
 } from 'lucide-react'
 
 export const MODULES = [
@@ -212,6 +213,47 @@ export const MODULES = [
 ]
 
 export const MODULE_BY_KEY = Object.fromEntries(MODULES.map((m) => [m.key, m]))
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Add-ons — licensed the same way as a module, but not one.
+//
+// An operator switches these per organization on the Module access screen, and
+// entitlements govern them exactly as they govern MODULES. What they are NOT is
+// navigable: they have no path, no route and no tile, because they live inside
+// a screen that already exists. Putting one in MODULES would render a dashboard
+// tile linking to `undefined`, which is why they are a separate list rather
+// than a flag on that one.
+//
+// ── optIn, and why it has to exist ──────────────────────────────────────────
+//
+// Entitlements are opt-OUT everywhere else: absent means enabled, so that
+// shipping a new module does not withhold it from every existing tenant until
+// somebody re-saves each one. That default is right for a module and wrong for
+// these. ODIN reads a Metabase warehouse almost nobody has; enabled-by-default
+// it was a tab on every tenant in the estate whose whole content was an
+// invitation to connect a product they had never heard of.
+//
+// So an `optIn` add-on is OFF until an operator says otherwise — the exact
+// inverse, declared here rather than assumed at each call site. See
+// isModuleEnabled.
+// ─────────────────────────────────────────────────────────────────────────────
+export const ADDONS = [
+  {
+    key: 'odin',
+    label: 'ODIN',
+    title: 'ODIN — warehouse analytics',
+    icon: Radar,
+    tone: 'teal',
+    description:
+      'FLS audit scores and remediation tickets read live from a Metabase warehouse, as two tabs in Analytics. Needs a connection in Settings → Integrations.',
+    optIn: true,
+  },
+]
+
+export const ADDON_BY_KEY = Object.fromEntries(ADDONS.map((a) => [a.key, a]))
+
+/** Add-on keys that are off until switched on. */
+export const OPT_IN_KEYS = ADDONS.filter((a) => a.optIn).map((a) => a.key)
 
 // Longest path first, so /equipment/aed cannot match a shorter sibling.
 const BY_PATH = [...MODULES].filter((m) => m.path).sort((a, b) => b.path.length - a.path.length)

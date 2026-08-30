@@ -32,7 +32,7 @@ import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 import { Plug, Save, KeyRound, CheckCircle2, XCircle, Plus, Trash2, Server, AlertTriangle } from 'lucide-react'
 import { Card, Field, Input, Button } from '../ui'
-import { saveIntegration, setIntegrationConnected } from '../org/integrations'
+import { saveIntegration } from '../org/integrations'
 import { metabaseSettings, metabaseTestConnection } from '../functions'
 
 const rid = () =>
@@ -54,16 +54,6 @@ function toForm(config) {
   } : blankSource()))
   return { apiKey: '', sources, maxAgeDays: config?.apiKeyMaxAgeDays ? String(config.apiKeyMaxAgeDays) : '' }
 }
-
-/**
- * Is this connection good for anything yet?
- *
- * A URL and a key make it reachable; without a findings question there is
- * still nothing for ODIN to run, and a tab whose every panel is empty is worse
- * than no tab. All three, on at least one instance.
- */
-const isUsable = (config) =>
-  Boolean(config?.sources?.some((s) => s.baseUrl && s.hasKey && s.cards?.findings))
 
 export default function MetabaseConnect({ orgId, actor, onSaved, compact = false }) {
   const [loading, setLoading] = useState(true)
@@ -157,7 +147,6 @@ export default function MetabaseConnect({ orgId, actor, onSaved, compact = false
       settings.apiKeyMaxAgeDays = Number(form.maxAgeDays) > 0 ? Math.floor(Number(form.maxAgeDays)) : 0
       await saveIntegration(orgId, 'metabase', settings, actor)
       const { config } = await metabaseSettings()
-      await setIntegrationConnected(orgId, 'metabase', isUsable(config))
       setSaved(config)
       setForm(toForm(config))
       // Saved is not the same as working, and a plain success toast here said
@@ -184,7 +173,6 @@ export default function MetabaseConnect({ orgId, actor, onSaved, compact = false
     try {
       await saveIntegration(orgId, 'metabase', { apiKey: '' }, actor)
       const { config } = await metabaseSettings()
-      await setIntegrationConnected(orgId, 'metabase', isUsable(config))
       setSaved(config)
       setForm(toForm(config))
       toast.success('API key removed')

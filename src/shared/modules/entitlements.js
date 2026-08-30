@@ -29,14 +29,27 @@ import {
   setDoc,
 } from 'firebase/firestore'
 import { db } from '../firebase'
-import { MODULES } from './registry'
+import { MODULES, ADDONS, OPT_IN_KEYS } from './registry'
 
 export const ENTITLEMENTS_COLLECTION = 'moduleEntitlements'
 
 export const entitlementRef = (orgId) => doc(db, ENTITLEMENTS_COLLECTION, orgId)
 
-/** Every module key the product ships, in registry (sidebar) order. */
-export const ALL_MODULE_KEYS = MODULES.map((m) => m.key)
+/**
+ * Every key this document governs — the modules, then the add-ons.
+ *
+ * Add-ons are licensed identically and are simply not navigable; see ADDONS in
+ * the registry. They belong in the same document because an operator granting
+ * an organization its product should be doing it in one place.
+ */
+export const ALL_MODULE_KEYS = [...MODULES.map((m) => m.key), ...ADDONS.map((a) => a.key)]
+
+/**
+ * Keys that are OFF until switched on, inverting the rule below.
+ *
+ * A Set, because this is consulted once per key on every entitlement read.
+ */
+const optIn = new Set(OPT_IN_KEYS)
 
 /**
  * The stored document → a complete map of every known module key to a boolean.
@@ -48,7 +61,12 @@ export const ALL_MODULE_KEYS = MODULES.map((m) => m.key)
  */
 export function normalizeEntitlement(data) {
   const stored = data && typeof data.modules === 'object' && data.modules !== null ? data.modules : {}
-  return Object.fromEntries(ALL_MODULE_KEYS.map((key) => [key, stored[key] !== false]))
+  return Object.fromEntries(ALL_MODULE_KEYS.map((key) => [
+    key,
+    // Absent means enabled for a module and DISABLED for an opt-in add-on —
+    // the whole reason optIn exists. See the note on ADDONS in the registry.
+    optIn.has(key) ? stored[key] === true : stored[key] !== false,
+  ]))
 }
 
 /** True if `key` is enabled under `map` (a normalized map, or a raw document). */
@@ -58,6 +76,10 @@ export function isModuleEnabled(map, key) {
   // does not govern, and refusing it would hide a screen no operator ever
   // turned off.
   if (!ALL_MODULE_KEYS.includes(key)) return true
+  // An opt-in add-on needs an explicit yes; everything else needs no explicit
+  // no. Both readings are of the same stored map, so an operator toggling a row
+  // on the Module access screen does the obvious thing either way.
+  if (optIn.has(key)) return map?.[key] === true
   return map?.[key] !== false
 }
 
@@ -66,9 +88,16 @@ export function enabledModules(map) {
   return MODULES.filter((m) => isModuleEnabled(map, m.key))
 }
 
-/** Keys currently switched off, for a short "3 of 17 off" style summary. */
+/**
+ * Keys currently switched off, for a short "3 of 18 off" style summary.
+ *
+ * Asks isModuleEnabled rather than testing for an explicit `false`, so an
+ * opt-in add-on nobody has granted counts as off — which it is. Testing the
+ * stored value directly would report every add-on as ON for every organization
+ * that has never been touched, which is the opposite of the truth.
+ */
 export function disabledKeys(map) {
-  return ALL_MODULE_KEYS.filter((key) => map?.[key] === false)
+  return ALL_MODULE_KEYS.filter((key) => !isModuleEnabled(map, key))
 }
 
 /**
