@@ -20,7 +20,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, LabelList } from 'recharts'
-import { RefreshCw, Loader2, UserCheck, MapPin, ClipboardList, Radar } from 'lucide-react'
+import { RefreshCw, Loader2, UserCheck, MapPin, ClipboardList, Radar, CalendarRange } from 'lucide-react'
 import ChartFrame from '../../shared/ui/ChartFrame'
 import { metabaseQuery } from '../../shared/functions'
 import { Panel, Stat, NoData, Picker, FilterRow, DateField } from './ui'
@@ -47,7 +47,14 @@ export default function AuditorsTab({ sites = [], keepUnplaced = true }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
+  // Nothing runs until a period is chosen — the same rule as the other two
+  // tabs. See the hasRange note in OdinTab.jsx: an empty date box reads as "no
+  // filter" while actually sending a default nobody picked, and that is what
+  // made these figures disagree with Metabase in the first place.
+  const hasRange = Boolean(f.from && f.to)
+
   const load = useCallback(async () => {
+    if (!(f.from && f.to)) { setLoading(false); return }
     setLoading(true)
     setError('')
     try {
@@ -107,7 +114,7 @@ export default function AuditorsTab({ sites = [], keepUnplaced = true }) {
     [filtered, groupBy],
   )
 
-  if (loading && !audits) {
+  if (loading && !audits && f.from && f.to) {
     return (
       <div className="card grid place-items-center px-6 py-16 text-center">
         <Loader2 size={22} className="animate-spin text-brand-600" />
@@ -176,7 +183,8 @@ export default function AuditorsTab({ sites = [], keepUnplaced = true }) {
             <button
               type="button"
               onClick={load}
-              disabled={loading}
+              disabled={loading || !hasRange}
+              title={hasRange ? undefined : 'Set a From and To date first'}
               className="inline-flex items-center gap-2 rounded-2xl bg-clay-surface px-4 py-2.5 text-[12.5px] font-semibold text-ink-700 shadow-clay-sm disabled:opacity-50"
             >
               <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh
@@ -208,7 +216,19 @@ export default function AuditorsTab({ sites = [], keepUnplaced = true }) {
         )}
       </div>
 
-      {noAuditor && (
+      {/* No period, no figures — see hasRange above. */}
+      {!hasRange && (
+        <div className="card grid place-items-center px-6 py-16 text-center">
+          <CalendarRange size={22} className="text-brand-600" />
+          <p className="mt-3 text-[14px] font-semibold text-ink-800">Choose a period to run</p>
+          <p className="mt-1 max-w-md text-[12.5px] leading-relaxed text-ink-500">
+            Set a From and To date above. The audits question covers the whole estate and takes up
+            to a minute, so nothing is fetched until you say which window you want.
+          </p>
+        </div>
+      )}
+
+      {hasRange && noAuditor && (
         // Every audit landed in "(not stated)". That is a configuration answer,
         // not an empty chart, and it names the column to add.
         <p className="card mb-5 p-4 text-[12.5px] leading-relaxed text-ink-600">
@@ -221,7 +241,7 @@ export default function AuditorsTab({ sites = [], keepUnplaced = true }) {
         </p>
       )}
 
-      <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      {hasRange && (<div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Stat icon={UserCheck} label="Auditors" value={m.rows.length.toLocaleString()} sub="with at least one audit in scope" tone="#0d9488" />
         <Stat icon={ClipboardList} label="Audits conducted" value={m.total.toLocaleString()} tone="#2563eb" />
         <Stat
@@ -237,13 +257,13 @@ export default function AuditorsTab({ sites = [], keepUnplaced = true }) {
           sub={busiestNote(m)}
           tone="#7c3aed"
         />
-      </div>
+      </div>)}
 
       {/* Region is the split people want, so it is always the default and is
           never swapped out from under them. When the register has no regions
           the honest thing is to say which register to fill in — not to
           re-group the chart by something else and let it look answered. */}
-      {splitEmpty && m.total > 0 && (
+      {hasRange && splitEmpty && m.total > 0 && (
         <p className="card mb-5 p-4 text-[12.5px] leading-relaxed text-ink-600">
           None of the audits in scope carry a <b>{groupLabel}</b>, so every bar below is pooled
           under “(not stated)”.
@@ -259,6 +279,7 @@ export default function AuditorsTab({ sites = [], keepUnplaced = true }) {
         </p>
       )}
 
+      {hasRange && (<>
       <Panel
         title={`Audits conducted by auditor, split by ${groupLabel}`}
         subtitle={m.rows.length > 20 ? 'Busiest 20; the full list is in the table below' : 'Busiest first'}
@@ -369,6 +390,7 @@ export default function AuditorsTab({ sites = [], keepUnplaced = true }) {
           They are counted in the totals but vanish when you pick a Region.</>
         )}
       </p>
+      </>)}
     </div>
   )
 }
@@ -398,6 +420,7 @@ function Blocked({ title, body, onRetry }) {
           <RefreshCw size={14} /> Try again
         </button>
       )}
+
     </div>
   )
 }
