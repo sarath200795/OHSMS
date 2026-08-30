@@ -429,6 +429,21 @@ export default function OdinTab({ view = 'scores', sites = [], orgId, actor, isA
           </Picker>
         </FilterRow>
 
+        {/* Sub-category is the one ticket-only cut that earns its place: it is
+            what KIND of defect was raised, which is the question asked of a
+            remediation queue more than any other. It has no meaning for an
+            audit — odinAnalytics never applies it to the audit population — so
+            it appears on this tab and no other, rather than sitting inert on
+            the scores tab the way it used to. */}
+        {showTickets && opts.subCategories.length > 1 && (
+          <FilterRow label="Tickets">
+            <Picker id="odin-sub" label="Sub-category" value={f.subCategory} onChange={(e) => setF({ ...f, subCategory: e.target.value })}>
+              <option value="all">All sub-categories</option>
+              {opts.subCategories.map((r) => <option key={r} value={r}>{r}</option>)}
+            </Picker>
+          </FilterRow>
+        )}
+
         {/* A display control, not a filter, so it keeps its own line and its
             own word. It is what the removed dimensions became: city, business
             line, ownership and centre type are all still here, as a breakdown
