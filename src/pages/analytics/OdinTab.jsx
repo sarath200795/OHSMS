@@ -24,7 +24,7 @@ import {
   LineChart, Line, ReferenceLine, CartesianGrid,
 } from 'recharts'
 import {
-  RefreshCw, ShieldAlert, MapPinOff, Radar, AlertTriangle, Plug, Loader2,
+  RefreshCw, ShieldAlert, MapPinOff, Radar, AlertTriangle, Plug, Loader2, CalendarRange,
   CircleCheck, CircleX, SlidersHorizontal, X, ClipboardCheck,
 } from 'lucide-react'
 import { MapContainer, TileLayer, Marker, Tooltip as LeafletTooltip } from 'react-leaflet'
@@ -149,7 +149,21 @@ export default function OdinTab({ view = 'scores', sites = [], orgId, actor, isA
   // metabaseConfig strips it server-side.
   const [conn, setConn] = useState(null)
 
+  // ── Nothing runs until a period is chosen ──────────────────────────────────
+  //
+  // These questions declare required date variables, so SOMETHING is always
+  // sent to Metabase. When the boxes were empty that something was a default
+  // nobody picked, and two blank date fields read as "no filter" — which is how
+  // a figure here got compared against a Metabase tab run over all of history
+  // and disagreed by twenty audits. Printing the window helped; not running at
+  // all until somebody says which window removes the ambiguity outright.
+  //
+  // It also stops the tab firing a thirty-to-sixty-second warehouse query the
+  // moment it is opened, which nobody asked for either.
+  const hasRange = Boolean(f.from && f.to)
+
   const load = useCallback(async () => {
+    if (!(f.from && f.to)) { setLoading(false); return }
     setLoading(true)
     setError('')
     try {
@@ -203,7 +217,7 @@ export default function OdinTab({ view = 'scores', sites = [], orgId, actor, isA
     [findingRows, auditRows, sites, f, keepUnplaced]
   )
 
-  if (loading && !findings) {
+  if (loading && !findings && f.from && f.to) {
     return (
       <div className="card grid place-items-center px-6 py-16 text-center">
         <Loader2 size={22} className="animate-spin text-brand-600" />
@@ -390,7 +404,8 @@ export default function OdinTab({ view = 'scores', sites = [], orgId, actor, isA
             <button
               type="button"
               onClick={load}
-              disabled={loading}
+              disabled={loading || !hasRange}
+              title={hasRange ? undefined : 'Set a From and To date first'}
               className="inline-flex items-center gap-2 rounded-2xl bg-clay-surface px-4 py-2.5 text-[12.5px] font-semibold text-ink-700 shadow-clay-sm disabled:opacity-50"
             >
               <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh
@@ -451,16 +466,20 @@ export default function OdinTab({ view = 'scores', sites = [], orgId, actor, isA
         )}
       </div>
 
+      {/* No period, no figures. See hasRange above: a number drawn over a
+          window nobody chose is the thing this whole tab got wrong once. */}
+      {!hasRange && <ChoosePeriod />}
+
       {/* Every caveat that would make a number on this page mean something
           other than what it looks like. Above the charts, because a reader has
           to see them before the figure, not after it. */}
-      <KeyExpiry conn={conn} onConnect={isAdmin ? () => setConnecting(true) : null} />
+      {hasRange && <KeyExpiry conn={conn} onConnect={isAdmin ? () => setConnecting(true) : null} />}
 
-      <Caveats findings={findings} audits={audits} totals={t} coverage={a.coverage} showScores={showScores} />
+      {hasRange && <Caveats findings={findings} audits={audits} totals={t} coverage={a.coverage} showScores={showScores} />}
 
-      {showScores && <BandHead title="Audit scores" note={`Against the ${PASS_MARK}% pass mark`} />}
+      {hasRange && showScores && <BandHead title="Audit scores" note={`Against the ${PASS_MARK}% pass mark`} />}
 
-      {showScores && (
+      {hasRange && showScores && (
         <>
           <div className="mb-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {AUDIT_KPIS.map(({ key, ...s }) => <Stat key={key} {...s} />)}
@@ -493,9 +512,9 @@ export default function OdinTab({ view = 'scores', sites = [], orgId, actor, isA
         </>
       )}
 
-      {showTickets && <BandHead title="Remediation tickets" note={showScores ? 'Raised by the audits above' : 'Raised by the FLS audits'} />}
+      {hasRange && showTickets && <BandHead title="Remediation tickets" note={showScores ? 'Raised by the audits above' : 'Raised by the FLS audits'} />}
 
-      {showTickets && (
+      {hasRange && showTickets && (
         <>
           <div className="mb-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {TICKET_KPIS.map(({ key, ...s }) => <Stat key={key} {...s} />)}
@@ -521,9 +540,9 @@ export default function OdinTab({ view = 'scores', sites = [], orgId, actor, isA
         </>
       )}
 
-      {showTickets && <BandHead title="Where" note="Every site in scope, busiest first" />}
+      {hasRange && showTickets && <BandHead title="Where" note="Every site in scope, busiest first" />}
 
-      {showTickets && (
+      {hasRange && showTickets && (
         <>
           {/* ── Sites and their issues ─────────────────────────────────────
               A list, not a map.
@@ -1035,6 +1054,26 @@ function CheckpointPanel({ rows }) {
  * at fifty reads as "these are all of them", which is the wrong impression for
  * a watchlist above all other tables.
  */
+/**
+ * What the tab shows before anybody has picked a period.
+ *
+ * Deliberately not a spinner and not an empty chart: both would imply the page
+ * had tried and found nothing. It has not tried, and it is saying so.
+ */
+function ChoosePeriod() {
+  return (
+    <div className="card grid place-items-center px-6 py-16 text-center">
+      <CalendarRange size={22} className="text-brand-600" />
+      <p className="mt-3 text-[14px] font-semibold text-ink-800">Choose a period to run</p>
+      <p className="mt-1 max-w-md text-[12.5px] leading-relaxed text-ink-500">
+        Set a From and To date above. These questions cover the whole estate and take up to a
+        minute to run, so nothing is fetched until you say which window you want — and the figures
+        will then match a Metabase tab run over those same two dates.
+      </p>
+    </div>
+  )
+}
+
 /**
  * One pin per place. Size carries the count, the ring carries the status mix,
  * and the number in the middle takes the colour of the worst status present —
