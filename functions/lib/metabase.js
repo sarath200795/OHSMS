@@ -592,7 +592,7 @@ export function normalizeRow(row = {}) {
     // Warehouse account names arrive with the company glued on the end
     // ("Amit kumar Srivastava Curefit"), which makes every legend twice as wide
     // as it needs to be for no added meaning.
-    auditor: String(out.auditor ?? '').trim().replace(/\s+(curefit|cultfit)$/i, ''),
+    auditor: cleanAuditor(out.auditor),
     priority: String(out.priority ?? '').trim(),
     sla: String(out.sla ?? '').trim(),
     checkpoint: String(out.checkpoint ?? '').trim(),
@@ -624,6 +624,26 @@ export function normalizeRow(row = {}) {
 }
 
 /**
+ * An auditor's name with the company glued on the end taken back off.
+ *
+ * Warehouse account names arrive as "Amit kumar Srivastava Curefit", which makes
+ * every legend twice as wide as it needs to be for no added meaning. The
+ * separator is not reliably a space — "Karthik brCurefit" is a real name in this
+ * data — so the whitespace between the two is optional here. It used to be
+ * required, which left exactly those names wearing the suffix while everyone
+ * else lost it, and an auditor appearing twice under two spellings is worse than
+ * one wearing a suffix.
+ *
+ * Never returns empty: a name that is nothing BUT the company is left alone,
+ * because "" is not an auditor and would silently merge with every other blank.
+ */
+function cleanAuditor(value) {
+  const name = String(value ?? '').trim()
+  const trimmed = name.replace(/\s*(curefit|cultfit)$/i, '').trim()
+  return trimmed || name
+}
+
+/**
  * passed + failed, or null when the pair is incomplete.
  *
  * Null rather than a partial sum, deliberately. Treating a missing fail count
@@ -641,7 +661,25 @@ export function normalizeRows(rows = []) {
   const list = Array.isArray(rows) ? rows.filter((r) => r && typeof r === 'object') : []
   const unmapped = new Set()
   for (const r of list) for (const name of Object.keys(r)) if (!fieldForColumn(name)) unmapped.add(name)
-  return { rows: list.map(normalizeRow), unmapped: [...unmapped] }
+
+  // `extra` is dropped BEFORE the wire, and this is not a micro-optimisation:
+  // measured against the live QFLS question it was 3.31MB of a 9.37MB response
+  // — a THIRD of the payload — against a hard 10MB callable limit the tickets
+  // question was already within 7% of. Nothing in the browser has ever read it.
+  //
+  // What it was for survives at a cost of nothing: `unmapped` above already
+  // names the columns nothing claimed, computed from the column names rather
+  // than from `extra`, and `shadowed` below names the runner-ups — the second
+  // column to map onto an already-filled field, the case that used to vanish
+  // silently. Both are per-RESPONSE lists of names, not per-row copies of the
+  // data, which is the whole difference between 3.31MB and a few dozen bytes.
+  const shadowed = new Set()
+  const mapped = list.map((r) => {
+    const { extra, ...row } = normalizeRow(r)
+    for (const name of Object.keys(extra)) if (fieldForColumn(name)) shadowed.add(name)
+    return row
+  })
+  return { rows: mapped, unmapped: [...unmapped], shadowed: [...shadowed] }
 }
 
 // ── The response cap ─────────────────────────────────────────────────────────
@@ -653,7 +691,28 @@ export function normalizeRows(rows = []) {
 // does for a capped Firestore read.
 export const MAX_ROWS = 20000
 
+// A row count alone was the wrong unit for a 10MB limit, and the arithmetic
+// says so: measured against the live tickets question a normalized row is about
+// 764 bytes, so MAX_ROWS of them is 15MB — over the limit the cap exists to stay
+// under. The cap could therefore be applied in full and the response STILL fail,
+// which is the one outcome it was written to prevent.
+//
+// So the budget is bytes, with the row count kept as a second ceiling. 8MB
+// rather than 10: the rows are the bulk of the response but not all of it, and
+// the remainder — per-source outcomes, the unmapped list, the bound parameters
+// — has to fit in the same envelope.
+export const MAX_BYTES = 8 * 1024 * 1024
+
 export function capRows(rows = []) {
   const list = Array.isArray(rows) ? rows : []
-  return { rows: list.slice(0, MAX_ROWS), total: list.length, capped: list.length > MAX_ROWS }
+  const kept = []
+  let bytes = 0
+  for (const row of list) {
+    if (kept.length >= MAX_ROWS) break
+    // +1 for the comma this row costs in the enclosing array.
+    bytes += Buffer.byteLength(JSON.stringify(row)) + 1
+    if (bytes > MAX_BYTES) break
+    kept.push(row)
+  }
+  return { rows: kept, total: list.length, capped: kept.length < list.length }
 }

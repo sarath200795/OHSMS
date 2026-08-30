@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   checkBaseUrl, parseCardId, normalizeConfig, redactConfig, readiness,
   cardQueryUrl, currentUserUrl, fieldForColumn, columnKey, normalizeStatus, sourcesFor,
-  normalizeRow, normalizeRows, isoDate, capRows, MAX_ROWS, STATUSES,
+  normalizeRow, normalizeRows, isoDate, capRows, MAX_ROWS, MAX_BYTES, STATUSES,
   keyAge, asMillis, isTerminal, TERMINAL_STATUSES, asDay, dateParameters, buildDateParams, defaultRange, safeRange, cardUrl, MAX_RANGE_DAYS,
 } from './metabase.js'
 
@@ -346,6 +346,19 @@ describe('normalizeRow', () => {
     expect(normalizeRow({ site: 'A', Reviewer: 'Priya' }).extra).toEqual({ Reviewer: 'Priya' })
   })
 
+  it('takes the company off an auditor name, with or without a space before it', () => {
+    // Both spellings are real in this data. Requiring the space left exactly
+    // the glued-together names wearing the suffix, so one auditor appeared
+    // twice in a legend under two spellings.
+    expect(normalizeRow({ Auditor_Name: 'Amit kumar Srivastava Curefit' }).auditor).toBe('Amit kumar Srivastava')
+    expect(normalizeRow({ Auditor_Name: 'Karthik brCurefit' }).auditor).toBe('Karthik br')
+  })
+
+  it('leaves a name alone when the company is all there is', () => {
+    // '' is not an auditor, and it would merge with every other blank.
+    expect(normalizeRow({ Auditor_Name: 'Curefit' }).auditor).toBe('Curefit')
+  })
+
   it('does not let JSON key order decide between two columns for one field', () => {
     const r = normalizeRow({ site: 'First', site_name: 'Second' })
     expect(r.site).toBe('First')
@@ -445,6 +458,47 @@ describe('capRows', () => {
     expect(out.rows).toHaveLength(MAX_ROWS)
     expect(out.total).toBe(MAX_ROWS + 5)
     expect(out.capped).toBe(true)
+  })
+
+  it('caps on BYTES, not just rows, so the response cannot exceed the limit', () => {
+    // The row count alone was the wrong unit. A real normalized ticket is about
+    // 764 bytes, so MAX_ROWS of them is 15MB — the cap could be applied in full
+    // and the response still be rejected, which is the one thing it exists to
+    // prevent. Fat rows must therefore be cut well before the row ceiling.
+    const fat = { blob: 'x'.repeat(64 * 1024) }
+    const out = capRows(new Array(500).fill(fat))
+    expect(out.rows.length).toBeLessThan(500)
+    expect(out.capped).toBe(true)
+    expect(Buffer.byteLength(JSON.stringify(out.rows))).toBeLessThanOrEqual(MAX_BYTES)
+    // ...and it still reports the true total, not the truncated one.
+    expect(out.total).toBe(500)
+  })
+})
+
+describe('normalizeRows on the wire', () => {
+  it('does not ship `extra` — it was a third of the payload and nothing read it', () => {
+    const out = normalizeRows([{ site: 'A', Reviewer: 'Priya' }])
+    expect(out.rows[0]).not.toHaveProperty('extra')
+    expect(out.rows[0].site).toBe('A')
+  })
+
+  it('still names the columns nothing claimed, without shipping their values', () => {
+    const out = normalizeRows([{ site: 'A', Reviewer: 'Priya' }])
+    expect(out.unmapped).toEqual(['Reviewer'])
+  })
+
+  it('names a runner-up column, which `unmapped` cannot catch', () => {
+    // site_name DOES map to a field — it simply lost to `site` — so it never
+    // appears in the unmapped list. Without this it went back to vanishing
+    // silently, which is what dropping `extra` would otherwise have cost.
+    const out = normalizeRows([{ site: 'First', site_name: 'Second' }])
+    expect(out.unmapped).toEqual([])
+    expect(out.shadowed).toEqual(['site_name'])
+  })
+
+  it('reports each shadowed column once, not once per row', () => {
+    const out = normalizeRows(new Array(50).fill({ site: 'First', site_name: 'Second' }))
+    expect(out.shadowed).toEqual(['site_name'])
   })
 })
 

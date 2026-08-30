@@ -9,7 +9,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   bucketOf, passTrend, ticketTrend, countBy, toDateOf, isBreach,
-  dimensionsPresent, dimensionHasData, resolveGroupBy, joinQuality, resolveOdinRows, filterOdinRows,
+  dimensionsPresent, dimensionHasData, resolveGroupBy, joinQuality, regionCoverage, resolveOdinRows, filterOdinRows,
   GRANULARITY_KEYS, PASS_MARK, recoveryStages, scoreBands, centreWatchlist, auditorMatrix,
   ticketAgeing, ticketTrend as trend, auditPopulation,
 } from './odinAnalytics'
@@ -197,6 +197,70 @@ describe('the centre-id join', () => {
       row({ siteId: '999', site: 'Nowhere' }),
     ], CODED)
     expect(joinQuality(rows)).toEqual({ byId: 1, byName: 1, unmatched: 1, total: 3 })
+  })
+
+  it('matches a name that differs only by punctuation or spacing', () => {
+    // A warehouse writes "Cult - Pitampura" and the register holds "Cult
+    // Pitampura". Losing an audit to a hyphen is not a data problem anybody
+    // can be asked to go and fix.
+    const sites = [{ id: 's1', name: 'Cult Pitampura', region: 'North' }]
+    const [r] = resolveOdinRows([row({ siteId: '', site: 'Cult - Pitampura', region: '' })], sites)
+    expect(r.matchedBy).toBe('name~')
+    expect(r.region).toBe('North')
+  })
+
+  it('prefers an exact name over the punctuation-insensitive one', () => {
+    const sites = [
+      { id: 's1', name: 'Cult HSR', region: 'South' },
+      { id: 's2', name: 'Cult-HSR', region: 'West' },
+    ]
+    const [r] = resolveOdinRows([row({ siteId: '', site: 'Cult-HSR', region: '' })], sites)
+    expect(r.matchedBy).toBe('name')
+    expect(r.region).toBe('West')
+  })
+
+  it('refuses to guess when one loose name belongs to two sites', () => {
+    // Attributing an audit to the wrong centre, silently, in a register the
+    // reader trusts, is worse than leaving it unplaced and saying so.
+    const sites = [
+      { id: 's1', name: 'Cult H S R', region: 'South' },
+      { id: 's2', name: 'Cult-HSR', region: 'West' },
+    ]
+    const [r] = resolveOdinRows([row({ siteId: '', site: 'CultHSR', region: '' })], sites)
+    expect(r.matchedBy).toBe('')
+    expect(r.region).toBe('')
+  })
+
+  it('still counts a loose name match as a join, not a failure', () => {
+    const sites = [{ id: 's1', name: 'Cult Pitampura', region: 'North' }]
+    const rows = resolveOdinRows([row({ siteId: '', site: 'Cult - Pitampura', region: '' })], sites)
+    expect(joinQuality(rows)).toMatchObject({ byName: 1, unmatched: 0 })
+  })
+})
+
+describe('regionCoverage', () => {
+  it('separates "no such site" from "site has no region" — they need different fixes', () => {
+    const sites = [{ id: 's1', name: 'Known', region: '' }]
+    const rows = resolveOdinRows([
+      row({ siteId: '', site: 'Known', region: '' }),      // in the register, no region on it
+      row({ siteId: '', site: 'Unknown', region: '' }),    // not in the register at all
+      row({ siteId: '', site: 'Known', region: '' }),
+    ], sites)
+    const cov = regionCoverage(rows)
+    expect(cov).toMatchObject({ placed: 0, noRegion: 2, noSite: 1, missing: 3, total: 3 })
+    expect(cov.noRegionCentres).toEqual(['Known'])
+    expect(cov.noSiteCentres).toEqual(['Unknown'])
+  })
+
+  it('names each centre once, however many rows it has', () => {
+    const rows = resolveOdinRows([row({ site: 'A', region: '' }), row({ site: 'A', region: '' }), row({ site: 'A', region: '' })], [])
+    expect(regionCoverage(rows).noSiteCentres).toEqual(['A'])
+    expect(regionCoverage(rows).noSite).toBe(3)
+  })
+
+  it('counts a row that states its own region as placed', () => {
+    const rows = resolveOdinRows([row({ site: 'A', region: 'East' })], [])
+    expect(regionCoverage(rows)).toMatchObject({ placed: 1, missing: 0 })
   })
 })
 

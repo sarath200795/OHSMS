@@ -23,12 +23,12 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, Legend, Cell, LabelList,
   LineChart, Line, ReferenceLine, CartesianGrid,
 } from 'recharts'
-import { MapContainer, TileLayer, Marker, Tooltip as LeafletTooltip } from 'react-leaflet'
-import L from 'leaflet'
 import {
   RefreshCw, ShieldAlert, MapPinOff, Radar, AlertTriangle, Plug, Loader2,
   CircleCheck, CircleX, SlidersHorizontal, X, ClipboardCheck,
 } from 'lucide-react'
+import { MapContainer, TileLayer, Marker, Tooltip as LeafletTooltip } from 'react-leaflet'
+import L from 'leaflet'
 import ChartFrame from '../../shared/ui/ChartFrame'
 import { metabaseQuery, metabaseSettings } from '../../shared/functions'
 import MetabaseConnect from '../../shared/integrations/MetabaseConnect'
@@ -69,6 +69,24 @@ const EMPTY_FILTER = {
 }
 
 /**
+ * What a tab breaks down by before anybody chooses.
+ *
+ * The scores tab opens on AUDITOR, not region, and the reason is that region is
+ * the one dimension on this page the warehouse does not supply. The audits
+ * question carries a centre id and a city; its regions are looked up from this
+ * app's site register, and measured against a real month roughly a third of
+ * audits fail that lookup and belong to no region at all — present in the total,
+ * absent from every region, which is how "Metabase says 80, ODIN says 60"
+ * happens. `Auditor_Name` comes straight off the question and cannot fail that
+ * way, so the default breakdown is one that never silently loses rows.
+ *
+ * The tickets question has no auditor column, so the tickets tab keeps region.
+ * Defaulting it to a dimension its data cannot fill would just fall through to
+ * whatever came first, which is not a default so much as an accident.
+ */
+const defaultGroupBy = (view) => (view === 'tickets' ? 'region' : 'auditor')
+
+/**
  * The three readings of one audit, and why each is drawn the way it is.
  *
  * They are three measurements of the SAME audits rather than three groups, so
@@ -107,40 +125,6 @@ function Segments({ label, value, options, onChange }) {
   )
 }
 
-/**
- * One pin per site. Size carries the count, the ring carries the status mix,
- * and the number in the middle takes the colour of the worst status present —
- * the same grammar the CCTV and equipment maps use, so a reader who has learned
- * one map has learned all three.
- */
-const pinCache = new Map()
-function issuePin(pin) {
-  const size = pin.total >= 10 ? 42 : pin.total >= 4 ? 36 : 30
-  const key = `${size}:${STATUS_META.map((s) => pin.byStatus[s.key]).join('-')}`
-  if (!pinCache.has(key)) {
-    let at = 0
-    const stops = []
-    for (const s of STATUS_META) {
-      const n = pin.byStatus[s.key] || 0
-      if (!n) continue
-      const to = at + (n / pin.total) * 100
-      stops.push(`${s.color} ${at.toFixed(1)}% ${to.toFixed(1)}%`)
-      at = to
-    }
-    const lead = STATUS_BY_KEY[leadStatus(pin.byStatus)]?.color || '#57534e'
-    const inner = size - 11
-    pinCache.set(
-      key,
-      L.divIcon({
-        className: '',
-        html: `<div style="transform:translate(-50%,-50%);display:grid;place-items:center;width:${size}px;height:${size}px;border-radius:50%;background:conic-gradient(${stops.join(',')});box-shadow:0 3px 10px rgba(16,24,40,.35)"><span style="display:grid;place-items:center;width:${inner}px;height:${inner}px;border-radius:50%;background:#fff;color:${lead};font:800 ${Math.round(inner / 2.1)}px Inter,sans-serif">${pin.total}</span></div>`,
-        iconSize: [size, size],
-      })
-    )
-  }
-  return pinCache.get(key)
-}
-
 export default function OdinTab({ view = 'scores', sites = [], orgId, actor, isAdmin = false, keepUnplaced = true }) {
   // Which half is on screen. The scores view still needs the findings
   // question — the centre watchlist puts tickets beside pass rates, and the
@@ -149,7 +133,7 @@ export default function OdinTab({ view = 'scores', sites = [], orgId, actor, isA
   // of two and arrives in about half the time.
   const showScores = view !== 'tickets'
   const showTickets = view !== 'scores'
-  const [f, setF] = useState(EMPTY_FILTER)
+  const [f, setF] = useState(() => ({ ...EMPTY_FILTER, groupBy: defaultGroupBy(view) }))
   const [loading, setLoading] = useState(true)
   const [findings, setFindings] = useState(null)  // { ok, rows, … } as returned
   const [audits, setAudits] = useState(null)
@@ -351,6 +335,16 @@ export default function OdinTab({ view = 'scores', sites = [], orgId, actor, isA
   const fetchedAt = findings?.fetchedAt ? new Date(findings.fetchedAt) : null
   const groupLabel = (GROUP_DIMS.find((d) => d.key === a.groupBy)?.label || 'group').toLowerCase()
 
+  // The window the questions ACTUALLY ran over, as reported by the connector
+  // rather than as typed into the boxes above.
+  //
+  // These questions declare required date variables, so something is always
+  // sent — and when the boxes are empty that something is a default the reader
+  // never chose and could not see. Two empty date fields read as "no filter",
+  // so the figures got compared against a Metabase tab run over all of history
+  // and disagreed, which is a fault in the dashboard and not in the reader.
+  const ran = findings?.range || audits?.range || null
+
   return (
     <div className="animate-fade-in-up">
       {/* ── The filter bar ──────────────────────────────────────────────────
@@ -388,7 +382,7 @@ export default function OdinTab({ view = 'scores', sites = [], orgId, actor, isA
           <div className="ml-auto flex flex-wrap items-end gap-2">
             <button
               type="button"
-              onClick={() => setF(EMPTY_FILTER)}
+              onClick={() => setF({ ...EMPTY_FILTER, groupBy: defaultGroupBy(view) })}
               className="rounded-2xl bg-clay-surface px-4 py-2.5 text-[12.5px] font-semibold text-ink-700 shadow-clay-sm"
             >
               Reset
@@ -462,7 +456,7 @@ export default function OdinTab({ view = 'scores', sites = [], orgId, actor, isA
           to see them before the figure, not after it. */}
       <KeyExpiry conn={conn} onConnect={isAdmin ? () => setConnecting(true) : null} />
 
-      <Caveats findings={findings} audits={audits} totals={t} />
+      <Caveats findings={findings} audits={audits} totals={t} coverage={a.coverage} showScores={showScores} />
 
       {showScores && <BandHead title="Audit scores" note={`Against the ${PASS_MARK}% pass mark`} />}
 
@@ -473,6 +467,8 @@ export default function OdinTab({ view = 'scores', sites = [], orgId, actor, isA
           </div>
           <p className="mb-5 text-[11.5px] leading-relaxed text-ink-400">
             From Metabase{fetchedAt ? `, as at ${fetchedAt.toLocaleString()}` : ''}.
+            {ran && <> Covering <strong className="font-semibold text-ink-600">{ran.from} to {ran.to}</strong>
+              {!f.from && !f.to && ' — the default window, because the date boxes are empty'}.</>}
             {' '}A snapshot, not a live feed — press Refresh to run the questions again.
           </p>
 
@@ -507,6 +503,9 @@ export default function OdinTab({ view = 'scores', sites = [], orgId, actor, isA
           <p className="mb-5 text-[11.5px] leading-relaxed text-ink-400">
         One row per ticket the audits raised. Bucketed on the date the defect was RAISED, not
         the date it closed — the two are different clocks.
+            {ran && <> Covering <strong className="font-semibold text-ink-600">{ran.from} to {ran.to}</strong>
+              {!f.from && !f.to && ' — the default window, because the date boxes are empty'}
+              ; a Metabase tab run over a different window will not agree with these figures.</>}
           </p>
 
           <TicketTrendPanel tickets={a.tickets} gran={f.gran} breached={a.breached} />
@@ -522,77 +521,22 @@ export default function OdinTab({ view = 'scores', sites = [], orgId, actor, isA
         </>
       )}
 
-      {showTickets && <BandHead title="Where" note="Joined to your site register" />}
+      {showTickets && <BandHead title="Where" note="Every site in scope, busiest first" />}
 
       {showTickets && (
         <>
-          <Panel
-            title="Where the issues are"
-            subtitle="One pin per site; the ring is its status mix, the number is how many"
-            className="mb-5"
-          >
-            {a.pins.length === 0 ? (
-              <NoData height={300}>
-                {a.unplaced.length > 0
-                  ? 'Issues exist, but none of the affected sites have coordinates. Add a latitude and longitude to the site in Sites, or return them from your Metabase question.'
-                  : 'No issues in this scope.'}
-              </NoData>
-            ) : (
-              <>
-                <div className="overflow-hidden rounded-[18px]">
-                  <MapContainer
-                    center={[a.pins[0].lat, a.pins[0].lng]}
-                    zoom={5}
-                    scrollWheelZoom
-                    style={{ height: 360, width: '100%' }}
-                  >
-                    <TileLayer
-                      attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-                      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                    />
-                    {a.pins.map((p) => (
-                      <Marker key={p.id} position={[p.lat, p.lng]} icon={issuePin(p)}>
-                        <LeafletTooltip direction="top" offset={[0, -14]} opacity={1}>
-                          <span className="text-[12px] font-semibold">{p.site}</span>
-                          {STATUS_META.filter((s) => p.byStatus[s.key] > 0).map((s) => (
-                            <span key={s.key} className="block text-[11px]">
-                              {p.byStatus[s.key]} {s.label.toLowerCase()}
-                            </span>
-                          ))}
-                          {(p.region || p.entity) && (
-                            <span className="block text-[11px]">{[p.region, p.entity].filter(Boolean).join(' · ')}</span>
-                          )}
-                        </LeafletTooltip>
-                      </Marker>
-                    ))}
-                  </MapContainer>
-                </div>
+          {/* ── Sites and their issues ─────────────────────────────────────
+              A list, not a map.
 
-                <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5">
-                  {STATUS_META.map((s) => (
-                    <span key={s.key} className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold text-ink-600">
-                      <span className="h-2.5 w-2.5 rounded-full" style={{ background: s.color }} />
-                      {s.label}
-                    </span>
-                  ))}
-                </div>
-
-                {a.unplaced.length > 0 && (
-                  // Said out loud, every time. A map showing eleven of nineteen
-                  // sites and saying nothing will be read as showing all nineteen.
-                  <p className="mt-3 flex items-start gap-2 text-[11.5px] leading-relaxed text-ink-500">
-                    <MapPinOff size={13} className="mt-0.5 flex-none" />
-                    {a.unplaced.reduce((n, u) => n + u.total, 0)} issue
-                    {a.unplaced.reduce((n, u) => n + u.total, 0) === 1 ? '' : 's'} at{' '}
-                    {a.unplaced.length} site{a.unplaced.length === 1 ? '' : 's'} could not be placed:{' '}
-                    {a.unplaced.slice(0, 4).map((u) => u.site).join(', ')}
-                    {a.unplaced.length > 4 ? `, +${a.unplaced.length - 4} more` : ''}. They are counted in
-                    every chart below.
-                  </p>
-                )}
-              </>
-            )}
-          </Panel>
+              The map could only draw a site it had coordinates for, and the
+              tickets question carries none — they came from the site register,
+              where most partner gyms have never had a latitude put on them. So
+              it drew about 76 sites short of the estate and captioned itself
+              with an apology naming the ones it had dropped. Everything anybody
+              actually read off it — which sites, how many issues, how many
+              still open — is a list, and a list can show all of them. */}
+          <IssueMap cities={a.cities} sites={{ pins: a.pins, unplaced: a.unplaced }} />
+          <SiteIssueList rows={a.siteIssues} />
 
           <Panel
             title={`Status by ${groupLabel}`}
@@ -1091,6 +1035,222 @@ function CheckpointPanel({ rows }) {
  * at fifty reads as "these are all of them", which is the wrong impression for
  * a watchlist above all other tables.
  */
+/**
+ * One pin per place. Size carries the count, the ring carries the status mix,
+ * and the number in the middle takes the colour of the worst status present —
+ * the same grammar the CCTV and equipment maps use, so a reader who has learned
+ * one map has learned all three.
+ */
+const pinCache = new Map()
+function issuePin(pin) {
+  const size = pin.total >= 100 ? 48 : pin.total >= 10 ? 42 : pin.total >= 4 ? 36 : 30
+  const key = `${size}:${STATUS_META.map((s) => pin.byStatus[s.key]).join('-')}`
+  if (!pinCache.has(key)) {
+    let at = 0
+    const stops = []
+    for (const s of STATUS_META) {
+      const n = pin.byStatus[s.key] || 0
+      if (!n) continue
+      const to = at + (n / pin.total) * 100
+      stops.push(`${s.color} ${at.toFixed(1)}% ${to.toFixed(1)}%`)
+      at = to
+    }
+    const lead = STATUS_BY_KEY[leadStatus(pin.byStatus)]?.color || '#57534e'
+    const inner = size - 11
+    pinCache.set(
+      key,
+      L.divIcon({
+        className: '',
+        html: `<div style="transform:translate(-50%,-50%);display:grid;place-items:center;width:${size}px;height:${size}px;border-radius:50%;background:conic-gradient(${stops.join(',')});box-shadow:0 3px 10px rgba(16,24,40,.35)"><span style="display:grid;place-items:center;width:${inner}px;height:${inner}px;border-radius:50%;background:#fff;color:${lead};font:800 ${Math.round(inner / 2.4)}px Inter,sans-serif">${pin.total}</span></div>`,
+        iconSize: [size, size],
+      })
+    )
+  }
+  return pinCache.get(key)
+}
+
+/**
+ * Where the issues are, by city or by site.
+ *
+ * City is the default. A site pin needs that exact site to carry coordinates
+ * and most partner gyms do not; a city pin needs only one located site in the
+ * city, so it places nearly everything the site view drops. Site remains one
+ * click away for anyone who wants the individual centre.
+ */
+function IssueMap({ cities, sites }) {
+  const [by, setBy] = useState('city')
+  const view = by === 'city' ? cities : sites
+  const { pins, unplaced } = view
+  const missing = unplaced.reduce((n, u) => n + u.total, 0)
+  const one = unplaced.length === 1
+  const placeWord = by === 'city' ? (one ? 'city' : 'cities') : (one ? 'site' : 'sites')
+
+
+  return (
+    <Panel
+      title="Where the issues are"
+      subtitle={by === 'city'
+        ? 'One pin per city; the ring is its status mix, the number is how many'
+        : 'One pin per site; the ring is its status mix, the number is how many'}
+      className="mb-5"
+      right={
+        <div className="flex rounded-2xl bg-clay-surface p-1 shadow-clay-sm">
+          {[{ k: 'city', label: 'By city' }, { k: 'site', label: 'By site' }].map((o) => (
+            <button
+              key={o.k}
+              type="button"
+              onClick={() => setBy(o.k)}
+              className={`rounded-xl px-3 py-1.5 text-[11.5px] font-semibold transition ${
+                by === o.k ? 'bg-white text-ink-800 shadow-clay-sm' : 'text-ink-500 hover:text-ink-700'
+              }`}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+      }
+    >
+      {pins.length === 0 ? (
+        <NoData height={300}>
+          {unplaced.length > 0
+            ? 'Issues exist, but no affected site has coordinates. Add a latitude and longitude to a site in Sites, or return them from your Metabase question.'
+            : 'No issues in this scope.'}
+        </NoData>
+      ) : (
+        <>
+          <div className="overflow-hidden rounded-[18px]">
+            <MapContainer
+              key={by}
+              center={[pins[0].lat, pins[0].lng]}
+              zoom={by === 'city' ? 5 : 6}
+              scrollWheelZoom
+              style={{ height: 360, width: '100%' }}
+            >
+              <TileLayer
+                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              />
+              {pins.map((p) => (
+                <Marker key={p.id} position={[p.lat, p.lng]} icon={issuePin(p)}>
+                  <LeafletTooltip direction="top" offset={[0, -14]} opacity={1}>
+                    <span className="text-[12px] font-semibold">{p.site}</span>
+                    {p.sites > 1 && <span className="block text-[11px]">{p.sites} sites</span>}
+                    {STATUS_META.filter((s) => p.byStatus[s.key] > 0).map((s) => (
+                      <span key={s.key} className="block text-[11px]">
+                        {p.byStatus[s.key]} {s.label.toLowerCase()}
+                      </span>
+                    ))}
+                    {(p.region || p.entity) && (
+                      <span className="block text-[11px]">{[p.region, p.entity].filter(Boolean).join(' · ')}</span>
+                    )}
+                  </LeafletTooltip>
+                </Marker>
+              ))}
+            </MapContainer>
+          </div>
+
+          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5">
+            {STATUS_META.map((s) => (
+              <span key={s.key} className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold text-ink-600">
+                <span className="h-2.5 w-2.5 rounded-full" style={{ background: s.color }} />
+                {s.label}
+              </span>
+            ))}
+          </div>
+
+          {/* Said out loud, every time. A map showing eleven of nineteen places
+              and saying nothing will be read as showing all nineteen. */}
+          {unplaced.length > 0 && (
+            <p className="mt-3 flex items-start gap-2 text-[11.5px] leading-relaxed text-ink-500">
+              <MapPinOff size={13} className="mt-0.5 flex-none" />
+              {missing.toLocaleString()} issue{missing === 1 ? '' : 's'} at {unplaced.length}{' '}
+              {placeWord} could not be placed:{' '}
+              {unplaced.slice(0, 4).map((u) => u.site).join(', ')}
+              {unplaced.length > 4 ? `, +${unplaced.length - 4} more` : ''}. They are counted in every
+              chart below, and in the list underneath.
+            </p>
+          )}
+        </>
+      )}
+    </Panel>
+  )
+}
+
+/**
+ * Every site in scope and how many issues it carries, busiest first.
+ *
+ * This replaced the map. Sorted by total rather than alphabetically because the
+ * question it answers is "where is the work", and that is a ranking; a site with
+ * three hundred open issues should not be somewhere under S.
+ */
+function SiteIssueList({ rows }) {
+  if (!rows?.length) {
+    return (
+      <Panel title="Sites and their issues" subtitle="Every site in scope, busiest first" className="mb-5">
+        <NoData height={200}>No issues in this scope.</NoData>
+      </Panel>
+    )
+  }
+
+  const shown = rows.slice(0, 200)
+  const totals = rows.reduce(
+    (acc, r) => ({ total: acc.total + r.total, open: acc.open + r.open, breached: acc.breached + r.breached }),
+    { total: 0, open: 0, breached: 0 },
+  )
+
+  return (
+    <Panel
+      title="Sites and their issues"
+      subtitle="Every site in scope, busiest first"
+      className="mb-5"
+    >
+      <div className="table-crisp max-h-[30rem] overflow-auto">
+        <table className="w-full text-left text-[12.5px]">
+          <thead className="sticky top-0 bg-clay-surface">
+            <tr className="text-[10.5px] uppercase tracking-wide text-ink-400">
+              <th className="px-3 py-2">Site</th>
+              <th className="px-3 py-2 text-right">Issues</th>
+              <th className="px-3 py-2 text-right">Open</th>
+              <th className="px-3 py-2 text-right">Closed</th>
+              <th className="px-3 py-2 text-right">SLA breached</th>
+            </tr>
+          </thead>
+          <tbody>
+            {shown.map((r) => (
+              <tr key={r.id} className="border-t border-clay-100">
+                <td className="px-3 py-2">
+                  <span className="font-medium text-ink-800">{r.site}</span>
+                  {(r.city || r.region || r.entity) && (
+                    <span className="ml-1.5 text-[11px] text-ink-400">
+                      {[r.city || r.region, r.entity].filter(Boolean).join(' · ')}
+                    </span>
+                  )}
+                </td>
+                <td className="px-3 py-2 text-right tabular-nums font-semibold text-ink-800">{r.total.toLocaleString()}</td>
+                <td className="px-3 py-2 text-right tabular-nums text-ink-700">{r.open.toLocaleString()}</td>
+                <td className="px-3 py-2 text-right tabular-nums text-ink-500">{r.closed.toLocaleString()}</td>
+                <td className="px-3 py-2 text-right tabular-nums">
+                  <span className={r.breached > 0 ? 'font-semibold text-red-600' : 'text-ink-300'}>
+                    {r.breached.toLocaleString()}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="mt-3 text-[11.5px] leading-relaxed text-ink-500">
+        {rows.length > shown.length
+          ? `Showing the ${shown.length} busiest of ${rows.length.toLocaleString()} sites. `
+          : `${rows.length.toLocaleString()} site${rows.length === 1 ? '' : 's'} in scope. `}
+        {totals.total.toLocaleString()} issues, {totals.open.toLocaleString()} still open,
+        {' '}{totals.breached.toLocaleString()} past SLA. Every site appears — unlike the map this
+        replaced, nothing here depends on a site having coordinates.
+      </p>
+    </Panel>
+  )
+}
+
 function Watchlist({ rows, join }) {
   if (!rows?.length) return null
   const shown = rows.slice(0, 50)
@@ -1379,8 +1539,28 @@ function KeyExpiry({ conn, onConnect }) {
   )
 }
 
-function Caveats({ findings, audits, totals }) {
+function Caveats({ findings, audits, totals, coverage, showScores }) {
   const notes = []
+
+  // ── Rows that can be counted but not placed in a region ────────────────────
+  //
+  // First, because it is the caveat that explains a disagreement with Metabase
+  // rather than merely qualifying a number, and because the reader hits it the
+  // moment they touch the Region filter. The audits question has no region
+  // column; every region on this page is this app's site register, reached by
+  // centre id. A row that fails that join is in the totals and in no region.
+  const cov = showScores ? coverage?.audits : coverage?.findings
+  const unit = showScores ? 'audit' : 'ticket'
+  if (cov?.missing > 0) {
+    const list = (names) => `${names.slice(0, 3).join(', ')}${names.length > 3 ? ` and ${names.length - 3} more` : ''}`
+    const because = [
+      cov.noSite > 0 && `${cov.noSite.toLocaleString()} at centres your site register does not hold (${list(cov.noSiteCentres)}) — add the centre id to the site, or add the site`,
+      cov.noRegion > 0 && `${cov.noRegion.toLocaleString()} at centres that ARE in the register but have no region recorded (${list(cov.noRegionCentres)}) — set the region on the site`,
+    ].filter(Boolean)
+    notes.push(
+      `${cov.missing.toLocaleString()} of ${cov.total.toLocaleString()} ${unit}s carry no region, so they are counted in the totals above but disappear as soon as you pick a Region — which is why a region here can read lower than the same period in Metabase. ${because.join('. ')}.`
+    )
+  }
 
   // Instances that did not answer, named. This leads, because it is the only
   // caveat that means numbers are MISSING rather than merely qualified — a
