@@ -32,7 +32,7 @@ import {
 import ChartFrame from '../../shared/ui/ChartFrame'
 import { metabaseQuery, metabaseSettings } from '../../shared/functions'
 import MetabaseConnect from '../../shared/integrations/MetabaseConnect'
-import { Panel, Stat, NoData, Picker } from './ui'
+import { Panel, Stat, NoData, Picker, FilterRow, DateField } from './ui'
 import {
   odinAnalytics, odinFacets, resolveOdinRows, STATUS_META, STATUS_BY_KEY, leadStatus,
   GRANULARITIES, GROUP_DIMS, PASS_MARK,
@@ -82,63 +82,6 @@ const TREND_SERIES = [
   { key: 'n7', label: 'After 7 days', color: '#eb6834' },
   { key: 'toDate', label: 'To date', color: '#1baf7a', dashed: true },
 ]
-
-/**
- * The estate cuts, which narrow BOTH questions.
- *
- * Priority moved out of this list and onto the tickets row: it is a property of
- * a finding, and odinAnalytics never applies it to the audit population, so on
- * the scores tab it was a control that did nothing when you used it.
- *
- * Each is rendered only where the connected questions actually carry it.
- */
-const SCOPE_FILTERS = [
-  { key: 'city', label: 'City', opt: 'cities', all: 'All cities' },
-  { key: 'businessLine', label: 'Business line', opt: 'businessLines', all: 'All lines' },
-  { key: 'ownership', label: 'Ownership', opt: 'ownerships', all: 'All ownership' },
-  { key: 'centerType', label: 'Centre type', opt: 'centerTypes', all: 'All centre types' },
-  { key: 'auditType', label: 'Audit type', opt: 'auditTypes', all: 'All audit types' },
-]
-
-/**
- * One labelled band of the filter bar.
- *
- * The label is the whole point. Thirteen controls in an undifferentiated wrap
- * is a wall you have to read end to end to find the one you want; four small
- * groups with a word in front of each is a thing you scan. The word sits in a
- * fixed-width gutter on wide screens so the controls line up down the page, and
- * stacks above them when there is no room for that.
- */
-function FilterRow({ label, children }) {
-  return (
-    <div className="flex flex-col gap-2 p-4 sm:flex-row sm:items-end sm:gap-4">
-      <p className="w-full pt-1 text-[10.5px] font-bold uppercase tracking-[0.1em] text-ink-400 sm:w-20 sm:flex-none">
-        {label}
-      </p>
-      <div className="flex flex-1 flex-wrap items-end gap-3">{children}</div>
-    </div>
-  )
-}
-
-/** A date input styled as one of the filter bar's fields. */
-function DateField({ id, label, value, min, max, onChange }) {
-  return (
-    <div className="flex flex-col gap-1">
-      <label htmlFor={id} className="text-[10.5px] font-semibold uppercase tracking-wide text-ink-400">
-        {label}
-      </label>
-      <input
-        id={id}
-        type="date"
-        value={value}
-        min={min || undefined}
-        max={max || undefined}
-        onChange={(e) => onChange(e.target.value)}
-        className="rounded-2xl bg-clay-surface px-3 py-2.5 text-[12.5px] font-semibold text-ink-700 shadow-clay-sm"
-      />
-    </div>
-  )
-}
 
 /** A segmented control. Six grains is too many for a dropdown nobody opens. */
 function Segments({ label, value, options, onChange }) {
@@ -411,20 +354,18 @@ export default function OdinTab({ view = 'scores', sites = [], orgId, actor, isA
   return (
     <div className="animate-fade-in-up">
       {/* ── The filter bar ──────────────────────────────────────────────────
-          Not the shared FilterBar: that one filters by SITE against this app's
-          own registry, and ODIN's population comes from a warehouse whose site
-          list need not match.
+          Six controls, and that is the whole list: a period, the two groupings
+          this app's own site register fills in, and which kind of audit.
 
-          Grouped into rows, because ungrouped it was thirteen controls in one
-          wrap with the date pickers somewhere in the middle and no indication
-          which of them did what. Period first — it is what anyone changes
-          first — then the estate, then the ticket-only cuts.
+          It carried thirteen before — instance, city, business line, ownership,
+          centre type, status, priority, sub-category — and the answer to "which
+          of these do I need" was almost always none of them. A filter nobody
+          reaches for still has to be read past every time somebody looks for
+          the date. The dimensions that went are all still reachable as a
+          breakdown, which is what people actually wanted them for.
 
-          Status, priority and sub-category appear ONLY on the tickets view.
-          They are properties of a finding, not of an audit, and odinAnalytics
-          deliberately keeps them out of the audit population — so on the scores
-          tab they were controls that visibly did nothing when you used them,
-          which is worse than not offering them. */}
+          Identical on all three tabs, so moving between them does not move the
+          controls. */}
       <div className="card mb-5 divide-y divide-clay-100 p-0">
         <FilterRow label="Period">
           <DateField
@@ -474,14 +415,6 @@ export default function OdinTab({ view = 'scores', sites = [], orgId, actor, isA
         </FilterRow>
 
         <FilterRow label="Scope">
-          {/* Only when there is more than one instance. A picker with a single
-              option is furniture that has to be read before it can be ignored. */}
-          {opts.sources.length > 1 && (
-            <Picker id="odin-source" label="Instance" value={f.source} onChange={(e) => setF({ ...f, source: e.target.value })}>
-              <option value="all">All instances ({opts.sources.length})</option>
-              {opts.sources.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
-            </Picker>
-          )}
           <Picker id="odin-region" label="Region" value={f.region} onChange={(e) => setF({ ...f, region: e.target.value })}>
             <option value="all">All regions</option>
             {opts.regions.map((r) => <option key={r} value={r}>{r}</option>)}
@@ -490,46 +423,16 @@ export default function OdinTab({ view = 'scores', sites = [], orgId, actor, isA
             <option value="all">All entities</option>
             {opts.entities.map((r) => <option key={r} value={r}>{r}</option>)}
           </Picker>
-          {/* Each offered only where the connected questions carry it — a
-              picker whose every row is "(not stated)" is furniture too. */}
-          {SCOPE_FILTERS.map(({ key, label, opt, all }) => (
-            opts[opt].length > 1 && (
-              <Picker
-                key={key}
-                id={`odin-${key}`}
-                label={label}
-                value={f[key]}
-                onChange={(e) => setF({ ...f, [key]: e.target.value })}
-              >
-                <option value="all">{all}</option>
-                {opts[opt].map((v) => <option key={v} value={v}>{v}</option>)}
-              </Picker>
-            )
-          ))}
+          <Picker id="odin-auditType" label="Type of audit" value={f.auditType} onChange={(e) => setF({ ...f, auditType: e.target.value })}>
+            <option value="all">All audit types</option>
+            {opts.auditTypes.map((v) => <option key={v} value={v}>{v}</option>)}
+          </Picker>
         </FilterRow>
 
-        {showTickets && (
-          <FilterRow label="Tickets">
-            <Picker id="odin-status" label="Status" value={f.status} onChange={(e) => setF({ ...f, status: e.target.value })}>
-              <option value="all">All statuses</option>
-              {STATUS_META.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
-            </Picker>
-            {opts.priorities.length > 1 && (
-              <Picker id="odin-priority" label="Priority" value={f.priority} onChange={(e) => setF({ ...f, priority: e.target.value })}>
-                <option value="all">All priorities</option>
-                {opts.priorities.map((v) => <option key={v} value={v}>{v}</option>)}
-              </Picker>
-            )}
-            <Picker id="odin-sub" label="Sub-category" value={f.subCategory} onChange={(e) => setF({ ...f, subCategory: e.target.value })}>
-              <option value="all">All sub-categories</option>
-              {opts.subCategories.map((r) => <option key={r} value={r}>{r}</option>)}
-            </Picker>
-          </FilterRow>
-        )}
-
-        {/* A display control, not a filter, so it gets its own line and its own
-            word. It governs the status chart AND the pass chart, which is why
-            it is not tucked inside either card. */}
+        {/* A display control, not a filter, so it keeps its own line and its
+            own word. It is what the removed dimensions became: city, business
+            line, ownership and centre type are all still here, as a breakdown
+            rather than as eight more dropdowns. */}
         {a.dimensions.length > 1 && (
           <FilterRow label="Show">
             <Picker id="odin-groupby" label="Break down by" value={a.groupBy} onChange={(e) => setF({ ...f, groupBy: e.target.value })}>
@@ -1482,7 +1385,18 @@ function Caveats({ findings, audits, totals }) {
     notes.push(`These figures are incomplete. Your findings question returned ${findings.total.toLocaleString()} rows and ODIN reads the first ${findings.rows.length.toLocaleString()}. Group or filter the question in Metabase so it fits.`)
   }
   if (totals.unknown > 0) {
-    notes.push(`${totals.unknown} issue${totals.unknown === 1 ? '' : 's'} carry a status ODIN does not recognise (${totals.unknownLabels.slice(0, 4).join(', ')}${totals.unknownLabels.length > 4 ? ', …' : ''}). They are counted in the total but appear in no status bar — map them to Open, In Progress, On Hold or Closed in your question.`)
+    // Two different faults wear the same number, and they need different
+    // fixes. A row with an unfamiliar WORD needs that word mapped. A row with
+    // no status at all is almost always a question in the wrong slot — the
+    // audits question sitting under `findings`, whose rows are audits and have
+    // no ticket status to give. Saying "does not recognise ()" for the second
+    // one sent people looking for a word that was never there.
+    const named = totals.unknownLabels.filter((l) => String(l || '').trim())
+    notes.push(
+      named.length
+        ? `${totals.unknown} issue${totals.unknown === 1 ? '' : 's'} carry a status ODIN does not recognise (${named.slice(0, 4).join(', ')}${named.length > 4 ? ', …' : ''}). They are counted in the total but appear in no status bar — map them to Open, In Progress, On Hold, Closed or Rejected in your question.`
+        : `${totals.unknown} row${totals.unknown === 1 ? '' : 's'} carry no status at all, so they are counted in the total but appear in no status bar. A findings question with no status column is usually the wrong question in that slot — check that your AUDITS question is set as the audits question rather than the findings one, in Connection settings.`
+    )
   }
   if (findings?.unmapped?.length) {
     notes.push(`Columns ODIN made no use of: ${findings.unmapped.slice(0, 8).join(', ')}${findings.unmapped.length > 8 ? ', …' : ''}. Rename one to a name ODIN knows if it should be driving a chart.`)
