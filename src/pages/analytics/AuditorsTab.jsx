@@ -26,7 +26,7 @@ import { metabaseQuery } from '../../shared/functions'
 import { Panel, Stat, NoData, Picker } from './ui'
 import {
   auditorMatrix, odinFacets, resolveOdinRows, filterOdinRows, paletteColor,
-  GROUP_DIMS, dimensionsPresent, resolveGroupBy, PASS_MARK,
+  GROUP_DIMS, dimensionsPresent, dimensionHasData, resolveGroupBy, PASS_MARK,
 } from './odinAnalytics'
 
 const axis = { tickLine: false, axisLine: false, fontSize: 11, tick: { fill: '#8a7660' } }
@@ -70,7 +70,12 @@ export default function AuditorsTab({ sites = [], keepUnplaced = true }) {
   // dimension the picker does not even offer is how you get one bar labelled
   // "(not stated)".
   const groupBy = resolveGroupBy(dims, f.groupBy)
-  const m = useMemo(() => auditorMatrix(filtered, groupBy), [filtered, groupBy])
+  // The tail is folded into one band past eight groups — see auditorMatrix.
+  // The label names the dimension so "Other (21 cities)" reads as a sentence.
+  const m = useMemo(
+    () => auditorMatrix(filtered, groupBy, { otherLabel: plural(GROUP_DIMS.find((d) => d.key === groupBy)?.label || 'groups').toLowerCase() }),
+    [filtered, groupBy],
+  )
 
   if (loading && !audits) {
     return (
@@ -101,6 +106,11 @@ export default function AuditorsTab({ sites = [], keepUnplaced = true }) {
   const groupLabel = (GROUP_DIMS.find((d) => d.key === groupBy)?.label || 'group').toLowerCase()
 
   // Recharts wants one row per bar with a key per stacked band.
+  // Whether the split actually has anything in it. Region is always offered
+  // — it is the one an operator can fix — so it can legitimately be empty,
+  // and saying so beats a chart of one band called '(not stated)'.
+  const splitEmpty = !dimensionHasData(filtered, groupBy)
+
   const chartData = m.rows.slice(0, 20).map((r) => ({ name: r.name, ...r.groups }))
   const fetchedAt = audits?.fetchedAt ? new Date(audits.fetchedAt) : null
 
@@ -183,6 +193,26 @@ export default function AuditorsTab({ sites = [], keepUnplaced = true }) {
           tone="#7c3aed"
         />
       </div>
+
+      {/* Region is the split people want, so it is always the default and is
+          never swapped out from under them. When the register has no regions
+          the honest thing is to say which register to fill in — not to
+          re-group the chart by something else and let it look answered. */}
+      {splitEmpty && m.total > 0 && (
+        <p className="card mb-5 p-4 text-[12.5px] leading-relaxed text-ink-600">
+          None of the audits in scope carry a <b>{groupLabel}</b>, so every bar below is pooled
+          under “(not stated)”.
+          {groupBy === 'region' || groupBy === 'entity' ? (
+            <>
+              {' '}This one comes from your own site register: set a {groupLabel} on each site in{' '}
+              <b>Sites</b>, and give each site the warehouse’s <b>Centre ID</b> so its audits find
+              it. Until then, pick another split above.
+            </>
+          ) : (
+            <> Add the column to your Metabase question, or pick another split above.</>
+          )}
+        </p>
+      )}
 
       <Panel
         title={`Audits conducted by auditor, split by ${groupLabel}`}
