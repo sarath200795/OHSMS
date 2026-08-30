@@ -21,6 +21,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, Legend, Cell, PieChart, Pie, LabelList,
+  LineChart, Line, ReferenceLine, CartesianGrid,
 } from 'recharts'
 import { MapContainer, TileLayer, Marker, Tooltip as LeafletTooltip } from 'react-leaflet'
 import L from 'leaflet'
@@ -29,16 +30,94 @@ import {
   CircleCheck, CircleX, SlidersHorizontal, X,
 } from 'lucide-react'
 import ChartFrame from '../../shared/ui/ChartFrame'
-import { metabaseQuery } from '../../shared/functions'
+import { metabaseQuery, metabaseSettings } from '../../shared/functions'
 import MetabaseConnect from '../../shared/integrations/MetabaseConnect'
 import { Panel, Stat, NoData, Picker } from './ui'
 import {
   odinAnalytics, odinFacets, resolveOdinRows, STATUS_META, STATUS_BY_KEY, leadStatus,
+  GRANULARITIES, GROUP_DIMS, PASS_MARK,
 } from './odinAnalytics'
 
 const axis = { tickLine: false, axisLine: false, fontSize: 11, tick: { fill: '#8a7660' } }
 
-const EMPTY_FILTER = { region: 'all', entity: 'all', status: 'all', subCategory: 'all', source: 'all', from: '', to: '' }
+const EMPTY_FILTER = {
+  region: 'all', entity: 'all', status: 'all', subCategory: 'all', source: 'all', from: '', to: '',
+  // The estate dimensions. Offered only where the connected questions carry
+  // them, so a tenant whose warehouse has no city column never sees the picker.
+  city: 'all', ownership: 'all', businessLine: 'all', centerType: 'all', auditType: 'all', priority: 'all',
+  // How the period charts are bucketed, and what the breakdowns group by.
+  gran: 'month',
+  groupBy: 'region',
+}
+
+/**
+ * The three readings of one audit, and why each is drawn the way it is.
+ *
+ * They are three measurements of the SAME audits rather than three groups, so
+ * they get the categorical slots in order and the pass mark gets a plain rule.
+ * `toDate` is last and thinnest on purpose: it is the only one that moves
+ * between refreshes without the estate changing, so it is context rather than
+ * the line anyone should trend.
+ */
+const TREND_SERIES = [
+  { key: 'day0', label: 'On the day', color: '#2a78d6' },
+  { key: 'n7', label: 'After 7 days', color: '#eb6834' },
+  { key: 'toDate', label: 'To date', color: '#1baf7a', dashed: true },
+]
+
+/** Filter key → the facet list that fills it. Rendered only where non-empty. */
+const ESTATE_FILTERS = [
+  { key: 'city', label: 'City', opt: 'cities', all: 'All cities' },
+  { key: 'businessLine', label: 'Business line', opt: 'businessLines', all: 'All lines' },
+  { key: 'ownership', label: 'Ownership', opt: 'ownerships', all: 'All ownership' },
+  { key: 'centerType', label: 'Centre type', opt: 'centerTypes', all: 'All centre types' },
+  { key: 'auditType', label: 'Audit type', opt: 'auditTypes', all: 'All audit types' },
+  { key: 'priority', label: 'Priority', opt: 'priorities', all: 'All priorities' },
+]
+
+/** A date input styled as one of the filter bar's fields. */
+function DateField({ id, label, value, min, max, onChange }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <label htmlFor={id} className="text-[10.5px] font-semibold uppercase tracking-wide text-ink-400">
+        {label}
+      </label>
+      <input
+        id={id}
+        type="date"
+        value={value}
+        min={min || undefined}
+        max={max || undefined}
+        onChange={(e) => onChange(e.target.value)}
+        className="rounded-2xl bg-clay-surface px-3 py-2.5 text-[12.5px] font-semibold text-ink-700 shadow-clay-sm"
+      />
+    </div>
+  )
+}
+
+/** A segmented control. Six grains is too many for a dropdown nobody opens. */
+function Segments({ label, value, options, onChange }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="text-[10.5px] font-semibold uppercase tracking-wide text-ink-400">{label}</span>
+      <div role="group" aria-label={label} className="flex flex-wrap gap-1 rounded-2xl bg-clay-surface p-1 shadow-clay-sm">
+        {options.map((o) => (
+          <button
+            key={o.key}
+            type="button"
+            aria-pressed={value === o.key}
+            onClick={() => onChange(o.key)}
+            className={`rounded-xl px-2.5 py-1.5 text-[11.5px] font-semibold transition ${
+              value === o.key ? 'bg-ink-800 text-white shadow-clay-sm' : 'text-ink-500 hover:text-ink-800'
+            }`}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
 
 /**
  * One pin per site. Size carries the count, the ring carries the status mix,
@@ -84,6 +163,12 @@ export default function OdinTab({ sites = [], orgId, actor, isAdmin = false, kee
   // should be able to connect it from where they are standing rather than being
   // sent to another screen and back — see shared/integrations/MetabaseConnect.
   const [connecting, setConnecting] = useState(false)
+  // The redacted connection, for admins only, and only to report how old the
+  // API key is. On an instance that issues short-lived keys, the dashboard
+  // breaking on a schedule is the thing this page can warn about before it
+  // happens — see keyAge in functions/lib/metabase.js. Never the key itself:
+  // metabaseConfig strips it server-side.
+  const [conn, setConn] = useState(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -92,15 +177,28 @@ export default function OdinTab({ sites = [], orgId, actor, isAdmin = false, kee
       // Both at once. The audits question is optional and its absence is a
       // panel-level message, not a page-level failure, so a rejection from
       // either must not take the other's data off the screen.
-      const [fRes, aRes] = await Promise.all([metabaseQuery('findings'), metabaseQuery('audits')])
+      // The window goes DOWN to Metabase rather than being applied here: both
+      // of the questions this was built against declare required date
+      // variables and cannot run without them, and filtering in the warehouse
+      // beats shipping a year of rows so the browser can discard most of them.
+      const range = { from: f.from, to: f.to }
+      const [fRes, aRes] = await Promise.all([metabaseQuery('findings', range), metabaseQuery('audits', range)])
       setFindings(fRes)
       setAudits(aRes)
+      // Admin-only and never fatal: a failure here costs a rotation warning,
+      // not the dashboard, so it must not reach the catch below.
+      if (isAdmin) {
+        try { setConn((await metabaseSettings()).config) } catch { /* the warning is a nicety */ }
+      }
     } catch (e) {
       setError(e?.message || 'Could not reach the ODIN connector.')
     } finally {
       setLoading(false)
     }
-  }, [])
+    // Changing either end of the range re-runs the questions. A date input
+    // commits on blur rather than per keystroke, so this is one fetch per
+    // deliberate act, not one per character.
+  }, [isAdmin, f.from, f.to])
 
   useEffect(() => { load() }, [load])
 
@@ -175,6 +273,7 @@ export default function OdinTab({ sites = [], orgId, actor, isAdmin = false, kee
   ]
 
   const fetchedAt = findings?.fetchedAt ? new Date(findings.fetchedAt) : null
+  const groupLabel = (GROUP_DIMS.find((d) => d.key === a.groupBy)?.label || 'group').toLowerCase()
 
   return (
     <div className="animate-fade-in-up">
@@ -207,14 +306,56 @@ export default function OdinTab({ sites = [], orgId, actor, isAdmin = false, kee
           <option value="all">All sub-categories</option>
           {opts.subCategories.map((r) => <option key={r} value={r}>{r}</option>)}
         </Picker>
-        <Picker id="odin-from" label="From" value={f.from} onChange={(e) => setF({ ...f, from: e.target.value })}>
-          <option value="">Earliest</option>
-          {opts.months.map((m) => <option key={m} value={m}>{m}</option>)}
-        </Picker>
-        <Picker id="odin-to" label="To" value={f.to} onChange={(e) => setF({ ...f, to: e.target.value })}>
-          <option value="">Latest</option>
-          {opts.months.map((m) => <option key={m} value={m}>{m}</option>)}
-        </Picker>
+
+        {/* The estate dimensions, each offered only where the connected
+            questions actually carry it. A picker whose every row is
+            "(not stated)" is furniture that has to be read before it can be
+            ignored — the same rule the Instance picker follows above. */}
+        {ESTATE_FILTERS.map(({ key, label, opt, all }) => (
+          opts[opt].length > 1 && (
+            <Picker
+              key={key}
+              id={`odin-${key}`}
+              label={label}
+              value={f[key]}
+              onChange={(e) => setF({ ...f, [key]: e.target.value })}
+            >
+              <option value="all">{all}</option>
+              {opts[opt].map((v) => <option key={v} value={v}>{v}</option>)}
+            </Picker>
+          )
+        ))}
+
+        {/* Real dates rather than the month dropdowns this had. A quarterly
+            audit programme is reviewed on the quarter boundary, and "the first
+            three weeks of March" was not expressible at all. Both ends are
+            bounded by the span the data actually covers, so the picker cannot
+            be set to a year that returns nothing. */}
+        <DateField
+          id="odin-from" label="From" value={f.from} min={opts.minDate} max={f.to || opts.maxDate}
+          onChange={(v) => setF({ ...f, from: v })}
+        />
+        <DateField
+          id="odin-to" label="To" value={f.to} min={f.from || opts.minDate} max={opts.maxDate}
+          onChange={(v) => setF({ ...f, to: v })}
+        />
+
+        <Segments
+          label="Granularity"
+          value={f.gran}
+          options={GRANULARITIES}
+          onChange={(gran) => setF({ ...f, gran })}
+        />
+
+        {/* Which dimension the breakdowns cut by. In the filter row rather than
+            on a card, because it governs both the status chart and the pass
+            chart — a control inside one card reads as governing only that one. */}
+        {a.dimensions.length > 1 && (
+          <Picker id="odin-groupby" label="Break down by" value={a.groupBy} onChange={(e) => setF({ ...f, groupBy: e.target.value })}>
+            {a.dimensions.map((d) => <option key={d.key} value={d.key}>{d.label}</option>)}
+          </Picker>
+        )}
+
         <button
           type="button"
           onClick={() => setF(EMPTY_FILTER)}
@@ -249,6 +390,8 @@ export default function OdinTab({ sites = [], orgId, actor, isAdmin = false, kee
       {/* Every caveat that would make a number on this page mean something
           other than what it looks like. Above the charts, because a reader has
           to see them before the figure, not after it. */}
+      <KeyExpiry conn={conn} onConnect={isAdmin ? () => setConnecting(true) : null} />
+
       <Caveats findings={findings} audits={audits} totals={t} />
 
       <div className="mb-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
@@ -259,6 +402,10 @@ export default function OdinTab({ sites = [], orgId, actor, isAdmin = false, kee
         {fetchedAt ? `, as at ${fetchedAt.toLocaleString()}` : ''}.
         {' '}These are a snapshot, not a live feed — press Refresh to run the questions again.
       </p>
+
+      <TrendPanel trend={a.trend} gran={f.gran} source={a.passSource} />
+
+      <TicketTrendPanel tickets={a.tickets} gran={f.gran} breached={a.breached} />
 
       <Panel
         title="Where the issues are"
@@ -329,19 +476,19 @@ export default function OdinTab({ sites = [], orgId, actor, isAdmin = false, kee
       </Panel>
 
       <Panel
-        title="Status by region"
-        subtitle="Open, In Progress, On Hold and Closed — busiest region first"
+        title={`Status by ${groupLabel}`}
+        subtitle={`Open, In Progress, On Hold and Closed — busiest ${groupLabel} first`}
         className="mb-5"
       >
-        {a.byRegion.length === 0 ? (
+        {a.statusByGroup.length === 0 ? (
           <NoData>No issues in this scope.</NoData>
         ) : (
           <ChartFrame
             label="Safety and security issues by region and status"
             width="100%"
-            height={Math.max(260, a.byRegion.length * 42 + 60)}
+            height={Math.max(260, a.statusByGroup.length * 42 + 60)}
           >
-            <BarChart data={a.byRegion} layout="vertical" margin={{ top: 8, right: 16, left: 8, bottom: 0 }}>
+            <BarChart data={a.statusByGroup} layout="vertical" margin={{ top: 8, right: 16, left: 8, bottom: 0 }}>
               <XAxis type="number" allowDecimals={false} {...axis} />
               <YAxis type="category" dataKey="region" width={120} {...axis} />
               <Tooltip cursor={{ fill: 'rgba(227,204,191,0.35)' }} />
@@ -396,8 +543,8 @@ export default function OdinTab({ sites = [], orgId, actor, isAdmin = false, kee
 
       <PassRates
         audits={audits}
-        byEntity={a.passByEntity}
-        byRegion={a.passByRegion}
+        byGroup={a.passByGroup}
+        groupLabel={groupLabel}
         overall={a.passOverall}
         source={a.passSource}
         isAdmin={isAdmin}
@@ -407,9 +554,140 @@ export default function OdinTab({ sites = [], orgId, actor, isAdmin = false, kee
   )
 }
 
+// ── Over time ────────────────────────────────────────────────────────────────
+
+const GRAN_LABEL = Object.fromEntries(GRANULARITIES.map((g) => [g.key, g.label.toLowerCase()]))
+
+/**
+ * Pass rate over time, at the grain the reader picked.
+ *
+ * Two charts, not one with two axes. The rate and the count are different
+ * scales, and putting them on one plot with two y-axes invents a relationship
+ * out of where the scales happen to line up — so the rate is a line chart and
+ * the counts behind it are a stacked bar chart directly beneath, sharing an
+ * x-axis by being the same buckets in the same order.
+ *
+ * The counts are not optional decoration. A bucket holding two audits swings
+ * between 0% and 100% on a single result, and a rate with no denominator beside
+ * it is exactly how that gets read as a collapse.
+ */
+function TrendPanel({ trend, gran, source }) {
+  const { series, undated } = trend
+  const grain = GRAN_LABEL[gran] || 'period'
+
+  if (source === 'none' || series.length === 0) return null
+
+  return (
+    <Panel
+      title="Pass rate over time"
+      subtitle={`Share of audits at or above ${PASS_MARK}%, by ${grain}`}
+      className="mb-5"
+    >
+      <ChartFrame label="Pass rate over time" width="100%" height={260}>
+        <LineChart data={series} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+          <CartesianGrid stroke="#eee6dd" vertical={false} />
+          <XAxis dataKey="label" {...axis} interval="preserveStartEnd" minTickGap={28} />
+          <YAxis domain={[0, 100]} unit="%" {...axis} width={44} />
+          <Tooltip
+            cursor={{ stroke: '#c9b8a6' }}
+            formatter={(v, n) => [v == null ? '—' : `${v}%`, n]}
+            labelFormatter={(l) => {
+              const b = series.find((s) => s.label === l)
+              return b ? `${l} · ${b.audits} audit${b.audits === 1 ? '' : 's'}` : l
+            }}
+          />
+          <Legend iconType="plainline" wrapperStyle={{ fontSize: 11 }} />
+          {/* The pass mark, solid. A dashed rule reads as a projection. */}
+          <ReferenceLine y={PASS_MARK} stroke="#a8a29e" strokeWidth={1.5} />
+          {TREND_SERIES.map((s) => (
+            <Line
+              key={s.key}
+              type="monotone"
+              dataKey={s.key}
+              name={s.label}
+              stroke={s.color}
+              strokeWidth={2}
+              strokeDasharray={s.dashed ? '4 3' : undefined}
+              dot={false}
+              activeDot={{ r: 4 }}
+              // A period nobody audited is a gap, not a dive to zero.
+              connectNulls={false}
+            />
+          ))}
+        </LineChart>
+      </ChartFrame>
+
+      <p className="mb-1 mt-4 text-[11.5px] font-semibold text-ink-600">
+        The audits behind it
+      </p>
+      <ChartFrame label="Audits by verdict over time" width="100%" height={150}>
+        <BarChart data={series} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
+          <XAxis dataKey="label" {...axis} interval="preserveStartEnd" minTickGap={28} />
+          <YAxis allowDecimals={false} {...axis} width={44} />
+          <Tooltip cursor={{ fill: 'rgba(227,204,191,0.35)' }} />
+          <Bar dataKey="pass" name="Pass" stackId="v" fill="#0ca30c" />
+          <Bar dataKey="fail" name="Fail" stackId="v" fill="#d03b3b" radius={[3, 3, 0, 0]} />
+        </BarChart>
+      </ChartFrame>
+
+      <p className="mt-3 text-[11.5px] leading-relaxed text-ink-500">
+        <b>On the day</b> credits no remediation. <b>After 7 days</b> re-scores a failed critical
+        checkpoint as a pass where its ticket closed within seven days of being raised.
+        <b> To date</b> credits every closure up to this refresh — it is the true current position,
+        and the only one of the three that moves without the estate changing, which is why it is
+        drawn as context rather than as the line to trend.
+        {undated > 0 && (
+          <> {undated.toLocaleString()} audit{undated === 1 ? ' carries' : 's carry'} no date and
+          {undated === 1 ? ' is' : ' are'} in none of these buckets.</>
+        )}
+      </p>
+    </Panel>
+  )
+}
+
+/** Tickets raised per period, split by where they now stand. */
+function TicketTrendPanel({ tickets, gran, breached }) {
+  const { series, undated } = tickets
+  if (series.length === 0) return null
+  const total = series.reduce((n, s) => n + s.total, 0)
+
+  return (
+    <Panel
+      title="Remediation tickets raised"
+      subtitle={`By the ${GRAN_LABEL[gran] || 'period'} the defect was raised, split by where it stands now`}
+      className="mb-5"
+      right={
+        breached > 0 ? (
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-red-200 px-2.5 py-1 text-[11px] font-semibold text-red-600">
+            <AlertTriangle size={12} /> {breached.toLocaleString()} SLA breached
+          </span>
+        ) : null
+      }
+    >
+      <ChartFrame label="Tickets raised over time" width="100%" height={220}>
+        <BarChart data={series} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+          <CartesianGrid stroke="#eee6dd" vertical={false} />
+          <XAxis dataKey="label" {...axis} interval="preserveStartEnd" minTickGap={28} />
+          <YAxis allowDecimals={false} {...axis} width={44} />
+          <Tooltip cursor={{ fill: 'rgba(227,204,191,0.35)' }} />
+          <Legend iconType="circle" wrapperStyle={{ fontSize: 11 }} />
+          <Bar dataKey="closed" name="Closed" stackId="t" fill="#0ca30c" />
+          <Bar dataKey="open" name="Still open" stackId="t" fill="#fab219" radius={[3, 3, 0, 0]} />
+        </BarChart>
+      </ChartFrame>
+      <p className="mt-3 text-[11.5px] leading-relaxed text-ink-500">
+        Bucketed on the date the defect was RAISED, not the date it closed — the two are different
+        clocks, and mixing them into one bar produces a backlog chart that says nothing.
+        {' '}{total.toLocaleString()} ticket{total === 1 ? '' : 's'} in scope.
+        {undated > 0 && <> {undated.toLocaleString()} carry no date and are in none of these bars.</>}
+      </p>
+    </Panel>
+  )
+}
+
 // ── Pass and fail ────────────────────────────────────────────────────────────
 
-function PassRates({ audits, byEntity, byRegion, overall, source, isAdmin, onConnect }) {
+function PassRates({ audits, byGroup, groupLabel, overall, source, isAdmin, onConnect }) {
   // Nothing anywhere carries a pass rate. That is a configuration answer, not
   // an empty chart, and it names the two places it could come from — because
   // either one will do and an admin choosing between them needs to know that.
@@ -440,18 +718,17 @@ function PassRates({ audits, byEntity, byRegion, overall, source, isAdmin, onCon
   return (
     <>
       <PassHeadline overall={overall} source={source} />
-      <div className="grid gap-4 lg:grid-cols-2">
-        <PassPanel
-          title="Pass percentage by entity"
-          subtitle="On the day of the audit, and at the seven-day re-check"
-          rows={byEntity}
-        />
-        <PassPanel
-          title="Pass percentage by region"
-          subtitle="On the day of the audit, and at the seven-day re-check"
-          rows={byRegion}
-        />
-      </div>
+      {/* One panel with a dimension picker, rather than a fixed pair. Region
+          and entity are the two this app's own site register fills in, so they
+          lead — but an estate of near-identical sites is argued about by city,
+          brand and operating model, and hard-coding two of nine meant the other
+          seven were not askable at all. Only dimensions the data actually
+          carries are offered. */}
+      <PassPanel
+        title={`Pass percentage by ${groupLabel}`}
+        subtitle="On the day of the audit, and at the seven-day re-check"
+        rows={byGroup}
+      />
     </>
   )
 }
@@ -544,7 +821,7 @@ function PassPanel({ title, subtitle, rows }) {
   }
 
   return (
-    <Panel title={title} subtitle={subtitle}>
+    <Panel title={title} subtitle={subtitle} className="mb-5">
       <ChartFrame label={title} width="100%" height={Math.max(240, rows.length * 44 + 60)}>
         <BarChart data={rows} layout="vertical" margin={{ top: 8, right: 34, left: 8, bottom: 0 }}>
           <XAxis type="number" domain={[0, 100]} unit="%" {...axis} />
@@ -575,6 +852,48 @@ function PassPanel({ title, subtitle, rows }) {
 }
 
 // ── Caveats and blocked states ───────────────────────────────────────────────
+
+/**
+ * The API key is about to expire, or already has.
+ *
+ * Above everything, and only for an admin, because they are the only person who
+ * can act on it. A 401 reaches an ordinary member as "the question could not be
+ * run", which is true and useless; this says which of the two things is wrong
+ * and puts the fix one click away.
+ */
+function KeyExpiry({ conn, onConnect }) {
+  const age = conn?.keyAge
+  if (!age?.set || !conn?.apiKeyMaxAgeDays) return null
+  if (!age.stale && !(age.expiresInDays !== null && age.expiresInDays <= 1)) return null
+
+  return (
+    <div className={`card mb-5 flex flex-wrap items-center gap-3 p-4 ${age.stale ? 'ring-1 ring-red-200' : ''}`}>
+      <AlertTriangle size={16} className={age.stale ? 'text-red-600' : 'text-amber-600'} />
+      <div className="min-w-[16rem] flex-1">
+        <p className={`text-[12.5px] font-semibold ${age.stale ? 'text-red-700' : 'text-amber-700'}`}>
+          {age.stale
+            ? 'The Metabase API key has expired'
+            : age.expiresInDays === 1 ? 'The Metabase API key expires tomorrow' : 'The Metabase API key expires today'}
+        </p>
+        <p className="mt-0.5 text-[11.5px] leading-relaxed text-ink-500">
+          Keys on this instance last {conn.apiKeyMaxAgeDays} day{conn.apiKeyMaxAgeDays === 1 ? '' : 's'}.
+          {age.stale
+            ? ' Anything on this page is from the last successful refresh. Paste a new key to bring it back.'
+            : ' Rotate it now and the dashboard will not stop.'}
+        </p>
+      </div>
+      {onConnect && (
+        <button
+          type="button"
+          onClick={onConnect}
+          className="inline-flex items-center gap-2 rounded-2xl bg-clay-surface px-4 py-2.5 text-[12.5px] font-semibold text-ink-700 shadow-clay-sm"
+        >
+          <Plug size={14} /> Update the key
+        </button>
+      )}
+    </div>
+  )
+}
 
 function Caveats({ findings, audits, totals }) {
   const notes = []

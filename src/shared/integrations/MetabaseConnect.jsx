@@ -52,7 +52,7 @@ function toForm(config) {
     findings: s.cards?.findings ? String(s.cards.findings) : '',
     audits: s.cards?.audits ? String(s.cards.audits) : '',
   } : blankSource()))
-  return { apiKey: '', sources }
+  return { apiKey: '', sources, maxAgeDays: config?.apiKeyMaxAgeDays ? String(config.apiKeyMaxAgeDays) : '' }
 }
 
 export default function MetabaseConnect({ orgId, actor, onSaved, compact = false }) {
@@ -137,6 +137,14 @@ export default function MetabaseConnect({ orgId, actor, onSaved, compact = false
         cards: { findings: null, audits: null },
       }
       if (form.apiKey.trim()) settings.apiKey = form.apiKey.trim()
+      // When the key was last rotated, recorded only when one was actually
+      // typed. An instance that issues short-lived keys turns "it stopped
+      // working again" into a date somebody can read — see keyAge in
+      // functions/lib/metabase.js. Never the key, only when it changed.
+      if (settings.apiKey || settings.sources.some((s) => s.apiKey)) {
+        settings.apiKeyUpdatedAt = new Date().toISOString()
+      }
+      settings.apiKeyMaxAgeDays = Number(form.maxAgeDays) > 0 ? Math.floor(Number(form.maxAgeDays)) : 0
       await saveIntegration(orgId, 'metabase', settings, actor)
       const { config } = await metabaseSettings()
       setSaved(config)
@@ -236,6 +244,32 @@ export default function MetabaseConnect({ orgId, actor, onSaved, compact = false
           onChange={(e) => setForm((f) => ({ ...f, apiKey: e.target.value }))}
           disabled={loading}
         />
+      </Field>
+
+      {/* Rotation. Some instances issue keys with a fixed short life — three
+          days is real — and on one of those the dashboard breaks on a schedule
+          with a 401 nobody can read. Recording the life turns that into a
+          countdown an admin sees BEFORE it expires. Zero, the default, means
+          the keys here do not expire and no countdown is shown. */}
+      <Field
+        label="Key lifetime"
+        htmlFor="mb-maxage"
+        hint="How many days a key lasts on this Metabase, if they expire. Leave blank when they do not — a countdown that never ends is a warning people learn to ignore."
+      >
+        <div className="flex items-center gap-2">
+          <Input
+            id="mb-maxage"
+            type="number"
+            min="0"
+            max="365"
+            placeholder="never expires"
+            value={form.maxAgeDays}
+            onChange={(e) => setForm((f) => ({ ...f, maxAgeDays: e.target.value }))}
+            disabled={loading}
+          />
+          <span className="whitespace-nowrap text-[12px] text-ink-400">days</span>
+        </div>
+        <KeyAge age={saved?.keyAge} maxAgeDays={saved?.apiKeyMaxAgeDays} />
       </Field>
 
       <div className="mt-5 space-y-3">
@@ -417,5 +451,48 @@ function SourceRow({ source, index, many, loading, testing, result, sharedKey, o
         </div>
       </div>
     </div>
+  )
+}
+
+/**
+ * How old the saved key is, and how long it has left.
+ *
+ * Three states worth distinguishing, because they need three different
+ * reactions: expired (the dashboard is already broken), due soon (rotate before
+ * it breaks), and fine (say nothing loud). A key with no recorded rotation date
+ * — saved before this was tracked — says so plainly rather than guessing.
+ */
+export function KeyAge({ age, maxAgeDays }) {
+  if (!age?.set) return null
+
+  if (age.days === null) {
+    return (
+      <p className="mt-2 text-[11.5px] leading-relaxed text-ink-400">
+        A key is saved, but not when it was last changed. Save it again to start the countdown.
+      </p>
+    )
+  }
+
+  const ago = age.days === 0 ? 'today' : age.days === 1 ? 'yesterday' : `${age.days} days ago`
+
+  if (!maxAgeDays) {
+    return <p className="mt-2 text-[11.5px] text-ink-400">Key last changed {ago}.</p>
+  }
+
+  if (age.stale) {
+    return (
+      <p className="mt-2 text-[11.5px] font-semibold leading-relaxed text-red-600">
+        This key was set {ago} and these keys last {maxAgeDays} days — it has expired. Paste a new
+        one above and save; nothing else needs changing.
+      </p>
+    )
+  }
+
+  const soon = age.expiresInDays <= 1
+  return (
+    <p className={`mt-2 text-[11.5px] leading-relaxed ${soon ? 'font-semibold text-amber-600' : 'text-ink-400'}`}>
+      Key last changed {ago}.{' '}
+      {age.expiresInDays === 1 ? 'It expires tomorrow.' : `It expires in ${age.expiresInDays} days.`}
+    </p>
   )
 }

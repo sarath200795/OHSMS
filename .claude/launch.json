@@ -6,6 +6,14 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
       "port": 5173
+    },
+    {
+      "name": "fls-dashboard",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "tools/fls-dashboard/serve.mjs"
+      ],
+      "port": 5199
     }
   ]
 }

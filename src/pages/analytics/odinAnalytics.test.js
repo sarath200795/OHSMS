@@ -319,7 +319,20 @@ describe('odinFacets', () => {
   it('never offers a blank as a choice', () => {
     expect(odinFacets([finding({ region: '', entity: '', subCategory: '', auditDate: '' })])).toEqual({
       regions: [], entities: [], subCategories: [], months: [], sources: [],
+      cities: [], ownerships: [], businessLines: [], centerTypes: [], auditTypes: [], priorities: [],
+      minDate: '', maxDate: '',
     })
+  })
+
+  it('reports the span the data actually covers, for the date pickers', () => {
+    const f = odinFacets([
+      finding({ auditDate: '2026-03-14' }),
+      finding({ auditDate: '2026-01-02' }),
+      finding({ auditDate: '2026-07-30' }),
+      finding({ auditDate: '' }),
+    ])
+    expect(f.minDate).toBe('2026-01-02')
+    expect(f.maxDate).toBe('2026-07-30')
   })
 })
 

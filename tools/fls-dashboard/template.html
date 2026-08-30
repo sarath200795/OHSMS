@@ -1,0 +1,1611 @@
+<title>FLS Audit Control Room</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+
+<style>
+/* ── Tokens ───────────────────────────────────────────────────────────────
+   The complete light palette lives on bare :root, because the default viewer
+   setting stamps nothing on the root element and only prefers-color-scheme
+   separates the two. Dark redefines TOKENS ONLY, twice: once behind the media
+   query guarded so an explicit light choice beats an OS set to dark, and once
+   behind the [data-theme] stamp so the viewer's toggle wins in both directions.
+   Nothing below this block declares a colour literal. ------------------- */
+:root {
+  color-scheme: light;
+  --ground:    #f6f6f4;
+  --surface:   #ffffff;
+  --plot:      #fcfcfb;
+  --ink:       #14150f;
+  --ink-2:     #56574f;
+  --ink-3:     #8a8b83;
+  --rule:      #e4e4dd;
+  --grid:      #ecece6;
+  --axis:      #c6c6bd;
+  --wash:      rgba(20, 21, 15, 0.04);
+  --wash-2:    rgba(20, 21, 15, 0.07);
+  --shadow:    0 1px 2px rgba(20, 21, 15, 0.05), 0 1px 12px rgba(20, 21, 15, 0.03);
+
+  /* Categorical series — the validated order, slots 1-3 only, which is the
+     set that clears the all-pairs floors in both modes. */
+  --s1: #2a78d6;
+  --s2: #eb6834;
+  --s3: #1baf7a;
+
+  /* Status. Reserved: these four mean a state, never a series identity. */
+  --good:     #0ca30c;
+  --warning:  #fab219;
+  --serious:  #ec835a;
+  --critical: #d03b3b;
+  --good-ink: #006300;
+
+  /* The hazard rule. Ink and amber at 45°, the floor marking the audit
+     checkpoints keep asking about — spent once, under the masthead. */
+  --hazard-a: #14150f;
+  --hazard-b: #f0a500;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --ground:  #0d0e0f;
+    --surface: #17181a;
+    --plot:    #1a1b1d;
+    --ink:     #f4f4f0;
+    --ink-2:   #a9aaa2;
+    --ink-3:   #83847d;
+    --rule:    #2a2c2e;
+    --grid:    #232527;
+    --axis:    #3a3c3e;
+    --wash:    rgba(244, 244, 240, 0.05);
+    --wash-2:  rgba(244, 244, 240, 0.09);
+    --shadow:  0 1px 2px rgba(0, 0, 0, 0.4);
+    --s1: #3987e5;
+    --s2: #d95926;
+    --s3: #199e70;
+    --good-ink: #0ca30c;
+    --hazard-a: #0d0e0f;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ground:  #0d0e0f;
+  --surface: #17181a;
+  --plot:    #1a1b1d;
+  --ink:     #f4f4f0;
+  --ink-2:   #a9aaa2;
+  --ink-3:   #83847d;
+  --rule:    #2a2c2e;
+  --grid:    #232527;
+  --axis:    #3a3c3e;
+  --wash:    rgba(244, 244, 240, 0.05);
+  --wash-2:  rgba(244, 244, 240, 0.09);
+  --shadow:  0 1px 2px rgba(0, 0, 0, 0.4);
+  --s1: #3987e5;
+  --s2: #d95926;
+  --s3: #199e70;
+  --good-ink: #0ca30c;
+  --hazard-a: #0d0e0f;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+.mono { font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+.eyebrow {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.shell { max-width: 1440px; margin: 0 auto; padding: 0 24px 72px; }
+
+/* ── Masthead ─────────────────────────────────────────────────────────── */
+
+.masthead { padding: 32px 0 0; }
+.masthead h1 {
+  margin: 0;
+  font-size: clamp(24px, 3.4vw, 34px);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+.masthead p {
+  margin: 8px 0 0;
+  max-width: 68ch;
+  color: var(--ink-2);
+}
+.hazard {
+  height: 4px;
+  margin-top: 20px;
+  border-radius: 2px;
+  background: repeating-linear-gradient(45deg,
+    var(--hazard-a) 0 7px, var(--hazard-b) 7px 14px);
+}
+
+/* ── Control rail ─────────────────────────────────────────────────────── */
+
+.rail {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  margin: 0 -24px 24px;
+  padding: 12px 24px;
+  background: color-mix(in srgb, var(--ground) 90%, transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--rule);
+}
+.rail-inner {
+  max-width: 1440px;
+  margin: 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px 16px;
+}
+.field { display: flex; flex-direction: column; gap: 5px; }
+.field > label { font-family: "IBM Plex Mono", monospace; font-size: 10px; font-weight: 500; letter-spacing: 0.09em; text-transform: uppercase; color: var(--ink-3); }
+
+input[type="date"], select {
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 7px;
+  padding: 7px 9px;
+  min-height: 34px;
+}
+input[type="date"] { font-family: "IBM Plex Mono", monospace; font-size: 12px; }
+select { max-width: 190px; }
+
+.segments { display: flex; background: var(--wash); border-radius: 8px; padding: 2px; gap: 2px; }
+.segments button {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  color: var(--ink-2);
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  padding: 6px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.segments button:hover { background: var(--wash); color: var(--ink); }
+.segments button[aria-pressed="true"] { background: var(--ink); color: var(--ground); }
+
+.ghost {
+  font-family: inherit; font-size: 12.5px; color: var(--ink-2);
+  background: none; border: 1px solid var(--rule); border-radius: 7px;
+  padding: 7px 11px; min-height: 34px; cursor: pointer;
+}
+.ghost:hover { background: var(--wash); color: var(--ink); }
+
+.rail-count { margin-left: auto; text-align: right; line-height: 1.35; }
+.rail-count b { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+:where(button, select, input, a, [tabindex]):focus-visible {
+  outline: 2px solid var(--s1);
+  outline-offset: 2px;
+}
+
+/* ── Bands & cards ────────────────────────────────────────────────────── */
+
+.band { margin-top: 8px; }
+.band-head { display: flex; align-items: baseline; gap: 12px; padding: 20px 0 14px; }
+.band-head h2 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
+.band-head .eyebrow { margin-left: auto; }
+
+.grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 14px; }
+.col-3 { grid-column: span 3; }
+.col-4 { grid-column: span 4; }
+.col-5 { grid-column: span 5; }
+.col-6 { grid-column: span 6; }
+.col-7 { grid-column: span 7; }
+.col-8 { grid-column: span 8; }
+.col-12 { grid-column: span 12; }
+@media (max-width: 1080px) {
+  .col-3 { grid-column: span 6; }
+  .col-4, .col-5, .col-6, .col-7, .col-8 { grid-column: span 12; }
+}
+@media (max-width: 620px) {
+  .shell { padding: 0 14px 56px; }
+  .rail { margin: 0 -14px 20px; padding: 10px 14px; }
+  .col-3 { grid-column: span 12; }
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  padding: 16px 18px 14px;
+  min-width: 0;
+}
+.card-head { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 4px; }
+.card-head h3 { margin: 0; font-size: 13.5px; font-weight: 600; letter-spacing: -0.005em; }
+.card-note { margin: 2px 0 12px; font-size: 12px; color: var(--ink-3); max-width: 62ch; }
+.card-tools { margin-left: auto; display: flex; gap: 4px; flex-shrink: 0; }
+.tool {
+  font-family: "IBM Plex Mono", monospace; font-size: 10px; font-weight: 500;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--ink-3); background: none; border: 1px solid transparent;
+  border-radius: 5px; padding: 3px 6px; cursor: pointer;
+}
+.tool:hover { background: var(--wash); color: var(--ink); }
+.tool[aria-pressed="true"] { background: var(--wash-2); color: var(--ink); border-color: var(--rule); }
+
+/* ── Stat tiles ───────────────────────────────────────────────────────── */
+
+.stat { display: flex; flex-direction: column; gap: 2px; }
+.stat .v { font-size: 30px; font-weight: 600; letter-spacing: -0.025em; line-height: 1.1; }
+.stat .v small { font-size: 15px; font-weight: 500; color: var(--ink-3); margin-left: 1px; }
+.stat .sub { font-size: 11.5px; color: var(--ink-3); }
+.stat .spark { margin-top: 8px; }
+
+.pill {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-family: "IBM Plex Mono", monospace; font-size: 10.5px; font-weight: 500;
+  padding: 1px 6px; border-radius: 20px; border: 1px solid currentColor;
+}
+.pill.good { color: var(--good-ink); }
+.pill.bad { color: var(--critical); }
+.pill.flat { color: var(--ink-3); }
+
+/* ── Charts ───────────────────────────────────────────────────────────── */
+
+.plot { position: relative; }
+.plot svg { display: block; max-width: 100%; }
+.plot svg text { font-family: "IBM Plex Mono", ui-monospace, monospace; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 0 0 10px; padding: 0; list-style: none; }
+.legend li { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--ink-2); }
+.legend .swatch { width: 11px; height: 11px; border-radius: 3px; flex-shrink: 0; }
+.legend .swatch.line { height: 3px; border-radius: 2px; }
+
+.tip {
+  position: absolute; z-index: 30; pointer-events: none; opacity: 0;
+  transform: translate(-50%, -100%);
+  background: var(--surface); color: var(--ink);
+  border: 1px solid var(--rule); border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.14);
+  padding: 8px 10px; font-size: 12px; min-width: 132px;
+  transition: opacity .09s linear;
+}
+.tip .t-h { font-family: "IBM Plex Mono", monospace; font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 5px; }
+.tip .t-r { display: flex; align-items: center; gap: 7px; white-space: nowrap; }
+.tip .t-r + .t-r { margin-top: 2px; }
+.tip .t-r .swatch { width: 9px; height: 9px; border-radius: 2px; flex-shrink: 0; }
+.tip .t-r .t-n { margin-left: auto; font-family: "IBM Plex Mono", monospace; font-variant-numeric: tabular-nums; font-weight: 500; }
+
+/* ── Tables ───────────────────────────────────────────────────────────── */
+
+.tbl-wrap { overflow-x: auto; max-height: 440px; overflow-y: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+th, td { padding: 6px 10px; text-align: left; white-space: nowrap; }
+th {
+  position: sticky; top: 0; z-index: 1;
+  background: var(--surface);
+  font-family: "IBM Plex Mono", monospace; font-size: 10px; font-weight: 500;
+  letter-spacing: .07em; text-transform: uppercase; color: var(--ink-3);
+  border-bottom: 1px solid var(--rule);
+}
+th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
+th.sortable { cursor: pointer; user-select: none; }
+th.sortable:hover { color: var(--ink); }
+tbody tr + tr td { border-top: 1px solid var(--grid); }
+tbody tr:hover td { background: var(--wash); }
+td.name { white-space: normal; min-width: 190px; }
+.bar-cell { position: relative; min-width: 90px; }
+.bar-cell .bar { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); height: 12px; border-radius: 0 3px 3px 0; opacity: .22; }
+.bar-cell span { position: relative; }
+
+.empty { padding: 34px 0; text-align: center; color: var(--ink-3); font-size: 13px; }
+
+/* ── Footer ───────────────────────────────────────────────────────────── */
+
+.foot { margin-top: 36px; padding-top: 18px; border-top: 1px solid var(--rule); color: var(--ink-3); font-size: 12px; }
+.foot p { margin: 0 0 7px; max-width: 88ch; }
+.foot code { font-family: "IBM Plex Mono", monospace; font-size: 11.5px; color: var(--ink-2); }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
+</style>
+
+<div class="shell">
+  <header class="masthead">
+    <div class="eyebrow">Fire &amp; Life Safety · Audit Platform</div>
+    <h1>FLS Audit Control Room</h1>
+    <p id="lede">Quarterly FLS, Gym Equipment Safety and Lux/Fitso audit scores against the 90% pass
+      mark, alongside the remediation tickets they raise.</p>
+    <div class="hazard" role="presentation"></div>
+  </header>
+
+  <div class="rail">
+    <div class="rail-inner">
+      <div class="field">
+        <label for="f-from">From</label>
+        <input type="date" id="f-from">
+      </div>
+      <div class="field">
+        <label for="f-to">To</label>
+        <input type="date" id="f-to">
+      </div>
+      <div class="field">
+        <label id="lab-gran">Granularity</label>
+        <div class="segments" role="group" aria-labelledby="lab-gran" id="f-gran"></div>
+      </div>
+      <div class="field">
+        <label for="f-city">City</label>
+        <select id="f-city"></select>
+      </div>
+      <div class="field">
+        <label for="f-bl">Business line</label>
+        <select id="f-bl"></select>
+      </div>
+      <div class="field">
+        <label for="f-own">Ownership</label>
+        <select id="f-own"></select>
+      </div>
+      <div class="field">
+        <label for="f-atype">Audit type</label>
+        <select id="f-atype"></select>
+      </div>
+      <div class="field">
+        <label for="f-ctype">Centre type</label>
+        <select id="f-ctype"></select>
+      </div>
+      <button class="ghost" id="f-reset" type="button">Reset</button>
+      <div class="rail-count">
+        <div class="eyebrow">In view</div>
+        <b id="rail-n">—</b>
+      </div>
+    </div>
+  </div>
+
+  <section class="band">
+    <div class="band-head">
+      <h2>Audit scores</h2>
+      <div class="eyebrow" id="src-audits">Card 68611</div>
+    </div>
+    <div class="grid" id="band-audits"></div>
+  </section>
+
+  <section class="band">
+    <div class="band-head">
+      <h2>Remediation tickets</h2>
+      <div class="eyebrow" id="src-tickets">Card 80321</div>
+    </div>
+    <div class="grid" id="band-tickets"></div>
+  </section>
+
+  <footer class="foot" id="foot"></footer>
+</div>
+
+<script type="application/json" id="payload">/*__DATA__*/</script>
+
+<script type="module">
+const DATA = JSON.parse(document.getElementById('payload').textContent)
+const { meta, audits: A, tickets: T, auditDims: AD, ticketDims: TD } = DATA
+
+// ── Dates ────────────────────────────────────────────────────────────────
+// Rows carry a day number off a fixed epoch rather than a date string: it is
+// one small integer instead of ten characters, and every bucket boundary below
+// is arithmetic on it rather than date parsing in a hot loop.
+
+const EPOCH = Date.parse(meta.epoch + 'T00:00:00Z')
+const DAY = 86400000
+const toDate = (n) => new Date(EPOCH + n * DAY)
+const toISO = (n) => toDate(n).toISOString().slice(0, 10)
+const fromISO = (s) => Math.round((Date.parse(s + 'T00:00:00Z') - EPOCH) / DAY)
+
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+
+/**
+ * The six buckets, each as {key, label} for a day number.
+ *
+ * `key` is sortable text and identifies the bucket; `label` is what the axis
+ * prints. Week starts Monday — an audit week is a working week, and a Sunday
+ * boundary splits every one of them down the middle.
+ */
+const GRAN = {
+  day: {
+    name: 'Day',
+    of: (n) => { const d = toDate(n); return { key: toISO(n), label: `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}` } },
+    next: (n) => n + 1,
+    start: (n) => n,
+  },
+  week: {
+    name: 'Week',
+    of: (n) => {
+      const s = n - ((toDate(n).getUTCDay() + 6) % 7)
+      const d = toDate(s)
+      return { key: toISO(s), label: `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}` }
+    },
+    next: (n) => n + 7,
+    start: (n) => n - ((toDate(n).getUTCDay() + 6) % 7),
+  },
+  month: {
+    name: 'Month',
+    of: (n) => { const d = toDate(n); return { key: `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`, label: `${MONTHS[d.getUTCMonth()]} ${String(d.getUTCFullYear()).slice(2)}` } },
+    next: (n) => { const d = toDate(n); return dayOf(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1)) },
+    start: (n) => { const d = toDate(n); return dayOf(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)) },
+  },
+  quarter: {
+    name: 'Quarter',
+    of: (n) => { const d = toDate(n), q = Math.floor(d.getUTCMonth() / 3) + 1; return { key: `${d.getUTCFullYear()}-Q${q}`, label: `Q${q} ${String(d.getUTCFullYear()).slice(2)}` } },
+    next: (n) => { const d = toDate(n); return dayOf(Date.UTC(d.getUTCFullYear(), Math.floor(d.getUTCMonth() / 3) * 3 + 3, 1)) },
+    start: (n) => { const d = toDate(n); return dayOf(Date.UTC(d.getUTCFullYear(), Math.floor(d.getUTCMonth() / 3) * 3, 1)) },
+  },
+  half: {
+    name: 'Half year',
+    of: (n) => { const d = toDate(n), h = d.getUTCMonth() < 6 ? 1 : 2; return { key: `${d.getUTCFullYear()}-H${h}`, label: `H${h} ${d.getUTCFullYear()}` } },
+    next: (n) => { const d = toDate(n); return dayOf(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() < 6 ? 6 : 12, 1)) },
+    start: (n) => { const d = toDate(n); return dayOf(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() < 6 ? 0 : 6, 1)) },
+  },
+  year: {
+    name: 'Year',
+    of: (n) => { const d = toDate(n); return { key: String(d.getUTCFullYear()), label: String(d.getUTCFullYear()) } },
+    next: (n) => dayOf(Date.UTC(toDate(n).getUTCFullYear() + 1, 0, 1)),
+    start: (n) => dayOf(Date.UTC(toDate(n).getUTCFullYear(), 0, 1)),
+  },
+}
+const dayOf = (ms) => Math.round((ms - EPOCH) / DAY)
+
+/**
+ * Every bucket between from and to, INCLUDING the empty ones.
+ *
+ * Empty buckets matter: a week nobody audited is a real gap, and dropping it
+ * would slide the following week left and draw a continuous line across a
+ * period where nothing happened. Emitted here, drawn as a break in the line
+ * and as no bar at all.
+ */
+function buckets(from, to, gran) {
+  const g = GRAN[gran]
+  const out = []
+  let cur = g.start(from)
+  let guard = 0
+  while (cur <= to && guard++ < 4000) {
+    const { key, label } = g.of(cur)
+    out.push({ key, label, day: cur })
+    cur = g.next(cur)
+  }
+  return out
+}
+
+// ── State ────────────────────────────────────────────────────────────────
+
+const COVER = { from: fromISO(meta.from), to: fromISO(meta.to) }
+
+const state = {
+  from: COVER.from,
+  to: COVER.to,
+  gran: 'month',
+  city: '', bl: '', own: '', atype: '', ctype: '',
+  breakdown: 'city',
+  views: {},          // card id -> 'chart' | 'table'
+  sort: {},           // table id -> {col, dir}
+}
+
+// ── Filtering ────────────────────────────────────────────────────────────
+//
+// A filter is chosen as a STRING and resolved to each dataset's own dictionary
+// index, because the two questions do not share a dictionary — 'GOLDS' is a
+// centre type in the ticket dump and never appears in the audit one. Resolving
+// per dataset means an unknown value matches nothing there instead of matching
+// whatever happens to sit at that index.
+
+const idxIn = (list, v) => (v === '' ? -2 : list.indexOf(v))   // -2 = no filter, -1 = absent
+
+function auditRows() {
+  const ci = idxIn(AD.city, state.city), bi = idxIn(AD.bl, state.bl)
+  const oi = idxIn(AD.own, state.own), ai = idxIn(AD.atype, state.atype)
+  const ti = idxIn(AD.ctype, state.ctype)
+  const out = []
+  for (let i = 0; i < A.d.length; i++) {
+    if (A.d[i] < state.from || A.d[i] > state.to) continue
+    if (ci !== -2 && A.city[i] !== ci) continue
+    if (bi !== -2 && A.bl[i] !== bi) continue
+    if (oi !== -2 && A.own[i] !== oi) continue
+    if (ai !== -2 && A.atype[i] !== ai) continue
+    if (ti !== -2 && A.ctype[i] !== ti) continue
+    out.push(i)
+  }
+  return out
+}
+
+function ticketRows() {
+  const ci = idxIn(TD.city, state.city), bi = idxIn(TD.bl, state.bl)
+  const oi = idxIn(TD.own, state.own), ti = idxIn(TD.ctype, state.ctype)
+  // Audit type has no ticket column; the label carries the same thing, so the
+  // filter is honoured through it rather than silently ignored.
+  const li = state.atype === '' ? -2 : TD.label.indexOf(state.atype.trim())
+  const out = []
+  for (let i = 0; i < T.d.length; i++) {
+    if (T.d[i] < state.from || T.d[i] > state.to) continue
+    if (ci !== -2 && T.city[i] !== ci) continue
+    if (bi !== -2 && T.bl[i] !== bi) continue
+    if (oi !== -2 && T.own[i] !== oi) continue
+    if (ti !== -2 && T.ctype[i] !== ti) continue
+    if (li !== -2 && T.label[i] !== li) continue
+    out.push(i)
+  }
+  return out
+}
+
+// ── Formatting ───────────────────────────────────────────────────────────
+
+const nf = new Intl.NumberFormat('en-IN')
+const num = (v) => nf.format(v)
+const pct = (v, d = 1) => (v === null || !Number.isFinite(v) ? '—' : `${v.toFixed(d)}%`)
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+const PASS = meta.passMark
+
+/** Share of scores at or above the pass mark, or null when there is nothing to divide by. */
+function passRate(scores) {
+  let n = 0, p = 0
+  for (const s of scores) { if (s === null) continue; n++; if (s >= PASS) p++ }
+  return n ? { rate: (100 * p) / n, n, p } : { rate: null, n: 0, p: 0 }
+}
+
+// ── SVG helpers ──────────────────────────────────────────────────────────
+//
+// Charts are drawn at a MEASURED pixel width rather than scaled from a fixed
+// viewBox: scaling a viewBox stretches the type with the box, and an axis tick
+// that is 9px on one card and 14px on another reads as a mistake.
+
+const svgEl = (tag, attrs, kids = '') =>
+  `<${tag} ${Object.entries(attrs).map(([k, v]) => `${k}="${v}"`).join(' ')}>${kids}</${tag}>`
+
+const txt = (x, y, s, o = {}) => svgEl('text', {
+  x, y, fill: o.fill || 'var(--ink-3)', 'font-size': o.size || 10,
+  'text-anchor': o.anchor || 'middle', 'font-weight': o.weight || 400,
+  'dominant-baseline': o.baseline || 'auto',
+  ...(o.extra || {}),
+}, esc(s))
+
+/** A y-axis: four hairline gridlines and their labels, in the plot's own units. */
+function yAxis(x0, x1, y, max, opts = {}) {
+  const steps = opts.steps || 4
+  let out = ''
+  for (let i = 0; i <= steps; i++) {
+    const v = (max * i) / steps
+    const py = y(v)
+    out += svgEl('line', { x1: x0, x2: x1, y1: py, y2: py, stroke: 'var(--grid)', 'stroke-width': 1 })
+    out += txt(x0 - 7, py + 3, opts.fmt ? opts.fmt(v) : String(Math.round(v)), { anchor: 'end', size: 9.5 })
+  }
+  return out
+}
+
+/** Thin x labels until they stop colliding — never draw a tick you cannot read. */
+function xLabels(items, x, y, minGap = 46) {
+  if (!items.length) return ''
+  const stride = Math.max(1, Math.ceil((items.length * minGap) / Math.max(1, x(items.length - 1) - x(0) + minGap)))
+  let out = ''
+  items.forEach((it, i) => {
+    if (i % stride !== 0 && i !== items.length - 1) return
+    // Skip the last label when the stride would print it on top of its neighbour.
+    if (i === items.length - 1 && items.length > 1 && (items.length - 1) % stride !== 0
+        && x(items.length - 1) - x(items.length - 1 - ((items.length - 1) % stride)) < minGap) return
+    out += txt(x(i), y, it.label, { size: 9.5 })
+  })
+  return out
+}
+
+// ── Cards ────────────────────────────────────────────────────────────────
+//
+// Every chart card ships a table twin. That is the accessibility contract —
+// no value is reachable only by hovering a mark — and it doubles as the thing
+// people actually want when they are about to paste a number into a deck.
+
+const cards = []
+const card = (def) => { cards.push(def); return def }
+
+function renderCard(def, ctx) {
+  const view = state.views[def.id] || 'chart'
+  const el = document.getElementById(`card-${def.id}`)
+  if (!el) return
+  const body = el.querySelector('.card-body')
+  const built = def.build(ctx)
+  if (!built || built.empty) {
+    body.innerHTML = `<div class="empty">No ${def.unit || 'rows'} in this slice.</div>`
+    return
+  }
+  if (view === 'table' && built.table) {
+    body.innerHTML = `<div class="tbl-wrap">${built.table()}</div>`
+  } else {
+    const w = Math.max(260, body.clientWidth || el.clientWidth - 38)
+    body.innerHTML = `${built.legend || ''}<div class="plot">${built.chart(w)}<div class="tip"></div></div>`
+    if (built.hover) built.hover(body.querySelector('.plot'), w)
+  }
+}
+
+function cardShell(def) {
+  const tools = []
+  if (def.tools) tools.push(def.tools())
+  if (def.hasTable !== false) {
+    tools.push(`<button class="tool" data-view="${def.id}" aria-pressed="${(state.views[def.id] || 'chart') === 'table'}">Table</button>`)
+  }
+  return `<div class="card ${def.col || 'col-6'}" id="card-${def.id}">
+    <div class="card-head">
+      <div>
+        <h3>${esc(def.title)}</h3>
+      </div>
+      <div class="card-tools">${tools.join('')}</div>
+    </div>
+    ${def.note ? `<p class="card-note">${def.note}</p>` : ''}
+    <div class="card-body"></div>
+  </div>`
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// AUDIT BAND
+// ─────────────────────────────────────────────────────────────────────────
+
+/** The four headline numbers. Stat tiles, because each story is one number. */
+card({
+  id: 'kpi-audits', col: 'col-12', band: 'audits', hasTable: false,
+  build: (ctx) => ({ chart: () => '' }),
+  custom: true,
+})
+
+/**
+ * Pass rate over time — the spine of the whole page.
+ *
+ * Three series, and they are three DIFFERENT measurements of the same audits,
+ * not three groups: the score on the day, the score once seven days of ticket
+ * closure are credited, and the score with every closure to date credited. The
+ * gap between the first and second line is the entire point of the N+7 rule.
+ */
+card({
+  id: 'trend', col: 'col-8', band: 'audits', unit: 'audits',
+  title: 'Pass rate over time',
+  note: `Share of audits scoring ${PASS}% or better. Hover for the audit count behind each point — a bucket with few audits swings hard.`,
+  build: (ctx) => {
+    const bs = ctx.auditBuckets
+    if (!bs.length) return { empty: true }
+    const SER = [
+      { key: 's0', name: 'On the day', color: 'var(--s1)' },
+      { key: 's7', name: 'After 7 days', color: 'var(--s2)' },
+      { key: 'sc', name: 'To date', color: 'var(--s3)' },
+    ]
+    const series = SER.map((s) => ({ ...s, pts: bs.map((b) => b.rates[s.key].rate) }))
+
+    return {
+      legend: `<ul class="legend">${SER.map((s) => `<li><span class="swatch line" style="background:${s.color}"></span>${s.name}</li>`).join('')}
+        <li><span class="swatch line" style="background:var(--axis)"></span>${PASS}% pass mark</li></ul>`,
+      chart: (w) => {
+        const h = 268, pad = { t: 10, r: 16, b: 26, l: 34 }
+        const pw = w - pad.l - pad.r, ph = h - pad.t - pad.b
+        const x = (i) => pad.l + (bs.length === 1 ? pw / 2 : (i * pw) / (bs.length - 1))
+        const y = (v) => pad.t + ph - (v / 100) * ph
+        let s = ''
+        s += svgEl('rect', { x: pad.l, y: pad.t, width: pw, height: ph, fill: 'var(--plot)', rx: 4 })
+        s += yAxis(pad.l, pad.l + pw, y, 100, { fmt: (v) => `${Math.round(v)}%` })
+        // The pass mark, drawn solid — a dashed rule would read as a projection.
+        s += svgEl('line', { x1: pad.l, x2: pad.l + pw, y1: y(PASS), y2: y(PASS), stroke: 'var(--axis)', 'stroke-width': 1.5 })
+        for (const ser of series) {
+          // Break the path at every empty bucket rather than bridging it.
+          let d = '', pen = false
+          ser.pts.forEach((v, i) => {
+            if (v === null) { pen = false; return }
+            d += `${pen ? 'L' : 'M'}${x(i).toFixed(1)} ${y(v).toFixed(1)} `
+            pen = true
+          })
+          s += svgEl('path', { d, fill: 'none', stroke: ser.color, 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' })
+          // An isolated point would otherwise draw nothing at all.
+          ser.pts.forEach((v, i) => {
+            if (v === null) return
+            const lone = (ser.pts[i - 1] ?? null) === null && (ser.pts[i + 1] ?? null) === null
+            if (lone) s += svgEl('circle', { cx: x(i), cy: y(v), r: 2.5, fill: ser.color })
+          })
+          // Endpoint emphasis: the last real value, labelled. Selective, not
+          // a number on every point.
+          const last = ser.pts.reduce((acc, v, i) => (v === null ? acc : i), -1)
+          if (last >= 0) {
+            s += svgEl('circle', { cx: x(last), cy: y(ser.pts[last]), r: 4, fill: ser.color, stroke: 'var(--plot)', 'stroke-width': 2 })
+          }
+        }
+        s += svgEl('line', { x1: pad.l, x2: pad.l + pw, y1: pad.t + ph, y2: pad.t + ph, stroke: 'var(--axis)', 'stroke-width': 1 })
+        s += xLabels(bs, x, h - 8)
+        s += svgEl('rect', { x: pad.l, y: pad.t, width: pw, height: ph, fill: 'transparent', class: 'hit' })
+        return svgEl('svg', { width: w, height: h, viewBox: `0 0 ${w} ${h}`, role: 'img', 'aria-label': 'Pass rate over time' }, s)
+      },
+      hover: (plot, w) => crosshair(plot, w, bs, series, {
+        h: 268, pad: { t: 10, r: 16, b: 26, l: 34 },
+        row: (b, ser) => {
+          const r = b.rates[ser.key]
+          return r.rate === null ? null : { name: ser.name, color: ser.color, val: `${r.rate.toFixed(1)}%` }
+        },
+        foot: (b) => `${num(b.rates.s0.n)} audit${b.rates.s0.n === 1 ? '' : 's'}`,
+      }),
+      table: () => tableHTML({
+        cols: [{ k: 'label', n: GRAN[state.gran].name }, { k: 'n', n: 'Audits', num: true },
+               { k: 's0', n: 'On the day', num: true }, { k: 's7', n: 'After 7 days', num: true }, { k: 'sc', n: 'To date', num: true }],
+        rows: bs.filter((b) => b.rates.s0.n).map((b) => ({
+          label: b.label, n: num(b.rates.s0.n),
+          s0: pct(b.rates.s0.rate), s7: pct(b.rates.s7.rate), sc: pct(b.rates.sc.rate),
+        })),
+        id: 'trend',
+      }),
+    }
+  },
+})
+
+/**
+ * Where the seven days actually land.
+ *
+ * An ordered progression — no remediation credited, then a week of it, then
+ * everything since — so this is the ordinal blue ramp rather than three
+ * unrelated hues, and the steps start at 250 so the lightest still clears
+ * contrast against the surface.
+ */
+card({
+  id: 'recovery', col: 'col-4', band: 'audits', unit: 'audits',
+  title: 'What the 7-day window recovers',
+  note: 'The same audits, counted three times: passing on the day, passing once tickets closed inside 7 days are credited, and passing with every closure to date.',
+  build: (ctx) => {
+    const { s0, s7, sc, n } = ctx.audit
+    if (!n) return { empty: true }
+    const stages = [
+      { name: 'Passed on the day', v: s0.p, color: '#86b6ef' },
+      { name: 'Passed after 7 days', v: s7.p, color: '#2a78d6' },
+      { name: 'Passed to date', v: sc.p, color: '#184f95' },
+    ]
+    return {
+      chart: (w) => {
+        // 56, not 46: each stage stacks a label, a bar and a count, and at 46
+        // the count sat three pixels under the next stage's label and read as
+        // one run-on line.
+        const rowH = 56, h = stages.length * rowH + 30
+        const pad = { l: 0, r: 8, t: 8 }
+        const pw = w - pad.l - pad.r
+        const x = (v) => (v / n) * pw
+        let s = ''
+        // The denominator, drawn once as a track behind all three.
+        stages.forEach((st, i) => {
+          const y = pad.t + i * rowH + 6
+          s += svgEl('rect', { x: 0, y, width: pw, height: 15, rx: 3, fill: 'var(--wash)' })
+          s += svgEl('rect', { x: 0, y, width: Math.max(2, x(st.v)), height: 15, rx: 3, fill: st.color })
+          s += txt(0, y - 6, st.name, { anchor: 'start', size: 11, fill: 'var(--ink-2)' })
+          s += txt(pw, y - 6, `${((100 * st.v) / n).toFixed(1)}%`, { anchor: 'end', size: 11, weight: 600, fill: 'var(--ink)' })
+          s += txt(0, y + 29, `${num(st.v)} of ${num(n)}`, { anchor: 'start', size: 9.5 })
+        })
+        return svgEl('svg', { width: w, height: h, viewBox: `0 0 ${w} ${h}`, role: 'img', 'aria-label': 'Recovery through the seven-day window' }, s)
+      },
+      table: () => tableHTML({
+        cols: [{ k: 'stage', n: 'Stage' }, { k: 'p', n: 'Passed', num: true }, { k: 'r', n: 'Rate', num: true }],
+        rows: stages.map((st) => ({ stage: st.name, p: num(st.v), r: `${((100 * st.v) / n).toFixed(1)}%` })),
+        id: 'recovery', sortable: false,
+      }),
+    }
+  },
+})
+
+/**
+ * Pass / fail counts per bucket. The trend chart shows the RATE; a rate with no
+ * denominator beside it is how a two-audit week gets read as a collapse.
+ */
+card({
+  id: 'composition', col: 'col-8', band: 'audits', unit: 'audits',
+  title: 'Audits by verdict',
+  note: 'Counts behind the rate, stacked. Verdict is taken after the 7-day window.',
+  build: (ctx) => {
+    const bs = ctx.auditBuckets.filter((b) => b.rates.s7.n)
+    if (!bs.length) return { empty: true }
+    const max = Math.max(...bs.map((b) => b.rates.s7.n))
+    return {
+      legend: `<ul class="legend">
+        <li><span class="swatch" style="background:var(--good)"></span>Pass</li>
+        <li><span class="swatch" style="background:var(--critical)"></span>Fail</li></ul>`,
+      chart: (w) => {
+        const h = 220, pad = { t: 8, r: 8, b: 26, l: 34 }
+        const pw = w - pad.l - pad.r, ph = h - pad.t - pad.b
+        const step = pw / bs.length
+        const bw = Math.max(1, Math.min(38, step - Math.min(6, step * 0.28)))
+        const gap = bw >= 5 ? 2 : 0   // the 2px surface gap, dropped when a bar is too thin to hold it
+        const y = (v) => pad.t + ph - (v / max) * ph
+        let s = svgEl('rect', { x: pad.l, y: pad.t, width: pw, height: ph, fill: 'var(--plot)', rx: 4 })
+        s += yAxis(pad.l, pad.l + pw, y, max, { fmt: (v) => num(Math.round(v)) })
+        bs.forEach((b, i) => {
+          const cx = pad.l + i * step + step / 2
+          const { n, p } = b.rates.s7
+          const f = n - p
+          const hp = (p / max) * ph, hf = (f / max) * ph
+          if (f > 0) s += svgEl('rect', { x: cx - bw / 2, y: y(n), width: bw, height: Math.max(1, hf - gap), rx: Math.min(3, bw / 2), fill: 'var(--critical)' })
+          if (p > 0) s += svgEl('rect', { x: cx - bw / 2, y: y(p), width: bw, height: Math.max(1, hp), rx: Math.min(3, bw / 2), fill: 'var(--good)' })
+        })
+        s += svgEl('line', { x1: pad.l, x2: pad.l + pw, y1: pad.t + ph, y2: pad.t + ph, stroke: 'var(--axis)', 'stroke-width': 1 })
+        s += xLabels(bs, (i) => pad.l + i * step + step / 2, h - 8)
+        return svgEl('svg', { width: w, height: h, viewBox: `0 0 ${w} ${h}`, role: 'img', 'aria-label': 'Audits by verdict' }, s)
+      },
+      hover: (plot, w) => bandHover(plot, w, bs, {
+        h: 220, pad: { t: 8, r: 8, b: 26, l: 34 },
+        rows: (b) => [
+          { name: 'Pass', color: 'var(--good)', val: num(b.rates.s7.p) },
+          { name: 'Fail', color: 'var(--critical)', val: num(b.rates.s7.n - b.rates.s7.p) },
+        ],
+        foot: (b) => `${pct(b.rates.s7.rate)} pass`,
+      }),
+      table: () => tableHTML({
+        cols: [{ k: 'label', n: GRAN[state.gran].name }, { k: 'p', n: 'Pass', num: true }, { k: 'f', n: 'Fail', num: true }, { k: 'n', n: 'Total', num: true }, { k: 'r', n: 'Pass rate', num: true }],
+        rows: bs.map((b) => ({ label: b.label, p: num(b.rates.s7.p), f: num(b.rates.s7.n - b.rates.s7.p), n: num(b.rates.s7.n), r: pct(b.rates.s7.rate) })),
+        id: 'composition',
+      }),
+    }
+  },
+})
+
+/** Score distribution — where the failures sit relative to the mark. */
+card({
+  id: 'distribution', col: 'col-4', band: 'audits', unit: 'audits',
+  title: 'Score distribution',
+  note: `Audits by score band after 7 days. The bands either side of ${PASS}% are the ones worth chasing — a near miss is a different problem from a collapse.`,
+  build: (ctx) => {
+    const rows = ctx.auditIdx
+    if (!rows.length) return { empty: true }
+    const BANDS = [
+      { lo: 0, hi: 60, name: '< 60' },
+      { lo: 60, hi: 75, name: '60–75' },
+      { lo: 75, hi: 85, name: '75–85' },
+      { lo: 85, hi: 90, name: `85–${PASS}` },
+      { lo: 90, hi: 95, name: `${PASS}–95` },
+      { lo: 95, hi: 100.01, name: '95–100' },
+    ]
+    const counts = BANDS.map(() => 0)
+    let scored = 0
+    for (const i of rows) {
+      const v = A.s7[i]
+      if (v === null) continue
+      scored++
+      const b = BANDS.findIndex((bd) => v >= bd.lo && v < bd.hi)
+      if (b >= 0) counts[b]++
+    }
+    const max = Math.max(1, ...counts)
+    return {
+      chart: (w) => {
+        const rowH = 26, h = BANDS.length * rowH + 12
+        const labW = 52, pw = w - labW - 42
+        let s = ''
+        BANDS.forEach((bd, i) => {
+          const y = 6 + i * rowH
+          const passing = bd.lo >= PASS
+          s += txt(labW - 8, y + 14, bd.name, { anchor: 'end', size: 10, fill: 'var(--ink-2)' })
+          s += svgEl('rect', { x: labW, y: y + 4, width: pw, height: 14, rx: 3, fill: 'var(--wash)' })
+          s += svgEl('rect', {
+            x: labW, y: y + 4, width: Math.max(counts[i] ? 2 : 0, (counts[i] / max) * pw), height: 14, rx: 3,
+            fill: passing ? 'var(--good)' : 'var(--critical)', 'fill-opacity': passing ? 0.85 : 0.85,
+          })
+          s += txt(w - 4, y + 15, num(counts[i]), { anchor: 'end', size: 10.5, weight: 500, fill: 'var(--ink)' })
+        })
+        return svgEl('svg', { width: w, height: h, viewBox: `0 0 ${w} ${h}`, role: 'img', 'aria-label': 'Score distribution' }, s)
+      },
+      table: () => tableHTML({
+        cols: [{ k: 'b', n: 'Band' }, { k: 'n', n: 'Audits', num: true }, { k: 'p', n: 'Share', num: true }],
+        rows: BANDS.map((bd, i) => ({ b: bd.name, n: num(counts[i]), p: scored ? `${((100 * counts[i]) / scored).toFixed(1)}%` : '—' })),
+        id: 'distribution', sortable: false,
+      }),
+    }
+  },
+})
+
+/**
+ * The same pass rate, cut by whichever dimension is selected.
+ *
+ * One series, so one colour for every bar — colouring bars darker-where-bigger
+ * would double-encode the length the bar already shows. The pass mark is a rule
+ * across the plot, which is the only comparison that matters here.
+ */
+const BREAKDOWNS = {
+  city: { name: 'City', a: 'city', t: 'city' },
+  bl: { name: 'Business line', a: 'bl', t: 'bl' },
+  own: { name: 'Ownership', a: 'own', t: 'own' },
+  ctype: { name: 'Centre type', a: 'ctype', t: 'ctype' },
+  atype: { name: 'Audit type', a: 'atype', t: null },
+  auditor: { name: 'Auditor', a: 'auditor', t: null },
+}
+
+card({
+  id: 'breakdown', col: 'col-12', band: 'audits', unit: 'audits',
+  title: 'Pass rate by group',
+  note: `Ranked worst first, after the 7-day window. The rule is the ${PASS}% pass mark. Groups with fewer than 5 audits are shown but marked — the rate is not yet worth much.`,
+  tools: () => `<div class="segments" style="margin-right:4px">${Object.entries(BREAKDOWNS)
+    .map(([k, v]) => `<button data-bd="${k}" aria-pressed="${state.breakdown === k}">${v.name}</button>`).join('')}</div>`,
+  build: (ctx) => {
+    const dim = BREAKDOWNS[state.breakdown]
+    const list = AD[dim.a]
+    const agg = new Map()
+    for (const i of ctx.auditIdx) {
+      const k = A[dim.a][i]
+      let g = agg.get(k)
+      if (!g) { g = { n: 0, p: 0, s: 0, sn: 0 }; agg.set(k, g) }
+      const v = A.s7[i]
+      if (v === null) continue
+      g.n++; g.s += v; g.sn++
+      if (v >= PASS) g.p++
+    }
+    let rows = [...agg.entries()].filter(([, g]) => g.n).map(([k, g]) => ({
+      name: list[k], n: g.n, p: g.p, rate: (100 * g.p) / g.n, avg: g.s / g.sn,
+    })).sort((a, b) => a.rate - b.rate || b.n - a.n)
+    if (!rows.length) return { empty: true }
+    const shown = rows.slice(0, 22)
+    const dropped = rows.length - shown.length
+    return {
+      chart: (w) => {
+        const rowH = 24, h = shown.length * rowH + 30
+        const labW = Math.min(190, Math.max(96, w * 0.24)), valW = 96
+        const pw = Math.max(60, w - labW - valW)
+        const x = (v) => (v / 100) * pw
+        let s = ''
+        s += svgEl('rect', { x: labW, y: 4, width: pw, height: shown.length * rowH, fill: 'var(--plot)', rx: 4 })
+        for (const g of [0, 25, 50, 75, 100]) {
+          s += svgEl('line', { x1: labW + x(g), x2: labW + x(g), y1: 4, y2: 4 + shown.length * rowH, stroke: 'var(--grid)', 'stroke-width': 1 })
+          s += txt(labW + x(g), h - 8, `${g}%`, { size: 9.5 })
+        }
+        shown.forEach((r, i) => {
+          const y = 4 + i * rowH + 5
+          const nm = r.name.length > 26 ? `${r.name.slice(0, 25)}…` : r.name
+          s += txt(labW - 8, y + 11, nm, { anchor: 'end', size: 10.5, fill: 'var(--ink-2)' })
+          s += svgEl('rect', { x: labW, y, width: Math.max(1.5, x(r.rate)), height: 14, rx: 3, fill: 'var(--s1)' })
+          s += txt(labW + pw + 8, y + 11, `${r.rate.toFixed(1)}%`, { anchor: 'start', size: 10.5, weight: 600, fill: 'var(--ink)' })
+          s += txt(labW + pw + 54, y + 11, `n=${r.n}${r.n < 5 ? ' ⚠' : ''}`, { anchor: 'start', size: 9.5 })
+        })
+        // Pass mark last, so it sits over the bars.
+        s += svgEl('line', { x1: labW + x(PASS), x2: labW + x(PASS), y1: 4, y2: 4 + shown.length * rowH, stroke: 'var(--ink-3)', 'stroke-width': 1.5 })
+        return svgEl('svg', { width: w, height: h, viewBox: `0 0 ${w} ${h}`, role: 'img', 'aria-label': `Pass rate by ${dim.name}` }, s)
+      },
+      table: () => tableHTML({
+        cols: [{ k: 'name', n: dim.name }, { k: 'n', n: 'Audits', num: true }, { k: 'p', n: 'Passed', num: true },
+               { k: 'rate', n: 'Pass rate', num: true }, { k: 'avg', n: 'Mean score', num: true }],
+        rows: rows.map((r) => ({ name: r.name, n: num(r.n), p: num(r.p), rate: pct(r.rate), avg: r.avg.toFixed(1),
+          _s: { n: r.n, p: r.p, rate: r.rate, avg: r.avg, name: r.name } })),
+        id: 'breakdown',
+      }),
+      footNote: dropped > 0 ? `${dropped} more group${dropped === 1 ? '' : 's'} in the table view.` : '',
+    }
+  },
+})
+
+// ─────────────────────────────────────────────────────────────────────────
+// TICKET BAND
+// ─────────────────────────────────────────────────────────────────────────
+
+card({ id: 'kpi-tickets', col: 'col-12', band: 'tickets', hasTable: false, custom: true, build: () => ({ chart: () => '' }) })
+
+/**
+ * Tickets raised per bucket, split by whether they are still open.
+ *
+ * Bucketed on the date the ticket was RAISED, which is the date the audit
+ * found the defect. Closure date is a different clock and mixing the two into
+ * one bar is how a backlog chart ends up saying nothing.
+ */
+card({
+  id: 'tkt-trend', col: 'col-7', band: 'tickets', unit: 'tickets',
+  title: 'Tickets raised',
+  note: 'By the date the defect was raised, split by where they stand now.',
+  build: (ctx) => {
+    const bs = ctx.ticketBuckets.filter((b) => b.n)
+    if (!bs.length) return { empty: true }
+    const max = Math.max(...bs.map((b) => b.n))
+    return {
+      legend: `<ul class="legend">
+        <li><span class="swatch" style="background:var(--good)"></span>Closed</li>
+        <li><span class="swatch" style="background:var(--warning)"></span>Open</li>
+        <li><span class="swatch" style="background:var(--ink-3)"></span>Rejected / other</li></ul>`,
+      chart: (w) => {
+        const h = 226, pad = { t: 8, r: 8, b: 26, l: 40 }
+        const pw = w - pad.l - pad.r, ph = h - pad.t - pad.b
+        const step = pw / bs.length
+        const bw = Math.max(1, Math.min(40, step - Math.min(6, step * 0.28)))
+        const gap = bw >= 5 ? 2 : 0
+        const y = (v) => pad.t + ph - (v / max) * ph
+        let s = svgEl('rect', { x: pad.l, y: pad.t, width: pw, height: ph, fill: 'var(--plot)', rx: 4 })
+        s += yAxis(pad.l, pad.l + pw, y, max, { fmt: (v) => num(Math.round(v)) })
+        bs.forEach((b, i) => {
+          const cx = pad.l + i * step + step / 2
+          const parts = [
+            { v: b.other, c: 'var(--ink-3)' },
+            { v: b.open, c: 'var(--warning)' },
+            { v: b.closed, c: 'var(--good)' },
+          ]
+          let acc = 0
+          for (const p of parts) {
+            if (!p.v) continue
+            const top = acc + p.v
+            s += svgEl('rect', { x: cx - bw / 2, y: y(top), width: bw, height: Math.max(1, (p.v / max) * ph - (acc ? 0 : 0) - (top < b.n ? gap : 0)), rx: Math.min(3, bw / 2), fill: p.c })
+            acc = top
+          }
+        })
+        s += svgEl('line', { x1: pad.l, x2: pad.l + pw, y1: pad.t + ph, y2: pad.t + ph, stroke: 'var(--axis)', 'stroke-width': 1 })
+        s += xLabels(bs, (i) => pad.l + i * step + step / 2, h - 8)
+        return svgEl('svg', { width: w, height: h, viewBox: `0 0 ${w} ${h}`, role: 'img', 'aria-label': 'Tickets raised' }, s)
+      },
+      hover: (plot, w) => bandHover(plot, w, bs, {
+        h: 226, pad: { t: 8, r: 8, b: 26, l: 40 },
+        rows: (b) => [
+          { name: 'Closed', color: 'var(--good)', val: num(b.closed) },
+          { name: 'Open', color: 'var(--warning)', val: num(b.open) },
+          { name: 'Rejected / other', color: 'var(--ink-3)', val: num(b.other) },
+        ].filter((r) => r.val !== '0'),
+        foot: (b) => `${num(b.n)} raised`,
+      }),
+      table: () => tableHTML({
+        cols: [{ k: 'label', n: GRAN[state.gran].name }, { k: 'n', n: 'Raised', num: true }, { k: 'c', n: 'Closed', num: true },
+               { k: 'o', n: 'Open', num: true }, { k: 'x', n: 'Other', num: true }, { k: 'b', n: 'SLA breached', num: true }],
+        rows: bs.map((b) => ({ label: b.label, n: num(b.n), c: num(b.closed), o: num(b.open), x: num(b.other), b: num(b.breached) })),
+        id: 'tkt-trend',
+      }),
+    }
+  },
+})
+
+/** SLA: a 2×2 that people read as one bar. Four states, ordered worst to best. */
+card({
+  id: 'sla', col: 'col-5', band: 'tickets', unit: 'tickets',
+  title: 'SLA position',
+  note: 'Every ticket sits in exactly one of these four. The two breached states are the queue that needs a name against it.',
+  build: (ctx) => {
+    const rows = ctx.ticketIdx
+    if (!rows.length) return { empty: true }
+    const ORDER = [
+      { match: 'open-SLA-Breached', name: 'Open, SLA breached', color: 'var(--critical)' },
+      { match: 'Closed- SLA Breached', name: 'Closed late', color: 'var(--serious)' },
+      { match: 'open-within-SLA', name: 'Open, within SLA', color: 'var(--warning)' },
+      { match: 'Closed- Within SLA', name: 'Closed on time', color: 'var(--good)' },
+    ]
+    const counts = new Map()
+    for (const i of rows) counts.set(TD.sla[T.sla[i]], (counts.get(TD.sla[T.sla[i]]) || 0) + 1)
+    const known = ORDER.map((o) => ({ ...o, v: counts.get(o.match) || 0 }))
+    const other = [...counts.entries()].filter(([k]) => !ORDER.some((o) => o.match === k)).reduce((a, [, v]) => a + v, 0)
+    const all = other ? [...known, { name: 'Unclassified', color: 'var(--ink-3)', v: other }] : known
+    const total = all.reduce((a, r) => a + r.v, 0)
+    return {
+      chart: (w) => {
+        const barH = 26, rowH = 27, h = barH + 14 + all.length * rowH
+        let s = ''
+        let acc = 0
+        for (const r of all) {
+          if (!r.v) continue
+          const x = (acc / total) * w, wd = (r.v / total) * w
+          const isLast = acc + r.v >= total
+          s += svgEl('rect', { x, y: 0, width: Math.max(1, wd - (isLast ? 0 : 2)), height: barH, rx: 3, fill: r.color })
+          acc += r.v
+        }
+        all.forEach((r, i) => {
+          const y = barH + 14 + i * rowH
+          s += svgEl('rect', { x: 0, y: y + 3, width: 10, height: 10, rx: 2.5, fill: r.color })
+          s += txt(17, y + 12, r.name, { anchor: 'start', size: 11.5, fill: 'var(--ink-2)' })
+          s += txt(w - 52, y + 12, num(r.v), { anchor: 'end', size: 11.5, weight: 600, fill: 'var(--ink)', extra: { 'font-variant-numeric': 'tabular-nums' } })
+          s += txt(w, y + 12, `${((100 * r.v) / total).toFixed(1)}%`, { anchor: 'end', size: 10.5, extra: { 'font-variant-numeric': 'tabular-nums' } })
+        })
+        return svgEl('svg', { width: w, height: h, viewBox: `0 0 ${w} ${h}`, role: 'img', 'aria-label': 'SLA position' }, s)
+      },
+      table: () => tableHTML({
+        cols: [{ k: 'n', n: 'State' }, { k: 'v', n: 'Tickets', num: true }, { k: 'p', n: 'Share', num: true }],
+        rows: all.map((r) => ({ n: r.name, v: num(r.v), p: `${((100 * r.v) / total).toFixed(1)}%` })),
+        id: 'sla', sortable: false,
+      }),
+    }
+  },
+})
+
+/** What actually fails, in the auditors' own words. The most actionable list here. */
+card({
+  id: 'checkpoints', col: 'col-7', band: 'tickets', unit: 'tickets',
+  title: 'Most-failed checkpoints',
+  note: 'The audit question behind each ticket, top 12 by volume. This is the list that tells you what to fix estate-wide rather than centre by centre.',
+  build: (ctx) => {
+    const agg = new Map()
+    for (const i of ctx.ticketIdx) {
+      const k = T.cp[i]
+      let g = agg.get(k)
+      if (!g) { g = { n: 0, open: 0 }; agg.set(k, g) }
+      g.n++
+      if (isOpen(TD.st[T.st[i]])) g.open++
+    }
+    const all = [...agg.entries()].map(([k, g]) => ({ name: TD.cp[k], ...g })).sort((a, b) => b.n - a.n)
+    if (!all.length) return { empty: true }
+    const top = all.slice(0, 12)
+    const max = top[0].n
+    return {
+      chart: (w) => {
+        const rowH = 34, h = top.length * rowH + 6
+        const valW = 74, pw = Math.max(60, w - valW)
+        let s = ''
+        top.forEach((r, i) => {
+          const y = 4 + i * rowH
+          const nm = r.name.length > 84 ? `${r.name.slice(0, 83)}…` : r.name
+          s += txt(0, y + 11, nm, { anchor: 'start', size: 10.5, fill: 'var(--ink-2)' })
+          s += svgEl('rect', { x: 0, y: y + 17, width: pw, height: 10, rx: 2.5, fill: 'var(--wash)' })
+          s += svgEl('rect', { x: 0, y: y + 17, width: Math.max(2, (r.n / max) * pw), height: 10, rx: 2.5, fill: 'var(--s1)' })
+          s += txt(w, y + 26, `${num(r.n)}`, { anchor: 'end', size: 11, weight: 600, fill: 'var(--ink)' })
+          s += txt(w, y + 12, `${num(r.open)} open`, { anchor: 'end', size: 9.5 })
+        })
+        return svgEl('svg', { width: w, height: h, viewBox: `0 0 ${w} ${h}`, role: 'img', 'aria-label': 'Most-failed checkpoints' }, s)
+      },
+      table: () => tableHTML({
+        cols: [{ k: 'name', n: 'Checkpoint', wrap: true }, { k: 'n', n: 'Tickets', num: true }, { k: 'o', n: 'Still open', num: true }],
+        rows: all.map((r) => ({ name: r.name, n: num(r.n), o: num(r.open), _s: { name: r.name, n: r.n, o: r.open } })),
+        id: 'checkpoints',
+      }),
+    }
+  },
+})
+
+/** Priority mix. Four ordered levels, so the ordinal ramp, not four hues. */
+card({
+  id: 'priority', col: 'col-5', band: 'tickets', unit: 'tickets',
+  title: 'Priority mix',
+  note: 'Code red is the estate-wide escalation tier — its open count is the number that should be zero.',
+  build: (ctx) => {
+    const ORDER = [
+      { m: 'Code_red', name: 'Code red', color: '#0d366b' },
+      { m: 'High', name: 'High', color: '#256abf' },
+      { m: 'Medium', name: 'Medium', color: '#5598e7' },
+      { m: 'Low', name: 'Low', color: '#9ec5f4' },
+    ]
+    const agg = new Map()
+    for (const i of ctx.ticketIdx) {
+      const k = TD.prio[T.prio[i]]
+      let g = agg.get(k)
+      if (!g) { g = { n: 0, open: 0 }; agg.set(k, g) }
+      g.n++
+      if (isOpen(TD.st[T.st[i]])) g.open++
+    }
+    const rows = ORDER.map((o) => ({ ...o, ...(agg.get(o.m) || { n: 0, open: 0 }) }))
+      .concat([...agg.entries()].filter(([k]) => !ORDER.some((o) => o.m === k))
+        .map(([k, g]) => ({ name: k, color: 'var(--ink-3)', ...g })))
+      .filter((r) => r.n)
+    if (!rows.length) return { empty: true }
+    const max = Math.max(...rows.map((r) => r.n))
+    return {
+      chart: (w) => {
+        const rowH = 40, h = rows.length * rowH + 6
+        const labW = 78, valW = 76, pw = Math.max(50, w - labW - valW)
+        let s = ''
+        rows.forEach((r, i) => {
+          const y = 6 + i * rowH
+          s += txt(0, y + 15, r.name, { anchor: 'start', size: 11.5, fill: 'var(--ink-2)' })
+          s += svgEl('rect', { x: labW, y: y + 4, width: pw, height: 14, rx: 3, fill: 'var(--wash)' })
+          s += svgEl('rect', { x: labW, y: y + 4, width: Math.max(2, (r.n / max) * pw), height: 14, rx: 3, fill: r.color })
+          s += txt(w, y + 15, num(r.n), { anchor: 'end', size: 12, weight: 600, fill: 'var(--ink)' })
+          s += txt(labW, y + 31, `${num(r.open)} still open`, { anchor: 'start', size: 9.5 })
+        })
+        return svgEl('svg', { width: w, height: h, viewBox: `0 0 ${w} ${h}`, role: 'img', 'aria-label': 'Priority mix' }, s)
+      },
+      table: () => tableHTML({
+        cols: [{ k: 'name', n: 'Priority' }, { k: 'n', n: 'Tickets', num: true }, { k: 'o', n: 'Still open', num: true }],
+        rows: rows.map((r) => ({ name: r.name, n: num(r.n), o: num(r.open) })),
+        id: 'priority', sortable: false,
+      }),
+    }
+  },
+})
+
+/**
+ * The watchlist. A table, on purpose — six measures per centre across hundreds
+ * of centres is past what any colour scale can carry, and this is the artefact
+ * someone takes into a review.
+ */
+card({
+  id: 'watchlist', col: 'col-12', band: 'tickets', unit: 'centres',
+  title: 'Centre watchlist',
+  note: 'Every centre in the slice, worst pass rate first. Sort any column. Audit figures come from card 68611, ticket figures from card 80321, joined on centre name.',
+  hasTable: false,
+  build: (ctx) => {
+    const byName = new Map()
+    const get = (nm) => {
+      let g = byName.get(nm)
+      if (!g) { g = { name: nm, city: '—', n: 0, p: 0, tk: 0, open: 0, breach: 0, red: 0 }; byName.set(nm, g) }
+      return g
+    }
+    for (const i of ctx.auditIdx) {
+      const g = get(AD.center[A.center[i]])
+      g.city = AD.city[A.city[i]]
+      const v = A.s7[i]
+      if (v === null) continue
+      g.n++
+      if (v >= PASS) g.p++
+    }
+    for (const i of ctx.ticketIdx) {
+      const g = get(TD.center[T.center[i]])
+      if (g.city === '—') g.city = TD.city[T.city[i]]
+      g.tk++
+      const open = isOpen(TD.st[T.st[i]])
+      if (open) g.open++
+      if (String(TD.sla[T.sla[i]]).toLowerCase().includes('breach')) g.breach++
+      if (TD.prio[T.prio[i]] === 'Code_red') g.red++
+    }
+    const rows = [...byName.values()].map((g) => ({ ...g, rate: g.n ? (100 * g.p) / g.n : null }))
+    if (!rows.length) return { empty: true }
+    rows.sort((a, b) => (a.rate ?? 999) - (b.rate ?? 999) || b.open - a.open)
+    return {
+      chart: () => renderWatch(rows),
+      table: () => renderWatch(rows),
+      isTable: true,
+    }
+  },
+})
+
+function renderWatch(rows) {
+  return `<div class="tbl-wrap">${tableHTML({
+    id: 'watchlist',
+    cols: [
+      { k: 'name', n: 'Centre', wrap: true }, { k: 'city', n: 'City' },
+      { k: 'n', n: 'Audits', num: true }, { k: 'rate', n: 'Pass rate', num: true, bar: true },
+      { k: 'tk', n: 'Tickets', num: true }, { k: 'open', n: 'Open', num: true },
+      { k: 'breach', n: 'SLA breached', num: true }, { k: 'red', n: 'Code red', num: true },
+    ],
+    rows: rows.map((r) => ({
+      name: r.name, city: r.city, n: num(r.n),
+      rate: r.rate === null ? '—' : `${r.rate.toFixed(1)}%`,
+      tk: num(r.tk), open: num(r.open), breach: num(r.breach), red: num(r.red),
+      _bar: r.rate, _s: { name: r.name, city: r.city, n: r.n, rate: r.rate ?? -1, tk: r.tk, open: r.open, breach: r.breach, red: r.red },
+    })),
+  })}</div>`
+}
+
+const isOpen = (status) => !['DONE', 'RESOLVED', 'REJECTED', 'CLOSED'].includes(String(status).toUpperCase())
+
+// ── Table rendering & sorting ────────────────────────────────────────────
+
+function tableHTML({ cols, rows, id, sortable = true }) {
+  const s = state.sort[id]
+  let list = rows
+  if (s && sortable) {
+    const col = s.col
+    list = [...rows].sort((a, b) => {
+      const av = a._s ? a._s[col] : a[col], bv = b._s ? b._s[col] : b[col]
+      const an = typeof av === 'number', bn = typeof bv === 'number'
+      const cmp = an && bn ? av - bv : String(av).localeCompare(String(bv), undefined, { numeric: true })
+      return s.dir === 'asc' ? cmp : -cmp
+    })
+  }
+  const head = cols.map((c) => `<th class="${c.num ? 'num ' : ''}${sortable ? 'sortable' : ''}"
+    ${sortable ? `data-sort="${id}:${c.k}"` : ''}
+    ${s && s.col === c.k ? `aria-sort="${s.dir === 'asc' ? 'ascending' : 'descending'}"` : ''}
+    >${esc(c.n)}${s && s.col === c.k ? (s.dir === 'asc' ? ' ↑' : ' ↓') : ''}</th>`).join('')
+  const body = list.map((r) => `<tr>${cols.map((c) => {
+    if (c.bar && r._bar !== null && r._bar !== undefined) {
+      return `<td class="num bar-cell"><div class="bar" style="width:${Math.max(0, Math.min(100, r._bar)) * 0.7}px;background:${r._bar >= PASS ? 'var(--good)' : 'var(--critical)'}"></div><span>${esc(r[c.k])}</span></td>`
+    }
+    return `<td class="${c.num ? 'num' : ''}${c.wrap ? ' name' : ''}">${esc(r[c.k])}</td>`
+  }).join('')}</tr>`).join('')
+  return `<table>${`<thead><tr>${head}</tr></thead>`}<tbody>${body}</tbody></table>`
+}
+
+// ── Hover layers ─────────────────────────────────────────────────────────
+
+/** Crosshair + tooltip for the line chart. Nearest bucket, whole plot height. */
+function crosshair(plot, w, bs, series, cfg) {
+  const svg = plot.querySelector('svg')
+  const tip = plot.querySelector('.tip')
+  const { pad, h } = cfg
+  const pw = w - pad.l - pad.r, ph = h - pad.t - pad.b
+  const x = (i) => pad.l + (bs.length === 1 ? pw / 2 : (i * pw) / (bs.length - 1))
+  const rule = document.createElementNS('http://www.w3.org/2000/svg', 'line')
+  rule.setAttribute('stroke', 'var(--axis)')
+  rule.setAttribute('stroke-width', '1')
+  rule.setAttribute('y1', pad.t)
+  rule.setAttribute('y2', pad.t + ph)
+  rule.style.opacity = '0'
+  svg.appendChild(rule)
+
+  const move = (ev) => {
+    const r = svg.getBoundingClientRect()
+    const px = ((ev.clientX - r.left) / r.width) * w
+    if (px < pad.l - 8 || px > pad.l + pw + 8) return leave()
+    const i = bs.length === 1 ? 0 : Math.round(((px - pad.l) / pw) * (bs.length - 1))
+    const b = bs[Math.max(0, Math.min(bs.length - 1, i))]
+    const rows = series.map((s) => cfg.row(b, s)).filter(Boolean)
+    if (!rows.length) return leave()
+    rule.setAttribute('x1', x(i)); rule.setAttribute('x2', x(i))
+    rule.style.opacity = '1'
+    tip.innerHTML = `<div class="t-h">${esc(b.label)}</div>${rows.map((rw) =>
+      `<div class="t-r"><span class="swatch" style="background:${rw.color}"></span>${esc(rw.name)}<span class="t-n">${esc(rw.val)}</span></div>`).join('')}
+      ${cfg.foot ? `<div class="t-r" style="margin-top:5px;color:var(--ink-3);font-size:11px">${esc(cfg.foot(b))}</div>` : ''}`
+    place(tip, plot, (x(i) / w) * plot.clientWidth, pad.t + 6)
+  }
+  const leave = () => { tip.style.opacity = '0'; rule.style.opacity = '0' }
+  svg.addEventListener('pointermove', move)
+  svg.addEventListener('pointerleave', leave)
+}
+
+/** Band hover for bar charts: the whole column is the hit target, not the bar. */
+function bandHover(plot, w, bs, cfg) {
+  const svg = plot.querySelector('svg')
+  const tip = plot.querySelector('.tip')
+  const { pad, h } = cfg
+  const pw = w - pad.l - pad.r, ph = h - pad.t - pad.b
+  const step = pw / bs.length
+  const shade = document.createElementNS('http://www.w3.org/2000/svg', 'rect')
+  shade.setAttribute('fill', 'var(--wash)')
+  shade.setAttribute('y', pad.t)
+  shade.setAttribute('height', ph)
+  shade.setAttribute('rx', '3')
+  shade.style.opacity = '0'
+  svg.insertBefore(shade, svg.firstChild.nextSibling)
+
+  const move = (ev) => {
+    const r = svg.getBoundingClientRect()
+    const px = ((ev.clientX - r.left) / r.width) * w
+    const i = Math.floor((px - pad.l) / step)
+    if (i < 0 || i >= bs.length) return leave()
+    const b = bs[i]
+    shade.setAttribute('x', pad.l + i * step)
+    shade.setAttribute('width', step)
+    shade.style.opacity = '1'
+    const rows = cfg.rows(b)
+    tip.innerHTML = `<div class="t-h">${esc(b.label)}</div>${rows.map((rw) =>
+      `<div class="t-r"><span class="swatch" style="background:${rw.color}"></span>${esc(rw.name)}<span class="t-n">${esc(rw.val)}</span></div>`).join('')}
+      ${cfg.foot ? `<div class="t-r" style="margin-top:5px;color:var(--ink-3);font-size:11px">${esc(cfg.foot(b))}</div>` : ''}`
+    place(tip, plot, ((pad.l + i * step + step / 2) / w) * plot.clientWidth, pad.t + 6)
+  }
+  const leave = () => { tip.style.opacity = '0'; shade.style.opacity = '0' }
+  svg.addEventListener('pointermove', move)
+  svg.addEventListener('pointerleave', leave)
+}
+
+function place(tip, plot, px, py) {
+  tip.style.opacity = '1'
+  const tw = tip.offsetWidth
+  const clamped = Math.max(tw / 2 + 2, Math.min(plot.clientWidth - tw / 2 - 2, px))
+  tip.style.left = `${clamped}px`
+  tip.style.top = `${py + 44}px`
+}
+
+// ── Stat tiles ───────────────────────────────────────────────────────────
+
+function statTile(label, value, sub, extra = '') {
+  return `<div class="card col-3"><div class="stat">
+    <div class="eyebrow">${esc(label)}</div>
+    <div class="v">${value}</div>
+    <div class="sub">${sub}${extra}</div>
+  </div></div>`
+}
+
+const deltaPill = (d) => {
+  if (d === null || !Number.isFinite(d)) return ''
+  const cls = d > 0.05 ? 'good' : d < -0.05 ? 'bad' : 'flat'
+  const sign = d > 0 ? '+' : ''
+  return ` <span class="pill ${cls}">${sign}${d.toFixed(1)} pts</span>`
+}
+
+// ── Compute + render ─────────────────────────────────────────────────────
+
+function compute() {
+  const auditIdx = auditRows()
+  const ticketIdx = ticketRows()
+  const bs = buckets(state.from, state.to, state.gran)
+  const keyOf = GRAN[state.gran].of
+
+  // Bucket the audits.
+  const aMap = new Map(bs.map((b) => [b.key, { s0: [], s7: [], sc: [] }]))
+  for (const i of auditIdx) {
+    const g = aMap.get(keyOf(A.d[i]).key)
+    if (!g) continue
+    g.s0.push(A.s0[i]); g.s7.push(A.s7[i]); g.sc.push(A.sc[i])
+  }
+  const auditBuckets = bs.map((b) => {
+    const g = aMap.get(b.key)
+    return { ...b, rates: { s0: passRate(g.s0), s7: passRate(g.s7), sc: passRate(g.sc) } }
+  })
+
+  // Bucket the tickets.
+  const tMap = new Map(bs.map((b) => [b.key, { n: 0, open: 0, closed: 0, other: 0, breached: 0 }]))
+  for (const i of ticketIdx) {
+    const g = tMap.get(keyOf(T.d[i]).key)
+    if (!g) continue
+    g.n++
+    const st = String(TD.st[T.st[i]]).toUpperCase()
+    if (st === 'REJECTED') g.other++
+    else if (isOpen(st)) g.open++
+    else g.closed++
+    if (String(TD.sla[T.sla[i]]).toLowerCase().includes('breach')) g.breached++
+  }
+  const ticketBuckets = bs.map((b) => ({ ...b, ...tMap.get(b.key) }))
+
+  // Headline audit numbers over the whole slice.
+  const s0 = passRate(auditIdx.map((i) => A.s0[i]))
+  const s7 = passRate(auditIdx.map((i) => A.s7[i]))
+  const sc = passRate(auditIdx.map((i) => A.sc[i]))
+
+  // Headline ticket numbers.
+  let open = 0, closed = 0, breach = 0, red = 0, redOpen = 0
+  const tats = []
+  for (const i of ticketIdx) {
+    const st = String(TD.st[T.st[i]]).toUpperCase()
+    if (isOpen(st)) open++; else closed++
+    if (String(TD.sla[T.sla[i]]).toLowerCase().includes('breach')) breach++
+    if (TD.prio[T.prio[i]] === 'Code_red') { red++; if (isOpen(st)) redOpen++ }
+    if (T.tat[i] !== null) tats.push(T.tat[i])
+  }
+  tats.sort((a, b) => a - b)
+  const medTat = tats.length ? tats[Math.floor(tats.length / 2)] : null
+
+  return {
+    auditIdx, ticketIdx, auditBuckets, ticketBuckets,
+    audit: { s0, s7, sc, n: auditIdx.length },
+    ticket: { n: ticketIdx.length, open, closed, breach, red, redOpen, medTat },
+  }
+}
+
+function render() {
+  const ctx = compute()
+
+  document.getElementById('rail-n').innerHTML =
+    `${num(ctx.audit.n)} <span style="font-weight:400;color:var(--ink-3);font-size:12px">audits</span> · ${num(ctx.ticket.n)} <span style="font-weight:400;color:var(--ink-3);font-size:12px">tickets</span>`
+
+  // KPI strips are written straight into their band rather than going through
+  // the card shell — a stat tile has no chart and no table twin to offer.
+  const { s0, s7, sc, n } = ctx.audit
+  const recovered = s0.rate === null || s7.rate === null ? null : s7.rate - s0.rate
+  const kpiAudits = [
+    statTile('Audits completed', num(n), `${num(new Set(ctx.auditIdx.map((i) => A.center[i])).size)} centres`),
+    statTile(`Pass rate after 7 days`, pct(s7.rate), `${num(s7.p)} of ${num(s7.n)} at or above ${PASS}%`, deltaPill(recovered)),
+    statTile('Pass rate on the day', pct(s0.rate), `${num(s0.p)} of ${num(s0.n)} passed outright`),
+    statTile('Failing after 7 days', num(s7.n - s7.p), s7.n ? `${pct(100 - s7.rate)} of audits in view` : '—'),
+  ].join('')
+
+  const t = ctx.ticket
+  const kpiTickets = [
+    statTile('Tickets raised', num(t.n), `${num(t.closed)} closed · ${num(t.open)} open`),
+    statTile('SLA breached', num(t.breach), t.n ? `${pct((100 * t.breach) / t.n)} of tickets in view` : '—'),
+    statTile('Code red open', num(t.redOpen), `${num(t.red)} raised at code red`),
+    statTile('Median time to close', t.medTat === null ? '—' : `${num(t.medTat)}<small>h</small>`, t.medTat === null ? 'nothing closed yet' : `across ${num(t.closed)} closed tickets`),
+  ].join('')
+
+  for (const band of ['audits', 'tickets']) {
+    const host = document.getElementById(`band-${band}`)
+    const defs = cards.filter((c) => c.band === band)
+    host.innerHTML = (band === 'audits' ? kpiAudits : kpiTickets) +
+      defs.filter((d) => !d.custom).map(cardShell).join('')
+    for (const d of defs) if (!d.custom) renderCard(d, ctx)
+  }
+
+  // Footnotes that belong to a specific card are appended after it renders.
+  const bd = cards.find((c) => c.id === 'breakdown').build(ctx)
+  if (bd && bd.footNote) {
+    const el = document.querySelector('#card-breakdown .card-body')
+    if (el) el.insertAdjacentHTML('beforeend', `<p class="card-note" style="margin:10px 0 0">${esc(bd.footNote)}</p>`)
+  }
+
+  lastCtx = ctx
+}
+
+let lastCtx = null
+
+// ── Controls ─────────────────────────────────────────────────────────────
+
+function fillSelect(id, label, values, key) {
+  const el = document.getElementById(id)
+  el.innerHTML = `<option value="">All ${label}</option>` +
+    values.map((v) => `<option value="${esc(v)}">${esc(v)}</option>`).join('')
+  el.value = state[key]
+  el.addEventListener('change', () => { state[key] = el.value; render() })
+}
+
+/** Values a dimension actually has, across BOTH questions, sorted. */
+const union = (a, b) => [...new Set([...(a || []), ...(b || [])])].filter((v) => v && v !== '—').sort()
+
+function initControls() {
+  const from = document.getElementById('f-from'), to = document.getElementById('f-to')
+  for (const el of [from, to]) { el.min = meta.from; el.max = meta.to }
+  from.value = meta.from; to.value = meta.to
+
+  const onDate = () => {
+    // Clamp to the window that was actually fetched. A picker that accepts a
+    // date outside it and then draws an empty page is a bug the reader has to
+    // diagnose; refusing the input is one they can see.
+    let f = fromISO(from.value || meta.from), t = fromISO(to.value || meta.to)
+    f = Math.max(COVER.from, Math.min(COVER.to, f))
+    t = Math.max(COVER.from, Math.min(COVER.to, t))
+    if (f > t) [f, t] = [t, f]
+    state.from = f; state.to = t
+    from.value = toISO(f); to.value = toISO(t)
+    render()
+  }
+  from.addEventListener('change', onDate)
+  to.addEventListener('change', onDate)
+
+  const gran = document.getElementById('f-gran')
+  gran.innerHTML = Object.entries(GRAN).map(([k, v]) =>
+    `<button type="button" data-gran="${k}" aria-pressed="${state.gran === k}">${v.name}</button>`).join('')
+
+  fillSelect('f-city', 'cities', union(AD.city, TD.city), 'city')
+  fillSelect('f-bl', 'lines', union(AD.bl, TD.bl), 'bl')
+  fillSelect('f-own', 'ownership', union(AD.own, TD.own), 'own')
+  fillSelect('f-atype', 'audit types', union(AD.atype, TD.label), 'atype')
+  fillSelect('f-ctype', 'centre types', union(AD.ctype, TD.ctype), 'ctype')
+
+  document.getElementById('f-reset').addEventListener('click', () => {
+    Object.assign(state, { from: COVER.from, to: COVER.to, gran: 'month', city: '', bl: '', own: '', atype: '', ctype: '' })
+    from.value = meta.from; to.value = meta.to
+    for (const [id, k] of [['f-city', 'city'], ['f-bl', 'bl'], ['f-own', 'own'], ['f-atype', 'atype'], ['f-ctype', 'ctype']]) {
+      document.getElementById(id).value = state[k]
+    }
+    syncGran()
+    render()
+  })
+
+  const syncGran = () => {
+    for (const b of gran.querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.dataset.gran === state.gran))
+  }
+
+  // One delegated listener for everything inside the page body: granularity,
+  // breakdown dimension, table toggles, column sorts. The cards are re-rendered
+  // wholesale on every change, so per-element listeners would leak on each pass.
+  document.addEventListener('click', (ev) => {
+    const g = ev.target.closest('[data-gran]')
+    if (g) { state.gran = g.dataset.gran; syncGran(); render(); return }
+
+    const bd = ev.target.closest('[data-bd]')
+    if (bd) { state.breakdown = bd.dataset.bd; render(); return }
+
+    const v = ev.target.closest('[data-view]')
+    if (v) {
+      const id = v.dataset.view
+      state.views[id] = (state.views[id] || 'chart') === 'chart' ? 'table' : 'chart'
+      render()
+      return
+    }
+
+    const s = ev.target.closest('[data-sort]')
+    if (s) {
+      const [id, col] = s.dataset.sort.split(':')
+      const cur = state.sort[id]
+      state.sort[id] = cur && cur.col === col
+        ? { col, dir: cur.dir === 'asc' ? 'desc' : 'asc' }
+        : { col, dir: 'desc' }
+      render()
+    }
+  })
+}
+
+// ── Footer ───────────────────────────────────────────────────────────────
+
+document.getElementById('foot').innerHTML = `
+  <p><b>Where these numbers come from.</b> Audit scores are Metabase card 68611
+  (<code>${esc(meta.audits.name)}</code>) — ${num(meta.audits.n)} completed audits between
+  ${esc(meta.audits.from)} and ${esc(meta.audits.to)}. Tickets are card 80321
+  (<code>${esc(meta.tickets.name)}</code>) — ${num(meta.tickets.n)} tickets over the same window.
+  Both are snapshots taken ${esc(meta.builtAt)} UTC.</p>
+  <p><b>What N+7 means here.</b> Every audit carries three scores from the same answers.
+  <i>On the day</i> credits nothing. <i>After 7 days</i> re-scores a failed critical checkpoint as
+  a pass if its ticket was closed within seven days of being raised. <i>To date</i> credits every
+  closure up to the snapshot. An audit passes at ${PASS}% or better — the threshold is the
+  question's own, not one applied here.</p>
+  <p><b>Limits worth knowing.</b> This page holds its own copy of the data, so the date pickers
+  cannot reach outside ${esc(meta.from)}–${esc(meta.to)} and the numbers are frozen at the snapshot
+  above — re-run the fetch to move either. It cannot query Metabase itself: a published page is
+  blocked from calling other hosts, and putting a warehouse API key somewhere every viewer can read
+  it would be worse than that block not existing. Audits and tickets are joined on centre name in
+  the watchlist only. Ticket buckets are by the date a defect was raised, not the date it closed.
+  The <i>To date</i> line moves every time the data is refreshed, which is why the other two are
+  the ones to trend.</p>`
+
+// ── Go ───────────────────────────────────────────────────────────────────
+
+initControls()
+render()
+
+// Charts are drawn at a measured width, so a resize has to redraw rather than
+// scale. Debounced, because a drag fires this continuously.
+let rt
+addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(render, 140) })
+</script>

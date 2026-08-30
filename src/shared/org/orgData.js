@@ -310,6 +310,19 @@ function siteFields(data) {
   const num = (v) => (v === '' || v == null || isNaN(Number(v)) ? null : Number(v))
   return {
     name: data.name || '',
+    // ── The site's id in whatever system of record owns it ───────────────────
+    //
+    // A warehouse, a property register or an ERP identifies a site by ITS key —
+    // a centre service id, a store number — and that is never this app's
+    // Firestore document id. Without somewhere to put that key, joining an
+    // external dataset to this register falls back to matching on NAME, which
+    // loses a slice of any large estate to spelling and renames.
+    //
+    // A STRING, deliberately, even when it looks like a number: leading zeros
+    // are meaningful in store codes, and 0071 must not be stored as 71 and then
+    // fail to match. Trimmed, because a trailing space pasted from a
+    // spreadsheet is an invisible reason for a join to miss.
+    code: String(data.code ?? '').trim(),
     region: data.region || '',
     entity: data.entity || '',
     address: data.address || '',
@@ -369,6 +382,44 @@ export async function bulkCreateSites(orgId, rows, actor) {
   // case where the health cascade is most obviously wrong.
   await notifySiteCreated(orgId, created, actor)
   return names.length
+}
+
+/**
+ * Apply a CSV import: update the sites the file matched, create the rest.
+ *
+ * `updates` are `{ id, payload, name }` — the payload already narrowed to the
+ * columns the file carried, by updatePayload in parseSitesCsv.js. Nothing is
+ * normalised through siteFields here, and that is the point: siteFields fills
+ * in every field it knows about, so putting an update through it would write an
+ * empty region over a real one whenever the spreadsheet had no region column.
+ *
+ * Updates go first. If the batch fails halfway, a register with some rows
+ * updated is recoverable by importing the same file again; one with duplicates
+ * already inserted has to be cleaned up by hand first.
+ *
+ * Two audit entries, not one per site: an import of four hundred rows would
+ * otherwise bury every other entry in the trail for that day.
+ */
+export async function bulkUpsertSites(orgId, { creates = [], updates = [] }, actor) {
+  for (let i = 0; i < updates.length; i += 400) {
+    const batch = writeBatch(db)
+    for (const u of updates.slice(i, i + 400)) {
+      batch.update(moduleDoc(orgId, 'sites', u.id), u.payload)
+    }
+    await batch.commit()
+  }
+  if (updates.length) {
+    const names = updates.map((u) => u.name)
+    await logAudit(orgId, actor, AUDIT.SITE_UPDATE, {
+      target: 'site',
+      summary: `CSV import updated ${names.length} existing site(s): ${names.slice(0, 6).join(', ')}${names.length > 6 ? '…' : ''}`,
+    })
+  }
+
+  // Reuses the create path wholesale, so imported sites get the same audit
+  // entry and the same per-site hooks a manually added one does.
+  const created = creates.length ? await bulkCreateSites(orgId, creates, actor) : 0
+  return { created, updated: updates.length }
 }
 
 // ── Site-scoped access / permissions ────────────────────────────────────────

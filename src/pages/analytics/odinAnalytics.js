@@ -47,6 +47,17 @@ const norm = (s) => String(s || '').trim().toLowerCase()
 const UNPLACED = '(not stated)'
 
 /**
+ * Where a site record may carry the warehouse's own id for it.
+ *
+ * `code` is the real one — Sites has a **Centre ID** box that writes it, the
+ * CSV import and export both carry it, and the page refuses to let two sites
+ * share one. The rest are read for tenants who put the id somewhere else before
+ * that box existed, and are checked on the site document AND inside its
+ * `attributes` map, so nothing anybody already recorded stops working.
+ */
+export const SITE_CODE_FIELDS = ['code', 'siteCode', 'centerId', 'centreId', 'centerServiceId', 'externalId']
+
+/**
  * Fill in what the warehouse did not say, from the site register this app
  * already holds.
  *
@@ -81,11 +92,26 @@ export function resolveOdinRows(rows = [], sites = [], { keepUnplaced = true } =
   for (const s of sites || []) {
     if (s?.id) byId.set(String(s.id), s)
     if (s?.name) byName.set(norm(s.name), s)
+    // ── The centre id, wherever the register keeps it ──────────────────────
+    //
+    // A warehouse identifies a site by ITS key — a centre service id, a store
+    // code — and that is never this app's Firestore document id. Matching on
+    // name alone is what makes a 700-centre estate lose a fifth of its rows to
+    // spelling, so any of these fields is accepted as the join key, and an
+    // admin can put the centre id in a site's attributes without a migration.
+    for (const key of SITE_CODE_FIELDS) {
+      const v = s?.[key] ?? s?.attributes?.[key]
+      if (v !== undefined && v !== null && String(v).trim()) byId.set(String(v).trim(), s)
+    }
   }
 
   return (rows || []).filter(Boolean).map((r) => {
-    const site = (r.siteId && byId.get(String(r.siteId))) || (r.site && byName.get(norm(r.site))) || null
+    const byCode = r.siteId ? byId.get(String(r.siteId).trim()) : null
+    const site = byCode || (r.site && byName.get(norm(r.site))) || null
     return {
+      // How the row found its site, so the tab can report the join rather than
+      // leave "why is half my estate missing from the map" unanswerable.
+      matchedBy: byCode ? 'id' : site ? 'name' : '',
       ...r,
       site: r.site || site?.name || '',
       region: r.region || site?.region || '',
@@ -112,6 +138,17 @@ export function odinFacets(rows = []) {
   const entities = new Set()
   const subCategories = new Set()
   const months = new Set()
+  // The dimensions an estate is actually cut by, beside the two this tab
+  // started with. Gathered the same way and offered only where the data has
+  // them — see `dimensionsPresent`.
+  const cities = new Set()
+  const ownerships = new Set()
+  const businessLines = new Set()
+  const centerTypes = new Set()
+  const auditTypes = new Set()
+  const priorities = new Set()
+  let minDate = ''
+  let maxDate = ''
   // Which Metabase instance each row came from. Only offered as a filter when
   // there is more than one — a picker with a single option is furniture.
   const sources = new Map()
@@ -119,7 +156,19 @@ export function odinFacets(rows = []) {
     if (r.region) regions.add(r.region)
     if (r.entity) entities.add(r.entity)
     if (r.subCategory) subCategories.add(r.subCategory)
-    if (r.auditDate) months.add(r.auditDate.slice(0, 7))
+    if (r.city) cities.add(r.city)
+    if (r.ownership) ownerships.add(r.ownership)
+    if (r.businessLine) businessLines.add(r.businessLine)
+    if (r.centerType) centerTypes.add(r.centerType)
+    if (r.auditType) auditTypes.add(r.auditType)
+    if (r.priority) priorities.add(r.priority)
+    if (r.auditDate) {
+      months.add(r.auditDate.slice(0, 7))
+      // The real span the data covers, so the date pickers can bound themselves
+      // to it instead of offering a year that returns nothing.
+      if (!minDate || r.auditDate < minDate) minDate = r.auditDate
+      if (!maxDate || r.auditDate > maxDate) maxDate = r.auditDate
+    }
     if (r.sourceId) sources.set(r.sourceId, r.sourceLabel || r.sourceId)
   }
   const sorted = (s) => [...s].sort((a, b) => a.localeCompare(b))
@@ -128,6 +177,14 @@ export function odinFacets(rows = []) {
     entities: sorted(entities),
     subCategories: sorted(subCategories),
     months: sorted(months),
+    cities: sorted(cities),
+    ownerships: sorted(ownerships),
+    businessLines: sorted(businessLines),
+    centerTypes: sorted(centerTypes),
+    auditTypes: sorted(auditTypes),
+    priorities: sorted(priorities),
+    minDate,
+    maxDate,
     sources: [...sources.entries()]
       .map(([id, label]) => ({ id, label }))
       .sort((a, b) => a.label.localeCompare(b.label)),
@@ -147,21 +204,72 @@ export function odinFacets(rows = []) {
  * seen, not one to be filtered away.
  */
 export function filterOdinRows(rows = [], f = {}) {
-  const { region = 'all', entity = 'all', status = 'all', subCategory = 'all', source = 'all', from = '', to = '' } = f
+  const {
+    region = 'all', entity = 'all', status = 'all', subCategory = 'all', source = 'all', from = '', to = '',
+    city = 'all', ownership = 'all', businessLine = 'all', centerType = 'all', auditType = 'all', priority = 'all',
+  } = f
+  // The range accepts a month ('YYYY-MM') or a day ('YYYY-MM-DD'). A month is
+  // widened to cover itself at both ends, so the picker could move from month
+  // dropdowns to real dates without every existing caller changing meaning.
+  const lo = from ? (from.length === 7 ? `${from}-01` : from) : ''
+  const hi = to ? (to.length === 7 ? `${to}-31` : to) : ''
   return rows.filter((r) => {
     if (source !== 'all' && r.sourceId !== source) return false
     if (region !== 'all' && r.region !== region) return false
     if (entity !== 'all' && r.entity !== entity) return false
     if (status !== 'all' && r.status !== status) return false
     if (subCategory !== 'all' && r.subCategory !== subCategory) return false
-    const month = r.auditDate ? r.auditDate.slice(0, 7) : ''
-    if (month) {
-      if (from && month < from) return false
-      if (to && month > to) return false
+    if (city !== 'all' && r.city !== city) return false
+    if (ownership !== 'all' && r.ownership !== ownership) return false
+    if (businessLine !== 'all' && r.businessLine !== businessLine) return false
+    if (centerType !== 'all' && r.centerType !== centerType) return false
+    if (auditType !== 'all' && r.auditType !== auditType) return false
+    if (priority !== 'all' && r.priority !== priority) return false
+    const date = r.auditDate || ''
+    if (date) {
+      if (lo && date < lo) return false
+      if (hi && date > hi) return false
     }
     return true
   })
 }
+
+/**
+ * The dimensions this population can actually be grouped by, in the order the
+ * picker offers them.
+ *
+ * Computed from the data rather than hard-coded: a tenant whose warehouse has
+ * no city column should not be shown a "City" option that groups everything
+ * under "(not stated)". Region and entity lead because they are the ones this
+ * app's own site register fills in, so they work even when the question is
+ * silent about them.
+ */
+export const GROUP_DIMS = [
+  { key: 'region', label: 'Region' },
+  { key: 'entity', label: 'Entity' },
+  { key: 'city', label: 'City' },
+  { key: 'businessLine', label: 'Business line' },
+  { key: 'ownership', label: 'Ownership' },
+  { key: 'centerType', label: 'Centre type' },
+  { key: 'auditType', label: 'Audit type' },
+  { key: 'auditor', label: 'Auditor' },
+  { key: 'site', label: 'Centre' },
+]
+
+export const dimensionsPresent = (rows = []) =>
+  GROUP_DIMS.filter((d) => (rows || []).some((r) => r && String(r[d.key] || '').trim()))
+
+/**
+ * The dimension to actually group by, given what the data supports.
+ *
+ * Region is the default, and on an estate whose warehouse says nothing about
+ * regions — and whose sites are not in this app's register either — grouping by
+ * it produces one bar labelled "(not stated)" beside a picker that does not
+ * even offer Region. So the wanted dimension is honoured when it exists and
+ * quietly falls back to the first one that does when it does not.
+ */
+export const resolveGroupBy = (dims = [], wanted = 'region') =>
+  (dims.some((d) => d.key === wanted) ? wanted : dims[0]?.key || wanted)
 
 const sum = (rows) => rows.reduce((n, r) => n + (isNum(r.count) ? r.count : 1), 0)
 
@@ -316,8 +424,194 @@ export function n7Of(row) {
   return total && isNum(row?.checksPassedN7) ? (row.checksPassedN7 / total) * 100 : null
 }
 
+/**
+ * The same again with every remediation to date credited, not just seven days.
+ *
+ * Deliberately NOT folded into n7Of. This is the only one of the three that
+ * moves on its own: the audit is unchanged, but each refresh credits whatever
+ * closed since the last one, so a chart trending it is measuring the refresh as
+ * much as the estate. It is worth showing — it is the true current position —
+ * and it is worth keeping visibly apart from the figure that holds still.
+ */
+export function toDateOf(row) {
+  if (isNum(row?.passPctToDate)) return row.passPctToDate
+  return null
+}
+
 /** Does this row carry a pass rate at all, in either shape? */
 export const hasPassData = (row) => isNum(day0Of(row)) || isNum(n7Of(row))
+
+// ── Time buckets ─────────────────────────────────────────────────────────────
+//
+// Six grains, because "how are we doing" is a different question at a day than
+// at a half-year and the same dashboard has to answer both: a daily view shows
+// which audits ran, an annual one shows whether the estate is improving.
+//
+// Each grain returns a sortable `key` and a printable `label`, and the keys are
+// built so plain string ordering is chronological ordering — no date parsing in
+// the sort. Weeks start Monday: an audit week is a working week, and a Sunday
+// boundary cuts every one of them in half.
+
+const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+export const GRANULARITIES = [
+  { key: 'day', label: 'Day' },
+  { key: 'week', label: 'Week' },
+  { key: 'month', label: 'Month' },
+  { key: 'quarter', label: 'Quarter' },
+  { key: 'half', label: 'Half year' },
+  { key: 'year', label: 'Year' },
+]
+export const GRANULARITY_KEYS = GRANULARITIES.map((g) => g.key)
+
+/**
+ * The bucket a 'YYYY-MM-DD' falls in, or null when the row has no date.
+ *
+ * Null rather than a catch-all bucket: an undated row is a data-quality problem
+ * and pooling it into "the earliest period" would draw it as a real spike in a
+ * real month. Callers count what they had to leave out and say so.
+ */
+export function bucketOf(iso, gran = 'month') {
+  const s = String(iso || '')
+  if (!/^\d{4}-\d{2}-\d{2}/.test(s)) return null
+  const [y, m, d] = [s.slice(0, 4), Number(s.slice(5, 7)), Number(s.slice(8, 10))]
+  const yy = y.slice(2)
+  switch (gran) {
+    case 'day':
+      return { key: s.slice(0, 10), label: `${d} ${MONTH_ABBR[m - 1]}` }
+    case 'week': {
+      // UTC throughout: a local-time Date would shift the Monday for anyone
+      // east or west of the server and quietly move audits between weeks.
+      const t = Date.UTC(Number(y), m - 1, d)
+      const dow = (new Date(t).getUTCDay() + 6) % 7
+      const mon = new Date(t - dow * 86400000)
+      const key = mon.toISOString().slice(0, 10)
+      return { key, label: `w/c ${mon.getUTCDate()} ${MONTH_ABBR[mon.getUTCMonth()]}` }
+    }
+    case 'quarter': {
+      const q = Math.floor((m - 1) / 3) + 1
+      return { key: `${y}-Q${q}`, label: `Q${q} ${yy}` }
+    }
+    case 'half': {
+      const h = m <= 6 ? 1 : 2
+      return { key: `${y}-H${h}`, label: `H${h} ${y}` }
+    }
+    case 'year':
+      return { key: y, label: y }
+    case 'month':
+    default:
+      return { key: s.slice(0, 7), label: `${MONTH_ABBR[m - 1]} ${yy}` }
+  }
+}
+
+/**
+ * Pass rate per bucket, all three readings, plus the counts behind them.
+ *
+ * The counts matter as much as the rate and are returned beside it: a bucket
+ * holding two audits swings between 0% and 100% on one result, and a rate with
+ * no denominator next to it is how that gets read as a collapse.
+ *
+ * Buckets with no audits are simply absent rather than zero — a week nobody
+ * audited did not score zero.
+ */
+export function passTrend(auditRows = [], gran = 'month') {
+  const buckets = new Map()
+  let undated = 0
+  for (const r of auditRows || []) {
+    if (!r) continue
+    const b = bucketOf(r.auditDate, gran)
+    if (!b) { if (hasPassData(r)) undated += 1; continue }
+    let g = buckets.get(b.key)
+    if (!g) { g = { key: b.key, label: b.label, rows: [] }; buckets.set(b.key, g) }
+    g.rows.push(r)
+  }
+
+  const rate = (list, read) => {
+    const vals = list.map(read).filter(isNum)
+    return vals.length ? { rate: pct(vals.filter((v) => v >= PASS_MARK).length / vals.length * 100), n: vals.length } : { rate: null, n: 0 }
+  }
+
+  const series = [...buckets.values()]
+    .sort((a, b) => a.key.localeCompare(b.key))
+    .map((g) => {
+      const d0 = rate(g.rows, day0Of)
+      const n7 = rate(g.rows, n7Of)
+      const td = rate(g.rows, toDateOf)
+      return {
+        key: g.key,
+        label: g.label,
+        audits: g.rows.length,
+        day0: d0.rate, day0N: d0.n,
+        n7: n7.rate, n7N: n7.n,
+        toDate: td.rate, toDateN: td.n,
+        // The verdict counts the bars are drawn from. Taken after the seven-day
+        // window where there is one, so the chart under the rate is the same
+        // measurement as the rate.
+        pass: n7.n ? Math.round((n7.rate / 100) * n7.n) : 0,
+        fail: n7.n ? n7.n - Math.round((n7.rate / 100) * n7.n) : 0,
+      }
+    })
+
+  return { series, undated }
+}
+
+/**
+ * The pass mark a score is judged against.
+ *
+ * Ninety is the FLS convention and the default here, but it is a constant with
+ * a name rather than a literal buried in three places, because the next
+ * organization to connect ODIN will have a different one.
+ */
+export const PASS_MARK = 90
+
+/** Tickets per bucket, split by where they stand and whether SLA held. */
+export function ticketTrend(rows = [], gran = 'month') {
+  const buckets = new Map()
+  let undated = 0
+  for (const r of rows || []) {
+    if (!r) continue
+    const b = bucketOf(r.auditDate, gran)
+    if (!b) { undated += 1; continue }
+    let g = buckets.get(b.key)
+    if (!g) { g = { key: b.key, label: b.label, total: 0, open: 0, closed: 0, breached: 0 }; buckets.set(b.key, g) }
+    const n = isNum(r.count) ? r.count : 1
+    g.total += n
+    if (r.status === 'closed') g.closed += n
+    else g.open += n
+    if (isBreach(r.sla)) g.breached += n
+  }
+  return {
+    series: [...buckets.values()].sort((a, b) => a.key.localeCompare(b.key)),
+    undated,
+  }
+}
+
+/** Does this row's SLA verdict say the clock was missed? */
+export const isBreach = (sla) => /breach/i.test(String(sla || ''))
+
+/**
+ * Counts by any free-text dimension, biggest first.
+ *
+ * Used for priority, SLA position and the checkpoint league table — three
+ * panels that are the same arithmetic over a different column, and were three
+ * near-identical loops before this.
+ */
+export function countBy(rows = [], key, { limit = 0, openOnly = false } = {}) {
+  const out = new Map()
+  for (const r of rows || []) {
+    if (!r) continue
+    const name = String(r[key] || '').trim() || UNPLACED
+    let g = out.get(name)
+    if (!g) { g = { name, value: 0, open: 0 }; out.set(name, g) }
+    const n = isNum(r.count) ? r.count : 1
+    g.value += n
+    if (r.status !== 'closed') g.open += n
+  }
+  const list = [...out.values()]
+    .filter((g) => !openOnly || g.open > 0)
+    .sort((a, b) => b.value - a.value || a.name.localeCompare(b.name))
+  return limit > 0 ? list.slice(0, limit) : list
+}
 
 /**
  * The headline pass and fail figures across a set of audits.
@@ -454,6 +748,11 @@ export function odinAnalytics(rows = [], audits = [], sites = [], f = {}, { keep
   const auditsResolved = resolveOdinRows(audits, sites, { keepUnplaced })
   const auditsFiltered = filterOdinRows(auditsResolved, {
     region: f.region, entity: f.entity, source: f.source, from: f.from, to: f.to,
+    // The estate dimensions belong to the SITE, so an audit has them just as a
+    // finding does and they scope both. Status, sub-category and priority are
+    // properties of a finding and are deliberately still left out.
+    city: f.city, ownership: f.ownership, businessLine: f.businessLine,
+    centerType: f.centerType, auditType: f.auditType,
   })
 
   // ── Where the pass rates come from ────────────────────────────────────────
@@ -471,6 +770,11 @@ export function odinAnalytics(rows = [], audits = [], sites = [], f = {}, { keep
   // Which source ran is returned, because the two answer subtly different
   // questions — one is per audit, the other per checklist line — and a reader
   // comparing this month with last has to know if the basis moved under them.
+  // Which dimension everything is grouped by. Resolved once, from what the
+  // data actually carries, so the charts and the picker cannot disagree.
+  const dimensions = dimensionsPresent([...filtered, ...auditsFiltered])
+  const groupBy = resolveGroupBy(dimensions, f.groupBy)
+
   const auditsHavePass = auditsFiltered.some(hasPassData)
   const findingsWithPass = filtered.filter(hasPassData)
   const passRows = auditsHavePass ? auditsFiltered : findingsWithPass
@@ -490,5 +794,102 @@ export function odinAnalytics(rows = [], audits = [], sites = [], f = {}, { keep
     passSource,
     passRowCount: passRows.length,
     auditCount: auditsFiltered.length,
+
+    // ── Added for the FLS view ───────────────────────────────────────────────
+    // Grouped by whichever dimension the reader picked, rather than the two
+    // this tab used to hard-code — an estate of near-identical sites is cut by
+    // city, brand and operating model, and none of those are "region".
+    groupBy,
+    passByGroup: passRates(passRows, groupBy),
+    statusByGroup: statusByRegion(filtered.map((r) => ({ ...r, region: r[groupBy] || '' }))),
+    dimensions,
+
+    // The time series, at the grain the reader picked.
+    trend: passTrend(passRows, f.gran || 'month'),
+    tickets: ticketTrend(filtered, f.gran || 'month'),
+
+    // Remediation cuts. Absent columns simply produce an empty list, which the
+    // panels render as "your question does not carry this" rather than as zero.
+    byPriority: countBy(filtered, 'priority'),
+    bySla: countBy(filtered, 'sla'),
+    byCheckpoint: countBy(filtered, 'checkpoint', { limit: 12 }),
+    breached: filtered.reduce((n, r) => n + (isBreach(r.sla) ? (isNum(r.count) ? r.count : 1) : 0), 0),
+
+    // How the warehouse rows found a site in this app's register. The map and
+    // every region/entity chart depend on this join, so its quality is a
+    // first-class number rather than something to infer from a thin map.
+    join: joinQuality([...filtered, ...auditsFiltered]),
   }
+}
+
+/**
+ * Who audited what, cut by region (or any other dimension).
+ *
+ * Two questions in one table, and they are different questions: how much work
+ * an auditor did, and how the sites they audited scored. The second is NOT a
+ * performance measure and the tab says so — an auditor sent to the twenty worst
+ * centres in the estate will post the worst pass rate on the page, and reading
+ * that as a reflection on them is the single most likely way this table gets
+ * misused.
+ *
+ * Returns the groups actually present as `columns`, so the caller can build a
+ * stacked bar without knowing the estate's regions in advance.
+ */
+export function auditorMatrix(auditRows = [], dimKey = 'region') {
+  const columns = new Set()
+  const byAuditor = new Map()
+
+  for (const r of auditRows || []) {
+    if (!r) continue
+    const who = String(r.auditor || '').trim() || UNPLACED
+    const group = String(r[dimKey] || '').trim() || UNPLACED
+    columns.add(group)
+
+    let a = byAuditor.get(who)
+    if (!a) { a = { name: who, total: 0, groups: {}, sites: new Set(), scored: 0, passed: 0, types: new Set() }; byAuditor.set(who, a) }
+    a.total += 1
+    a.groups[group] = (a.groups[group] || 0) + 1
+    if (r.site) a.sites.add(r.site)
+    if (r.auditType) a.types.add(r.auditType)
+    // Judged after the seven-day window where there is one, falling back to the
+    // day-of score, so the column means one thing down its whole length.
+    const score = isNum(n7Of(r)) ? n7Of(r) : day0Of(r)
+    if (isNum(score)) { a.scored += 1; if (score >= PASS_MARK) a.passed += 1 }
+  }
+
+  const rows = [...byAuditor.values()]
+    .map((a) => ({
+      name: a.name,
+      total: a.total,
+      groups: a.groups,
+      sites: a.sites.size,
+      scored: a.scored,
+      passed: a.passed,
+      passRate: a.scored ? pct((a.passed / a.scored) * 100) : null,
+      auditTypes: [...a.types].sort((x, y) => x.localeCompare(y)),
+    }))
+    .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name))
+
+  return {
+    rows,
+    // Busiest group first, so the widest band of every stacked bar is the one
+    // nearest the axis and the chart reads left to right by size.
+    columns: [...columns].sort((x, y) => {
+      const n = (g) => rows.reduce((t, r) => t + (r.groups[g] || 0), 0)
+      return n(y) - n(x) || x.localeCompare(y)
+    }),
+    total: rows.reduce((n, r) => n + r.total, 0),
+  }
+}
+
+/** How many rows matched a site by id, by name, or not at all. */
+export function joinQuality(rows = []) {
+  let byId = 0, byName = 0, unmatched = 0
+  for (const r of rows || []) {
+    if (!r) continue
+    if (r.matchedBy === 'id') byId += 1
+    else if (r.matchedBy === 'name') byName += 1
+    else unmatched += 1
+  }
+  return { byId, byName, unmatched, total: byId + byName + unmatched }
 }

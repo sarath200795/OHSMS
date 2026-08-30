@@ -34,7 +34,8 @@ import { planMedicalRecordMove, landedIntact, MEDICAL_RECORD_KIND } from './lib/
 import { KEY_DOC_PATH, generateKeyset, releaseKeyset, grantsFor, unwrapKey, fromB64u } from './lib/dataKeys.js'
 import {
   configPath, normalizeConfig, redactConfig, readiness, checkBaseUrl, sourcesFor,
-  cardQueryUrl, currentUserUrl, normalizeRows, capRows,
+  cardQueryUrl, cardUrl, currentUserUrl, normalizeRows, capRows,
+  buildDateParams, safeRange,
 } from './lib/metabase.js'
 import {
   FILE_TARGETS, MAX_OBJECTS_PER_RUN, needsObjectSealing, sealedPath,
@@ -1922,8 +1923,29 @@ export const withdrawStalePermitMirrors = onSchedule(
 // caller.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** How long we will wait on someone else's Metabase before giving up on it. */
-const METABASE_TIMEOUT_MS = 25_000
+/**
+ * How long we will wait on someone else's Metabase before giving up on it.
+ *
+ * A hundred seconds, not the twenty-five this used to be. Twenty-five is a
+ * sensible wait for a web request and a hopeless one for a warehouse query: the
+ * two questions this was first pointed at take thirty to sixty seconds for a
+ * single month of data, so every real load timed out and reported "Metabase did
+ * not answer in time" about an instance that was working perfectly.
+ *
+ * The ceiling is the callable's own 120s budget — this has to expire first, or
+ * the caller gets a transport error instead of the diagnosis below.
+ */
+const METABASE_TIMEOUT_MS = 100_000
+
+/**
+ * How much history a dashboard load asks for when nobody said.
+ *
+ * A quarter. These are quarterly audit programmes, so a quarter is the period
+ * people actually review, and it is also about as much as one of these
+ * questions will return inside the timeout above. A reader who wants a year
+ * asks for a year with the date pickers and waits accordingly.
+ */
+const DEFAULT_RANGE_DAYS = 90
 
 /** The caller's live profile, or a refusal. Never their ID token's claims. */
 async function metabaseCaller(request, { adminOnly = false } = {}) {
@@ -2041,7 +2063,7 @@ export const metabaseTest = onCall({ region: REGION }, async (request) => {
     return {
       ok: false,
       message: e?.name === 'AbortError'
-        ? 'Metabase did not answer within 25 seconds.'
+        ? `Metabase did not answer within ${Math.round(METABASE_TIMEOUT_MS / 1000)} seconds.`
         : 'Could not reach that address. Check the URL, and that the instance resolves publicly.',
     }
   }
@@ -2056,10 +2078,18 @@ export const metabaseTest = onCall({ region: REGION }, async (request) => {
  * organization put in the settings. A caller cannot point this at card 913 and
  * read the finance question.
  */
-export const metabaseQuery = onCall({ region: REGION, timeoutSeconds: 120 }, async (request) => {
+// 300s, not 120s. The Metabase wait is 100s and a 5xx is retried once, so the
+// worst honest case is a little over 200s; a 120s budget would kill the retry
+// that exists precisely to rescue that case.
+export const metabaseQuery = onCall({ region: REGION, timeoutSeconds: 300 }, async (request) => {
   const { uid, profile, db } = await metabaseCaller(request)
 
   const dataset = String(request.data?.dataset || '')
+  // The window to run the question over, bound to whatever date variables the
+  // saved question declares. Clamped rather than refused — this is a dashboard
+  // filter, and a date picker that errors is worse than one that quietly
+  // returns the last year. See safeRange and buildDateParams.
+  const range = safeRange({ from: request.data?.from, to: request.data?.to }, Date.now(), DEFAULT_RANGE_DAYS)
   const config = normalizeConfig((await db.doc(configPath(profile.orgId)).get()).data())
   const ready = readiness(config, dataset)
   if (!ready.ok) {
@@ -2079,7 +2109,7 @@ export const metabaseQuery = onCall({ region: REGION, timeoutSeconds: 120 }, asy
   // the question's SQL, which is a warehouse's schema and not something an
   // ordinary member reading a safety dashboard should be shown.
   const detailed = profile.role === 'admin'
-  const results = await Promise.all(targets.map((s) => querySource(s, dataset, profile.orgId, detailed)))
+  const results = await Promise.all(targets.map((s) => querySource(s, dataset, profile.orgId, detailed, range)))
 
   const answered = results.filter((r) => r.ok)
   if (answered.length === 0) {
@@ -2108,6 +2138,12 @@ export const metabaseQuery = onCall({ region: REGION, timeoutSeconds: 120 }, asy
   return {
     ok: true,
     dataset,
+    // The window that actually ran, and which of the question's parameters it
+    // was bound to. The tab prints the window; an admin whose figure disagrees
+    // with Metabase needs the binding, because the usual cause is the two
+    // having been asked different questions.
+    range,
+    bound: answered.flatMap((r) => r.bound || []),
     rows,
     unmapped,
     total,
@@ -2135,7 +2171,7 @@ const outcomes = (results) => results.map((r) => ({
  * it. Rows come back tagged with where they came from, so a figure on the
  * dashboard can be traced to the instance that produced it.
  */
-async function querySource(source, dataset, orgId, detailed = false) {
+async function querySource(source, dataset, orgId, detailed = false, range = null) {
   const tag = { id: source.id, label: source.label || source.baseUrl }
   // Metabase's own account of a failure, for an admin only. `detail` is what
   // turns "server error" into something fixable — a missing required
@@ -2161,16 +2197,67 @@ async function querySource(source, dataset, orgId, detailed = false) {
   const url = checkBaseUrl(source.baseUrl)
   if (!url.ok) return { ...tag, ok: false, reason: 'bad-url', message: url.reason }
 
+  // ── The date range ─────────────────────────────────────────────────────────
+  //
+  // Discovering the question's parameters costs one extra request, and skipping
+  // it is not an option: a question that declares required date variables — as
+  // both of the ones this was built against do — answers a bare POST with
+  // "missing required parameters" and nothing else. So the shape is fetched,
+  // cached for the life of this instance, and the range bound to it.
+  //
+  // A failure here is NOT fatal. If the question cannot be described, the query
+  // runs the way it always did; a question with no date parameters is
+  // unaffected either way, and one that needs them will report its own error
+  // in a moment, which is a better message than anything invented here.
+  const cardId = source.cards[dataset]
+  let bound = []
+  let parameters = []
+  if (range) {
+    try {
+      const card = await describeCard(url.origin, cardId, source.apiKey)
+      if (card) ({ parameters, bound } = buildDateParams(card, range))
+    } catch (e) {
+      logger.warn('metabaseQuery: could not describe card', { orgId, dataset, source: source.id, error: e?.message || String(e) })
+    }
+  }
+
+  // ── One retry, and only on a 5xx ───────────────────────────────────────────
+  //
+  // A big warehouse question does not fail cleanly. Both of these come back
+  // with "Encountered too many errors talking to a worker node" — a Trino
+  // worker falling over under load — perhaps one run in five, and the identical
+  // request succeeds moments later. Surfacing that as "Metabase returned a
+  // server error" is technically true and leaves a dashboard randomly blank.
+  //
+  // Only 5xx is retried. A 401 is an expired key and a 404 is a deleted
+  // question: both fail the same way twice, and retrying them doubles the wait
+  // before the reader is told something they need to act on.
+  const post = () => metabaseFetch(cardQueryUrl(url.origin, cardId), source.apiKey, {
+    method: 'POST',
+    // Only when there is something to send. An empty body is what this always
+    // sent, and a question with no parameters must keep behaving identically.
+    ...(parameters.length ? { body: { parameters } } : {}),
+  })
+
   let res
   try {
-    res = await metabaseFetch(cardQueryUrl(url.origin, source.cards[dataset]), source.apiKey, { method: 'POST' })
+    res = await post()
+    if (res.status >= 500) {
+      logger.info('metabaseQuery: retrying after a server error', { orgId, dataset, source: source.id, status: res.status })
+      res = await post()
+    }
   } catch (e) {
     logger.warn('metabaseQuery: unreachable', { orgId, dataset, source: source.id, error: e?.message || String(e) })
     return {
       ...tag,
       ok: false,
       reason: 'unreachable',
-      message: e?.name === 'AbortError' ? 'Metabase did not answer in time.' : 'Could not reach Metabase.',
+      // Naming the window matters: the usual cause is a range too wide for the
+      // question, and "did not answer in time" alone sends people to look at
+      // the network instead of at the date pickers.
+      message: e?.name === 'AbortError'
+        ? `Metabase did not answer within ${Math.round(METABASE_TIMEOUT_MS / 1000)} seconds${range ? ` for ${range.from} to ${range.to}` : ''}. Try a shorter date range.`
+        : 'Could not reach Metabase.',
     }
   }
   if (!res.ok) {
@@ -2202,5 +2289,37 @@ async function querySource(source, dataset, orgId, detailed = false) {
     ok: true,
     rows: mapped.rows.map((r) => ({ ...r, sourceId: tag.id, sourceLabel: tag.label })),
     unmapped: mapped.unmapped,
+    bound: bound.map((x) => ({ ...x, source: tag.id })),
   }
+}
+
+/**
+ * A saved question's shape — its parameters, mostly — cached per instance.
+ *
+ * The parameters of a saved question change when somebody edits the question,
+ * which is rare, and a Cloud Function instance lives minutes to hours. Caching
+ * for that lifetime turns one extra round trip per dashboard load into one per
+ * cold start; an edit is picked up the next time an instance starts, and the
+ * worst case in between is a query refused for a parameter that moved, which
+ * reports itself.
+ *
+ * Null on any failure — never throws, because a question that cannot be
+ * described can still very often be run.
+ */
+const cardShapeCache = new Map()
+async function describeCard(origin, cardId, apiKey) {
+  const key = `${origin}#${cardId}`
+  if (cardShapeCache.has(key)) return cardShapeCache.get(key)
+  let card = null
+  try {
+    const res = await metabaseFetch(cardUrl(origin, cardId), apiKey)
+    if (res.ok) {
+      const body = await res.json()
+      // Only the parameters are kept. The rest of a card document is the query
+      // itself — the warehouse's schema — and there is no reason to hold it.
+      card = { parameters: Array.isArray(body?.parameters) ? body.parameters : [] }
+    }
+  } catch { /* described below by not being described */ }
+  cardShapeCache.set(key, card)
+  return card
 }
