@@ -11,7 +11,7 @@ import {
   bucketOf, passTrend, ticketTrend, countBy, toDateOf, isBreach,
   dimensionsPresent, dimensionHasData, resolveGroupBy, joinQuality, resolveOdinRows, filterOdinRows,
   GRANULARITY_KEYS, PASS_MARK, recoveryStages, scoreBands, centreWatchlist, auditorMatrix,
-  ticketAgeing, ticketTrend as trend,
+  ticketAgeing, ticketTrend as trend, auditPopulation,
 } from './odinAnalytics'
 
 /** The shape functions/lib/metabase.js hands back, with the fields these tests need. */
@@ -488,5 +488,44 @@ describe("ticketTrend accounts for rejected separately", () => {
   it("does not count a rejection as still open", () => {
     const { series } = trend([row({ auditDate: "2026-03-02", status: "rejected" })], "month")
     expect(series[0].open).toBe(0)
+  })
+})
+
+describe("auditPopulation — the audits, whichever question carried them", () => {
+  const scored = (over) => row({ passPct: 80, passPctN7: 95, ...over })
+
+  it("prefers the audits question when it has pass data", () => {
+    const out = auditPopulation([scored({ site: "F" })], [scored({ site: "A" })])
+    expect(out.source).toBe("audits")
+    expect(out.rows[0].site).toBe("A")
+  })
+
+  it("falls back to the findings rows that carry a score", () => {
+    // The real tenant this was found on: the audit question was configured
+    // under `findings`, and the audits slot pointed at a card id that did not
+    // exist. The N+7 tab drew 832 audits from this fallback while the Auditors
+    // tab — which asked for `audits` directly — showed a 404.
+    const out = auditPopulation([scored({ site: "F" }), row({ site: "ticket" })], [])
+    expect(out.source).toBe("findings")
+    expect(out.rows.map((r) => r.site)).toEqual(["F"])
+  })
+
+  it("takes only the findings rows that HAVE a score", () => {
+    // A findings table where only failures are rows would otherwise report a
+    // 0% pass rate with total confidence.
+    expect(auditPopulation([row(), row()], []).source).toBe("none")
+  })
+
+  it("says none when neither question has anything", () => {
+    expect(auditPopulation([], [])).toEqual({ rows: [], source: "none" })
+    expect(auditPopulation()).toEqual({ rows: [], source: "none" })
+  })
+
+  it("gives the two tabs the same answer, which is the whole point", () => {
+    const findings = [scored({ site: "A", auditor: "Asha" }), scored({ site: "B", auditor: "Dev" })]
+    const out = auditPopulation(findings, [])
+    // Whatever the N+7 tab counts, the Auditors tab attributes.
+    expect(out.rows).toHaveLength(2)
+    expect(auditorMatrix(out.rows, "region").total).toBe(2)
   })
 })

@@ -23,19 +23,20 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, LabelList } from 'rechart
 import { RefreshCw, Loader2, UserCheck, MapPin, ClipboardList, Radar } from 'lucide-react'
 import ChartFrame from '../../shared/ui/ChartFrame'
 import { metabaseQuery } from '../../shared/functions'
-import { Panel, Stat, NoData, Picker } from './ui'
+import { Panel, Stat, NoData, Picker, FilterRow, DateField } from './ui'
 import {
-  auditorMatrix, odinFacets, resolveOdinRows, filterOdinRows, paletteColor,
+  auditorMatrix, auditPopulation, odinFacets, resolveOdinRows, filterOdinRows, paletteColor,
   GROUP_DIMS, dimensionsPresent, dimensionHasData, resolveGroupBy, PASS_MARK,
 } from './odinAnalytics'
 
 const axis = { tickLine: false, axisLine: false, fontSize: 11, tick: { fill: '#8a7660' } }
 
-const EMPTY = { auditType: 'all', region: 'all', entity: 'all', city: 'all', from: '', to: '', groupBy: 'region' }
+const EMPTY = { auditType: 'all', region: 'all', entity: 'all', from: '', to: '', groupBy: 'region' }
 
 export default function AuditorsTab({ sites = [], keepUnplaced = true }) {
   const [f, setF] = useState(EMPTY)
   const [audits, setAudits] = useState(null)
+  const [findings, setFindings] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
@@ -43,9 +44,20 @@ export default function AuditorsTab({ sites = [], keepUnplaced = true }) {
     setLoading(true)
     setError('')
     try {
-      // Bounded in the warehouse — see metabaseQuery. The audits question
-      // declares required date variables and cannot be run without them.
-      setAudits(await metabaseQuery('audits', { from: f.from, to: f.to }))
+      // Bounded in the warehouse — see metabaseQuery. Both questions declare
+      // required date variables and cannot be run without them.
+      //
+      // BOTH are fetched because the audits may arrive on either: a tenant
+      // whose audit question is configured under `findings` still has audit
+      // rows, and asking only for `audits` is what made this tab report
+      // 'no saved question with that ID' beside an N+7 tab drawing 832 of them.
+      const range = { from: f.from, to: f.to }
+      const [aRes, fRes] = await Promise.all([
+        metabaseQuery('audits', range).catch(() => null),
+        metabaseQuery('findings', range).catch(() => null),
+      ])
+      setAudits(aRes)
+      setFindings(fRes)
     } catch (e) {
       setError(e?.message || 'Could not reach the ODIN connector.')
     } finally {
@@ -55,7 +67,14 @@ export default function AuditorsTab({ sites = [], keepUnplaced = true }) {
 
   useEffect(() => { load() }, [load])
 
-  const rows = useMemo(() => (audits?.ok ? audits.rows : []), [audits])
+  // The audits, from whichever question actually carried them — see
+  // auditPopulation. `source` says which, and the page states it, because one
+  // row per audit and one row per checklist line are different populations.
+  const population = useMemo(
+    () => auditPopulation(findings?.ok ? findings.rows : [], audits?.ok ? audits.rows : []),
+    [findings, audits],
+  )
+  const rows = population.rows
   const resolved = useMemo(
     () => resolveOdinRows(rows, sites, { keepUnplaced }),
     [rows, sites, keepUnplaced]
@@ -88,14 +107,18 @@ export default function AuditorsTab({ sites = [], keepUnplaced = true }) {
 
   if (error) return <Blocked title="The ODIN connector did not answer" body={error} onRetry={load} />
 
-  if (audits && !audits.ok) {
+  // Blocked only when NOTHING carried an audit. A failed `audits` query is
+  // survivable when the findings question turns out to hold the audit rows,
+  // which is how a real tenant had it configured.
+  if (population.source === 'none' && (audits?.ok === false || findings?.ok === false)) {
+    const bad = audits?.ok === false ? audits : findings
     return (
       <Blocked
-        title={audits.reason === 'not-configured' ? 'Metabase is not connected yet' : 'The audits question did not run'}
+        title={bad.reason === 'not-configured' ? 'Metabase is not connected yet' : 'No audit data came back'}
         body={
-          audits.reason === 'no-card'
-            ? 'ODIN has no audits question configured. An administrator can point one at it from the ODIN tab’s Connection settings.'
-            : audits.message || 'Metabase could not run the audits question.'
+          bad.reason === 'no-card'
+            ? 'ODIN has no audits question configured. An administrator can point one at it from the Connection settings on the N+7 Pass tab.'
+            : `${bad.message || 'Metabase could not run the question.'} Neither the audits question nor the findings question returned rows carrying a pass score, so there is nothing to attribute to an auditor.`
         }
         onRetry={load}
       />
@@ -116,51 +139,62 @@ export default function AuditorsTab({ sites = [], keepUnplaced = true }) {
 
   return (
     <div className="animate-fade-in-up">
-      <div className="card mb-5 flex flex-wrap items-end gap-3 p-4">
-        <Picker id="aud-type" label="Type of audit" value={f.auditType} onChange={(e) => setF({ ...f, auditType: e.target.value })}>
-          <option value="all">All audit types</option>
-          {opts.auditTypes.map((t) => <option key={t} value={t}>{t}</option>)}
-        </Picker>
-        {opts.regions.length > 1 && (
+      {/* The same six controls as the other two tabs, in the same order and
+          the same shape, so moving between them does not move the furniture.
+          Granularity is absent here alone: this tab has no chart bucketed by
+          period, so the control would do nothing, and an inert control is
+          exactly what the rest of this tidy-up was removing. */}
+      <div className="card mb-5 divide-y divide-clay-100 p-0">
+        <FilterRow label="Period">
+          <DateField
+            id="aud-from" label="From" value={f.from} min={opts.minDate} max={f.to || opts.maxDate}
+            onChange={(v) => setF({ ...f, from: v })}
+          />
+          <DateField
+            id="aud-to" label="To" value={f.to} min={f.from || opts.minDate} max={opts.maxDate}
+            onChange={(v) => setF({ ...f, to: v })}
+          />
+          <div className="ml-auto flex flex-wrap items-end gap-2">
+            <button
+              type="button"
+              onClick={() => setF(EMPTY)}
+              className="rounded-2xl bg-clay-surface px-4 py-2.5 text-[12.5px] font-semibold text-ink-700 shadow-clay-sm"
+            >
+              Reset
+            </button>
+            <button
+              type="button"
+              onClick={load}
+              disabled={loading}
+              className="inline-flex items-center gap-2 rounded-2xl bg-clay-surface px-4 py-2.5 text-[12.5px] font-semibold text-ink-700 shadow-clay-sm disabled:opacity-50"
+            >
+              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh
+            </button>
+          </div>
+        </FilterRow>
+
+        <FilterRow label="Scope">
           <Picker id="aud-region" label="Region" value={f.region} onChange={(e) => setF({ ...f, region: e.target.value })}>
             <option value="all">All regions</option>
             {opts.regions.map((r) => <option key={r} value={r}>{r}</option>)}
           </Picker>
-        )}
-        {opts.cities.length > 1 && (
-          <Picker id="aud-city" label="City" value={f.city} onChange={(e) => setF({ ...f, city: e.target.value })}>
-            <option value="all">All cities</option>
-            {opts.cities.map((r) => <option key={r} value={r}>{r}</option>)}
-          </Picker>
-        )}
-        {opts.entities.length > 1 && (
           <Picker id="aud-entity" label="Entity" value={f.entity} onChange={(e) => setF({ ...f, entity: e.target.value })}>
             <option value="all">All entities</option>
             {opts.entities.map((r) => <option key={r} value={r}>{r}</option>)}
           </Picker>
-        )}
-        <DateField id="aud-from" label="From" value={f.from} min={opts.minDate} max={f.to || opts.maxDate} onChange={(v) => setF({ ...f, from: v })} />
-        <DateField id="aud-to" label="To" value={f.to} min={f.from || opts.minDate} max={opts.maxDate} onChange={(v) => setF({ ...f, to: v })} />
-        {dims.length > 1 && (
-          <Picker id="aud-group" label="Split by" value={groupBy} onChange={(e) => setF({ ...f, groupBy: e.target.value })}>
-            {dims.map((d) => <option key={d.key} value={d.key}>{d.label}</option>)}
+          <Picker id="aud-type" label="Type of audit" value={f.auditType} onChange={(e) => setF({ ...f, auditType: e.target.value })}>
+            <option value="all">All audit types</option>
+            {opts.auditTypes.map((t) => <option key={t} value={t}>{t}</option>)}
           </Picker>
+        </FilterRow>
+
+        {dims.length > 1 && (
+          <FilterRow label="Show">
+            <Picker id="aud-group" label="Split by" value={groupBy} onChange={(e) => setF({ ...f, groupBy: e.target.value })}>
+              {dims.map((d) => <option key={d.key} value={d.key}>{d.label}</option>)}
+            </Picker>
+          </FilterRow>
         )}
-        <button
-          type="button"
-          onClick={() => setF(EMPTY)}
-          className="rounded-2xl bg-clay-surface px-4 py-2.5 text-[12.5px] font-semibold text-ink-700 shadow-clay-sm"
-        >
-          Reset
-        </button>
-        <button
-          type="button"
-          onClick={load}
-          disabled={loading}
-          className="inline-flex items-center gap-2 rounded-2xl bg-clay-surface px-4 py-2.5 text-[12.5px] font-semibold text-ink-700 shadow-clay-sm disabled:opacity-50"
-        >
-          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh
-        </button>
       </div>
 
       {noAuditor && (
@@ -327,24 +361,6 @@ function busiestNote(m) {
   const top = m.rows[0]
   const share = Math.round((top.total / m.total) * 100)
   return share >= 30 ? `${top.name} did ${share}% of them` : undefined
-}
-
-/** A date input styled as one of the filter bar's fields. */
-function DateField({ id, label, value, min, max, onChange }) {
-  return (
-    <div className="flex flex-col gap-1">
-      <label htmlFor={id} className="text-[10.5px] font-semibold uppercase tracking-wide text-ink-400">{label}</label>
-      <input
-        id={id}
-        type="date"
-        value={value}
-        min={min || undefined}
-        max={max || undefined}
-        onChange={(e) => onChange(e.target.value)}
-        className="rounded-2xl bg-clay-surface px-3 py-2.5 text-[12.5px] font-semibold text-ink-700 shadow-clay-sm"
-      />
-    </div>
-  )
 }
 
 function Blocked({ title, body, onRetry }) {

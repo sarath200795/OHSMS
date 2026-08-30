@@ -492,6 +492,36 @@ export function toDateOf(row) {
 /** Does this row carry a pass rate at all, in either shape? */
 export const hasPassData = (row) => isNum(day0Of(row)) || isNum(n7Of(row))
 
+/**
+ * The rows that ARE the audits — whichever question they arrived on.
+ *
+ * The audits question when it carries pass data. Otherwise the findings rows
+ * that do, because plenty of warehouses hold one row per checklist line with
+ * the result on it, and requiring a second saved question to unlock a chart the
+ * data already supports is a configuration tax with nothing behind it.
+ *
+ * ── Why this is shared rather than repeated ─────────────────────────────────
+ *
+ * Both the N+7 tab and the Auditors tab are answering questions about the same
+ * population, and they disagreed. odinAnalytics had this fallback; the Auditors
+ * tab asked for the `audits` dataset directly and had none. On a real tenant
+ * whose audit question was configured under `findings` — with the audits slot
+ * pointing at a card id that did not exist — the N+7 tab drew 832 audits from
+ * the fallback while Auditors showed "Metabase has no saved question with that
+ * ID". One number on one screen and an error on the next, from one dataset.
+ *
+ * So the decision lives here and both callers ask it. `source` is returned
+ * because the two are subtly different populations — one row per audit against
+ * one row per checklist line — and a reader comparing months has to know if the
+ * basis moved under them.
+ */
+export function auditPopulation(findingRows = [], auditRows = []) {
+  const fromAudits = (auditRows || []).some(hasPassData)
+  if (fromAudits) return { rows: auditRows, source: 'audits' }
+  const fromFindings = (findingRows || []).filter(hasPassData)
+  return { rows: fromFindings, source: fromFindings.length ? 'findings' : 'none' }
+}
+
 // ── Time buckets ─────────────────────────────────────────────────────────────
 //
 // Six grains, because "how are we doing" is a different question at a day than
@@ -902,10 +932,9 @@ export function odinAnalytics(rows = [], audits = [], sites = [], f = {}, { keep
   const dimensions = dimensionsPresent([...filtered, ...auditsFiltered])
   const groupBy = resolveGroupBy(dimensions, f.groupBy)
 
-  const auditsHavePass = auditsFiltered.some(hasPassData)
-  const findingsWithPass = filtered.filter(hasPassData)
-  const passRows = auditsHavePass ? auditsFiltered : findingsWithPass
-  const passSource = auditsHavePass ? 'audits' : findingsWithPass.length ? 'findings' : 'none'
+  const population = auditPopulation(filtered, auditsFiltered)
+  const passRows = population.rows
+  const passSource = population.source
 
   return {
     rows: filtered,

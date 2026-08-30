@@ -60,3 +60,45 @@ export function Picker({ id, label, value, onChange, children }) {
     </div>
   )
 }
+
+/**
+ * One labelled band of a filter bar.
+ *
+ * The label is the whole point. A dozen controls in an undifferentiated wrap is
+ * a wall you read end to end to find the one you want; a few small groups with
+ * a word in front of each is something you scan. The word sits in a fixed
+ * gutter on wide screens so the controls line up down the page, and stacks
+ * above them when there is no room for that.
+ *
+ * Shared by the ODIN and Auditors bars so the two cannot drift apart.
+ */
+export function FilterRow({ label, children }) {
+  return (
+    <div className="flex flex-col gap-2 p-4 sm:flex-row sm:items-end sm:gap-4">
+      <p className="w-full pt-1 text-[10.5px] font-bold uppercase tracking-[0.1em] text-ink-400 sm:w-20 sm:flex-none">
+        {label}
+      </p>
+      <div className="flex flex-1 flex-wrap items-end gap-3">{children}</div>
+    </div>
+  )
+}
+
+/** A date input matching the Picker well, for the From/To ends of a range. */
+export function DateField({ id, label, value, min, max, onChange }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <label htmlFor={id} className="text-[10.5px] font-bold uppercase tracking-[0.1em] text-ink-400">
+        {label}
+      </label>
+      <input
+        id={id}
+        type="date"
+        value={value}
+        min={min || undefined}
+        max={max || undefined}
+        onChange={(e) => onChange(e.target.value)}
+        className="rounded-2xl bg-clay-surface px-3 py-2.5 text-[12.5px] font-semibold text-ink-700 shadow-clay-sm"
+      />
+    </div>
+  )
+}

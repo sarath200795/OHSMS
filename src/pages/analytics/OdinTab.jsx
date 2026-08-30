@@ -32,7 +32,7 @@ import {
 import ChartFrame from '../../shared/ui/ChartFrame'
 import { metabaseQuery, metabaseSettings } from '../../shared/functions'
 import MetabaseConnect from '../../shared/integrations/MetabaseConnect'
-import { Panel, Stat, NoData, Picker } from './ui'
+import { Panel, Stat, NoData, Picker, FilterRow, DateField } from './ui'
 import {
   odinAnalytics, odinFacets, resolveOdinRows, STATUS_META, STATUS_BY_KEY, leadStatus,
   GRANULARITIES, GROUP_DIMS, PASS_MARK,
@@ -82,36 +82,6 @@ const TREND_SERIES = [
   { key: 'n7', label: 'After 7 days', color: '#eb6834' },
   { key: 'toDate', label: 'To date', color: '#1baf7a', dashed: true },
 ]
-
-/** Filter key → the facet list that fills it. Rendered only where non-empty. */
-const ESTATE_FILTERS = [
-  { key: 'city', label: 'City', opt: 'cities', all: 'All cities' },
-  { key: 'businessLine', label: 'Business line', opt: 'businessLines', all: 'All lines' },
-  { key: 'ownership', label: 'Ownership', opt: 'ownerships', all: 'All ownership' },
-  { key: 'centerType', label: 'Centre type', opt: 'centerTypes', all: 'All centre types' },
-  { key: 'auditType', label: 'Audit type', opt: 'auditTypes', all: 'All audit types' },
-  { key: 'priority', label: 'Priority', opt: 'priorities', all: 'All priorities' },
-]
-
-/** A date input styled as one of the filter bar's fields. */
-function DateField({ id, label, value, min, max, onChange }) {
-  return (
-    <div className="flex flex-col gap-1">
-      <label htmlFor={id} className="text-[10.5px] font-semibold uppercase tracking-wide text-ink-400">
-        {label}
-      </label>
-      <input
-        id={id}
-        type="date"
-        value={value}
-        min={min || undefined}
-        max={max || undefined}
-        onChange={(e) => onChange(e.target.value)}
-        className="rounded-2xl bg-clay-surface px-3 py-2.5 text-[12.5px] font-semibold text-ink-700 shadow-clay-sm"
-      />
-    </div>
-  )
-}
 
 /** A segmented control. Six grains is too many for a dropdown nobody opens. */
 function Segments({ label, value, options, onChange }) {
@@ -383,113 +353,92 @@ export default function OdinTab({ view = 'scores', sites = [], orgId, actor, isA
 
   return (
     <div className="animate-fade-in-up">
-      {/* Filter bar. Not the shared FilterBar: that one filters by SITE against
-          this app's own registry, and ODIN's population comes from a warehouse
-          whose site list need not match. Status and sub-category are the two
-          dimensions people actually slice this by. */}
-      <div className="card mb-5 flex flex-wrap items-end gap-3 p-4">
-        {/* Only when there is more than one instance. A picker with a single
-            option is furniture that has to be read before it can be ignored. */}
-        {opts.sources.length > 1 && (
-          <Picker id="odin-source" label="Instance" value={f.source} onChange={(e) => setF({ ...f, source: e.target.value })}>
-            <option value="all">All instances ({opts.sources.length})</option>
-            {opts.sources.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
-          </Picker>
-        )}
-        <Picker id="odin-region" label="Region" value={f.region} onChange={(e) => setF({ ...f, region: e.target.value })}>
-          <option value="all">All regions</option>
-          {opts.regions.map((r) => <option key={r} value={r}>{r}</option>)}
-        </Picker>
-        <Picker id="odin-entity" label="Entity" value={f.entity} onChange={(e) => setF({ ...f, entity: e.target.value })}>
-          <option value="all">All entities</option>
-          {opts.entities.map((r) => <option key={r} value={r}>{r}</option>)}
-        </Picker>
-        <Picker id="odin-status" label="Status" value={f.status} onChange={(e) => setF({ ...f, status: e.target.value })}>
-          <option value="all">All statuses</option>
-          {STATUS_META.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
-        </Picker>
-        <Picker id="odin-sub" label="Sub-category" value={f.subCategory} onChange={(e) => setF({ ...f, subCategory: e.target.value })}>
-          <option value="all">All sub-categories</option>
-          {opts.subCategories.map((r) => <option key={r} value={r}>{r}</option>)}
-        </Picker>
+      {/* ── The filter bar ──────────────────────────────────────────────────
+          Six controls, and that is the whole list: a period, the two groupings
+          this app's own site register fills in, and which kind of audit.
 
-        {/* The estate dimensions, each offered only where the connected
-            questions actually carry it. A picker whose every row is
-            "(not stated)" is furniture that has to be read before it can be
-            ignored — the same rule the Instance picker follows above. */}
-        {ESTATE_FILTERS.map(({ key, label, opt, all }) => (
-          opts[opt].length > 1 && (
-            <Picker
-              key={key}
-              id={`odin-${key}`}
-              label={label}
-              value={f[key]}
-              onChange={(e) => setF({ ...f, [key]: e.target.value })}
+          It carried thirteen before — instance, city, business line, ownership,
+          centre type, status, priority, sub-category — and the answer to "which
+          of these do I need" was almost always none of them. A filter nobody
+          reaches for still has to be read past every time somebody looks for
+          the date. The dimensions that went are all still reachable as a
+          breakdown, which is what people actually wanted them for.
+
+          Identical on all three tabs, so moving between them does not move the
+          controls. */}
+      <div className="card mb-5 divide-y divide-clay-100 p-0">
+        <FilterRow label="Period">
+          <DateField
+            id="odin-from" label="From" value={f.from} min={opts.minDate} max={f.to || opts.maxDate}
+            onChange={(v) => setF({ ...f, from: v })}
+          />
+          <DateField
+            id="odin-to" label="To" value={f.to} min={f.from || opts.minDate} max={opts.maxDate}
+            onChange={(v) => setF({ ...f, to: v })}
+          />
+          <Segments
+            label="Granularity"
+            value={f.gran}
+            options={GRANULARITIES}
+            onChange={(gran) => setF({ ...f, gran })}
+          />
+
+          {/* Pinned right, away from the filters: these act on everything
+              rather than narrowing anything. */}
+          <div className="ml-auto flex flex-wrap items-end gap-2">
+            <button
+              type="button"
+              onClick={() => setF(EMPTY_FILTER)}
+              className="rounded-2xl bg-clay-surface px-4 py-2.5 text-[12.5px] font-semibold text-ink-700 shadow-clay-sm"
             >
-              <option value="all">{all}</option>
-              {opts[opt].map((v) => <option key={v} value={v}>{v}</option>)}
-            </Picker>
-          )
-        ))}
+              Reset
+            </button>
+            <button
+              type="button"
+              onClick={load}
+              disabled={loading}
+              className="inline-flex items-center gap-2 rounded-2xl bg-clay-surface px-4 py-2.5 text-[12.5px] font-semibold text-ink-700 shadow-clay-sm disabled:opacity-50"
+            >
+              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh
+            </button>
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={() => setConnecting(true)}
+                title="Metabase connection settings"
+                className="inline-flex items-center gap-2 rounded-2xl bg-clay-surface px-4 py-2.5 text-[12.5px] font-semibold text-ink-500 shadow-clay-sm hover:text-ink-800"
+              >
+                <SlidersHorizontal size={14} /> Connection
+              </button>
+            )}
+          </div>
+        </FilterRow>
 
-        {/* Real dates rather than the month dropdowns this had. A quarterly
-            audit programme is reviewed on the quarter boundary, and "the first
-            three weeks of March" was not expressible at all. Both ends are
-            bounded by the span the data actually covers, so the picker cannot
-            be set to a year that returns nothing. */}
-        <DateField
-          id="odin-from" label="From" value={f.from} min={opts.minDate} max={f.to || opts.maxDate}
-          onChange={(v) => setF({ ...f, from: v })}
-        />
-        <DateField
-          id="odin-to" label="To" value={f.to} min={f.from || opts.minDate} max={opts.maxDate}
-          onChange={(v) => setF({ ...f, to: v })}
-        />
-
-        <Segments
-          label="Granularity"
-          value={f.gran}
-          options={GRANULARITIES}
-          onChange={(gran) => setF({ ...f, gran })}
-        />
-
-        {/* Which dimension the breakdowns cut by. In the filter row rather than
-            on a card, because it governs both the status chart and the pass
-            chart — a control inside one card reads as governing only that one. */}
-        {a.dimensions.length > 1 && (
-          <Picker id="odin-groupby" label="Break down by" value={a.groupBy} onChange={(e) => setF({ ...f, groupBy: e.target.value })}>
-            {a.dimensions.map((d) => <option key={d.key} value={d.key}>{d.label}</option>)}
+        <FilterRow label="Scope">
+          <Picker id="odin-region" label="Region" value={f.region} onChange={(e) => setF({ ...f, region: e.target.value })}>
+            <option value="all">All regions</option>
+            {opts.regions.map((r) => <option key={r} value={r}>{r}</option>)}
           </Picker>
-        )}
+          <Picker id="odin-entity" label="Entity" value={f.entity} onChange={(e) => setF({ ...f, entity: e.target.value })}>
+            <option value="all">All entities</option>
+            {opts.entities.map((r) => <option key={r} value={r}>{r}</option>)}
+          </Picker>
+          <Picker id="odin-auditType" label="Type of audit" value={f.auditType} onChange={(e) => setF({ ...f, auditType: e.target.value })}>
+            <option value="all">All audit types</option>
+            {opts.auditTypes.map((v) => <option key={v} value={v}>{v}</option>)}
+          </Picker>
+        </FilterRow>
 
-        <button
-          type="button"
-          onClick={() => setF(EMPTY_FILTER)}
-          className="rounded-2xl bg-clay-surface px-4 py-2.5 text-[12.5px] font-semibold text-ink-700 shadow-clay-sm"
-        >
-          Reset
-        </button>
-        <button
-          type="button"
-          onClick={load}
-          disabled={loading}
-          className="inline-flex items-center gap-2 rounded-2xl bg-clay-surface px-4 py-2.5 text-[12.5px] font-semibold text-ink-700 shadow-clay-sm disabled:opacity-50"
-        >
-          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh
-        </button>
-        {/* Admins only, and quiet. Changing the API key or repointing a
-            question is a rare act, but when it is needed it is needed from
-            here — looking at the dashboard is how you find out a question is
-            returning the wrong thing. */}
-        {isAdmin && (
-          <button
-            type="button"
-            onClick={() => setConnecting(true)}
-            title="Metabase connection settings"
-            className="inline-flex items-center gap-2 rounded-2xl bg-clay-surface px-4 py-2.5 text-[12.5px] font-semibold text-ink-500 shadow-clay-sm hover:text-ink-800"
-          >
-            <SlidersHorizontal size={14} /> Connection
-          </button>
+        {/* A display control, not a filter, so it keeps its own line and its
+            own word. It is what the removed dimensions became: city, business
+            line, ownership and centre type are all still here, as a breakdown
+            rather than as eight more dropdowns. */}
+        {a.dimensions.length > 1 && (
+          <FilterRow label="Show">
+            <Picker id="odin-groupby" label="Break down by" value={a.groupBy} onChange={(e) => setF({ ...f, groupBy: e.target.value })}>
+              {a.dimensions.map((d) => <option key={d.key} value={d.key}>{d.label}</option>)}
+            </Picker>
+          </FilterRow>
         )}
       </div>
 
@@ -1436,7 +1385,18 @@ function Caveats({ findings, audits, totals }) {
     notes.push(`These figures are incomplete. Your findings question returned ${findings.total.toLocaleString()} rows and ODIN reads the first ${findings.rows.length.toLocaleString()}. Group or filter the question in Metabase so it fits.`)
   }
   if (totals.unknown > 0) {
-    notes.push(`${totals.unknown} issue${totals.unknown === 1 ? '' : 's'} carry a status ODIN does not recognise (${totals.unknownLabels.slice(0, 4).join(', ')}${totals.unknownLabels.length > 4 ? ', …' : ''}). They are counted in the total but appear in no status bar — map them to Open, In Progress, On Hold or Closed in your question.`)
+    // Two different faults wear the same number, and they need different
+    // fixes. A row with an unfamiliar WORD needs that word mapped. A row with
+    // no status at all is almost always a question in the wrong slot — the
+    // audits question sitting under `findings`, whose rows are audits and have
+    // no ticket status to give. Saying "does not recognise ()" for the second
+    // one sent people looking for a word that was never there.
+    const named = totals.unknownLabels.filter((l) => String(l || '').trim())
+    notes.push(
+      named.length
+        ? `${totals.unknown} issue${totals.unknown === 1 ? '' : 's'} carry a status ODIN does not recognise (${named.slice(0, 4).join(', ')}${named.length > 4 ? ', …' : ''}). They are counted in the total but appear in no status bar — map them to Open, In Progress, On Hold, Closed or Rejected in your question.`
+        : `${totals.unknown} row${totals.unknown === 1 ? '' : 's'} carry no status at all, so they are counted in the total but appear in no status bar. A findings question with no status column is usually the wrong question in that slot — check that your AUDITS question is set as the audits question rather than the findings one, in Connection settings.`
+    )
   }
   if (findings?.unmapped?.length) {
     notes.push(`Columns ODIN made no use of: ${findings.unmapped.slice(0, 8).join(', ')}${findings.unmapped.length > 8 ? ', …' : ''}. Rename one to a name ODIN knows if it should be driving a chart.`)
