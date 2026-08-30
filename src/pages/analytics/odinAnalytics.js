@@ -30,7 +30,24 @@ export const STATUS_META = [
   { key: 'in_progress', label: 'In Progress', color: '#f59e0b' },
   { key: 'on_hold', label: 'On Hold', color: '#8b5cf6' },
   { key: 'closed', label: 'Closed', color: '#22c55e' },
+  // Grey on purpose. Rejected is neither good news nor bad — it is a finding
+  // somebody judged not to be one — and giving it a green or a red would put
+  // an opinion on the chart that the data does not carry.
+  { key: 'rejected', label: 'Rejected', color: '#78716c' },
 ]
+
+/**
+ * Statuses where nothing further is going to happen.
+ *
+ * Mirrors TERMINAL_STATUSES in functions/lib/metabase.js. A rejected ticket is
+ * finished, so it is not part of any "still open" count — and it is not closed
+ * either, so it must never be added to remediation figures. `status !==
+ * 'closed'` was the old test everywhere and now quietly counts rejections as
+ * outstanding work; this is what replaced it.
+ */
+export const TERMINAL_STATUSES = ['closed', 'rejected']
+export const isTerminal = (status) => TERMINAL_STATUSES.includes(status)
+export const isOutstanding = (status) => !isTerminal(status)
 export const STATUS_KEYS = STATUS_META.map((s) => s.key)
 export const STATUS_BY_KEY = Object.fromEntries(STATUS_META.map((s) => [s.key, s]))
 
@@ -607,16 +624,82 @@ export function ticketTrend(rows = [], gran = 'month') {
     const b = bucketOf(r.auditDate, gran)
     if (!b) { undated += 1; continue }
     let g = buckets.get(b.key)
-    if (!g) { g = { key: b.key, label: b.label, total: 0, open: 0, closed: 0, breached: 0 }; buckets.set(b.key, g) }
+    if (!g) { g = { key: b.key, label: b.label, total: 0, open: 0, closed: 0, rejected: 0, breached: 0 }; buckets.set(b.key, g) }
     const n = isNum(r.count) ? r.count : 1
     g.total += n
+    // Three outcomes, not two. A rejected ticket is neither still open nor
+    // remediated, and folding it into either overstates that half.
     if (r.status === 'closed') g.closed += n
+    else if (r.status === 'rejected') g.rejected += n
     else g.open += n
     if (isBreach(r.sla)) g.breached += n
   }
   return {
     series: [...buckets.values()].sort((a, b) => a.key.localeCompare(b.key)),
     undated,
+  }
+}
+
+/**
+ * How long tickets take, in DAYS, split by where they ended up.
+ *
+ * Two different clocks, and conflating them is the trap this is shaped around.
+ *
+ *   A CLOSED ticket has a finished duration: raised to closed. The warehouse
+ *   gives it directly as hours, and where it does not, the two dates do.
+ *
+ *   An OPEN one has no duration at all — it has an AGE, which grows every day
+ *   nobody touches it. Averaging the two together produces a number that falls
+ *   when a ticket is abandoned, because dropping the ancient ones out of the
+ *   "open" pool and never closing them makes the average look better.
+ *
+ * So they are reported apart, each with the count behind it. Rejected gets an
+ * age rather than a duration too: it was never remediated, and the honest
+ * reading is how long it sat before somebody dismissed it — which the dump
+ * does not record, so its age since raised is what there is.
+ *
+ * `asOf` is injectable so the tests are not a function of the day they run.
+ */
+export function ticketAgeing(rows = [], asOf = Date.now()) {
+  const mean = (xs) => (xs.length ? Math.round((xs.reduce((a, b) => a + b, 0) / xs.length) * 10) / 10 : null)
+  const HOURS = 24
+  const DAY = 86_400_000
+
+  const closedDays = []
+  const byStatus = new Map()
+
+  for (const r of rows || []) {
+    if (!r) continue
+    if (r.status === 'closed') {
+      // The stated hours first — it is the warehouse's own measurement. The
+      // dates are the fallback for a question that does not carry it.
+      const fromHours = isNum(r.tatHours) ? r.tatHours / HOURS : null
+      const raised = Date.parse(`${r.auditDate}T00:00:00Z`)
+      const shut = Date.parse(`${r.closedDate}T00:00:00Z`)
+      const fromDates = Number.isFinite(raised) && Number.isFinite(shut) && shut >= raised
+        ? (shut - raised) / DAY
+        : null
+      const days = fromHours ?? fromDates
+      if (days !== null) closedDays.push(days)
+      continue
+    }
+    // Everything not closed is ageing, rejected included.
+    const raised = Date.parse(`${r.auditDate}T00:00:00Z`)
+    if (!Number.isFinite(raised)) continue
+    const age = (asOf - raised) / DAY
+    if (age < 0) continue          // a future-dated row is bad data, not a -3 day age
+    if (!byStatus.has(r.status)) byStatus.set(r.status, [])
+    byStatus.get(r.status).push(age)
+  }
+
+  return {
+    closed: { days: mean(closedDays), n: closedDays.length },
+    // In STATUS_META order, so this list reads the same way as every other
+    // status list on the page.
+    ageing: STATUS_META
+      .filter((s) => s.key !== 'closed')
+      .map((s) => ({ key: s.key, label: s.label, color: s.color, days: mean(byStatus.get(s.key) || []), n: (byStatus.get(s.key) || []).length }))
+      .filter((s) => s.n > 0),
   }
 }
 
@@ -639,7 +722,7 @@ export function countBy(rows = [], key, { limit = 0, openOnly = false } = {}) {
     if (!g) { g = { name, value: 0, open: 0 }; out.set(name, g) }
     const n = isNum(r.count) ? r.count : 1
     g.value += n
-    if (r.status !== 'closed') g.open += n
+    if (isOutstanding(r.status)) g.open += n
   }
   const list = [...out.values()]
     .filter((g) => !openOnly || g.open > 0)
@@ -750,6 +833,16 @@ export function passRates(auditRows = [], key = 'region') {
         delta: isNum(day0) && isNum(n7) ? pct(n7 - day0) : null,
         audits: list.length,
         n7Audits: n7Rows.length,
+        // ── How many AUDITS passed, not how many checks ───────────────────────
+        //
+        // `passed`/`failed` below are check counts, and a question that gives
+        // only percentages has none of those — which is most of them, and every
+        // panel that leaned on them read zero. These two are the count of
+        // audits at or above the pass mark after the seven-day window, which is
+        // what "how many passed" means to the person asking, and which exists
+        // whichever way the question states its result.
+        auditsPassed: n7Rows.filter((s) => s.n7 >= PASS_MARK).length,
+        auditsFailed: n7Rows.filter((s) => s.n7 < PASS_MARK).length,
         // The raw counts behind the percentage, where the question gave them.
         // A tooltip reading "412 of 500 checks" is what makes a bar auditable.
         passed: totals.passed,
@@ -847,6 +940,7 @@ export function odinAnalytics(rows = [], audits = [], sites = [], f = {}, { keep
     byPriority: countBy(filtered, 'priority'),
     bySla: countBy(filtered, 'sla'),
     byCheckpoint: countBy(filtered, 'checkpoint', { limit: 12 }),
+    ageing: ticketAgeing(filtered),
     recovery: recoveryStages(passRows),
     distribution: scoreBands(passRows),
     watchlist: centreWatchlist(filtered, auditsFiltered),
@@ -1048,7 +1142,7 @@ export function centreWatchlist(findingRows = [], auditRows = []) {
     const g = get(r)
     const n = isNum(r.count) ? r.count : 1
     g.tickets += n
-    if (r.status !== 'closed') g.open += n
+    if (isOutstanding(r.status)) g.open += n
     if (isBreach(r.sla)) g.breached += n
     if (/red/i.test(String(r.priority || ''))) g.red += n
   }

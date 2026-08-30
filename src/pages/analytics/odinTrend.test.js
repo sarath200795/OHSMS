@@ -11,6 +11,7 @@ import {
   bucketOf, passTrend, ticketTrend, countBy, toDateOf, isBreach,
   dimensionsPresent, dimensionHasData, resolveGroupBy, joinQuality, resolveOdinRows, filterOdinRows,
   GRANULARITY_KEYS, PASS_MARK, recoveryStages, scoreBands, centreWatchlist, auditorMatrix,
+  ticketAgeing, ticketTrend as trend,
 } from './odinAnalytics'
 
 /** The shape functions/lib/metabase.js hands back, with the fields these tests need. */
@@ -403,5 +404,89 @@ describe("region is never swapped out from under the reader", () => {
   it("reports emptiness so the page can say so instead of re-grouping", () => {
     expect(dimensionHasData(noRegion, "region")).toBe(false)
     expect(dimensionHasData(noRegion, "city")).toBe(true)
+  })
+})
+
+describe("ticketAgeing", () => {
+  const NOW = Date.parse("2026-03-31T00:00:00Z")
+
+  it("measures a closed ticket by how long it took, in days", () => {
+    // tat is hours in the warehouse; the panel talks in days.
+    const a = ticketAgeing([row({ status: "closed", tatHours: 48 })], NOW)
+    expect(a.closed).toEqual({ days: 2, n: 1 })
+  })
+
+  it("falls back to the two dates when the question has no tat column", () => {
+    const a = ticketAgeing([
+      row({ status: "closed", tatHours: null, auditDate: "2026-03-01", closedDate: "2026-03-11" }),
+    ], NOW)
+    expect(a.closed.days).toBe(10)
+  })
+
+  it("measures everything else by how long it has been WAITING", () => {
+    const a = ticketAgeing([
+      row({ status: "open", auditDate: "2026-03-01" }),        // 30 days
+      row({ status: "open", auditDate: "2026-03-21" }),        // 10 days
+    ], NOW)
+    expect(a.ageing.find((x) => x.key === "open")).toMatchObject({ days: 20, n: 2 })
+  })
+
+  it("keeps the two clocks apart", () => {
+    // A finished duration and a running age are different measurements. Pooled,
+    // the average improves whenever an old ticket is abandoned rather than
+    // closed, which is exactly backwards.
+    const a = ticketAgeing([
+      row({ status: "closed", tatHours: 24 }),
+      row({ status: "open", auditDate: "2026-01-01" }),
+    ], NOW)
+    expect(a.closed).toEqual({ days: 1, n: 1 })
+    expect(a.ageing.find((x) => x.key === "open").n).toBe(1)
+  })
+
+  it("ages a rejected ticket rather than counting it as closed", () => {
+    const a = ticketAgeing([row({ status: "rejected", auditDate: "2026-03-01" })], NOW)
+    expect(a.closed.n).toBe(0)
+    expect(a.ageing.find((x) => x.key === "rejected")).toMatchObject({ days: 30, n: 1 })
+  })
+
+  it("lists the waiting statuses in the order the rest of the page uses", () => {
+    const a = ticketAgeing([
+      row({ status: "rejected", auditDate: "2026-03-01" }),
+      row({ status: "open", auditDate: "2026-03-01" }),
+      row({ status: "on_hold", auditDate: "2026-03-01" }),
+    ], NOW)
+    expect(a.ageing.map((x) => x.key)).toEqual(["open", "on_hold", "rejected"])
+  })
+
+  it("omits a status nothing is sitting in, rather than drawing a zero", () => {
+    const a = ticketAgeing([row({ status: "open", auditDate: "2026-03-01" })], NOW)
+    expect(a.ageing.map((x) => x.key)).toEqual(["open"])
+  })
+
+  it("refuses a negative age from a future-dated row", () => {
+    const a = ticketAgeing([row({ status: "open", auditDate: "2027-01-01" })], NOW)
+    expect(a.ageing).toEqual([])
+  })
+
+  it("is empty rather than NaN for nothing at all", () => {
+    expect(ticketAgeing([], NOW)).toEqual({ closed: { days: null, n: 0 }, ageing: [] })
+  })
+})
+
+describe("ticketTrend accounts for rejected separately", () => {
+  it("splits three ways so the parts add to the total", () => {
+    const { series } = trend([
+      row({ auditDate: "2026-03-02", status: "closed" }),
+      row({ auditDate: "2026-03-03", status: "open" }),
+      row({ auditDate: "2026-03-04", status: "rejected" }),
+    ], "month")
+    const b = series[0]
+    expect(b).toMatchObject({ total: 3, closed: 1, open: 1, rejected: 1 })
+    expect(b.closed + b.open + b.rejected).toBe(b.total)
+  })
+
+  it("does not count a rejection as still open", () => {
+    const { series } = trend([row({ auditDate: "2026-03-02", status: "rejected" })], "month")
+    expect(series[0].open).toBe(0)
   })
 })

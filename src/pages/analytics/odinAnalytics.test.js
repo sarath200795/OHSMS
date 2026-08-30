@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   resolveOdinRows, odinFacets, filterOdinRows, statusTotals, statusByRegion,
   bySubCategory, sitePins, leadStatus, passRates, odinAnalytics,
-  STATUS_KEYS, paletteColor, day0Of, n7Of, checksTotalOf, passTotals,
+  STATUS_KEYS, TERMINAL_STATUSES, isTerminal, isOutstanding, paletteColor, day0Of, n7Of, checksTotalOf, passTotals,
 } from './odinAnalytics'
 
 // The shape functions/lib/metabase.js hands back, with the fields a test needs.
@@ -22,11 +22,27 @@ const SITES = [
   { id: 's3', name: 'No Coords Yard', region: 'West', entity: 'Retail' },
 ]
 
-describe('the four statuses are a contract with the server', () => {
-  it('is exactly the four the dashboard draws, in escalation order', () => {
+describe('the statuses are a contract with the server', () => {
+  it('is exactly the five the dashboard draws, in escalation order', () => {
     // functions/lib/metabase.js normalizes onto these keys. If either side
     // renames one, every bar for that status silently becomes zero.
-    expect(STATUS_KEYS).toEqual(['open', 'in_progress', 'on_hold', 'closed'])
+    //
+    // `rejected` is the fifth and was added late: on a real ticket dump it was
+    // 853 of 31,282 rows, all landing in 'unknown' and drawn on no bar at all.
+    expect(STATUS_KEYS).toEqual(['open', 'in_progress', 'on_hold', 'closed', 'rejected'])
+  })
+
+  it('agrees with the server on which statuses are finished', () => {
+    // Terminal means nothing further happens. Rejected belongs here — it is
+    // not open — while emphatically NOT being a closure, which would credit a
+    // remediation that never took place.
+    expect(TERMINAL_STATUSES).toEqual(['closed', 'rejected'])
+    expect(isTerminal('rejected')).toBe(true)
+    expect(isTerminal('closed')).toBe(true)
+    expect(isOutstanding('open')).toBe(true)
+    expect(isOutstanding('in_progress')).toBe(true)
+    expect(isOutstanding('on_hold')).toBe(true)
+    expect(isOutstanding('rejected')).toBe(false)
   })
 })
 

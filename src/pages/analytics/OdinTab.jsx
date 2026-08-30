@@ -171,7 +171,14 @@ function issuePin(pin) {
   return pinCache.get(key)
 }
 
-export default function OdinTab({ sites = [], orgId, actor, isAdmin = false, keepUnplaced = true }) {
+export default function OdinTab({ view = 'scores', sites = [], orgId, actor, isAdmin = false, keepUnplaced = true }) {
+  // Which half is on screen. The scores view still needs the findings
+  // question — the centre watchlist puts tickets beside pass rates, and the
+  // pass figures fall back to findings rows when the audits question carries
+  // none. The tickets view needs only findings, so it runs one query instead
+  // of two and arrives in about half the time.
+  const showScores = view !== 'tickets'
+  const showTickets = view !== 'scores'
   const [f, setF] = useState(EMPTY_FILTER)
   const [loading, setLoading] = useState(true)
   const [findings, setFindings] = useState(null)  // { ok, rows, … } as returned
@@ -200,7 +207,12 @@ export default function OdinTab({ sites = [], orgId, actor, isAdmin = false, kee
       // variables and cannot run without them, and filtering in the warehouse
       // beats shipping a year of rows so the browser can discard most of them.
       const range = { from: f.from, to: f.to }
-      const [fRes, aRes] = await Promise.all([metabaseQuery('findings', range), metabaseQuery('audits', range)])
+      const [fRes, aRes] = await Promise.all([
+        metabaseQuery('findings', range),
+        // Skipped entirely on the tickets view rather than fetched and
+        // ignored: this is a thirty-to-sixty-second warehouse query.
+        showScores ? metabaseQuery('audits', range) : Promise.resolve(null),
+      ])
       setFindings(fRes)
       setAudits(aRes)
       // Admin-only and never fatal: a failure here costs a rotation warning,
@@ -216,7 +228,7 @@ export default function OdinTab({ sites = [], orgId, actor, isAdmin = false, kee
     // Changing either end of the range re-runs the questions. A date input
     // commits on blur rather than per keystroke, so this is one fetch per
     // deliberate act, not one per character.
-  }, [isAdmin, f.from, f.to])
+  }, [isAdmin, f.from, f.to, showScores])
 
   useEffect(() => { load() }, [load])
 
@@ -303,23 +315,61 @@ export default function OdinTab({ sites = [], orgId, actor, isAdmin = false, kee
   const recovered = n7?.rate != null && day0?.rate != null ? Math.round((n7.rate - day0.rate) * 10) / 10 : null
   const failing = rec.total && n7 ? rec.total - n7.passed : null
 
+  // ── Counts lead, percentages follow ────────────────────────────────────────
+  //
+  // These tiles were percentages with nothing behind them, and a percentage on
+  // its own is not a number anyone can act on: 67.3% is a mood, "560 passed,
+  // 272 failed" is a list of centres to visit. The rate is still here, one line
+  // down, because it is what you compare between months.
+  const pctOf = (n) => (rec.total ? `${Math.round((n / rec.total) * 1000) / 10}% of ${num(rec.total)}` : undefined)
+
   const AUDIT_KPIS = [
     { key: 'audits', icon: ClipboardCheck, label: 'Audits completed', value: num(a.auditCount || rec.total), tone: '#0d9488' },
     {
-      key: 'n7', icon: CircleCheck, label: `Pass rate after 7 days`,
-      value: n7?.rate == null ? '—' : `${n7.rate}%`,
-      sub: recovered == null ? undefined : `${recovered > 0 ? '+' : ''}${recovered} pts on the day-0 rate`,
+      key: 'n7pass', icon: CircleCheck, label: 'Passed after 7 days',
+      value: n7 ? num(n7.passed) : '—',
+      sub: n7?.rate == null ? undefined : pctOf(n7.passed),
       tone: '#22c55e',
     },
-    { key: 'day0', icon: Radar, label: 'Pass rate on the day', value: day0?.rate == null ? '—' : `${day0.rate}%`, tone: '#f59e0b' },
-    { key: 'failing', icon: CircleX, label: 'Failing after 7 days', value: failing == null ? '—' : num(failing), tone: '#ef4444' },
+    {
+      key: 'n7fail', icon: CircleX, label: 'Failed after 7 days',
+      value: failing == null ? '—' : num(failing),
+      sub: failing == null ? undefined : pctOf(failing),
+      tone: '#ef4444',
+    },
+    {
+      key: 'day0', icon: Radar, label: 'Passed on the day',
+      value: day0 ? num(day0.passed) : '—',
+      // The delta is the whole argument for the seven-day window, so it rides
+      // on the tile the window is measured against.
+      sub: [day0?.rate == null ? null : pctOf(day0.passed),
+        recovered == null ? null : `${recovered > 0 ? '+' : ''}${recovered} pts by day 7`]
+        .filter(Boolean).join(' · ') || undefined,
+      tone: '#f59e0b',
+    },
   ]
 
-  const openTickets = t.total - t.closed
+  // Rejected is neither closed nor outstanding, so it comes off the total
+  // before "still open" — counting a dismissed finding as work in hand is how
+  // a backlog figure stops meaning anything.
+  const openTickets = t.total - t.closed - t.rejected
   const codeRed = (a.byPriority || []).find((p) => /red/i.test(p.name))
   const TICKET_KPIS = [
-    { key: 'raised', icon: ShieldAlert, label: 'Tickets raised', value: num(t.total), sub: `${num(t.closed)} closed`, tone: '#0d9488' },
-    { key: 'open', icon: AlertTriangle, label: 'Still open', value: num(openTickets), tone: '#f59e0b' },
+    {
+      key: 'raised', icon: ShieldAlert, label: 'Tickets raised', value: num(t.total),
+      // All three outcomes on one line, because they have to add up to the
+      // number above them and a reader should be able to check that.
+      sub: [`${num(t.closed)} closed`, `${num(openTickets)} open`, t.rejected ? `${num(t.rejected)} rejected` : null]
+        .filter(Boolean).join(' · '),
+      tone: '#0d9488',
+    },
+    {
+      key: 'open', icon: AlertTriangle, label: 'Still open', value: num(openTickets),
+      sub: a.ageing?.ageing?.length
+        ? `oldest queue averaging ${Math.max(...a.ageing.ageing.map((x) => x.days || 0)).toLocaleString()} days`
+        : undefined,
+      tone: '#f59e0b',
+    },
     {
       key: 'breach', icon: AlertTriangle, label: 'SLA breached', value: num(a.breached),
       sub: t.total ? `${Math.round((a.breached / t.total) * 100)}% of tickets in view` : undefined,
@@ -450,173 +500,188 @@ export default function OdinTab({ sites = [], orgId, actor, isAdmin = false, kee
 
       <Caveats findings={findings} audits={audits} totals={t} />
 
-      <BandHead title="Audit scores" note={`Against the ${PASS_MARK}% pass mark`} />
+      {showScores && <BandHead title="Audit scores" note={`Against the ${PASS_MARK}% pass mark`} />}
 
-      <div className="mb-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {AUDIT_KPIS.map(({ key, ...s }) => <Stat key={key} {...s} />)}
-      </div>
-      <p className="mb-5 text-[11.5px] leading-relaxed text-ink-400">
-        From Metabase{fetchedAt ? `, as at ${fetchedAt.toLocaleString()}` : ''}.
-        {' '}A snapshot, not a live feed — press Refresh to run the questions again.
-      </p>
+      {showScores && (
+        <>
+          <div className="mb-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {AUDIT_KPIS.map(({ key, ...s }) => <Stat key={key} {...s} />)}
+          </div>
+          <p className="mb-5 text-[11.5px] leading-relaxed text-ink-400">
+            From Metabase{fetchedAt ? `, as at ${fetchedAt.toLocaleString()}` : ''}.
+            {' '}A snapshot, not a live feed — press Refresh to run the questions again.
+          </p>
 
-      <TrendPanel trend={a.trend} gran={f.gran} source={a.passSource} />
+          <TrendPanel trend={a.trend} gran={f.gran} source={a.passSource} />
 
-      <div className="mb-5 grid gap-4 lg:grid-cols-[1fr_1fr]">
-        <RecoveryPanel recovery={a.recovery} />
-        <DistributionPanel distribution={a.distribution} />
-      </div>
+          <div className="mb-5 grid gap-4 lg:grid-cols-[1fr_1fr]">
+            <RecoveryPanel recovery={a.recovery} />
+            <DistributionPanel distribution={a.distribution} />
+          </div>
 
-      <PassRates
-        audits={audits}
-        byGroup={a.passByGroup}
-        groupLabel={groupLabel}
-        overall={a.passOverall}
-        source={a.passSource}
-        isAdmin={isAdmin}
-        onConnect={isAdmin ? () => setConnecting(true) : null}
-      />
+          <PassRates
+            audits={audits}
+            byGroup={a.passByGroup}
+            groupLabel={groupLabel}
+            overall={a.passOverall}
+            source={a.passSource}
+            isAdmin={isAdmin}
+            onConnect={isAdmin ? () => setConnecting(true) : null}
+          />
 
-      <BandHead title="Remediation tickets" note="Raised by the audits above" />
+          <Watchlist rows={a.watchlist} join={a.join} />
+        </>
+      )}
 
-      <div className="mb-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {TICKET_KPIS.map(({ key, ...s }) => <Stat key={key} {...s} />)}
-      </div>
-      <p className="mb-5 text-[11.5px] leading-relaxed text-ink-400">
+      {showTickets && <BandHead title="Remediation tickets" note={showScores ? 'Raised by the audits above' : 'Raised by the FLS audits'} />}
+
+      {showTickets && (
+        <>
+          <div className="mb-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {TICKET_KPIS.map(({ key, ...s }) => <Stat key={key} {...s} />)}
+          </div>
+          <p className="mb-5 text-[11.5px] leading-relaxed text-ink-400">
         One row per ticket the audits raised. Bucketed on the date the defect was RAISED, not
         the date it closed — the two are different clocks.
-      </p>
+          </p>
 
-      <TicketTrendPanel tickets={a.tickets} gran={f.gran} breached={a.breached} />
+          <TicketTrendPanel tickets={a.tickets} gran={f.gran} breached={a.breached} />
 
-      <div className="mb-5 grid gap-4 lg:grid-cols-[1fr_1fr]">
+          <AgeingPanel ageing={a.ageing} />
+
+          <div className="mb-5 grid gap-4 lg:grid-cols-[1fr_1fr]">
         <SlaPanel rows={a.bySla} breached={a.breached} total={t.total} />
         <PriorityPanel rows={a.byPriority} />
-      </div>
+          </div>
 
-      <CheckpointPanel rows={a.byCheckpoint} />
+          <CheckpointPanel rows={a.byCheckpoint} />
+        </>
+      )}
 
-      <BandHead title="Where" note="Joined to your site register" />
+      {showTickets && <BandHead title="Where" note="Joined to your site register" />}
 
-      <Panel
-        title="Where the issues are"
-        subtitle="One pin per site; the ring is its status mix, the number is how many"
-        className="mb-5"
-      >
-        {a.pins.length === 0 ? (
-          <NoData height={300}>
-            {a.unplaced.length > 0
-              ? 'Issues exist, but none of the affected sites have coordinates. Add a latitude and longitude to the site in Sites, or return them from your Metabase question.'
-              : 'No issues in this scope.'}
-          </NoData>
-        ) : (
-          <>
-            <div className="overflow-hidden rounded-[18px]">
-              <MapContainer
-                center={[a.pins[0].lat, a.pins[0].lng]}
-                zoom={5}
-                scrollWheelZoom
-                style={{ height: 360, width: '100%' }}
-              >
-                <TileLayer
-                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                />
-                {a.pins.map((p) => (
-                  <Marker key={p.id} position={[p.lat, p.lng]} icon={issuePin(p)}>
-                    <LeafletTooltip direction="top" offset={[0, -14]} opacity={1}>
-                      <span className="text-[12px] font-semibold">{p.site}</span>
-                      {STATUS_META.filter((s) => p.byStatus[s.key] > 0).map((s) => (
-                        <span key={s.key} className="block text-[11px]">
-                          {p.byStatus[s.key]} {s.label.toLowerCase()}
-                        </span>
-                      ))}
-                      {(p.region || p.entity) && (
-                        <span className="block text-[11px]">{[p.region, p.entity].filter(Boolean).join(' · ')}</span>
-                      )}
-                    </LeafletTooltip>
-                  </Marker>
-                ))}
-              </MapContainer>
-            </div>
-
-            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5">
-              {STATUS_META.map((s) => (
-                <span key={s.key} className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold text-ink-600">
-                  <span className="h-2.5 w-2.5 rounded-full" style={{ background: s.color }} />
-                  {s.label}
-                </span>
-              ))}
-            </div>
-
-            {a.unplaced.length > 0 && (
-              // Said out loud, every time. A map showing eleven of nineteen
-              // sites and saying nothing will be read as showing all nineteen.
-              <p className="mt-3 flex items-start gap-2 text-[11.5px] leading-relaxed text-ink-500">
-                <MapPinOff size={13} className="mt-0.5 flex-none" />
-                {a.unplaced.reduce((n, u) => n + u.total, 0)} issue
-                {a.unplaced.reduce((n, u) => n + u.total, 0) === 1 ? '' : 's'} at{' '}
-                {a.unplaced.length} site{a.unplaced.length === 1 ? '' : 's'} could not be placed:{' '}
-                {a.unplaced.slice(0, 4).map((u) => u.site).join(', ')}
-                {a.unplaced.length > 4 ? `, +${a.unplaced.length - 4} more` : ''}. They are counted in
-                every chart below.
-              </p>
-            )}
-          </>
-        )}
-      </Panel>
-
-      <Panel
-        title={`Status by ${groupLabel}`}
-        subtitle={`Open, In Progress, On Hold and Closed — busiest ${groupLabel} first`}
-        className="mb-5"
-      >
-        {a.statusByGroup.length === 0 ? (
-          <NoData>No issues in this scope.</NoData>
-        ) : (
-          <ChartFrame
-            label="Safety and security issues by region and status"
-            width="100%"
-            height={Math.max(260, a.statusByGroup.length * 42 + 60)}
+      {showTickets && (
+        <>
+          <Panel
+            title="Where the issues are"
+            subtitle="One pin per site; the ring is its status mix, the number is how many"
+            className="mb-5"
           >
-            <BarChart data={a.statusByGroup} layout="vertical" margin={{ top: 8, right: 16, left: 8, bottom: 0 }}>
-              <XAxis type="number" allowDecimals={false} {...axis} />
-              <YAxis type="category" dataKey="region" width={120} {...axis} />
-              <Tooltip cursor={{ fill: 'rgba(227,204,191,0.35)' }} />
-              <Legend iconType="circle" wrapperStyle={{ fontSize: 11 }} />
-              {STATUS_META.map((s) => (
-                <Bar key={s.key} dataKey={s.key} name={s.label} stackId="s" fill={s.color} />
-              ))}
-            </BarChart>
-          </ChartFrame>
-        )}
-      </Panel>
+            {a.pins.length === 0 ? (
+              <NoData height={300}>
+                {a.unplaced.length > 0
+                  ? 'Issues exist, but none of the affected sites have coordinates. Add a latitude and longitude to the site in Sites, or return them from your Metabase question.'
+                  : 'No issues in this scope.'}
+              </NoData>
+            ) : (
+              <>
+                <div className="overflow-hidden rounded-[18px]">
+                  <MapContainer
+                    center={[a.pins[0].lat, a.pins[0].lng]}
+                    zoom={5}
+                    scrollWheelZoom
+                    style={{ height: 360, width: '100%' }}
+                  >
+                    <TileLayer
+                      attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                    />
+                    {a.pins.map((p) => (
+                      <Marker key={p.id} position={[p.lat, p.lng]} icon={issuePin(p)}>
+                        <LeafletTooltip direction="top" offset={[0, -14]} opacity={1}>
+                          <span className="text-[12px] font-semibold">{p.site}</span>
+                          {STATUS_META.filter((s) => p.byStatus[s.key] > 0).map((s) => (
+                            <span key={s.key} className="block text-[11px]">
+                              {p.byStatus[s.key]} {s.label.toLowerCase()}
+                            </span>
+                          ))}
+                          {(p.region || p.entity) && (
+                            <span className="block text-[11px]">{[p.region, p.entity].filter(Boolean).join(' · ')}</span>
+                          )}
+                        </LeafletTooltip>
+                      </Marker>
+                    ))}
+                  </MapContainer>
+                </div>
 
-      <div className="mb-5">
-        <Panel title="Sub-category of finding" subtitle="Every sub-category, most frequent first">
-          {a.bySubCategoryAll.length === 0 ? (
-            <NoData>Nothing to show.</NoData>
-          ) : (
-            <ChartFrame
-              label="Findings by sub-category"
-              width="100%"
-              height={Math.max(260, a.bySubCategoryAll.length * 30 + 50)}
-            >
-              <BarChart data={a.bySubCategoryAll} layout="vertical" margin={{ top: 8, right: 32, left: 8, bottom: 0 }}>
-                <XAxis type="number" allowDecimals={false} {...axis} />
-                <YAxis type="category" dataKey="name" width={170} {...axis} />
-                <Tooltip cursor={{ fill: 'rgba(227,204,191,0.35)' }} />
-                <Bar dataKey="value" name="Findings" radius={[0, 6, 6, 0]}>
-                  {a.bySubCategoryAll.map((d) => <Cell key={d.name} fill={d.color} />)}
-                  <LabelList dataKey="value" position="right" style={{ fontSize: 11, fill: '#8a7660' }} />
-                </Bar>
-              </BarChart>
-            </ChartFrame>
-          )}
-        </Panel>
-      </div>
+                <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5">
+                  {STATUS_META.map((s) => (
+                    <span key={s.key} className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold text-ink-600">
+                      <span className="h-2.5 w-2.5 rounded-full" style={{ background: s.color }} />
+                      {s.label}
+                    </span>
+                  ))}
+                </div>
 
-      <Watchlist rows={a.watchlist} join={a.join} />
+                {a.unplaced.length > 0 && (
+                  // Said out loud, every time. A map showing eleven of nineteen
+                  // sites and saying nothing will be read as showing all nineteen.
+                  <p className="mt-3 flex items-start gap-2 text-[11.5px] leading-relaxed text-ink-500">
+                    <MapPinOff size={13} className="mt-0.5 flex-none" />
+                    {a.unplaced.reduce((n, u) => n + u.total, 0)} issue
+                    {a.unplaced.reduce((n, u) => n + u.total, 0) === 1 ? '' : 's'} at{' '}
+                    {a.unplaced.length} site{a.unplaced.length === 1 ? '' : 's'} could not be placed:{' '}
+                    {a.unplaced.slice(0, 4).map((u) => u.site).join(', ')}
+                    {a.unplaced.length > 4 ? `, +${a.unplaced.length - 4} more` : ''}. They are counted in
+                    every chart below.
+                  </p>
+                )}
+              </>
+            )}
+          </Panel>
+
+          <Panel
+            title={`Status by ${groupLabel}`}
+            subtitle={`Open, In Progress, On Hold and Closed — busiest ${groupLabel} first`}
+            className="mb-5"
+          >
+            {a.statusByGroup.length === 0 ? (
+              <NoData>No issues in this scope.</NoData>
+            ) : (
+              <ChartFrame
+                label="Safety and security issues by region and status"
+                width="100%"
+                height={Math.max(260, a.statusByGroup.length * 42 + 60)}
+              >
+                <BarChart data={a.statusByGroup} layout="vertical" margin={{ top: 8, right: 16, left: 8, bottom: 0 }}>
+                  <XAxis type="number" allowDecimals={false} {...axis} />
+                  <YAxis type="category" dataKey="region" width={120} {...axis} />
+                  <Tooltip cursor={{ fill: 'rgba(227,204,191,0.35)' }} />
+                  <Legend iconType="circle" wrapperStyle={{ fontSize: 11 }} />
+                  {STATUS_META.map((s) => (
+                    <Bar key={s.key} dataKey={s.key} name={s.label} stackId="s" fill={s.color} />
+                  ))}
+                </BarChart>
+              </ChartFrame>
+            )}
+          </Panel>
+
+          <div className="mb-5">
+            <Panel title="Sub-category of finding" subtitle="Every sub-category, most frequent first">
+              {a.bySubCategoryAll.length === 0 ? (
+                <NoData>Nothing to show.</NoData>
+              ) : (
+                <ChartFrame
+                  label="Findings by sub-category"
+                  width="100%"
+                  height={Math.max(260, a.bySubCategoryAll.length * 30 + 50)}
+                >
+                  <BarChart data={a.bySubCategoryAll} layout="vertical" margin={{ top: 8, right: 32, left: 8, bottom: 0 }}>
+                    <XAxis type="number" allowDecimals={false} {...axis} />
+                    <YAxis type="category" dataKey="name" width={170} {...axis} />
+                    <Tooltip cursor={{ fill: 'rgba(227,204,191,0.35)' }} />
+                    <Bar dataKey="value" name="Findings" radius={[0, 6, 6, 0]}>
+                      {a.bySubCategoryAll.map((d) => <Cell key={d.name} fill={d.color} />)}
+                      <LabelList dataKey="value" position="right" style={{ fontSize: 11, fill: '#8a7660' }} />
+                    </Bar>
+                  </BarChart>
+                </ChartFrame>
+              )}
+            </Panel>
+          </div>
+        </>
+      )}
+
     </div>
   )
 }
@@ -832,6 +897,97 @@ function DistributionPanel({ distribution }) {
       <p className="mt-4 text-[11.5px] leading-relaxed text-ink-500">
         The two bands either side of {PASS_MARK}% are the ones worth chasing — a near miss is a
         different problem from a collapse, and an even histogram hides which one you have.
+      </p>
+    </Panel>
+  )
+}
+
+/**
+ * How long tickets take, in days.
+ *
+ * Two measurements, kept apart on purpose, because they are not the same kind
+ * of number and averaging them together produces one that improves when work
+ * is abandoned.
+ *
+ *   TIME TO CLOSE is a finished duration — raised to closed — and exists only
+ *   for tickets that got there.
+ *
+ *   AGE is how long the ones that did not have been waiting, and it grows
+ *   every day nobody touches them. A queue whose average age is climbing is
+ *   the thing this panel exists to make visible.
+ *
+ * Rejected sits with the ageing rows rather than with closed: it was never
+ * remediated, so counting it as a closure would flatter every figure here.
+ */
+function AgeingPanel({ ageing }) {
+  if (!ageing) return null
+  const { closed, ageing: rows } = ageing
+  if (!closed?.n && !rows?.length) return null
+
+  const days = (v) => (v == null ? '—' : `${v.toLocaleString()}`)
+  const worst = Math.max(1, closed?.days || 0, ...rows.map((r) => r.days || 0))
+
+  return (
+    <Panel
+      title="How long tickets take"
+      subtitle="Average days — closed tickets by how long they took, everything else by how long it has been waiting"
+      className="mb-5"
+    >
+      {closed?.n > 0 && (
+        <div className="mb-4 rounded-2xl bg-clay-surface/60 p-4 shadow-clay-inset">
+          <p className="text-[10.5px] font-bold uppercase tracking-[0.1em] text-ink-400">
+            Average time to close
+          </p>
+          <p className="mt-1 flex items-baseline gap-2">
+            <span className="text-[26px] font-bold leading-none tracking-tight text-emerald-600">
+              {days(closed.days)}
+            </span>
+            <span className="text-[13px] font-semibold text-ink-500">days</span>
+            <span className="ml-auto text-[11.5px] text-ink-400">
+              across {closed.n.toLocaleString()} closed ticket{closed.n === 1 ? '' : 's'}
+            </span>
+          </p>
+        </div>
+      )}
+
+      {rows.length > 0 && (
+        <>
+          <p className="mb-2.5 text-[10.5px] font-bold uppercase tracking-[0.1em] text-ink-400">
+            Average age, still waiting
+          </p>
+          <div className="space-y-3">
+            {rows.map((r) => (
+              <div key={r.key}>
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="flex items-center gap-2 text-[12.5px] font-medium text-ink-700">
+                    <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: r.color }} />
+                    {r.label}
+                  </span>
+                  <span className="text-[13px] font-bold tabular-nums text-ink-900">
+                    {days(r.days)}
+                    <span className="ml-1 text-[11px] font-normal text-ink-400">days</span>
+                  </span>
+                </div>
+                <div className="mt-1.5 h-2.5 overflow-hidden rounded-full bg-clay-100">
+                  <div
+                    className="h-full rounded-full"
+                    style={{ width: `${Math.max(2, ((r.days || 0) / worst) * 100)}%`, background: r.color }}
+                  />
+                </div>
+                <p className="mt-1 text-[11px] tabular-nums text-ink-400">
+                  {r.n.toLocaleString()} ticket{r.n === 1 ? '' : 's'}
+                </p>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      <p className="mt-4 text-[11.5px] leading-relaxed text-ink-500">
+        Closed tickets are measured raised-to-closed. Everything else is measured raised-to-today,
+        so those bars grow on their own until somebody acts — which is the point of showing them.
+        <b> Rejected</b> is counted here rather than as a closure: the finding was dismissed, not
+        fixed, and folding it into the remediation figures would credit work nobody did.
       </p>
     </Panel>
   )
@@ -1171,9 +1327,17 @@ function PassPanel({ title, subtitle, rows }) {
   const tip = (v, name, item) => {
     if (v == null) return ['—', name]
     const r = item?.payload
-    return r?.checks > 0 && name === 'Day of audit'
-      ? [`${v}% — ${r.passed.toLocaleString()} of ${r.checks.toLocaleString()} checks passed, ${r.failed.toLocaleString()} failed`, name]
-      : [`${v}%`, name]
+    // Check counts where the question gave them — "412 of 500 checks" is the
+    // most auditable form. Otherwise the AUDIT counts, which exist however the
+    // question states its result and were simply missing before: a percentage
+    // with nothing behind it is a number a reader has to take on faith.
+    if (r?.checks > 0 && name === 'Day of audit') {
+      return [`${v}% — ${r.passed.toLocaleString()} of ${r.checks.toLocaleString()} checks passed, ${r.failed.toLocaleString()} failed`, name]
+    }
+    if (name === 'N+7' && r?.n7Audits > 0) {
+      return [`${v}% — ${r.auditsPassed.toLocaleString()} passed, ${r.auditsFailed.toLocaleString()} failed of ${r.n7Audits.toLocaleString()} audits`, name]
+    }
+    return [`${v}%`, name]
   }
 
   return (

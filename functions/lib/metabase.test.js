@@ -3,7 +3,7 @@ import {
   checkBaseUrl, parseCardId, normalizeConfig, redactConfig, readiness,
   cardQueryUrl, currentUserUrl, fieldForColumn, columnKey, normalizeStatus, sourcesFor,
   normalizeRow, normalizeRows, isoDate, capRows, MAX_ROWS, STATUSES,
-  keyAge, asMillis, asDay, dateParameters, buildDateParams, defaultRange, safeRange, cardUrl, MAX_RANGE_DAYS,
+  keyAge, asMillis, isTerminal, TERMINAL_STATUSES, asDay, dateParameters, buildDateParams, defaultRange, safeRange, cardUrl, MAX_RANGE_DAYS,
 } from './metabase.js'
 
 describe('checkBaseUrl', () => {
@@ -575,5 +575,32 @@ describe("safeRange", () => {
 
   it("defaultRange ends today", () => {
     expect(defaultRange(NOW, 30)).toEqual({ from: "2026-07-31", to: "2026-08-30" })
+  })
+})
+
+describe("rejected is the fifth status", () => {
+  it("maps the word the ticket system actually uses", () => {
+    // 853 of 31,282 rows on the dump this was built against. Every one of
+    // them was landing in 'unknown' and drawn on no bar.
+    expect(normalizeStatus("REJECTED")).toBe("rejected")
+    expect(normalizeStatus("Declined")).toBe("rejected")
+    expect(normalizeStatus("Duplicate")).toBe("rejected")
+    expect(normalizeStatus("Won't fix")).toBe("rejected")
+  })
+
+  it("is one of the statuses the dashboard draws", () => {
+    expect(STATUSES).toEqual(["open", "in_progress", "on_hold", "closed", "rejected"])
+  })
+
+  it("is finished, but is NOT a closure", () => {
+    // Both halves matter. Counting it open inflates the backlog; counting it
+    // closed credits a remediation that never happened.
+    expect(TERMINAL_STATUSES).toEqual(["closed", "rejected"])
+    expect(isTerminal("rejected")).toBe(true)
+    expect(normalizeStatus("REJECTED")).not.toBe("closed")
+  })
+
+  it("still refuses to guess at a word it does not know", () => {
+    expect(normalizeStatus("Escalated to legal")).toBe("unknown")
   })
 })
