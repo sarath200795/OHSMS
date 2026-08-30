@@ -83,15 +83,42 @@ const TREND_SERIES = [
   { key: 'toDate', label: 'To date', color: '#1baf7a', dashed: true },
 ]
 
-/** Filter key → the facet list that fills it. Rendered only where non-empty. */
-const ESTATE_FILTERS = [
+/**
+ * The estate cuts, which narrow BOTH questions.
+ *
+ * Priority moved out of this list and onto the tickets row: it is a property of
+ * a finding, and odinAnalytics never applies it to the audit population, so on
+ * the scores tab it was a control that did nothing when you used it.
+ *
+ * Each is rendered only where the connected questions actually carry it.
+ */
+const SCOPE_FILTERS = [
   { key: 'city', label: 'City', opt: 'cities', all: 'All cities' },
   { key: 'businessLine', label: 'Business line', opt: 'businessLines', all: 'All lines' },
   { key: 'ownership', label: 'Ownership', opt: 'ownerships', all: 'All ownership' },
   { key: 'centerType', label: 'Centre type', opt: 'centerTypes', all: 'All centre types' },
   { key: 'auditType', label: 'Audit type', opt: 'auditTypes', all: 'All audit types' },
-  { key: 'priority', label: 'Priority', opt: 'priorities', all: 'All priorities' },
 ]
+
+/**
+ * One labelled band of the filter bar.
+ *
+ * The label is the whole point. Thirteen controls in an undifferentiated wrap
+ * is a wall you have to read end to end to find the one you want; four small
+ * groups with a word in front of each is a thing you scan. The word sits in a
+ * fixed-width gutter on wide screens so the controls line up down the page, and
+ * stacks above them when there is no room for that.
+ */
+function FilterRow({ label, children }) {
+  return (
+    <div className="flex flex-col gap-2 p-4 sm:flex-row sm:items-end sm:gap-4">
+      <p className="w-full pt-1 text-[10.5px] font-bold uppercase tracking-[0.1em] text-ink-400 sm:w-20 sm:flex-none">
+        {label}
+      </p>
+      <div className="flex flex-1 flex-wrap items-end gap-3">{children}</div>
+    </div>
+  )
+}
 
 /** A date input styled as one of the filter bar's fields. */
 function DateField({ id, label, value, min, max, onChange }) {
@@ -383,113 +410,132 @@ export default function OdinTab({ view = 'scores', sites = [], orgId, actor, isA
 
   return (
     <div className="animate-fade-in-up">
-      {/* Filter bar. Not the shared FilterBar: that one filters by SITE against
-          this app's own registry, and ODIN's population comes from a warehouse
-          whose site list need not match. Status and sub-category are the two
-          dimensions people actually slice this by. */}
-      <div className="card mb-5 flex flex-wrap items-end gap-3 p-4">
-        {/* Only when there is more than one instance. A picker with a single
-            option is furniture that has to be read before it can be ignored. */}
-        {opts.sources.length > 1 && (
-          <Picker id="odin-source" label="Instance" value={f.source} onChange={(e) => setF({ ...f, source: e.target.value })}>
-            <option value="all">All instances ({opts.sources.length})</option>
-            {opts.sources.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
-          </Picker>
-        )}
-        <Picker id="odin-region" label="Region" value={f.region} onChange={(e) => setF({ ...f, region: e.target.value })}>
-          <option value="all">All regions</option>
-          {opts.regions.map((r) => <option key={r} value={r}>{r}</option>)}
-        </Picker>
-        <Picker id="odin-entity" label="Entity" value={f.entity} onChange={(e) => setF({ ...f, entity: e.target.value })}>
-          <option value="all">All entities</option>
-          {opts.entities.map((r) => <option key={r} value={r}>{r}</option>)}
-        </Picker>
-        <Picker id="odin-status" label="Status" value={f.status} onChange={(e) => setF({ ...f, status: e.target.value })}>
-          <option value="all">All statuses</option>
-          {STATUS_META.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
-        </Picker>
-        <Picker id="odin-sub" label="Sub-category" value={f.subCategory} onChange={(e) => setF({ ...f, subCategory: e.target.value })}>
-          <option value="all">All sub-categories</option>
-          {opts.subCategories.map((r) => <option key={r} value={r}>{r}</option>)}
-        </Picker>
+      {/* ── The filter bar ──────────────────────────────────────────────────
+          Not the shared FilterBar: that one filters by SITE against this app's
+          own registry, and ODIN's population comes from a warehouse whose site
+          list need not match.
 
-        {/* The estate dimensions, each offered only where the connected
-            questions actually carry it. A picker whose every row is
-            "(not stated)" is furniture that has to be read before it can be
-            ignored — the same rule the Instance picker follows above. */}
-        {ESTATE_FILTERS.map(({ key, label, opt, all }) => (
-          opts[opt].length > 1 && (
-            <Picker
-              key={key}
-              id={`odin-${key}`}
-              label={label}
-              value={f[key]}
-              onChange={(e) => setF({ ...f, [key]: e.target.value })}
+          Grouped into rows, because ungrouped it was thirteen controls in one
+          wrap with the date pickers somewhere in the middle and no indication
+          which of them did what. Period first — it is what anyone changes
+          first — then the estate, then the ticket-only cuts.
+
+          Status, priority and sub-category appear ONLY on the tickets view.
+          They are properties of a finding, not of an audit, and odinAnalytics
+          deliberately keeps them out of the audit population — so on the scores
+          tab they were controls that visibly did nothing when you used them,
+          which is worse than not offering them. */}
+      <div className="card mb-5 divide-y divide-clay-100 p-0">
+        <FilterRow label="Period">
+          <DateField
+            id="odin-from" label="From" value={f.from} min={opts.minDate} max={f.to || opts.maxDate}
+            onChange={(v) => setF({ ...f, from: v })}
+          />
+          <DateField
+            id="odin-to" label="To" value={f.to} min={f.from || opts.minDate} max={opts.maxDate}
+            onChange={(v) => setF({ ...f, to: v })}
+          />
+          <Segments
+            label="Granularity"
+            value={f.gran}
+            options={GRANULARITIES}
+            onChange={(gran) => setF({ ...f, gran })}
+          />
+
+          {/* Pinned right, away from the filters: these act on everything
+              rather than narrowing anything. */}
+          <div className="ml-auto flex flex-wrap items-end gap-2">
+            <button
+              type="button"
+              onClick={() => setF(EMPTY_FILTER)}
+              className="rounded-2xl bg-clay-surface px-4 py-2.5 text-[12.5px] font-semibold text-ink-700 shadow-clay-sm"
             >
-              <option value="all">{all}</option>
-              {opts[opt].map((v) => <option key={v} value={v}>{v}</option>)}
+              Reset
+            </button>
+            <button
+              type="button"
+              onClick={load}
+              disabled={loading}
+              className="inline-flex items-center gap-2 rounded-2xl bg-clay-surface px-4 py-2.5 text-[12.5px] font-semibold text-ink-700 shadow-clay-sm disabled:opacity-50"
+            >
+              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh
+            </button>
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={() => setConnecting(true)}
+                title="Metabase connection settings"
+                className="inline-flex items-center gap-2 rounded-2xl bg-clay-surface px-4 py-2.5 text-[12.5px] font-semibold text-ink-500 shadow-clay-sm hover:text-ink-800"
+              >
+                <SlidersHorizontal size={14} /> Connection
+              </button>
+            )}
+          </div>
+        </FilterRow>
+
+        <FilterRow label="Scope">
+          {/* Only when there is more than one instance. A picker with a single
+              option is furniture that has to be read before it can be ignored. */}
+          {opts.sources.length > 1 && (
+            <Picker id="odin-source" label="Instance" value={f.source} onChange={(e) => setF({ ...f, source: e.target.value })}>
+              <option value="all">All instances ({opts.sources.length})</option>
+              {opts.sources.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
             </Picker>
-          )
-        ))}
-
-        {/* Real dates rather than the month dropdowns this had. A quarterly
-            audit programme is reviewed on the quarter boundary, and "the first
-            three weeks of March" was not expressible at all. Both ends are
-            bounded by the span the data actually covers, so the picker cannot
-            be set to a year that returns nothing. */}
-        <DateField
-          id="odin-from" label="From" value={f.from} min={opts.minDate} max={f.to || opts.maxDate}
-          onChange={(v) => setF({ ...f, from: v })}
-        />
-        <DateField
-          id="odin-to" label="To" value={f.to} min={f.from || opts.minDate} max={opts.maxDate}
-          onChange={(v) => setF({ ...f, to: v })}
-        />
-
-        <Segments
-          label="Granularity"
-          value={f.gran}
-          options={GRANULARITIES}
-          onChange={(gran) => setF({ ...f, gran })}
-        />
-
-        {/* Which dimension the breakdowns cut by. In the filter row rather than
-            on a card, because it governs both the status chart and the pass
-            chart — a control inside one card reads as governing only that one. */}
-        {a.dimensions.length > 1 && (
-          <Picker id="odin-groupby" label="Break down by" value={a.groupBy} onChange={(e) => setF({ ...f, groupBy: e.target.value })}>
-            {a.dimensions.map((d) => <option key={d.key} value={d.key}>{d.label}</option>)}
+          )}
+          <Picker id="odin-region" label="Region" value={f.region} onChange={(e) => setF({ ...f, region: e.target.value })}>
+            <option value="all">All regions</option>
+            {opts.regions.map((r) => <option key={r} value={r}>{r}</option>)}
           </Picker>
+          <Picker id="odin-entity" label="Entity" value={f.entity} onChange={(e) => setF({ ...f, entity: e.target.value })}>
+            <option value="all">All entities</option>
+            {opts.entities.map((r) => <option key={r} value={r}>{r}</option>)}
+          </Picker>
+          {/* Each offered only where the connected questions carry it — a
+              picker whose every row is "(not stated)" is furniture too. */}
+          {SCOPE_FILTERS.map(({ key, label, opt, all }) => (
+            opts[opt].length > 1 && (
+              <Picker
+                key={key}
+                id={`odin-${key}`}
+                label={label}
+                value={f[key]}
+                onChange={(e) => setF({ ...f, [key]: e.target.value })}
+              >
+                <option value="all">{all}</option>
+                {opts[opt].map((v) => <option key={v} value={v}>{v}</option>)}
+              </Picker>
+            )
+          ))}
+        </FilterRow>
+
+        {showTickets && (
+          <FilterRow label="Tickets">
+            <Picker id="odin-status" label="Status" value={f.status} onChange={(e) => setF({ ...f, status: e.target.value })}>
+              <option value="all">All statuses</option>
+              {STATUS_META.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+            </Picker>
+            {opts.priorities.length > 1 && (
+              <Picker id="odin-priority" label="Priority" value={f.priority} onChange={(e) => setF({ ...f, priority: e.target.value })}>
+                <option value="all">All priorities</option>
+                {opts.priorities.map((v) => <option key={v} value={v}>{v}</option>)}
+              </Picker>
+            )}
+            <Picker id="odin-sub" label="Sub-category" value={f.subCategory} onChange={(e) => setF({ ...f, subCategory: e.target.value })}>
+              <option value="all">All sub-categories</option>
+              {opts.subCategories.map((r) => <option key={r} value={r}>{r}</option>)}
+            </Picker>
+          </FilterRow>
         )}
 
-        <button
-          type="button"
-          onClick={() => setF(EMPTY_FILTER)}
-          className="rounded-2xl bg-clay-surface px-4 py-2.5 text-[12.5px] font-semibold text-ink-700 shadow-clay-sm"
-        >
-          Reset
-        </button>
-        <button
-          type="button"
-          onClick={load}
-          disabled={loading}
-          className="inline-flex items-center gap-2 rounded-2xl bg-clay-surface px-4 py-2.5 text-[12.5px] font-semibold text-ink-700 shadow-clay-sm disabled:opacity-50"
-        >
-          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh
-        </button>
-        {/* Admins only, and quiet. Changing the API key or repointing a
-            question is a rare act, but when it is needed it is needed from
-            here — looking at the dashboard is how you find out a question is
-            returning the wrong thing. */}
-        {isAdmin && (
-          <button
-            type="button"
-            onClick={() => setConnecting(true)}
-            title="Metabase connection settings"
-            className="inline-flex items-center gap-2 rounded-2xl bg-clay-surface px-4 py-2.5 text-[12.5px] font-semibold text-ink-500 shadow-clay-sm hover:text-ink-800"
-          >
-            <SlidersHorizontal size={14} /> Connection
-          </button>
+        {/* A display control, not a filter, so it gets its own line and its own
+            word. It governs the status chart AND the pass chart, which is why
+            it is not tucked inside either card. */}
+        {a.dimensions.length > 1 && (
+          <FilterRow label="Show">
+            <Picker id="odin-groupby" label="Break down by" value={a.groupBy} onChange={(e) => setF({ ...f, groupBy: e.target.value })}>
+              {a.dimensions.map((d) => <option key={d.key} value={d.key}>{d.label}</option>)}
+            </Picker>
+          </FilterRow>
         )}
       </div>
 

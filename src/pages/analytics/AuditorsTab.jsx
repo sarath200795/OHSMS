@@ -25,7 +25,7 @@ import ChartFrame from '../../shared/ui/ChartFrame'
 import { metabaseQuery } from '../../shared/functions'
 import { Panel, Stat, NoData, Picker } from './ui'
 import {
-  auditorMatrix, odinFacets, resolveOdinRows, filterOdinRows, paletteColor,
+  auditorMatrix, auditPopulation, odinFacets, resolveOdinRows, filterOdinRows, paletteColor,
   GROUP_DIMS, dimensionsPresent, dimensionHasData, resolveGroupBy, PASS_MARK,
 } from './odinAnalytics'
 
@@ -36,6 +36,7 @@ const EMPTY = { auditType: 'all', region: 'all', entity: 'all', city: 'all', fro
 export default function AuditorsTab({ sites = [], keepUnplaced = true }) {
   const [f, setF] = useState(EMPTY)
   const [audits, setAudits] = useState(null)
+  const [findings, setFindings] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
@@ -43,9 +44,20 @@ export default function AuditorsTab({ sites = [], keepUnplaced = true }) {
     setLoading(true)
     setError('')
     try {
-      // Bounded in the warehouse — see metabaseQuery. The audits question
-      // declares required date variables and cannot be run without them.
-      setAudits(await metabaseQuery('audits', { from: f.from, to: f.to }))
+      // Bounded in the warehouse — see metabaseQuery. Both questions declare
+      // required date variables and cannot be run without them.
+      //
+      // BOTH are fetched because the audits may arrive on either: a tenant
+      // whose audit question is configured under `findings` still has audit
+      // rows, and asking only for `audits` is what made this tab report
+      // 'no saved question with that ID' beside an N+7 tab drawing 832 of them.
+      const range = { from: f.from, to: f.to }
+      const [aRes, fRes] = await Promise.all([
+        metabaseQuery('audits', range).catch(() => null),
+        metabaseQuery('findings', range).catch(() => null),
+      ])
+      setAudits(aRes)
+      setFindings(fRes)
     } catch (e) {
       setError(e?.message || 'Could not reach the ODIN connector.')
     } finally {
@@ -55,7 +67,14 @@ export default function AuditorsTab({ sites = [], keepUnplaced = true }) {
 
   useEffect(() => { load() }, [load])
 
-  const rows = useMemo(() => (audits?.ok ? audits.rows : []), [audits])
+  // The audits, from whichever question actually carried them — see
+  // auditPopulation. `source` says which, and the page states it, because one
+  // row per audit and one row per checklist line are different populations.
+  const population = useMemo(
+    () => auditPopulation(findings?.ok ? findings.rows : [], audits?.ok ? audits.rows : []),
+    [findings, audits],
+  )
+  const rows = population.rows
   const resolved = useMemo(
     () => resolveOdinRows(rows, sites, { keepUnplaced }),
     [rows, sites, keepUnplaced]
@@ -88,14 +107,18 @@ export default function AuditorsTab({ sites = [], keepUnplaced = true }) {
 
   if (error) return <Blocked title="The ODIN connector did not answer" body={error} onRetry={load} />
 
-  if (audits && !audits.ok) {
+  // Blocked only when NOTHING carried an audit. A failed `audits` query is
+  // survivable when the findings question turns out to hold the audit rows,
+  // which is how a real tenant had it configured.
+  if (population.source === 'none' && (audits?.ok === false || findings?.ok === false)) {
+    const bad = audits?.ok === false ? audits : findings
     return (
       <Blocked
-        title={audits.reason === 'not-configured' ? 'Metabase is not connected yet' : 'The audits question did not run'}
+        title={bad.reason === 'not-configured' ? 'Metabase is not connected yet' : 'No audit data came back'}
         body={
-          audits.reason === 'no-card'
-            ? 'ODIN has no audits question configured. An administrator can point one at it from the ODIN tab’s Connection settings.'
-            : audits.message || 'Metabase could not run the audits question.'
+          bad.reason === 'no-card'
+            ? 'ODIN has no audits question configured. An administrator can point one at it from the Connection settings on the N+7 Pass tab.'
+            : `${bad.message || 'Metabase could not run the question.'} Neither the audits question nor the findings question returned rows carrying a pass score, so there is nothing to attribute to an auditor.`
         }
         onRetry={load}
       />
