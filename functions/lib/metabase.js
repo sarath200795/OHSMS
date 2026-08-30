@@ -489,14 +489,38 @@ export const fieldForColumn = (name) => ALIAS_TO_FIELD[columnKey(name)] || null
 // because folding an unrecognised status into "Open" produces a chart that is
 // confidently wrong, and a chart nobody can tell is wrong is the worst artefact
 // this code could produce.
-export const STATUSES = ['open', 'in_progress', 'on_hold', 'closed']
+// ── Five, not four ───────────────────────────────────────────────────────────
+//
+// `rejected` was the fifth all along and had nowhere to go. On the ticket dump
+// this was first pointed at, REJECTED is 853 of 31,282 rows — every one of them
+// counted as 'unknown', drawn on no bar, and reported only as a caveat.
+//
+// It is deliberately NOT folded into `closed`. A rejected finding was not
+// fixed: somebody looked at it and said it was not a real defect, or was a
+// duplicate. Counting it as closed inflates every remediation figure on the
+// page with work nobody did. It is terminal, though — see isTerminal — so it
+// must not be counted as open either, which is the other easy mistake.
+export const STATUSES = ['open', 'in_progress', 'on_hold', 'closed', 'rejected']
 
 const STATUS_ALIASES = {
   open: ['open', 'new', 'raised', 'reported', 'pending', 'todo', 'notstarted'],
   in_progress: ['inprogress', 'progress', 'wip', 'workinprogress', 'ongoing', 'started', 'active', 'underreview'],
   on_hold: ['onhold', 'hold', 'paused', 'deferred', 'blocked', 'suspended', 'waiting', 'parked'],
   closed: ['closed', 'resolved', 'completed', 'complete', 'done', 'verified', 'fixed', 'rectified'],
+  rejected: ['rejected', 'declined', 'refused', 'invalid', 'duplicate', 'notanissue', 'notavalidissue', 'wontfix', 'cancelled', 'canceled', 'withdrawn'],
 }
+
+/**
+ * Statuses where nothing further is going to happen.
+ *
+ * The distinction that matters for every "still open" figure: closed and
+ * rejected are both finished, and everything else is a queue somebody is
+ * carrying. Exported because both the callable and the dashboard need the same
+ * answer, and `status !== 'closed'` — which is what the code said before
+ * rejected existed — now silently counts a rejected ticket as outstanding.
+ */
+export const TERMINAL_STATUSES = ['closed', 'rejected']
+export const isTerminal = (status) => TERMINAL_STATUSES.includes(status)
 
 const STATUS_LOOKUP = (() => {
   const out = {}

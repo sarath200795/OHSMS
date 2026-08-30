@@ -12,7 +12,7 @@
 // useAccessibleSites the modules use is the only source of that list.
 // ─────────────────────────────────────────────────────────────────────────────
 import { useEffect, useMemo, useState } from 'react'
-import { BarChart3, AlertTriangle, Siren, FireExtinguisher, Users, Cctv, Scale, ListChecks, ClipboardCheck, Radar, UserCheck } from 'lucide-react'
+import { BarChart3, AlertTriangle, Siren, FireExtinguisher, Users, Cctv, Scale, ListChecks, ClipboardCheck, Radar, UserCheck, Ticket } from 'lucide-react'
 import { useAuth } from '../../shared/auth/AuthContext'
 import { subscribeCollections, emptyCollections } from '../../shared/org/orgData'
 import { useAccessibleSites } from '../../shared/org/useAccessibleSites'
@@ -52,7 +52,12 @@ const TABS = [
   //
   // Once granted, an admin connects Metabase in Settings → Integrations, which
   // is also where the API key is rotated.
-  { key: 'odin', label: 'ODIN', icon: Radar, needs: 'odin' },
+  // Split in two, because they are two questions with two audiences. The
+  // scores tab is read by whoever owns the audit programme; the tickets tab
+  // by whoever has to chase the fixes. One combined tab meant each of them
+  // scrolled past the other’s half every time.
+  { key: 'fls', label: 'N+7 Pass', icon: Radar, needs: 'odin' },
+  { key: 'tickets', label: 'QFLS Tickets', icon: Ticket, needs: 'odin' },
   // Beside ODIN because it reads the same warehouse question. ODIN asks whether
   // the estate is safe; this asks whether the audit programme actually ran.
   { key: 'auditors', label: 'Auditors', icon: UserCheck, needs: 'odin' },
@@ -174,7 +179,7 @@ export default function Analytics() {
           A non-admin with no site grant keeps the message, because ODIN scopes
           them to their sites too (keepUnplaced below) and an empty dashboard
           with no explanation is the worst of both. */}
-      {sites.length === 0 && !(tab === 'odin' && isAdmin) ? (
+      {sites.length === 0 && !((tab === 'fls' || tab === 'tickets') && isAdmin) ? (
         <div className="card px-6 py-14 text-center">
           <p className="text-[15px] font-bold text-ink-900">No sites are visible to you</p>
           <p className="mx-auto mt-1.5 max-w-[46ch] text-[13px] leading-relaxed text-ink-500">
@@ -182,12 +187,23 @@ export default function Analytics() {
             or grant you access to a region or entity.
           </p>
         </div>
-      ) : tab === 'odin' ? (
-        // The one tab whose data does not come from Firestore: ODIN queries
-        // Metabase through a callable. `sites` is still handed to it, because
-        // the site register is what puts a warehouse row on the map and what
-        // bounds a viewer to the sites they may see.
-        <OdinTab sites={sites} orgId={orgId} actor={actor} isAdmin={isAdmin} keepUnplaced={isAdmin} />
+      ) : tab === 'fls' || tab === 'tickets' ? (
+        // The tabs whose data does not come from Firestore: both query
+        // Metabase through a callable, and both are one component told which
+        // half to draw — the filter bar, the fetch and the arithmetic are the
+        // same for either, and two copies of that is two things to keep in
+        // step. `sites` is still handed over, because the site register is
+        // what puts a warehouse row on the map and what bounds a viewer to
+        // the sites they may see.
+        <OdinTab
+          key={tab}
+          view={tab === 'fls' ? 'scores' : 'tickets'}
+          sites={sites}
+          orgId={orgId}
+          actor={actor}
+          isAdmin={isAdmin}
+          keepUnplaced={isAdmin}
+        />
       ) : tab === 'auditors' ? (
         <AuditorsTab sites={sites} keepUnplaced={isAdmin} />
       ) : tab === 'incidents' ? (
