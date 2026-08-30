@@ -10,7 +10,7 @@ import { describe, it, expect } from 'vitest'
 import {
   bucketOf, passTrend, ticketTrend, countBy, toDateOf, isBreach,
   dimensionsPresent, joinQuality, resolveOdinRows, filterOdinRows,
-  GRANULARITY_KEYS, PASS_MARK,
+  GRANULARITY_KEYS, PASS_MARK, recoveryStages, scoreBands, centreWatchlist,
 } from './odinAnalytics'
 
 /** The shape functions/lib/metabase.js hands back, with the fields these tests need. */
@@ -229,5 +229,117 @@ describe('filterOdinRows, on the estate dimensions', () => {
 
   it('keeps an undated row rather than hiding it the moment a range is set', () => {
     expect(filterOdinRows([row({ auditDate: '' })], { from: '2026-01-01', to: '2026-01-31' })).toHaveLength(1)
+  })
+})
+
+// ── The FLS dashboard's own arithmetic ───────────────────────────────────────
+
+describe('recoveryStages', () => {
+  it('counts the same audits three times as remediation is credited', () => {
+    const r = recoveryStages([
+      audit({ passPct: 80, passPctN7: 95, passPctToDate: 95 }),
+      audit({ passPct: 95, passPctN7: 95, passPctToDate: 100 }),
+      audit({ passPct: 40, passPctN7: 60, passPctToDate: 92 }),
+    ])
+    expect(r.total).toBe(3)
+    expect(r.stages.map((s) => [s.label, s.passed])).toEqual([
+      ['Passed on the day', 1],
+      ['Passed after 7 days', 2],
+      ['Passed to date', 3],
+    ])
+  })
+
+  it('divides every stage by the same denominator', () => {
+    // Dividing a later stage by its own smaller n would draw recovery that did
+    // not happen — an audit missing a to-date score still took place.
+    const r = recoveryStages([
+      audit({ passPct: 95, passPctN7: 95, passPctToDate: null }),
+      audit({ passPct: 95, passPctN7: 95, passPctToDate: 100 }),
+    ])
+    expect(r.total).toBe(2)
+    expect(r.stages.find((s) => s.label === 'Passed to date').rate).toBe(50)
+  })
+
+  it('drops the to-date stage entirely when nothing carries one', () => {
+    const r = recoveryStages([audit({ passPct: 95, passPctN7: 95, passPctToDate: null })])
+    expect(r.stages.map((s) => s.label)).toEqual(['Passed on the day', 'Passed after 7 days'])
+  })
+
+  it('is empty rather than zero when there are no scores at all', () => {
+    expect(recoveryStages([]).total).toBe(0)
+    expect(recoveryStages([row({ passPct: null, passPctN7: null })]).total).toBe(0)
+  })
+})
+
+describe('scoreBands', () => {
+  it('bands audits either side of the pass mark', () => {
+    const { bands, scored } = scoreBands([
+      audit({ passPctN7: 55 }), audit({ passPctN7: 88 }),
+      audit({ passPctN7: 92 }), audit({ passPctN7: 99 }),
+    ])
+    expect(scored).toBe(4)
+    const byName = Object.fromEntries(bands.map((b) => [b.name, b.value]))
+    expect(byName['< 60']).toBe(1)
+    expect(byName['85–90']).toBe(1)
+    expect(byName['90–95']).toBe(1)
+    expect(byName['95–100']).toBe(1)
+  })
+
+  it('marks which bands are passing, so the colours are not guessed', () => {
+    const { bands } = scoreBands([audit({ passPctN7: 99 })])
+    expect(bands.filter((b) => b.passing).map((b) => b.name)).toEqual(['90–95', '95–100'])
+  })
+
+  it('puts a perfect score in the top band rather than off the end', () => {
+    const { bands } = scoreBands([audit({ passPctN7: 100 })])
+    expect(bands.find((b) => b.name === '95–100').value).toBe(1)
+  })
+
+  it('falls back to the day-0 score when there is no N+7 one', () => {
+    const { scored } = scoreBands([audit({ passPct: 70, passPctN7: null })])
+    expect(scored).toBe(1)
+  })
+})
+
+describe('centreWatchlist', () => {
+  const at = (site, over = {}) => ({ ...row({ site, ...over }) })
+
+  it('puts audits and tickets for one centre on one line', () => {
+    const out = centreWatchlist(
+      [at('Plant 2', { status: 'open', sla: 'open-SLA-Breached', priority: 'Code_red' })],
+      [{ ...at('Plant 2'), passPctN7: 95 }],
+    )
+    expect(out).toHaveLength(1)
+    expect(out[0]).toMatchObject({ site: 'Plant 2', audits: 1, passed: 1, tickets: 1, open: 1, breached: 1, red: 1 })
+  })
+
+  it('rates the centre against the pass mark', () => {
+    const out = centreWatchlist([], [
+      { ...at('A'), passPctN7: 95 }, { ...at('A'), passPctN7: 50 },
+    ])
+    expect(out[0].passRate).toBe(50)
+  })
+
+  it('sorts worst pass rate first, and sinks the unaudited rather than floating them', () => {
+    // A centre with no audit has a null rate, and null must not read as zero —
+    // that would put every unaudited centre at the top of a watchlist.
+    const out = centreWatchlist(
+      [at('NoAudits')],
+      [{ ...at('Good'), passPctN7: 99 }, { ...at('Bad'), passPctN7: 10 }],
+    )
+    expect(out.map((r) => r.site)).toEqual(['Bad', 'Good', 'NoAudits'])
+  })
+
+  it('joins on the matched site so two spellings do not become two rows', () => {
+    const rows = resolveOdinRows(
+      [at('plant 2'), { ...at('PLANT  2'), passPctN7: 95 }],
+      [{ id: 's1', name: 'Plant 2' }],
+    )
+    expect(centreWatchlist([rows[0]], [rows[1]])).toHaveLength(1)
+  })
+
+  it('survives a population with neither audits nor tickets', () => {
+    expect(centreWatchlist([], [])).toEqual([])
+    expect(centreWatchlist()).toEqual([])
   })
 })

@@ -42,7 +42,17 @@ const PALETTE = [
 export const paletteColor = (i) => PALETTE[i % PALETTE.length]
 
 const isNum = (v) => typeof v === 'number' && Number.isFinite(v)
-const norm = (s) => String(s || '').trim().toLowerCase()
+/**
+ * A site name reduced to what two systems can be expected to agree on.
+ *
+ * Internal runs of whitespace collapse as well as the ends being trimmed:
+ * "Cult  Pitampura" and "Cult Pitampura" are one centre, and a double space
+ * pasted from a spreadsheet is an invisible reason for a join to miss. Matches
+ * normName in parseSitesCsv.js, which decides the same question for the site
+ * importer — the two disagreeing is how a name matches on one screen and not
+ * on the other.
+ */
+const norm = (s) => String(s || '').trim().toLowerCase().replace(/\s+/g, ' ')
 
 const UNPLACED = '(not stated)'
 
@@ -813,6 +823,9 @@ export function odinAnalytics(rows = [], audits = [], sites = [], f = {}, { keep
     byPriority: countBy(filtered, 'priority'),
     bySla: countBy(filtered, 'sla'),
     byCheckpoint: countBy(filtered, 'checkpoint', { limit: 12 }),
+    recovery: recoveryStages(passRows),
+    distribution: scoreBands(passRows),
+    watchlist: centreWatchlist(filtered, auditsFiltered),
     breached: filtered.reduce((n, r) => n + (isBreach(r.sla) ? (isNum(r.count) ? r.count : 1) : 0), 0),
 
     // How the warehouse rows found a site in this app's register. The map and
@@ -880,6 +893,123 @@ export function auditorMatrix(auditRows = [], dimKey = 'region') {
     }),
     total: rows.reduce((n, r) => n + r.total, 0),
   }
+}
+
+/**
+ * The same audits counted three times: passing on the day, passing once the
+ * seven-day window is credited, and passing with every closure to date.
+ *
+ * An ordered progression rather than three groups, which is why the tab draws
+ * it as one ramp. The denominator is shared and stated, because "2,157 passed"
+ * means nothing without the 3,242 it is out of.
+ */
+export function recoveryStages(rows = []) {
+  const count = (read) => {
+    let n = 0
+    let p = 0
+    for (const r of rows || []) {
+      const v = read(r)
+      if (!isNum(v)) continue
+      n++
+      if (v >= PASS_MARK) p++
+    }
+    return { n, p }
+  }
+  const d0 = count(day0Of)
+  const n7 = count(n7Of)
+  const td = count(toDateOf)
+  // The denominator is the largest of the three: an audit carrying a day-0
+  // score but no to-date one still happened, and dividing the later stages by
+  // their own smaller n would draw recovery that did not occur.
+  const total = Math.max(d0.n, n7.n, td.n)
+  const stage = (label, c) => ({ label, passed: c.p, scored: c.n, rate: total ? pct((c.p / total) * 100) : null })
+  return {
+    total,
+    stages: [
+      stage('Passed on the day', d0),
+      stage('Passed after 7 days', n7),
+      ...(td.n ? [stage('Passed to date', td)] : []),
+    ],
+  }
+}
+
+/**
+ * Audits by score band, judged after the seven-day window.
+ *
+ * Banded either side of the pass mark rather than evenly, because a near miss
+ * and a collapse are different problems with different fixes and an even
+ * ten-band histogram hides which one you have.
+ */
+export function scoreBands(rows = []) {
+  const bands = [
+    { name: '< 60', lo: 0, hi: 60 },
+    { name: '60–75', lo: 60, hi: 75 },
+    { name: '75–85', lo: 75, hi: 85 },
+    { name: `85–${PASS_MARK}`, lo: 85, hi: PASS_MARK },
+    { name: `${PASS_MARK}–95`, lo: PASS_MARK, hi: 95 },
+    { name: '95–100', lo: 95, hi: 100.01 },
+  ].map((b) => ({ ...b, value: 0, passing: b.lo >= PASS_MARK }))
+
+  let scored = 0
+  for (const r of rows || []) {
+    const v = isNum(n7Of(r)) ? n7Of(r) : day0Of(r)
+    if (!isNum(v)) continue
+    scored++
+    const b = bands.find((x) => v >= x.lo && v < x.hi)
+    if (b) b.value += 1
+  }
+  return { bands, scored }
+}
+
+/**
+ * One row per centre, audits and tickets side by side.
+ *
+ * A table on purpose. Six measures across hundreds of centres is past what any
+ * colour scale can carry, and this is the artefact somebody takes into a review
+ * — sorted worst-first, because that is the order the meeting runs in.
+ *
+ * The two questions are joined on the site each row already resolved to, so a
+ * centre the register knows by one name and the warehouse by another still
+ * lands on one line.
+ */
+export function centreWatchlist(findingRows = [], auditRows = []) {
+  const byKey = new Map()
+  const keyOf = (r) => r.matchedSiteId || norm(r.site) || UNPLACED
+  const get = (r) => {
+    const k = keyOf(r)
+    let g = byKey.get(k)
+    if (!g) {
+      g = { key: k, site: r.site || UNPLACED, region: r.region || '', city: r.city || '', audits: 0, passed: 0, scored: 0, tickets: 0, open: 0, breached: 0, red: 0 }
+      byKey.set(k, g)
+    }
+    if (!g.site || g.site === UNPLACED) g.site = r.site || g.site
+    if (!g.region) g.region = r.region || ''
+    if (!g.city) g.city = r.city || ''
+    return g
+  }
+
+  for (const r of auditRows || []) {
+    if (!r) continue
+    const g = get(r)
+    g.audits += 1
+    const v = isNum(n7Of(r)) ? n7Of(r) : day0Of(r)
+    if (isNum(v)) { g.scored += 1; if (v >= PASS_MARK) g.passed += 1 }
+  }
+  for (const r of findingRows || []) {
+    if (!r) continue
+    const g = get(r)
+    const n = isNum(r.count) ? r.count : 1
+    g.tickets += n
+    if (r.status !== 'closed') g.open += n
+    if (isBreach(r.sla)) g.breached += n
+    if (/red/i.test(String(r.priority || ''))) g.red += n
+  }
+
+  return [...byKey.values()]
+    .map((g) => ({ ...g, passRate: g.scored ? pct((g.passed / g.scored) * 100) : null }))
+    // Worst pass rate first; centres with no audit at all sort to the bottom
+    // rather than to the top, where a null would otherwise read as zero.
+    .sort((a, b) => (a.passRate ?? 1e3) - (b.passRate ?? 1e3) || b.open - a.open || a.site.localeCompare(b.site))
 }
 
 /** How many rows matched a site by id, by name, or not at all. */
