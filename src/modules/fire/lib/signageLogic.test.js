@@ -40,6 +40,36 @@ describe('isTypeCovered', () => {
     expect(isTypeCovered(EXT_SIGN_TYPE, { count: 1, status: 'issue' })).toBe(false)
     expect(isTypeCovered(EXT_SIGN_TYPE, { count: 1, status: 'ok' })).toBe(true)
   })
+
+  // A surveyor recording the sign as absent is the finding. Counting that
+  // record as coverage made the matrix draw the cell red while the compliance
+  // total counted it green — the one question this module answers, answered
+  // both ways at once.
+  it('does not count a sign recorded as Missing', () => {
+    expect(isTypeCovered('No Smoking', { count: 1, status: 'missing' })).toBe(false)
+    expect(isTypeCovered(EXT_SIGN_TYPE, { count: 1, status: 'missing' })).toBe(false)
+  })
+
+  it('does not count a type nobody has recorded at all', () => {
+    expect(isTypeCovered('No Smoking', { count: 0, status: 'none' })).toBe(false)
+    expect(isTypeCovered(EXT_SIGN_TYPE, { count: 0, status: 'none' })).toBe(false)
+  })
+
+  // The matrix and the dashboard read one site through signageCell and
+  // isTypeCovered in that order, so the two must never disagree about a cell.
+  it('agrees with signageCell on every status it produces', () => {
+    const missing = signageCell([{ condition: 'Missing' }], 'No Smoking')
+    expect(missing.status).toBe('missing')
+    expect(isTypeCovered('No Smoking', missing)).toBe(false)
+
+    const faded = signageCell([{ condition: 'Faded' }], 'No Smoking')
+    expect(faded.status).toBe('issue')
+    expect(isTypeCovered('No Smoking', faded)).toBe(true)
+
+    const ok = signageCell([{ condition: 'OK' }], 'No Smoking')
+    expect(ok.status).toBe('ok')
+    expect(isTypeCovered('No Smoking', ok)).toBe(true)
+  })
 })
 
 describe('siteAttributeMap / extCountBySite', () => {

@@ -24,6 +24,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Rocket, CheckCircle2, FileWarning, CircleDashed } from 'lucide-react'
 import { Panel, Stat, NoData, Picker, FilterRow } from './ui'
 import Breakdown from './Breakdown'
+import IncompleteNotice from '../../shared/ui/IncompleteNotice'
 import { useAuth } from '../../shared/auth/AuthContext'
 import { documentsService } from '../../modules/documents/lib/service'
 import { PRE_LAUNCH_TOTAL } from '../../modules/documents/lib/prelaunch'
@@ -76,6 +77,10 @@ function ProgressRow({ name, sub, ready, total, pct }) {
 export default function PreLaunchTab({ sites = [], orgId }) {
   const { role } = useAuth()
   const [docs, setDocs] = useState(null) // null = still loading
+  // A capped or failed read makes every figure on this tab too LOW, and too low
+  // here reads as "this site is behind" — a number somebody acts on. It is said
+  // above the figures, never below them.
+  const [incomplete, setIncomplete] = useState(null)
   const [f, setF] = useState({ siteId: 'all', region: 'all', entity: 'all' })
 
   const viewer = useMemo(() => ({ role, sites }), [role, sites])
@@ -83,7 +88,11 @@ export default function PreLaunchTab({ sites = [], orgId }) {
   useEffect(() => {
     if (!orgId) return undefined
     setDocs(null)
-    return documentsService.subscribe(orgId, setDocs, viewer)
+    return documentsService.subscribe(
+      orgId,
+      (rows, notice) => { setDocs(rows); setIncomplete(notice) },
+      viewer
+    )
   }, [orgId, viewer])
 
   const opts = useMemo(() => prelaunchFacets(sites), [sites])
@@ -96,6 +105,8 @@ export default function PreLaunchTab({ sites = [], orgId }) {
 
   return (
     <div className="animate-fade-in-up">
+      <IncompleteNotice incomplete={incomplete} className="mb-5" />
+
       <div className="card mb-5 divide-y divide-ink-100">
         <FilterRow label="Where">
           <Picker id="pl-site" label="Site" value={f.siteId} onChange={(e) => setF((v) => ({ ...v, siteId: e.target.value }))}>

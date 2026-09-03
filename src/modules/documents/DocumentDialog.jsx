@@ -6,6 +6,7 @@ import {
   DOC_TYPES, SOURCE_OPTIONS, SOURCE_UPLOAD, SOURCE_LINK, isSafeDocumentUrl,
 } from './lib/docTypes'
 import { fileChoices, nodeAt, nodeClassification, storageFolder, breadcrumbOf } from './lib/tree'
+import { refiledKey } from './lib/prelaunch'
 
 /**
  * Adding a document, or editing one.
@@ -142,13 +143,23 @@ export default function DocumentDialog({
     }
 
     const { location, __node: _node, ...rest } = form
+    const classification = nodeClassification(tree, location, sites)
+
+    // Re-filing to another SITE drops the checklist row it satisfied. The rule
+    // lives in refiledKey so it can be tested without standing up a browser.
+    if (rest.prelaunchKey) {
+      const kept = refiledKey(rest.prelaunchKey, doc?.siteId, classification.siteId)
+      if (kept) rest.prelaunchKey = kept
+      else delete rest.prelaunchKey
+    }
+
     return onSubmit({
       ...rest,
       // The folder decides who may see the document. nodeClassification writes
       // level / region / siteId / visibility and the siteRegion + siteEntity
       // snapshot firestore.rules reads, so the tree and the security rule can
       // never disagree about where this document belongs.
-      ...nodeClassification(tree, location, sites),
+      ...classification,
       folderId: location,
       // Recorded so the folder a file was filed under survives a later move:
       // the bytes do not move, and a record claiming a folder its file is not

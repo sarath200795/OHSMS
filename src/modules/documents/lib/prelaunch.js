@@ -150,6 +150,28 @@ export const PRE_LAUNCH_CATEGORY_BY_KEY = Object.fromEntries(PRE_LAUNCH_CATEGORI
 /** The checklist item a document was filed against, or null. */
 export const prelaunchItemOf = (doc) => PRE_LAUNCH_ITEM_BY_KEY[clean(doc?.prelaunchKey)] || null
 
+/**
+ * The checklist key a document keeps after being re-filed, or '' if it loses it.
+ *
+ * A key says "this is NORTH PLANT's earth pit report". Readiness matches on site
+ * plus key, so carrying the key across to another site closes that site's row
+ * and reopens the old one, on the strength of a certificate belonging to
+ * neither. Re-filing rewrites every other classification field; this is the one
+ * that has to be dropped rather than rewritten, because nothing at the new site
+ * can stand in for it.
+ *
+ * Moving WITHIN a site keeps it: the checklist asks whether the site can produce
+ * the document, not which folder it sits in, so tidying a certificate into a
+ * subfolder must not reopen its row. A move to org or region level names no
+ * site at all, and so keeps no key.
+ */
+export function refiledKey(key, fromSiteId, toSiteId) {
+  const k = clean(key)
+  if (!k) return ''
+  const to = clean(toSiteId)
+  return to && to === clean(fromSiteId) ? k : ''
+}
+
 // ── Readiness ────────────────────────────────────────────────────────────────
 //
 // Two states, not one, because they fail differently and get fixed by different

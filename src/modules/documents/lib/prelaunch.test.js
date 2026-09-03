@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   PRE_LAUNCH_CATEGORIES, PRE_LAUNCH_ITEMS, PRE_LAUNCH_TOTAL,
   categoryReadiness, matchPrelaunch, pct, prelaunchItemOf, prelaunchReadiness,
+  refiledKey,
 } from './prelaunch'
 import { DOC_TYPE_BY_VALUE } from './docTypes'
 
@@ -127,6 +128,43 @@ describe('readiness', () => {
   it('answers for one category on its own', () => {
     expect(categoryReadiness('elevators', [uploaded('elevators-01')]).ready).toBe(1)
     expect(categoryReadiness('no-such-category', [])).toBeNull()
+  })
+})
+
+// Re-filing rewrites every classification field a document carries. The
+// checklist key is the one that cannot be rewritten — nothing at the new site
+// stands in for "North Plant's earth pit report" — so it is dropped instead.
+describe('refiledKey', () => {
+  it('keeps the key when a document is tidied within its own site', () => {
+    expect(refiledKey('fas-01', 's1', 's1')).toBe('fas-01')
+  })
+
+  // The bug this exists to stop: one change of the Location picker closed the
+  // row at the new site and reopened it at the old one.
+  it('drops the key when the document moves to another site', () => {
+    expect(refiledKey('fas-01', 's1', 's2')).toBe('')
+  })
+
+  // Org and region level name no site, so they can satisfy no site's row.
+  it('drops the key when the document stops belonging to a site at all', () => {
+    expect(refiledKey('fas-01', 's1', '')).toBe('')
+    expect(refiledKey('fas-01', 's1', null)).toBe('')
+  })
+
+  // A document that never satisfied a row has nothing to lose, however it moves.
+  it('is empty for a document carrying no key', () => {
+    expect(refiledKey('', 's1', 's1')).toBe('')
+    expect(refiledKey(null, 's1', 's2')).toBe('')
+  })
+
+  // A key arriving at a site from nowhere would satisfy a row on the strength
+  // of a document that was never that site's.
+  it('drops a key on a document that had no site to begin with', () => {
+    expect(refiledKey('fas-01', '', 's1')).toBe('')
+  })
+
+  it('ignores surrounding whitespace on either id', () => {
+    expect(refiledKey(' fas-01 ', ' s1', 's1 ')).toBe('fas-01')
   })
 })
 
