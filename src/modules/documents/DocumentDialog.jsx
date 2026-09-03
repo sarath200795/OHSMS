@@ -145,9 +145,17 @@ export default function DocumentDialog({
     const { location, __node: _node, ...rest } = form
     const classification = nodeClassification(tree, location, sites)
 
-    // Re-filing to another SITE drops the checklist row it satisfied. The rule
-    // lives in refiledKey so it can be tested without standing up a browser.
-    if (rest.prelaunchKey) {
+    // Re-filing an EXISTING document to another site drops the checklist row it
+    // satisfied — see refiledKey, which owns that rule.
+    //
+    // `mode === 'edit'` is not decoration. A NEW document has no previous site
+    // by definition, so there is nothing to re-file and nothing to compare
+    // against: running the rule on a create asked whether '' equalled the site
+    // being filed into, got no, and threw away the very key the placeholder had
+    // just seeded. Every document added from a checklist row saved as an
+    // ordinary file in the folder and left its row open — the feature, silently
+    // off, on the one path it exists for.
+    if (mode === 'edit' && rest.prelaunchKey) {
       const kept = refiledKey(rest.prelaunchKey, doc?.siteId, classification.siteId)
       if (kept) rest.prelaunchKey = kept
       else delete rest.prelaunchKey
