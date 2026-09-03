@@ -1,13 +1,91 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Signpost, ShieldCheck, AlertTriangle, Ban, CircleSlash, ClipboardList, Filter, X, ArrowRight, Building2 } from 'lucide-react'
+import { Signpost, ShieldCheck, AlertTriangle, Ban, CircleSlash, ClipboardList, Filter, X, ArrowRight, Building2, GitCompareArrows, Copy } from 'lucide-react'
 import { PageHeader, EmptyState, Spinner } from '../components/ui'
 import ChipRow from '../components/ChipRow'
 import { useFleet } from '../context/FleetContext'
 import { signageSummary, siteAttributeMap } from '../lib/signageLogic'
+import { REGISTERS, registerGapSummary, siteRegisters } from '../lib/siteRegisters'
 import { SIGNAGE_CONDITION_COLOR, REGIONS, ENTITIES } from '../lib/constants'
 import { HealthBar } from '../components/AssetHealth'
 import IncompleteNotice from '../../../shared/ui/IncompleteNotice'
+
+/**
+ * Why the site counts on this page and on the extinguisher register differ.
+ *
+ * There is no single site list in this module: useFleet takes the distinct
+ * centre name across five registers, so any site named in ANY of them is a row
+ * here. That is deliberate — a site with no signage has to appear or its gap
+ * disappears with it — but it leaves two very different things looking
+ * identical, and this panel is the only place that tells them apart.
+ *
+ * A site genuinely missing from a register is work: nobody surveyed it. A site
+ * whose name is spelt two ways is a PHANTOM: it sits in the denominator at 0 %
+ * forever, so it does not merely miscount sites, it understates compliance and
+ * looks exactly like a site that needs attention. Variants are shown first for
+ * that reason.
+ */
+function RegisterGaps({ result }) {
+  const variants = result.variants
+  const gaps = REGISTERS.filter((r) => result.missing[r.key]?.length)
+  if (!variants.length && !gaps.length) return null
+
+  return (
+    <div className="card mt-6 p-4">
+      <div className="mb-1 flex items-center gap-2">
+        <GitCompareArrows size={16} className="text-ink-400" />
+        <p className="text-sm font-bold text-ink-900">Where these sites come from</p>
+      </div>
+      <p className="mb-3 text-xs leading-relaxed text-ink-500">
+        {registerGapSummary(result, 'ext') ||
+          'Every register names the same sites.'}{' '}
+        Site names are free text on each record, not a link to the site register,
+        so a name spelt two ways counts as two sites here.
+      </p>
+
+      {variants.length > 0 && (
+        <div className="mb-4 rounded-xl bg-amber-50 p-3">
+          <p className="flex items-center gap-1.5 text-xs font-bold text-amber-900">
+            <Copy size={13} />
+            {variants.length} site name{variants.length === 1 ? '' : 's'} spelt more than one way
+          </p>
+          <p className="mt-0.5 text-[11px] leading-relaxed text-amber-800">
+            Each of these is one site counted twice. The duplicate reads 0 % here
+            and pulls overall coverage down — rename it on the register to fix
+            the figure.
+          </p>
+          <ul className="mt-2 space-y-1">
+            {variants.map((v) => (
+              <li key={v.key} className="text-[11.5px] text-amber-900">
+                {v.names.map((n) => (
+                  <span key={n} className="mr-1.5 inline-block rounded bg-white/70 px-1.5 py-0.5 font-semibold">{n}</span>
+                ))}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {gaps.map((r) => (
+          <div key={r.key} className="rounded-xl bg-clay-50 p-3">
+            <p className="text-xs font-bold text-ink-800">
+              Not on the {r.name.toLowerCase()} register
+              <span className="ml-1.5 font-semibold text-ink-400">
+                {result.missing[r.key].length} of {result.totals.any}
+              </span>
+            </p>
+            <p className="mt-1 text-[11px] leading-relaxed text-ink-500">
+              {result.missing[r.key].slice(0, 12).join(' · ')}
+              {result.missing[r.key].length > 12 &&
+                ` · and ${result.missing[r.key].length - 12} more`}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
 
 function Stat({ icon: Icon, label, value, color }) {
   return (
@@ -33,7 +111,7 @@ function Meter({ pct }) {
 const EMPTY_FILTERS = { regions: [], entities: [] }
 
 export default function SignageDashboard() {
-  const { signages, sites, extinguishers, incomplete, loading } = useFleet()
+  const { signages, sites, extinguishers, aeds, fas, mockDrills, incomplete, loading } = useFleet()
   const [filters, setFilters] = useState(EMPTY_FILTERS)
 
   const f = filters
@@ -62,6 +140,15 @@ export default function SignageDashboard() {
   )
 
   const s = useMemo(() => signageSummary(scopedSites, signages, extinguishers), [scopedSites, signages, extinguishers])
+
+  // Deliberately NOT narrowed by the region / entity filters. The question it
+  // answers — why does this page count more sites than the extinguisher
+  // register — is about the whole estate, and a filtered answer would move
+  // every time somebody touched a chip.
+  const registers = useMemo(
+    () => siteRegisters({ extinguishers, signages, aeds, fas, mockDrills }),
+    [extinguishers, signages, aeds, fas, mockDrills]
+  )
 
   if (loading) return <div className="grid place-items-center py-20"><Spinner size={28} /></div>
 
@@ -185,12 +272,19 @@ export default function SignageDashboard() {
               </div>
 
               <p className="mt-3 flex items-center gap-1.5 text-xs text-ink-500">
-                <CircleSlash size={13} /> Coverage counts a signage type as covered once the site has a record for it; the
-                fire-extinguisher sign additionally has to match the site&rsquo;s extinguisher count. Damaged, faded and obstructed
-                signs still count as covered — they are listed under Issues.
+                <CircleSlash size={13} /> Coverage counts a signage type as covered once the site has a record saying the sign
+                is THERE; the fire-extinguisher sign additionally has to match the site&rsquo;s extinguisher count. Damaged, faded
+                and obstructed signs still count as covered — they are listed under Issues. A sign recorded as Missing does not:
+                that record is a survey saying the sign is absent.
               </p>
             </>
           )}
+
+          {/* Outside the filtered branch on purpose. This answers "why does
+              this page count more sites than the extinguisher register", which
+              is a question about the whole estate — an answer that moved every
+              time somebody touched a region chip would not be one. */}
+          <RegisterGaps result={registers} />
         </>
       )}
     </div>
