@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import {
-  Building2, ChevronRight, ExternalLink, Eye, File as FileIcon, FolderPlus,
-  Folder as FolderIcon, Landmark, Link2, MapPin, MoreVertical, Pencil, Plus,
-  Rocket, Search, Trash2, Upload,
+  Building2, CheckCircle2, ChevronRight, CircleDashed, ExternalLink, Eye,
+  File as FileIcon, FolderPlus, Folder as FolderIcon, Landmark, Link2,
+  ListChecks, MapPin, MoreVertical, Pencil, Plus, Rocket, Search, Trash2, Upload,
 } from 'lucide-react'
 import { useAuth } from '../../shared/auth/AuthContext'
 import { can } from '../../shared/auth/permissions'
@@ -20,8 +20,10 @@ import {
 } from './lib/docTypes'
 import {
   MAX_DEPTH, PRE_LAUNCH, breadcrumbOf, buildTree, childrenOf, countTree, filesIn,
-  folderNameError, manualDepth, nodeAt, resolveNode, rootsOf, siblingsOf, storageFolder, subtreeOf,
+  folderNameError, manualDepth, nodeAt, prelaunchCategoryOf, resolveNode, rootsOf,
+  siblingsOf, storageFolder, subtreeOf,
 } from './lib/tree'
+import { PRE_LAUNCH_TOTAL, prelaunchReadiness } from './lib/prelaunch'
 import DocumentDialog from './DocumentDialog'
 
 const module = MODULE_BY_KEY.documents
@@ -51,6 +53,7 @@ const NODE_ICON = {
   entity: Building2,
   site: FolderIcon,
   bucket: FolderIcon,
+  prelaunch: ListChecks,
   manual: FolderIcon,
   unfiled: FolderIcon,
 }
@@ -61,8 +64,65 @@ const NODE_TONE = {
   entity: 'text-violet-500',
   site: 'text-ink-400',
   bucket: 'text-ink-400',
+  prelaunch: 'text-brand-500',
   manual: 'text-ink-400',
   unfiled: 'text-amber-500',
+}
+
+// ── Readiness ────────────────────────────────────────────────────────────────
+//
+// Green only at 100%. A handover pack that is 34 of 35 is not nearly done, it
+// is not done, and a bar that has gone green at 97% stops anybody reading the
+// number beside it.
+
+const readyTone = (r) => (r.complete ? 'bg-emerald-500' : r.ready ? 'bg-amber-500' : 'bg-clay-200')
+
+function ReadinessBar({ readiness, className = '' }) {
+  return (
+    <span
+      role="img"
+      aria-label={`${readiness.pct}% ready — ${readiness.ready} of ${readiness.total} documents attached`}
+      className={`block h-1.5 w-full overflow-hidden rounded-full bg-clay-100 ${className}`}
+    >
+      <span
+        className={`block h-full rounded-full transition-[width] ${readyTone(readiness)}`}
+        style={{ width: `${readiness.pct}%` }}
+      />
+    </span>
+  )
+}
+
+/**
+ * The banner over a Pre Launch folder: how much of the handover pack exists.
+ *
+ * `stub` gets its own sentence because it is the failure nobody chases — a row
+ * with a record against it reads as done on any count of records, and produces
+ * nothing on the day.
+ */
+function ReadinessPanel({ title, subtitle, readiness }) {
+  return (
+    <div className="card mb-4 px-4 py-3.5">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <p className="text-[13px] font-bold text-ink-900">{title}</p>
+        <p className="text-[13px] font-bold text-ink-900">
+          {readiness.pct}%
+          <span className="ml-1.5 text-[12px] font-semibold text-ink-400">
+            {readiness.ready} of {readiness.total} ready
+          </span>
+        </p>
+      </div>
+      <ReadinessBar readiness={readiness} className="mt-2" />
+      <p className="mt-2 text-[11.5px] leading-relaxed text-ink-500">
+        {subtitle}
+        {readiness.stub > 0 && (
+          <span className="font-semibold text-amber-700">
+            {' '}{readiness.stub} row{readiness.stub === 1 ? ' has' : 's have'} a record with nothing
+            attached — those count as missing.
+          </span>
+        )}
+      </p>
+    </div>
+  )
 }
 
 // ── A tile's kebab ───────────────────────────────────────────────────────────
@@ -125,7 +185,7 @@ function TileMenu({ label, items }) {
 
 const TILE = 'group card flex items-center gap-3 p-3 text-left transition hover:shadow-clay-md'
 
-function FolderTile({ node, count, onOpen, menu }) {
+function FolderTile({ node, count, readiness, onOpen, menu }) {
   // Pre Launch earns its own icon: it is the one folder whose contents are
   // time-bound, and it is the one people are told to go and fill.
   const Icon = node.kind === 'bucket' && node.id.endsWith(PRE_LAUNCH)
@@ -138,14 +198,77 @@ function FolderTile({ node, count, onOpen, menu }) {
         <Icon size={22} className={`flex-none ${NODE_TONE[node.kind] || 'text-ink-400'}`} />
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-bold text-ink-900">{node.name}</span>
-          {/* A folder holding nothing is the finding an audit is looking for, so
-              the zero is shown and greyed rather than hidden. */}
-          <span className={`block text-xs font-semibold ${count ? 'text-ink-500' : 'text-ink-300'}`}>
-            {count} document{count === 1 ? '' : 's'}
-          </span>
+          {/* A folder measured against a checklist reports the checklist, not a
+              count. "7 documents" in a folder that owes 12 is the number that
+              lets a handover through. */}
+          {readiness ? (
+            <>
+              <span className="block text-xs font-semibold text-ink-500">
+                {readiness.ready} of {readiness.total} ready
+              </span>
+              <ReadinessBar readiness={readiness} className="mt-1.5" />
+            </>
+          ) : (
+            // A folder holding nothing is the finding an audit is looking for,
+            // so the zero is shown and greyed rather than hidden.
+            <span className={`block text-xs font-semibold ${count ? 'text-ink-500' : 'text-ink-300'}`}>
+              {count} document{count === 1 ? '' : 's'}
+            </span>
+          )}
         </span>
       </button>
       {menu}
+    </div>
+  )
+}
+
+/**
+ * One row of the handover checklist, whether or not anything satisfies it yet.
+ *
+ * The empty version is the entire point of the checklist existing. A library
+ * can only ever show you what somebody uploaded; this shows what nobody did,
+ * which is the half a handover review is actually asking about.
+ */
+function ChecklistTile({ row, canWrite, onOpen, onFill, menu }) {
+  const { item, doc, ready } = row
+  const Icon = ready ? CheckCircle2 : CircleDashed
+  const tone = ready ? 'text-emerald-600' : doc ? 'text-amber-500' : 'text-ink-300'
+
+  return (
+    <div className={TILE}>
+      <button
+        type="button"
+        // Nothing to open and nothing this viewer may add: the row is there to
+        // be READ, and a click that silently does nothing reads as broken.
+        disabled={!doc && !canWrite}
+        onClick={doc ? onOpen : onFill}
+        className="flex min-w-0 flex-1 items-start gap-3 disabled:cursor-default"
+      >
+        <Icon size={22} className={`mt-0.5 flex-none ${tone}`} />
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-bold leading-snug text-ink-900">
+            <span className="text-ink-400">{item.no}</span> {doc?.title || item.title}
+          </span>
+          <span className="mt-1 flex flex-wrap items-center gap-1.5">
+            <Badge tone={ready ? 'green' : doc ? 'amber' : 'gray'}>
+              {ready ? 'Ready' : doc ? 'No file yet' : 'Not filed'}
+            </Badge>
+            <span className="text-xs font-semibold text-ink-400">{item.owner}</span>
+            <span className="text-xs text-ink-400">·</span>
+            <span className="text-xs font-semibold text-ink-400">{item.timeline}</span>
+          </span>
+          {/* The schedule's own Ref. Doc note, where it says something beyond
+              "a link goes here" — which is what the empty row already is. */}
+          {item.note && (
+            <span className="mt-1 block text-[11px] leading-relaxed text-ink-400">{item.note}</span>
+          )}
+        </span>
+      </button>
+      {doc ? menu : canWrite && (
+        <Button variant="soft" icon={Plus} className="flex-none !px-3" onClick={onFill}>
+          Add
+        </Button>
+      )}
     </div>
   )
 }
@@ -299,7 +422,7 @@ export default function DocumentsModule() {
   const [folders, setFolders] = useState([])
   const [nodeId, setNodeId] = useState('') // '' = the top of the tree
   const [search, setSearch] = useState('')
-  const [docDialog, setDocDialog] = useState(null) // { mode, doc }
+  const [docDialog, setDocDialog] = useState(null) // { mode, doc, seed }
   const [folderDialog, setFolderDialog] = useState(null) // { mode, folder }
   const [details, setDetails] = useState(null)
   const [busy, setBusy] = useState(false)
@@ -325,7 +448,9 @@ export default function DocumentsModule() {
     () => buildTree({ sites, folders, docs: records }),
     [sites, folders, records]
   )
-  const { direct, total } = useMemo(() => countTree(records, tree), [records, tree])
+  // Only the rolled-up totals are wanted: what sits directly in a folder is
+  // counted below, after the checklist rows have been taken out of it.
+  const { total } = useMemo(() => countTree(records, tree), [records, tree])
 
   const node = nodeId ? nodeAt(tree, nodeId) : null
   const atTop = !node
@@ -339,6 +464,46 @@ export default function DocumentsModule() {
     [atTop, records, tree, nodeId]
   )
   const trail = useMemo(() => (atTop ? [] : breadcrumbOf(tree, nodeId)), [atTop, tree, nodeId])
+
+  // ── The handover checklist ─────────────────────────────────────────────────
+  //
+  // Measured against the SITE, not against the folder. A certificate filed into
+  // Pre Launch itself, or into somebody's subfolder inside a category, still
+  // satisfies the row it names — the checklist asks whether the site can
+  // produce the document, and where it was filed is a tidiness question.
+  const siteDocs = useMemo(
+    () => (node?.siteId ? records.filter((d) => d && d.siteId === node.siteId) : []),
+    [records, node?.siteId]
+  )
+  const readiness = useMemo(
+    () => (node?.siteId ? prelaunchReadiness(siteDocs) : null),
+    [node?.siteId, siteDocs]
+  )
+
+  const isPreLaunch = node?.kind === 'bucket' && node.id.endsWith(PRE_LAUNCH)
+  const categoryKey = prelaunchCategoryOf(node)
+  const category = categoryKey && readiness
+    ? readiness.byCategory.find((c) => c.key === categoryKey) || null
+    : null
+
+  /** The readiness to show on a child tile, or null when it is not measured. */
+  const readinessFor = (child) => {
+    if (!readiness) return null
+    if (child.kind === 'prelaunch') {
+      return readiness.byCategory.find((c) => c.key === child.categoryKey) || null
+    }
+    if (child.kind === 'bucket' && child.id.endsWith(PRE_LAUNCH)) return readiness
+    return null
+  }
+
+  // Inside a category, the checklist rows ARE the documents — listing them a
+  // second time underneath would show the same certificate twice, once as a
+  // satisfied row and once as a file.
+  const listed = useMemo(
+    () => new Set((category?.rows || []).map((r) => r.doc?.id).filter(Boolean)),
+    [category]
+  )
+  const loose = useMemo(() => here.filter((d) => !listed.has(d.id)), [here, listed])
 
   // A node that stops existing — a site removed from the registry, a folder
   // deleted — would otherwise leave the browser parked somewhere that is not
@@ -481,6 +646,23 @@ export default function DocumentsModule() {
   const canFolderHere = canWrite && Boolean(node?.canAddFolder)
   const tooDeep = manualDepth(tree, nodeId) >= MAX_DEPTH
 
+  /**
+   * Fill in a checklist row.
+   *
+   * The row's key rides into the record as `prelaunchKey`, which is the only
+   * thing that will ever connect the certificate to the row it satisfies —
+   * matching on the title would break the first time somebody edited it.
+   */
+  const fillRow = (item) => setDocDialog({
+    mode: 'new',
+    seed: {
+      title: item.title,
+      docType: item.docType || '',
+      owner: item.owner || '',
+      prelaunchKey: item.key,
+    },
+  })
+
   const fileMenu = (doc) => (
     <TileMenu
       label={`Actions for ${doc.title || 'this document'}`}
@@ -615,7 +797,7 @@ export default function DocumentsModule() {
             </div>
           )}
         </section>
-      ) : childIds.length === 0 && here.length === 0 ? (
+      ) : childIds.length === 0 && here.length === 0 && !category ? (
         <EmptyState
           icon={FolderIcon}
           title="This folder is empty"
@@ -630,6 +812,48 @@ export default function DocumentsModule() {
         />
       ) : (
         <div className="space-y-5">
+          {/* The handover pack, over the folder it is filed in. A Pre Launch
+              folder is the one place in the library where what is MISSING is
+              the answer, so it is said before anything that is there. */}
+          {isPreLaunch && readiness && (
+            <ReadinessPanel
+              title={`${node.name} — ${trail[trail.length - 2]?.name || 'this site'}`}
+              subtitle={`The handover schedule asks this site for ${PRE_LAUNCH_TOTAL} documents, in the ${readiness.byCategory.length} categories below.`}
+              readiness={readiness}
+            />
+          )}
+          {category && (
+            <ReadinessPanel
+              title={category.name}
+              subtitle={`${category.total} document${category.total === 1 ? '' : 's'} the handover schedule asks for under ${category.numeral}. ${category.name}.`}
+              readiness={category}
+            />
+          )}
+
+          {/* Every row of the checklist, filled or not. The empty ones are the
+              point: a folder can only show what somebody uploaded, and the
+              question at a handover is what nobody did. */}
+          {category && (
+            <section>
+              <h2 className="mb-2 text-[10px] font-bold uppercase tracking-widest text-ink-400">
+                Required documents{' '}
+                <span className="text-ink-300">({category.ready} of {category.total} ready)</span>
+              </h2>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {category.rows.map((row) => (
+                  <ChecklistTile
+                    key={row.item.key}
+                    row={row}
+                    canWrite={canWrite}
+                    onOpen={() => row.doc && openDoc(row.doc)}
+                    onFill={() => fillRow(row.item)}
+                    menu={row.doc ? fileMenu(row.doc) : null}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+
           {childIds.length > 0 && (
             <section>
               <h2 className="mb-2 text-[10px] font-bold uppercase tracking-widest text-ink-400">Folders</h2>
@@ -642,6 +866,7 @@ export default function DocumentsModule() {
                       key={id}
                       node={child}
                       count={total.get(id) || 0}
+                      readiness={readinessFor(child)}
                       onOpen={() => go(id)}
                       menu={folderMenu(child)}
                     />
@@ -651,13 +876,16 @@ export default function DocumentsModule() {
             </section>
           )}
 
-          {here.length > 0 && (
+          {loose.length > 0 && (
             <section>
               <h2 className="mb-2 text-[10px] font-bold uppercase tracking-widest text-ink-400">
-                Documents <span className="text-ink-300">({direct.get(nodeId) || 0} here)</span>
+                {/* Named differently inside a category, where the checklist
+                    above already showed the documents that belong to a row. */}
+                {category ? 'Other documents here' : 'Documents'}{' '}
+                <span className="text-ink-300">({loose.length} here)</span>
               </h2>
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {here.map((doc) => (
+                {loose.map((doc) => (
                   <FileTile key={doc.id} doc={doc} onOpen={() => openDoc(doc)} menu={fileMenu(doc)} />
                 ))}
               </div>
@@ -668,12 +896,14 @@ export default function DocumentsModule() {
 
       {docDialog && (
         <DocumentDialog
-          // The dialog seeds its form state once, so a different document has
-          // to be a different component instance.
-          key={docDialog.doc?.id || 'new'}
+          // The dialog seeds its form state once, so a different document — or
+          // a different checklist row — has to be a different component
+          // instance.
+          key={docDialog.doc?.id || docDialog.seed?.prelaunchKey || 'new'}
           open
           mode={docDialog.mode}
           doc={docDialog.doc}
+          seed={docDialog.seed}
           nodeId={nodeId}
           tree={tree}
           sites={sites}

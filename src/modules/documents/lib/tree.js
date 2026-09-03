@@ -13,6 +13,7 @@
 //   │   └── <Entity>/                 │ DERIVED from the site registry
 //   │       └── <Site>/               ┘
 //   │           ├── Pre Launch/       manual subfolders allowed
+//   │           │   └── <Category>/   DERIVED from the handover checklist
 //   │           └── Others/           manual subfolders allowed
 //   └── Unfiled/                      backlog; appears only when non-empty
 //
@@ -24,6 +25,14 @@
 // Only the leaves are people's own: free-form subfolders inside Pre Launch,
 // Others, and Org Level Documents. Those live in documentFolders and carry a
 // parentId naming the node they hang off.
+//
+// The one addition to that rule is the row of category folders inside every
+// site's Pre Launch: Electrical System, Fire Alarm System, and the rest of the
+// handover schedule. They are derived too, from the checklist in prelaunch.js
+// rather than from the registry, and for the same reason — the list is the same
+// for every site, and a stored copy would drift the moment the schedule changed.
+// Nobody creates or renames them; people may still add their own subfolders
+// inside one.
 //
 // ── The folder decides who may see the document ──────────────────────────────
 //
@@ -50,6 +59,7 @@
 
 import { ORG, REGION, SITE, levelOf, classificationFields } from './classification'
 import { storageKindFor } from './docTypes'
+import { PRE_LAUNCH_CATEGORIES } from './prelaunch'
 
 const clean = (v) => String(v ?? '').trim()
 
@@ -90,7 +100,21 @@ export const entityNode = (region, entity) => `entity:${enc(clean(region))}/${en
 export const siteNode = (siteId) => `site:${clean(siteId)}`
 export const bucketNode = (siteId, bucket) => `site:${clean(siteId)}/${bucket}`
 
+/**
+ * A checklist category inside a site's Pre Launch bucket.
+ *
+ * Built from the bucket id so the whole chain reads as one path, and so a
+ * category can never be mistaken for a manual folder: those use Firestore
+ * auto-ids, which contain no slash.
+ */
+export const prelaunchNode = (siteId, categoryKey) =>
+  `${bucketNode(siteId, PRE_LAUNCH)}/${clean(categoryKey)}`
+
 export const isRegionNode = (id) => String(id || '').startsWith('region:')
+
+/** The checklist category a node IS, or '' when it is not one. */
+export const prelaunchCategoryOf = (node) =>
+  (node && node.kind === 'prelaunch' ? clean(node.categoryKey) : '')
 
 // ── Building the tree ────────────────────────────────────────────────────────
 
@@ -169,10 +193,28 @@ export function buildTree({ sites = [], folders = [], docs = [] } = {}) {
         // The two fixed buckets. Documents go in these; the site folder above
         // holds them and nothing else people have to think about.
         for (const b of SITE_BUCKETS) {
+          const bid = bucketNode(site.id, b.key)
           add({
-            id: bucketNode(site.id, b.key), parentId: sid, kind: 'bucket', name: b.name, scope: SITE,
+            id: bid, parentId: sid, kind: 'bucket', name: b.name, scope: SITE,
             region, entity, siteId: clean(site.id), filable: true, canAddFolder: true,
           })
+
+          // Pre Launch, and only Pre Launch, is broken out into the handover
+          // schedule's categories. Others is the bucket for everything the
+          // schedule does not ask for, so imposing the same shape on it would
+          // be six empty folders per site saying nothing.
+          if (b.key !== PRE_LAUNCH) continue
+          for (const cat of PRE_LAUNCH_CATEGORIES) {
+            add({
+              id: prelaunchNode(site.id, cat.key), parentId: bid, kind: 'prelaunch',
+              name: cat.name, categoryKey: cat.key, scope: SITE,
+              region, entity, siteId: clean(site.id),
+              // Filable, because a category is where its documents go. Manual
+              // subfolders are allowed inside one too — a site with forty
+              // electrical certificates still wants to sort them.
+              filable: true, canAddFolder: true,
+            })
+          }
         }
       }
     }
