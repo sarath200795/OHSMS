@@ -3,9 +3,10 @@ import {
   MAX_DEPTH, ORG_NODE, UNFILED_NODE, PRE_LAUNCH, OTHERS,
   ancestorsOf, breadcrumbOf, bucketNode, buildTree, childrenOf, countTree,
   entityNode, fileChoices, filesIn, folderNameError, manualDepth, nodeAt,
-  nodeClassification, regionNode, resolveNode, rootsOf, siblingsOf, siteNode,
-  storageFolder, subtreeOf,
+  nodeClassification, prelaunchCategoryOf, prelaunchNode, regionNode, resolveNode,
+  rootsOf, siblingsOf, siteNode, storageFolder, subtreeOf,
 } from './tree'
+import { PRE_LAUNCH_CATEGORIES } from './prelaunch'
 
 // Two regions, two entities in one of them, three sites.
 const sites = [
@@ -25,6 +26,9 @@ const S1_OTHER = bucketNode('s1', OTHERS)
 
 const tree = () => buildTree({ sites })
 const names = (t, id) => childrenOf(t, id).map((c) => nodeAt(t, c).name)
+
+// The handover categories every Pre Launch bucket is broken into, in order.
+const CATEGORY_NAMES = PRE_LAUNCH_CATEGORIES.map((c) => c.name)
 
 describe('the derived skeleton', () => {
   it('puts Org Level Documents first, then the regions in order', () => {
@@ -128,7 +132,8 @@ describe('manual subfolders', () => {
   const t = buildTree({ sites, folders })
 
   it('attaches to the node named by parentId', () => {
-    expect(names(t, S1_PRE)).toEqual(['Drawings'])
+    // After the derived categories, which are the registry's and come first.
+    expect(names(t, S1_PRE)).toEqual([...CATEGORY_NAMES, 'Drawings'])
     expect(names(t, 'f1')).toEqual(['Revisions'])
     expect(names(t, ORG_NODE)).toEqual(['Policies'])
   })
@@ -406,5 +411,69 @@ describe('a document in the Unfiled backlog', () => {
     for (const [id, node] of t.nodes) {
       if (node.filable) expect(offered.has(id), id).toBe(true)
     }
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The handover checklist categories.
+//
+// Derived from prelaunch.js rather than the registry, but derived all the same:
+// nobody creates them, every site gets the identical set, and an empty one is
+// the finding a handover review is looking for.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('pre-launch categories', () => {
+  const t = tree()
+
+  it('breaks every site’s Pre Launch into the same categories, in order', () => {
+    expect(names(t, S1_PRE)).toEqual(CATEGORY_NAMES)
+    expect(names(t, bucketNode('s4', PRE_LAUNCH))).toEqual(CATEGORY_NAMES)
+  })
+
+  // Others is the bucket for everything the schedule does not ask for, so
+  // imposing the same six folders on it would say nothing about six things.
+  it('leaves Others alone', () => {
+    expect(names(t, S1_OTHER)).toEqual([])
+  })
+
+  it('files a category at its site’s level, like every other node under it', () => {
+    const id = prelaunchNode('s1', 'electrical')
+    const c = nodeClassification(t, id, sites)
+    expect(c.level).toBe('site')
+    expect(c.siteId).toBe('s1')
+    expect(c.visibility).toBe('site')
+    expect(c.siteRegion).toBe('North')
+    expect(nodeAt(t, id).parentId).toBe(S1_PRE)
+    expect(prelaunchCategoryOf(nodeAt(t, id))).toBe('electrical')
+    expect(prelaunchCategoryOf(nodeAt(t, S1_PRE))).toBe('')
+  })
+
+  // People still sort their own way inside one; the category itself is not
+  // theirs to rename or delete.
+  it('takes manual subfolders but is not one', () => {
+    const id = prelaunchNode('s1', 'fas')
+    const deep = buildTree({ sites, folders: [{ id: 'f1', name: 'OEM', parentId: id }] })
+    expect(names(deep, id)).toEqual(['OEM'])
+    expect(nodeAt(deep, 'f1').siteId).toBe('s1')
+    expect(nodeAt(t, id).kind).toBe('prelaunch')
+  })
+
+  it('rolls its documents up into the bucket and the site', () => {
+    const id = prelaunchNode('s1', 'electrical')
+    const docs = [{ id: 'd1', folderId: id, level: 'site', siteId: 's1' }]
+    const { direct, total } = countTree(docs, buildTree({ sites, docs }))
+    expect(direct.get(id)).toBe(1)
+    expect(total.get(S1_PRE)).toBe(1)
+    expect(total.get(S1)).toBe(1)
+  })
+
+  it('is offered in the move picker, under its bucket', () => {
+    const byValue = Object.fromEntries(fileChoices(t).map((c) => [c.value, c]))
+    expect(byValue[prelaunchNode('s1', 'general')].depth).toBe(4)
+  })
+
+  // A category name beside the real ones would be two folders nobody can tell
+  // apart, which is where things go missing.
+  it('is a sibling a manual folder may not shadow', () => {
+    expect(folderNameError('Electrical System', siblingsOf(t, S1_PRE))).toBeTruthy()
   })
 })

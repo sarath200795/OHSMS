@@ -71,14 +71,26 @@ const FIELDS = [
   { key: 'summary', label: 'Summary / notes', type: 'textarea', full: true, rows: 3 },
 ]
 
-const emptyDoc = (location) => ({
+/**
+ * @param seed fields to start filled in — the pre-launch checklist hands over a
+ *        title, a type and the `prelaunchKey` tying the record to the row it
+ *        satisfies. `location` is applied last: where a document goes is the
+ *        folder the browser is standing in, and a seed must not move it.
+ *
+ * `prelaunchKey` has no field in FIELDS and never gets one. It is identity, not
+ * data somebody types — and RecordForm leaves keys it does not render alone, so
+ * it rides through the form and out the other side untouched.
+ */
+const emptyDoc = (location, seed) => ({
   title: '', docType: '', source: SOURCE_UPLOAD, file: null, linkUrl: '',
   version: '', owner: '', reference: '',
-  effectiveDate: '', reviewDate: '', summary: '', location,
+  effectiveDate: '', reviewDate: '', summary: '',
+  ...(seed || {}),
+  location,
 })
 
 export default function DocumentDialog({
-  open, mode, doc, nodeId, tree, sites, orgId, busy, onClose, onSubmit,
+  open, mode, doc, seed, nodeId, tree, sites, orgId, busy, onClose, onSubmit,
 }) {
   /**
    * Where the form starts, and why it can start NOWHERE.
@@ -99,7 +111,7 @@ export default function DocumentDialog({
   const [form, setForm] = useState(() => {
     const wanted = mode === 'edit' && doc ? doc.__node : nodeId
     const start = nodeAt(tree, wanted)?.filable ? wanted : ''
-    return mode === 'edit' && doc ? { ...doc, location: start } : emptyDoc(start)
+    return mode === 'edit' && doc ? { ...doc, location: start } : emptyDoc(start, seed)
   })
 
   const choices = useMemo(() => fileChoices(tree), [tree])
@@ -150,7 +162,13 @@ export default function DocumentDialog({
       open={open}
       onClose={onClose}
       title={mode === 'edit' ? 'Edit document' : 'Add a document'}
-      subtitle={mode === 'edit' ? form.title : 'Upload a file, or link to one that already exists'}
+      subtitle={
+        mode === 'edit' ? form.title
+          // A seeded form is a checklist row being filled in, and the row's
+          // title is already in the field below. Saying which handover item it
+          // is beats repeating the generic invitation.
+          : seed?.title || 'Upload a file, or link to one that already exists'
+      }
       size="lg"
       footer={
         <>

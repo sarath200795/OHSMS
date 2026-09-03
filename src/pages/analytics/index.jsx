@@ -12,7 +12,7 @@
 // useAccessibleSites the modules use is the only source of that list.
 // ─────────────────────────────────────────────────────────────────────────────
 import { useEffect, useMemo, useState } from 'react'
-import { BarChart3, AlertTriangle, Siren, FireExtinguisher, Users, Cctv, Scale, ListChecks, ClipboardCheck, Radar, UserCheck, Ticket } from 'lucide-react'
+import { BarChart3, AlertTriangle, Siren, FireExtinguisher, Users, Cctv, Scale, ListChecks, ClipboardCheck, Radar, UserCheck, Ticket, Rocket } from 'lucide-react'
 import { useAuth } from '../../shared/auth/AuthContext'
 import { subscribeCollections, emptyCollections } from '../../shared/org/orgData'
 import { useAccessibleSites } from '../../shared/org/useAccessibleSites'
@@ -27,6 +27,7 @@ import ActionsTab from './ActionsTab'
 import InspectionsTab from './InspectionsTab'
 import OdinTab from './OdinTab'
 import AuditorsTab from './AuditorsTab'
+import PreLaunchTab from './PreLaunchTab'
 
 // Icons match the portal registry's, so a tab here and the tile it reports on
 // are recognisably the same thing.
@@ -62,6 +63,10 @@ const TABS = [
   // the estate is safe; this asks whether the audit programme actually ran.
   { key: 'auditors', label: 'Auditors', icon: UserCheck, needs: 'odin' },
   { key: 'incidents', label: 'Incidents', icon: AlertTriangle },
+  // Not beside Documents in the portal, because this is not a question about
+  // documents. It is the one tab that reports on a site that has not opened
+  // yet, and the only one whose subject is what does NOT exist.
+  { key: 'prelaunch', label: 'Pre-Launch Readiness', icon: Rocket },
   { key: 'inspections', label: 'Inspections', icon: ClipboardCheck },
   { key: 'drills', label: 'Mock Drills', icon: Siren },
   { key: 'equipment', label: 'Emergency Equipment', icon: FireExtinguisher },
@@ -206,6 +211,11 @@ export default function Analytics() {
         />
       ) : tab === 'auditors' ? (
         <AuditorsTab sites={sites} keepUnplaced={isAdmin} />
+      ) : tab === 'prelaunch' ? (
+        // Owns its query: the document library reads through a plan that mirrors
+        // firestore.rules, and the page-wide subscribeCollections cannot — a
+        // query that would return one refused row fails entirely.
+        <PreLaunchTab sites={sites} orgId={orgId} />
       ) : tab === 'incidents' ? (
         <IncidentsTab incidents={incidents} sites={sites} keepUnplaced={isAdmin} />
       ) : tab === 'inspections' ? (
