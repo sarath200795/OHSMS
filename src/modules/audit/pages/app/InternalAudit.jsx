@@ -10,6 +10,7 @@ import { useOrgData } from '../../context/OrgDataContext'
 import SiteScopePicker from '../../../../shared/org/SiteScopePicker'
 import DepartmentSelect from '../../../../shared/org/DepartmentSelect'
 import { Field } from '../../../../shared/ui'
+import { todayISO } from '../../../../shared/lib/dates'
 import { safeHref } from '../../../../shared/safeUrl'
 import {
   subscribeAuditPlans,
@@ -74,13 +75,21 @@ const AuditScheduler = ({ setView, session, sites, users, locations = [], siteIn
   ])
   const myName = session.name
 
-  useEffect(() => {
-    if (plan.siteId) {
-      const seq = 1000 + Math.floor(rows.length * 137 + plan.siteId.length * 41) % 9000
-      setPlan((p) => ({ ...p, docId: `${session.orgId.slice(0, 5)}-${plan.siteId.slice(0, 5)}-IAP-${seq}` }))
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [plan.siteId])
+  // No effect computing a docId any more.
+  //
+  // There used to be one, deriving `…-IAP-${1000 + (rows.length*137 + siteId.length*41) % 9000}`
+  // from the site and the row count. Three things were wrong with it. It was
+  // deterministic, so two plans for one site with the same number of rows
+  // produced the same reference. It read `rows.length` without listing it as a
+  // dependency — the suppressed exhaustive-deps warning WAS the bug — so adding
+  // rows after picking the site left the value computed from the old count.
+  // And none of it was ever stored: createAuditPlan assigns the real reference
+  // from the shared counter after the payload spread, so this only ever put a
+  // number on screen that the saved plan would not carry. Somebody writing it
+  // down was writing down a reference to nothing.
+  //
+  // The field now shows what is true before the save: the reference is issued
+  // when the plan is created.
 
   const addRow = () =>
     setRows([...rows, { auditor: '', auditee: '', dept: '', area: '', aspect: '', date: '', time: '' }])
@@ -179,7 +188,7 @@ const AuditScheduler = ({ setView, session, sites, users, locations = [], siteIn
                 <Field label="Start Date" labelClassName={lbl}><input type="date" value={plan.startDate} onChange={(e) => setPlan({ ...plan, startDate: e.target.value })} className={`${fld} font-mono`} /></Field>
                 <Field label="End Date" labelClassName={lbl}><input type="date" value={plan.endDate} onChange={(e) => setPlan({ ...plan, endDate: e.target.value })} className={`${fld} font-mono`} /></Field>
               </div>
-              {plan.docId && <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">Ref ID: <span className="font-mono font-bold text-slate-700">{plan.docId}</span></div>}
+              <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">Ref ID: <span className="font-medium text-slate-600">issued when the plan is saved</span></div>
             </div>
             <div className="flex flex-col rounded-2xl border border-slate-200 bg-slate-50 p-5">
               {/* A heading, not a <label>: what follows is a search box and a list of
@@ -315,7 +324,19 @@ const AuditorWorkplace = ({ setView, session, isGlobalOwner, plans, findings, si
     [myTasks, filters],
   )
 
-  const genId = () => `AF-${10000 + Math.floor((Date.parse(new Date().toISOString()) % 90000))}`
+  // Finding ids are stored inside the record's `findings[]` and are the key the
+  // central Action Tracker matches on (actions/lib/sources.js), as well as the
+  // reference shown beside each finding.
+  //
+  // They used to be `AF-${10000 + Date.parse(now) % 90000}` — a value that
+  // wraps every ninety seconds. Two findings raised in the same audit, or in
+  // any two audits ninety seconds apart, collided; the tracker then matched one
+  // finding's action against another's. Random, not time-derived: there is no
+  // ordering requirement on these, only uniqueness.
+  const genId = () =>
+    `AF-${typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID().slice(0, 8)
+      : `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`}`
 
   const openTask = (task) => {
     setCurrentTask(task)
@@ -326,7 +347,12 @@ const AuditorWorkplace = ({ setView, session, isGlobalOwner, plans, findings, si
       setWView('perform')
     } else {
       setDocId(task.findingRecord.docId)
-      setFindingRows(task.findingRecord?.findings || [])
+      // Copy each row out of the snapshot. `findings` holds the ACTUAL objects
+      // subscribeAuditFindings put in the shared cache, so editing them in
+      // place — which updateRow and handleFile below used to do — mutated what
+      // FindingsRegister, CapaRegister and the Action Tracker are reading, with
+      // no re-render to tell them and no way to undo it by abandoning the edit.
+      setFindingRows((task.findingRecord?.findings || []).map((f) => ({ ...f })))
       setCriteria(task.findingRecord?.taskDetails?.criteria || task.standard || '')
       setWView(task.status === 'Submitted for Verification' ? 'verify' : 'readOnly')
     }
@@ -334,13 +360,23 @@ const AuditorWorkplace = ({ setView, session, isGlobalOwner, plans, findings, si
 
   const addRow = () => setFindingRows([...findingRows, { id: genId(), type: 'Observation', desc: '', clause: '', evidence: '', fileName: '' }])
   const removeRow = (i) => setFindingRows(findingRows.filter((_, idx) => idx !== i))
-  const updateRow = (i, f, v) => { const u = [...findingRows]; u[i][f] = v; setFindingRows(u) }
+  // Replace the row object rather than assigning into it: `[...findingRows]` is
+  // a shallow copy, so `u[i][f] = v` writes straight through to the object the
+  // Firestore snapshot cache is still holding. See openTask.
+  const updateRow = (i, f, v) =>
+    setFindingRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, [f]: v } : r)))
   const handleFile = async (i, file) => {
     if (!file) return
     if (file.size > 10 * 1024 * 1024) return alert('File size exceeds 10MB limit.')
     if (!file.type.match('^(image/.*|application/pdf)$')) return alert('Only PDF and image files are allowed.')
-    const b64 = await fileToBase64(file)
-    const u = [...findingRows]; u[i].evidence = b64; u[i].fileName = file.name; setFindingRows(u)
+    try {
+      const b64 = await fileToBase64(file)
+      setFindingRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, evidence: b64, fileName: file.name } : r)))
+    } catch {
+      // Unguarded this was an unhandled rejection and a file picker that
+      // appeared to do nothing — on the field that is mandatory to save.
+      alert('That file could not be read. Try attaching it again.')
+    }
   }
 
   const handleSave = async () => {
@@ -350,12 +386,20 @@ const AuditorWorkplace = ({ setView, session, isGlobalOwner, plans, findings, si
     if (findingRows.some((f) => !f.evidence)) return alert('Objective evidence is mandatory — attach a file for every finding (Observation, OFI, Minor NC and Major NC).')
     const cleanTask = { ...currentTask, criteria: criteria || '' }
     delete cleanTask.findingRecord
-    const cleanFindings = findingRows.map((f, idx) => {
+    const cleanFindings = findingRows.map((f) => {
       let days = 30
       if (f.type === 'Minor NC') days = 15
       if (f.type === 'Major NC') days = 7
       const due = new Date(); due.setDate(due.getDate() + days)
-      return { ...f, id: f.id || genId() + idx, auditeeDueDate: due.toISOString().split('T')[0] }
+      // genId(), not `genId() + idx` — that branch was dead (openTask and
+      // addRow always set an id) and would have concatenated a digit onto the
+      // id rather than offsetting it.
+      //
+      // todayISO(due), not due.toISOString().split('T')[0]: setDate works in
+      // local time and toISOString converts to UTC, so east of Greenwich every
+      // deadline set before ~05:30 landed a day early — a Major NC nominally
+      // due in 7 days got 6.
+      return { ...f, id: f.id || genId(), auditeeDueDate: todayISO(due) }
     })
     try {
       await createAuditFinding(session.orgId, {

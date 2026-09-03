@@ -34,6 +34,7 @@ import { putFile, removeFile, MAX_INLINE_BYTES, tooLargeForInline } from '../../
 // reaches the STORE rather than the app. The clinical detail that used to ride
 // on this document is in /injuries under the medical keypair instead.
 import { sealDoc, openDoc, openSnapshots } from '../../../shared/crypto'
+import { snapshotHandlers } from '../../../shared/snapshotError'
 import { resolveSubscription } from '../../../shared/storage/resolveFiles'
 
 /** The policy key for this collection. See src/shared/crypto/policy.js. */
@@ -271,8 +272,19 @@ export async function getIncident(orgId, id) {
 
 export function subscribeIncidents(orgId, cb, max = INCIDENT_LOAD_CAP) {
   const q = query(incidentCol(orgId), orderBy('createdAt', 'desc'), limit(max))
-  const opened = openSnapshots(orgId, SEALED, cb)
-  return onSnapshot(q, (snap) => opened(snap.docs.map((d) => ({ id: d.id, ...d.data() }))))
+  // The guard wraps the OUTER callback, not `opened`: openSnapshots decrypts
+  // asynchronously, so `opened` returning is not the same as rows reaching the
+  // module. Wrapping cb means "delivered" tracks what the context actually saw.
+  const h = snapshotHandlers('incidents', cb)
+  const opened = openSnapshots(orgId, SEALED, h.ok)
+  return onSnapshot(
+    q,
+    (snap) => opened(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    // IncidentContext clears `loading` from the success callback only, so
+    // without this a single failed read left the whole module spinning. See
+    // shared/snapshotError.js.
+    h.err,
+  )
 }
 
 /** Mark an incident closed (after horizontal-deployment step). */

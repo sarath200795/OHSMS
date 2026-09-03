@@ -10,12 +10,34 @@
 // Dark, and it says "Platform console" and nothing else. Whoever is looking at
 // this screen should never have to check which app they are in.
 // ─────────────────────────────────────────────────────────────────────────────
+import { useEffect } from 'react'
 import { LogOut, SlidersHorizontal } from 'lucide-react'
 import { useAuth } from '../../shared/auth/AuthContext'
+import { useIdleTimeout } from '../../shared/auth/useIdleTimeout'
 import ErrorBoundary from '../../shared/ErrorBoundary'
 
 export default function PlatformShell({ children }) {
   const { user, signOut } = useAuth()
+
+  // The idle timeout, which this shell did without.
+  //
+  // useIdleTimeout was mounted in exactly one place — AppChrome. Tenant routes
+  // and the customer portal both go through AppChrome; /platform deliberately
+  // does not, for the reasons at the top of this file. The effect of that
+  // deliberate separation was that the single highest-privilege account in the
+  // product — the one that toggles module entitlements for EVERY tenant — was
+  // the only account in the system with no inactivity logout, on exactly the
+  // kind of screen most likely to be left open on a shared machine.
+  //
+  // No "stay signed in" dialog here, unlike AppChrome. That prompt exists so a
+  // safety officer does not lose a half-written incident report; there is
+  // nothing to lose on an operator console, and a warning that can be dismissed
+  // by whoever happens to be at the keyboard is worth less than simply signing
+  // out.
+  const { isExpired } = useIdleTimeout()
+  useEffect(() => {
+    if (isExpired && signOut) signOut()
+  }, [isExpired, signOut])
 
   return (
     <div className="min-h-screen bg-clay-bg">

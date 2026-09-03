@@ -130,7 +130,20 @@ service firebase.storage {
     // `kind != 'medical-records'` to any of them would break the upload rather
     // than tighten it.
     match /orgs/{orgId}/{kind}/{fileName} {
-      allow read: if inOrg(orgId) && kind != 'medical-records';
+      // 'illness-files' joins 'medical-records' in the exclusion, because it is
+      // the same class of bytes under a different name. addIllnessFile
+      // (src/modules/incidents/lib/illnesses.js) uploads with kind
+      // 'illness-files' and seals under the 'illnesses/files' policy, whose
+      // keyClass is MEDICAL — GP letters and fit notes. The kind never matched
+      // the string this line tests, so the narrow manager-only match further
+      // down never applied to it, and every member of the tenant AND the
+      // read-only auditor could read a colleague's medical attachment straight
+      // from a download URL. Firestore is what hid it: the pointer documents
+      // were unreadable by everyone (see the /illnesses/{id}/files match there),
+      // so nobody could obtain the URL. That is one rule fix away from being
+      // live, and it is now that fix — so the byte-level grant has to be right
+      // BEFORE the pointer becomes readable, not after.
+      allow read: if inOrg(orgId) && kind != 'medical-records' && kind != 'illness-files';
 
       // `resource == null` is what actually prevents an overwrite, and it is
       // here because the emulator proved the obvious version does not work:
@@ -170,6 +183,15 @@ service firebase.storage {
     // 20 MB cap, update denied, delete manager-only. A second create grant here
     // could only widen them.
     match /orgs/{orgId}/medical-records/{fileName} {
+      allow read: if isManagerIn(orgId);
+    }
+
+    // Illness attachments, the same bytes under the kind addIllnessFile
+    // actually writes. Kept as a second match rather than renaming the upload
+    // kind, because files already in the bucket carry this prefix and a rename
+    // would make every one of them unreadable — the pointer's `path` field is
+    // what resolves them and it is written once, at upload.
+    match /orgs/{orgId}/illness-files/{fileName} {
       allow read: if isManagerIn(orgId);
     }
 

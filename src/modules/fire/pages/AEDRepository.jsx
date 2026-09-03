@@ -8,7 +8,7 @@ import { Pager, IconButton } from '../../../shared/ui'
 import { usePagination } from '../../../shared/ui/usePagination'
 import { useAuth } from '../context/AuthContext'
 import { useFleet } from '../context/FleetContext'
-import { addAed, updateAed, deleteAed, serviceAed, bulkAddAeds, generateAedQr, bulkDeleteAeds, linkAedsToSites } from '../lib/firestore'
+import { addAed, updateAed, deleteAed, serviceAed, bulkAddAeds, generateAedQr, bulkDeleteAeds, linkAedsToSites, reserveAssetId, reserveAssetIdBlock } from '../lib/firestore'
 import { planSiteLinks } from '../lib/siteLink'
 import { useAccessibleSites } from '../../../shared/org/useAccessibleSites'
 import { listLinkedAssets, filterByLinkState, siteIdSet, isLinkedToSite } from '../lib/linkedSites'
@@ -18,7 +18,7 @@ import { exportRows } from '../lib/exporter'
 import { publicQrUrl } from '../lib/qr'
 import SiteScopePicker from '../../../shared/org/SiteScopePicker'
 import { format } from 'date-fns'
-import { dueState, dueTextColor, aedColor, aedIncomplete, nextAssetId, highestAssetSeq, formatAssetId } from '../lib/assetLogic'
+import { dueState, dueTextColor, aedColor, aedIncomplete } from '../lib/assetLogic'
 import { toDate } from '../lib/extinguisherLogic'
 import { REGIONS, ENTITIES, AED_STATUS, AED_STATUS_LABEL, AED_STATUS_COLOR } from '../lib/constants'
 
@@ -122,7 +122,20 @@ export default function AEDRepository() {
   }
 
   // Open the Add form with the next unique asset ID pre-assigned.
-  const openAdd = () => setEditing({ ...EMPTY, assetId: nextAssetId('AED', aeds, 'assetId') })
+  //
+  // Async now: the ID comes from the shared transactional counter instead of
+  // `highest-in-this-list + 1`, which handed two people opening this form at
+  // the same moment the same AED number — the one printed on the QR label.
+  // A failure here opens the form with the field blank rather than blocking it;
+  // an admin can still type one, and a blank is visible where a duplicate is not.
+  const openAdd = async () => {
+    try {
+      setEditing({ ...EMPTY, assetId: await reserveAssetId(orgId, 'AED', aeds, 'assetId') })
+    } catch (e) {
+      toast.error(e?.message || 'Could not reserve an asset ID — enter one manually')
+      setEditing({ ...EMPTY, assetId: '' })
+    }
+  }
 
   // One-click (admin): create an AED (with QR code) for every 1P/2P site missing one.
   const generateAll = async () => {
@@ -130,8 +143,10 @@ export default function AEDRepository() {
     if (!window.confirm(`Generate an AED with a QR code for ${missingSites.length} site(s)? You can add battery/pad expiry dates afterwards.`)) return
     setBusy(true)
     try {
-      const base = highestAssetSeq('AED', aeds, 'assetId')
-      const rows = missingSites.map((s, i) => ({ assetId: formatAssetId('AED', base + 1 + i), centerName: s, region: siteMeta[s]?.region || '', entity: siteMeta[s]?.entity || '', status: AED_STATUS.READY }))
+      // One transaction reserves the whole block, so a second admin running
+      // this at the same time gets numbers after ours instead of on top of them.
+      const ids = await reserveAssetIdBlock(orgId, 'AED', aeds, 'assetId', missingSites.length)
+      const rows = missingSites.map((s, i) => ({ assetId: ids[i], centerName: s, region: siteMeta[s]?.region || '', entity: siteMeta[s]?.entity || '', status: AED_STATUS.READY }))
       const res = await bulkAddAeds(orgId, orgName, rows, { uid: profile?.uid, name: profile?.name })
       toast.success(`Generated ${res.created} AED(s) with QR codes`)
     } catch (e) { toast.error(e.message) } finally { setBusy(false) }

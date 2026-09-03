@@ -11,6 +11,7 @@ import EditExtinguisherModal from '../components/EditExtinguisherModal'
 import LinkSitesModal from '../components/LinkSitesModal'
 import SubmitQuotationModal from '../components/SubmitQuotationModal'
 import SubmitHptModal from '../components/SubmitHptModal'
+import AttachmentChips from '../components/AttachmentChips'
 import ListFilters from '../components/ListFilters'
 import { useAuth } from '../context/AuthContext'
 import { useFleet } from '../context/FleetContext'
@@ -24,7 +25,6 @@ import LinkStateChips from '../components/LinkStateChips'
 import { useAccessibleSites } from '../../../shared/org/useAccessibleSites'
 import { emptyFilters, applyListFilters, hasActiveFilters } from '../lib/listFilter'
 import { CATEGORY_LIST, PHYSICAL_DEFECT_KEYS } from '../lib/constants'
-import { safeHref } from '../../../shared/safeUrl'
 import { readableOnTint, solidBackground } from '../../../shared/lib/contrast'
 
 export default function Repository() {
@@ -346,17 +346,12 @@ export default function Repository() {
                       <Truck size={14} /> Send to vendor
                     </button>
                   )}
-                  {(canResolve || canSendToVendor) && quoted && (
-                    (ext.quotation?.fileData || ext.quotation?.fileUrl) ? (
-                      <a href={safeHref(ext.quotation.fileData || ext.quotation.fileUrl)} target="_blank" rel="noreferrer" className="chip bg-cyan-50 text-cyan-700 hover:underline" title={`Quoted ${ext.quotation?.amount ?? ''} · ${ext.quotation?.vendor || ''} — view document`}>
-                        <CheckCircle2 size={12} /> Quoted · View
-                      </a>
-                    ) : (
-                      <span className="chip bg-cyan-50 text-cyan-700" title={`Quoted ${ext.quotation?.amount ?? ''} · ${ext.quotation?.vendor || ''}`}>
-                        <CheckCircle2 size={12} /> Quoted
-                      </span>
-                    )
-                  )}
+                  {/* No longer gated on (canResolve || canSendToVendor). A
+                      document already filed against a cylinder is worth seeing on
+                      every row, not only while the unit is mid-workflow — the
+                      gate is what a reviewer is looking for AFTER the work is
+                      closed, which is exactly when the old condition hid it. */}
+                  <AttachmentChips ext={ext} />
                   <button className="btn-ghost px-2.5 py-1.5 text-xs" onClick={() => setEditFor(ext)} title="Edit details">
                     <Pencil size={14} />
                   </button>

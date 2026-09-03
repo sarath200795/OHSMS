@@ -16,6 +16,7 @@ import {
   onSnapshot,
   serverTimestamp,
   writeBatch as _writeBatch,
+  runTransaction as _runTransaction,
   limit,
   increment,
 } from 'firebase/firestore'
@@ -37,11 +38,13 @@ const addDoc = (...args) => { assertWritable(); return _addDoc(...args) }
 const updateDoc = (...args) => { assertWritable(); return _updateDoc(...args) }
 const deleteDoc = (...args) => { assertWritable(); return _deleteDoc(...args) }
 const writeBatch = (...args) => { assertWritable(); return _writeBatch(...args) }
+const runTransaction = (...args) => { assertWritable(); return _runTransaction(...args) }
 import { generateQrToken, tokenFromQrValue } from './qr'
 import { STATUS, REFILL_DEFECT_KEYS, DEFECT_BY_KEY } from './constants'
 import { lockId, duplicateDefectMessage } from './defectLock'
 import { putFile, removeFile, MAX_INLINE_BYTES, tooLargeForInline } from '../../../shared/storage'
-import { reserveDocId } from '../../../shared/docId/reserve'
+import { reserveDocId, reserveSeq, reserveSeqBlock } from '../../../shared/docId/reserve'
+import { assetSeqKind, highestAssetSeq, formatAssetId } from './assetLogic'
 import { reportError } from '../../../shared/monitoring'
 import { AUDIT, diffSummary } from './audit'
 import { logAudit as logOrgAudit, auditCol, orgIndexRef, COLLECTION_READ_CAP } from '../../../shared/org/orgData'
@@ -55,6 +58,37 @@ import { sealDoc, openDocs, openSnapshots } from '../../../shared/crypto'
 import { resolveSealedFiles } from '../../../shared/storage/resolveFiles'
 
 /** Policy keys for the drill collections. See src/shared/crypto/policy.js. */
+/**
+ * Promise.allSettled with a ceiling on how many run at once.
+ *
+ * Bounded because the alternative shapes are both wrong for this app's users.
+ * Sequential means N round trips one after another on a site connection;
+ * unbounded means ten ~700 KB uploads racing each other over the same weak
+ * link, which is slower than four and can time the whole set out. Returns
+ * allSettled's shape — {status, value|reason}, in input order — so one failure
+ * never discards the rest.
+ */
+async function mapWithConcurrency(items, limitN, fn) {
+  const results = new Array(items.length)
+  let cursor = 0
+  const worker = async () => {
+    for (;;) {
+      const i = cursor
+      cursor += 1
+      if (i >= items.length) return
+      try {
+        results[i] = { status: 'fulfilled', value: await fn(items[i], i) }
+      } catch (reason) {
+        results[i] = { status: 'rejected', reason }
+      }
+    }
+  }
+  await Promise.all(
+    Array.from({ length: Math.min(Math.max(1, limitN), items.length || 1) }, worker),
+  )
+  return results
+}
+
 const SEALED_DRILLS = 'mockDrills'
 const SEALED_DRILL_PHOTOS = 'mockDrills/photos'
 
@@ -139,7 +173,19 @@ export async function recomputeStats(orgId) {
   const snap = await getDocs(extCol(orgId))
   const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
   const s = accumulate(list)
-  await setDoc(statsRef(orgId), { ...s, updatedAt: serverTimestamp() })
+  // merge, and this is load-bearing rather than tidy. statsRef is
+  // organizations/{orgId}/meta/stats — the SAME document the incidents module
+  // keeps its IRA- reference counter in (incidents/lib/incidents.js
+  // reserveRefNo). A wholesale setDoc drops `nextSeq`, so every admin
+  // "Refresh totals", bulk import and bulk delete was quietly rewinding the
+  // incident reference sequence to nothing, handing the next incident a
+  // reference already printed on a closed report.
+  //
+  // The monotonic rule on /meta/{kind} now refuses that write outright, which
+  // is how it was found: both callers swallow the failure with
+  // .catch(console.warn), so without the merge the equipment totals would go
+  // stale for any org that had ever filed an incident, and say nothing.
+  await setDoc(statsRef(orgId), { ...s, updatedAt: serverTimestamp() }, { merge: true })
   return s
 }
 
@@ -658,24 +704,55 @@ export function subscribeReports(orgId, cb) {
  *  - status_change                → set the requested status
  */
 export async function approveReport(orgId, orgName, report, reviewerName, actor) {
-  const ext = await getExtinguisher(orgId, report.extId)
-  if (!ext) throw new Error('Extinguisher no longer exists')
+  // The extinguisher is read INSIDE the transaction, not before it.
+  //
+  // This used to be getExtinguisher → build a Set → hand the whole
+  // physicalDefects array to updateExtinguisher. Two approvers working down the
+  // pending-report queue — which is how that screen is used — each read the
+  // array before the other's write and each sent their own version, so one
+  // reported defect was simply lost, and the status flip to TO_BE_REFILLED
+  // could go with it. On a fire extinguisher that is a defect somebody reported
+  // and nobody will now see.
+  //
+  // A transaction rather than arrayUnion, because the status flip has to be
+  // decided from the same read that the array comes from, and because
+  // updateExtinguisher derives the QR mirror payload and the stats delta from a
+  // locally merged object — an arrayUnion sentinel passed through it would end
+  // up written into the mirror.
+  const { before, merged } = await runTransaction(db, async (tx) => {
+    const snap = await tx.get(extRef(orgId, report.extId))
+    if (!snap.exists()) throw new Error('Extinguisher no longer exists')
+    const ext = snap.data()
 
-  const updates = {}
-  if (report.kind === 'defect' && report.defectType) {
-    const defects = new Set(ext.physicalDefects || [])
-    defects.add(report.defectType)
-    updates.physicalDefects = Array.from(defects)
-    if (REFILL_DEFECT_KEYS.includes(report.defectType) && ext.status !== STATUS.CLOSED) {
-      updates.status = STATUS.TO_BE_REFILLED
+    const updates = {}
+    if (report.kind === 'defect' && report.defectType) {
+      const defects = new Set(ext.physicalDefects || [])
+      defects.add(report.defectType)
+      updates.physicalDefects = Array.from(defects)
+      if (REFILL_DEFECT_KEYS.includes(report.defectType) && ext.status !== STATUS.CLOSED) {
+        updates.status = STATUS.TO_BE_REFILLED
+      }
+    } else if (report.kind === 'status_change' && report.newStatus) {
+      updates.status = report.newStatus
     }
-  } else if (report.kind === 'status_change' && report.newStatus) {
-    updates.status = report.newStatus
-  }
+
+    const after = { ...ext, ...updates }
+    tx.update(extRef(orgId, report.extId), { ...updates, updatedAt: serverTimestamp() })
+    // Same transaction as the change itself, for the reason updateExtinguisher
+    // batches them: a mirror written separately can be stranded by a failure in
+    // between, and the mirror is what a scanned QR shows to whoever is standing
+    // in front of the unit.
+    if (after.qrToken) {
+      tx.set(qrRef(after.qrToken), mirrorPayload(orgId, orgName, report.extId, after))
+    }
+    return { before: ext, merged: after }
+  })
+
+  // Outside the transaction: increment() counters and the audit trail are not
+  // part of the atomic unit and must not be re-run by a transaction retry.
+  await bumpStats(orgId, statsDeltaFor(before, merged))
 
   const reviewer = actor || { name: reviewerName }
-  // Apply silently (no generic edit audit); we log the approve below.
-  await updateExtinguisher(orgId, orgName, report.extId, updates, { silent: true })
   await updateDoc(reportRef(orgId, report.id), {
     approvalStatus: 'approved',
     reviewedBy: reviewerName || '',
@@ -738,30 +815,50 @@ function actionStamp(actorName, label) {
  * before an item can progress (received-by-vendor / resolve). Stored on the
  * extinguisher doc; cleared when the cycle completes.
  */
-export async function submitQuotation(orgId, orgName, id, { amount, vendor, ref, notes, fileName, fileType, fileData }, actorName) {
-  // Resubmitting replaces the previous quotation; its cloud file would be
-  // orphaned with nothing left remembering the path.
+export async function submitQuotation(orgId, orgName, id, { amount, vendor, ref, notes, fileName, fileType, fileData, keepFile }, actorName) {
   const prev = await getExtinguisher(orgId, id)
-  if (prev?.quotation?.filePath) removeFile(prev.quotation.filePath)
+  const prevQuote = prev?.quotation || {}
 
-  // The document itself goes to cloud storage when available; the extinguisher
-  // doc then carries a URL instead of the base64 payload.
-  const up = fileData ? await putFile(orgId, 'quotations', fileData, fileName) : null
-  // Base64 length * 3/4 is the decoded size, close enough to compare a limit.
-  const inlineBytes = fileData ? Math.floor((String(fileData).split(',')[1] || '').length * 0.75) : 0
-  if (!up && fileData && inlineBytes > MAX_INLINE_BYTES) {
-    throw new Error(tooLargeForInline(fileName))
+  // Same contract as submitHpt, and the same bug before it: a document held in
+  // cloud storage reaches the form as a URL with fileData null, so resubmitting
+  // to correct an amount deleted the quotation PDF and saved an empty reference.
+  // `keepFile` is the form saying it handed back the document it was given.
+  let filePart
+  if (keepFile) {
+    filePart = {
+      fileName: prevQuote.fileName || '',
+      fileType: prevQuote.fileType || '',
+      fileData: prevQuote.fileData ?? null,
+      fileUrl: prevQuote.fileUrl ?? null,
+      filePath: prevQuote.filePath ?? null,
+    }
+  } else {
+    // Resubmitting replaces the previous quotation; its cloud file would be
+    // orphaned with nothing left remembering the path.
+    if (prevQuote.filePath) removeFile(prevQuote.filePath)
+    // The document itself goes to cloud storage when available; the extinguisher
+    // doc then carries a URL instead of the base64 payload.
+    const up = fileData ? await putFile(orgId, 'quotations', fileData, fileName) : null
+    // Base64 length * 3/4 is the decoded size, close enough to compare a limit.
+    const inlineBytes = fileData ? Math.floor((String(fileData).split(',')[1] || '').length * 0.75) : 0
+    if (!up && fileData && inlineBytes > MAX_INLINE_BYTES) {
+      throw new Error(tooLargeForInline(fileName))
+    }
+    filePart = {
+      fileName: fileName || '',
+      fileType: fileType || '',
+      fileData: up ? null : fileData || null, // legacy inline fallback (≤~700KB)
+      fileUrl: up?.url || null,
+      filePath: up?.path || null,
+    }
   }
+
   const quotation = {
     amount: Number(amount) || 0,
     vendor: vendor || '',
     ref: ref || '',
     notes: notes || '',
-    fileName: fileName || '',
-    fileType: fileType || '',
-    fileData: up ? null : fileData || null, // legacy inline fallback (≤~700KB)
-    fileUrl: up?.url || null,
-    filePath: up?.path || null,
+    ...filePart,
     submittedAt: new Date().toISOString().slice(0, 10),
     submittedBy: actorName || '',
   }
@@ -782,16 +879,44 @@ export async function submitQuotation(orgId, orgName, id, { amount, vendor, ref,
  * failed test condemns the cylinder, and advancing the date would make a
  * condemned unit read as compliant for another cycle.
  */
-export async function submitHpt(orgId, orgName, id, { testedOn, result, nextDueOn, vendor, ref, notes, fileName, fileType, fileData }, actorName) {
-  // Re-recording replaces the previous certificate; its cloud file would be
-  // orphaned with nothing left remembering the path.
+export async function submitHpt(orgId, orgName, id, { testedOn, result, nextDueOn, vendor, ref, notes, fileName, fileType, fileData, keepFile }, actorName) {
   const prev = await getExtinguisher(orgId, id)
-  if (prev?.hpt?.filePath) removeFile(prev.hpt.filePath)
+  const prevHpt = prev?.hpt || {}
 
-  const up = fileData ? await putFile(orgId, 'hpt-certificates', fileData, fileName) : null
-  const inlineBytes = fileData ? Math.floor((String(fileData).split(',')[1] || '').length * 0.75) : 0
-  if (!up && fileData && inlineBytes > MAX_INLINE_BYTES) {
-    throw new Error(tooLargeForInline(fileName))
+  // ── What happens to the certificate ──────────────────────────────────────
+  // `keepFile` says the form came back with the document that was already on
+  // record and the user never touched it. That case has to be distinguished,
+  // because a certificate held in Storage arrives at the form as a URL with
+  // fileData null — indistinguishable, to the old code, from "no file". So
+  // re-recording a test to fix a typo removed the stored object and wrote an
+  // empty reference over it. The document a pressure vessel's compliance rests
+  // on was deleted by an edit that never mentioned it.
+  //
+  // Otherwise the previous file IS replaced, and the old object must go or it
+  // is orphaned with nothing left remembering its path.
+  let filePart
+  if (keepFile) {
+    filePart = {
+      fileName: prevHpt.fileName || '',
+      fileType: prevHpt.fileType || '',
+      fileData: prevHpt.fileData ?? null,
+      fileUrl: prevHpt.fileUrl ?? null,
+      filePath: prevHpt.filePath ?? null,
+    }
+  } else {
+    if (prevHpt.filePath) removeFile(prevHpt.filePath)
+    const up = fileData ? await putFile(orgId, 'hpt-certificates', fileData, fileName) : null
+    const inlineBytes = fileData ? Math.floor((String(fileData).split(',')[1] || '').length * 0.75) : 0
+    if (!up && fileData && inlineBytes > MAX_INLINE_BYTES) {
+      throw new Error(tooLargeForInline(fileName))
+    }
+    filePart = {
+      fileName: fileName || '',
+      fileType: fileType || '',
+      fileData: up ? null : fileData || null,
+      fileUrl: up?.url || null,
+      filePath: up?.path || null,
+    }
   }
 
   const hpt = {
@@ -801,11 +926,7 @@ export async function submitHpt(orgId, orgName, id, { testedOn, result, nextDueO
     vendor: vendor || '',
     ref: ref || '',
     notes: notes || '',
-    fileName: fileName || '',
-    fileType: fileType || '',
-    fileData: up ? null : fileData || null,
-    fileUrl: up?.url || null,
-    filePath: up?.path || null,
+    ...filePart,
     submittedAt: new Date().toISOString().slice(0, 10),
     submittedBy: actorName || '',
   }
@@ -963,7 +1084,29 @@ export async function addMockDrill(orgId, data, actor) {
   // Evidence photos, one doc each (fetched on demand when viewing / printing).
   // Cloud storage first — the photo doc then holds a URL instead of ~700KB of
   // base64 — falling back to the inline form when the bucket is unavailable.
-  for (const dataUrl of valid) {
+  // Uploaded in parallel, and the count corrected afterwards to what actually
+  // landed.
+  //
+  // This used to be a sequential loop of two awaits per photo, run AFTER the
+  // drill document had already been written with `photoCount: valid.length`. A
+  // failure on photo 3 of 10 therefore left a committed drill claiming ten
+  // photos with three stored — and MockDrills.jsx gates its fetch on
+  // `photoCount > 0`, so the viewer waits for evidence that will never arrive —
+  // while the caller's catch reported "save failed" for a drill that was saved.
+  // Both halves of that were wrong: the record lied, and the message lied about
+  // the opposite thing.
+  //
+  // allSettled, not all: one unreadable photo should not discard the nine that
+  // uploaded, and it must not reject out of this function either — the drill
+  // itself is already committed, and a throw here would produce the same false
+  // "save failed".
+  //
+  // Four at a time, not all at once. These are ~700 KB each and the people
+  // filing drill reports are on site connections; firing ten concurrent uploads
+  // at a weak link is slower than four and can time the whole set out. The old
+  // code was strictly sequential, so unbounded parallelism would have been a
+  // real change in behaviour dressed up as a bug fix.
+  const results = await mapWithConcurrency(valid, 4, async (dataUrl) => {
     const up = await putFile(orgId, 'drill-evidence', dataUrl, 'evidence.jpg', { collection: SEALED_DRILL_PHOTOS })
     // Only the INLINE copy is sealed. The bucket object is not — the recorder,
     // the detail modal and the printed report all render `.dataUrl` (normalised
@@ -978,6 +1121,15 @@ export async function addMockDrill(orgId, data, actor) {
         ...(up.encIv ? { encScheme: up.encScheme, encKeyId: up.encKeyId, encIv: up.encIv, ...(up.encWrapped ? { encWrapped: up.encWrapped } : {}) } : {}),
       }
       : await sealDoc(orgId, SEALED_DRILL_PHOTOS, { dataUrl, createdAt: serverTimestamp() }))
+  })
+  const stored = results.filter((r) => r.status === 'fulfilled').length
+  if (stored !== valid.length) {
+    // The record now says what is true. Correcting it is best-effort: if this
+    // write fails too, an over-count is still better than a throw that tells
+    // the user their drill was lost when it was not.
+    await updateDoc(ref, { photoCount: stored }).catch(() => {})
+    // eslint-disable-next-line no-console
+    console.warn(`[Fire Marshal] ${valid.length - stored} drill photo(s) failed to upload`)
   }
   await logAudit(orgId, actor, 'mockdrill.create', {
     module: 'drills',
@@ -986,7 +1138,10 @@ export async function addMockDrill(orgId, data, actor) {
     targetLabel: `${data.scenario} @ ${data.centerName || '—'}`,
     summary: `${data.eventType}: ${data.scenario} (score ${data.score}%) @ ${data.centerName || '—'}`,
   })
-  return ref.id
+  // The counts go back to the caller, not just the id. A drill saved with three
+  // of ten evidence photos used to report as a clean save — the only trace was
+  // a console warning nobody on a factory floor is reading.
+  return { id: ref.id, storedPhotos: stored, requestedPhotos: valid.length }
 }
 
 /**
@@ -1391,6 +1546,30 @@ export async function decideAssetReport(orgId, report, approve, reviewerName, ac
 // Each row writes the asset doc + its public QR mirror (2 ops); chunk under the
 // 500-op Firestore batch limit.
 const BULK_CHUNK = 200
+
+/**
+ * The next asset ID for a register, allocated by the shared transactional
+ * counter rather than guessed from the list in the browser.
+ *
+ * `list`/`field` are only the migration floor — see assetLogic.highestAssetSeq.
+ * Once the counter has been seeded past existing stock it never consults them
+ * again, which is what makes the number safe even when the register read was
+ * capped.
+ */
+export async function reserveAssetId(orgId, prefix, list, field) {
+  const n = await reserveSeq(orgId, assetSeqKind(prefix), {
+    floor: highestAssetSeq(prefix, list, field),
+  })
+  return formatAssetId(prefix, n)
+}
+
+/** `count` consecutive asset IDs, reserved in one transaction, for bulk generate. */
+export async function reserveAssetIdBlock(orgId, prefix, list, field, count) {
+  const first = await reserveSeqBlock(orgId, assetSeqKind(prefix), count, {
+    floor: highestAssetSeq(prefix, list, field),
+  })
+  return Array.from({ length: count }, (_, i) => formatAssetId(prefix, first + i))
+}
 
 export async function bulkAddAeds(orgId, orgName, rows, actor) {
   let created = 0

@@ -18,6 +18,7 @@ import SiteScopePicker from '../../../shared/org/SiteScopePicker';
 import DeptPersonPicker from '../../../shared/org/DeptPersonPicker';
 import { moduleLevelKeys, SITE_LEVEL_KEY } from '../../../shared/org/scopeConfig';
 import { Pager } from '../../../shared/ui';
+import { writeErrorMessage } from '../../../shared/lib/writeError';
 import { usePagination } from '../../../shared/ui/usePagination';
 import Logo from '../components/Logo';
 import LogoLoader from '../components/LogoLoader';
@@ -29,6 +30,7 @@ import {
     addConsultation,
     updateConsultation,
     deleteConsultation,
+    reserveConsultationDocId,
 } from '../lib/firestore';
 
 const MEETING_TYPES = [
@@ -421,12 +423,16 @@ export default function Consultation() {
         if (scopeHasSite && !formData.siteId) return toast.error("Site is required.");
 
         setSaving(true);
-        const finalDocId = formData.docId || `MOM-${formData.siteId || 'ORG'}-${Date.now().toString().slice(-4)}`;
         // firebaseKey is the Firestore doc id (a local handle), not a stored field.
         const { firebaseKey, ...rest } = formData;
-        const payload = { ...rest, docId: finalDocId, timestamp: new Date().toISOString(), createdBy: session.name || session.email };
 
         try {
+            // A record with no reference gets a real one from the shared
+            // counter — see reserveConsultationDocId. New records get theirs
+            // inside addConsultation, so only a legacy record reaches this.
+            const finalDocId = formData.docId
+                || (firebaseKey ? await reserveConsultationDocId(orgId) : '');
+            const payload = { ...rest, docId: finalDocId, timestamp: new Date().toISOString(), createdBy: session.name || session.email };
             if (firebaseKey) {
                 await updateConsultation(orgId, firebaseKey, payload);
             } else {
@@ -461,17 +467,32 @@ export default function Consultation() {
 
     const quickStatusUpdate = async (key, idx, newStatus) => {
         const meeting = meetings.find(m => m.firebaseKey === key);
-        const actionRow = meeting.actions[idx];
+        // `find` returns undefined when the row was deleted by someone else
+        // while this list was on screen, and reading .actions[idx] off it threw
+        // inside an async function — an unhandled rejection, and a dropdown
+        // that silently did nothing.
+        const actionRow = meeting?.actions?.[idx];
+        if (!actionRow) return toast.error("That action is no longer on this meeting. Refresh to see the current list.");
 
         // Modal level RLS check
         if (!permissions.canEditCreate && actionRow.owner !== (session.name || session.email || session.user)) {
             return toast.error("You can only update actions assigned to you.");
         }
 
-        const updatedActions = [...meeting.actions];
-        updatedActions[idx].status = newStatus;
-        await updateConsultation(orgId, key, { actions: updatedActions });
-        setMeetings(meetings.map(m => m.firebaseKey === key ? { ...m, actions: updatedActions } : m));
+        // Copy the ROW as well as the array. `[...meeting.actions]` is shallow,
+        // so assigning to updatedActions[idx].status mutated the object React
+        // was already holding: the memoised totals below could not see a change
+        // they had already been handed, and a failed write left the edit
+        // showing anyway.
+        const updatedActions = meeting.actions.map((a, i) => (i === idx ? { ...a, status: newStatus } : a));
+        try {
+            await updateConsultation(orgId, key, { actions: updatedActions });
+        } catch (err) {
+            // Without this the write's rejection was invisible and the row
+            // rendered the new status as though it had saved.
+            return toast.error(writeErrorMessage(err, { action: 'update this action' }));
+        }
+        setMeetings(prev => prev.map(m => m.firebaseKey === key ? { ...m, actions: updatedActions } : m));
 
         if (formData && formData.firebaseKey === key) {
             setFormData(prev => ({ ...prev, actions: updatedActions }));

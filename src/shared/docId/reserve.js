@@ -81,11 +81,32 @@ export async function setOrgCode(orgId, value) {
  */
 export async function reserveDocId(orgId, kind, { orgCode, floor = 0 } = {}) {
   const code = orgCode || (await getOrgCode(orgId))
+  const seq = await reserveSeq(orgId, kind, { floor })
+  return formatDocId(kind, code, seq)
+}
+
+/**
+ * Reserve the next raw NUMBER for a kind, without formatting it as a document
+ * id. Same counter, same transaction, same guarantee.
+ *
+ * Split out for identifiers that are not document ids and must not look like
+ * them: an AED's asset tag is AED-0042, printed on the QR label stuck to the
+ * unit, and it predates this module. Those were being computed in the browser
+ * as `highest-in-the-current-list + 1`, which hands two people opening "Add
+ * AED" at the same moment the same number, and hands a whole batch overlapping
+ * ones — from a list that is capped, so it does not even see every asset it is
+ * counting.
+ *
+ * `floor` is how existing stock migrates: pass the highest number already in
+ * use and the counter starts above it on first call, so nothing already printed
+ * is ever issued twice.
+ */
+export async function reserveSeq(orgId, kind, { floor = 0 } = {}) {
   // Read the legacy counter OUTSIDE the transaction: a transaction may retry,
   // and this is a one-time migration read whose value cannot change (nothing
   // writes the old document any more).
   const legacyFloor = await legacyCounterFor(orgId, kind)
-  const seq = await runTransaction(db, async (tx) => {
+  return runTransaction(db, async (tx) => {
     const snap = await tx.get(seqRef(orgId, kind))
     const current = (snap.exists() && Number(snap.data().n)) || 0
     const next = Math.max(current, legacyFloor, floor) + 1
@@ -93,7 +114,29 @@ export async function reserveDocId(orgId, kind, { orgCode, floor = 0 } = {}) {
     tx.set(seqRef(orgId, kind), { n: next })
     return next
   })
-  return formatDocId(kind, code, seq)
+}
+
+/**
+ * Reserve a CONTIGUOUS BLOCK of numbers in one transaction, for bulk creates.
+ *
+ * `generateAll` on the asset registers hands out `base + 1 + i` across a whole
+ * batch with no reservation at all, so two concurrent batches overlap
+ * completely. One transaction that advances the counter by `count` gives the
+ * caller a range nobody else can be inside.
+ *
+ * @returns {Promise<number>} the FIRST number of the block; the caller owns
+ *          `[first, first + count - 1]`.
+ */
+export async function reserveSeqBlock(orgId, kind, count, { floor = 0 } = {}) {
+  const n = Math.max(1, Number(count) || 1)
+  const legacyFloor = await legacyCounterFor(orgId, kind)
+  return runTransaction(db, async (tx) => {
+    const snap = await tx.get(seqRef(orgId, kind))
+    const current = (snap.exists() && Number(snap.data().n)) || 0
+    const first = Math.max(current, legacyFloor, floor) + 1
+    tx.set(seqRef(orgId, kind), { n: first + n - 1 })
+    return first
+  })
 }
 
 // Legacy per-org counter values, fetched once per org and cached. Returns 0

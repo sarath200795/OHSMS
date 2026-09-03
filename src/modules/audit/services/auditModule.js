@@ -11,6 +11,7 @@ import {
 import { db } from '../../../shared/firebase'
 import { reserveDocId } from '../../../shared/docId/reserve'
 import { COLLECTION_READ_CAP } from '../../../shared/org/orgData'
+import { snapshotHandlers } from './snapshotError'
 
 // Faithful to the original portal's Internal Audit data model:
 //   organizations/{orgId}/auditPlans     — schedules with an execution matrix
@@ -23,15 +24,17 @@ const findingsCol = (orgId) =>
 // audit plans and findings for the life of the organization and nothing prunes
 // them, so neither of these has an upper bound of its own.
 export function subscribeAuditPlans(orgId, callback) {
+  const h = snapshotHandlers('audit plans', callback)
   return onSnapshot(query(plansCol(orgId), limit(COLLECTION_READ_CAP)), (snap) => {
-    callback(snap.docs.map((d) => ({ firebaseKey: d.id, ...d.data() })))
-  })
+    h.ok(snap.docs.map((d) => ({ firebaseKey: d.id, ...d.data() })))
+  }, h.err)
 }
 
 export function subscribeAuditFindings(orgId, callback) {
+  const h = snapshotHandlers('audit findings', callback)
   return onSnapshot(query(findingsCol(orgId), limit(COLLECTION_READ_CAP)), (snap) => {
-    callback(snap.docs.map((d) => ({ firebaseKey: d.id, ...d.data() })))
-  })
+    h.ok(snap.docs.map((d) => ({ firebaseKey: d.id, ...d.data() })))
+  }, h.err)
 }
 
 export async function createAuditPlan(orgId, payload) {

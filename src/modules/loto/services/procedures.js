@@ -16,6 +16,9 @@ import { putFile, removeFile } from '../../../shared/storage'
 import { PROCEDURE_STATUS, computeLockSummary, mergeRevisedPoints } from '../constants/procedures'
 import { PUBLIC_COL, publicProcedure } from '../utils/publicProcedure'
 import { COLLECTION_READ_CAP } from '../../../shared/org/orgData'
+import {
+  lockClaimRef, readLockClaims, claimConflict, claimHeldBy, lockHeldMessage, claimBody,
+} from './lockClaims'
 
 const COL = 'procedures'
 const PHOTOS = 'procedurePhotos'
@@ -238,6 +241,15 @@ export async function setPointLock(procedureId, pointKey, locked, user, tech = n
     const snap = await tx.get(ref)
     if (!snap.exists()) throw new Error('Procedure not found')
     const data = snap.data()
+
+    // The padlock this call is about, read BEFORE any write — Firestore refuses
+    // a transaction read issued after a write. On lock it comes from the picker;
+    // on unlock it has to be recovered from the point, which is why the read
+    // cannot happen until the procedure has been fetched.
+    const existingPoint = (data.isolationPoints || []).find((p) => p.key === pointKey)
+    const claimNo = locked ? tech?.lockNo : existingPoint?.lockState?.techLockNo
+    const claims = await readLockClaims(tx, data.orgId, [claimNo])
+
     // Approval gates APPLYING a lock, never removing one.
     //
     // It used to gate both, and revising a procedure resets it to draft — so a
@@ -273,6 +285,11 @@ export async function setPointLock(procedureId, pointKey, locked, user, tech = n
     }
     // Lock number must be unique: not already on another locked point, and not
     // held by a group-lock member anywhere in this procedure.
+    //
+    // These two checks are kept because they produce the better message for the
+    // common case ("already on this equipment"), but they are no longer what
+    // makes the rule true — see the claim check below. They only ever saw the
+    // single procedure document this transaction read.
     if (locked && useTech?.lockNo) {
       const dupPoint = (data.isolationPoints || []).find(
         (p) => p.key !== pointKey && p.lockState?.locked && p.lockState.techLockNo === useTech.lockNo,
@@ -283,6 +300,11 @@ export async function setPointLock(procedureId, pointKey, locked, user, tech = n
       if (dupPoint || dupGroup) {
         throw new Error(`Lock ${useTech.lockNo} is already in use on this equipment`)
       }
+      // ORG-WIDE uniqueness, which is the invariant that actually matters: one
+      // physical padlock is in one place. See services/lockClaims.js for why
+      // this cannot be a check against a list read in the browser.
+      const held = claimConflict(claims, useTech.lockNo, procedureId)
+      if (held) throw new Error(lockHeldMessage(useTech.lockNo, held))
     }
 
     const at = new Date().toISOString()
@@ -341,6 +363,29 @@ export async function setPointLock(procedureId, pointKey, locked, user, tech = n
     // machine somebody has just isolated, or worse, the reverse.
     tx.set(publicRef(procedureId), publicBody({ ...data, ...update }))
 
+    // The claim, in the same transaction for the same reason as the mirror: a
+    // claim that outlives its lock strands a padlock nobody can use, and a lock
+    // that outlives its claim is the duplicate this whole mechanism prevents.
+    if (claimNo) {
+      if (locked) {
+        tx.set(lockClaimRef(data.orgId, claimNo), claimBody({
+          orgId: data.orgId,
+          lockNo: claimNo,
+          procedureId,
+          procedure: data,
+          label: target?.pointId || 'Point',
+          techName: useTech?.name,
+          by: user.id,
+        }))
+      } else if (claimHeldBy(claims, claimNo, procedureId)) {
+        // Only if THIS procedure still holds it — see claimHeldBy. Unlocking
+        // preserves techLockNo, and nothing here requires the point to be
+        // locked, so an unguarded delete could release a padlock another
+        // machine has since taken.
+        tx.delete(lockClaimRef(data.orgId, claimNo))
+      }
+    }
+
     tx.set(eventRef, {
       orgId: data.orgId,
       procedureId,
@@ -386,6 +431,33 @@ export async function addGroupMember(procedureId, member, method, user, swaps = 
       throw new Error('That technician is already on the group lock')
     }
 
+    // Every padlock this call could touch, read before the first write: the
+    // member's own locks (box or per-point), plus both sides of any swap — a
+    // swap RELEASES the personal lock that was on the point and CLAIMS the
+    // department lock replacing it, and the released one has to be freed or it
+    // stays unusable for the rest of the org.
+    const swapFrom = Object.entries(swaps || {})
+      .map(([key]) => (data.isolationPoints || []).find((p) => p.key === key)?.lockState?.techLockNo)
+    const memberNos = member.boxLock
+      ? [member.boxLock]
+      : Object.values(member.locks || {})
+    const claims = await readLockClaims(tx, data.orgId, [
+      ...memberNos, ...Object.values(swaps || {}), ...swapFrom,
+    ])
+
+    // The swap's DEPARTMENT locks need the same org-wide check the member's own
+    // locks get. GroupLockDialog filters its swap candidates on the browser's
+    // collectInUseLockNos — the capped, single-tab set this whole mechanism
+    // exists to replace — so a swap can offer a padlock another procedure holds.
+    // Without this the rules still refuse the write (the claim update pins
+    // procedureId), but the operator gets a bare permission-denied instead of
+    // being told which machine the lock is on.
+    for (const no of Object.values(swaps || {})) {
+      if (!no) continue
+      const held = claimConflict(claims, no, procedureId)
+      if (held) throw new Error(lockHeldMessage(no, held))
+    }
+
     const update = { updatedAt: serverTimestamp() }
     let points = data.isolationPoints || []
     let primaryTech = data.primaryTech || null
@@ -428,6 +500,8 @@ export async function addGroupMember(procedureId, member, method, user, swaps = 
       const no = member.boxLock
       if (!no) throw new Error('Select a technician with a personal lock for the box')
       if (used.has(no)) throw new Error(`Lock ${no} is already in use on this equipment`)
+      const held = claimConflict(claims, no, procedureId)
+      if (held) throw new Error(lockHeldMessage(no, held))
       memberRecord = {
         techId: member.techId,
         name: member.name,
@@ -444,6 +518,8 @@ export async function addGroupMember(procedureId, member, method, user, swaps = 
         if (used.has(no) || seen.has(no)) {
           throw new Error(`Lock ${no} is already in use on this equipment`)
         }
+        const held = claimConflict(claims, no, procedureId)
+        if (held) throw new Error(lockHeldMessage(no, held))
         seen.add(no)
       }
       memberRecord = {
@@ -463,6 +539,35 @@ export async function addGroupMember(procedureId, member, method, user, swaps = 
     update.lockSummary = computeLockSummary(points, next)
     tx.update(ref, update)
     tx.set(publicRef(procedureId), publicBody({ ...data, ...update }))
+
+    // Claim every padlock this member just applied, and release the personal
+    // locks the swaps replaced. Order does not matter inside a transaction, but
+    // releasing first would be wrong if a swap put the SAME number back on —
+    // claimConflict already treats a same-procedure claim as free, so the set
+    // below simply re-asserts it.
+    for (const from of swapFrom) {
+      if (!from || memberNos.includes(from) || Object.values(swaps || {}).includes(from)) continue
+      // claimHeldBy, for the same reason as setPointLock's release: a personal
+      // lock that predates claims has no claim of its own, and deleting at that
+      // address would release whatever another procedure has since put there.
+      if (claimHeldBy(claims, from, procedureId)) tx.delete(lockClaimRef(data.orgId, from))
+    }
+    for (const [key, no] of Object.entries(swaps || {})) {
+      if (!no) continue
+      const pt = points.find((p) => p.key === key)
+      tx.set(lockClaimRef(data.orgId, no), claimBody({
+        orgId: data.orgId, lockNo: no, procedureId, procedure: data,
+        label: pt?.pointId || 'Point', techName: primaryTech?.name, by: user.id,
+      }))
+    }
+    for (const no of memberNos) {
+      if (!no) continue
+      tx.set(lockClaimRef(data.orgId, no), claimBody({
+        orgId: data.orgId, lockNo: no, procedureId, procedure: data,
+        label: effectiveMethod === 'box' ? 'Group box' : 'Group lock',
+        techName: member.name, by: user.id,
+      }))
+    }
     tx.set(eventRef, {
       orgId: data.orgId,
       procedureId,
@@ -491,6 +596,13 @@ export async function removeGroupMember(procedureId, techId, user) {
     const data = snap.data()
     const group = data.groupLock || { active: false, method: null, members: [] }
     const removed = group.members?.find((m) => m.techId === techId)
+    // Read the claims BEFORE the writes below — Firestore refuses a transaction
+    // read issued after a write, and the release further down has to know
+    // whether this procedure still owns each padlock before deleting it.
+    // `lockNo` is the legacy single-lock member shape, still present in older
+    // documents even though nothing writes it now.
+    const removedNos = [removed?.boxLock, removed?.lockNo, ...Object.values(removed?.locks || {})]
+    const claims = await readLockClaims(tx, data.orgId, removedNos)
     const members = (group.members || []).filter((m) => m.techId !== techId)
     const next = {
       active: members.length > 0,
@@ -504,6 +616,13 @@ export async function removeGroupMember(procedureId, techId, user) {
     }
     tx.update(ref, update)
     tx.set(publicRef(procedureId), publicBody({ ...data, ...update }))
+    // Release this member's padlocks. Without it the numbers stay claimed after
+    // the technician walks away and no other machine can ever use them — the
+    // mirror-image failure of the one the claims prevent, and the one that
+    // makes people work around the system.
+    for (const no of removedNos) {
+      if (no && claimHeldBy(claims, no, procedureId)) tx.delete(lockClaimRef(data.orgId, no))
+    }
     tx.set(eventRef, {
       orgId: data.orgId,
       procedureId,

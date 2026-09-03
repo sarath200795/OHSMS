@@ -259,6 +259,14 @@ export const buildScheduledTasks = ({ templates, records, currentMonth }) => {
         template: t,
       }
       if (!a.frequency) {
+        // Belt and braces alongside completeAssignment (lib/firestore.js): a
+        // one-off assignment that already HAS a record against it is done,
+        // whatever its status field says. The recurring branch below has always
+        // consulted past records; this one never did, so before the status was
+        // written a completed one-off stayed on the schedule for ever — and
+        // this check also covers every assignment completed before that fix
+        // existed, with no backfill.
+        if (records.some((r) => r.assignmentId === a.id)) return
         tasks.push({
           ...base,
           frequency: 'One-off',

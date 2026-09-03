@@ -36,6 +36,11 @@ export function flattenHazards(assessments = []) {
           assessmentId: a.id,
           assessmentName: a.name || 'Untitled',
           siteName: a.siteName || '',
+          // activityId, like flattenAdditionalControls already carries. A
+          // hazard id is only unique WITHIN its activity, so anything that
+          // writes a hazard back — the Risk Register's ALARP declaration —
+          // needs both halves to address it.
+          activityId: act.id,
           activityTitle: act.title || 'Untitled activity',
           hazard: h,
           initial: initialRisk(h),

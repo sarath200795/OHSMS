@@ -31,7 +31,17 @@ export function StakeholderProvider({ children }) {
     // "no complaints" when the truth is "could not load them".
     const bind = (subscribe, set, key) =>
       subscribe(orgId, (rows, err) => {
-        if (err) return setError(err)
+        if (err) {
+          setError(err)
+          // …and still mark it loaded. `loading` is derived from these two
+          // flags, and on the error path it used to stay true for ever: the
+          // registers rendered a skeleton, and EscalationForm/LegalIssueForm —
+          // whose "not found" branch is gated on `!loading` — sat on
+          // <SkeletonDetail/> permanently rather than reaching the message that
+          // explains what happened. `error` is the thing consumers should
+          // react to; "still loading" was never true once the listener failed.
+          return setLoaded((l) => ({ ...l, [key]: true }))
+        }
         set(rows || [])
         setLoaded((l) => ({ ...l, [key]: true }))
       })

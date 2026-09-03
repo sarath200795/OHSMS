@@ -6,6 +6,7 @@ import ExtinguisherTable from '../components/ExtinguisherTable'
 import ReportDefectModal from '../components/ReportDefectModal'
 import SubmitQuotationModal from '../components/SubmitQuotationModal'
 import SubmitHptModal from '../components/SubmitHptModal'
+import AttachmentChips from '../components/AttachmentChips'
 import ListFilters from '../components/ListFilters'
 import { TableSkeleton } from '../components/Skeleton'
 import { useFleet } from '../context/FleetContext'
@@ -17,7 +18,6 @@ import { summariseDefectsBySite } from '../lib/siteDefectSummary'
 import { deriveStatus, hasQuotation } from '../lib/extinguisherLogic'
 import { requiredStep, WORKFLOW_STEP } from '../lib/hpt'
 import { DEFECT_BY_KEY, PHYSICAL_DEFECT_KEYS } from '../lib/constants'
-import { safeHref } from '../../../shared/safeUrl'
 import { readableOnTint } from '../../../shared/lib/contrast'
 
 export default function PhysicalDefects() {
@@ -119,17 +119,7 @@ export default function PhysicalDefects() {
                   <FileText size={14} /> Submit quotation
                 </button>
               )}
-              {hasQuotation(ext) && (
-                (ext.quotation?.fileData || ext.quotation?.fileUrl) ? (
-                  <a href={safeHref(ext.quotation.fileData || ext.quotation.fileUrl)} target="_blank" rel="noreferrer" className="chip bg-cyan-50 text-cyan-700 hover:underline" title={`Quoted ${ext.quotation?.amount ?? ''} · ${ext.quotation?.vendor || ''} — view document`}>
-                    <CheckCircle2 size={12} /> Quoted · View
-                  </a>
-                ) : (
-                  <span className="chip bg-cyan-50 text-cyan-700" title={`Quoted ${ext.quotation?.amount ?? ''} · ${ext.quotation?.vendor || ''}`}>
-                    <CheckCircle2 size={12} /> Quoted
-                  </span>
-                )
-              )}
+              <AttachmentChips ext={ext} />
               <button className="btn-ghost px-2.5 py-1.5 text-xs" onClick={() => setReportFor(ext)} title="Report another defect">
                 <AlertTriangle size={14} />
               </button>
