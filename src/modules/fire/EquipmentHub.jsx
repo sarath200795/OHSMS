@@ -1,16 +1,19 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Flame, HeartPulse, BellRing, Plus } from 'lucide-react'
+import { Flame, HeartPulse, BellRing, Signpost, Plus } from 'lucide-react'
 import Dashboard from './pages/Dashboard'
 import AEDDashboard from './pages/AEDDashboard'
 import FASDashboard from './pages/FASDashboard'
+import SignageDashboard from './pages/SignageDashboard'
 
 // One dashboard for all emergency equipment — each type in its own tab, keeping
-// the existing per-equipment dashboard designs. (Signages live in the Repository.)
+// the existing per-equipment dashboard designs. Signage sits beside them: its
+// records live in the Repository, but its compliance reads like the rest.
 const TABS = [
   { key: 'ext', label: 'Extinguishers', icon: Flame, Comp: Dashboard },
   { key: 'aed', label: 'AED', icon: HeartPulse, Comp: AEDDashboard },
   { key: 'fas', label: 'Fire Alarm', icon: BellRing, Comp: FASDashboard },
+  { key: 'signage', label: 'Signage', icon: Signpost, Comp: SignageDashboard },
 ]
 
 export default function EquipmentHub() {
