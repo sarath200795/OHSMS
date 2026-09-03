@@ -18,14 +18,42 @@ export const isFerp = (type) => FLOOR_SIGNAGE_TYPES.includes(type)
 export const ferpCovered = (s) => (s.allFloors ? s.totalFloors || 0 : s.floorsCovered || 0)
 
 /**
- * Site name → region / entity. The extinguisher register carries these fields
- * on nearly every unit, so it wins; signage fills the sites that have no
- * extinguisher yet. First non-empty value per site.
+ * Site name → region / entity.
+ *
+ * The SITE REGISTER is asked first, because it is the authority on where a site
+ * is: an asset record carries a copy of that, and a copy can be stale or blank.
+ * Asset registers then fill in any site the register has never heard of, which
+ * is how a site that exists only as somebody's imported spreadsheet row still
+ * gets a region.
+ *
+ * ── Why every register, not just two ─────────────────────────────────────────
+ *
+ * This used to read extinguishers and signage alone, while the site LIST it was
+ * being asked about came from five registers. A site known only to the AED or
+ * fire-alarm register therefore resolved to no region and no entity — and the
+ * filters compare against exactly this map, so picking any region dropped it.
+ * It sat in the totals, contributed to the denominator, and could not be found.
+ *
+ * On real data that was twelve sites of a hundred and sixteen: present in every
+ * unfiltered count, invisible the moment anybody touched a chip.
+ *
+ * @param field    'region' or 'entity'
+ * @param sources  asset registers to read, in order of preference
+ * @param registry the site register rows — {name, region, entity}
  */
-export function siteAttributeMap(field, extinguishers = [], signages = []) {
+export function siteAttributeMap(field, sources = [], registry = []) {
   const m = {}
-  for (const e of extinguishers) if (e.centerName && e[field] && !m[e.centerName]) m[e.centerName] = e[field]
-  for (const s of signages) if (s.centerName && s[field] && !m[s.centerName]) m[s.centerName] = s[field]
+  const take = (name, value) => {
+    const site = String(name ?? '').trim()
+    const v = String(value ?? '').trim()
+    if (site && v && !m[site]) m[site] = v
+  }
+
+  // The authority first. Nothing below can overwrite it — `take` keeps the
+  // first non-empty value it sees for a site.
+  for (const s of registry || []) take(s?.name, s?.[field])
+  for (const list of sources || []) for (const r of list || []) take(r?.centerName, r?.[field])
+
   return m
 }
 
@@ -107,9 +135,17 @@ export const isTypeCovered = (type, cell) =>
  *     byCondition: { [condition]: count },
  *   }
  */
-export function signageSummary(sites, signages, extinguishers, types = SIGNAGE_TYPES) {
-  const regionOf = siteAttributeMap('region', extinguishers, signages)
-  const entityOf = siteAttributeMap('entity', extinguishers, signages)
+/**
+ * @param attrs { regionOf, entityOf } — the maps the CALLER already built for
+ *        its filters. Passed in rather than rebuilt so the rows in this table
+ *        and the chips that filter them cannot resolve a site differently;
+ *        recomputing here from a narrower set of registers is exactly how they
+ *        came to disagree. Omitted, it falls back to the two registers that
+ *        carry these fields on nearly every record.
+ */
+export function signageSummary(sites, signages, extinguishers, types = SIGNAGE_TYPES, attrs = {}) {
+  const regionOf = attrs.regionOf || siteAttributeMap('region', [extinguishers, signages])
+  const entityOf = attrs.entityOf || siteAttributeMap('entity', [extinguishers, signages])
   const extCounts = extCountBySite(extinguishers)
 
   // Bucket the register by site once — signageSummary runs over every site ×
