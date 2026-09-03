@@ -10,11 +10,32 @@
 import { collection, query, where, orderBy, limit, onSnapshot } from 'firebase/firestore'
 import { db } from '../../../shared/firebase'
 import { createModuleService } from '../../../shared/module-kit/service'
+import { incompleteReadNotice } from '../../../shared/org/orgData'
 import { readPlan, mergeResults } from './readScope'
 
-const MAX = 1000
+export const MAX = 1000
 
 const base = createModuleService('documents', 'documents')
+
+/**
+ * The "these figures are incomplete" notice for a set of per-query statuses.
+ *
+ * One viewer runs SEVERAL queries — the org-wide slice plus one per batch of
+ * thirty sites — so a cap is per query, not per read. They are labelled by
+ * position rather than by filter: "siteId in (…30 ids…)" is not a thing to put
+ * on a dashboard, and the reader only needs to know that a slice was short.
+ *
+ * Returns null while everything is whole, so a caller can render it
+ * unconditionally.
+ */
+export function readNotice(status = []) {
+  return incompleteReadNotice(
+    Object.fromEntries(
+      status.map((s, i) => [status.length === 1 ? 'documents' : `documents (part ${i + 1})`, s])
+    ),
+    MAX
+  )
+}
 
 export const documentsService = {
   ...base,
@@ -22,6 +43,17 @@ export const documentsService = {
   /**
    * @param viewer { role, sites } — sites being the ones already visible to
    *        them, so the query can never ask for a site the rule would refuse.
+   *
+   * The callback is `cb(rows, incomplete)`. `incomplete` is null while the read
+   * is whole and otherwise carries the message to put on screen.
+   *
+   * That second argument exists because this read is CAPPED, and a capped read
+   * is indistinguishable from a short one. The browser survives it — a document
+   * off the end of the list is a document you scroll for. A COUNT does not: the
+   * pre-launch readiness figure divides by a fixed thirty-five per site, so a
+   * certificate that fell off the end is reported as one nobody filed, and the
+   * screen says a site is behind when it is not. A reader cannot tell those two
+   * apart, so the read has to.
    */
   subscribe(orgId, cb, viewer = {}) {
     if (!orgId) return () => {}
@@ -31,7 +63,11 @@ export const documentsService = {
     // Each query keeps its own slot, so a late snapshot from one cannot drop
     // the rows another has already delivered.
     const parts = plan.map(() => null)
-    const emit = () => cb(mergeResults(parts))
+    // 'capped' when a query came back exactly full — Firestore cannot say
+    // whether more was waiting, so a full page is treated as short. It over-
+    // warns on an org holding exactly 1,000, which is the safe direction.
+    const status = plan.map(() => 'ok')
+    const emit = () => cb(mergeResults(parts), readNotice(status))
 
     const unsubs = plan.map((p, i) => {
       const q = p.field
@@ -42,6 +78,7 @@ export const documentsService = {
         q,
         (snap) => {
           parts[i] = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+          status[i] = snap.docs.length >= MAX ? 'capped' : 'ok'
           emit()
         },
         (err) => {
@@ -54,6 +91,7 @@ export const documentsService = {
             err?.message || err
           )
           parts[i] = []
+          status[i] = 'failed'
           emit()
         }
       )

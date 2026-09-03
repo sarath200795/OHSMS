@@ -80,9 +80,16 @@ export function signageCell(recs, type, required = 0) {
  * A type counts toward a site's coverage when its cell is satisfied. The
  * fire-extinguisher column requires a FULL match to the fleet (status 'ok'),
  * not mere presence.
+ *
+ * Everywhere else, covered means the sign IS THERE — 'ok', or 'issue' where it
+ * is faded or obstructed but present. Deliberately not `count > 0`: a record
+ * whose condition is Missing is a surveyor reporting the sign is absent, and
+ * counting it as covered made a recorded absence read as compliance. That is
+ * the one answer this dashboard exists to give, and it gave the opposite: the
+ * matrix drew the cell red while the coverage total counted it green.
  */
 export const isTypeCovered = (type, cell) =>
-  type === EXT_SIGN_TYPE ? cell.status === 'ok' : cell.count > 0
+  type === EXT_SIGN_TYPE ? cell.status === 'ok' : cell.status === 'ok' || cell.status === 'issue'
 
 /**
  * Compliance across a set of sites.
