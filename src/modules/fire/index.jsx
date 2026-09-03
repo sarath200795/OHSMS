@@ -12,6 +12,7 @@ import AEDRepository from './pages/AEDRepository'
 import AEDDashboard from './pages/AEDDashboard'
 import FASRepository from './pages/FASRepository'
 import FASDashboard from './pages/FASDashboard'
+import SignageDashboard from './pages/SignageDashboard'
 import AssetBulkUpload from './pages/AssetBulkUpload'
 import AssetsDue from './pages/AssetsDue'
 import AddExtinguisher from './pages/AddExtinguisher'
@@ -85,6 +86,7 @@ export default function EquipmentModule() {
           <Route path="extinguishers" element={<Repository />} />
           <Route path="defects" element={<DefectRepository />} />
           <Route path="signages" element={<Signages />} />
+          <Route path="signage-dashboard" element={<SignageDashboard />} />
           <Route path="sites" element={<LinkedSites />} />
           <Route path="aed" element={<AEDRepository />} />
           <Route path="aed-dashboard" element={<AEDDashboard />} />

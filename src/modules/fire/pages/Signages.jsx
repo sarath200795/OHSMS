@@ -11,14 +11,23 @@ import { planSiteLinks } from '../lib/siteLink'
 import { listLinkedAssets, filterByLinkState, siteIdSet, isLinkedToSite } from '../lib/linkedSites'
 import LinkSitesModal from '../components/LinkSitesModal'
 import LinkStateChips from '../components/LinkStateChips'
+import ChipRow from '../components/ChipRow'
 import { exportSignage } from '../lib/exporter'
 import SiteScopePicker from '../../../shared/org/SiteScopePicker'
 import IncompleteNotice from '../../../shared/ui/IncompleteNotice'
 import {
+  isFerp,
+  ferpCovered,
+  signageCell,
+  isTypeCovered,
+  siteAttributeMap,
+  extCountBySite,
+  EXT_SIGN_TYPE,
+} from '../lib/signageLogic'
+import {
   SIGNAGE_TYPES,
   SIGNAGE_CONDITIONS,
   SIGNAGE_CONDITION_COLOR,
-  FLOOR_SIGNAGE_TYPES,
   REGIONS,
   ENTITIES,
 } from '../lib/constants'
@@ -42,41 +51,7 @@ const EMPTY = {
   floorsCovered: '',
 }
 
-const isFerp = (type) => FLOOR_SIGNAGE_TYPES.includes(type)
-// Floors that have FERP, given a record.
-const ferpCovered = (s) => (s.allFloors ? s.totalFloors || 0 : s.floorsCovered || 0)
-
-// Conditions that mean the signage exists but needs attention.
-const ISSUE_CONDITIONS = ['Faded', 'Damaged', 'Obstructed']
-
-// Every fire extinguisher should have a "Fire Extinguisher Sign", so this
-// column is scored against the number of extinguishers at the site (from the
-// Repository) rather than mere presence.
-const EXT_SIGN_TYPE = 'Fire Extinguisher Sign'
-
 const EMPTY_FILTERS = { search: '', regions: [], entities: [], types: [], conditions: [] }
-
-// One filter row of toggle chips (mirrors the Repository/Dashboard ListFilters style).
-function ChipRow({ label, options, selected, onToggle }) {
-  return (
-    <div className="flex flex-wrap items-center gap-2 border-t border-ink-100 pt-3">
-      <span className="w-20 shrink-0 text-xs font-bold uppercase tracking-wide text-ink-400">{label}</span>
-      {options.map((opt) => {
-        const on = selected.includes(opt)
-        return (
-          <button
-            key={opt}
-            type="button"
-            onClick={() => onToggle(opt)}
-            className={`chip transition ${on ? 'bg-brand-500 text-white' : 'bg-ink-100 text-ink-600 hover:bg-ink-200'}`}
-          >
-            {opt}
-          </button>
-        )
-      })}
-    </div>
-  )
-}
 
 export default function Signages() {
   const { orgId, orgName, profile } = useAuth()
@@ -101,32 +76,13 @@ export default function Signages() {
     })
   const clearFilters = () => setFilters(EMPTY_FILTERS)
 
-  // Each site's region (from its extinguishers, then signage) — for the Region filter.
-  const siteRegion = useMemo(() => {
-    const m = {}
-    for (const e of extinguishers) if (e.centerName && e.region && !m[e.centerName]) m[e.centerName] = e.region
-    for (const s of signages) if (s.centerName && s.region && !m[s.centerName]) m[s.centerName] = s.region
-    return m
-  }, [extinguishers, signages])
+  // Each site's region / entity (from its extinguishers, then signage) — for the filters.
+  const siteRegion = useMemo(() => siteAttributeMap('region', extinguishers, signages), [extinguishers, signages])
+  const siteEntity = useMemo(() => siteAttributeMap('entity', extinguishers, signages), [extinguishers, signages])
 
   // How many extinguishers each site has (from the Repository) — the target
   // count of "Fire Extinguisher Sign" records for that site.
-  const extCountBySite = useMemo(() => {
-    const m = {}
-    for (const e of extinguishers) {
-      if (!e.centerName) continue
-      m[e.centerName] = (m[e.centerName] || 0) + 1
-    }
-    return m
-  }, [extinguishers])
-
-  // Each site's entity (from its extinguishers, then signage) — for the Entity filter.
-  const siteEntity = useMemo(() => {
-    const m = {}
-    for (const e of extinguishers) if (e.centerName && e.entity && !m[e.centerName]) m[e.centerName] = e.entity
-    for (const s of signages) if (s.centerName && s.entity && !m[s.centerName]) m[s.centerName] = s.entity
-    return m
-  }, [extinguishers, signages])
+  const extCounts = useMemo(() => extCountBySite(extinguishers), [extinguishers])
 
   // Which signage types are shown as matrix columns (all, unless the Type filter narrows them).
   const visibleTypes = useMemo(
@@ -202,45 +158,11 @@ export default function Signages() {
     if (f.entities.length) recs = recs.filter((r) => f.entities.includes(r.entity || siteEntity[site]))
     if (f.conditions.length) recs = recs.filter((r) => f.conditions.includes(r.condition))
 
-    // Fire-extinguisher signage is scored against the site's extinguisher count:
-    // recorded signs (sum of quantities, excluding "Missing") vs required (# units).
-    if (type === EXT_SIGN_TYPE) {
-      const required = extCountBySite[site] || 0
-      const present = recs.filter((r) => r.condition !== 'Missing')
-      const recorded = present.reduce((a, r) => a + (Number(r.quantity) || 1), 0)
-      if (recs.length === 0 && required === 0) return { count: 0, status: 'none' }
-      let status
-      if (required === 0) status = recorded > 0 ? 'ok' : 'none'
-      else if (recorded === 0) status = 'missing'
-      else if (recorded < required) status = 'issue'
-      else status = 'ok'
-      if (status === 'ok' && present.some((r) => ISSUE_CONDITIONS.includes(r.condition))) status = 'issue'
-      const label = required > 0 ? `${recorded}/${required}` : (recorded > 0 ? String(recorded) : '—')
-      return { count: recs.length, status, label }
-    }
-
-    if (recs.length === 0) return { count: 0, status: 'none' }
-    // FERP shows floor coverage (covered / total) rather than a plain count.
-    if (isFerp(type)) {
-      const rec = recs.reduce((a, b) => ((b.totalFloors || 0) > (a.totalFloors || 0) ? b : a), recs[0])
-      const total = rec.totalFloors || 0
-      const covered = ferpCovered(rec)
-      const missing = recs.some((r) => r.condition === 'Missing')
-      let status = 'ok'
-      if (missing || covered === 0) status = 'missing'
-      else if (total > 0 && covered < total) status = 'issue'
-      return { count: recs.length, status, label: total > 0 ? `${covered}/${total}` : '✓' }
-    }
-    if (recs.some((r) => r.condition === 'Missing')) return { count: recs.length, status: 'missing' }
-    if (recs.some((r) => ISSUE_CONDITIONS.includes(r.condition))) return { count: recs.length, status: 'issue' }
-    return { count: recs.length, status: 'ok' }
+    // Fire-extinguisher signage is scored against the site's extinguisher count;
+    // FERP against its floors. Both rules live in lib/signageLogic so the
+    // Signage Compliance dashboard scores a site identically.
+    return signageCell(recs, type, extCounts[site] || 0)
   }
-
-  // A type counts toward a site's coverage when its cell is satisfied. The
-  // fire-extinguisher column requires a FULL match to the fleet (status 'ok'),
-  // not mere presence.
-  const isTypeCovered = (type, cell) =>
-    type === EXT_SIGN_TYPE ? cell.status === 'ok' : cell.count > 0
 
   // Group this page's records by site for the list view. Paging counts records
   // rather than sites, so a site with many signs continues onto the next page —
@@ -609,7 +531,7 @@ export default function Signages() {
             )}
             {editing.type === EXT_SIGN_TYPE && editing.centerName.trim() && (() => {
               const site = editing.centerName.trim()
-              const required = extCountBySite[site] || 0
+              const required = extCounts[site] || 0
               const others = signages
                 .filter((s) => s.centerName === site && s.type === EXT_SIGN_TYPE && s.condition !== 'Missing' && s.id !== editing.id)
                 .reduce((a, s) => a + (Number(s.quantity) || 1), 0)
