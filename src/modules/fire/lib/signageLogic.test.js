@@ -73,12 +73,56 @@ describe('isTypeCovered', () => {
 })
 
 describe('siteAttributeMap / extCountBySite', () => {
-  it('prefers the extinguisher register and falls back to signage', () => {
-    const m = siteAttributeMap('region', [{ centerName: 'A', region: 'North' }], [
-      { centerName: 'A', region: 'South' },
-      { centerName: 'B', region: 'West' },
+  it('reads the sources in order and keeps the first non-empty value', () => {
+    const m = siteAttributeMap('region', [
+      [{ centerName: 'A', region: 'North' }],
+      [{ centerName: 'A', region: 'South' }, { centerName: 'B', region: 'West' }],
     ])
     expect(m).toEqual({ A: 'North', B: 'West' })
+  })
+
+  // The site register is the authority on where a site is; an asset record
+  // carries a copy, and a copy can be stale.
+  it('lets the site register win over any asset record', () => {
+    const m = siteAttributeMap(
+      'region',
+      [[{ centerName: 'A', region: 'Stale' }]],
+      [{ name: 'A', region: 'North' }]
+    )
+    expect(m).toEqual({ A: 'North' })
+  })
+
+  it('still resolves a site the register has never heard of', () => {
+    const m = siteAttributeMap('region', [[{ centerName: 'B', region: 'West' }]], [{ name: 'A', region: 'North' }])
+    expect(m).toEqual({ A: 'North', B: 'West' })
+  })
+
+  // THE DEFECT. The site list is the union of five registers, so a site known
+  // only to the AED or fire-alarm register resolved to no region — and the
+  // filters compare against this map, so it vanished from every filtered view
+  // while still counting in the totals. Twelve of a hundred and sixteen, live.
+  it('resolves a site named only by the AED or fire-alarm register', () => {
+    const m = siteAttributeMap('region', [
+      [], // extinguishers
+      [], // signage
+      [{ centerName: 'Gold’s Gym', region: 'East' }], // aeds
+      [{ centerName: 'Cult Nagole', region: 'East' }], // fas
+    ])
+    expect(m).toEqual({ 'Gold’s Gym': 'East', 'Cult Nagole': 'East' })
+  })
+
+  it('ignores blank values and blank names rather than recording them', () => {
+    const m = siteAttributeMap(
+      'region',
+      [[{ centerName: 'A', region: '' }, { centerName: '  ', region: 'North' }, { centerName: 'A', region: 'South' }]],
+      [{ name: 'A', region: '  ' }]
+    )
+    expect(m).toEqual({ A: 'South' })
+  })
+
+  it('is empty, not broken, with nothing to read', () => {
+    expect(siteAttributeMap('region')).toEqual({})
+    expect(siteAttributeMap('region', [null, undefined], null)).toEqual({})
   })
 
   it('counts extinguishers per site and ignores unassigned units', () => {

@@ -111,7 +111,7 @@ function Meter({ pct }) {
 const EMPTY_FILTERS = { regions: [], entities: [] }
 
 export default function SignageDashboard() {
-  const { signages, sites, extinguishers, aeds, fas, mockDrills, incomplete, loading } = useFleet()
+  const { signages, sites, extinguishers, aeds, fas, mockDrills, siteInventory, incomplete, loading } = useFleet()
   const [filters, setFilters] = useState(EMPTY_FILTERS)
 
   const f = filters
@@ -123,10 +123,24 @@ export default function SignageDashboard() {
     })
   const clearFilters = () => setFilters(EMPTY_FILTERS)
 
-  // Region / entity come from the site's assets, exactly as the signage matrix
-  // resolves them — the signage records themselves often leave both blank.
-  const siteRegion = useMemo(() => siteAttributeMap('region', extinguishers, signages), [extinguishers, signages])
-  const siteEntity = useMemo(() => siteAttributeMap('entity', extinguishers, signages), [extinguishers, signages])
+  // The site register first, then every asset register that names a site.
+  //
+  // The site LIST here is the union of five registers, so resolving region from
+  // only two left a site known to the AED or fire-alarm register with no region
+  // at all — and these maps are what the chips filter against, so those sites
+  // vanished from every filtered view while still counting in the totals.
+  const attrSources = useMemo(
+    () => [extinguishers, signages, aeds, fas, mockDrills],
+    [extinguishers, signages, aeds, fas, mockDrills]
+  )
+  const siteRegion = useMemo(
+    () => siteAttributeMap('region', attrSources, siteInventory),
+    [attrSources, siteInventory]
+  )
+  const siteEntity = useMemo(
+    () => siteAttributeMap('entity', attrSources, siteInventory),
+    [attrSources, siteInventory]
+  )
 
   // Sites in scope — kept even with no signage at all, so a site that has never
   // been surveyed reads as 0 % rather than disappearing from the denominator.
@@ -139,7 +153,12 @@ export default function SignageDashboard() {
     [sites, f.regions, f.entities, siteRegion, siteEntity]
   )
 
-  const s = useMemo(() => signageSummary(scopedSites, signages, extinguishers), [scopedSites, signages, extinguishers])
+  // The same maps the filters use, handed over rather than rebuilt inside, so a
+  // row's Region / Entity column and the chip that hides it always agree.
+  const s = useMemo(
+    () => signageSummary(scopedSites, signages, extinguishers, undefined, { regionOf: siteRegion, entityOf: siteEntity }),
+    [scopedSites, signages, extinguishers, siteRegion, siteEntity]
+  )
 
   // Deliberately NOT narrowed by the region / entity filters. The question it
   // answers — why does this page count more sites than the extinguisher
