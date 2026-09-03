@@ -24,6 +24,7 @@ import {
 } from 'firebase/firestore'
 import { db } from '../../../shared/firebase'
 import { reserveDocId } from '../../../shared/docId/reserve'
+import { snapshotHandlers } from '../../../shared/snapshotError'
 import { putFile, removeFile, MAX_INLINE_BYTES, tooLargeForInline } from '../../../shared/storage'
 import { AUDIT } from './audit'
 import { computeWindow, derivePermitStatus } from './permitStatus'
@@ -403,7 +404,11 @@ export async function deletePermitDocument(orgId, permitId, docId, actor, label)
 
 export function subscribePermits(orgId, cb) {
   const q = query(permitCol(orgId), orderBy('createdAt', 'desc'), limit(1000))
-  return onSnapshot(q, (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))))
+  // PermitContext clears `loading` from the success callback only — without an
+  // error handler the permit register spins for ever after one failed read.
+  // See shared/snapshotError.js.
+  const h = snapshotHandlers('permits', cb)
+  return onSnapshot(q, (snap) => h.ok(snap.docs.map((d) => ({ id: d.id, ...d.data() }))), h.err)
 }
 
 export async function getPermit(orgId, id) {
@@ -513,15 +518,36 @@ export async function requestClosure(orgId, permitId, actor) {
 }
 
 export async function decideClosure(orgId, permitId, team, decision, note, actor) {
-  const current = await getPermit(orgId, permitId)
-  if (!current?.closure) throw new Error('No closure request is pending')
   const block = decisionBlock(decision, actor, note)
-  const closure = { ...current.closure, [team]: block }
-  const merged = { ...current, closure }
-  await updateDoc(permitRef(orgId, permitId), { closure, updatedAt: serverTimestamp() })
+  // Read INSIDE the transaction, and write a dotted path.
+  //
+  // Both halves are needed and they fix different things. The dotted path stops
+  // the write clobbering the sibling team's block: this used to send the whole
+  // `closure` map, so engineering and operations — who are *expected* to act on
+  // the same request at the same time — each sent a map in which the other was
+  // still `pending`, and the second write erased the first approval, leaving a
+  // permit both teams had signed off reading as Not Closed.
+  //
+  // The transaction is what makes the DERIVED state right. `merged` feeds
+  // syncStoredStatus, which recomputes storedStatus and the QR mirror a worker
+  // scans at the barrier. Built from a read taken before the write, `merged`
+  // can be missing the sibling's approval even though the server now has it —
+  // so the mirror would say IN PROGRESS about a permit that is closed. Reading
+  // in the transaction means a concurrent decision retries and the second
+  // caller sees both.
+  const merged = await runTransaction(db, async (tx) => {
+    const snap = await tx.get(permitRef(orgId, permitId))
+    const current = snap.exists() ? { id: permitId, ...snap.data() } : null
+    if (!current?.closure) throw new Error('No closure request is pending')
+    tx.update(permitRef(orgId, permitId), {
+      [`closure.${team}`]: block,
+      updatedAt: serverTimestamp(),
+    })
+    return { ...current, closure: { ...current.closure, [team]: block } }
+  })
   await syncStoredStatus(orgId, permitId, merged)
   await logAudit(orgId, actor, AUDIT.CLOSURE_DECISION, {
-    targetId: permitId, targetLabel: current.permitNo, summary: `Closure ${team} ${decision}`,
+    targetId: permitId, targetLabel: merged.permitNo, summary: `Closure ${team} ${decision}`,
   })
 }
 
@@ -564,21 +590,46 @@ export async function addExtensionSuggestion(orgId, permitId, { text, newValidTo
 }
 
 export async function decideExtension(orgId, permitId, team, decision, note, actor) {
-  const current = await getPermit(orgId, permitId)
-  if (!current?.extension) throw new Error('No extension request is pending')
   const block = decisionBlock(decision, actor, note)
-  const extension = { ...current.extension, [team]: block }
-  const merged = { ...current, extension }
-  // When both teams approve, the extended end becomes the permit's validTo.
-  const bothApproved = extension.engineering?.status === 'approved' && extension.operations?.status === 'approved'
-  const patch = { extension, updatedAt: serverTimestamp() }
-  if (bothApproved && extension.newValidTo) {
-    patch.validTo = extension.newValidTo
-    merged.validTo = extension.newValidTo
-  }
-  await updateDoc(permitRef(orgId, permitId), patch)
+  // See decideClosure for why this reads inside the transaction. The stakes are
+  // higher here, and a dotted path ALONE would have made them worse rather than
+  // better.
+  //
+  // `bothApproved` is what promotes the extension's new end time to the
+  // permit's `validTo`. Computed from a read taken before the write, neither of
+  // two simultaneous approvers ever sees it become true: each one's local copy
+  // has the other still `pending`. With the old wholesale write that was
+  // recoverable — the second write left one team pending, so somebody had to
+  // approve again and `validTo` landed then. With a dotted write the server
+  // ends up showing BOTH teams approved and `validTo` never written, and
+  // nobody will ever re-approve a request that looks complete. A crew works on
+  // under an extension the permit does not record.
+  //
+  // Reading in the transaction means the second caller retries against a state
+  // that already contains the first approval, sees bothApproved, and writes
+  // validTo in the same commit. It also stops the wholesale write dropping any
+  // suggestion addExtensionSuggestion appended in between.
+  const merged = await runTransaction(db, async (tx) => {
+    const snap = await tx.get(permitRef(orgId, permitId))
+    const current = snap.exists() ? { id: permitId, ...snap.data() } : null
+    if (!current?.extension) throw new Error('No extension request is pending')
+
+    const extension = { ...current.extension, [team]: block }
+    const patch = { [`extension.${team}`]: block, updatedAt: serverTimestamp() }
+    const next = { ...current, extension }
+
+    // When both teams approve, the extended end becomes the permit's validTo.
+    const bothApproved = extension.engineering?.status === 'approved'
+      && extension.operations?.status === 'approved'
+    if (bothApproved && extension.newValidTo) {
+      patch.validTo = extension.newValidTo
+      next.validTo = extension.newValidTo
+    }
+    tx.update(permitRef(orgId, permitId), patch)
+    return next
+  })
   await syncStoredStatus(orgId, permitId, merged)
   await logAudit(orgId, actor, AUDIT.EXTENSION_DECISION, {
-    targetId: permitId, targetLabel: current.permitNo, summary: `Extension ${team} ${decision}`,
+    targetId: permitId, targetLabel: merged.permitNo, summary: `Extension ${team} ${decision}`,
   })
 }

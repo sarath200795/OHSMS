@@ -1,5 +1,6 @@
 import { collection, onSnapshot, orderBy, query, limit } from 'firebase/firestore'
 import { db } from '../../../shared/firebase'
+import { snapshotHandlers } from './snapshotError'
 
 // Reads only. The write path that used to live here — createAudit,
 // updateAudit, deleteAudit, subscribeAudit, and the ISO 45001 clause checklist
@@ -13,7 +14,8 @@ const col = (orgId) => collection(db, 'organizations', orgId, 'audits')
 
 export function subscribeAudits(orgId, callback) {
   const q = query(col(orgId), orderBy('scheduledDate', 'asc'), limit(1000))
+  const h = snapshotHandlers('audits', callback)
   return onSnapshot(q, (snap) => {
-    callback(snap.docs.map((d) => ({ id: d.id, ...d.data() })))
-  })
+    h.ok(snap.docs.map((d) => ({ id: d.id, ...d.data() })))
+  }, h.err)
 }

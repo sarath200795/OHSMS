@@ -29,9 +29,16 @@ export default function Users() {
   useEffect(() => {
     if (!orgId) return
     const unsubs = [
+      // [...list] before .sort(): subscribeOrgUsers is ref-counted and
+      // multiplexed (shared/org/sharedSubscription.js), so it hands the SAME
+      // array reference to every subscriber and keeps it as the channel's
+      // cache. Sorting in place reordered the arrays IncidentContext,
+      // TrainingContext, PermitContext and the inspections DataContext were
+      // already holding, with no re-render to tell them — and any component
+      // that subscribed during the 30 s linger window got the mutated copy.
       subscribeOrgUsers(orgId, (list) =>
         setUsers(
-          list.sort((a, b) => (a.status === 'pending' ? -1 : 1) - (b.status === 'pending' ? -1 : 1))
+          [...list].sort((a, b) => (a.status === 'pending' ? -1 : 1) - (b.status === 'pending' ? -1 : 1))
         )
       ),
       subscribeSites(orgId, setSites),

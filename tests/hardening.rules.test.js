@@ -162,6 +162,310 @@ describe('a joiner cannot choose an elevated role', () => {
   })
 })
 
+// The create half of "a member cannot widen their own reach", above. Those
+// tests only ever sent updateDoc, and the create rule pinned role and status
+// but not access or siteId — so the whole escalation moved one step earlier and
+// walked straight through a green suite. Approving a join flips `status` and
+// nothing re-asserts what else the joiner wrote, so scope chosen at create is
+// scope granted.
+describe('a joiner cannot arrive with scope they granted themselves', () => {
+  it('refuses joining with an access map', async () => {
+    await assertFails(setDoc(doc(as('newbie'), 'users', 'newbie'), {
+      orgId: VICTIM, role: 'member', status: 'pending', name: 'New', email: 'n@t.co',
+      access: { sites: ['site-1', 'site-2'], regions: [], entities: [] },
+    }))
+  })
+
+  it('refuses joining with a whole region', async () => {
+    await assertFails(setDoc(doc(as('newbie'), 'users', 'newbie'), {
+      orgId: VICTIM, role: 'member', status: 'pending', name: 'New', email: 'n@t.co',
+      access: { sites: [], regions: ['South'], entities: [] },
+    }))
+  })
+
+  it('refuses joining with a posted siteId', async () => {
+    await assertFails(setDoc(doc(as('newbie'), 'users', 'newbie'), {
+      orgId: VICTIM, role: 'member', status: 'pending', name: 'New', email: 'n@t.co',
+      siteId: 'site-1',
+    }))
+  })
+
+  // The shape every legitimate join path actually writes (createPendingMember
+  // in src/shared/org/orgData.js) must still go through.
+  it('still lets them join carrying an empty access map', async () => {
+    await assertSucceeds(setDoc(doc(as('newbie'), 'users', 'newbie'), {
+      orgId: VICTIM, role: 'member', status: 'pending', name: 'New', email: 'n@t.co',
+      access: { sites: [], regions: [], entities: [] }, accessRequest: null,
+    }))
+  })
+
+  // An admin provisioning an employee writes the same empty scope
+  // (createOne in src/shared/auth/provisioning.js) and must not be blocked.
+  it('still lets an admin provision an employee', async () => {
+    await assertSucceeds(setDoc(doc(as('vic'), 'users', 'provisioned'), {
+      orgId: VICTIM, role: 'member', status: 'approved', name: 'Prov', email: 'p@t.co',
+      access: { sites: [], regions: [], entities: [] }, mustChangePassword: true,
+    }))
+  })
+
+  it('refuses an admin provisioning one straight into another org', async () => {
+    await assertFails(setDoc(doc(as('vic'), 'users', 'provisioned'), {
+      orgId: ATTACKER, role: 'member', status: 'approved', name: 'Prov', email: 'p@t.co',
+      access: { sites: [], regions: [], entities: [] },
+    }))
+  })
+})
+
+// Rules do not cascade into subcollections, so the manager grant on
+// /illnesses/{id} stopped at the document and the attachments fell through to
+// the generic recursive rule — which excludes col == 'illnesses' from reads.
+// The result was a collection nobody at all could read, including the managers
+// it exists for: subscribeIllnessFiles failed permission-denied for every role.
+// It failed CLOSED, which is why it leaked nothing and why nothing caught it.
+// One physical padlock is in one place. Uniqueness used to be checked inside
+// the single procedure document the transaction had read, plus a list computed
+// in the browser — so two operators on two DIFFERENT procedures both saw lock
+// 12 free and both committed, with no contention for Firestore to detect.
+// The lock number is now a document ID, which is contention it can see.
+describe('a LOTO padlock cannot be claimed twice', () => {
+  const claim = (lockNo) => `${VICTIM}__${lockNo}`
+
+  it('lets the first claim through', async () => {
+    await assertSucceeds(setDoc(doc(as('vic'), 'lockClaims', claim('12')), {
+      orgId: VICTIM, lockNo: '12', procedureId: 'proc-1', equipment: 'Press 4',
+    }))
+  })
+
+  it('refuses a second claim on the same padlock', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'lockClaims', claim('12')), {
+        orgId: VICTIM, lockNo: '12', procedureId: 'proc-1', equipment: 'Press 4',
+      })
+    })
+    // A different procedure trying to take the same padlock.
+    await assertFails(setDoc(doc(as('vic'), 'lockClaims', claim('12')), {
+      orgId: VICTIM, lockNo: '12', procedureId: 'proc-OTHER', equipment: 'Lathe 2',
+    }))
+  })
+
+  it('still lets the holding procedure re-assert its own claim', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'lockClaims', claim('12')), {
+        orgId: VICTIM, lockNo: '12', procedureId: 'proc-1', equipment: 'Press 4',
+      })
+    })
+    await assertSucceeds(setDoc(doc(as('vic'), 'lockClaims', claim('12')), {
+      orgId: VICTIM, lockNo: '12', procedureId: 'proc-1', equipment: 'Press 4', techName: 'Ravi',
+    }))
+  })
+
+  // The claim id carries the org, so proving you own the org you NAMED is not
+  // the same as proving you own the address you are writing at. Without the
+  // id-to-payload binding, a stranger with a throwaway org could take out a
+  // claim at a victim's lock number — and because readLockClaims does a tx.get
+  // on that document inside the lock transaction, and the read rule keys off
+  // the claim's own orgId, the victim could then neither read past it nor
+  // delete it. Padlock permanently unusable, repeatable across every org in the
+  // world-readable orgIndex.
+  it('refuses a claim written at another org\'s lock address', async () => {
+    await assertFails(setDoc(doc(as('mal'), 'lockClaims', claim('12')), {
+      orgId: ATTACKER, lockNo: '12', procedureId: 'squat',
+    }))
+  })
+
+  it('refuses it even from a member of the victim org naming the wrong org', async () => {
+    await assertFails(setDoc(doc(as('vic'), 'lockClaims', `${ATTACKER}__12`), {
+      orgId: VICTIM, lockNo: '12', procedureId: 'proc-1',
+    }))
+  })
+
+  it('refuses another org taking over a live claim', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'lockClaims', claim('12')), {
+        orgId: VICTIM, lockNo: '12', procedureId: 'proc-1',
+      })
+    })
+    await assertFails(setDoc(doc(as('mal'), 'lockClaims', claim('12')), {
+      orgId: ATTACKER, lockNo: '12', procedureId: 'proc-1',
+    }))
+  })
+
+  it('lets a writer release one — a padlock outlives the shift that applied it', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'lockClaims', claim('12')), {
+        orgId: VICTIM, lockNo: '12', procedureId: 'proc-1',
+      })
+    })
+    await assertSucceeds(deleteDoc(doc(as('mem'), 'lockClaims', claim('12'))))
+  })
+
+  it('refuses the read-only auditor releasing one', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'lockClaims', claim('12')), {
+        orgId: VICTIM, lockNo: '12', procedureId: 'proc-1',
+      })
+    })
+    await assertFails(deleteDoc(doc(as('aud'), 'lockClaims', claim('12'))))
+  })
+})
+
+// docSeq was given a monotonic rule because "a counter that can move BACKWARDS
+// hands the next record an id already printed on a permit". The legacy refNo
+// counters in /meta were left under the generic member rule and had no such
+// protection — a one-line setDoc rewound the IRA- and ILL- sequences.
+describe('reference-number counters cannot be rewound', () => {
+  beforeEach(async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'organizations', VICTIM, 'meta', 'stats'), {
+        nextSeq: 42, totalIncidents: 7,
+      })
+    })
+  })
+
+  it('refuses moving the sequence backwards', async () => {
+    await assertFails(updateDoc(doc(as('mem'), 'organizations', VICTIM, 'meta', 'stats'), { nextSeq: 1 }))
+  })
+
+  it('still lets it move forwards', async () => {
+    await assertSucceeds(updateDoc(doc(as('mem'), 'organizations', VICTIM, 'meta', 'stats'), { nextSeq: 43 }))
+  })
+
+  // Most writes here are stats deltas that never mention nextSeq. They must
+  // still go through, which is why the rule reads the field with a default.
+  it('still lets an unrelated stats delta through', async () => {
+    await assertSucceeds(updateDoc(doc(as('mem'), 'organizations', VICTIM, 'meta', 'stats'), { totalIncidents: 8 }))
+  })
+
+  it('still refuses touching the keyset', async () => {
+    await assertFails(setDoc(doc(as('mem'), 'organizations', VICTIM, 'meta', 'cryptoKeys'), { wrapped: 'x' }))
+  })
+
+  // Excluding `meta` from structuralOnly moved every grant on the collection
+  // into the /meta/{kind} block — including the READ that genericReadable used
+  // to refuse for the keyset. A read rule there without notKeyset does not keep
+  // the old behaviour, it silently widens it. cryptoKeys.rules.test.js covers
+  // this too; it is repeated here because this rule is what now decides it.
+  it('still refuses READING the keyset', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'organizations', VICTIM, 'meta', 'cryptoKeys'), { wrapped: 'x' })
+    })
+    await assertFails(getDoc(doc(as('mem'), 'organizations', VICTIM, 'meta', 'cryptoKeys')))
+    await assertFails(getDoc(doc(as('vic'), 'organizations', VICTIM, 'meta', 'cryptoKeys')))
+    await assertFails(getDoc(doc(as('aud'), 'organizations', VICTIM, 'meta', 'cryptoKeys')))
+  })
+
+  // The permit number is the third counter, and the one printed on a piece of
+  // paper somebody signs.
+  it('refuses rewinding the permit sequence', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'organizations', VICTIM, 'meta', 'counters'), { permitSeq: 88 })
+    })
+    await assertFails(updateDoc(doc(as('mem'), 'organizations', VICTIM, 'meta', 'counters'), { permitSeq: 1 }))
+  })
+
+  it('still lets the permit sequence advance', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'organizations', VICTIM, 'meta', 'counters'), { permitSeq: 88 })
+    })
+    await assertSucceeds(updateDoc(doc(as('mem'), 'organizations', VICTIM, 'meta', 'counters'), { permitSeq: 89 }))
+  })
+})
+
+// /moduleEntitlements existed, was operator-write-only, and was referenced by
+// no rule at all — enforcement was React alone, so a member of an org whose
+// module had been switched off could still read and write its collections
+// straight from the SDK.
+describe('module entitlements are enforced in the rules', () => {
+  it('allows everything when the org has no entitlement document', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'organizations', VICTIM, 'permits', 'p1'), { title: 'Hot work' })
+    })
+    await assertSucceeds(getDoc(doc(as('mem'), 'organizations', VICTIM, 'permits', 'p1')))
+  })
+
+  it('refuses reading a collection whose module is switched off', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore()
+      await setDoc(doc(db, 'organizations', VICTIM, 'permits', 'p1'), { title: 'Hot work' })
+      await setDoc(doc(db, 'moduleEntitlements', VICTIM), { ptw: false })
+    })
+    await assertFails(getDoc(doc(as('mem'), 'organizations', VICTIM, 'permits', 'p1')))
+  })
+
+  it('refuses writing to it too', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'moduleEntitlements', VICTIM), { ptw: false })
+    })
+    await assertFails(
+      addDoc(collection(as('vic'), 'organizations', VICTIM, 'permits'), { title: 'Hot work' })
+    )
+  })
+
+  // Absent key means enabled, so a module added to the registry later is on
+  // until an operator turns it off.
+  it('leaves modules the document does not mention enabled', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore()
+      await setDoc(doc(db, 'organizations', VICTIM, 'incidents', 'i1'), { title: 'real' })
+      await setDoc(doc(db, 'moduleEntitlements', VICTIM), { ptw: false })
+    })
+    await assertSucceeds(getDoc(doc(as('mem'), 'organizations', VICTIM, 'incidents', 'i1')))
+  })
+
+  // Shared plumbing is not a module and must never be gated — a site registry
+  // that goes dark takes every module with it.
+  it('never gates the site registry', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore()
+      await setDoc(doc(db, 'organizations', VICTIM, 'sites', 's1'), { name: 'Hosur' })
+      await setDoc(doc(db, 'moduleEntitlements', VICTIM), {
+        ptw: false, incidents: false, hira: false,
+      })
+    })
+    await assertSucceeds(getDoc(doc(as('mem'), 'organizations', VICTIM, 'sites', 's1')))
+  })
+
+  // Turning a module off must not trap the records already in it.
+  it('still lets a manager delete from a disabled module', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore()
+      await setDoc(doc(db, 'organizations', VICTIM, 'permits', 'p1'), { title: 'Hot work' })
+      await setDoc(doc(db, 'moduleEntitlements', VICTIM), { ptw: false })
+    })
+    await assertSucceeds(deleteDoc(doc(as('vic'), 'organizations', VICTIM, 'permits', 'p1')))
+  })
+})
+
+describe('illness attachments are readable by managers and nobody else', () => {
+  beforeEach(async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore()
+      await setDoc(doc(db, 'organizations', VICTIM, 'illnesses', 'ill-1'), { refNo: 'ILL-1' })
+      await setDoc(doc(db, 'organizations', VICTIM, 'illnesses', 'ill-1', 'files', 'f1'), {
+        name: 'gp-letter.pdf', path: `orgs/${VICTIM}/illness-files/abc`,
+      })
+    })
+  })
+
+  it('lets a manager read one', async () => {
+    await assertSucceeds(getDoc(doc(as('vic'), 'organizations', VICTIM, 'illnesses', 'ill-1', 'files', 'f1')))
+  })
+
+  it('refuses a plain member', async () => {
+    await assertFails(getDoc(doc(as('mem'), 'organizations', VICTIM, 'illnesses', 'ill-1', 'files', 'f1')))
+  })
+
+  // The auditor is an outside party: confirming illnesses are recorded does not
+  // require reading a named colleague's GP letter.
+  it('refuses the auditor', async () => {
+    await assertFails(getDoc(doc(as('aud'), 'organizations', VICTIM, 'illnesses', 'ill-1', 'files', 'f1')))
+  })
+
+  it('refuses another org entirely', async () => {
+    await assertFails(getDoc(doc(as('mal'), 'organizations', VICTIM, 'illnesses', 'ill-1', 'files', 'f1')))
+  })
+})
+
 describe('auditor is read-only in the rules, not just in the UI', () => {
   it('refuses an auditor creating a record', async () => {
     await assertFails(

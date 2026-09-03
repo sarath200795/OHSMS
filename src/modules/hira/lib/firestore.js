@@ -16,6 +16,7 @@ import {
   onSnapshot,
   serverTimestamp,
   writeBatch,
+  runTransaction,
   limit,
 } from 'firebase/firestore'
 import { db } from '../../../shared/firebase'
@@ -107,6 +108,87 @@ export async function updateAssessment(orgId, id, data) {
   await updateDoc(assessmentRef(orgId, id), {
     ...clean(data),
     updatedAt: serverTimestamp(),
+  })
+}
+
+/**
+ * Patch ONE additional control, re-reading the assessment inside a transaction.
+ *
+ * The Action Tracker used to build the new `activities` tree from the copy in
+ * its subscription list and hand the whole thing to updateAssessment. An
+ * assessment is a single document with every activity, hazard and control
+ * nested inside it, so that wrote back the ENTIRE risk assessment as it looked
+ * when the last snapshot arrived — and anything committed in between was
+ * reverted. Someone in CreateAssessment adding a hazard while a supervisor
+ * ticked off an unrelated action lost the hazard, silently, with no audit trail
+ * and nothing on either screen to say so. On a risk register that is the worst
+ * kind of data loss: the record still looks complete.
+ *
+ * The write is still whole-document, because the shape gives no choice — you
+ * cannot address `activities[2].hazards[5].additionalControls[1].status` with a
+ * dotted path when the arrays are positional. What changes is WHERE the base
+ * state comes from: read inside the transaction, so a concurrent write makes
+ * Firestore retry this function against the new state instead of overwriting
+ * it. The patch is re-applied to whatever the tree looks like at commit time.
+ *
+ * (The structural fix is to move additional controls into their own
+ * subcollection so a status change is a one-document write. That is a data
+ * migration; this closes the hole without one.)
+ */
+export async function patchAssessmentControl(orgId, id, { activityId, hazardId, controlId }, patch) {
+  return patchAssessmentNode(orgId, id, { activityId, hazardId, controlId }, patch, 'action')
+}
+
+/**
+ * Patch ONE hazard, on the same terms. Used by the Risk Register's ALARP
+ * declaration, which had the identical whole-tree defect: it rebuilt
+ * `activities` from the subscription copy and handed the lot to
+ * updateAssessment, so accepting one residual risk reverted every concurrent
+ * edit to the assessment — including an action status the tracker had just
+ * committed through the function above.
+ */
+export async function patchAssessmentHazard(orgId, id, { activityId, hazardId }, patch) {
+  return patchAssessmentNode(orgId, id, { activityId, hazardId, controlId: null }, patch, 'hazard')
+}
+
+/**
+ * The shared body. `controlId === null` patches the hazard itself; otherwise it
+ * patches one additional control inside that hazard.
+ */
+async function patchAssessmentNode(orgId, id, { activityId, hazardId, controlId }, patch, label) {
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(assessmentRef(orgId, id))
+    if (!snap.exists()) throw new Error('That assessment no longer exists')
+    const data = snap.data()
+
+    let found = false
+    const patchHazard = (h) => {
+      if (controlId === null) {
+        found = true
+        return { ...h, ...patch }
+      }
+      return {
+        ...h,
+        additionalControls: (h.additionalControls || []).map((c) => {
+          if (c.id !== controlId) return c
+          found = true
+          return { ...c, ...patch }
+        }),
+      }
+    }
+
+    const activities = (data.activities || []).map((act) =>
+      act.id !== activityId ? act : {
+        ...act,
+        hazards: (act.hazards || []).map((h) => (h.id !== hazardId ? h : patchHazard(h))),
+      })
+
+    // The node can genuinely be gone — someone deleted the hazard while this row
+    // was on screen. Writing the tree back anyway would resurrect nothing and
+    // silently discard the edit; saying so lets the user refresh.
+    if (!found) throw new Error(`That ${label} is no longer on this assessment. Refresh to see the current version.`)
+
+    tx.update(assessmentRef(orgId, id), { activities, updatedAt: serverTimestamp() })
   })
 }
 

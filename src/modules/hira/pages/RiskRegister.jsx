@@ -9,7 +9,7 @@ import { usePagination } from '../../../shared/ui/usePagination'
 import { RiskBadge } from '../components/RiskBits'
 import { useRa } from '../context/RaContext'
 import { useAuth } from '../context/AuthContext'
-import { updateAssessment, logActivity } from '../lib/firestore'
+import { patchAssessmentHazard, logActivity } from '../lib/firestore'
 import { riskLists, isNonAcceptable } from '../lib/raStats'
 import { categoryLabel } from '../lib/constants'
 import { readableOnTint, solidBackground } from '../../../shared/lib/contrast'
@@ -52,12 +52,17 @@ export default function RiskRegister() {
   const declareAlarp = async (row) => {
     const a = assessments.find((x) => x.id === row.assessmentId)
     if (!a) return
-    const activities = (a.activities || []).map((act) => ({
-      ...act,
-      hazards: (act.hazards || []).map((h) => (h.id === row.hazard.id ? { ...h, alarp: true } : h)),
-    }))
     try {
-      await updateAssessment(orgId, a.id, { activities })
+      // Transactional, against a fresh read — see patchAssessmentHazard.
+      // Rebuilding the tree here from the subscription copy meant accepting one
+      // residual risk wrote back the whole assessment as it looked when the
+      // snapshot arrived, reverting anyone else's concurrent edit.
+      await patchAssessmentHazard(
+        orgId,
+        a.id,
+        { activityId: row.activityId, hazardId: row.hazard.id },
+        { alarp: true },
+      )
       logActivity(orgId, { uid: user?.uid, name: profile?.name }, {
         type: 'alarp',
         message: `declared ALARP on “${hazName(row.hazard)}” (${row.assessmentName})`,

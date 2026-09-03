@@ -9,7 +9,7 @@ import { Pager, IconButton } from '../../../shared/ui'
 import { usePagination } from '../../../shared/ui/usePagination'
 import { useAuth } from '../context/AuthContext'
 import { useFleet } from '../context/FleetContext'
-import { addFas, updateFas, deleteFas, serviceFas, bulkAddFas, generateFasQr, bulkDeleteFas, linkFasToSites } from '../lib/firestore'
+import { addFas, updateFas, deleteFas, serviceFas, bulkAddFas, generateFasQr, bulkDeleteFas, linkFasToSites, reserveAssetId, reserveAssetIdBlock } from '../lib/firestore'
 import { planSiteLinks } from '../lib/siteLink'
 import { useAccessibleSites } from '../../../shared/org/useAccessibleSites'
 import { listLinkedAssets, filterByLinkState, siteIdSet, isLinkedToSite } from '../lib/linkedSites'
@@ -18,7 +18,7 @@ import LinkStateChips from '../components/LinkStateChips'
 import { exportRows } from '../lib/exporter'
 import { publicQrUrl } from '../lib/qr'
 import SiteScopePicker from '../../../shared/org/SiteScopePicker'
-import { dueState, dueTextColor, fasColor, fasIncomplete, nextAssetId, highestAssetSeq, formatAssetId } from '../lib/assetLogic'
+import { dueState, dueTextColor, fasColor, fasIncomplete } from '../lib/assetLogic'
 import { toDate } from '../lib/extinguisherLogic'
 import { REGIONS, FAS_DEVICE_TYPES, FAS_STATUS, FAS_STATUS_LABEL, FAS_STATUS_COLOR } from '../lib/constants'
 
@@ -112,8 +112,18 @@ export default function FASRepository() {
     } finally { setBusy(false) }
   }
 
-  // Open the Add form with the next unique device ID pre-assigned.
-  const openAdd = () => setEditing({ ...EMPTY, deviceId: nextAssetId('FAS', fas, 'deviceId') })
+  // Open the Add form with the next unique device ID pre-assigned. Async, and
+  // for the same reason as AEDRepository: the ID is now reserved through the
+  // shared transactional counter, because two people opening this form at once
+  // were both handed the same FAS number.
+  const openAdd = async () => {
+    try {
+      setEditing({ ...EMPTY, deviceId: await reserveAssetId(orgId, 'FAS', fas, 'deviceId') })
+    } catch (e) {
+      toast.error(e?.message || 'Could not reserve a device ID — enter one manually')
+      setEditing({ ...EMPTY, deviceId: '' })
+    }
+  }
 
   // One-click (admin): create a FAS Panel (with QR code) for every 1P/2P site missing one.
   const generateAll = async () => {
@@ -121,8 +131,9 @@ export default function FASRepository() {
     if (!window.confirm(`Generate a FAS Panel with a QR code for ${missingSites.length} site(s)?`)) return
     setBusy(true)
     try {
-      const base = highestAssetSeq('FAS', fas, 'deviceId')
-      const rows = missingSites.map((s, i) => ({ deviceId: formatAssetId('FAS', base + 1 + i), centerName: s, region: siteMeta[s]?.region || '', entity: siteMeta[s]?.entity || '', deviceType: 'Control Panel', status: FAS_STATUS.OPERATIONAL }))
+      // One transaction for the whole block — see AEDRepository.generateAll.
+      const ids = await reserveAssetIdBlock(orgId, 'FAS', fas, 'deviceId', missingSites.length)
+      const rows = missingSites.map((s, i) => ({ deviceId: ids[i], centerName: s, region: siteMeta[s]?.region || '', entity: siteMeta[s]?.entity || '', deviceType: 'Control Panel', status: FAS_STATUS.OPERATIONAL }))
       const res = await bulkAddFas(orgId, orgName, rows, { uid: profile?.uid, name: profile?.name })
       toast.success(`Generated ${res.created} FAS panel(s) with QR codes`)
     } catch (e) { toast.error(e.message) } finally { setBusy(false) }

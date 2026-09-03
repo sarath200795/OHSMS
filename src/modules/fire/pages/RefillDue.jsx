@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react'
-import { RefreshCw, Truck, AlertTriangle, QrCode, Download, FileText, CheckCircle2, Gauge } from 'lucide-react'
+import { RefreshCw, Truck, AlertTriangle, QrCode, Download, FileText, Gauge } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { PageHeader, EmptyState } from '../components/ui'
 import ExtinguisherTable from '../components/ExtinguisherTable'
 import ReportDefectModal from '../components/ReportDefectModal'
 import SubmitQuotationModal from '../components/SubmitQuotationModal'
 import SubmitHptModal from '../components/SubmitHptModal'
+import AttachmentChips from '../components/AttachmentChips'
 import ListFilters from '../components/ListFilters'
 import { TableSkeleton } from '../components/Skeleton'
 import { useFleet } from '../context/FleetContext'
@@ -15,7 +16,6 @@ import { hasQuotation } from '../lib/extinguisherLogic'
 import { requiredStep, WORKFLOW_STEP } from '../lib/hpt'
 import { emptyFilters, applyListFilters } from '../lib/listFilter'
 import { exportExtinguishers } from '../lib/exporter'
-import { safeHref } from '../../../shared/safeUrl'
 
 export default function RefillDue() {
   const { refillDue, loading } = useFleet()
@@ -104,24 +104,7 @@ export default function RefillDue() {
                 </button>
               )}
 
-              {/* A recorded failure is the one outcome that leaves the unit
-                  here, so it is stated on the row rather than buried. */}
-              {ext.hpt?.result === 'fail' && (
-                <span className="chip bg-red-50 text-red-700" title={`Failed on ${ext.hpt.testedOn || ''} · ${ext.hpt.vendor || ''}`}>
-                  <AlertTriangle size={12} /> HPT failed
-                </span>
-              )}
-              {hasQuotation(ext) && (
-                (ext.quotation?.fileData || ext.quotation?.fileUrl) ? (
-                  <a href={safeHref(ext.quotation.fileData || ext.quotation.fileUrl)} target="_blank" rel="noreferrer" className="chip bg-cyan-50 text-cyan-700 hover:underline" title={`Quoted ${ext.quotation?.amount ?? ''} · ${ext.quotation?.vendor || ''} — view document`}>
-                    <CheckCircle2 size={12} /> Quoted · View
-                  </a>
-                ) : (
-                  <span className="chip bg-cyan-50 text-cyan-700" title={`Quoted ${ext.quotation?.amount ?? ''} · ${ext.quotation?.vendor || ''}`}>
-                    <CheckCircle2 size={12} /> Quoted
-                  </span>
-                )
-              )}
+              <AttachmentChips ext={ext} />
               <button className="btn-ghost px-2.5 py-1.5 text-xs" onClick={() => setReportFor(ext)} title="Report defect">
                 <AlertTriangle size={14} />
               </button>

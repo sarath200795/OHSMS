@@ -106,7 +106,7 @@ async function main() {
   await add('extinguishers', { serialNo: 'FE-0003', type: 'Foam', capacity: '9 Ltr', centerName: 'North Plant', region: 'North', entity: '2P', status: 'to_be_refilled', physicalDefects: ['pin'], dateOfNextRefill: daysFromNow(-5).toISOString().slice(0, 10), dateOfNextHPT: nextYear })
   // Hydrostatic test overdue and a physical defect open — this is the unit that
   // must be asked for the TEST, not a quotation, on every list it appears in.
-  await add('extinguishers', { serialNo: 'FE-0004', type: 'ABC', capacity: '5 Kg', centerName: 'South Warehouse', region: 'South', entity: '1P', status: 'active', physicalDefects: ['stand'], dateOfNextRefill: nextYear, dateOfNextHPT: daysFromNow(-40).toISOString().slice(0, 10) })
+  await add('extinguishers', { serialNo: 'FE-0004', type: 'ABC', capacity: '5 Kg', centerName: 'South Warehouse', region: 'South', entity: '1P', status: 'active', physicalDefects: ['stand'], dateOfNextRefill: nextYear, hpt: { testedOn: daysFromNow(-45).toISOString().slice(0, 10), result: 'pass', nextDueOn: nextYear, vendor: 'Acme NDT', fileName: 'hpt-cert.pdf', fileType: 'application/pdf', fileData: null, fileUrl: 'https://example.test/hpt-cert.pdf', filePath: 'orgA/hpt-certificates/hpt-cert.pdf', submittedAt: daysFromNow(-45).toISOString().slice(0, 10), submittedBy: 'Alex Admin' }, dateOfNextHPT: daysFromNow(-40).toISOString().slice(0, 10) })
   // Test due in ten days — NOT crossed. The boundary case: it is on the To Be
   // Refilled list because the date is inside the 30-day window, and it is still
   // asked for a quotation, because a test that has not fallen due cannot be

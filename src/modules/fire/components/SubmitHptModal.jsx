@@ -40,7 +40,22 @@ export default function SubmitHptModal({ open, onClose, ext, orgId, orgName, act
       ref: h.ref || '',
       notes: h.notes || '',
     })
-    setFile(h.fileData ? { name: h.fileName || 'certificate', type: h.fileType || '', data: h.fileData } : null)
+    // fileData OR fileUrl. submitHpt stores ONE of the two: small certificates
+    // inline, anything larger in Storage with fileData set to null. Reading only
+    // fileData meant every UPLOADED certificate rehydrated as "no file" — and
+    // then saving the form again deleted the stored object and wrote an empty
+    // reference over it, so correcting a typo in the vendor name destroyed the
+    // compliance document.
+    const stored = h.fileData || h.fileUrl
+    setFile(stored ? {
+      name: h.fileName || 'certificate',
+      type: h.fileType || '',
+      data: h.fileData || null,
+      url: h.fileUrl || null,
+      // Marks a file that came back from the record rather than the picker, so
+      // submit knows to keep it rather than re-upload or clear it.
+      stored: true,
+    } : null)
   }, [ext])
 
   if (!ext) return null
@@ -80,6 +95,10 @@ export default function SubmitHptModal({ open, onClose, ext, orgId, orgName, act
         fileName: file?.name || '',
         fileType: file?.type || '',
         fileData: file?.data || null,
+        // Nothing new was picked and a document is already on file: keep it.
+        // Without this the write path would remove the stored object and save
+        // an empty reference in its place.
+        keepFile: Boolean(file?.stored && !file?.data),
       }, actor?.name)
       toast.success(failed ? 'Failed test recorded — cylinder still flagged' : 'Hydrostatic test recorded')
       onSubmitted?.(hpt)
@@ -146,8 +165,8 @@ export default function SubmitHptModal({ open, onClose, ext, orgId, orgName, act
         {file ? (
           <div className="flex items-center gap-2 rounded-2xl bg-clay-surface px-3 py-2 shadow-clay-inset">
             <Paperclip size={15} className="text-ink-400" />
-            {file.data ? (
-              <a href={safeHref(file.data)} target="_blank" rel="noreferrer" className="truncate text-sm text-ink-700 hover:underline">
+            {(file.data || file.url) ? (
+              <a href={safeHref(file.data || file.url)} target="_blank" rel="noreferrer" className="truncate text-sm text-ink-700 hover:underline">
                 {file.name}
               </a>
             ) : (

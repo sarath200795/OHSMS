@@ -7,7 +7,7 @@ import {
 import { PageHeader, Spinner, Field } from '../components/ui'
 import { useAuth } from '../context/AuthContext'
 import { useData } from '../context/DataContext'
-import { addRecord } from '../lib/firestore'
+import { addRecord, completeAssignment } from '../lib/firestore'
 import { fileToDataUrl } from '../lib/fileToDataUrl'
 import { putFile, MAX_UPLOAD_BYTES, MAX_INLINE_BYTES, tooLargeForInline, formatSize } from '../../../shared/storage'
 import { hasAnsweredQuestion, scoreResponses, groupFieldsByCategory, usesCategories } from '../lib/schedule'
@@ -166,6 +166,14 @@ export default function Execute() {
     setBusy(true)
     try {
       await addRecord(orgId, record, profile)
+      // Close the assignment the inspection was raised against. Deliberately
+      // AFTER addRecord and deliberately non-fatal: the inspection is saved,
+      // and a failure to move a status flag must not be reported as a failure
+      // to save it. See completeAssignment.
+      if (task.assignmentId) {
+        await completeAssignment(orgId, task.templateId, task.assignmentId, profile)
+          .catch(() => {})
+      }
       toast.success(`Inspection submitted — ${score}% (${result})`)
       navigate('/inspections/records')
     } catch (e) {

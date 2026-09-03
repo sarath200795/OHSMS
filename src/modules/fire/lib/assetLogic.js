@@ -9,9 +9,18 @@ import { AED_STATUS, FAS_STATUS } from './constants'
 export const DUE_SOON = 30
 
 // ── Unique asset IDs ──────────────────────────────────────────────────────────
-// Sequential, human-readable IDs like "AED-0001" / "FAS-0001". Take the highest
-// numeric suffix already in use for the prefix and add one, so every asset gets
-// a unique, stable identifier without the user having to invent one.
+// Sequential, human-readable IDs like "AED-0001" / "FAS-0001", printed on the
+// QR label stuck to the unit.
+//
+// highestAssetSeq is now a SEED, not the allocator. Taking the highest suffix
+// in the current list and adding one looks unique and is not: two people
+// opening "Add AED" at the same moment both compute AED-0042, and nothing
+// downstream dedupes a value that is the human handle for a defibrillator. The
+// list it counts is also capped, so it can be blind to assets that already
+// exist. Allocation goes through reserveSeq/reserveSeqBlock (shared/docId) —
+// the same transactional counter every module's document ids use — and this
+// function supplies the `floor` that carries existing stock across on first
+// use, so nothing already printed is ever issued twice.
 export function highestAssetSeq(prefix, list, field) {
   let max = 0
   for (const a of list || []) {
@@ -22,9 +31,14 @@ export function highestAssetSeq(prefix, list, field) {
   return max
 }
 export function formatAssetId(prefix, n) { return `${prefix}-${String(n).padStart(4, '0')}` }
-export function nextAssetId(prefix, list, field) {
-  return formatAssetId(prefix, highestAssetSeq(prefix, list, field) + 1)
-}
+
+/**
+ * Counter kind for a prefix. 'AED' → 'aedAssets', 'FAS' → 'fasAssets'.
+ *
+ * The allocators themselves live in lib/firestore.js (reserveAssetId /
+ * reserveAssetIdBlock) — this file stays pure so its tests need no Firebase.
+ */
+export const assetSeqKind = (prefix) => `${prefix.toLowerCase()}Assets`
 
 // 'expired' | 'due' (within DUE_SOON days) | 'ok' | null (no/invalid date)
 export function dueState(value, today = new Date()) {

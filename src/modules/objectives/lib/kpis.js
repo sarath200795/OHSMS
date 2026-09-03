@@ -144,7 +144,13 @@ export function signageUptime(signs = [], level = 'org', scope = '', entity = 'a
 
 /** Incident count (lower is better). */
 export function incidentCount(incidents = [], level = 'org', scope = '', entity = 'all') {
-  const mine = incidents.filter((i) => inScope(i, level, scope, entity))
+  // !deletedAt, like every KPI above it. This one alone omitted the check while
+  // its data comes straight from subscribeOrgCollection, which returns raw rows
+  // — the incidents module soft-deletes (sets deletedAt) and filters in
+  // IncidentContext, not at the source. So deleting an incident left it in the
+  // count, and the one KPI where a higher number is WORSE was the one reporting
+  // records the org had removed.
+  const mine = incidents.filter((i) => !i.deletedAt && inScope(i, level, scope, entity))
   return { value: mine.length, numerator: mine.length, denominator: mine.length }
 }
 

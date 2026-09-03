@@ -31,7 +31,17 @@ export default function SubmitQuotationModal({ open, onClose, ext, orgId, orgNam
         notes: q.notes || '',
       })
       // Prefill an existing attachment so re-submitting keeps it unless replaced.
-      setFile(q.fileData ? { name: q.fileName || 'quotation', type: q.fileType || '', data: q.fileData } : null)
+      // fileData OR fileUrl — see SubmitHptModal for the failure this avoids:
+      // an uploaded document rehydrated as "no file" and was then deleted by the
+      // next save.
+      const stored = q.fileData || q.fileUrl
+      setFile(stored ? {
+        name: q.fileName || 'quotation',
+        type: q.fileType || '',
+        data: q.fileData || null,
+        url: q.fileUrl || null,
+        stored: true,
+      } : null)
     }
   }, [ext])
 
@@ -60,6 +70,7 @@ export default function SubmitQuotationModal({ open, onClose, ext, orgId, orgNam
         fileName: file?.name || '',
         fileType: file?.type || '',
         fileData: file?.data || null,
+        keepFile: Boolean(file?.stored && !file?.data),
       }
       await submitQuotation(orgId, orgName, ext.id, payload, actor?.name)
       toast.success('Quotation submitted')
@@ -125,7 +136,7 @@ export default function SubmitQuotationModal({ open, onClose, ext, orgId, orgNam
           <div className="flex items-center gap-2 rounded-2xl bg-clay-surface px-3 py-2.5 text-sm shadow-clay-inset">
             <Paperclip size={15} className="shrink-0 text-ink-400" />
             <a
-              href={safeHref(file.data)}
+              href={safeHref(file.data || file.url)}
               target="_blank"
               rel="noreferrer"
               className="flex-1 truncate font-medium text-brand-700 hover:underline"

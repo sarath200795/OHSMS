@@ -198,8 +198,20 @@ export default function MockDrills() {
         })),
         photos: photos.map((p) => p.dataUrl),
       }
-      await addMockDrill(orgId, record, { uid: profile?.uid, name: profile?.name })
-      toast.success(`${form.eventType} report saved`)
+      const res = await addMockDrill(orgId, record, { uid: profile?.uid, name: profile?.name })
+      // The drill is saved either way — that is why this is not an error. But a
+      // report whose evidence is incomplete has to SAY so at the moment it can
+      // still be fixed, rather than looking clean here and turning up short in
+      // an audit.
+      const missing = (res?.requestedPhotos || 0) - (res?.storedPhotos || 0)
+      if (missing > 0) {
+        toast.error(
+          `${form.eventType} report saved, but ${missing} of ${res.requestedPhotos} photo(s) did not upload. Re-attach them from the record.`,
+          { duration: 8000 },
+        )
+      } else {
+        toast.success(`${form.eventType} report saved`)
+      }
       setScenario(null)
     } catch (err) {
       toast.error(err.message)

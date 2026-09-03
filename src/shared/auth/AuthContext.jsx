@@ -13,6 +13,7 @@ import {
   getRedirectResult,
 } from 'firebase/auth'
 import { auth, isFirebaseConfigured } from '../firebase'
+import { reportError } from '../monitoring'
 import { clearKeyring } from '../crypto'
 import { isMfaRequired, resolverFor, completeTotpSignIn } from './mfa'
 import { subscribePlatformAdmin } from './platformAdmin'
@@ -79,9 +80,23 @@ export function AuthProvider({ children }) {
     }
     const unsub = onAuthStateChanged(auth, async (u) => {
       setUser(u)
-      if (u) await refreshProfile(u.uid)
-      else {
+      // The await below is the ONLY thing between the app and its first paint,
+      // and getUserProfile is a bare getDoc: offline, `unavailable`, or a rules
+      // refusal during a claims refresh all reject here. Unguarded, the
+      // rejection escaped the callback, setLoading(false) never ran, and
+      // ProtectedRoute held <SamLoading/> forever — a blank spinner with no
+      // error and no way out, on the one code path every session goes through.
+      // A profile that cannot be read is a signed-in user with no profile, a
+      // state the rest of the tree already renders (the "no organization yet"
+      // screen); a permanent spinner is not.
+      try {
+        if (u) await refreshProfile(u.uid)
+        else setProfile(null)
+      } catch (err) {
+        reportError(err, { scope: 'auth/onAuthStateChanged' })
         setProfile(null)
+      }
+      if (!u) {
         // Every identity change drops the encryption keys, not just an explicit
         // sign-out: a token revoked by the claims trigger, an expired session,
         // a switch of account on a shared site laptop all arrive here and

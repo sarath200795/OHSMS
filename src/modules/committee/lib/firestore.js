@@ -102,6 +102,22 @@ export async function updateConsultation(orgId, id, data) {
   await setDoc(consultationRef(orgId, id), await sealDoc(orgId, SEALED, data), { merge: true })
 }
 
+/**
+ * A reference for a meeting that predates the docId field.
+ *
+ * The page used to invent one inline as
+ * `MOM-${siteId}-${Date.now().toString().slice(-4)}`. The last four digits of a
+ * millisecond timestamp repeat every ten seconds, so two meetings filed for one
+ * site inside any ten-second window get the SAME reference — and that reference
+ * is what the printed minutes, the export and the Action Tracker context all
+ * quote. Records created through addConsultation were never affected (it
+ * reserves a real id after the spread); records created before the field
+ * existed took the collision-prone path every time they were edited.
+ */
+export function reserveConsultationDocId(orgId) {
+  return reserveDocId(orgId, 'committee')
+}
+
 export async function deleteConsultation(orgId, id) {
   await deleteDoc(consultationRef(orgId, id))
 }
