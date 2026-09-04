@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { MapPin, Flame, HeartPulse, BellRing, SignpostBig, Boxes, TriangleAlert, ArrowRight } from 'lucide-react'
+import { MapPin, Flame, HeartPulse, BellRing, SignpostBig, Ambulance, BriefcaseMedical, Boxes, TriangleAlert, ArrowRight } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { PageHeader, EmptyState, Spinner } from '../components/ui'
 import { useFleet } from '../context/FleetContext'
@@ -20,6 +20,8 @@ const KINDS = [
   { key: 'aed', label: 'AED', short: 'AED', icon: HeartPulse },
   { key: 'fas', label: 'Fire alarm', short: 'FAS', icon: BellRing },
   { key: 'sign', label: 'Signage', short: 'Sign', icon: SignpostBig },
+  { key: 'stretcher', label: 'Stretchers', short: 'Stretcher', icon: Ambulance },
+  { key: 'firstAid', label: 'First aid', short: 'First aid', icon: BriefcaseMedical },
 ]
 
 function Stat({ label, value, tone = 'text-ink-900' }) {
@@ -34,7 +36,7 @@ function Stat({ label, value, tone = 'text-ink-900' }) {
 const Count = ({ n }) => (n ? <span className="font-semibold text-ink-800">{n}</span> : <span className="text-ink-300">—</span>)
 
 export default function LinkedSites() {
-  const { org, extinguishers, aeds, fas, signages, loading } = useFleet()
+  const { org, extinguishers, aeds, fas, signages, stretchers, firstAid, loading } = useFleet()
   const { orgId, orgName, profile } = useAuth()
   const sites = useAccessibleSites()
   const [linkOpen, setLinkOpen] = useState(false)
@@ -42,24 +44,26 @@ export default function LinkedSites() {
   const [busy, setBusy] = useState(false)
 
   const summary = useMemo(
-    () => summariseLinkedSites({ extinguishers, aeds, fas, signages }, sites),
-    [extinguishers, aeds, fas, signages, sites]
+    () => summariseLinkedSites({ extinguishers, aeds, fas, signages, stretchers, firstAid }, sites),
+    [extinguishers, aeds, fas, signages, stretchers, firstAid, sites]
   )
   const { linked, empty, unlinked, orphaned, totals } = summary
 
-  // One pass over all three registers. Each still writes through its own
-  // function — this is the reading and the decision brought together, so the
-  // same errand is not run three times in three places.
+  // One pass over every register. Each still writes through its own function —
+  // this is the reading and the decision brought together, so the same errand
+  // is not run once per register in six different places.
   const plan = useMemo(
-    () => (sites.length ? planAllSiteLinks({ extinguishers, aeds, fas, signages }, sites) : null),
-    [extinguishers, aeds, fas, signages, sites]
+    () => (sites.length ? planAllSiteLinks({ extinguishers, aeds, fas, signages, stretchers, firstAid }, sites) : null),
+    [extinguishers, aeds, fas, signages, stretchers, firstAid, sites]
   )
   const linkedRows = useMemo(() => [
     ...listLinkedAssets(extinguishers, sites).map((r) => ({ ...r, kind: 'ext' })),
     ...listLinkedAssets(aeds, sites).map((r) => ({ ...r, kind: 'aed' })),
     ...listLinkedAssets(fas, sites).map((r) => ({ ...r, kind: 'fas' })),
     ...listLinkedAssets(signages, sites).map((r) => ({ ...r, kind: 'sign' })),
-  ], [extinguishers, aeds, fas, signages, sites])
+    ...listLinkedAssets(stretchers, sites).map((r) => ({ ...r, kind: 'stretcher' })),
+    ...listLinkedAssets(firstAid, sites).map((r) => ({ ...r, kind: 'firstAid' })),
+  ], [extinguishers, aeds, fas, signages, stretchers, firstAid, sites])
 
   const openLink = (tab) => { setLinkTab(tab); setLinkOpen(true) }
 

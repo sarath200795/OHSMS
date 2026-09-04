@@ -11,21 +11,21 @@
 // an account first is how defects go unreported. The report lands in the org's
 // existing approval queue exactly like a portal one, flagged source: 'qr'.
 //
-// One route serves three kinds of asset. Extinguisher mirrors predate the
-// others and carry no assetKind, so their absence is what identifies them; AED
-// and FAS mirrors set it explicitly. The kind decides the whole card — an AED
-// has no refill date and a fire-alarm panel has no capacity, and until this
-// branched, both were being described in extinguisher terms and offered the
-// extinguisher defect sheet.
+// One route serves every kind of asset. Extinguisher mirrors predate the others
+// and carry no assetKind, so their absence is what identifies them; AED, FAS and
+// stretcher mirrors set it explicitly. The kind decides the whole card — an AED
+// has no refill date, a fire-alarm panel has no capacity and a stretcher has
+// neither, and until this branched they were all being described in extinguisher
+// terms and offered the extinguisher defect sheet.
 // ─────────────────────────────────────────────────────────────────────────────
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { doc, getDoc } from 'firebase/firestore'
-import { AlertTriangle, ShieldCheck, MapPin, Calendar, QrCode, Loader2, Wrench, HeartPulse, BellRing, Flame } from 'lucide-react'
+import { AlertTriangle, ShieldCheck, MapPin, Calendar, QrCode, Loader2, Wrench, HeartPulse, BellRing, Flame, Ambulance } from 'lucide-react'
 import { db } from '../../../shared/firebase'
 import ReportDefectModal from '../components/ReportDefectModal'
 import ReportAssetDefectModal from '../components/ReportAssetDefectModal'
-import { STATUS_LABEL, AED_STATUS, AED_STATUS_LABEL, FAS_STATUS, FAS_STATUS_LABEL } from '../lib/constants'
+import { STATUS_LABEL, AED_STATUS, AED_STATUS_LABEL, FAS_STATUS, FAS_STATUS_LABEL, STRETCHER_STATUS, STRETCHER_STATUS_LABEL } from '../lib/constants'
 
 const Row = ({ icon: Icon, label, value }) => (
   <div className="flex items-start gap-3 border-b border-clay-200/70 py-2.5 last:border-0">
@@ -37,7 +37,7 @@ const Row = ({ icon: Icon, label, value }) => (
 
 const join = (...parts) => parts.filter(Boolean).join(' · ')
 
-// Everything that differs between the three kinds, in one place. `alert` is the
+// Everything that differs between the kinds, in one place. `alert` is the
 // state that makes the header red: an open defect for an extinguisher, and the
 // out-of-service state for the assets whose defects are approved rather than
 // accumulated.
@@ -59,6 +59,24 @@ function describe(asset) {
         { icon: MapPin, label: 'Location', value: where },
         { icon: Calendar, label: 'Battery expiry', value: asset.batteryExpiry },
         { icon: Calendar, label: 'Pad expiry', value: asset.padExpiry },
+        { icon: Calendar, label: 'Next inspection', value: asset.nextInspection },
+      ],
+    }
+  }
+
+  if (kind === 'stretcher') {
+    return {
+      kind,
+      icon: Ambulance,
+      eyebrow: 'Stretcher',
+      title: [asset.stretcherType, asset.brand, asset.model].filter(Boolean).join(' ') || asset.label || 'Stretcher',
+      subtitle: asset.label ? `Asset ${asset.label}` : 'No asset ID recorded',
+      statusLabel: STRETCHER_STATUS_LABEL[asset.status] || asset.status || 'Unknown',
+      alert: asset.status === STRETCHER_STATUS.OUT_OF_SERVICE,
+      warn: asset.status === STRETCHER_STATUS.SERVICE_DUE,
+      rows: [
+        { icon: MapPin, label: 'Location', value: where },
+        { icon: Calendar, label: 'Last inspection', value: asset.lastInspection },
         { icon: Calendar, label: 'Next inspection', value: asset.nextInspection },
       ],
     }

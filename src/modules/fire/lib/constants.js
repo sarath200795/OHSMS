@@ -197,6 +197,86 @@ export const AED_DEFECTS = [
   OTHER_DEFECT,
 ]
 
+// ── First aid boxes (site-wise contents & availability) ──────────────────────
+// Tracked exactly like signage: the unit of measurement is a (site, item) pair,
+// not a box. A site is asked the same question about every item on this list,
+// so "does this site have a first aid box" — which every site answers yes to —
+// is replaced by "which of the contents are actually in it".
+//
+// `minQty` is the count a box is expected to hold. It is what makes the
+// availability real: a box holding one bandage is not stocked, and a plain
+// present/absent flag cannot say so.
+//
+// `expires` marks the items with a shelf life. Those are scored against their
+// expiry date as well as their count — a full-looking box of out-of-date
+// antiseptic is the failure this register exists to catch, and a count alone
+// reads it as compliance.
+export const FIRST_AID_ITEMS = [
+  { name: 'Adhesive Bandages', minQty: 20, expires: false },
+  { name: 'Sterile Gauze Pads', minQty: 10, expires: true },
+  { name: 'Cotton Wool Roll', minQty: 2, expires: false },
+  { name: 'Roller Bandage', minQty: 4, expires: false },
+  { name: 'Triangular Bandage', minQty: 2, expires: false },
+  { name: 'Adhesive Tape', minQty: 2, expires: false },
+  { name: 'Antiseptic Solution', minQty: 1, expires: true },
+  { name: 'Burn Dressing', minQty: 2, expires: true },
+  { name: 'Eye Wash Solution', minQty: 1, expires: true },
+  { name: 'ORS Sachets', minQty: 4, expires: true },
+  { name: 'Disposable Gloves', minQty: 4, expires: true },
+  { name: 'Scissors', minQty: 1, expires: false },
+  { name: 'Tweezers / Forceps', minQty: 1, expires: false },
+  { name: 'CPR Face Shield', minQty: 1, expires: true },
+  { name: 'Instant Ice Pack', minQty: 2, expires: true },
+  { name: 'First Aid Manual', minQty: 1, expires: false },
+]
+
+export const FIRST_AID_ITEM_NAMES = FIRST_AID_ITEMS.map((i) => i.name)
+export const FIRST_AID_ITEM_BY_NAME = Object.fromEntries(FIRST_AID_ITEMS.map((i) => [i.name, i]))
+
+// The condition recorded against one item in one box.
+//
+// 'Expired' is its own value rather than a note beside 'Available' because
+// expired stock is not stock. It is counted on its own on the dashboard and it
+// does not count toward availability — see firstAidLogic, where that is the
+// rule both the matrix and the dashboard read.
+export const FIRST_AID_CONDITIONS = ['Available', 'Low Stock', 'Expired', 'Damaged', 'Missing']
+
+export const FIRST_AID_CONDITION_COLOR = {
+  Available: '#16a34a',
+  'Low Stock': '#f59e0b',
+  Expired: '#dc2626',
+  Damaged: '#ea580c',
+  Missing: '#b91c1c',
+}
+
+// ── Stretchers (site-wise emergency evacuation assets) ───────────────────────
+// The same asset shape as an AED: one physical unit, one QR code, an inspection
+// cycle and a public defect sheet.
+export const STRETCHER_TYPES = [
+  'Foldable',
+  'Scoop',
+  'Spine Board',
+  'Wheeled',
+  'Basket / Rescue',
+  'Other',
+]
+
+export const STRETCHER_STATUS = {
+  READY: 'ready',
+  SERVICE_DUE: 'service_due',
+  OUT_OF_SERVICE: 'out_of_service',
+}
+export const STRETCHER_STATUS_LABEL = {
+  [STRETCHER_STATUS.READY]: 'Ready',
+  [STRETCHER_STATUS.SERVICE_DUE]: 'Service Due',
+  [STRETCHER_STATUS.OUT_OF_SERVICE]: 'Out of Service',
+}
+export const STRETCHER_STATUS_COLOR = {
+  [STRETCHER_STATUS.READY]: '#16a34a',
+  [STRETCHER_STATUS.SERVICE_DUE]: '#f59e0b',
+  [STRETCHER_STATUS.OUT_OF_SERVICE]: '#dc2626',
+}
+
 // ── FAS (Fire Alarm System) device inventory ─────────────────────────────────
 export const FAS_DEVICE_TYPES = [
   'Control Panel',
@@ -238,8 +318,22 @@ export const FAS_DEFECTS = [
   OTHER_DEFECT,
 ]
 
+// Defects a public QR scanner can report against a stretcher. Physical rather
+// than electronic: what stops a stretcher being used is a torn deck, a seized
+// wheel or a missing strap, and none of those has a due date to catch it first.
+export const STRETCHER_DEFECTS = [
+  'Straps Missing / Torn',
+  'Frame Bent or Cracked',
+  'Fabric / Deck Torn',
+  'Wheels or Brakes Faulty',
+  'Locking Mechanism Faulty',
+  'Stretcher Not at Its Location',
+  'Access Blocked',
+  OTHER_DEFECT,
+]
+
 // Asset-kind → its public-reportable defect list.
-export const ASSET_DEFECTS = { aed: AED_DEFECTS, fas: FAS_DEFECTS }
+export const ASSET_DEFECTS = { aed: AED_DEFECTS, fas: FAS_DEFECTS, stretcher: STRETCHER_DEFECTS }
 
 // Columns used for xlsx bulk upload template + export
 export const BULK_COLUMNS = [

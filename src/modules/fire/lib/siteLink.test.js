@@ -351,7 +351,7 @@ describe('planAllSiteLinks', () => {
   })
 
   it('covers every kind the modal can label', () => {
-    expect(EQUIPMENT_KINDS.map((k) => k.key)).toEqual(['ext', 'aed', 'fas', 'sign'])
+    expect(EQUIPMENT_KINDS.map((k) => k.key)).toEqual(['ext', 'aed', 'fas', 'sign', 'stretcher', 'firstAid'])
   })
 
   it('plans signage alongside the rest', () => {

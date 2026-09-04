@@ -8,8 +8,10 @@
 // site rather than trusted from the record.
 // ─────────────────────────────────────────────────────────────────────────────
 import { linkAssets } from '../admin/siteStats'
-import { DEFECT_BY_KEY, CATEGORIES } from '../../modules/fire/lib/constants'
+import { DEFECT_BY_KEY, CATEGORIES, FIRST_AID_ITEM_NAMES } from '../../modules/fire/lib/constants'
 import { deriveStatus } from '../../modules/fire/lib/extinguisherLogic'
+import { dueState } from '../../modules/fire/lib/assetLogic'
+import { firstAidCell, isExpiringSoon, ISSUE_CONDITIONS } from '../../modules/fire/lib/firstAidLogic'
 
 const norm = (s) => String(s ?? '').trim().toLowerCase()
 
@@ -217,13 +219,74 @@ function extinguisherFindings(e, at, today) {
   return out
 }
 
-export const ASSET_KINDS = ['Extinguisher', 'AED', 'Fire alarm']
+/**
+ * What is wrong with one stretcher, or null.
+ *
+ * Reads the inspection date as well as the status, the way the extinguisher
+ * rule above does and unlike the AED and panel rules below it, because that
+ * date is the ONLY one on a stretcher record: a unit whose inspection lapsed
+ * two years ago still carries status 'ready' until somebody opens the record
+ * and changes it, and a status-only reading would call it healthy forever.
+ */
+function stretcherFinding(s, at) {
+  const insp = dueState(s.nextInspection)
+  if (s.status === 'out_of_service') return { kind: 'Stretcher', siteId: at, type: 'Stretcher out of service', color: '#dc2626' }
+  if (insp === 'expired') return { kind: 'Stretcher', siteId: at, type: 'Stretcher inspection overdue', color: '#dc2626' }
+  if (s.status === 'service_due' || insp === 'due') return { kind: 'Stretcher', siteId: at, type: 'Stretcher service due', color: '#f59e0b' }
+  return null
+}
+
+/**
+ * First aid is not a fleet of assets, so its unit here is a (site, item) pair —
+ * the same unit the First Aid register and its dashboard score.
+ *
+ * Grouping matters rather than being tidy: the required quantity is asked of
+ * the SITE, and a site may spread it over several boxes. Scoring record by
+ * record would report a site holding half the requirement in each of two boxes
+ * as two separate shortages, and its health as 0 % when it is fully stocked.
+ */
+function firstAidCells(rows, siteOf) {
+  const groups = new Map()
+  for (const r of rows) {
+    const at = siteOf(r)
+    const key = `${at}::${r.item}`
+    if (!groups.has(key)) groups.set(key, { siteId: at, item: r.item, recs: [] })
+    groups.get(key).recs.push(r)
+  }
+  return [...groups.values()]
+}
+
+/**
+ * What is wrong with one (site, item) pair, or null.
+ *
+ * One finding per pair, worst first, so health counts pairs rather than
+ * reasons — an item that is both short AND expiring is one gap, not two.
+ */
+function firstAidFinding(cell, today) {
+  const c = firstAidCell(cell.recs, cell.item, today)
+  if (c.status === 'ok') return null
+  const at = { kind: 'First aid', siteId: cell.siteId }
+  // Expired stock leads even when the cell is merely an issue: a box holding
+  // enough in-date antiseptic beside an out-of-date bottle is a box somebody
+  // will reach into in a hurry.
+  if (c.expired > 0) return { ...at, type: 'First aid item expired', color: '#dc2626' }
+  if (c.status === 'missing') return { ...at, type: 'First aid item missing', color: '#b91c1c' }
+  if (c.qty < c.required) return { ...at, type: 'First aid item short', color: '#f59e0b' }
+  if (cell.recs.some((r) => ISSUE_CONDITIONS.includes(r.condition))) return { ...at, type: 'First aid item damaged', color: '#ea580c' }
+  if (cell.recs.some((r) => isExpiringSoon(r, today))) return { ...at, type: 'First aid item expiring soon', color: '#b45309' }
+  // Every non-ok status is named above; anything reaching here would be a new
+  // status firstAidCell learned to return, and silently dropping it would take
+  // the gap off this page without taking it off the register.
+  return { ...at, type: 'First aid item unavailable', color: '#dc2626' }
+}
+
+export const ASSET_KINDS = ['Extinguisher', 'AED', 'Fire alarm', 'Stretcher', 'First aid']
 
 export function equipmentAnalytics({
-  extinguishers = [], aeds = [], fas = [], sites = [], siteId = 'all', defectType = 'all',
-  kind = 'all', keepUnplaced = true, today = new Date(),
+  extinguishers = [], aeds = [], fas = [], stretchers = [], firstAid = [], sites = [],
+  siteId = 'all', defectType = 'all', kind = 'all', keepUnplaced = true, today = new Date(),
 } = {}) {
-  const links = linkAssets([...extinguishers, ...aeds, ...fas], sites)
+  const links = linkAssets([...extinguishers, ...aeds, ...fas, ...stretchers, ...firstAid], sites)
   const visible = new Set(sites.map((s) => s.id))
   const siteOf = (r) => links.get(r) || r.siteId || ''
   const inScope = (r) => {
@@ -239,6 +302,8 @@ export function equipmentAnalytics({
   const ext = extinguishers.filter(inScope)
   const aed = aeds.filter(inScope)
   const fasRows = fas.filter(inScope)
+  const stretcherRows = stretchers.filter(inScope)
+  const aidCells = firstAidCells(firstAid.filter(inScope), siteOf)
 
   // One flat list of findings, each already attributed to a site.
   const findings = [
@@ -253,13 +318,25 @@ export function equipmentAnalytics({
       type: f.status === 'faulty' ? 'Panel faulty' : 'Panel service due',
       color: f.status === 'faulty' ? '#dc2626' : '#f59e0b',
     })),
+    ...stretcherRows.map((s) => {
+      const f = stretcherFinding(s, siteOf(s))
+      return f && { asset: s, ...f }
+    }).filter(Boolean),
+    // The "asset" of a first aid finding is the (site, item) pair itself, which
+    // is what the health figure below counts. Each pair is a distinct object,
+    // so the faulty-asset Set de-duplicates them exactly as it does for a
+    // twice-flagged extinguisher.
+    ...aidCells.map((c) => {
+      const f = firstAidFinding(c, today)
+      return f && { asset: c, ...f }
+    }).filter(Boolean),
   ]
 
   const filtered = findings
     .filter((f) => defectType === 'all' || f.type === defectType)
     .filter((f) => kind === 'all' || f.kind === kind)
 
-  const pool = { Extinguisher: ext, AED: aed, 'Fire alarm': fasRows }
+  const pool = { Extinguisher: ext, AED: aed, 'Fire alarm': fasRows, Stretcher: stretcherRows, 'First aid': aidCells }
   const inKind = (k) => kind === 'all' || k === kind
 
   const total = ASSET_KINDS.filter(inKind).reduce((n, k) => n + pool[k].length, 0)
@@ -296,10 +373,22 @@ export function equipmentAnalytics({
     return [...m.entries()].map(([name, value]) => ({ key: name, name, value })).sort((a, b) => b.value - a.value)
   }
 
+  // (site, item) pairs nobody has recorded at all.
+  //
+  // This page can only score what exists, so first aid health above is health
+  // OF THE ITEMS SOMEBODY CHECKED — a figure that RISES as coverage falls, and
+  // reads 100 % at a site where one bandage was logged and nothing else. That
+  // is the opposite of what it looks like, so the number that corrects it is
+  // returned alongside rather than left for the reader to infer. The First Aid
+  // dashboard scores every pair and is the honest denominator.
+  const scopedSites = siteId === 'all' ? sites : sites.filter((s) => s.id === siteId)
+  const firstAidUnrecorded = Math.max(0, scopedSites.length * FIRST_AID_ITEM_NAMES.length - aidCells.length)
+
   return {
     total,
     faulty,
     healthy: total - faulty,
+    firstAidUnrecorded,
     healthPct: total ? Math.round(((total - faulty) / total) * 100) : null,
     fleetByKind,
     // Defect types are offered for whichever kind is being looked at, so the

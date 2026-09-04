@@ -298,15 +298,18 @@ export const EQUIPMENT_KINDS = [
   { key: 'aed', label: 'AED', short: 'AED' },
   { key: 'fas', label: 'Fire alarm', short: 'FAS' },
   { key: 'sign', label: 'Signage', short: 'Sign' },
+  { key: 'stretcher', label: 'Stretcher', short: 'Stretcher' },
+  { key: 'firstAid', label: 'First aid', short: 'First aid' },
 ]
 
 /**
  * Plan the link for every register at once.
  *
- * @param {{extinguishers?: array, aeds?: array, fas?: array}} registers
+ * @param {{extinguishers?: array, aeds?: array, fas?: array, signages?: array,
+ *           stretchers?: array, firstAid?: array}} registers
  * @param {array} sites
  * @returns {{
- *   byKind: {ext: object, aed: object, fas: object},
+ *   byKind: object,     // one plan per EQUIPMENT_KINDS entry
  *   combined: object,   // one plan-shaped object, rows tagged with `kind`
  *   total: number,      // assets that would be written
  * }}
@@ -317,12 +320,14 @@ export function planAllSiteLinks(registers = {}, sites = []) {
     aed: registers.aeds || [],
     fas: registers.fas || [],
     sign: registers.signages || [],
+    stretcher: registers.stretchers || [],
+    firstAid: registers.firstAid || [],
   }
   const byKind = {}
   for (const { key } of EQUIPMENT_KINDS) byKind[key] = planSiteLinks(source[key], sites)
 
-  // Rows carry their kind so one table can show all three without the reader
-  // having to guess which register a serial came from.
+  // Rows carry their kind so one table can show every register without the
+  // reader having to guess which one a serial came from.
   const linked = EQUIPMENT_KINDS.flatMap(({ key }) =>
     byKind[key].linked.map((row) => ({ ...row, kind: key }))
   )

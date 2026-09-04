@@ -4,6 +4,7 @@ import { format } from 'date-fns'
 import {
   BULK_COLUMNS, TYPES, CAPACITIES, ENTITIES, REGIONS, DEFAULT_REGION, STATUS, STATUS_LABEL, DEFECTS, normalizeEntity,
   FAS_DEVICE_TYPES, AED_STATUS, AED_STATUS_LABEL, FAS_STATUS, FAS_STATUS_LABEL,
+  STRETCHER_TYPES, STRETCHER_STATUS, STRETCHER_STATUS_LABEL,
 } from './constants'
 import { severityLabel, toDate } from './extinguisherLogic'
 import { tokenFromQrValue } from './qr'
@@ -72,9 +73,10 @@ export function exportRows(rows, sheetName = 'Sheet1', filename = 'export.xlsx')
   downloadWorkbook(bookFromRows(rows, sheetName), filename)
 }
 
-// ── AED / FAS bulk upload ─────────────────────────────────────────────────────
+// ── AED / FAS / stretcher bulk upload ────────────────────────────────────────
 export const AED_BULK_COLUMNS = ['Asset ID', 'Brand', 'Model', 'Site', 'Region', 'Entity', 'Location', 'Status', 'Install Date', 'Battery Expiry', 'Pad Expiry', 'Last Inspection', 'Next Inspection', 'Notes']
 export const FAS_BULK_COLUMNS = ['Device ID', 'Device Type', 'Zone', 'Site', 'Region', 'Entity', 'Location', 'Status', 'Install Date', 'Last Service', 'Next Service', 'AMC Vendor', 'Notes']
+export const STRETCHER_BULK_COLUMNS = ['Asset ID', 'Type', 'Brand', 'Model', 'Site', 'Region', 'Entity', 'Location', 'Status', 'Install Date', 'Last Inspection', 'Next Inspection', 'Notes']
 
 const ASSET_CFG = {
   aed: {
@@ -86,6 +88,11 @@ const ASSET_CFG = {
     columns: FAS_BULK_COLUMNS, sheet: 'FAS', file: 'fire-marshal-fas-template.xlsx',
     statuses: FAS_STATUS, statusLabels: FAS_STATUS_LABEL, defaultStatus: FAS_STATUS.OPERATIONAL,
     example: { 'Device ID': 'MCP-03', 'Device Type': 'Manual Call Point', Zone: 'Zone 4', Site: 'Tower B', Region: 'North', Entity: '1P', Location: '3rd floor lobby', Status: 'Operational', 'Install Date': '2024-01-15', 'Last Service': '2025-01-15', 'Next Service': '2026-01-15', 'AMC Vendor': 'Acme Fire Systems', Notes: '' },
+  },
+  stretcher: {
+    columns: STRETCHER_BULK_COLUMNS, sheet: 'Stretchers', file: 'ohs-stretcher-template.xlsx',
+    statuses: STRETCHER_STATUS, statusLabels: STRETCHER_STATUS_LABEL, defaultStatus: STRETCHER_STATUS.READY,
+    example: { 'Asset ID': 'STR-0001', Type: 'Foldable', Brand: 'Ferno', Model: 'Model 71', Site: 'Tower B', Region: 'North', Entity: '1P', Location: 'Ground floor corridor', Status: 'Ready', 'Install Date': '2024-01-15', 'Last Inspection': '2025-01-15', 'Next Inspection': '2026-01-15', Notes: '' },
   },
 }
 
@@ -99,7 +106,7 @@ function matchStatus(v, cfg) {
   return cfg.defaultStatus
 }
 
-/** Download an AED or FAS bulk-upload template. */
+/** Download an AED, FAS or stretcher bulk-upload template. */
 export function downloadAssetTemplate(kind) {
   const cfg = ASSET_CFG[kind]
   const ws = XLSX.utils.json_to_sheet([cfg.example], { header: cfg.columns })
@@ -109,7 +116,7 @@ export function downloadAssetTemplate(kind) {
   downloadWorkbook(wb, cfg.file)
 }
 
-/** Parse an AED/FAS upload → { valid, errors, total }. */
+/** Parse an AED / FAS / stretcher upload → { valid, errors, total }. */
 export async function parseAssetUpload(kind, file) {
   const cfg = ASSET_CFG[kind]
   assertWorkbookSize(file?.size, file?.name)
@@ -126,26 +133,40 @@ export async function parseAssetUpload(kind, file) {
     const rowNum = idx + 2
     const region = S(r, 'Region')
     const entity = normalizeEntity(S(r, 'Entity'))
-    const data = kind === 'aed'
-      ? {
-          assetId: S(r, 'Asset ID'), brand: S(r, 'Brand'), model: S(r, 'Model'), centerName: S(r, 'Site'),
-          region, entity, location: S(r, 'Location'), status: matchStatus(r['Status'], cfg),
-          installDate: toISODate(r['Install Date']), batteryExpiry: toISODate(r['Battery Expiry']),
-          padExpiry: toISODate(r['Pad Expiry']), lastInspection: toISODate(r['Last Inspection']),
-          nextInspection: toISODate(r['Next Inspection']), notes: S(r, 'Notes'),
-        }
-      : {
-          deviceId: S(r, 'Device ID'), deviceType: S(r, 'Device Type') || 'Other', zone: S(r, 'Zone'),
-          centerName: S(r, 'Site'), region, entity, location: S(r, 'Location'), status: matchStatus(r['Status'], cfg),
-          installDate: toISODate(r['Install Date']), lastService: toISODate(r['Last Service']),
-          nextService: toISODate(r['Next Service']), amcVendor: S(r, 'AMC Vendor'), notes: S(r, 'Notes'),
-        }
+    const common = {
+      centerName: S(r, 'Site'), region, entity, location: S(r, 'Location'),
+      status: matchStatus(r['Status'], cfg), installDate: toISODate(r['Install Date']), notes: S(r, 'Notes'),
+    }
+    // A ternary would only stretch to two kinds, and the third one silently
+    // taking the FAS branch would have imported every stretcher as a fire alarm
+    // device with no id and no dates.
+    const shape = {
+      aed: () => ({
+        ...common,
+        assetId: S(r, 'Asset ID'), brand: S(r, 'Brand'), model: S(r, 'Model'),
+        batteryExpiry: toISODate(r['Battery Expiry']), padExpiry: toISODate(r['Pad Expiry']),
+        lastInspection: toISODate(r['Last Inspection']), nextInspection: toISODate(r['Next Inspection']),
+      }),
+      fas: () => ({
+        ...common,
+        deviceId: S(r, 'Device ID'), deviceType: S(r, 'Device Type') || 'Other', zone: S(r, 'Zone'),
+        lastService: toISODate(r['Last Service']), nextService: toISODate(r['Next Service']),
+        amcVendor: S(r, 'AMC Vendor'),
+      }),
+      stretcher: () => ({
+        ...common,
+        assetId: S(r, 'Asset ID'), type: S(r, 'Type') || 'Foldable', brand: S(r, 'Brand'), model: S(r, 'Model'),
+        lastInspection: toISODate(r['Last Inspection']), nextInspection: toISODate(r['Next Inspection']),
+      }),
+    }
+    const data = shape[kind]()
 
     const issues = []
     if (!data.centerName) issues.push('Site is required')
     if (region && !REGIONS.includes(region)) issues.push(`Region must be one of ${REGIONS.join(', ')}`)
     if (entity && !ENTITIES.includes(entity)) issues.push(`Entity must be one of ${ENTITIES.join(', ')}`)
     if (kind === 'fas' && data.deviceType && !FAS_DEVICE_TYPES.includes(data.deviceType)) issues.push(`Device Type must be one of ${FAS_DEVICE_TYPES.join(', ')}`)
+    if (kind === 'stretcher' && data.type && !STRETCHER_TYPES.includes(data.type)) issues.push(`Type must be one of ${STRETCHER_TYPES.join(', ')}`)
 
     if (issues.length) errors.push({ row: rowNum, data, issues })
     else valid.push(data)
@@ -278,21 +299,32 @@ export function downloadJsonBackup(data, filename = 'backup.json') {
 }
 
 /**
- * Export safety signage as a two-sheet workbook:
- *  - "Availability Matrix": one row per site, one column per signage type (counts).
- *  - "Signage Details": the flat list of every signage record.
+ * Export a site × column availability matrix as a two-sheet workbook:
+ *  - "Availability Matrix": one row per site, one column per thing being tracked.
+ *  - a detail sheet: the flat list of every underlying record.
  * Both `matrixRows` and `detailRows` are already shaped by the page.
+ *
+ * `detailSheet` names the second sheet. It exists because the first register
+ * to use this was signage and the sheet was hard-coded "Signage Details" — so
+ * the first aid export, which is the identical shape, arrived at a reader's
+ * desk labelled as signage.
  */
-export function exportSignage(matrixRows, detailRows, filename = 'safety-signage.xlsx') {
+export function exportMatrix(matrixRows, detailRows, filename, detailSheet = 'Details') {
   const wb = XLSX.utils.book_new()
   const mws = XLSX.utils.json_to_sheet(matrixRows.length ? matrixRows : [{ Site: '' }])
   mws['!cols'] = (matrixRows.length ? Object.keys(matrixRows[0]) : ['Site']).map((k) => ({ wch: k === 'Site' ? 26 : 16 }))
   XLSX.utils.book_append_sheet(wb, mws, 'Availability Matrix')
   const dws = XLSX.utils.json_to_sheet(detailRows.length ? detailRows : [{ Site: '', Type: '' }])
   dws['!cols'] = (detailRows.length ? Object.keys(detailRows[0]) : ['Site', 'Type']).map(() => ({ wch: 20 }))
-  XLSX.utils.book_append_sheet(wb, dws, 'Signage Details')
+  XLSX.utils.book_append_sheet(wb, dws, detailSheet)
   downloadWorkbook(wb, filename)
 }
+
+export const exportSignage = (matrixRows, detailRows, filename = 'safety-signage.xlsx') =>
+  exportMatrix(matrixRows, detailRows, filename, 'Signage Details')
+
+export const exportFirstAid = (matrixRows, detailRows, filename = 'first-aid-boxes.xlsx') =>
+  exportMatrix(matrixRows, detailRows, filename, 'Box Contents')
 
 /**
  * Export defects as a site-wise work list, with the per-unit detail behind it.

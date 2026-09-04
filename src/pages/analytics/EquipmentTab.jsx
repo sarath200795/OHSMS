@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { MapContainer, TileLayer, Marker, Tooltip as LeafletTooltip } from 'react-leaflet'
 import L from 'leaflet'
-import { HeartPulse, ShieldCheck, TriangleAlert, MapPin, FireExtinguisher, BellRing } from 'lucide-react'
+import { HeartPulse, ShieldCheck, TriangleAlert, MapPin, FireExtinguisher, BellRing, Ambulance, BriefcaseMedical } from 'lucide-react'
 import { Panel, Stat, NoData, Picker } from './ui'
 import { equipmentAnalytics, ASSET_KINDS } from './moduleAnalytics'
 import Breakdown from './Breakdown'
@@ -24,17 +24,23 @@ function defectPin(count) {
   })
 }
 
-const KIND_TONE = { Extinguisher: '#dd5a41', AED: '#7fc4bb', 'Fire alarm': '#e8a33d' }
-const KIND_ICON = { Extinguisher: FireExtinguisher, AED: HeartPulse, 'Fire alarm': BellRing }
+const KIND_TONE = {
+  Extinguisher: '#dd5a41', AED: '#7fc4bb', 'Fire alarm': '#e8a33d',
+  Stretcher: '#5b8fc4', 'First aid': '#a9738c',
+}
+const KIND_ICON = {
+  Extinguisher: FireExtinguisher, AED: HeartPulse, 'Fire alarm': BellRing,
+  Stretcher: Ambulance, 'First aid': BriefcaseMedical,
+}
 
-export default function EquipmentTab({ extinguishers, aeds, fas, sites, keepUnplaced = true }) {
+export default function EquipmentTab({ extinguishers, aeds, fas, stretchers, firstAid, sites, keepUnplaced = true }) {
   const [siteId, setSiteId] = useState('all')
   const [defectType, setDefectType] = useState('all')
   const [kind, setKind] = useState('all')
 
   const a = useMemo(
-    () => equipmentAnalytics({ extinguishers, aeds, fas, sites, siteId, defectType, kind, keepUnplaced }),
-    [extinguishers, aeds, fas, sites, siteId, defectType, kind, keepUnplaced]
+    () => equipmentAnalytics({ extinguishers, aeds, fas, stretchers, firstAid, sites, siteId, defectType, kind, keepUnplaced }),
+    [extinguishers, aeds, fas, stretchers, firstAid, sites, siteId, defectType, kind, keepUnplaced]
   )
 
   // Narrowing to a kind can strip the chosen defect type out of the list, which
@@ -73,14 +79,14 @@ export default function EquipmentTab({ extinguishers, aeds, fas, sites, keepUnpl
       <div className="mb-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Stat icon={ShieldCheck} label="Fleet health" value={a.healthPct === null ? '—' : `${a.healthPct}%`} sub={`${a.healthy} of ${a.total} ready`} tone="#16a34a" />
         <Stat icon={TriangleAlert} label="Assets with a defect" value={a.faulty} sub={kind === 'all' ? 'any equipment' : kind} tone="#dc2626" />
-        <Stat icon={HeartPulse} label="Total assets" value={a.total} sub={kind === 'all' ? 'extinguishers, AED, alarm' : kind} tone="#0891b2" />
+        <Stat icon={HeartPulse} label="Total assets" value={a.total} sub={kind === 'all' ? 'every equipment class' : kind} tone="#0891b2" />
         <Stat icon={MapPin} label="Sites affected" value={a.bySite.length} tone="#a855f7" />
       </div>
 
-      {/* The three kinds fail for unrelated reasons and are maintained by
-          different people, so the combined figure above hides the question
-          everyone actually asks: which of the three is the problem. */}
-      <div className="mb-5 grid gap-3 sm:grid-cols-3">
+      {/* The kinds fail for unrelated reasons and are maintained by different
+          people, so the combined figure above hides the question everyone
+          actually asks: which of them is the problem. */}
+      <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         {a.fleetByKind.map((k) => {
           const Icon = KIND_ICON[k.key]
           return (
@@ -102,13 +108,25 @@ export default function EquipmentTab({ extinguishers, aeds, fas, sites, keepUnpl
                 </span>
                 <span className="mt-1 block text-[12.5px] font-semibold text-ink-700">{k.name}</span>
                 <span className="block text-[11px] text-ink-400">
-                  {k.total === 0 ? 'none recorded' : `${k.faulty} of ${k.total} with a defect`}
+                  {k.total === 0
+                    ? 'none recorded'
+                    : `${k.faulty} of ${k.total} ${k.key === 'First aid' ? 'items short' : 'with a defect'}`}
                 </span>
               </span>
             </button>
           )
         })}
       </div>
+
+      {/* First aid is the one kind whose health percentage can improve by
+          doing less work, so the number that corrects it sits next to it. */}
+      {a.firstAidUnrecorded > 0 && (
+        <p className="-mt-3 mb-5 text-[11.5px] text-ink-400">
+          First aid is scored over the {a.firstAidUnrecorded === 1 ? 'item' : 'items'} somebody has actually
+          checked. {a.firstAidUnrecorded} more site/item {a.firstAidUnrecorded === 1 ? 'pair has' : 'pairs have'} no
+          record at all and cannot be scored here — the First Aid dashboard counts those as gaps.
+        </p>
+      )}
 
       <Panel
         title="Where the defects are"

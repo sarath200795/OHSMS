@@ -1,9 +1,11 @@
 import { useState } from 'react'
-import { Flame, HeartPulse, BellRing, SignpostBig } from 'lucide-react'
+import { Flame, HeartPulse, BellRing, SignpostBig, Ambulance, BriefcaseMedical } from 'lucide-react'
 import Repository from './pages/Repository'
 import AEDRepository from './pages/AEDRepository'
 import FASRepository from './pages/FASRepository'
 import Signages from './pages/Signages'
+import Stretchers from './pages/Stretchers'
+import FirstAid from './pages/FirstAid'
 
 // One consolidated repository for every emergency-equipment class. Each type
 // keeps its own full list/management view, surfaced as a tab.
@@ -12,6 +14,8 @@ const TABS = [
   { key: 'aed', label: 'AED', icon: HeartPulse, Comp: AEDRepository },
   { key: 'fas', label: 'Fire Alarm', icon: BellRing, Comp: FASRepository },
   { key: 'sign', label: 'Signages', icon: SignpostBig, Comp: Signages },
+  { key: 'stretcher', label: 'Stretchers', icon: Ambulance, Comp: Stretchers },
+  { key: 'firstaid', label: 'First Aid', icon: BriefcaseMedical, Comp: FirstAid },
 ]
 
 export default function EquipmentRepository() {

@@ -83,6 +83,7 @@ const TABS = [
 // does cap, says so at the top of the page.
 const COLLECTIONS = [
   'incidents', 'mockDrills', 'consultations', 'extinguishers', 'aeds', 'fas',
+  'stretchers', 'firstAid',
   'cctvCameras', 'cctvDvrs', 'cctvMeraki', 'escalations', 'legalIssues',
   'inspectionRecords',
 ]
@@ -128,6 +129,7 @@ export default function Analytics() {
 
   const {
     incidents, mockDrills: drills, consultations, extinguishers, aeds, fas,
+    stretchers, firstAid,
     cctvCameras: cameras, cctvDvrs: dvrs, cctvMeraki: merakis, escalations, legalIssues,
     inspectionRecords,
   } = store.data
@@ -223,7 +225,15 @@ export default function Analytics() {
       ) : tab === 'drills' ? (
         <DrillsTab drills={drills} sites={sites} keepUnplaced={isAdmin} />
       ) : tab === 'equipment' ? (
-        <EquipmentTab extinguishers={extinguishers} aeds={aeds} fas={fas} sites={sites} keepUnplaced={isAdmin} />
+        <EquipmentTab
+          extinguishers={extinguishers}
+          aeds={aeds}
+          fas={fas}
+          stretchers={stretchers}
+          firstAid={firstAid}
+          sites={sites}
+          keepUnplaced={isAdmin}
+        />
       ) : tab === 'committee' ? (
         <CommitteeTab consultations={consultations} sites={sites} keepUnplaced={isAdmin} />
       ) : tab === 'cctv' ? (

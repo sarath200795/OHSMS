@@ -5,8 +5,8 @@ import { Upload, Download, FileSpreadsheet, CheckCircle2, AlertTriangle, X, Load
 import toast from 'react-hot-toast'
 import { PageHeader, Spinner } from '../components/ui'
 import { useAuth } from '../context/AuthContext'
-import { downloadAssetTemplate, parseAssetUpload, AED_BULK_COLUMNS, FAS_BULK_COLUMNS } from '../lib/exporter'
-import { bulkAddAeds, bulkAddFas } from '../lib/firestore'
+import { downloadAssetTemplate, parseAssetUpload, AED_BULK_COLUMNS, FAS_BULK_COLUMNS, STRETCHER_BULK_COLUMNS } from '../lib/exporter'
+import { bulkAddAeds, bulkAddFas, bulkAddStretchers } from '../lib/firestore'
 import { indexSites, resolveSite, suggestSite } from '../lib/siteLink'
 import { useAccessibleSites } from '../../../shared/org/useAccessibleSites'
 import { Pager } from '../../../shared/ui'
@@ -15,12 +15,16 @@ import { writeErrorMessage } from '../../../shared/lib/writeError'
 
 const CFG = {
   aed: {
-    label: 'AED', columns: AED_BULK_COLUMNS, add: bulkAddAeds,
+    label: 'AED', columns: AED_BULK_COLUMNS, add: bulkAddAeds, path: '/equipment/aed',
     cols: [['Asset ID', 'assetId'], ['Site', 'centerName'], ['Region', 'region'], ['Entity', 'entity'], ['Battery Exp', 'batteryExpiry'], ['Pad Exp', 'padExpiry'], ['Status', 'status']],
   },
   fas: {
-    label: 'FAS', columns: FAS_BULK_COLUMNS, add: bulkAddFas,
+    label: 'FAS', columns: FAS_BULK_COLUMNS, add: bulkAddFas, path: '/equipment/fas',
     cols: [['Device ID', 'deviceId'], ['Type', 'deviceType'], ['Site', 'centerName'], ['Region', 'region'], ['Next Service', 'nextService'], ['Status', 'status']],
+  },
+  stretcher: {
+    label: 'Stretcher', columns: STRETCHER_BULK_COLUMNS, add: bulkAddStretchers, path: '/equipment/stretchers',
+    cols: [['Asset ID', 'assetId'], ['Type', 'type'], ['Site', 'centerName'], ['Region', 'region'], ['Next Inspection', 'nextInspection'], ['Status', 'status']],
   },
 }
 
@@ -28,7 +32,10 @@ export default function AssetBulkUpload() {
   const { orgId, orgName, profile } = useAuth()
   const location = useLocation()
   const inputRef = useRef(null)
-  const [kind, setKind] = useState(location.state?.kind === 'fas' ? 'fas' : 'aed')
+  // Anything the caller does not name falls back to AED. A ternary on 'fas'
+  // alone would have sent a "Bulk upload" pressed on the stretcher repository
+  // to the AED tab, silently, with the AED template already downloaded.
+  const [kind, setKind] = useState(() => (CFG[location.state?.kind] ? location.state.kind : 'aed'))
   const [fileName, setFileName] = useState('')
   const [parsing, setParsing] = useState(false)
   const [result, setResult] = useState(null)
@@ -121,7 +128,7 @@ export default function AssetBulkUpload() {
 
   return (
     <div>
-      <PageHeader title="Bulk Upload — AED / FAS" subtitle={`Import many ${cfg.label} records from a spreadsheet. Every row is added as a new record with its own QR code.`} icon={Upload}>
+      <PageHeader title="Bulk Upload — Assets" subtitle={`Import many ${cfg.label} records from a spreadsheet. Every row is added as a new record with its own QR code.`} icon={Upload}>
         <div className="flex rounded-xl bg-clay-100 p-1 no-print">
           {Object.entries(CFG).map(([k, c]) => (
             <button key={k} onClick={() => switchKind(k)} className={`rounded-lg px-3 py-1.5 text-xs font-bold ${kind === k ? 'bg-white text-ink-900 shadow-clay-sm' : 'text-ink-500'}`}>{c.label}</button>
@@ -137,7 +144,7 @@ export default function AssetBulkUpload() {
           <p className="mt-1 text-sm text-ink-500"><strong>{done.created}</strong> {cfg.label} record(s) added, each with a unique QR code.</p>
           <div className="mt-6 flex justify-center gap-3">
             <button className="btn-primary" onClick={reset}>Import more</button>
-            <a className="btn-ghost" href={kind === 'aed' ? '/equipment/aed' : '/equipment/fas'}>View {cfg.label} repository</a>
+            <a className="btn-ghost" href={cfg.path}>View {cfg.label} repository</a>
           </div>
         </motion.div>
       ) : (

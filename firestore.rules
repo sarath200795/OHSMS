@@ -182,7 +182,8 @@ service cloud.firestore {
         : col in ['audits', 'auditPlans', 'auditFindings', 'capas', 'findings'] ? 'audit'
         : col in ['permits', 'observations'] ? 'ptw'
         : col in ['procedures', 'procedurePhotos', 'locks', 'technicians'] ? 'loto'
-        : col in ['extinguishers', 'aeds', 'fas', 'signages', 'reports'] ? 'equipment'
+        : col in ['extinguishers', 'aeds', 'fas', 'signages', 'stretchers',
+                  'firstAid', 'reports'] ? 'equipment'
         : col == 'mockDrills' ? 'drills'
         : col == 'consultations' ? 'committee'
         : col in ['trainingCourses', 'trainingRecords', 'trainingAssignments',
@@ -1144,15 +1145,16 @@ service cloud.firestore {
                   && request.resource.data.extId.size() < 200
                   && scannedAssetField(request.resource.data, 'extId') == request.resource.data.extId
                 )
-                // An AED or fire-alarm fault. Same public surface, different
-                // sheet: these carry no extId, so the extinguisher clause above
-                // can never admit them and they need their own shape. assetKind
-                // is pinned to the two known kinds because approving one writes
-                // to the matching collection — an unrecognised kind would target
-                // nothing — and it must agree with the mirror too.
+                // An AED, fire-alarm or stretcher fault. Same public surface,
+                // different sheet: these carry no extId, so the extinguisher
+                // clause above can never admit them and they need their own
+                // shape. assetKind is pinned to the known kinds because
+                // approving one writes to the matching collection — an
+                // unrecognised kind would target nothing — and it must agree
+                // with the mirror too.
                 || (
                   request.resource.data.kind == 'asset_defect'
-                  && request.resource.data.assetKind in ['aed', 'fas']
+                  && request.resource.data.assetKind in ['aed', 'fas', 'stretcher']
                   && request.resource.data.assetRefId is string
                   && request.resource.data.assetRefId.size() > 0
                   && request.resource.data.assetRefId.size() < 200

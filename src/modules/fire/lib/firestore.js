@@ -76,6 +76,10 @@ const aedCol = (orgId) => collection(db, 'organizations', orgId, 'aeds')
 const aedRef = (orgId, id) => doc(db, 'organizations', orgId, 'aeds', id)
 const fasCol = (orgId) => collection(db, 'organizations', orgId, 'fas')
 const fasRef = (orgId, id) => doc(db, 'organizations', orgId, 'fas', id)
+const firstAidCol = (orgId) => collection(db, 'organizations', orgId, 'firstAid')
+const firstAidRef = (orgId, id) => doc(db, 'organizations', orgId, 'firstAid', id)
+const stretcherCol = (orgId) => collection(db, 'organizations', orgId, 'stretchers')
+const stretcherRef = (orgId, id) => doc(db, 'organizations', orgId, 'stretchers', id)
 // Mock-drill evidence photos live in a per-drill subcollection (one doc each, ≤~700 KB)
 // so the live drill list never carries the image blobs.
 const drillPhotoCol = (orgId, drillId) => collection(db, 'organizations', orgId, 'mockDrills', drillId, 'photos')
@@ -925,6 +929,106 @@ export async function deleteSignage(orgId, id, actor, label) {
   await logAudit(orgId, actor, 'signage.delete', { target: 'signage', targetId: id, targetLabel: label || '' })
 }
 
+// ── First aid box contents (org-scoped, site-wise) ────────────────────────────
+// One document per (site, box, item): what the box is meant to hold, how much
+// of it is actually there, and when it goes out of date. Like signage and
+// unlike an AED these are inventory records rather than scannable assets — no
+// QR mirror and no stats counter, read live and edited in place.
+
+export function subscribeFirstAid(orgId, cb) {
+  const q = query(firstAidCol(orgId), orderBy('createdAt', 'desc'), limit(COLLECTION_READ_CAP))
+  return onSnapshot(
+    q,
+    (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    (err) => { if (!isSessionEnd('first aid', err)) console.warn('[Fire Marshal] first aid subscribe failed:', err?.message || err) }
+  )
+}
+
+const cleanFirstAid = (data) => ({
+  centerName: (data.centerName || '').trim(),
+  // The resolved site-registry link. Signage dropped this field for months and
+  // its site picker looked like it worked while storing nothing; the same
+  // picker is on this form, so the same field has to be written here.
+  siteId: data.siteId || '',
+  siteName: data.siteName || data.site || '',
+  region: data.region || '',
+  entity: data.entity || '',
+  item: data.item || '',
+  // Which box at the site this row counts. Free text, because a site's boxes
+  // are known by where they are ("Reception", "Gym floor") rather than by any
+  // number printed on them.
+  boxLocation: (data.boxLocation || '').trim(),
+  // Zero is a real answer here — "we opened the box and there were none" — so
+  // this defaults to 0 rather than signage's 1. A blank that silently became
+  // one would turn an empty shelf into stock.
+  quantity: Number(data.quantity) || 0,
+  condition: data.condition || 'Available',
+  expiryDate: data.expiryDate || '',
+  lastChecked: data.lastChecked || '',
+  notes: (data.notes || '').trim(),
+})
+
+export async function addFirstAid(orgId, data, actor) {
+  const ref = await addDoc(firstAidCol(orgId), {
+    ...cleanFirstAid(data),
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  })
+  await logAudit(orgId, actor, 'firstaid.create', {
+    target: 'firstaid',
+    targetId: ref.id,
+    targetLabel: `${data.item} @ ${data.centerName}`,
+    summary: `${data.item} × ${data.quantity ?? 0} (${data.condition}) @ ${data.centerName}`,
+  })
+  return ref.id
+}
+
+export async function updateFirstAid(orgId, id, updates, actor) {
+  await updateDoc(firstAidRef(orgId, id), { ...cleanFirstAid(updates), updatedAt: serverTimestamp() })
+  await logAudit(orgId, actor, 'firstaid.update', {
+    target: 'firstaid',
+    targetId: id,
+    targetLabel: `${updates.item} @ ${updates.centerName}`,
+    summary: 'First aid item updated',
+  })
+}
+
+export async function deleteFirstAid(orgId, id, actor, label) {
+  await deleteDoc(firstAidRef(orgId, id))
+  await logAudit(orgId, actor, 'firstaid.delete', { target: 'firstaid', targetId: id, targetLabel: label || '' })
+}
+
+/**
+ * Write one whole box in a single pass.
+ *
+ * The contents checklist is sixteen rows on one screen, and saving it a row at
+ * a time would be sixteen writes, sixteen audit entries and a half-saved box if
+ * the fifth of them failed. `rows` are creates (no id) and updates (with one);
+ * `removals` are the ids of items the checker unticked.
+ */
+export async function saveFirstAidBox(orgId, rows, removals, actor, label) {
+  const writes = [
+    ...rows.map((row) => ({ kind: row.id ? 'update' : 'create', row })),
+    ...removals.map((id) => ({ kind: 'delete', id })),
+  ]
+  for (let i = 0; i < writes.length; i += BULK_CHUNK) {
+    const batch = writeBatch(db)
+    for (const w of writes.slice(i, i + BULK_CHUNK)) {
+      if (w.kind === 'delete') { batch.delete(firstAidRef(orgId, w.id)); continue }
+      const data = cleanFirstAid(w.row)
+      if (w.kind === 'update') batch.update(firstAidRef(orgId, w.row.id), { ...data, updatedAt: serverTimestamp() })
+      else batch.set(doc(firstAidCol(orgId)), { ...data, createdAt: serverTimestamp(), updatedAt: serverTimestamp() })
+    }
+    await batch.commit()
+  }
+  await logAudit(orgId, actor, 'firstaid.update', {
+    target: 'firstaid',
+    targetLabel: label || '',
+    summary: `First aid box checked — ${rows.length} item(s) recorded${removals.length ? `, ${removals.length} removed` : ''}`,
+  })
+  return { written: rows.length, removed: removals.length }
+}
+
 // ── Mock drills / emergency response records (org-scoped, site-wise) ───────────
 
 export function subscribeMockDrills(orgId, cb) {
@@ -1135,6 +1239,14 @@ export const linkFasToSites = (orgId, orgName, plan, actor) =>
 export const linkSignagesToSites = (orgId, orgName, plan, actor) =>
   linkKindToSites(orgId, orgName, plan, actor, { name: 'signage', label: 'signage', ref: signageRef })
 
+export const linkStretchersToSites = (orgId, orgName, plan, actor) =>
+  linkKindToSites(orgId, orgName, plan, actor, { name: 'stretcher', label: 'stretcher', ref: stretcherRef, mirror: stretcherMirror })
+
+// No mirror, for the same reason as signage: a first aid row counts what is in
+// a box, and nothing scans it.
+export const linkFirstAidToSites = (orgId, orgName, plan, actor) =>
+  linkKindToSites(orgId, orgName, plan, actor, { name: 'firstaid', label: 'first aid record', ref: firstAidRef })
+
 /**
  * Link every register in one action, from the plans planAllSiteLinks produced.
  *
@@ -1154,6 +1266,8 @@ export async function linkAllEquipmentToSites(orgId, orgName, byKind, actor) {
     ['aed', linkAedsToSites],
     ['fas', linkFasToSites],
     ['sign', linkSignagesToSites],
+    ['stretcher', linkStretchersToSites],
+    ['firstAid', linkFirstAidToSites],
   ]
   const totals = { linked: 0, entityChanges: 0, nameChanges: 0 }
   const failed = []
@@ -1236,6 +1350,134 @@ export async function bulkDeleteAeds(orgId, items, actor) {
     await batch.commit()
   }
   await logAudit(orgId, actor, 'aed.bulk_delete', { target: 'aed', summary: `${items.length} AED(s) deleted` })
+}
+
+// ── Stretchers (org-scoped) ───────────────────────────────────────────────────
+// Deliberately the AED's shape rather than signage's: a stretcher is one
+// physical unit in one place, and the question asked of it — is THIS stretcher
+// usable — is answered by a person standing in front of it. Hence the QR, the
+// public defect sheet and the inspection cycle, none of which a signage-style
+// site × type matrix could carry.
+export function subscribeStretchers(orgId, cb) {
+  const q = query(stretcherCol(orgId), orderBy('createdAt', 'desc'), limit(COLLECTION_READ_CAP))
+  return onSnapshot(
+    q,
+    (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    (err) => { if (!isSessionEnd('stretchers', err)) console.warn('[Fire Marshal] stretcher subscribe failed:', err?.message || err) }
+  )
+}
+
+const cleanStretcher = (d) => ({
+  assetId: (d.assetId || '').trim(),
+  type: d.type || 'Foldable',
+  brand: (d.brand || '').trim(),
+  model: (d.model || '').trim(),
+  centerName: (d.centerName || '').trim(),
+  // As with AEDs — the resolved registry link, dropped on write without this.
+  siteId: d.siteId || '',
+  region: d.region || '',
+  entity: d.entity || '',
+  location: (d.location || '').trim(),
+  status: d.status || 'ready',
+  installDate: d.installDate || '',
+  lastInspection: d.lastInspection || '',
+  nextInspection: d.nextInspection || '',
+  notes: (d.notes || '').trim(),
+})
+
+// Public-readable QR mirror for a stretcher (keyed by qrToken, under /qr/{token}).
+function stretcherMirror(orgId, orgName, id, a) {
+  return {
+    assetKind: 'stretcher', orgId, orgName: orgName || '', assetRefId: id, token: a.qrToken,
+    label: a.assetId || 'Stretcher', stretcherType: a.type || '', brand: a.brand || '', model: a.model || '',
+    centerName: a.centerName || '', region: a.region || '', entity: a.entity || '', location: a.location || '',
+    status: a.status || 'ready',
+    lastInspection: a.lastInspection || '', nextInspection: a.nextInspection || '', updatedAt: serverTimestamp(),
+  }
+}
+
+export async function addStretcher(orgId, orgName, data, actor) {
+  // Records are created WITHOUT a QR — generating one is an admin-only action.
+  const ref = doc(stretcherCol(orgId))
+  const a = { ...cleanStretcher(data), createdAt: serverTimestamp(), updatedAt: serverTimestamp() }
+  const batch = writeBatch(db)
+  batch.set(ref, a)
+  await batch.commit()
+  await logAudit(orgId, actor, 'stretcher.create', { target: 'stretcher', targetId: ref.id, targetLabel: `${data.assetId || 'Stretcher'} @ ${data.centerName}`, summary: `Stretcher ${data.assetId || ''} added @ ${data.centerName}` })
+  return { id: ref.id }
+}
+
+export async function updateStretcher(orgId, orgName, id, updates, actor) {
+  // Never mints a QR here — only keeps an existing mirror in sync (see generateStretcherQr).
+  const a = { ...cleanStretcher(updates), updatedAt: serverTimestamp() }
+  const batch = writeBatch(db)
+  batch.update(stretcherRef(orgId, id), a)
+  if (updates.qrToken) batch.set(qrRef(updates.qrToken), stretcherMirror(orgId, orgName, id, { ...updates, ...a, qrToken: updates.qrToken }))
+  await batch.commit()
+  await logAudit(orgId, actor, 'stretcher.update', { target: 'stretcher', targetId: id, targetLabel: `${updates.assetId || 'Stretcher'} @ ${updates.centerName}`, summary: 'Stretcher updated' })
+  return updates.qrToken || null
+}
+
+/** Admin-only: mint (or re-use) a QR token for a stretcher and write its public mirror. */
+export async function generateStretcherQr(orgId, orgName, asset, actor) {
+  const qrToken = asset.qrToken || generateQrToken()
+  const batch = writeBatch(db)
+  batch.update(stretcherRef(orgId, asset.id), { qrToken, updatedAt: serverTimestamp() })
+  batch.set(qrRef(qrToken), stretcherMirror(orgId, orgName, asset.id, { ...asset, qrToken }))
+  await batch.commit()
+  await logAudit(orgId, actor, 'stretcher.qr_generate', { target: 'stretcher', targetId: asset.id, targetLabel: `${asset.assetId || 'Stretcher'} @ ${asset.centerName}`, summary: 'QR code generated' })
+  return qrToken
+}
+
+/** Log an inspection: stamps last inspection today, sets the next due, marks Ready. */
+export async function serviceStretcher(orgId, orgName, asset, nextInspection, actor) {
+  const today = new Date().toISOString().slice(0, 10)
+  const merged = { ...asset, lastInspection: today, nextInspection: nextInspection || '', status: 'ready' }
+  const a = { ...cleanStretcher(merged), updatedAt: serverTimestamp() }
+  const batch = writeBatch(db)
+  batch.update(stretcherRef(orgId, asset.id), a)
+  if (asset.qrToken) batch.set(qrRef(asset.qrToken), stretcherMirror(orgId, orgName, asset.id, { ...merged, qrToken: asset.qrToken }))
+  await batch.commit()
+  await logAudit(orgId, actor, 'stretcher.service', { target: 'stretcher', targetId: asset.id, targetLabel: `${asset.assetId || 'Stretcher'} @ ${asset.centerName}`, summary: `Stretcher inspected — next inspection ${nextInspection || '—'}` })
+}
+
+export async function deleteStretcher(orgId, id, qrToken, actor, label) {
+  const batch = writeBatch(db)
+  batch.delete(stretcherRef(orgId, id))
+  if (qrToken) batch.delete(qrRef(qrToken))
+  await batch.commit()
+  await logAudit(orgId, actor, 'stretcher.delete', { target: 'stretcher', targetId: id, targetLabel: label || '' })
+}
+
+/** Bulk-delete stretchers (+ remove their QR mirrors) by [{id, qrToken}]. */
+export async function bulkDeleteStretchers(orgId, items, actor) {
+  for (let i = 0; i < items.length; i += BULK_CHUNK) {
+    const batch = writeBatch(db)
+    for (const { id, qrToken } of items.slice(i, i + BULK_CHUNK)) {
+      batch.delete(stretcherRef(orgId, id))
+      if (qrToken) batch.delete(qrRef(qrToken))
+    }
+    await batch.commit()
+  }
+  await logAudit(orgId, actor, 'stretcher.bulk_delete', { target: 'stretcher', summary: `${items.length} stretcher(s) deleted` })
+}
+
+export async function bulkAddStretchers(orgId, orgName, rows, actor) {
+  let created = 0
+  for (let i = 0; i < rows.length; i += BULK_CHUNK) {
+    const batch = writeBatch(db)
+    for (const row of rows.slice(i, i + BULK_CHUNK)) {
+      const ref = doc(stretcherCol(orgId))
+      const qrToken = generateQrToken()
+      const a = { ...cleanStretcher(row), qrToken, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }
+      batch.set(ref, a)
+      batch.set(qrRef(qrToken), stretcherMirror(orgId, orgName, ref.id, a))
+      created++
+    }
+    await batch.commit()
+  }
+  await logAudit(orgId, actor, 'stretcher.bulk_create', { target: 'stretcher', summary: `Bulk added ${created} stretcher(s)` })
+  return { created }
 }
 
 // ── FAS (Fire Alarm System) device inventory (org-scoped) ─────────────────────
@@ -1366,10 +1608,26 @@ export async function createAssetReport(orgId, { assetKind, assetRefId, assetLab
   })
 }
 
+/**
+ * Where an approved defect lands, per asset kind.
+ *
+ * A table rather than the `isFas ? fasRef : aedRef` ternary this replaces. That
+ * ternary had no third answer: any kind that was not 'fas' updated the AED
+ * collection, so a stretcher report would have written to an AED document id
+ * that does not exist there — a failed batch surfacing as "could not update the
+ * report", with nothing naming the real cause. An unknown kind is refused here
+ * instead, and says which one it was.
+ */
+const ASSET_TARGETS = {
+  aed: { ref: aedRef, faultStatus: 'out_of_service', faultLabel: 'Out of service' },
+  fas: { ref: fasRef, faultStatus: 'faulty', faultLabel: 'Faulty' },
+  stretcher: { ref: stretcherRef, faultStatus: 'out_of_service', faultLabel: 'Out of service' },
+}
+
 /** Approve (→ mark the asset Faulty/Out-of-service) or reject an asset-defect report. */
 export async function decideAssetReport(orgId, report, approve, reviewerName, actor) {
-  const isFas = report.assetKind === 'fas'
-  const newStatus = isFas ? 'faulty' : 'out_of_service'
+  const target = ASSET_TARGETS[report.assetKind]
+  if (!target) throw new Error(`Unknown asset kind "${report.assetKind || ''}" — this report cannot be actioned`)
   const batch = writeBatch(db)
   batch.update(reportRef(orgId, report.id), {
     approvalStatus: approve ? 'approved' : 'rejected',
@@ -1377,13 +1635,13 @@ export async function decideAssetReport(orgId, report, approve, reviewerName, ac
     reviewedAt: serverTimestamp(),
   })
   if (approve && report.assetRefId) {
-    batch.update((isFas ? fasRef : aedRef)(orgId, report.assetRefId), { status: newStatus, updatedAt: serverTimestamp() })
-    if (report.token) batch.update(qrRef(report.token), { status: newStatus, updatedAt: serverTimestamp() })
+    batch.update(target.ref(orgId, report.assetRefId), { status: target.faultStatus, updatedAt: serverTimestamp() })
+    if (report.token) batch.update(qrRef(report.token), { status: target.faultStatus, updatedAt: serverTimestamp() })
   }
   await batch.commit()
   await logAudit(orgId, actor, `${report.assetKind}.defect_${approve ? 'approved' : 'rejected'}`, {
     target: report.assetKind, targetId: report.assetRefId || '', targetLabel: report.assetLabel || '',
-    summary: `${report.defect}${approve ? ` — marked ${isFas ? 'Faulty' : 'Out of service'}` : ' — dismissed'}`,
+    summary: `${report.defect}${approve ? ` — marked ${target.faultLabel}` : ' — dismissed'}`,
   })
 }
 

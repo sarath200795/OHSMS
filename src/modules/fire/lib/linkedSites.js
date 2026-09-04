@@ -20,7 +20,7 @@
 const clean = (v) => String(v ?? '').trim()
 const byName = (a, b) => clean(a?.name).localeCompare(clean(b?.name))
 
-const EMPTY_COUNTS = { ext: 0, aed: 0, fas: 0, sign: 0, total: 0 }
+const EMPTY_COUNTS = { ext: 0, aed: 0, fas: 0, sign: 0, stretcher: 0, firstAid: 0, total: 0 }
 
 const bump = (map, key, kind) => {
   const row = map.get(key) || { ...EMPTY_COUNTS }
@@ -76,12 +76,13 @@ export function listLinkedAssets(assets = [], sites = []) {
     .map((asset) => ({
       asset,
       site: byId.get(clean(asset.siteId)),
-      // Extinguishers carry a serial, AEDs an assetId, FAS a deviceId. Signage
-      // carries no id at all, so it is named by what it is and where it hangs —
-      // a column of dashes would make the list useless for the one register
-      // that most needs it.
+      // Extinguishers carry a serial, AEDs and stretchers an assetId, FAS a
+      // deviceId. Signage and first aid rows carry no id at all, so they are
+      // named by what they are and where they sit — a column of dashes would
+      // make the list useless for exactly the registers that most need it.
       label: clean(asset.serialNo) || clean(asset.assetId) || clean(asset.deviceId)
-        || [clean(asset.type), clean(asset.location) || clean(asset.floor)].filter(Boolean).join(' · ')
+        || [clean(asset.type) || clean(asset.item), clean(asset.location) || clean(asset.floor) || clean(asset.boxLocation)]
+             .filter(Boolean).join(' · ')
         || '—',
     }))
     .sort((a, b) => byName(a.site, b.site) || a.label.localeCompare(b.label))
@@ -90,7 +91,8 @@ export function listLinkedAssets(assets = [], sites = []) {
 /**
  * Group the equipment registers by the site they are linked to.
  *
- * @param {{extinguishers?: array, aeds?: array, fas?: array, signages?: array}} registers
+ * @param {{extinguishers?: array, aeds?: array, fas?: array, signages?: array,
+ *           stretchers?: array, firstAid?: array}} registers
  * @param {array} sites  the site registry (already scoped to the reader)
  * @returns {{
  *   linked: Array<{site: object, counts: object}>,   // most equipment first
@@ -101,7 +103,7 @@ export function listLinkedAssets(assets = [], sites = []) {
  * }}
  */
 export function summariseLinkedSites(registers = {}, sites = []) {
-  const { extinguishers = [], aeds = [], fas = [], signages = [] } = registers
+  const { extinguishers = [], aeds = [], fas = [], signages = [], stretchers = [], firstAid = [] } = registers
   const byId = new Map((sites || []).filter((s) => clean(s?.id)).map((s) => [clean(s.id), s]))
 
   const linkedCounts = new Map()
@@ -123,6 +125,8 @@ export function summariseLinkedSites(registers = {}, sites = []) {
   feed(aeds, 'aed')
   feed(fas, 'fas')
   feed(signages, 'sign')
+  feed(stretchers, 'stretcher')
+  feed(firstAid, 'firstAid')
 
   const linked = [...linkedCounts.entries()]
     .map(([id, counts]) => ({ site: byId.get(id), counts }))
