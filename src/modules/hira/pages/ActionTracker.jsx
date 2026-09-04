@@ -9,7 +9,7 @@ import { usePagination } from '../../../shared/ui/usePagination'
 import { RiskBadge } from '../components/RiskBits'
 import { useRa } from '../context/RaContext'
 import { useAuth } from '../context/AuthContext'
-import { updateAssessment, logActivity } from '../lib/firestore'
+import { patchAdditionalControl, logActivity } from '../lib/firestore'
 import { flattenAdditionalControls, isOverdue, isNonAcceptable} from '../lib/raStats'
 import { CONTROL_STATUS } from '../lib/constants'
 
@@ -76,28 +76,20 @@ export default function ActionTracker() {
   const { pageItems, page, setPage, pageCount, total, pageSize } = usePagination(rows)
 
   // Persist an inline change to one additional control.
+  //
+  // Through patchAdditionalControl, which re-reads the assessment inside a
+  // transaction. This used to build `activities` from the snapshot this screen
+  // was rendering and write the lot back, so closing one action reverted every
+  // edit anyone else had made to that assessment since the snapshot arrived —
+  // including a hazard added in CreateAssessment, silently, on a risk register.
   const patchControl = async (row, patch) => {
-    const a = assessments.find((x) => x.id === row.assessmentId)
-    if (!a) return
-    const activities = (a.activities || []).map((act) =>
-      act.id !== row.activityId
-        ? act
-        : {
-            ...act,
-            hazards: (act.hazards || []).map((h) =>
-              h.id !== row.hazardId
-                ? h
-                : {
-                    ...h,
-                    additionalControls: (h.additionalControls || []).map((c) =>
-                      c.id !== row.control.id ? c : { ...c, ...patch }
-                    ),
-                  }
-            ),
-          }
-    )
     try {
-      await updateAssessment(orgId, a.id, { activities })
+      await patchAdditionalControl(
+        orgId,
+        row.assessmentId,
+        { activityId: row.activityId, hazardId: row.hazardId, controlId: row.control.id },
+        patch,
+      )
       if (patch.status) {
         logActivity(orgId, { uid: user?.uid, name: profile?.name }, {
           type: 'action',
