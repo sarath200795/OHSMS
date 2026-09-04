@@ -180,7 +180,13 @@ describe('a module that is switched off stops its collections being used', () =>
   // out rather than derived, because the point is to state independently what
   // the rules ought to cover: a list read from the rules would agree with them
   // by construction, including when they are wrong.
-  const EQUIPMENT = ['extinguishers', 'aeds', 'fas', 'signages']
+  //
+  // `stretchers` and `firstAid` are the two most recent, and the two most worth
+  // naming here. A collection absent from moduleForCollection maps to '' and is
+  // ALLOWED, so a register added without its entry does not fail loudly — it
+  // arrives exempt from the entitlement it belongs to, and stays that way until
+  // somebody thinks to check. This list is the check.
+  const EQUIPMENT = ['extinguishers', 'aeds', 'fas', 'signages', 'stretchers', 'firstAid']
 
   const setModules = (modules) => testEnv.withSecurityRulesDisabled(async (ctx) => {
     await setDoc(doc(ctx.firestore(), 'moduleEntitlements', ORG), payload('ops', modules))

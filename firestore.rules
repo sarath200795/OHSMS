@@ -182,7 +182,8 @@ service cloud.firestore {
         : col in ['audits', 'auditPlans', 'auditFindings', 'capas', 'findings'] ? 'audit'
         : col in ['permits', 'observations'] ? 'ptw'
         : col in ['procedures', 'procedurePhotos', 'locks', 'technicians'] ? 'loto'
-        : col in ['extinguishers', 'aeds', 'fas', 'signages', 'reports'] ? 'equipment'
+        : col in ['extinguishers', 'aeds', 'fas', 'signages', 'stretchers',
+                  'firstAid', 'reports'] ? 'equipment'
         : col == 'mockDrills' ? 'drills'
         : col == 'consultations' ? 'committee'
         : col in ['trainingCourses', 'trainingRecords', 'trainingAssignments',
