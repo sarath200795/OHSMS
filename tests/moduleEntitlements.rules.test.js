@@ -160,6 +160,110 @@ describe('an organization can read what it has been given', () => {
   })
 })
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Does switching a module off actually stop its collections being used?
+//
+// Everything above tests the entitlement DOCUMENT — who may write it, who may
+// read it. Nothing tested the thing the document exists to do, and the two are
+// not the same property. That gap is how moduleOn shipped reading the flags off
+// the wrong level of the document: every test agreed the document was correct,
+// and none of them ever asked the gate a question.
+//
+// Note the direction. A collection missing from moduleForCollection maps to '',
+// which moduleOn treats as ALLOWED, so the failure mode is never a refusal
+// somebody notices within the hour — it is a collection silently exempt from
+// the entitlement it belongs to. Only the "switched off -> refused" leg catches
+// that, which is why every case below switches the module OFF.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('a module that is switched off stops its collections being used', () => {
+  // The Equipment module's collections, as firestore.rules maps them. Written
+  // out rather than derived, because the point is to state independently what
+  // the rules ought to cover: a list read from the rules would agree with them
+  // by construction, including when they are wrong.
+  const EQUIPMENT = ['extinguishers', 'aeds', 'fas', 'signages']
+
+  const setModules = (modules) => testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), 'moduleEntitlements', ORG), payload('ops', modules))
+  })
+  const seedRow = (col) => testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), 'organizations', ORG, col, 'row1'), { centerName: 'Plant 2' })
+  })
+  const rowAt = (db, col) => doc(db, 'organizations', ORG, col, 'row1')
+
+  // The baseline the refusals are measured against. Without it they prove
+  // nothing: every case below would also "pass" if an admin simply could not
+  // reach these collections at all.
+  it('an admin can read and write every equipment collection while it is on', async () => {
+    await setModules({ equipment: true })
+    for (const col of EQUIPMENT) {
+      await seedRow(col)
+      await assertSucceeds(getDoc(rowAt(as('own'), col)))
+      await assertSucceeds(setDoc(rowAt(as('own'), col), { centerName: 'Plant 2', note: 'edited' }))
+    }
+  })
+
+  // Asserted as a map rather than a loop of assertFails: a loop stops at the
+  // first collection that leaks and says nothing about the rest, which is the
+  // opposite of what this test is for. The question is WHICH collections the
+  // gate misses, and one of them would hide the others.
+  const outcome = async (p) => { try { await p; return 'allowed' } catch { return 'refused' } }
+  const allRefused = () => Object.fromEntries(EQUIPMENT.map((c) => [c, 'refused']))
+
+  it('refuses reading any of them once equipment is switched off', async () => {
+    await setModules({ equipment: false })
+    const got = {}
+    for (const col of EQUIPMENT) {
+      await seedRow(col)
+      got[col] = await outcome(getDoc(rowAt(as('own'), col)))
+    }
+    expect(got).toEqual(allRefused())
+  })
+
+  it('refuses writing any of them once equipment is switched off', async () => {
+    await setModules({ equipment: false })
+    const got = {}
+    for (const col of EQUIPMENT) {
+      got[col] = await outcome(setDoc(rowAt(as('own'), col), { centerName: 'Plant 2' }))
+    }
+    expect(got).toEqual(allRefused())
+  })
+
+  // Turning a module off must stop it being USED, not trap the records already
+  // in it — an operator who disables a module must not leave a tenant unable to
+  // remove their own data. The rules say so in a comment; this holds them to it.
+  it('still lets a manager delete from a switched-off module', async () => {
+    await setModules({ equipment: false })
+    await seedRow('extinguishers')
+    await assertSucceeds(deleteDoc(rowAt(as('own'), 'extinguishers')))
+  })
+
+  // The gate is per module, so switching equipment off must not reach anything
+  // else. A collection wrongly mapped onto 'equipment' would show up here.
+  it('leaves other modules alone', async () => {
+    await setModules({ equipment: false })
+    await seedRow('incidents')
+    await assertSucceeds(getDoc(rowAt(as('own'), 'incidents')))
+  })
+
+  // Absent means enabled — the same asymmetry the client applies, and the
+  // reason publishing the gate changed nothing for any existing customer.
+  it('treats a module absent from the document as on', async () => {
+    await setModules({ incidents: true })
+    await seedRow('extinguishers')
+    await assertSucceeds(getDoc(rowAt(as('own'), 'extinguishers')))
+  })
+
+  // The other half of "absent means enabled": no document at all is the state
+  // every organization was in before entitlements existed.
+  it('treats an org with no entitlement document at all as fully enabled', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await deleteDoc(doc(ctx.firestore(), 'moduleEntitlements', ORG))
+    })
+    await seedRow('extinguishers')
+    await assertSucceeds(getDoc(rowAt(as('own'), 'extinguishers')))
+  })
+})
+
 describe('the platform operator', () => {
   it('may list every organization\'s entitlement', async () => {
     await assertSucceeds(getDocs(collection(as('ops'), 'moduleEntitlements')))
