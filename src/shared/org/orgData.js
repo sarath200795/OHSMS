@@ -138,7 +138,16 @@ export async function findOrgByName(orgName) {
   return { id: d.orgId, name: d.name }
 }
 
-/** List every organization (public orgIndex) as [{ id, name }] sorted by name. */
+/**
+ * List every organization on the platform, as [{ id, name }] sorted by name.
+ *
+ * PLATFORM OPERATOR ONLY. `allow list` on /orgIndex is refused to everyone else,
+ * including a signed-in tenant admin, because this is the product's customer
+ * list — and until recently the sign-up page called it UNAUTHENTICATED to fill a
+ * dropdown, which handed that list, and every orgId with it, to anyone who
+ * opened /signup. Joining an organization now goes through findOrgByName above,
+ * which reads a single document.
+ */
 export async function listOrganizations() {
   const snap = await getDocs(collection(db, 'orgIndex'))
   return snap.docs

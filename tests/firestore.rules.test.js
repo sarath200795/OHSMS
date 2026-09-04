@@ -220,10 +220,50 @@ describe('public QR mirrors are readable by token but NOT listable', () => {
 })
 
 // The orgIndex is how signup answers "which org is this?" before the user
-// belongs to anything, so it is world-readable. It was also world-WRITEABLE to
-// any signed-in account, which turned it into a tenant-hijack primitive:
-// repoint an org's entry, and every employee who signs up by name afterwards is
-// enrolled into the attacker's org instead.
+// belongs to anything, so a single-document GET is world-readable. It was also
+// world-WRITEABLE to any signed-in account, which turned it into a tenant-hijack
+// primitive: repoint an org's entry, and every employee who signs up by name
+// afterwards is enrolled into the attacker's org instead.
+describe('orgIndex is readable one document at a time, never as a list', () => {
+  const seedIndex = (orgId, key, name) =>
+    testEnv.withSecurityRulesDisabled((ctx) =>
+      setDoc(doc(ctx.firestore(), 'orgIndex', key), { orgId, name })
+    )
+
+  it('a stranger with no account CAN resolve a name they already know', async () => {
+    // The join form runs before there is an account to authenticate with.
+    await seedIndex('orgA', 'acme corp', 'Acme Corp')
+    const anon = testEnv.unauthenticatedContext().firestore()
+    await assertSucceeds(getDoc(doc(anon, 'orgIndex', 'acme corp')))
+  })
+
+  it('a stranger CANNOT download the whole index', async () => {
+    // `allow read` covers get AND list, and the sign-up page used to call
+    // getDocs() over this collection to fill a dropdown — so one unauthenticated
+    // request returned every customer's name and orgId. An orgId is also the
+    // starting point for the /lockClaims squat and the orgIndex hijack above.
+    await seedIndex('orgA', 'acme corp', 'Acme Corp')
+    const anon = testEnv.unauthenticatedContext().firestore()
+    await assertFails(getDocs(collection(anon, 'orgIndex')))
+  })
+
+  it('a signed-in tenant user CANNOT download it either', async () => {
+    // Being somebody's employee is not a reason to be handed the customer list.
+    await seedIndex('orgA', 'acme corp', 'Acme Corp')
+    const bob = testEnv.authenticatedContext('bob').firestore()
+    await assertFails(getDocs(collection(bob, 'orgIndex')))
+  })
+
+  it('the platform operator CAN, because the console is a list of customers', async () => {
+    await seedIndex('orgA', 'acme corp', 'Acme Corp')
+    await testEnv.withSecurityRulesDisabled((ctx) =>
+      setDoc(doc(ctx.firestore(), 'platformAdmins', 'op'), { grantedAt: 'now' })
+    )
+    const op = testEnv.authenticatedContext('op').firestore()
+    await assertSucceeds(getDocs(collection(op, 'orgIndex')))
+  })
+})
+
 describe('orgIndex cannot be repointed at another org', () => {
   const seedIndex = (orgId, key, name) =>
     testEnv.withSecurityRulesDisabled((ctx) =>
