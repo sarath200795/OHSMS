@@ -16,6 +16,7 @@ import {
   onSnapshot,
   serverTimestamp,
   writeBatch as _writeBatch,
+  runTransaction as _runTransaction,
   limit,
   increment,
 } from 'firebase/firestore'
@@ -37,8 +38,12 @@ const addDoc = (...args) => { assertWritable(); return _addDoc(...args) }
 const updateDoc = (...args) => { assertWritable(); return _updateDoc(...args) }
 const deleteDoc = (...args) => { assertWritable(); return _deleteDoc(...args) }
 const writeBatch = (...args) => { assertWritable(); return _writeBatch(...args) }
+// Wrapped like its neighbours, and not optional: a transaction writes through
+// none of the primitives above, so the demo guard would have had a hole in it
+// the size of every transactional path added from here on.
+const runTransaction = (...args) => { assertWritable(); return _runTransaction(...args) }
 import { generateQrToken, tokenFromQrValue } from './qr'
-import { STATUS, REFILL_DEFECT_KEYS, DEFECT_BY_KEY } from './constants'
+import { STATUS, DEFECT_BY_KEY } from './constants'
 import { lockId, duplicateDefectMessage } from './defectLock'
 import { putFile, removeFile, MAX_INLINE_BYTES, tooLargeForInline } from '../../../shared/storage'
 import { reserveDocId } from '../../../shared/docId/reserve'
@@ -47,6 +52,7 @@ import { AUDIT, diffSummary } from './audit'
 import { logAudit as logOrgAudit, auditCol, orgIndexRef, COLLECTION_READ_CAP } from '../../../shared/org/orgData'
 import { hptUpdate, hptSummary } from './hpt'
 import { statsDeltaFor, accumulate } from './stats'
+import { reportEffect } from './reportEffect'
 // Mock drills name the incident commander, the people alerted, and what the
 // debrief said about them. Sealed under the GENERAL class — every approved
 // member may read a drill record. What stays readable is what the scorecard and
@@ -662,29 +668,62 @@ export function subscribeReports(orgId, cb) {
  *  - status_change                → set the requested status
  */
 export async function approveReport(orgId, orgName, report, reviewerName, actor) {
-  const ext = await getExtinguisher(orgId, report.extId)
-  if (!ext) throw new Error('Extinguisher no longer exists')
+  // ── Why this is a transaction and not two awaits ────────────────────────────
+  //
+  // It used to getExtinguisher(), build a Set of physicalDefects and write the
+  // whole array back through updateExtinguisher. Two approvers working the
+  // pending queue — which is how that screen is used — each read the same array
+  // and each wrote their own version, so one reported fault was silently lost
+  // and `status` might never flip to TO_BE_REFILLED. Both are safety-visible:
+  // the fault stops being on the unit's record, and the unit stops being in the
+  // refill queue.
+  //
+  // arrayUnion() alone would not have been enough. The mirror payload and the
+  // stats delta are both derived from a locally merged object, and a sentinel
+  // passed through those would poison the public QR page and the dashboard
+  // counters. Reading inside the transaction keeps the merge a plain object and
+  // makes it current at the same time.
+  //
+  // The REPORT is read here too, so approving the same one twice is refused
+  // rather than double-counted into meta/stats — the defect set is idempotent
+  // but the counters are not.
+  const extReference = extRef(orgId, report.extId)
+  const reportReference = reportRef(orgId, report.id)
+  let before = null
+  let merged = null
 
-  const updates = {}
-  if (report.kind === 'defect' && report.defectType) {
-    const defects = new Set(ext.physicalDefects || [])
-    defects.add(report.defectType)
-    updates.physicalDefects = Array.from(defects)
-    if (REFILL_DEFECT_KEYS.includes(report.defectType) && ext.status !== STATUS.CLOSED) {
-      updates.status = STATUS.TO_BE_REFILLED
+  await runTransaction(db, async (tx) => {
+    const rSnap = await tx.get(reportReference)
+    if (!rSnap.exists()) throw new Error('That report no longer exists.')
+    if (rSnap.data().approvalStatus === 'approved') {
+      throw new Error('That report has already been approved.')
     }
-  } else if (report.kind === 'status_change' && report.newStatus) {
-    updates.status = report.newStatus
-  }
+    const eSnap = await tx.get(extReference)
+    if (!eSnap.exists()) throw new Error('Extinguisher no longer exists')
+
+    before = eSnap.data()
+    const updates = reportEffect(before, report)
+    merged = { ...before, ...updates }
+
+    tx.update(extReference, { ...updates, updatedAt: serverTimestamp() })
+    // The public QR page, in the same write. A mirror that lands without its
+    // extinguisher tells whoever scans the label the wrong thing about a unit
+    // they are standing in front of.
+    if (merged.qrToken) {
+      tx.set(qrRef(merged.qrToken), mirrorPayload(orgId, orgName, report.extId, merged))
+    }
+    tx.update(reportReference, {
+      approvalStatus: 'approved',
+      reviewedBy: reviewerName || '',
+      reviewedAt: serverTimestamp(),
+    })
+  })
 
   const reviewer = actor || { name: reviewerName }
-  // Apply silently (no generic edit audit); we log the approve below.
-  await updateExtinguisher(orgId, orgName, report.extId, updates, { silent: true })
-  await updateDoc(reportRef(orgId, report.id), {
-    approvalStatus: 'approved',
-    reviewedBy: reviewerName || '',
-    reviewedAt: serverTimestamp(),
-  })
+  // Outside the transaction deliberately: bumpStats is a counter increment that
+  // swallows its own failures, and a stats write that could abort the approval
+  // would make the dashboard more important than the safety record.
+  await bumpStats(orgId, statsDeltaFor(before, merged))
   const what = report.kind === 'defect' ? `defect (${report.defectType})` : `status → ${report.newStatus}`
   await logAudit(orgId, reviewer, AUDIT.REPORT_APPROVE, {
     target: 'report',
