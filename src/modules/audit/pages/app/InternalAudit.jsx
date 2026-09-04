@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react'
+import toast from 'react-hot-toast'
 import {
   AlertCircle, AlertTriangle, ArrowLeft, Calendar, CalendarDays, Check, CheckCheck, CheckCircle2,
   ChevronLeft, ChevronRight, ClipboardCheck, ClipboardList, Download, FileDown, FileSignature,
@@ -85,11 +86,11 @@ const AuditScheduler = ({ setView, session, sites, users, locations = [], siteIn
   const addRow = () =>
     setRows([...rows, { auditor: '', auditee: '', dept: '', area: '', aspect: '', date: '', time: '' }])
   const removeRow = (i) => setRows(rows.filter((_, idx) => idx !== i))
-  const updateRow = (i, f, v) => {
-    const next = [...rows]
-    next[i][f] = v
-    setRows(next)
-  }
+  // The ROW is replaced, not written into. [...rows] is a shallow copy, so
+  // next[i] is still the object the previous state holds — and these rows are
+  // seeded from a Firestore snapshot, which every other screen reading that
+  // snapshot is holding too.
+  const updateRow = (i, f, v) => setRows(rows.map((r, idx) => (idx === i ? { ...r, [f]: v } : r)))
   const toggleTeam = (name) =>
     setPlan((p) => ({
       ...p,
@@ -334,13 +335,31 @@ const AuditorWorkplace = ({ setView, session, isGlobalOwner, plans, findings, si
 
   const addRow = () => setFindingRows([...findingRows, { id: genId(), type: 'Observation', desc: '', clause: '', evidence: '', fileName: '' }])
   const removeRow = (i) => setFindingRows(findingRows.filter((_, idx) => idx !== i))
-  const updateRow = (i, f, v) => { const u = [...findingRows]; u[i][f] = v; setFindingRows(u) }
+  // Same shape as updateRow above, and this is the one that hurt: openTask
+  // seeds findingRows with the ACTUAL objects out of the subscribeAuditFindings
+  // snapshot. Typing into a row therefore edited the shared cache in place, so
+  // FindingsRegister, CapaRegister and the central Action Tracker were showing
+  // text nobody had saved — with no re-render to reveal it, and no way to undo
+  // it by abandoning the edit.
+  const updateRow = (i, f, v) =>
+    setFindingRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, [f]: v } : r)))
   const handleFile = async (i, file) => {
     if (!file) return
-    if (file.size > 10 * 1024 * 1024) return alert('File size exceeds 10MB limit.')
-    if (!file.type.match('^(image/.*|application/pdf)$')) return alert('Only PDF and image files are allowed.')
-    const b64 = await fileToBase64(file)
-    const u = [...findingRows]; u[i].evidence = b64; u[i].fileName = file.name; setFindingRows(u)
+    if (file.size > 10 * 1024 * 1024) return toast.error('That file is larger than 10MB.')
+    if (!file.type.match('^(image/.*|application/pdf)$')) return toast.error('Attach a PDF or an image.')
+    // try/catch because fileToBase64 rejects on a file the browser cannot read —
+    // a photo still syncing from a phone, a network drive that dropped — and an
+    // unhandled rejection here left the row looking as though nothing had
+    // happened, so the finding saved with no evidence and nobody was told.
+    let b64
+    try {
+      b64 = await fileToBase64(file)
+    } catch {
+      return toast.error('That file could not be read. Try attaching it again.')
+    }
+    setFindingRows((prev) =>
+      prev.map((r, idx) => (idx === i ? { ...r, evidence: b64, fileName: file.name } : r)),
+    )
   }
 
   const handleSave = async () => {
