@@ -18,8 +18,8 @@ describe('summariseLinkedSites', () => {
       sites
     )
     expect(r.linked.map((l) => [l.site.id, l.counts])).toEqual([
-      ['s1', { ext: 2, aed: 1, fas: 0, sign: 0, total: 3 }],
-      ['s2', { ext: 0, aed: 0, fas: 1, sign: 0, total: 1 }],
+      ['s1', { ext: 2, aed: 1, fas: 0, sign: 0, stretcher: 0, firstAid: 0, total: 3 }],
+      ['s2', { ext: 0, aed: 0, fas: 1, sign: 0, stretcher: 0, firstAid: 0, total: 1 }],
     ])
   })
 
@@ -43,8 +43,8 @@ describe('summariseLinkedSites', () => {
       sites
     )
     expect(r.unlinked).toEqual([
-      { centerName: 'Cult Gym Miyapur', counts: { ext: 0, aed: 1, fas: 0, sign: 0, total: 1 } },
-      { centerName: 'Sunrise Miyapur', counts: { ext: 1, aed: 0, fas: 0, sign: 0, total: 1 } },
+      { centerName: 'Cult Gym Miyapur', counts: { ext: 0, aed: 1, fas: 0, sign: 0, stretcher: 0, firstAid: 0, total: 1 } },
+      { centerName: 'Sunrise Miyapur', counts: { ext: 1, aed: 0, fas: 0, sign: 0, stretcher: 0, firstAid: 0, total: 1 } },
     ])
     expect(r.totals.assetsUnlinked).toBe(2)
   })
@@ -59,7 +59,7 @@ describe('summariseLinkedSites', () => {
   it('separates a dangling siteId from a real link', () => {
     const r = summariseLinkedSites({ extinguishers: [ext({ siteId: 'gone' })] }, sites)
     expect(r.linked).toEqual([])
-    expect(r.orphaned).toEqual([{ siteId: 'gone', counts: { ext: 1, aed: 0, fas: 0, sign: 0, total: 1 } }])
+    expect(r.orphaned).toEqual([{ siteId: 'gone', counts: { ext: 1, aed: 0, fas: 0, sign: 0, stretcher: 0, firstAid: 0, total: 1 } }])
     expect(r.totals).toMatchObject({ sitesLinked: 0, assetsLinked: 0, assetsOrphaned: 1 })
   })
 
@@ -147,7 +147,7 @@ describe('signage', () => {
 
   it('counts into its own bucket', () => {
     const r = summariseLinkedSites({ signages: [sign()] }, sites)
-    expect(r.linked[0].counts).toEqual({ ext: 0, aed: 0, fas: 0, sign: 1, total: 1 })
+    expect(r.linked[0].counts).toEqual({ ext: 0, aed: 0, fas: 0, sign: 1, stretcher: 0, firstAid: 0, total: 1 })
   })
 
   // Signage has no serial, asset id or device id — a column of dashes would

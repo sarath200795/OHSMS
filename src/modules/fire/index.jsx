@@ -13,6 +13,10 @@ import AEDDashboard from './pages/AEDDashboard'
 import FASRepository from './pages/FASRepository'
 import FASDashboard from './pages/FASDashboard'
 import SignageDashboard from './pages/SignageDashboard'
+import Stretchers from './pages/Stretchers'
+import StretcherDashboard from './pages/StretcherDashboard'
+import FirstAid from './pages/FirstAid'
+import FirstAidDashboard from './pages/FirstAidDashboard'
 import AssetBulkUpload from './pages/AssetBulkUpload'
 import AssetsDue from './pages/AssetsDue'
 import AddExtinguisher from './pages/AddExtinguisher'
@@ -72,8 +76,9 @@ function ListLayout() {
 }
 
 // Emergency Equipment Inventory (from fire-marshal): fire extinguishers, AED,
-// fire-alarm systems, signages and their inspection/approval lifecycle. Mounted
-// at /equipment. Mock Drills is now a separate module (see DrillsModule).
+// fire-alarm systems, signages, stretchers, first aid boxes and their
+// inspection/approval lifecycle. Mounted at /equipment. Mock Drills is now a
+// separate module (see DrillsModule).
 export default function EquipmentModule() {
   return (
     <FleetProvider>
@@ -92,6 +97,10 @@ export default function EquipmentModule() {
           <Route path="aed-dashboard" element={<AEDDashboard />} />
           <Route path="fas" element={<FASRepository />} />
           <Route path="fas-dashboard" element={<FASDashboard />} />
+          <Route path="stretchers" element={<Stretchers />} />
+          <Route path="stretcher-dashboard" element={<StretcherDashboard />} />
+          <Route path="first-aid" element={<FirstAid />} />
+          <Route path="first-aid-dashboard" element={<FirstAidDashboard />} />
           <Route path="assets-due" element={<AssetsDue />} />
           <Route path="refill-due" element={<RefillDue />} />
           <Route path="in-process" element={<InProcess />} />

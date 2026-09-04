@@ -55,7 +55,7 @@ const EMPTY_FILTERS = { search: '', regions: [], entities: [], types: [], condit
 
 export default function Signages() {
   const { orgId, orgName, profile } = useAuth()
-  const { signages, sites, extinguishers, aeds, fas, mockDrills, siteInventory, incomplete, loading } = useFleet()
+  const { signages, sites, extinguishers, aeds, fas, firstAid, stretchers, mockDrills, siteInventory, incomplete, loading } = useFleet()
 
   const [view, setView] = useState('matrix') // 'matrix' | 'list'
   const [filters, setFilters] = useState(EMPTY_FILTERS)
@@ -77,14 +77,14 @@ export default function Signages() {
   const clearFilters = () => setFilters(EMPTY_FILTERS)
 
   // Each site's region / entity — the site register first, then every asset
-  // register that names a site. The matrix rows come from the union of five
+  // register that names a site. The matrix rows come from the union of ALL the
   // registers, so resolving from only two left the sites known to the AED or
   // fire-alarm register unfilterable: present in the matrix, gone the moment a
   // region chip was pressed. Kept identical to the dashboard's, which is the
   // point of both reading one helper.
   const attrSources = useMemo(
-    () => [extinguishers, signages, aeds, fas, mockDrills],
-    [extinguishers, signages, aeds, fas, mockDrills]
+    () => [extinguishers, signages, aeds, fas, firstAid, stretchers, mockDrills],
+    [extinguishers, signages, aeds, fas, firstAid, stretchers, mockDrills]
   )
   const siteRegion = useMemo(
     () => siteAttributeMap('region', attrSources, siteInventory),

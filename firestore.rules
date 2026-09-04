@@ -505,7 +505,35 @@ service cloud.firestore {
           && name.trim().lower() == key;
       }
 
-      allow read: if true;
+      // GET is public and has to be: the join form resolves the name somebody
+      // types, before they have an account to authenticate with.
+      //
+      // LIST is not, and used to be — `allow read` covers both, and the sign-up
+      // page called getDocs() on the whole collection to fill a dropdown of
+      // every organization on the platform. So one unauthenticated request
+      // returned the product's entire customer list, names and orgIds, to
+      // anyone who opened /signup or called the REST endpoint directly.
+      //
+      // Two things that cost. The obvious one is commercial: for a B2B product
+      // the customer list is the asset a competitor would most like to have,
+      // and it was a page load away.
+      //
+      // The other is that an orgId is the starting gun for several attacks this
+      // file is otherwise careful about. /lockClaims spells one out — a
+      // throwaway org plus a victim's orgId is a padlock permanently unusable
+      // in their isolation system — and every one of them begins by knowing an
+      // id that no legitimate outsider should be able to obtain.
+      //
+      // Same split, and the same reasoning, as /qr and /permitQr: those were
+      // listable too, which made the printed tokens enumerable and turned the
+      // permit mirrors into a cross-tenant PII dump.
+      //
+      // What this does NOT claim to stop is someone probing names one at a
+      // time — a self-service join form cannot refuse to answer "is this
+      // company here?" and still work. Guessing names one by one is a
+      // materially different thing from downloading the list.
+      allow get: if true;
+      allow list: if isPlatformAdmin();
 
       allow create: if isSignedIn()
         && request.resource.data.keys().hasOnly(['orgId', 'name'])
@@ -1136,15 +1164,16 @@ service cloud.firestore {
                   && request.resource.data.extId.size() < 200
                   && scannedAssetField(request.resource.data, 'extId') == request.resource.data.extId
                 )
-                // An AED or fire-alarm fault. Same public surface, different
-                // sheet: these carry no extId, so the extinguisher clause above
-                // can never admit them and they need their own shape. assetKind
-                // is pinned to the two known kinds because approving one writes
-                // to the matching collection — an unrecognised kind would target
-                // nothing — and it must agree with the mirror too.
+                // An AED, fire-alarm or stretcher fault. Same public surface,
+                // different sheet: these carry no extId, so the extinguisher
+                // clause above can never admit them and they need their own
+                // shape. assetKind is pinned to the known kinds because
+                // approving one writes to the matching collection — an
+                // unrecognised kind would target nothing — and it must agree
+                // with the mirror too.
                 || (
                   request.resource.data.kind == 'asset_defect'
-                  && request.resource.data.assetKind in ['aed', 'fas']
+                  && request.resource.data.assetKind in ['aed', 'fas', 'stretcher']
                   && request.resource.data.assetRefId is string
                   && request.resource.data.assetRefId.size() > 0
                   && request.resource.data.assetRefId.size() < 200

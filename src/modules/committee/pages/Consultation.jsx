@@ -468,8 +468,13 @@ export default function Consultation() {
             return toast.error("You can only update actions assigned to you.");
         }
 
-        const updatedActions = [...meeting.actions];
-        updatedActions[idx].status = newStatus;
+        // The ACTION is replaced, not written into. [...meeting.actions] is a
+        // shallow copy, so updatedActions[idx] was still the object the live
+        // meetings list holds — every other view of that meeting saw the new
+        // status before the write had been accepted, and would have kept it if
+        // the write failed.
+        const updatedActions = meeting.actions.map((a, x) =>
+            (x === idx ? { ...a, status: newStatus } : a));
         await updateConsultation(orgId, key, { actions: updatedActions });
         setMeetings(meetings.map(m => m.firebaseKey === key ? { ...m, actions: updatedActions } : m));
 

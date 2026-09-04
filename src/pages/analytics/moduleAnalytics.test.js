@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   attachSites, applyFilters, drillAnalytics, committeeAnalytics, equipmentAnalytics, monthOf,
 } from './moduleAnalytics'
+import { FIRST_AID_ITEM_NAMES } from '../../modules/fire/lib/constants'
 
 const SITES = [
   { id: 's1', name: 'Plant 2', region: 'South', entity: 'COCO', lat: 11, lng: 77 },
@@ -369,5 +370,147 @@ describe('defects segregated by equipment kind', () => {
     const a = equipmentAnalytics({ ...args, defectType: 'PIN' })
     expect(a.byType.map((t) => t.key)).toEqual(['PIN'])
     expect(a.fleetByKind.find((k) => k.key === 'AED').faulty).toBe(1)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Stretchers and first aid.
+//
+// The two arrived after this tab was built around three kinds, and neither
+// fits the shape it was built around: a stretcher's only date decides its state
+// as much as its status does, and first aid has no assets at all — its unit is
+// a (site, item) pair whose required quantity is asked of the site, not of each
+// box. Both are places where the obvious implementation is quietly wrong, so
+// each is pinned here.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('equipmentAnalytics — stretchers', () => {
+  const iso = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10)
+  const ONE = (patch) => equipmentAnalytics({
+    sites: SITES,
+    stretchers: [{ id: 'x1', siteId: 's1', status: 'ready', nextInspection: iso(400), ...patch }],
+  })
+
+  it('is healthy when it is ready and its inspection is far off', () => {
+    expect(ONE({})).toMatchObject({ total: 1, faulty: 0, healthPct: 100 })
+  })
+
+  // The status a person set by hand outranks a healthy date: somebody who
+  // marked it out of service has seen the thing.
+  it('counts one that has been marked out of service', () => {
+    const a = ONE({ status: 'out_of_service' })
+    expect(a.faulty).toBe(1)
+    expect(a.byType.map((t) => t.key)).toEqual(['Stretcher out of service'])
+  })
+
+  // The inspection date is the ONLY date on the record, so a status-only
+  // reading would leave a unit that lapsed two years ago sitting on 'ready'
+  // and reading as healthy for as long as nobody opened the record.
+  it('counts a lapsed inspection even while the status still says ready', () => {
+    const a = ONE({ nextInspection: iso(-30) })
+    expect(a.faulty).toBe(1)
+    expect(a.byType.map((t) => t.key)).toEqual(['Stretcher inspection overdue'])
+  })
+
+  it('separates an inspection falling due from one already overdue', () => {
+    expect(ONE({ nextInspection: iso(10) }).byType.map((t) => t.key)).toEqual(['Stretcher service due'])
+  })
+
+  it('raises one finding per unit, not one per reason', () => {
+    const a = ONE({ status: 'out_of_service', nextInspection: iso(-30) })
+    expect(a.faulty).toBe(1)
+    expect(a.byType).toHaveLength(1)
+  })
+})
+
+describe('equipmentAnalytics — first aid', () => {
+  const iso = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10)
+  // Scissors: one required, no shelf life. ORS Sachets: four required, dated.
+  const aid = (over) => ({ siteId: 's1', item: 'Scissors', quantity: 1, condition: 'Available', ...over })
+  const RUN = (firstAid, extra = {}) => equipmentAnalytics({ sites: SITES, firstAid, ...extra })
+
+  it('scores a (site, item) pair rather than a record', () => {
+    const a = RUN([aid({ id: 'p1' })])
+    expect(a.total).toBe(1)
+    expect(a.faulty).toBe(0)
+  })
+
+  // The requirement is asked of the SITE. A site holding two of four sachets in
+  // each of two boxes is fully stocked, and scoring record by record would call
+  // it two shortages and its first aid health 0 %.
+  it('sums every box at a site before deciding an item is short', () => {
+    const a = RUN([
+      aid({ id: 'p1', item: 'ORS Sachets', quantity: 2, boxLocation: 'Reception', expiryDate: iso(400) }),
+      aid({ id: 'p2', item: 'ORS Sachets', quantity: 2, boxLocation: 'Gym floor', expiryDate: iso(400) }),
+    ])
+    expect(a.total).toBe(1)
+    expect(a.faulty).toBe(0)
+  })
+
+  it('counts an item short of its required quantity', () => {
+    const a = RUN([aid({ id: 'p1', item: 'ORS Sachets', quantity: 2, expiryDate: iso(400) })])
+    expect(a.byType.map((t) => t.key)).toEqual(['First aid item short'])
+  })
+
+  // The failure the register exists to catch: a full-looking box nobody may
+  // use. Expired leads even over a shortage, because it is the one a count
+  // reads as compliance.
+  it('leads with expired stock over any other fault on the same item', () => {
+    const a = RUN([aid({ id: 'p1', item: 'ORS Sachets', quantity: 2, expiryDate: iso(-1) })])
+    expect(a.byType.map((t) => t.key)).toEqual(['First aid item expired'])
+    expect(a.faulty).toBe(1)
+  })
+
+  it('names a recorded absence as missing rather than short', () => {
+    expect(RUN([aid({ id: 'p1', condition: 'Missing' })]).byType.map((t) => t.key))
+      .toEqual(['First aid item missing'])
+  })
+
+  it('raises one finding per pair, not one per record behind it', () => {
+    const a = RUN([
+      aid({ id: 'p1', item: 'ORS Sachets', quantity: 0, expiryDate: iso(-1) }),
+      aid({ id: 'p2', item: 'ORS Sachets', quantity: 0, expiryDate: iso(-2) }),
+    ])
+    expect(a.faulty).toBe(1)
+    expect(a.byType).toHaveLength(1)
+  })
+
+  // This page can only score what exists, so first aid health here is health OF
+  // WHAT SOMEBODY CHECKED — a figure that RISES as coverage falls. The count
+  // that corrects it has to come back with it, or the tab reads a site with one
+  // logged bandage as fully provisioned.
+  it('reports how many site/item pairs have no record at all', () => {
+    const a = RUN([aid({ id: 'p1' })])
+    // Every site × every item on the contents list, minus the single pair
+    // anybody recorded. Read from the list rather than written out, so adding
+    // an item to the first aid box does not quietly make this assertion wrong.
+    expect(a.firstAidUnrecorded).toBe(SITES.length * FIRST_AID_ITEM_NAMES.length - 1)
+    expect(a.healthPct).toBe(100)
+  })
+
+  it('narrows the unrecorded count to the chosen site', () => {
+    expect(RUN([aid({ id: 'p1' })], { siteId: 's1' }).firstAidUnrecorded).toBe(FIRST_AID_ITEM_NAMES.length - 1)
+  })
+
+  it('keeps first aid out of the other kinds’ figures and vice versa', () => {
+    const a = equipmentAnalytics({
+      sites: SITES,
+      extinguishers: [{ id: 'e1', siteId: 's1', physicalDefects: ['pin'] }],
+      firstAid: [aid({ id: 'p1', condition: 'Missing' })],
+    })
+    const byKind = Object.fromEntries(a.fleetByKind.map((k) => [k.key, k]))
+    expect(byKind.Extinguisher).toMatchObject({ total: 1, faulty: 1 })
+    expect(byKind['First aid']).toMatchObject({ total: 1, faulty: 1 })
+    expect(equipmentAnalytics({
+      sites: SITES,
+      extinguishers: [{ id: 'e1', siteId: 's1', physicalDefects: ['pin'] }],
+      firstAid: [aid({ id: 'p1', condition: 'Missing' })],
+      kind: 'First aid',
+    }).byType.map((t) => t.key)).toEqual(['First aid item missing'])
+  })
+
+  it('plots first aid gaps on the map like any other finding', () => {
+    const a = RUN([aid({ id: 'p1', condition: 'Missing' })])
+    expect(a.pins.map((p) => p.id)).toEqual(['s1'])
+    expect(a.pins[0].defects).toBe(1)
   })
 })

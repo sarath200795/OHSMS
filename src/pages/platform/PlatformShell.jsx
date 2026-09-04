@@ -13,6 +13,7 @@
 import { LogOut, SlidersHorizontal } from 'lucide-react'
 import { useAuth } from '../../shared/auth/AuthContext'
 import ErrorBoundary from '../../shared/ErrorBoundary'
+import IdleGuard from '../../shared/auth/IdleGuard'
 
 export default function PlatformShell({ children }) {
   const { user, signOut } = useAuth()
@@ -48,6 +49,13 @@ export default function PlatformShell({ children }) {
       <main id="main" tabIndex={-1} className="mx-auto max-w-[1180px] px-5 pb-24 pt-6 sm:px-7">
         <ErrorBoundary>{children}</ErrorBoundary>
       </main>
+
+      {/* Deliberately NOT AppChrome is what left this screen without an
+          inactivity logout: every tenant route inherited one from that shell,
+          and this one inherited nothing. The account it protects is the only
+          one that can change what every other customer may use — the last one
+          that should sit unattended on a signed-in laptop. */}
+      <IdleGuard signOut={signOut} />
     </div>
   )
 }

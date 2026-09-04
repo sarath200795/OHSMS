@@ -3,9 +3,9 @@
 //
 // The signage pages count 116 sites and the extinguisher register counts 104,
 // and both are right: there is no single site list here. useFleet builds one by
-// taking the DISTINCT `centerName` across five registers — extinguishers,
-// signage, AEDs, fire alarm panels and mock drills — so any site named in any
-// of them becomes a row on the signage matrix.
+// taking the DISTINCT `centerName` across every register — extinguishers,
+// signage, AEDs, fire alarm panels, first aid boxes, stretchers and mock drills
+// — so any site named in any of them becomes a row on the signage matrix.
 //
 // That is deliberate. A site with no signage has to appear, or the gap it
 // represents disappears with it. But it has two consequences worth being able
@@ -42,6 +42,8 @@ export const REGISTERS = [
   { key: 'signage', name: 'Signage' },
   { key: 'aed', name: 'AEDs' },
   { key: 'fas', name: 'Fire alarm' },
+  { key: 'firstAid', name: 'First aid' },
+  { key: 'stretcher', name: 'Stretchers' },
   { key: 'drill', name: 'Mock drills' },
 ]
 
@@ -56,9 +58,9 @@ export const REGISTERS = [
 export const nameKey = (v) => clean(v).toLowerCase().replace(/[^a-z0-9]+/g, '')
 
 /**
- * Every site name across the five registers, and where each one appears.
+ * Every site name across the registers, and where each one appears.
  *
- * @param registers { extinguishers, signages, aeds, fas, mockDrills }
+ * @param registers { extinguishers, signages, aeds, fas, firstAid, stretchers, mockDrills }
  * @returns {
  *   rows,           every site, with a boolean per register, name-sorted
  *   totals,         how many distinct sites each register knows, plus `any`
@@ -67,16 +69,20 @@ export const nameKey = (v) => clean(v).toLowerCase().replace(/[^a-z0-9]+/g, '')
  * }
  */
 export function siteRegisters({
-  extinguishers = [], signages = [], aeds = [], fas = [], mockDrills = [],
+  extinguishers = [], signages = [], aeds = [], fas = [], firstAid = [], stretchers = [], mockDrills = [],
 } = {}) {
-  const seen = new Map() // site name → { site, ext, signage, aed, fas, drill }
+  // site name → { site, ext, signage, aed, fas, firstAid, stretcher, drill }
+  const seen = new Map()
 
   const mark = (rows, key) => {
     for (const r of rows || []) {
       const site = clean(r?.centerName)
       if (!site) continue
       if (!seen.has(site)) {
-        seen.set(site, { site, ext: false, signage: false, aed: false, fas: false, drill: false })
+        // Seeded from REGISTERS rather than written out by hand: the literal
+        // this replaces was the second place a register had to be listed, and
+        // a key present here but absent there reads as "no site is on it".
+        seen.set(site, { site, ...Object.fromEntries(REGISTERS.map((r) => [r.key, false])) })
       }
       seen.get(site)[key] = true
     }
@@ -86,6 +92,8 @@ export function siteRegisters({
   mark(signages, 'signage')
   mark(aeds, 'aed')
   mark(fas, 'fas')
+  mark(firstAid, 'firstAid')
+  mark(stretchers, 'stretcher')
   mark(mockDrills, 'drill')
 
   const rows = [...seen.values()].sort((a, b) => a.site.localeCompare(b.site))

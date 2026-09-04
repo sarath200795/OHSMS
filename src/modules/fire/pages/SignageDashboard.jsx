@@ -14,8 +14,8 @@ import IncompleteNotice from '../../../shared/ui/IncompleteNotice'
  * Why the site counts on this page and on the extinguisher register differ.
  *
  * There is no single site list in this module: useFleet takes the distinct
- * centre name across five registers, so any site named in ANY of them is a row
- * here. That is deliberate — a site with no signage has to appear or its gap
+ * centre name across every equipment register, so any site named in ANY of them
+ * is a row here. That is deliberate — a site with no signage has to appear or its gap
  * disappears with it — but it leaves two very different things looking
  * identical, and this panel is the only place that tells them apart.
  *
@@ -111,7 +111,7 @@ function Meter({ pct }) {
 const EMPTY_FILTERS = { regions: [], entities: [] }
 
 export default function SignageDashboard() {
-  const { signages, sites, extinguishers, aeds, fas, mockDrills, siteInventory, incomplete, loading } = useFleet()
+  const { signages, sites, extinguishers, aeds, fas, firstAid, stretchers, mockDrills, siteInventory, incomplete, loading } = useFleet()
   const [filters, setFilters] = useState(EMPTY_FILTERS)
 
   const f = filters
@@ -125,13 +125,13 @@ export default function SignageDashboard() {
 
   // The site register first, then every asset register that names a site.
   //
-  // The site LIST here is the union of five registers, so resolving region from
+  // The site LIST here is the union of every register, so resolving region from
   // only two left a site known to the AED or fire-alarm register with no region
   // at all — and these maps are what the chips filter against, so those sites
   // vanished from every filtered view while still counting in the totals.
   const attrSources = useMemo(
-    () => [extinguishers, signages, aeds, fas, mockDrills],
-    [extinguishers, signages, aeds, fas, mockDrills]
+    () => [extinguishers, signages, aeds, fas, firstAid, stretchers, mockDrills],
+    [extinguishers, signages, aeds, fas, firstAid, stretchers, mockDrills]
   )
   const siteRegion = useMemo(
     () => siteAttributeMap('region', attrSources, siteInventory),
@@ -165,8 +165,8 @@ export default function SignageDashboard() {
   // register — is about the whole estate, and a filtered answer would move
   // every time somebody touched a chip.
   const registers = useMemo(
-    () => siteRegisters({ extinguishers, signages, aeds, fas, mockDrills }),
-    [extinguishers, signages, aeds, fas, mockDrills]
+    () => siteRegisters({ extinguishers, signages, aeds, fas, firstAid, stretchers, mockDrills }),
+    [extinguishers, signages, aeds, fas, firstAid, stretchers, mockDrills]
   )
 
   if (loading) return <div className="grid place-items-center py-20"><Spinner size={28} /></div>

@@ -6,6 +6,7 @@ import { backfillDocumentVisibility, backfillClaims, clearOrphanedDefectLocks, b
 import { reportError } from '../../shared/monitoring'
 import { useAuth } from '../../shared/auth/AuthContext'
 import { backfillProcedureMirrors } from '../../modules/loto/services/procedures'
+import { backfillLockClaims } from '../../modules/loto/services/lockClaims'
 import { backfillAll } from '../../shared/crypto/backfill'
 import { sealingEnabled } from '../../shared/crypto/keyring'
 import { downloadBlob } from '../../shared/lib/download'
@@ -33,6 +34,7 @@ export default function Maintenance() {
       <SealStoredFiles />
       <OrgClaims />
       <ProcedureMirrors />
+      <LockClaims />
       <DefectLocks />
       <SubjectAccess />
       <ErrorReporting />
@@ -232,6 +234,92 @@ function ProcedureMirrors() {
         Procedures written before this existed have no published view until something
         changes them. This publishes the rest. It copies no names: the page shows that a
         point is locked, never who locked it.
+      </p>
+    </Job>
+  )
+}
+
+/**
+ * Register the padlocks that were already on equipment.
+ *
+ * A padlock is now claimed as one document per lock number, so the same lock
+ * cannot be applied to two machines — the claim id IS the number, and Firestore
+ * serialises two people writing it. That closes the write path and nothing
+ * else: a lock hanging on a machine since before the deploy has no claim, so
+ * its number reads as free and the next operator can take it for a different
+ * machine. On a plant shutdown the oldest live lockout is weeks old, so the
+ * window is not a moment, it is the whole of a maintenance season.
+ *
+ * A conflict is REPORTED rather than resolved. Two procedures both recording
+ * lock 12 is a real disagreement about the physical world, and the right thing
+ * to do with it is put it in front of somebody who can walk down and look.
+ */
+function LockClaims() {
+  const { orgId } = useAuth()
+  const [busy, setBusy] = useState('')
+  const [preview, setPreview] = useState(null)
+  const [done, setDone] = useState(false)
+
+  const run = async (dryRun) => {
+    if (!orgId) return toast.error('No organization on your profile.')
+    setBusy(dryRun ? 'dry' : 'write')
+    try {
+      const r = await backfillLockClaims(orgId, { dryRun })
+      setPreview(r)
+      if (!dryRun) {
+        setDone(true)
+        toast.success(`Registered ${r.written} padlock${r.written === 1 ? '' : 's'}`)
+      } else if (r.missing === 0) {
+        toast.success('Nothing to do — every applied padlock is already registered')
+      }
+    } catch (err) {
+      reportError(err, { where: 'backfillLockClaims' })
+      toast.error(err?.message || 'Failed')
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const nothingToDo = preview && preview.missing === 0
+
+  return (
+    <Job
+      icon={Lock}
+      title="Register padlocks already in use"
+      result={preview && [
+        `${preview.total} padlock${preview.total === 1 ? '' : 's'} recorded as applied`,
+        `${preview.present} already registered`,
+        `${preview.missing} not yet registered`,
+        preview.ids?.length ? `\n${preview.ids.map((i) => `  · ${i}`).join('\n')}` : '',
+        preview.clashes?.length
+          ? `\n${preview.clashes.length} disagreement${preview.clashes.length === 1 ? '' : 's'} — walk down and check:\n${preview.clashes.map((c) => `  · ${c}`).join('\n')}`
+          : '',
+      ].filter(Boolean).join('\n')}
+      actions={
+        <>
+          <Button variant="ghost" icon={Play} loading={busy === 'dry'} disabled={Boolean(busy)} onClick={() => run(true)}>
+            Check first
+          </Button>
+          <Button
+            icon={done ? Check : undefined}
+            loading={busy === 'write'}
+            disabled={Boolean(busy) || !preview || nothingToDo}
+            onClick={() => run(false)}
+          >
+            {done ? 'Registered' : 'Register them'}
+          </Button>
+        </>
+      }
+    >
+      <p>
+        A padlock can now only be applied to one machine at a time — the system reserves the
+        lock number the moment it goes on, and releases it when it comes off. Two people
+        reaching for the same lock used to be invisible to it.
+      </p>
+      <p>
+        Locks already hanging on equipment were applied before that reservation existed, so
+        their numbers still read as free. This registers them. Anything it cannot reconcile
+        is listed rather than guessed at.
       </p>
     </Job>
   )

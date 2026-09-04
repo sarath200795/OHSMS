@@ -16,6 +16,13 @@ import { putFile, removeFile } from '../../../shared/storage'
 import { PROCEDURE_STATUS, computeLockSummary, mergeRevisedPoints } from '../constants/procedures'
 import { PUBLIC_COL, publicProcedure } from '../utils/publicProcedure'
 import { COLLECTION_READ_CAP } from '../../../shared/org/orgData'
+import {
+  assertClaimsFree,
+  lockNosHeldBy,
+  readClaims,
+  releaseClaims,
+  takeClaims,
+} from './lockClaims'
 
 const COL = 'procedures'
 const PHOTOS = 'procedurePhotos'
@@ -168,6 +175,11 @@ export async function deleteProcedure(procedure) {
   // procedure is a public page still describing an isolation that no longer
   // exists — the one state worse than the code leading nowhere.
   batch.delete(publicRef(procedure.id))
+  // And every padlock it was holding. A claim whose procedure no longer exists
+  // can be released from nowhere in the app — the procedure is the only screen
+  // that knows about it — so the padlock would be permanently unusable, which
+  // is the same "stuck lock" failure the defect-lock sweep exists to undo.
+  releaseClaims(batch, procedure.orgId, lockNosHeldBy(procedure))
   // Cloud photo files go with the photos doc — it is their only index.
   const raw = await rawPhotoMap(procedure.id)
   for (const v of Object.values(raw)) {
@@ -285,11 +297,24 @@ export async function setPointLock(procedureId, pointKey, locked, user, tech = n
       }
     }
 
+    // The check the two above cannot make: is this padlock on ANOTHER machine?
+    // Both of them reason from this one procedure document, so neither can see
+    // it. Read before any write — a transaction refuses a read once it has
+    // written, and every claim this call needs is known by now.
+    const held = locked && useTech?.lockNo
+      ? await readClaims(tx, data.orgId, [useTech.lockNo])
+      : []
+    assertClaimsFree(held, procedureId)
+
     const at = new Date().toISOString()
     let target = null
+    // The number coming OFF the equipment, so its claim can be released in this
+    // same transaction. Only knowable from the point's previous state.
+    let releasedLockNo = null
     const points = (data.isolationPoints || []).map((p) => {
       if (p.key !== pointKey) return p
       const prev = p.lockState || {}
+      if (!locked) releasedLockNo = prev.techLockNo || null
       const lockState = locked
         ? {
             locked: true,
@@ -341,6 +366,26 @@ export async function setPointLock(procedureId, pointKey, locked, user, tech = n
     // machine somebody has just isolated, or worse, the reverse.
     tx.set(publicRef(procedureId), publicBody({ ...data, ...update }))
 
+    // And the padlock claim, for the same reason. A claim written outside this
+    // transaction can be stranded by a failure between the two writes: on the
+    // taking side that reserves a lock nothing is holding, on the releasing
+    // side it leaves a lock the system will not hand out again.
+    const claimContext = {
+      orgId: data.orgId,
+      procedureId,
+      procedureCode: data.procedureCode,
+      equipment: data.equipment,
+      site: data.site,
+      holder: 'point',
+      pointKey,
+      techId: useTech?.techId || null,
+      techName: useTech?.name || null,
+      by: user.id,
+      byName: user.displayName,
+    }
+    if (locked && useTech?.lockNo) takeClaims(tx, claimContext, [useTech.lockNo])
+    if (!locked && releasedLockNo) releaseClaims(tx, data.orgId, [releasedLockNo])
+
     tx.set(eventRef, {
       orgId: data.orgId,
       procedureId,
@@ -386,9 +431,27 @@ export async function addGroupMember(procedureId, member, method, user, swaps = 
       throw new Error('That technician is already on the group lock')
     }
 
+    // Read every padlock this call might take, before the first write — a
+    // transaction refuses a read once it has written, and which of these is
+    // actually used is not settled until the member record is built below. A
+    // superset costs one or two reads; getting the ordering wrong costs the
+    // whole transaction.
+    const held = await readClaims(tx, data.orgId, [
+      member.boxLock,
+      ...Object.values(member.locks || {}),
+      ...Object.values(swaps || {}),
+    ])
+
     const update = { updatedAt: serverTimestamp() }
     let points = data.isolationPoints || []
     let primaryTech = data.primaryTech || null
+
+    // Personal locks coming OFF in a swap. Their claims are released in this
+    // same transaction: a swapped-out personal lock is back in the technician's
+    // pouch, and a claim outliving it would take that padlock out of service.
+    const swappedOut = (data.isolationPoints || [])
+      .filter((p) => p.lockState?.locked && swaps?.[p.key] && p.lockState.techLockNo)
+      .map((p) => p.lockState.techLockNo)
 
     // Personal → department swaps on the named points (single-point case).
     if (swaps && Object.keys(swaps).length) {
@@ -422,12 +485,17 @@ export async function addGroupMember(procedureId, member, method, user, swaps = 
       Object.values(m.locks || {}).forEach((no) => no && used.add(no))
     })
 
+    // What this call actually puts on the equipment: the member's own locks,
+    // plus any department lock a swap has just introduced.
+    const taken = [...Object.values(swaps || {})]
+
     let memberRecord
     if (effectiveMethod === 'box') {
       // One personal padlock on the box.
       const no = member.boxLock
       if (!no) throw new Error('Select a technician with a personal lock for the box')
       if (used.has(no)) throw new Error(`Lock ${no} is already in use on this equipment`)
+      taken.push(no)
       memberRecord = {
         techId: member.techId,
         name: member.name,
@@ -445,6 +513,7 @@ export async function addGroupMember(procedureId, member, method, user, swaps = 
           throw new Error(`Lock ${no} is already in use on this equipment`)
         }
         seen.add(no)
+        taken.push(no)
       }
       memberRecord = {
         techId: member.techId,
@@ -461,8 +530,35 @@ export async function addGroupMember(procedureId, member, method, user, swaps = 
     }
     update.groupLock = next
     update.lockSummary = computeLockSummary(points, next)
+
+    // Refuse the whole join if any of these padlocks is on another machine.
+    // The `used` checks above only ever saw this equipment; this is the one
+    // that reaches the next bay.
+    assertClaimsFree(held.filter((h) => taken.includes(h.lockNo)), procedureId)
+
     tx.update(ref, update)
     tx.set(publicRef(procedureId), publicBody({ ...data, ...update }))
+    releaseClaims(tx, data.orgId, swappedOut.filter((no) => !taken.includes(String(no))))
+
+    const claimBase = {
+      orgId: data.orgId,
+      procedureId,
+      procedureCode: data.procedureCode,
+      equipment: data.equipment,
+      site: data.site,
+      by: user.id,
+      byName: user.displayName,
+    }
+    // A swap does not give the department lock to the joining technician — it
+    // re-labels the POINT's lock, which then outlives this member and is
+    // released when the point is unlocked. Recording it as theirs would send an
+    // investigator to the wrong person.
+    takeClaims(tx, { ...claimBase, holder: 'point' }, Object.values(swaps || {}))
+    takeClaims(
+      tx,
+      { ...claimBase, holder: 'group', techId: member.techId, techName: member.name },
+      taken.filter((no) => !Object.values(swaps || {}).map(String).includes(String(no))),
+    )
     tx.set(eventRef, {
       orgId: data.orgId,
       procedureId,
@@ -504,6 +600,13 @@ export async function removeGroupMember(procedureId, techId, user) {
     }
     tx.update(ref, update)
     tx.set(publicRef(procedureId), publicBody({ ...data, ...update }))
+    // The padlocks this technician takes home with them. Their point locks are
+    // not touched: a hasp swap re-labelled those and they stay on the equipment
+    // until the point itself is unlocked.
+    releaseClaims(tx, data.orgId, [
+      removed?.boxLock,
+      ...Object.values(removed?.locks || {}),
+    ])
     tx.set(eventRef, {
       orgId: data.orgId,
       procedureId,

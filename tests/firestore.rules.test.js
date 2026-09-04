@@ -220,10 +220,50 @@ describe('public QR mirrors are readable by token but NOT listable', () => {
 })
 
 // The orgIndex is how signup answers "which org is this?" before the user
-// belongs to anything, so it is world-readable. It was also world-WRITEABLE to
-// any signed-in account, which turned it into a tenant-hijack primitive:
-// repoint an org's entry, and every employee who signs up by name afterwards is
-// enrolled into the attacker's org instead.
+// belongs to anything, so a single-document GET is world-readable. It was also
+// world-WRITEABLE to any signed-in account, which turned it into a tenant-hijack
+// primitive: repoint an org's entry, and every employee who signs up by name
+// afterwards is enrolled into the attacker's org instead.
+describe('orgIndex is readable one document at a time, never as a list', () => {
+  const seedIndex = (orgId, key, name) =>
+    testEnv.withSecurityRulesDisabled((ctx) =>
+      setDoc(doc(ctx.firestore(), 'orgIndex', key), { orgId, name })
+    )
+
+  it('a stranger with no account CAN resolve a name they already know', async () => {
+    // The join form runs before there is an account to authenticate with.
+    await seedIndex('orgA', 'acme corp', 'Acme Corp')
+    const anon = testEnv.unauthenticatedContext().firestore()
+    await assertSucceeds(getDoc(doc(anon, 'orgIndex', 'acme corp')))
+  })
+
+  it('a stranger CANNOT download the whole index', async () => {
+    // `allow read` covers get AND list, and the sign-up page used to call
+    // getDocs() over this collection to fill a dropdown — so one unauthenticated
+    // request returned every customer's name and orgId. An orgId is also the
+    // starting point for the /lockClaims squat and the orgIndex hijack above.
+    await seedIndex('orgA', 'acme corp', 'Acme Corp')
+    const anon = testEnv.unauthenticatedContext().firestore()
+    await assertFails(getDocs(collection(anon, 'orgIndex')))
+  })
+
+  it('a signed-in tenant user CANNOT download it either', async () => {
+    // Being somebody's employee is not a reason to be handed the customer list.
+    await seedIndex('orgA', 'acme corp', 'Acme Corp')
+    const bob = testEnv.authenticatedContext('bob').firestore()
+    await assertFails(getDocs(collection(bob, 'orgIndex')))
+  })
+
+  it('the platform operator CAN, because the console is a list of customers', async () => {
+    await seedIndex('orgA', 'acme corp', 'Acme Corp')
+    await testEnv.withSecurityRulesDisabled((ctx) =>
+      setDoc(doc(ctx.firestore(), 'platformAdmins', 'op'), { grantedAt: 'now' })
+    )
+    const op = testEnv.authenticatedContext('op').firestore()
+    await assertSucceeds(getDocs(collection(op, 'orgIndex')))
+  })
+})
+
 describe('orgIndex cannot be repointed at another org', () => {
   const seedIndex = (orgId, key, name) =>
     testEnv.withSecurityRulesDisabled((ctx) =>
@@ -413,8 +453,8 @@ describe('public QR mirror (/qr)', () => {
 })
 
 // A QR scan is a public write surface, so the rule admits exactly two shapes:
-// an extinguisher defect keyed by extId, and an AED/FAS fault keyed by
-// assetKind + assetRefId. AED and FAS carry no extId, so before the second
+// an extinguisher defect keyed by extId, and an AED / FAS / stretcher fault
+// keyed by assetKind + assetRefId. Those carry no extId, so before the second
 // clause existed every fault reported from a scan was rejected outright.
 describe('public defect reports from a QR scan (/reports)', () => {
   const reportAt = (db, id) => doc(db, 'organizations', 'orgA', 'reports', id)
@@ -436,6 +476,7 @@ describe('public defect reports from a QR scan (/reports)', () => {
       await setDoc(doc(db, 'qr', 'tok1'), { orgId: 'orgA', extId: 'ext1', token: 'tok1' })
       await setDoc(doc(db, 'qr', 'tokAed'), { orgId: 'orgA', assetKind: 'aed', assetRefId: 'aed1', token: 'tokAed' })
       await setDoc(doc(db, 'qr', 'tokFas'), { orgId: 'orgA', assetKind: 'fas', assetRefId: 'fas1', token: 'tokFas' })
+      await setDoc(doc(db, 'qr', 'tokStr'), { orgId: 'orgA', assetKind: 'stretcher', assetRefId: 'str1', token: 'tokStr' })
     })
   })
 
@@ -557,9 +598,40 @@ describe('public defect reports from a QR scan (/reports)', () => {
     await assertFails(setDoc(reportAt(anon, 'r4'), { ...assetReport, approvalStatus: 'approved' }))
   })
 
+  // A stretcher carries a QR and a public defect sheet exactly as an AED does.
+  // The cost of getting this wrong is not a broken page: createReport maps any
+  // permission-denied to "already reported", so a refused shape reaches the
+  // person holding the phone as a duplicate, and the fault goes unrecorded.
+  it('a signed-out scanner can report a stretcher defect', async () => {
+    const anon = testEnv.unauthenticatedContext().firestore()
+    await assertSucceeds(
+      setDoc(reportAt(anon, 'r7'), { ...assetReport, assetKind: 'stretcher', assetRefId: 'str1', defect: 'Straps Missing / Torn', token: 'tokStr' })
+    )
+  })
+
   it('an asset report CANNOT name a kind that maps to no collection', async () => {
     const anon = testEnv.unauthenticatedContext().firestore()
     await assertFails(setDoc(reportAt(anon, 'r5'), { ...assetReport, assetKind: 'extinguisher' }))
+  })
+
+  // First aid is a register, not a scannable asset: it has no QR mirror and
+  // approving a report against it would write to nothing. The allowlist is what
+  // keeps a plausible-looking kind from opening a public write surface onto a
+  // collection that never asked for one.
+  it('an asset report CANNOT name a register that has no QR at all', async () => {
+    const anon = testEnv.unauthenticatedContext().firestore()
+    await assertFails(setDoc(reportAt(anon, 'r8'), { ...assetReport, assetKind: 'firstAid', assetRefId: 'fa1' }))
+  })
+
+  // The kind must agree with the mirror the token names, not merely be a kind
+  // the rules recognise. Otherwise one scanned AED label files faults against
+  // the stretcher register — a real asset id, a real org, and the wrong thing
+  // taken out of service on approval.
+  it('an asset report CANNOT claim a kind its own token contradicts', async () => {
+    const anon = testEnv.unauthenticatedContext().firestore()
+    await assertFails(
+      setDoc(reportAt(anon, 'r9'), { ...assetReport, assetKind: 'stretcher', assetRefId: 'str1', token: 'tokAed' })
+    )
   })
 
   it('an asset report CANNOT omit the asset it is about', async () => {

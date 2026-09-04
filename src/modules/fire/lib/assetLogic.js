@@ -1,10 +1,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Derived status for the AED and FAS asset modules. Pure functions over a list
+// Derived status for the AED, FAS and stretcher asset registers. Pure functions
+// over a list
 // held in memory (same pattern as extinguisherLogic). Dates reuse toDate/
 // daysUntil so a corrupt value degrades to null instead of crashing.
 // ─────────────────────────────────────────────────────────────────────────────
 import { daysUntil } from './extinguisherLogic'
-import { AED_STATUS, FAS_STATUS } from './constants'
+import { AED_STATUS, FAS_STATUS, STRETCHER_STATUS } from './constants'
 
 export const DUE_SOON = 30
 
@@ -115,6 +116,42 @@ export function fasSummary(list, today = new Date()) {
     else s.operational++
     if (flagged(dueState(a.nextService, today))) s.serviceDue++
     if (fasIncomplete(a)) s.incomplete++
+  }
+  return s
+}
+
+// ── Stretchers ───────────────────────────────────────────────────────────────
+// The same shape as an AED — one unit, one inspection cycle, one status — with
+// one date rather than three. A stretcher has no battery and no pads: what goes
+// wrong with it is physical and is found by looking, which is why the QR defect
+// sheet matters more here than any expiry field would.
+export function stretcherCondition(a, today = new Date()) {
+  const insp = dueState(a.nextInspection, today)
+  const expired = a.status === STRETCHER_STATUS.OUT_OF_SERVICE || insp === 'expired'
+  const due = !expired && (a.status === STRETCHER_STATUS.SERVICE_DUE || insp === 'due')
+  return { expired, due, ok: !expired && !due }
+}
+export function stretcherColor(a, today = new Date()) {
+  const c = stretcherCondition(a, today)
+  return c.expired ? '#dc2626' : c.due ? '#f59e0b' : '#16a34a'
+}
+// A stretcher whose record exists but whose key details are still blank. The
+// inspection date counts as a key detail here because it is the ONLY date on
+// the record: without it the unit can never become due, so it would sit green
+// forever having been looked at once, or never.
+export function stretcherIncomplete(a) {
+  return !a?.centerName || !a?.nextInspection
+}
+
+export function stretcherSummary(list, today = new Date()) {
+  const s = { total: list.length, ready: 0, due: 0, outOfService: 0, inspectionDue: 0, incomplete: 0 }
+  for (const a of list) {
+    const c = stretcherCondition(a, today)
+    if (a.status === STRETCHER_STATUS.OUT_OF_SERVICE) s.outOfService++
+    else if (c.due || c.expired) s.due++
+    else s.ready++
+    if (flagged(dueState(a.nextInspection, today))) s.inspectionDue++
+    if (stretcherIncomplete(a)) s.incomplete++
   }
   return s
 }

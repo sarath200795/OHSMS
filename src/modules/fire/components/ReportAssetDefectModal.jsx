@@ -7,16 +7,21 @@ import { ASSET_DEFECTS, OTHER_DEFECT, REPORTER_ROLES } from '../lib/constants'
 import { createAssetReport } from '../lib/firestore'
 
 /**
- * Report a defect against an AED or a FAS device from a public QR scan.
+ * Report a defect against an AED, a FAS device or a stretcher from a public QR
+ * scan.
  *
  * Separate from ReportDefectModal because the two are not the same sheet: an
  * extinguisher defect is a keyed option that decides whether the unit goes for
- * refilling or onto the physical-defect list, whereas an AED or panel fault is
- * free of that lifecycle — approving one simply takes the asset out of service.
- * Sharing a component would mean a mode flag threaded through every field.
+ * refilling or onto the physical-defect list, whereas an AED, panel or
+ * stretcher fault is free of that lifecycle — approving one simply takes the
+ * asset out of service. Sharing a component would mean a mode flag threaded
+ * through every field.
  *
- * Props: open, onClose, asset (the public QR mirror doc), kind ('aed' | 'fas')
+ * Props: open, onClose, asset (the public QR mirror doc),
+ *        kind ('aed' | 'fas' | 'stretcher')
  */
+const KIND_NOUN = { aed: 'AED', fas: 'FAS device', stretcher: 'Stretcher' }
+
 export default function ReportAssetDefectModal({ open, onClose, asset, kind }) {
   const [selected, setSelected] = useState('')
   const [note, setNote] = useState('')
@@ -25,7 +30,9 @@ export default function ReportAssetDefectModal({ open, onClose, asset, kind }) {
 
   if (!asset) return null
   const options = ASSET_DEFECTS[kind] || []
-  const label = asset.label || (kind === 'fas' ? 'FAS device' : 'AED')
+  // Falls back to the kind's own noun rather than "AED", which is what an
+  // `x === 'fas' ? … : 'AED'` would have called a stretcher.
+  const label = asset.label || KIND_NOUN[kind] || 'asset'
 
   const needsNote = selected === OTHER_DEFECT
 

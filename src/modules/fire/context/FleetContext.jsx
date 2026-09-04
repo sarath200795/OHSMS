@@ -11,6 +11,8 @@ import {
   subscribeMockDrills,
   subscribeAeds,
   subscribeFas,
+  subscribeFirstAid,
+  subscribeStretchers,
   backfillDeletedAt,
   ensureOrgIndex,
 } from '../lib/firestore'
@@ -23,7 +25,7 @@ import {
   isDeleted,
 } from '../lib/extinguisherLogic'
 import { derivePhysicalDefectLog } from '../lib/defectReports'
-import { aedCondition, fasCondition } from '../lib/assetLogic'
+import { aedCondition, fasCondition, stretcherCondition } from '../lib/assetLogic'
 import { EXT_LOAD_CAP } from '../lib/firestore'
 import { subscribeSites, incompleteReadNotice } from '../../../shared/org/orgData'
 import { resolveAccessibleSites } from '../../../shared/auth/access'
@@ -49,6 +51,8 @@ export function FleetProvider({ children }) {
   const [mockDrills, setMockDrills] = useState([])
   const [aeds, setAeds] = useState([])
   const [fas, setFas] = useState([])
+  const [firstAid, setFirstAid] = useState([])
+  const [stretchers, setStretchers] = useState([])
   const [loading, setLoading] = useState(true)
   // Run the deletedAt backfill at most once per org per session.
   const backfilledRef = useRef(null)
@@ -98,6 +102,8 @@ export function FleetProvider({ children }) {
     const u9 = subscribeAeds(orgId, setAeds)
     const u10 = subscribeFas(orgId, setFas)
     const u11 = subscribeSites(orgId, setAllSites)
+    const u12 = subscribeFirstAid(orgId, setFirstAid)
+    const u13 = subscribeStretchers(orgId, setStretchers)
     return () => {
       u1()
       u2()
@@ -110,6 +116,8 @@ export function FleetProvider({ children }) {
       u9()
       u10()
       u11()
+      u12()
+      u13()
     }
   }, [orgId])
 
@@ -142,6 +150,8 @@ export function FleetProvider({ children }) {
           ...mockDrills.map((d) => d.centerName),
           ...aeds.map((a) => a.centerName),
           ...fas.map((a) => a.centerName),
+          ...firstAid.map((r) => r.centerName),
+          ...stretchers.map((a) => a.centerName),
         ].filter((c) => c && c.trim())
       )
     ).sort((a, b) => a.localeCompare(b))
@@ -154,6 +164,9 @@ export function FleetProvider({ children }) {
       mockDrills,
       aeds,
       fas,
+      firstAid,
+      stretchers,
+      stretchersDue: stretchers.filter((a) => { const c = stretcherCondition(a, today); return c.due || c.expired }).length,
       aedsDue: aeds.filter((a) => { const c = aedCondition(a, today); return c.due || c.expired }).length,
       fasDue: fas.filter((a) => { const c = fasCondition(a, today); return c.due || c.expired }).length,
       sites,
@@ -167,14 +180,16 @@ export function FleetProvider({ children }) {
       //
       // `capped` above covers extinguishers alone, and the Dashboard's banner
       // said "the most recent 2 000 extinguishers" while the same page's AED,
-      // FAS, signage and drill figures were being truncated in silence beside
-      // it. A caveat that names one of five short numbers is worse than none: it
-      // reads as an assurance about the other four.
+      // FAS, signage, first aid, stretcher and drill figures were being
+      // truncated in silence beside it. A caveat that names one short number of
+      // several is worse than none: it reads as an assurance about the rest.
       incomplete: incompleteReadNotice({
         extinguishers: extinguishers.length >= EXT_LOAD_CAP ? 'capped' : 'ok',
         aeds: aeds.length >= EXT_LOAD_CAP ? 'capped' : 'ok',
         fas: fas.length >= EXT_LOAD_CAP ? 'capped' : 'ok',
         signages: signages.length >= EXT_LOAD_CAP ? 'capped' : 'ok',
+        firstAid: firstAid.length >= EXT_LOAD_CAP ? 'capped' : 'ok',
+        stretchers: stretchers.length >= EXT_LOAD_CAP ? 'capped' : 'ok',
         mockDrills: mockDrills.length >= EXT_LOAD_CAP ? 'capped' : 'ok',
         reports: reports.length >= EXT_LOAD_CAP ? 'capped' : 'ok',
       }, EXT_LOAD_CAP),
@@ -190,7 +205,7 @@ export function FleetProvider({ children }) {
       physicalOpen: defectLog.open,
       physicalClosed: defectLog.closed,
     }
-  }, [extinguishers, reports, users, org, stats, auditLogs, signages, mockDrills, aeds, fas, allSites, siteInventory, loading])
+  }, [extinguishers, reports, users, org, stats, auditLogs, signages, mockDrills, aeds, fas, firstAid, stretchers, allSites, siteInventory, loading])
 
   return <FleetContext.Provider value={value}>{children}</FleetContext.Provider>
 }
