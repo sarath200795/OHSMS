@@ -16,8 +16,14 @@
  *
  * ── Which tree ──────────────────────────────────────────────────────────────
  *
- *   node scripts/audit-gate.mjs             # the app's runtime tree
- *   node scripts/audit-gate.mjs functions   # the Cloud Functions tree
+ *   node scripts/audit-gate.mjs                  # the app's runtime tree
+ *   node scripts/audit-gate.mjs functions        # the Cloud Functions tree
+ *
+ * and the same two including devDependencies, which report everything and never
+ * block — a critical in the toolchain is not a fact about the shipped product:
+ *
+ *   node scripts/audit-gate.mjs root-all
+ *   node scripts/audit-gate.mjs functions-all
  *
  * The functions tree used to be gated by a bare
  * `npm audit --omit=dev --audit-level=high` in the workflow. Running both trees
@@ -42,11 +48,31 @@ const ROOT_ALLOWED = {
   },
 }
 
+/**
+ * The trees, and whether each one can stop a merge.
+ *
+ * `omitDev` is the distinction the whole job is built around: a critical in
+ * vitest is a fact about this repository's toolchain, a high in a runtime
+ * dependency is a fact about the deployed product, and only the second should
+ * block. `blocking: false` trees are reported in full and never change the exit
+ * code — they exist so "does not block" is not implemented as "is not
+ * mentioned", which is how eleven advisories once sat in the tree unnoticed.
+ */
 const TREES = {
-  root: { dir: '.', label: 'runtime tree', allowed: ROOT_ALLOWED },
+  root: {
+    dir: '.', label: 'runtime tree', omitDev: true, blocking: true, allowed: ROOT_ALLOWED,
+  },
   // No allowlist, deliberately: the functions tree is clean at high and should
   // stay that way. If this goes red, fix it rather than exempting it.
-  functions: { dir: 'functions', label: 'Cloud Functions tree', allowed: {} },
+  functions: {
+    dir: 'functions', label: 'Cloud Functions tree', omitDev: true, blocking: true, allowed: {},
+  },
+  'root-all': {
+    dir: '.', label: 'whole tree, including tooling', omitDev: false, blocking: false, allowed: {},
+  },
+  'functions-all': {
+    dir: 'functions', label: 'Cloud Functions tree, including tooling', omitDev: false, blocking: false, allowed: {},
+  },
 }
 
 const treeName = process.argv[2] || 'root'
@@ -95,12 +121,13 @@ function stderrHint(s) {
 }
 
 /** → { report } on success, or { failure } describing why no report came back. */
-function auditOnce(cwd) {
+function auditOnce({ dir, omitDev }) {
   let raw = ''
   let stderr = ''
+  const args = omitDev ? ['audit', '--omit=dev', '--json'] : ['audit', '--json']
   try {
-    raw = execFileSync('npm', ['audit', '--omit=dev', '--json'], {
-      cwd, encoding: 'utf8', shell: process.platform === 'win32', maxBuffer: 32 * 1024 * 1024,
+    raw = execFileSync('npm', args, {
+      cwd: dir, encoding: 'utf8', shell: process.platform === 'win32', maxBuffer: 32 * 1024 * 1024,
     })
   } catch (e) {
     // The report is still on stdout when npm exits non-zero for findings, and
@@ -133,29 +160,79 @@ function auditOnce(cwd) {
   return { report }
 }
 
-function audit(cwd) {
+/**
+ * → the report, or null when a report-only tree could not get one.
+ *
+ * Retries are for the BLOCKING trees. A report-only tree spending fifty seconds
+ * of CI on a registry that is refusing everyone would buy nothing: it cannot
+ * fail the build either way, and the blocking step immediately before it has
+ * already done the waiting on the same registry.
+ */
+function audit(t) {
+  const attempts = t.blocking ? ATTEMPTS : 1
   let last = ''
-  for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
-    const { report, failure } = auditOnce(cwd)
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    const { report, failure } = auditOnce(t)
     if (report) {
       if (attempt > 1) console.log(`audit-gate: got a report on attempt ${attempt}.`)
       return report
     }
     last = failure
-    if (attempt < ATTEMPTS) {
+    if (attempt < attempts) {
       const wait = BACKOFF_MS[attempt - 1]
       console.log(`audit-gate: attempt ${attempt} could not get a report (${failure}); retrying in ${wait / 1000}s.`)
       sleep(wait)
     }
   }
-  console.error(`audit-gate: no report after ${ATTEMPTS} attempts — last failure: ${last}`)
+  if (!t.blocking) {
+    // Said out loud rather than swallowed. The `|| true` this replaced turned a
+    // failed advisory scan into an empty one, which reads exactly like a clean
+    // tree — and reporting is this step's entire job.
+    console.log(`audit-gate: could not audit the ${t.label} — ${last}`)
+    console.log('This step never blocks, so the build continues. Nothing was checked.')
+    return null
+  }
+  console.error(`audit-gate: no report after ${attempts} attempts — last failure: ${last}`)
   console.error('Refusing to pass on no evidence: this is "we could not check", not "nothing to find".')
   process.exit(1)
 }
 
-const report = audit(tree.dir)
-
+// Before the call, not after: a retry or a failure message that arrives above
+// the line saying which tree is being audited reads as belonging to the
+// previous step.
 console.log(`audit-gate: auditing the ${tree.label} (${tree.dir}).`)
+
+const report = audit(tree)
+
+// ── Report-only trees ────────────────────────────────────────────────────────
+//
+// These replace two bare `npm audit || true` steps. Piping to `|| true` made
+// them unable to fail, which was right, but it also made them unable to say
+// anything a reader could rely on: a registry error and a clean tree produced
+// the same green tick, and the human-formatted output they printed came from
+// the retiring quick-audit endpoint.
+//
+// Same parsed report as the gate above, grouped by severity, exit code always 0.
+if (!tree.blocking) {
+  if (!report) process.exit(0)
+  const found = Object.values(report.vulnerabilities || {})
+  if (!found.length) {
+    console.log(`\nno advisories in the ${tree.label}.`)
+    process.exit(0)
+  }
+  console.log(`\nadvisories in the ${tree.label} (reported, never blocking):`)
+  for (const severity of ['critical', 'high', 'moderate', 'low', 'info']) {
+    const at = found.filter((v) => v.severity === severity)
+    if (!at.length) continue
+    console.log(`  ${severity} (${at.length}):`)
+    for (const v of at) {
+      console.log(`    ${v.name} — ${v.fixAvailable === false ? 'no fix published' : 'FIX AVAILABLE'}`)
+    }
+  }
+  console.log('\nNothing here blocks a merge. A high or critical in what actually SHIPS is')
+  console.log('caught by the blocking steps above; these are the rest of the picture.')
+  process.exit(0)
+}
 
 const serious = Object.values(report.vulnerabilities || {})
   .filter((v) => v.severity === 'high' || v.severity === 'critical')
