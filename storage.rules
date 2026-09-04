@@ -114,6 +114,54 @@ service firebase.storage {
       return false;
     }
 
+    // ── What may be stored, by declared type ──────────────────────────────────
+    //
+    // The size cap was the only thing this file said about an upload's content,
+    // so any writer in a tenant could store a file declared `text/html` under
+    // the organization's prefix — and getDownloadURL() hands back a permanent,
+    // unauthenticated link that serves it INLINE from a Google-owned domain.
+    // That is a phishing page hosted inside a customer's own evidence store,
+    // reachable by anyone with the link and answerable to no rule once issued,
+    // because a download token is a bearer credential.
+    //
+    // The type a bucket object is SERVED as is the type it was stored with, so
+    // constraining that at write time is what closes it. An allow-list, not a
+    // block-list — the same reasoning safeUrl.js gives for URL schemes: name
+    // what has a legitimate reason to be here and refuse the rest, rather than
+    // trying to enumerate what is dangerous.
+    //
+    // The list is what the app's own pickers actually accept: photographs and
+    // scans of evidence, PDF permits and certificates, video and audio for
+    // training content, the office formats training material arrives in, and
+    // CSV for the bulk importers.
+    //
+    // SVG is refused even though it is an image. It is a document that can
+    // carry script, and it renders — so it is the one image type that turns a
+    // download link back into the hosted-page problem this rule exists for.
+    //
+    // application/octet-stream is allowed, and has to be: putFile uploads
+    // ENCRYPTED bytes under it deliberately, so nothing downstream tries to
+    // interpret ciphertext as a PDF (shared/storage/index.js). It is also the
+    // one type that is safe to allow broadly — it declares the object a
+    // download rather than a document, which is the opposite of the vector.
+    function allowedType(t) {
+      return t is string
+        && !t.matches('(?i).*svg.*')
+        && (
+          t.matches('(?i)image/(png|jpe?g|gif|webp|bmp|tiff?|heic|heif)')
+          || t.matches('(?i)video/[-+.a-z0-9]+')
+          || t.matches('(?i)audio/[-+.a-z0-9]+')
+          || t.matches('(?i)application/pdf')
+          || t.matches('(?i)text/csv')
+          || t.matches('(?i)application/octet-stream')
+          // The office formats, spelled out. `application/vnd\\..*` would be a
+          // wildcard over a vendor namespace nobody has read.
+          || t.matches('(?i)application/msword')
+          || t.matches('(?i)application/vnd\\.ms-(excel|powerpoint)')
+          || t.matches('(?i)application/vnd\\.openxmlformats-officedocument\\.(wordprocessingml\\.document|spreadsheetml\\.sheet|presentationml\\.presentation)')
+        );
+    }
+
     // Medical records are excluded from the read below and granted narrowly
     // underneath. The exclusion is the load-bearing half: this file is a
     // permissive union exactly like firestore.rules, so a narrower match added
@@ -142,7 +190,8 @@ service firebase.storage {
       // stops evidence being replaced in place.
       allow create: if canWriteTo(orgId)
         && resource == null
-        && request.resource.size < 20 * 1024 * 1024;
+        && request.resource.size < 20 * 1024 * 1024
+        && allowedType(request.resource.contentType);
 
       allow update: if false;
 

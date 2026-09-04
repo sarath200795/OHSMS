@@ -1526,12 +1526,32 @@ service cloud.firestore {
         // permissive union, so this exclusion is the load-bearing half — that
         // match restricts nothing while this one still grants the same access.
         && col != 'integrations'
+        // 'notifications' was excluded from READ and not from write, so a
+        // collection nobody could read was one every approved member could
+        // fill. Two things wrong with that, one dated and one immediate.
+        //
+        // The dated one: this is a delivery ledger — rows saying a mail has
+        // already been sent. The moment a sender exists, a member can pre-seed
+        // rows to suppress a notification they are not allowed to read, which
+        // for an escalation or an approval is the notification most worth
+        // suppressing. The writer its rule cites, functions/lib/notify.js, does
+        // not exist yet, and a grant that is only wrong later is still the kind
+        // nobody notices, because nothing fails while it waits.
+        //
+        // The immediate one: an unbounded write channel into a collection with
+        // no reader. Nothing in the product would ever show it, no screen would
+        // look wrong, and the only evidence would arrive on the bill.
+        //
+        // Excluded here rather than in a narrow match of its own, for the
+        // reason every exclusion in this function is: rules are a permissive
+        // union, so the narrow `allow read: if false` block below restricts
+        // nothing while this one still grants the same write.
+        && col != 'notifications'
         && notKeyset(col, docId);
     }
     function genericReadable(col, docId) {
       return structuralOnly(col, docId)
-        && col != 'documents' && col != 'injuries' && col != 'illnesses'
-        && col != 'notifications';
+        && col != 'documents' && col != 'injuries' && col != 'illnesses';
     }
 
     // A document's classification is enforced on READ and was unprotected on
