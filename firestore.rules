@@ -182,7 +182,8 @@ service cloud.firestore {
         : col in ['audits', 'auditPlans', 'auditFindings', 'capas', 'findings'] ? 'audit'
         : col in ['permits', 'observations'] ? 'ptw'
         : col in ['procedures', 'procedurePhotos', 'locks', 'technicians'] ? 'loto'
-        : col in ['extinguishers', 'aeds', 'fas', 'signages', 'reports'] ? 'equipment'
+        : col in ['extinguishers', 'aeds', 'fas', 'signages', 'stretchers',
+                  'firstAid', 'reports'] ? 'equipment'
         : col == 'mockDrills' ? 'drills'
         : col == 'consultations' ? 'committee'
         : col in ['trainingCourses', 'trainingRecords', 'trainingAssignments',
@@ -198,11 +199,30 @@ service cloud.firestore {
     // Is this module key switched on for the org? The `let` matters: without it
     // moduleForCollection ran twice per call, and moduleAllowed is called on
     // both the generic match and its recursive {sub=**} twin.
+    // The flags live UNDER `modules`, not at the top level. This read was
+    // `.data.get(key, true)`, and the only top-level keys this document is
+    // allowed to have are modules / updatedAt / updatedBy / updatedByEmail —
+    // so the lookup always missed, always returned its `true` default, and the
+    // gate never denied anything, for any module or any tenant. Switching a
+    // module off hid the tiles in the shell and left every record in it fully
+    // readable and writable, which is the one thing this rule exists to stop.
+    //
+    // It read as working because everything around it does: the document is
+    // written correctly, the client reads the same flags correctly out of
+    // `data.modules`, and the gate is called from every branch it should be —
+    // including the LOTO legacy collections, which were added specifically to
+    // close this and call the same function. Only the one hop into the map was
+    // missing, and no test crossed the gate: they all tested the document.
+    //
+    // `.get('modules', {})` rather than `.modules` so a document written before
+    // the shape was pinned, holding no map at all, still evaluates instead of
+    // raising — reading an absent field raises, and a rule that raises denies.
+    // Absent still means enabled, at both hops.
     function moduleOn(orgId, key) {
       return key == ''
         || !exists(/databases/$(database)/documents/moduleEntitlements/$(orgId))
         || get(/databases/$(database)/documents/moduleEntitlements/$(orgId))
-             .data.get(key, true) != false;
+             .data.get('modules', {}).get(key, true) != false;
     }
 
     function moduleAllowed(orgId, col) {
