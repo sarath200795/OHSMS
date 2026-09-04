@@ -29,6 +29,7 @@ import { aedCondition, fasCondition, stretcherCondition } from '../lib/assetLogi
 import { EXT_LOAD_CAP } from '../lib/firestore'
 import { subscribeSites, incompleteReadNotice } from '../../../shared/org/orgData'
 import { resolveAccessibleSites } from '../../../shared/auth/access'
+import { useTodayKey } from '../../../shared/lib/useToday'
 import { withSites } from '../lib/siteResolve'
 
 const FleetContext = createContext(null)
@@ -127,6 +128,13 @@ export function FleetProvider({ children }) {
     [allSites, profile, isAdmin]
   )
 
+  // The calendar day is a DEPENDENCY, not something read once. Every derived
+  // state below — Refill Due, HPT overdue, the physical-defect count — is
+  // computed here from `today`, and the memo only re-ran when the DATA changed.
+  // A dashboard left on a wall therefore kept reporting yesterday's answer
+  // until somebody edited an unrelated unit.
+  const todayKey = useTodayKey()
+
   const value = useMemo(() => {
     const today = new Date()
     // Soft-deleted units live in the Recycle Bin only — exclude everywhere else.
@@ -205,7 +213,7 @@ export function FleetProvider({ children }) {
       physicalOpen: defectLog.open,
       physicalClosed: defectLog.closed,
     }
-  }, [extinguishers, reports, users, org, stats, auditLogs, signages, mockDrills, aeds, fas, firstAid, stretchers, allSites, siteInventory, loading])
+  }, [extinguishers, reports, users, org, stats, auditLogs, signages, mockDrills, aeds, fas, firstAid, stretchers, allSites, siteInventory, loading, todayKey])
 
   return <FleetContext.Provider value={value}>{children}</FleetContext.Provider>
 }

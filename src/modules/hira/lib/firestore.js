@@ -21,7 +21,7 @@ import {
 } from 'firebase/firestore'
 import { db } from '../../../shared/firebase'
 import { isSessionEnd } from '../../../shared/sessionEnd'
-import { reserveDocId } from '../../../shared/docId/reserve'
+import { reserveDocId, reserveDocIds } from '../../../shared/docId/reserve'
 
 // ── Path helpers ─────────────────────────────────────────────────────────────
 const orgRef = (orgId) => doc(db, 'organizations', orgId)
@@ -185,14 +185,25 @@ export async function deleteAssessment(orgId, id) {
 /** Bulk create assessments (from CSV import) in chunked batches. `kind` marks
  *  the imported rows as 'site' (normal) or 'baseline' (activity template). */
 export async function bulkCreateAssessments(orgId, list, actor, kind = 'site') {
+  // Every imported assessment gets a reference, exactly as createAssessment
+  // gives one to every assessment raised through the form.
+  //
+  // The bulk path did not, so a CSV import produced rows that were blank in
+  // every list, every export and every printed PDF — the identifier people
+  // quote to an auditor, missing from precisely the records that arrived in
+  // bulk. One transaction for the whole import rather than one per row: two
+  // hundred reservations against the same counter would each retry against the
+  // last.
+  const ids = await reserveDocIds(orgId, 'hira', list.length)
   let created = 0
   for (let i = 0; i < list.length; i += 200) {
     const chunk = list.slice(i, i + 200)
     const batch = writeBatch(db)
-    for (const data of chunk) {
+    chunk.forEach((data, j) => {
       const ref = doc(assessmentCol(orgId))
       batch.set(ref, {
         ...clean(data),
+        docId: ids[i + j],
         kind,
         baselineId: '',
         createdBy: actor?.uid || null,
@@ -201,7 +212,7 @@ export async function bulkCreateAssessments(orgId, list, actor, kind = 'site') {
         updatedAt: serverTimestamp(),
       })
       created++
-    }
+    })
     await batch.commit()
   }
   return created

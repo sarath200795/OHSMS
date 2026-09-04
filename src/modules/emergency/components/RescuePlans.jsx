@@ -80,19 +80,43 @@ export default function RescuePlans({ site, plans, users, contacts = [], baselin
   }
 
   const syncAll = async () => {
+    // The prompt counts what will ACTUALLY be updated.
+    //
+    // It used to say behind.length and then process
+    // behind.filter(x => !x.customized), so an estate where most plans had been
+    // adapted locally was asked to confirm eleven and given three, with nothing
+    // on screen to explain the gap. A confirmation that overstates what it is
+    // about to do is worse than none: that number is what the decision is
+    // weighed on.
+    const targets = behind.filter((x) => !x.customized)
+    const skipped = behind.length - targets.length
+    if (!targets.length) {
+      return toast.error('Every plan behind the baseline was adapted locally — update those individually.')
+    }
     if (!window.confirm(
-      `Update ${behind.length} plan(s) at ${site.name} from the revised baseline?\n\n` +
-      'Each returns to draft and must be approved again before use. Plans you adapted locally are skipped — update those individually so you can choose what to keep.'
+      `Update ${targets.length} plan(s) at ${site.name} from the revised baseline?\n\n` +
+      'Each returns to draft and must be approved again before use.' +
+      (skipped ? `\n\n${skipped} plan(s) you adapted locally are skipped — update those individually so you can choose what to keep.` : '')
     )) return
     setBusy(true)
     let n = 0
     try {
-      for (const p of behind.filter((x) => !x.customized)) {
+      for (const p of targets) {
         const b = baselineFor(p, baselineLibrary)
         if (b) { await syncFromBaseline(orgId, p, b, actor, { keepLocalEdits: false }); n += 1 }
       }
       toast.success(`${n} plan(s) updated — each needs re-approval`)
-    } catch (err) { toast.error(err?.message || 'Failed') } finally { setBusy(false) }
+    } catch (err) {
+      // NAME what got through. syncFromBaseline returns each plan to draft, so a
+      // throw part-way leaves the earlier ones unprintable — and a bare "Failed"
+      // reads as "nothing happened", which is the one thing that is not true.
+      toast.error(
+        n > 0
+          ? `${n} of ${targets.length} plan(s) were updated and are now in draft; the rest were not. ${err?.message || ''}`.trim()
+          : (err?.message || 'Failed'),
+        { duration: 9000 },
+      )
+    } finally { setBusy(false) }
   }
 
   const openNew = (scenario) => {

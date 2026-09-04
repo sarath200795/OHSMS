@@ -94,7 +94,18 @@ export function nameIndex(rows = [], field = 'name') {
       const hit = byName.get(k)
       return hit ? { status: 'ok', row: hit } : { status: 'missing' }
     },
-    has: (name) => byName.has(key(name)) && !duplicates.has(key(name)),
+    // exists() means PRESENT, and that distinction is the whole of a defect.
+    // The only member here used to be has(), which meant "resolves
+    // unambiguously" — byName.has(k) AND NOT duplicates.has(k) — and the
+    // importers called it to ask "does one of these already exist?". So an
+    // estate that already held two DVR-Gate-01s answered FALSE and cheerfully
+    // imported a third: the guard inverted at exactly the point it was needed,
+    // and got weaker the worse the data already was.
+    exists: (name) => byName.has(key(name)),
+    // Kept separate rather than folded together, because the ambiguous case is
+    // a real answer to "which row is this?" and a wrong answer to "is this
+    // name taken?". lookup() is where callers ask the first question.
+    resolves: (name) => byName.has(key(name)) && !duplicates.has(key(name)),
     size: byName.size,
   }
 }
@@ -111,7 +122,7 @@ export function validateDvrRows(raw = [], { sites = [], dvrs = [] } = {}) {
     const name = clean(r.name)
     if (!name) errors.push('Missing DVR name')
     else if (seen.has(key(name))) errors.push('Duplicate DVR name in this file')
-    else if (existing.has(name)) errors.push('A DVR with this name already exists')
+    else if (existing.exists(name)) errors.push('A DVR with this name already exists')
     seen.add(key(name))
 
     // A DVR with no site cannot be darkened by its Meraki, so the cascade
@@ -157,7 +168,7 @@ export function validateCameraRows(raw = [], { sites = [], dvrs = [], cameras = 
     const name = clean(r.name)
     if (!name) errors.push('Missing camera name')
     else if (seen.has(key(name))) errors.push('Duplicate camera name in this file')
-    else if (existing.has(name)) errors.push('A camera with this name already exists')
+    else if (existing.exists(name)) errors.push('A camera with this name already exists')
     seen.add(key(name))
 
     // The link that decides whether this camera can ever be assessed.

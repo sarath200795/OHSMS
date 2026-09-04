@@ -1134,11 +1134,12 @@ export async function addMockDrill(orgId, data, actor) {
   const stored = await Promise.all(valid.map(async (dataUrl) => {
     try {
       const up = await putFile(orgId, 'drill-evidence', dataUrl, 'evidence.jpg', { collection: SEALED_DRILL_PHOTOS })
-      // Only the INLINE copy is sealed. The bucket object is not — the recorder,
-      // the detail modal and the printed report all render `.dataUrl` (normalised
-      // from `.url` by getMockDrillPhotos) straight into an <img>, so sealing the
-      // object would show a broken picture everywhere with nothing to explain it.
-      // Written up above the table in src/shared/crypto/policy.js.
+      // The pointer AND the bytes are sealed — policy.js sets `files: true` for
+      // mockDrills/photos, and putFile honours it. This comment used to say the
+      // bucket object was left in the clear because sealing it would hand an
+      // <img> a URL pointing at ciphertext; that stopped being true when the
+      // decryption moved into shared/storage/resolveFiles.js, which is the seam
+      // getMockDrillPhotos reads through.
       await addDoc(drillPhotoCol(orgId, ref.id), up
         ? {
           url: up.url,

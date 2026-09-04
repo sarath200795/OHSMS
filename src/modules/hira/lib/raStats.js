@@ -16,6 +16,20 @@ export function initialRisk(h) {
  * the score — it only flags that this residual risk is accepted.
  */
 export function residualRisk(h) {
+  // Deliberately NOT special-cased on `alarp`, per the note above: ALARP flags
+  // that a residual is accepted, it does not restate what the residual is.
+  //
+  // That holds because an ALARP hazard should carry no projected score in the
+  // first place — no further controls are planned, so there is nothing to
+  // project. Both write paths now enforce that (CreateAssessment's payload and
+  // lib/csv.js), which is where the rule belongs.
+  //
+  // Records saved BEFORE that fix can still hold an ALARP hazard with a
+  // projected P×S attached, and this will keep preferring it — reporting a
+  // lower residual for a hazard somebody decided to accept. Closing the write
+  // path closes nothing already stored. Left as it is rather than quietly
+  // reinterpreted here, because changing what a stored assessment scores is a
+  // decision about somebody's risk register, not a code cleanup.
   if (h.projectedProbability && h.projectedSeverity) {
     return riskLevel(h.projectedProbability, h.projectedSeverity)
   }

@@ -226,7 +226,16 @@ export function subscribeOrgCollection(orgId, name, cb) {
 // ONE org-users listener shared by every module context.
 const sharedOrgUsers = createSharedSubscription((orgId, emit) =>
   onSnapshot(
-    query(collection(db, 'users'), where('orgId', '==', orgId)),
+    // Capped like every other live register. This was the last uncapped
+    // listener in the shared layer, and it is opened by nearly every module
+    // context at once — so on a tenant with tens of thousands of employees it
+    // was the largest single read in the app, on every page load.
+    //
+    // The cap is generous rather than tight because this list feeds people
+    // PICKERS — assigning a course, naming an attendee — and a directory that
+    // silently stops at the name you were looking for is worse than a slow one.
+    // Nothing here is counted, so there is no total to be short.
+    query(collection(db, 'users'), where('orgId', '==', orgId), limit(COLLECTION_READ_CAP)),
     (snap) => emit(snap.docs.map((d) => ({ uid: d.id, ...d.data() }))),
     () => emit([])
   )

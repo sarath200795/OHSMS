@@ -11,8 +11,34 @@
 
 const LINGER_MS = 30_000
 
+// Every channel any factory has open, so an identity change can drop them all.
+//
+// The linger that makes route transitions cheap is also a window: for 30
+// seconds after the last subscriber leaves, the channel keeps its rows and
+// hands them to the next subscriber SYNCHRONOUSLY, before the listener has
+// re-read anything. On a shared site laptop the next subscriber can be a
+// different person — and they would be shown the previous session's rows,
+// whose site scoping and role are not theirs.
+//
+// AuthContext clears the encryption keyring on every identity change for
+// exactly this reason and says so; the cached rows are the other half of the
+// same idea and were left behind.
+const allChannels = new Set()
+
+/** Drop every cached channel. Called on any identity change. */
+export function clearSharedSubscriptions() {
+  for (const channels of allChannels) {
+    for (const ch of channels.values()) {
+      if (ch.timer) clearTimeout(ch.timer)
+      ch.unsub?.()
+    }
+    channels.clear()
+  }
+}
+
 export function createSharedSubscription(startListener) {
   const channels = new Map() // key → { data, hasData, subs:Set, unsub, timer }
+  allChannels.add(channels)
 
   return function subscribe(key, cb) {
     let ch = channels.get(key)

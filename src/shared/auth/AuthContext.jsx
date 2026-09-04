@@ -14,6 +14,7 @@ import {
 } from 'firebase/auth'
 import { auth, isFirebaseConfigured } from '../firebase'
 import { clearKeyring } from '../crypto'
+import { clearSharedSubscriptions } from '../org/sharedSubscription'
 import { isMfaRequired, resolverFor, completeTotpSignIn } from './mfa'
 import { subscribePlatformAdmin } from './platformAdmin'
 import { startSession, endSession } from './sessionConstants'
@@ -91,6 +92,11 @@ export function AuthProvider({ children }) {
         // is refused. The keys are non-extractable, so dropping the reference
         // is the only way they go.
         clearKeyring()
+        // And the cached org rows, for the same reason and in the same breath.
+        // The shared listeners linger for 30 seconds after their last
+        // subscriber leaves and serve their cache synchronously to the next
+        // one — which on a shared laptop can be somebody else.
+        clearSharedSubscriptions()
       }
       setLoading(false)
     })
@@ -314,6 +320,7 @@ export function AuthProvider({ children }) {
     // and the keys must be gone either way. onAuthStateChanged clears them too,
     // but only once it fires — which it will not do if this throws.
     clearKeyring()
+    clearSharedSubscriptions()
     // Same reasoning, and the same order: a timestamp left behind is what the
     // next sign-in would be measured against.
     endSession()

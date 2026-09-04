@@ -237,10 +237,15 @@ export const POLICY = {
       'actions[].ownerName',
     ],
   },
-  // No `files: true` — see the note above the table. subscribeIllnessFiles
-  // normalises `data.dataUrl || data.url` and the renderers put that straight
-  // into an <img>, so sealing the bucket object would show a broken picture.
-  // The inline `dataUrl` IS sealed, because that one goes through openDoc.
+  // A GP letter or a fit note. Both the pointer and the BYTES are sealed.
+  //
+  // This comment used to say 'No `files: true`' — because sealing the object
+  // would hand an <img> a URL pointing at ciphertext — and it sat directly above
+  // an entry that sets it. That reason stopped being true when the decryption
+  // moved into shared/storage/resolveFiles.js (see the note above the table):
+  // the seam hands renderers a usable `.dataUrl`, so nothing downstream knows
+  // or cares. A comment that contradicts the line under it is worse than no
+  // comment, because it is the one a reader trusts.
   'illnesses/files': {
     keyClass: MEDICAL,
     fields: ['name', 'caption', 'dataUrl'],
@@ -285,9 +290,10 @@ export const POLICY = {
       'capa[].assignees[].name',
     ],
   },
-  // Same as illnesses/files: getMockDrillPhotos normalises onto `.dataUrl` and
-  // the recorder, the detail modal and the printed report all render it
-  // directly. The inline copy is sealed; the bucket object is not.
+  // Same as illnesses/files, and the same correction: getMockDrillPhotos
+  // normalises onto `.dataUrl`, and resolveFiles decrypts at that seam — so the
+  // recorder, the detail modal and the printed report render sealed objects
+  // without knowing it. Both the pointer and the bytes are sealed.
   'mockDrills/photos': {
     keyClass: GENERAL,
     fields: ['dataUrl'],

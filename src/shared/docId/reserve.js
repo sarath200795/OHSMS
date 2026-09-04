@@ -86,6 +86,22 @@ export async function reserveDocId(orgId, kind, { orgCode, floor = 0 } = {}) {
 }
 
 /**
+ * Reserve `count` document references at once.
+ *
+ * One transaction for the whole block rather than one per row. A CSV import of
+ * two hundred risk assessments through reserveDocId would be two hundred
+ * transactions against the same counter document, each retrying against the
+ * last — slow enough to look broken, and contended enough to sometimes be.
+ */
+export async function reserveDocIds(orgId, kind, count, { orgCode } = {}) {
+  const n = Math.max(0, Math.floor(count))
+  if (!n) return []
+  const code = orgCode || (await getOrgCode(orgId))
+  const first = await reserveSeq(orgId, kind, { count: n })
+  return Array.from({ length: n }, (_, i) => formatDocId(kind, code, first + i))
+}
+
+/**
  * Reserve the next `count` numbers for a kind and return the FIRST of them.
  *
  * The same transaction reserveDocId is built on, without the MODULE-ORG_0001

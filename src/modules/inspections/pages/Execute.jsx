@@ -15,6 +15,32 @@ import { previousInspection, withRepeatHistory } from '../lib/previousFindings'
 import PreviousFindingsPanel, { PreviousFindingNote } from '../components/PreviousFindings'
 import { safeSrc } from '../../../shared/safeUrl'
 
+// ── Pass / Fail / N/A ────────────────────────────────────────────────────────
+//
+// At MODULE scope, not inside Execute. Defined in the render body it was a new
+// component TYPE on every render, so React unmounted and remounted every
+// Pass/Fail group in the form on every keystroke anywhere in it — losing focus
+// and any in-progress interaction, on a screen somebody fills in one field at a
+// time while standing at the thing being inspected.
+const PF_OPTIONS = [
+  { v: 'Pass', icon: Check, on: 'bg-emerald-500 text-white', off: 'text-emerald-600' },
+  { v: 'Fail', icon: X, on: 'bg-red-500 text-white', off: 'text-red-600' },
+  { v: 'N/A', icon: Minus, on: 'bg-ink-400 text-white', off: 'text-ink-500' },
+]
+
+function PF({ value, onPick }) {
+  return (
+    <div className="flex gap-2">
+      {PF_OPTIONS.map((o) => (
+        <button key={o.v} type="button" onClick={() => onPick(o.v)}
+          className={`inline-flex items-center gap-1 rounded-xl px-3 py-2 text-xs font-bold shadow-clay-sm transition active:scale-95 ${value === o.v ? o.on : `bg-clay-surface ${o.off}`}`}>
+          <o.icon size={14} /> {o.v}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 export default function Execute() {
   const navigate = useNavigate()
   const location = useLocation()
@@ -182,25 +208,6 @@ export default function Execute() {
     }
   }
 
-  const PF = ({ fid, value }) => {
-    const opts = [
-      { v: 'Pass', icon: Check, on: 'bg-emerald-500 text-white', off: 'text-emerald-600' },
-      { v: 'Fail', icon: X, on: 'bg-red-500 text-white', off: 'text-red-600' },
-      { v: 'N/A', icon: Minus, on: 'bg-ink-400 text-white', off: 'text-ink-500' },
-    ]
-    return (
-      <div className="flex gap-2">
-        {opts.map((o) => (
-          <button key={o.v} type="button"
-            onClick={() => update(fid, { answer: o.v, observation: o.v === 'Fail' ? responses[fid]?.observation || '' : '' })}
-            className={`inline-flex items-center gap-1 rounded-xl px-3 py-2 text-xs font-bold shadow-clay-sm transition active:scale-95 ${value === o.v ? o.on : `bg-clay-surface ${o.off}`}`}>
-            <o.icon size={14} /> {o.v}
-          </button>
-        ))}
-      </div>
-    )
-  }
-
   return (
     <div>
       <button onClick={() => navigate(-1)} className="mb-4 inline-flex items-center gap-2 text-sm text-ink-500 hover:text-ink-800">
@@ -285,13 +292,18 @@ export default function Execute() {
                         <PreviousFindingNote finding={lastFail} />
                       </div>
                       <div>
-                        {f.type === 'Pass/Fail' && <PF fid={f.id} value={r.answer} />}
+                        {f.type === 'Pass/Fail' && (
+                          <PF
+                            value={r.answer}
+                            onPick={(v) => update(f.id, { answer: v, observation: v === 'Fail' ? r.observation || '' : '' })}
+                          />
+                        )}
                         {f.type === 'Number' && (
-                          <input type="number" className="input w-40" placeholder="Value" value={r.answer}
+                          <input type="number" className="input w-40" placeholder="Value" value={r.answer ?? ''}
                             onChange={(e) => update(f.id, { answer: e.target.value })} />
                         )}
                         {f.type === 'Text Input' && (
-                          <input className="input w-56" placeholder="Answer" value={r.answer}
+                          <input className="input w-56" placeholder="Answer" value={r.answer ?? ''}
                             onChange={(e) => update(f.id, { answer: e.target.value })} />
                         )}
                         {f.type === 'Single Choice' && (
@@ -337,7 +349,7 @@ export default function Execute() {
                           className="input min-h-[60px]"
                           placeholder="What is wrong? (observation)"
                           aria-label={`Observation for question ${i + 1}`}
-                          value={r.observation}
+                          value={r.observation ?? ''}
                           onChange={(e) => update(f.id, { observation: e.target.value })}
                         />
                         <textarea
