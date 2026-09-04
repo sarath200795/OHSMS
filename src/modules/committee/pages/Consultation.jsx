@@ -18,6 +18,7 @@ import SiteScopePicker from '../../../shared/org/SiteScopePicker';
 import DeptPersonPicker from '../../../shared/org/DeptPersonPicker';
 import { moduleLevelKeys, SITE_LEVEL_KEY } from '../../../shared/org/scopeConfig';
 import { Pager } from '../../../shared/ui';
+import { reserveDocId } from '../../../shared/docId/reserve';
 import { usePagination } from '../../../shared/ui/usePagination';
 import Logo from '../components/Logo';
 import LogoLoader from '../components/LogoLoader';
@@ -421,15 +422,25 @@ export default function Consultation() {
         if (scopeHasSite && !formData.siteId) return toast.error("Site is required.");
 
         setSaving(true);
-        const finalDocId = formData.docId || `MOM-${formData.siteId || 'ORG'}-${Date.now().toString().slice(-4)}`;
         // firebaseKey is the Firestore doc id (a local handle), not a stored field.
         const { firebaseKey, ...rest } = formData;
-        const payload = { ...rest, docId: finalDocId, timestamp: new Date().toISOString(), createdBy: session.name || session.email };
+        const payload = { ...rest, timestamp: new Date().toISOString(), createdBy: session.name || session.email };
 
         try {
             if (firebaseKey) {
+                // A meeting saved before references existed has none. It used to
+                // be given `MOM-<site>-<last 4 digits of the clock>` — a ten
+                // SECOND cycle, so two meetings for one site minuted in the same
+                // window took the same reference, and that value is what the
+                // minutes, the export and the Action Tracker all quote.
+                //
+                // Reserve a real one instead. Only on the update path:
+                // addConsultation reserves its own after spreading the payload,
+                // so anything sent on a create was discarded anyway.
+                payload.docId = formData.docId || await reserveDocId(orgId, 'committee');
                 await updateConsultation(orgId, firebaseKey, payload);
             } else {
+                delete payload.docId;
                 await addConsultation(orgId, payload);
             }
             toast.success("Record saved successfully!");

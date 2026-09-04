@@ -23,9 +23,11 @@ export function highestAssetSeq(prefix, list, field) {
   return max
 }
 export function formatAssetId(prefix, n) { return `${prefix}-${String(n).padStart(4, '0')}` }
-export function nextAssetId(prefix, list, field) {
-  return formatAssetId(prefix, highestAssetSeq(prefix, list, field) + 1)
-}
+// nextAssetId() lived here — highestAssetSeq + 1, computed in the browser. It
+// is gone rather than deprecated: leaving it exported is how the next register
+// gets colliding ids. Numbers now come from reserveAssetIds() in lib/firestore,
+// which reserves them in a transaction; highestAssetSeq survives as the FLOOR
+// that seeds a counter against a register numbered before it existed.
 
 // 'expired' | 'due' (within DUE_SOON days) | 'ok' | null (no/invalid date)
 export function dueState(value, today = new Date()) {

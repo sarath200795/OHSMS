@@ -46,11 +46,12 @@ import { generateQrToken, tokenFromQrValue } from './qr'
 import { STATUS, DEFECT_BY_KEY } from './constants'
 import { lockId, duplicateDefectMessage } from './defectLock'
 import { putFile, removeFile, MAX_INLINE_BYTES, tooLargeForInline } from '../../../shared/storage'
-import { reserveDocId } from '../../../shared/docId/reserve'
+import { reserveDocId, reserveSeq } from '../../../shared/docId/reserve'
 import { reportError } from '../../../shared/monitoring'
 import { AUDIT, diffSummary } from './audit'
 import { logAudit as logOrgAudit, auditCol, orgIndexRef, COLLECTION_READ_CAP } from '../../../shared/org/orgData'
 import { hptUpdate, hptSummary } from './hpt'
+import { formatAssetId } from './assetLogic'
 import { statsDeltaFor, accumulate } from './stats'
 import { reportEffect } from './reportEffect'
 // Mock drills name the incident commander, the people alerted, and what the
@@ -1689,6 +1690,27 @@ export async function decideAssetReport(orgId, report, approve, reviewerName, ac
 // 500-op Firestore batch limit.
 const BULK_CHUNK = 200
 
+/**
+ * Reserve `count` asset ids for a register, in one transaction.
+ *
+ * These were computed in the browser: nextAssetId() took the highest number in
+ * the loaded list and added one. Two people opening Add AED at the same moment
+ * both got AED-0042, and generateAll handed out base+1+i for a whole batch with
+ * no reservation at all — while the list it counted from is itself truncated at
+ * COLLECTION_READ_CAP, so a unit past the cap was invisible to the arithmetic.
+ * assetId is the handle printed on the QR label, and nothing downstream dedupes.
+ *
+ * `floor` is the highest number the caller can see, which is what seeds a
+ * counter starting at zero against a register full of assets numbered before it
+ * existed. On a register already past the read cap that floor can understate on
+ * the FIRST reservation; the counter is monotonic, so it self-corrects from
+ * there and cannot drift again. That is a one-time edge in place of a collision
+ * on every concurrent add.
+ */
+export async function reserveAssetIds(orgId, kind, prefix, { count = 1, floor = 0 } = {}) {
+  const first = await reserveSeq(orgId, kind, { count, floor })
+  return Array.from({ length: count }, (_, i) => formatAssetId(prefix, first + i))
+}
 export async function bulkAddAeds(orgId, orgName, rows, actor) {
   let created = 0
   for (let i = 0; i < rows.length; i += BULK_CHUNK) {
