@@ -259,6 +259,16 @@ export const buildScheduledTasks = ({ templates, records, currentMonth }) => {
         template: t,
       }
       if (!a.frequency) {
+        // A one-off that has been DONE drops off, even if its assignment was
+        // never flipped to Completed.
+        //
+        // Belt and braces on purpose. Execute now patches the assignment after
+        // the record lands, but that patch is a second write and can fail on
+        // its own — and the recurring branch below has always been saved by its
+        // record check while this branch had none at all. So a completed
+        // one-off inspection stayed Pending forever and kept rolling into
+        // overdueTasks, which is the list people work from.
+        if (records.some((r) => r.assignmentId === a.id)) return
         tasks.push({
           ...base,
           frequency: 'One-off',

@@ -198,8 +198,19 @@ export default function MockDrills() {
         })),
         photos: photos.map((p) => p.dataUrl),
       }
-      await addMockDrill(orgId, record, { uid: profile?.uid, name: profile?.name })
-      toast.success(`${form.eventType} report saved`)
+      const saved = await addMockDrill(orgId, record, { uid: profile?.uid, name: profile?.name })
+      // A drill saved with four of five photographs is still a success, and
+      // still something the person who took them needs to hear about while they
+      // are standing where they took them.
+      const missed = (saved?.photosRequested || 0) - (saved?.photosSaved || 0)
+      if (missed > 0) {
+        toast.error(
+          `${form.eventType} report saved, but ${missed} photo${missed === 1 ? '' : 's'} could not be attached. Add ${missed === 1 ? 'it' : 'them'} again from the record.`,
+          { duration: 8000 },
+        )
+      } else {
+        toast.success(`${form.eventType} report saved`)
+      }
       setScenario(null)
     } catch (err) {
       toast.error(err.message)

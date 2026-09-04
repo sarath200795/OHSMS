@@ -7,7 +7,7 @@ import {
 import { PageHeader, Spinner, Field } from '../components/ui'
 import { useAuth } from '../context/AuthContext'
 import { useData } from '../context/DataContext'
-import { addRecord } from '../lib/firestore'
+import { addRecord, completeAssignment } from '../lib/firestore'
 import { fileToDataUrl } from '../lib/fileToDataUrl'
 import { putFile, MAX_UPLOAD_BYTES, MAX_INLINE_BYTES, tooLargeForInline, formatSize } from '../../../shared/storage'
 import { hasAnsweredQuestion, scoreResponses, groupFieldsByCategory, usesCategories } from '../lib/schedule'
@@ -166,6 +166,13 @@ export default function Execute() {
     setBusy(true)
     try {
       await addRecord(orgId, record, profile)
+      // Take the assignment off the schedule now that it has been done.
+      // Nothing ever did this: the only statuses written were Pending and
+      // Cancelled, so a completed assigned inspection stayed Pending forever
+      // and kept rolling into overdueTasks. Deliberately NOT awaited into the
+      // failure path — the record is the thing that matters and it has landed,
+      // and schedule.js now drops a completed one-off on the record alone.
+      if (task.assignmentId) completeAssignment(orgId, task.templateId, task.assignmentId)
       toast.success(`Inspection submitted — ${score}% (${result})`)
       navigate('/inspections/records')
     } catch (e) {

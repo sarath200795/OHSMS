@@ -1112,10 +1112,53 @@ export function subscribeMockDrills(orgId, cb) {
 export async function addMockDrill(orgId, data, actor) {
   const { photos = [], ...rest } = data
   const valid = (Array.isArray(photos) ? photos : []).filter((p) => typeof p === 'string' && p.startsWith('data:'))
+
+  // ── The evidence goes first, and the count is what actually landed ──────────
+  //
+  // The drill document used to be written with `photoCount: valid.length`
+  // BEFORE the upload loop — two sequential awaits per photo, any of which can
+  // throw. A failure part-way left a drill claiming more evidence than was
+  // stored, and MockDrills gates the fetch on `photoCount > 0`, so the viewer
+  // sat waiting for photographs that would never arrive. Meanwhile the caller
+  // was told the save had failed, for a drill that was saved.
+  //
+  // Reversed, so the count cannot be a promise the record fails to keep. The
+  // photos are written into the subcollection of an id reserved up front —
+  // Firestore does not require the parent to exist first — and the drill
+  // document is written LAST, from the number that survived.
+  const ref = doc(drillCol(orgId))
+
+  // Parallel, and each photo owns its own failure. Sequentially, one unreadable
+  // capture ended the loop and abandoned every photo behind it; the person who
+  // ran the drill loses the rest of their evidence to the one that failed.
+  const stored = await Promise.all(valid.map(async (dataUrl) => {
+    try {
+      const up = await putFile(orgId, 'drill-evidence', dataUrl, 'evidence.jpg', { collection: SEALED_DRILL_PHOTOS })
+      // Only the INLINE copy is sealed. The bucket object is not — the recorder,
+      // the detail modal and the printed report all render `.dataUrl` (normalised
+      // from `.url` by getMockDrillPhotos) straight into an <img>, so sealing the
+      // object would show a broken picture everywhere with nothing to explain it.
+      // Written up above the table in src/shared/crypto/policy.js.
+      await addDoc(drillPhotoCol(orgId, ref.id), up
+        ? {
+          url: up.url,
+          path: up.path,
+          createdAt: serverTimestamp(),
+          ...(up.encIv ? { encScheme: up.encScheme, encKeyId: up.encKeyId, encIv: up.encIv, ...(up.encWrapped ? { encWrapped: up.encWrapped } : {}) } : {}),
+        }
+        : await sealDoc(orgId, SEALED_DRILL_PHOTOS, { dataUrl, createdAt: serverTimestamp() }))
+      return true
+    } catch (e) {
+      reportError(e, { source: 'fire.addMockDrill.photo', orgId })
+      return false
+    }
+  }))
+  const savedPhotos = stored.filter(Boolean).length
+
   // Strip undefined values — Firestore rejects them.
   const payload = JSON.parse(JSON.stringify({
     ...rest,
-    photoCount: valid.length,
+    photoCount: savedPhotos,
     loggedBy: actor?.name || '',
     createdAt: null, // placeholder; replaced by serverTimestamp below
   }))
@@ -1126,26 +1169,7 @@ export async function addMockDrill(orgId, data, actor) {
   // data would be harmless but the ORDER matters the other way round — a
   // payload sealed first and then passed through JSON would still be sealed,
   // while an unsealed `undefined` reaching Firestore is a rejected write.
-  const ref = await addDoc(drillCol(orgId), await sealDoc(orgId, SEALED_DRILLS, payload))
-  // Evidence photos, one doc each (fetched on demand when viewing / printing).
-  // Cloud storage first — the photo doc then holds a URL instead of ~700KB of
-  // base64 — falling back to the inline form when the bucket is unavailable.
-  for (const dataUrl of valid) {
-    const up = await putFile(orgId, 'drill-evidence', dataUrl, 'evidence.jpg', { collection: SEALED_DRILL_PHOTOS })
-    // Only the INLINE copy is sealed. The bucket object is not — the recorder,
-    // the detail modal and the printed report all render `.dataUrl` (normalised
-    // from `.url` by getMockDrillPhotos) straight into an <img>, so sealing the
-    // object would show a broken picture everywhere with nothing to explain it.
-    // Written up above the table in src/shared/crypto/policy.js.
-    await addDoc(drillPhotoCol(orgId, ref.id), up
-      ? {
-        url: up.url,
-        path: up.path,
-        createdAt: serverTimestamp(),
-        ...(up.encIv ? { encScheme: up.encScheme, encKeyId: up.encKeyId, encIv: up.encIv, ...(up.encWrapped ? { encWrapped: up.encWrapped } : {}) } : {}),
-      }
-      : await sealDoc(orgId, SEALED_DRILL_PHOTOS, { dataUrl, createdAt: serverTimestamp() }))
-  }
+  await setDoc(ref, await sealDoc(orgId, SEALED_DRILLS, payload))
   await logAudit(orgId, actor, 'mockdrill.create', {
     module: 'drills',
     target: 'mockdrill',
@@ -1153,7 +1177,10 @@ export async function addMockDrill(orgId, data, actor) {
     targetLabel: `${data.scenario} @ ${data.centerName || '—'}`,
     summary: `${data.eventType}: ${data.scenario} (score ${data.score}%) @ ${data.centerName || '—'}`,
   })
-  return ref.id
+  // The shortfall is RETURNED, not swallowed. A drill saved with four of five
+  // photographs is a success the person recording it still needs to know about,
+  // while they are still standing where they took them.
+  return { id: ref.id, photosRequested: valid.length, photosSaved: savedPhotos }
 }
 
 /**

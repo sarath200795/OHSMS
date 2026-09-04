@@ -240,19 +240,37 @@ export async function createIncident(orgId, actor, initial = {}) {
  * will not know about.
  */
 export async function updateIncident(orgId, id, updates, opts = {}) {
-  const current = await getDoc(incidentRef(orgId, id))
-  if (!current.exists()) throw new Error('Incident not found')
-  const before = current.data()
   const safe = 'injuryReports' in updates
     ? { ...updates, injuryReports: incidentInjuryStubs(updates.injuryReports) }
     : updates
-  // Build a shallow "merged" view for the stats delta (only top-level dimension
-  // fields matter: type/severity/category/location/lifecycle/deletedAt).
-  const merged = { ...before }
-  for (const [k, v] of Object.entries(safe)) {
-    if (!k.includes('.')) merged[k] = v
-  }
-  await updateDoc(incidentRef(orgId, id), { ...await sealDoc(orgId, SEALED, safe), updatedAt: serverTimestamp() })
+  // Sealed OUTSIDE the transaction. It depends only on `updates`, and a
+  // transaction body can retry — running RSA/AES over the same fields on every
+  // attempt would be work for nothing.
+  const sealed = { ...await sealDoc(orgId, SEALED, safe), updatedAt: serverTimestamp() }
+
+  // ── Read and write in one transaction ──────────────────────────────────────
+  //
+  // This was getDoc-then-updateDoc, and the stats delta was computed from the
+  // `before` that first read returned. Two people editing the same incident —
+  // one changing severity, one closing it — each emitted a delta from the same
+  // baseline, so meta/stats drifted by exactly the change they disagreed about.
+  // Permanently: nothing recomputes it, bumpStats swallows its own failures,
+  // and the dashboard is where those totals are read from. The reference-number
+  // counter in the very same document has been transactional for a while.
+  let before = null
+  let merged = null
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(incidentRef(orgId, id))
+    if (!snap.exists()) throw new Error('Incident not found')
+    before = snap.data()
+    // Build a shallow "merged" view for the stats delta (only top-level dimension
+    // fields matter: type/severity/category/location/lifecycle/deletedAt).
+    merged = { ...before }
+    for (const [k, v] of Object.entries(safe)) {
+      if (!k.includes('.')) merged[k] = v
+    }
+    tx.update(incidentRef(orgId, id), sealed)
+  })
   // `before` is as stored — sealed — and `merged` mixes it with plaintext
   // updates. Neither is opened, and neither needs to be: every dimension the
   // delta counts is left readable by the policy. diffSummary below handles the

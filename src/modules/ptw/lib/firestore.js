@@ -229,11 +229,30 @@ export async function createPermit(orgId, data, actor) {
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   }
+  // ── The attachments are PREPARED before the permit is written ──────────────
+  //
+  // This used to write the permit and then loop the documents, uploading each
+  // one inside the loop. permitDocPayload is where the failures live — an
+  // upload that cannot reach the bucket, an inline fallback over the size
+  // limit — so a throw part-way left a permit that existed, had consumed its
+  // number, and carried some of its MANDATORY documents, while the person who
+  // raised it was told the whole thing had failed. On a hot-work permit the
+  // missing document is the reason the permit is refusable.
+  //
+  // Preparing first means a failure happens while nothing has been written.
+  // The permit number is still consumed, which reserve.js already treats as the
+  // right trade: a gap in the sequence is harmless, a half-permit is not.
+  const docPayloads = await Promise.all(
+    (data.documents || []).map((d) => permitDocPayload(orgId, d, actor)),
+  )
+
   await setDoc(ref, permit)
   // Attached files live in a subcollection (each ≤ ~750 KB base64) so the parent
-  // permit doc stays well under Firestore's 1 MB limit.
-  for (const d of data.documents || []) {
-    await addDoc(docCol(orgId, ref.id), await permitDocPayload(orgId, d, actor))
+  // permit doc stays well under Firestore's 1 MB limit — which is also why they
+  // are not batched with the permit: several inline documents would exceed the
+  // batch's own ceiling.
+  for (const payload of docPayloads) {
+    await addDoc(docCol(orgId, ref.id), payload)
   }
   // Public QR mirror so the permit is scannable immediately.
   await setDoc(qrRef(qrToken), fullMirror(orgId, actor?.orgName, ref.id, permit)).catch((e) =>
