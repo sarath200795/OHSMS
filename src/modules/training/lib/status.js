@@ -5,12 +5,14 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { toCsv as sharedToCsv } from '../../../shared/lib/csv'
+// The shared calendar helpers. This module carried its own copy of todayISO —
+// one of five identical declarations across the app, agreeing by luck rather
+// than by design. Re-exported so the module's own call sites keep working.
+import { todayISO, addDaysISO } from '../../../shared/lib/dates'
+
+export { todayISO }
 
 export const EXPIRING_WINDOW_DAYS = 30
-
-export function todayISO(d = new Date()) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
 
 /** completedOn (YYYY-MM-DD) + months → YYYY-MM-DD; '' when no expiry applies. */
 export function computeExpiry(completedOn, validityMonths) {
@@ -28,9 +30,11 @@ export function computeExpiry(completedOn, validityMonths) {
 export function recordStatus(expiresOn, today = todayISO()) {
   if (!expiresOn) return 'none'
   if (expiresOn < today) return 'expired'
-  const soon = new Date(today)
-  soon.setDate(soon.getDate() + EXPIRING_WINDOW_DAYS)
-  return expiresOn <= todayISO(soon) ? 'expiring' : 'valid'
+  // addDaysISO, not new Date(today). `today` is YYYY-MM-DD, which parses as
+  // UTC midnight, while setDate/getDate work in LOCAL fields — so west of
+  // Greenwich the window started a day early and a certificate expiring in
+  // exactly thirty days read as valid rather than expiring.
+  return expiresOn <= addDaysISO(EXPIRING_WINDOW_DAYS, today) ? 'expiring' : 'valid'
 }
 
 export const STATUS_META = {
@@ -70,9 +74,7 @@ export const ASSIGNMENT_DUE_SOON_DAYS = 7
 export function assignmentStatus(dueDate, today = todayISO()) {
   if (!dueDate) return 'open'
   if (dueDate < today) return 'overdue'
-  const soon = new Date(today)
-  soon.setDate(soon.getDate() + ASSIGNMENT_DUE_SOON_DAYS)
-  return dueDate <= todayISO(soon) ? 'due_soon' : 'open'
+  return dueDate <= addDaysISO(ASSIGNMENT_DUE_SOON_DAYS, today) ? 'due_soon' : 'open'
 }
 
 export const ASSIGNMENT_META = {

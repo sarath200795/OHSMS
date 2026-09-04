@@ -13,6 +13,7 @@ import DepartmentSelect from '../../../../shared/org/DepartmentSelect'
 import { Field } from '../../../../shared/ui'
 import { safeHref } from '../../../../shared/safeUrl'
 import { uid } from '../../../../shared/lib/id'
+import { todayISO, addDaysISO, isOverdueDate } from '../../../../shared/lib/dates'
 import {
   subscribeAuditPlans,
   subscribeAuditFindings,
@@ -391,11 +392,11 @@ const AuditorWorkplace = ({ setView, session, isGlobalOwner, plans, findings, si
       let days = 30
       if (f.type === 'Minor NC') days = 15
       if (f.type === 'Major NC') days = 7
-      const due = new Date(); due.setDate(due.getDate() + days)
+
       // `genId() + idx` was string concatenation, not an offset — "AF-12345"
       // and index 0 gave "AF-123450". Unreachable, because every row is created
       // with an id, but it is the kind of dead line somebody later copies.
-      return { ...f, id: f.id || genId(), auditeeDueDate: due.toISOString().split('T')[0] }
+      return { ...f, id: f.id || genId(), auditeeDueDate: addDaysISO(days) }
     })
     try {
       await createAuditFinding(session.orgId, {
@@ -583,7 +584,7 @@ const AuditeeWorkplace = ({ session, users, findings }) => {
     setCurrent(f)
     setForm({
       rootCause: f.response?.rootCause || '', correction: f.response?.correction || '', capa: f.response?.capa || '',
-      owner: f.response?.owner || '', targetDate: f.response?.targetDate || f.auditeeDueDate || new Date().toISOString().split('T')[0],
+      owner: f.response?.owner || '', targetDate: f.response?.targetDate || f.auditeeDueDate || todayISO(),
       evidenceFile: f.response?.evidenceFile || null, evidenceFileName: f.response?.evidenceFileName || '',
     })
     setModal(true)
@@ -678,7 +679,7 @@ const AuditeeWorkplace = ({ session, users, findings }) => {
               <div className="max-h-[55vh] flex-1 space-y-6 overflow-y-auto p-6">
                 {(selected.findings || []).map((f, i) => {
                   const has = f.response?.status === 'Completed'
-                  const overdue = !has && new Date() > new Date(f.auditeeDueDate)
+                  const overdue = !has && isOverdueDate(f.auditeeDueDate)
                   return (
                     <div key={i} className={`rounded-2xl border bg-white p-6 ${has ? 'border-emerald-300' : 'border-slate-200'}`}>
                       <div className="mb-4 flex items-start justify-between border-b border-slate-100 pb-4">
@@ -984,7 +985,7 @@ const AuditCalendar = ({ sites, plans, findings }) => {
   }, [plans, findings, siteFilter])
 
   const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
-  const today = new Date().toISOString().split('T')[0]
+  const today = todayISO()
 
   return (
     <div className="animate-fade-in">

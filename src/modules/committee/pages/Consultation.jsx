@@ -22,7 +22,7 @@ import { reserveDocId } from '../../../shared/docId/reserve';
 import { usePagination } from '../../../shared/ui/usePagination';
 import Logo from '../components/Logo';
 import LogoLoader from '../components/LogoLoader';
-import { isFutureDate, todayISO } from '../../../shared/lib/dates';
+import { isFutureDate, todayISO, isOverdueDate, toISODate } from '../../../shared/lib/dates';
 import {
     subscribeSites,
     subscribeOrgUsers,
@@ -123,7 +123,7 @@ const MeetingDetailModal = ({ meeting, siteLabel, onClose, onUpdateStatus, onPri
                                 </thead>
                                 <tbody className="divide-y divide-clay-200/60 bg-clay-100/60 text-ink-900">
                                     {(meeting.actions || []).map((row, idx) => {
-                                        const isOverdue = row.status !== 'Closed' && row.due && new Date(row.due) < new Date();
+                                        const isOverdue = isOverdueDate(row.due, { closed: row.status === 'Closed' });
                                         return (
                                             <tr key={idx} className="hover:bg-clay-100 transition-colors">
                                                 <td className="p-4 pl-6 font-medium whitespace-normal min-w-[250px]">{row.action}</td>
@@ -207,7 +207,7 @@ export default function Consultation() {
     // Form Data State
     const [formData, setFormData] = useState({
         id: '', firebaseKey: '', siteId: '', type: 'HSE Committee Meeting', subject: '',
-        date: new Date().toISOString().split('T')[0], time: '', preRequisites: '', minutes: '',
+        date: todayISO(), time: '', preRequisites: '', minutes: '',
         attendees: [], actions: []
     });
 
@@ -228,7 +228,7 @@ export default function Consultation() {
             setFormData({
                 id: '', firebaseKey: '', siteId: filterSite !== 'All' ? filterSite : '',
                 type: 'HSE Committee Meeting', subject: '',
-                date: new Date().toISOString().split('T')[0], time: '', preRequisites: '', minutes: '',
+                date: todayISO(), time: '', preRequisites: '', minutes: '',
                 attendees: [], actions: []
             });
             setView('form');
@@ -250,7 +250,7 @@ export default function Consultation() {
             (list) => setUsers(list.filter(u => u.status === 'approved').map(u => ({ id: u.uid, ...u }))),
             () => {});
         const unsubMeetings = subscribeConsultations(orgId,
-            (list) => { setMeetings([...list].sort((a, b) => new Date(b.date) - new Date(a.date))); done(); },
+            (list) => { setMeetings([...list].sort((a, b) => (toISODate(b.date) || '').localeCompare(toISODate(a.date) || ''))); done(); },
             () => done());
         return () => { clearTimeout(safety); unsubSites(); unsubUsers(); unsubMeetings(); };
     }, [orgId]);
@@ -285,7 +285,7 @@ export default function Consultation() {
         setFormData({
             id: '', firebaseKey: '', siteId: filterSite !== 'All' ? filterSite : '',
             type: 'HSE Committee Meeting', subject: '',
-            date: new Date().toISOString().split('T')[0], time: '', preRequisites: '', minutes: '',
+            date: todayISO(), time: '', preRequisites: '', minutes: '',
             attendees: [], actions: []
         });
         setView('form');
@@ -541,7 +541,7 @@ export default function Consultation() {
         setFormData({
             id: '', firebaseKey: '', siteId: calSiteFilter, type: type,
             subject: `${type} _ ${monthNames[calMonth]} _ ${calYear}`,
-            date: today.toISOString().split('T')[0], time: '', preRequisites: '', minutes: '',
+            date: todayISO(today), time: '', preRequisites: '', minutes: '',
             attendees: [], actions: []
         });
         setView('form');

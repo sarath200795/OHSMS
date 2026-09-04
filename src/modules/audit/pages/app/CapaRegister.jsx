@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { isOverdueDate } from '../../../../shared/lib/dates'
 import { Search, Wrench, Download } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { subscribeAuditFindings } from '../../services/auditModule'
@@ -19,11 +20,11 @@ const capaState = (recordStatus) =>
       ? ['amber', 'In Verification']
       : ['blue', 'Open']
 
-const isOverdue = (target, verified) => {
-  if (verified || !target) return false
-  const d = new Date(target)
-  return !Number.isNaN(d.getTime()) && d.getTime() < Date.now()
-}
+// Through the shared helper, which compares YYYY-MM-DD strings. new
+// Date(target) reads a date-only string as UTC midnight, so a CAPA due TODAY
+// showed as overdue from 05:30 that morning in IST — on the working day it was
+// still due.
+const isOverdue = (target, verified) => isOverdueDate(target, { closed: verified })
 
 export default function CapaRegister() {
   const { org } = useAuth()
