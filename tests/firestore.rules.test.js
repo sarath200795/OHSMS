@@ -453,8 +453,8 @@ describe('public QR mirror (/qr)', () => {
 })
 
 // A QR scan is a public write surface, so the rule admits exactly two shapes:
-// an extinguisher defect keyed by extId, and an AED/FAS fault keyed by
-// assetKind + assetRefId. AED and FAS carry no extId, so before the second
+// an extinguisher defect keyed by extId, and an AED / FAS / stretcher fault
+// keyed by assetKind + assetRefId. Those carry no extId, so before the second
 // clause existed every fault reported from a scan was rejected outright.
 describe('public defect reports from a QR scan (/reports)', () => {
   const reportAt = (db, id) => doc(db, 'organizations', 'orgA', 'reports', id)
@@ -476,6 +476,7 @@ describe('public defect reports from a QR scan (/reports)', () => {
       await setDoc(doc(db, 'qr', 'tok1'), { orgId: 'orgA', extId: 'ext1', token: 'tok1' })
       await setDoc(doc(db, 'qr', 'tokAed'), { orgId: 'orgA', assetKind: 'aed', assetRefId: 'aed1', token: 'tokAed' })
       await setDoc(doc(db, 'qr', 'tokFas'), { orgId: 'orgA', assetKind: 'fas', assetRefId: 'fas1', token: 'tokFas' })
+      await setDoc(doc(db, 'qr', 'tokStr'), { orgId: 'orgA', assetKind: 'stretcher', assetRefId: 'str1', token: 'tokStr' })
     })
   })
 
@@ -597,9 +598,40 @@ describe('public defect reports from a QR scan (/reports)', () => {
     await assertFails(setDoc(reportAt(anon, 'r4'), { ...assetReport, approvalStatus: 'approved' }))
   })
 
+  // A stretcher carries a QR and a public defect sheet exactly as an AED does.
+  // The cost of getting this wrong is not a broken page: createReport maps any
+  // permission-denied to "already reported", so a refused shape reaches the
+  // person holding the phone as a duplicate, and the fault goes unrecorded.
+  it('a signed-out scanner can report a stretcher defect', async () => {
+    const anon = testEnv.unauthenticatedContext().firestore()
+    await assertSucceeds(
+      setDoc(reportAt(anon, 'r7'), { ...assetReport, assetKind: 'stretcher', assetRefId: 'str1', defect: 'Straps Missing / Torn', token: 'tokStr' })
+    )
+  })
+
   it('an asset report CANNOT name a kind that maps to no collection', async () => {
     const anon = testEnv.unauthenticatedContext().firestore()
     await assertFails(setDoc(reportAt(anon, 'r5'), { ...assetReport, assetKind: 'extinguisher' }))
+  })
+
+  // First aid is a register, not a scannable asset: it has no QR mirror and
+  // approving a report against it would write to nothing. The allowlist is what
+  // keeps a plausible-looking kind from opening a public write surface onto a
+  // collection that never asked for one.
+  it('an asset report CANNOT name a register that has no QR at all', async () => {
+    const anon = testEnv.unauthenticatedContext().firestore()
+    await assertFails(setDoc(reportAt(anon, 'r8'), { ...assetReport, assetKind: 'firstAid', assetRefId: 'fa1' }))
+  })
+
+  // The kind must agree with the mirror the token names, not merely be a kind
+  // the rules recognise. Otherwise one scanned AED label files faults against
+  // the stretcher register — a real asset id, a real org, and the wrong thing
+  // taken out of service on approval.
+  it('an asset report CANNOT claim a kind its own token contradicts', async () => {
+    const anon = testEnv.unauthenticatedContext().firestore()
+    await assertFails(
+      setDoc(reportAt(anon, 'r9'), { ...assetReport, assetKind: 'stretcher', assetRefId: 'str1', token: 'tokAed' })
+    )
   })
 
   it('an asset report CANNOT omit the asset it is about', async () => {
