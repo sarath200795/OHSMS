@@ -23,6 +23,7 @@ import {
   increment,
 } from 'firebase/firestore'
 import { db } from '../../../shared/firebase'
+import { onReadError } from '../../../shared/org/readError'
 import { logAudit } from './firestore'
 import { AUDIT, diffSummary } from './audit'
 // Reference numbers are issued by the same transactional reserver incidents
@@ -124,7 +125,14 @@ export async function getIllness(orgId, id) {
 export function subscribeIllnesses(orgId, cb, max = ILLNESS_LOAD_CAP) {
   const q = query(illnessCol(orgId), orderBy('createdAt', 'desc'), limit(max))
   const opened = openSnapshots(orgId, SEALED, cb)
-  return onSnapshot(q, (snap) => opened(snap.docs.map((d) => ({ id: d.id, ...d.data() }))))
+  // The fallback goes to `cb`, not to `opened`: there is nothing to unseal, and
+  // routing an empty list through the decryption step would report a read
+  // failure as a decryption failure.
+  return onSnapshot(
+    q,
+    (snap) => opened(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    onReadError('illnesses', cb),
+  )
 }
 
 export async function closeIllness(orgId, id, actor) {
@@ -196,7 +204,11 @@ export function subscribeIllnessFiles(orgId, id, cb) {
   const opened = openSnapshots(orgId, SEALED_FILES, (rows) => resolve(
     rows.map((r) => ({ ...r, dataUrl: r.dataUrl || r.url || '' })),
   ))
-  const stop = onSnapshot(q, (snap) => opened(snap.docs.map((d) => ({ id: d.id, ...d.data() }))))
+  const stop = onSnapshot(
+    q,
+    (snap) => opened(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    onReadError('illness attachments', cb),
+  )
   return () => { resolve.stop(); stop() }
 }
 

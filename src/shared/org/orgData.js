@@ -23,6 +23,7 @@ import {
 } from 'firebase/firestore'
 import { db } from '../firebase'
 import { isSessionEnd } from '../sessionEnd'
+import { onReadError } from './readError'
 import { AUDIT } from '../audit/audit'
 import { createSharedSubscription } from './sharedSubscription'
 import { notifySiteCreated } from './siteHooks'
@@ -97,7 +98,11 @@ export async function fetchAuditLogs(orgId, { from = '', to = '', max = 5000 } =
 
 export function subscribeAuditLogs(orgId, cb, max = 300) {
   const q = query(auditCol(orgId), orderBy('at', 'desc'), limit(max))
-  return onSnapshot(q, (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))))
+  return onSnapshot(
+    q,
+    (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    onReadError('the audit log', cb),
+  )
 }
 
 // ── Organizations & users ─────────────────────────────────────────────────────
@@ -232,8 +237,13 @@ export function subscribeOrgUsers(orgId, cb) {
 
 /** Live org document. */
 export function subscribeOrg(orgId, cb) {
-  return onSnapshot(orgRef(orgId), (snap) =>
-    cb(snap.exists() ? { id: snap.id, ...snap.data() } : null)
+  return onSnapshot(
+    orgRef(orgId),
+    (snap) => cb(snap.exists() ? { id: snap.id, ...snap.data() } : null),
+    // null rather than []: this is one document, and every caller tests it for
+    // existence. Handing back an array would make `org.name` undefined instead
+    // of absent, which reads as an organization with no name.
+    onReadError('the organization', cb, null),
   )
 }
 

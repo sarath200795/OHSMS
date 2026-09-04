@@ -146,6 +146,35 @@ export default [
       'jsx-a11y/anchor-is-valid': 'error',
     },
   },
+  // ── Every live listener must be able to report a failure ───────────────────
+  //
+  // onSnapshot takes three arguments and works with two, so the third is easy
+  // to leave off and nothing complains: the listener registers, the happy path
+  // runs, and an error has nowhere to go. 27 of this app's 65 listeners were
+  // written that way.
+  //
+  // The cost is not a missing log line. Every module context clears its
+  // `loading` flag from the SUCCESS callback, so a listener that cannot report
+  // failure is a screen that cannot stop loading — for a missing composite
+  // index, a rules deploy landing mid-session, or a moment of
+  // permission-denied while a claim refreshes. The user's only recourse is to
+  // guess that a refresh might help.
+  //
+  // A lint rule rather than a convention, because this is exactly the kind of
+  // omission that is invisible in review: the two-argument call looks finished.
+  // src/ only — the rules tests call onSnapshot to assert refusals, where a
+  // handler would be beside the point.
+  {
+    files: ['src/**/*.{js,jsx}'],
+    ignores: ['src/**/*.test.{js,jsx}'],
+    rules: {
+      'no-restricted-syntax': ['error', {
+        selector: 'CallExpression[callee.name="onSnapshot"][arguments.length<3]',
+        message:
+          'onSnapshot needs an error callback, or the screen waiting on it can never stop loading. Use onReadError(label, cb) from shared/org/readError.',
+      }],
+    },
+  },
   // Test files run under Vitest, whose API is injected as globals.
   {
     files: ['**/*.test.{js,jsx}', 'tests/**/*.{js,jsx}'],

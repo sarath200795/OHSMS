@@ -23,6 +23,7 @@ import {
   arrayUnion,
 } from 'firebase/firestore'
 import { db } from '../../../shared/firebase'
+import { onReadError } from '../../../shared/org/readError'
 import { reserveDocId } from '../../../shared/docId/reserve'
 import { putFile, removeFile, MAX_INLINE_BYTES, tooLargeForInline } from '../../../shared/storage'
 import { AUDIT } from './audit'
@@ -69,7 +70,11 @@ export async function ensureOrgIndex(org) {
 export { subscribeOrgUsers } from '../../../shared/org/orgData'
 
 export function subscribeOrg(orgId, cb) {
-  return onSnapshot(orgRef(orgId), (snap) => cb(snap.exists() ? { id: snap.id, ...snap.data() } : null))
+  return onSnapshot(
+    orgRef(orgId),
+    (snap) => cb(snap.exists() ? { id: snap.id, ...snap.data() } : null),
+    onReadError('the organization', cb, null),
+  )
 }
 
 // ── Permits ─────────────────────────────────────────────────────────────────
@@ -242,16 +247,24 @@ export async function createPermit(orgId, data, actor) {
 // ── Observations (safety observations logged via QR scan or in-app) ──────────
 export function subscribeObservations(orgId, cb) {
   const q = query(obsCol(orgId), orderBy('at', 'desc'), limit(500))
-  return onSnapshot(q, (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))))
+  return onSnapshot(
+    q,
+    (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    onReadError('observations', cb),
+  )
 }
 
 export function subscribePermitObservations(orgId, permitId, cb) {
   const q = query(obsCol(orgId), where('permitId', '==', permitId))
-  return onSnapshot(q, (snap) => {
-    const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
-    list.sort((a, b) => (b.at?.seconds || 0) - (a.at?.seconds || 0))
-    cb(list)
-  })
+  return onSnapshot(
+    q,
+    (snap) => {
+      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+      list.sort((a, b) => (b.at?.seconds || 0) - (a.at?.seconds || 0))
+      cb(list)
+    },
+    onReadError('observations on this permit', cb),
+  )
 }
 
 /**
@@ -344,10 +357,14 @@ export function subscribePermitDocuments(orgId, permitId, cb) {
   const q = query(docCol(orgId, permitId), orderBy('uploadedAt', 'asc'))
   // fileData is normalised at the seam so the download links keep working for
   // both eras: inline base64 (legacy) and cloud URL (new).
-  return onSnapshot(q, (snap) => cb(snap.docs.map((d) => {
-    const data = d.data()
-    return { id: d.id, ...data, fileData: data.fileData || data.fileUrl || '' }
-  })))
+  return onSnapshot(
+    q,
+    (snap) => cb(snap.docs.map((d) => {
+      const data = d.data()
+      return { id: d.id, ...data, fileData: data.fileData || data.fileUrl || '' }
+    })),
+    onReadError('permit documents', cb),
+  )
 }
 
 /**
@@ -403,7 +420,11 @@ export async function deletePermitDocument(orgId, permitId, docId, actor, label)
 
 export function subscribePermits(orgId, cb) {
   const q = query(permitCol(orgId), orderBy('createdAt', 'desc'), limit(1000))
-  return onSnapshot(q, (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))))
+  return onSnapshot(
+    q,
+    (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    onReadError('permits', cb),
+  )
 }
 
 export async function getPermit(orgId, id) {

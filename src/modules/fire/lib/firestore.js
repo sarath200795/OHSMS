@@ -50,6 +50,7 @@ import { reserveDocId, reserveSeq } from '../../../shared/docId/reserve'
 import { reportError } from '../../../shared/monitoring'
 import { AUDIT, diffSummary } from './audit'
 import { logAudit as logOrgAudit, auditCol, orgIndexRef, COLLECTION_READ_CAP } from '../../../shared/org/orgData'
+import { onReadError } from '../../../shared/org/readError'
 import { hptUpdate, hptSummary } from './hpt'
 import { formatAssetId } from './assetLogic'
 import { statsDeltaFor, accumulate } from './stats'
@@ -104,7 +105,11 @@ const logAudit = (orgId, actor, action, details = {}) =>
 
 export function subscribeAuditLogs(orgId, cb) {
   const q = query(auditCol(orgId), orderBy('at', 'desc'), limit(200))
-  return onSnapshot(q, (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))))
+  return onSnapshot(
+    q,
+    (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    onReadError('the fire audit log', cb),
+  )
 }
 
 // ── Stats counters (organizations/{orgId}/meta/stats) ────────────────────────
@@ -142,7 +147,13 @@ async function bumpStats(orgId, delta) {
 }
 
 export function subscribeStats(orgId, cb) {
-  return onSnapshot(statsRef(orgId), (snap) => cb(snap.exists() ? snap.data() : null))
+  return onSnapshot(
+    statsRef(orgId),
+    (snap) => cb(snap.exists() ? snap.data() : null),
+    // null, not [] — the dashboard reads this as one document and falls back to
+    // counting the loaded page when it is absent.
+    onReadError('the extinguisher counters', cb, null),
+  )
 }
 
 /** Full recompute from a one-time read of all extinguishers (admin Refresh / backfill). */
@@ -184,7 +195,11 @@ export { subscribeOrgUsers } from '../../../shared/org/orgData'
 
 /** Live org document. */
 export function subscribeOrg(orgId, cb) {
-  return onSnapshot(orgRef(orgId), (snap) => cb(snap.exists() ? { id: snap.id, ...snap.data() } : null))
+  return onSnapshot(
+    orgRef(orgId),
+    (snap) => cb(snap.exists() ? { id: snap.id, ...snap.data() } : null),
+    onReadError('the organization', cb, null),
+  )
 }
 
 // ── QR mirror ──────────────────────────────────────────────────────────────────
@@ -520,7 +535,11 @@ export const EXT_LOAD_CAP = COLLECTION_READ_CAP
 
 export function subscribeExtinguishers(orgId, cb, max = EXT_LOAD_CAP) {
   const q = query(extCol(orgId), orderBy('createdAt', 'desc'), limit(max))
-  return onSnapshot(q, (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))))
+  return onSnapshot(
+    q,
+    (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    onReadError('extinguishers', cb),
+  )
 }
 
 /**
@@ -659,7 +678,11 @@ function logReportCreated(orgId, report) {
 
 export function subscribeReports(orgId, cb) {
   const q = query(reportCol(orgId), orderBy('reportedAt', 'desc'), limit(COLLECTION_READ_CAP))
-  return onSnapshot(q, (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))))
+  return onSnapshot(
+    q,
+    (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    onReadError('defect reports', cb),
+  )
 }
 
 /**

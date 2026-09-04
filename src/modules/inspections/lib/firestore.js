@@ -17,7 +17,8 @@ import {
 } from 'firebase/firestore'
 import { db } from '../../../shared/firebase'
 import { reserveDocId } from '../../../shared/docId/reserve'
-import { logAudit as logOrgAudit } from '../../../shared/org/orgData'
+import { logAudit as logOrgAudit, COLLECTION_READ_CAP } from '../../../shared/org/orgData'
+import { onReadError } from '../../../shared/org/readError'
 
 // ── Path helpers ─────────────────────────────────────────────────────────────
 const templateCol = (orgId) => collection(db, 'organizations', orgId, 'inspectionTemplates')
@@ -41,8 +42,14 @@ export { subscribeOrgUsers } from '../../../shared/org/orgData'
 // ── Inspection templates ───────────────────────────────────────────────────────
 
 export function subscribeTemplates(orgId, cb) {
-  const q = query(templateCol(orgId), orderBy('createdAt', 'desc'))
-  return onSnapshot(q, (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))))
+  // The only uncapped listener left in this module, and templates carry their
+  // whole `fields` AND `assignments` arrays — so it is also the heaviest.
+  const q = query(templateCol(orgId), orderBy('createdAt', 'desc'), limit(COLLECTION_READ_CAP))
+  return onSnapshot(
+    q,
+    (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    onReadError('inspection templates', cb),
+  )
 }
 
 export async function addTemplate(orgId, data, actor) {
@@ -96,7 +103,11 @@ export async function deleteTemplate(orgId, id, label, actor) {
 
 export function subscribeRecords(orgId, cb) {
   const q = query(recordCol(orgId), orderBy('completedAt', 'desc'), limit(500))
-  return onSnapshot(q, (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))))
+  return onSnapshot(
+    q,
+    (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    onReadError('inspection records', cb),
+  )
 }
 
 export async function addRecord(orgId, record, actor) {

@@ -22,6 +22,7 @@ import {
   runTransaction,
 } from 'firebase/firestore'
 import { db } from '../../../shared/firebase'
+import { onReadError } from '../../../shared/org/readError'
 import { logAudit } from './firestore'
 import { AUDIT, diffSummary } from './audit'
 import { statsDeltaFor, emptyStats, BUCKETS } from './stats'
@@ -87,7 +88,11 @@ async function bumpStats(orgId, delta) {
 }
 
 export function subscribeStats(orgId, cb) {
-  return onSnapshot(statsRef(orgId), (snap) => cb(snap.exists() ? snap.data() : null))
+  return onSnapshot(
+    statsRef(orgId),
+    (snap) => cb(snap.exists() ? snap.data() : null),
+    onReadError('the incident counters', cb, null),
+  )
 }
 
 // ── Incident document ─────────────────────────────────────────────────────────
@@ -272,7 +277,14 @@ export async function getIncident(orgId, id) {
 export function subscribeIncidents(orgId, cb, max = INCIDENT_LOAD_CAP) {
   const q = query(incidentCol(orgId), orderBy('createdAt', 'desc'), limit(max))
   const opened = openSnapshots(orgId, SEALED, cb)
-  return onSnapshot(q, (snap) => opened(snap.docs.map((d) => ({ id: d.id, ...d.data() }))))
+  // The fallback goes to `cb`, not to `opened`: there is nothing to unseal, and
+  // routing an empty list through the decryption step would report a read
+  // failure as a decryption failure.
+  return onSnapshot(
+    q,
+    (snap) => opened(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    onReadError('incidents', cb),
+  )
 }
 
 /** Mark an incident closed (after horizontal-deployment step). */
@@ -360,7 +372,11 @@ export function subscribeIncidentPhotos(orgId, id, cb) {
   const opened = openSnapshots(orgId, SEALED_PHOTOS, (rows) => resolve(
     rows.map((r) => ({ ...r, dataUrl: r.dataUrl || r.url || '' })),
   ))
-  const stop = onSnapshot(q, (snap) => opened(snap.docs.map((d) => ({ id: d.id, ...d.data() }))))
+  const stop = onSnapshot(
+    q,
+    (snap) => opened(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    onReadError('incident photos', cb),
+  )
   return () => { resolve.stop(); stop() }
 }
 
