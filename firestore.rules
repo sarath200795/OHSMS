@@ -596,6 +596,76 @@ service cloud.firestore {
       return !('assetKind' in d) ? d.get('extId', '') : d.get('assetRefId', '');
     }
 
+    // ── What an equipment mirror may carry ────────────────────────────────────
+    //
+    // The union of every field the four mirror builders write —
+    // mirrorPayload, aedMirror, fasMirror and stretcherMirror in
+    // fire/lib/firestore.js. A union rather than four separate lists because
+    // the shapes overlap heavily and a per-kind split would be four places to
+    // forget instead of one.
+    //
+    // WHEN A MIRROR GAINS A FIELD, ADD IT HERE. Nothing in a diff will tell
+    // you: the write simply starts failing, and the symptom is a printed QR
+    // code that stops updating — found by whoever scans it, which is the worst
+    // place to find anything. `src/modules/fire/lib/mirrorFields.test.js`
+    // exists to make that impossible to miss: it calls the real builders and
+    // fails with this list quoted back at you.
+    function equipmentMirrorFields() {
+      return [
+        'orgId', 'orgName', 'token', 'status', 'updatedAt',
+        'centerName', 'region', 'entity', 'location',
+        // Extinguisher
+        'extId', 'serialNo', 'type', 'capacity', 'physicalDefects',
+        'dateOfDeployment', 'dateOfNextRefill', 'dateOfNextHPT',
+        // AED / FAS / stretcher
+        'assetKind', 'assetRefId', 'label', 'brand', 'model',
+        'batteryExpiry', 'padExpiry', 'lastInspection', 'nextInspection',
+        'deviceType', 'zone', 'lastService', 'nextService', 'amcVendor',
+        'stretcherType'
+      ];
+    }
+
+    // The same, for the permit mirror: fullMirror plus mirrorDisplayFields and
+    // mirrorStatusFields (ptw/lib/firestore.js, ptw/lib/publicPermit.js).
+    function permitMirrorFields() {
+      return [
+        'orgId', 'orgName', 'permitId', 'token', 'permitNo', 'docId', 'site',
+        // Display half — blanked, not removed, when the permit is withdrawn.
+        'typeOfWork', 'jobLocation', 'jobDescription', 'issuingDepartment',
+        'issuedToName', 'hazards', 'ppe', 'precautions', 'jsa',
+        'participantCount', 'fireWatcherCount', 'hasConfinedWatcher', 'withdrawn',
+        // Status half
+        'storedStatus', 'engineering', 'operations', 'closure', 'extension',
+        'closedDueToObservation', 'validFrom', 'validTo', 'updatedAt'
+      ];
+    }
+
+    /**
+     * The shape rule for an UPDATE, which cannot simply be the allow-list.
+     *
+     * A mirror written by an older build can carry a field the builders no
+     * longer produce — the permit mirror published `participants` and
+     * `fireWatchers` until S-07 replaced them with counts, and those documents
+     * are still out there. A plain hasOnly on the post-state would refuse every
+     * update to one of those forever, so it could never be corrected and never
+     * be WITHDRAWN. That is S-20 re-opened, on precisely the permits most
+     * likely to need withdrawing.
+     *
+     * So the grandfathering is PER KEY, not per document: every key in the
+     * post-state must be one the builders write, or one this document already
+     * had. A retired field rides along untouched; a new one is refused.
+     *
+     * It was two clauses first — conform to the list, OR add no key at all —
+     * and that was wrong in a way the tests caught. Withdrawing a legacy mirror
+     * BLANKS the display fields, which means writing jobDescription and
+     * issuedToName onto a document that never carried them. Under the
+     * either/or it failed both halves, so the one operation the escape hatch
+     * exists to protect was the one it refused.
+     */
+    function keepsMirrorShape(allowed) {
+      return request.resource.data.keys().hasOnly(allowed.concat(resource.data.keys()));
+    }
+
     /**
      * Does the asset this mirror names actually claim this token?
      *
@@ -629,18 +699,18 @@ service cloud.firestore {
       // /procedureQr has bound its mirror since it was written; these two were
       // the pair that never did.
       //
-      // Deliberately NOT a keys().hasOnly(). Four mirror shapes across five
-      // asset kinds would make it long, and it would have to be edited every
-      // time a mirror gains a field — the failure being a dead sticker on a
-      // wall, discovered by whoever scans it. Once the mirror is pinned to an
-      // asset the writer already owns, an over-wide payload only lets them
-      // vandalise their own equipment's public page, which the legitimate
-      // fields already allow.
+      // The shape is pinned as well as the identity, on BOTH create and update.
+      // Create alone would have been decorative: create a clean mirror, then
+      // update it with whatever you like. This is a world-readable document, so
+      // what it may contain is worth stating rather than inferring from
+      // whatever the writer happened to send.
       allow create: if isWriterOf(request.resource.data.orgId)
-        && mirrorsItsAsset(token, request.resource.data);
+        && mirrorsItsAsset(token, request.resource.data)
+        && request.resource.data.keys().hasOnly(equipmentMirrorFields());
       allow update: if resource != null
         && isWriterOf(resource.data.orgId)
-        && request.resource.data.orgId == resource.data.orgId;
+        && request.resource.data.orgId == resource.data.orgId
+        && keepsMirrorShape(equipmentMirrorFields());
       allow delete: if isWriterOf(resource.data.orgId);
     }
 
@@ -728,10 +798,12 @@ service cloud.firestore {
         && request.resource.data.get('permitId', '') is string
         && request.resource.data.get('permitId', '') != ''
         && getAfter(/databases/$(database)/documents/organizations/$(request.resource.data.orgId)/permits/$(request.resource.data.permitId))
-             .data.get('qrToken', '') == token;
+             .data.get('qrToken', '') == token
+        && request.resource.data.keys().hasOnly(permitMirrorFields());
       allow update: if resource != null
         && isWriterOf(resource.data.orgId)
-        && request.resource.data.orgId == resource.data.orgId;
+        && request.resource.data.orgId == resource.data.orgId
+        && keepsMirrorShape(permitMirrorFields());
       allow delete: if isWriterOf(resource.data.orgId);
     }
 
