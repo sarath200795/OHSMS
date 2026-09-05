@@ -2234,12 +2234,35 @@ async function querySource(source, dataset, orgId, detailed = false, range = nul
   const cardId = source.cards[dataset]
   let bound = []
   let parameters = []
+  let undescribed = false
   if (range) {
     try {
       const card = await describeCard(url.origin, cardId, source.apiKey)
       if (card) ({ parameters, bound } = buildDateParams(card, range))
+      else undescribed = true
     } catch (e) {
+      undescribed = true
       logger.warn('metabaseQuery: could not describe card', { orgId, dataset, source: source.id, error: e?.message || String(e) })
+    }
+  }
+
+  // ── Do not send a request we already know cannot succeed ───────────────────
+  //
+  // If the shape could not be read, any question with required date variables
+  // answers with "missing required parameters: #{"ed" "sd"}" — Metabase naming
+  // template tags nobody outside the SQL has heard of. The cause is almost
+  // always that the GET which reads those tags was refused, and the commonest
+  // reason for that is an expired API key. So say THAT instead, and say it
+  // before spending a warehouse query on a certain failure.
+  if (undescribed) {
+    logger.warn('metabaseQuery: shape unknown, refusing to run unbound', { orgId, dataset, source: source.id, cardId })
+    return {
+      ...tag,
+      ok: false,
+      reason: 'refused',
+      message: 'Could not read the question’s parameters from Metabase, so its date variables '
+        + 'cannot be filled in — the usual cause is an expired API key. Update the key in the '
+        + 'Connection settings and run this again.',
     }
   }
 
@@ -2331,18 +2354,47 @@ async function querySource(source, dataset, orgId, detailed = false, range = nul
  */
 const cardShapeCache = new Map()
 async function describeCard(origin, cardId, apiKey) {
-  const key = `${origin}#${cardId}`
+  // Keyed by the KEY as well as the card, so a rotation cannot be served a
+  // shape fetched under the old one. These keys expire every three days on the
+  // instance this was built against, and a cache that outlives the credential
+  // it was filled with is a cache that goes on being wrong after the fix.
+  const key = `${origin}#${cardId}#${fingerprint(apiKey)}`
   if (cardShapeCache.has(key)) return cardShapeCache.get(key)
+
+  // ── Only SUCCESS is cached ─────────────────────────────────────────────────
+  //
+  // This used to cache the failure too, and that turned one bad moment into a
+  // permanent one: an expired key made this 401, null went into the map, and
+  // every query from that instance then ran with NO parameters bound — long
+  // after the key was replaced. The question answers a bare POST with "missing
+  // required parameters: #{"ed" "sd"}", which names neither the key nor the
+  // cache, so nothing about the message points at what actually broke.
+  //
+  // A failure now simply returns null and is retried next time.
   let card = null
-  try {
-    const res = await metabaseFetch(cardUrl(origin, cardId), apiKey)
-    if (res.ok) {
-      const body = await res.json()
-      // Only the parameters are kept. The rest of a card document is the query
-      // itself — the warehouse's schema — and there is no reason to hold it.
-      card = { parameters: Array.isArray(body?.parameters) ? body.parameters : [] }
-    }
-  } catch { /* described below by not being described */ }
-  cardShapeCache.set(key, card)
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const res = await metabaseFetch(cardUrl(origin, cardId), apiKey)
+      if (res.ok) {
+        const body = await res.json()
+        // Only the parameters are kept. The rest of a card document is the query
+        // itself — the warehouse's schema — and there is no reason to hold it.
+        card = { parameters: Array.isArray(body?.parameters) ? body.parameters : [] }
+        break
+      }
+      // A 5xx here is the same flaky warehouse the query itself retries past.
+      // A 401 or 404 will fail identically twice, so it is not retried.
+      if (res.status < 500) break
+    } catch { /* retried, then reported by returning null */ }
+  }
+  if (card) cardShapeCache.set(key, card)
   return card
+}
+
+/** A short, non-reversible tag for a credential, so it can be a cache key. */
+function fingerprint(secret) {
+  let h = 5381
+  const s = String(secret || '')
+  for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0
+  return h.toString(36)
 }
