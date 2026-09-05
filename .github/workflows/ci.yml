@@ -33,6 +33,10 @@ jobs:
   # The dev tree is still reported, as a warning that never blocks, so it does
   # not become invisible again.
   #
+  # Both trees go through scripts/audit-gate.mjs, which parses the JSON report
+  # rather than reading npm's exit code — see the note on the Cloud Functions
+  # step below, and the retry in the script itself.
+  #
   # Blocking at HIGH via scripts/audit-gate.mjs, which allows a NAMED list of
   # advisories rather than lowering the threshold. The first version blocked at
   # critical only, because one unfixable high (xlsx) would have made the gate red
@@ -54,24 +58,44 @@ jobs:
       - name: Runtime dependencies (blocking)
         run: node scripts/audit-gate.mjs
 
-      - name: Cloud Functions (blocking)
+      - name: Cloud Functions dependencies
         working-directory: functions
-        # No allowlist here — the functions tree is clean at high, and it should
-        # stay that way. If this ever goes red, fix it rather than exempting it.
-        run: npm ci && npm audit --omit=dev --audit-level=high
+        run: npm ci
 
-      # Same reasoning as the moderate report in scripts/audit-gate.mjs: "does
-      # not block" was being implemented as "is not mentioned", and those are
-      # different things. The step above passes while the tree holds 8 moderate
-      # advisories that nothing has ever printed. Never fails.
-      - name: Cloud Functions, moderate and below (advisory only)
+      # Through audit-gate rather than a bare `npm audit --audit-level=high`.
+      # That command reads its verdict from npm's EXIT CODE, which is 1 both
+      # when the tree holds a high advisory and when the registry refuses to
+      # answer — opposite facts, reported identically. A 400 from the retiring
+      # quick-audit endpoint took this required check red on a branch that
+      # changed no dependency, no package.json and no lockfile.
+      #
+      # The allowlist for this tree is empty, deliberately: the functions tree
+      # is clean at high and should stay that way. If this goes red, fix it
+      # rather than exempting it.
+      - name: Cloud Functions (blocking)
+        run: node scripts/audit-gate.mjs functions
+
+      # "Does not block" must not be implemented as "is not mentioned": eleven
+      # advisories once sat in these trees with nothing ever printing them.
+      #
+      # These two were `npm audit || true`. Unable to fail, which was right —
+      # and unable to say anything reliable, which was not. `|| true` turned a
+      # registry error into an empty scan, which on screen is indistinguishable
+      # from a clean tree, and the output they printed came from the same
+      # retiring quick-audit endpoint the blocking steps just moved off. Through
+      # audit-gate they parse the same JSON report, group it by severity, and
+      # say so out loud when they could not check at all.
+      #
+      # Both widened from --omit=dev to the WHOLE tree, so the toolchain's own
+      # advisories are visible too. That is strictly more than either printed
+      # before, and it is the half no blocking step looks at.
+      - name: Cloud Functions, including tooling (advisory only)
         if: always()
-        working-directory: functions
-        run: npm audit --omit=dev || true
+        run: node scripts/audit-gate.mjs functions-all
 
       - name: Whole tree, including tooling (advisory only)
         if: always()
-        run: npm audit || true
+        run: node scripts/audit-gate.mjs root-all
 
   check:
     name: Lint, test & build
