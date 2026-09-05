@@ -87,18 +87,21 @@ const EMPTY_FILTER = {
 const defaultGroupBy = (view) => (view === 'tickets' ? 'region' : 'auditor')
 
 /**
- * The three readings of one audit, and why each is drawn the way it is.
+ * The two readings of one audit, and why each is drawn the way it is.
  *
- * They are three measurements of the SAME audits rather than three groups, so
- * they get the categorical slots in order and the pass mark gets a plain rule.
- * `toDate` is last and thinnest on purpose: it is the only one that moves
- * between refreshes without the estate changing, so it is context rather than
- * the line anyone should trend.
+ * They are two measurements of the SAME audits rather than two groups, so they
+ * get the categorical slots in order and the pass mark gets a plain rule.
+ *
+ * A third line used to run beside them — "To date", the centre's score as of
+ * today. It came off because it is the one figure here that the date pickers do
+ * not bound: it credits remediation from after the window and moves on every
+ * refresh, so on a chart of a chosen period it was answering a different
+ * question in the same visual language. Every line here is now the audits
+ * between the two dates and nothing else.
  */
 const TREND_SERIES = [
   { key: 'day0', label: 'On the day', color: '#2a78d6' },
   { key: 'n7', label: 'After 7 days', color: '#eb6834' },
-  { key: 'toDate', label: 'To date', color: '#1baf7a', dashed: true },
 ]
 
 /** A segmented control. Six grains is too many for a dropdown nobody opens. */
@@ -691,10 +694,8 @@ function TrendPanel({ trend, gran, source }) {
 
       <p className="mt-3 text-[11.5px] leading-relaxed text-ink-500">
         <b>On the day</b> credits no remediation. <b>After 7 days</b> re-scores a failed critical
-        checkpoint as a pass where its ticket closed within seven days of being raised.
-        <b> To date</b> credits every closure up to this refresh — it is the true current position,
-        and the only one of the three that moves without the estate changing, which is why it is
-        drawn as context rather than as the line to trend.
+        checkpoint as a pass where its ticket closed within seven days of being raised. Both are
+        measured from the audits between the dates you chose, and nothing outside them.
         {undated > 0 && (
           <> {undated.toLocaleString()} audit{undated === 1 ? ' carries' : 's carry'} no date and
           {undated === 1 ? ' is' : ' are'} in none of these buckets.</>
@@ -767,7 +768,7 @@ function RecoveryPanel({ recovery }) {
   return (
     <Panel
       title="What the 7-day window recovers"
-      subtitle="The same audits counted three times, as remediation is credited"
+      subtitle="The same audits counted twice, as remediation is credited"
     >
       <div className="space-y-4">
         {stages.map((st, i) => (
@@ -792,7 +793,8 @@ function RecoveryPanel({ recovery }) {
       </div>
       <p className="mt-4 text-[11.5px] leading-relaxed text-ink-500">
         A failed critical checkpoint counts as a pass once its ticket closes inside seven days of
-        being raised. The gap between the first two bars is what that window bought.
+        being raised. The gap between the two bars is what that window bought, across the audits
+        between the dates you chose.
       </p>
     </Panel>
   )

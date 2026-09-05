@@ -606,11 +606,17 @@ export function n7Of(row) {
 /**
  * The same again with every remediation to date credited, not just seven days.
  *
- * Deliberately NOT folded into n7Of. This is the only one of the three that
- * moves on its own: the audit is unchanged, but each refresh credits whatever
- * closed since the last one, so a chart trending it is measuring the refresh as
- * much as the estate. It is worth showing — it is the true current position —
- * and it is worth keeping visibly apart from the figure that holds still.
+ * ── Read, but no longer drawn ───────────────────────────────────────────────
+ *
+ * This is the one reading on the page that is NOT bounded by the dates the
+ * reader chose. `passPctToDate` is the centre's score as of today — it credits
+ * whatever closed since the audit, so it moves on every refresh while the
+ * window stands still. Beside two figures that do answer "what happened between
+ * these dates", a third that quietly answers "and where are we now" reads as
+ * the same kind of number and is not one.
+ *
+ * Kept as a mapped column because it costs nothing and a later panel may want
+ * it under a heading that says what it is. Nothing charts it today.
  */
 export function toDateOf(row) {
   if (isNum(row?.passPctToDate)) return row.passPctToDate
@@ -745,14 +751,12 @@ export function passTrend(auditRows = [], gran = 'month') {
     .map((g) => {
       const d0 = rate(g.rows, day0Of)
       const n7 = rate(g.rows, n7Of)
-      const td = rate(g.rows, toDateOf)
       return {
         key: g.key,
         label: g.label,
         audits: g.rows.length,
         day0: d0.rate, day0N: d0.n,
         n7: n7.rate, n7N: n7.n,
-        toDate: td.rate, toDateN: td.n,
         // The verdict counts the bars are drawn from. Taken after the seven-day
         // window where there is one, so the chart under the rate is the same
         // measurement as the rate.
@@ -1205,12 +1209,18 @@ export function auditorMatrix(auditRows = [], dimKey = 'region', { maxColumns = 
 }
 
 /**
- * The same audits counted three times: passing on the day, passing once the
- * seven-day window is credited, and passing with every closure to date.
+ * The same audits counted twice: passing on the day, and passing once the
+ * seven-day window is credited.
  *
- * An ordered progression rather than three groups, which is why the tab draws
- * it as one ramp. The denominator is shared and stated, because "2,157 passed"
+ * An ordered progression rather than two groups, which is why the tab draws it
+ * as one ramp. The denominator is shared and stated, because "2,157 passed"
  * means nothing without the 3,242 it is out of.
+ *
+ * A third stage used to sit on the end — "Passed to date", from the centre's
+ * score as of today. It came off because it is not bounded by the reader's
+ * dates: it credits remediation that happened after the window and moves on
+ * every refresh, so it answered a different question than the two beside it
+ * while looking identical. See toDateOf.
  */
 export function recoveryStages(rows = []) {
   const count = (read) => {
@@ -1226,18 +1236,16 @@ export function recoveryStages(rows = []) {
   }
   const d0 = count(day0Of)
   const n7 = count(n7Of)
-  const td = count(toDateOf)
   // The denominator is the largest of the three: an audit carrying a day-0
   // score but no to-date one still happened, and dividing the later stages by
   // their own smaller n would draw recovery that did not occur.
-  const total = Math.max(d0.n, n7.n, td.n)
+  const total = Math.max(d0.n, n7.n)
   const stage = (label, c) => ({ label, passed: c.p, scored: c.n, rate: total ? pct((c.p / total) * 100) : null })
   return {
     total,
     stages: [
       stage('Passed on the day', d0),
       stage('Passed after 7 days', n7),
-      ...(td.n ? [stage('Passed to date', td)] : []),
     ],
   }
 }

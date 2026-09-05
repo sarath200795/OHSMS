@@ -105,11 +105,23 @@ describe('passTrend', () => {
     expect(series[0].n7).toBe(100)
   })
 
-  it('carries all three readings side by side', () => {
+  it('carries both readings side by side', () => {
     const { series } = passTrend([
       audit({ auditDate: '2026-03-10', passPct: 80, passPctN7: 95, passPctToDate: 100 }),
     ], 'month')
-    expect(series[0]).toMatchObject({ day0: 0, n7: 100, toDate: 100 })
+    expect(series[0]).toMatchObject({ day0: 0, n7: 100 })
+  })
+
+  it('does NOT carry the to-date reading, whatever the row holds', () => {
+    // The whole page is bounded by the dates the reader picked. passPctToDate
+    // is the centre's score as of today: it credits remediation from after the
+    // window and moves on every refresh, so on a chart of a chosen period it
+    // answered a different question in identical visual language.
+    const { series } = passTrend([
+      audit({ auditDate: '2026-03-10', passPct: 80, passPctN7: 95, passPctToDate: 100 }),
+    ], 'month')
+    expect(series[0]).not.toHaveProperty('toDate')
+    expect(series[0]).not.toHaveProperty('toDateN')
   })
 })
 
@@ -300,33 +312,34 @@ describe('filterOdinRows, on the estate dimensions', () => {
 // ── The FLS dashboard's own arithmetic ───────────────────────────────────────
 
 describe('recoveryStages', () => {
-  it('counts the same audits three times as remediation is credited', () => {
+  it('counts the same audits twice as remediation is credited', () => {
     const r = recoveryStages([
       audit({ passPct: 80, passPctN7: 95, passPctToDate: 95 }),
       audit({ passPct: 95, passPctN7: 95, passPctToDate: 100 }),
       audit({ passPct: 40, passPctN7: 60, passPctToDate: 92 }),
     ])
     expect(r.total).toBe(3)
+    // No third stage, even though every row carries a to-date score: it is
+    // not bounded by the window the reader chose. See toDateOf.
     expect(r.stages.map((s) => [s.label, s.passed])).toEqual([
       ['Passed on the day', 1],
       ['Passed after 7 days', 2],
-      ['Passed to date', 3],
     ])
   })
 
-  it('divides every stage by the same denominator', () => {
+  it('divides both stages by the same denominator', () => {
     // Dividing a later stage by its own smaller n would draw recovery that did
-    // not happen — an audit missing a to-date score still took place.
+    // not happen — an audit missing an N+7 score still took place.
     const r = recoveryStages([
-      audit({ passPct: 95, passPctN7: 95, passPctToDate: null }),
-      audit({ passPct: 95, passPctN7: 95, passPctToDate: 100 }),
+      audit({ passPct: 95, passPctN7: null }),
+      audit({ passPct: 95, passPctN7: 95 }),
     ])
     expect(r.total).toBe(2)
-    expect(r.stages.find((s) => s.label === 'Passed to date').rate).toBe(50)
+    expect(r.stages.find((s) => s.label === 'Passed after 7 days').rate).toBe(50)
   })
 
-  it('drops the to-date stage entirely when nothing carries one', () => {
-    const r = recoveryStages([audit({ passPct: 95, passPctN7: 95, passPctToDate: null })])
+  it('never adds a to-date stage, even when every row carries one', () => {
+    const r = recoveryStages([audit({ passPct: 95, passPctN7: 95, passPctToDate: 100 })])
     expect(r.stages.map((s) => s.label)).toEqual(['Passed on the day', 'Passed after 7 days'])
   })
 
