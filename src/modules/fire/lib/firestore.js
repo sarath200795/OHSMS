@@ -16,6 +16,7 @@ import {
   onSnapshot,
   serverTimestamp,
   writeBatch as _writeBatch,
+  runTransaction as _runTransaction,
   limit,
   increment,
 } from 'firebase/firestore'
@@ -37,16 +38,23 @@ const addDoc = (...args) => { assertWritable(); return _addDoc(...args) }
 const updateDoc = (...args) => { assertWritable(); return _updateDoc(...args) }
 const deleteDoc = (...args) => { assertWritable(); return _deleteDoc(...args) }
 const writeBatch = (...args) => { assertWritable(); return _writeBatch(...args) }
+// Wrapped like its neighbours, and not optional: a transaction writes through
+// none of the primitives above, so the demo guard would have had a hole in it
+// the size of every transactional path added from here on.
+const runTransaction = (...args) => { assertWritable(); return _runTransaction(...args) }
 import { generateQrToken, tokenFromQrValue } from './qr'
-import { STATUS, REFILL_DEFECT_KEYS, DEFECT_BY_KEY } from './constants'
+import { STATUS, DEFECT_BY_KEY } from './constants'
 import { lockId, duplicateDefectMessage } from './defectLock'
 import { putFile, removeFile, MAX_INLINE_BYTES, tooLargeForInline } from '../../../shared/storage'
-import { reserveDocId } from '../../../shared/docId/reserve'
+import { reserveDocId, reserveSeq } from '../../../shared/docId/reserve'
 import { reportError } from '../../../shared/monitoring'
 import { AUDIT, diffSummary } from './audit'
 import { logAudit as logOrgAudit, auditCol, orgIndexRef, COLLECTION_READ_CAP } from '../../../shared/org/orgData'
+import { onReadError } from '../../../shared/org/readError'
 import { hptUpdate, hptSummary } from './hpt'
+import { formatAssetId } from './assetLogic'
 import { statsDeltaFor, accumulate } from './stats'
+import { reportEffect } from './reportEffect'
 // Mock drills name the incident commander, the people alerted, and what the
 // debrief said about them. Sealed under the GENERAL class — every approved
 // member may read a drill record. What stays readable is what the scorecard and
@@ -97,7 +105,11 @@ const logAudit = (orgId, actor, action, details = {}) =>
 
 export function subscribeAuditLogs(orgId, cb) {
   const q = query(auditCol(orgId), orderBy('at', 'desc'), limit(200))
-  return onSnapshot(q, (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))))
+  return onSnapshot(
+    q,
+    (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    onReadError('the fire audit log', cb),
+  )
 }
 
 // ── Stats counters (organizations/{orgId}/meta/stats) ────────────────────────
@@ -135,7 +147,13 @@ async function bumpStats(orgId, delta) {
 }
 
 export function subscribeStats(orgId, cb) {
-  return onSnapshot(statsRef(orgId), (snap) => cb(snap.exists() ? snap.data() : null))
+  return onSnapshot(
+    statsRef(orgId),
+    (snap) => cb(snap.exists() ? snap.data() : null),
+    // null, not [] — the dashboard reads this as one document and falls back to
+    // counting the loaded page when it is absent.
+    onReadError('the extinguisher counters', cb, null),
+  )
 }
 
 /** Full recompute from a one-time read of all extinguishers (admin Refresh / backfill). */
@@ -177,7 +195,11 @@ export { subscribeOrgUsers } from '../../../shared/org/orgData'
 
 /** Live org document. */
 export function subscribeOrg(orgId, cb) {
-  return onSnapshot(orgRef(orgId), (snap) => cb(snap.exists() ? { id: snap.id, ...snap.data() } : null))
+  return onSnapshot(
+    orgRef(orgId),
+    (snap) => cb(snap.exists() ? { id: snap.id, ...snap.data() } : null),
+    onReadError('the organization', cb, null),
+  )
 }
 
 // ── QR mirror ──────────────────────────────────────────────────────────────────
@@ -513,7 +535,11 @@ export const EXT_LOAD_CAP = COLLECTION_READ_CAP
 
 export function subscribeExtinguishers(orgId, cb, max = EXT_LOAD_CAP) {
   const q = query(extCol(orgId), orderBy('createdAt', 'desc'), limit(max))
-  return onSnapshot(q, (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))))
+  return onSnapshot(
+    q,
+    (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    onReadError('extinguishers', cb),
+  )
 }
 
 /**
@@ -652,7 +678,11 @@ function logReportCreated(orgId, report) {
 
 export function subscribeReports(orgId, cb) {
   const q = query(reportCol(orgId), orderBy('reportedAt', 'desc'), limit(COLLECTION_READ_CAP))
-  return onSnapshot(q, (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))))
+  return onSnapshot(
+    q,
+    (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    onReadError('defect reports', cb),
+  )
 }
 
 /**
@@ -662,29 +692,62 @@ export function subscribeReports(orgId, cb) {
  *  - status_change                → set the requested status
  */
 export async function approveReport(orgId, orgName, report, reviewerName, actor) {
-  const ext = await getExtinguisher(orgId, report.extId)
-  if (!ext) throw new Error('Extinguisher no longer exists')
+  // ── Why this is a transaction and not two awaits ────────────────────────────
+  //
+  // It used to getExtinguisher(), build a Set of physicalDefects and write the
+  // whole array back through updateExtinguisher. Two approvers working the
+  // pending queue — which is how that screen is used — each read the same array
+  // and each wrote their own version, so one reported fault was silently lost
+  // and `status` might never flip to TO_BE_REFILLED. Both are safety-visible:
+  // the fault stops being on the unit's record, and the unit stops being in the
+  // refill queue.
+  //
+  // arrayUnion() alone would not have been enough. The mirror payload and the
+  // stats delta are both derived from a locally merged object, and a sentinel
+  // passed through those would poison the public QR page and the dashboard
+  // counters. Reading inside the transaction keeps the merge a plain object and
+  // makes it current at the same time.
+  //
+  // The REPORT is read here too, so approving the same one twice is refused
+  // rather than double-counted into meta/stats — the defect set is idempotent
+  // but the counters are not.
+  const extReference = extRef(orgId, report.extId)
+  const reportReference = reportRef(orgId, report.id)
+  let before = null
+  let merged = null
 
-  const updates = {}
-  if (report.kind === 'defect' && report.defectType) {
-    const defects = new Set(ext.physicalDefects || [])
-    defects.add(report.defectType)
-    updates.physicalDefects = Array.from(defects)
-    if (REFILL_DEFECT_KEYS.includes(report.defectType) && ext.status !== STATUS.CLOSED) {
-      updates.status = STATUS.TO_BE_REFILLED
+  await runTransaction(db, async (tx) => {
+    const rSnap = await tx.get(reportReference)
+    if (!rSnap.exists()) throw new Error('That report no longer exists.')
+    if (rSnap.data().approvalStatus === 'approved') {
+      throw new Error('That report has already been approved.')
     }
-  } else if (report.kind === 'status_change' && report.newStatus) {
-    updates.status = report.newStatus
-  }
+    const eSnap = await tx.get(extReference)
+    if (!eSnap.exists()) throw new Error('Extinguisher no longer exists')
+
+    before = eSnap.data()
+    const updates = reportEffect(before, report)
+    merged = { ...before, ...updates }
+
+    tx.update(extReference, { ...updates, updatedAt: serverTimestamp() })
+    // The public QR page, in the same write. A mirror that lands without its
+    // extinguisher tells whoever scans the label the wrong thing about a unit
+    // they are standing in front of.
+    if (merged.qrToken) {
+      tx.set(qrRef(merged.qrToken), mirrorPayload(orgId, orgName, report.extId, merged))
+    }
+    tx.update(reportReference, {
+      approvalStatus: 'approved',
+      reviewedBy: reviewerName || '',
+      reviewedAt: serverTimestamp(),
+    })
+  })
 
   const reviewer = actor || { name: reviewerName }
-  // Apply silently (no generic edit audit); we log the approve below.
-  await updateExtinguisher(orgId, orgName, report.extId, updates, { silent: true })
-  await updateDoc(reportRef(orgId, report.id), {
-    approvalStatus: 'approved',
-    reviewedBy: reviewerName || '',
-    reviewedAt: serverTimestamp(),
-  })
+  // Outside the transaction deliberately: bumpStats is a counter increment that
+  // swallows its own failures, and a stats write that could abort the approval
+  // would make the dashboard more important than the safety record.
+  await bumpStats(orgId, statsDeltaFor(before, merged))
   const what = report.kind === 'defect' ? `defect (${report.defectType})` : `status → ${report.newStatus}`
   await logAudit(orgId, reviewer, AUDIT.REPORT_APPROVE, {
     target: 'report',
@@ -1049,10 +1112,54 @@ export function subscribeMockDrills(orgId, cb) {
 export async function addMockDrill(orgId, data, actor) {
   const { photos = [], ...rest } = data
   const valid = (Array.isArray(photos) ? photos : []).filter((p) => typeof p === 'string' && p.startsWith('data:'))
+
+  // ── The evidence goes first, and the count is what actually landed ──────────
+  //
+  // The drill document used to be written with `photoCount: valid.length`
+  // BEFORE the upload loop — two sequential awaits per photo, any of which can
+  // throw. A failure part-way left a drill claiming more evidence than was
+  // stored, and MockDrills gates the fetch on `photoCount > 0`, so the viewer
+  // sat waiting for photographs that would never arrive. Meanwhile the caller
+  // was told the save had failed, for a drill that was saved.
+  //
+  // Reversed, so the count cannot be a promise the record fails to keep. The
+  // photos are written into the subcollection of an id reserved up front —
+  // Firestore does not require the parent to exist first — and the drill
+  // document is written LAST, from the number that survived.
+  const ref = doc(drillCol(orgId))
+
+  // Parallel, and each photo owns its own failure. Sequentially, one unreadable
+  // capture ended the loop and abandoned every photo behind it; the person who
+  // ran the drill loses the rest of their evidence to the one that failed.
+  const stored = await Promise.all(valid.map(async (dataUrl) => {
+    try {
+      const up = await putFile(orgId, 'drill-evidence', dataUrl, 'evidence.jpg', { collection: SEALED_DRILL_PHOTOS })
+      // The pointer AND the bytes are sealed — policy.js sets `files: true` for
+      // mockDrills/photos, and putFile honours it. This comment used to say the
+      // bucket object was left in the clear because sealing it would hand an
+      // <img> a URL pointing at ciphertext; that stopped being true when the
+      // decryption moved into shared/storage/resolveFiles.js, which is the seam
+      // getMockDrillPhotos reads through.
+      await addDoc(drillPhotoCol(orgId, ref.id), up
+        ? {
+          url: up.url,
+          path: up.path,
+          createdAt: serverTimestamp(),
+          ...(up.encIv ? { encScheme: up.encScheme, encKeyId: up.encKeyId, encIv: up.encIv, ...(up.encWrapped ? { encWrapped: up.encWrapped } : {}) } : {}),
+        }
+        : await sealDoc(orgId, SEALED_DRILL_PHOTOS, { dataUrl, createdAt: serverTimestamp() }))
+      return true
+    } catch (e) {
+      reportError(e, { source: 'fire.addMockDrill.photo', orgId })
+      return false
+    }
+  }))
+  const savedPhotos = stored.filter(Boolean).length
+
   // Strip undefined values — Firestore rejects them.
   const payload = JSON.parse(JSON.stringify({
     ...rest,
-    photoCount: valid.length,
+    photoCount: savedPhotos,
     loggedBy: actor?.name || '',
     createdAt: null, // placeholder; replaced by serverTimestamp below
   }))
@@ -1063,26 +1170,7 @@ export async function addMockDrill(orgId, data, actor) {
   // data would be harmless but the ORDER matters the other way round — a
   // payload sealed first and then passed through JSON would still be sealed,
   // while an unsealed `undefined` reaching Firestore is a rejected write.
-  const ref = await addDoc(drillCol(orgId), await sealDoc(orgId, SEALED_DRILLS, payload))
-  // Evidence photos, one doc each (fetched on demand when viewing / printing).
-  // Cloud storage first — the photo doc then holds a URL instead of ~700KB of
-  // base64 — falling back to the inline form when the bucket is unavailable.
-  for (const dataUrl of valid) {
-    const up = await putFile(orgId, 'drill-evidence', dataUrl, 'evidence.jpg', { collection: SEALED_DRILL_PHOTOS })
-    // Only the INLINE copy is sealed. The bucket object is not — the recorder,
-    // the detail modal and the printed report all render `.dataUrl` (normalised
-    // from `.url` by getMockDrillPhotos) straight into an <img>, so sealing the
-    // object would show a broken picture everywhere with nothing to explain it.
-    // Written up above the table in src/shared/crypto/policy.js.
-    await addDoc(drillPhotoCol(orgId, ref.id), up
-      ? {
-        url: up.url,
-        path: up.path,
-        createdAt: serverTimestamp(),
-        ...(up.encIv ? { encScheme: up.encScheme, encKeyId: up.encKeyId, encIv: up.encIv, ...(up.encWrapped ? { encWrapped: up.encWrapped } : {}) } : {}),
-      }
-      : await sealDoc(orgId, SEALED_DRILL_PHOTOS, { dataUrl, createdAt: serverTimestamp() }))
-  }
+  await setDoc(ref, await sealDoc(orgId, SEALED_DRILLS, payload))
   await logAudit(orgId, actor, 'mockdrill.create', {
     module: 'drills',
     target: 'mockdrill',
@@ -1090,7 +1178,10 @@ export async function addMockDrill(orgId, data, actor) {
     targetLabel: `${data.scenario} @ ${data.centerName || '—'}`,
     summary: `${data.eventType}: ${data.scenario} (score ${data.score}%) @ ${data.centerName || '—'}`,
   })
-  return ref.id
+  // The shortfall is RETURNED, not swallowed. A drill saved with four of five
+  // photographs is a success the person recording it still needs to know about,
+  // while they are still standing where they took them.
+  return { id: ref.id, photosRequested: valid.length, photosSaved: savedPhotos }
 }
 
 /**
@@ -1650,6 +1741,27 @@ export async function decideAssetReport(orgId, report, approve, reviewerName, ac
 // 500-op Firestore batch limit.
 const BULK_CHUNK = 200
 
+/**
+ * Reserve `count` asset ids for a register, in one transaction.
+ *
+ * These were computed in the browser: nextAssetId() took the highest number in
+ * the loaded list and added one. Two people opening Add AED at the same moment
+ * both got AED-0042, and generateAll handed out base+1+i for a whole batch with
+ * no reservation at all — while the list it counted from is itself truncated at
+ * COLLECTION_READ_CAP, so a unit past the cap was invisible to the arithmetic.
+ * assetId is the handle printed on the QR label, and nothing downstream dedupes.
+ *
+ * `floor` is the highest number the caller can see, which is what seeds a
+ * counter starting at zero against a register full of assets numbered before it
+ * existed. On a register already past the read cap that floor can understate on
+ * the FIRST reservation; the counter is monotonic, so it self-corrects from
+ * there and cannot drift again. That is a one-time edge in place of a collision
+ * on every concurrent add.
+ */
+export async function reserveAssetIds(orgId, kind, prefix, { count = 1, floor = 0 } = {}) {
+  const first = await reserveSeq(orgId, kind, { count, floor })
+  return Array.from({ length: count }, (_, i) => formatAssetId(prefix, first + i))
+}
 export async function bulkAddAeds(orgId, orgName, rows, actor) {
   let created = 0
   for (let i = 0; i < rows.length; i += BULK_CHUNK) {

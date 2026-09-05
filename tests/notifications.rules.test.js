@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { beforeAll, afterAll, beforeEach, describe, it } from 'vitest'
 import { initializeTestEnvironment, assertFails, assertSucceeds } from '@firebase/rules-unit-testing'
-import { doc, getDoc, getDocs, collection, query, where, setDoc } from 'firebase/firestore'
+import { doc, getDoc, getDocs, collection, query, where, setDoc, updateDoc, deleteDoc } from 'firebase/firestore'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const PROJECT_ID = 'ohsms-demo'
@@ -166,15 +166,60 @@ describe('the exclusion is surgical', () => {
   })
 })
 
-// Only the read was narrowed. Writes still fall through to the generic rule,
-// deliberately: a client write here creates a ledger row that suppresses a mail
-// it can no longer read back, which is a nuisance rather than a disclosure, and
-// closing it is a different change with a different blast radius.
-describe('the write path is untouched', () => {
-  it('a member can still create a row, and still cannot read one back', async () => {
-    const db = as('member1')
-    const mine = doc(db, 'organizations', ORG, 'notifications', 'written-by-client')
-    await assertSucceeds(setDoc(mine, { kind: 'test', uid: 'member1', subject: 'x', status: 'sent' }))
-    await assertFails(getDoc(mine))
+// The write path is closed too, and this block used to assert the opposite.
+//
+// Leaving it open was recorded as a deliberate deferral — "a nuisance rather
+// than a disclosure" — and that reading held only while nothing sends mail. The
+// moment a sender exists, a member can pre-seed a ledger row that suppresses a
+// notification they are not allowed to read, which for an escalation or an
+// approval is the notification most worth suppressing. A grant that is only
+// wrong later is still the kind nobody notices, because nothing fails while it
+// waits.
+//
+// The immediate half is duller and needs no future writer: an unbounded write
+// channel into a collection with no reader. No screen would ever look wrong,
+// and the only evidence would arrive on the bill.
+describe('no client may write a notification', () => {
+  const fresh = (db) => doc(db, 'organizations', ORG, 'notifications', 'written-by-client')
+
+  it('refuses a member creating one', async () => {
+    await assertFails(
+      setDoc(fresh(as('member1')), { kind: 'test', uid: 'member1', subject: 'x', status: 'sent' })
+    )
+  })
+
+  it('refuses a manager', async () => {
+    await assertFails(setDoc(fresh(as('manager1')), { kind: 'test', status: 'sent' }))
+  })
+
+  it('refuses an admin — this is the server’s ledger, not the organization’s', async () => {
+    await assertFails(setDoc(fresh(as('admin1')), { kind: 'test', status: 'sent' }))
+  })
+
+  it('refuses claiming the hash of a send that has not happened yet', async () => {
+    // The suppression, concretely: sendOnce() claims the row before it sends,
+    // so a row already at that id is how a mail is skipped. Pre-claiming one is
+    // the whole attack, and it needs no future code to be worth refusing now.
+    await assertFails(
+      setDoc(doc(as('member1'), 'organizations', ORG, 'notifications', 'not-yet-sent'),
+        { kind: 'injury.reported', status: 'sent' })
+    )
+  })
+
+  it('refuses an update to a row the server wrote', async () => {
+    await assertFails(updateDoc(row(as('member1')), { status: 'suppressed' }))
+  })
+
+  it('refuses a delete — removing the evidence a mail was sent', async () => {
+    await assertFails(deleteDoc(row(as('manager1'))))
+  })
+
+  it('refuses a write nested under a ledger row, which is the other way in', async () => {
+    // The generic rule has a recursive {sub=**} twin, and an exclusion covering
+    // only the top level would leave the wildcard granting the same write one
+    // path segment deeper — the read-side mistake this file already tests for.
+    await assertFails(
+      setDoc(doc(as('member1'), 'organizations', ORG, 'notifications', 'abc123', 'attempts', 'a2'), { n: 1 })
+    )
   })
 })

@@ -1,4 +1,5 @@
 import { EMERGENCY_TEAMS, getFireSourceLabel, getMedicalIncidentLabel } from '../lib/mockDrillTemplates'
+import { safeSrc } from '../../../shared/safeUrl'
 
 // Print-only formatted report for a single mock-drill / emergency record.
 // Rendered off-screen in MockDrills.jsx and captured by react-to-print.
@@ -192,7 +193,7 @@ export default function MockDrillReport({ record }) {
           <h2 className="mb-2 inline-block border border-gray-400 bg-gray-200 px-1 text-sm font-bold uppercase">6. Evidence Photos</h2>
           <div className="flex flex-wrap gap-3">
             {r.photos.map((src, i) => (
-              <img key={i} src={src} alt={`Evidence ${i + 1}`} className="rounded border border-gray-400 object-contain" style={{ height: '46mm', maxWidth: '31%' }} />
+              <img key={i} src={safeSrc(src)} alt={`Evidence ${i + 1}`} className="rounded border border-gray-400 object-contain" style={{ height: '46mm', maxWidth: '31%' }} />
             ))}
           </div>
         </div>

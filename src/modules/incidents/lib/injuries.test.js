@@ -75,6 +75,10 @@ vi.mock('firebase/firestore', async (importOriginal) => {
         data: () => fake.store.get(ref.path),
       }),
       set: (ref, data, opts) => write(ref, data, opts),
+      // Mirrors updateDoc above. updateIncident moved into a transaction so its
+      // stats delta is computed from the state it actually wrote against —
+      // without this the mock silently lacked the method the code now calls.
+      update: (ref, data) => write(ref, data, { merge: true }),
     }),
   }
 })

@@ -175,6 +175,7 @@ export async function syncIncidentInjuries(orgId, incident, reports = [], actor)
     console.warn('[Incident IRA] injury snapshot skipped:', e?.message || e)
   }
   const keep = new Set()
+  const pending = []
   for (const r of reports) {
     // No key, no record: the doc id is built from it, so an entry without one
     // cannot be stored or found again. Callers must supply a personId.
@@ -182,12 +183,30 @@ export async function syncIncidentInjuries(orgId, incident, reports = [], actor)
     const id = injuryId(incident.id, r.personId)
     keep.add(id)
     if (verified.has(id)) continue // never overwrite a verified injury report
-    await setDoc(injuryRef(orgId, id), await sealDoc(orgId, SEALED, injuryPayload(incident, r)), { merge: true })
+    pending.push({ id, report: r })
   }
+
+  // Sealed and written in PARALLEL. Each of these is an RSA unwrap plus an AES
+  // seal per field and then a round trip, and they were awaited one after
+  // another — so a fifteen-casualty incident was fifteen sequential seals and
+  // fifteen sequential writes, with somebody watching a spinner at the end of
+  // the worst day their site has had. The records are independent: one per
+  // person, each at its own deterministic id, none reading another.
+  //
+  // Still not atomic, and this does not pretend otherwise — a failure part-way
+  // leaves some people recorded and some not. Making it atomic means a
+  // transaction over a variable number of documents, which is a different
+  // change; doing them together at least makes the window narrow instead of
+  // proportional to the casualty count.
+  await Promise.all(pending.map(async ({ id, report }) => {
+    await setDoc(injuryRef(orgId, id), await sealDoc(orgId, SEALED, injuryPayload(incident, report)), { merge: true })
+  }))
   // Cleanup: delete injury docs for this incident whose person was removed
   // (but keep verified ones for the record).
   try {
-    for (const d of existing) if (!keep.has(d.id) && !verified.has(d.id)) await deleteDoc(d.ref)
+    await Promise.all(existing
+      .filter((d) => !keep.has(d.id) && !verified.has(d.id))
+      .map((d) => deleteDoc(d.ref)))
   } catch (e) {
     // eslint-disable-next-line no-console
     console.warn('[Incident IRA] injury cleanup skipped:', e?.message || e)

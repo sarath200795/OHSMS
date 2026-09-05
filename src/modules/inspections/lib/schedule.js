@@ -69,7 +69,17 @@ const getRecordScheduleDate = (record) => {
  * occurrences up to rangeEnd. Slots already satisfied by a past record are
  * skipped. Returns [{ date, dateString, alertStartString }].
  */
-export const getPendingOccurrences = ({ assignedFrom, assignedTo, frequency, pastRecords = [], rangeEnd }) => {
+// How far back a recurring cycle is expanded. A quarter: far enough that a
+// missed monthly or weekly inspection is still on the schedule to be caught up,
+// short enough that a Daily template assigned years ago cannot bury the list.
+export const LOOKBACK_DAYS = 90
+
+// Bound on the fast-forward to the lookback floor. Daily over a decade is ~3650
+// steps of trivial date arithmetic; this is the guard against a frequency that
+// somehow fails to advance, not a budget anybody should reach.
+const MAX_STEPS = 20000
+
+export const getPendingOccurrences = ({ assignedFrom, assignedTo, frequency, pastRecords = [], rangeEnd, today }) => {
   // An on-demand form has no cycle to expand, and this guard is what makes that
   // true rather than merely intended: addFrequencyToDate falls back to +1 month
   // for any frequency it does not recognise, so without this the loop below
@@ -84,7 +94,37 @@ export const getPendingOccurrences = ({ assignedFrom, assignedTo, frequency, pas
   if (!effectiveRangeEnd || isNaN(effectiveRangeEnd.getTime())) return []
 
   const completedSlots = new Set(pastRecords.map(getRecordScheduleDate).filter(Boolean))
+
+  // ── How far back the expansion reaches ─────────────────────────────────────
+  //
+  // The cursor started at assignedFrom and walked forward one interval at a
+  // time, pushing every occurrence nobody had recorded. A Daily template
+  // assigned three years ago therefore produced roughly a thousand overdue
+  // tasks for that one template — and then stopped at the safety counter, so
+  // the result was both enormous and incomplete, with nothing saying either.
+  //
+  // An inspection missed in 2023 is not work to schedule today; it is a gap in
+  // the record, and the records screen is where that question is asked. So the
+  // expansion begins at the later of assignedFrom and the lookback floor,
+  // advanced ALONG THE FREQUENCY GRID so the dates still line up with the real
+  // schedule rather than with today.
+  // `today` is PASSED IN rather than read from the clock. This file is pure
+  // date math and every other function in it is; reaching for new Date() here
+  // would make the one function with a lookback the only one that cannot be
+  // tested at a fixed point in time, which is exactly where an off-by-a-day
+  // hides. buildScheduledTasks already has today and hands it down.
   let cursor = new Date(startDate)
+  const now = today instanceof Date ? today : parseDateOnly(today) || new Date()
+  const floor = subtractDays(parseDateOnly(formatDateOnly(now)), LOOKBACK_DAYS)
+  let skips = 0
+  while (cursor < floor && skips < MAX_STEPS) {
+    const next = addFrequencyToDate(cursor, frequency)
+    // A frequency that does not advance would spin here forever.
+    if (!(next > cursor)) break
+    cursor = next
+    skips += 1
+  }
+
   let safety = 0
   const occurrences = []
 
@@ -105,6 +145,14 @@ export const getPendingOccurrences = ({ assignedFrom, assignedTo, frequency, pas
     cursor = addFrequencyToDate(cursor, frequency)
     safety += 1
     if (cursor > effectiveRangeEnd && (!endDate || cursor > endDate)) break
+  }
+
+  // Silent truncation is how a short list gets mistaken for a complete one.
+  if (safety >= 1000) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[OHS MS] inspection schedule truncated at 1000 occurrences for a ${frequency} cycle from ${assignedFrom} — the list shown is incomplete.`,
+    )
   }
 
   return occurrences
@@ -226,6 +274,7 @@ export const buildScheduledTasks = ({ templates, records, currentMonth }) => {
         frequency: t.frequency,
         pastRecords,
         rangeEnd,
+        today: todayDate,
       }).forEach((occ) => {
         tasks.push({
           templateId: t.id,
@@ -259,6 +308,16 @@ export const buildScheduledTasks = ({ templates, records, currentMonth }) => {
         template: t,
       }
       if (!a.frequency) {
+        // A one-off that has been DONE drops off, even if its assignment was
+        // never flipped to Completed.
+        //
+        // Belt and braces on purpose. Execute now patches the assignment after
+        // the record lands, but that patch is a second write and can fail on
+        // its own — and the recurring branch below has always been saved by its
+        // record check while this branch had none at all. So a completed
+        // one-off inspection stayed Pending forever and kept rolling into
+        // overdueTasks, which is the list people work from.
+        if (records.some((r) => r.assignmentId === a.id)) return
         tasks.push({
           ...base,
           frequency: 'One-off',
@@ -277,6 +336,7 @@ export const buildScheduledTasks = ({ templates, records, currentMonth }) => {
         frequency: a.frequency,
         pastRecords: pastForAssignment,
         rangeEnd,
+        today: todayDate,
       }).forEach((occ) => {
         tasks.push({
           ...base,

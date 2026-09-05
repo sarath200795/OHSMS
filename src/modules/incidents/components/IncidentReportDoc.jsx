@@ -203,7 +203,7 @@ const IncidentReportDoc = forwardRef(function IncidentReportDoc({ incident, phot
                 <div key={inv.id || i} className={i > 0 ? 'mt-5 border-t border-ink-200 pt-4' : ''}>
                   <Field label="Method" value={INVESTIGATION_METHOD_BY_KEY[inv.method]?.label || inv.method} />
                   {inv.summary && <p className="mt-1 whitespace-pre-wrap text-sm">{inv.summary}</p>}
-                  {img && <img src={img} alt="Investigation diagram" className="mt-3 max-h-[420px] w-full rounded border border-ink-200 object-contain" />}
+                  {img && <img src={safeSrc(img)} alt="Investigation diagram" className="mt-3 max-h-[420px] w-full rounded border border-ink-200 object-contain" />}
                 </div>
               )
             })}

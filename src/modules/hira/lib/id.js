@@ -1,9 +1,4 @@
-// Small unique-id helper for client-generated nested records (members, hazards,
-// controls). Uses crypto.randomUUID when available, with a fallback.
-export function uid(prefix = '') {
-  const base =
-    typeof crypto !== 'undefined' && crypto.randomUUID
-      ? crypto.randomUUID()
-      : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
-  return prefix ? `${prefix}_${base}` : base
-}
+// The shared helper, re-exported so this module's many call sites keep their
+// import path. There were two copies of this function; a second one is how the
+// two drift, and one of them was already a clock.
+export { uid } from '../../../shared/lib/id'

@@ -9,6 +9,7 @@ import {
   updateDoc,
 } from 'firebase/firestore'
 import { db } from '../../../shared/firebase'
+import { onReadError } from '../../../shared/org/readError'
 import { reserveDocId } from '../../../shared/docId/reserve'
 import { COLLECTION_READ_CAP } from '../../../shared/org/orgData'
 
@@ -23,15 +24,19 @@ const findingsCol = (orgId) =>
 // audit plans and findings for the life of the organization and nothing prunes
 // them, so neither of these has an upper bound of its own.
 export function subscribeAuditPlans(orgId, callback) {
-  return onSnapshot(query(plansCol(orgId), limit(COLLECTION_READ_CAP)), (snap) => {
-    callback(snap.docs.map((d) => ({ firebaseKey: d.id, ...d.data() })))
-  })
+  return onSnapshot(
+    query(plansCol(orgId), limit(COLLECTION_READ_CAP)),
+    (snap) => callback(snap.docs.map((d) => ({ firebaseKey: d.id, ...d.data() }))),
+    onReadError('audit plans', callback),
+  )
 }
 
 export function subscribeAuditFindings(orgId, callback) {
-  return onSnapshot(query(findingsCol(orgId), limit(COLLECTION_READ_CAP)), (snap) => {
-    callback(snap.docs.map((d) => ({ firebaseKey: d.id, ...d.data() })))
-  })
+  return onSnapshot(
+    query(findingsCol(orgId), limit(COLLECTION_READ_CAP)),
+    (snap) => callback(snap.docs.map((d) => ({ firebaseKey: d.id, ...d.data() }))),
+    onReadError('audit findings', callback),
+  )
 }
 
 export async function createAuditPlan(orgId, payload) {

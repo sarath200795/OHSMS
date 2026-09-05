@@ -12,6 +12,8 @@ import SiteScopePicker from '../../../../shared/org/SiteScopePicker'
 import DepartmentSelect from '../../../../shared/org/DepartmentSelect'
 import { Field } from '../../../../shared/ui'
 import { safeHref } from '../../../../shared/safeUrl'
+import { uid } from '../../../../shared/lib/id'
+import { todayISO, addDaysISO, isOverdueDate } from '../../../../shared/lib/dates'
 import {
   subscribeAuditPlans,
   subscribeAuditFindings,
@@ -75,13 +77,17 @@ const AuditScheduler = ({ setView, session, sites, users, locations = [], siteIn
   ])
   const myName = session.name
 
-  useEffect(() => {
-    if (plan.siteId) {
-      const seq = 1000 + Math.floor(rows.length * 137 + plan.siteId.length * 41) % 9000
-      setPlan((p) => ({ ...p, docId: `${session.orgId.slice(0, 5)}-${plan.siteId.slice(0, 5)}-IAP-${seq}` }))
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [plan.siteId])
+  // There was an effect here that invented plan.docId as arithmetic on the site
+  // name and the row count — `1000 + (rows.length * 137 + siteId.length * 41) %
+  // 9000`. Two plans for one site with the same number of rows produced the
+  // same reference, and the row count was read outside the dependency array, so
+  // adding rows after choosing the site left the number computed from the old
+  // one. The suppressed exhaustive-deps warning was the bug, written down.
+  //
+  // None of it was ever stored: createAuditPlan sets docId from reserveDocId
+  // AFTER spreading the payload, so the reserved reference always won. What the
+  // screen showed was a number that existed nowhere — which is worse than
+  // showing nothing, because somebody writes it down.
 
   const addRow = () =>
     setRows([...rows, { auditor: '', auditee: '', dept: '', area: '', aspect: '', date: '', time: '' }])
@@ -180,7 +186,12 @@ const AuditScheduler = ({ setView, session, sites, users, locations = [], siteIn
                 <Field label="Start Date" labelClassName={lbl}><input type="date" value={plan.startDate} onChange={(e) => setPlan({ ...plan, startDate: e.target.value })} className={`${fld} font-mono`} /></Field>
                 <Field label="End Date" labelClassName={lbl}><input type="date" value={plan.endDate} onChange={(e) => setPlan({ ...plan, endDate: e.target.value })} className={`${fld} font-mono`} /></Field>
               </div>
-              {plan.docId && <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">Ref ID: <span className="font-mono font-bold text-slate-700">{plan.docId}</span></div>}
+              {/* No reference until there is one. It is reserved on save, from
+                  the org-wide counter, so nothing here can predict it — and a
+                  predicted one is a number somebody writes on a form. */}
+              <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
+                Ref ID: <span className="font-semibold text-slate-600">assigned when this plan is saved</span>
+              </div>
             </div>
             <div className="flex flex-col rounded-2xl border border-slate-200 bg-slate-50 p-5">
               {/* A heading, not a <label>: what follows is a search box and a list of
@@ -316,13 +327,21 @@ const AuditorWorkplace = ({ setView, session, isGlobalOwner, plans, findings, si
     [myTasks, filters],
   )
 
-  const genId = () => `AF-${10000 + Math.floor((Date.parse(new Date().toISOString()) % 90000))}`
+  // Was `AF-${10000 + Date.parse(...) % 90000}`, which wraps every ninety
+  // seconds AND returns the same value for two rows added inside one
+  // millisecond — the ordinary case, because adding rows is a button. These ids
+  // are what actions/lib/sources.js matches a CAPA back to its finding on, so
+  // two findings collapsing into one is a finding that stops being tracked.
+  const genId = () => uid('AF')
 
   const openTask = (task) => {
     setCurrentTask(task)
     setCriteria(task.standard || '')
     if (task.status === 'Planned') {
-      setDocId(`${session.orgId.slice(0, 5)}-${task.siteId || 'GEN'}-IAF-${10000 + Math.floor(Math.abs(hashStr(task._key)) % 90000)}`)
+      // Blank, not invented. The reference is reserved by createAuditFinding on
+      // save, after the payload is spread, so anything set here was discarded —
+      // while being printed on the report in the meantime.
+      setDocId('')
       setFindingRows([{ id: genId(), type: 'Observation', desc: '', clause: '', evidence: '', fileName: '' }])
       setWView('perform')
     } else {
@@ -369,12 +388,15 @@ const AuditorWorkplace = ({ setView, session, isGlobalOwner, plans, findings, si
     if (findingRows.some((f) => !f.evidence)) return alert('Objective evidence is mandatory — attach a file for every finding (Observation, OFI, Minor NC and Major NC).')
     const cleanTask = { ...currentTask, criteria: criteria || '' }
     delete cleanTask.findingRecord
-    const cleanFindings = findingRows.map((f, idx) => {
+    const cleanFindings = findingRows.map((f) => {
       let days = 30
       if (f.type === 'Minor NC') days = 15
       if (f.type === 'Major NC') days = 7
-      const due = new Date(); due.setDate(due.getDate() + days)
-      return { ...f, id: f.id || genId() + idx, auditeeDueDate: due.toISOString().split('T')[0] }
+
+      // `genId() + idx` was string concatenation, not an offset — "AF-12345"
+      // and index 0 gave "AF-123450". Unreachable, because every row is created
+      // with an id, but it is the kind of dead line somebody later copies.
+      return { ...f, id: f.id || genId(), auditeeDueDate: addDaysISO(days) }
     })
     try {
       await createAuditFinding(session.orgId, {
@@ -562,7 +584,7 @@ const AuditeeWorkplace = ({ session, users, findings }) => {
     setCurrent(f)
     setForm({
       rootCause: f.response?.rootCause || '', correction: f.response?.correction || '', capa: f.response?.capa || '',
-      owner: f.response?.owner || '', targetDate: f.response?.targetDate || f.auditeeDueDate || new Date().toISOString().split('T')[0],
+      owner: f.response?.owner || '', targetDate: f.response?.targetDate || f.auditeeDueDate || todayISO(),
       evidenceFile: f.response?.evidenceFile || null, evidenceFileName: f.response?.evidenceFileName || '',
     })
     setModal(true)
@@ -657,7 +679,7 @@ const AuditeeWorkplace = ({ session, users, findings }) => {
               <div className="max-h-[55vh] flex-1 space-y-6 overflow-y-auto p-6">
                 {(selected.findings || []).map((f, i) => {
                   const has = f.response?.status === 'Completed'
-                  const overdue = !has && new Date() > new Date(f.auditeeDueDate)
+                  const overdue = !has && isOverdueDate(f.auditeeDueDate)
                   return (
                     <div key={i} className={`rounded-2xl border bg-white p-6 ${has ? 'border-emerald-300' : 'border-slate-200'}`}>
                       <div className="mb-4 flex items-start justify-between border-b border-slate-100 pb-4">
@@ -963,7 +985,7 @@ const AuditCalendar = ({ sites, plans, findings }) => {
   }, [plans, findings, siteFilter])
 
   const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
-  const today = new Date().toISOString().split('T')[0]
+  const today = todayISO()
 
   return (
     <div className="animate-fade-in">
@@ -1139,11 +1161,6 @@ function PrintPlan({ plan, rows, siteName }) {
   )
 }
 
-function hashStr(s = '') {
-  let h = 0
-  for (let i = 0; i < s.length; i++) h = (h << 5) - h + s.charCodeAt(i)
-  return h
-}
 
 // ============================================================================
 // MASTER HUB

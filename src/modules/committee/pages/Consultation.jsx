@@ -18,10 +18,11 @@ import SiteScopePicker from '../../../shared/org/SiteScopePicker';
 import DeptPersonPicker from '../../../shared/org/DeptPersonPicker';
 import { moduleLevelKeys, SITE_LEVEL_KEY } from '../../../shared/org/scopeConfig';
 import { Pager } from '../../../shared/ui';
+import { reserveDocId } from '../../../shared/docId/reserve';
 import { usePagination } from '../../../shared/ui/usePagination';
 import Logo from '../components/Logo';
 import LogoLoader from '../components/LogoLoader';
-import { isFutureDate, todayISO } from '../../../shared/lib/dates';
+import { isFutureDate, todayISO, isOverdueDate, toISODate } from '../../../shared/lib/dates';
 import {
     subscribeSites,
     subscribeOrgUsers,
@@ -122,7 +123,7 @@ const MeetingDetailModal = ({ meeting, siteLabel, onClose, onUpdateStatus, onPri
                                 </thead>
                                 <tbody className="divide-y divide-clay-200/60 bg-clay-100/60 text-ink-900">
                                     {(meeting.actions || []).map((row, idx) => {
-                                        const isOverdue = row.status !== 'Closed' && row.due && new Date(row.due) < new Date();
+                                        const isOverdue = isOverdueDate(row.due, { closed: row.status === 'Closed' });
                                         return (
                                             <tr key={idx} className="hover:bg-clay-100 transition-colors">
                                                 <td className="p-4 pl-6 font-medium whitespace-normal min-w-[250px]">{row.action}</td>
@@ -206,7 +207,7 @@ export default function Consultation() {
     // Form Data State
     const [formData, setFormData] = useState({
         id: '', firebaseKey: '', siteId: '', type: 'HSE Committee Meeting', subject: '',
-        date: new Date().toISOString().split('T')[0], time: '', preRequisites: '', minutes: '',
+        date: todayISO(), time: '', preRequisites: '', minutes: '',
         attendees: [], actions: []
     });
 
@@ -227,7 +228,7 @@ export default function Consultation() {
             setFormData({
                 id: '', firebaseKey: '', siteId: filterSite !== 'All' ? filterSite : '',
                 type: 'HSE Committee Meeting', subject: '',
-                date: new Date().toISOString().split('T')[0], time: '', preRequisites: '', minutes: '',
+                date: todayISO(), time: '', preRequisites: '', minutes: '',
                 attendees: [], actions: []
             });
             setView('form');
@@ -249,7 +250,7 @@ export default function Consultation() {
             (list) => setUsers(list.filter(u => u.status === 'approved').map(u => ({ id: u.uid, ...u }))),
             () => {});
         const unsubMeetings = subscribeConsultations(orgId,
-            (list) => { setMeetings([...list].sort((a, b) => new Date(b.date) - new Date(a.date))); done(); },
+            (list) => { setMeetings([...list].sort((a, b) => (toISODate(b.date) || '').localeCompare(toISODate(a.date) || ''))); done(); },
             () => done());
         return () => { clearTimeout(safety); unsubSites(); unsubUsers(); unsubMeetings(); };
     }, [orgId]);
@@ -284,7 +285,7 @@ export default function Consultation() {
         setFormData({
             id: '', firebaseKey: '', siteId: filterSite !== 'All' ? filterSite : '',
             type: 'HSE Committee Meeting', subject: '',
-            date: new Date().toISOString().split('T')[0], time: '', preRequisites: '', minutes: '',
+            date: todayISO(), time: '', preRequisites: '', minutes: '',
             attendees: [], actions: []
         });
         setView('form');
@@ -421,15 +422,25 @@ export default function Consultation() {
         if (scopeHasSite && !formData.siteId) return toast.error("Site is required.");
 
         setSaving(true);
-        const finalDocId = formData.docId || `MOM-${formData.siteId || 'ORG'}-${Date.now().toString().slice(-4)}`;
         // firebaseKey is the Firestore doc id (a local handle), not a stored field.
         const { firebaseKey, ...rest } = formData;
-        const payload = { ...rest, docId: finalDocId, timestamp: new Date().toISOString(), createdBy: session.name || session.email };
+        const payload = { ...rest, timestamp: new Date().toISOString(), createdBy: session.name || session.email };
 
         try {
             if (firebaseKey) {
+                // A meeting saved before references existed has none. It used to
+                // be given `MOM-<site>-<last 4 digits of the clock>` — a ten
+                // SECOND cycle, so two meetings for one site minuted in the same
+                // window took the same reference, and that value is what the
+                // minutes, the export and the Action Tracker all quote.
+                //
+                // Reserve a real one instead. Only on the update path:
+                // addConsultation reserves its own after spreading the payload,
+                // so anything sent on a create was discarded anyway.
+                payload.docId = formData.docId || await reserveDocId(orgId, 'committee');
                 await updateConsultation(orgId, firebaseKey, payload);
             } else {
+                delete payload.docId;
                 await addConsultation(orgId, payload);
             }
             toast.success("Record saved successfully!");
@@ -530,7 +541,7 @@ export default function Consultation() {
         setFormData({
             id: '', firebaseKey: '', siteId: calSiteFilter, type: type,
             subject: `${type} _ ${monthNames[calMonth]} _ ${calYear}`,
-            date: today.toISOString().split('T')[0], time: '', preRequisites: '', minutes: '',
+            date: todayISO(today), time: '', preRequisites: '', minutes: '',
             attendees: [], actions: []
         });
         setView('form');

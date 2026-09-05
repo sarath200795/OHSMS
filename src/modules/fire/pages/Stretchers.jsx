@@ -10,7 +10,7 @@ import { useAuth } from '../context/AuthContext'
 import { useFleet } from '../context/FleetContext'
 import {
   addStretcher, updateStretcher, deleteStretcher, serviceStretcher,
-  generateStretcherQr, bulkDeleteStretchers, linkStretchersToSites,
+  generateStretcherQr, bulkDeleteStretchers, linkStretchersToSites, reserveAssetIds,
 } from '../lib/firestore'
 import { planSiteLinks } from '../lib/siteLink'
 import { listLinkedAssets, filterByLinkState, siteIdSet, isLinkedToSite } from '../lib/linkedSites'
@@ -22,7 +22,7 @@ import { publicQrUrl } from '../lib/qr'
 import SiteScopePicker from '../../../shared/org/SiteScopePicker'
 import IncompleteNotice from '../../../shared/ui/IncompleteNotice'
 import { format } from 'date-fns'
-import { dueState, dueTextColor, stretcherColor, stretcherIncomplete, nextAssetId } from '../lib/assetLogic'
+import { dueState, dueTextColor, stretcherColor, stretcherIncomplete, highestAssetSeq } from '../lib/assetLogic'
 import { toDate } from '../lib/extinguisherLogic'
 import {
   REGIONS, ENTITIES, STRETCHER_TYPES,
@@ -102,8 +102,19 @@ export default function Stretchers() {
     } finally { setBusy(false) }
   }
 
-  // Open the Add form with the next unique asset ID pre-assigned.
-  const openAdd = () => setEditing({ ...EMPTY, assetId: nextAssetId('STR', stretchers, 'assetId') })
+  // Open the Add form with an asset ID RESERVED, not guessed. See AEDRepository:
+  // the highest-in-the-loaded-list arithmetic handed two people the same number,
+  // and that number goes on the QR label.
+  const openAdd = async () => {
+    try {
+      const [assetId] = await reserveAssetIds(orgId, 'stretcher', 'STR', {
+        floor: highestAssetSeq('STR', stretchers, 'assetId'),
+      })
+      setEditing({ ...EMPTY, assetId })
+    } catch (e) {
+      toast.error(e?.message || 'Could not reserve an asset ID')
+    }
+  }
 
   const toggle = (field, v) => setF((p) => ({ ...p, [field]: p[field].includes(v) ? p[field].filter((x) => x !== v) : [...p[field], v] }))
   const anyActive = f.search || f.regions.length || f.entities.length || f.types.length || f.statuses.length

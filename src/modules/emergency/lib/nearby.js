@@ -146,7 +146,7 @@ async function nominatimAround(lat, lng, radius) {
   const box = radius / 111_000 // metres → rough degrees
   const viewbox = `${lng - box},${lat + box},${lng + box},${lat - box}`
   const out = []
-  for (const cat of CATEGORIES) {
+  for (const [i, cat] of CATEGORIES.entries()) {
     const term = cat.amenity === 'fire_station' ? 'fire station' : cat.amenity
     const url =
       `https://nominatim.openstreetmap.org/search?format=jsonv2&q=${encodeURIComponent(term)}` +
@@ -170,7 +170,13 @@ async function nominatimAround(lat, lng, radius) {
         })
       }
     } catch { /* try the next category */ }
-    await new Promise((r) => setTimeout(r, 1100)) // Nominatim: ≤1 request/second
+    // BETWEEN categories, not after the last one. Nominatim asks for ≤1
+    // request/second and the pause only has to precede the NEXT request —
+    // sleeping after the final category added 1.1 seconds of dead time to every
+    // fallback lookup, with somebody watching a spinner for it.
+    if (i < CATEGORIES.length - 1) {
+      await new Promise((r) => setTimeout(r, 1100))
+    }
   }
   return out
 }

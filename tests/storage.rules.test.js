@@ -227,3 +227,92 @@ describe('no client may delete, whatever their token claims', () => {
 // positive tests to make the suite green. That does not test the control, it
 // removes the only thing that noticed.
 // ─────────────────────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+// What may be stored, by declared type.
+//
+// The size cap was the only thing this file said about an upload's content, so
+// any writer in a tenant could store text/html under the org prefix — and
+// getDownloadURL() serves it INLINE, permanently, unauthenticated, from a
+// Google-owned domain. A phishing page inside a customer's evidence store,
+// answerable to no rule once the link is issued.
+//
+// The type an object is served as is the type it was stored with, so these
+// pin the write.
+// ─────────────────────────────────────────────────────────────────────────────
+const upload = (db, name, contentType) =>
+  uploadBytes(ref(db, p(A, name)), bytes(), contentType ? { contentType } : undefined)
+
+describe('uploads are constrained by declared type', () => {
+  it('accepts a photograph, which is most of the evidence in this product', async () => {
+    await assertSucceeds(upload(memberOfA(), 'a.jpg', 'image/jpeg'))
+  })
+
+  it('accepts a PDF permit or certificate', async () => {
+    await assertSucceeds(upload(memberOfA(), 'a.pdf', 'application/pdf'))
+  })
+
+  it('accepts training video and audio', async () => {
+    await assertSucceeds(upload(memberOfA(), 'a.mp4', 'video/mp4'))
+    await assertSucceeds(upload(memberOfA(), 'a.mp3', 'audio/mpeg'))
+  })
+
+  it('accepts the office formats training material arrives in', async () => {
+    await assertSucceeds(upload(memberOfA(), 'a.docx',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'))
+    await assertSucceeds(upload(memberOfA(), 'a.xlsx',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'))
+  })
+
+  it('accepts CSV, which the bulk importers use', async () => {
+    await assertSucceeds(upload(memberOfA(), 'a.csv', 'text/csv'))
+  })
+
+  it('accepts octet-stream, which is how a SEALED file is stored', async () => {
+    // putFile uploads encrypted bytes under this type deliberately, so nothing
+    // downstream interprets ciphertext as a PDF. Refusing it would break every
+    // upload the moment encryption is switched on.
+    await assertSucceeds(upload(memberOfA(), 'a.bin', 'application/octet-stream'))
+  })
+
+  it('REFUSES text/html — the hosted phishing page', async () => {
+    await assertFails(upload(memberOfA(), 'a.html', 'text/html'))
+  })
+
+  it('REFUSES SVG, which is an image that runs script', async () => {
+    // The one image type that turns a download link back into a hosted page.
+    await assertFails(upload(memberOfA(), 'a.svg', 'image/svg+xml'))
+  })
+
+  it('refuses SVG however it is spelled', async () => {
+    await assertFails(upload(memberOfA(), 'b.svg', 'IMAGE/SVG+XML'))
+    await assertFails(upload(memberOfA(), 'c.svg', 'image/svg'))
+  })
+
+  it('REFUSES xhtml and xml, which render the same way', async () => {
+    await assertFails(upload(memberOfA(), 'a.xhtml', 'application/xhtml+xml'))
+    await assertFails(upload(memberOfA(), 'a.xml', 'text/xml'))
+  })
+
+  it('refuses a script or a stylesheet', async () => {
+    await assertFails(upload(memberOfA(), 'a.js', 'text/javascript'))
+    await assertFails(upload(memberOfA(), 'a.css', 'text/css'))
+  })
+
+  it('refuses plain text — nothing in the product uploads it', async () => {
+    // Not dangerous in itself; refused because an allow-list names what has a
+    // reason to be here, and text/plain does not.
+    await assertFails(upload(memberOfA(), 'a.txt', 'text/plain'))
+  })
+
+  it('does not let the type stand in for membership', async () => {
+    // The type check is a conjunct, not a replacement. A perfectly ordinary
+    // JPEG is still refused across a tenant boundary.
+    await assertFails(uploadBytes(ref(memberOfB(), p(A, 'x.jpg')), bytes(), { contentType: 'image/jpeg' }))
+  })
+
+  it('does not let the type stand in for role', async () => {
+    const auditor = testEnv.authenticatedContext('aud', { orgId: A, role: 'auditor' }).storage()
+    await assertFails(uploadBytes(ref(auditor, p(A, 'y.jpg')), bytes(), { contentType: 'image/jpeg' }))
+  })
+})

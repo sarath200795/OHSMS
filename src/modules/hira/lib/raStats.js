@@ -12,11 +12,35 @@ export function initialRisk(h) {
 }
 
 /**
- * Residual risk = projected P×S when set, else initial. ALARP no longer changes
- * the score — it only flags that this residual risk is accepted.
+ * Residual risk = projected P×S when set, else initial — EXCEPT for a hazard
+ * marked ALARP, which keeps its initial risk.
+ *
+ * ALARP is a decision to live with a risk as it stands: no further controls are
+ * planned, so there is nothing to project, and a projected score on such a
+ * hazard is a contradiction rather than a reduction.
+ *
+ * ── Why this reads on the way out as well as the way in ─────────────────────
+ *
+ * Both write paths now drop the projected score when ALARP is set
+ * (CreateAssessment's payload, and lib/csv.js which always did). That closes
+ * the write path and NOTHING ALREADY STORED — assessments saved before it
+ * still carry a projected P×S on ALARP hazards, and preferring it reported a
+ * LOWER residual for exactly the hazards somebody had decided to accept.
+ *
+ * A previous revision of this function declined to special-case `alarp`,
+ * reasoning that ALARP flags a residual rather than restating it. That reading
+ * disagreed with this file's own header — "ALARP-accepted hazards keep their
+ * initial risk" — which is the older and, on a safety register, the safer of
+ * the two. Reconciled here in that direction: a hazard nobody is going to
+ * control further is carrying its initial risk, and saying otherwise
+ * understates it on the one screen that exists to report it.
+ *
+ * The stored records are deliberately NOT rewritten. Reading them correctly
+ * costs nothing and changes no history; a migration would alter what a risk
+ * register says about a hazard somebody signed off.
  */
 export function residualRisk(h) {
-  if (h.projectedProbability && h.projectedSeverity) {
+  if (!h?.alarp && h?.projectedProbability && h?.projectedSeverity) {
     return riskLevel(h.projectedProbability, h.projectedSeverity)
   }
   return initialRisk(h)

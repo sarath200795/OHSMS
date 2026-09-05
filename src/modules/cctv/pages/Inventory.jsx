@@ -154,6 +154,11 @@ export default function Inventory() {
   }
 
   const saveDefects = async (keys, reportedOn) => {
+    // Destructured INSIDE the guard, not above the try. `defectFor` is state,
+    // and a synchronous throw here rejected the promise the modal was awaiting
+    // — so its setBusy(false) never ran and Save stayed disabled for good, with
+    // no error anywhere to explain it.
+    if (!defectFor) return
     const { kind, row } = defectFor
     // A fault cannot have been found tomorrow. Letting one through would put a
     // defect in a month nobody has reached yet, where no report would find it.
@@ -486,7 +491,12 @@ function DefectModal({ target, onClose, onSave }) {
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
           <Button
             loading={busy}
-            onClick={async () => { setBusy(true); await onSave(picked, reportedOn); setBusy(false) }}
+            onClick={async () => {
+              // finally, because a Save button that can never be pressed again
+              // is a worse outcome than whatever went wrong inside onSave.
+              setBusy(true)
+              try { await onSave(picked, reportedOn) } finally { setBusy(false) }
+            }}
           >
             Save
           </Button>

@@ -596,13 +596,140 @@ service cloud.firestore {
     // collections use it: this mirror is what a stranger with a phone is shown,
     // and an auditor rewriting it could mark a faulty extinguisher ready for use
     // on the page the next person to scan it reads.
+    // The collection an equipment mirror speaks for, from its own payload.
+    //
+    // /qr holds two shapes. Extinguisher mirrors predate the others and carry
+    // `extId` with no kind; AED, FAS and stretcher mirrors carry `assetKind`
+    // and `assetRefId` (fire/lib/firestore.js — mirrorPayload, aedMirror,
+    // fasMirror, stretcherMirror). '' for anything else, which fails the check
+    // below rather than defaulting into a real collection.
+    function mirrorCollection(d) {
+      return !('assetKind' in d) ? 'extinguishers'
+        : d.assetKind == 'aed' ? 'aeds'
+        : d.assetKind == 'fas' ? 'fas'
+        : d.assetKind == 'stretcher' ? 'stretchers'
+        : '';
+    }
+
+    function mirrorAssetId(d) {
+      return !('assetKind' in d) ? d.get('extId', '') : d.get('assetRefId', '');
+    }
+
+    // ── What an equipment mirror may carry ────────────────────────────────────
+    //
+    // The union of every field the four mirror builders write —
+    // mirrorPayload, aedMirror, fasMirror and stretcherMirror in
+    // fire/lib/firestore.js. A union rather than four separate lists because
+    // the shapes overlap heavily and a per-kind split would be four places to
+    // forget instead of one.
+    //
+    // WHEN A MIRROR GAINS A FIELD, ADD IT HERE. Nothing in a diff will tell
+    // you: the write simply starts failing, and the symptom is a printed QR
+    // code that stops updating — found by whoever scans it, which is the worst
+    // place to find anything. `src/modules/fire/lib/mirrorFields.test.js`
+    // exists to make that impossible to miss: it calls the real builders and
+    // fails with this list quoted back at you.
+    function equipmentMirrorFields() {
+      return [
+        'orgId', 'orgName', 'token', 'status', 'updatedAt',
+        'centerName', 'region', 'entity', 'location',
+        // Extinguisher
+        'extId', 'serialNo', 'type', 'capacity', 'physicalDefects',
+        'dateOfDeployment', 'dateOfNextRefill', 'dateOfNextHPT',
+        // AED / FAS / stretcher
+        'assetKind', 'assetRefId', 'label', 'brand', 'model',
+        'batteryExpiry', 'padExpiry', 'lastInspection', 'nextInspection',
+        'deviceType', 'zone', 'lastService', 'nextService', 'amcVendor',
+        'stretcherType'
+      ];
+    }
+
+    // The same, for the permit mirror: fullMirror plus mirrorDisplayFields and
+    // mirrorStatusFields (ptw/lib/firestore.js, ptw/lib/publicPermit.js).
+    function permitMirrorFields() {
+      return [
+        'orgId', 'orgName', 'permitId', 'token', 'permitNo', 'docId', 'site',
+        // Display half — blanked, not removed, when the permit is withdrawn.
+        'typeOfWork', 'jobLocation', 'jobDescription', 'issuingDepartment',
+        'issuedToName', 'hazards', 'ppe', 'precautions', 'jsa',
+        'participantCount', 'fireWatcherCount', 'hasConfinedWatcher', 'withdrawn',
+        // Status half
+        'storedStatus', 'engineering', 'operations', 'closure', 'extension',
+        'closedDueToObservation', 'validFrom', 'validTo', 'updatedAt'
+      ];
+    }
+
+    /**
+     * The shape rule for an UPDATE, which cannot simply be the allow-list.
+     *
+     * A mirror written by an older build can carry a field the builders no
+     * longer produce — the permit mirror published `participants` and
+     * `fireWatchers` until S-07 replaced them with counts, and those documents
+     * are still out there. A plain hasOnly on the post-state would refuse every
+     * update to one of those forever, so it could never be corrected and never
+     * be WITHDRAWN. That is S-20 re-opened, on precisely the permits most
+     * likely to need withdrawing.
+     *
+     * So the grandfathering is PER KEY, not per document: every key in the
+     * post-state must be one the builders write, or one this document already
+     * had. A retired field rides along untouched; a new one is refused.
+     *
+     * It was two clauses first — conform to the list, OR add no key at all —
+     * and that was wrong in a way the tests caught. Withdrawing a legacy mirror
+     * BLANKS the display fields, which means writing jobDescription and
+     * issuedToName onto a document that never carried them. Under the
+     * either/or it failed both halves, so the one operation the escape hatch
+     * exists to protect was the one it refused.
+     */
+    function keepsMirrorShape(allowed) {
+      return request.resource.data.keys().hasOnly(allowed.concat(resource.data.keys()));
+    }
+
+    /**
+     * Does the asset this mirror names actually claim this token?
+     *
+     * The check runs the opposite way round to /procedureQr's, because the
+     * document ID here is a random TOKEN rather than the asset's id: there is
+     * nothing in the path to bind to, so the binding has to be that the asset
+     * agrees. Every writer stamps `qrToken` on the asset in the same batch as
+     * the mirror (addExtinguisher, generateAedQr, backfillExtinguisherQr and
+     * the rest), so getAfter sees it — and for a mirror rewritten later the
+     * asset already carries it.
+     */
+    function mirrorsItsAsset(token, d) {
+      return mirrorCollection(d) != ''
+        && mirrorAssetId(d) is string
+        && mirrorAssetId(d) != ''
+        && getAfter(/databases/$(database)/documents/organizations/$(d.orgId)/$(mirrorCollection(d))/$(mirrorAssetId(d)))
+             .data.get('qrToken', '') == token;
+    }
+
     match /qr/{token} {
       allow get: if true;
       allow list: if false;
-      allow create: if isWriterOf(request.resource.data.orgId);
+
+      // Owning the org in the PAYLOAD only proves the writer owns the org they
+      // named — never that the equipment this mirror speaks for exists, or is
+      // theirs, or has anything to do with this token. Without the second
+      // clause a member could publish a world-readable page describing a fire
+      // extinguisher nobody owns, or park one at a token that has not been
+      // printed yet and wait for the sticker to catch up.
+      //
+      // /procedureQr has bound its mirror since it was written; these two were
+      // the pair that never did.
+      //
+      // The shape is pinned as well as the identity, on BOTH create and update.
+      // Create alone would have been decorative: create a clean mirror, then
+      // update it with whatever you like. This is a world-readable document, so
+      // what it may contain is worth stating rather than inferring from
+      // whatever the writer happened to send.
+      allow create: if isWriterOf(request.resource.data.orgId)
+        && mirrorsItsAsset(token, request.resource.data)
+        && request.resource.data.keys().hasOnly(equipmentMirrorFields());
       allow update: if resource != null
         && isWriterOf(resource.data.orgId)
-        && request.resource.data.orgId == resource.data.orgId;
+        && request.resource.data.orgId == resource.data.orgId
+        && keepsMirrorShape(equipmentMirrorFields());
       allow delete: if isWriterOf(resource.data.orgId);
     }
 
@@ -671,10 +798,31 @@ service cloud.firestore {
     match /permitQr/{token} {
       allow get: if true;
       allow list: if false;
-      allow create: if isWriterOf(request.resource.data.orgId);
+
+      // Bound to the permit it speaks for, the same way /qr is bound to its
+      // equipment and for the same reason: the document ID is a random token,
+      // so nothing in the path ties this mirror to anything, and owning the org
+      // in the payload proves only that the writer owns the org they named.
+      //
+      // This one is the sharper of the two. The permit mirror is what somebody
+      // at a barrier reads to decide whether work in front of them is
+      // authorised, so an unbound create is a page saying a job is permitted
+      // when no permit exists.
+      //
+      // getAfter reads the post-state, which is what both writers need:
+      // createPermit commits the permit before publishing the mirror, and
+      // ensurePermitQr stamps qrToken on the permit first for exactly this
+      // reason. Either way the permit carries the token by the time this runs.
+      allow create: if isWriterOf(request.resource.data.orgId)
+        && request.resource.data.get('permitId', '') is string
+        && request.resource.data.get('permitId', '') != ''
+        && getAfter(/databases/$(database)/documents/organizations/$(request.resource.data.orgId)/permits/$(request.resource.data.permitId))
+             .data.get('qrToken', '') == token
+        && request.resource.data.keys().hasOnly(permitMirrorFields());
       allow update: if resource != null
         && isWriterOf(resource.data.orgId)
-        && request.resource.data.orgId == resource.data.orgId;
+        && request.resource.data.orgId == resource.data.orgId
+        && keepsMirrorShape(permitMirrorFields());
       allow delete: if isWriterOf(resource.data.orgId);
     }
 
@@ -1545,12 +1693,32 @@ service cloud.firestore {
         // permissive union, so this exclusion is the load-bearing half — that
         // match restricts nothing while this one still grants the same access.
         && col != 'integrations'
+        // 'notifications' was excluded from READ and not from write, so a
+        // collection nobody could read was one every approved member could
+        // fill. Two things wrong with that, one dated and one immediate.
+        //
+        // The dated one: this is a delivery ledger — rows saying a mail has
+        // already been sent. The moment a sender exists, a member can pre-seed
+        // rows to suppress a notification they are not allowed to read, which
+        // for an escalation or an approval is the notification most worth
+        // suppressing. The writer its rule cites, functions/lib/notify.js, does
+        // not exist yet, and a grant that is only wrong later is still the kind
+        // nobody notices, because nothing fails while it waits.
+        //
+        // The immediate one: an unbounded write channel into a collection with
+        // no reader. Nothing in the product would ever show it, no screen would
+        // look wrong, and the only evidence would arrive on the bill.
+        //
+        // Excluded here rather than in a narrow match of its own, for the
+        // reason every exclusion in this function is: rules are a permissive
+        // union, so the narrow `allow read: if false` block below restricts
+        // nothing while this one still grants the same write.
+        && col != 'notifications'
         && notKeyset(col, docId);
     }
     function genericReadable(col, docId) {
       return structuralOnly(col, docId)
-        && col != 'documents' && col != 'injuries' && col != 'illnesses'
-        && col != 'notifications';
+        && col != 'documents' && col != 'injuries' && col != 'illnesses';
     }
 
     // A document's classification is enforced on READ and was unprotected on

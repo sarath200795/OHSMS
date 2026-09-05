@@ -8,7 +8,7 @@ import { Pager, IconButton } from '../../../shared/ui'
 import { usePagination } from '../../../shared/ui/usePagination'
 import { useAuth } from '../context/AuthContext'
 import { useFleet } from '../context/FleetContext'
-import { addAed, updateAed, deleteAed, serviceAed, bulkAddAeds, generateAedQr, bulkDeleteAeds, linkAedsToSites } from '../lib/firestore'
+import { addAed, updateAed, deleteAed, serviceAed, bulkAddAeds, generateAedQr, bulkDeleteAeds, linkAedsToSites, reserveAssetIds } from '../lib/firestore'
 import { planSiteLinks } from '../lib/siteLink'
 import { useAccessibleSites } from '../../../shared/org/useAccessibleSites'
 import { listLinkedAssets, filterByLinkState, siteIdSet, isLinkedToSite } from '../lib/linkedSites'
@@ -18,7 +18,7 @@ import { exportRows } from '../lib/exporter'
 import { publicQrUrl } from '../lib/qr'
 import SiteScopePicker from '../../../shared/org/SiteScopePicker'
 import { format } from 'date-fns'
-import { dueState, dueTextColor, aedColor, aedIncomplete, nextAssetId, highestAssetSeq, formatAssetId } from '../lib/assetLogic'
+import { dueState, dueTextColor, aedColor, aedIncomplete, highestAssetSeq } from '../lib/assetLogic'
 import { toDate } from '../lib/extinguisherLogic'
 import { REGIONS, ENTITIES, AED_STATUS, AED_STATUS_LABEL, AED_STATUS_COLOR } from '../lib/constants'
 
@@ -121,8 +121,23 @@ export default function AEDRepository() {
     } finally { setBusy(false) }
   }
 
-  // Open the Add form with the next unique asset ID pre-assigned.
-  const openAdd = () => setEditing({ ...EMPTY, assetId: nextAssetId('AED', aeds, 'assetId') })
+  // Open the Add form with an asset ID RESERVED, not guessed.
+  //
+  // It used to be the highest number in the loaded list plus one, so two people
+  // opening this at the same moment both got AED-0042 — and that number is what
+  // gets printed on the QR label. A reserved number is consumed even if the form
+  // is cancelled, which is the trade reserve.js already makes everywhere else: a
+  // gap in a sequence is harmless, two labels reading the same is not.
+  const openAdd = async () => {
+    try {
+      const [assetId] = await reserveAssetIds(orgId, 'aed', 'AED', {
+        floor: highestAssetSeq('AED', aeds, 'assetId'),
+      })
+      setEditing({ ...EMPTY, assetId })
+    } catch (e) {
+      toast.error(e?.message || 'Could not reserve an asset ID')
+    }
+  }
 
   // One-click (admin): create an AED (with QR code) for every 1P/2P site missing one.
   const generateAll = async () => {
@@ -130,8 +145,13 @@ export default function AEDRepository() {
     if (!window.confirm(`Generate an AED with a QR code for ${missingSites.length} site(s)? You can add battery/pad expiry dates afterwards.`)) return
     setBusy(true)
     try {
-      const base = highestAssetSeq('AED', aeds, 'assetId')
-      const rows = missingSites.map((s, i) => ({ assetId: formatAssetId('AED', base + 1 + i), centerName: s, region: siteMeta[s]?.region || '', entity: siteMeta[s]?.entity || '', status: AED_STATUS.READY }))
+      // The whole block reserved at once, so another operator adding a unit
+      // mid-batch cannot land inside it.
+      const ids = await reserveAssetIds(orgId, 'aed', 'AED', {
+        count: missingSites.length,
+        floor: highestAssetSeq('AED', aeds, 'assetId'),
+      })
+      const rows = missingSites.map((s, i) => ({ assetId: ids[i], centerName: s, region: siteMeta[s]?.region || '', entity: siteMeta[s]?.entity || '', status: AED_STATUS.READY }))
       const res = await bulkAddAeds(orgId, orgName, rows, { uid: profile?.uid, name: profile?.name })
       toast.success(`Generated ${res.created} AED(s) with QR codes`)
     } catch (e) { toast.error(e.message) } finally { setBusy(false) }

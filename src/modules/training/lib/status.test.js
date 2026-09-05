@@ -130,3 +130,66 @@ describe('toCsv', () => {
     expect(csv).toContain('"A, ""B"""')
   })
 })
+
+// ── The expiry window, at a negative UTC offset ───────────────────────────────
+//
+// recordStatus computed its window with `new Date(today)` — YYYY-MM-DD parses
+// as UTC MIDNIGHT — and then setDate/getDate, which work in LOCAL fields. West
+// of Greenwich those disagree by a day, so a certificate expiring in exactly
+// thirty days read `valid` instead of `expiring` and nobody was warned.
+//
+// These pin the boundary explicitly rather than relying on the machine's zone,
+// which is the only way this can fail the same way twice.
+describe('the expiring window is exactly 30 days, inclusive', () => {
+  const today = '2026-09-04'
+
+  it('calls the 30th day expiring, not valid', () => {
+    expect(recordStatus('2026-10-04', today)).toBe('expiring')
+  })
+
+  it('calls the 31st day valid', () => {
+    expect(recordStatus('2026-10-05', today)).toBe('valid')
+  })
+
+  it('calls today expiring rather than expired', () => {
+    expect(recordStatus(today, today)).toBe('expiring')
+  })
+
+  it('calls yesterday expired', () => {
+    expect(recordStatus('2026-09-03', today)).toBe('expired')
+  })
+
+  it('crosses a year end without slipping', () => {
+    expect(recordStatus('2027-01-14', '2026-12-15')).toBe('expiring')
+    expect(recordStatus('2027-01-15', '2026-12-15')).toBe('valid')
+  })
+
+  it('still reports no expiry as none', () => {
+    expect(recordStatus('', today)).toBe('none')
+  })
+})
+
+describe('the assignment due-soon window is exactly 7 days, inclusive', () => {
+  const today = '2026-09-04'
+
+  it('calls the 7th day due_soon', () => {
+    expect(assignmentStatus('2026-09-11', today)).toBe('due_soon')
+  })
+
+  it('calls the 8th day open', () => {
+    expect(assignmentStatus('2026-09-12', today)).toBe('open')
+  })
+
+  it('calls yesterday overdue', () => {
+    expect(assignmentStatus('2026-09-03', today)).toBe('overdue')
+  })
+
+  it('calls today due_soon, not overdue', () => {
+    expect(assignmentStatus(today, today)).toBe('due_soon')
+  })
+
+  it('crosses a month end without slipping', () => {
+    expect(assignmentStatus('2026-10-05', '2026-09-28')).toBe('due_soon')
+    expect(assignmentStatus('2026-10-06', '2026-09-28')).toBe('open')
+  })
+})

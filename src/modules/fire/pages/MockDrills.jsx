@@ -198,8 +198,19 @@ export default function MockDrills() {
         })),
         photos: photos.map((p) => p.dataUrl),
       }
-      await addMockDrill(orgId, record, { uid: profile?.uid, name: profile?.name })
-      toast.success(`${form.eventType} report saved`)
+      const saved = await addMockDrill(orgId, record, { uid: profile?.uid, name: profile?.name })
+      // A drill saved with four of five photographs is still a success, and
+      // still something the person who took them needs to hear about while they
+      // are standing where they took them.
+      const missed = (saved?.photosRequested || 0) - (saved?.photosSaved || 0)
+      if (missed > 0) {
+        toast.error(
+          `${form.eventType} report saved, but ${missed} photo${missed === 1 ? '' : 's'} could not be attached. Add ${missed === 1 ? 'it' : 'them'} again from the record.`,
+          { duration: 8000 },
+        )
+      } else {
+        toast.success(`${form.eventType} report saved`)
+      }
       setScenario(null)
     } catch (err) {
       toast.error(err.message)
@@ -663,7 +674,10 @@ export default function MockDrills() {
 
       {/* Full-size photo */}
       <Modal open={!!enlarge} onClose={() => setEnlarge(null)} title="Evidence photo" maxWidth="max-w-2xl">
-        {enlarge && <img src={enlarge} alt="Drill evidence" className="max-h-[70vh] w-full rounded-xl object-contain" />}
+        {/* safeSrc, like the thumbnail that opened it. This is the same stored
+            value; checking it in one place and not the other is how the
+            unchecked one gets copied somewhere it does matter. */}
+        {enlarge && <img src={safeSrc(enlarge)} alt="Drill evidence" className="max-h-[70vh] w-full rounded-xl object-contain" />}
       </Modal>
 
       {/* Off-screen printable report */}

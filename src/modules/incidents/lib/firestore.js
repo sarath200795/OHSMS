@@ -14,6 +14,7 @@ import {
   limit,
 } from 'firebase/firestore'
 import { db } from '../../../shared/firebase'
+import { onReadError } from '../../../shared/org/readError'
 import { AUDIT } from './audit'
 import { logAudit as logOrgAudit, auditCol, orgIndexRef } from '../../../shared/org/orgData'
 
@@ -33,7 +34,11 @@ export const logAudit = (orgId, actor, action, details = {}) =>
 
 export function subscribeAuditLogs(orgId, cb) {
   const q = query(auditCol(orgId), orderBy('at', 'desc'), limit(200))
-  return onSnapshot(q, (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))))
+  return onSnapshot(
+    q,
+    (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    onReadError('the incident audit log', cb),
+  )
 }
 
 // ── Organizations & users ─────────────────────────────────────────────────────
@@ -57,7 +62,11 @@ export { subscribeOrgUsers } from '../../../shared/org/orgData'
 
 /** Live org document. */
 export function subscribeOrg(orgId, cb) {
-  return onSnapshot(orgRef(orgId), (snap) => cb(snap.exists() ? { id: snap.id, ...snap.data() } : null))
+  return onSnapshot(
+    orgRef(orgId),
+    (snap) => cb(snap.exists() ? { id: snap.id, ...snap.data() } : null),
+    onReadError('the organization', cb, null),
+  )
 }
 
 export async function setUserStatus(uid, status, orgId, actor, userLabel) {

@@ -67,7 +67,25 @@ export const documentsService = {
     // whether more was waiting, so a full page is treated as short. It over-
     // warns on an org holding exactly 1,000, which is the safe direction.
     const status = plan.map(() => 'ok')
-    const emit = () => cb(mergeResults(parts), readNotice(status))
+    // Nothing is emitted until EVERY query has answered once.
+    //
+    // A site-scoped viewer runs the org-wide slice plus one query per batch of
+    // thirty sites, and the caller treats its first non-null callback as "the
+    // library has loaded" — it renders skeletons until then. Emitting on the
+    // first snapshot cleared those while the other queries were still out, so a
+    // partial library presented itself as a complete one, and the documents
+    // missing from it were exactly the site-scoped ones the extra queries
+    // exist to fetch. A short list that announces itself as finished is worse
+    // than a slow one.
+    //
+    // A failed query counts as answered — its error branch fills the slot and
+    // emits — so one broken listener cannot hold the whole library at skeletons.
+    const answered = plan.map(() => false)
+    const emit = (i) => {
+      answered[i] = true
+      if (answered.some((a) => !a)) return
+      cb(mergeResults(parts), readNotice(status))
+    }
 
     const unsubs = plan.map((p, i) => {
       const q = p.field
@@ -79,7 +97,7 @@ export const documentsService = {
         (snap) => {
           parts[i] = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
           status[i] = snap.docs.length >= MAX ? 'capped' : 'ok'
-          emit()
+          emit(i)
         },
         (err) => {
           // The generic service turns a read failure into an empty list, which
@@ -92,7 +110,7 @@ export const documentsService = {
           )
           parts[i] = []
           status[i] = 'failed'
-          emit()
+          emit(i)
         }
       )
     })

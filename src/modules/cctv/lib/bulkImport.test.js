@@ -47,7 +47,12 @@ describe('nameIndex', () => {
   it('refuses to guess between two rows with the same name', () => {
     const idx = nameIndex([{ id: 'a', name: 'DVR-1' }, { id: 'b', name: 'dvr-1' }])
     expect(idx.lookup('DVR-1')).toEqual({ status: 'ambiguous' })
-    expect(idx.has('DVR-1')).toBe(false)
+    expect(idx.resolves('DVR-1')).toBe(false)
+    // But it DOES exist — which is the question the importers ask, and the one
+    // they used to get the wrong answer to. An estate already holding two
+    // DVR-Gate-01s was told the name was free, so a third imported cleanly:
+    // the guard inverted exactly where it was needed.
+    expect(idx.exists('DVR-1')).toBe(true)
   })
 
   it('reports missing and empty separately, because the messages differ', () => {
@@ -226,5 +231,41 @@ describe('parseImport', () => {
     expect(out.valid).toHaveLength(2)
     expect(out.valid[0].data).toMatchObject({ dvrId: 'd1', siteId: 's1', status: 'online' })
     expect(out.valid[1].data).toMatchObject({ dvrId: 'd2', siteId: 's2', status: 'offline' })
+  })
+})
+
+// The importers ask "is this name taken?", and for a long time they asked a
+// method that answered "does this name resolve to exactly one row?". Those
+// differ precisely when the estate already holds duplicates — which is the case
+// the guard exists for, so it got weaker the worse the data already was.
+describe('a name already used twice is still used', () => {
+  const twice = [{ id: 'a', name: 'DVR-Gate-01' }, { id: 'b', name: 'dvr-gate-01' }]
+
+  it('reports it as existing', () => {
+    expect(nameIndex(twice).exists('DVR-Gate-01')).toBe(true)
+  })
+
+  it('still refuses to resolve it to a row', () => {
+    expect(nameIndex(twice).resolves('DVR-Gate-01')).toBe(false)
+    expect(nameIndex(twice).lookup('DVR-Gate-01')).toEqual({ status: 'ambiguous' })
+  })
+
+  it('rejects a THIRD import of that DVR name', () => {
+    const [row] = validateDvrRows([{ name: 'DVR-Gate-01', siteName: 'Site A' }], { sites: [{ id: 's1', name: 'Site A' }], dvrs: twice })
+    expect(row.errors).toContain('A DVR with this name already exists')
+  })
+
+  it('rejects a third import of that CAMERA name', () => {
+    const cams = [{ id: 'a', name: 'CAM-1' }, { id: 'b', name: 'cam-1' }]
+    const [row] = validateCameraRows(
+      [{ name: 'CAM-1', dvrName: 'DVR-Gate-01', siteName: 'Site A' }],
+      { sites: [{ id: 's1', name: 'Site A' }], dvrs: [{ id: 'd1', name: 'DVR-Gate-01' }], cameras: cams },
+    )
+    expect(row.errors).toContain('A camera with this name already exists')
+  })
+
+  it('still admits a name nobody has used', () => {
+    const [row] = validateDvrRows([{ name: 'DVR-New', siteName: 'Site A' }], { sites: [{ id: 's1', name: 'Site A' }], dvrs: twice })
+    expect(row.errors).not.toContain('A DVR with this name already exists')
   })
 })

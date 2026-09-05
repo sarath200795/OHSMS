@@ -13,11 +13,14 @@ import {
   orderBy,
   onSnapshot,
   serverTimestamp,
+  runTransaction,
   limit,
 } from 'firebase/firestore'
 import { db } from '../../../shared/firebase'
 import { reserveDocId } from '../../../shared/docId/reserve'
-import { logAudit as logOrgAudit } from '../../../shared/org/orgData'
+import { logAudit as logOrgAudit, COLLECTION_READ_CAP } from '../../../shared/org/orgData'
+import { onReadError } from '../../../shared/org/readError'
+import { reportError } from '../../../shared/monitoring'
 
 // ── Path helpers ─────────────────────────────────────────────────────────────
 const templateCol = (orgId) => collection(db, 'organizations', orgId, 'inspectionTemplates')
@@ -41,8 +44,14 @@ export { subscribeOrgUsers } from '../../../shared/org/orgData'
 // ── Inspection templates ───────────────────────────────────────────────────────
 
 export function subscribeTemplates(orgId, cb) {
-  const q = query(templateCol(orgId), orderBy('createdAt', 'desc'))
-  return onSnapshot(q, (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))))
+  // The only uncapped listener left in this module, and templates carry their
+  // whole `fields` AND `assignments` arrays — so it is also the heaviest.
+  const q = query(templateCol(orgId), orderBy('createdAt', 'desc'), limit(COLLECTION_READ_CAP))
+  return onSnapshot(
+    q,
+    (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    onReadError('inspection templates', cb),
+  )
 }
 
 export async function addTemplate(orgId, data, actor) {
@@ -74,6 +83,60 @@ export async function setTemplateStatus(orgId, id, status) {
   await updateDoc(templateRef(orgId, id), { status, updatedAt: serverTimestamp() })
 }
 
+/**
+ * Set the status of ONE assignment, leaving the rest as found.
+ *
+ * Pure, so the merge can be tested without Firestore.
+ */
+export function applyAssignmentStatus(assignments, assignmentId, status) {
+  let found = false
+  const next = (assignments || []).map((a) => {
+    if (a?.id !== assignmentId) return a
+    found = true
+    return { ...a, status }
+  })
+  return { assignments: next, found }
+}
+
+/**
+ * Mark an assignment Completed once its inspection has been recorded.
+ *
+ * Nothing ever did this. The only statuses written were Pending and Cancelled,
+ * so submitting an assigned inspection left the assignment Pending forever: it
+ * stayed on the schedule and kept rolling into overdueTasks, which is the list
+ * people work from. Recurring assignments were saved by the pastRecords check
+ * in schedule.js; the one-off branch had no record check at all.
+ *
+ * A transaction because assignments live as an ARRAY on the template document.
+ * Writing the array back from the copy this screen was holding would revert
+ * anything the scheduler modal had changed since — the same defect the HIRA
+ * action tracker had, in a different module.
+ *
+ * Never throws: the inspection RECORD is the thing that matters and it has
+ * already landed. Failing the submit because its bookkeeping could not be
+ * updated would lose the work; schedule.js now drops a completed one-off on the
+ * record alone, so this is the tidy-up and not the guarantee.
+ */
+export async function completeAssignment(orgId, templateId, assignmentId) {
+  if (!orgId || !templateId || !assignmentId) return false
+  try {
+    return await runTransaction(db, async (tx) => {
+      const ref = templateRef(orgId, templateId)
+      const snap = await tx.get(ref)
+      if (!snap.exists()) return false
+      const { assignments, found } = applyAssignmentStatus(
+        snap.data().assignments || [], assignmentId, 'Completed',
+      )
+      if (!found) return false
+      tx.update(ref, { assignments, updatedAt: serverTimestamp() })
+      return true
+    })
+  } catch (e) {
+    reportError(e, { source: 'inspections.completeAssignment', orgId, templateId })
+    return false
+  }
+}
+
 /** Replace the assignments array on a template (used by the scheduler modal). */
 export async function updateTemplateAssignments(orgId, id, assignments, actor) {
   await updateDoc(templateRef(orgId, id), { assignments, updatedAt: serverTimestamp() })
@@ -96,7 +159,11 @@ export async function deleteTemplate(orgId, id, label, actor) {
 
 export function subscribeRecords(orgId, cb) {
   const q = query(recordCol(orgId), orderBy('completedAt', 'desc'), limit(500))
-  return onSnapshot(q, (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))))
+  return onSnapshot(
+    q,
+    (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    onReadError('inspection records', cb),
+  )
 }
 
 export async function addRecord(orgId, record, actor) {

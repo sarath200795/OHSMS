@@ -242,10 +242,30 @@ describe('bulk import — which half is refused', () => {
     }))
   })
 
-  it('the qr mirror alone', async () => {
+  // This used to assert the mirror half was independently writable, and that
+  // premise has changed: a mirror is now bound to equipment that claims its
+  // token, so one written for nothing is refused. Rewritten rather than
+  // deleted, because a bulk import DOES write the mirror as its own operation
+  // and the point of this pair is which half survives on its own.
+  it('the qr mirror alone, once its extinguisher exists', async () => {
     const db = testEnv.authenticatedContext('vic').firestore()
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'organizations', VICTIM, 'extinguishers', 'solo1'), {
+        serialNo: 'S1', type: 'CO2', qrToken: 'tok-solo',
+      })
+    })
     await assertSucceeds(setDoc(doc(db, 'qr', 'tok-solo'), {
       orgId: VICTIM, orgName: 'Victim Ltd', extId: 'solo1', token: 'tok-solo',
+      serialNo: 'S1', type: 'CO2', status: 'active',
+    }))
+  })
+
+  it('but NOT the qr mirror alone when there is no such extinguisher', async () => {
+    // The half that used to go through. A member could publish a page for a
+    // unit nobody owns, at a token nobody has printed.
+    const db = testEnv.authenticatedContext('vic').firestore()
+    await assertFails(setDoc(doc(db, 'qr', 'tok-ghost'), {
+      orgId: VICTIM, orgName: 'Victim Ltd', extId: 'ghost', token: 'tok-ghost',
       serialNo: 'S1', type: 'CO2', status: 'active',
     }))
   })

@@ -23,6 +23,7 @@ import {
 } from 'firebase/firestore'
 import { db } from '../firebase'
 import { isSessionEnd } from '../sessionEnd'
+import { onReadError } from './readError'
 import { AUDIT } from '../audit/audit'
 import { createSharedSubscription } from './sharedSubscription'
 import { notifySiteCreated } from './siteHooks'
@@ -97,7 +98,11 @@ export async function fetchAuditLogs(orgId, { from = '', to = '', max = 5000 } =
 
 export function subscribeAuditLogs(orgId, cb, max = 300) {
   const q = query(auditCol(orgId), orderBy('at', 'desc'), limit(max))
-  return onSnapshot(q, (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))))
+  return onSnapshot(
+    q,
+    (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    onReadError('the audit log', cb),
+  )
 }
 
 // ── Organizations & users ─────────────────────────────────────────────────────
@@ -221,7 +226,16 @@ export function subscribeOrgCollection(orgId, name, cb) {
 // ONE org-users listener shared by every module context.
 const sharedOrgUsers = createSharedSubscription((orgId, emit) =>
   onSnapshot(
-    query(collection(db, 'users'), where('orgId', '==', orgId)),
+    // Capped like every other live register. This was the last uncapped
+    // listener in the shared layer, and it is opened by nearly every module
+    // context at once — so on a tenant with tens of thousands of employees it
+    // was the largest single read in the app, on every page load.
+    //
+    // The cap is generous rather than tight because this list feeds people
+    // PICKERS — assigning a course, naming an attendee — and a directory that
+    // silently stops at the name you were looking for is worse than a slow one.
+    // Nothing here is counted, so there is no total to be short.
+    query(collection(db, 'users'), where('orgId', '==', orgId), limit(COLLECTION_READ_CAP)),
     (snap) => emit(snap.docs.map((d) => ({ uid: d.id, ...d.data() }))),
     () => emit([])
   )
@@ -232,8 +246,13 @@ export function subscribeOrgUsers(orgId, cb) {
 
 /** Live org document. */
 export function subscribeOrg(orgId, cb) {
-  return onSnapshot(orgRef(orgId), (snap) =>
-    cb(snap.exists() ? { id: snap.id, ...snap.data() } : null)
+  return onSnapshot(
+    orgRef(orgId),
+    (snap) => cb(snap.exists() ? { id: snap.id, ...snap.data() } : null),
+    // null rather than []: this is one document, and every caller tests it for
+    // existence. Handing back an array would make `org.name` undefined instead
+    // of absent, which reads as an organization with no name.
+    onReadError('the organization', cb, null),
   )
 }
 

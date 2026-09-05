@@ -49,11 +49,15 @@ describe('the On Demand frequency', () => {
   // The regression guard for the fallback: the same window on a real cycle must
   // still produce dates, or the guard above has been written too broadly.
   it('does not stop a recurring form scheduling', () => {
+    // `today` is pinned inside the window. It used to be left to the real
+    // clock, which passed only while the fixture happened to sit near it — and
+    // the lookback floor made that dependence visible by breaking it.
     const occ = getPendingOccurrences({
       assignedFrom: '2026-01-01',
       assignedTo: '2026-06-01',
       frequency: 'Monthly',
       rangeEnd: new Date(2026, 5, 1),
+      today: new Date(2026, 0, 15),
     })
     expect(occ.length).toBeGreaterThan(1)
     expect(occ[0].dateString).toBe('2026-01-01')
@@ -155,5 +159,72 @@ describe('grouping a form by category', () => {
   it('copes with an empty form', () => {
     expect(groupFieldsByCategory([])).toEqual([])
     expect(groupFieldsByCategory()).toEqual([])
+  })
+})
+
+// ── The lookback floor ───────────────────────────────────────────────────────
+//
+// The cursor started at assignedFrom and walked forward one interval at a time.
+// A Daily template assigned three years ago produced roughly a thousand overdue
+// tasks for that one template, and then stopped at the safety counter — both
+// enormous and incomplete, with nothing saying either.
+describe('a long-running cycle is bounded, and lines up with its own schedule', () => {
+  const daily = (over = {}) => getPendingOccurrences({
+    assignedFrom: '2023-01-01',
+    frequency: 'Daily',
+    rangeEnd: new Date(2026, 8, 30),
+    today: new Date(2026, 8, 4),
+    ...over,
+  })
+
+  it('does not expand three years of dailies', () => {
+    // 90 days back plus the range ahead — not the ~1000 the safety cap used to
+    // hand back.
+    expect(daily().length).toBeLessThan(200)
+  })
+
+  it('reaches back far enough to catch a recently missed one', () => {
+    expect(daily()[0].dateString >= '2026-06-01').toBe(true)
+  })
+
+  it('stays ON the original schedule rather than starting from today', () => {
+    // The floor is reached by advancing along the frequency grid, so the dates
+    // are still the ones the assignment actually falls on. A monthly cycle from
+    // the 1st keeps landing on the 1st.
+    const monthly = getPendingOccurrences({
+      assignedFrom: '2023-01-01',
+      frequency: 'Monthly',
+      rangeEnd: new Date(2026, 8, 30),
+      today: new Date(2026, 8, 4),
+    })
+    for (const o of monthly) expect(o.dateString.slice(-2)).toBe('01')
+  })
+
+  it('still starts at assignedFrom when that is inside the window', () => {
+    const recent = getPendingOccurrences({
+      assignedFrom: '2026-08-20',
+      frequency: 'Weekly',
+      rangeEnd: new Date(2026, 8, 30),
+      today: new Date(2026, 8, 4),
+    })
+    expect(recent[0].dateString).toBe('2026-08-20')
+  })
+
+  it('yields nothing for a window that closed before the lookback', () => {
+    // Deliberate: an inspection missed in 2023 is a gap in the RECORD, not work
+    // to schedule today, and the records screen is where that is asked.
+    const old = getPendingOccurrences({
+      assignedFrom: '2023-01-01',
+      assignedTo: '2023-06-01',
+      frequency: 'Monthly',
+      rangeEnd: new Date(2026, 8, 30),
+      today: new Date(2026, 8, 4),
+    })
+    expect(old).toEqual([])
+  })
+
+  it('still skips a slot that was actually completed', () => {
+    const withRecord = daily({ pastRecords: [{ scheduledFor: '2026-09-04' }] })
+    expect(withRecord.map((o) => o.dateString)).not.toContain('2026-09-04')
   })
 })

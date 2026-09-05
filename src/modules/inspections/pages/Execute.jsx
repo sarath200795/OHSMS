@@ -7,13 +7,39 @@ import {
 import { PageHeader, Spinner, Field } from '../components/ui'
 import { useAuth } from '../context/AuthContext'
 import { useData } from '../context/DataContext'
-import { addRecord } from '../lib/firestore'
+import { addRecord, completeAssignment } from '../lib/firestore'
 import { fileToDataUrl } from '../lib/fileToDataUrl'
 import { putFile, MAX_UPLOAD_BYTES, MAX_INLINE_BYTES, tooLargeForInline, formatSize } from '../../../shared/storage'
 import { hasAnsweredQuestion, scoreResponses, groupFieldsByCategory, usesCategories } from '../lib/schedule'
 import { previousInspection, withRepeatHistory } from '../lib/previousFindings'
 import PreviousFindingsPanel, { PreviousFindingNote } from '../components/PreviousFindings'
 import { safeSrc } from '../../../shared/safeUrl'
+
+// ── Pass / Fail / N/A ────────────────────────────────────────────────────────
+//
+// At MODULE scope, not inside Execute. Defined in the render body it was a new
+// component TYPE on every render, so React unmounted and remounted every
+// Pass/Fail group in the form on every keystroke anywhere in it — losing focus
+// and any in-progress interaction, on a screen somebody fills in one field at a
+// time while standing at the thing being inspected.
+const PF_OPTIONS = [
+  { v: 'Pass', icon: Check, on: 'bg-emerald-500 text-white', off: 'text-emerald-600' },
+  { v: 'Fail', icon: X, on: 'bg-red-500 text-white', off: 'text-red-600' },
+  { v: 'N/A', icon: Minus, on: 'bg-ink-400 text-white', off: 'text-ink-500' },
+]
+
+function PF({ value, onPick }) {
+  return (
+    <div className="flex gap-2">
+      {PF_OPTIONS.map((o) => (
+        <button key={o.v} type="button" onClick={() => onPick(o.v)}
+          className={`inline-flex items-center gap-1 rounded-xl px-3 py-2 text-xs font-bold shadow-clay-sm transition active:scale-95 ${value === o.v ? o.on : `bg-clay-surface ${o.off}`}`}>
+          <o.icon size={14} /> {o.v}
+        </button>
+      ))}
+    </div>
+  )
+}
 
 export default function Execute() {
   const navigate = useNavigate()
@@ -166,6 +192,13 @@ export default function Execute() {
     setBusy(true)
     try {
       await addRecord(orgId, record, profile)
+      // Take the assignment off the schedule now that it has been done.
+      // Nothing ever did this: the only statuses written were Pending and
+      // Cancelled, so a completed assigned inspection stayed Pending forever
+      // and kept rolling into overdueTasks. Deliberately NOT awaited into the
+      // failure path — the record is the thing that matters and it has landed,
+      // and schedule.js now drops a completed one-off on the record alone.
+      if (task.assignmentId) completeAssignment(orgId, task.templateId, task.assignmentId)
       toast.success(`Inspection submitted — ${score}% (${result})`)
       navigate('/inspections/records')
     } catch (e) {
@@ -173,25 +206,6 @@ export default function Execute() {
     } finally {
       setBusy(false)
     }
-  }
-
-  const PF = ({ fid, value }) => {
-    const opts = [
-      { v: 'Pass', icon: Check, on: 'bg-emerald-500 text-white', off: 'text-emerald-600' },
-      { v: 'Fail', icon: X, on: 'bg-red-500 text-white', off: 'text-red-600' },
-      { v: 'N/A', icon: Minus, on: 'bg-ink-400 text-white', off: 'text-ink-500' },
-    ]
-    return (
-      <div className="flex gap-2">
-        {opts.map((o) => (
-          <button key={o.v} type="button"
-            onClick={() => update(fid, { answer: o.v, observation: o.v === 'Fail' ? responses[fid]?.observation || '' : '' })}
-            className={`inline-flex items-center gap-1 rounded-xl px-3 py-2 text-xs font-bold shadow-clay-sm transition active:scale-95 ${value === o.v ? o.on : `bg-clay-surface ${o.off}`}`}>
-            <o.icon size={14} /> {o.v}
-          </button>
-        ))}
-      </div>
-    )
   }
 
   return (
@@ -278,13 +292,18 @@ export default function Execute() {
                         <PreviousFindingNote finding={lastFail} />
                       </div>
                       <div>
-                        {f.type === 'Pass/Fail' && <PF fid={f.id} value={r.answer} />}
+                        {f.type === 'Pass/Fail' && (
+                          <PF
+                            value={r.answer}
+                            onPick={(v) => update(f.id, { answer: v, observation: v === 'Fail' ? r.observation || '' : '' })}
+                          />
+                        )}
                         {f.type === 'Number' && (
-                          <input type="number" className="input w-40" placeholder="Value" value={r.answer}
+                          <input type="number" className="input w-40" placeholder="Value" value={r.answer ?? ''}
                             onChange={(e) => update(f.id, { answer: e.target.value })} />
                         )}
                         {f.type === 'Text Input' && (
-                          <input className="input w-56" placeholder="Answer" value={r.answer}
+                          <input className="input w-56" placeholder="Answer" value={r.answer ?? ''}
                             onChange={(e) => update(f.id, { answer: e.target.value })} />
                         )}
                         {f.type === 'Single Choice' && (
@@ -330,7 +349,7 @@ export default function Execute() {
                           className="input min-h-[60px]"
                           placeholder="What is wrong? (observation)"
                           aria-label={`Observation for question ${i + 1}`}
-                          value={r.observation}
+                          value={r.observation ?? ''}
                           onChange={(e) => update(f.id, { observation: e.target.value })}
                         />
                         <textarea

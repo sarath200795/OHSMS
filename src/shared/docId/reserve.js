@@ -81,19 +81,57 @@ export async function setOrgCode(orgId, value) {
  */
 export async function reserveDocId(orgId, kind, { orgCode, floor = 0 } = {}) {
   const code = orgCode || (await getOrgCode(orgId))
+  const seq = await reserveSeq(orgId, kind, { floor })
+  return formatDocId(kind, code, seq)
+}
+
+/**
+ * Reserve `count` document references at once.
+ *
+ * One transaction for the whole block rather than one per row. A CSV import of
+ * two hundred risk assessments through reserveDocId would be two hundred
+ * transactions against the same counter document, each retrying against the
+ * last — slow enough to look broken, and contended enough to sometimes be.
+ */
+export async function reserveDocIds(orgId, kind, count, { orgCode } = {}) {
+  const n = Math.max(0, Math.floor(count))
+  if (!n) return []
+  const code = orgCode || (await getOrgCode(orgId))
+  const first = await reserveSeq(orgId, kind, { count: n })
+  return Array.from({ length: n }, (_, i) => formatDocId(kind, code, first + i))
+}
+
+/**
+ * Reserve the next `count` numbers for a kind and return the FIRST of them.
+ *
+ * The same transaction reserveDocId is built on, without the MODULE-ORG_0001
+ * formatting — for identifiers that have their own established shape and are
+ * printed on physical things. An AED carries `AED-0042` on a QR label; giving
+ * it a document reference as well would be two answers to "which unit is this",
+ * which is why DOC_CODES deliberately has no equipment entries.
+ *
+ * `count` exists for the generate-for-every-site buttons, which need a block of
+ * numbers nobody else can be inside. Reserving them one at a time would leave
+ * another operator's asset interleaved through the batch.
+ *
+ * @param floor lowest acceptable number. The asset registers pass their current
+ *              highest, which is what seeds a counter that starts at zero
+ *              against a register full of assets numbered before it existed.
+ */
+export async function reserveSeq(orgId, kind, { count = 1, floor = 0 } = {}) {
   // Read the legacy counter OUTSIDE the transaction: a transaction may retry,
   // and this is a one-time migration read whose value cannot change (nothing
   // writes the old document any more).
   const legacyFloor = await legacyCounterFor(orgId, kind)
-  const seq = await runTransaction(db, async (tx) => {
+  const n = Math.max(1, Math.floor(count))
+  return runTransaction(db, async (tx) => {
     const snap = await tx.get(seqRef(orgId, kind))
     const current = (snap.exists() && Number(snap.data().n)) || 0
-    const next = Math.max(current, legacyFloor, floor) + 1
+    const first = Math.max(current, legacyFloor, floor) + 1
     // Not merge: the document holds exactly { n }, which is what the rule pins.
-    tx.set(seqRef(orgId, kind), { n: next })
-    return next
+    tx.set(seqRef(orgId, kind), { n: first + n - 1 })
+    return first
   })
-  return formatDocId(kind, code, seq)
 }
 
 // Legacy per-org counter values, fetched once per org and cached. Returns 0

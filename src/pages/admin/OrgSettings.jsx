@@ -129,7 +129,15 @@ export default function OrgSettings() {
     const file = e.target.files?.[0]
     e.target.value = ''
     if (!file) return
-    if (!file.type.startsWith('image/')) return toast.error('Pick an image file — PNG or SVG works best')
+    // Not SVG, and the message no longer offers it. storage.rules refuses that
+    // type for every upload in the product: an SVG is a document that can carry
+    // script, and a bucket object is served under the type it was stored with
+    // from a permanent unauthenticated link. Refused here as well as there so
+    // the person is told, rather than falling through to the inline path and
+    // wondering why a large logo suddenly will not save.
+    if (!file.type.startsWith('image/') || file.type.includes('svg')) {
+      return toast.error('Pick an image file — PNG or JPEG works best')
+    }
     if (file.size > MAX_LOGO_BYTES) {
       return toast.error(`Logo too large — keep it under ${formatSize(MAX_LOGO_BYTES)}`)
     }

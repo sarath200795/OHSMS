@@ -1,4 +1,5 @@
 import { collection, onSnapshot, orderBy, query, limit } from 'firebase/firestore'
+import { onReadError } from '../../../shared/org/readError'
 import { db } from '../../../shared/firebase'
 
 // Reads only. The write path that used to live here — createAudit,
@@ -13,7 +14,9 @@ const col = (orgId) => collection(db, 'organizations', orgId, 'audits')
 
 export function subscribeAudits(orgId, callback) {
   const q = query(col(orgId), orderBy('scheduledDate', 'asc'), limit(1000))
-  return onSnapshot(q, (snap) => {
-    callback(snap.docs.map((d) => ({ id: d.id, ...d.data() })))
-  })
+  return onSnapshot(
+    q,
+    (snap) => callback(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    onReadError('audits', callback),
+  )
 }

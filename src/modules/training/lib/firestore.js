@@ -143,32 +143,47 @@ export async function logTraining(orgId, { course, employees, trainerName, compl
   const matching = openAssignments.filter(
     (a) => a.status === 'assigned' && a.courseId === course.id && uids.has(a.employeeUid),
   )
-  const batch = writeBatch(db)
-  for (const a of matching) {
-    batch.update(assignmentRef(orgId, a.id), { status: 'completed', completedOn })
+  // ── Chunked, like both of its neighbours in this file ──────────────────────
+  //
+  // This was ONE writeBatch holding matching.length + employees.length
+  // operations. Firestore rejects a batch over 500 outright, so a site-wide
+  // induction — the exact case this screen exists for — failed wholesale, and
+  // failed harder the more people had attended. assignCourse and cancelCourse
+  // directly below have chunked at 400 all along; this one was the odd one out.
+  //
+  // The two write kinds go into one queue so a chunk boundary can fall
+  // anywhere: splitting them separately would leave the assignment updates in
+  // one batch and the records in another for no benefit, since neither half is
+  // atomic with the other regardless.
+  const writes = [
+    ...matching.map((a) => (batch) =>
+      batch.update(assignmentRef(orgId, a.id), { status: 'completed', completedOn })),
+    ...employees.map((emp) => (batch) =>
+      batch.set(doc(recordCol(orgId)), {
+        courseId: course.id,
+        courseName: course.name,
+        category: course.category || 'Other',
+        validityMonths: Number(course.validityMonths) || 0,
+        employeeUid: emp.uid,
+        employeeName: emp.name || emp.email || 'Unknown',
+        trainerName: (trainerName || '').trim(),
+        completedOn,
+        expiresOn,
+        region: scope?.region || '',
+        entity: scope?.entity || '',
+        siteId: scope?.siteId || '',
+        site: scope?.site || '',
+        notes: (notes || '').trim(),
+        createdAt: serverTimestamp(),
+        createdBy: actor?.uid || null,
+        createdByName: actor?.name || '',
+      })),
+  ]
+  for (let i = 0; i < writes.length; i += 400) {
+    const batch = writeBatch(db)
+    for (const apply of writes.slice(i, i + 400)) apply(batch)
+    await batch.commit()
   }
-  for (const emp of employees) {
-    batch.set(doc(recordCol(orgId)), {
-      courseId: course.id,
-      courseName: course.name,
-      category: course.category || 'Other',
-      validityMonths: Number(course.validityMonths) || 0,
-      employeeUid: emp.uid,
-      employeeName: emp.name || emp.email || 'Unknown',
-      trainerName: (trainerName || '').trim(),
-      completedOn,
-      expiresOn,
-      region: scope?.region || '',
-      entity: scope?.entity || '',
-      siteId: scope?.siteId || '',
-      site: scope?.site || '',
-      notes: (notes || '').trim(),
-      createdAt: serverTimestamp(),
-      createdBy: actor?.uid || null,
-      createdByName: actor?.name || '',
-    })
-  }
-  await batch.commit()
   await logAudit(orgId, actor, 'training.record_create', {
     module: 'training', target: 'record', targetLabel: course.name,
     summary: `Logged "${course.name}" for ${employees.length} employee(s)`,
