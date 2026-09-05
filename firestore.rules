@@ -577,10 +577,67 @@ service cloud.firestore {
     // collections use it: this mirror is what a stranger with a phone is shown,
     // and an auditor rewriting it could mark a faulty extinguisher ready for use
     // on the page the next person to scan it reads.
+    // The collection an equipment mirror speaks for, from its own payload.
+    //
+    // /qr holds two shapes. Extinguisher mirrors predate the others and carry
+    // `extId` with no kind; AED, FAS and stretcher mirrors carry `assetKind`
+    // and `assetRefId` (fire/lib/firestore.js — mirrorPayload, aedMirror,
+    // fasMirror, stretcherMirror). '' for anything else, which fails the check
+    // below rather than defaulting into a real collection.
+    function mirrorCollection(d) {
+      return !('assetKind' in d) ? 'extinguishers'
+        : d.assetKind == 'aed' ? 'aeds'
+        : d.assetKind == 'fas' ? 'fas'
+        : d.assetKind == 'stretcher' ? 'stretchers'
+        : '';
+    }
+
+    function mirrorAssetId(d) {
+      return !('assetKind' in d) ? d.get('extId', '') : d.get('assetRefId', '');
+    }
+
+    /**
+     * Does the asset this mirror names actually claim this token?
+     *
+     * The check runs the opposite way round to /procedureQr's, because the
+     * document ID here is a random TOKEN rather than the asset's id: there is
+     * nothing in the path to bind to, so the binding has to be that the asset
+     * agrees. Every writer stamps `qrToken` on the asset in the same batch as
+     * the mirror (addExtinguisher, generateAedQr, backfillExtinguisherQr and
+     * the rest), so getAfter sees it — and for a mirror rewritten later the
+     * asset already carries it.
+     */
+    function mirrorsItsAsset(token, d) {
+      return mirrorCollection(d) != ''
+        && mirrorAssetId(d) is string
+        && mirrorAssetId(d) != ''
+        && getAfter(/databases/$(database)/documents/organizations/$(d.orgId)/$(mirrorCollection(d))/$(mirrorAssetId(d)))
+             .data.get('qrToken', '') == token;
+    }
+
     match /qr/{token} {
       allow get: if true;
       allow list: if false;
-      allow create: if isWriterOf(request.resource.data.orgId);
+
+      // Owning the org in the PAYLOAD only proves the writer owns the org they
+      // named — never that the equipment this mirror speaks for exists, or is
+      // theirs, or has anything to do with this token. Without the second
+      // clause a member could publish a world-readable page describing a fire
+      // extinguisher nobody owns, or park one at a token that has not been
+      // printed yet and wait for the sticker to catch up.
+      //
+      // /procedureQr has bound its mirror since it was written; these two were
+      // the pair that never did.
+      //
+      // Deliberately NOT a keys().hasOnly(). Four mirror shapes across five
+      // asset kinds would make it long, and it would have to be edited every
+      // time a mirror gains a field — the failure being a dead sticker on a
+      // wall, discovered by whoever scans it. Once the mirror is pinned to an
+      // asset the writer already owns, an over-wide payload only lets them
+      // vandalise their own equipment's public page, which the legitimate
+      // fields already allow.
+      allow create: if isWriterOf(request.resource.data.orgId)
+        && mirrorsItsAsset(token, request.resource.data);
       allow update: if resource != null
         && isWriterOf(resource.data.orgId)
         && request.resource.data.orgId == resource.data.orgId;
@@ -652,7 +709,26 @@ service cloud.firestore {
     match /permitQr/{token} {
       allow get: if true;
       allow list: if false;
-      allow create: if isWriterOf(request.resource.data.orgId);
+
+      // Bound to the permit it speaks for, the same way /qr is bound to its
+      // equipment and for the same reason: the document ID is a random token,
+      // so nothing in the path ties this mirror to anything, and owning the org
+      // in the payload proves only that the writer owns the org they named.
+      //
+      // This one is the sharper of the two. The permit mirror is what somebody
+      // at a barrier reads to decide whether work in front of them is
+      // authorised, so an unbound create is a page saying a job is permitted
+      // when no permit exists.
+      //
+      // getAfter reads the post-state, which is what both writers need:
+      // createPermit commits the permit before publishing the mirror, and
+      // ensurePermitQr stamps qrToken on the permit first for exactly this
+      // reason. Either way the permit carries the token by the time this runs.
+      allow create: if isWriterOf(request.resource.data.orgId)
+        && request.resource.data.get('permitId', '') is string
+        && request.resource.data.get('permitId', '') != ''
+        && getAfter(/databases/$(database)/documents/organizations/$(request.resource.data.orgId)/permits/$(request.resource.data.permitId))
+             .data.get('qrToken', '') == token;
       allow update: if resource != null
         && isWriterOf(resource.data.orgId)
         && request.resource.data.orgId == resource.data.orgId;

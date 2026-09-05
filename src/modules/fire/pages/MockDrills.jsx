@@ -674,7 +674,10 @@ export default function MockDrills() {
 
       {/* Full-size photo */}
       <Modal open={!!enlarge} onClose={() => setEnlarge(null)} title="Evidence photo" maxWidth="max-w-2xl">
-        {enlarge && <img src={enlarge} alt="Drill evidence" className="max-h-[70vh] w-full rounded-xl object-contain" />}
+        {/* safeSrc, like the thumbnail that opened it. This is the same stored
+            value; checking it in one place and not the other is how the
+            unchecked one gets copied somewhere it does matter. */}
+        {enlarge && <img src={safeSrc(enlarge)} alt="Drill evidence" className="max-h-[70vh] w-full rounded-xl object-contain" />}
       </Modal>
 
       {/* Off-screen printable report */}

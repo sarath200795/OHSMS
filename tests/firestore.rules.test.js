@@ -422,6 +422,22 @@ describe('multi-tenant isolation', () => {
 })
 
 describe('public QR mirror (/qr)', () => {
+  // The extinguishers these mirrors speak for, each carrying its printed token.
+  //
+  // These fixtures did not exist, because a mirror used to be creatable for
+  // equipment that was not. Seeding them is what keeps the positives below
+  // POSITIVE: without the asset they now fail, and a suite whose only surviving
+  // cases are refusals cannot tell a working rule from one that refuses
+  // everything. See tests/qrMirrorBinding.rules.test.js for the binding itself.
+  beforeEach(async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore()
+      for (const [id, token] of [['ext2', 't2'], ['ext3', 't3']]) {
+        await setDoc(doc(db, 'organizations', 'orgA', 'extinguishers', id), { qrToken: token, type: 'ABC' })
+      }
+    })
+  })
+
   it('anyone (signed-out) can read a QR mirror', async () => {
     await testEnv.withSecurityRulesDisabled(async (ctx) => {
       await setDoc(doc(ctx.firestore(), 'qr', 't1'), { orgId: 'orgA', token: 't1', type: 'ABC' })
@@ -433,14 +449,17 @@ describe('public QR mirror (/qr)', () => {
   it('an approved member can create a QR mirror for their own org', async () => {
     const alice = testEnv.authenticatedContext('alice').firestore()
     await assertSucceeds(
-      setDoc(doc(alice, 'qr', 't2'), { orgId: 'orgA', token: 't2', type: 'ABC' })
+      setDoc(doc(alice, 'qr', 't2'), { orgId: 'orgA', extId: 'ext2', token: 't2', type: 'ABC' })
     )
   })
 
   it('a member CANNOT create a QR mirror for another org', async () => {
+    // ext3 exists and holds t3, so the binding is satisfied and the ONLY thing
+    // refusing this is that bob is in orgB. Seeding the asset keeps that the
+    // case under test rather than letting a missing fixture pass it by accident.
     const bob = testEnv.authenticatedContext('bob').firestore()
     await assertFails(
-      setDoc(doc(bob, 'qr', 't3'), { orgId: 'orgA', token: 't3', type: 'ABC' })
+      setDoc(doc(bob, 'qr', 't3'), { orgId: 'orgA', extId: 'ext3', token: 't3', type: 'ABC' })
     )
   })
 
@@ -649,7 +668,15 @@ describe('public permit QR mirror (/permitQr)', () => {
 
   beforeEach(async () => {
     await testEnv.withSecurityRulesDisabled(async (ctx) => {
-      await setDoc(doc(ctx.firestore(), 'permitQr', 'tok1'), mirror)
+      const db = ctx.firestore()
+      await setDoc(doc(db, 'permitQr', 'tok1'), mirror)
+      // The permits these mirrors speak for. A mirror may now only be published
+      // at a token its own permit carries, so the positives below need the
+      // permit to exist — and 'forged' deliberately gets none, which is what
+      // that test has always been about.
+      for (const [id, token] of [['p1', 'tok1'], ['p2', 'tok2'], ['p3', 'tok3']]) {
+        await setDoc(doc(db, 'organizations', 'orgA', 'permits', id), { qrToken: token, permitNo: 'PTW-001' })
+      }
     })
   })
 
@@ -675,7 +702,7 @@ describe('public permit QR mirror (/permitQr)', () => {
 
   it('a member of the owning org can publish and update it', async () => {
     const alice = testEnv.authenticatedContext('alice').firestore()
-    await assertSucceeds(setDoc(mirrorAt(alice, 'tok2'), { ...mirror, token: 'tok2' }))
+    await assertSucceeds(setDoc(mirrorAt(alice, 'tok2'), { ...mirror, permitId: 'p2', token: 'tok2' }))
     await assertSucceeds(setDoc(mirrorAt(alice, 'tok1'), { ...mirror, storedStatus: 'closed' }, { merge: true }))
   })
 
@@ -688,7 +715,7 @@ describe('public permit QR mirror (/permitQr)', () => {
     const bob = testEnv.authenticatedContext('bob').firestore() // orgB
     await assertFails(setDoc(mirrorAt(bob, 'tok1'), { ...mirror, storedStatus: 'closed' }, { merge: true }))
     await assertFails(deleteDoc(mirrorAt(bob, 'tok1')))
-    await assertFails(setDoc(mirrorAt(bob, 'tok3'), { ...mirror, token: 'tok3' }))
+    await assertFails(setDoc(mirrorAt(bob, 'tok3'), { ...mirror, permitId: 'p3', token: 'tok3' }))
   })
 })
 
