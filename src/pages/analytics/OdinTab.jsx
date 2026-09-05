@@ -1474,15 +1474,13 @@ function PassHeadline({ overall, source }) {
 function PassPanel({ title, subtitle, rows }) {
   if (rows.length === 0) return <Panel title={title} subtitle={subtitle}><NoData height={180}>Nothing to show.</NoData></Panel>
 
-  // Whether the figures are weighted by audit size or are a plain mean of
-  // percentages changes what they mean, so it is stated rather than assumed.
-  // A mixed page — some groups weighted, some not — is named as mixed.
-  const bases = new Set(rows.map((r) => r.basis))
-  const basisNote = bases.size > 1
-    ? 'Some groups are weighted by audit size and some are a plain average of each audit’s percentage — your audits question supplies check counts for only part of the data.'
-    : bases.has('weighted')
-      ? 'Weighted by audit size: total checks passed over total checks, so a large audit counts for more than a small one.'
-      : 'A plain average of each audit’s own percentage. Add a pass and fail count to your question to weight these by audit size instead.'
+  // What the bar counts, stated rather than assumed. It used to be the mean of
+  // each audit's score, which is a different measurement under the same word:
+  // eleven audits averaging 78% with one of them at or above the mark read
+  // "78%" here and "1 of 11" in the table beside it.
+  const basisNote = `The share of audits scoring ${PASS_MARK}% or more — the same measure as the headline `
+    + 'figures and the table below, so a group’s bar and its pass count always agree. '
+    + 'The average score itself is in the tooltip.'
 
   const pending = rows.filter((r) => r.n7Audits < r.audits)
 
@@ -1492,15 +1490,17 @@ function PassPanel({ title, subtitle, rows }) {
   const tip = (v, name, item) => {
     if (v == null) return ['—', name]
     const r = item?.payload
-    // Check counts where the question gave them — "412 of 500 checks" is the
-    // most auditable form. Otherwise the AUDIT counts, which exist however the
-    // question states its result and were simply missing before: a percentage
-    // with nothing behind it is a number a reader has to take on faith.
-    if (r?.checks > 0 && name === 'Day of audit') {
-      return [`${v}% — ${r.passed.toLocaleString()} of ${r.checks.toLocaleString()} checks passed, ${r.failed.toLocaleString()} failed`, name]
-    }
+    // The audits behind the bar, then the average score beside it. Both are
+    // spelled out because they are the two numbers that used to be confused for
+    // each other: the bar is how many CLEARED the mark, the average is how
+    // close the rest came.
     if (name === 'N+7' && r?.n7Audits > 0) {
-      return [`${v}% — ${r.auditsPassed.toLocaleString()} passed, ${r.auditsFailed.toLocaleString()} failed of ${r.n7Audits.toLocaleString()} audits`, name]
+      const avg = Number.isFinite(r.n7Avg) ? `, averaging ${r.n7Avg}%` : ''
+      return [`${v}% — ${r.auditsPassed.toLocaleString()} of ${r.n7Audits.toLocaleString()} audits at or above ${PASS_MARK}%${avg}`, name]
+    }
+    if (name === 'Day of audit' && r?.audits > 0) {
+      const avg = Number.isFinite(r.day0Avg) ? `, averaging ${r.day0Avg}%` : ''
+      return [`${v}% of audits at or above ${PASS_MARK}%${avg}`, name]
     }
     return [`${v}%`, name]
   }

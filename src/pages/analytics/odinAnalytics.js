@@ -964,32 +964,44 @@ export function passRates(auditRows = [], key = 'region') {
       const scored = list.map((r) => ({ row: r, d0: day0Of(r), n7: n7Of(r), size: checksTotalOf(r) }))
       const day0Rows = scored.filter((s) => isNum(s.d0))
       const n7Rows = scored.filter((s) => isNum(s.n7))
-      // Weighted only when EVERY audit that contributes a figure also carries a
-      // size. A partial weighting counts the sizeless audits as weightless,
-      // which is neither a mean nor a weighted average — it is a third number
-      // with no name and no defensible meaning.
-      const canWeight = day0Rows.length > 0 && day0Rows.every((s) => isNum(s.size))
 
-      let day0 = null
-      let n7 = null
-      if (canWeight) {
-        const total = day0Rows.reduce((n, s) => n + s.size, 0)
-        day0 = total > 0 ? pct(day0Rows.reduce((n, s) => n + (s.d0 / 100) * s.size, 0) / total * 100) : null
-        const n7Weighable = n7Rows.filter((s) => isNum(s.size))
-        const n7Total = n7Weighable.reduce((n, s) => n + s.size, 0)
-        n7 = n7Total > 0
-          ? pct(n7Weighable.reduce((n, s) => n + s.n7 * s.size, 0) / n7Total)
-          : null
-      } else {
-        day0 = day0Rows.length ? pct(day0Rows.reduce((n, s) => n + s.d0, 0) / day0Rows.length) : null
-        n7 = n7Rows.length ? pct(n7Rows.reduce((n, s) => n + s.n7, 0) / n7Rows.length) : null
-      }
+      // ── A pass rate, not an average score ────────────────────────────────
+      //
+      // These two used to be the MEAN of each audit's percentage, and that is a
+      // different measurement wearing the same word. An auditor with eleven
+      // audits averaging 78% — only one of which reached the 90 mark — read
+      // "78%" on a chart headed "Pass rate by auditor", beside a table saying
+      // 1 of 11. Both figures were right and they could not both be the pass
+      // rate.
+      //
+      // Every other pass figure on this page is the share of audits at or above
+      // the mark: the headline KPIs, the recovery ramp, the trend, the auditor
+      // table. This is now that too, so the same word means the same thing
+      // wherever it appears.
+      //
+      // The mean survives beside it as day0Avg/n7Avg — it is a real and useful
+      // number, it just is not the pass rate, so it is named separately and
+      // read out where there is room to say which is which.
+      const share = (list2, read) =>
+        list2.length ? pct((list2.filter((s) => read(s) >= PASS_MARK).length / list2.length) * 100) : null
+      const mean = (list2, read) =>
+        list2.length ? pct(list2.reduce((n, s) => n + read(s), 0) / list2.length) : null
+
+      const day0 = share(day0Rows, (s) => s.d0)
+      const n7 = share(n7Rows, (s) => s.n7)
+      const day0Avg = mean(day0Rows, (s) => s.d0)
+      const n7Avg = mean(n7Rows, (s) => s.n7)
 
       const totals = passTotals(list)
       return {
         name,
         day0,
         n7,
+        // The mean of the scores themselves. Not the bar — see above — but the
+        // answer to "how well did they do", which the pass rate alone flattens:
+        // eleven audits at 89 and eleven at 12 are both a 0% pass rate.
+        day0Avg,
+        n7Avg,
         // The change is the point of putting the two side by side: it is what
         // the seven days of remediation bought.
         delta: isNum(day0) && isNum(n7) ? pct(n7 - day0) : null,
@@ -1010,7 +1022,10 @@ export function passRates(auditRows = [], key = 'region') {
         passed: totals.passed,
         failed: totals.failed,
         checks: totals.checks,
-        basis: canWeight ? 'weighted' : 'mean',
+        // The bar is a count of audits over a count of audits, so there is no
+        // weighting question left to answer and nothing for the panel to
+        // caveat. Kept as a constant so the shape of the row does not change.
+        basis: 'share',
       }
     })
     .sort((a, b) => (a.day0 ?? 101) - (b.day0 ?? 101) || a.name.localeCompare(b.name))

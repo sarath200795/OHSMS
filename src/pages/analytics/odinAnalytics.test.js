@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   resolveOdinRows, odinFacets, filterOdinRows, statusTotals, statusByRegion,
   bySubCategory, sitePins, cityPins, siteIssues, leadStatus, passRates, odinAnalytics,
-  STATUS_KEYS, TERMINAL_STATUSES, isTerminal, isOutstanding, paletteColor, day0Of, n7Of, checksTotalOf, passTotals,
+  STATUS_KEYS, TERMINAL_STATUSES, isTerminal, isOutstanding, paletteColor, day0Of, n7Of, checksTotalOf, passTotals, PASS_MARK,
 } from './odinAnalytics'
 
 // The shape functions/lib/metabase.js hands back, with the fields a test needs.
@@ -300,41 +300,62 @@ describe('leadStatus', () => {
 })
 
 describe('passRates', () => {
-  it('weights by audit size when the check counts are there', () => {
-    // Averaging "100% of 4 checks" with "50% of 400" gives 75%. The honest
-    // answer is 50.5%, and the difference is what a site manager is judged on.
+  it('is the SHARE of audits at or above the mark, not the mean of their scores', () => {
+    // The bug this replaced: eleven audits averaging 78% with one of them at or
+    // above the mark drew a bar reading "78%" on a chart headed "Pass rate",
+    // beside a table saying 1 of 11. Both numbers were right; only one of them
+    // is a pass rate.
+    const out = passRates([
+      audit({ region: 'South', passPct: 95, passPctN7: 95 }),
+      ...Array.from({ length: 10 }, () => audit({ region: 'South', passPct: 76, passPctN7: 76 })),
+    ], 'region')
+    expect(out[0].audits).toBe(11)
+    expect(out[0].n7).toBe(9.1)          // 1 of 11 cleared 90
+    expect(out[0].n7Avg).toBeCloseTo(77.7, 1)   // ...and the mean is ~78
+  })
+
+  it('agrees with the pass counts printed beside it', () => {
+    const out = passRates([
+      audit({ region: 'South', passPctN7: 95 }),
+      audit({ region: 'South', passPctN7: 60 }),
+    ], 'region')
+    expect(out[0].n7).toBe(50)
+    expect([out[0].auditsPassed, out[0].auditsFailed, out[0].n7Audits]).toEqual([1, 1, 2])
+  })
+
+  it('treats a score exactly at the mark as a pass', () => {
+    expect(passRates([audit({ region: 'South', passPctN7: PASS_MARK })], 'region')[0].n7).toBe(100)
+  })
+
+  it('keeps the mean score alongside, because a pass rate flattens it', () => {
+    // Eleven audits at 89 and eleven at 12 are both a 0% pass rate, and a
+    // reader deciding where to send someone needs to tell those apart.
+    const near = passRates([audit({ region: 'S', passPct: 89, passPctN7: 89 })], 'region')[0]
+    const far = passRates([audit({ region: 'S', passPct: 12, passPctN7: 12 })], 'region')[0]
+    expect([near.n7, far.n7]).toEqual([0, 0])
+    expect([near.n7Avg, far.n7Avg]).toEqual([89, 12])
+  })
+
+  it('no longer weights by audit size — a pass rate counts audits, not checks', () => {
+    // Weighting answers "what share of CHECKS passed", which is a third
+    // measurement. The check counts are still carried for the tooltip.
     const out = passRates([
       audit({ region: 'South', passPct: 100, checksPassed: 4, checksTotal: 4, passPctN7: 100 }),
       audit({ region: 'South', passPct: 50, checksPassed: 200, checksTotal: 400, passPctN7: 60 }),
     ], 'region')
-    expect(out[0].basis).toBe('weighted')
-    expect(out[0].day0).toBeCloseTo(50.5, 1)
-    expect(out[0].n7).toBeCloseTo(60.4, 1)
+    expect(out[0].basis).toBe('share')
+    expect(out[0].n7).toBe(50)                  // one of the two cleared the mark
+    expect(out[0].checks).toBe(404)             // still there for the tooltip
   })
 
-  it('falls back to a plain mean, and says that is what it did', () => {
+  it('reports what the seven days bought, in pass-rate points', () => {
     const out = passRates([
-      audit({ region: 'South', passPct: 100, passPctN7: 100 }),
-      audit({ region: 'South', passPct: 50, passPctN7: 60 }),
+      audit({ region: 'South', passPct: 82, passPctN7: 94 }),
     ], 'region')
-    expect(out[0].basis).toBe('mean')
-    expect(out[0].day0).toBe(75)
-    expect(out[0].n7).toBe(80)
-  })
-
-  it('does not weight when only some of the audits carry check counts', () => {
-    // A partial weighting would count the audits without counts as weightless,
-    // which is not a mean and is not a weighted average — it is neither.
-    const out = passRates([
-      audit({ region: 'South', passPct: 100, checksPassed: 4, checksTotal: 4 }),
-      audit({ region: 'South', passPct: 50 }),
-    ], 'region')
-    expect(out[0].basis).toBe('mean')
-    expect(out[0].day0).toBe(75)
-  })
-
-  it('reports what the seven days bought', () => {
-    expect(passRates([audit({ region: 'South', passPct: 82, passPctN7: 94 })], 'region')[0].delta).toBe(12)
+    // 0% cleared the mark on the day, 100% after seven days.
+    expect(out[0].day0).toBe(0)
+    expect(out[0].n7).toBe(100)
+    expect(out[0].delta).toBe(100)
   })
 
   it('separates "not re-checked yet" from "re-checked and scored badly"', () => {
@@ -345,12 +366,12 @@ describe('passRates', () => {
     ], 'region')
     expect(out[0].audits).toBe(2)
     expect(out[0].n7Audits).toBe(1)
-    expect(out[0].n7).toBe(95)
+    expect(out[0].n7).toBe(100)   // the one that WAS re-checked cleared the mark
   })
 
   it('groups by entity just as readily as by region', () => {
     const out = passRates([
-      audit({ entity: 'Retail', passPct: 80 }),
+      audit({ entity: 'Retail', passPct: 95 }),
       audit({ entity: 'Logistics', passPct: 60 }),
     ], 'entity')
     // Worst first: this list exists to be acted on from the top.
@@ -509,13 +530,16 @@ describe('pass and fail as counts', () => {
     expect(n7Of(counted({ checksPassedN7: 9, checksFailedN7: 1, checksTotalN7: 10 }))).toBeCloseTo(90)
   })
 
-  it('weights a group stated only as counts, with no percentage anywhere', () => {
+  it('rates a group stated only as counts by how many audits cleared the mark', () => {
+    // The check counts still ride along for the tooltip, but the BAR counts
+    // audits: one of these two scored 100%, the other 50%.
     const out = passRates([
       counted({ region: 'South', checksPassed: 4, checksFailed: 0, checksTotal: 4 }),
       counted({ region: 'South', checksPassed: 200, checksFailed: 200, checksTotal: 400 }),
     ], 'region')
-    expect(out[0].basis).toBe('weighted')
-    expect(out[0].day0).toBeCloseTo(50.5, 1)
+    expect(out[0].basis).toBe('share')
+    expect(out[0].day0).toBe(50)
+    expect(out[0].day0Avg).toBeCloseTo(75, 1)
     expect(out[0].passed).toBe(204)
     expect(out[0].failed).toBe(200)
     expect(out[0].checks).toBe(404)
@@ -524,18 +548,22 @@ describe('pass and fail as counts', () => {
   it('carries the raw counts onto the bar, so a percentage can be checked', () => {
     const out = passRates([counted({ region: 'South', checksPassed: 412, checksFailed: 88, checksTotal: 500 })], 'region')
     expect(out[0]).toMatchObject({ passed: 412, failed: 88, checks: 500 })
-    expect(out[0].day0).toBeCloseTo(82.4, 1)
+    // 82.4% is the audit's SCORE, and it is below the mark, so 0% of the
+    // group's audits passed. Both numbers are carried.
+    expect(out[0].day0Avg).toBeCloseTo(82.4, 1)
+    expect(out[0].day0).toBe(0)
   })
 
-  it('mixes a counted audit with a percentage-only one as a mean, and says so', () => {
-    // A partial weighting would treat the sizeless audit as weightless, which
-    // is neither a mean nor a weighted average.
+  it('rates a mixed group the same way, size or no size', () => {
+    // Audit size no longer changes the bar at all, so a group where only some
+    // audits carry check counts needs no special case and gets no caveat.
     const out = passRates([
       counted({ region: 'South', checksPassed: 4, checksFailed: 0, checksTotal: 4 }),
       counted({ region: 'South', passPct: 50 }),
     ], 'region')
-    expect(out[0].basis).toBe('mean')
-    expect(out[0].day0).toBe(75)
+    expect(out[0].basis).toBe('share')
+    expect(out[0].day0).toBe(50)
+    expect(out[0].day0Avg).toBe(75)
   })
 })
 
@@ -594,7 +622,9 @@ describe('where the pass rates come from', () => {
     // a 0% pass rate with total confidence.
     const a = odinAnalytics([withPass({ region: 'South' }), finding({ region: 'South' })], [], SITES, {})
     expect(a.passRowCount).toBe(1)
-    expect(a.passByRegion[0].day0).toBe(90)
+    // 90 is the score; the mark is 90, so that single audit passes -> 100%.
+    expect(a.passByRegion[0].day0).toBe(100)
+    expect(a.passByRegion[0].day0Avg).toBe(90)
   })
 
   it('says there is no source rather than drawing an empty chart', () => {
