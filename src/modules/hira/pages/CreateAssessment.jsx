@@ -190,12 +190,17 @@ export default function CreateAssessment() {
         // controls are planned, so there is no projected reduction to record.
         // The comment above this block has always said the two are dropped and
         // no branch ever did it — so an ALARP hazard kept its projected P×S,
-        // and residualRisk() prefers projected over initial. The register
-        // therefore showed a LOWER residual risk for exactly the hazards
+        // and the register showed a LOWER residual risk for exactly the hazards
         // somebody had decided to live with, which is the opposite of what
         // accepting a risk is supposed to make visible. The CSV importer
         // (lib/csv.js) has always dropped them, so the two paths produced
         // different data from the same decision.
+        //
+        // residualRisk() now ignores a projected score on an ALARP hazard too.
+        // This is still the right place for the rule — a contradiction is
+        // better not stored than reasoned around — but it cannot reach the
+        // assessments saved before it, which is why the read side checks as
+        // well.
         hazards: a.hazards.map((h) => ({
           ...h,
           probability: Number(h.probability) || null,

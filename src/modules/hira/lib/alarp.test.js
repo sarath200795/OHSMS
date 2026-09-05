@@ -13,9 +13,14 @@ import { parseCsv, CSV_COLUMNS } from './csv'
 // hazards somebody had decided to accept. lib/csv.js dropped them all along, so
 // the same decision produced different data depending on how it arrived.
 //
-// The rule belongs on the WRITE paths, which is why these test the shape that
-// reaches storage rather than reinterpreting it on the way out. residualRisk is
-// unchanged on purpose — see the note beside it.
+// The rule is enforced on BOTH sides. The write paths stop storing a projected
+// score for an ALARP hazard; residualRisk stops preferring one that is already
+// stored, because closing the write path closes nothing already written and
+// those assessments exist.
+//
+// The stored records are deliberately not rewritten — reading them correctly
+// costs nothing and changes no history, where a migration would alter what a
+// risk register says about a hazard somebody signed off.
 
 const toCsv = (rows) =>
   [CSV_COLUMNS.join(','), ...rows.map((r) => CSV_COLUMNS.map((c) => r[c] ?? '').join(','))].join('\n')
@@ -41,14 +46,41 @@ const hazardOf = async (row) => {
   return assessments[0].activities[0].hazards[0]
 }
 
-describe('residualRisk is unchanged, and that is the point', () => {
-  it('prefers a projected score when one is stored', () => {
+describe('residualRisk reports what an ALARP hazard actually carries', () => {
+  it('prefers a projected score on an ordinary hazard', () => {
     expect(residualRisk({ probability: 4, severity: 4, projectedProbability: 1, projectedSeverity: 1 }).score).toBe(1)
   })
 
-  it('falls back to initial when there is none', () => {
+  it('IGNORES a projected score on an ALARP hazard', () => {
+    // The defect, on the read side: a hazard nobody is going to control further
+    // was reported at the reduced score anyway — understating exactly the risks
+    // somebody had decided to live with.
+    const h = { probability: 4, severity: 4, alarp: true, projectedProbability: 1, projectedSeverity: 1 }
+    expect(residualRisk(h).score).toBe(16)
+    expect(residualRisk(h)).toEqual(initialRisk(h))
+  })
+
+  it('does so for records saved before the write paths were fixed', () => {
+    // These are the only hazards that can still be in this state, and they are
+    // the whole reason this reads on the way out as well as the way in.
+    const stored = { probability: 3, severity: 5, alarp: true, projectedProbability: 1, projectedSeverity: 2 }
+    expect(residualRisk(stored)).toEqual(initialRisk(stored))
+  })
+
+  it('falls back to initial for an ALARP hazard with no projection at all', () => {
     const h = { probability: 4, severity: 4, alarp: true }
     expect(residualRisk(h)).toEqual(initialRisk(h))
+  })
+
+  it('leaves an ordinary hazard with no projection on its initial score', () => {
+    expect(residualRisk({ probability: 2, severity: 3 }).score).toBe(6)
+  })
+
+  it('treats alarp: false exactly as an ordinary hazard', () => {
+    // That is what the form writes when the box is unticked, so it must not be
+    // read as "flagged".
+    const h = { probability: 4, severity: 4, alarp: false, projectedProbability: 1, projectedSeverity: 1 }
+    expect(residualRisk(h).score).toBe(1)
   })
 })
 
