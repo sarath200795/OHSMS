@@ -20,7 +20,7 @@ import {
 import { db } from '../../../shared/firebase'
 import { isSessionEnd } from '../../../shared/sessionEnd'
 import { logAudit, COLLECTION_READ_CAP } from '../../../shared/org/orgData'
-import { standardMerakiPayloads } from './provision'
+import { standardMerakiPayloads, merakiDocId } from './provision'
 import { asReportedOn } from './defectDate'
 
 export const COLLECTIONS = {
@@ -233,24 +233,37 @@ export async function getMerakis(orgId) {
  * Registered as a site hook at app start (see registerHooks.js), so it runs
  * whether or not anyone has opened the CCTV module.
  *
- * It re-reads the existing Meraki list rather than trusting that the incoming
- * sites are new. They should be, but a retried write or a hook fired twice
- * would otherwise give a site two switches, and the read is one query against a
- * collection with a handful of documents.
+ * Nothing is passed as "already known": provisionSiteMerakis reads the
+ * collection itself, and a second, staler view of it handed in from here could
+ * only make the answer worse.
  */
 export async function provisionMerakisForNewSites(orgId, sites = [], actor) {
-  if (!orgId || !sites.length) return 0
-  const existing = await getMerakis(orgId)
-  return provisionSiteMerakis(orgId, sites, existing, actor)
+  return provisionSiteMerakis(orgId, sites, [], actor)
 }
 
 /**
  * Give every site its standard Meraki device.
  *
- * Idempotent: sites that already have one are skipped, so this is safe to run
- * again whenever sites are added, and pressing the button twice cannot produce
- * two switches for one site (see sitesMissingMeraki — matched on siteId, so a
- * renamed site is not mistaken for a new one).
+ * Idempotent, and idempotent in three separate places because one was not
+ * enough — this ran twice and left sites carrying two switches, which is not
+ * cosmetic: darkSites() only marks a site dark when EVERY Meraki on it is
+ * offline, so a phantom second switch sitting at `unknown` keeps a genuinely
+ * dark site reading as healthy. A duplicate does not merely clutter the
+ * register, it disables the cascade the register exists to drive.
+ *
+ *  1. The Meraki list is READ HERE rather than taken from the caller. It used
+ *     to be an argument, and the Inventory button passed a live-listener
+ *     snapshot React had rendered into a button some time earlier — stale by
+ *     construction, and blind to another manager, another tab, or the
+ *     site-created hook running at that moment. `merakis` is still accepted and
+ *     still honoured, but only ever to ADD to what the read found.
+ *  2. Sites are deduplicated against each other, not only against the
+ *     collection (see sitesMissingMeraki), so one run cannot emit two.
+ *  3. The documents are addressed BY SITE, not by auto-id. Two runs that
+ *     genuinely overlap — both reads returning before either write lands — then
+ *     converge on one document instead of racing to create two. This is the
+ *     only one of the three that survives concurrency, because it is the only
+ *     one enforced where the write happens rather than before it.
  *
  * Batched because a whole estate is created at once and half a provisioning run
  * is worse than none: it would leave some sites covered and some not, with no
@@ -259,16 +272,36 @@ export async function provisionMerakisForNewSites(orgId, sites = [], actor) {
  * @returns the number created — 0 means everything was already covered
  */
 export async function provisionSiteMerakis(orgId, sites = [], merakis = [], actor) {
-  const payloads = standardMerakiPayloads(sites, merakis)
+  if (!orgId || !sites.length) return 0
+
+  const known = await getMerakis(orgId)
+  const payloads = standardMerakiPayloads(sites, [...known, ...merakis])
   if (!payloads.length) return 0
+
+  // A document already sitting at the address about to be written is left
+  // alone. That should be impossible after the siteId check above, but the two
+  // guards fail differently: this one still holds for a record whose siteId was
+  // cleared by hand, where the check above sees an uncovered site and would
+  // otherwise overwrite the very record it was looking for.
+  const taken = new Set(known.map((m) => m.id))
+  const writes = payloads
+    .map((payload) => ({ payload, id: merakiDocId(payload.siteId) }))
+    .filter((w) => !w.id || !taken.has(w.id))
+  if (!writes.length) return 0
 
   // Firestore caps a batch at 500 writes; an estate could exceed that.
   const CHUNK = 400
-  for (let i = 0; i < payloads.length; i += CHUNK) {
+  for (let i = 0; i < writes.length; i += CHUNK) {
     const batch = writeBatch(db)
-    for (const p of payloads.slice(i, i + CHUNK)) {
-      batch.set(doc(col(orgId, COLLECTIONS.merakis)), {
-        ...merakiShape(p),
+    for (const w of writes.slice(i, i + CHUNK)) {
+      // No usable id means the site id cannot go in a path. Fall back to an
+      // auto-id rather than skipping the site, which would leave it with no
+      // switch at all — the failure this whole file exists to prevent.
+      const target = w.id
+        ? doc(col(orgId, COLLECTIONS.merakis), w.id)
+        : doc(col(orgId, COLLECTIONS.merakis))
+      batch.set(target, {
+        ...merakiShape(w.payload),
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       })
@@ -278,10 +311,10 @@ export async function provisionSiteMerakis(orgId, sites = [], merakis = [], acto
 
   await logAudit(orgId, actor, 'cctv.provision', {
     target: COLLECTIONS.merakis,
-    targetLabel: `${payloads.length} site(s)`,
-    summary: `Created the standard Meraki device for ${payloads.length} site(s)`,
+    targetLabel: `${writes.length} site(s)`,
+    summary: `Created the standard Meraki device for ${writes.length} site(s)`,
   })
-  return payloads.length
+  return writes.length
 }
 
 /**

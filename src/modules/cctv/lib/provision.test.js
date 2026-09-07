@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { standardMerakiName, sitesMissingMeraki, standardMerakiPayloads } from './provision'
+import {
+  standardMerakiName, sitesMissingMeraki, standardMerakiPayloads, merakiDocId,
+  sitesWithDuplicateMerakis,
+} from './provision'
 
 const site = (o = {}) => ({ id: 's1', name: 'Hosur', region: 'South', entity: 'COCO', ...o })
 const mk = (o = {}) => ({ id: 'm1', name: 'MX-Hosur', siteId: 's1', status: 'online', ...o })
@@ -96,5 +99,92 @@ describe('standardMerakiPayloads', () => {
 
   it('says why the record exists, so a blank IP is not read as missing data', () => {
     expect(standardMerakiPayloads([site()], [])[0].notes).toMatch(/standard Meraki/i)
+  })
+
+  // The collection check answers "was this provisioned BEFORE?". It says
+  // nothing about the same site arriving twice in one call, which produced two
+  // switches from a single run — and no amount of re-reading Firestore first
+  // would have caught it, because at read time neither existed yet.
+  it('emits one payload for a site listed twice in the same run', () => {
+    const out = standardMerakiPayloads([site(), site()], [])
+    expect(out).toHaveLength(1)
+    expect(out[0].siteId).toBe('s1')
+  })
+
+  it('still covers the other sites around a repeated one', () => {
+    const rows = [site(), site({ id: 's2', name: 'Pune' }), site(), site({ id: 's3', name: 'Delhi' })]
+    expect(standardMerakiPayloads(rows, []).map((p) => p.siteId)).toEqual(['s1', 's2', 's3'])
+  })
+})
+
+describe('merakiDocId', () => {
+  // The point of the derived id: two overlapping runs write the SAME document.
+  it('is the same for the same site every time', () => {
+    expect(merakiDocId('s1')).toBe(merakiDocId('s1'))
+    expect(merakiDocId('s1')).not.toBe(merakiDocId('s2'))
+  })
+
+  it('cannot collide with a Firestore auto-id, which is alphanumeric', () => {
+    expect(merakiDocId('aBc123')).toMatch(/^site_/)
+  })
+
+  it('trims, so a padded id does not address a second document', () => {
+    expect(merakiDocId('  s1  ')).toBe(merakiDocId('s1'))
+  })
+
+  // Falling back to an auto-id is right here: an unaddressable site still needs
+  // its switch, and a site with no Meraki is the failure the module exists to
+  // prevent. Returning '' says "use an auto-id", not "skip this site".
+  it('refuses ids that cannot go in a path, rather than building a broken one', () => {
+    expect(merakiDocId('a/b')).toBe('')
+    expect(merakiDocId('.')).toBe('')
+    expect(merakiDocId('..')).toBe('')
+    expect(merakiDocId('x'.repeat(1001))).toBe('')
+  })
+
+  it('survives empty input', () => {
+    expect(merakiDocId('')).toBe('')
+    expect(merakiDocId(null)).toBe('')
+    expect(merakiDocId(undefined)).toBe('')
+  })
+})
+
+describe('sitesWithDuplicateMerakis', () => {
+  const dup = [mk(), mk({ id: 'm2' })]
+
+  it('reports a site carrying two switches', () => {
+    const [row] = sitesWithDuplicateMerakis(dup, [site()])
+    expect(row.siteId).toBe('s1')
+    expect(row.siteName).toBe('Hosur')
+    expect(row.devices.map((m) => m.id)).toEqual(['m1', 'm2'])
+  })
+
+  it('says nothing about a site with exactly one', () => {
+    expect(sitesWithDuplicateMerakis([mk()], [site()])).toEqual([])
+  })
+
+  // The register is what people scan; an id nobody recognises is not a report.
+  it('names the site from the site list, then the device, then the id', () => {
+    expect(sitesWithDuplicateMerakis(dup, [site()])[0].siteName).toBe('Hosur')
+    const fromDevice = [mk({ siteName: 'Hosur (as the device has it)' }), mk({ id: 'm2' })]
+    expect(sitesWithDuplicateMerakis(fromDevice, [])[0].siteName).toBe('Hosur (as the device has it)')
+    const bare = [mk({ siteName: '' }), mk({ id: 'm2', siteName: '' })]
+    expect(sitesWithDuplicateMerakis(bare, [])[0].siteName).toBe('s1')
+  })
+
+  // A record naming no site is a different defect, and grouping the orphans
+  // together would invent one phantom site carrying all of them.
+  it('does not treat records naming no site as duplicates of each other', () => {
+    expect(sitesWithDuplicateMerakis([mk({ siteId: '' }), mk({ id: 'm2', siteId: '' })], [])).toEqual([])
+  })
+
+  it('separates one site with duplicates from another that is fine', () => {
+    const rows = [...dup, mk({ id: 'm3', siteId: 's2' })]
+    expect(sitesWithDuplicateMerakis(rows, []).map((r) => r.siteId)).toEqual(['s1'])
+  })
+
+  it('survives empty input', () => {
+    expect(sitesWithDuplicateMerakis()).toEqual([])
+    expect(sitesWithDuplicateMerakis([], [])).toEqual([])
   })
 })

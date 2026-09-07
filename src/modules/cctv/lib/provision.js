@@ -43,10 +43,42 @@ export function sitesMissingMeraki(sites = [], merakis = []) {
   // is blank — standardMerakiName falls back to the id, and an ugly "MX-<id>"
   // that someone can see and rename beats a site silently missing its switch,
   // which is the case where the health cascade quietly stops working.
-  return sites.filter((s) => {
+  const out = []
+  for (const s of sites) {
     const id = clean(s?.id)
-    return Boolean(id) && !covered.has(id)
-  })
+    if (!id || covered.has(id)) continue
+    // Marked covered as we go, so a site appearing twice in the input — a CSV
+    // with a repeated row, a hook handed an array that overlaps a previous
+    // batch — is the same "already handled" case as one provisioned last week.
+    // Filtering without this produced two switches from a SINGLE run, which no
+    // amount of re-reading the collection first would have caught.
+    covered.add(id)
+    out.push(s)
+  }
+  return out
+}
+
+/**
+ * The document id for a site's standard Meraki.
+ *
+ * Derived from the site rather than auto-generated, and that is the whole
+ * defence against the case the siteId check cannot see: two provisioning runs
+ * overlapping. Both read the collection, both find the site uncovered, both
+ * write — and with auto-ids those are two documents. Addressed by site, they
+ * are one document written twice, which is the correct outcome.
+ *
+ * Prefixed because a bare site id in the Meraki collection reads as though the
+ * two collections share a key space; and because "site_" cannot collide with a
+ * Firestore auto-id, which is 20 alphanumeric characters.
+ *
+ * @returns '' when the id cannot be used in a path — the caller falls back to
+ *          an auto-id, since refusing to provision at all would be worse than
+ *          provisioning without the extra guard.
+ */
+export function merakiDocId(siteId) {
+  const id = clean(siteId)
+  if (!id || id.includes('/') || id === '.' || id === '..' || id.length > 1000) return ''
+  return `site_${id}`
 }
 
 /**
@@ -70,4 +102,47 @@ export function standardMerakiPayloads(sites = [], merakis = []) {
     defects: [],
     notes: 'Created as the standard Meraki for this site — add its IP and model.',
   }))
+}
+
+/**
+ * Sites carrying more than one Meraki.
+ *
+ * The mirror of sitesMissingMeraki, and it matters for the same reason. Health
+ * cascades down from the switch, and darkSites() only marks a site dark when
+ * EVERY Meraki on it is offline — deliberately, because a site with two real
+ * switches is still carried by the second one. So a duplicate record does not
+ * merely clutter the register: it stands in as a switch that is always fine,
+ * and the site never goes dark no matter what happens to the network.
+ *
+ * Which means the extras cannot just be deleted here. One of them may be a real
+ * second switch, and the one to keep may be the one somebody filled in the IP
+ * for. This reports; a person decides.
+ *
+ * @returns [{ siteId, siteName, devices }] — devices in the order given,
+ *          sites in the order first seen, only where devices.length > 1
+ */
+export function sitesWithDuplicateMerakis(merakis = [], sites = []) {
+  const named = new Map(
+    sites.map((s) => [clean(s?.id), clean(s?.name) || clean(s?.siteName)]).filter(([id]) => id)
+  )
+  const bySite = new Map()
+  for (const m of merakis) {
+    const siteId = clean(m?.siteId)
+    // A record naming no site is a different defect — it is not a duplicate of
+    // anything, and lumping them together would report one phantom "site" with
+    // every orphan on it.
+    if (!siteId) continue
+    if (!bySite.has(siteId)) bySite.set(siteId, [])
+    bySite.get(siteId).push(m)
+  }
+  const out = []
+  for (const [siteId, devices] of bySite) {
+    if (devices.length < 2) continue
+    out.push({
+      siteId,
+      siteName: named.get(siteId) || clean(devices[0]?.siteName) || siteId,
+      devices,
+    })
+  }
+  return out
 }
