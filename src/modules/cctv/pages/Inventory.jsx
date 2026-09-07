@@ -13,7 +13,7 @@ import {
   addMeraki, updateMeraki, deleteMeraki,
   setDefects, provisionSiteMerakis,
 } from '../lib/firestore'
-import { sitesMissingMeraki } from '../lib/provision'
+import { sitesMissingMeraki, sitesWithDuplicateMerakis } from '../lib/provision'
 import { downloadInventory } from '../lib/exporter'
 import {
   REPORTABLE_CAMERA_DEFECTS, REPORTABLE_DVR_DEFECTS, REPORTABLE_MERAKI_DEFECTS,
@@ -141,6 +141,14 @@ export default function Inventory() {
   // cascade, so the gap is surfaced wherever the Meraki list is being looked at.
   const uncovered = useMemo(() => sitesMissingMeraki(sites, merakis), [sites, merakis])
 
+  // And the mirror of that gap, which is the one nobody goes looking for. A
+  // site is only reported dark when EVERY Meraki on it is offline, so a second
+  // record left behind by an older double-provisioning stands in as a switch
+  // that is permanently fine, and the site never goes dark however bad the
+  // network gets. Provisioning can no longer create these, but the ones already
+  // on record still have to be found by someone.
+  const duplicated = useMemo(() => sitesWithDuplicateMerakis(merakis, sites), [merakis, sites])
+
   const provision = async () => {
     setBusy(true)
     try {
@@ -238,6 +246,23 @@ export default function Inventory() {
           <Button loading={busy} onClick={provision}>
             Create standard Meraki for each site
           </Button>
+        </div>
+      )}
+
+      {/* Reported, not cleaned up automatically: one of the extras may be a
+          real second switch, and the one worth keeping is usually the one
+          somebody filled the IP in for. Deleting the wrong one loses that. */}
+      {tab === 'merakis' && duplicated.length > 0 && (
+        <div className="card mb-3 flex flex-wrap items-center gap-3 p-4">
+          <Router size={18} className="shrink-0 text-rose-600" />
+          <div className="min-w-[16rem] flex-1 text-sm text-ink-700">
+            <b>{duplicated.length}</b> site{duplicated.length === 1 ? ' has' : 's have'} more than one Meraki on
+            record{duplicated.length <= 4
+              ? ` (${duplicated.map((d) => `${d.siteName} × ${d.devices.length}`).join(', ')})`
+              : ''}
+            . A site is only reported dark when every Meraki on it is offline, so an extra record keeps it
+            reading as healthy through an outage. Remove the ones that are not real switches.
+          </div>
         </div>
       )}
 
