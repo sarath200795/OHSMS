@@ -822,10 +822,213 @@ export function ticketTrend(rows = [], gran = 'month') {
  *
  * `asOf` is injectable so the tests are not a function of the day they run.
  */
+/**
+ * Who owns a ticket, read off the L1 tag.
+ *
+ * The warehouse states ownership as free text in the L1 tag, and states it
+ * several ways: "Safety and Security" and "Safety & Security" are one team,
+ * and "Center Manager", "Center Management" and "Center Manager SPOC" are all
+ * the centre manager. Matching the literal strings would split one owner across
+ * three bars, so the tag is flattened to letters and digits before it is read.
+ *
+ * Anything that matches none of them is 'other' and is COUNTED AND NAMED rather
+ * than dropped. A tag nobody has mapped is a tag somebody should look at, and a
+ * chart that quietly omits it hides the one row worth asking about.
+ */
+export const TICKET_OWNERS = [
+  { key: 'sas', label: 'SAS', full: 'Safety & Security', color: '#2563eb' },
+  { key: 'facility', label: 'Facility', full: 'Facility', color: '#d97706' },
+  { key: 'cm', label: 'CM', full: 'Centre Manager', color: '#0d9488' },
+  { key: 'other', label: 'Other', full: 'Unmapped L1 tag', color: '#78716c' },
+]
+export const TICKET_OWNER_KEYS = TICKET_OWNERS.map((o) => o.key)
+
+export function ownerOf(row) {
+  const flat = String(row?.category ?? '').toLowerCase().replace(/[^a-z0-9]/g, '')
+  if (!flat) return 'other'
+  if (flat.includes('safety') && flat.includes('security')) return 'sas'
+  if (flat.includes('facility')) return 'facility'
+  // "centermanager", "centremanagement", "centermanagerspoc" — and the SPOC
+  // spelling on its own, which appears without the word "center" in front.
+  if (/cent(er|re)manage/.test(flat) || flat.includes('cmspoc')) return 'cm'
+  return 'other'
+}
+
+/**
+ * Observations per site, and per site per owner.
+ *
+ * One row of the tickets question is one observation, so this is a count, not a
+ * sum of anything — `count` is respected for a question that arrives already
+ * grouped, the same way statusTotals does it.
+ *
+ * Sorted by total descending: the question this answers is "where is the work",
+ * and that is a ranking. The per-owner counts ride along on each row so a
+ * stacked bar and a table can be drawn from one pass.
+ */
+export function observationsPerSite(rows = []) {
+  const bySite = new Map()
+  const totals = Object.fromEntries(TICKET_OWNER_KEYS.map((k) => [k, 0]))
+  let total = 0
+
+  for (const r of rows || []) {
+    if (!r) continue
+    const key = r.matchedSiteId || r.site || UNPLACED
+    if (!bySite.has(key)) {
+      bySite.set(key, {
+        id: key,
+        site: r.site || UNPLACED,
+        region: r.region || '',
+        city: r.city || '',
+        total: 0,
+        ...Object.fromEntries(TICKET_OWNER_KEYS.map((k) => [k, 0])),
+      })
+    }
+    const g = bySite.get(key)
+    const n = isNum(r.count) ? r.count : 1
+    const owner = ownerOf(r)
+    g.total += n
+    g[owner] += n
+    totals[owner] += n
+    total += n
+  }
+
+  const sites = [...bySite.values()].sort((a, b) => b.total - a.total || a.site.localeCompare(b.site))
+  return {
+    sites,
+    total,
+    byOwner: totals,
+    siteCount: sites.length,
+    // The average is per SITE THAT HAS ONE, not per site in the register: a
+    // register full of centres nobody audited would drag it toward zero and
+    // make a busy estate look quiet.
+    perSite: sites.length ? Math.round((total / sites.length) * 10) / 10 : null,
+  }
+}
+
+// ── How long a ticket took, and how long it has been waiting ─────────────────
+//
+// Extracted so every panel that talks about days measures them the same way. A
+// second copy of this arithmetic is how two figures on one page come to
+// disagree about the same ticket.
+const DAY_MS = 86_400_000
+const meanDays = (xs) => (xs.length ? Math.round((xs.reduce((a, b) => a + b, 0) / xs.length) * 10) / 10 : null)
+
+/** Days a CLOSED ticket took, or null if the row cannot say. */
+export function closedDaysOf(row) {
+  // The stated hours first — it is the warehouse's own measurement. The dates
+  // are the fallback for a question that does not carry it.
+  if (isNum(row?.tatHours)) return row.tatHours / 24
+  const raised = Date.parse(`${row?.auditDate}T00:00:00Z`)
+  const shut = Date.parse(`${row?.closedDate}T00:00:00Z`)
+  return Number.isFinite(raised) && Number.isFinite(shut) && shut >= raised
+    ? (shut - raised) / DAY_MS
+    : null
+}
+
+/** Days an UNCLOSED ticket has been waiting, or null if the row cannot say. */
+export function ageDaysOf(row, asOf = Date.now()) {
+  const raised = Date.parse(`${row?.auditDate}T00:00:00Z`)
+  if (!Number.isFinite(raised)) return null
+  const age = (asOf - raised) / DAY_MS
+  return age < 0 ? null : age    // a future-dated row is bad data, not a -3 day age
+}
+
+/**
+ * Is this ticket an FLS one?
+ *
+ * Read off the L2 tag, which states them as "FLS", "FLS - Detection", "FLS -
+ * Extinguisher", "FLS - Fire Detection", "FLS - General" and "FLS - Signage".
+ *
+ * startsWith rather than includes, deliberately. `includes('fls')` would also
+ * match a category like "Baffles" — unlikely today, but the tag is free text
+ * and a filter that quietly widens later is worse than one that misses a new
+ * spelling loudly.
+ */
+export const isFls = (row) =>
+  String(row?.subCategory ?? '').toLowerCase().replace(/[^a-z0-9]/g, '').startsWith('fls')
+
+/**
+ * The FLS L2 categories, each with where its tickets stand and how long they
+ * have taken.
+ *
+ * Three counts and three ages per category, which is the shape somebody reads
+ * across a row: how many are open, how many are moving, how many are done —
+ * and for each of those, how long. Closed is time TAKEN; the other two are time
+ * SO FAR, and they are different measurements sharing a unit, so the panel
+ * labels them rather than leaving it to be inferred.
+ *
+ * On hold and rejected are counted into the total but get no column of their
+ * own: this answers a question about the live FLS queue, and a category whose
+ * numbers do not add to its total says so in the total column rather than by
+ * growing two more columns nobody asked for.
+ */
+export function flsCategories(rows = [], asOf = Date.now()) {
+  const byCat = new Map()
+
+  for (const r of rows || []) {
+    if (!r || !isFls(r)) continue
+    const name = String(r.subCategory ?? '').trim() || UNPLACED
+    if (!byCat.has(name)) {
+      byCat.set(name, {
+        name,
+        total: 0,
+        open: 0,
+        in_progress: 0,
+        closed: 0,
+        other: 0,
+        openAges: [],
+        progressAges: [],
+        closedDays: [],
+      })
+    }
+    const g = byCat.get(name)
+    const n = isNum(r.count) ? r.count : 1
+    g.total += n
+
+    if (r.status === 'closed') {
+      g.closed += n
+      const d = closedDaysOf(r)
+      if (d !== null) g.closedDays.push(d)
+      continue
+    }
+    if (r.status === 'open' || r.status === 'in_progress') {
+      const bucket = r.status === 'open' ? 'openAges' : 'progressAges'
+      g[r.status] += n
+      const age = ageDaysOf(r, asOf)
+      if (age !== null) g[bucket].push(age)
+      continue
+    }
+    // On hold and rejected: in the total, in no column.
+    g.other += n
+  }
+
+  const rowsOut = [...byCat.values()]
+    .map((g) => ({
+      name: g.name,
+      total: g.total,
+      open: g.open,
+      inProgress: g.in_progress,
+      closed: g.closed,
+      other: g.other,
+      openDays: meanDays(g.openAges),
+      inProgressDays: meanDays(g.progressAges),
+      closedDays: meanDays(g.closedDays),
+    }))
+    .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name))
+
+  const sum = (k) => rowsOut.reduce((n, r) => n + r[k], 0)
+  return {
+    rows: rowsOut,
+    total: sum('total'),
+    open: sum('open'),
+    inProgress: sum('inProgress'),
+    closed: sum('closed'),
+    categories: rowsOut.length,
+  }
+}
+
 export function ticketAgeing(rows = [], asOf = Date.now()) {
-  const mean = (xs) => (xs.length ? Math.round((xs.reduce((a, b) => a + b, 0) / xs.length) * 10) / 10 : null)
-  const HOURS = 24
-  const DAY = 86_400_000
+  const mean = meanDays
 
   const closedDays = []
   const byStatus = new Map()
@@ -833,29 +1036,36 @@ export function ticketAgeing(rows = [], asOf = Date.now()) {
   for (const r of rows || []) {
     if (!r) continue
     if (r.status === 'closed') {
-      // The stated hours first — it is the warehouse's own measurement. The
-      // dates are the fallback for a question that does not carry it.
-      const fromHours = isNum(r.tatHours) ? r.tatHours / HOURS : null
-      const raised = Date.parse(`${r.auditDate}T00:00:00Z`)
-      const shut = Date.parse(`${r.closedDate}T00:00:00Z`)
-      const fromDates = Number.isFinite(raised) && Number.isFinite(shut) && shut >= raised
-        ? (shut - raised) / DAY
-        : null
-      const days = fromHours ?? fromDates
+      const days = closedDaysOf(r)
       if (days !== null) closedDays.push(days)
       continue
     }
     // Everything not closed is ageing, rejected included.
-    const raised = Date.parse(`${r.auditDate}T00:00:00Z`)
-    if (!Number.isFinite(raised)) continue
-    const age = (asOf - raised) / DAY
-    if (age < 0) continue          // a future-dated row is bad data, not a -3 day age
+    const age = ageDaysOf(r, asOf)
+    if (age === null) continue
     if (!byStatus.has(r.status)) byStatus.set(r.status, [])
     byStatus.get(r.status).push(age)
   }
 
+  // ── The three headline ages ────────────────────────────────────────────────
+  //
+  // Open and In Progress are pooled because they are one thing to the person
+  // asking: a ticket somebody still owes work on. Splitting them puts the same
+  // backlog behind two numbers that have to be added up mentally before either
+  // means anything.
+  //
+  // On Hold is kept apart for the opposite reason. It is deliberately parked,
+  // so its age measures a decision rather than a delay, and averaging it into
+  // the live backlog would flatter the queue that is actually running late.
+  //
+  // Rejected is in neither: it is finished, and it was never remediated.
+  const live = [...(byStatus.get('open') || []), ...(byStatus.get('in_progress') || [])]
+  const held = byStatus.get('on_hold') || []
+
   return {
     closed: { days: mean(closedDays), n: closedDays.length },
+    openInProgress: { days: mean(live), n: live.length },
+    onHold: { days: mean(held), n: held.length },
     // In STATUS_META order, so this list reads the same way as every other
     // status list on the page.
     ageing: STATUS_META
@@ -1119,6 +1329,8 @@ export function odinAnalytics(rows = [], audits = [], sites = [], f = {}, { keep
     bySla: countBy(filtered, 'sla'),
     byCheckpoint: countBy(filtered, 'checkpoint', { limit: 12 }),
     ageing: ticketAgeing(filtered),
+    observations: observationsPerSite(filtered),
+    fls: flsCategories(filtered),
     recovery: recoveryStages(passRows),
     distribution: scoreBands(passRows),
     watchlist: centreWatchlist(filtered, auditsFiltered),

@@ -34,7 +34,7 @@ import { metabaseQuery, metabaseSettings } from '../../shared/functions'
 import MetabaseConnect from '../../shared/integrations/MetabaseConnect'
 import { Panel, Stat, NoData, Picker, FilterRow, DateField } from './ui'
 import {
-  odinAnalytics, odinFacets, resolveOdinRows, STATUS_META, STATUS_BY_KEY, leadStatus,
+  odinAnalytics, odinFacets, resolveOdinRows, STATUS_META, STATUS_BY_KEY, leadStatus, TICKET_OWNERS,
   GRANULARITIES, GROUP_DIMS, PASS_MARK,
 } from './odinAnalytics'
 
@@ -532,6 +532,10 @@ export default function OdinTab({ view = 'scores', sites = [], orgId, actor, isA
 
           <TicketTrendPanel tickets={a.tickets} gran={f.gran} breached={a.breached} />
 
+          {/* The three ages first, because "how long is this taking" is the
+              question the rest of the panel then breaks down. */}
+          <AgeSummary ageing={a.ageing} />
+
           <AgeingPanel ageing={a.ageing} />
 
           <div className="mb-5 grid gap-4 lg:grid-cols-[1fr_1fr]">
@@ -542,6 +546,12 @@ export default function OdinTab({ view = 'scores', sites = [], orgId, actor, isA
           <CheckpointPanel rows={a.byCheckpoint} />
         </>
       )}
+
+      {hasRange && showTickets && <BandHead title="Observations" note="Per site, and who owns them" />}
+
+      {hasRange && showTickets && <ObservationsPanel observations={a.observations} />}
+
+      {hasRange && showTickets && <FlsPanel fls={a.fls} />}
 
       {hasRange && showTickets && <BandHead title="Where" note="Every site in scope, busiest first" />}
 
@@ -848,6 +858,200 @@ function DistributionPanel({ distribution }) {
  * Rejected sits with the ageing rows rather than with closed: it was never
  * remediated, so counting it as a closure would flatter every figure here.
  */
+/**
+ * The FLS L2 categories: where the tickets stand, and how long they have taken.
+ *
+ * A table rather than a chart. Six numbers per category, three of them counts
+ * and three of them durations, is a row somebody reads across — a stacked bar
+ * would show the counts and hide the ages, which are the half people act on.
+ *
+ * Closed days is time TAKEN. Open and In Progress days are time SO FAR. Same
+ * unit, different measurements, so the header says which rather than leaving a
+ * reader to assume they are comparable.
+ */
+function FlsPanel({ fls }) {
+  if (!fls?.total) return null
+  const { rows, total, open, inProgress, closed, categories } = fls
+  const num = (v) => (v == null ? '—' : v.toLocaleString())
+  const days = (v) => (v == null ? <span className="text-ink-300">—</span> : `${v.toLocaleString()}d`)
+
+  return (
+    <Panel
+      title="FLS categories"
+      subtitle={`${total.toLocaleString()} fire & life-safety observations across ${categories} L2 categor${categories === 1 ? 'y' : 'ies'} — counts, then how long each has taken`}
+      className="mb-5"
+    >
+      <div className="table-crisp max-h-[26rem] overflow-auto">
+        <table className="w-full text-left text-[12.5px]">
+          <thead className="sticky top-0 bg-clay-surface">
+            <tr className="text-[10.5px] uppercase tracking-wide text-ink-400">
+              <th className="px-3 py-2">L2 category</th>
+              <th className="px-3 py-2 text-right">Open</th>
+              <th className="px-3 py-2 text-right">In progress</th>
+              <th className="px-3 py-2 text-right">Closed</th>
+              <th className="px-3 py-2 text-right">Total</th>
+              <th className="px-3 py-2 text-right">Avg age open</th>
+              <th className="px-3 py-2 text-right">Avg age in prog.</th>
+              <th className="px-3 py-2 text-right">Avg time to close</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.name} className="border-t border-clay-100">
+                <td className="px-3 py-2 font-medium text-ink-800">{r.name}</td>
+                <td className="px-3 py-2 text-right tabular-nums font-semibold text-red-600">{num(r.open)}</td>
+                <td className="px-3 py-2 text-right tabular-nums text-amber-600">{num(r.inProgress)}</td>
+                <td className="px-3 py-2 text-right tabular-nums text-emerald-600">{num(r.closed)}</td>
+                <td className="px-3 py-2 text-right tabular-nums font-semibold text-ink-800">{num(r.total)}</td>
+                <td className="px-3 py-2 text-right tabular-nums text-ink-700">{days(r.openDays)}</td>
+                <td className="px-3 py-2 text-right tabular-nums text-ink-700">{days(r.inProgressDays)}</td>
+                <td className="px-3 py-2 text-right tabular-nums text-ink-700">{days(r.closedDays)}</td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr className="border-t-2 border-clay-line text-[12.5px] font-bold">
+              <td className="px-3 py-2 text-ink-800">All FLS</td>
+              <td className="px-3 py-2 text-right tabular-nums text-red-600">{num(open)}</td>
+              <td className="px-3 py-2 text-right tabular-nums text-amber-600">{num(inProgress)}</td>
+              <td className="px-3 py-2 text-right tabular-nums text-emerald-600">{num(closed)}</td>
+              <td className="px-3 py-2 text-right tabular-nums text-ink-900">{num(total)}</td>
+              {/* No pooled average across categories: a mean of means over
+                  categories of wildly different size is not the estate figure
+                  it looks like. The three cards above give that properly. */}
+              <td className="px-3 py-2 text-right font-normal text-ink-300" colSpan={3}>see the cards above</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      <p className="mt-3 text-[11.5px] leading-relaxed text-ink-500">
+        FLS only — every L2 category whose tag begins “FLS”. <b>Avg time to close</b> is how long
+        those tickets took; the other two ages are how long the open ones have been waiting <em>so
+        far</em>, which is a different measurement in the same unit.
+        {total > open + inProgress + closed && (
+          <> {(total - open - inProgress - closed).toLocaleString()} more are on hold or rejected:
+          in the total, in none of the three columns.</>
+        )}
+      </p>
+    </Panel>
+  )
+}
+
+/**
+ * Observations per site, and who owns them.
+ *
+ * One row of the tickets question is one observation, so the bar is a count of
+ * rows, not a score — no pass mark, no percentage, nothing to weight.
+ *
+ * The owner comes off the L1 tag through ownerOf, which folds the several
+ * spellings of each team into one. "Other" is drawn like the rest rather than
+ * hidden: an L1 tag nobody has mapped is the row worth asking about, and a
+ * chart that silently omits it is the reason nobody ever asks.
+ */
+function ObservationsPanel({ observations }) {
+  if (!observations?.total) return null
+  const { sites, total, byOwner, siteCount, perSite } = observations
+  const shown = sites.slice(0, 20)
+  const owners = TICKET_OWNERS.filter((o) => byOwner[o.key] > 0)
+
+  return (
+    <>
+      <div className="mb-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Stat icon={ShieldAlert} label="Observations" value={total.toLocaleString()} sub={`across ${siteCount.toLocaleString()} site${siteCount === 1 ? '' : 's'}`} tone="#dc2626" />
+        <Stat icon={Radar} label="Per site" value={perSite == null ? '—' : perSite.toLocaleString()} sub="average, sites with at least one" tone="#2563eb" />
+        {owners.slice(0, 2).map((o) => (
+          <Stat
+            key={o.key}
+            icon={ClipboardCheck}
+            label={`${o.label} tickets`}
+            value={byOwner[o.key].toLocaleString()}
+            sub={`${Math.round((byOwner[o.key] / total) * 100)}% of all · ${o.full}`}
+            tone={o.color}
+          />
+        ))}
+      </div>
+
+      <p className="mb-5 text-[11.5px] leading-relaxed text-ink-400">
+        Owner is read from the L1 tag:{' '}
+        {TICKET_OWNERS.filter((o) => o.key !== 'other').map((o, i) => (
+          <span key={o.key}>{i ? ', ' : ''}<b>{o.full}</b> → {o.label}</span>
+        ))}
+        . Spellings are folded together, so “Safety and Security”, “Safety &amp; Security”, “Center
+        Manager”, “Center Management” and “Center Manager SPOC” each land on one owner. A tag
+        matching none of them is counted as <b>Other</b> rather than dropped.
+      </p>
+
+      <Panel
+        title="Observations per site, by owner"
+        subtitle={sites.length > shown.length
+          ? `Busiest ${shown.length} of ${sites.length.toLocaleString()} sites; the rest are in the list below`
+          : 'Busiest first'}
+        className="mb-5"
+      >
+        <ChartFrame label="Observations per site by owner" width="100%" height={Math.max(260, shown.length * 30 + 70)}>
+          <BarChart data={shown} layout="vertical" margin={{ top: 8, right: 40, left: 8, bottom: 0 }}>
+            <XAxis type="number" allowDecimals={false} {...axis} />
+            <YAxis type="category" dataKey="site" width={170} {...axis} />
+            <Tooltip cursor={{ fill: 'rgba(227,204,191,0.35)' }} />
+            <Legend iconType="circle" wrapperStyle={{ fontSize: 10.5 }} />
+            {owners.map((o, i) => (
+              <Bar
+                key={o.key}
+                dataKey={o.key}
+                name={`${o.label} — ${o.full}`}
+                stackId="obs"
+                fill={o.color}
+                radius={i === owners.length - 1 ? [0, 4, 4, 0] : undefined}
+              >
+                {i === owners.length - 1 && (
+                  <LabelList dataKey="total" position="right" style={{ fontSize: 10.5, fill: '#8a7660' }} />
+                )}
+              </Bar>
+            ))}
+          </BarChart>
+        </ChartFrame>
+      </Panel>
+    </>
+  )
+}
+
+/**
+ * The three ages, side by side, in the order somebody asks for them.
+ *
+ * Closed is a duration that finished. The other two are durations still
+ * running, and they are separated because Open and In Progress are one backlog
+ * — a ticket somebody still owes work on — while On Hold is parked on purpose,
+ * so its age measures a decision rather than a delay.
+ */
+function AgeSummary({ ageing }) {
+  if (!ageing) return null
+  const cards = [
+    { key: 'closed', label: 'Average age, closed', v: ageing.closed, tone: '#059669', sub: 'time taken to close' },
+    { key: 'live', label: 'Average age, open & in progress', v: ageing.openInProgress, tone: '#dc2626', sub: 'still waiting' },
+    { key: 'hold', label: 'Average age, on hold', v: ageing.onHold, tone: '#7c3aed', sub: 'parked, still waiting' },
+  ].filter((c) => c.v?.n > 0)
+  if (!cards.length) return null
+
+  return (
+    <div className="mb-5 grid gap-3 sm:grid-cols-3">
+      {cards.map((c) => (
+        <div key={c.key} className="card p-4">
+          <p className="text-[10.5px] font-bold uppercase tracking-[0.1em] text-ink-400">{c.label}</p>
+          <p className="mt-1.5 flex items-baseline gap-2">
+            <span className="text-[26px] font-bold leading-none tracking-tight tabular-nums" style={{ color: c.tone }}>
+              {c.v.days == null ? '—' : c.v.days.toLocaleString()}
+            </span>
+            <span className="text-[13px] font-semibold text-ink-500">days</span>
+          </p>
+          <p className="mt-1 text-[11.5px] text-ink-400">
+            {c.v.n.toLocaleString()} ticket{c.v.n === 1 ? '' : 's'} · {c.sub}
+          </p>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function AgeingPanel({ ageing }) {
   if (!ageing) return null
   const { closed, ageing: rows } = ageing
