@@ -34,7 +34,7 @@ import { metabaseQuery, metabaseSettings } from '../../shared/functions'
 import MetabaseConnect from '../../shared/integrations/MetabaseConnect'
 import { Panel, Stat, NoData, Picker, FilterRow, DateField } from './ui'
 import {
-  odinAnalytics, odinFacets, resolveOdinRows, STATUS_META, STATUS_BY_KEY, leadStatus, TICKET_OWNERS, QOQ_METRICS, quarterSpans, quarterPair, filterOdinRows,
+  odinAnalytics, odinFacets, resolveOdinRows, STATUS_META, STATUS_BY_KEY, leadStatus, TICKET_OWNERS, QOQ_METRICS, quarterSpans, quarterSeries, filterOdinRows,
   GRANULARITIES, GROUP_DIMS, PASS_MARK,
 } from './odinAnalytics'
 
@@ -57,6 +57,9 @@ function BandHead({ title, note }) {
     </div>
   )
 }
+
+/** How many quarters the comparison covers. One query each — see load(). */
+const QUARTERS_COMPARED = 3
 
 const EMPTY_FILTER = {
   region: 'all', entity: 'all', status: 'all', subCategory: 'all', source: 'all', from: '', to: '',
@@ -191,30 +194,34 @@ export default function OdinTab({ view = 'scores', sites = [], orgId, actor, isA
       // Deliberately NOT derived from the reader's window. The panel is meant
       // to be there whichever dates they picked, and bucketing their window
       // only worked when it happened to straddle a quarter boundary.
-      const spans = quarterSpans()
-      const [fRes, aRes, qCur, qPrev] = await Promise.all([
+      const spans = quarterSpans(Date.now(), QUARTERS_COMPARED)
+      const [fRes, aRes, ...qRes] = await Promise.all([
         metabaseQuery('findings', range),
         // Skipped entirely on the tickets view rather than fetched and
         // ignored: this is a thirty-to-sixty-second warehouse query.
         showScores ? metabaseQuery('audits', range) : Promise.resolve(null),
-        // Tickets only. The quarter panel is a tickets panel, and firing these
-        // on the scores tab would be two warehouse queries nobody looks at.
+        // One query per quarter. They cannot be one: a quarter of tickets is
+        // about 6MB and the response cap is 8, so three quarters travel as
+        // three responses or not at all. All in the same Promise.all as the
+        // main pair, so the wait is the slowest of five rather than their sum,
+        // and none of them runs on the scores tab.
         //
         // A failure is caught rather than thrown — the rest of the tab is worth
         // more than this panel — but it is KEPT, not swallowed. Returning null
         // on failure is what made the panel able to disappear without saying
         // anything, which is the one behaviour this dashboard keeps being
         // caught out by.
-        showTickets ? metabaseQuery('findings', spans.current).catch((e) => ({ ok: false, message: e?.message })) : Promise.resolve(null),
-        showTickets ? metabaseQuery('findings', spans.previous).catch((e) => ({ ok: false, message: e?.message })) : Promise.resolve(null),
+        ...spans.all.map((s) => (showTickets
+          ? metabaseQuery('findings', s).catch((e) => ({ ok: false, message: e?.message }))
+          : Promise.resolve(null))),
       ])
       setFindings(fRes)
       setAudits(aRes)
+      const bad = qRes.find((r) => r && !r.ok)
       setQoq(!showTickets ? null : {
         spans,
-        current: qCur?.ok ? qCur.rows : null,
-        previous: qPrev?.ok ? qPrev.rows : null,
-        failed: qCur?.ok && qPrev?.ok ? null : (qCur?.message || qPrev?.message || 'Metabase did not return the quarter windows.'),
+        rowSets: qRes.map((r) => (r?.ok ? r.rows : [])),
+        failed: bad ? (bad.message || 'Metabase did not return the quarter windows.') : null,
       })
       // Admin-only and never fatal: a failure here costs a rotation warning,
       // not the dashboard, so it must not reach the catch below.
@@ -262,7 +269,7 @@ export default function OdinTab({ view = 'scores', sites = [], orgId, actor, isA
     if (qoq.failed) return { failed: qoq.failed, spans: qoq.spans }
     const scope = { ...f, from: '', to: '' }
     const prep = (rows) => filterOdinRows(resolveOdinRows(rows, sites, { keepUnplaced }), scope)
-    return quarterPair(prep(qoq.current), prep(qoq.previous), qoq.spans)
+    return quarterSeries(qoq.rowSets.map(prep), qoq.spans)
   }, [qoq, sites, f, keepUnplaced])
 
   if (loading && !findings && f.from && f.to) {
@@ -935,9 +942,10 @@ function QoqPanel({ qoq }) {
   }
   if (!qoq.quarters?.length) return null
   const { quarters, latest, previous, changes, undated } = qoq
-  // Four is what fits before the row stops being readable; the most recent
-  // four are the ones anybody is comparing.
-  const shown = quarters.slice(-4)
+  // Every quarter fetched, oldest first, so the row reads left to right as a
+  // trend. The Change column stays the most recent step: three columns show the
+  // shape, one number is the thing to act on.
+  const shown = quarters
   const fmt = (v, unit) => (v == null ? '—' : unit === 'days' ? `${v.toLocaleString()}d` : v.toLocaleString())
 
   const change = (m) => {
@@ -958,7 +966,8 @@ function QoqPanel({ qoq }) {
   return (
     <Panel
       title="Quarter on quarter"
-      subtitle={`${previous.name} → ${latest.name}${latest.partial ? ' so far' : ''}`}
+      subtitle={`${shown.map((q) => q.name).join(' → ')}${latest.partial ? ' so far' : ''}`
+        + ` · Change is ${previous.name} to ${latest.name}`}
       className="mb-5"
     >
       <div className="table-crisp overflow-auto">

@@ -11,7 +11,7 @@ import {
   bucketOf, passTrend, ticketTrend, countBy, toDateOf, isBreach,
   dimensionsPresent, dimensionHasData, resolveGroupBy, joinQuality, regionCoverage, resolveOdinRows, filterOdinRows,
   GRANULARITY_KEYS, PASS_MARK, recoveryStages, scoreBands, centreWatchlist, auditorMatrix,
-  ticketAgeing, ticketTrend as trend, auditPopulation, ownerOf, observationsPerSite, isFls, flsCategories, quarterName, quarterOnQuarter, quarterSpans, quarterPair,
+  ticketAgeing, ticketTrend as trend, auditPopulation, ownerOf, observationsPerSite, isFls, flsCategories, quarterName, quarterOnQuarter, quarterSpans, quarterSeries,
 } from './odinAnalytics'
 
 /** The shape functions/lib/metabase.js hands back, with the fields these tests need. */
@@ -849,68 +849,95 @@ describe("quarterOnQuarter", () => {
 describe("quarterSpans", () => {
   const at = (iso) => Date.parse(iso + "T00:00:00Z")
 
-  it("puts this quarter so far against the whole of the last one", () => {
+  it("returns three quarters by default, oldest first, ending in this one", () => {
     const s = quarterSpans(at("2026-09-09"))
-    expect(s.current).toMatchObject({ from: "2026-07-01", to: "2026-09-09", name: "JAS 26", partial: true })
-    expect(s.previous).toMatchObject({ from: "2026-04-01", to: "2026-06-30", name: "AMJ 26", partial: false })
+    expect(s.all.map((q) => q.name)).toEqual(["JFM 26", "AMJ 26", "JAS 26"])
+    expect(s.current.name).toBe("JAS 26")
+    expect(s.previous.name).toBe("AMJ 26")
+  })
+
+  it("ends past quarters on their own last day and the current one today", () => {
+    const s = quarterSpans(at("2026-09-09"))
+    expect(s.all[0]).toMatchObject({ from: "2026-01-01", to: "2026-03-31", partial: false })
+    expect(s.all[1]).toMatchObject({ from: "2026-04-01", to: "2026-06-30", partial: false })
+    expect(s.all[2]).toMatchObject({ from: "2026-07-01", to: "2026-09-09", partial: true })
   })
 
   it("steps back across the year boundary", () => {
     const s = quarterSpans(at("2026-01-15"))
-    expect(s.current).toMatchObject({ from: "2026-01-01", name: "JFM 26" })
-    expect(s.previous).toMatchObject({ from: "2025-10-01", to: "2025-12-31", name: "OND 25" })
+    expect(s.all.map((q) => q.name)).toEqual(["JAS 25", "OND 25", "JFM 26"])
+    expect(s.all[0]).toMatchObject({ from: "2025-07-01", to: "2025-09-30" })
   })
 
-  it("ends the previous quarter on its real last day, leap years included", () => {
-    // Derived as "day 0 of the next quarter, less one" rather than by a table
-    // of month lengths, so February needs no special case.
+  it("ends a quarter on its real last day, leap years included", () => {
+    // Derived as "day 0 of the next quarter, less one" rather than from month
+    // lengths, so February needs no special case.
     expect(quarterSpans(at("2024-05-01")).previous).toMatchObject({ from: "2024-01-01", to: "2024-03-31", days: 91 })
     expect(quarterSpans(at("2026-05-01")).previous).toMatchObject({ from: "2026-01-01", to: "2026-03-31", days: 90 })
   })
 
   it("handles the first day of a quarter without going negative", () => {
-    const s = quarterSpans(at("2026-07-01"))
-    expect(s.current).toMatchObject({ from: "2026-07-01", to: "2026-07-01", days: 1, partial: true })
+    expect(quarterSpans(at("2026-07-01")).current).toMatchObject({ from: "2026-07-01", to: "2026-07-01", days: 1, partial: true })
   })
 
   it("marks a finished quarter as complete", () => {
-    // 31 December: OND is over, so nothing is outstanding about it.
     expect(quarterSpans(at("2026-12-31")).current.partial).toBe(false)
   })
 
-  it("keeps each side inside one quarter, so each fits one response", () => {
+  it("keeps every span inside one quarter, so each fits one response", () => {
     for (const day of ["2026-03-31", "2026-06-30", "2026-09-30", "2026-12-31"]) {
-      const s = quarterSpans(at(day))
-      expect(s.current.days, day).toBeLessThanOrEqual(92)
-      expect(s.previous.days, day).toBeLessThanOrEqual(92)
+      for (const q of quarterSpans(at(day)).all) expect(q.days, day + " " + q.name).toBeLessThanOrEqual(92)
     }
+  })
+
+  it("takes a count, for a panel that wants more or fewer", () => {
+    expect(quarterSpans(at("2026-09-09"), 1).all.map((q) => q.name)).toEqual(["JAS 26"])
+    expect(quarterSpans(at("2026-09-09"), 4).all.map((q) => q.name)).toEqual(["OND 25", "JFM 26", "AMJ 26", "JAS 26"])
+    expect(quarterSpans(at("2026-09-09"), 1).previous).toBe(null)
   })
 })
 
-describe("quarterPair", () => {
+describe("quarterSeries", () => {
   const NOW = Date.parse("2026-09-09T00:00:00Z")
   const t = (over = {}) => row({ subCategory: "FLS - Signage", ...over })
 
-  it("always has both sides, whatever the reader's window was", () => {
-    const out = quarterPair([t({ site: "A" }), t({ site: "B" })], [t({ site: "A" })], quarterSpans(NOW), NOW)
-    expect(out.quarters.map((q) => q.name)).toEqual(["AMJ 26", "JAS 26"])
-    expect(out.changes.observations).toBe(1)
+  it("always has every quarter, whatever the reader's window was", () => {
+    const spans = quarterSpans(NOW)
+    const out = quarterSeries([[t()], [t(), t()], [t(), t(), t()]], spans, NOW)
+    expect(out.quarters.map((q) => [q.name, q.values.observations]))
+      .toEqual([["JFM 26", 1], ["AMJ 26", 2], ["JAS 26", 3]])
+  })
+
+  it("changes against the most recent step, not across the whole series", () => {
+    const out = quarterSeries([[t()], [t(), t()], [t(), t(), t()]], quarterSpans(NOW), NOW)
+    expect(out.changes.observations).toBe(1)   // AMJ 2 -> JAS 3, not JFM 1 -> JAS 3
   })
 
   it("carries the partial flag through, so the column can say so", () => {
-    const out = quarterPair([t()], [t()], quarterSpans(NOW), NOW)
+    const out = quarterSeries([[t()], [t()], [t()]], quarterSpans(NOW), NOW)
     expect(out.latest.partial).toBe(true)
     expect(out.previous.partial).toBe(false)
   })
 
-  it("reports a change of zero as zero, not as absent", () => {
-    expect(quarterPair([t()], [t()], quarterSpans(NOW), NOW).changes.observations).toBe(0)
-  })
-
-  it("is still a pair when one side is empty", () => {
-    // A quarter with no tickets is a real answer, not a missing one.
-    const out = quarterPair([t()], [], quarterSpans(NOW), NOW)
+  it("treats a quarter with no tickets as a real zero, not a gap", () => {
+    const out = quarterSeries([[t()], [], [t()]], quarterSpans(NOW), NOW)
     expect(out.previous.values.observations).toBe(0)
     expect(out.changes.observations).toBe(1)
+  })
+
+  it("splits each quarter by owner, and per site", () => {
+    const q = [
+      t({ site: "A", category: "Safety and Security" }),
+      t({ site: "A", category: "Facility" }),
+      t({ site: "B", category: "Center Manager" }),
+      t({ site: "B", category: "Facility" }),
+    ]
+    const out = quarterSeries([[], [], q], quarterSpans(NOW), NOW)
+    const v = out.latest.values
+    expect([v.sas, v.facility, v.cm]).toEqual([1, 2, 1])
+    // Two sites, so each owner's per-site figure is its count over 2 — and the
+    // three sum to the overall per-site figure.
+    expect([v.sasPerSite, v.facilityPerSite, v.cmPerSite]).toEqual([0.5, 1, 0.5])
+    expect(v.perSite).toBe(2)
   })
 })
