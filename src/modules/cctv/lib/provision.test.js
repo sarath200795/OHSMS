@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   standardMerakiName, sitesMissingMeraki, standardMerakiPayloads, merakiDocId,
-  sitesWithDuplicateMerakis,
+  sitesWithDuplicateMerakis, redundantMerakis,
 } from './provision'
 
 const site = (o = {}) => ({ id: 's1', name: 'Hosur', region: 'South', entity: 'COCO', ...o })
@@ -186,5 +186,89 @@ describe('sitesWithDuplicateMerakis', () => {
   it('survives empty input', () => {
     expect(sitesWithDuplicateMerakis()).toEqual([])
     expect(sitesWithDuplicateMerakis([], [])).toEqual([])
+  })
+})
+
+describe('redundantMerakis', () => {
+  // What provisioning writes and nobody has touched since.
+  const ghost = (o = {}) => ({
+    id: 'g1', name: 'MX-Hosur', siteId: 's1', ipAddress: '', serial: '', model: '',
+    status: 'unknown', defects: [],
+    notes: 'Created as the standard Meraki for this site — add its IP and model.',
+    ...o,
+  })
+  const real = (o = {}) => ghost({ id: 'r1', ipAddress: '10.0.0.1', notes: 'Rack 3', ...o })
+
+  it('leaves a site with one record alone', () => {
+    expect(redundantMerakis([ghost()], 's1').remove).toEqual([])
+    expect(redundantMerakis([], 's1').remove).toEqual([])
+  })
+
+  it('removes the placeholder and keeps the one somebody filled in', () => {
+    const out = redundantMerakis([ghost(), real()], 's1')
+    expect(out.remove.map((m) => m.id)).toEqual(['g1'])
+    expect(out.keep.map((m) => m.id)).toEqual(['r1'])
+    expect(out.blocked).toBe(false)
+  })
+
+  // Each of these is somebody's work, or a monitor's answer. Deleting the
+  // record throws it away and Firestore has no undo.
+  it.each([
+    ['an IP', { ipAddress: '10.0.0.9' }],
+    ['a serial', { serial: 'Q2XX-1234' }],
+    ['a model', { model: 'MX67' }],
+    ['a defect on record', { defects: ['power'] }],
+    ['a reported status', { status: 'offline' }],
+    ['a status somebody confirmed', { status: 'online' }],
+    ['a note of its own', { notes: 'Spare, in the cupboard' }],
+  ])('treats %s as something to lose', (_label, patch) => {
+    const out = redundantMerakis([ghost(), ghost({ id: 'g2', ...patch })], 's1')
+    expect(out.remove.map((m) => m.id)).toEqual(['g1'])
+  })
+
+  // Which of two maintained records is the real switch is a question about the
+  // estate, not about the data. Nothing is deleted; a person is told.
+  it('refuses to choose between two records that both hold information', () => {
+    const out = redundantMerakis([real(), real({ id: 'r2', ipAddress: '10.0.0.2' })], 's1')
+    expect(out.remove).toEqual([])
+    expect(out.blocked).toBe(true)
+  })
+
+  it('never empties a site, even when every record is a placeholder', () => {
+    const out = redundantMerakis([ghost(), ghost({ id: 'g2' }), ghost({ id: 'g3' })], 's1')
+    expect(out.keep).toHaveLength(1)
+    expect(out.remove).toHaveLength(2)
+  })
+
+  // Cleaning up should land the estate on the ids provisioning writes now, so
+  // the record that survives is the canonically addressed one where there is
+  // one — not whichever happened to sort first.
+  it('keeps the canonically addressed record when there is one', () => {
+    const out = redundantMerakis([ghost({ id: 'aaa' }), ghost({ id: 'site_s1' })], 's1')
+    expect(out.keep.map((m) => m.id)).toEqual(['site_s1'])
+  })
+
+  it('otherwise keeps the oldest, so two people get the same answer', () => {
+    const out = redundantMerakis(
+      [ghost({ id: 'b', createdAt: { seconds: 200 } }), ghost({ id: 'a', createdAt: { seconds: 100 } })],
+      's1'
+    )
+    expect(out.keep.map((m) => m.id)).toEqual(['a'])
+  })
+
+  it('prefers a dated record over one with no date at all', () => {
+    const out = redundantMerakis([ghost({ id: 'a' }), ghost({ id: 'b', createdAt: { seconds: 5 } })], 's1')
+    expect(out.keep.map((m) => m.id)).toEqual(['b'])
+  })
+
+  it('falls back to the id so the order is never arbitrary', () => {
+    const out = redundantMerakis([ghost({ id: 'z' }), ghost({ id: 'a' })], 's1')
+    expect(out.keep.map((m) => m.id)).toEqual(['a'])
+  })
+
+  it('accepts a Firestore timestamp, not only a raw seconds field', () => {
+    const ts = (ms) => ({ toMillis: () => ms })
+    const out = redundantMerakis([ghost({ id: 'b', createdAt: ts(9) }), ghost({ id: 'a', createdAt: ts(2) })], 's1')
+    expect(out.keep.map((m) => m.id)).toEqual(['a'])
   })
 })
