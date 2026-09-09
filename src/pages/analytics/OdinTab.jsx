@@ -34,7 +34,7 @@ import { metabaseQuery, metabaseSettings } from '../../shared/functions'
 import MetabaseConnect from '../../shared/integrations/MetabaseConnect'
 import { Panel, Stat, NoData, Picker, FilterRow, DateField } from './ui'
 import {
-  odinAnalytics, odinFacets, resolveOdinRows, STATUS_META, STATUS_BY_KEY, leadStatus, TICKET_OWNERS,
+  odinAnalytics, odinFacets, resolveOdinRows, STATUS_META, STATUS_BY_KEY, leadStatus, TICKET_OWNERS, QOQ_METRICS,
   GRANULARITIES, GROUP_DIMS, PASS_MARK,
 } from './odinAnalytics'
 
@@ -553,6 +553,8 @@ export default function OdinTab({ view = 'scores', sites = [], orgId, actor, isA
 
       {hasRange && showTickets && <FlsPanel fls={a.fls} />}
 
+      {hasRange && showTickets && <QoqPanel qoq={a.qoq} />}
+
       {hasRange && showTickets && <BandHead title="Where" note="Every site in scope, busiest first" />}
 
       {hasRange && showTickets && (
@@ -858,6 +860,95 @@ function DistributionPanel({ distribution }) {
  * Rejected sits with the ageing rows rather than with closed: it was never
  * remediated, so counting it as a closure would flatter every figure here.
  */
+/**
+ * Every metric on this tab, quarter by quarter, with the last change.
+ *
+ * The quarters come out of the rows already fetched, so a comparison exists
+ * only when the chosen window spans two of them. When it does not, this says so
+ * rather than drawing a change against nothing — a "0%" beside a quarter that
+ * was never measured is worse than an empty panel.
+ *
+ * Only the ages are coloured. A count moving is genuinely ambiguous: more
+ * observations can mean a worse estate or simply more auditing, and this page
+ * cannot tell those apart, so it does not pretend to. A ticket waiting longer
+ * is worse whichever way the volume moved, so those get a direction.
+ */
+function QoqPanel({ qoq }) {
+  if (!qoq?.quarters?.length) return null
+  const { quarters, latest, previous, changes, undated } = qoq
+  // Four is what fits before the row stops being readable; the most recent
+  // four are the ones anybody is comparing.
+  const shown = quarters.slice(-4)
+  const fmt = (v, unit) => (v == null ? '—' : unit === 'days' ? `${v.toLocaleString()}d` : v.toLocaleString())
+
+  const change = (m) => {
+    const d = changes?.[m.key]
+    if (d == null) return <span className="text-ink-300">—</span>
+    if (d === 0) return <span className="text-ink-400">no change</span>
+    const up = d > 0
+    const tone = m.better === 'none'
+      ? 'text-ink-600'
+      : (up === (m.better === 'up')) ? 'text-emerald-600' : 'text-red-600'
+    return (
+      <span className={`font-semibold ${tone}`}>
+        {up ? '+' : ''}{d.toLocaleString()}{m.unit === 'days' ? 'd' : ''}
+      </span>
+    )
+  }
+
+  return (
+    <Panel
+      title="Quarter on quarter"
+      subtitle={previous
+        ? `${previous.name} → ${latest.name}, from the audits in your window`
+        : `Only ${latest.name} falls inside your window — widen the dates to compare quarters`}
+      className="mb-5"
+    >
+      <div className="table-crisp overflow-auto">
+        <table className="w-full text-left text-[12.5px]">
+          <thead className="bg-clay-surface">
+            <tr className="text-[10.5px] uppercase tracking-wide text-ink-400">
+              <th className="px-3 py-2">Metric</th>
+              {shown.map((q) => (
+                <th key={q.key} className="px-3 py-2 text-right">
+                  {q.name}
+                  <span className="ml-1 font-normal normal-case text-ink-300">({q.label})</span>
+                </th>
+              ))}
+              <th className="px-3 py-2 text-right">Change</th>
+            </tr>
+          </thead>
+          <tbody>
+            {QOQ_METRICS.map((m) => (
+              <tr key={m.key} className="border-t border-clay-100">
+                <td className="px-3 py-2 font-medium text-ink-800">{m.label}</td>
+                {shown.map((q) => (
+                  <td key={q.key} className="px-3 py-2 text-right tabular-nums text-ink-700">
+                    {fmt(q.values[m.key], m.unit)}
+                  </td>
+                ))}
+                <td className="px-3 py-2 text-right tabular-nums">{change(m)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="mt-3 text-[11.5px] leading-relaxed text-ink-500">
+        Quarters are the calendar ones, named as the audit planner names them. Built from the
+        audits already in your window, so a quarter only appears once your dates reach into it —
+        nothing is fetched behind your back.
+        {' '}<b>Only the ages are coloured.</b> A count moving is ambiguous: more observations can
+        mean a worse estate or simply more auditing, and this page cannot tell those apart. A
+        ticket waiting longer is worse either way.
+        {undated > 0 && (
+          <> {undated.toLocaleString()} ticket{undated === 1 ? '' : 's'} carr{undated === 1 ? 'ies' : 'y'} no
+          date and {undated === 1 ? 'is' : 'are'} in no quarter.</>
+        )}
+      </p>
+    </Panel>
+  )
+}
+
 /**
  * The FLS L2 categories: where the tickets stand, and how long they have taken.
  *
