@@ -1,0 +1,50 @@
+# Who has to look at a change before it lands.
+#
+# This file does nothing on its own. It takes effect when the ruleset on `main`
+# gains a pull-request rule with "require review from Code Owners" — without
+# that, a CODEOWNERS entry is documentation. It is written now because the
+# entries below are the ones worth having the moment that rule is added, and
+# because naming the files that decide who can read what is useful even while it
+# is only advisory.
+#
+# The list is deliberately short. A CODEOWNERS that covers everything reviews
+# nothing: it makes every PR wait on the same person and teaches everyone to
+# route around it. What is here is the set of files where a mistake is not a bug
+# but a breach.
+
+# Default: everything else.
+*                           @sarath200795
+
+# ── The enforcement boundary ────────────────────────────────────────────────
+#
+# These two files ARE the access control for a multi-tenant system holding
+# occupational health records. There is no middleware behind them and no server
+# to fall back on: the browser talks to Firestore directly, so a rule that is
+# one `match` too wide is the whole of the exposure. Every change here should be
+# read by someone other than its author, and should arrive with tests.
+/firestore.rules            @sarath200795
+/storage.rules              @sarath200795
+/tests/                     @sarath200795
+
+# ── The pipeline that deploys them ──────────────────────────────────────────
+#
+# A change here can ship rules, functions and hosting, and holds the service
+# account that can do it.
+/.github/workflows/         @sarath200795
+/.github/dependabot.yml     @sarath200795
+
+# ── Cryptography and the server tier ────────────────────────────────────────
+#
+# policy.js decides which fields are encrypted and under which key class; a
+# field quietly removed from it is stored in the clear from that commit on, and
+# nothing else in the system would notice. claims.js mints the token claim
+# storage.rules enforces on. retention.js decides what gets destroyed.
+/src/shared/crypto/         @sarath200795
+/functions/lib/claims.js    @sarath200795
+/functions/lib/retention.js @sarath200795
+/functions/lib/fileDelete.js @sarath200795
+
+# ── The record of what is known ─────────────────────────────────────────────
+/docs/SECURITY.md           @sarath200795
+/docs/DATA-RIGHTS.md        @sarath200795
+/SECURITY.md                @sarath200795

@@ -26,7 +26,39 @@ recognising on sight:
 
 ---
 
-## Open
+## Open findings are not in this file
+
+**This register is the CLOSED half only.** The open entries — findings that are
+live, or accepted with a residual risk — were moved out of this repository on
+2026-09-10 and are held privately by the maintainer.
+
+This repository is public. A closed finding written up with its mechanism, its
+fix and its test is a credential: it shows the defect was found, understood and
+proven closed, and publishing it costs nothing because there is nothing left to
+exploit. An **open** finding written up to the same standard is a different
+document — it names a live weakness, its reachability, and where in the source
+to look. An ISO 27001 audit (2026-09-09, finding H-2 under A.5.12 / A.8.4)
+raised that both halves were being served to anyone who asked, and that the
+second half was almost certainly not a decision anyone had made.
+
+So the split is now explicit, and the rule for anything added here is:
+
+> A finding goes in this file when it is closed. While it is open it lives in
+> the private register, however well written up it is. If you are unsure whether
+> something is exploitable as described, that uncertainty means private.
+
+Ask the maintainer (see the root `SECURITY.md` for how to make contact) if you
+need the open register — for a security review, a due-diligence request, or a
+disclosure you are checking against what is already known.
+
+Note that git history still holds the open entries as they stood before this
+split, and rewriting it was considered and rejected: it would change every
+commit SHA and orphan the `v*` release tags that tie each deployment to a
+commit, which is a traceability control this project actively relies on.
+Treating that history as public is the safer assumption, so the entries moved
+out are being worked rather than merely hidden.
+
+## Recently closed
 
 ### S-04 · Unbounded collection listeners — CLOSED
 
@@ -105,283 +137,6 @@ hand-picked, in `src/shared/lib/contrast.js`:
 - the soft badge used one colour as both its 10% fill and its text
   (`readableOnTint`), and
 - the solid badge wrote white on a mid-tone fill (`solidBackground`).
-
-### S-06 · Deferred dependency advisories — LOW
-
-Re-checked 2026-08-16. The runtime tree (`npm audit --omit=dev`) holds **one
-high and two moderate**, and the entry below was stale on the worst of them.
-
-**`jspdf` — CLOSED.** This entry described 2.5.2 with a critical advisory. The
-installed version is **4.2.1**, with `jspdf-autotable` at **5.0.8**; the
-migration that was described as "two major versions up" has been done, and
-neither package appears in the audit any more.
-
-**`xlsx` 0.18.5 — open, allowlisted, and correctly so.** No fix on npm; SheetJS
-publishes to its own CDN now. The prototype-pollution sink is unreachable
-because no import parses an untrusted file any more — every upload goes through
-`shared/lib/parseTable` (papaparse). What remains uses `xlsx` only to WRITE
-exports from data already held, which is not a parsing surface.
-`scripts/audit-gate.mjs` names it, with the reason and what would close it.
-
-**`react-router` 6.30.4 — two moderates, newly present, and NOT previously
-recorded here.** Both need react-router **>= 7.18.0**, a major-version migration
-across 29 routes. Assessed rather than deferred:
-
-- *Arbitrary constructor injection via `deserializeErrors()` in SSR hydration*
-  (GHSA-337j-9hxr-rhxg) — **structurally unreachable.** This is a client-only
-  Vite SPA; there is no `renderToString`, no `hydrateRoot`, no `StaticRouter`.
-  No amount of router version changes that.
-- *Open redirect via a backslash in `<Link>` and `useNavigate`*
-  (GHSA-wrjc-x8rr-h8h6) — **had exactly one reachable sink**, and it is now
-  closed. Every other `navigate()` and `to=` in the app is either a string
-  literal or a template around a Firestore id. The exception was the post-login
-  redirect in `src/pages/auth/Login.jsx`, which sent the user back to
-  `location.state.from.pathname` — a value derived from where the browser was
-  pointed, followed at the moment they had just typed their password.
-
-  Closed with `safeInternalPath()` in `src/shared/safeUrl.js`, which requires a
-  single leading slash and refuses backslashes anywhere. It sits beside
-  `safeHref` deliberately: same file, same reasoning, same habit of allow-listing
-  the shape that is acceptable rather than hunting for the shapes that are not.
-
-  This is a defence the router version cannot take away again, which is why it
-  was preferred to a v7 migration for two moderates.
-
-**A gap in the gate worth knowing.** `scripts/audit-gate.mjs` blocks at **high**,
-so these two moderates never appeared in CI at all — they were found by running
-`npm audit` by hand. A moderate with `fixAvailable: true` sitting unnoticed is
-the state the gate exists to prevent. Raising the threshold to `moderate` is not
-obviously right (it would demand a major migration for an unreachable SSR bug),
-but *reporting* moderates without blocking on them would have surfaced this.
-
-### S-07 · Encryption covers new writes only — MEDIUM
-
-Application-layer encryption is in (`src/shared/crypto/`, docs/PRODUCTION.md §11)
-and seals the fields named in `policy.js` before they reach Firestore. Three
-things it does not yet reach, listed here so none of them becomes folklore:
-
-**History in Firestore.** *Closed — needs running.* Turning `VITE_ENCRYPTION=on`
-seals new writes only, so every incident, injury, illness, meeting and drill
-already stored stayed readable in the database. Same shape as every other
-finding closed here — `stripIncidentMedicalDetail`, `backfillDocumentVisibility`,
-`confineMedicalRecords` — and the same reasoning: *closing the write path closes
-nothing already stored, and what is already stored is the exposure.*
-
-`src/shared/crypto/backfill.js` does it, from a card on the Maintenance page.
-Nothing is written until the sealed copy has been decrypted again and compared
-field by field against the plaintext it would replace — and that check runs
-*before* the destructive write, not after, because this migration overwrites
-rather than copies, so there is no moment afterwards where the plaintext still
-exists to compare against.
-
-It runs in the browser, not as a Cloud Function like its neighbours, and that is
-the one decision worth knowing about. The AAD bound into every sealed value *is*
-the policy path string, so a server-side copy of the policy table drifting by one
-character would seal records that nothing could ever open again — silent,
-permanent, and undetectable at both write and read time. Running it through the
-app's own `sealDoc` means there is one implementation and it cannot disagree with
-itself.
-
-**It has not been run against production.** Encryption is still off there, and
-the job refuses to start with sealing disabled.
-
-**Bucket objects already stored are still plaintext.** *Closed for new uploads.*
-Incident photos, drill evidence and illness attachments now encrypt their bytes
-too, alongside medical records. The obstacle was that every gallery reads one
-field — `.dataUrl`, normalised from `data.dataUrl || data.url` — and an
-encrypted object breaks that: `.url` points at ciphertext, and an `<img>` given
-it renders a broken picture. Rather than move a dozen renderers including the
-three PDF paths, the decryption happens at the seam
-(`src/shared/storage/resolveFiles.js`), so no renderer changed. Turning it on
-was safe for history because an unsealed object carries no encryption metadata,
-so nothing is fetched and it keeps the URL it always had.
-
-The objects *already in the bucket* are handled by `sealStoredObjects`
-(`functions/lib/objectSeal.js`), from a second card on the Maintenance page.
-Write the sealed copy to a new path, download it back and decrypt it, re-point
-the document, and only then delete the plaintext — the ordering
-`confineMedicalRecords` uses, because sealing in place would overwrite the only
-copy with bytes nobody has read back. One truncated upload and the photograph is
-gone with the pointer still confidently naming it.
-
-This is the **one** part of the encryption work that runs server-side, and it
-therefore pays the duplication cost the Firestore backfill refused: the AAD
-format string, the per-class file label, the two scheme tags and the pointer
-field names all exist twice. That is four constants rather than a table of forty
-field paths — and it is not left to a comment. `objectSeal.crossSeam.test.js` is
-the only test in the project that imports across the package seam, deliberately:
-it seals with the server code and opens with the client code, in both key
-classes, both directions. If the two ever disagree about a byte it goes red
-there instead of silently producing a bucket nothing can open.
-
-**Neither backfill has been run against production.** Encryption is still off
-there; the field job refuses to start with sealing disabled, and the object job
-refuses an organization that has no keyset yet.
-
-**`/users` is not sealed.** Names are personal data and they are in the clear
-there. This is deliberate rather than missed: `firestore.rules` reads that
-document on every evaluation and cannot decrypt, and a name is denormalised onto
-dozens of records (`createdByName`, `personName`, `loggedBy`, `owner`,
-`attendees[].name`). Those copies *are* sealed. Sealing the directory too is a
-separate change that has to take email, sign-in and provisioning with it —
-and sealing it while the copies stayed readable would be exactly the
-"confine one copy and call it confined" mistake the injury/incident split was
-made to correct.
-
-One thing no encryption can undo, recorded because it will be asked: any
-`getDownloadURL` handed out before an object was sealed is a bearer link that
-answers to no rule, and anything already downloaded is simply gone.
-
----
-
-### S-19 · Storage honours a revoked token for up to an hour — MEDIUM
-
-*Deletion: closed. Reading: bounded and accepted. Stays here until read is
-closed too, or until someone decides it never will be.*
-
-The two enforcement surfaces learn about a person differently, and that
-difference is the whole finding.
-
-`firestore.rules` re-reads `/users/{uid}` on **every** rule evaluation, so
-suspending, moving or demoting someone bites the instant the document is
-written. `storage.rules` cannot read Firestore, so it reads `orgId` and `role`
-off the **presented ID token** — and an ID token stays valid, cryptographically,
-until it expires. Up to an hour.
-
-So a person who has just been suspended keeps whatever Storage access their
-cached token still claims. If they were a manager, that includes deleting any
-file in the tenant: incident photos, permit documents, isolation procedure
-photos, drill evidence. Deletion is unrecoverable and leaves nothing in the
-audit trail, which only records what the app chose to write.
-
-**What already narrows it.** `syncUserClaims` strips the claims and, on a
-*reduction*, calls `revokeRefreshTokens(uid)`. That does not shorten the window
-— rules do not consult `tokensValidAfterTime`, so the current token remains
-valid to its expiry either way — but it changes the ending: the session
-terminates rather than quietly continuing in a downgraded state, and no new
-token can be minted.
-
-**One reduction it did not recognise, now fixed.** `revokesAccess` decided
-"reduction" by asking whether the person had been `admin`/`manager` and no
-longer was — which models the DELETE right and nothing else. `storage.rules`
-gates two rights on role, and the second was invisible to it: a **member demoted
-to auditor** loses the right to write (`canWriteTo` excludes auditors) while
-never having been elevated, so no reduction was detected, no session was
-revoked, and an outside party given a login to inspect the safety record could
-keep uploading into the tenant for the rest of the hour. The rule itself was
-correct and tested (`tests/storage.rules.test.js` refuses an auditor's upload);
-only the revocation disagreed with it.
-
-Fixed by deriving the decision from a single `storageRights(role)` mapping that
-states what `storage.rules` grants, so the two files cannot drift again without
-a test failing. `functions/lib/claims.test.js` covers every role transition in
-both directions.
-
-**The hour itself: CLOSED for deletion, by moving the check off the rules.**
-
-`storage.rules` now refuses client deletes outright — `canDeleteFrom` is
-`false`, for everyone, including a manager. Deletion goes through the
-`deleteOrgFile` callable, which reads the caller's `/users` profile **live** on
-every request and applies `mayDeleteFile` (`functions/lib/fileDelete.js`):
-approved, not on a provisioning password, `admin`/`manager`, and the path inside
-that org's own prefix. The database decides at the moment of the request, so a
-token issued before the account changed carries no weight at all.
-
-The client change was one file, because every delete in the app already funnels
-through `removeFile` in `src/shared/storage/index.js`. Non-Firebase drivers keep
-deleting directly — the callable is Firebase-specific, and an S3 deployment
-authorises at its own presign endpoint.
-
-This also closes a clause a custom claim could never carry: `isManagerOf` in
-`firestore.rules` refuses an account still holding the password a provisioning
-admin typed for it, so such an account reaches nothing in Firestore — while
-Storage let it delete, because `mustChangePassword` is not on the token.
-
-**Read this before ever moving the check back into the rules.** The obvious fix
-— a cross-service `firestore.get()` inside `canDeleteFrom()` — was written in
-full, with tests, and reverted. **The Storage emulator does not evaluate
-cross-service calls**: it refuses `firestore.get()` / `firestore.exists()`
-outright instead of resolving them. Confirmed with a minimal probe — a rule
-reading nothing passed; the identical rule guarded by `firestore.exists()`
-refused a caller whose document was definitely present.
-
-The rule was probably *correct*; in production with the IAM grant it would
-work. That is not the same as safe to ship. It would have gone into the only
-enforcement boundary this app has, unverifiable, with a failure mode of every
-manager silently losing the ability to delete.
-
-**And how it failed is the lesson worth keeping.** With that rule in place every
-*refusal* test still passed — because everything was refusing. Only the two
-tests asserting a legitimate manager CAN delete went red. A suite of green
-negatives is exactly how a rule that enforces nothing, or everything, reaches
-production unnoticed; it is S-17 in a different file. The tempting repair —
-delete the two failing positives to get green — would not have tested the
-control, it would have removed the only thing that noticed.
-
-**What is still bounded rather than closed:** READ. A stale token can still read
-files of the org it names until it expires. That is deliberate: routing reads
-through a callable would put a function invocation behind every photograph the
-app renders, and an hour of continued read access to files the person could
-already see is a far smaller thing than destroying the evidence. Claims are
-stripped immediately and refresh tokens revoked, so it remains at most one token
-lifetime.
-
-Verified in `functions/lib/fileDelete.test.js` (every branch, including the
-manager whose profile has since been suspended, demoted or moved) and in
-`tests/storage.rules.test.js` / `tests/medicalRecords.rules.test.js`, which now
-assert that **no** client may delete — if any of those starts passing, the
-callable has been bypassed.
-
-### S-20 · The public permit page published an abandoned job forever — MEDIUM
-
-**Closed.** `/permitQr/{token}` is world-readable by design: someone at the
-barrier scans the printed code and sees that the work is authorised, what it is,
-what the hazards are and until when. Two protections were already in place — the
-crew is published as **counts** rather than names, and a permit reaching Closed
-has every describing field blanked on the write that closes it.
-
-Neither reached the permits that actually leak.
-
-**Expiry is deliberately not terminal.** A permit that lapsed while work carried
-on is exactly the one somebody should be able to read and challenge, so
-`TERMINAL_STATUSES` excludes it and a test pins that. The reasoning is right.
-But it is an argument with a clock in it, written without one: somebody may need
-to challenge yesterday's lapsed permit, nobody needs to challenge one from 2023.
-
-**And withdrawal only ever happened on a write.** The decision lives inside
-`mirrorDisplayFields`, which runs when the mirror is updated — and nothing
-updates a permit everybody forgot. So the job description, location, hazards and
-the name it was issued to stayed on an unauthenticated URL indefinitely.
-
-Put together, **the behaviour selected for neglect**: a permit closed properly
-went quiet, and a permit nobody came back to close published forever. The
-population most likely to leak was the one least likely to be cleaned up, which
-is the shape worth recognising — a control that only fires on the happy path is
-not a control, it is a courtesy.
-
-Fixed in two halves, because either alone leaves it open:
-
-1. `isStale()` — 7 days past the *effective* end date (extensions included), the
-   write path withdraws even though the status is not terminal.
-2. `withdrawStalePermitMirrors`, a nightly sweep, which is the only thing that
-   reaches a mirror nobody will ever write again.
-
-Every ambiguity resolves toward keeping the detail: no readable end date means
-never withdrawn, and an extension delays withdrawal without its approval state
-being consulted. Taking information off a safety page is the direction that can
-hurt somebody.
-
-`issuedToName` is still published while a permit is live, deliberately —
-challenging a job means asking whether the person in front of you is the one it
-was issued to, and the paper permit at the barrier carries that name anyway.
-
-**A note on how this was nearly missed.** The ISO register described this as
-"publishes worker names and employers, never withdrawn", which was ~90% stale —
-the crew exposure had already been closed. A first triage pass then recorded "no
-withdrawal logic found", concluding from a grep that could not have matched the
-names the code actually uses. The real defect was narrower than the register
-said and invisible from its description. *Concluding from an absence of search
-hits is how both the original finding and its triage went wrong.*
 
 ## Closed
 

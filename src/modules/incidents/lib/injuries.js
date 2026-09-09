@@ -30,8 +30,13 @@ import {
   onSnapshot,
   serverTimestamp,
   limit,
+  writeBatch,
 } from 'firebase/firestore'
 import { db } from '../../../shared/firebase'
+// purgeInjury destroys the clinical DOCUMENTS as well as the pointers to them.
+// A pointer deleted without its object leaves the GP letter in the bucket with
+// nothing left that names it — unreachable through the app and still there.
+import { removeFile } from '../../../shared/storage'
 import { logAudit } from './firestore'
 import { AUDIT } from './audit'
 // The clinical fields are sealed under the MEDICAL key class — a keypair, not a
@@ -48,6 +53,11 @@ const SEALED = 'injuries'
 
 const injuryCol = (orgId) => collection(db, 'organizations', orgId, 'injuries')
 const injuryRef = (orgId, id) => doc(db, 'organizations', orgId, 'injuries', id)
+// The clinical documents: GP letters, fit notes, discharge summaries. Written
+// only by functions/lib/medicalRecords.js, which moved them out of
+// incidents/{id}/photos — no client path creates one. Read here because a purge
+// that leaves them behind destroys the index and keeps the record.
+const recordCol = (orgId, id) => collection(db, 'organizations', orgId, 'injuries', id, 'records')
 const incRef = (orgId, incidentId) => doc(db, 'organizations', orgId, 'incidents', incidentId)
 const injuryId = (incidentId, personId) => `${incidentId}__${personId}`
 
@@ -219,18 +229,30 @@ export async function syncIncidentInjuries(orgId, incident, reports = [], actor)
   })
 }
 
+/**
+ * Every injury report, deleted ones included.
+ *
+ * This used to drop soft-deleted rows here, which was right while nothing could
+ * soft-delete an injury: the filter had no work to do and the Recycle Bin had
+ * nothing to show. Now that deleteInjury exists, dropping them here would hide
+ * the record from the ONE screen whose job is to say what is about to be
+ * destroyed — a countdown nobody can see is the state the retention sweep was
+ * written to end, not to reproduce.
+ *
+ * So the split moves up to IncidentContext, where the same split already
+ * happens for incidents and illnesses. `context.injuries` still means the
+ * active ones; `context.deletedInjuries` is the new half. No consumer changes.
+ */
 export function subscribeInjuries(orgId, cb) {
   // Order by updatedAt (every write stamps it); newest first.
   const q = query(injuryCol(orgId), orderBy('updatedAt', 'desc'), limit(2000))
   // openSnapshots decrypts each batch and drops any that is no longer the
   // latest — a busy collection re-emits faster than two thousand records
   // decrypt, and without the guard an older list can land on top of a newer one.
-  // `deletedAt` is filtered BEFORE decryption because it is not sealed, so
-  // deleted records cost nothing to skip.
   const opened = openSnapshots(orgId, SEALED, cb)
   return onSnapshot(
     q,
-    (snap) => opened(snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((x) => !x.deletedAt)),
+    (snap) => opened(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
     () => cb([]) // non-fatal: missing index / permissions → empty
   )
 }
@@ -310,3 +332,98 @@ export async function setInjuryVerified(orgId, id, verified, actor, label) {
 
 /** Status helper: a doc with no explicit status is treated as pending. */
 export const injuryStatus = (inj) => (inj?.status === 'verified' ? 'verified' : 'pending')
+
+// ── Lifecycle: delete, restore, purge ────────────────────────────────────────
+//
+// None of this existed. `injuryPayload` wrote `deletedAt: null` and the list
+// filtered on it, so the field described a lifecycle that nothing implemented —
+// and /injuries, the only home of a named colleague's clinical detail and the
+// documents behind it, was the one collection in this app with no way to remove
+// a record at all. An ISO 27001 audit found it under A.8.10; the sweep in
+// functions/lib/retention.js is the other half, and neither works without both.
+//
+// Deliberately NOT reached by the incident purge. See the note on the
+// `injuries` entry in functions/lib/retention.js for why an injury outliving
+// the incident it came from is the intended behaviour rather than the bug.
+
+/**
+ * Move an injury report to the Recycle Bin.
+ *
+ * `deletedAt` is left UNSEALED, like every other structural field on this
+ * document. It has to be: the nightly sweep queries on it with the Admin SDK
+ * and holds no key, and the list filter reads it before anything decrypts. See
+ * the header of shared/crypto/policy.js — a field a query orders or filters on
+ * is not a field that can be encrypted.
+ *
+ * The audit entry names the incident reference and no person. `personName` is
+ * sealed under the medical key class, so writing it here would either put
+ * ciphertext in front of whoever reads the log or copy a name out of a
+ * manager-only collection into /auditLogs, which has a wider audience — the
+ * same mistake the injury/incident split was made to correct. Same reasoning as
+ * updateInjury above.
+ */
+export async function deleteInjury(orgId, id, actor) {
+  const snap = await getDoc(injuryRef(orgId, id))
+  if (!snap.exists()) return
+  // Not opened: nothing below reads a sealed field, and decrypting a
+  // colleague's record to delete it would need a key the deleter may not hold.
+  const cur = snap.data()
+  await updateDoc(injuryRef(orgId, id), {
+    deletedAt: serverTimestamp(),
+    deletedBy: actor?.name || '',
+  })
+  await logAudit(orgId, actor, AUDIT.INJURY_DELETE, {
+    target: 'injury',
+    targetId: id,
+    targetLabel: cur.incidentRefNo || id,
+    summary: 'Injury report moved to the recycle bin',
+  })
+}
+
+/** Take it back out again, with the clock cleared. */
+export async function restoreInjury(orgId, id, actor) {
+  const snap = await getDoc(injuryRef(orgId, id))
+  if (!snap.exists()) return
+  const cur = snap.data()
+  await updateDoc(injuryRef(orgId, id), {
+    deletedAt: null,
+    deletedBy: null,
+    updatedAt: serverTimestamp(),
+  })
+  await logAudit(orgId, actor, AUDIT.INJURY_RESTORE, {
+    target: 'injury',
+    targetId: id,
+    targetLabel: cur.incidentRefNo || id,
+    summary: 'Injury report restored',
+  })
+}
+
+/**
+ * Destroy it now, rather than waiting for the nightly sweep.
+ *
+ * The `records` subcollection goes FIRST, and its Storage objects go with it.
+ * Deleting the parent first would leave the clinical documents addressable only
+ * by a path nothing records any more — present in the bucket, absent from every
+ * query that could find them again, which is the exact shape of a failed
+ * erasure. purgeOrgCollection in functions/index.js orders it the same way, for
+ * the same reason.
+ *
+ * removeFile is fire-and-forget and best-effort, matching purgeIllness: an
+ * object already gone is the expected state of a retry. The scheduled sweep is
+ * the path that reports a file left behind, because it is the one that runs
+ * unattended and can afford to fail an invocation over it.
+ */
+export async function purgeInjury(orgId, id, actor, label) {
+  const records = await getDocs(recordCol(orgId, id))
+  records.docs.forEach((d) => { if (d.data().path) removeFile(d.data().path) })
+  const batch = writeBatch(db)
+  records.docs.forEach((d) => batch.delete(d.ref))
+  batch.delete(injuryRef(orgId, id))
+  await batch.commit()
+  await logAudit(orgId, actor, AUDIT.INJURY_PURGE, {
+    target: 'injury',
+    targetId: id,
+    targetLabel: label || id,
+    summary: `Injury report permanently deleted with ${records.size} clinical document(s)`,
+  })
+}

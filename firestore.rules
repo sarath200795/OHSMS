@@ -1721,6 +1721,48 @@ service cloud.firestore {
         && col != 'documents' && col != 'injuries' && col != 'illnesses';
     }
 
+    // Soft-deleting an injury is the first half of destroying it, so it takes
+    // the standing the second half takes.
+    //
+    // `deletedAt` is an ordinary field to this ruleset — it appears nowhere else
+    // in it — and the generic rule below grants update to isWriterOf. That was
+    // harmless for as long as nothing acted on the value: setting it hid the row
+    // from one list and did nothing else. functions/lib/retention.js now purges
+    // /injuries thirty days after that timestamp, together with the `records`
+    // subcollection and the clinical documents in Cloud Storage behind it. The
+    // same write is therefore no longer a hide; it is a scheduled, irreversible
+    // deletion of occupational health records.
+    //
+    // Which makes the existing permission the wrong one. /injuries is read by
+    // isManagerOf — a member WRITES an injury report and cannot read one back —
+    // so without this a plain member could queue for destruction a colleague's
+    // clinical record they are not allowed to open, and the only trace would be
+    // an audit entry written by the client that swallows its own failures.
+    // Hard delete on this collection is already isManagerOf; this is that,
+    // applied to the write that leads to it.
+    //
+    // Both directions, deliberately: restoring is as much the manager's act as
+    // deleting, and a rule watching only the way in would let a member pull a
+    // record back out of the bin somebody else put it in.
+    //
+    // .get(f, null) on both sides because every injury written before this
+    // field existed does not carry it, and reading it directly raises — a
+    // raising rule denies, which would refuse every edit to older records
+    // rather than protecting a timestamp they never had. Same shape as
+    // keepsClassification below.
+    //
+    // Scoped to 'injuries' on purpose. Soft delete is manager-only in
+    // permissions.js ('record.delete') for incidents and illnesses too and is
+    // enforced on neither — the delete button on Incidents.jsx is not gated at
+    // all — so widening this predicate would refuse a write the product
+    // currently permits from its own UI. That gap is real and is not this
+    // change; closing it needs the UI gated in the same commit.
+    function keepsInjuryDeletion(col) {
+      return col != 'injuries'
+        || resource == null
+        || request.resource.data.get('deletedAt', null) == resource.data.get('deletedAt', null);
+    }
+
     // A document's classification is enforced on READ and was unprotected on
     // WRITE, so any member who could legitimately reach a restricted document —
     // via their own site access — could publish it org-wide, and any member who
@@ -1789,7 +1831,8 @@ service cloud.firestore {
           && moduleAllowed(orgId, col)
           && (isElevatedOf(orgId) || keepsClassification(col))
           && (isManagerOf(orgId)
-              || (col != 'sites' && keepsDecision(col, beforeData(), request.resource.data)));
+              || (col != 'sites' && keepsDecision(col, beforeData(), request.resource.data)
+                  && keepsInjuryDeletion(col)));
         // Delete is deliberately NOT gated on the entitlement. Turning a module
         // off should stop it being used, not trap the data already in it — an
         // operator who disables a module must not leave a tenant unable to
@@ -1812,7 +1855,8 @@ service cloud.firestore {
             && moduleAllowed(orgId, col)
             && (isElevatedOf(orgId) || keepsClassification(col))
             && (isManagerOf(orgId)
-                || (col != 'sites' && keepsDecision(col, beforeData(), request.resource.data)));
+                || (col != 'sites' && keepsDecision(col, beforeData(), request.resource.data)
+                    && keepsInjuryDeletion(col)));
           allow delete: if structuralOnly(col, docId) && isManagerOf(orgId);
         }
       }
