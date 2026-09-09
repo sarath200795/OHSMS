@@ -199,12 +199,23 @@ export default function OdinTab({ view = 'scores', sites = [], orgId, actor, isA
         showScores ? metabaseQuery('audits', range) : Promise.resolve(null),
         // Tickets only. The quarter panel is a tickets panel, and firing these
         // on the scores tab would be two warehouse queries nobody looks at.
-        showTickets ? metabaseQuery('findings', spans.current).catch(() => null) : Promise.resolve(null),
-        showTickets ? metabaseQuery('findings', spans.previous).catch(() => null) : Promise.resolve(null),
+        //
+        // A failure is caught rather than thrown — the rest of the tab is worth
+        // more than this panel — but it is KEPT, not swallowed. Returning null
+        // on failure is what made the panel able to disappear without saying
+        // anything, which is the one behaviour this dashboard keeps being
+        // caught out by.
+        showTickets ? metabaseQuery('findings', spans.current).catch((e) => ({ ok: false, message: e?.message })) : Promise.resolve(null),
+        showTickets ? metabaseQuery('findings', spans.previous).catch((e) => ({ ok: false, message: e?.message })) : Promise.resolve(null),
       ])
       setFindings(fRes)
       setAudits(aRes)
-      setQoq(qCur?.ok && qPrev?.ok ? { spans, current: qCur.rows, previous: qPrev.rows } : null)
+      setQoq(!showTickets ? null : {
+        spans,
+        current: qCur?.ok ? qCur.rows : null,
+        previous: qPrev?.ok ? qPrev.rows : null,
+        failed: qCur?.ok && qPrev?.ok ? null : (qCur?.message || qPrev?.message || 'Metabase did not return the quarter windows.'),
+      })
       // Admin-only and never fatal: a failure here costs a rotation warning,
       // not the dashboard, so it must not reach the catch below.
       if (isAdmin) {
@@ -246,6 +257,9 @@ export default function OdinTab({ view = 'scores', sites = [], orgId, actor, isA
   // above it while sitting on the same screen.
   const qoqPair = useMemo(() => {
     if (!qoq) return null
+    // A failure is carried, not converted into absence: the panel says why it
+    // has no quarters rather than vanishing off the page.
+    if (qoq.failed) return { failed: qoq.failed, spans: qoq.spans }
     const scope = { ...f, from: '', to: '' }
     const prep = (rows) => filterOdinRows(resolveOdinRows(rows, sites, { keepUnplaced }), scope)
     return quarterPair(prep(qoq.current), prep(qoq.previous), qoq.spans)
@@ -905,7 +919,21 @@ function DistributionPanel({ distribution }) {
  * is worse whichever way the volume moved, so those get a direction.
  */
 function QoqPanel({ qoq }) {
-  if (!qoq?.quarters?.length) return null
+  if (!qoq) return null
+  // Said out loud. This panel runs two queries of its own, and when they fail
+  // the alternative to a message is a section that is simply not there — which
+  // reads as "not built yet" and is why this was reported as missing.
+  if (qoq.failed) {
+    return (
+      <Panel title="Quarter on quarter" subtitle="Could not run the two quarter windows" className="mb-5">
+        <NoData height={140}>
+          {qoq.failed}
+          {qoq.spans && ` — asked for ${qoq.spans.previous.from} to ${qoq.spans.previous.to} and ${qoq.spans.current.from} to ${qoq.spans.current.to}.`}
+        </NoData>
+      </Panel>
+    )
+  }
+  if (!qoq.quarters?.length) return null
   const { quarters, latest, previous, changes, undated } = qoq
   // Four is what fits before the row stops being readable; the most recent
   // four are the ones anybody is comparing.
@@ -1001,7 +1029,15 @@ function QoqPanel({ qoq }) {
  * reader to assume they are comparable.
  */
 function FlsPanel({ fls }) {
-  if (!fls?.total) return null
+  if (!fls?.total) {
+    return (
+      <Panel title="FLS categories" subtitle="Fire &amp; life-safety observations, by L2 category" className="mb-5">
+        <NoData height={140}>
+          No FLS observations in this scope — no L2 category in the window begins “FLS”.
+        </NoData>
+      </Panel>
+    )
+  }
   const { rows, total, open, inProgress, closed, categories } = fls
   const num = (v) => (v == null ? '—' : v.toLocaleString())
   const days = (v) => (v == null ? <span className="text-ink-300">—</span> : `${v.toLocaleString()}d`)
@@ -1080,7 +1116,15 @@ function FlsPanel({ fls }) {
  * chart that silently omits it is the reason nobody ever asks.
  */
 function ObservationsPanel({ observations }) {
-  if (!observations?.total) return null
+  // An empty section reads as "not built yet". If there is genuinely nothing,
+  // say so rather than leaving the band heading standing over a gap.
+  if (!observations?.total) {
+    return (
+      <Panel title="Observations per site, by owner" className="mb-5">
+        <NoData height={140}>No observations in this scope.</NoData>
+      </Panel>
+    )
+  }
   const { sites, total, byOwner, siteCount, perSite } = observations
   const shown = sites.slice(0, 20)
   const owners = TICKET_OWNERS.filter((o) => byOwner[o.key] > 0)
