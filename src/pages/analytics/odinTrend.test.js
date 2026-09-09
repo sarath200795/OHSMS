@@ -11,7 +11,7 @@ import {
   bucketOf, passTrend, ticketTrend, countBy, toDateOf, isBreach,
   dimensionsPresent, dimensionHasData, resolveGroupBy, joinQuality, regionCoverage, resolveOdinRows, filterOdinRows,
   GRANULARITY_KEYS, PASS_MARK, recoveryStages, scoreBands, centreWatchlist, auditorMatrix,
-  ticketAgeing, ticketTrend as trend, auditPopulation,
+  ticketAgeing, ticketTrend as trend, auditPopulation, ownerOf, observationsPerSite, isFls, flsCategories,
 } from './odinAnalytics'
 
 /** The shape functions/lib/metabase.js hands back, with the fields these tests need. */
@@ -545,8 +545,32 @@ describe("ticketAgeing", () => {
     expect(a.ageing).toEqual([])
   })
 
+  it("pools Open with In Progress, and keeps On Hold apart", () => {
+    // Open and In Progress are one thing to the person asking: a ticket
+    // somebody still owes work on. On Hold is deliberately parked, so its age
+    // measures a decision rather than a delay and must not flatter the queue
+    // that is actually running late.
+    const a = ticketAgeing([
+      row({ status: "open", auditDate: "2026-03-21" }),         // 10 days
+      row({ status: "in_progress", auditDate: "2026-03-11" }),  // 20 days
+      row({ status: "on_hold", auditDate: "2026-01-31" }),      // 59 days
+    ], NOW)
+    expect(a.openInProgress).toEqual({ days: 15, n: 2 })
+    expect(a.onHold).toEqual({ days: 59, n: 1 })
+  })
+
+  it("leaves rejected out of both pools — finished, and never remediated", () => {
+    const a = ticketAgeing([row({ status: "rejected", auditDate: "2026-03-01" })], NOW)
+    expect(a.openInProgress.n).toBe(0)
+    expect(a.onHold.n).toBe(0)
+  })
   it("is empty rather than NaN for nothing at all", () => {
-    expect(ticketAgeing([], NOW)).toEqual({ closed: { days: null, n: 0 }, ageing: [] })
+    expect(ticketAgeing([], NOW)).toEqual({
+      closed: { days: null, n: 0 },
+      openInProgress: { days: null, n: 0 },
+      onHold: { days: null, n: 0 },
+      ageing: [],
+    })
   })
 })
 
@@ -604,5 +628,140 @@ describe("auditPopulation — the audits, whichever question carried them", () =
     // Whatever the N+7 tab counts, the Auditors tab attributes.
     expect(out.rows).toHaveLength(2)
     expect(auditorMatrix(out.rows, "region").total).toBe(2)
+  })
+})
+
+// ── Observations per site, and who owns them ─────────────────────────────────
+
+describe('ownerOf', () => {
+  it('reads the three owners out of the L1 tag, however it is spelled', () => {
+    // One team, three spellings in the warehouse. Matching literals would split
+    // one owner across three bars.
+    expect(ownerOf({ category: 'Safety and Security' })).toBe('sas')
+    expect(ownerOf({ category: 'Safety & Security' })).toBe('sas')
+    expect(ownerOf({ category: 'safety   &  security' })).toBe('sas')
+    expect(ownerOf({ category: 'Facility' })).toBe('facility')
+    expect(ownerOf({ category: 'Center Manager' })).toBe('cm')
+    expect(ownerOf({ category: 'Center Management' })).toBe('cm')
+    expect(ownerOf({ category: 'Center Manager SPOC' })).toBe('cm')
+    expect(ownerOf({ category: 'Centre Manager' })).toBe('cm')
+  })
+
+  it('names an unmapped tag rather than dropping the ticket', () => {
+    // A tag nobody has mapped is a tag somebody should look at.
+    expect(ownerOf({ category: 'Projects' })).toBe('other')
+    expect(ownerOf({ category: '' })).toBe('other')
+    expect(ownerOf({})).toBe('other')
+  })
+})
+
+describe('observationsPerSite', () => {
+  const t = (over = {}) => row({ subCategory: '', ...over })
+
+  it('counts observations per site, busiest first', () => {
+    const out = observationsPerSite([
+      t({ siteId: '', site: 'Alpha' }), t({ site: 'Alpha' }), t({ site: 'Beta' }),
+    ])
+    expect(out.sites.map((s) => [s.site, s.total])).toEqual([['Alpha', 2], ['Beta', 1]])
+    expect(out.total).toBe(3)
+    expect(out.siteCount).toBe(2)
+  })
+
+  it('splits each site by owner', () => {
+    const out = observationsPerSite([
+      t({ site: 'Alpha', category: 'Safety and Security' }),
+      t({ site: 'Alpha', category: 'Facility' }),
+      t({ site: 'Alpha', category: 'Center Manager SPOC' }),
+      t({ site: 'Alpha', category: 'Something Else' }),
+    ])
+    expect(out.sites[0]).toMatchObject({ site: 'Alpha', total: 4, sas: 1, facility: 1, cm: 1, other: 1 })
+    expect(out.byOwner).toEqual({ sas: 1, facility: 1, cm: 1, other: 1 })
+  })
+
+  it('respects a pre-grouped count column instead of counting rows', () => {
+    const out = observationsPerSite([t({ site: 'Alpha', category: 'Facility', count: 5 })])
+    expect(out.total).toBe(5)
+    expect(out.sites[0].facility).toBe(5)
+  })
+
+  it('averages per site that HAS observations, not per site in the register', () => {
+    // Dividing by the whole register would make a busy estate look quiet.
+    const out = observationsPerSite([t({ site: 'Alpha' }), t({ site: 'Alpha' }), t({ site: 'Beta' })])
+    expect(out.perSite).toBe(1.5)
+  })
+
+  it('names a site the data left blank rather than dropping its observations', () => {
+    expect(observationsPerSite([t({ site: '', siteId: '' })]).sites[0].site).toBe('(not stated)')
+  })
+})
+
+// ── FLS only, by L2 category ─────────────────────────────────────────────────
+
+describe("isFls", () => {
+  it("matches every FLS spelling the tag actually uses", () => {
+    for (const v of ["FLS", "FLS - Detection", "FLS - Extinguisher", "FLS - Fire Detection", "FLS - General", "FLS - Signage"]) {
+      expect(isFls({ subCategory: v }), v).toBe(true)
+    }
+  })
+
+  it("does not match a category that merely contains the letters", () => {
+    // startsWith, not includes: the tag is free text and a filter that widens
+    // quietly later is worse than one that misses a new spelling loudly.
+    expect(isFls({ subCategory: "Baffles" })).toBe(false)
+    expect(isFls({ subCategory: "CCTV" })).toBe(false)
+    expect(isFls({ subCategory: "" })).toBe(false)
+  })
+})
+
+describe("flsCategories", () => {
+  const NOW = Date.parse("2026-03-31T00:00:00Z")
+  const t = (over = {}) => row({ subCategory: "FLS - Signage", ...over })
+
+  it("keeps only FLS rows", () => {
+    const out = flsCategories([t(), row({ subCategory: "CCTV" }), row({ subCategory: "Painting" })], NOW)
+    expect(out.categories).toBe(1)
+    expect(out.total).toBe(1)
+  })
+
+  it("counts open, in progress and closed per category", () => {
+    const out = flsCategories([
+      t({ status: "open" }), t({ status: "open" }),
+      t({ status: "in_progress" }),
+      t({ status: "closed", tatHours: 24 }),
+    ], NOW)
+    expect(out.rows[0]).toMatchObject({ name: "FLS - Signage", open: 2, inProgress: 1, closed: 1, total: 4 })
+  })
+
+  it("ages the open ones so far, and the closed one by how long it took", () => {
+    const out = flsCategories([
+      t({ status: "open", auditDate: "2026-03-21" }),        // 10 days so far
+      t({ status: "in_progress", auditDate: "2026-03-11" }), // 20 days so far
+      t({ status: "closed", tatHours: 48 }),                 // took 2 days
+    ], NOW)
+    expect(out.rows[0]).toMatchObject({ openDays: 10, inProgressDays: 20, closedDays: 2 })
+  })
+
+  it("counts on hold and rejected into the total but into no column", () => {
+    // The three columns answer a question about the live queue. A category
+    // whose columns do not add to its total says so in the total.
+    const out = flsCategories([
+      t({ status: "open" }), t({ status: "on_hold" }), t({ status: "rejected" }),
+    ], NOW)
+    expect(out.rows[0]).toMatchObject({ open: 1, inProgress: 0, closed: 0, other: 2, total: 3 })
+  })
+
+  it("splits by L2 category, busiest first", () => {
+    const out = flsCategories([
+      t({ subCategory: "FLS - Extinguisher" }), t({ subCategory: "FLS - Extinguisher" }),
+      t({ subCategory: "FLS - Detection" }),
+    ], NOW)
+    expect(out.rows.map((r) => [r.name, r.total])).toEqual([["FLS - Extinguisher", 2], ["FLS - Detection", 1]])
+  })
+
+  it("measures days the same way the ageing panel does", () => {
+    // One arithmetic, shared — two copies is how two figures on one page come
+    // to disagree about the same ticket.
+    const rows = [t({ status: "closed", tatHours: 72 }), t({ status: "open", auditDate: "2026-03-21" })]
+    expect(flsCategories(rows, NOW).rows[0].closedDays).toBe(ticketAgeing(rows, NOW).closed.days)
   })
 })
