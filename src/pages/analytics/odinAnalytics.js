@@ -1068,6 +1068,71 @@ export const QOQ_METRICS = [
   { key: 'flsClosed', label: 'FLS closed', unit: 'count', better: 'none' },
 ]
 
+/**
+ * The two windows a quarter-on-quarter comparison uses: this quarter so far,
+ * and the whole of the one before it.
+ *
+ * Each side is at most one quarter, which is what makes this possible at all:
+ * two quarters of tickets is about 12MB against an 8MB response cap, so the
+ * halves have to be fetched separately however they are sliced.
+ *
+ * The current quarter is necessarily partial until it ends, and the panel says
+ * "to date" on that column rather than pretending otherwise. It is a real
+ * caveat — a quarter three weeks old will look quiet next to a finished one —
+ * but it is the comparison people mean by quarter on quarter, and the honest
+ * fix is a label, not a different question.
+ */
+export function quarterSpans(now = Date.now()) {
+  const d = new Date(now)
+  const y = d.getUTCFullYear()
+  const qIdx = Math.floor(d.getUTCMonth() / 3)          // 0..3
+  const qStart = Date.UTC(y, qIdx * 3, 1)
+  const today = Date.UTC(y, d.getUTCMonth(), d.getUTCDate())
+
+  const prevY = qIdx === 0 ? y - 1 : y
+  const prevIdx = qIdx === 0 ? 3 : qIdx - 1
+  const prevStart = Date.UTC(prevY, prevIdx * 3, 1)
+  // Day 0 of the quarter after it, less one day: the last day of this one,
+  // whatever its length and whether or not it is a leap year.
+  const prevEnd = Date.UTC(prevIdx === 3 ? prevY + 1 : prevY, ((prevIdx + 1) % 4) * 3, 1) - DAY_MS
+
+  const iso = (t) => new Date(t).toISOString().slice(0, 10)
+  const key = (yy, i) => `${yy}-Q${i + 1}`
+  const days = (a, b) => Math.round((b - a) / DAY_MS) + 1
+  return {
+    current: {
+      from: iso(qStart), to: iso(today), key: key(y, qIdx), name: quarterName(key(y, qIdx)),
+      days: days(qStart, today), partial: today < Date.UTC(qIdx === 3 ? y + 1 : y, ((qIdx + 1) % 4) * 3, 1) - DAY_MS,
+    },
+    previous: {
+      from: iso(prevStart), to: iso(prevEnd), key: key(prevY, prevIdx), name: quarterName(key(prevY, prevIdx)),
+      days: days(prevStart, prevEnd), partial: false,
+    },
+  }
+}
+
+/**
+ * The comparison, from two row sets fetched over the spans above.
+ *
+ * Separate from quarterOnQuarter, which buckets whatever the reader's own
+ * window happens to contain. This one is asked for deliberately and always has
+ * both sides, so the panel is not at the mercy of where the date pickers land.
+ */
+export function quarterPair(currentRows = [], previousRows = [], spans, asOf = Date.now()) {
+  const s = spans || quarterSpans(asOf)
+  const quarters = [
+    { ...s.previous, label: s.previous.name, tickets: (previousRows || []).length, values: quarterValues(previousRows || [], asOf) },
+    { ...s.current, label: s.current.name, tickets: (currentRows || []).length, values: quarterValues(currentRows || [], asOf) },
+  ]
+  const [previous, latest] = quarters
+  const changes = Object.fromEntries(QOQ_METRICS.map((m) => {
+    const was = previous.values[m.key]
+    const now = latest.values[m.key]
+    return [m.key, isNum(was) && isNum(now) ? Math.round((now - was) * 10) / 10 : null]
+  }))
+  return { quarters, latest, previous, changes, spans: s, undated: 0 }
+}
+
 /** One quarter's worth of every headline number, keyed by QOQ_METRICS. */
 function quarterValues(rows, asOf) {
   const obs = observationsPerSite(rows)
