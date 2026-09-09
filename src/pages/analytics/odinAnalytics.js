@@ -893,10 +893,17 @@ export function observationsPerSite(rows = []) {
   }
 
   const sites = [...bySite.values()].sort((a, b) => b.total - a.total || a.site.localeCompare(b.site))
+  const per = (n) => (sites.length ? Math.round((n / sites.length) * 10) / 10 : null)
   return {
     sites,
     total,
     byOwner: totals,
+    // Each owner's load per site, over the SAME denominator as the overall
+    // figure — every site carrying observations, not just the ones carrying
+    // that owner's. Dividing each by its own subset would make the three
+    // averages incomparable and stop them summing to the total per site, which
+    // is the first thing anybody checks.
+    perSiteByOwner: Object.fromEntries(TICKET_OWNER_KEYS.map((k) => [k, per(totals[k])])),
     siteCount: sites.length,
     // The average is per SITE THAT HAS ONE, not per site in the register: a
     // register full of centres nobody audited would drag it toward zero and
@@ -1059,6 +1066,9 @@ export const QOQ_METRICS = [
   { key: 'facility', label: 'Facility tickets', unit: 'count', better: 'none' },
   { key: 'cm', label: 'CM tickets', unit: 'count', better: 'none' },
   { key: 'other', label: 'Other (unmapped L1)', unit: 'count', better: 'none' },
+  { key: 'sasPerSite', label: 'SAS per site', unit: 'count', better: 'none' },
+  { key: 'facilityPerSite', label: 'Facility per site', unit: 'count', better: 'none' },
+  { key: 'cmPerSite', label: 'CM per site', unit: 'count', better: 'none' },
   { key: 'ageClosed', label: 'Avg time to close', unit: 'days', better: 'down' },
   { key: 'ageLive', label: 'Avg age, open & in progress', unit: 'days', better: 'down' },
   { key: 'ageHold', label: 'Avg age, on hold', unit: 'days', better: 'down' },
@@ -1082,32 +1092,37 @@ export const QOQ_METRICS = [
  * but it is the comparison people mean by quarter on quarter, and the honest
  * fix is a label, not a different question.
  */
-export function quarterSpans(now = Date.now()) {
+export function quarterSpans(now = Date.now(), count = 3) {
   const d = new Date(now)
-  const y = d.getUTCFullYear()
-  const qIdx = Math.floor(d.getUTCMonth() / 3)          // 0..3
-  const qStart = Date.UTC(y, qIdx * 3, 1)
-  const today = Date.UTC(y, d.getUTCMonth(), d.getUTCDate())
-
-  const prevY = qIdx === 0 ? y - 1 : y
-  const prevIdx = qIdx === 0 ? 3 : qIdx - 1
-  const prevStart = Date.UTC(prevY, prevIdx * 3, 1)
-  // Day 0 of the quarter after it, less one day: the last day of this one,
-  // whatever its length and whether or not it is a leap year.
-  const prevEnd = Date.UTC(prevIdx === 3 ? prevY + 1 : prevY, ((prevIdx + 1) % 4) * 3, 1) - DAY_MS
-
+  const today = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())
   const iso = (t) => new Date(t).toISOString().slice(0, 10)
-  const key = (yy, i) => `${yy}-Q${i + 1}`
-  const days = (a, b) => Math.round((b - a) / DAY_MS) + 1
+
+  // One quarter, `back` quarters before the current one. The end is the
+  // quarter's own last day — derived as "day 0 of the next quarter, less one",
+  // so February needs no special case and a leap year needs no table — except
+  // for the quarter we are standing in, which ends today.
+  const spanFor = (back) => {
+    const qAbs = Math.floor(d.getUTCMonth() / 3) + d.getUTCFullYear() * 4 - back
+    const y = Math.floor(qAbs / 4)
+    const qIdx = ((qAbs % 4) + 4) % 4
+    const start = Date.UTC(y, qIdx * 3, 1)
+    const qEnd = Date.UTC(qIdx === 3 ? y + 1 : y, ((qIdx + 1) % 4) * 3, 1) - DAY_MS
+    const end = Math.min(qEnd, today)
+    const key = `${y}-Q${qIdx + 1}`
+    return {
+      from: iso(start), to: iso(end), key, name: quarterName(key),
+      days: Math.round((end - start) / DAY_MS) + 1,
+      partial: end < qEnd,
+    }
+  }
+
+  // Oldest first, so the columns read left to right the way a trend does.
+  const n = Math.max(1, count)
+  const all = Array.from({ length: n }, (_, i) => spanFor(n - 1 - i))
   return {
-    current: {
-      from: iso(qStart), to: iso(today), key: key(y, qIdx), name: quarterName(key(y, qIdx)),
-      days: days(qStart, today), partial: today < Date.UTC(qIdx === 3 ? y + 1 : y, ((qIdx + 1) % 4) * 3, 1) - DAY_MS,
-    },
-    previous: {
-      from: iso(prevStart), to: iso(prevEnd), key: key(prevY, prevIdx), name: quarterName(key(prevY, prevIdx)),
-      days: days(prevStart, prevEnd), partial: false,
-    },
+    all,
+    current: all[all.length - 1],
+    previous: all.length > 1 ? all[all.length - 2] : null,
   }
 }
 
@@ -1118,18 +1133,23 @@ export function quarterSpans(now = Date.now()) {
  * window happens to contain. This one is asked for deliberately and always has
  * both sides, so the panel is not at the mercy of where the date pickers land.
  */
-export function quarterPair(currentRows = [], previousRows = [], spans, asOf = Date.now()) {
+export function quarterSeries(rowSets = [], spans, asOf = Date.now()) {
   const s = spans || quarterSpans(asOf)
-  const quarters = [
-    { ...s.previous, label: s.previous.name, tickets: (previousRows || []).length, values: quarterValues(previousRows || [], asOf) },
-    { ...s.current, label: s.current.name, tickets: (currentRows || []).length, values: quarterValues(currentRows || [], asOf) },
-  ]
-  const [previous, latest] = quarters
-  const changes = Object.fromEntries(QOQ_METRICS.map((m) => {
-    const was = previous.values[m.key]
-    const now = latest.values[m.key]
-    return [m.key, isNum(was) && isNum(now) ? Math.round((now - was) * 10) / 10 : null]
-  }))
+  const quarters = s.all.map((span, i) => {
+    const rows = rowSets[i] || []
+    return { ...span, label: span.name, tickets: rows.length, values: quarterValues(rows, asOf) }
+  })
+  const latest = quarters[quarters.length - 1] || null
+  const previous = quarters.length > 1 ? quarters[quarters.length - 2] : null
+  // The change is the most recent step, not the span of the whole series: three
+  // columns are there to show the shape, one number is there to be acted on.
+  const changes = latest && previous
+    ? Object.fromEntries(QOQ_METRICS.map((m) => {
+      const was = previous.values[m.key]
+      const now = latest.values[m.key]
+      return [m.key, isNum(was) && isNum(now) ? Math.round((now - was) * 10) / 10 : null]
+    }))
+    : null
   return { quarters, latest, previous, changes, spans: s, undated: 0 }
 }
 
@@ -1146,6 +1166,9 @@ function quarterValues(rows, asOf) {
     facility: obs.byOwner.facility,
     cm: obs.byOwner.cm,
     other: obs.byOwner.other,
+    sasPerSite: obs.perSiteByOwner.sas,
+    facilityPerSite: obs.perSiteByOwner.facility,
+    cmPerSite: obs.perSiteByOwner.cm,
     ageClosed: age.closed.days,
     ageLive: age.openInProgress.days,
     ageHold: age.onHold.days,
