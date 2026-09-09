@@ -146,3 +146,80 @@ export function sitesWithDuplicateMerakis(merakis = [], sites = []) {
   }
   return out
 }
+
+/**
+ * The standard note provisioning writes. Its presence is evidence the record
+ * came from the button and nobody has been back to it since.
+ */
+const STANDARD_NOTE = 'Created as the standard Meraki for this site'
+
+/**
+ * Has anyone actually put anything into this record?
+ *
+ * Every field here is one a person fills in by hand or a monitor reports. A
+ * record with none of them, still carrying the note provisioning wrote, is a
+ * placeholder — it describes no switch anybody has ever seen.
+ */
+function isUntouched(m) {
+  const blank = (v) => clean(v) === ''
+  const status = clean(m?.status).toLowerCase()
+  return (
+    blank(m?.ipAddress) &&
+    blank(m?.serial) &&
+    blank(m?.model) &&
+    (!Array.isArray(m?.defects) || m.defects.length === 0) &&
+    // Never reported by anything. 'online' or 'offline' means a monitor or a
+    // person answered for it, and that answer is information we would destroy.
+    (status === '' || status === 'unknown') &&
+    clean(m?.notes).startsWith(STANDARD_NOTE)
+  )
+}
+
+/**
+ * Which of one site's Merakis can be deleted, and which need a person.
+ *
+ * The cleanup counterpart to sitesWithDuplicateMerakis, and deliberately timid,
+ * because the two mistakes here are not equal. Leaving a duplicate costs
+ * another day of a site that cannot be reported dark — bad, visible, fixable.
+ * Deleting the wrong one destroys the IP, serial and defect history somebody
+ * typed in, and Firestore has no undo.
+ *
+ * So only an UNTOUCHED record is ever removed: no IP, no serial, no model, no
+ * defects, never reported up or down, still carrying the note provisioning
+ * wrote. That is not "probably the duplicate" — it is a record that contains
+ * nothing to lose, whose entire content this function could reconstruct.
+ *
+ * Where every record on a site is untouched, one survives. Which one is chosen
+ * rather than arbitrary: the canonical `site_<id>` address first, so an estate
+ * cleaned up today lands on the ids provisioning now writes, then the oldest,
+ * then the lowest id — so two people running this get the same answer.
+ *
+ * @returns { remove, keep, blocked } — `blocked` true when a person has to look
+ */
+export function redundantMerakis(devices = [], siteId = '') {
+  if (devices.length < 2) return { remove: [], keep: devices, blocked: false }
+
+  const untouched = devices.filter(isUntouched)
+  // Every record has something in it. Which of them is the real switch is a
+  // question about the estate, not about the data, so nothing is deleted.
+  if (!untouched.length) return { remove: [], keep: devices, blocked: true }
+
+  const edited = devices.filter((m) => !isUntouched(m))
+  if (edited.length) return { remove: untouched, keep: edited, blocked: false }
+
+  // All placeholders. Keep exactly one — a site with no Meraki at all is the
+  // failure this module exists to prevent, and would just be re-provisioned.
+  const canonical = merakiDocId(siteId)
+  const at = (m) => {
+    const t = m?.createdAt
+    if (typeof t?.toMillis === 'function') return t.toMillis()
+    if (typeof t?.seconds === 'number') return t.seconds * 1000
+    return Number.POSITIVE_INFINITY // undated sorts last — a dated record is the better anchor
+  }
+  const ordered = [...devices].sort((a, b) => {
+    if (canonical && (a.id === canonical) !== (b.id === canonical)) return a.id === canonical ? -1 : 1
+    if (at(a) !== at(b)) return at(a) - at(b)
+    return String(a.id).localeCompare(String(b.id))
+  })
+  return { remove: ordered.slice(1), keep: [ordered[0]], blocked: false }
+}
