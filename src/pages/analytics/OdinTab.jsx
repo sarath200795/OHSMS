@@ -34,7 +34,7 @@ import { metabaseQuery, metabaseSettings } from '../../shared/functions'
 import MetabaseConnect from '../../shared/integrations/MetabaseConnect'
 import { Panel, Stat, NoData, Picker, FilterRow, DateField } from './ui'
 import {
-  odinAnalytics, odinFacets, resolveOdinRows, STATUS_META, STATUS_BY_KEY, leadStatus, TICKET_OWNERS, QOQ_METRICS,
+  odinAnalytics, odinFacets, resolveOdinRows, STATUS_META, STATUS_BY_KEY, leadStatus, TICKET_OWNERS, QOQ_METRICS, quarterSpans, quarterPair, filterOdinRows,
   GRANULARITIES, GROUP_DIMS, PASS_MARK,
 } from './odinAnalytics'
 
@@ -151,6 +151,8 @@ export default function OdinTab({ view = 'scores', sites = [], orgId, actor, isA
   // happens — see keyAge in functions/lib/metabase.js. Never the key itself:
   // metabaseConfig strips it server-side.
   const [conn, setConn] = useState(null)
+  // The two quarter windows, fetched alongside the main pair — see load().
+  const [qoq, setQoq] = useState(null)
 
   // ── Nothing runs until a period is chosen ──────────────────────────────────
   //
@@ -178,14 +180,31 @@ export default function OdinTab({ view = 'scores', sites = [], orgId, actor, isA
       // variables and cannot run without them, and filtering in the warehouse
       // beats shipping a year of rows so the browser can discard most of them.
       const range = { from: f.from, to: f.to }
-      const [fRes, aRes] = await Promise.all([
+      // ── The quarter pair rides alongside ────────────────────────────────
+      //
+      // Two more queries, because a comparison cannot be one: two quarters of
+      // tickets is about 12MB against an 8MB response cap, so the halves have
+      // to be fetched separately whatever the dates say. They run in parallel
+      // with the main pair rather than after it, so the wait is the slowest
+      // query and not the sum of four.
+      //
+      // Deliberately NOT derived from the reader's window. The panel is meant
+      // to be there whichever dates they picked, and bucketing their window
+      // only worked when it happened to straddle a quarter boundary.
+      const spans = quarterSpans()
+      const [fRes, aRes, qCur, qPrev] = await Promise.all([
         metabaseQuery('findings', range),
         // Skipped entirely on the tickets view rather than fetched and
         // ignored: this is a thirty-to-sixty-second warehouse query.
         showScores ? metabaseQuery('audits', range) : Promise.resolve(null),
+        // Tickets only. The quarter panel is a tickets panel, and firing these
+        // on the scores tab would be two warehouse queries nobody looks at.
+        showTickets ? metabaseQuery('findings', spans.current).catch(() => null) : Promise.resolve(null),
+        showTickets ? metabaseQuery('findings', spans.previous).catch(() => null) : Promise.resolve(null),
       ])
       setFindings(fRes)
       setAudits(aRes)
+      setQoq(qCur?.ok && qPrev?.ok ? { spans, current: qCur.rows, previous: qPrev.rows } : null)
       // Admin-only and never fatal: a failure here costs a rotation warning,
       // not the dashboard, so it must not reach the catch below.
       if (isAdmin) {
@@ -199,7 +218,7 @@ export default function OdinTab({ view = 'scores', sites = [], orgId, actor, isA
     // Changing either end of the range re-runs the questions. A date input
     // commits on blur rather than per keystroke, so this is one fetch per
     // deliberate act, not one per character.
-  }, [isAdmin, f.from, f.to, showScores])
+  }, [isAdmin, f.from, f.to, showScores, showTickets])
 
   useEffect(() => { load() }, [load])
 
@@ -219,6 +238,18 @@ export default function OdinTab({ view = 'scores', sites = [], orgId, actor, isA
     () => odinAnalytics(findingRows, auditRows, sites, f, { keepUnplaced }),
     [findingRows, auditRows, sites, f, keepUnplaced]
   )
+
+  // The quarter pair, put through the SAME scope filters as everything else —
+  // region, entity, audit type, sub-category — minus the dates, which are the
+  // one thing the two quarter windows define for themselves. A panel that
+  // ignored the filter bar would answer a different question from the charts
+  // above it while sitting on the same screen.
+  const qoqPair = useMemo(() => {
+    if (!qoq) return null
+    const scope = { ...f, from: '', to: '' }
+    const prep = (rows) => filterOdinRows(resolveOdinRows(rows, sites, { keepUnplaced }), scope)
+    return quarterPair(prep(qoq.current), prep(qoq.previous), qoq.spans)
+  }, [qoq, sites, f, keepUnplaced])
 
   if (loading && !findings && f.from && f.to) {
     return (
@@ -553,7 +584,7 @@ export default function OdinTab({ view = 'scores', sites = [], orgId, actor, isA
 
       {hasRange && showTickets && <FlsPanel fls={a.fls} />}
 
-      {hasRange && showTickets && <QoqPanel qoq={a.qoq} />}
+      {hasRange && showTickets && <QoqPanel qoq={qoqPair} />}
 
       {hasRange && showTickets && <BandHead title="Where" note="Every site in scope, busiest first" />}
 
@@ -899,9 +930,7 @@ function QoqPanel({ qoq }) {
   return (
     <Panel
       title="Quarter on quarter"
-      subtitle={previous
-        ? `${previous.name} → ${latest.name}, from the audits in your window`
-        : `Only ${latest.name} falls inside your window — widen the dates to compare quarters`}
+      subtitle={`${previous.name} → ${latest.name}${latest.partial ? ' so far' : ''}`}
       className="mb-5"
     >
       <div className="table-crisp overflow-auto">
@@ -912,7 +941,9 @@ function QoqPanel({ qoq }) {
               {shown.map((q) => (
                 <th key={q.key} className="px-3 py-2 text-right">
                   {q.name}
-                  <span className="ml-1 font-normal normal-case text-ink-300">({q.label})</span>
+                  {q.partial && (
+                    <span className="ml-1 font-normal normal-case text-ink-300">to date</span>
+                  )}
                 </th>
               ))}
               <th className="px-3 py-2 text-right">Change</th>
@@ -934,9 +965,18 @@ function QoqPanel({ qoq }) {
         </table>
       </div>
       <p className="mt-3 text-[11.5px] leading-relaxed text-ink-500">
-        Quarters are the calendar ones, named as the audit planner names them. Built from the
-        audits already in your window, so a quarter only appears once your dates reach into it —
-        nothing is fetched behind your back.
+        Calendar quarters, named as the audit planner names them, and{' '}
+        <b>independent of the dates above</b> — this panel fetches both quarters itself, so it is
+        here whichever window you are looking at.
+        {qoq.spans && (
+          <> {qoq.spans.previous.from} to {qoq.spans.previous.to} against {qoq.spans.current.from} to{' '}
+          {qoq.spans.current.to}.
+          {qoq.spans.current.partial && (
+            <> <b>{latest.name} is still running</b> — {qoq.spans.current.days.toLocaleString()} days of
+            it against {qoq.spans.previous.days.toLocaleString()} finished, so its counts read low
+            until the quarter closes. The ages do not: they are averages, not totals.</>
+          )}</>
+        )}
         {' '}<b>Only the ages are coloured.</b> A count moving is ambiguous: more observations can
         mean a worse estate or simply more auditing, and this page cannot tell those apart. A
         ticket waiting longer is worse either way.
