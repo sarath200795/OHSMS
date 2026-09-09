@@ -11,7 +11,7 @@ import {
   bucketOf, passTrend, ticketTrend, countBy, toDateOf, isBreach,
   dimensionsPresent, dimensionHasData, resolveGroupBy, joinQuality, regionCoverage, resolveOdinRows, filterOdinRows,
   GRANULARITY_KEYS, PASS_MARK, recoveryStages, scoreBands, centreWatchlist, auditorMatrix,
-  ticketAgeing, ticketTrend as trend, auditPopulation, ownerOf, observationsPerSite, isFls, flsCategories,
+  ticketAgeing, ticketTrend as trend, auditPopulation, ownerOf, observationsPerSite, isFls, flsCategories, quarterName, quarterOnQuarter,
 } from './odinAnalytics'
 
 /** The shape functions/lib/metabase.js hands back, with the fields these tests need. */
@@ -763,5 +763,85 @@ describe("flsCategories", () => {
     // to disagree about the same ticket.
     const rows = [t({ status: "closed", tatHours: 72 }), t({ status: "open", auditDate: "2026-03-21" })]
     expect(flsCategories(rows, NOW).rows[0].closedDays).toBe(ticketAgeing(rows, NOW).closed.days)
+  })
+})
+
+// ── Quarter on quarter ───────────────────────────────────────────────────────
+
+describe("quarterName", () => {
+  it("names the calendar quarters the way the audit planner does", () => {
+    expect(quarterName("2026-Q1")).toBe("JFM 26")
+    expect(quarterName("2026-Q2")).toBe("AMJ 26")
+    expect(quarterName("2026-Q3")).toBe("JAS 26")
+    expect(quarterName("2026-Q4")).toBe("OND 26")
+  })
+
+  it("hands back anything it does not recognise, rather than inventing one", () => {
+    expect(quarterName("")).toBe("")
+    expect(quarterName("2026-13")).toBe("2026-13")
+  })
+})
+
+describe("quarterOnQuarter", () => {
+  const NOW = Date.parse("2026-09-30T00:00:00Z")
+  const t = (over = {}) => row({ subCategory: "FLS - Signage", ...over })
+
+  it("buckets into calendar quarters, oldest first", () => {
+    const out = quarterOnQuarter([
+      t({ auditDate: "2026-08-10" }),   // JAS
+      t({ auditDate: "2026-05-10" }),   // AMJ
+    ], NOW)
+    expect(out.quarters.map((q) => q.name)).toEqual(["AMJ 26", "JAS 26"])
+  })
+
+  it("compares the two most recent quarters", () => {
+    const out = quarterOnQuarter([
+      t({ auditDate: "2026-05-10", site: "A" }),
+      t({ auditDate: "2026-08-10", site: "A" }),
+      t({ auditDate: "2026-08-11", site: "B" }),
+    ], NOW)
+    expect(out.previous.name).toBe("AMJ 26")
+    expect(out.latest.name).toBe("JAS 26")
+    expect(out.changes.observations).toBe(1)   // 1 -> 2
+  })
+
+  it("has no comparison when the window covers one quarter, and says so", () => {
+    // A change against a quarter that was never measured is worse than none.
+    const out = quarterOnQuarter([t({ auditDate: "2026-08-10" })], NOW)
+    expect(out.quarters).toHaveLength(1)
+    expect(out.previous).toBe(null)
+    expect(out.changes).toBe(null)
+  })
+
+  it("carries every headline metric into each quarter", () => {
+    const out = quarterOnQuarter([
+      t({ auditDate: "2026-08-10", status: "closed", tatHours: 48, category: "Facility" }),
+      t({ auditDate: "2026-08-11", status: "open", category: "Safety and Security" }),
+    ], NOW)
+    const v = out.latest.values
+    expect(v.observations).toBe(2)
+    expect(v.facility).toBe(1)
+    expect(v.sas).toBe(1)
+    expect(v.ageClosed).toBe(2)
+    expect(v.flsTotal).toBe(2)
+    expect(v.flsClosed).toBe(1)
+    expect(v.flsOpen).toBe(1)
+  })
+
+  it("ages an older quarter's open tickets up to NOW, not to its own end", () => {
+    // A ticket raised in AMJ and still open has been waiting until today.
+    const out = quarterOnQuarter([t({ auditDate: "2026-09-20", status: "open" })], NOW)
+    expect(out.latest.values.ageLive).toBe(10)
+  })
+
+  it("counts undated tickets aside rather than into a quarter", () => {
+    const out = quarterOnQuarter([t({ auditDate: "" }), t({ auditDate: "2026-08-10" })], NOW)
+    expect(out.undated).toBe(1)
+    expect(out.quarters).toHaveLength(1)
+  })
+
+  it("is empty, not broken, for no rows at all", () => {
+    const out = quarterOnQuarter([], NOW)
+    expect(out).toMatchObject({ quarters: [], latest: null, previous: null, changes: null, undated: 0 })
   })
 })

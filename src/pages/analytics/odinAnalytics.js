@@ -1027,6 +1027,111 @@ export function flsCategories(rows = [], asOf = Date.now()) {
   }
 }
 
+// ── Quarter on quarter ───────────────────────────────────────────────────────
+//
+// The quarters are the calendar ones, named the way the audit planner names
+// them: JFM, AMJ, JAS, OND. Same boundaries as bucketOf's Q1..Q4 — only the
+// label differs — so a reader moving between this panel and the trend chart is
+// looking at the same three months under both names.
+const QUARTER_NAMES = { 1: 'JFM', 2: 'AMJ', 3: 'JAS', 4: 'OND' }
+
+/** '2026-Q3' → 'JAS 26', the name the planner uses. */
+export function quarterName(key) {
+  const m = /^(\d{4})-Q([1-4])$/.exec(String(key || ''))
+  return m ? `${QUARTER_NAMES[Number(m[2])]} ${m[1].slice(2)}` : String(key || '')
+}
+
+/**
+ * Every metric this tab reports, in one flat shape, so a quarter is comparable
+ * to a quarter without each panel inventing its own comparison.
+ *
+ * `better` is what a MOVE means, and it is 'none' for every count on purpose.
+ * More observations can mean a worse estate or simply more auditing, and this
+ * page cannot tell those apart — colouring it green or red would assert
+ * something the data does not carry. Only the ages get a direction: a ticket
+ * waiting longer is worse whichever way the volume moved.
+ */
+export const QOQ_METRICS = [
+  { key: 'observations', label: 'Observations', unit: 'count', better: 'none' },
+  { key: 'perSite', label: 'Average per site', unit: 'count', better: 'none' },
+  { key: 'sites', label: 'Sites with observations', unit: 'count', better: 'none' },
+  { key: 'sas', label: 'SAS tickets', unit: 'count', better: 'none' },
+  { key: 'facility', label: 'Facility tickets', unit: 'count', better: 'none' },
+  { key: 'cm', label: 'CM tickets', unit: 'count', better: 'none' },
+  { key: 'other', label: 'Other (unmapped L1)', unit: 'count', better: 'none' },
+  { key: 'ageClosed', label: 'Avg time to close', unit: 'days', better: 'down' },
+  { key: 'ageLive', label: 'Avg age, open & in progress', unit: 'days', better: 'down' },
+  { key: 'ageHold', label: 'Avg age, on hold', unit: 'days', better: 'down' },
+  { key: 'flsTotal', label: 'FLS observations', unit: 'count', better: 'none' },
+  { key: 'flsOpen', label: 'FLS open', unit: 'count', better: 'none' },
+  { key: 'flsInProgress', label: 'FLS in progress', unit: 'count', better: 'none' },
+  { key: 'flsClosed', label: 'FLS closed', unit: 'count', better: 'none' },
+]
+
+/** One quarter's worth of every headline number, keyed by QOQ_METRICS. */
+function quarterValues(rows, asOf) {
+  const obs = observationsPerSite(rows)
+  const age = ticketAgeing(rows, asOf)
+  const fls = flsCategories(rows, asOf)
+  return {
+    observations: obs.total,
+    perSite: obs.perSite,
+    sites: obs.siteCount,
+    sas: obs.byOwner.sas,
+    facility: obs.byOwner.facility,
+    cm: obs.byOwner.cm,
+    other: obs.byOwner.other,
+    ageClosed: age.closed.days,
+    ageLive: age.openInProgress.days,
+    ageHold: age.onHold.days,
+    flsTotal: fls.total,
+    flsOpen: fls.open,
+    flsInProgress: fls.inProgress,
+    flsClosed: fls.closed,
+  }
+}
+
+/**
+ * The same metrics, quarter by quarter, with the change between the last two.
+ *
+ * Bucketed from the rows already fetched rather than by running the question
+ * again for an earlier window. That keeps the one rule this tab now has — you
+ * see the dates you asked for and nothing else — but it does mean a comparison
+ * exists only when the chosen window spans two quarters. When it does not, the
+ * panel says so instead of drawing a change against nothing.
+ *
+ * Ages are measured as of NOW even for an older quarter, because that is what
+ * an unclosed ticket's age is: a ticket raised in AMJ and still open has been
+ * waiting until today, not until the end of its quarter.
+ */
+export function quarterOnQuarter(rows = [], asOf = Date.now()) {
+  const byQ = new Map()
+  let undated = 0
+  for (const r of rows || []) {
+    if (!r) continue
+    const b = bucketOf(r.auditDate, 'quarter')
+    if (!b) { undated += isNum(r.count) ? r.count : 1; continue }
+    if (!byQ.has(b.key)) byQ.set(b.key, { key: b.key, label: b.label, name: quarterName(b.key), rows: [] })
+    byQ.get(b.key).rows.push(r)
+  }
+
+  const quarters = [...byQ.values()]
+    .sort((a, b) => a.key.localeCompare(b.key))
+    .map((q) => ({ key: q.key, label: q.label, name: q.name, tickets: q.rows.length, values: quarterValues(q.rows, asOf) }))
+
+  const latest = quarters.length ? quarters[quarters.length - 1] : null
+  const previous = quarters.length > 1 ? quarters[quarters.length - 2] : null
+  const changes = latest && previous
+    ? Object.fromEntries(QOQ_METRICS.map((m) => {
+      const was = previous.values[m.key]
+      const now = latest.values[m.key]
+      return [m.key, isNum(was) && isNum(now) ? Math.round((now - was) * 10) / 10 : null]
+    }))
+    : null
+
+  return { quarters, latest, previous, changes, undated }
+}
+
 export function ticketAgeing(rows = [], asOf = Date.now()) {
   const mean = meanDays
 
@@ -1331,6 +1436,7 @@ export function odinAnalytics(rows = [], audits = [], sites = [], f = {}, { keep
     ageing: ticketAgeing(filtered),
     observations: observationsPerSite(filtered),
     fls: flsCategories(filtered),
+    qoq: quarterOnQuarter(filtered),
     recovery: recoveryStages(passRows),
     distribution: scoreBands(passRows),
     watchlist: centreWatchlist(filtered, auditsFiltered),
