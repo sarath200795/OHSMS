@@ -60,6 +60,84 @@ out are being worked rather than merely hidden.
 
 ## Recently closed
 
+### S-26 · Uploads minted a permanent download URL — CLOSED
+
+`getDownloadURL()` ran after every upload and the result was persisted on the
+Firestore pointer. That string is not a link, it is a **bearer credential**: it
+works for anyone holding it, signed in or not, forever, and no rule is ever
+consulted. It sat in a document readable by every member of the tenant and by
+the external auditor, it kept working after they left, and it survived any rules
+change made afterwards.
+
+The read path had already been migrated — `fileUrl` prefers an authenticated
+`getBlob` that `storage.rules` governs, and the comment explaining why has been
+in `adapters/firebase.js` for months. The **write** path was never changed, so
+the app went on manufacturing one of these for every upload and filing it away,
+while the reader carefully avoided using it. A URL that is never read is still a
+credential once it is written down.
+
+`adapters/firebase.js` no longer mints one. What that cost, and why it was more
+than a one-line change: every renderer that read the stored url directly had to
+resolve by `path` instead — `useFileUrl` and `StoredImage` are the two shapes
+needed (a hook cannot be called inside a `.map()`), and the LOTO photo map
+resolves at its own seam so neither the operate view nor the procedure PDF
+changed. Records written before this keep rendering: `fileUrl` still falls back
+to the stored url when there is no path.
+
+**Not closed by this: the tokens already written down.** Every URL minted before
+this change still works. Revoking them means stripping the
+`firebaseStorageDownloadTokens` metadata from each object, and doing that blind
+would permanently break any pointer that has a url and no `path` — records from
+before uploads recorded one. That sweep needs an inventory pass first and is
+tracked in the private register.
+
+### S-25 · Uploaded files are not scanned for malware — MEDIUM, mitigated and accepted
+
+Members upload photographs, PDFs, Office documents and video into a shared
+tenant store and colleagues download them, which makes this app a distribution
+path between employees. Nothing scanned any of it (A.8.7).
+
+**What is now in place.** `storage.rules` already allow-listed content types,
+refused SVG, forbade overwrites and capped size — that closes the
+hosted-phishing-page vector, which is the highest-value one on a Google-owned
+domain. What it could not do is tell whether a file IS what it claims: the rule
+constrains `request.resource.contentType`, and that value is supplied by the
+client. An `.exe` named `report.pdf` satisfied every check the system had.
+
+`src/shared/storage/sniffType.js` now reads the first 64 bytes at upload and
+refuses two things: a known executable header whatever it claims to be, and a
+declared type the bytes actively contradict. It runs **before** the adapter is
+loaded and **before** sealing, and both orderings are the control rather than
+tidiness — after the adapter guard it would be skipped exactly when the bucket
+is unconfigured and the caller falls back to writing the bytes into Firestore,
+and after sealing there are no plaintext bytes left for anything to read, ever.
+The refusal is its own error type so it cannot be mistaken for "storage is
+unavailable, use the inline path".
+
+**What is accepted, and why.** This is not malware detection and does not claim
+to be — a genuine PDF carrying a malicious payload passes, and there is a test
+asserting that so nobody mistakes the check for more than it is.
+
+A real scanner is not a small step from here:
+
+- It needs infrastructure this project does not have — ClamAV on Cloud Run — or
+  a third-party API, and sending occupational health records, GP letters and fit
+  notes to a scanning vendor is a **worse** privacy outcome than not scanning.
+  It would make that vendor a subprocessor of medical data, which is a DPA and a
+  register entry before it is a line of code.
+- It cannot work at all where it matters most. Files in the sealed collections
+  are AES-GCM ciphertext at rest; there is nothing for any scanner to read. The
+  comment in `storage/index.js` has always said the octet-stream declaration
+  exists so that "a browser, a thumbnailer, **a virus scanner**" does not try to
+  interpret ciphertext — the impossibility was written down long before it was
+  assessed.
+
+**What would close it:** a bucket-triggered function over the *unsealed*
+prefixes only, backed by a scanner running inside our own project, plus a
+written decision about whether sealed medical documents are scanned client-side
+before sealing or explicitly excluded. Until one of those is chosen this is a
+residual risk somebody has looked at rather than a gap nobody noticed.
+
 ### S-04 · Unbounded collection listeners — CLOSED
 
 Every live collection listener in the app is now capped at

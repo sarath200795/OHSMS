@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest'
 import {
   safeFileName, storagePath, dataUrlToBlob,
   MAX_UPLOAD_BYTES, MAX_INLINE_BYTES, formatSize, tooLargeForInline,
-  fileUrl,
+  fileUrl, putFile, RejectedFileError,
 } from './index'
 
 // Two limits, and the relationship between them is the whole point: the big one
@@ -163,5 +163,41 @@ describe('resolving a stored file to a governed URL', { timeout: 20000 }, () => 
     for (const rec of [{ url: STORED }, {}, 'orgs/a/x.jpg']) {
       expect(typeof (await fileUrl(rec)).revoke).toBe('function')
     }
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// A file refused on its CONTENTS must not degrade to the inline fallback.
+//
+// putFile returns null for every infrastructure failure — no driver, offline,
+// rules refusal — and every caller answers that by writing the bytes base64
+// into a Firestore document instead. For a file refused because it is an
+// executable wearing a document's name, that fallback would store precisely
+// what was just refused, and the check would have achieved nothing.
+//
+// So the refusal is a distinct error type that propagates. This asserts the
+// distinction rather than the sniffing itself, which is sniffType.test.js.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('a refused file does not fall back to inline storage', () => {
+  it('throws RejectedFileError rather than returning null', async () => {
+    // MZ — a Windows executable — declared as a PDF.
+    const exe = new Blob([Uint8Array.from([0x4d, 0x5a, 0x90, 0x00])], { type: 'application/pdf' })
+    await expect(putFile('org1', 'permit-documents', exe, 'report.pdf'))
+      .rejects.toThrow(RejectedFileError)
+  })
+
+  it('gives the person a reason they can act on', async () => {
+    const exe = new Blob([Uint8Array.from([0x4d, 0x5a, 0x90, 0x00])], { type: 'application/pdf' })
+    await expect(putFile('org1', 'permit-documents', exe, 'report.pdf'))
+      .rejects.toThrow(/Windows executable/)
+  })
+
+  // The distinction that matters: null still means "storage is unavailable,
+  // use the inline path", and that behaviour is unchanged for everything else.
+  it('still returns null when there is no driver, rather than throwing', async () => {
+    const ok = new Blob([Uint8Array.from([0x25, 0x50, 0x44, 0x46])], { type: 'application/pdf' })
+    // No emulator/bucket configured in this environment, so the adapter cannot
+    // upload — the infrastructure path, which must stay non-fatal.
+    await expect(putFile('org1', 'permit-documents', ok, 'real.pdf')).resolves.toBeNull()
   })
 })

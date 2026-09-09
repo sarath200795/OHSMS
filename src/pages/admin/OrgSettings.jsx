@@ -16,6 +16,7 @@ import {
 } from '../../shared/storage'
 import { fileToDataUrl } from '../../shared/lib/files'
 import { safeSrc } from '../../shared/safeUrl'
+import { useFileUrl } from '../../shared/storage/useFileUrl'
 import { PageHeader, Card, Field, Input, Select, Button, MultiSelect, SkeletonCard } from '../../shared/ui'
 import MetabaseSettings from './MetabaseSettings'
 
@@ -35,6 +36,13 @@ export default function OrgSettings() {
   const [org, setOrg] = useState(null)
   const [tab, setTab] = useState('general')
   const [sites, setSites] = useState([])
+
+  // The preview below used to read `org.logoUrl` straight into an <img>. That
+  // field is a permanent download URL and uploads no longer mint one (audit
+  // finding M-5), so a logo set after that change carries only `logoPath` —
+  // and the old check would have reported "No logo yet" for a logo that had
+  // just been uploaded successfully.
+  const { src: logoSrc } = useFileUrl({ url: org?.logoUrl, path: org?.logoPath })
 
   const [form, setForm] = useState({
     name: '', address: '', notificationEmail: '', activityTypes: [], departments: [],
@@ -328,9 +336,9 @@ export default function OrgSettings() {
             </p>
             <div className="flex flex-wrap items-center gap-4">
               <div className="grid h-20 w-20 flex-none place-items-center rounded-2xl bg-clay-surface shadow-clay-inset">
-                {org?.logoUrl ? (
+                {logoSrc ? (
                   <img
-                    src={safeSrc(org.logoUrl)}
+                    src={safeSrc(logoSrc)}
                     alt={`${form.name || 'Organization'} logo`}
                     className="h-16 w-16 rounded-xl bg-white object-contain"
                   />
