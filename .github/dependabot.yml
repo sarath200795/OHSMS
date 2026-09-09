@@ -1,0 +1,86 @@
+# Dependency updates, proposed rather than merely detected.
+#
+# scripts/audit-gate.mjs already tells you an advisory is in the tree, blocks a
+# merge on high or critical in what actually ships, and reports moderates
+# without blocking. What nothing did was OFFER THE FIX: a package moved only
+# when somebody changed it by hand, so an advisory with `fixAvailable: true`
+# could sit in the runtime tree indefinitely with CI dutifully reporting it
+# every single run. Two react-router moderates did exactly that, and were found
+# by running `npm audit` by hand rather than by any gate.
+#
+# The division of labour is deliberate. Dependabot opens the pull request; the
+# five required status checks on `main` decide whether it is safe; audit-gate
+# decides whether the tree it produces may merge. Nothing here bypasses any of
+# that — a Dependabot PR is an ordinary PR and meets every gate an ordinary one
+# meets.
+#
+# ── Why grouped, and why weekly ─────────────────────────────────────────────
+#
+# Ungrouped daily updates on a tree this size produce more pull requests than
+# anyone reads, and a queue nobody reads is the state this file exists to end,
+# not to reproduce. One batch a week per ecosystem is a thing a person can
+# actually review; security updates are separated out so an advisory fix is not
+# stuck behind a batch of routine bumps.
+version: 2
+updates:
+  # The app's own tree. `security-updates` is its own group so that a fix for
+  # something in `npm audit` arrives as a small, obvious PR rather than inside a
+  # twenty-package bump.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      security-updates:
+        applies-to: security-updates
+        patterns: ['*']
+      production-dependencies:
+        applies-to: version-updates
+        dependency-type: production
+        update-types: [minor, patch]
+      development-dependencies:
+        applies-to: version-updates
+        dependency-type: development
+        update-types: [minor, patch]
+    ignore:
+      # Majors are migrations, not updates, and they should be planned rather
+      # than opened on a Monday. react-router 7 is the live example: two
+      # moderates in 6.30.4 need >= 7.18.0, which is a migration across 29
+      # routes, and the reachable sink is already closed by safeInternalPath()
+      # in src/shared/safeUrl.js. Dependabot proposing that weekly and being
+      # closed weekly would train everyone to close its PRs.
+      - dependency-name: '*'
+        update-types: [version-update:semver-major]
+
+  # The Cloud Functions tree has its own lockfile, its own dependencies and its
+  # own blocking audit gate in ci.yml. It is invisible to the root config.
+  - package-ecosystem: npm
+    directory: /functions
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      security-updates:
+        applies-to: security-updates
+        patterns: ['*']
+      all-dependencies:
+        applies-to: version-updates
+        update-types: [minor, patch]
+    ignore:
+      - dependency-name: '*'
+        update-types: [version-update:semver-major]
+
+  # The workflows themselves. A pinned action with a known vulnerability is a
+  # supply-chain hole in the pipeline that deploys the security rules, and
+  # nothing else in this repository looks at these versions at all.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      actions:
+        patterns: ['*']

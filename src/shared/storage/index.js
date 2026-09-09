@@ -17,6 +17,22 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { reportError } from '../monitoring'
 import { isSealedFile, openFileBytes, sealFileBytes } from '../crypto'
+import { checkFileBytes, headOf } from './sniffType'
+
+/**
+ * A file refused on its contents, as opposed to storage being unavailable.
+ *
+ * The distinction is the whole point: `putFile` returns null for the second and
+ * every caller falls back to writing the bytes inline into Firestore. For a
+ * file refused because it is an executable wearing a document's name, that
+ * fallback would store exactly what was just refused.
+ */
+export class RejectedFileError extends Error {
+  constructor(message) {
+    super(message)
+    this.name = 'RejectedFileError'
+  }
+}
 
 const DRIVER = String(import.meta.env.VITE_STORAGE_DRIVER || 'firebase')
   .trim()
@@ -141,10 +157,46 @@ export function dataUrlToBlob(dataUrl) {
  */
 export async function putFile(orgId, kind, file, fileName, { collection } = {}) {
   try {
-    const adapter = await loadAdapter()
-    if (!adapter) return null
     const blob = typeof file === 'string' ? dataUrlToBlob(file) : file
     if (!blob) return null
+
+    // Is this file what it says it is? (audit finding M-6, A.8.7)
+    //
+    // FIRST, before the adapter is even loaded, and that ordering is the
+    // control rather than a tidiness. Every `return null` below means "storage
+    // is unavailable" and every caller answers it by writing the bytes base64
+    // into a Firestore document instead — so a check placed after the adapter
+    // guard would be skipped in exactly the situation where the refused file
+    // still gets stored. The first version of this sat after that guard and did
+    // nothing at all when the bucket was unconfigured.
+    //
+    // storage.rules allow-lists the DECLARED content type, and that value comes
+    // from the client — a browser guesses it from the extension, and anything
+    // that is not this app sets it to whatever it likes. So the rule answers
+    // "may an object be served as this type" and nothing answered "are these
+    // bytes that type". An .exe named report.pdf satisfied every check there is.
+    //
+    // BEFORE sealing, necessarily: two lines below these bytes become AES-GCM
+    // ciphertext, which matches no signature and can never be inspected again by
+    // anything — not here, not by a bucket-triggered scanner, not by an
+    // antivirus product. The one moment the plaintext exists on a machine we
+    // control is this one.
+    const verdict = checkFileBytes(await headOf(blob), blob.type || '')
+    if (!verdict.ok) {
+      // Thrown, not returned as null: null means "storage is unavailable, fall
+      // back to inline" and every caller handles it that way — which would file
+      // the refused bytes into a Firestore document instead, base64, and the
+      // check would have achieved precisely nothing.
+      //
+      // Its own type so the catch below can tell it apart. Everything else that
+      // throws in here is an infrastructure problem and SHOULD degrade to the
+      // inline path; this one is a decision about the file and has to reach the
+      // person who chose it.
+      throw new RejectedFileError(verdict.reason)
+    }
+
+    const adapter = await loadAdapter()
+    if (!adapter) return null
     const name = safeFileName(fileName || file?.name)
     const path = storagePath(orgId, kind, name)
 
@@ -162,9 +214,21 @@ export async function putFile(orgId, kind, file, fileName, { collection } = {}) 
     const upload = meta ? new Blob([bytes], { type: 'application/octet-stream' }) : blob
 
     const result = await adapter.put(path, upload)
-    if (!result?.url) return null
+    // Success is the ADAPTER returning, not a url coming back. The firebase
+    // adapter no longer mints one — a download URL is a permanent bearer
+    // credential and the point of M-5 is to stop writing them down — so
+    // requiring a url here would have turned every successful upload into a
+    // silent failure and sent every caller down its inline-dataUrl fallback.
+    //
+    // `url` stays in the returned shape, empty, because dozens of callers spread
+    // this into a Firestore document and readers still handle a stored url for
+    // records written before paths were recorded. The s3 adapter still supplies
+    // a real one: it has no `resolve`, so its publicUrl is the only way its
+    // objects can be read, and that is the deploying operator's choice to make
+    // at their presign endpoint rather than something to break from here.
+    if (!result) return null
     return {
-      url: result.url,
+      url: result.url || '',
       path,
       // The ORIGINAL size and type, not the ciphertext's. Every screen that
       // prints a file size means the file the person chose, and the reader
@@ -175,6 +239,10 @@ export async function putFile(orgId, kind, file, fileName, { collection } = {}) 
       ...(meta || {}),
     }
   } catch (e) {
+    // A refused file is not an infrastructure failure and must not degrade to
+    // the inline fallback — that would write the very bytes just refused into a
+    // Firestore document. Re-thrown so the caller shows the reason.
+    if (e instanceof RejectedFileError) throw e
     // Expected while the bucket/rules are not yet enabled in the console —
     // report once-per-kind noise is acceptable, silence is not.
     reportError(e, { source: 'storage.putFile', kind, driver: storageDriver })

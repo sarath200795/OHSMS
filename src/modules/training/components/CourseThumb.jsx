@@ -1,4 +1,5 @@
 import { safeSrc } from '../../../shared/safeUrl'
+import { useFileUrl } from '../../../shared/storage/useFileUrl'
 // Course card thumbnail — uploaded image when set, otherwise category art
 // (kraft-toned gradient + icon) so every course reads well in the grid.
 const ART = {
@@ -19,8 +20,17 @@ const ART = {
 }
 
 export default function CourseThumb({ course, className = '' }) {
-  if (course?.thumbnail) {
-    return <img src={safeSrc(course.thumbnail)} alt="" className={`aspect-video w-full rounded-xl object-cover ${className}`} />
+  // Resolved by PATH, not by the stored url: uploads no longer mint a
+  // permanent download URL (audit finding M-5), so thumbnailPath is what a new
+  // course has. The hook falls back to the stored url for courses uploaded
+  // before the change, so nothing that renders today stops rendering.
+  //
+  // Called unconditionally, above the early return the category art used to
+  // sit behind: a hook after a conditional return is the rules-of-hooks
+  // violation that makes the art and the photo swap places on re-render.
+  const { src } = useFileUrl({ url: course?.thumbnail, path: course?.thumbnailPath })
+  if (src) {
+    return <img src={safeSrc(src)} alt="" className={`aspect-video w-full rounded-xl object-cover ${className}`} />
   }
   const [emoji, color] = ART[course?.category] || ART.Other
   return (

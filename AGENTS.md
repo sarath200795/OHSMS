@@ -60,6 +60,46 @@ Before touching subject access, read `docs/DATA-RIGHTS.md` §2 — with encrypti
 on, a server-side scan for a name reads ciphertext, and **zero matches is
 indistinguishable from a person who is genuinely not mentioned**.
 
+## This repository is public — what may and may not be written into it
+
+Everything committed here is world-readable, including git history, and history
+is not practically retractable: rewriting it changes every commit SHA and
+orphans the `v*` release tags that tie each production deployment to a commit.
+So the question is not "should this be removed later" but "may this be written
+at all".
+
+**Belongs here.** The code. The security rules — a rule whose strength depends
+on nobody reading it is not a rule. Findings that are **closed**, written up in
+full with the mechanism, the fix and the test: those are a credential, and the
+detail is what makes them one. Design reasoning, rejected alternatives, the
+failure that motivated a line.
+
+**Does not belong here.**
+
+- **A finding that is still open**, or accepted with a live residual risk —
+  however well written up. The write-up quality is what makes it dangerous: a
+  reachability assessment is an argument someone can test. These go in the
+  private register; `docs/SECURITY.md` explains the split.
+- **Operational description of the live system** — project ids, deployed
+  function names, which console toggles are on, deployment order. That is
+  `docs/PRODUCTION.md`, and it is private.
+- **A worked request against production.** A copy-pasteable `curl` at a live
+  endpoint is a proof of concept regardless of why it was written.
+- **Anything personal.** Real names, real incident narratives, real medical
+  detail — in a fixture, a seed script, a test, a screenshot or a comment. Seed
+  data is invented. This is the one that gets in by accident.
+- **Credentials, obviously**, though nothing here has ever carried one:
+  `.gitignore` covers `.env`, `.env.production` and `.firebaserc`, and the full
+  history has been searched.
+
+**When unsure, private.** The asymmetry is total: a doc kept private that
+needn't have been costs a request to the maintainer; a doc published that
+shouldn't have been cannot be taken back.
+
+This is finding H-2 of the 2026-09-09 audit, and it is written here rather than
+only in the register because it is a rule about what gets written, and this is
+the file that is read before writing.
+
 ## Seams
 
 `src/shared/data/` and `src/shared/storage/` are adapter contracts. The header

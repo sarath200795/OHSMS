@@ -83,9 +83,16 @@ export function IncidentProvider({ children }) {
     // already came from the gated collection while injury ones came from the
     // open one. Anyone who cannot read them gets {} here, and the dashboard says
     // so rather than drawing an empty body.
+    // subscribeInjuries emits deleted rows too now, so the split happens here —
+    // beside the two that already did it — rather than inside the listener.
+    // Every existing consumer of `injuries` means the active ones, so that name
+    // keeps that meaning and the bin gets its own.
+    const activeInjuries = injuries.filter((i) => !i.deletedAt)
+    const deletedInjuries = injuries.filter((i) => i.deletedAt)
+
     const activeIncidentIds = new Set(active.map((i) => i.id))
     const bodyPartCounts = {}
-    for (const inj of injuries) {
+    for (const inj of activeInjuries) {
       // An injury whose incident is in the recycle bin is not counted, matching
       // what the incident-side aggregate did before.
       if (inj.incidentId && !activeIncidentIds.has(inj.incidentId)) continue
@@ -95,7 +102,7 @@ export function IncidentProvider({ children }) {
       for (const key of ill.affectedBodyParts || []) bodyPartCounts[key] = (bodyPartCounts[key] || 0) + 1
     }
 
-    const pendingInjuries = injuries.filter((i) => injuryStatus(i) !== 'verified')
+    const pendingInjuries = activeInjuries.filter((i) => injuryStatus(i) !== 'verified')
 
     return {
       loading,
@@ -112,7 +119,8 @@ export function IncidentProvider({ children }) {
       deletedIncidents,
       illnesses: activeIll,
       deletedIllnesses,
-      injuries,
+      injuries: activeInjuries,
+      deletedInjuries,
       pendingInjuries,
       allActions,
       openActions,

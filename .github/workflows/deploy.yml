@@ -23,6 +23,38 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
+    # ── The approval between a tag and production ──────────────────────────────
+    #
+    # An ISO 27001 audit raised this as its first finding (A.8.32 change
+    # management, A.5.3 segregation of duties). This job deploys the Cloud
+    # Functions, the Firestore and Storage rulesets, the composite indexes and
+    # hosting — every enforcement surface the system has — and it was reachable
+    # by pushing any tag matching v*, from any commit, with nothing in between.
+    #
+    # The ruleset on `main` did not cover it and could not: its condition is
+    # ~DEFAULT_BRANCH, and A TAG IS NOT A BRANCH. A tag can point at any commit
+    # in the repository, including one that never entered main and never ran CI.
+    # The gates re-run below are a check on a BROKEN change; they were never a
+    # check on an UNREVIEWED one.
+    #
+    # `environment:` is what makes the deployment wait. The `production`
+    # environment carries a required reviewer and a deployment branch policy
+    # limited to `v*` tags, so a release now stops and asks before it ships.
+    #
+    # What this is NOT, stated plainly so nobody mistakes it for more than it
+    # is: with a single collaborator the reviewer is the person who cut the tag,
+    # and GitHub permits self-approval (prevent_self_review is deliberately
+    # false, because turning it on with one collaborator would make releases
+    # impossible rather than reviewed). So this converts an automatic deploy
+    # into a DELIBERATE one — it stops an accidental or mistimed tag, and it
+    # puts a timestamped approval in the deployment record. It is not a second
+    # pair of eyes. That gap needs a second person with write access and is
+    # recorded as an accepted risk in docs/SECURITY.md.
+    environment:
+      name: production
+      url: https://suite.weehs.org
+
     steps:
       - uses: actions/checkout@v7
 

@@ -29,12 +29,12 @@ disagree, `SECURITY.md` is right.
 | Backups / disaster recovery | PITR (7d) + weekly schedule (30d), delete protection, **restore drilled** 2026-08-16 | **Ready** |
 | Observability | Sentry wired with a DSN. No metrics, no uptime check, no on-call path | **Partial** |
 | Data lifecycle — export | Subject access implemented (`exportSubjectData`) | **Ready** |
-| Data lifecycle — erasure & retention | Classified, not executed. No retention periods | **Gap** |
-| Testing | 1754 unit, 448 rules, 357 functions, server suite, e2e smoke | **Ready** |
+| Data lifecycle — erasure & retention | Recycle Bin purge covers incidents, illnesses **and injuries with their clinical documents**. Erasure classified, not executed; no retention period for live records (DATA-RIGHTS.md §3) | **Partial** |
+| Testing | 2466 unit, 584 rules, 448 functions, e2e smoke | **Ready** |
 | CI/CD | Lint, tests (all four suites), build, audit gate; ordered deploy | **Ready** |
-| Environments | Staging pipeline built; production ships on a version tag | **Ready in code** |
+| Environments | Staging pipeline built but **failing on every run since 2026-08-29** (functions deploy, IAM); production ships on an unprotected `v*` tag with no approval gate | **Gap** |
 | Secrets handling | Nothing committed; client keys are appropriately public | **Ready** |
-| Scalability | Uncapped collection listeners (`SECURITY.md` S-04) | **Gap** |
+| Scalability | Read caps on every collection listener, with an incomplete-data notice on every screen that totals one (`SECURITY.md` S-04, closed) | **Ready** |
 | Compliance artifacts | ISO 27001 self-audit written. No DPA, no subprocessor list, no pen test, no certification | **Gap** |
 
 ---

@@ -58,3 +58,13 @@ tools/fls-dashboard/raw/*.json
 tools/fls-dashboard/.mbkey
 tools/fls-dashboard/data.json
 tools/fls-dashboard/fls-dashboard.html
+
+# Security documents that are deliberately NOT in this public repository:
+# the operational runbook, the ISO 27001 audit reports, and the OPEN half of
+# the security register. They live with the maintainer — docs/PRODUCTION.md and
+# docs/ISO27001-AUDIT.md are pointer stubs explaining where and why (finding
+# H-2, 2026-09-09). These patterns stop a copy being pulled back in by accident.
+ohsms-private-docs/
+*-private.md
+SECURITY-open.md
+ISO27001-Audit-Report-*.pdf
