@@ -33,7 +33,7 @@ import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { beforeAll, afterAll, beforeEach, describe, it, expect } from 'vitest'
 import { initializeTestEnvironment, assertFails, assertSucceeds } from '@firebase/rules-unit-testing'
-import { doc, getDoc, getDocs, collection, query, where, orderBy, limit, setDoc } from 'firebase/firestore'
+import { doc, getDoc, getDocs, collection, query, where, orderBy, limit, setDoc, updateDoc } from 'firebase/firestore'
 import {
   MEDICAL_FIELDS,
   INCIDENT_INJURY_FIELDS,
@@ -491,5 +491,71 @@ describe('the medical-record pointer carries no clinical field', () => {
       expect(snap.data().url).toBe('https://example.test/x')
       await assertSucceeds(getDocs(photos))
     }
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Who may put an injury report in the bin.
+//
+// `deletedAt` was an ordinary field to this ruleset and the generic rule grants
+// update to isWriterOf, which was harmless while nothing acted on the value:
+// setting it hid a row from one list and did nothing else. The retention sweep
+// now purges /injuries thirty days after that timestamp, together with the
+// `records` subcollection and the clinical documents in Cloud Storage behind
+// it — so the same write stopped being a hide and became a scheduled,
+// irreversible deletion of occupational health records.
+//
+// Which makes the old permission the wrong one. A member WRITES an injury
+// report and cannot READ one back, so without the gate a member could queue for
+// destruction a colleague's clinical record they are not allowed to open.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('soft-deleting an injury takes the standing that deleting it takes', () => {
+  const deleted = injuryDocId('i2', 'p-lund')
+
+  it('refuses a member the write that schedules destruction', async () => {
+    await assertFails(updateDoc(injury(as('member1')), { deletedAt: new Date(), deletedBy: 'member1' }))
+  })
+
+  it('allows a manager and an admin', async () => {
+    await assertSucceeds(updateDoc(injury(as('manager1')), { deletedAt: new Date(), deletedBy: 'manager1' }))
+    await assertSucceeds(updateDoc(injury(as('admin1'), deleted), { deletedAt: new Date(), deletedBy: 'admin1' }))
+  })
+
+  // Both directions. Restoring is as much the manager's act as deleting, and a
+  // rule watching only the way in would let a member pull a record back out of
+  // the bin somebody else put it in.
+  it('refuses a member the restore as well as the delete', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'organizations', ORG, 'injuries', deleted),
+        { ...INJURY_DOC, incidentId: 'i2', personId: 'p-lund', deletedAt: new Date() }, { merge: true })
+    })
+    await assertFails(updateDoc(injury(as('member1'), deleted), { deletedAt: null, deletedBy: null }))
+    await assertSucceeds(updateDoc(injury(as('manager1'), deleted), { deletedAt: null, deletedBy: null }))
+  })
+
+  // The half that must not break. This collection depends on a member being
+  // able to write a report they cannot read back — gating the whole document
+  // instead of the one field would have closed the capture path in Step 1a.
+  it('still lets a member write the report itself', async () => {
+    await assertSucceeds(updateDoc(injury(as('member1')), { medication: 'paracetamol 500' }))
+  })
+
+  it('still refuses the auditor every write, deletedAt or not', async () => {
+    await assertFails(updateDoc(injury(as('auditor1')), { medication: 'x' }))
+    await assertFails(updateDoc(injury(as('auditor1')), { deletedAt: new Date() }))
+  })
+
+  it('refuses another tenant outright', async () => {
+    await assertFails(updateDoc(injury(as('stranger')), { deletedAt: new Date() }))
+  })
+
+  // Scoped to /injuries deliberately. Soft delete is manager-only in
+  // permissions.js for incidents too and is enforced on neither — the delete
+  // button on Incidents.jsx is not gated at all — so widening the predicate
+  // would refuse a write the product currently permits from its own UI. This
+  // pins the scope so the asymmetry is a decision on the record rather than
+  // something discovered later.
+  it('leaves the incident bin alone, which is a separate decision', async () => {
+    await assertSucceeds(updateDoc(incident(as('member1')), { deletedAt: new Date(), deletedBy: 'member1' }))
   })
 })

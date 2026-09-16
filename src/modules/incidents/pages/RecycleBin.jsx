@@ -1,35 +1,72 @@
 import toast from 'react-hot-toast'
 import { motion } from 'framer-motion'
-import { Trash2, RotateCcw, X, ClipboardList, Activity } from 'lucide-react'
+import { Trash2, RotateCcw, X, ClipboardList, Activity, HeartPulse } from 'lucide-react'
 import { PageHeader, EmptyState } from '../components/ui'
 import { useAuth } from '../context/AuthContext'
 import { useIncidents } from '../context/IncidentContext'
 import { restoreIncident, purgeIncident } from '../lib/incidents'
 import { restoreIllness, purgeIllness } from '../lib/illnesses'
+import { restoreInjury, purgeInjury } from '../lib/injuries'
+
+/**
+ * What each kind of deleted record is called, drawn with, and restored by.
+ *
+ * A table rather than the `if incident … else …` this used to be. That shape
+ * was correct for exactly two kinds and silently wrong for three: adding
+ * injuries to the list without touching it would have sent every injury down
+ * the illness branch, calling restoreIllness on an id in another collection.
+ * The failure would have been a toast saying nothing happened.
+ */
+const KINDS = {
+  incident: {
+    label: 'Incident',
+    icon: ClipboardList,
+    colour: '#795548',
+    restore: restoreIncident,
+    purge: purgeIncident,
+  },
+  illness: {
+    label: 'Illness',
+    icon: Activity,
+    colour: '#0891b2',
+    restore: restoreIllness,
+    purge: purgeIllness,
+  },
+  injury: {
+    label: 'Injury report',
+    icon: HeartPulse,
+    colour: '#be123c',
+    restore: restoreInjury,
+    purge: purgeInjury,
+  },
+}
 
 export default function RecycleBin() {
-  const { deletedIncidents, deletedIllnesses } = useIncidents()
+  const { deletedIncidents, deletedIllnesses, deletedInjuries, canReadHealth } = useIncidents()
   const { orgId, profile, user } = useAuth()
   const actor = { uid: user?.uid, name: profile?.name }
 
   const items = [
-    ...deletedIncidents.map((i) => ({ ...i, _kind: 'incident' })),
-    ...deletedIllnesses.map((i) => ({ ...i, _kind: 'illness' })),
+    ...deletedIncidents.map((i) => ({ ...i, _kind: 'incident', _label: i.refNo })),
+    ...deletedIllnesses.map((i) => ({ ...i, _kind: 'illness', _label: i.refNo })),
+    // An injury has no reference of its own — it is keyed
+    // `${incidentId}__${personId}` and identified by the incident it came from.
+    // The person's name is sealed under the medical key class and is NOT put
+    // here: this row names a record, not a colleague.
+    ...deletedInjuries.map((i) => ({ ...i, _kind: 'injury', _label: i.incidentRefNo || i.id })),
   ]
 
   const restore = async (it) => {
     try {
-      if (it._kind === 'incident') await restoreIncident(orgId, it.id, actor)
-      else await restoreIllness(orgId, it.id, actor)
-      toast.success(`${it.refNo} restored`)
+      await KINDS[it._kind].restore(orgId, it.id, actor)
+      toast.success(`${it._label} restored`)
     } catch (e) { toast.error(e.message || 'Could not restore') }
   }
   const purge = async (it) => {
-    if (!window.confirm(`Permanently delete ${it.refNo}? This cannot be undone.`)) return
+    if (!window.confirm(`Permanently delete ${it._label}? This cannot be undone.`)) return
     try {
-      if (it._kind === 'incident') await purgeIncident(orgId, it.id, actor, it.refNo)
-      else await purgeIllness(orgId, it.id, actor, it.refNo)
-      toast.success(`${it.refNo} permanently deleted`)
+      await KINDS[it._kind].purge(orgId, it.id, actor, it._label)
+      toast.success(`${it._label} permanently deleted`)
     } catch (e) { toast.error(e.message || 'Could not purge') }
   }
 
@@ -41,7 +78,11 @@ export default function RecycleBin() {
           worse than one kept too long. */}
       <PageHeader
         title="Recycle Bin"
-        subtitle="Soft-deleted incidents & illnesses — restore, or purge permanently. Anything left here is deleted automatically after 30 days."
+        subtitle={
+          canReadHealth
+            ? 'Soft-deleted incidents, illnesses & injury reports — restore, or purge permanently. Anything left here is deleted automatically after 30 days.'
+            : 'Soft-deleted incidents — restore, or purge permanently. Anything left here is deleted automatically after 30 days. Deleted illness and injury records are not shown: reading them is restricted to admins and managers.'
+        }
         icon={Trash2}
       />
       {items.length === 0 ? (
@@ -50,12 +91,12 @@ export default function RecycleBin() {
         <div className="space-y-2">
           {items.map((it) => (
             <motion.div key={`${it._kind}:${it.id}`} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="card flex items-center gap-3 p-4">
-              <div className="grid h-10 w-10 place-items-center rounded-xl text-white" style={{ backgroundColor: it._kind === 'incident' ? '#795548' : '#0891b2' }}>
-                {it._kind === 'incident' ? <ClipboardList size={18} /> : <Activity size={18} />}
+              <div className="grid h-10 w-10 place-items-center rounded-xl text-white" style={{ backgroundColor: KINDS[it._kind].colour }}>
+                {(() => { const Icon = KINDS[it._kind].icon; return <Icon size={18} /> })()}
               </div>
               <div className="min-w-0 flex-1">
-                <p className="font-bold text-ink-900">{it.refNo}</p>
-                <p className="truncate text-sm text-ink-500 capitalize">{it._kind} · deleted by {it.deletedBy || 'unknown'}</p>
+                <p className="font-bold text-ink-900">{it._label}</p>
+                <p className="truncate text-sm text-ink-500">{KINDS[it._kind].label} · deleted by {it.deletedBy || 'unknown'}</p>
               </div>
               <button className="btn-ghost px-3 py-1.5 text-xs" onClick={() => restore(it)}><RotateCcw size={14} /> Restore</button>
               <button className="btn-danger px-3 py-1.5 text-xs" onClick={() => purge(it)}><X size={14} /> Delete forever</button>

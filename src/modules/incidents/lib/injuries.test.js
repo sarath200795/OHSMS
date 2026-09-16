@@ -31,6 +31,10 @@ const fake = vi.hoisted(() => {
 vi.mock('../firebase', () => ({ db: {} }))
 // logAudit writes its own document; it is not what these tests are about.
 vi.mock('./firestore', () => ({ logAudit: vi.fn(async () => {}) }))
+// purgeInjury deletes the clinical documents out of Cloud Storage as well as
+// their pointers. Mocked so the assertion is "it asked for this path", which is
+// the part that matters — a bucket is not what this suite is testing.
+vi.mock('../../../shared/storage', () => ({ removeFile: vi.fn(async () => {}) }))
 
 vi.mock('firebase/firestore', async (importOriginal) => {
   const actual = await importOriginal()
@@ -62,6 +66,15 @@ vi.mock('firebase/firestore', async (importOriginal) => {
     },
     updateDoc: async (ref, data) => write(ref, data, { merge: true }),
     deleteDoc: async (ref) => { fake.store.delete(ref.path) },
+    // purgeInjury takes the pointers and the parent out together, so a failure
+    // cannot leave the record indexed by children that no longer exist.
+    writeBatch: () => {
+      const pending = []
+      return {
+        delete: (ref) => pending.push(ref.path),
+        commit: async () => { pending.forEach((p) => fake.store.delete(p)) },
+      }
+    },
     query: (col, ...clauses) => ({ path: col.path, clauses: clauses.filter(Boolean) }),
     where: (field, _op, value) => ({ field, value }),
     orderBy: () => null,
@@ -86,7 +99,9 @@ vi.mock('firebase/firestore', async (importOriginal) => {
 const {
   MEDICAL_FIELDS, INCIDENT_INJURY_FIELDS, incidentInjuryStub, incidentInjuryStubs,
   mergeInjuryDetail, syncIncidentInjuries, updateInjury,
+  deleteInjury, restoreInjury, purgeInjury,
 } = await import('./injuries')
+const { removeFile } = await import('../../../shared/storage')
 const { createIncident, updateIncident } = await import('./incidents')
 
 const ORG = 'acme'
@@ -252,5 +267,114 @@ describe('mergeInjuryDetail', () => {
     const merged = mergeInjuryDetail(stubs, [])
     expect(merged).toEqual(stubs)
     for (const field of MEDICAL_FIELDS) expect(merged[0]).not.toHaveProperty(field)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The lifecycle that did not exist.
+//
+// `deletedAt` was written as null by injuryPayload and read back by the list
+// filter, and nothing anywhere ever set it — so /injuries, the only home of a
+// named colleague's clinical detail and of the documents behind it, was the one
+// collection in this app with no way to remove a record. The nightly sweep in
+// functions/lib/retention.js is the other half; these are the writes it acts on.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('deleting an injury report', () => {
+  const ID = 'inc1__EMP-104'
+  const seed = () => fake.store.set(`${INJURIES}/${ID}`, {
+    incidentId: 'inc1', incidentRefNo: 'IRA-2026-9001', personId: 'EMP-104', deletedAt: null,
+  })
+
+  it('stamps deletedAt so the sweep can find it', async () => {
+    seed()
+    await deleteInjury(ORG, ID, actor)
+    const after = fake.store.get(`${INJURIES}/${ID}`)
+    expect(after.deletedAt).toBe('TS')
+    expect(after.deletedBy).toBe('Alex Admin')
+  })
+
+  // The field the Admin SDK queries on and the list filters on, before anything
+  // decrypts. Sealing it would make the record undeletable by the job whose
+  // whole purpose is deleting it.
+  it('leaves deletedAt in the clear', async () => {
+    seed()
+    await deleteInjury(ORG, ID, actor)
+    const written = fake.writesUnder(INJURIES).at(-1).data
+    expect(written.deletedAt).toBe('TS')
+    expect(typeof written.deletedAt).not.toBe('object')
+  })
+
+  it('does nothing at all for an id that is not there', async () => {
+    await deleteInjury(ORG, 'inc9__nobody', actor)
+    expect(fake.writesUnder(INJURIES)).toHaveLength(0)
+  })
+
+  it('restores by clearing the clock, not by rewriting the record', async () => {
+    seed()
+    await deleteInjury(ORG, ID, actor)
+    await restoreInjury(ORG, ID, actor)
+    const after = fake.store.get(`${INJURIES}/${ID}`)
+    expect(after.deletedAt).toBeNull()
+    expect(after.deletedBy).toBeNull()
+    // Still the same record: the join keys the sweep and the register need.
+    expect(after.incidentId).toBe('inc1')
+    expect(after.personId).toBe('EMP-104')
+  })
+})
+
+describe('purging an injury report', () => {
+  const ID = 'inc1__EMP-104'
+  const RECORDS = `${INJURIES}/${ID}/records`
+
+  beforeEach(() => {
+    fake.store.set(`${INJURIES}/${ID}`, {
+      incidentId: 'inc1', incidentRefNo: 'IRA-2026-9001', deletedAt: 'TS',
+    })
+    fake.store.set(`${RECORDS}/r1`, { name: 'sealed', path: `orgs/${ORG}/medical-records/ab12-gp-letter.pdf` })
+    fake.store.set(`${RECORDS}/r2`, { name: 'sealed', path: `orgs/${ORG}/medical-records/cd34-fit-note.pdf` })
+  })
+
+  it('destroys the clinical documents, their pointers and the record itself', async () => {
+    await purgeInjury(ORG, ID, actor, 'IRA-2026-9001')
+
+    expect(removeFile).toHaveBeenCalledTimes(2)
+    expect(removeFile.mock.calls.map((c) => c[0]).sort()).toEqual([
+      `orgs/${ORG}/medical-records/ab12-gp-letter.pdf`,
+      `orgs/${ORG}/medical-records/cd34-fit-note.pdf`,
+    ])
+    expect(fake.store.has(`${RECORDS}/r1`)).toBe(false)
+    expect(fake.store.has(`${RECORDS}/r2`)).toBe(false)
+    expect(fake.store.has(`${INJURIES}/${ID}`)).toBe(false)
+  })
+
+  // A GP letter left in the bucket with nothing naming it is not deleted data;
+  // it is data nobody can find and nobody can delete. The pointer going without
+  // the object is the shape of a failed erasure request.
+  it('never removes a pointer while leaving its object behind', async () => {
+    await purgeInjury(ORG, ID, actor, 'IRA-2026-9001')
+    const askedFor = removeFile.mock.calls.map((c) => c[0])
+    for (const path of [
+      `orgs/${ORG}/medical-records/ab12-gp-letter.pdf`,
+      `orgs/${ORG}/medical-records/cd34-fit-note.pdf`,
+    ]) expect(askedFor).toContain(path)
+  })
+
+  // An attachment small enough to inline is base64 on the pointer itself and
+  // has no object behind it. Asking the bucket to delete '' is not a no-op
+  // there, it is a request against the org prefix root.
+  it('asks the bucket for nothing when a record is inlined', async () => {
+    fake.store.set(`${RECORDS}/r3`, { name: 'sealed', dataUrl: 'data:application/pdf;base64,AAAA' })
+    await purgeInjury(ORG, ID, actor, 'IRA-2026-9001')
+    expect(removeFile.mock.calls.map((c) => c[0])).not.toContain('')
+    expect(removeFile).toHaveBeenCalledTimes(2)
+    expect(fake.store.has(`${RECORDS}/r3`)).toBe(false)
+  })
+
+  it('purges an injury that has no clinical documents at all', async () => {
+    fake.store.delete(`${RECORDS}/r1`)
+    fake.store.delete(`${RECORDS}/r2`)
+    await purgeInjury(ORG, ID, actor, 'IRA-2026-9001')
+    expect(removeFile).not.toHaveBeenCalled()
+    expect(fake.store.has(`${INJURIES}/${ID}`)).toBe(false)
   })
 })

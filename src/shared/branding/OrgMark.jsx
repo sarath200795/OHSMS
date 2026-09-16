@@ -18,6 +18,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { useAuth } from '../auth/AuthContext'
 import { safeSrc } from '../safeUrl'
+import { useFileUrl } from '../storage/useFileUrl'
 
 /** The vendor mark, in /public. Also the fallback identity. */
 export const WE_EHS_MARK = '/wehs.svg'
@@ -31,9 +32,14 @@ export const WE_EHS_MARK = '/wehs.svg'
  */
 export function OrgMark({ className = '', alt = '' }) {
   const { org } = useAuth()
+  // Resolved by PATH. Uploads no longer mint a permanent download URL (audit
+  // finding M-5), so `logoPath` is what a logo set after that change carries;
+  // the hook falls back to `logoUrl` for the ones set before it, which is why
+  // both are passed and neither is trusted alone.
+  const { src } = useFileUrl({ url: org?.logoUrl, path: org?.logoPath })
   // safeSrc, not the raw field: this URL comes out of a Firestore document that
   // an org admin writes, and an <img src> is fetched without anyone clicking.
-  const custom = safeSrc(org?.logoUrl)
+  const custom = safeSrc(src)
   return (
     <img
       src={custom || WE_EHS_MARK}
