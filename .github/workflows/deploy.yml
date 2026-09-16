@@ -30,7 +30,7 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 45
 
     # ── The approval between a tag and production ──────────────────────────────
     #
