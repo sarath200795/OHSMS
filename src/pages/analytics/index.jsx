@@ -17,6 +17,7 @@ import { useAuth } from '../../shared/auth/AuthContext'
 import { subscribeCollections, emptyCollections } from '../../shared/org/orgData'
 import { useAccessibleSites } from '../../shared/org/useAccessibleSites'
 import { PageHeader } from '../../shared/ui'
+import IncompleteNotice from '../../shared/ui/IncompleteNotice'
 import IncidentsTab from './IncidentsTab'
 import DrillsTab from './DrillsTab'
 import EquipmentTab from './EquipmentTab'
@@ -144,17 +145,7 @@ export default function Analytics() {
 
       {/* Above the tabs, because every tab counts these records and the reader
           has to see this before the number, not after. */}
-      {store.incomplete && (
-        <div
-          role="status"
-          className="mb-5 flex items-start gap-2.5 rounded-2xl bg-amber-50 px-4 py-3 shadow-clay-sm"
-        >
-          <AlertTriangle size={16} className="mt-0.5 flex-none text-amber-700" />
-          <p className="text-[12.5px] leading-relaxed text-amber-900">
-            <b>These figures are incomplete.</b> {store.incomplete.message}
-          </p>
-        </div>
-      )}
+      <IncompleteNotice incomplete={store.incomplete} className="mb-5" />
 
       <div
         role="tablist"
@@ -168,7 +159,7 @@ export default function Analytics() {
             type="button"
             aria-selected={tab === t.key}
             onClick={() => setTab(t.key)}
-            className={`inline-flex flex-none items-center gap-2 rounded-2xl px-4 py-2.5 text-[13px] font-semibold transition ${
+            className={`inline-flex flex-none items-center gap-2 rounded-2xl px-4 py-2.5 text-[13px] font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 ${
               tab === t.key ? 'bg-clay-surface text-ink-900 shadow-clay-sm' : 'text-ink-500 hover:text-ink-800'
             }`}
           >

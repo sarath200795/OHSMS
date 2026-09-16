@@ -34,7 +34,17 @@ const SIZE = {
   lg: 'px-6 py-3 text-base',
 }
 export const Button = forwardRef(function Button(
-  { as: Tag = 'button', variant = 'primary', size = 'md', loading = false, icon: Icon, children, className, disabled, ...rest },
+  {
+    as: Tag = 'button',
+    variant = 'primary',
+    size = 'md',
+    loading = false,
+    icon: Icon,
+    children,
+    className,
+    disabled,
+    ...rest
+  },
   ref
 ) {
   return (
@@ -65,11 +75,21 @@ export const Button = forwardRef(function Button(
 // string is the tooltip a sighted user gets; two sources for one meaning drift.
 const ICON_SIZE = { sm: 'h-8 w-8', md: 'h-9 w-9', lg: 'h-10 w-10' }
 export const IconButton = forwardRef(function IconButton(
-  { icon: Icon, label, variant = 'ghost', size = 'md', loading = false, className, disabled, iconSize = 16, ...rest },
+  {
+    icon: Icon,
+    label,
+    variant = 'ghost',
+    size = 'md',
+    loading = false,
+    className,
+    disabled,
+    iconSize = 16,
+    ...rest
+  },
   ref
 ) {
   if (import.meta.env.DEV && !label) {
-    throw new Error('IconButton requires a `label` — it is the button\'s only accessible name.')
+    throw new Error("IconButton requires a `label` — it is the button's only accessible name.")
   }
   const Glyph = loading ? Loader2 : Icon
   return (
@@ -129,17 +149,41 @@ export function Card({ className, children, as: Tag = 'div', ...rest }) {
 // have kept hand-rolling a <div><label/>{control}</div> to preserve the look,
 // which is exactly the shape that had no htmlFor in it. Trading a styling hook
 // for the association is the right way round.
-export function Field({ label, hint, error, action, children, htmlFor, className, labelClassName = 'label' }) {
+export function Field({
+  label,
+  hint,
+  error,
+  action,
+  children,
+  htmlFor,
+  className,
+  labelClassName = 'label',
+}) {
   const generatedId = useId()
   const onlyChild = isValidElement(children) ? children : null
   // An explicit htmlFor is the caller saying which control they mean; a child
   // that already has an id is one it is being referenced by elsewhere. Neither
   // gets overridden.
   const controlId = htmlFor || onlyChild?.props?.id || (onlyChild ? generatedId : undefined)
-  const body =
-    onlyChild && !htmlFor && !onlyChild.props.id
-      ? cloneElement(onlyChild, { id: controlId })
-      : children
+  const hintId = `${generatedId}-hint`
+  const errorId = `${generatedId}-error`
+  const describedBy =
+    [error && errorId, hint && !error && hintId].filter(Boolean).join(' ') || undefined
+
+  // Native wrappers (the audit Input's icon overlay is a <div>) must not steal
+  // aria-invalid from the control inside them. Custom controls (Input, Select)
+  // ARE the control, so they do take it.
+  const native = typeof onlyChild?.type === 'string'
+  const isFormControl = native && ['input', 'select', 'textarea'].includes(onlyChild.type)
+  const attachAria = onlyChild && (isFormControl || !native)
+
+  const extra = {}
+  if (onlyChild && !htmlFor && !onlyChild.props.id) extra.id = controlId
+  if (attachAria && error) extra['aria-invalid'] = true
+  if (attachAria && describedBy && !onlyChild.props['aria-describedby']) {
+    extra['aria-describedby'] = describedBy
+  }
+  const body = onlyChild && Object.keys(extra).length ? cloneElement(onlyChild, extra) : children
 
   return (
     <div className={className}>
@@ -160,8 +204,16 @@ export function Field({ label, hint, error, action, children, htmlFor, className
         )
       )}
       {body}
-      {hint && !error && <p className="mt-1 text-xs text-ink-400">{hint}</p>}
-      {error && <p className="mt-1 text-xs font-medium text-red-600">{error}</p>}
+      {hint && !error && (
+        <p id={hintId} className="mt-1 text-xs text-ink-400">
+          {hint}
+        </p>
+      )}
+      {error && (
+        <p id={errorId} role="alert" className="mt-1 text-xs font-medium text-red-600">
+          {error}
+        </p>
+      )}
     </div>
   )
 }
@@ -180,7 +232,13 @@ export const Select = forwardRef(function Select({ className, children, ...rest 
 })
 
 // ── Multi-select (checkbox list) ──────────────────────────────────────────────
-export function MultiSelect({ options = [], value = [], onChange, empty = 'No options', maxHeight = 'max-h-44' }) {
+export function MultiSelect({
+  options = [],
+  value = [],
+  onChange,
+  empty = 'No options',
+  maxHeight = 'max-h-44',
+}) {
   const toggle = (v) => onChange(value.includes(v) ? value.filter((x) => x !== v) : [...value, v])
   if (!options.length) {
     return <div className="clay-inset rounded-2xl p-3 text-sm text-ink-400">{empty}</div>
@@ -253,10 +311,17 @@ export function Badge({ tone = 'gray', color, soft = true, className, children, 
     return (
       <span
         className={cx('chip', className)}
-        style={soft ? { backgroundColor: `${color}1a`, color: readableOnTint(color) } : { backgroundColor: solidBackground(color), color: '#fff' }}
+        style={
+          soft
+            ? { backgroundColor: `${color}1a`, color: readableOnTint(color) }
+            : { backgroundColor: solidBackground(color), color: '#fff' }
+        }
         {...rest}
       >
-        <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: soft ? color : '#fff' }} />
+        <span
+          className="h-1.5 w-1.5 rounded-full"
+          style={{ backgroundColor: soft ? color : '#fff' }}
+        />
         {children}
       </span>
     )
@@ -274,7 +339,7 @@ export function Badge({ tone = 'gray', color, soft = true, className, children, 
 export function StatCard({ label, value, icon: Icon, tone = 'brand', hint, className }) {
   const t = TONE[tone] || TONE.brand
   return (
-    <div className={cx('card flex items-center gap-4 p-5', className)}>
+    <div className={cx('card flex min-w-0 items-center gap-4 p-5', className)}>
       {Icon && (
         <span className={cx('grid h-12 w-12 shrink-0 place-items-center rounded-2xl', t)}>
           <Icon size={22} />
@@ -282,7 +347,7 @@ export function StatCard({ label, value, icon: Icon, tone = 'brand', hint, class
       )}
       <div className="min-w-0">
         <p className="truncate text-sm font-medium text-ink-500">{label}</p>
-        <p className="text-2xl font-bold tracking-tight text-ink-900">{value}</p>
+        <p className="truncate text-2xl font-bold tracking-tight text-ink-900">{value}</p>
         {hint && <p className="truncate text-xs text-ink-400">{hint}</p>}
       </div>
     </div>
@@ -298,20 +363,20 @@ export function PageHeader({ title, subtitle, icon: Icon, actions, children, tou
   return (
     <div
       data-tour={tourId ?? tour}
-      className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+      className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"
     >
-      <div className="flex items-center gap-3">
+      <div className="flex min-w-0 items-start gap-3">
         {Icon && (
-          <span className="grid h-11 w-11 place-items-center rounded-2xl bg-brand-50 text-brand-700 shadow-clay-sm">
+          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-brand-50 text-brand-700 shadow-clay-sm">
             <Icon size={22} />
           </span>
         )}
-        <div>
+        <div className="min-w-0">
           <h1 className="text-xl font-bold tracking-tight text-ink-900 sm:text-2xl">{title}</h1>
-          {subtitle && <p className="text-sm text-ink-500">{subtitle}</p>}
+          {subtitle && <p className="mt-0.5 text-sm text-ink-500">{subtitle}</p>}
         </div>
       </div>
-      {trailing && <div className="flex flex-wrap items-center gap-2">{trailing}</div>}
+      {trailing && <div className="flex flex-wrap items-center gap-2 sm:shrink-0">{trailing}</div>}
     </div>
   )
 }
@@ -322,17 +387,32 @@ export function PageHeader({ title, subtitle, icon: Icon, actions, children, tou
 export function EmptyState({ icon: Icon, title, description, hint, message, action, className }) {
   const body = description ?? hint ?? message
   return (
-    <div className={cx('card flex flex-col items-center gap-3 p-10 text-center', className)}>
+    <div
+      role="status"
+      className={cx(
+        'card flex flex-col items-center gap-3 px-6 py-10 text-center sm:px-10',
+        className
+      )}
+    >
       {Icon && (
         <span className="grid h-14 w-14 place-items-center rounded-2xl bg-clay-100 text-ink-400 shadow-clay-inset">
           <Icon size={26} />
         </span>
       )}
-      <div>
+      <div className="max-w-md">
         <h3 className="font-semibold text-ink-800">{title}</h3>
-        {body && <p className="mt-1 text-sm text-ink-500">{body}</p>}
+        {body && <p className="mt-1 text-sm leading-relaxed text-ink-500">{body}</p>}
       </div>
       {action}
+    </div>
+  )
+}
+
+/** Horizontal scroll wrapper for data tables so columns survive a phone. */
+export function TableWrap({ className, children, ...rest }) {
+  return (
+    <div className={cx('card table-crisp table-scroll p-0', className)} {...rest}>
+      {children}
     </div>
   )
 }
@@ -418,7 +498,17 @@ export function SkeletonDetail() {
 // `maxWidth` / `maxW` take a raw Tailwind class and are what the module-local
 // modals this replaced accepted; `size` is the design-system spelling. Escape-to-
 // close, Tab containment, and focus restore all come from useFocusTrap.
-export function Modal({ open, onClose, title, subtitle, children, footer, size = 'md', maxWidth, maxW }) {
+export function Modal({
+  open,
+  onClose,
+  title,
+  subtitle,
+  children,
+  footer,
+  size = 'md',
+  maxWidth,
+  maxW,
+}) {
   const reduce = useReducedMotion()
   const widths = { sm: 'max-w-md', md: 'max-w-lg', lg: 'max-w-2xl', xl: 'max-w-4xl' }
   const titleId = useId()
@@ -427,7 +517,7 @@ export function Modal({ open, onClose, title, subtitle, children, footer, size =
     <>
       {open && (
         <motion.div
-          className="fixed inset-0 z-50 grid place-items-center p-4"
+          className="fixed inset-0 z-50 grid place-items-center p-3 sm:p-4"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.15 }}
@@ -437,7 +527,11 @@ export function Modal({ open, onClose, title, subtitle, children, footer, size =
               backdrop focusable would put a nameless control in the tab order in
               front of the dialog it is dimming. */}
           {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
-          <div aria-hidden="true" className="absolute inset-0 bg-ink-950/40 backdrop-blur-sm" onClick={onClose} />
+          <div
+            aria-hidden="true"
+            className="absolute inset-0 bg-ink-950/40 backdrop-blur-sm"
+            onClick={onClose}
+          />
           <motion.div
             ref={ref}
             onKeyDown={onKeyDown}
@@ -445,32 +539,38 @@ export function Modal({ open, onClose, title, subtitle, children, footer, size =
             role="dialog"
             aria-modal="true"
             aria-labelledby={titleId}
-            className={cx('card relative z-10 w-full p-0 outline-none', maxWidth || maxW || widths[size])}
+            className={cx(
+              'card relative z-10 flex w-full max-h-[min(92dvh,44rem)] flex-col overflow-hidden p-0 outline-none',
+              maxWidth || maxW || widths[size]
+            )}
             initial={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.96 }}
             animate={reduce ? { opacity: 1 } : { opacity: 1, scale: 1 }}
             transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}
           >
             <div
               className={cx(
-                'flex justify-between gap-4 border-b border-ink-100 px-6 py-4',
+                'flex shrink-0 justify-between gap-4 border-b border-ink-100 px-5 py-4 sm:px-6',
                 subtitle ? 'items-start' : 'items-center'
               )}
             >
               <div className="min-w-0">
-                <h2 id={titleId} className="text-lg font-semibold text-ink-900">{title}</h2>
+                <h2 id={titleId} className="text-lg font-semibold text-ink-900">
+                  {title}
+                </h2>
                 {subtitle && <p className="mt-0.5 text-sm text-ink-500">{subtitle}</p>}
               </div>
               <button
+                type="button"
                 onClick={onClose}
                 aria-label="Close"
-                className="grid h-8 w-8 shrink-0 place-items-center rounded-xl text-ink-400 transition hover:bg-clay-100 hover:text-ink-700 active:scale-95"
+                className="grid h-8 w-8 shrink-0 place-items-center rounded-xl text-ink-400 transition hover:bg-clay-100 hover:text-ink-700 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
               >
                 <X size={18} />
               </button>
             </div>
-            <div className="max-h-[70vh] overflow-y-auto px-6 py-5">{children}</div>
+            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6">{children}</div>
             {footer && (
-              <div className="flex items-center justify-end gap-2 border-t border-ink-100 px-6 py-4">
+              <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-ink-100 px-5 py-4 sm:px-6">
                 {footer}
               </div>
             )}
@@ -487,12 +587,37 @@ export function Pager({ page, pageCount, onPage, total, pageSize, className = ''
   const from = (page - 1) * pageSize + 1
   const to = Math.min(page * pageSize, total)
   return (
-    <div className={cx('flex items-center justify-between text-sm', className)}>
-      <span className="text-ink-500">Showing {from}–{to} of {total}</span>
+    <div
+      className={cx(
+        'flex flex-col gap-2 text-sm sm:flex-row sm:items-center sm:justify-between',
+        className
+      )}
+    >
+      <span className="text-ink-500">
+        Showing {from}–{to} of {total}
+      </span>
       <div className="flex items-center gap-1.5">
-        <button className="btn-ghost px-3 py-1.5" onClick={() => onPage(page - 1)} disabled={page === 1}>Prev</button>
-        <span className="px-2 font-semibold text-ink-700">Page {page} / {pageCount}</span>
-        <button className="btn-ghost px-3 py-1.5" onClick={() => onPage(page + 1)} disabled={page === pageCount}>Next</button>
+        <button
+          type="button"
+          className="btn-ghost px-3 py-1.5"
+          onClick={() => onPage(page - 1)}
+          disabled={page === 1}
+          aria-label="Previous page"
+        >
+          Prev
+        </button>
+        <span className="px-2 font-semibold text-ink-700" aria-live="polite">
+          Page {page} / {pageCount}
+        </span>
+        <button
+          type="button"
+          className="btn-ghost px-3 py-1.5"
+          onClick={() => onPage(page + 1)}
+          disabled={page === pageCount}
+          aria-label="Next page"
+        >
+          Next
+        </button>
       </div>
     </div>
   )

@@ -11,10 +11,12 @@ export default function NotFound() {
         </span>
         <div>
           <h1 className="text-2xl font-bold text-ink-900">Page not found</h1>
-          <p className="mt-1 text-sm text-ink-500">The page you&apos;re looking for doesn&apos;t exist.</p>
+          <p className="mt-1 text-sm text-ink-500">
+            The page you&apos;re looking for doesn&apos;t exist.
+          </p>
         </div>
-        <Button as={Link} to="/dashboard">
-          Back to dashboard
+        <Button as={Link} to="/portal">
+          Back to home
         </Button>
       </div>
     </div>

@@ -71,7 +71,7 @@ export default function MyActions() {
             key={f.key}
             type="button"
             onClick={() => setFilter(f.key)}
-            className={`inline-flex items-center gap-2 rounded-2xl px-3.5 py-2 text-[12.5px] font-semibold transition ${
+            className={`inline-flex items-center gap-2 rounded-2xl px-3.5 py-2 text-[12.5px] font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 ${
               filter === f.key ? 'bg-clay-surface text-ink-900 shadow-clay-sm' : 'text-ink-500'
             }`}
           >

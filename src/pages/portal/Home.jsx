@@ -29,6 +29,7 @@ import { dashboardBuckets } from '../../modules/ptw/lib/permitStatus'
 import { openUnsafeByPermit } from '../../modules/ptw/lib/observations'
 import ModuleLogo3D, { has3DLogo } from './ModuleLogo3D'
 import IncompleteNotice from '../../shared/ui/IncompleteNotice'
+import { Button } from '../../shared/ui'
 
 // Same logo gradients the admin hub uses, so a module is recognisable by its
 // tile wherever it appears.
@@ -79,6 +80,7 @@ function Tile({ to, icon: Icon, gradient, label, title, delay = 0, logoKey }) {
                    transition-[transform,box-shadow] duration-300 ease-emil [transform-style:preserve-3d]
                    hover:shadow-clay-lg hover:[transform:translateY(-8px)_rotateX(9deg)_rotateY(-9deg)]
                    active:[transform:translateY(-3px)_scale(0.985)]
+                   focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-clay-bg
                    motion-reduce:transition-none motion-reduce:hover:[transform:none]"
       >
         {/* The logo lifts far enough off the card for the perspective to bend
@@ -257,7 +259,7 @@ export default function PortalHome() {
           <p className="relative text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-400">
             {new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}
           </p>
-          <h1 className="relative mt-2 text-[30px] font-extrabold leading-[1.15] tracking-[-0.025em] text-ink-900">
+          <h1 className="relative mt-2 break-words text-[28px] font-extrabold leading-[1.15] tracking-[-0.025em] text-ink-900 sm:text-[30px]">
             {greeting()}, {firstName}.
           </h1>
           <p className="relative mt-2 max-w-[46ch] text-sm leading-relaxed text-ink-500">
@@ -269,29 +271,28 @@ export default function PortalHome() {
             {/* With no navigation bar, this is the only way to the report
                 wizard — and reporting is the thing most people open the portal
                 to do, so it leads. */}
-            <button
+            <Button
               type="button"
               onClick={() => navigate('/portal/report')}
-              className="inline-flex items-center gap-1.5 rounded-2xl bg-brand-600 px-4 py-2.5 text-[13px] font-semibold text-white shadow-clay-brand transition-transform duration-200 ease-emil hover:bg-brand-700 active:scale-[0.97]"
+              icon={AlertTriangle}
             >
-              <AlertTriangle size={15} strokeWidth={2.2} />
               Report an incident
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              variant="soft"
               onClick={() => navigate('/portal/actions')}
-              className="inline-flex items-center gap-1.5 rounded-2xl bg-brand-100 px-4 py-2.5 text-[13px] font-semibold text-brand-700 shadow-clay-sm transition-transform duration-200 ease-emil active:scale-[0.97]"
             >
               {open.length ? `My ${open.length} open action${open.length === 1 ? '' : 's'}` : 'My actions'}
               <ArrowRight size={14} strokeWidth={2.4} />
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              variant="ghost"
               onClick={() => navigate('/portal/training')}
-              className="inline-flex items-center gap-1.5 rounded-2xl bg-clay-surface px-4 py-2.5 text-[13px] font-semibold text-ink-700 shadow-clay-sm transition-transform duration-200 ease-emil active:scale-[0.97]"
             >
               My training
-            </button>
+            </Button>
           </div>
         </Raised>
 
@@ -304,7 +305,7 @@ export default function PortalHome() {
               id="site-scope"
               value={activeSite}
               onChange={(e) => setSiteId(e.target.value)}
-              className="w-full appearance-none rounded-2xl border border-transparent bg-clay-surface py-3 pl-10 pr-3.5 text-[13.5px] font-semibold text-ink-900 shadow-clay-inset outline-none"
+              className="input w-full appearance-none py-3 pl-10 text-[13.5px] font-semibold"
             >
               <option value="all">All my sites ({sites.length})</option>
               {sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -321,7 +322,7 @@ export default function PortalHome() {
                 <Link
                   key={a.key}
                   to="/portal/actions"
-                  className="flex items-center gap-2.5 rounded-[14px] bg-clay-50 px-3 py-2 shadow-clay-sm"
+                  className="flex items-center gap-2.5 rounded-[14px] bg-clay-50 px-3 py-2 shadow-clay-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
                 >
                   <span className="h-6 w-1 flex-none rounded" style={{ background: NORM_BY_KEY[a.norm]?.color || '#ab987f' }} />
                   <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-ink-900">{a.title}</span>
@@ -394,7 +395,7 @@ export default function PortalHome() {
         <Raised className="p-5">
           <div className="mb-3 flex items-baseline justify-between">
             <p className="text-[15px] font-bold tracking-[-0.015em] text-ink-900">Pending actions</p>
-            <Link to="/portal/actions" className="text-xs font-semibold text-brand-700">My actions</Link>
+            <Link to="/portal/actions" className="rounded text-xs font-semibold text-brand-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400">My actions</Link>
           </div>
           <DueList
             rows={pending.actions}
@@ -406,7 +407,7 @@ export default function PortalHome() {
         <Raised className="p-5">
           <div className="mb-3 flex items-baseline justify-between">
             <p className="text-[15px] font-bold tracking-[-0.015em] text-ink-900">Pending training</p>
-            <Link to="/portal/training" className="text-xs font-semibold text-brand-700">My training</Link>
+            <Link to="/portal/training" className="rounded text-xs font-semibold text-brand-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400">My training</Link>
           </div>
           <DueList
             rows={pending.training}

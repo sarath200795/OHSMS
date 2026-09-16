@@ -217,7 +217,15 @@ export default function Login() {
             placeholder="you@company.com"
           />
         </Field>
-        <Field label="Password" htmlFor="password">
+        <Field
+          label="Password"
+          htmlFor="password"
+          action={
+            <Link to="/forgot-password" className="text-xs font-medium text-brand-700 hover:underline">
+              Forgot password?
+            </Link>
+          }
+        >
           <Input
             id="password"
             type="password"
@@ -228,11 +236,6 @@ export default function Login() {
             placeholder="••••••••"
           />
         </Field>
-        <div className="flex justify-end">
-          <Link to="/forgot-password" className="text-xs font-medium text-brand-700 hover:underline">
-            Forgot password?
-          </Link>
-        </div>
         <Button type="submit" loading={busy} className="w-full">
           Sign in
         </Button>
