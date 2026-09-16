@@ -31,11 +31,19 @@ concurrency:
   group: deploy-staging
   cancel-in-progress: true
 
+# Same least-privilege as ci.yml / deploy.yml. This job deploys to staging; it
+# does not need to write back to the repository.
+permissions:
+  contents: read
+
 jobs:
   staging:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       # Skip politely until staging exists, exactly as deploy.yml does, so CI
       # stays green for forks and for the period before the project is created.
@@ -81,6 +89,14 @@ jobs:
           fi
           echo "Staging target: $STAGING_ID (production is $PROD_ID)"
 
+      - name: Write the service-account key
+        if: steps.creds.outputs.configured == 'true'
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.STAGING_FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/sa-staging.json"
+          chmod 600 "$RUNNER_TEMP/sa-staging.json"
+
       - uses: actions/setup-node@v7
         if: steps.creds.outputs.configured == 'true'
         with:
@@ -91,6 +107,17 @@ jobs:
         if: steps.creds.outputs.configured == 'true'
         run: npm ci
 
+      # The Firestore emulator is a Java process. Production's deploy.yml already
+      # installs a JDK and runs the rules suite before it ships firestore.rules
+      # — this workflow deploys the same ruleset and previously skipped both.
+      # A merge to main is how a rules regression would first meet a real
+      # project; catching it here is cheaper than catching it on a tag.
+      - uses: actions/setup-java@v5
+        if: steps.creds.outputs.configured == 'true'
+        with:
+          distribution: temurin
+          java-version: 17
+
       # The same gates production runs. Staging is where a bad change is
       # supposed to be caught, which it cannot be if it was never checked.
       - name: Lint and test
@@ -100,6 +127,10 @@ jobs:
           npx vitest run
           npm --prefix functions ci
           npm --prefix functions test
+
+      - name: Rules tests
+        if: steps.creds.outputs.configured == 'true'
+        run: npm run test:rules
 
       - name: Build
         if: steps.creds.outputs.configured == 'true'
@@ -133,7 +164,6 @@ jobs:
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa-staging.json
         run: |
-          echo '${{ secrets.STAGING_FIREBASE_SERVICE_ACCOUNT }}' > "$GOOGLE_APPLICATION_CREDENTIALS"
           npx firebase-tools deploy --only functions \
             --project "${{ vars.STAGING_FIREBASE_PROJECT_ID }}" --non-interactive --force
 
@@ -142,7 +172,6 @@ jobs:
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa-staging.json
         run: |
-          echo '${{ secrets.STAGING_FIREBASE_SERVICE_ACCOUNT }}' > "$GOOGLE_APPLICATION_CREDENTIALS"
           npx firebase-tools deploy --only firestore:rules,firestore:indexes,storage \
             --project "${{ vars.STAGING_FIREBASE_PROJECT_ID }}" --non-interactive
 
@@ -158,3 +187,7 @@ jobs:
         if: steps.creds.outputs.configured == 'true'
         run: |
           echo "::notice::Staging updated: https://${{ vars.STAGING_FIREBASE_PROJECT_ID }}.web.app"
+
+      - name: Remove the service-account key
+        if: always() && steps.creds.outputs.configured == 'true'
+        run: rm -f "$RUNNER_TEMP/sa-staging.json"
