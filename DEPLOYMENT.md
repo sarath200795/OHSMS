@@ -83,3 +83,35 @@ Reads are already kept flat by shared ref-counted listeners
 (`subscribeOrgCollection` in `src/shared/org/orgData.js`), pagination and bounded
 live queries. Monitor before optimising further — though note `SECURITY.md` S-04:
 some collection listeners are still uncapped.
+
+---
+
+## 5. Staging functions deploy needs `iam.serviceAccounts.actAs`
+
+This is the failure `.github/workflows/deploy-staging.yml` hits on the
+**Deploy functions** step, and it is already named in two places in this
+repository:
+
+- `scripts/deploy-staging.mjs` (header): CI cannot deploy staging functions
+  today because the staging service account is refused
+  `iam.serviceAccounts.actAs` on the App Engine default / runtime service
+  account, which blocks that step and therefore the whole workflow. The laptop
+  script exists because of that, and it makes functions **opt-in**
+  (`--functions`) so a hand deploy can still ship rules and hosting.
+- `docs/ENTERPRISE-READINESS.md` scorecard: staging pipeline failing on
+  functions deploy (IAM) since 2026-08-29.
+
+Nothing in this repository can grant that IAM role. The GitHub secret
+`STAGING_FIREBASE_SERVICE_ACCOUNT` is a JSON key; Cloud Functions deploy
+impersonates the project's runtime service account, and that impersonation is
+`iam.serviceAccounts.actAs` on the runtime account, in GCP, for the identity
+in the secret. Until that grant exists, either:
+
+1. **Grant `iam.serviceAccounts.actAs`** on the staging runtime service
+   account to the CI deployer, then re-run the workflow, or
+2. **Stop deploying functions from staging CI** until then — which is what
+   `npm run deploy:staging` already does (functions are skipped unless
+   `--functions` is passed).
+
+This file does not claim either has been done. A functions deploy error that
+names `iam.serviceAccounts.actAs` is this gap, not a new one.
