@@ -233,6 +233,25 @@ export function subscribeOrgCollection(orgId, name, cb) {
   return sharedOrgCollection(`${orgId}/${name}`, cb)
 }
 
+// Shared listeners historically emitted a bare array so ~20 callers could
+// `setSites(rows)`. The portal home cannot: an error that hands back [] is
+// indistinguishable from "none yet", and that page must stay in loading rather
+// than claim an empty answer. The cache stores `{ rows, status }`; the array
+// wrappers unwrap for everyone else.
+function liveRows(payload) {
+  if (Array.isArray(payload)) return payload
+  return payload?.rows || []
+}
+
+function liveStatus(payload) {
+  if (Array.isArray(payload)) return 'ok'
+  return payload?.status || 'pending'
+}
+
+function emitLive(emit, rows, status) {
+  emit({ rows, status })
+}
+
 // ONE org-users listener shared by every module context.
 const sharedOrgUsers = createSharedSubscription((orgId, emit) =>
   onSnapshot(
@@ -246,12 +265,30 @@ const sharedOrgUsers = createSharedSubscription((orgId, emit) =>
     // silently stops at the name you were looking for is worse than a slow one.
     // Nothing here is counted, so there is no total to be short.
     query(collection(db, 'users'), where('orgId', '==', orgId), limit(COLLECTION_READ_CAP)),
-    (snap) => emit(snap.docs.map((d) => ({ uid: d.id, ...d.data() }))),
-    () => emit([])
+    (snap) =>
+      emitLive(
+        emit,
+        snap.docs.map((d) => ({ uid: d.id, ...d.data() })),
+        'ok'
+      ),
+    (err) => {
+      if (!isSessionEnd('users', err) && !isPermissionDenied(err)) {
+        // eslint-disable-next-line no-console
+        console.warn('[OHS MS] users read failed:', err?.message || err)
+      }
+      emitLive(emit, [], isPermissionDenied(err) ? 'denied' : 'failed')
+    }
   )
 )
 export function subscribeOrgUsers(orgId, cb) {
-  return sharedOrgUsers(orgId, cb)
+  return sharedOrgUsers(orgId, (payload) => cb(liveRows(payload)))
+}
+
+/** Same listener as subscribeOrgUsers, carrying whether the read succeeded. */
+export function subscribeOrgUsersRead(orgId, cb) {
+  return sharedOrgUsers(orgId, (payload) =>
+    cb({ rows: liveRows(payload), status: liveStatus(payload) })
+  )
 }
 
 /** Live org document. */
@@ -301,14 +338,17 @@ const sharedSites = createSharedSubscription((orgId, emit) => {
   const q = query(moduleCol(orgId, 'sites'), orderBy('name'))
   return onSnapshot(
     q,
-    (snap) => emit(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    (snap) =>
+      emitLive(
+        emit,
+        snap.docs.map((d) => ({ id: d.id, ...d.data() })),
+        'ok'
+      ),
     (err) => {
-      // Still an empty array, because ~20 callers destructure it as one and
-      // changing that shape here is a bigger change than this deserves. But it
-      // is no longer SILENT: a failed sites read renders as "No sites you can
-      // access yet" on every site picker in the app, which reads as a
-      // configuration problem and sends people off to create sites that
-      // already exist.
+      // The public subscribeSites wrapper still hands back an array, because
+      // ~20 callers set state from it and changing that shape is a bigger
+      // change than this deserves. subscribeSitesRead exists for the portal
+      // home, which must not treat a failed or denied read as "no sites".
       //
       // Note also the orderBy('name') above: Firestore drops documents missing
       // the ordered field, so a site saved without a name is invisible here
@@ -326,12 +366,19 @@ const sharedSites = createSharedSubscription((orgId, emit) => {
           err?.message || err
         )
       }
-      emit([])
+      emitLive(emit, [], isPermissionDenied(err) ? 'denied' : 'failed')
     }
   )
 })
 export function subscribeSites(orgId, cb) {
-  return sharedSites(orgId, cb)
+  return sharedSites(orgId, (payload) => cb(liveRows(payload)))
+}
+
+/** Same listener as subscribeSites, carrying whether the read succeeded. */
+export function subscribeSitesRead(orgId, cb) {
+  return sharedSites(orgId, (payload) =>
+    cb({ rows: liveRows(payload), status: liveStatus(payload) })
+  )
 }
 
 // Keep only non-empty string custom attributes (Building, Floor, …).
@@ -563,12 +610,17 @@ function joinLabels(names) {
  * Turn per-collection read status into the sentence a screen must show, or null
  * when every collection came back whole.
  *
- * `status` maps collection name → 'ok' | 'capped' | 'failed' | 'denied'. Kept
- * pure and exported so the wording is the same on every screen and can be tested.
+ * `status` maps collection name → 'pending' | 'ok' | 'capped' | 'failed' | 'denied'.
+ * Kept pure and exported so the wording is the same on every screen and can be
+ * tested.
  *
  * 'denied' is a successful empty: the viewer is not allowed to see the
  * collection (module off, role, site). It must not produce a banner — that is
  * how expected access checks used to look like a broken load.
+ *
+ * 'pending' is the same as silence: the listener has not answered yet. A banner
+ * about figures being short, raised before any snapshot, is how the portal home
+ * used to warn about data it had not even asked for.
  */
 export function incompleteReadNotice(status, cap = COLLECTION_READ_CAP) {
   const names = Object.keys(status || {})
@@ -586,22 +638,68 @@ export function incompleteReadNotice(status, cap = COLLECTION_READ_CAP) {
   return { capped, failed, cap, message: parts.join(' ') }
 }
 
-/** The state a screen starts in, before any snapshot has arrived. */
+/**
+ * A live read that can be shown as a figure, not a spinner.
+ *
+ * 'capped' still has rows — they are short, but they arrived. 'denied' and
+ * 'failed' did not: treating either as zero is how the portal home used to
+ * say "nothing is waiting on you" for a collection the viewer cannot see, or
+ * for one that never loaded. The portal keeps those in loading instead.
+ */
+export function readReady(status) {
+  return status === 'ok' || status === 'capped'
+}
+
+/**
+ * A live read that has answered without failing.
+ *
+ * Denied is a quiet empty (the viewer is not allowed to see it), not a hang.
+ * Failed and pending are not answers — the portal home stays in loading for
+ * those, rather than rendering an error or a confident zero.
+ */
+export function readAnswered(status) {
+  return readReady(status) || status === 'denied'
+}
+
+/** True when every named collection has rows that can be shown. */
+export function collectionsReady(status, names = []) {
+  return names.every((n) => readReady(status?.[n]))
+}
+
+/** True when every named collection has answered (ok, capped, or denied). */
+export function collectionsAnswered(status, names = []) {
+  return names.every((n) => readAnswered(status?.[n]))
+}
+
+/**
+ * The state a screen starts in, before any snapshot has arrived.
+ *
+ * Status is 'pending', not 'ok'. Initialising as 'ok' with empty lists is how
+ * the portal home used to read as "all clear" before a single listener had
+ * answered, and a later failed read then painted that as an amber banner.
+ */
 export function emptyCollections(names = []) {
-  return { data: Object.fromEntries(names.map((n) => [n, []])), incomplete: null }
+  return {
+    data: Object.fromEntries(names.map((n) => [n, []])),
+    incomplete: null,
+    status: Object.fromEntries(names.map((n) => [n, 'pending'])),
+  }
 }
 
 /**
  * Live rows for a set of org-scoped collections, capped and honest about it.
  *
- * The callback gets the whole set in one object — `{ data, incomplete }` — not
- * an array per collection. That shape is the point: these rows are counted and
- * the counts end up in regulatory reports, so a caller that can reach the rows
- * is holding, in the same object, the reason they might be short. There is no
- * way to take the list and leave the warning behind.
+ * The callback gets the whole set in one object — `{ data, incomplete, status }`
+ * — not an array per collection. That shape is the point: these rows are counted
+ * and the counts end up in regulatory reports, so a caller that can reach the
+ * rows is holding, in the same object, the reason they might be short. There is
+ * no way to take the list and leave the warning behind.
  *
  * `incomplete` is null while everything is whole; otherwise it carries the
- * message to put on screen (see incompleteReadNotice).
+ * message to put on screen (see incompleteReadNotice). `status` is the per-
+ * collection map, including 'pending' for listeners that have not answered —
+ * the portal home uses that to keep a section in loading rather than showing
+ * the banner or a confident empty.
  *
  * No orderBy, so no composite index is ever needed — the cap keeps the first
  * 5 000 by document ID, which is an arbitrary 5 000, but which 5 000 only
@@ -609,8 +707,9 @@ export function emptyCollections(names = []) {
  */
 export function subscribeCollections(orgId, names, cb) {
   const data = Object.fromEntries(names.map((n) => [n, []]))
-  const status = Object.fromEntries(names.map((n) => [n, 'ok']))
-  const emit = () => cb({ data: { ...data }, incomplete: incompleteReadNotice(status) })
+  const status = Object.fromEntries(names.map((n) => [n, 'pending']))
+  const emit = () =>
+    cb({ data: { ...data }, incomplete: incompleteReadNotice(status), status: { ...status } })
 
   const unsubs = names.map((name) =>
     onSnapshot(

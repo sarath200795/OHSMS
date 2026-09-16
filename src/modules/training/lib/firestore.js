@@ -10,6 +10,7 @@ import {
 } from 'firebase/firestore'
 import { db } from '../../../shared/firebase'
 import { logAudit } from '../../../shared/org/orgData'
+import { isPermissionDenied } from '../../../shared/lib/permissionDenied'
 import { computeExpiry, todayISO } from './status'
 import { reserveDocId } from '../../../shared/docId/reserve'
 import { removeFile } from '../../../shared/storage'
@@ -46,9 +47,24 @@ export function subscribeRecords(orgId, cb) {
   const q = query(recordCol(orgId), orderBy('completedOn', 'desc'), limit(RECORDS_LIVE_CAP))
   return onSnapshot(q, (s) => cb(s.docs.map((d) => ({ id: d.id, ...d.data() }))), () => cb([]))
 }
-export function subscribeAssignments(orgId, cb) {
+/**
+ * Live training assignments with the read's status.
+ *
+ * The array-only wrapper below still emits [] on a failed read, because the
+ * training module treats that as "none yet". The portal home cannot: that []
+ * used to render as "nothing outstanding" while the listener had actually
+ * been refused. Home uses this form and stays in loading unless status is 'ok'.
+ */
+export function subscribeAssignmentsRead(orgId, cb) {
   const q = query(assignmentCol(orgId), orderBy('createdAt', 'desc'), limit(ASSIGNMENTS_LIVE_CAP))
-  return onSnapshot(q, (s) => cb(s.docs.map((d) => ({ id: d.id, ...d.data() }))), () => cb([]))
+  return onSnapshot(
+    q,
+    (s) => cb({ rows: s.docs.map((d) => ({ id: d.id, ...d.data() })), status: 'ok' }),
+    (err) => cb({ rows: [], status: isPermissionDenied(err) ? 'denied' : 'failed' })
+  )
+}
+export function subscribeAssignments(orgId, cb) {
+  return subscribeAssignmentsRead(orgId, ({ rows }) => cb(rows))
 }
 
 /** One-time full fetches for reports (CSV) — not subject to the live caps. */

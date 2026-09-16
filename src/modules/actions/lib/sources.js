@@ -330,8 +330,12 @@ export const SOURCE_BY_KEY = Object.fromEntries(SOURCES.map((s) => [s.key, s]))
 export function subscribeActions(orgId, cb) {
   const latest = {} // { [sourceKey]: docs[] }
   // Keyed by COLLECTION, not source key: two sources can read the same
-  // collection, and the notice names collections.
-  const status = {}
+  // collection, and the notice names collections. Start pending so a caller
+  // that waits for every source to answer (the portal home) does not treat
+  // silence as "no outstanding actions".
+  const status = Object.fromEntries(
+    [...new Set(SOURCES.map((s) => s.collection))].map((name) => [name, 'pending'])
+  )
   const emit = () => {
     const rows = []
     for (const src of SOURCES) {
@@ -371,7 +375,7 @@ export function subscribeActions(orgId, cb) {
     // quietly short is worse here than anywhere else in the app: the whole
     // point of the tracker is that nothing outstanding is missed, so a silent
     // truncation says "you are up to date" when you are not.
-    cb({ rows, incomplete: incompleteReadNotice(status) })
+    cb({ rows, incomplete: incompleteReadNotice(status), status: { ...status } })
   }
   // Shared listeners: these collections are already watched by their own
   // modules, so the tracker adds no extra reads when they're mounted too.
