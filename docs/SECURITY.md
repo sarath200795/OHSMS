@@ -88,8 +88,10 @@ to the stored url when there is no path.
 this change still works. Revoking them means stripping the
 `firebaseStorageDownloadTokens` metadata from each object, and doing that blind
 would permanently break any pointer that has a url and no `path` — records from
-before uploads recorded one. That sweep needs an inventory pass first and is
-tracked in the private register.
+before uploads recorded one. The inventory is `scripts/inventory-download-tokens.mjs`:
+dry-run by default, `--apply` only strips tokens on pointers that already have
+a path, and url-only rows are listed for a person. Running it against production
+is an operator decision, not a deploy step.
 
 ### S-25 · Uploaded files are not scanned for malware — MEDIUM, mitigated and accepted
 

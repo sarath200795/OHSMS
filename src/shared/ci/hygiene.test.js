@@ -125,3 +125,15 @@ describe('docker compose can actually boot the emulators', () => {
     expect(read('docker-compose.yml')).toMatch(/mkdir -p \/app\/emulator-data/)
   })
 })
+
+describe('admin MFA in rules stays off until enrolment is done', () => {
+  it('requireAdminMfa returns false and isAdminOf short-circuits on that', () => {
+    const rules = read('firestore.rules')
+    // Flipping the constant is the lock. The hygiene pin is that it is false,
+    // not that the helper is absent — a missing helper would also "pass" a
+    // test that only looked for the string false somewhere else in the file.
+    expect(rules).toMatch(/function requireAdminMfa\(\) \{\s*return false;/)
+    expect(rules).toMatch(/!requireAdminMfa\(\) \|\| hasSecondFactor\(\)/)
+    expect(rules).toMatch(/sign_in_second_factor/)
+  })
+})

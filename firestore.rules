@@ -67,8 +67,34 @@ service cloud.firestore {
         && passwordIsOwn();
     }
 
+    // ── Admin MFA in rules (draft, OFF) ─────────────────────────────────────
+    //
+    // Console MFA (S-05) challenges at SIGN-IN. That is not the same as these
+    // rules requiring `sign_in_second_factor` on the token: an admin who has
+    // enrolled still holds any session minted before they enrolled, and an
+    // admin who has not enrolled at all is locked out of the tenant the
+    // moment requireAdminMfa returns true.
+    //
+    // isAdminOf gates member provisioning, role and access changes, and the
+    // organization document. Flipping this without every admin having enrolled
+    // TOTP (Settings → Security) AND signed in again is a lockout, not a
+    // control. Leave it false until that roll-call exists.
+    //
+    // The claim this app actually gets after a TOTP challenge is
+    // request.auth.token.firebase.sign_in_second_factor (string, e.g. "totp").
+    function hasSecondFactor() {
+      return request.auth != null
+        && request.auth.token.firebase.sign_in_second_factor is string
+        && request.auth.token.firebase.sign_in_second_factor.size() > 0;
+    }
+
+    function requireAdminMfa() {
+      return false;
+    }
+
     function isAdminOf(orgId) {
-      return isApprovedMemberOf(orgId) && myProfile().role == 'admin';
+      return isApprovedMemberOf(orgId) && myProfile().role == 'admin'
+        && (!requireAdminMfa() || hasSecondFactor());
     }
 
     // Unified roles: manager is elevated (approve/close/delete), auditor is

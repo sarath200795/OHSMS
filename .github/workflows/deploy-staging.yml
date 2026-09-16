@@ -159,13 +159,21 @@ jobs:
       # functions before rules, because rules depend on claims and on the
       # deleteOrgFile callable; rules and indexes before hosting, because the
       # client depends on both.
+      #
+      # This step is the one that has been red since 2026-08-29:
+      # iam.serviceAccounts.actAs on the staging runtime SA (DEPLOYMENT.md §5).
+      # The JSON key in STAGING_FIREBASE_SERVICE_ACCOUNT cannot grant that to
+      # itself. Failure here is that IAM gap, not a missing retry.
       - name: Deploy functions
         if: steps.creds.outputs.configured == 'true'
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa-staging.json
         run: |
-          npx firebase-tools deploy --only functions \
-            --project "${{ vars.STAGING_FIREBASE_PROJECT_ID }}" --non-interactive --force
+          if ! npx firebase-tools deploy --only functions \
+            --project "${{ vars.STAGING_FIREBASE_PROJECT_ID }}" --non-interactive --force; then
+            echo "::error::Functions deploy failed. If the log names iam.serviceAccounts.actAs, the staging deployer cannot impersonate the runtime SA — grant that in GCP, or stop deploying functions from CI until then (DEPLOYMENT.md §5). This job did not change IAM."
+            exit 1
+          fi
 
       - name: Deploy rules + indexes
         if: steps.creds.outputs.configured == 'true'
