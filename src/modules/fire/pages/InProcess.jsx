@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Truck, CheckCircle2, QrCode, Download } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../shared/lib/toastCaught'
 import { PageHeader, EmptyState, Modal, Spinner, Field } from '../components/ui'
 import ExtinguisherTable from '../components/ExtinguisherTable'
 import ListFilters from '../components/ListFilters'
@@ -43,7 +44,7 @@ export default function InProcess() {
       toast.success('Refilled & closed — dates updated, defects cleared')
       setClosing(null)
     } catch (e) {
-      toast.error(e.message)
+      toastCaught(e)
     } finally {
       setBusy(false)
     }

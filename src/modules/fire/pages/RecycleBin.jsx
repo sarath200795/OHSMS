@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { format } from 'date-fns'
 import { Trash2, RotateCcw, AlertTriangle, Database } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../shared/lib/toastCaught'
 import { PageHeader, EmptyState, Modal, Spinner, Badge } from '../components/ui'
 import { Pager } from '../../../shared/ui'
 import { usePagination } from '../../../shared/ui/usePagination'
@@ -45,7 +46,7 @@ export default function RecycleBin() {
       await restoreExtinguisher(orgId, org?.name || orgName, ext.id, actor)
       toast.success('Extinguisher restored')
     } catch (e) {
-      toast.error(e.message)
+      toastCaught(e)
     } finally {
       setBusyId(null)
     }
@@ -58,7 +59,7 @@ export default function RecycleBin() {
       toast.success('Permanently deleted')
       setPurgeFor(null)
     } catch (e) {
-      toast.error(e.message)
+      toastCaught(e)
     } finally {
       setBusy(false)
     }

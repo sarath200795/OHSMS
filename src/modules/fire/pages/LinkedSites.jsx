@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { MapPin, Flame, HeartPulse, BellRing, SignpostBig, Ambulance, BriefcaseMedical, Boxes, TriangleAlert, ArrowRight } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../shared/lib/toastCaught'
 import { PageHeader, EmptyState, Spinner } from '../components/ui'
 import { useFleet } from '../context/FleetContext'
 import { useAuth } from '../context/AuthContext'
@@ -78,7 +79,7 @@ export default function LinkedSites() {
       for (const f of r.failed) toast.error(`${f.kind.toUpperCase()}: ${f.message}`)
       if (!r.failed.length) setLinkOpen(false)
     } catch (e) {
-      toast.error(e?.message || 'Could not link to sites')
+      toastCaught(e, 'Could not link to sites')
     } finally {
       setBusy(false)
     }

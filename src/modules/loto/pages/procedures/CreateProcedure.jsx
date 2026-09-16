@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../../shared/lib/toastCaught'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import SiteScopePicker from '../../../../shared/org/SiteScopePicker'
@@ -151,7 +152,7 @@ export default function CreateProcedure() {
       }
       navigate(`/loto/procedures/${procedureId}`)
     } catch (err) {
-      toast.error(err.message || 'Save failed')
+      toastCaught(err, 'Save failed')
     } finally {
       setSaving(false)
     }

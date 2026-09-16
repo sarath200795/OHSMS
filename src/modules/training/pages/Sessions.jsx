@@ -11,6 +11,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../shared/lib/toastCaught'
 import {
   CalendarClock, Plus, Pencil, Trash2, Video, MapPin, Users, Check, X, ExternalLink,
 } from 'lucide-react'
@@ -84,19 +85,19 @@ export default function Sessions() {
       if (editing === 'new') { await createSession(orgId, payload, actor); toast.success('Session scheduled') }
       else { await updateSession(orgId, editing.id, payload, actor); toast.success('Session updated') }
       setEditing(null)
-    } catch (err) { toast.error(err?.message || 'Failed') } finally { setBusy(false) }
+    } catch (err) { toastCaught(err, 'Failed') } finally { setBusy(false) }
   }
 
   const remove = async (s) => {
     const n = counts.get(s.id)?.total || 0
     if (!window.confirm(`Delete this session for "${s.courseName}"?${n ? ` ${n} request(s) will be removed with it.` : ''}`)) return
     try { await deleteSession(orgId, s.id, actor, s.courseName); toast.success('Session deleted') }
-    catch (err) { toast.error(err?.message || 'Failed') }
+    catch (err) { toastCaught(err, 'Failed') }
   }
 
   const decide = async (req, status) => {
     try { await decideRequest(orgId, req, status, actor); toast.success(status === 'approved' ? 'Approved' : 'Declined') }
-    catch (err) { toast.error(err?.message || 'Failed') }
+    catch (err) { toastCaught(err, 'Failed') }
   }
 
   const shown = openRequests ? requests.filter((r) => r.sessionId === openRequests) : []

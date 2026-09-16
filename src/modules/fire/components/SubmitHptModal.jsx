@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Gauge, Send, Paperclip, X, TriangleAlert } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../shared/lib/toastCaught'
 import { Modal, Spinner, Field } from './ui'
 import { submitHpt } from '../lib/firestore'
 import { validateHpt, nextHptDate, HPT_RESULT } from '../lib/hpt'
@@ -60,7 +61,7 @@ export default function SubmitHptModal({ open, onClose, ext, orgId, orgName, act
     try {
       setFile({ name: f.name, type: f.type, data: await readFileAsDataUrl(f) })
     } catch (e) {
-      toast.error(e.message)
+      toastCaught(e)
     } finally {
       if (fileInputRef.current) fileInputRef.current.value = ''
     }
@@ -85,7 +86,7 @@ export default function SubmitHptModal({ open, onClose, ext, orgId, orgName, act
       onSubmitted?.(hpt)
       onClose?.()
     } catch (e) {
-      toast.error(e.message)
+      toastCaught(e)
     } finally {
       setBusy(false)
     }

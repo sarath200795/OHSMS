@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../shared/lib/toastCaught'
 import { Plus, Download, Trash2, Pencil, Cctv, HardDrive, Router } from 'lucide-react'
 import {
   PageHeader, Button, Modal, Field, Input, Select, Textarea, EmptyState, SkeletonTable, Pager,
@@ -113,7 +114,7 @@ export default function Inventory() {
       toast.success(id ? 'Saved' : 'Added')
       setForm(null)
     } catch (e) {
-      toast.error(e.message)
+      toastCaught(e)
     } finally {
       setBusy(false)
     }
@@ -133,7 +134,7 @@ export default function Inventory() {
       await fn(orgId, row.id, row.name, actor)
       toast.success('Removed')
     } catch (e) {
-      toast.error(e.message)
+      toastCaught(e)
     }
   }
 
@@ -147,7 +148,7 @@ export default function Inventory() {
       const n = await provisionSiteMerakis(orgId, sites, merakis, actor)
       toast.success(n ? `Created ${n} Meraki device${n === 1 ? '' : 's'}` : 'Every site already has one')
     } catch (e) {
-      toast.error(e.message)
+      toastCaught(e)
     } finally {
       setBusy(false)
     }
@@ -170,7 +171,7 @@ export default function Inventory() {
       toast.success('Defects updated')
       setDefectFor(null)
     } catch (e) {
-      toast.error(e.message)
+      toastCaught(e)
     }
   }
 

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../shared/lib/toastCaught'
 import { UsersRound, Search, Download, BadgeCheck, AlertTriangle, CalendarClock, ShieldAlert } from 'lucide-react'
 import { PageHeader, Card, Field, Input, Select, Button, Modal, Badge, StatCard, EmptyState, SkeletonTable, Pager } from '../../../shared/ui'
 import { formatDate } from '../../../shared/lib/format'
@@ -121,7 +122,7 @@ export default function EmployeeStatus() {
         : `training-status-as-of-${to}.csv`, { bom: false })
       toast.success(`Exported ${report.length} rows (${users.length} employees × ${courses.length} courses)`)
     } catch (e) {
-      toast.error(e?.message || 'Export failed')
+      toastCaught(e, 'Export failed')
     } finally {
       setExporting(false)
     }

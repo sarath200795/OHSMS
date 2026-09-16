@@ -20,6 +20,7 @@
 import { dataProvider } from '../../../shared/data'
 import { logAudit } from '../../../shared/org/orgData'
 import { AUDIT } from '../../../shared/audit/audit'
+import { isPermissionDenied } from '../../../shared/lib/permissionDenied'
 
 const COLLECTION = 'documentFolders'
 const path = (orgId) => `organizations/${orgId}/${COLLECTION}`
@@ -62,11 +63,13 @@ export const documentFolderService = {
       { orderBy: ['createdAt', 'desc'], limit: MAX },
       cb,
       (err) => {
-        // The generic service turns a read failure into an empty list, which
-        // here would render as "this org has no folders" — indistinguishable
-        // from the truth, and the tree would silently flatten. Say it instead.
-        // eslint-disable-next-line no-console
-        console.error('[Documents] folder listener failed:', err?.message || err)
+        // Permission-denied is the viewer not being allowed the tree — empty
+        // folders, quietly. Any other failure used to vanish into "this org
+        // has no folders", which is indistinguishable from the truth.
+        if (!isPermissionDenied(err)) {
+          // eslint-disable-next-line no-console
+          console.error('[Documents] folder listener failed:', err?.message || err)
+        }
         cb([])
       }
     )
@@ -94,8 +97,13 @@ export const documentFolderService = {
       createdByName: actor?.name || 'Unknown',
     }
     const id = await dataProvider.create(path(orgId), record)
-    await audit(orgId, actor, AUDIT.CREATE, { id, name: record.name },
-      `Created folder "${record.name}"`)
+    await audit(
+      orgId,
+      actor,
+      AUDIT.CREATE,
+      { id, name: record.name },
+      `Created folder "${record.name}"`
+    )
     return id
   },
 
@@ -105,8 +113,13 @@ export const documentFolderService = {
       name: next,
       updatedAt: dataProvider.serverTimestamp(),
     })
-    await audit(orgId, actor, AUDIT.UPDATE, { id: folder.id, name: next },
-      `Renamed folder "${clean(folder.name)}" to "${next}"`)
+    await audit(
+      orgId,
+      actor,
+      AUDIT.UPDATE,
+      { id: folder.id, name: next },
+      `Renamed folder "${clean(folder.name)}" to "${next}"`
+    )
   },
 
   /**

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, lazy, Suspense } from 'react'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../shared/lib/toastCaught'
 import {
   Building2, Plus, Trash2, MapPin, Map as MapIcon, List, Pencil, Upload, Download, Search, X,
   CheckCircle2, AlertCircle, FireExtinguisher, HeartPulse, BriefcaseMedical, AlertTriangle,
@@ -116,7 +117,7 @@ export default function Sites() {
       }
       setEditing(null)
     } catch (err) {
-      toast.error(err?.message || 'Failed')
+      toastCaught(err, 'Failed')
     } finally {
       setBusy(false)
     }
@@ -129,7 +130,7 @@ export default function Sites() {
       toast.success('Site deleted')
       setSelected(null)
     } catch (err) {
-      toast.error(err?.message || 'Failed')
+      toastCaught(err, 'Failed')
     }
   }
 
@@ -210,7 +211,7 @@ export default function Sites() {
       setBulkOpen(false)
       setBulkResult(null)
     } catch (err) {
-      toast.error(err?.message || 'Import failed')
+      toastCaught(err, 'Import failed')
     } finally {
       setBulkBusy(false)
     }
@@ -284,7 +285,7 @@ export default function Sites() {
       toast.success(`${n} site${n === 1 ? '' : 's'} deleted`)
       setConfirmBulk(false); setConfirmText(''); exitSelect(); setSelected(null)
     } catch (err) {
-      toast.error(err?.message || 'Failed')
+      toastCaught(err, 'Failed')
     } finally {
       setBusy(false)
     }

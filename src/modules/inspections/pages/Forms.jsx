@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../shared/lib/toastCaught'
 import {
   ClipboardList, Plus, Pencil, Trash2, CalendarPlus, Search, ListChecks, MapPin, PlayCircle,
 } from 'lucide-react'
@@ -39,14 +40,14 @@ export default function Forms() {
 
   const handleStatus = async (t, status) => {
     try { await setTemplateStatus(orgId, t.id, status) }
-    catch (e) { toast.error('Could not update status: ' + e.message) }
+    catch (e) { toastCaught(e, 'Could not update status') }
   }
 
   const handleDelete = async (t) => {
-    if (!isAdmin) return toast.error('Only admins can delete forms.')
+    if (!isAdmin) return
     if (!window.confirm(`Permanently delete "${t.title}"?`)) return
     try { await deleteTemplate(orgId, t.id, t.title, profile); toast.success('Form deleted') }
-    catch (e) { toast.error('Delete failed: ' + e.message) }
+    catch (e) { toastCaught(e, 'Delete failed') }
   }
 
   // An on-demand form never reaches the calendar, so this is the only way to

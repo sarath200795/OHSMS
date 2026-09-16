@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { BriefcaseMedical, Plus, Pencil, Trash2, MapPin, X, LayoutGrid, List, Download, Check, Search, Filter, PackageCheck, CalendarX2 } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../shared/lib/toastCaught'
 import { PageHeader, EmptyState, Modal, Badge, Spinner, Field } from '../components/ui'
 import { Pager, IconButton } from '../../../shared/ui'
 import { usePagination } from '../../../shared/ui/usePagination'
@@ -150,7 +151,7 @@ export default function FirstAid() {
       toast.success(`${r.linked} linked · ${r.nameChanges} renamed · ${r.entityChanges} entity value(s) corrected`)
       setLinkOpen(false)
     } catch (e) {
-      toast.error(e?.message || 'Could not link to sites')
+      toastCaught(e, 'Could not link to sites')
     } finally { setBusy(false) }
   }
 
@@ -224,7 +225,7 @@ export default function FirstAid() {
       }
       setEditing(null)
     } catch (err) {
-      toast.error(err.message)
+      toastCaught(err)
     } finally {
       setBusy(false)
     }
@@ -235,7 +236,7 @@ export default function FirstAid() {
       await deleteFirstAid(orgId, removing.id, { uid: profile?.uid, name: profile?.name }, `${removing.item} @ ${removing.centerName}`)
       toast.success('Record deleted')
     } catch (err) {
-      toast.error(err.message)
+      toastCaught(err)
     } finally {
       setRemoving(null)
     }
@@ -256,7 +257,7 @@ export default function FirstAid() {
       toast.success(`${res.written} item(s) recorded${res.removed ? ` · ${res.removed} removed` : ''}`)
       setChecking(null)
     } catch (err) {
-      toast.error(err.message)
+      toastCaught(err)
     } finally { setBusy(false) }
   }
 

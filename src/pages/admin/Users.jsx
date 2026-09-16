@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../shared/lib/toastCaught'
 import { UsersRound, Check, X, ShieldCheck, KeyRound, Search } from 'lucide-react'
 import { useAuth } from '../../shared/auth/AuthContext'
 import {
@@ -50,7 +51,7 @@ export default function Users() {
     wrap(() => grantAccessRequest(u.uid, u.accessRequest, orgId, actor, u.name), `Access granted to ${u.name}`)
 
   async function wrap(fn, ok) {
-    try { await fn(); toast.success(ok) } catch (e) { toast.error(e?.message || 'Failed') }
+    try { await fn(); toast.success(ok) } catch (e) { toastCaught(e, 'Failed') }
   }
 
   const openManage = (u) => {
@@ -87,7 +88,7 @@ export default function Users() {
       toast.success(`Access updated for ${manage.name}`)
       setManage(null)
     } catch (err) {
-      toast.error(err?.message || 'Failed')
+      toastCaught(err, 'Failed')
     } finally {
       setBusy(false)
     }

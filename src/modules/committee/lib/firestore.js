@@ -16,6 +16,7 @@ import {
 } from 'firebase/firestore'
 import { db } from '../../../shared/firebase'
 import { isSessionEnd } from '../../../shared/sessionEnd'
+import { isPermissionDenied } from '../../../shared/lib/permissionDenied'
 import { reserveDocId } from '../../../shared/docId/reserve'
 import { orgIndexRef, COLLECTION_READ_CAP } from '../../../shared/org/orgData'
 // Minutes name people and record what was said about them, so the subject, the
@@ -77,7 +78,8 @@ export function subscribeConsultations(orgId, cb, onError) {
   return onSnapshot(query(consultationCol(orgId), limit(COLLECTION_READ_CAP)),
     (snap) => opened(snap.docs.map((d) => ({ firebaseKey: d.id, ...d.data() }))),
     (err) => {
-      if (!isSessionEnd('consultations', err)) {
+      if (!isSessionEnd('consultations', err) && !isPermissionDenied(err)) {
+        // eslint-disable-next-line no-console
         console.warn('[HSE] consultations read failed:', err?.message || err)
       }
       onError?.(err)

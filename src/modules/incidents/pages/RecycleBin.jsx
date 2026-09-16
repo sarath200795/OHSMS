@@ -1,4 +1,5 @@
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../shared/lib/toastCaught'
 import { motion } from 'framer-motion'
 import { Trash2, RotateCcw, X, ClipboardList, Activity } from 'lucide-react'
 import { PageHeader, EmptyState } from '../components/ui'
@@ -22,7 +23,7 @@ export default function RecycleBin() {
       if (it._kind === 'incident') await restoreIncident(orgId, it.id, actor)
       else await restoreIllness(orgId, it.id, actor)
       toast.success(`${it.refNo} restored`)
-    } catch (e) { toast.error(e.message || 'Could not restore') }
+    } catch (e) { toastCaught(e, 'Could not restore') }
   }
   const purge = async (it) => {
     if (!window.confirm(`Permanently delete ${it.refNo}? This cannot be undone.`)) return
@@ -30,7 +31,7 @@ export default function RecycleBin() {
       if (it._kind === 'incident') await purgeIncident(orgId, it.id, actor, it.refNo)
       else await purgeIllness(orgId, it.id, actor, it.refNo)
       toast.success(`${it.refNo} permanently deleted`)
-    } catch (e) { toast.error(e.message || 'Could not purge') }
+    } catch (e) { toastCaught(e, 'Could not purge') }
   }
 
   return (

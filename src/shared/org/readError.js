@@ -25,6 +25,7 @@
 // "could not be loaded at all… these numbers must not be quoted as a count".
 // ─────────────────────────────────────────────────────────────────────────────
 import { isSessionEnd } from '../sessionEnd'
+import { isPermissionDenied } from '../lib/permissionDenied'
 
 /**
  * An onSnapshot error handler that reports the failure and unblocks the caller.
@@ -35,7 +36,7 @@ import { isSessionEnd } from '../sessionEnd'
  */
 export function onReadError(label, cb, fallback = []) {
   return (err) => {
-    if (!isSessionEnd(label, err)) {
+    if (!isSessionEnd(label, err) && !isPermissionDenied(err)) {
       // eslint-disable-next-line no-console
       console.warn(`[OHS MS] ${label} read failed:`, err?.message || err)
     }

@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import { QRCodeCanvas } from 'qrcode.react'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../shared/lib/toastCaught'
 import { Spinner, Modal, Field, EmptyState } from '../components/ui'
 import StatusBadge from '../components/StatusBadge'
 import PermitPrintable from '../components/PermitPrintable'
@@ -151,7 +152,7 @@ export default function PermitDetail() {
 
   const run = async (fn) => {
     setBusy(true)
-    try { await fn() } catch (e) { toast.error(e.message || 'Action failed') } finally { setBusy(false) }
+    try { await fn() } catch (e) { toastCaught(e, 'Action failed') } finally { setBusy(false) }
   }
 
   const onAddDocument = async (e) => {
@@ -162,7 +163,7 @@ export default function PermitDetail() {
       const f = await fileToDataUrl(file)
       await addPermitDocument(orgId, permit.id, { key: 'extra', label: f.name, mandatory: false, fileName: f.name, fileType: f.type, fileData: f.dataUrl, size: f.size }, actor)
       toast.success('Document attached')
-    } catch (err) { toast.error(err.message) }
+    } catch (err) { toastCaught(err) }
   }
   const onRemoveDocument = (d) => run(async () => {
     await deletePermitDocument(orgId, permit.id, d.id, actor, d.label || d.fileName)

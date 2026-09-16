@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../../shared/lib/toastCaught'
 import { useAuth } from '../../context/AuthContext'
 import { useOrgProcedures } from '../../hooks/useOrgProcedures'
 import Button from '../../components/ui/Button'
@@ -71,7 +72,7 @@ export default function Inventory() {
       await deleteProcedure(p)
       toast.success('Deleted')
     } catch (err) {
-      toast.error(err.message || 'Delete failed')
+      toastCaught(err, 'Delete failed')
     }
   }
 

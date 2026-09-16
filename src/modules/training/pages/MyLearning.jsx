@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../shared/lib/toastCaught'
 import {
   BookOpenCheck, GraduationCap, Link2, Paperclip, CheckCircle2, CalendarClock, BadgeCheck, Award,
   Video, MapPin, ExternalLink,
@@ -145,7 +146,7 @@ export default function MyLearning() {
       await requestSession(orgId, { session, profile }, actor)
       toast.success('Requested — your trainer will confirm your place')
     } catch (e) {
-      toast.error(e?.message || 'Could not send the request')
+      toastCaught(e, 'Could not send the request')
     } finally { setBusyId(null) }
   }
 
@@ -155,7 +156,7 @@ export default function MyLearning() {
       await withdrawRequest(orgId, req.id, actor, req.courseName)
       toast.success('Request withdrawn')
     } catch (e) {
-      toast.error(e?.message || 'Could not withdraw')
+      toastCaught(e, 'Could not withdraw')
     } finally { setBusyId(null) }
   }
 
@@ -176,7 +177,7 @@ export default function MyLearning() {
       await selfCompleteTraining(orgId, { course, profile, assignmentIds: ids }, actor)
       toast.success(`"${course.name}" marked completed`)
     } catch (e) {
-      toast.error(e?.message || 'Could not complete the training')
+      toastCaught(e, 'Could not complete the training')
     } finally {
       setBusyId(null)
     }
@@ -192,7 +193,7 @@ export default function MyLearning() {
       await selfCompleteTraining(orgId, { course, profile, assignmentIds: ids }, actor)
       toast.success(`"${course.name}" marked completed`)
     } catch (e) {
-      toast.error(e?.message || 'Could not complete the training')
+      toastCaught(e, 'Could not complete the training')
     } finally {
       setBusyId(null)
     }

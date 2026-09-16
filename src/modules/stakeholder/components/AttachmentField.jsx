@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../shared/lib/toastCaught'
 import { Upload, X, Paperclip, Link2, Loader2, Video } from 'lucide-react'
 import { Button, Input, Field } from '../../../shared/ui'
 import { putFile, MAX_UPLOAD_BYTES, formatSize } from '../../../shared/storage'
@@ -57,7 +58,7 @@ export default function AttachmentField({ kind, value = [], onChange, disabled =
         })
       }
     } catch (err) {
-      toast.error(err.message || 'Upload failed')
+      toastCaught(err, 'Upload failed')
     } finally {
       setBusy(false)
     }

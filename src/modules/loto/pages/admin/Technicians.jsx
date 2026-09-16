@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../../shared/lib/toastCaught'
 import { useAuth } from '../../context/AuthContext'
 import { useTechnicians } from '../../hooks/useTechnicians'
 import { useLocks } from '../../hooks/useLocks'
@@ -44,7 +45,7 @@ export default function Technicians() {
       setForm({ name: '', lockNo: '', contact: '' })
       toast.success('Technician added')
     } catch (err) {
-      toast.error(err.message || 'Could not add technician')
+      toastCaught(err, 'Could not add technician')
     } finally {
       setSaving(false)
     }
@@ -59,7 +60,7 @@ export default function Technicians() {
       await deleteTechnician(t.id)
       toast.success('Removed')
     } catch (err) {
-      toast.error(err.message || 'Could not remove')
+      toastCaught(err, 'Could not remove')
     }
   }
 
@@ -67,7 +68,7 @@ export default function Technicians() {
     try {
       await updateTechnician(t.id, { active: t.active === false })
     } catch (err) {
-      toast.error(err.message || 'Update failed')
+      toastCaught(err, 'Update failed')
     }
   }
 

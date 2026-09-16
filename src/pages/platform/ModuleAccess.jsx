@@ -12,6 +12,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../shared/lib/toastCaught'
+import { isPermissionDenied } from '../../shared/lib/permissionDenied'
 import {
   Building2, Check, RotateCcw, Save, Search, ShieldCheck, SlidersHorizontal, X,
 } from 'lucide-react'
@@ -58,7 +60,9 @@ export default function ModuleAccess() {
       .catch((err) => {
         if (!live) return
         setOrgs([])
-        setLoadError(err?.message || 'Could not load the organization list.')
+        if (!isPermissionDenied(err)) {
+          setLoadError(err?.message || 'Could not load the organization list.')
+        }
       })
     return () => { live = false }
   }, [])
@@ -67,7 +71,12 @@ export default function ModuleAccess() {
     () =>
       subscribeAllEntitlements(
         (map) => { setEnts(map); setEntsReady(true) },
-        (err) => { setEntsReady(true); setLoadError(err?.message || 'Could not load entitlements.') }
+        (err) => {
+          setEntsReady(true)
+          if (!isPermissionDenied(err)) {
+            setLoadError(err?.message || 'Could not load entitlements.')
+          }
+        }
       ),
     []
   )
@@ -110,13 +119,7 @@ export default function ModuleAccess() {
       setDraft(null)
       toast.success(`Saved — ${current?.name || selected}`)
     } catch (err) {
-      // The only expected failure is a rules refusal, which means this account
-      // no longer holds the platform grant. Say so rather than "write failed".
-      toast.error(
-        err?.code === 'permission-denied'
-          ? 'Refused. This account no longer has platform access.'
-          : err?.message || 'Could not save.'
-      )
+      toastCaught(err, 'Could not save.')
     } finally {
       setBusy(false)
     }
@@ -130,7 +133,7 @@ export default function ModuleAccess() {
       setDraft(null)
       toast.success('Restored to the full product.')
     } catch (err) {
-      toast.error(err?.message || 'Could not reset.')
+      toastCaught(err, 'Could not reset.')
     } finally {
       setBusy(false)
     }

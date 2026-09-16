@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../shared/lib/toastCaught'
 import { ChevronLeft, Save, Trash2, TriangleAlert } from 'lucide-react'
 import {
-  PageHeader, Button, Field, Input, Select, Textarea, SkeletonDetail, EmptyState,
+  PageHeader, Button, Field, Input, Select, Textarea, SkeletonDetail, EmptyState, AccessDenied,
 } from '../../../shared/ui'
 import SiteScopePicker from '../../../shared/org/SiteScopePicker'
 import { useAuth } from '../../../shared/auth/AuthContext'
@@ -70,7 +71,7 @@ export default function LegalIssueForm() {
       toast.success(id ? 'Saved' : 'Legal issue logged')
       navigate('/stakeholder/legal')
     } catch (e) {
-      toast.error(e.message)
+      toastCaught(e)
     } finally {
       setBusy(false)
     }
@@ -84,12 +85,12 @@ export default function LegalIssueForm() {
       toast.success('Deleted')
       navigate('/stakeholder/legal')
     } catch (e) {
-      toast.error(e.message)
+      toastCaught(e)
     }
   }
 
   if (!isManager) {
-    return <EmptyState title="Managers only" hint="Ask an admin or manager to log legal issues." />
+    return <AccessDenied description="Ask an admin or manager to log legal issues." />
   }
   if (id && loading && !hydrated) return <SkeletonDetail />
   if (id && !loading && !hydrated) {

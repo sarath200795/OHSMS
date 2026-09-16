@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Signpost, Plus, Pencil, Trash2, MapPin, X, LayoutGrid, List, Download, Check, Search, Filter } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../shared/lib/toastCaught'
 import { PageHeader, EmptyState, Modal, Badge, Spinner, Field } from '../components/ui'
 import { Pager, IconButton } from '../../../shared/ui'
 import { usePagination } from '../../../shared/ui/usePagination'
@@ -149,7 +150,7 @@ export default function Signages() {
       toast.success(`${r.linked} linked · ${r.nameChanges} renamed · ${r.entityChanges} entity value(s) corrected`)
       setLinkOpen(false)
     } catch (e) {
-      toast.error(e?.message || 'Could not link to sites')
+      toastCaught(e, 'Could not link to sites')
     } finally { setBusy(false) }
   }
 
@@ -234,7 +235,7 @@ export default function Signages() {
       }
       setEditing(null)
     } catch (err) {
-      toast.error(err.message)
+      toastCaught(err)
     } finally {
       setBusy(false)
     }
@@ -245,7 +246,7 @@ export default function Signages() {
       await deleteSignage(orgId, removing.id, { uid: profile?.uid, name: profile?.name }, `${removing.type} @ ${removing.centerName}`)
       toast.success('Signage deleted')
     } catch (err) {
-      toast.error(err.message)
+      toastCaught(err)
     } finally {
       setRemoving(null)
     }

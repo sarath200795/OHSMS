@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../shared/lib/toastCaught'
 import {
   ClipboardList, CalendarPlus, Search, ChevronDown, ChevronUp, X, UsersRound, CheckCircle2, AlertTriangle,
 } from 'lucide-react'
@@ -85,7 +86,7 @@ export default function AdminWorkspace() {
       setValue('')
       setPicked([])
     } catch (err) {
-      toast.error(err?.message || 'Failed')
+      toastCaught(err, 'Failed')
     } finally {
       setBusy(false)
     }
@@ -157,7 +158,7 @@ export default function AdminWorkspace() {
       await cancelAssignmentsBulk(orgId, c.openIds, actor, `${c.courseName} — ${c.groupLabel}`)
       toast.success(`${c.openIds.length} assignment(s) cancelled`)
     } catch (e) {
-      toast.error(e?.message || 'Failed')
+      toastCaught(e, 'Failed')
     } finally {
       setBusyKey(null)
     }
@@ -169,7 +170,7 @@ export default function AdminWorkspace() {
       await cancelAssignment(orgId, a.id, actor, `${a.courseName} · ${a.employeeName}`)
       toast.success('Assignment cancelled')
     } catch (e) {
-      toast.error(e?.message || 'Failed')
+      toastCaught(e, 'Failed')
     } finally {
       setBusyKey(null)
     }

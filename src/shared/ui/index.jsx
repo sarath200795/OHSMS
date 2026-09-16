@@ -9,7 +9,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { cloneElement, forwardRef, isValidElement, useId } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
-import { Loader2, X, Check } from 'lucide-react'
+import { Loader2, X, Check, Lock } from 'lucide-react'
 // Import from './useFocusTrap' directly if another component needs it — it is
 // not re-exported here so this file stays components-only for fast refresh.
 import { useFocusTrap } from './useFocusTrap'
@@ -405,6 +405,32 @@ export function EmptyState({ icon: Icon, title, description, hint, message, acti
       </div>
       {action}
     </div>
+  )
+}
+
+/**
+ * A page (or step) the viewer is not allowed to use.
+ *
+ * Distinct from EmptyState: empty means there is nothing here yet; this means
+ * the route opened but the role or licence does not include it. It is a status,
+ * not an error — no amber, no toast, no "Error: …".
+ */
+export function AccessDenied({
+  title = "You don't have access",
+  description = "This isn't available for your role. Ask an administrator if you need it.",
+  hint,
+  action,
+  className,
+}) {
+  return (
+    <EmptyState
+      icon={Lock}
+      title={title}
+      description={description}
+      hint={hint}
+      action={action}
+      className={className}
+    />
   )
 }
 

@@ -6,6 +6,7 @@ import {
   Users as UsersIcon, ArrowRight, Table, Paperclip, Flame, Eye, FileWarning, X,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../shared/lib/toastCaught'
 import { PageHeader, Field, Spinner, Modal } from '../components/ui'
 import { useAuth } from '../context/AuthContext'
 import { usePermits } from '../context/PermitContext'
@@ -153,7 +154,7 @@ export default function PermitForm() {
     try {
       const f = await fileToDataUrl(file)
       setDocs((d) => ({ ...d, [req.key]: { label: req.label, mandatory: req.mandatory, fileName: f.name, fileType: f.type, fileData: f.dataUrl, size: f.size } }))
-    } catch (err) { toast.error(err.message) }
+    } catch (err) { toastCaught(err) }
   }
   const removeDoc = (key) => setDocs((d) => { const n = { ...d }; delete n[key]; return n })
 
@@ -164,7 +165,7 @@ export default function PermitForm() {
     try {
       const f = await fileToDataUrl(file)
       setExtraDocs((arr) => [...arr, { id: `${f.name}-${arr.length}`, label: f.name, fileName: f.name, fileType: f.type, fileData: f.dataUrl, size: f.size }])
-    } catch (err) { toast.error(err.message) }
+    } catch (err) { toastCaught(err) }
   }
   const removeExtraDoc = (id) => setExtraDocs((arr) => arr.filter((x) => x.id !== id))
 
@@ -193,7 +194,7 @@ export default function PermitForm() {
       toast.success(`Permit ${permitNo} created`)
       navigate(`/permits/${id}`)
     } catch (err) {
-      toast.error(err.message || 'Could not create permit')
+      toastCaught(err, 'Could not create permit')
     } finally {
       setBusy(false)
       setMissingModal(null)

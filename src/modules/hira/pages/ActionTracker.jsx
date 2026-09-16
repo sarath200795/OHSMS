@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { CalendarClock, AlertTriangle, ExternalLink } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../shared/lib/toastCaught'
 import { PageHeader, EmptyState } from '../components/ui'
 import { Pager } from '../../../shared/ui'
 import { usePagination } from '../../../shared/ui/usePagination'
@@ -98,7 +99,7 @@ export default function ActionTracker() {
         })
       }
     } catch (e) {
-      toast.error(e.message || 'Could not update')
+      toastCaught(e, 'Could not update')
     }
   }
 

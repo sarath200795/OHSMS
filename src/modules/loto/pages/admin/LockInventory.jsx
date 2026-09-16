@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../../shared/lib/toastCaught'
 import { useAuth } from '../../context/AuthContext'
 import { useLocks } from '../../hooks/useLocks'
 import { useTechnicians } from '../../hooks/useTechnicians'
@@ -58,7 +59,7 @@ export default function LockInventory() {
       setForm({ lockNo: '', type: 'department' })
       toast.success('Department lock added')
     } catch (err) {
-      toast.error(err.message || 'Could not add lock')
+      toastCaught(err, 'Could not add lock')
     } finally {
       setSaving(false)
     }
@@ -71,7 +72,7 @@ export default function LockInventory() {
       await deleteLock(l.id)
       toast.success('Removed')
     } catch (err) {
-      toast.error(err.message || 'Could not remove')
+      toastCaught(err, 'Could not remove')
     }
   }
 
@@ -79,7 +80,7 @@ export default function LockInventory() {
     try {
       await updateLock(l.id, { active: l.active === false })
     } catch (err) {
-      toast.error(err.message || 'Update failed')
+      toastCaught(err, 'Update failed')
     }
   }
 

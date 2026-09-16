@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../shared/lib/toastCaught'
 import { Target, Plus, Pencil, Trash2, Wand2, Search } from 'lucide-react'
 import { PageHeader, Card, Field, Input, Select, Textarea, Button, Modal, Badge, EmptyState, SkeletonTable, Pager } from '../../../shared/ui'
 import { usePagination } from '../../../shared/ui/usePagination'
@@ -51,13 +52,13 @@ export default function Targets() {
       if (editing === 'new') { await addObjective(orgId, payload, actor); toast.success('Target set') }
       else { await updateObjective(orgId, editing.id, payload, actor); toast.success('Target updated') }
       setEditing(null)
-    } catch (err) { toast.error(err?.message || 'Failed') } finally { setBusy(false) }
+    } catch (err) { toastCaught(err, 'Failed') } finally { setBusy(false) }
   }
 
   const remove = async (o) => {
     if (!window.confirm(`Remove the ${o.kpiMeta?.label} target for ${o.scopeLabel || 'Organization'}?`)) return
     try { await deleteObjective(orgId, o.id, actor, `${o.kpiMeta?.label} · ${o.scopeLabel}`); toast.success('Target removed') }
-    catch (err) { toast.error(err?.message || 'Failed') }
+    catch (err) { toastCaught(err, 'Failed') }
   }
 
   const seed = async () => {
@@ -66,7 +67,7 @@ export default function Targets() {
     try {
       const n = await seedDefaultTargets(orgId, thisPeriod(), actor)
       toast.success(`${n} default targets created`)
-    } catch (err) { toast.error(err?.message || 'Failed') } finally { setBusy(false) }
+    } catch (err) { toastCaught(err, 'Failed') } finally { setBusy(false) }
   }
 
   return (

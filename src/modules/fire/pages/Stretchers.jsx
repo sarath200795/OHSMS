@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { Ambulance, Plus, Pencil, Trash2, Search, Filter, X, Download, QrCode, Wrench, Upload, AlertTriangle, MapPin } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../shared/lib/toastCaught'
 import { PageHeader, EmptyState, Modal, Badge, Spinner, Field } from '../components/ui'
 import { Pager, IconButton } from '../../../shared/ui'
 import { usePagination } from '../../../shared/ui/usePagination'
@@ -98,7 +99,7 @@ export default function Stretchers() {
       toast.success(`${r.linked} linked · ${r.nameChanges} renamed · ${r.entityChanges} entity value(s) corrected`)
       setLinkOpen(false)
     } catch (e) {
-      toast.error(e?.message || 'Could not link to sites')
+      toastCaught(e, 'Could not link to sites')
     } finally { setBusy(false) }
   }
 
@@ -112,7 +113,7 @@ export default function Stretchers() {
       })
       setEditing({ ...EMPTY, assetId })
     } catch (e) {
-      toast.error(e?.message || 'Could not reserve an asset ID')
+      toastCaught(e, 'Could not reserve an asset ID')
     }
   }
 
@@ -153,7 +154,7 @@ export default function Stretchers() {
       await bulkDeleteStretchers(orgId, items, { uid: profile?.uid, name: profile?.name })
       toast.success(`${items.length} stretcher(s) deleted`)
       setSelected(new Set()); setBulkRemoving(false)
-    } catch (e) { toast.error(e.message) } finally { setBusy(false) }
+    } catch (e) { toastCaught(e) } finally { setBusy(false) }
   }
 
   const save = async (e) => {
@@ -166,14 +167,14 @@ export default function Stretchers() {
       if (editing.id) { await updateStretcher(orgId, orgName, editing.id, editing, actor); toast.success('Stretcher updated') }
       else { await addStretcher(orgId, orgName, editing, actor); toast.success('Stretcher added') }
       setEditing(null)
-    } catch (err) { toast.error(err.message) } finally { setBusy(false) }
+    } catch (err) { toastCaught(err) } finally { setBusy(false) }
   }
 
   const confirmDelete = async () => {
     try {
       await deleteStretcher(orgId, removing.id, removing.qrToken, { uid: profile?.uid, name: profile?.name }, `${removing.assetId || 'Stretcher'} @ ${removing.centerName}`)
       toast.success('Stretcher deleted')
-    } catch (err) { toast.error(err.message) } finally { setRemoving(null) }
+    } catch (err) { toastCaught(err) } finally { setRemoving(null) }
   }
 
   // View the QR — or, for admins, mint one first if the record lacks it.
@@ -185,7 +186,7 @@ export default function Stretchers() {
       const token = await generateStretcherQr(orgId, orgName, a, { uid: profile?.uid, name: profile?.name })
       setQrFor({ ...a, qrToken: token })
       toast.success('QR code generated')
-    } catch (e) { toast.error(e.message) } finally { setBusy(false) }
+    } catch (e) { toastCaught(e) } finally { setBusy(false) }
   }
 
   const openService = (a) => { setServiceFor(a); setNextDate(a.nextInspection || '') }
@@ -195,7 +196,7 @@ export default function Stretchers() {
       await serviceStretcher(orgId, orgName, serviceFor, nextDate, { uid: profile?.uid, name: profile?.name })
       toast.success('Inspection logged')
       setServiceFor(null)
-    } catch (err) { toast.error(err.message) } finally { setBusy(false) }
+    } catch (err) { toastCaught(err) } finally { setBusy(false) }
   }
 
   const doExport = () => {

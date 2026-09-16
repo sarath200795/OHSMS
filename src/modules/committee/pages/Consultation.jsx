@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import toast from 'react-hot-toast';
+import { toastCaught } from '../../../shared/lib/toastCaught';
 import {
   PieChart, Pie, Cell, BarChart, Bar, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
 } from 'recharts'
@@ -414,7 +415,7 @@ export default function Consultation() {
     }
 
     const saveRecord = async () => {
-        if (!canEditForm) return toast.error("You do not have permission to edit records.");
+        if (!canEditForm) return;
         if (!formData.subject) return toast.error("Subject is required.");
         // Minutes record a meeting that HAS taken place. A future date files
         // an unheld meeting as held, with its attendees and its actions.
@@ -446,12 +447,12 @@ export default function Consultation() {
             toast.success("Record saved successfully!");
             // The onSnapshot subscription refreshes the list automatically.
             setView('list');
-        } catch (e) { toast.error("Save failed: " + e.message); }
+        } catch (e) { toastCaught(e, 'Save failed') }
         finally { setSaving(false); }
     };
 
     const deleteRecord = (key) => {
-        if (!permissions.canDelete) return toast.error("You do not have permission to delete this record.");
+        if (!permissions.canDelete) return;
         toast((t) => (
             <div className="flex flex-col gap-2.5">
                 <span className="text-sm font-semibold text-white">Delete this meeting record permanently?</span>
@@ -461,7 +462,7 @@ export default function Consultation() {
                         onClick={async () => {
                             toast.dismiss(t.id);
                             try { await deleteConsultation(orgId, key); toast.success("Record deleted"); }
-                            catch (e) { toast.error("Delete failed: " + e.message); }
+                            catch (e) { toastCaught(e, 'Delete failed') }
                         }}
                         className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-600 text-white hover:bg-red-500 transition-colors"
                     >Delete</button>
@@ -535,7 +536,7 @@ export default function Consultation() {
     };
 
     const handleLogPending = (type) => {
-        if (!permissions.canEditCreate) return toast.error("You do not have permission to log meetings.");
+        if (!permissions.canEditCreate) return;
         const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
         const today = new Date();
         setFormData({

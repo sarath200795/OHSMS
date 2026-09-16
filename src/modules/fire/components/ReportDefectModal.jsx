@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { AlertTriangle, Send } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../shared/lib/toastCaught'
 import { Modal, Spinner, Field } from './ui'
 import { DEFECTS, REPORTER_ROLES } from '../lib/constants'
 import { createReport } from '../lib/firestore'
@@ -58,7 +59,7 @@ export default function ReportDefectModal({ open, onClose, ext, orgId, reporter,
       setRole('')
       onClose?.()
     } catch (e) {
-      toast.error(e.message)
+      toastCaught(e)
     } finally {
       setBusy(false)
     }

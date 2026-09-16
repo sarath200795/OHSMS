@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../shared/lib/toastCaught'
 import { Plus, Pencil, Trash2, Gavel, Link2Off } from 'lucide-react'
 import {
   PageHeader, Button, Input, Select, EmptyState, SkeletonTable, Badge, Pager,
@@ -40,7 +41,7 @@ export default function LegalIssues() {
       await deleteLegalIssue(orgId, row.id, row.title, actor)
       toast.success('Deleted')
     } catch (e) {
-      toast.error(e.message)
+      toastCaught(e)
     }
   }
 

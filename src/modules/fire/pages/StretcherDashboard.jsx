@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../shared/lib/toastCaught'
 import { Ambulance, ShieldCheck, Wrench, AlertOctagon, CalendarClock, ArrowRight, AlertTriangle, Building2 } from 'lucide-react'
 import { PageHeader, EmptyState, Spinner } from '../components/ui'
 import { useFleet } from '../context/FleetContext'
@@ -52,7 +53,7 @@ export default function StretcherDashboard() {
       await decideAssetReport(orgId, report, approve, profile?.name, { uid: profile?.uid, name: profile?.name })
       toast.success(approve ? 'Defect confirmed — stretcher marked out of service' : 'Defect report dismissed')
     } catch (e) {
-      toast.error(e.message || 'Could not update the report')
+      toastCaught(e, 'Could not update the report')
     } finally {
       setBusyId(null)
     }

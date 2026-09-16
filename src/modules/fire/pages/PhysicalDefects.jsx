@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Wrench, AlertTriangle, QrCode, CheckCircle2, Download, FileText, Gauge } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../shared/lib/toastCaught'
 import { PageHeader, EmptyState, Modal, Spinner } from '../components/ui'
 import ExtinguisherTable from '../components/ExtinguisherTable'
 import ReportDefectModal from '../components/ReportDefectModal'
@@ -62,7 +63,7 @@ export default function PhysicalDefects() {
       toast.success('Physical defects resolved')
       setResolving(null)
     } catch (e) {
-      toast.error(e.message)
+      toastCaught(e)
     } finally {
       setBusy(false)
     }

@@ -5,6 +5,7 @@ import {
   ClipboardList, ArrowLeft, Pencil, MapPin, Calendar, Building2, Users, AlertTriangle, CheckCircle2, Shield, FileDown,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../shared/lib/toastCaught'
 import { PageHeader, EmptyState } from '../components/ui'
 import { RiskBadge } from '../components/RiskBits'
 import { useRa } from '../context/RaContext'
@@ -85,7 +86,7 @@ export default function AssessmentView() {
         <button
           className="btn-ghost"
           onClick={() => {
-            try { exportAssessmentPdf(a) } catch (e) { toast.error(e.message || 'Could not export PDF') }
+            try { exportAssessmentPdf(a) } catch (e) { toastCaught(e, 'Could not export PDF') }
           }}
         >
           <FileDown size={16} /> Export PDF

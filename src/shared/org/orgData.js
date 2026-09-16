@@ -24,6 +24,7 @@ import {
 import { db } from '../firebase'
 import { isSessionEnd } from '../sessionEnd'
 import { onReadError } from './readError'
+import { isPermissionDenied } from '../lib/permissionDenied'
 import { AUDIT } from '../audit/audit'
 import { createSharedSubscription } from './sharedSubscription'
 import { notifySiteCreated } from './siteHooks'
@@ -101,7 +102,7 @@ export function subscribeAuditLogs(orgId, cb, max = 300) {
   return onSnapshot(
     q,
     (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
-    onReadError('the audit log', cb),
+    onReadError('the audit log', cb)
   )
 }
 
@@ -198,11 +199,20 @@ const sharedOrgCollection = createSharedSubscription((key, emit) => {
   const [orgId, name] = key.split('/')
   return onSnapshot(
     query(collection(db, 'organizations', orgId, name), limit(COLLECTION_READ_CAP)),
-    (snap) => emit({
-      rows: snap.docs.map((d) => ({ id: d.id, ...d.data() })),
-      status: snap.size >= COLLECTION_READ_CAP ? 'capped' : 'ok',
-    }),
+    (snap) =>
+      emit({
+        rows: snap.docs.map((d) => ({ id: d.id, ...d.data() })),
+        status: snap.size >= COLLECTION_READ_CAP ? 'capped' : 'ok',
+      }),
     (err) => {
+      // A licensed-off module or a role that cannot list this collection is an
+      // access check, not a fault. Marking it 'failed' is how the portal home
+      // painted "could not be loaded at all" in amber for every collection the
+      // org is not entitled to. 'denied' is empty and silent; see incompleteReadNotice.
+      if (isPermissionDenied(err)) {
+        emit({ rows: [], status: 'denied' })
+        return
+      }
       if (!isSessionEnd(name, err)) {
         // eslint-disable-next-line no-console
         console.warn(`[OHS MS] ${name} read failed:`, err?.message || err)
@@ -217,7 +227,7 @@ const sharedOrgCollection = createSharedSubscription((key, emit) => {
  *
  * Emits `{ rows, status }`, never a bare array — the same reasoning as
  * subscribeCollections: a caller that can reach the rows is holding the reason
- * they may be short. status is 'ok' | 'capped' | 'failed'.
+ * they may be short. status is 'ok' | 'capped' | 'failed' | 'denied'.
  */
 export function subscribeOrgCollection(orgId, name, cb) {
   return sharedOrgCollection(`${orgId}/${name}`, cb)
@@ -252,7 +262,7 @@ export function subscribeOrg(orgId, cb) {
     // null rather than []: this is one document, and every caller tests it for
     // existence. Handing back an array would make `org.name` undefined instead
     // of absent, which reads as an organization with no name.
-    onReadError('the organization', cb, null),
+    onReadError('the organization', cb, null)
   )
 }
 
@@ -309,9 +319,12 @@ const sharedSites = createSharedSubscription((orgId, emit) => {
       // does not close it, and it can outlive auth by a moment on sign-out or a
       // token refresh. See isSessionEnd — every live listener in the app now
       // makes the same distinction this one did.
-      if (!isSessionEnd('sites', err)) {
+      if (!isSessionEnd('sites', err) && !isPermissionDenied(err)) {
         // eslint-disable-next-line no-console
-        console.error('[OHS MS] sites read failed — every site picker will look empty:', err?.message || err)
+        console.error(
+          '[OHS MS] sites read failed — every site picker will look empty:',
+          err?.message || err
+        )
       }
       emit([])
     }
@@ -550,8 +563,12 @@ function joinLabels(names) {
  * Turn per-collection read status into the sentence a screen must show, or null
  * when every collection came back whole.
  *
- * `status` maps collection name → 'ok' | 'capped' | 'failed'. Kept pure and
- * exported so the wording is the same on every screen and can be tested.
+ * `status` maps collection name → 'ok' | 'capped' | 'failed' | 'denied'. Kept
+ * pure and exported so the wording is the same on every screen and can be tested.
+ *
+ * 'denied' is a successful empty: the viewer is not allowed to see the
+ * collection (module off, role, site). It must not produce a banner — that is
+ * how expected access checks used to look like a broken load.
  */
 export function incompleteReadNotice(status, cap = COLLECTION_READ_CAP) {
   const names = Object.keys(status || {})
@@ -563,7 +580,9 @@ export function incompleteReadNotice(status, cap = COLLECTION_READ_CAP) {
     parts.push(`Only the first ${groupDigits(cap)} records were loaded for ${joinLabels(capped)}.`)
   }
   if (failed.length) parts.push(`${joinLabels(failed)} could not be loaded at all.`)
-  parts.push('Any total that counts them is lower than the real figure, so these numbers must not be quoted as a count.')
+  parts.push(
+    'Any total that counts them is lower than the real figure, so these numbers must not be quoted as a count.'
+  )
   return { capped, failed, cap, message: parts.join(' ') }
 }
 
@@ -606,13 +625,21 @@ export function subscribeCollections(orgId, names, cb) {
         emit()
       },
       (err) => {
-        // A read that failed is not an empty collection. Reporting [] here is
-        // how a permission error used to render as a confident zero.
+        // A read that failed is not an empty collection — except when it is an
+        // access check. Reporting permission-denied as 'failed' is how a
+        // licensed-off module painted "could not be loaded at all" on the
+        // portal. A missing index or a dropped connection still has to say so,
+        // because those zeros are the dangerous kind.
+        data[name] = []
+        if (isPermissionDenied(err)) {
+          status[name] = 'denied'
+          emit()
+          return
+        }
         if (!isSessionEnd(name, err)) {
           // eslint-disable-next-line no-console
           console.warn(`[OHS MS] ${name} read failed:`, err?.message || err)
         }
-        data[name] = []
         status[name] = 'failed'
         emit()
       }
@@ -651,7 +678,10 @@ export async function deleteSites(orgId, sites, actor) {
   await logAudit(orgId, actor, AUDIT.SITE_DELETE, {
     target: 'site',
     targetLabel: `${list.length} sites`,
-    summary: `Deleted ${list.length} site(s): ${list.map((s) => s.name).join(', ').slice(0, 500)}`,
+    summary: `Deleted ${list.length} site(s): ${list
+      .map((s) => s.name)
+      .join(', ')
+      .slice(0, 500)}`,
   })
   return list.length
 }

@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { ShieldAlert, CheckCircle2, Pencil, Wrench } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../shared/lib/toastCaught'
 import { PageHeader, EmptyState } from '../components/ui'
 import { Pager } from '../../../shared/ui'
 import { usePagination } from '../../../shared/ui/usePagination'
@@ -65,7 +66,7 @@ export default function RiskRegister() {
       })
       toast.success('Declared ALARP — residual risk accepted')
     } catch (e) {
-      toast.error(e.message || 'Could not update')
+      toastCaught(e, 'Could not update')
     }
   }
 

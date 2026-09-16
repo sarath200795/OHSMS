@@ -13,6 +13,7 @@ import { useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { AlertTriangle, ArrowRight, Check, Info, LifeBuoy } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../shared/lib/toastCaught'
 import { useAuth } from '../../shared/auth/AuthContext'
 import { createIncident, getIncident } from '../../modules/incidents/lib/incidents'
 import { syncIncidentInjuries } from '../../modules/incidents/lib/injuries'
@@ -134,7 +135,7 @@ export default function ReportIncident() {
       setDone({ id, refNo: saved?.refNo || '' })
       toast.success('Reported — the HSE team has it')
     } catch (e) {
-      toast.error(e?.message || 'Could not send the report')
+      toastCaught(e, 'Could not send the report')
     } finally {
       setBusy(false)
     }

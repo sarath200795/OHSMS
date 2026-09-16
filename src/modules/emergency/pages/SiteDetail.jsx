@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../shared/lib/toastCaught'
 import {
   Map, Phone, Printer, Upload, Trash2, ImageOff, ArrowLeft, Building2, LifeBuoy, Siren,
   Layers, ChevronUp, ChevronDown, Pencil, Download,
@@ -122,7 +123,7 @@ export default function SiteDetail() {
       await saveFloors(orgId, site, next, actor, `Added ${added.length} floor plan(s) to ${site.name}`)
       toast.success(`${added.length} floor plan(s) added`)
     } catch (err) {
-      toast.error(err?.message || 'Upload failed')
+      toastCaught(err, 'Upload failed')
     } finally {
       setBusy(false)
     }
@@ -134,7 +135,7 @@ export default function SiteDetail() {
     try {
       await saveFloors(orgId, site, floors.map((f) => (f.id === floor.id ? { ...f, label: label.trim() } : f)), actor,
         `Renamed a floor plan for ${site.name}`)
-    } catch (err) { toast.error(err?.message || 'Failed') }
+    } catch (err) { toastCaught(err, 'Failed') }
   }
 
   const moveFloor = async (i, dir) => {
@@ -143,7 +144,7 @@ export default function SiteDetail() {
     const next = [...floors]
     ;[next[i], next[j]] = [next[j], next[i]]
     try { await saveFloors(orgId, site, next, actor, `Reordered floor plans for ${site.name}`) }
-    catch (err) { toast.error(err?.message || 'Failed') }
+    catch (err) { toastCaught(err, 'Failed') }
   }
 
   const removeFloor = async (floor) => {
@@ -153,7 +154,7 @@ export default function SiteDetail() {
       if (next.length) await saveFloors(orgId, site, next, actor, `Removed a floor plan from ${site.name}`)
       else await deleteLayout(orgId, site, actor)
       toast.success('Floor plan removed')
-    } catch (err) { toast.error(err?.message || 'Failed') }
+    } catch (err) { toastCaught(err, 'Failed') }
   }
 
   if (contacts === null) {

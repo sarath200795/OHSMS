@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { BellRing, Plus, Pencil, Trash2, Search, Filter, X, Download, QrCode, Wrench, Upload, AlertTriangle, MapPin } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../shared/lib/toastCaught'
 import { format } from 'date-fns'
 import { PageHeader, EmptyState, Modal, Badge, Spinner, Field } from '../components/ui'
 import { Pager, IconButton } from '../../../shared/ui'
@@ -108,7 +109,7 @@ export default function FASRepository() {
       toast.success(`${r.linked} linked · ${r.nameChanges} renamed · ${r.entityChanges} entity value(s) corrected`)
       setLinkOpen(false)
     } catch (e) {
-      toast.error(e?.message || 'Could not link to sites')
+      toastCaught(e, 'Could not link to sites')
     } finally { setBusy(false) }
   }
 
@@ -122,7 +123,7 @@ export default function FASRepository() {
       })
       setEditing({ ...EMPTY, deviceId })
     } catch (e) {
-      toast.error(e?.message || 'Could not reserve a device ID')
+      toastCaught(e, 'Could not reserve a device ID')
     }
   }
 
@@ -141,7 +142,7 @@ export default function FASRepository() {
       const rows = missingSites.map((s, i) => ({ deviceId: ids[i], centerName: s, region: siteMeta[s]?.region || '', entity: siteMeta[s]?.entity || '', deviceType: 'Control Panel', status: FAS_STATUS.OPERATIONAL }))
       const res = await bulkAddFas(orgId, orgName, rows, { uid: profile?.uid, name: profile?.name })
       toast.success(`Generated ${res.created} FAS panel(s) with QR codes`)
-    } catch (e) { toast.error(e.message) } finally { setBusy(false) }
+    } catch (e) { toastCaught(e) } finally { setBusy(false) }
   }
 
   const toggle = (field, v) => setF((p) => ({ ...p, [field]: p[field].includes(v) ? p[field].filter((x) => x !== v) : [...p[field], v] }))
@@ -194,7 +195,7 @@ export default function FASRepository() {
       await bulkDeleteFas(orgId, items, { uid: profile?.uid, name: profile?.name })
       toast.success(`${items.length} FAS device(s) deleted`)
       setSelected(new Set()); setBulkRemoving(false)
-    } catch (e) { toast.error(e.message) } finally { setBusy(false) }
+    } catch (e) { toastCaught(e) } finally { setBusy(false) }
   }
 
   const save = async (e) => {
@@ -207,13 +208,13 @@ export default function FASRepository() {
       if (editing.id) { await updateFas(orgId, orgName, editing.id, editing, actor); toast.success('FAS device updated') }
       else { await addFas(orgId, orgName, editing, actor); toast.success('FAS device added') }
       setEditing(null)
-    } catch (err) { toast.error(err.message) } finally { setBusy(false) }
+    } catch (err) { toastCaught(err) } finally { setBusy(false) }
   }
   const confirmDelete = async () => {
     try {
       await deleteFas(orgId, removing.id, removing.qrToken, { uid: profile?.uid, name: profile?.name }, `${removing.deviceId || removing.deviceType} @ ${removing.centerName}`)
       toast.success('FAS device deleted')
-    } catch (err) { toast.error(err.message) } finally { setRemoving(null) }
+    } catch (err) { toastCaught(err) } finally { setRemoving(null) }
   }
   // View the QR — or, for admins, mint one first if the record lacks it.
   // QR codes are only generated for Control Panels (the panel represents the
@@ -227,7 +228,7 @@ export default function FASRepository() {
       const token = await generateFasQr(orgId, orgName, a, { uid: profile?.uid, name: profile?.name })
       setQrFor({ ...a, qrToken: token })
       toast.success('QR code generated')
-    } catch (e) { toast.error(e.message) } finally { setBusy(false) }
+    } catch (e) { toastCaught(e) } finally { setBusy(false) }
   }
   const openService = (a) => { setServiceFor(a); setNextDate(a.nextService || '') }
   const confirmService = async () => {
@@ -236,7 +237,7 @@ export default function FASRepository() {
       await serviceFas(orgId, orgName, serviceFor, nextDate, { uid: profile?.uid, name: profile?.name })
       toast.success('Service logged')
       setServiceFor(null)
-    } catch (err) { toast.error(err.message) } finally { setBusy(false) }
+    } catch (err) { toastCaught(err) } finally { setBusy(false) }
   }
   const doExport = () => {
     if (!visible.length) return toast.error('Nothing to export')

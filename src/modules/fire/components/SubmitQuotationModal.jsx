@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { FileText, Send, Paperclip, X } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../shared/lib/toastCaught'
 import { Modal, Spinner, Field } from './ui'
 import { submitQuotation } from '../lib/firestore'
 import { readFileAsDataUrl, MAX_ATTACHMENT_BYTES } from '../../../shared/lib/files'
@@ -44,7 +45,7 @@ export default function SubmitQuotationModal({ open, onClose, ext, orgId, orgNam
       const data = await readFileAsDataUrl(f)
       setFile({ name: f.name, type: f.type, data })
     } catch (e) {
-      toast.error(e.message)
+      toastCaught(e)
     } finally {
       if (fileInputRef.current) fileInputRef.current.value = ''
     }
@@ -76,7 +77,7 @@ export default function SubmitQuotationModal({ open, onClose, ext, orgId, orgNam
       })
       onClose?.()
     } catch (e) {
-      toast.error(e.message)
+      toastCaught(e)
     } finally {
       setBusy(false)
     }

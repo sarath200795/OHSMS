@@ -4,6 +4,7 @@ import {
   Siren, Plus, Trash2, FileText, X, ShieldCheck, UserPlus, ListChecks, ImagePlus, Image as ImageIcon,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../shared/lib/toastCaught'
 import { PageHeader, EmptyState, Modal, Badge, Spinner, Field } from '../components/ui'
 import { Pager, IconButton } from '../../../shared/ui'
 import { usePagination } from '../../../shared/ui/usePagination'
@@ -213,7 +214,7 @@ export default function MockDrills() {
       }
       setScenario(null)
     } catch (err) {
-      toast.error(err.message)
+      toastCaught(err)
     } finally {
       setBusy(false)
     }
@@ -223,7 +224,7 @@ export default function MockDrills() {
     try {
       await deleteMockDrill(orgId, removing.id, { uid: profile?.uid, name: profile?.name }, `${removing.scenario} @ ${removing.centerName}`)
       toast.success('Record deleted')
-    } catch (err) { toast.error(err.message) } finally { setRemoving(null) }
+    } catch (err) { toastCaught(err) } finally { setRemoving(null) }
   }
 
   // recorder evidence photos
@@ -243,7 +244,7 @@ export default function MockDrills() {
             return [...p, { id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, dataUrl }]
           })
           if (!added) { toast.error(`Up to ${MAX_DRILL_PHOTOS} photos per record`); break }
-        } catch (err) { toast.error(err.message) }
+        } catch (err) { toastCaught(err) }
       }
     } finally { setUploadingPhoto(false) }
   }

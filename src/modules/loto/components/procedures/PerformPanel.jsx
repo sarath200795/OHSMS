@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../../shared/lib/toastCaught'
 import { numberIsolationPoints } from '../../utils/codes'
 import { deviceLabel, pointDevicesLabel } from '../../constants/energySources'
 import { LOCK_STATUS, computeLockSummary } from '../../constants/procedures'
@@ -44,7 +45,7 @@ export default function PerformPanel({
       await setPointLock(procedure.id, point.key, true, user, tech)
       toast.success(`${point.pointId} locked out`)
     } catch (err) {
-      toast.error(err.message || 'Could not lock')
+      toastCaught(err, 'Could not lock')
     } finally {
       setBusyKey(null)
     }
@@ -69,7 +70,7 @@ export default function PerformPanel({
       await setPointLock(procedure.id, point.key, false, user)
       toast.success(`${point.pointId} unlocked`)
     } catch (err) {
-      toast.error(err.message || 'Could not unlock')
+      toastCaught(err, 'Could not unlock')
     } finally {
       setBusyKey(null)
     }
@@ -81,7 +82,7 @@ export default function PerformPanel({
       setGroupOpen(false)
       toast.success(`${member.name} added to group lock`)
     } catch (err) {
-      toast.error(err.message || 'Could not add to group lock')
+      toastCaught(err, 'Could not add to group lock')
     }
   }
 
@@ -90,7 +91,7 @@ export default function PerformPanel({
       await removeGroupMember(procedure.id, techId, user)
       toast(`${name} removed from group lock`, { icon: '🔓' })
     } catch (err) {
-      toast.error(err.message || 'Could not remove')
+      toastCaught(err, 'Could not remove')
     }
   }
 

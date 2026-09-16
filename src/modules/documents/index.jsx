@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../shared/lib/toastCaught'
 import {
   Building2, CheckCircle2, ChevronRight, CircleDashed, ExternalLink, Eye,
   File as FileIcon, FolderPlus, Folder as FolderIcon, Landmark, Link2,
@@ -578,7 +579,7 @@ export default function DocumentsModule() {
       }
       setDocDialog(null)
     } catch (err) {
-      toast.error(err?.message || 'Save failed')
+      toastCaught(err, 'Save failed')
     } finally {
       setBusy(false)
     }
@@ -592,7 +593,7 @@ export default function DocumentsModule() {
       toast.success('Document deleted')
       setDetails(null)
     } catch (err) {
-      toast.error(err?.message || 'Delete failed')
+      toastCaught(err, 'Delete failed')
     }
   }
 
@@ -608,7 +609,7 @@ export default function DocumentsModule() {
       }
       setFolderDialog(null)
     } catch (err) {
-      toast.error(err?.message || 'Could not save the folder')
+      toastCaught(err, 'Could not save the folder')
     } finally {
       setBusy(false)
     }
@@ -635,7 +636,7 @@ export default function DocumentsModule() {
       await documentFolderService.remove(orgId, target.stored, actor)
       toast.success('Folder deleted')
     } catch (err) {
-      toast.error(err?.message || 'Delete failed')
+      toastCaught(err, 'Delete failed')
     }
     return undefined
   }

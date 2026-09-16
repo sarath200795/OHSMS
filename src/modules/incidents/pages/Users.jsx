@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../shared/lib/toastCaught'
 import { motion } from 'framer-motion'
 import { Users as UsersIcon, Check, X, Shield } from 'lucide-react'
 import { PageHeader, Badge, EmptyState } from '../components/ui'
@@ -18,9 +19,9 @@ export default function Users() {
   const pending = useMemo(() => users.filter((u) => u.status === 'pending'), [users])
   const members = useMemo(() => users.filter((u) => u.status === 'approved'), [users])
 
-  const approve = async (u) => { try { await setUserStatus(u.uid, 'approved', orgId, actor, u.name); toast.success(`${u.name} approved`) } catch (e) { toast.error(e.message) } }
-  const reject = async (u) => { try { await setUserStatus(u.uid, 'rejected', orgId, actor, u.name); toast(`${u.name} rejected`, { icon: '🚫' }) } catch (e) { toast.error(e.message) } }
-  const changeRole = async (u, role) => { try { await setUserRole(u.uid, role, orgId, actor, u.name); toast.success(`${u.name} → ${roleLabel(role)}`) } catch (e) { toast.error(e.message) } }
+  const approve = async (u) => { try { await setUserStatus(u.uid, 'approved', orgId, actor, u.name); toast.success(`${u.name} approved`) } catch (e) { toastCaught(e) } }
+  const reject = async (u) => { try { await setUserStatus(u.uid, 'rejected', orgId, actor, u.name); toast(`${u.name} rejected`, { icon: '🚫' }) } catch (e) { toastCaught(e) } }
+  const changeRole = async (u, role) => { try { await setUserRole(u.uid, role, orgId, actor, u.name); toast.success(`${u.name} → ${roleLabel(role)}`) } catch (e) { toastCaught(e) } }
 
   return (
     <div>

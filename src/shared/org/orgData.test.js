@@ -15,14 +15,22 @@ vi.mock('firebase/firestore', () => ({
   orderBy: () => ({ type: 'orderBy' }),
   where: () => ({ type: 'where' }),
   onSnapshot: (q, onNext, onErr) => {
-    const name = String(q.path || '').split('/').pop()
-    const unsub = Object.assign(() => { unsub.called = true }, { called: false })
+    const name = String(q.path || '')
+      .split('/')
+      .pop()
+    const unsub = Object.assign(
+      () => {
+        unsub.called = true
+      },
+      { called: false }
+    )
     captured.listeners[name] = {
       // A snapshot of n documents, shaped like the real one.
-      next: (n) => onNext({
-        size: n,
-        docs: Array.from({ length: n }, (_, i) => ({ id: `d${i}`, data: () => ({ n: i }) })),
-      }),
+      next: (n) =>
+        onNext({
+          size: n,
+          docs: Array.from({ length: n }, (_, i) => ({ id: `d${i}`, data: () => ({ n: i }) })),
+        }),
       fail: (err) => onErr(err),
     }
     captured.unsubs.push(unsub)
@@ -75,6 +83,18 @@ describe('incompleteReadNotice', () => {
 
   it('falls back to the collection name when there is no label for it', () => {
     expect(incompleteReadNotice({ somethingNew: 'failed' }).message).toContain('somethingNew')
+  })
+
+  it('treats a denied read as empty, not incomplete', () => {
+    expect(incompleteReadNotice({ incidents: 'denied', aeds: 'ok' })).toBeNull()
+    expect(incompleteReadNotice({ incidents: 'denied', aeds: 'denied' })).toBeNull()
+  })
+
+  it('still reports a real failure next to a denial', () => {
+    const n = incompleteReadNotice({ incidents: 'denied', aeds: 'failed' })
+    expect(n.failed).toEqual(['aeds'])
+    expect(n.message).toContain('AEDs could not be loaded at all')
+    expect(n.message).not.toContain('incidents')
   })
 })
 
@@ -131,17 +151,31 @@ describe('subscribeCollections', () => {
     expect(emit.mock.calls.at(-1)[0].incomplete).toBeNull()
   })
 
-  // A failed read is not an empty collection — reporting [] is how a permission
-  // error used to render as a confident zero.
+  // A failed read is not an empty collection — reporting [] is how a missing
+  // index used to render as a confident zero. Permission-denied is the other
+  // case: expected (module off, role), and must not raise the incomplete banner.
   it('separates a failed read from an empty one', async () => {
     const { emit, listeners } = await harness(['incidents', 'aeds'])
     listeners.incidents.next(0)
-    listeners.aeds.fail(new Error('permission-denied'))
+    listeners.aeds.fail(new Error('The query requires an index'))
     const { data, incomplete } = emit.mock.calls.at(-1)[0]
     expect(data.incidents).toEqual([])
     expect(data.aeds).toEqual([])
     expect(incomplete.failed).toEqual(['aeds'])
     expect(incomplete.capped).toEqual([])
+  })
+
+  it('treats permission-denied as empty, not failed', async () => {
+    const { emit, listeners } = await harness(['incidents', 'aeds'])
+    listeners.incidents.next(0)
+    listeners.aeds.fail(
+      Object.assign(new Error('Missing or insufficient permissions.'), {
+        code: 'permission-denied',
+      })
+    )
+    const { data, incomplete } = emit.mock.calls.at(-1)[0]
+    expect(data.aeds).toEqual([])
+    expect(incomplete).toBeNull()
   })
 
   it('reports capped and failed together', async () => {

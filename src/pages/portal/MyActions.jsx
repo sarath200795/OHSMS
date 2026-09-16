@@ -9,6 +9,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ListChecks } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../shared/lib/toastCaught'
 import { useAuth } from '../../shared/auth/AuthContext'
 import { subscribeActions, updateActionStatus, NORM_STATUS, NORM_BY_KEY } from '../../modules/actions/lib/sources'
 import { Raised, Inset, PortalHeading } from './ui'
@@ -50,7 +51,7 @@ export default function MyActions() {
       await updateActionStatus(orgId, action, norm)
       toast.success(`Marked ${NORM_BY_KEY[norm]?.label || norm}`)
     } catch (e) {
-      toast.error(e?.message || 'Could not update the action')
+      toastCaught(e, 'Could not update the action')
     } finally {
       setSavingKey(null)
     }
