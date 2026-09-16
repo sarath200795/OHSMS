@@ -18,7 +18,14 @@ export default defineConfig({
   webServer: {
     command: 'npm run dev',
     url: 'http://localhost:5173',
-    reuseExistingServer: true,
+    // Locally, reuse whatever is already on 5173 so `npm run dev:full` plus
+    // this suite does not fight over the port. In CI it MUST be false: the
+    // capped-reads job bakes VITE_TEST_READ_CAP into the Vite process at
+    // start-up, and reusing the previous step's server would run those
+    // assertions against a bundle that never saw the cap — every notice
+    // assertion would pass for the wrong reason. ci.yml's comment on that
+    // step already described this; the config is what actually enforces it.
+    reuseExistingServer: !process.env.CI,
     timeout: 60_000,
   },
 })
