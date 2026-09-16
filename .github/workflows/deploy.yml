@@ -30,7 +30,7 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
 
     # ── The approval between a tag and production ──────────────────────────────
     #
@@ -173,10 +173,15 @@ jobs:
           # none. Present because the Firebase app does not initialise without
           # one, and every flow would then fail at whatever it touched first.
           VITE_FIREBASE_API_KEY: demo-api-key
+        # Named specs, same as ci.yml's smoke job. The default glob would also
+        # pick up e2e/capped-reads.spec.js, which skips unless VITE_TEST_READ_CAP
+        # is set — "7 skipped" on a release gate reads like a broken suite.
+        # Capped-reads is a separate CI step with its own Vite process.
         run: >
           npx firebase-tools emulators:exec --only auth,firestore
           --project ohsms-demo
-          "node scripts/seed.mjs && npx playwright test"
+          "node scripts/seed.mjs && npx playwright test
+          e2e/smoke.spec.js e2e/accessibility.spec.js e2e/console-sweep.spec.js"
 
       - name: Build
         if: steps.creds.outputs.configured == 'true'
