@@ -16,6 +16,13 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# Least privilege. None of these jobs push, comment, or open PRs — they only
+# read the tree. Without this block the GITHUB_TOKEN inherits the repository
+# default, which on a lot of repos is still `write`, and a compromised Action
+# (ISO 27001 LOW-28) would inherit that. contents:read is all checkout needs.
+permissions:
+  contents: read
+
 jobs:
   # ── Dependency advisories ───────────────────────────────────────────────────
   # Nothing scanned the tree, so every advisory in it was invisible: an ISO
@@ -47,6 +54,7 @@ jobs:
   audit:
     name: Dependency advisories
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -100,6 +108,7 @@ jobs:
   check:
     name: Lint, test & build
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
 
@@ -131,13 +140,21 @@ jobs:
   functions:
     name: Cloud Functions tests
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
 
+      # functions/package.json engines.node is 22 — that is the Cloud Functions
+      # runtime this suite is a stand-in for. Testing it on 20 (the SPA's
+      # version) would let a Node-22-only failure reach asia-south1 uncaught.
+      # cache-dependency-path is load-bearing: the default looks at the *root*
+      # lockfile, so this job was caching the SPA tree and installing the
+      # functions tree, which is a cache that cannot hit.
       - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
+          cache-dependency-path: functions/package-lock.json
 
       - name: Install
         working-directory: functions
@@ -150,6 +167,7 @@ jobs:
   rules:
     name: Firestore rules
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
 
@@ -175,6 +193,7 @@ jobs:
   e2e:
     name: Smoke (Playwright)
     runs-on: ubuntu-latest
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v7
 
@@ -240,11 +259,10 @@ jobs:
       #
       # A SEPARATE step, not another grep on the one above, because the cap is a
       # Vite env var baked into the dev server at start-up: the two runs need
-      # two dev servers, and Playwright tears its webServer down at the end of a
-      # run so this one starts clean. (playwright.config.js sets
-      # reuseExistingServer, so a leftover server from the step above would
-      # otherwise be reused with the wrong cap and every assertion would pass
-      # for the wrong reason.)
+      # two dev servers. playwright.config.js sets reuseExistingServer only
+      # when CI is unset, so a leftover process on 5173 cannot be reused with
+      # the wrong cap (which would make every assertion pass for the wrong
+      # reason).
       - name: Capped-read notices
         env:
           VITE_USE_EMULATORS: 'true'

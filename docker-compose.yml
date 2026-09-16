@@ -5,14 +5,25 @@
 # The web app talks to the emulators over the shared Docker network. For most
 # development the native flow (`npm run dev:full`) is simpler; this wrapper exists
 # for a reproducible, one-command environment.
+#
+# Three things the previous file got wrong, all of them silent until you tried:
+#   1. Firestore and Storage emulators are JVM processes. A Node image without
+#      a JDK boots Auth and then dies on Firestore with an error about Java.
+#   2. firebase.json binds emulators to 127.0.0.1, which is unreachable from
+#      another container. firebase.docker.json binds 0.0.0.0 instead.
+#   3. `--import=/app/emulator-data` fails if the directory does not exist
+#      (it is gitignored). mkdir -p first; an empty dir is a valid import.
 services:
   emulators:
-    image: node:20-bookworm
+    build:
+      context: .
+      dockerfile: Dockerfile.emulators
     working_dir: /app
     command: >
-      sh -c "npm install -g firebase-tools &&
+      sh -c "mkdir -p /app/emulator-data &&
              firebase emulators:start --only auth,firestore,storage
-             --project ohsms-demo --import=/app/emulator-data --export-on-exit"
+             --project ohsms-demo --config firebase.docker.json
+             --import=/app/emulator-data --export-on-exit=/app/emulator-data"
     volumes:
       - ./:/app
     ports:
@@ -24,7 +35,7 @@ services:
   web:
     image: node:20-bookworm
     working_dir: /app
-    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    command: sh -c "npm ci && npm run dev -- --host 0.0.0.0"
     environment:
       - VITE_USE_EMULATORS=true
       - VITE_EMULATOR_HOST=emulators
