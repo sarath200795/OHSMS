@@ -47,6 +47,12 @@ describe('service-account JSON is not interpolated into the shell', () => {
       expect(yml, file).toMatch(/rm -f "\$RUNNER_TEMP\//)
     }
   })
+
+  it('keeps the production environment approval from #49', () => {
+    const yml = read('.github/workflows/deploy.yml')
+    expect(yml).toMatch(/environment:\s*\n\s+name:\s+production/)
+    expect(yml).toMatch(/timeout-minutes:\s*45/)
+  })
 })
 
 describe('Playwright does not reuse a CI dev server', () => {
@@ -59,7 +65,7 @@ describe('Playwright does not reuse a CI dev server', () => {
   })
 })
 
-describe('hosting CSP allows Sentry ingest', () => {
+describe('hosting CSP allows Sentry ingest and refuses framing', () => {
   it('connect-src names the ingest hosts the SDK actually calls', () => {
     const json = read('firebase.json')
     // VITE_SENTRY_DSN is wired into production and staging builds. Without
@@ -67,6 +73,9 @@ describe('hosting CSP allows Sentry ingest', () => {
     // and the monitoring funnel is a no-op that looks configured.
     expect(json).toContain('https://*.ingest.sentry.io')
     expect(json).toContain('https://*.ingest.us.sentry.io')
+    // From #49 (ISO 27001 L-1). Kept through the rebase onto that merge;
+    // dropping it would re-open framing of a signed-in admin session.
+    expect(json).toContain("frame-ancestors 'none'")
   })
 })
 
