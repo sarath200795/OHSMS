@@ -13,11 +13,11 @@
 // the home page with no explanation is how a person concludes the link is
 // broken and asks IT to fix nothing.
 // ─────────────────────────────────────────────────────────────────────────────
-import { Link } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { MODULE_BY_KEY } from './registry'
 import ModuleLoading from '../layout/ModuleLoading'
 import { AccessDenied, Button } from '../ui'
+import AppLink from '../../app/AppLink'
 
 export default function ModuleGate({ moduleKey, children }) {
   const { moduleEnabled, modulesReady } = useAuth()
@@ -35,7 +35,7 @@ export default function ModuleGate({ moduleKey, children }) {
       title={`${mod?.title || 'This module'} is not enabled`}
       description="Your organization does not currently have access to this module. Ask your administrator to request it — nothing here is missing or broken."
       action={
-        <Button as={Link} to="/portal" className="mt-2">
+        <Button as={AppLink} to="/portal" className="mt-2">
           Back to home
         </Button>
       }

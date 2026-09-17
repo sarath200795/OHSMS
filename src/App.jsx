@@ -8,6 +8,9 @@ import AppChrome from './shared/layout/AppChrome'
 import ModuleLoading from './shared/layout/ModuleLoading'
 import SamLoading from './shared/layout/SamLoading'
 import ErrorBoundary from './shared/ErrorBoundary'
+import { MODULES } from './shared/modules/registry'
+import { useAppRole } from './app/AppRoleContext'
+import CrossAppRedirect from './app/CrossAppRedirect'
 
 // Public QR landing for equipment labels — no auth, so it stays outside the shell.
 const QrLanding = lazy(() => import('./modules/fire/pages/QrLanding'))
@@ -84,7 +87,7 @@ const PublicProcedure = lazy(() => import('./modules/loto/pages/PublicProcedure'
  */
 function TagScanRedirect() {
   const { id, point } = useParams()
-  return <Navigate to={`/loto/operations/${id}#point-${point}`} replace />
+  return <CrossAppRedirect to={`/loto/operations/${id}#point-${point}`} />
 }
 
 /**
@@ -108,6 +111,8 @@ function Protected({ children, moduleKey, ...guard }) {
 }
 
 export default function App() {
+  const { role } = useAppRole()
+  const shellOnly = role === 'shell'
   // Dev-only crash switch so the root ErrorBoundary stays verifiable: append
   // ?__crash=1 to any URL in dev and the recovery screen must appear. Compiled
   // out of production builds by the DEV guard.
@@ -134,10 +139,28 @@ export default function App() {
       <Route path="/signup" element={<Signup />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
       {/* Scanned from a printed extinguisher label — deliberately public. */}
-      <Route path="/qr/:token" element={<ErrorBoundary><Suspense fallback={<SamLoading />}><QrLanding /></Suspense></ErrorBoundary>} />
+      <Route
+        path="/qr/:token"
+        element={
+          <ErrorBoundary>
+            <Suspense fallback={<SamLoading />}>
+              <QrLanding />
+            </Suspense>
+          </ErrorBoundary>
+        }
+      />
       {/* The QR printed on every work permit. Public: whoever scans a permit
           taped to a scaffold has no account. */}
-      <Route path="/permit/:token" element={<ErrorBoundary><Suspense fallback={<SamLoading />}><PublicPermit /></Suspense></ErrorBoundary>} />
+      <Route
+        path="/permit/:token"
+        element={
+          <ErrorBoundary>
+            <Suspense fallback={<SamLoading />}>
+              <PublicPermit />
+            </Suspense>
+          </ErrorBoundary>
+        }
+      />
       <Route path="/pending" element={<PendingApproval />} />
 
       {/* The QR printed on a LOTO isolation procedure. It has always encoded
@@ -161,7 +184,16 @@ export default function App() {
           It reads a public MIRROR (/procedureQr), never the procedure document,
           because rules cannot restrict which fields a read returns and the
           procedure carries the names of the people who locked it. */}
-      <Route path="/p/:id" element={<ErrorBoundary><Suspense fallback={<SamLoading />}><PublicProcedure /></Suspense></ErrorBoundary>} />
+      <Route
+        path="/p/:id"
+        element={
+          <ErrorBoundary>
+            <Suspense fallback={<SamLoading />}>
+              <PublicProcedure />
+            </Suspense>
+          </ErrorBoundary>
+        }
+      />
 
       {/* The tag hung at an isolation point. Opens the live operation rather
           than the procedure: a tag is printed when the lock goes on and can
@@ -175,7 +207,9 @@ export default function App() {
         path="/portal/*"
         element={
           <ProtectedRoute>
-            <Suspense fallback={<SamLoading />}><Portal /></Suspense>
+            <Suspense fallback={<SamLoading />}>
+              <Portal />
+            </Suspense>
           </ProtectedRoute>
         }
       />
@@ -183,33 +217,216 @@ export default function App() {
       {/* App. /hub was the old home; the portal replaced it and carries the same
           module grid plus the workspace tiles, so old links land there. */}
       <Route path="/hub" element={<Navigate to="/portal" replace />} />
-      <Route path="/dashboard" element={<Protected><Dashboard /></Protected>} />
-      <Route path="/security" element={<Protected><Security /></Protected>} />
-      <Route path="/incidents/*" element={<Protected moduleKey="incidents"><Incidents /></Protected>} />
-      <Route path="/hira/*" element={<Protected moduleKey="hira"><Hira /></Protected>} />
-      <Route path="/inspections/*" element={<Protected moduleKey="inspections"><Inspections /></Protected>} />
-      <Route path="/audit/*" element={<Protected moduleKey="audit"><Audit /></Protected>} />
-      <Route path="/permits/*" element={<Protected moduleKey="ptw"><Permits /></Protected>} />
-      <Route path="/loto/*" element={<Protected moduleKey="loto"><Loto /></Protected>} />
-      <Route path="/equipment/*" element={<Protected moduleKey="equipment"><Equipment /></Protected>} />
-      <Route path="/mock-drills/*" element={<Protected moduleKey="drills"><Drills /></Protected>} />
-      <Route path="/committee/*" element={<Protected moduleKey="committee"><Committee /></Protected>} />
-      <Route path="/training/*" element={<Protected moduleKey="training"><Training /></Protected>} />
-      <Route path="/documents/*" element={<Protected moduleKey="documents"><Documents /></Protected>} />
-      <Route path="/actions/*" element={<Protected moduleKey="actions"><Actions /></Protected>} />
-      <Route path="/emergency-response/*" element={<Protected moduleKey="emergency"><Emergency /></Protected>} />
-      <Route path="/objectives/*" element={<Protected moduleKey="objectives"><Objectives /></Protected>} />
-      <Route path="/weather/*" element={<Protected moduleKey="weather"><Weather /></Protected>} />
-      <Route path="/cctv/*" element={<Protected moduleKey="cctv"><Cctv /></Protected>} />
-      <Route path="/stakeholder/*" element={<Protected moduleKey="stakeholder"><Stakeholder /></Protected>} />
+      <Route
+        path="/dashboard"
+        element={
+          <Protected>
+            <Dashboard />
+          </Protected>
+        }
+      />
+      <Route
+        path="/security"
+        element={
+          <Protected>
+            <Security />
+          </Protected>
+        }
+      />
+      {!shellOnly && (
+        <>
+          <Route
+            path="/incidents/*"
+            element={
+              <Protected moduleKey="incidents">
+                <Incidents />
+              </Protected>
+            }
+          />
+          <Route
+            path="/hira/*"
+            element={
+              <Protected moduleKey="hira">
+                <Hira />
+              </Protected>
+            }
+          />
+          <Route
+            path="/inspections/*"
+            element={
+              <Protected moduleKey="inspections">
+                <Inspections />
+              </Protected>
+            }
+          />
+          <Route
+            path="/audit/*"
+            element={
+              <Protected moduleKey="audit">
+                <Audit />
+              </Protected>
+            }
+          />
+          <Route
+            path="/permits/*"
+            element={
+              <Protected moduleKey="ptw">
+                <Permits />
+              </Protected>
+            }
+          />
+          <Route
+            path="/loto/*"
+            element={
+              <Protected moduleKey="loto">
+                <Loto />
+              </Protected>
+            }
+          />
+          <Route
+            path="/equipment/*"
+            element={
+              <Protected moduleKey="equipment">
+                <Equipment />
+              </Protected>
+            }
+          />
+          <Route
+            path="/mock-drills/*"
+            element={
+              <Protected moduleKey="drills">
+                <Drills />
+              </Protected>
+            }
+          />
+          <Route
+            path="/committee/*"
+            element={
+              <Protected moduleKey="committee">
+                <Committee />
+              </Protected>
+            }
+          />
+          <Route
+            path="/training/*"
+            element={
+              <Protected moduleKey="training">
+                <Training />
+              </Protected>
+            }
+          />
+          <Route
+            path="/documents/*"
+            element={
+              <Protected moduleKey="documents">
+                <Documents />
+              </Protected>
+            }
+          />
+          <Route
+            path="/actions/*"
+            element={
+              <Protected moduleKey="actions">
+                <Actions />
+              </Protected>
+            }
+          />
+          <Route
+            path="/emergency-response/*"
+            element={
+              <Protected moduleKey="emergency">
+                <Emergency />
+              </Protected>
+            }
+          />
+          <Route
+            path="/objectives/*"
+            element={
+              <Protected moduleKey="objectives">
+                <Objectives />
+              </Protected>
+            }
+          />
+          <Route
+            path="/weather/*"
+            element={
+              <Protected moduleKey="weather">
+                <Weather />
+              </Protected>
+            }
+          />
+          <Route
+            path="/cctv/*"
+            element={
+              <Protected moduleKey="cctv">
+                <Cctv />
+              </Protected>
+            }
+          />
+          <Route
+            path="/stakeholder/*"
+            element={
+              <Protected moduleKey="stakeholder">
+                <Stakeholder />
+              </Protected>
+            }
+          />
+        </>
+      )}
+      {shellOnly &&
+        MODULES.map((m) => (
+          <Route key={m.key} path={`${m.path}/*`} element={<CrossAppRedirect to={m.path} />} />
+        ))}
 
       {/* Administration */}
-      <Route path="/analytics" element={<Protected><Analytics /></Protected>} />
-      <Route path="/sites" element={<Protected requireCap="record.view"><Sites /></Protected>} />
-      <Route path="/audit-log" element={<Protected requireCap="audit.view"><AuditLog /></Protected>} />
-      <Route path="/maintenance" element={<Protected requireCap="org.settings"><Maintenance /></Protected>} />
-      <Route path="/users" element={<Protected requireAdmin><Users /></Protected>} />
-      <Route path="/settings" element={<Protected requireAdmin><OrgSettings /></Protected>} />
+      <Route
+        path="/analytics"
+        element={
+          <Protected>
+            <Analytics />
+          </Protected>
+        }
+      />
+      <Route
+        path="/sites"
+        element={
+          <Protected requireCap="record.view">
+            <Sites />
+          </Protected>
+        }
+      />
+      <Route
+        path="/audit-log"
+        element={
+          <Protected requireCap="audit.view">
+            <AuditLog />
+          </Protected>
+        }
+      />
+      <Route
+        path="/maintenance"
+        element={
+          <Protected requireCap="org.settings">
+            <Maintenance />
+          </Protected>
+        }
+      />
+      <Route
+        path="/users"
+        element={
+          <Protected requireAdmin>
+            <Users />
+          </Protected>
+        }
+      />
+      <Route
+        path="/settings"
+        element={
+          <Protected requireAdmin>
+            <OrgSettings />
+          </Protected>
+        }
+      />
 
       {/* ── Platform operator ────────────────────────────────────────────────
           Outside Protected and outside AppChrome entirely. ProtectedRoute
@@ -220,7 +437,9 @@ export default function App() {
         path="/platform/login"
         element={
           <ErrorBoundary>
-            <Suspense fallback={<SamLoading />}><PlatformLogin /></Suspense>
+            <Suspense fallback={<SamLoading />}>
+              <PlatformLogin />
+            </Suspense>
           </ErrorBoundary>
         }
       />

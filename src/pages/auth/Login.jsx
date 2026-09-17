@@ -9,11 +9,20 @@ import { isCodeComplete } from '../../shared/auth/mfa'
 import { Button, Field, Input } from '../../shared/ui'
 import { safeInternalPath } from '../../shared/safeUrl'
 import AuthLayout from './AuthLayout'
+import { useAppRole } from '../../app/AppRoleContext'
+import CrossAppRedirect from '../../app/CrossAppRedirect'
 
 export default function Login() {
   const {
-    login, loginWithSso, completeMfa, pendingMfa, clearPendingMfa, isAuthed, profile,
-    isPlatformAdmin, platformAdminReady,
+    login,
+    loginWithSso,
+    completeMfa,
+    pendingMfa,
+    clearPendingMfa,
+    isAuthed,
+    profile,
+    isPlatformAdmin,
+    platformAdminReady,
   } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
@@ -37,11 +46,14 @@ export default function Login() {
   // attacker-influenceable, and it is followed at the exact moment the user has
   // just proved who they are. `//evil.com` and `/\evil.com` are paths to
   // react-router and other origins to the browser.
-  const back = safeInternalPath(location.state?.from?.pathname, '/portal')
+  const { ownsPath, shellHref } = useAppRole()
+  const nextParam = new URLSearchParams(location.search).get('next')
+  const back = safeInternalPath(nextParam || location.state?.from?.pathname, '/portal')
 
   // Only redirect once the profile has loaded — redirecting on isAuthed alone
   // races ProtectedRoute (which needs the profile) and causes a redirect loop.
-  if (isAuthed && profile) return <Navigate to={back} replace />
+  if (isAuthed && profile)
+    return ownsPath(back) ? <Navigate to={back} replace /> : <CrossAppRedirect to={back} />
   // An operator who typed their credentials into the CUSTOMER door. They have
   // no profile and never will, so the line above can never fire for them and
   // the form would simply sit there having apparently done nothing. Sending
@@ -53,7 +65,8 @@ export default function Login() {
 
   const land = () => {
     toast.success('Welcome back')
-    navigate(back, { replace: true })
+    if (ownsPath(back)) navigate(back, { replace: true })
+    else window.location.replace(shellHref(back))
   }
 
   const handle = (result) => {
@@ -119,7 +132,11 @@ export default function Login() {
         title="Enter your code"
         subtitle="Two-factor authentication"
         footer={
-          <button type="button" onClick={cancelMfa} className="font-semibold text-white underline-offset-2 hover:underline">
+          <button
+            type="button"
+            onClick={cancelMfa}
+            className="font-semibold text-white underline-offset-2 hover:underline"
+          >
             Use a different account
           </button>
         }
@@ -168,11 +185,17 @@ export default function Login() {
       footer={
         <>
           New organization?{' '}
-          <Link to="/register-org" className="font-semibold text-white underline-offset-2 hover:underline">
+          <Link
+            to="/register-org"
+            className="font-semibold text-white underline-offset-2 hover:underline"
+          >
             Register
           </Link>{' '}
           ·{' '}
-          <Link to="/signup" className="font-semibold text-white underline-offset-2 hover:underline">
+          <Link
+            to="/signup"
+            className="font-semibold text-white underline-offset-2 hover:underline"
+          >
             Join an existing one
           </Link>
         </>
@@ -199,7 +222,9 @@ export default function Login() {
           ))}
           <div className="flex items-center gap-3 pt-1">
             <span className="h-px flex-1 bg-ink-200" />
-            <span className="text-[11px] font-semibold uppercase tracking-wide text-ink-400">or</span>
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-ink-400">
+              or
+            </span>
             <span className="h-px flex-1 bg-ink-200" />
           </div>
         </div>
@@ -221,7 +246,10 @@ export default function Login() {
           label="Password"
           htmlFor="password"
           action={
-            <Link to="/forgot-password" className="text-xs font-medium text-brand-700 hover:underline">
+            <Link
+              to="/forgot-password"
+              className="text-xs font-medium text-brand-700 hover:underline"
+            >
               Forgot password?
             </Link>
           }

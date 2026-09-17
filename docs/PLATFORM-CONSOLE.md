@@ -8,11 +8,11 @@ tenant can grant itself a module.
 
 Three layers, and only the last one is a real control:
 
-| Layer | What it does | Where |
-| --- | --- | --- |
-| The tile grids | A disabled module is not offered | `pages/portal/Home.jsx`, `pages/Dashboard.jsx` |
-| The route | A bookmark to a disabled module gets a "not enabled" screen instead of the module | `shared/modules/ModuleGate.jsx`, mounted by `Protected moduleKey=…` in `App.jsx` |
-| Firestore rules | Only a platform operator may write an entitlement | `firestore.rules` → `match /moduleEntitlements/{orgId}` |
+| Layer           | What it does                                                                      | Where                                                                            |
+| --------------- | --------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| The tile grids  | A disabled module is not offered                                                  | `pages/portal/Home.jsx`, `pages/Dashboard.jsx`                                   |
+| The route       | A bookmark to a disabled module gets a "not enabled" screen instead of the module | `shared/modules/ModuleGate.jsx`, mounted by `Protected moduleKey=…` in `App.jsx` |
+| Firestore rules | Only a platform operator may write an entitlement                                 | `firestore.rules` → `match /moduleEntitlements/{orgId}`                          |
 
 The first two are presentation and can be defeated in a browser. The third
 cannot, which is why the entitlement lives in a top-level collection rather than
@@ -26,7 +26,7 @@ The console is not a screen inside the customer app. It has its own sign-in at
 `/platform/login`, its own dark shell, and its own guard — and the customer app
 contains no link to it.
 
-That separation is not decoration. Deciding what *other* organizations may use
+That separation is not decoration. Deciding what _other_ organizations may use
 while signed in as an admin of one of them, under a header carrying that
 customer's name, is how the wrong organization gets edited. So:
 
@@ -90,10 +90,10 @@ Delete the document. Open tabs lose the console within seconds — the client
 watches the document rather than reading it once — and every write from that
 account is refused from the same moment.
 
-## The default: absent means enabled
+## The default: absent means enabled (legacy); new orgs start as placeholders
 
 An organization with **no** record in `moduleEntitlements` gets the full product.
-That is deliberate, in two places:
+That is deliberate for tenants that existed before this collection, in two places:
 
 - **No document** → every org was in exactly this state before entitlements
   existed, so shipping this took nothing away from anyone.
@@ -105,8 +105,16 @@ That is deliberate, in two places:
 Only an explicit `false` disables a module. `normalizeEntitlement` in
 `shared/modules/entitlements.js` is what makes that true at every call site.
 
+**New organizations are not in that state.** `createOrganization` writes the
+document in the same batch as the org, with every known key `false` — a
+placeholder per registry module. They become usable when an operator activates
+them on this screen (the subscription grant). The founder cannot flip those
+flags themselves; rules allow that first write only while every module is off.
+
 "Restore default" on the console **deletes** the record rather than writing every
-module `true`, so the org keeps getting new modules automatically.
+module `true`, so a legacy org keeps getting new modules automatically. On a
+new org that is the opposite of a placeholder seed — use "All placeholders"
+when you mean the seeded state.
 
 ## What this is not
 

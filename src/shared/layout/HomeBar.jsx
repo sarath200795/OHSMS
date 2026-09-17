@@ -1,7 +1,8 @@
-import { Link, useLocation } from 'react-router-dom'
+import { useLocation } from 'react-router-dom'
 import { ChevronRight } from 'lucide-react'
 import { moduleForPath } from '../modules/registry'
 import { OrgMark } from '../branding/OrgMark'
+import AppLink from '../../app/AppLink'
 
 /**
  * Where you are, and the two ways out.
@@ -43,7 +44,7 @@ export default function HomeBar() {
       aria-label="Breadcrumb"
       className="mb-5 flex flex-wrap items-center gap-0.5 rounded-2xl bg-clay-surface px-2.5 py-2 text-sm font-bold shadow-clay-sm"
     >
-      <Link
+      <AppLink
         to="/portal"
         className="flex items-center gap-2 rounded-xl px-2 py-1 text-ink-800 transition-colors hover:bg-clay-100 hover:text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
       >
@@ -55,18 +56,18 @@ export default function HomeBar() {
             working as "the way home". */}
         <OrgMark className="h-6 w-6 rounded-md shadow-clay-sm" />
         Home
-      </Link>
+      </AppLink>
 
       {mod && (
         <>
           <ChevronRight size={15} className="flex-none text-ink-500" aria-hidden="true" />
           {insideModule ? (
-            <Link
+            <AppLink
               to={mod.path}
               className="rounded-xl px-2 py-1 text-ink-700 transition-colors hover:bg-clay-100 hover:text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
             >
               {mod.label}
-            </Link>
+            </AppLink>
           ) : (
             // Already on the module's front page: name it, do not link it to
             // itself — a link that does nothing teaches people not to trust the
