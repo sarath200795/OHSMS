@@ -324,20 +324,21 @@ export default function SiteDetail() {
           Sized in mm so the drawing fills an A4 landscape sheet (281×194mm
           usable inside the 8mm @page margin) rather than depending on the
           screen viewport. */}
-      <div id="ferp-plans-sheet" className="hidden bg-white text-black">
+      <div id="ferp-plans-sheet" className="hidden bg-white text-ink-900">
         {floors.map((f, i) => (
           <div
             key={f.id}
             className="flex flex-col items-center"
             style={{ height: '188mm', ...(i > 0 ? { pageBreakBefore: 'always' } : null) }}
           >
-            <div className="w-full border-b-2 border-black pb-1">
-              <h1 className="text-[16pt] font-black uppercase leading-tight">
-                {site.name} — Emergency Evacuation Plan
+            <div className="w-full border-b-2 border-brand-600 pb-1">
+              <p className="doc-kicker">WEHS · Emergency evacuation</p>
+              <h1 className="text-[16pt] font-bold leading-tight tracking-tight">
+                {site.name} — Emergency evacuation plan
               </h1>
-              <p className="text-[10pt] font-bold">
-                {f.label}
-                <span className="ml-2 font-normal">
+              <p className="text-[10pt] text-ink-500">
+                <span className="font-semibold text-ink-800">{f.label}</span>
+                <span className="ml-2">
                   Floor {i + 1} of {floors.length}
                   {[site.entity, site.region].filter(Boolean).length ? ` · ${[site.entity, site.region].filter(Boolean).join(' · ')}` : ''}
                 </span>
@@ -349,32 +350,40 @@ export default function SiteDetail() {
       </div>
 
       {/* ── Printable site FERP: contacts + plan + rescue plans ── */}
-      <div id="site-ferp-sheet" className="hidden bg-white p-10 text-black">
-        <h1 className="mb-1 text-2xl font-black uppercase">Fire &amp; Emergency Response Plan — {site.name}</h1>
-        <p className="mb-5 text-sm">{[site.entity, site.region].filter(Boolean).join(' · ')} · Printed {new Date().toLocaleDateString()}</p>
+      <div id="site-ferp-sheet" className="doc-sheet hidden p-10">
+        <div className="doc-header">
+          <div>
+            <p className="doc-kicker">WEHS · Fire &amp; emergency response</p>
+            <h1 className="doc-title">Fire &amp; emergency response plan — {site.name}</h1>
+          </div>
+          <div className="doc-meta">
+            <div>{[site.entity, site.region].filter(Boolean).join(' · ') || '—'}</div>
+            <div className="mt-1">Printed {new Date().toLocaleDateString()}</div>
+          </div>
+        </div>
 
-        <h2 className="mb-2 border-b-2 border-black pb-1 text-sm font-black">EXTERNAL EMERGENCY SERVICES</h2>
-        <table className="mb-5 w-full text-sm">
+        <h2 className="doc-section-title">External emergency services</h2>
+        <table className="doc-table mb-5">
           <tbody>
             {siteContacts.external.map((c) => (
-              <tr key={c.id} className="border-b border-gray-300">
-                <td className="w-1/3 py-1.5 font-bold">{c.role}</td>
-                <td className="w-1/3 py-1.5">{c.name}</td>
-                <td className="py-1.5 font-mono font-bold">{c.phone}{c.altPhone ? ` / ${c.altPhone}` : ''}</td>
+              <tr key={c.id}>
+                <td className="lbl">{c.role}</td>
+                <td>{c.name}</td>
+                <td className="font-mono font-semibold">{c.phone}{c.altPhone ? ` / ${c.altPhone}` : ''}</td>
               </tr>
             ))}
           </tbody>
         </table>
 
-        <h2 className="mb-2 border-b-2 border-black pb-1 text-sm font-black">INTERNAL ESCALATION CHAIN</h2>
-        <table className="mb-5 w-full text-sm">
+        <h2 className="doc-section-title">Internal escalation chain</h2>
+        <table className="doc-table mb-5">
           <tbody>
             {siteContacts.internal.map((c) => (
-              <tr key={c.id} className="border-b border-gray-300">
-                <td className="w-1/4 py-1.5 font-bold">{erpRoleLabel(c.role, roleLabels)}</td>
-                <td className="w-1/4 py-1.5">{c.name}</td>
-                <td className="w-1/4 py-1.5 font-mono font-bold">{c.phone}</td>
-                <td className="py-1.5">{c.email || ''}</td>
+              <tr key={c.id}>
+                <td className="lbl">{erpRoleLabel(c.role, roleLabels)}</td>
+                <td>{c.name}</td>
+                <td className="font-mono font-semibold">{c.phone}</td>
+                <td>{c.email || ''}</td>
               </tr>
             ))}
           </tbody>
@@ -382,8 +391,8 @@ export default function SiteDetail() {
 
         {floors.length > 0 && (
           <div className="mb-5">
-            <h2 className="mb-2 border-b-2 border-black pb-1 text-sm font-black">
-              EVACUATION LAYOUTS ({floors.length} FLOOR{floors.length === 1 ? '' : 'S'})
+            <h2 className="doc-section-title">
+              Evacuation layouts ({floors.length} floor{floors.length === 1 ? '' : 's'})
             </h2>
             {floors.map((f, i) => (
               <div key={f.id} className="mb-4" style={i > 0 ? { pageBreakBefore: 'always' } : undefined}>
@@ -396,7 +405,7 @@ export default function SiteDetail() {
 
         {approvedPlans.length > 0 && (
           <div style={{ pageBreakBefore: 'always' }}>
-            <h2 className="mb-2 border-b-2 border-black pb-1 text-sm font-black">EMERGENCY RESCUE PLANS</h2>
+            <h2 className="doc-section-title">Emergency rescue plans</h2>
             {approvedPlans.map((p) => (
               <div key={p.id} className="mb-4">
                 <p className="text-sm font-black">{p.scenario} — {p.title}</p>

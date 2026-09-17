@@ -29,10 +29,10 @@ function fmtDate(ts) {
   return d.toLocaleDateString()
 }
 
-const STEEL = [27, 36, 53]
-const HAZARD = [245, 168, 0]
-const LIGHT = [245, 247, 250]
-const BORDER = [200, 206, 214]
+const STEEL = [15, 23, 42] // #0f172a
+const HAZARD = [217, 119, 6] // #d97706
+const LIGHT = [248, 250, 252] // #f8fafc
+const BORDER = [226, 232, 240] // #e2e8f0
 
 // US-Letter in points.
 const PAGE_W = 612

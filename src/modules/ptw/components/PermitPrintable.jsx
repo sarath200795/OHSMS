@@ -57,7 +57,7 @@ function Watermark({ label, color }) {
 function Section({ title, children }) {
   return (
     <div style={{ position: 'relative', zIndex: 1, marginTop: 16 }}>
-      <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#6b7280', borderBottom: '1px solid #e5e7eb', paddingBottom: 4, marginBottom: 8 }}>
+      <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#5b6573', borderBottom: '1px solid #e2e8f0', paddingBottom: 4, marginBottom: 8 }}>
         {title}
       </div>
       {children}
@@ -67,19 +67,19 @@ function Section({ title, children }) {
 
 function Row({ label, value }) {
   return (
-    <div style={{ display: 'flex', gap: 8, fontSize: 12, padding: '2px 0' }}>
-      <span style={{ width: 150, color: '#6b7280', flexShrink: 0 }}>{label}</span>
-      <span style={{ color: '#111827', fontWeight: 600 }}>{value || '—'}</span>
+    <div style={{ display: 'flex', gap: 8, fontSize: 12, padding: '3px 0' }}>
+      <span style={{ width: 150, color: '#5b6573', flexShrink: 0 }}>{label}</span>
+      <span style={{ color: '#0f172a', fontWeight: 600 }}>{value || '—'}</span>
     </div>
   )
 }
 
 function Tags({ items }) {
-  if (!items?.length) return <span style={{ fontSize: 12, color: '#9ca3af' }}>None</span>
+  if (!items?.length) return <span style={{ fontSize: 12, color: '#5b6573' }}>None</span>
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
       {items.map((t) => (
-        <span key={t} style={{ fontSize: 11, background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: 6, padding: '2px 8px', color: '#374151' }}>{t}</span>
+        <span key={t} style={{ fontSize: 11, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6, padding: '2px 8px', color: '#2c3848' }}>{t}</span>
       ))}
     </div>
   )
@@ -91,22 +91,23 @@ const PermitPrintable = forwardRef(function PermitPrintable({ permit, documents 
   const meta = statusMeta(permit.status)
 
   return (
-    <div ref={ref} className="print-area" style={{ position: 'relative', background: '#fff', color: '#111827', padding: 28, fontFamily: 'Inter, system-ui, sans-serif' }}>
+    <div ref={ref} className="print-area" style={{ position: 'relative', background: '#ffffff', color: '#0f172a', padding: 28, fontFamily: 'Inter, system-ui, sans-serif' }}>
       <Watermark label={meta.label} color={meta.color} />
 
       {/* Header */}
-      <div style={{ position: 'relative', zIndex: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: `3px solid ${meta.color}`, paddingBottom: 10 }}>
+      <div style={{ position: 'relative', zIndex: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: `2px solid ${meta.color}`, paddingBottom: 10 }}>
         <div>
-          <div style={{ fontSize: 20, fontWeight: 900, color: '#111827' }}>Permit to Work</div>
-          <div style={{ fontSize: 12, color: '#6b7280' }}>{permit.permitNo}</div>
+          <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#c74a33', marginBottom: 4 }}>WEHS · Permit to work</div>
+          <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: '-0.02em', color: '#0f172a' }}>Permit to work</div>
+          <div style={{ fontSize: 12, color: '#5b6573' }}>{permit.permitNo}</div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <div style={{ textAlign: 'right' }}>
-            <span style={{ display: 'inline-block', background: meta.color, color: '#fff', borderRadius: 999, padding: '4px 12px', fontSize: 12, fontWeight: 800 }}>{meta.label}</span>
-            <div style={{ fontSize: 11, color: '#6b7280', marginTop: 4 }}>Printed {fmt(new Date().toISOString())}</div>
+            <span style={{ display: 'inline-block', background: meta.color, color: '#fff', borderRadius: 6, padding: '4px 12px', fontSize: 12, fontWeight: 700 }}>{meta.label}</span>
+            <div style={{ fontSize: 11, color: '#5b6573', marginTop: 4 }}>Printed {fmt(new Date().toISOString())}</div>
           </div>
           {permit.qrToken && (
-            <div style={{ background: '#fff', padding: 4, border: '1px solid #e5e7eb', borderRadius: 6 }}>
+            <div style={{ background: '#fff', padding: 4, border: '1px solid #e2e8f0', borderRadius: 8 }}>
               <QRCodeCanvas value={publicPermitUrl(permit.qrToken)} size={72} level="M" />
             </div>
           )}
@@ -132,18 +133,18 @@ const PermitPrintable = forwardRef(function PermitPrintable({ permit, documents 
         <Section title="Job Safety Analysis">
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
             <thead>
-              <tr style={{ background: '#f3f4f6', textAlign: 'left' }}>
-                <th style={{ padding: '4px 6px', border: '1px solid #e5e7eb', width: '33%' }}>Activity step</th>
-                <th style={{ padding: '4px 6px', border: '1px solid #e5e7eb', width: '33%' }}>Hazard</th>
-                <th style={{ padding: '4px 6px', border: '1px solid #e5e7eb' }}>Precaution</th>
+              <tr style={{ background: '#f8fafc', textAlign: 'left' }}>
+                <th style={{ padding: '6px 8px', border: '1px solid #e2e8f0', width: '33%', fontSize: 10, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#5b6573' }}>Activity step</th>
+                <th style={{ padding: '6px 8px', border: '1px solid #e2e8f0', width: '33%', fontSize: 10, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#5b6573' }}>Hazard</th>
+                <th style={{ padding: '6px 8px', border: '1px solid #e2e8f0', fontSize: 10, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#5b6573' }}>Precaution</th>
               </tr>
             </thead>
             <tbody>
               {permit.jsa.map((r, i) => (
                 <tr key={i}>
-                  <td style={{ padding: '4px 6px', border: '1px solid #e5e7eb', verticalAlign: 'top' }}>{r.step || '—'}</td>
-                  <td style={{ padding: '4px 6px', border: '1px solid #e5e7eb', verticalAlign: 'top' }}>{r.hazard || '—'}</td>
-                  <td style={{ padding: '4px 6px', border: '1px solid #e5e7eb', verticalAlign: 'top' }}>{r.precaution || '—'}</td>
+                  <td style={{ padding: '6px 8px', border: '1px solid #e2e8f0', verticalAlign: 'top' }}>{r.step || '—'}</td>
+                  <td style={{ padding: '6px 8px', border: '1px solid #e2e8f0', verticalAlign: 'top' }}>{r.hazard || '—'}</td>
+                  <td style={{ padding: '6px 8px', border: '1px solid #e2e8f0', verticalAlign: 'top' }}>{r.precaution || '—'}</td>
                 </tr>
               ))}
             </tbody>
@@ -158,26 +159,26 @@ const PermitPrintable = forwardRef(function PermitPrintable({ permit, documents 
         {permit.participants?.length ? (
           <div style={{ display: 'grid', gap: 4 }}>
             {permit.participants.map((p, i) => (
-              <div key={i} style={{ fontSize: 12, color: '#111827' }}>
-                <strong>{p.name}</strong> <span style={{ color: '#6b7280' }}>({p.type})</span>
+              <div key={i} style={{ fontSize: 12, color: '#0f172a' }}>
+                <strong>{p.name}</strong> <span style={{ color: '#5b6573' }}>({p.type})</span>
                 {p.company ? ` · ${p.company}` : ''}{p.contact ? ` · ${p.contact}` : ''}
               </div>
             ))}
           </div>
-        ) : <span style={{ fontSize: 12, color: '#9ca3af' }}>None</span>}
+        ) : <span style={{ fontSize: 12, color: '#5b6573' }}>None</span>}
       </Section>
 
       {permit.fireWatchers?.length > 0 && (
         <Section title="Fire watcher(s)">
           {permit.fireWatchers.map((w, i) => (
-            <div key={i} style={{ fontSize: 12, color: '#111827' }}><strong>{w.name}</strong>{w.details ? ` · ${w.details}` : ''}</div>
+            <div key={i} style={{ fontSize: 12, color: '#0f172a' }}><strong>{w.name}</strong>{w.details ? ` · ${w.details}` : ''}</div>
           ))}
         </Section>
       )}
 
       {permit.confinedWatcher?.name && (
         <Section title="Standby watcher / attendant">
-          <div style={{ fontSize: 12, color: '#111827' }}><strong>{permit.confinedWatcher.name}</strong>{permit.confinedWatcher.details ? ` · ${permit.confinedWatcher.details}` : ''}</div>
+          <div style={{ fontSize: 12, color: '#0f172a' }}><strong>{permit.confinedWatcher.name}</strong>{permit.confinedWatcher.details ? ` · ${permit.confinedWatcher.details}` : ''}</div>
         </Section>
       )}
 
@@ -186,13 +187,13 @@ const PermitPrintable = forwardRef(function PermitPrintable({ permit, documents 
           {permit.requiredDocs?.map((req) => {
             const attached = documents.some((d) => d.key === req.key)
             return (
-              <div key={req.key} style={{ fontSize: 12, color: '#111827', padding: '1px 0' }}>
+              <div key={req.key} style={{ fontSize: 12, color: '#0f172a', padding: '1px 0' }}>
                 {attached ? '☑' : '☐'} {req.label}{req.mandatory ? ' (mandatory)' : ''}{attached ? '' : ' — not attached'}
               </div>
             )
           })}
           {documents.filter((d) => d.key === 'extra').map((d) => (
-            <div key={d.id} style={{ fontSize: 12, color: '#111827', padding: '1px 0' }}>☑ {d.fileName} (other)</div>
+            <div key={d.id} style={{ fontSize: 12, color: '#0f172a', padding: '1px 0' }}>☑ {d.fileName} (other)</div>
           ))}
         </Section>
       )}
@@ -225,7 +226,7 @@ const PermitPrintable = forwardRef(function PermitPrintable({ permit, documents 
 
       <div style={{ position: 'relative', zIndex: 1, marginTop: 28, display: 'flex', justifyContent: 'space-between', gap: 24 }}>
         {['Issuer', 'Engineering', 'Operations'].map((sig) => (
-          <div key={sig} style={{ flex: 1, borderTop: '1px solid #9ca3af', paddingTop: 6, fontSize: 11, color: '#6b7280' }}>{sig} sign &amp; date</div>
+          <div key={sig} style={{ flex: 1, borderTop: '1px solid #cbd5e1', paddingTop: 6, fontSize: 11, color: '#5b6573', letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 600 }}>{sig} sign &amp; date</div>
         ))}
       </div>
     </div>

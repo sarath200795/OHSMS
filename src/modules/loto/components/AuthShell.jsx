@@ -41,21 +41,20 @@ const LEGAL = [
 ]
 
 /**
- * Two-tone split-screen auth layout: a DARK industrial brand panel on the left
- * (logo, headline, feature rows, legal footer) and a LIGHT cream form panel on
- * the right. Collapses to the (light) form column on mobile.
+ * Two-tone split-screen auth layout: a dark slate brand panel on the left
+ * (logo, headline, feature rows, legal footer) and a white card on cool canvas
+ * on the right. Collapses to the form column on mobile.
  *
  * Note: the app's `steel` Tailwind scale is inverted for light surfaces, so the
- * dark panel uses explicit light colors (white / warm grays), like the sidebar.
+ * dark panel uses explicit light colors (white / cool grays), like the sidebar.
  */
 export default function AuthShell({ title, subtitle, children, footer }) {
   return (
-    <div className="flex min-h-screen bg-surface">
+    <div className="flex min-h-screen bg-canvas">
       {/* Dark brand panel */}
-      <div className="relative hidden w-1/2 flex-col justify-between overflow-hidden bg-gradient-to-br from-[#221d16] via-[#19150f] to-[#0e0c08] p-12 text-white lg:flex">
-        {/* warm amber glow + hazard stripe accent */}
-        <div className="pointer-events-none absolute -right-24 bottom-[-10%] h-96 w-96 rounded-full bg-hazard/10 blur-3xl" />
-        <div className="hazard-stripes absolute inset-x-0 top-0 h-1.5 opacity-90" />
+      <div className="relative hidden w-1/2 flex-col justify-between overflow-hidden bg-gradient-to-br from-ink-900 via-ink-950 to-[#020617] p-12 text-white lg:flex">
+        <div className="pointer-events-none absolute -right-24 bottom-[-10%] h-96 w-96 rounded-full bg-brand-600/20 blur-3xl" />
+        <div className="absolute inset-x-0 top-0 h-1 bg-brand-600" />
 
         <motion.div
           initial={{ opacity: 0, x: -20 }}
@@ -85,7 +84,7 @@ export default function AuthShell({ title, subtitle, children, footer }) {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3, duration: 0.5 }}
-            className="mt-4 max-w-md text-[#c9c3b8]"
+            className="mt-4 max-w-md text-ink-300"
           >
             Build LOTO procedures, generate energy tags &amp; QR codes, and track every
             isolation point across your sites — in one auditable system.

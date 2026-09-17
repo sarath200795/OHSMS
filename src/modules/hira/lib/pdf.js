@@ -9,8 +9,10 @@ import { autoTable } from 'jspdf-autotable'
 import { initialRisk, residualRisk } from './raStats'
 import { categoryLabel } from './constants'
 
-const BRAND = [37, 99, 235] // #2563eb
-const INK = [28, 34, 48] // #1c2230
+const BRAND = [199, 74, 51] // #c74a33 coral accent
+const INK = [15, 23, 42] // #0f172a
+const WASH = [248, 250, 252] // #f8fafc
+const RULE = [226, 232, 240] // #e2e8f0
 const MARGIN = 12
 
 function hexToRgb(hex) {
@@ -74,9 +76,9 @@ export function exportAssessmentPdf(assessment, generatedAt = new Date()) {
       ['Date', assessment.assessmentDate || '—', 'Site / Location', [assessment.siteName, assessment.location].filter(Boolean).join(' / ') || '—', 'Prepared by', assessment.createdByName || '—'],
     ],
     columnStyles: {
-      0: { fontStyle: 'bold', fillColor: [243, 244, 246], cellWidth: 24 },
-      2: { fontStyle: 'bold', fillColor: [243, 244, 246], cellWidth: 34 },
-      4: { fontStyle: 'bold', fillColor: [243, 244, 246], cellWidth: 26 },
+      0: { fontStyle: 'bold', fillColor: WASH, cellWidth: 24 },
+      2: { fontStyle: 'bold', fillColor: WASH, cellWidth: 34 },
+      4: { fontStyle: 'bold', fillColor: WASH, cellWidth: 26 },
     },
     margin: { left: MARGIN, right: MARGIN },
   })
@@ -149,7 +151,7 @@ export function exportAssessmentPdf(assessment, generatedAt = new Date()) {
       startY: y,
       head: [COLS.map((c) => c.header)],
       body,
-      styles: { fontSize: 8, cellPadding: 1.5, valign: 'top', overflow: 'linebreak', lineColor: [220, 220, 220], lineWidth: 0.1 },
+      styles: { fontSize: 8, cellPadding: 1.5, valign: 'top', overflow: 'linebreak', lineColor: RULE, lineWidth: 0.15 },
       headStyles: { fillColor: INK, textColor: 255, fontSize: 8, halign: 'left' },
       columnStyles: COLS.reduce((acc, c, i) => {
         acc[i] = { cellWidth: c.width }

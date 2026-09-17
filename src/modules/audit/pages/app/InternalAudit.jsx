@@ -1096,65 +1096,83 @@ function PrintReport({ data, fallbackFindings, currentTask, docId, siteName }) {
   const td = data?.taskDetails || currentTask || {}
   const list = data?.findings || fallbackFindings || []
   return (
-    <div className="absolute inset-0 z-[9999] hidden min-h-screen bg-surface p-10 text-black print:block" style={{ printColorAdjust: 'exact', WebkitPrintColorAdjust: 'exact' }}>
-      <div className="mb-8 flex items-end justify-between border-b-4 border-black pb-4">
-        <div><div className="mb-1 text-sm font-bold uppercase tracking-widest text-gray-500">ISO 45001 OHSMS - Formal Record</div><h1 className="text-3xl font-black uppercase leading-none tracking-tighter">Internal Audit Report</h1></div>
-        <div className="text-right"><p className="font-mono text-sm font-bold">Ref: {data?.docId || docId}</p><p className="mt-1 text-sm font-bold uppercase">Date: {(data?.auditDate || new Date().toISOString()).split('T')[0]}</p></div>
+    <div className="absolute inset-0 z-[9999] hidden min-h-screen doc-sheet p-10 print:block" style={{ printColorAdjust: 'exact', WebkitPrintColorAdjust: 'exact' }}>
+      <div className="doc-header">
+        <div>
+          <p className="doc-kicker">WEHS · ISO 45001 OHSMS</p>
+          <h1 className="doc-title">Internal audit report</h1>
+        </div>
+        <div className="doc-meta">
+          <div><b>Ref {data?.docId || docId}</b></div>
+          <div className="mt-1">Date {(data?.auditDate || new Date().toISOString()).split('T')[0]}</div>
+        </div>
       </div>
-      <table className="mb-8 w-full border border-black text-sm">
+      <table className="doc-table mb-8">
         <tbody>
-          <tr><td className="border-b border-gray-300 p-2 font-bold">Site:</td><td className="border-b border-gray-300 p-2">{siteName || td.siteId}</td><td className="border-b border-gray-300 p-2 font-bold">Standard:</td><td className="border-b border-gray-300 p-2">{td.standard}</td></tr>
-          <tr><td className="border-b border-gray-300 p-2 font-bold">Auditor:</td><td className="border-b border-gray-300 p-2">{td.auditor || data?.auditor}</td><td className="border-b border-gray-300 p-2 font-bold">Lead Auditor:</td><td className="border-b border-gray-300 p-2">{td.leadAuditor}</td></tr>
-          <tr><td className="p-2 font-bold">Auditee:</td><td className="p-2">{td.auditee}</td><td className="p-2 font-bold">Dept / Area:</td><td className="p-2">{td.dept} / {td.area}</td></tr>
+          <tr><td className="lbl">Site</td><td>{siteName || td.siteId}</td><td className="lbl">Standard</td><td>{td.standard}</td></tr>
+          <tr><td className="lbl">Auditor</td><td>{td.auditor || data?.auditor}</td><td className="lbl">Lead auditor</td><td>{td.leadAuditor}</td></tr>
+          <tr><td className="lbl">Auditee</td><td>{td.auditee}</td><td className="lbl">Dept / Area</td><td>{td.dept} / {td.area}</td></tr>
         </tbody>
       </table>
-      <h2 className="mb-4 inline-block border border-gray-400 bg-gray-200 p-1 text-sm font-bold uppercase">1. Findings Summary</h2>
-      <table className="mb-8 w-full border-collapse border border-black text-sm">
-        <thead><tr className="bg-gray-200"><th className="border border-black p-2">ID</th><th className="border border-black p-2">Type</th><th className="border border-black p-2">Clause</th><th className="border border-black p-2 text-left">Description</th></tr></thead>
-        <tbody>{list.map((f, i) => <tr key={i}><td className="border border-black p-2 text-center font-mono font-bold">{f.id}</td><td className="border border-black p-2 text-center font-bold">{f.type}</td><td className="border border-black p-2 text-center">{f.clause}</td><td className="border border-black p-2">{f.desc}</td></tr>)}</tbody>
-      </table>
-      <h2 className="mb-4 inline-block border border-gray-400 bg-gray-200 p-1 text-sm font-bold uppercase">2. Corrective Action Report (CAR)</h2>
-      {list.map((f, i) => (
-        <div key={i} className="mb-6 border border-black p-5">
-          <div className="mb-3 flex justify-between border-b border-gray-300 pb-2"><span className="font-bold">Finding {f.id}</span><span className="border border-black px-2 py-0.5 text-xs font-bold uppercase">{f.type}</span></div>
-          <div className="mb-4 border-l-4 border-gray-400 pl-3 text-sm italic text-gray-700">“{f.desc}”</div>
-          {f.response?.status === 'Completed' ? (
-            <div className="border border-gray-300 bg-gray-50 p-4 text-sm">
-              <div className="mb-3"><strong>Root Cause:</strong><br />{f.response.rootCause}</div>
-              <div className="mb-3"><strong>Immediate Correction:</strong><br />{f.response.correction}</div>
-              <div className="mb-4"><strong>Corrective Action (CAPA):</strong><br />{f.response.capa}</div>
-              <div className="flex justify-between border-t border-gray-300 pt-3 text-xs"><div><strong>Owner:</strong> {f.response.owner}</div><div><strong>Target:</strong> {f.response.targetDate}</div><div><strong>Evidence:</strong> {f.response.evidenceFileName || 'None'}</div></div>
-            </div>
-          ) : <div className="text-sm font-bold italic text-red-600">No corrective action submitted yet.</div>}
-        </div>
-      ))}
-      <table className="mt-24 w-full text-sm" role="presentation"><tbody><tr><td className="w-[45%] border-t-2 border-black pt-2 text-center font-bold uppercase tracking-widest">Auditor Signature</td><td className="w-[10%]" aria-hidden="true" /><td className="w-[45%] border-t-2 border-black pt-2 text-center font-bold uppercase tracking-widest">Auditee Signature</td></tr></tbody></table>
+      <section className="doc-section">
+        <h2 className="doc-section-title">1. Findings summary</h2>
+        <table className="doc-table">
+          <thead><tr><th>ID</th><th>Type</th><th>Clause</th><th>Description</th></tr></thead>
+          <tbody>{list.map((f, i) => <tr key={i}><td className="text-center font-mono font-semibold">{f.id}</td><td className="text-center font-semibold">{f.type}</td><td className="text-center">{f.clause}</td><td>{f.desc}</td></tr>)}</tbody>
+        </table>
+      </section>
+      <section className="doc-section">
+        <h2 className="doc-section-title">2. Corrective action report (CAR)</h2>
+        {list.map((f, i) => (
+          <div key={i} className="mb-6 rounded-lg ring-1 ring-ink-200 p-5">
+            <div className="mb-3 flex justify-between border-b border-ink-200 pb-2"><span className="font-semibold">Finding {f.id}</span><span className="rounded-md bg-surface-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-widest text-ink-600 ring-1 ring-ink-200">{f.type}</span></div>
+            <div className="doc-quote">“{f.desc}”</div>
+            {f.response?.status === 'Completed' ? (
+              <div className="doc-panel text-sm">
+                <div className="mb-3"><strong>Root cause</strong><br />{f.response.rootCause}</div>
+                <div className="mb-3"><strong>Immediate correction</strong><br />{f.response.correction}</div>
+                <div className="mb-4"><strong>Corrective action (CAPA)</strong><br />{f.response.capa}</div>
+                <div className="flex justify-between border-t border-ink-200 pt-3 text-xs"><div><strong>Owner:</strong> {f.response.owner}</div><div><strong>Target:</strong> {f.response.targetDate}</div><div><strong>Evidence:</strong> {f.response.evidenceFileName || 'None'}</div></div>
+              </div>
+            ) : <div className="text-sm font-semibold italic text-red-600">No corrective action submitted yet.</div>}
+          </div>
+        ))}
+      </section>
+      <table className="doc-sigs" role="presentation"><tbody><tr><td>Auditor signature</td><td className="gutter" aria-hidden="true" /><td>Auditee signature</td></tr></tbody></table>
     </div>
   )
 }
 
 function PrintPlan({ plan, rows, siteName }) {
   return (
-    <div className="absolute inset-0 z-[9999] hidden min-h-screen bg-surface p-10 text-black print:block" style={{ printColorAdjust: 'exact', WebkitPrintColorAdjust: 'exact' }}>
-      <div className="mb-8 flex items-end justify-between border-b-4 border-black pb-4">
-        <div><div className="mb-1 text-sm font-bold uppercase tracking-widest text-gray-500">ISO 45001 OHSMS - Formal Record</div><h1 className="text-3xl font-black uppercase leading-none tracking-tighter">Internal Audit Schedule & Matrix</h1></div>
-        <div className="text-right"><p className="font-mono text-sm font-bold">Ref ID: {plan.docId || 'DRAFT'}</p><p className="mt-1 text-sm font-bold uppercase">Printed: {new Date().toLocaleDateString()}</p></div>
+    <div className="absolute inset-0 z-[9999] hidden min-h-screen doc-sheet p-10 print:block" style={{ printColorAdjust: 'exact', WebkitPrintColorAdjust: 'exact' }}>
+      <div className="doc-header">
+        <div>
+          <p className="doc-kicker">WEHS · ISO 45001 OHSMS</p>
+          <h1 className="doc-title">Internal audit schedule &amp; matrix</h1>
+        </div>
+        <div className="doc-meta">
+          <div><b>Ref {plan.docId || 'DRAFT'}</b></div>
+          <div className="mt-1">Printed {new Date().toLocaleDateString()}</div>
+        </div>
       </div>
-      <div className="mb-8 border border-black bg-gray-50 p-6">
+      <div className="doc-panel mb-8">
         <table className="w-full text-sm">
           <tbody>
-            <tr><td className="border-b border-gray-300 p-2 font-bold">Target Site:</td><td className="border-b border-gray-300 p-2 text-lg font-bold">{siteName || plan.siteId || 'N/A'}</td><td className="border-b border-gray-300 p-2 font-bold">Lead Auditor:</td><td className="border-b border-gray-300 p-2">{plan.leadAuditor || 'N/A'}</td></tr>
-            <tr><td className="border-b border-gray-300 p-2 font-bold">Standard:</td><td className="border-b border-gray-300 p-2">{plan.standard}</td><td className="border-b border-gray-300 p-2 font-bold">Date Range:</td><td className="border-b border-gray-300 p-2 font-mono">{plan.startDate} to {plan.endDate}</td></tr>
-            <tr><td className="p-2 font-bold">Audit Team:</td><td className="p-2" colSpan="3">{(plan.team || []).join(', ') || 'None assigned'}</td></tr>
+            <tr><td className="border-b border-ink-200 p-2 font-semibold text-ink-500">Target site</td><td className="border-b border-ink-200 p-2 text-lg font-semibold">{siteName || plan.siteId || 'N/A'}</td><td className="border-b border-ink-200 p-2 font-semibold text-ink-500">Lead auditor</td><td className="border-b border-ink-200 p-2">{plan.leadAuditor || 'N/A'}</td></tr>
+            <tr><td className="border-b border-ink-200 p-2 font-semibold text-ink-500">Standard</td><td className="border-b border-ink-200 p-2">{plan.standard}</td><td className="border-b border-ink-200 p-2 font-semibold text-ink-500">Date range</td><td className="border-b border-ink-200 p-2 font-mono">{plan.startDate} to {plan.endDate}</td></tr>
+            <tr><td className="p-2 font-semibold text-ink-500">Audit team</td><td className="p-2" colSpan="3">{(plan.team || []).join(', ') || 'None assigned'}</td></tr>
           </tbody>
         </table>
       </div>
-      <h2 className="mb-4 inline-block border border-gray-400 bg-gray-200 p-1 text-sm font-bold uppercase">Execution Matrix</h2>
-      <table className="w-full border-collapse border border-black text-xs">
-        <thead><tr className="bg-gray-200"><th className="border border-black p-2 text-left">Auditor</th><th className="border border-black p-2 text-left">Auditee</th><th className="border border-black p-2 text-left">Department</th><th className="border border-black p-2 text-left">Area</th><th className="border border-black p-2 text-left">Aspect</th><th className="border border-black p-2">Date</th><th className="border border-black p-2">Time</th></tr></thead>
-        <tbody>{(rows || []).map((r, i) => <tr key={i}><td className="border border-black p-2 font-bold">{r.auditor}</td><td className="border border-black p-2 font-bold">{r.auditee}</td><td className="border border-black p-2">{r.dept}</td><td className="border border-black p-2">{r.area}</td><td className="border border-black p-2">{r.aspect}</td><td className="border border-black p-2 text-center font-mono">{r.date}</td><td className="border border-black p-2 text-center font-mono">{r.time}</td></tr>)}</tbody>
-      </table>
-      <table className="mt-24 w-full text-sm" role="presentation"><tbody><tr><td className="w-[45%] border-t-2 border-black pt-2 text-center font-bold uppercase tracking-widest">Lead Auditor Signature</td><td className="w-[10%]" aria-hidden="true" /><td className="w-[45%] border-t-2 border-black pt-2 text-center font-bold uppercase tracking-widest">Management Rep Signature</td></tr></tbody></table>
+      <section className="doc-section">
+        <h2 className="doc-section-title">Execution matrix</h2>
+        <table className="doc-table text-xs">
+          <thead><tr><th>Auditor</th><th>Auditee</th><th>Department</th><th>Area</th><th>Aspect</th><th>Date</th><th>Time</th></tr></thead>
+          <tbody>{(rows || []).map((r, i) => <tr key={i}><td className="font-semibold">{r.auditor}</td><td className="font-semibold">{r.auditee}</td><td>{r.dept}</td><td>{r.area}</td><td>{r.aspect}</td><td className="text-center font-mono">{r.date}</td><td className="text-center font-mono">{r.time}</td></tr>)}</tbody>
+        </table>
+      </section>
+      <table className="doc-sigs" role="presentation"><tbody><tr><td>Lead auditor signature</td><td className="gutter" aria-hidden="true" /><td>Management rep signature</td></tr></tbody></table>
     </div>
   )
 }

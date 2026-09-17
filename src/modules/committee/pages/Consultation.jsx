@@ -1079,110 +1079,110 @@ export default function Consultation() {
 
             {/* PRINT OVERLAY */}
             {printData && (
-                <div className="hidden print:block p-10 bg-white text-black min-h-screen absolute inset-0 z-[9999]" style={{ WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}>
-                    <div className="flex justify-between items-end border-b-4 border-black pb-4 mb-8">
+                <div className="hidden print:block p-10 doc-sheet min-h-screen absolute inset-0 z-[9999]" style={{ WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}>
+                    <div className="doc-header">
                         <div>
-                            <div className="text-sm text-gray-500 font-bold mb-1 tracking-widest uppercase">ISO 45001 OHSMS - FORMAL RECORD</div>
-                            <h1 className="text-3xl font-black uppercase tracking-tighter m-0 p-0 leading-none">Consultation & Meeting Minutes</h1>
+                            <p className="doc-kicker">WEHS · ISO 45001 OHSMS</p>
+                            <h1 className="doc-title">Consultation &amp; meeting minutes</h1>
                         </div>
-                        <div className="text-right">
-                            <p className="text-sm font-bold font-mono">Ref ID: {printData.docId || printData.id}</p>
-                            <p className="text-sm font-bold uppercase mt-1">Date Printed: {new Date().toLocaleDateString()}</p>
+                        <div className="doc-meta">
+                            <div><b>Ref {printData.docId || printData.id}</b></div>
+                            <div className="mt-1">Printed {new Date().toLocaleDateString()}</div>
                         </div>
                     </div>
 
-                    <div className="mb-8 border border-black p-6 bg-gray-50">
-                        <h2 className="text-sm font-bold mb-4 uppercase bg-gray-200 p-1 border border-gray-400 inline-block">1. Meeting Details</h2>
+                    <div className="doc-panel mb-8">
+                        <h2 className="doc-section-title">1. Meeting details</h2>
                         <table className="w-full text-sm border-none">
                             <tbody>
                                 <tr>
-                                    <td className="w-[15%] font-bold py-2 border-b border-gray-300">Type:</td><td className="w-[35%] py-2 border-b border-gray-300 text-lg font-bold">{printData.type}</td>
-                                    <td className="w-[15%] font-bold py-2 border-b border-gray-300 pl-4">Time:</td><td className="w-[35%] py-2 border-b border-gray-300 font-mono">{printData.time || 'N/A'}</td>
+                                    <td className="w-[15%] font-semibold py-2 border-b border-ink-200 text-ink-500">Type</td><td className="w-[35%] py-2 border-b border-ink-200 text-lg font-semibold">{printData.type}</td>
+                                    <td className="w-[15%] font-semibold py-2 border-b border-ink-200 pl-4 text-ink-500">Time</td><td className="w-[35%] py-2 border-b border-ink-200 font-mono">{printData.time || 'N/A'}</td>
                                 </tr>
                                 <tr>
-                                    <td className="w-[15%] font-bold py-2 border-b border-gray-300">Site/Location:</td><td className="w-[35%] py-2 border-b border-gray-300">{siteName(printData.siteId)}</td>
-                                    <td className="w-[15%] font-bold py-2 border-b border-gray-300 pl-4">Date:</td><td className="w-[35%] py-2 border-b border-gray-300 font-mono font-bold">{printData.date}</td>
+                                    <td className="w-[15%] font-semibold py-2 border-b border-ink-200 text-ink-500">Site/Location</td><td className="w-[35%] py-2 border-b border-ink-200">{siteName(printData.siteId)}</td>
+                                    <td className="w-[15%] font-semibold py-2 border-b border-ink-200 pl-4 text-ink-500">Date</td><td className="w-[35%] py-2 border-b border-ink-200 font-mono font-semibold">{printData.date}</td>
                                 </tr>
                                 <tr>
-                                    <td className="font-bold py-3 align-top border-none">Subject/Agenda:</td><td colSpan="3" className="py-3 text-lg font-bold border-none leading-tight">{printData.subject}</td>
+                                    <td className="font-semibold py-3 align-top border-none text-ink-500">Subject/Agenda</td><td colSpan="3" className="py-3 text-lg font-semibold border-none leading-tight">{printData.subject}</td>
                                 </tr>
                             </tbody>
                         </table>
                     </div>
 
-                    <div className="mb-8 border border-black p-6">
-                        <h2 className="text-sm font-bold mb-3 uppercase bg-gray-200 p-1 border border-gray-400 inline-block">2. Inputs / Pre-Requisites</h2>
-                        <div className="text-sm whitespace-pre-wrap pl-4 border-l-4 border-gray-300 min-h-[50px] leading-relaxed">{printData.preRequisites || 'None specified.'}</div>
-                    </div>
+                    <section className="doc-section">
+                        <h2 className="doc-section-title">2. Inputs / Pre-requisites</h2>
+                        <div className="doc-quote min-h-[50px] leading-relaxed">{printData.preRequisites || 'None specified.'}</div>
+                    </section>
 
-                    <div className="mb-8 border border-black p-6 page-break-inside-avoid">
-                        <h2 className="text-sm font-bold mb-4 uppercase bg-gray-200 p-1 border border-gray-400 inline-block">3. Attendance Roster</h2>
-                        <table className="w-full text-sm border-collapse border border-black">
+                    <section className="doc-section page-break-inside-avoid">
+                        <h2 className="doc-section-title">3. Attendance roster</h2>
+                        <table className="doc-table">
                             <thead>
-                                <tr className="bg-gray-200">
-                                    <th className="border border-black p-3 text-center w-12">#</th>
-                                    <th className="border border-black p-3 text-left w-2/5">Full Name</th>
-                                    <th className="border border-black p-3 text-left w-1/3">Role / Affiliation</th>
-                                    <th className="border border-black p-3 text-center">Signature</th>
+                                <tr>
+                                    <th className="text-center w-12">#</th>
+                                    <th className="w-2/5">Full name</th>
+                                    <th className="w-1/3">Role / Affiliation</th>
+                                    <th className="text-center">Signature</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {(printData.attendees || []).map((a, i) => (
                                     <tr key={i}>
-                                        <td className="border border-black p-3 text-center font-bold">{i + 1}</td>
-                                        <td className="border border-black p-3 font-bold">{a.name} {a.userId === 'External' ? '(Contractor/EXT)' : ''}</td>
-                                        <td className="border border-black p-3">{a.role}</td>
-                                        <td className="border border-black p-3 h-12"><span className="sr-only">Signature — signed on the printed copy</span></td>
+                                        <td className="text-center font-semibold">{i + 1}</td>
+                                        <td className="font-semibold">{a.name} {a.userId === 'External' ? '(Contractor/EXT)' : ''}</td>
+                                        <td>{a.role}</td>
+                                        <td className="h-12"><span className="sr-only">Signature — signed on the printed copy</span></td>
                                     </tr>
                                 ))}
-                                {(!printData.attendees || printData.attendees.length === 0) && <tr><td colSpan="4" className="border border-black p-6 text-center italic text-gray-500">No attendees recorded.</td></tr>}
+                                {(!printData.attendees || printData.attendees.length === 0) && <tr><td colSpan="4" className="text-center italic text-ink-500">No attendees recorded.</td></tr>}
                             </tbody>
                         </table>
-                    </div>
+                    </section>
 
-                    <div className="mb-8 border border-black p-6 page-break">
-                        <h2 className="text-sm font-bold mb-4 uppercase bg-gray-200 p-1 border border-gray-400 inline-block">4. Discussion Minutes</h2>
-                        <div className="text-sm whitespace-pre-wrap leading-relaxed text-justify">{printData.minutes || 'No formal minutes documented.'}</div>
-                    </div>
+                    <section className="doc-section page-break">
+                        <h2 className="doc-section-title">4. Discussion minutes</h2>
+                        <div className="text-sm whitespace-pre-wrap leading-relaxed">{printData.minutes || 'No formal minutes documented.'}</div>
+                    </section>
 
-                    <div className="mb-8 border border-black p-6 page-break-inside-avoid">
-                        <h2 className="text-sm font-bold mb-4 uppercase bg-gray-200 p-1 border border-gray-400 inline-block">5. Agreed Action Plan (CAPA)</h2>
-                        <table className="w-full text-sm border-collapse border border-black">
+                    <section className="doc-section page-break-inside-avoid">
+                        <h2 className="doc-section-title">5. Agreed action plan (CAPA)</h2>
+                        <table className="doc-table">
                             <thead>
-                                <tr className="bg-gray-200">
-                                    <th className="border border-black p-3 text-center w-12">#</th>
-                                    <th className="border border-black p-3 text-left">Action Item Description</th>
-                                    <th className="border border-black p-3 text-left w-1/4">Owner Assignee</th>
-                                    <th className="border border-black p-3 text-center w-32">Due Date</th>
+                                <tr>
+                                    <th className="text-center w-12">#</th>
+                                    <th>Action item</th>
+                                    <th className="w-1/4">Owner</th>
+                                    <th className="text-center w-32">Due date</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {(printData.actions || []).map((row, idx) => (
                                     <tr key={idx}>
-                                        <td className="border border-black p-3 text-center font-bold">{idx + 1}</td>
-                                        <td className="border border-black p-3 font-medium">{row.action}</td>
-                                        <td className="border border-black p-3 font-bold">{row.owner}</td>
-                                        <td className="border border-black p-3 text-center font-mono">{row.due}</td>
+                                        <td className="text-center font-semibold">{idx + 1}</td>
+                                        <td>{row.action}</td>
+                                        <td className="font-semibold">{row.owner}</td>
+                                        <td className="text-center font-mono">{row.due}</td>
                                     </tr>
                                 ))}
                                 {(!printData.actions || printData.actions.length === 0) && (
-                                    <tr><td colSpan="4" className="border border-black p-6 text-center italic text-gray-500">No follow-up actions assigned during this meeting.</td></tr>
+                                    <tr><td colSpan="4" className="text-center italic text-ink-500">No follow-up actions assigned during this meeting.</td></tr>
                                 )}
                             </tbody>
                         </table>
-                    </div>
+                    </section>
 
                     {/* Layout only: two signature rules side by side on the printed minutes. */}
-                    <table role="presentation" className="w-full border-none mt-24 text-sm page-break-inside-avoid">
+                    <table role="presentation" className="doc-sigs page-break-inside-avoid">
                         <tbody>
                             <tr>
-                                <td className="w-[45%] border-none border-t-2 border-black pt-2 text-center font-bold uppercase tracking-widest">Prepared By / Chairperson</td>
-                                <td className="w-[10%] border-none" aria-hidden="true"></td>
-                                <td className="w-[45%] border-none border-t-2 border-black pt-2 text-center font-bold uppercase tracking-widest">Site Manager / EHS Lead Approval</td>
+                                <td>Prepared by / Chairperson</td>
+                                <td className="gutter" aria-hidden="true"></td>
+                                <td>Site manager / EHS lead approval</td>
                             </tr>
                         </tbody>
                     </table>
-                    <div className="text-center text-xs text-gray-500 mt-12 border-t border-gray-300 pt-4 font-mono">Generated by OHSMS Enterprise Portal | Document Control Timestamp: {new Date().toLocaleString()}</div>
+                    <div className="doc-foot text-center font-mono">Generated by WEHS · {new Date().toLocaleString()}</div>
                 </div>
             )}
         </div>

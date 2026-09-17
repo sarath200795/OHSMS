@@ -331,6 +331,131 @@ body {
   }
 }
 
+/* ── Print / export document chrome ─────────────────────────────────────────
+   Shared by the certificate, FERP, audit report, meeting minutes, mock-drill
+   report, incident and illness printables. Hairline + coral on white, matching
+   the ops dashboard — not the old 4px-black Word template. react-to-print
+   clones the page stylesheet, so these classes travel with the print job. */
+.doc-sheet {
+  background: #ffffff;
+  color: #0f172a;
+  font-family: Inter, system-ui, 'Segoe UI', sans-serif;
+}
+.doc-kicker {
+  margin: 0 0 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #c74a33;
+}
+.doc-title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  color: #0f172a;
+}
+.doc-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid #c74a33;
+}
+.doc-meta {
+  text-align: right;
+  font-size: 12px;
+  color: #5b6573;
+}
+.doc-meta b,
+.doc-meta strong {
+  color: #0f172a;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.doc-section {
+  margin: 0 0 20px;
+}
+.doc-section-title {
+  margin: 0 0 10px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #5b6573;
+}
+.doc-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.doc-table th,
+.doc-table td {
+  border: 1px solid #e2e8f0;
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+.doc-table th {
+  background: #f8fafc;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #5b6573;
+}
+.doc-table td.lbl,
+.doc-table .lbl {
+  width: 22%;
+  background: #f8fafc;
+  font-weight: 600;
+  color: #2c3848;
+}
+.doc-panel {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 14px 16px;
+}
+.doc-quote {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border-left: 3px solid #c74a33;
+  background: #f8fafc;
+  color: #2c3848;
+  font-size: 13px;
+}
+.doc-sigs {
+  width: 100%;
+  margin-top: 56px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #5b6573;
+}
+.doc-sigs td {
+  width: 45%;
+  padding-top: 8px;
+  border-top: 1px solid #cbd5e1;
+  text-align: center;
+}
+.doc-sigs td.gutter {
+  width: 10%;
+  border: none;
+  padding: 0;
+}
+.doc-foot {
+  margin-top: 32px;
+  padding-top: 12px;
+  border-top: 1px solid #e2e8f0;
+  font-size: 10px;
+  color: #5b6573;
+}
+
 @media print {
   .no-print {
     display: none !important;
