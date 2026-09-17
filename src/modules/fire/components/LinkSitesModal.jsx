@@ -90,17 +90,12 @@ export default function LinkSitesModal({
       }
       maxWidth="max-w-4xl"
     >
-      <div className="mb-4 flex flex-wrap gap-1.5">
+      <div className="tab-strip mb-4">
         {TABS.map((t) => (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
-            className={[
-              'inline-flex items-center gap-2 rounded-2xl px-3 py-1.5 text-sm font-medium transition-all duration-200 ease-emil',
-              showing === t.key
-                ? 'bg-clay-surface text-ink-900 shadow-clay-pressed'
-                : 'text-ink-500 hover:bg-clay-100 hover:text-ink-800 active:scale-[0.98]',
-            ].join(' ')}
+            className={`nav-tab ${showing === t.key ? 'nav-tab-active' : 'nav-tab-idle'}`}
           >
             <t.icon size={15} /> {t.label}
           </button>

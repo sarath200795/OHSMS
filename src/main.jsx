@@ -32,7 +32,7 @@ createRoot(document.getElementById('root')).render(
             position="top-center"
             toastOptions={{
               duration: 3500,
-              className: '!bg-clay-surface !text-ink-800 !shadow-clay !rounded-2xl',
+              className: '!bg-clay-surface !text-ink-800 !shadow-clay-lg !rounded-xl !ring-1 !ring-ink-900/10',
               success: { iconTheme: { primary: '#0d9488', secondary: '#fff' } },
             }}
           />

@@ -262,7 +262,7 @@ export default function Sam() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={reduce ? { opacity: 0 } : { opacity: 0, y: 12, scale: 0.97 }}
             transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}
-            className="pointer-events-auto absolute bottom-4 right-4 flex h-[28rem] w-[24rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-3xl bg-clay-surface shadow-clay"
+            className="card pointer-events-auto absolute bottom-4 right-4 flex h-[28rem] w-[24rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden !rounded-2xl p-0 shadow-clay-lg"
           >
             <div className="flex items-center justify-between border-b border-clay-200/70 bg-brand-600 px-4 py-3 text-white">
               <p className="text-sm font-bold">🦺 {greeting}</p>

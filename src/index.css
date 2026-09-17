@@ -2,6 +2,7 @@
 @import '@fontsource/inter/500.css';
 @import '@fontsource/inter/600.css';
 @import '@fontsource/inter/700.css';
+@import '@fontsource/inter/800.css';
 /* Leaflet map (Sites map tab). */
 @import 'leaflet/dist/leaflet.css';
 @import 'leaflet.markercluster/dist/MarkerCluster.css';
@@ -22,21 +23,33 @@
   -webkit-tap-highlight-color: transparent;
 }
 
+::selection {
+  background: rgba(199, 74, 51, 0.18);
+  color: #261f19;
+}
+
 body {
   @apply bg-clay-bg text-ink-900 font-sans antialiased;
   margin: 0;
   overflow-wrap: break-word;
+  font-feature-settings: 'cv11', 'ss01', 'ss03';
+  /* A quiet brand wash on the linen canvas — enough to stop the page reading
+     as a flat kraft slab, not enough to compete with the data on it. */
+  background-image:
+    radial-gradient(ellipse 90% 55% at 0% -10%, rgba(221, 90, 65, 0.07), transparent 55%),
+    radial-gradient(ellipse 70% 45% at 100% 0%, rgba(127, 196, 187, 0.08), transparent 50%);
+  background-attachment: fixed;
 }
 
 /* Animated aurora background for auth / public pages — warm kraft & coral
    glows over deep umber, echoing the WEHS paper-craft logo. */
 .aurora {
   background:
-    radial-gradient(40% 50% at 15% 20%, rgba(221, 90, 65, 0.40), transparent 60%),
-    radial-gradient(40% 50% at 85% 15%, rgba(232, 163, 61, 0.30), transparent 60%),
-    radial-gradient(50% 60% at 75% 85%, rgba(178, 148, 112, 0.38), transparent 60%),
-    radial-gradient(40% 50% at 20% 90%, rgba(127, 196, 187, 0.22), transparent 60%),
-    #221812;
+    radial-gradient(42% 52% at 12% 18%, rgba(221, 90, 65, 0.42), transparent 62%),
+    radial-gradient(38% 48% at 88% 12%, rgba(232, 163, 61, 0.28), transparent 60%),
+    radial-gradient(50% 60% at 78% 88%, rgba(178, 148, 112, 0.34), transparent 62%),
+    radial-gradient(40% 50% at 18% 92%, rgba(127, 196, 187, 0.20), transparent 60%),
+    #1b1610;
   background-size: 200% 200%;
   animation: aurora-move 18s ease infinite;
 }
@@ -57,47 +70,61 @@ body {
 /* Custom scrollbar */
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #d1ba98; border-radius: 8px; border: 2px solid transparent; background-clip: content-box; }
+::-webkit-scrollbar-thumb { background: #d1ba98; border-radius: 999px; border: 2px solid transparent; background-clip: content-box; }
 ::-webkit-scrollbar-thumb:hover { background: #b29470; background-clip: content-box; }
 
 @layer components {
-  /* ── Claymorphism core surfaces (warm kraft paper) ─────────────────────────
-     Raised = paper-white top-left highlight + warm brown bottom-right drop.
-     Inputs are recessed (inset). Pressable controls sink on :active (Emil press
-     feedback: scale + pressed shadow). Coral = accent. Durations < 300ms. */
-  /* The focus-visible ring is not decoration. Every clay surface is a soft warm
-     grey against a warm background, so the browser's default outline — drawn
-     tight to a rounded-2xl edge it does not follow — was very nearly invisible
-     on .btn-ghost and .btn-soft, and a keyboard user tabbing a permit approval
-     screen could not tell which control they were on. It matches .input's
-     `ring-2 ring-brand-200` below deliberately: focus should look like one
-     thing in this app, not two.
+  /* ── Surfaces (warm kraft, contemporary elevation) ─────────────────────────
+     Cards and buttons sit on the linen canvas with a hairline + a single
+     downward shadow. Inputs are outlined, not recessed wells. Pressable
+     controls still scale on :active (Emil), durations < 300ms. Coral = accent.
+
+     The focus-visible ring is not decoration. Every kraft surface is a soft
+     warm grey against a warm background, so the browser's default outline —
+     drawn tight to a rounded edge it does not follow — was very nearly
+     invisible on .btn-ghost and .btn-soft, and a keyboard user tabbing a
+     permit approval screen could not tell which control they were on. It
+     matches .input's `ring-2 ring-brand-200` below deliberately: focus should
+     look like one thing in this app, not two.
 
      focus-visible rather than focus, so a mouse click does not leave a ring
      behind on a button the user has already finished with. */
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-semibold
-      transition-all duration-200 ease-emil shadow-clay-sm
-      disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none
-      active:scale-[0.97] active:shadow-clay-pressed
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold
+      transition-all duration-200 ease-emil
+      disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none disabled:pointer-events-none
+      active:scale-[0.98]
       focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400
       focus-visible:ring-offset-2 focus-visible:ring-offset-clay-bg;
   }
-  .btn-primary { @apply btn bg-brand-600 text-white hover:bg-brand-700 shadow-clay-brand; }
-  .btn-ghost   { @apply btn bg-clay-surface text-ink-700 hover:bg-clay-100; }
-  .btn-soft    { @apply btn bg-brand-50 text-brand-700 hover:bg-brand-100; }
-  .btn-danger  { @apply btn bg-red-600 text-white hover:bg-red-700
-      shadow-[5px_5px_12px_rgba(220,38,38,0.28),-5px_-5px_12px_rgba(255,255,255,0.75)]; }
+  .btn-primary {
+    @apply btn bg-brand-600 text-white shadow-clay-brand hover:bg-brand-700 hover:shadow-glow;
+  }
+  .btn-ghost {
+    @apply btn bg-clay-surface text-ink-700 shadow-clay-sm ring-1 ring-ink-900/10
+      hover:bg-clay-50 hover:ring-ink-900/15;
+  }
+  .btn-soft {
+    @apply btn bg-brand-50 text-brand-700 ring-1 ring-brand-200/80 hover:bg-brand-100;
+  }
+  .btn-danger {
+    @apply btn bg-red-600 text-white shadow-[0_1px_2px_rgba(220,38,38,0.2),0_8px_20px_-8px_rgba(220,38,38,0.4)]
+      hover:bg-red-700;
+  }
 
   .input {
-    @apply w-full rounded-2xl border border-transparent bg-clay-surface px-3.5 py-2.5 text-sm
+    @apply w-full rounded-xl border border-ink-200 bg-clay-surface px-3.5 py-2.5 text-sm
       text-ink-900 placeholder:text-ink-400 outline-none shadow-clay-inset transition
-      focus:border-brand-300 focus:ring-2 focus:ring-brand-200;
+      hover:border-ink-300
+      focus:border-brand-400 focus:ring-2 focus:ring-brand-200;
   }
-  .label { @apply mb-1.5 block text-xs font-semibold uppercase tracking-wide text-ink-500; }
+  .input[aria-invalid='true'] {
+    @apply border-red-400 focus:border-red-500 focus:ring-red-200;
+  }
+  .label { @apply mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-500; }
 
   /* Native <select> strips its arrow under appearance-none (we do that so the
-     clay inset isn't fighting the OS chrome). Without a replacement chevron
+     OS chrome isn't fighting the hairline). Without a replacement chevron
      the control looks like a text field that cannot be opened — the audit
      module drew its own, everyone else didn't. One background-image, so a
      module cannot forget. */
@@ -116,19 +143,39 @@ body {
     @apply overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch];
   }
 
-  /* Clay surfaces */
-  .card         { @apply rounded-3xl bg-clay-surface shadow-clay; }
-  .clay         { @apply rounded-3xl bg-clay-surface shadow-clay; }
-  .clay-inset   { @apply rounded-2xl bg-clay-surface shadow-clay-inset; }
-  .clay-pressed { @apply rounded-2xl bg-clay-surface shadow-clay-pressed; }
-  .chip         { @apply inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold shadow-clay-sm; }
+  /* Surfaces. Hairline is what makes a card read as a panel rather than a
+     puff of clay; the shadow is only there so it lifts off the linen. */
+  .card         { @apply rounded-2xl bg-clay-surface shadow-clay ring-1 ring-ink-900/[0.06]; }
+  .clay         { @apply rounded-2xl bg-clay-surface shadow-clay ring-1 ring-ink-900/[0.06]; }
+  .clay-inset   { @apply rounded-xl bg-clay-50 shadow-clay-inset ring-1 ring-ink-900/[0.05]; }
+  .clay-pressed { @apply rounded-xl bg-clay-100 shadow-clay-pressed ring-1 ring-ink-900/[0.06]; }
+  .chip         { @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-ink-900/5; }
+
+  /* Secondary nav — module tabs, settings, sites, analytics. One active
+     treatment so moving between them does not feel like changing products. */
+  .nav-tab {
+    @apply relative inline-flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium
+      transition-colors duration-200 ease-emil
+      focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400
+      focus-visible:ring-offset-2 focus-visible:ring-offset-clay-bg;
+  }
+  .nav-tab-idle {
+    @apply text-ink-500 hover:bg-clay-100 hover:text-ink-800 active:scale-[0.98];
+  }
+  .nav-tab-active {
+    @apply bg-clay-surface text-ink-900 shadow-clay-pressed ring-1 ring-ink-900/10;
+  }
+  .tab-strip {
+    @apply mb-5 flex gap-1 overflow-x-auto overscroll-x-contain rounded-xl bg-clay-100/80 p-1
+      ring-1 ring-ink-900/[0.06] [-webkit-overflow-scrolling:touch];
+  }
 
   /* ── Skeleton loaders ──────────────────────────────────────────────────────
      Content-shaped placeholders with a GPU-only shimmer sweep. Under
      prefers-reduced-motion the sweep is removed and it degrades to a gentle
      opacity pulse (handled below). */
   .skeleton {
-    @apply relative overflow-hidden rounded-xl bg-clay-200;
+    @apply relative overflow-hidden rounded-lg bg-clay-200;
   }
   .skeleton::after {
     content: '';
@@ -139,20 +186,20 @@ body {
 
 /* ── Map (Leaflet) site hover bubble with live summary ───────────────────────*/
 .leaflet-tooltip.site-bubble {
-  background: #ffffff;
-  border: none;
-  border-radius: 14px;
-  box-shadow: 0 8px 22px rgba(16, 24, 40, 0.18);
+  background: #f8f1e4;
+  border: 1px solid rgba(38, 31, 25, 0.08);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px -10px rgba(67, 56, 45, 0.28);
   padding: 8px 12px;
   white-space: normal;
 }
 /* The arrow colour has to be set per direction — the bubble flips below the pin
    when there is no room above it, and Leaflet colours a different border edge
    for each direction. */
-.leaflet-tooltip.site-bubble.leaflet-tooltip-top::before { border-top-color: #ffffff; }
-.leaflet-tooltip.site-bubble.leaflet-tooltip-bottom::before { border-bottom-color: #ffffff; }
-.leaflet-tooltip.site-bubble.leaflet-tooltip-left::before { border-left-color: #ffffff; }
-.leaflet-tooltip.site-bubble.leaflet-tooltip-right::before { border-right-color: #ffffff; }
+.leaflet-tooltip.site-bubble.leaflet-tooltip-top::before { border-top-color: #f8f1e4; }
+.leaflet-tooltip.site-bubble.leaflet-tooltip-bottom::before { border-bottom-color: #f8f1e4; }
+.leaflet-tooltip.site-bubble.leaflet-tooltip-left::before { border-left-color: #f8f1e4; }
+.leaflet-tooltip.site-bubble.leaflet-tooltip-right::before { border-right-color: #f8f1e4; }
 /* Slid sideways to stay on the map, so the arrow no longer aims at the pin. */
 .leaflet-tooltip.site-bubble--shifted::before { display: none; }
 .site-bubble-card { min-width: 200px; max-width: 260px; }
@@ -175,19 +222,34 @@ body {
   display: grid;
   place-items: center;
   border-radius: 50%;
-  background: linear-gradient(145deg, #dd5a41, #a63c2a);
+  background: #c74a33;
   color: #fff;
   font-weight: 800;
   font-size: 13px;
-  border: 2px solid rgba(255, 251, 242, 0.9);
-  box-shadow: 0 6px 16px rgba(166, 60, 42, 0.4);
+  border: 2px solid rgba(255, 251, 242, 0.92);
+  box-shadow: 0 6px 16px -4px rgba(166, 60, 42, 0.45);
 }
 
 /* ── Data-dense areas stay crisp (legibility guard) ──────────────────────────
    Tables and form-heavy views opt out of puffy clay for scannability. */
+.table-crisp table {
+  @apply w-full text-sm;
+}
+.table-crisp thead th {
+  @apply bg-clay-50/90;
+}
 .table-crisp th,
 .table-crisp td {
   @apply border-b border-ink-100;
+}
+.table-crisp tbody tr {
+  @apply transition-colors duration-150;
+}
+.table-crisp tbody tr:hover td {
+  @apply bg-clay-50;
+}
+.table-crisp tbody tr:last-child td {
+  @apply border-b-0;
 }
 
 /* ── Accessibility: respect reduced motion ───────────────────────────────────
@@ -204,11 +266,12 @@ body {
   .skeleton::after { display: none; }
   .skeleton { @apply animate-pulse; }
   .aurora { animation: none; }
+  body { background-image: none; }
 }
 
 @media print {
   .no-print { display: none !important; }
-  body { background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { background: #fff; background-image: none; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   @page { size: A4; margin: 12mm; }
   .print-block { break-inside: avoid; page-break-inside: avoid; }
 }

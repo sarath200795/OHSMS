@@ -54,17 +54,22 @@ export default {
           900: '#261f19',
           950: '#1b1610',
         },
-        // Kraft-paper "clay" surfaces: raised panels over a warm paper base.
+        // Kraft-paper "clay" surfaces: paper panels over a warm linen canvas.
         // DEFAULT exists so `bg-clay` (LOTO's original surface class, ported
         // from a dark-theme app that never learned `bg-clay-surface`) still
         // paints the same paper as every other card.
+        //
+        // The 50–400 stops are a hair cleaner than the original muddy kraft so
+        // hairline borders and table rows stay crisp; bg/surface hexes are
+        // unchanged because ink-400/500 were spaced for AA on these exact
+        // values (see the ink comment above) and axe measures them.
         clay: {
           DEFAULT: '#f8f1e4',
           bg: '#eadfcd',
           surface: '#f8f1e4',
-          50: '#faf4e9',
-          100: '#f1e7d5',
-          200: '#e5d6bd',
+          50: '#faf6ee',
+          100: '#f3eadc',
+          200: '#e6d9c4',
           300: '#d1ba98',
           400: '#b29470',
         },
@@ -120,18 +125,19 @@ export default {
         drawer: 'cubic-bezier(0.32, 0.72, 0, 1)', // drawers/sheets
       },
       boxShadow: {
-        glow: '0 0 0 1px rgba(199,74,51,0.15), 0 10px 40px -10px rgba(199,74,51,0.38)',
-        card: '0 1px 2px rgba(64,53,43,0.06), 0 12px 32px -12px rgba(64,53,43,0.18)',
-        // Claymorphism, kraft-tinted: warm brown drop + paper-white highlight.
-        clay: '6px 6px 14px rgba(178,148,112,0.42), -6px -6px 14px rgba(255,251,242,0.95)',
-        'clay-sm': '3px 3px 8px rgba(178,148,112,0.38), -3px -3px 8px rgba(255,251,242,0.90)',
-        // Lifted state — the shadow travels further and softens as a tile rises.
-        'clay-lg': '9px 11px 22px rgba(178,148,112,0.46), -6px -6px 14px rgba(255,251,242,0.95)',
-        'clay-inset':
-          'inset 4px 4px 8px rgba(178,148,112,0.42), inset -4px -4px 8px rgba(255,251,242,0.95)',
-        'clay-pressed':
-          'inset 5px 5px 10px rgba(178,148,112,0.52), inset -4px -4px 8px rgba(255,251,242,0.85)',
-        'clay-brand': '5px 5px 12px rgba(199,74,51,0.28), -5px -5px 12px rgba(255,251,242,0.80)',
+        glow: '0 0 0 1px rgba(199,74,51,0.18), 0 10px 28px -12px rgba(199,74,51,0.42)',
+        card: '0 1px 2px rgba(64,53,43,0.05), 0 10px 28px -14px rgba(64,53,43,0.16)',
+        // Named clay-* so every card/button/tile picks this up without a
+        // 100-file class rename. The dual-direction neumorphic pair (warm
+        // drop + paper highlight) is what made the app read as 2019 clay
+        // kitsch; these are one-direction elevation on kraft paper — the
+        // same warmth, a contemporary ops-dashboard silhouette.
+        clay: '0 1px 1px rgba(67,56,45,0.04), 0 8px 24px -12px rgba(67,56,45,0.18)',
+        'clay-sm': '0 1px 2px rgba(67,56,45,0.06), 0 2px 8px -2px rgba(67,56,45,0.10)',
+        'clay-lg': '0 4px 8px -2px rgba(67,56,45,0.08), 0 18px 40px -18px rgba(67,56,45,0.24)',
+        'clay-inset': 'inset 0 1px 2px rgba(67,56,45,0.08)',
+        'clay-pressed': 'inset 0 1px 3px rgba(67,56,45,0.12)',
+        'clay-brand': '0 1px 2px rgba(199,74,51,0.18), 0 8px 20px -8px rgba(199,74,51,0.38)',
       },
       keyframes: {
         // Skeleton shimmer sweep.

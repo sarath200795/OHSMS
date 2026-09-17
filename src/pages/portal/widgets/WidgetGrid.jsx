@@ -52,7 +52,7 @@ export default function WidgetGrid({ keys, onSave, data, sites }) {
 
 function Shell({ w, children }) {
   return (
-    <Raised as={Link} to={w.to} className="block p-4 transition-transform duration-200 ease-emil hover:-translate-y-0.5">
+    <Raised as={Link} to={w.to} className="block p-4 transition-all duration-200 ease-emil hover:-translate-y-0.5 hover:shadow-clay-lg hover:ring-ink-900/10">
       {children}
     </Raised>
   )
@@ -160,7 +160,7 @@ function WidgetPicker({ selected, onClose, onSave }) {
           and aria-hidden, and Escape is the keyboard route out (useFocusTrap). */}
       {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
       <div aria-hidden="true" className="absolute inset-0 bg-ink-900/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative max-h-[85vh] w-full max-w-2xl overflow-auto rounded-3xl bg-clay-bg p-6 shadow-clay-lg">
+      <div className="card relative max-h-[85vh] w-full max-w-2xl overflow-auto p-6">
         <div className="mb-4 flex items-start justify-between gap-3">
           <div>
             <h2 className="text-lg font-extrabold tracking-[-0.02em] text-ink-900">Choose your widgets</h2>
@@ -185,8 +185,8 @@ function WidgetPicker({ selected, onClose, onSave }) {
                     type="button"
                     onClick={() => toggle(w.key)}
                     aria-pressed={on}
-                    className={`flex items-start gap-2.5 rounded-2xl px-3 py-2.5 text-left transition ${
-                      on ? 'bg-clay-surface shadow-clay-sm' : 'hover:bg-clay-100'
+                    className={`flex items-start gap-2.5 rounded-xl px-3 py-2.5 text-left transition ${
+                      on ? 'bg-clay-surface shadow-clay-sm ring-1 ring-ink-900/10' : 'hover:bg-clay-100'
                     }`}
                   >
                     <span
@@ -219,13 +219,13 @@ function WidgetPicker({ selected, onClose, onSave }) {
             <RotateCcw size={13} /> Reset to default
           </button>
           <div className="flex gap-2">
-            <button type="button" onClick={onClose} className="rounded-2xl px-4 py-2.5 text-[13px] font-semibold text-ink-600 hover:bg-clay-100">
+            <button type="button" onClick={onClose} className="btn-ghost px-4 py-2">
               Cancel
             </button>
             <button
               type="button"
               onClick={() => onSave(chosen)}
-              className="rounded-2xl bg-brand-600 px-4 py-2.5 text-[13px] font-semibold text-white shadow-clay-brand transition active:scale-[0.98]"
+              className="btn-primary px-4 py-2"
             >
               {chosen.length ? `Show ${chosen.length} widget${chosen.length === 1 ? '' : 's'}` : 'Reset to default'}
             </button>

@@ -124,10 +124,10 @@ function Tile({ to, icon: Icon, gradient, label, title, delay = 0, logoKey }) {
       <Link
         to={to}
         style={{ animationDelay: `${delay}ms` }}
-        className="group relative flex animate-fade-in-up items-center gap-4 rounded-[26px] bg-clay-surface p-5 shadow-clay
+        className="group relative flex animate-fade-in-up items-center gap-4 rounded-2xl bg-clay-surface p-4 ring-1 ring-ink-900/[0.06] shadow-clay
                    transition-[transform,box-shadow] duration-300 ease-emil [transform-style:preserve-3d]
-                   hover:shadow-clay-lg hover:[transform:translateY(-8px)_rotateX(9deg)_rotateY(-9deg)]
-                   active:[transform:translateY(-3px)_scale(0.985)]
+                   hover:shadow-clay-lg hover:ring-ink-900/10 hover:[transform:translateY(-6px)_rotateX(7deg)_rotateY(-7deg)]
+                   active:[transform:translateY(-2px)_scale(0.985)]
                    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-clay-bg
                    motion-reduce:transition-none motion-reduce:hover:[transform:none]"
       >
@@ -142,13 +142,13 @@ function Tile({ to, icon: Icon, gradient, label, title, delay = 0, logoKey }) {
           {/* Colour cast on the card beneath, so the lift has somewhere to fall from. */}
           <span
             aria-hidden="true"
-            className={`absolute inset-0 rounded-[20px] bg-gradient-to-br ${gradient} opacity-0 blur-lg
-                        transition-opacity duration-300 group-hover:opacity-60 motion-reduce:hidden`}
+            className={`absolute inset-0 rounded-2xl bg-gradient-to-br ${gradient} opacity-0 blur-lg
+                        transition-opacity duration-300 group-hover:opacity-50 motion-reduce:hidden`}
           />
           {/* Modules with a built object let the object do the moving; the
               rest keep the turn, since a static glyph has nothing else to say. */}
           <span
-            className={`relative grid h-full w-full place-items-center overflow-hidden rounded-[20px]
+            className={`relative grid h-full w-full place-items-center overflow-hidden rounded-2xl
                         bg-gradient-to-br ${gradient} text-white shadow-clay-sm [transform-style:preserve-3d]
                         ${has3D ? '' : 'group-hover:animate-wobble3d'} motion-reduce:group-hover:animate-none`}
           >
@@ -384,7 +384,7 @@ export default function PortalHome() {
   return (
     <div className="animate-fade-in-up">
       <div className="mb-5 grid gap-4 lg:grid-cols-[1.55fr_1fr]">
-        <Raised className="relative overflow-hidden px-7 py-6">
+        <Raised className="relative overflow-hidden px-6 py-6 sm:px-7">
           <div
             aria-hidden="true"
             className="pointer-events-none absolute inset-0"
@@ -475,7 +475,7 @@ export default function PortalHome() {
                 <Link
                   key={a.key}
                   to="/portal/actions"
-                  className="flex items-center gap-2.5 rounded-[14px] bg-clay-50 px-3 py-2 shadow-clay-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+                  className="flex items-center gap-2.5 rounded-xl bg-clay-50 px-3 py-2 ring-1 ring-ink-900/5 transition-colors hover:bg-clay-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
                 >
                   <span
                     className="h-6 w-1 flex-none rounded"
@@ -689,15 +689,15 @@ function DueList({ rows, empty, meta, loading }) {
   if (loading) {
     return (
       <div className="flex flex-col gap-2.5" role="status" aria-busy="true" aria-label="Loading">
-        <Skeleton className="h-14 rounded-[18px]" />
-        <Skeleton className="h-14 rounded-[18px]" />
-        <Skeleton className="h-14 rounded-[18px]" />
+        <Skeleton className="h-14 rounded-xl" />
+        <Skeleton className="h-14 rounded-xl" />
+        <Skeleton className="h-14 rounded-xl" />
       </div>
     )
   }
   if (!rows.length) {
     return (
-      <p className="rounded-[18px] bg-clay-50 px-4 py-6 text-center text-[13px] text-ink-400 shadow-clay-sm">
+      <p className="rounded-xl bg-clay-50 px-4 py-6 text-center text-[13px] text-ink-400 ring-1 ring-ink-900/5">
         {empty}
       </p>
     )
@@ -707,7 +707,7 @@ function DueList({ rows, empty, meta, loading }) {
       {rows.map((r) => (
         <li
           key={r.key}
-          className="flex items-center gap-3.5 rounded-[18px] bg-clay-50 px-4 py-3 shadow-clay-sm"
+          className="flex items-center gap-3.5 rounded-xl bg-clay-50 px-4 py-3 ring-1 ring-ink-900/5"
         >
           <span
             className="h-[34px] w-1 flex-none rounded"

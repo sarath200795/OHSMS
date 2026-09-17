@@ -70,8 +70,9 @@ export default class ErrorBoundary extends Component {
         fontFamily: 'system-ui, -apple-system, sans-serif',
       }}>
         <div style={{
-          maxWidth: 420, background: '#f8f1e4', borderRadius: 24, padding: 32,
-          textAlign: 'center', boxShadow: '0 10px 30px rgba(60,42,33,0.15)',
+        maxWidth: 420, background: '#f8f1e4', borderRadius: 16, padding: 32,
+          textAlign: 'center', boxShadow: '0 10px 32px -12px rgba(60,42,33,0.22)',
+          border: '1px solid rgba(38,31,25,0.08)',
         }}>
           <p style={{ fontSize: 40, margin: 0 }}>⚠️</p>
           <h1 style={{ fontSize: 18, margin: '12px 0 6px', color: '#3d2c22' }}>
@@ -86,7 +87,7 @@ export default class ErrorBoundary extends Component {
             onClick={() => window.location.reload()}
             style={{
               background: '#c74a33', color: '#fff', border: 'none', cursor: 'pointer',
-              borderRadius: 16, padding: '12px 28px', fontSize: 14, fontWeight: 700,
+              borderRadius: 12, padding: '12px 28px', fontSize: 14, fontWeight: 700,
             }}
           >
             Reload the app

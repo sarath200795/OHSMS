@@ -321,12 +321,12 @@ export default function Sites() {
         }
       />
 
-      <IncompleteNotice incomplete={store.incomplete} className="mb-4 shadow-clay-sm" />
+      <IncompleteNotice incomplete={store.incomplete} className="mb-4" />
 
       <CentreIdNotice sites={sites} canManage={canManage} onExport={exportSites} onImport={() => setBulkOpen(true)} />
 
       {/* Tabs */}
-      <div className="mb-5 flex gap-1.5 border-b border-ink-100 pb-3">
+      <div className="mb-5 flex gap-1 border-b border-ink-200">
         {[
           { key: 'list', label: 'Sites', icon: List },
           { key: 'map', label: 'Map', icon: MapIcon },
@@ -334,12 +334,9 @@ export default function Sites() {
           <button
             key={t.key}
             onClick={() => { setTab(t.key); if (t.key !== 'list') exitSelect() }}
-            className={[
-              'inline-flex items-center gap-2 rounded-2xl px-3.5 py-2 text-sm font-medium transition-all duration-200 ease-emil',
-              tab === t.key
-                ? 'bg-clay-surface text-ink-900 shadow-clay-pressed'
-                : 'text-ink-500 hover:bg-clay-100 hover:text-ink-800 active:scale-[0.98]',
-            ].join(' ')}
+            className={`nav-tab ${
+              tab === t.key ? 'nav-tab-active -mb-px rounded-b-none border-b-2 border-brand-600' : 'nav-tab-idle'
+            }`}
           >
             <t.icon size={16} /> {t.label}
           </button>

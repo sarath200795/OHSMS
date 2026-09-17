@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Shared claymorphism UI kit. One import surface for every module:
+// Shared UI kit. One import surface for every module:
 //   import { Button, Card, StatCard, Skeleton, Modal, ... } from '@/shared/ui'
 //
 // Motion follows Emil Kowalski's principles: buttons scale on :active (CSS, in
@@ -341,13 +341,13 @@ export function StatCard({ label, value, icon: Icon, tone = 'brand', hint, class
   return (
     <div className={cx('card flex min-w-0 items-center gap-4 p-5', className)}>
       {Icon && (
-        <span className={cx('grid h-12 w-12 shrink-0 place-items-center rounded-2xl', t)}>
-          <Icon size={22} />
+        <span className={cx('grid h-11 w-11 shrink-0 place-items-center rounded-xl', t)}>
+          <Icon size={20} />
         </span>
       )}
       <div className="min-w-0">
-        <p className="truncate text-sm font-medium text-ink-500">{label}</p>
-        <p className="truncate text-2xl font-bold tracking-tight text-ink-900">{value}</p>
+        <p className="truncate text-[12px] font-medium uppercase tracking-[0.06em] text-ink-500">{label}</p>
+        <p className="truncate text-2xl font-bold tracking-[-0.03em] text-ink-900">{value}</p>
         {hint && <p className="truncate text-xs text-ink-400">{hint}</p>}
       </div>
     </div>
@@ -367,12 +367,12 @@ export function PageHeader({ title, subtitle, icon: Icon, actions, children, tou
     >
       <div className="flex min-w-0 items-start gap-3">
         {Icon && (
-          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-brand-50 text-brand-700 shadow-clay-sm">
-            <Icon size={22} />
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-brand-50 text-brand-700 ring-1 ring-brand-200/70">
+            <Icon size={20} />
           </span>
         )}
         <div className="min-w-0">
-          <h1 className="text-xl font-bold tracking-tight text-ink-900 sm:text-2xl">{title}</h1>
+          <h1 className="text-xl font-bold tracking-[-0.02em] text-ink-900 sm:text-2xl">{title}</h1>
           {subtitle && <p className="mt-0.5 text-sm text-ink-500">{subtitle}</p>}
         </div>
       </div>
@@ -395,8 +395,8 @@ export function EmptyState({ icon: Icon, title, description, hint, message, acti
       )}
     >
       {Icon && (
-        <span className="grid h-14 w-14 place-items-center rounded-2xl bg-clay-100 text-ink-400 shadow-clay-inset">
-          <Icon size={26} />
+        <span className="grid h-12 w-12 place-items-center rounded-xl bg-clay-100 text-ink-400 ring-1 ring-ink-900/5">
+          <Icon size={24} />
         </span>
       )}
       <div className="max-w-md">

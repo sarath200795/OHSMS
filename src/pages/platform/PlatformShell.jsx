@@ -26,8 +26,8 @@ export default function PlatformShell({ children }) {
       >
         Skip to main content
       </a>
-      <header className="sticky top-0 z-30 flex items-center gap-3 bg-ink-900 px-5 py-3 sm:px-7">
-        <span className="grid h-8 w-8 flex-none place-items-center rounded-[10px] bg-ink-800 text-ink-200">
+      <header className="sticky top-0 z-30 flex items-center gap-3 border-b border-white/10 bg-ink-950/95 px-5 py-3 backdrop-blur-xl sm:px-7">
+        <span className="grid h-8 w-8 flex-none place-items-center rounded-lg bg-ink-800 text-ink-200 ring-1 ring-white/10">
           <SlidersHorizontal size={16} />
         </span>
         <span className="leading-tight">

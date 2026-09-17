@@ -32,7 +32,7 @@ export default function ModuleLoading() {
         {/* Same tile treatment as the portal, so the thing that was clicked and
             the thing that answers are visibly the same object. */}
         <span
-          className={`group playing relative grid h-24 w-24 place-items-center rounded-[1.6rem] bg-gradient-to-br ${
+          className={`group playing relative grid h-24 w-24 place-items-center rounded-2xl bg-gradient-to-br ${
             TONE[mod.tone] || TONE.brand
           } shadow-clay-lg [perspective:520px] [transform-style:preserve-3d]`}
         >

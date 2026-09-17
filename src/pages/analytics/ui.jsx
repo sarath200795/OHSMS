@@ -53,7 +53,7 @@ export function Picker({ id, label, value, onChange, children }) {
         id={id}
         value={value}
         onChange={onChange}
-        className="w-full appearance-none rounded-2xl border border-transparent bg-clay-surface px-3 py-2.5 text-[13px] font-semibold text-ink-900 shadow-clay-inset outline-none"
+        className="input w-full appearance-none px-3 py-2.5 text-[13px] font-semibold"
       >
         {children}
       </select>
@@ -97,7 +97,7 @@ export function DateField({ id, label, value, min, max, onChange }) {
         min={min || undefined}
         max={max || undefined}
         onChange={(e) => onChange(e.target.value)}
-        className="rounded-2xl bg-clay-surface px-3 py-2.5 text-[12.5px] font-semibold text-ink-700 shadow-clay-sm"
+        className="input rounded-xl px-3 py-2 text-[12.5px] font-semibold"
       />
     </div>
   )

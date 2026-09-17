@@ -292,15 +292,12 @@ export default function OrgSettings() {
       <PageHeader title="Organization settings" subtitle="Profile, branding, scope granularity & integrations" icon={Settings} />
 
       {/* Tab bar */}
-      <div className="mb-5 flex flex-wrap gap-1.5 border-b border-ink-100 pb-3">
+      <div className="mb-5 flex flex-wrap gap-1 border-b border-ink-200">
         {TABS.map((t) => (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
-            className={[
-              'inline-flex items-center gap-2 rounded-2xl px-3.5 py-2 text-sm font-medium transition-all duration-200 ease-emil',
-              tab === t.key ? 'bg-clay-surface text-ink-900 shadow-clay-pressed' : 'text-ink-500 hover:bg-clay-100 hover:text-ink-800 active:scale-[0.98]',
-            ].join(' ')}
+            className={`nav-tab ${tab === t.key ? 'nav-tab-active -mb-px rounded-b-none border-b-2 border-brand-600' : 'nav-tab-idle'}`}
           >
             <t.icon size={16} /> {t.label}
           </button>

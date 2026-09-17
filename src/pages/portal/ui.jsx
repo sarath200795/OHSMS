@@ -11,7 +11,7 @@
 /** A raised panel — the portal's default surface. */
 export function Raised({ as: Tag = 'div', className = '', children, ...rest }) {
   return (
-    <Tag className={`rounded-[26px] bg-clay-surface shadow-clay ${className}`} {...rest}>
+    <Tag className={`card ${className}`} {...rest}>
       {children}
     </Tag>
   )
@@ -20,7 +20,7 @@ export function Raised({ as: Tag = 'div', className = '', children, ...rest }) {
 /** A pressed well — used for stat tiles, inputs and segmented controls. */
 export function Inset({ as: Tag = 'div', className = '', children, ...rest }) {
   return (
-    <Tag className={`rounded-[18px] bg-clay-surface shadow-clay-inset ${className}`} {...rest}>
+    <Tag className={`clay-inset ${className}`} {...rest}>
       {children}
     </Tag>
   )
@@ -29,7 +29,7 @@ export function Inset({ as: Tag = 'div', className = '', children, ...rest }) {
 /** The small uppercase label that introduces every section. */
 export function SectionLabel({ className = '', children }) {
   return (
-    <p className={`text-[11px] font-bold uppercase tracking-[0.16em] text-ink-400 ${className}`}>
+    <p className={`text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-400 ${className}`}>
       {children}
     </p>
   )
@@ -69,8 +69,8 @@ export function PortalHeading({ icon: Icon, title, subtitle, action }) {
   return (
     <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center">
       <div className="flex min-w-0 items-center gap-3.5">
-        <span className="grid h-11 w-11 flex-none place-items-center rounded-2xl bg-brand-50 text-brand-700 shadow-clay-sm">
-          <Icon size={21} strokeWidth={2.1} />
+        <span className="grid h-10 w-10 flex-none place-items-center rounded-xl bg-brand-50 text-brand-700 ring-1 ring-brand-200/70">
+          <Icon size={20} strokeWidth={2.1} />
         </span>
         <div className="min-w-0">
           <h1 className="text-[22px] font-extrabold tracking-[-0.02em] text-ink-900">{title}</h1>

@@ -40,7 +40,7 @@ export default function IdleGuard({ signOut }) {
       aria-modal="true"
       aria-labelledby="idle-title"
     >
-      <div className="w-full max-w-sm rounded-2xl bg-clay-surface p-6 shadow-clay-lg">
+      <div className="card w-full max-w-sm p-6 shadow-clay-lg">
         <h2 id="idle-title" className="mb-2 text-lg font-bold text-ink-900">Session expiring soon</h2>
         <p className="mb-6 text-[14px] text-ink-600">
           You have been inactive for a while. You will be signed out in{' '}
