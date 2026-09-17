@@ -164,9 +164,10 @@ was **adoption**, and the gaps were exactly where they hurt most:
 
 `e2e/capped-reads.spec.js` is what keeps this closed. It runs with
 `VITE_TEST_READ_CAP` lowered so the seeded org is already past the ceiling, and
-asserts the notice on every screen that totals a capped register. Without it,
-"the notice exists and is unit tested" would keep being mistaken for "the page
-asks for it".
+asserts the notice on every screen that totals a capped register — except
+portal home, which the owner asked to keep in loading / quiet figures rather
+than an incomplete banner. Without it, "the notice exists and is unit tested"
+would keep being mistaken for "the page asks for it".
 
 ### S-21 · The API server was removed — CLOSED
 

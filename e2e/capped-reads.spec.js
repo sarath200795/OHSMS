@@ -1,5 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Every screen that totals a capped register must say so when the cap is hit.
+// Screens that total a capped register must say so when the cap is hit —
+// except portal home, which the owner asked to stay in loading / quiet
+// figures rather than paint an incomplete banner.
 //
 // This is the check the code cannot make for itself. `incompleteReadNotice`
 // produces the sentence and `<IncompleteNotice>` renders it, and both are unit
@@ -8,6 +10,13 @@
 // places it mattered most: the KPI scorecard threw the read status away, and the
 // fire dashboard named extinguishers while four other capped registers on the
 // same page said nothing.
+//
+// Portal home is the other wiring failure in reverse: it used to put the
+// notice on `/portal`, and a test that demanded the banner there would force
+// the page to keep showing "could not be loaded" / "these figures are
+// incomplete" — the exact copy the owner asked off that screen. The dedicated
+// test below pins the absence, so putting IncompleteNotice back on home fails
+// this file rather than looking like the rest of the suite.
 //
 // Run with VITE_TEST_READ_CAP set to a small number so the seeded demo org is
 // already past it. Skipped otherwise, because at the real 5 000 no fixture
@@ -28,9 +37,11 @@ async function signIn(page) {
   await page.waitForURL(/\/portal/, { timeout: 20_000 })
 }
 
-// Every route here renders at least one figure built from a capped read.
+const incompleteNotice = (page) => page.getByRole('status').filter({ hasText: /incomplete/i })
+
+// Every route here still renders at least one figure built from a capped read
+// and must qualify it. `/portal` is not in this list — see the test below.
 const SCREENS = [
-  ['/portal', 'Portal home'],
   ['/objectives', 'Objectives scorecard'],
   ['/equipment/ext-dashboard', 'Equipment dashboard'],
   ['/equipment/aed-dashboard', 'AED dashboard'],
@@ -46,10 +57,22 @@ for (const [path, label] of SCREENS) {
 
     // role="status" is what IncompleteNotice renders, and using the role rather
     // than the copy means rewording the sentence does not break this.
-    const notice = page.getByRole('status').filter({ hasText: /incomplete/i })
     await expect(
-      notice.first(),
+      incompleteNotice(page).first(),
       `${label} shows totals built on a capped read and no notice saying so`
     ).toBeVisible({ timeout: 20_000 })
   })
 }
+
+test('Portal home does not put an incomplete notice over its figures', async ({ page }) => {
+  await signIn(page)
+  await page.goto('/portal')
+  // Widgets only mount after the shell, so waiting for this label means the
+  // collections have had a chance to answer — including as capped. A notice
+  // that appeared on that answer is what this assertion is for.
+  await expect(page.getByText('How are my sites doing?')).toBeVisible({ timeout: 20_000 })
+  await expect(
+    incompleteNotice(page),
+    'Portal home must not surface IncompleteNotice for a capped, denied or failed read'
+  ).toHaveCount(0)
+})
