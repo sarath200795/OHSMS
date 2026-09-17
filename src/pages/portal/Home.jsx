@@ -20,6 +20,7 @@ import {
   Settings,
   BarChart3,
   Wrench,
+  Lock,
 } from 'lucide-react'
 import { useAuth } from '../../shared/auth/AuthContext'
 import {
@@ -33,7 +34,10 @@ import { useAccessibleSitesRead } from '../../shared/org/useAccessibleSites'
 import { subscribeActions, NORM_BY_KEY, SOURCES } from '../../modules/actions/lib/sources'
 import { subscribeAssignmentsRead } from '../../modules/training/lib/firestore'
 import { INCIDENT_TYPE_BY_KEY } from '../../modules/incidents/lib/constants'
-import { enabledModules } from '../../shared/modules/entitlements'
+import { MODULES } from '../../shared/modules/registry'
+import { isModuleEnabled } from '../../shared/modules/entitlements'
+import { PACKAGING_SUITES, describeGrant } from '../../shared/modules/suites'
+import AppLink from '../../app/AppLink'
 import { Raised, Inset, SectionLabel } from './ui'
 import { myActions } from './myWork'
 import { portalStats, pendingWork } from './portalStats'
@@ -117,68 +121,88 @@ const ADMIN_TOOLS = [
  * Everything is transform and opacity, so it stays off the main thread, and
  * `motion-reduce` drops the whole effect rather than softening it.
  */
-function Tile({ to, icon: Icon, gradient, label, title, delay = 0, logoKey }) {
+function Tile({
+  to,
+  locked = false,
+  icon: Icon,
+  gradient,
+  label,
+  title,
+  delay = 0,
+  logoKey,
+  suiteLabel,
+}) {
   const has3D = has3DLogo(logoKey)
-  return (
-    <div className="[perspective:760px]">
-      <Link
-        to={to}
-        style={{ animationDelay: `${delay}ms` }}
-        className="group relative flex animate-fade-in-up items-center gap-4 rounded-[26px] bg-clay-surface p-5 shadow-clay
+  const className = `group relative flex animate-fade-in-up items-center gap-4 rounded-[26px] bg-clay-surface p-5 shadow-clay
                    transition-[transform,box-shadow] duration-300 ease-emil [transform-style:preserve-3d]
-                   hover:shadow-clay-lg hover:[transform:translateY(-8px)_rotateX(9deg)_rotateY(-9deg)]
-                   active:[transform:translateY(-3px)_scale(0.985)]
+                   ${locked ? 'opacity-80' : 'hover:shadow-clay-lg hover:[transform:translateY(-8px)_rotateX(9deg)_rotateY(-9deg)] active:[transform:translateY(-3px)_scale(0.985)]'}
                    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-clay-bg
-                   motion-reduce:transition-none motion-reduce:hover:[transform:none]"
+                   motion-reduce:transition-none motion-reduce:hover:[transform:none]`
+  const inner = (
+    <>
+      <span
+        className="relative grid h-[60px] w-[60px] flex-none place-items-center [transform-style:preserve-3d]
+                   transition-transform duration-300 ease-emil
+                   group-hover:[transform:translateZ(56px)_scale(1.12)]
+                   motion-reduce:transition-none motion-reduce:group-hover:[transform:none]"
       >
-        {/* The logo lifts far enough off the card for the perspective to bend
-            it — the wobble below only reads as rotation because of this gap. */}
         <span
-          className="relative grid h-[60px] w-[60px] flex-none place-items-center [transform-style:preserve-3d]
-                     transition-transform duration-300 ease-emil
-                     group-hover:[transform:translateZ(56px)_scale(1.12)]
-                     motion-reduce:transition-none motion-reduce:group-hover:[transform:none]"
+          aria-hidden="true"
+          className={`absolute inset-0 rounded-[20px] bg-gradient-to-br ${gradient} opacity-0 blur-lg
+                      transition-opacity duration-300 group-hover:opacity-60 motion-reduce:hidden`}
+        />
+        <span
+          className={`relative grid h-full w-full place-items-center overflow-hidden rounded-[20px]
+                      bg-gradient-to-br ${gradient} text-white shadow-clay-sm [transform-style:preserve-3d]
+                      ${has3D ? '' : 'group-hover:animate-wobble3d'} motion-reduce:group-hover:animate-none`}
         >
-          {/* Colour cast on the card beneath, so the lift has somewhere to fall from. */}
+          {locked ? (
+            <Lock
+              size={28}
+              strokeWidth={2}
+              className="relative z-10 drop-shadow-[0_2px_3px_rgba(0,0,0,0.28)]"
+            />
+          ) : has3D ? (
+            <ModuleLogo3D moduleKey={logoKey} />
+          ) : (
+            <Icon
+              size={28}
+              strokeWidth={2}
+              className="relative z-10 drop-shadow-[0_2px_3px_rgba(0,0,0,0.28)]"
+            />
+          )}
           <span
             aria-hidden="true"
-            className={`absolute inset-0 rounded-[20px] bg-gradient-to-br ${gradient} opacity-0 blur-lg
-                        transition-opacity duration-300 group-hover:opacity-60 motion-reduce:hidden`}
+            className="pointer-events-none absolute inset-y-0 -left-1/3 w-1/2 bg-white/45 opacity-0
+                       group-hover:animate-sheen motion-reduce:group-hover:animate-none"
           />
-          {/* Modules with a built object let the object do the moving; the
-              rest keep the turn, since a static glyph has nothing else to say. */}
-          <span
-            className={`relative grid h-full w-full place-items-center overflow-hidden rounded-[20px]
-                        bg-gradient-to-br ${gradient} text-white shadow-clay-sm [transform-style:preserve-3d]
-                        ${has3D ? '' : 'group-hover:animate-wobble3d'} motion-reduce:group-hover:animate-none`}
-          >
-            {/* A built object where one exists; the line icon otherwise, rather
-                than giving a module a shape that means something else. */}
-            {has3D ? (
-              <ModuleLogo3D moduleKey={logoKey} />
-            ) : (
-              <Icon
-                size={28}
-                strokeWidth={2}
-                className="relative z-10 drop-shadow-[0_2px_3px_rgba(0,0,0,0.28)]"
-              />
-            )}
-            {/* Specular sweep — what makes the face read as glossy rather than flat. */}
-            <span
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-y-0 -left-1/3 w-1/2 bg-white/45 opacity-0
-                         group-hover:animate-sheen motion-reduce:group-hover:animate-none"
-            />
-          </span>
         </span>
-
-        <span className="min-w-0 transition-transform duration-300 ease-emil group-hover:[transform:translateZ(26px)] motion-reduce:group-hover:[transform:none]">
-          <span className="block text-[15px] font-bold tracking-[-0.015em] text-ink-900">
-            {label}
-          </span>
-          <span className="mt-0.5 block text-[12px] leading-snug text-ink-400">{title}</span>
+      </span>
+      <span className="min-w-0 transition-transform duration-300 ease-emil group-hover:[transform:translateZ(26px)] motion-reduce:group-hover:[transform:none]">
+        <span className="block text-[15px] font-bold tracking-[-0.015em] text-ink-900">
+          {label}
         </span>
-      </Link>
+        <span className="mt-0.5 block text-[12px] leading-snug text-ink-400">
+          {locked
+            ? suiteLabel
+              ? `Included in ${suiteLabel} — not in your subscription. Ask an administrator to request it.`
+              : 'Not in your subscription — ask an administrator to request it.'
+            : title}
+        </span>
+      </span>
+    </>
+  )
+  return (
+    <div className="[perspective:760px]">
+      {locked ? (
+        <div style={{ animationDelay: `${delay}ms` }} className={className} aria-disabled="true">
+          {inner}
+        </div>
+      ) : (
+        <AppLink to={to} style={{ animationDelay: `${delay}ms` }} className={className}>
+          {inner}
+        </AppLink>
+      )}
     </div>
   )
 }
@@ -196,9 +220,17 @@ function withUnsafe(permits = [], observations = []) {
   return permits.map((p) => ({ ...p, openUnsafeCount: counts.get(p.id) || 0 }))
 }
 
-// Everything on this page that is a count comes from these. Status rides
-// alongside the rows so a collection that has not loaded (or was refused)
-// stays in loading rather than reading as a confident zero.
+const COLLECTION_MODULE = {
+  extinguishers: 'equipment',
+  aeds: 'equipment',
+  fas: 'equipment',
+  signages: 'equipment',
+  incidents: 'incidents',
+  consultations: 'committee',
+  mockDrills: 'drills',
+  permits: 'ptw',
+  observations: 'ptw',
+}
 const COLLECTIONS = [
   'extinguishers',
   'aeds',
@@ -224,10 +256,8 @@ const greeting = (d = new Date()) => {
 }
 
 export default function PortalHome() {
-  const { orgId, profile, isAdmin, moduleMap } = useAuth()
-  // The grid shows what this organization actually has. A tile leading to a
-  // route that refuses to open is worse than no tile at all.
-  const modules = useMemo(() => enabledModules(moduleMap), [moduleMap])
+  const { orgId, profile, isAdmin, moduleMap, modulesReady, moduleEnabled } = useAuth()
+  const grant = describeGrant(moduleMap)
   const navigate = useNavigate()
   const { sites, status: sitesStatus } = useAccessibleSitesRead()
   const { keys: widgetKeys, save: saveWidgets } = useWidgetPrefs()
@@ -242,23 +272,28 @@ export default function PortalHome() {
   )
 
   useEffect(() => {
-    if (!orgId) return undefined
+    if (!orgId || !modulesReady) return undefined
+    const names = COLLECTIONS.filter((c) => isModuleEnabled(moduleMap, COLLECTION_MODULE[c]))
     setStore(emptyCollections(COLLECTIONS))
     setAssignments({ rows: [], status: 'pending' })
     setUsers({ rows: [], status: 'pending' })
     setActions([])
     setActionsStatus(Object.fromEntries(ACTION_COLLECTIONS.map((n) => [n, 'pending'])))
     const unsubs = [
-      subscribeCollections(orgId, COLLECTIONS, setStore),
-      subscribeAssignmentsRead(orgId, setAssignments),
+      names.length ? subscribeCollections(orgId, names, setStore) : undefined,
+      isModuleEnabled(moduleMap, 'training')
+        ? subscribeAssignmentsRead(orgId, setAssignments)
+        : undefined,
       subscribeOrgUsersRead(orgId, setUsers),
-      subscribeActions(orgId, ({ rows, status }) => {
-        setActions(rows)
-        setActionsStatus(status)
-      }),
+      isModuleEnabled(moduleMap, 'actions')
+        ? subscribeActions(orgId, ({ rows, status }) => {
+            setActions(rows)
+            setActionsStatus(status)
+          })
+        : undefined,
     ]
     return () => unsubs.forEach((u) => u && u())
-  }, [orgId])
+  }, [orgId, modulesReady, moduleMap])
 
   const {
     extinguishers,
@@ -631,32 +666,62 @@ export default function PortalHome() {
         </Raised>
       </div>
 
-      <SectionLabel className="mb-3">All modules</SectionLabel>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {/* Analytics sits in the grid rather than above it — it is one more
-            destination, and a full-width banner claimed an importance the
-            others have equal claim to. */}
-        <Tile
-          to="/analytics"
-          icon={BarChart3}
-          gradient="from-sky-500 to-blue-600"
-          label="Analytics"
-          title="Trends and breakdowns across your sites"
-          logoKey="analytics"
-        />
-        {modules.map((m, i) => (
-          <Tile
-            key={m.key}
-            to={m.path}
-            icon={m.icon}
-            gradient={GRADIENT[m.tone] || GRADIENT.brand}
-            label={m.label}
-            title={m.title}
-            logoKey={m.key}
-            delay={Math.min(i, 8) * 40}
-          />
-        ))}
-      </div>
+      <SectionLabel className="mb-3">
+        {modulesReady && grant.key && grant.key !== 'custom'
+          ? `Modules · ${grant.label}`
+          : 'All modules'}
+      </SectionLabel>
+      {modulesReady && grant.key === '' && (
+        <p className="mb-3 text-[13px] text-ink-500">
+          No modules are in your subscription yet. Ask an administrator to request a suite.
+        </p>
+      )}
+      {PACKAGING_SUITES.map((suite) => {
+        const noneOn = suite.keys.every((k) => !moduleEnabled(k))
+        return (
+          <div key={suite.key} className="mb-6">
+            <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+              <SectionLabel className="mb-0">{suite.label}</SectionLabel>
+              {modulesReady && noneOn && (
+                <p className="text-[12px] text-ink-400">
+                  Not in your subscription — ask an administrator to request this suite.
+                </p>
+              )}
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {suite.key === 'core' && (
+                <Tile
+                  to="/analytics"
+                  icon={BarChart3}
+                  gradient="from-sky-500 to-blue-600"
+                  label="Analytics"
+                  title="Trends and breakdowns across your sites"
+                  logoKey="analytics"
+                />
+              )}
+              {modulesReady &&
+                suite.keys.map((key, i) => {
+                  const m = MODULES.find((mod) => mod.key === key)
+                  if (!m) return null
+                  return (
+                    <Tile
+                      key={m.key}
+                      to={m.path}
+                      locked={!moduleEnabled(m.key)}
+                      icon={m.icon}
+                      gradient={GRADIENT[m.tone] || GRADIENT.brand}
+                      label={m.label}
+                      title={m.title}
+                      logoKey={m.key}
+                      suiteLabel={suite.label}
+                      delay={Math.min(i, 8) * 40}
+                    />
+                  )
+                })}
+            </div>
+          </div>
+        )
+      })}
 
       {isAdmin && (
         <>

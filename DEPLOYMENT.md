@@ -115,3 +115,14 @@ in the secret. Until that grant exists, either:
 
 This file does not claim either has been done. A functions deploy error that
 names `iam.serviceAccounts.actAs` is this gap, not a new one.
+
+---
+
+## 6. Opening from weehs-landing
+
+The marketing site is a different repository. It must open **this shell**, not
+a module app. The URL contract (`/login`, `/register-org`, `/signup` on
+`https://suite.weehs.org`), `VITE_PUBLIC_ORIGIN`, and which hosts belong on
+Firebase Auth's authorized-domain list are in `docs/APPS.md` (Handoff from
+weehs-landing). Do not deep-link a landing CTA at `/incidents` or another
+module prefix.

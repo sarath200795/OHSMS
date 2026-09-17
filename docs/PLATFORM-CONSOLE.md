@@ -8,11 +8,11 @@ tenant can grant itself a module.
 
 Three layers, and only the last one is a real control:
 
-| Layer | What it does | Where |
-| --- | --- | --- |
-| The tile grids | A disabled module is not offered | `pages/portal/Home.jsx`, `pages/Dashboard.jsx` |
-| The route | A bookmark to a disabled module gets a "not enabled" screen instead of the module | `shared/modules/ModuleGate.jsx`, mounted by `Protected moduleKey=…` in `App.jsx` |
-| Firestore rules | Only a platform operator may write an entitlement | `firestore.rules` → `match /moduleEntitlements/{orgId}` |
+| Layer           | What it does                                                                      | Where                                                                            |
+| --------------- | --------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| The tile grids  | A disabled module is not offered                                                  | `pages/portal/Home.jsx`, `pages/Dashboard.jsx`                                   |
+| The route       | A bookmark to a disabled module gets a "not enabled" screen instead of the module | `shared/modules/ModuleGate.jsx`, mounted by `Protected moduleKey=…` in `App.jsx` |
+| Firestore rules | Only a platform operator may write an entitlement                                 | `firestore.rules` → `match /moduleEntitlements/{orgId}`                          |
 
 The first two are presentation and can be defeated in a browser. The third
 cannot, which is why the entitlement lives in a top-level collection rather than
@@ -26,7 +26,7 @@ The console is not a screen inside the customer app. It has its own sign-in at
 `/platform/login`, its own dark shell, and its own guard — and the customer app
 contains no link to it.
 
-That separation is not decoration. Deciding what *other* organizations may use
+That separation is not decoration. Deciding what _other_ organizations may use
 while signed in as an admin of one of them, under a header carrying that
 customer's name, is how the wrong organization gets edited. So:
 
@@ -90,10 +90,10 @@ Delete the document. Open tabs lose the console within seconds — the client
 watches the document rather than reading it once — and every write from that
 account is refused from the same moment.
 
-## The default: absent means enabled
+## The default: absent means enabled (legacy); new orgs start as placeholders
 
 An organization with **no** record in `moduleEntitlements` gets the full product.
-That is deliberate, in two places:
+That is deliberate for tenants that existed before this collection, in two places:
 
 - **No document** → every org was in exactly this state before entitlements
   existed, so shipping this took nothing away from anyone.
@@ -105,8 +105,25 @@ That is deliberate, in two places:
 Only an explicit `false` disables a module. `normalizeEntitlement` in
 `shared/modules/entitlements.js` is what makes that true at every call site.
 
+**New organizations are not in that state.** `createOrganization` writes the
+document in the same batch as the org, with every known key `false` — a
+placeholder per registry module. They become usable when an operator activates
+them on this screen (the subscription grant), either one module at a time or by
+assigning a **suite**. Suites live in `src/shared/modules/suites.js` (Core,
+Operations, Fire & Emergency, Compliance, Full) and partition the registry.
+Assigning a suite turns those placeholders on; it does not turn others off, so
+an org can hold Core plus à-la-carte extras. The founder cannot flip those
+flags themselves; rules allow that first write only while every module is off.
+
+The document shape is `{ modules, suite?, updatedAt, updatedBy, updatedByEmail }`.
+`modules` is the grant. `suite` is which bundle the operator last assigned
+(`core` / `operations` / `fire` / `compliance` / `full` / `custom` / `''`) so
+the console can name it. A founder seed does not include `suite`.
+
 "Restore default" on the console **deletes** the record rather than writing every
-module `true`, so the org keeps getting new modules automatically.
+module `true`, so a legacy org keeps getting new modules automatically. On a
+new org that is the opposite of a placeholder seed — use "All placeholders"
+when you mean the seeded state.
 
 ## What this is not
 
@@ -122,6 +139,10 @@ its own design: the mapping from module to collection is not one-to-one
 
 ## Adding a module to the system
 
-Nothing to do. Add it to `shared/modules/registry.js` as usual and mount its
-route with `moduleKey="<its key>"`. It appears on the console for every
-organization, on by default, and its route is gated automatically.
+Add it to `shared/modules/registry.js` as usual, mount its route with
+`moduleKey="<its key>"`, add it to `shared/modules/apps.js` and
+`scripts/generate-apps.mjs`, and put it in exactly one packaging suite in
+`shared/modules/suites.js`. The partition test fails if a registry key is
+missing from the suites or listed twice. It appears on the console for every
+organization; a new org still gets it as a placeholder until a suite or
+à-la-carte switch turns it on.

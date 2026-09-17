@@ -28,6 +28,8 @@ import { isPermissionDenied } from '../lib/permissionDenied'
 import { AUDIT } from '../audit/audit'
 import { createSharedSubscription } from './sharedSubscription'
 import { notifySiteCreated } from './siteHooks'
+import { organizationCreatePayload } from './orgCreate'
+import { ENTITLEMENTS_COLLECTION } from '../modules/entitlements'
 
 // ── Path helpers ──────────────────────────────────────────────────────────────
 export const orgRef = (orgId) => doc(db, 'organizations', orgId)
@@ -108,30 +110,33 @@ export function subscribeAuditLogs(orgId, cb, max = 300) {
 
 // ── Organizations & users ─────────────────────────────────────────────────────
 
-/** Create an org + its first admin user + public name index, atomically. */
+/** Create an org + its first admin user + public name index + module placeholders, atomically. */
 export async function createOrganization({ orgName, address, uid, name, email }) {
   const org = doc(collection(db, 'organizations'))
-  const batch = writeBatch(db)
-  batch.set(org, {
-    name: orgName,
-    nameLower: orgName.trim().toLowerCase(),
-    address: address || '',
-    createdBy: uid,
-    notificationEmail: email,
-    createdAt: serverTimestamp(),
-  })
-  batch.set(userRef(uid), {
+  const {
+    org: orgDoc,
+    user,
+    entitlement,
+  } = organizationCreatePayload({
+    orgName,
+    address,
+    uid,
     name,
     email,
-    orgId: org.id,
-    orgName,
-    role: 'admin',
-    status: 'approved',
-    dept: '',
-    createdAt: serverTimestamp(),
   })
+  const batch = writeBatch(db)
+  batch.set(org, { ...orgDoc, createdAt: serverTimestamp() })
+  batch.set(userRef(uid), { ...user, orgId: org.id, createdAt: serverTimestamp() })
   // Public lookup index (no sensitive fields).
   batch.set(orgIndexRef(orgName), { orgId: org.id, name: orgName })
+  // Every registry module as a placeholder. The founder may write this
+  // document only because every flag is false — firestore.rules refuse a
+  // create that activates anything. The platform operator turns keys on
+  // later; the org is not recreated.
+  batch.set(doc(db, ENTITLEMENTS_COLLECTION, org.id), {
+    ...entitlement,
+    updatedAt: serverTimestamp(),
+  })
   await batch.commit()
   return org.id
 }

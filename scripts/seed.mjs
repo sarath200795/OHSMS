@@ -62,6 +62,10 @@ async function main() {
     batch.set(orgRef, { name: ORG, nameLower: ORG.toLowerCase(), createdBy: uid, notificationEmail: ADMIN.email, createdAt: serverTimestamp() })
     batch.set(meRef, { name: ADMIN.name, email: ADMIN.email, orgId, orgName: ORG, role: 'admin', status: 'approved', createdAt: serverTimestamp() })
     batch.set(doc(db, 'orgIndex', ORG.toLowerCase()), { orgId, name: ORG })
+    // No /moduleEntitlements document on purpose. Absent still means the full
+    // product, which is what e2e and a first-run demo need. Registering an
+    // organization from the UI seeds every key false instead — placeholders
+    // until a platform operator activates a subscription.
     await batch.commit()
   }
 

@@ -3,11 +3,12 @@
 //
 // The registry says which modules the product HAS. This says which of them a
 // given organization may see and use. One document per org, at
-// /moduleEntitlements/{orgId}, written only by the platform operator (see the
-// matching block in firestore.rules) and read by every approved member so the
-// shell knows which tiles to draw and which routes to refuse.
+// /moduleEntitlements/{orgId}. Platform operators write activations; a newly
+// created organization may write the document once, with every key false
+// (placeholders). See placeholders.js.
 //
-// ABSENT MEANS ENABLED, in two places and for two different reasons:
+// ABSENT MEANS ENABLED for organizations that registered before placeholders
+// existed, in two places and for two different reasons:
 //
 //   • No document at all → the full product. Every organization was in exactly
 //     this state before entitlements existed, so introducing them took nothing
@@ -17,19 +18,25 @@
 //     withheld from every existing tenant until someone re-saved each one, and
 //     a shipped feature that nobody can see is the worse failure.
 //
-// Only an explicit `false` turns a module off. `normalizeEntitlement` is what
-// makes that true everywhere rather than at each call site.
+// A NEW organization is not in that state: createOrganization writes the
+// document with every key false. Only an explicit `true` (the operator saving
+// Module access — a suite or an à-la-carte switch) turns a placeholder into a
+// usable module. The optional `suite` field on the same document names the
+// bundle that was assigned. It is a label, not a second grant.
 // ─────────────────────────────────────────────────────────────────────────────
 import {
   collection,
   deleteDoc,
   doc,
+  getDoc,
   onSnapshot,
   serverTimestamp,
   setDoc,
 } from 'firebase/firestore'
 import { db } from '../firebase'
 import { MODULES, ADDONS, OPT_IN_KEYS } from './registry'
+import { activateKeys, placeholderEntitlementFields } from './placeholders'
+import { assignedSuiteKey } from './suites'
 
 export const ENTITLEMENTS_COLLECTION = 'moduleEntitlements'
 
@@ -60,13 +67,16 @@ const optIn = new Set(OPT_IN_KEYS)
  * removed from the product cannot linger as a phantom toggle.
  */
 export function normalizeEntitlement(data) {
-  const stored = data && typeof data.modules === 'object' && data.modules !== null ? data.modules : {}
-  return Object.fromEntries(ALL_MODULE_KEYS.map((key) => [
-    key,
-    // Absent means enabled for a module and DISABLED for an opt-in add-on —
-    // the whole reason optIn exists. See the note on ADDONS in the registry.
-    optIn.has(key) ? stored[key] === true : stored[key] !== false,
-  ]))
+  const stored =
+    data && typeof data.modules === 'object' && data.modules !== null ? data.modules : {}
+  return Object.fromEntries(
+    ALL_MODULE_KEYS.map((key) => [
+      key,
+      // Absent means enabled for a module and DISABLED for an opt-in add-on —
+      // the whole reason optIn exists. See the note on ADDONS in the registry.
+      optIn.has(key) ? stored[key] === true : stored[key] !== false,
+    ])
+  )
 }
 
 /** True if `key` is enabled under `map` (a normalized map, or a raw document). */
@@ -153,10 +163,18 @@ export function subscribeAllEntitlements(cb, onError) {
  * did not exist when the operator last looked" — and that difference is what
  * the console shows an operator who is deciding what to change.
  */
-export async function saveEntitlement(orgId, map, actor) {
-  const modules = Object.fromEntries(ALL_MODULE_KEYS.map((key) => [key, map?.[key] !== false]))
+export async function saveEntitlement(orgId, map, actor, opts = {}) {
+  const modules = Object.fromEntries(
+    ALL_MODULE_KEYS.map((key) => [key, optIn.has(key) ? map?.[key] === true : map?.[key] !== false])
+  )
+  // `suite` is the operator's assigned bundle (or 'custom', or ''). It does
+  // not authorize anything — `modules` is what the rules and the launcher
+  // read. Recording it means the console can say "this org is on Core"
+  // without re-deriving a mixed à-la-carte set as a guess.
+  const suite = opts.suite !== undefined ? opts.suite : assignedSuiteKey(modules)
   await setDoc(entitlementRef(orgId), {
     modules,
+    suite,
     updatedAt: serverTimestamp(),
     updatedBy: actor?.uid || '',
     updatedByEmail: actor?.email || '',
@@ -167,4 +185,32 @@ export async function saveEntitlement(orgId, map, actor) {
 /** Drop the document, returning the organization to the default: everything on. */
 export async function resetEntitlement(orgId) {
   await deleteDoc(entitlementRef(orgId))
+}
+
+/**
+ * Persist placeholders for every known key, if the document is not already
+ * there. createOrganization does this in the same batch as the org; this is
+ * the idempotent path for anything that runs later (a seed script, a repair
+ * job) and must not clobber a subscription that has since been granted.
+ */
+export async function seedPlaceholderEntitlement(orgId, actor) {
+  if (!orgId) return { seeded: false, reason: 'no-org' }
+  const ref = entitlementRef(orgId)
+  const snap = await getDoc(ref)
+  if (snap.exists()) return { seeded: false, reason: 'exists' }
+  await setDoc(ref, {
+    ...placeholderEntitlementFields(actor),
+    updatedAt: serverTimestamp(),
+  })
+  return { seeded: true }
+}
+
+/**
+ * Flip the named keys to active on an existing (or implicit placeholder)
+ * document. Platform-operator write — the same rule saveEntitlement uses.
+ */
+export async function activateModules(orgId, keys, actor) {
+  const snap = await getDoc(entitlementRef(orgId))
+  const current = snap.exists() ? snap.data()?.modules : null
+  return saveEntitlement(orgId, activateKeys(current, keys), actor)
 }

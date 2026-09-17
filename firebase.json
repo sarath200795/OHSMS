@@ -31,6 +31,142 @@
     ],
     "rewrites": [
       {
+        "source": "/incidents",
+        "destination": "/apps/incidents/index.html"
+      },
+      {
+        "source": "/incidents/**",
+        "destination": "/apps/incidents/index.html"
+      },
+      {
+        "source": "/hira",
+        "destination": "/apps/hira/index.html"
+      },
+      {
+        "source": "/hira/**",
+        "destination": "/apps/hira/index.html"
+      },
+      {
+        "source": "/inspections",
+        "destination": "/apps/inspections/index.html"
+      },
+      {
+        "source": "/inspections/**",
+        "destination": "/apps/inspections/index.html"
+      },
+      {
+        "source": "/audit",
+        "destination": "/apps/audit/index.html"
+      },
+      {
+        "source": "/audit/**",
+        "destination": "/apps/audit/index.html"
+      },
+      {
+        "source": "/permits",
+        "destination": "/apps/ptw/index.html"
+      },
+      {
+        "source": "/permits/**",
+        "destination": "/apps/ptw/index.html"
+      },
+      {
+        "source": "/loto",
+        "destination": "/apps/loto/index.html"
+      },
+      {
+        "source": "/loto/**",
+        "destination": "/apps/loto/index.html"
+      },
+      {
+        "source": "/equipment",
+        "destination": "/apps/equipment/index.html"
+      },
+      {
+        "source": "/equipment/**",
+        "destination": "/apps/equipment/index.html"
+      },
+      {
+        "source": "/mock-drills",
+        "destination": "/apps/drills/index.html"
+      },
+      {
+        "source": "/mock-drills/**",
+        "destination": "/apps/drills/index.html"
+      },
+      {
+        "source": "/committee",
+        "destination": "/apps/committee/index.html"
+      },
+      {
+        "source": "/committee/**",
+        "destination": "/apps/committee/index.html"
+      },
+      {
+        "source": "/training",
+        "destination": "/apps/training/index.html"
+      },
+      {
+        "source": "/training/**",
+        "destination": "/apps/training/index.html"
+      },
+      {
+        "source": "/documents",
+        "destination": "/apps/documents/index.html"
+      },
+      {
+        "source": "/documents/**",
+        "destination": "/apps/documents/index.html"
+      },
+      {
+        "source": "/emergency-response",
+        "destination": "/apps/emergency/index.html"
+      },
+      {
+        "source": "/emergency-response/**",
+        "destination": "/apps/emergency/index.html"
+      },
+      {
+        "source": "/objectives",
+        "destination": "/apps/objectives/index.html"
+      },
+      {
+        "source": "/objectives/**",
+        "destination": "/apps/objectives/index.html"
+      },
+      {
+        "source": "/weather",
+        "destination": "/apps/weather/index.html"
+      },
+      {
+        "source": "/weather/**",
+        "destination": "/apps/weather/index.html"
+      },
+      {
+        "source": "/cctv",
+        "destination": "/apps/cctv/index.html"
+      },
+      {
+        "source": "/cctv/**",
+        "destination": "/apps/cctv/index.html"
+      },
+      {
+        "source": "/stakeholder",
+        "destination": "/apps/stakeholder/index.html"
+      },
+      {
+        "source": "/stakeholder/**",
+        "destination": "/apps/stakeholder/index.html"
+      },
+      {
+        "source": "/actions",
+        "destination": "/apps/actions/index.html"
+      },
+      {
+        "source": "/actions/**",
+        "destination": "/apps/actions/index.html"
+      },
+      {
         "source": "**",
         "destination": "/index.html"
       }

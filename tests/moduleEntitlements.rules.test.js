@@ -10,8 +10,14 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { beforeAll, afterAll, beforeEach, describe, it, expect } from 'vitest'
-import { initializeTestEnvironment, assertFails, assertSucceeds } from '@firebase/rules-unit-testing'
+import {
+  initializeTestEnvironment,
+  assertFails,
+  assertSucceeds,
+} from '@firebase/rules-unit-testing'
 import { doc, setDoc, getDoc, getDocs, updateDoc, deleteDoc, collection } from 'firebase/firestore'
+import { placeholderModulesMap } from '../src/shared/modules/placeholders.js'
+import { assignSuite } from '../src/shared/modules/suites.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 let testEnv
@@ -32,7 +38,9 @@ beforeAll(async () => {
     firestore: { rules: readFileSync(join(__dirname, '..', 'firestore.rules'), 'utf8') },
   })
 })
-afterAll(async () => { await testEnv?.cleanup() })
+afterAll(async () => {
+  await testEnv?.cleanup()
+})
 
 beforeEach(async () => {
   await testEnv.clearFirestore()
@@ -56,7 +64,10 @@ beforeEach(async () => {
     // The shape the product actually ships: an operator account belonging to NO
     // organization. It gets no /users document at all — deliberately, so it can
     // never be mistaken for a member of a tenant.
-    await setDoc(doc(db, 'platformAdmins', 'lone'), { email: 'lone@t.co', note: 'operator, no org' })
+    await setDoc(doc(db, 'platformAdmins', 'lone'), {
+      email: 'lone@t.co',
+      note: 'operator, no org',
+    })
     await setDoc(doc(db, 'moduleEntitlements', ORG), {
       modules: { incidents: true, loto: false },
       updatedAt: new Date(),
@@ -84,7 +95,7 @@ describe('the platform grant itself', () => {
     expect(snap.exists()).toBe(false)
   })
 
-  it('refuses reading someone ELSE\'s grant', async () => {
+  it("refuses reading someone ELSE's grant", async () => {
     await assertFails(getDoc(doc(as('own'), 'platformAdmins', 'ops')))
   })
 
@@ -113,11 +124,15 @@ describe('the platform grant itself', () => {
 
 describe('an organization cannot give itself modules', () => {
   it('refuses its own admin switching one back on', async () => {
-    await assertFails(updateDoc(doc(as('own'), 'moduleEntitlements', ORG), { 'modules.loto': true }))
+    await assertFails(
+      updateDoc(doc(as('own'), 'moduleEntitlements', ORG), { 'modules.loto': true })
+    )
   })
 
   it('refuses its own admin replacing the document wholesale', async () => {
-    await assertFails(setDoc(doc(as('own'), 'moduleEntitlements', ORG), payload('own', { loto: true })))
+    await assertFails(
+      setDoc(doc(as('own'), 'moduleEntitlements', ORG), payload('own', { loto: true }))
+    )
   })
 
   // Deleting restores the default, which is the full product — so delete is
@@ -127,11 +142,15 @@ describe('an organization cannot give itself modules', () => {
   })
 
   it('refuses an org that has never been configured writing its first record', async () => {
-    await assertFails(setDoc(doc(as('riv'), 'moduleEntitlements', OTHER), payload('riv', { loto: true })))
+    await assertFails(
+      setDoc(doc(as('riv'), 'moduleEntitlements', OTHER), payload('riv', { loto: true }))
+    )
   })
 
-  it('refuses one tenant editing another\'s entitlement', async () => {
-    await assertFails(setDoc(doc(as('riv'), 'moduleEntitlements', ORG), payload('riv', { loto: true })))
+  it("refuses one tenant editing another's entitlement", async () => {
+    await assertFails(
+      setDoc(doc(as('riv'), 'moduleEntitlements', ORG), payload('riv', { loto: true }))
+    )
   })
 })
 
@@ -141,7 +160,7 @@ describe('an organization can read what it has been given', () => {
     expect(snap.data().modules.loto).toBe(false)
   })
 
-  it('refuses a member reading another tenant\'s record', async () => {
+  it("refuses a member reading another tenant's record", async () => {
     await assertFails(getDoc(doc(as('mem'), 'moduleEntitlements', OTHER)))
   })
 
@@ -188,12 +207,16 @@ describe('a module that is switched off stops its collections being used', () =>
   // somebody thinks to check. This list is the check.
   const EQUIPMENT = ['extinguishers', 'aeds', 'fas', 'signages', 'stretchers', 'firstAid']
 
-  const setModules = (modules) => testEnv.withSecurityRulesDisabled(async (ctx) => {
-    await setDoc(doc(ctx.firestore(), 'moduleEntitlements', ORG), payload('ops', modules))
-  })
-  const seedRow = (col) => testEnv.withSecurityRulesDisabled(async (ctx) => {
-    await setDoc(doc(ctx.firestore(), 'organizations', ORG, col, 'row1'), { centerName: 'Plant 2' })
-  })
+  const setModules = (modules) =>
+    testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'moduleEntitlements', ORG), payload('ops', modules))
+    })
+  const seedRow = (col) =>
+    testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'organizations', ORG, col, 'row1'), {
+        centerName: 'Plant 2',
+      })
+    })
   const rowAt = (db, col) => doc(db, 'organizations', ORG, col, 'row1')
 
   // The baseline the refusals are measured against. Without it they prove
@@ -212,7 +235,14 @@ describe('a module that is switched off stops its collections being used', () =>
   // first collection that leaks and says nothing about the rest, which is the
   // opposite of what this test is for. The question is WHICH collections the
   // gate misses, and one of them would hide the others.
-  const outcome = async (p) => { try { await p; return 'allowed' } catch { return 'refused' } }
+  const outcome = async (p) => {
+    try {
+      await p
+      return 'allowed'
+    } catch {
+      return 'refused'
+    }
+  }
   const allRefused = () => Object.fromEntries(EQUIPMENT.map((c) => [c, 'refused']))
 
   it('refuses reading any of them once equipment is switched off', async () => {
@@ -271,7 +301,7 @@ describe('a module that is switched off stops its collections being used', () =>
 })
 
 describe('the platform operator', () => {
-  it('may list every organization\'s entitlement', async () => {
+  it("may list every organization's entitlement", async () => {
     await assertSucceeds(getDocs(collection(as('ops'), 'moduleEntitlements')))
   })
 
@@ -280,12 +310,24 @@ describe('the platform operator', () => {
   })
 
   it('may switch a module off, and back on', async () => {
-    await assertSucceeds(setDoc(doc(as('ops'), 'moduleEntitlements', ORG), payload('ops', { incidents: false, loto: false })))
-    await assertSucceeds(setDoc(doc(as('ops'), 'moduleEntitlements', ORG), payload('ops', { incidents: true, loto: true })))
+    await assertSucceeds(
+      setDoc(
+        doc(as('ops'), 'moduleEntitlements', ORG),
+        payload('ops', { incidents: false, loto: false })
+      )
+    )
+    await assertSucceeds(
+      setDoc(
+        doc(as('ops'), 'moduleEntitlements', ORG),
+        payload('ops', { incidents: true, loto: true })
+      )
+    )
   })
 
   it('may create a record for an org that has none', async () => {
-    await assertSucceeds(setDoc(doc(as('ops'), 'moduleEntitlements', OTHER), payload('ops', { cctv: false })))
+    await assertSucceeds(
+      setDoc(doc(as('ops'), 'moduleEntitlements', OTHER), payload('ops', { cctv: false }))
+    )
   })
 
   it('may delete a record to restore the default', async () => {
@@ -295,14 +337,18 @@ describe('the platform operator', () => {
   // The document is readable by every member of the tenant, so it is not a
   // place to park anything else.
   it('cannot park unrelated fields in a document the whole tenant reads', async () => {
-    await assertFails(setDoc(doc(as('ops'), 'moduleEntitlements', ORG), {
-      ...payload('ops', { loto: false }),
-      internalNotes: 'renewal at risk, chasing payment',
-    }))
+    await assertFails(
+      setDoc(doc(as('ops'), 'moduleEntitlements', ORG), {
+        ...payload('ops', { loto: false }),
+        internalNotes: 'renewal at risk, chasing payment',
+      })
+    )
   })
 
   it('cannot write a record attributed to somebody else', async () => {
-    await assertFails(setDoc(doc(as('ops'), 'moduleEntitlements', ORG), payload('own', { loto: false })))
+    await assertFails(
+      setDoc(doc(as('ops'), 'moduleEntitlements', ORG), payload('own', { loto: false }))
+    )
   })
 
   // The console's guard never asks for a tenant profile, so the rules must not
@@ -311,7 +357,9 @@ describe('the platform operator', () => {
   it('works with no tenant profile at all — no /users document, no org', async () => {
     await assertSucceeds(getDocs(collection(as('lone'), 'moduleEntitlements')))
     await assertSucceeds(getDoc(doc(as('lone'), 'moduleEntitlements', ORG)))
-    await assertSucceeds(setDoc(doc(as('lone'), 'moduleEntitlements', ORG), payload('lone', { loto: false })))
+    await assertSucceeds(
+      setDoc(doc(as('lone'), 'moduleEntitlements', ORG), payload('lone', { loto: false }))
+    )
     await assertSucceeds(deleteDoc(doc(as('lone'), 'moduleEntitlements', OTHER)))
   })
 
@@ -320,12 +368,147 @@ describe('the platform operator', () => {
   it('a profile-less account WITHOUT the grant reaches nothing', async () => {
     await assertFails(getDocs(collection(as('nobody'), 'moduleEntitlements')))
     await assertFails(getDoc(doc(as('nobody'), 'moduleEntitlements', ORG)))
-    await assertFails(setDoc(doc(as('nobody'), 'moduleEntitlements', ORG), payload('nobody', { loto: false })))
+    await assertFails(
+      setDoc(doc(as('nobody'), 'moduleEntitlements', ORG), payload('nobody', { loto: false }))
+    )
   })
 
   it('cannot write a modules field that is not a map', async () => {
-    await assertFails(setDoc(doc(as('ops'), 'moduleEntitlements', ORG), {
-      ...payload('ops', {}), modules: 'all',
-    }))
+    await assertFails(
+      setDoc(doc(as('ops'), 'moduleEntitlements', ORG), {
+        ...payload('ops', {}),
+        modules: 'all',
+      })
+    )
+  })
+
+  it('may record a suite alongside the modules map', async () => {
+    await assertSucceeds(
+      setDoc(doc(as('ops'), 'moduleEntitlements', ORG), {
+        ...payload('ops', { incidents: true, hira: true }),
+        suite: 'core',
+      })
+    )
+  })
+
+  it('refuses a suite that is not a string', async () => {
+    await assertFails(
+      setDoc(doc(as('ops'), 'moduleEntitlements', ORG), {
+        ...payload('ops', { incidents: true }),
+        suite: 1,
+      })
+    )
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Org create seeds placeholders. The founder may write the document once, with
+// every module off, and may not turn any of them on. Activation is still the
+// platform operator's write — the same property the tests above pin, at the
+// moment the org comes into existence rather than later.
+// ─────────────────────────────────────────────────────────────────────────────
+const NEW = 'orgFresh'
+const allOff = () => placeholderModulesMap()
+
+describe('a new organization seeds placeholders and cannot activate them', () => {
+  beforeEach(async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore()
+      // A dedicated founder, not `riv`: riv is admin of another tenant, and a
+      // write into THIS org's incidents would then fail on membership — which
+      // is not the property this block is pinning.
+      await setDoc(doc(db, 'organizations', NEW), { name: NEW, createdBy: 'fresh' })
+      await setDoc(doc(db, 'users', 'fresh'), {
+        orgId: NEW,
+        role: 'admin',
+        status: 'approved',
+        name: 'fresh',
+        email: 'fresh@t.co',
+      })
+    })
+  })
+
+  it('lets the founder write the all-off placeholder record', async () => {
+    await assertSucceeds(
+      setDoc(doc(as('fresh'), 'moduleEntitlements', NEW), payload('fresh', allOff()))
+    )
+  })
+
+  it('is idempotent: a second write of the same placeholders is an update and is refused', async () => {
+    await assertSucceeds(
+      setDoc(doc(as('fresh'), 'moduleEntitlements', NEW), payload('fresh', allOff()))
+    )
+    await assertFails(
+      setDoc(doc(as('fresh'), 'moduleEntitlements', NEW), payload('fresh', allOff()))
+    )
+  })
+
+  it('refuses the founder activating any module in that first write', async () => {
+    await assertFails(
+      setDoc(
+        doc(as('fresh'), 'moduleEntitlements', NEW),
+        payload('fresh', { ...allOff(), incidents: true })
+      )
+    )
+  })
+
+  it('refuses the founder claiming a suite on that first write', async () => {
+    await assertFails(
+      setDoc(doc(as('fresh'), 'moduleEntitlements', NEW), {
+        ...payload('fresh', allOff()),
+        suite: 'full',
+      })
+    )
+  })
+
+  it('refuses the founder omitting a key, which would read as enabled', async () => {
+    const partial = { ...allOff() }
+    delete partial.loto
+    await assertFails(
+      setDoc(doc(as('fresh'), 'moduleEntitlements', NEW), payload('fresh', partial))
+    )
+  })
+
+  it('lets the platform operator activate a suite later without recreating the org', async () => {
+    await assertSucceeds(
+      setDoc(doc(as('fresh'), 'moduleEntitlements', NEW), payload('fresh', allOff()))
+    )
+    await assertSucceeds(
+      setDoc(doc(as('ops'), 'moduleEntitlements', NEW), {
+        ...payload('ops', assignSuite('core')),
+        suite: 'core',
+      })
+    )
+    const incident = doc(as('fresh'), 'organizations', NEW, 'incidents', 'row1')
+    await assertSucceeds(setDoc(incident, { title: 'x' }))
+    const permit = doc(as('fresh'), 'organizations', NEW, 'permits', 'row1')
+    await assertFails(setDoc(permit, { title: 'x' }))
+  })
+
+  it('lets the platform operator activate a placeholder later without recreating the org', async () => {
+    await assertSucceeds(
+      setDoc(doc(as('fresh'), 'moduleEntitlements', NEW), payload('fresh', allOff()))
+    )
+    await assertSucceeds(
+      setDoc(
+        doc(as('ops'), 'moduleEntitlements', NEW),
+        payload('ops', { ...allOff(), incidents: true, hira: true })
+      )
+    )
+  })
+
+  it('stops writes to a placeholder module, and allows them once it is activated', async () => {
+    await assertSucceeds(
+      setDoc(doc(as('fresh'), 'moduleEntitlements', NEW), payload('fresh', allOff()))
+    )
+    const incident = doc(as('fresh'), 'organizations', NEW, 'incidents', 'row1')
+    await assertFails(setDoc(incident, { title: 'x' }))
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(
+        doc(ctx.firestore(), 'moduleEntitlements', NEW),
+        payload('ops', { ...allOff(), incidents: true })
+      )
+    })
+    await assertSucceeds(setDoc(incident, { title: 'x' }))
   })
 })

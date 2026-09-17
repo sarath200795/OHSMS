@@ -15,7 +15,7 @@
 // and account, and nothing that competes with the page below it.
 // ─────────────────────────────────────────────────────────────────────────────
 import { useEffect, useRef, useState } from 'react'
-import { NavLink, useLocation, useNavigate } from 'react-router-dom'
+import { useLocation } from 'react-router-dom'
 import { motion, useReducedMotion } from 'framer-motion'
 import { Building2, ChevronDown, LogOut, GraduationCap, KeyRound, ShieldCheck } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
@@ -25,6 +25,7 @@ import Sam from '../sam/Sam'
 import HomeBar from './HomeBar'
 import { OrgMark, PoweredByWeEhs } from '../branding/OrgMark'
 import IdleGuard from '../auth/IdleGuard'
+import AppLink from '../../app/AppLink'
 
 const ROLE_LABEL = {
   admin: 'Administrator',
@@ -35,7 +36,6 @@ const ROLE_LABEL = {
 
 export default function AppChrome({ children }) {
   const { profile, org, orgName, role, signOut } = useAuth()
-  const navigate = useNavigate()
   const location = useLocation()
   const reduce = useReducedMotion()
   const [menuOpen, setMenuOpen] = useState(false)
@@ -110,7 +110,7 @@ export default function AppChrome({ children }) {
         {/* aria-label rather than leaning on the wordmark beside it: that text
             is hidden below sm, and without this the only way home on a phone
             was a link announced as the single letter "W". */}
-        <NavLink
+        <AppLink
           to="/portal"
           aria-label={`${branded && orgName ? orgName : 'WEHS'} home`}
           className="flex min-w-0 flex-none items-center gap-2.5 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-clay-bg"
@@ -124,7 +124,7 @@ export default function AppChrome({ children }) {
               {branded ? 'Occupational Health & Safety' : 'Workplace Environment, Health & Safety'}
             </span>
           </span>
-        </NavLink>
+        </AppLink>
 
         <div className="flex-1" />
 
@@ -171,10 +171,8 @@ export default function AppChrome({ children }) {
               </div>
               <MenuItem
                 icon={GraduationCap}
-                onClick={() => {
-                  setMenuOpen(false)
-                  navigate('/portal/training')
-                }}
+                to="/portal/training"
+                onClick={() => setMenuOpen(false)}
               >
                 My training record
               </MenuItem>
@@ -187,13 +185,7 @@ export default function AppChrome({ children }) {
               >
                 Request access
               </MenuItem>
-              <MenuItem
-                icon={ShieldCheck}
-                onClick={() => {
-                  setMenuOpen(false)
-                  navigate('/security')
-                }}
-              >
+              <MenuItem icon={ShieldCheck} to="/security" onClick={() => setMenuOpen(false)}>
                 Security &amp; two-factor
               </MenuItem>
               {/* No link to the platform console lives here, deliberately. It
@@ -234,18 +226,26 @@ export default function AppChrome({ children }) {
   )
 }
 
-function MenuItem({ icon: Icon, children, onClick, danger }) {
-  return (
-    <button
-      type="button"
-      role="menuitem"
-      onClick={onClick}
-      className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 ${
-        danger ? 'text-red-600 hover:bg-red-50' : 'text-ink-700 hover:bg-clay-100'
-      }`}
-    >
+function MenuItem({ icon: Icon, children, onClick, to, danger }) {
+  const className = `flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 ${
+    danger ? 'text-red-600 hover:bg-red-50' : 'text-ink-700 hover:bg-clay-100'
+  }`
+  const inner = (
+    <>
       <Icon size={15} />
       {children}
+    </>
+  )
+  if (to) {
+    return (
+      <AppLink to={to} role="menuitem" className={className} onClick={onClick}>
+        {inner}
+      </AppLink>
+    )
+  }
+  return (
+    <button type="button" role="menuitem" onClick={onClick} className={className}>
+      {inner}
     </button>
   )
 }

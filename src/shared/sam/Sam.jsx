@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
 import { Send, X } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
@@ -7,6 +6,7 @@ import { useDeferredMount } from '../lib/useDeferredMount'
 import { answer, isoMap } from './brain'
 import { getStats } from './liveStats'
 import SamCharacter3D from './SamCharacter3D'
+import AppLink from '../../app/AppLink'
 
 // Sam is a modelled character now rather than a flat badge — at 76px the vest
 // tape, the badge and the clipboard were all sub-pixel. Every position on
@@ -18,9 +18,9 @@ const MARGIN = 16
 // pace, because those two things together are what make motion read as walking:
 // a character that changes height mid-journey, or that eases in and out like a
 // spring, reads as floating no matter how well the legs are animated.
-const GROUND_GAP = 76           // clear of the bottom edge and the "Sam" badge
-const SPEED = 90                // px per second — an unhurried stroll
-const MIN_STROLL = 160          // don't bother shuffling a few pixels
+const GROUND_GAP = 76 // clear of the bottom edge and the "Sam" badge
+const SPEED = 90 // px per second — an unhurried stroll
+const MIN_STROLL = 160 // don't bother shuffling a few pixels
 
 const groundY = () => Math.max(MARGIN, window.innerHeight - AVATAR - GROUND_GAP)
 const maxX = () => Math.max(MARGIN, window.innerWidth - AVATAR - MARGIN)
@@ -64,9 +64,13 @@ function SamParts({ parts }) {
               <p className="mb-1 text-xs font-semibold text-ink-500">{p.label}</p>
               <div className="flex flex-wrap gap-1.5">
                 {p.modules.map((m) => (
-                  <Link key={m.path + m.label} to={m.path} className="chip bg-brand-50 text-brand-700 hover:bg-brand-100">
+                  <AppLink
+                    key={m.path + m.label}
+                    to={m.path}
+                    className="chip bg-brand-50 text-brand-700 hover:bg-brand-100"
+                  >
                     {m.label}
-                  </Link>
+                  </AppLink>
                 ))}
               </div>
             </div>
@@ -78,13 +82,19 @@ function SamParts({ parts }) {
                 <tbody>
                   {isoMap().map((row) => (
                     <tr key={row.clause} className="border-b border-clay-200/60 last:border-0">
-                      <td className="whitespace-nowrap py-1 pr-2 font-bold text-brand-700">{row.clause}</td>
+                      <td className="whitespace-nowrap py-1 pr-2 font-bold text-brand-700">
+                        {row.clause}
+                      </td>
                       <td className="py-1 pr-2 text-ink-700">{row.title}</td>
                       <td className="py-1">
                         {row.modules.map((m) => (
-                          <Link key={m.path + m.label} to={m.path} className="mr-1 text-brand-600 hover:underline">
+                          <AppLink
+                            key={m.path + m.label}
+                            to={m.path}
+                            className="mr-1 text-brand-600 hover:underline"
+                          >
                             {m.label.split(' (')[0]}
-                          </Link>
+                          </AppLink>
                         ))}
                       </td>
                     </tr>
@@ -99,7 +109,12 @@ function SamParts({ parts }) {
   )
 }
 
-const SUGGESTIONS = ['What is clause 5.4?', '8.2 emergency', 'How is our training compliance?', 'ISO map']
+const SUGGESTIONS = [
+  'What is clause 5.4?',
+  '8.2 emergency',
+  'How is our training compliance?',
+  'ISO map',
+]
 
 export default function Sam() {
   const { orgId, isApproved, profile } = useAuth()
@@ -109,7 +124,12 @@ export default function Sam() {
   const [messages, setMessages] = useState([
     {
       role: 'sam',
-      parts: [{ type: 'text', text: 'Hi, I’m **Sam** — your ISO 45001 buddy! 🦺 Ask me about any clause, or how your WEHS modules stack up against the standard.' }],
+      parts: [
+        {
+          type: 'text',
+          text: 'Hi, I’m **Sam** — your ISO 45001 buddy! 🦺 Ask me about any clause, or how your WEHS modules stack up against the standard.',
+        },
+      ],
     },
   ])
   const [input, setInput] = useState('')
@@ -129,20 +149,23 @@ export default function Sam() {
   const walkTimer = useRef(null)
 
   /** Walk to a spot, facing the way he is going, legs moving for exactly the trip. */
-  const strollTo = useCallback((next) => {
-    const from = posRef.current
-    const distance = Math.hypot(next.x - from.x, next.y - from.y)
-    if (distance < 4) return
-    posRef.current = next
-    if (next.x !== from.x) setFacing(next.x > from.x ? 1 : -1)
-    const seconds = reduce ? 0 : Math.min(8, distance / SPEED)
-    setTravel(seconds)
-    setPos(next)
-    if (reduce) return
-    setWalking(true)
-    clearTimeout(walkTimer.current)
-    walkTimer.current = setTimeout(() => setWalking(false), seconds * 1000)
-  }, [reduce])
+  const strollTo = useCallback(
+    (next) => {
+      const from = posRef.current
+      const distance = Math.hypot(next.x - from.x, next.y - from.y)
+      if (distance < 4) return
+      posRef.current = next
+      if (next.x !== from.x) setFacing(next.x > from.x ? 1 : -1)
+      const seconds = reduce ? 0 : Math.min(8, distance / SPEED)
+      setTravel(seconds)
+      setPos(next)
+      if (reduce) return
+      setWalking(true)
+      clearTimeout(walkTimer.current)
+      walkTimer.current = setTimeout(() => setWalking(false), seconds * 1000)
+    },
+    [reduce]
+  )
 
   useEffect(() => () => clearTimeout(walkTimer.current), [])
 
@@ -159,10 +182,13 @@ export default function Sam() {
     if (open || reduce) return undefined
     let timer
     const schedule = () => {
-      timer = setTimeout(() => {
-        if (!dragging.current) strollTo({ x: nextStop(posRef.current.x), y: groundY() })
-        schedule()
-      }, 25_000 + Math.random() * 20_000)
+      timer = setTimeout(
+        () => {
+          if (!dragging.current) strollTo({ x: nextStop(posRef.current.x), y: groundY() })
+          schedule()
+        },
+        25_000 + Math.random() * 20_000
+      )
     }
     schedule()
     return () => clearTimeout(timer)
@@ -173,7 +199,10 @@ export default function Sam() {
   useEffect(() => {
     if (!open) return
     const panel = Math.min(384, window.innerWidth - 2 * MARGIN)
-    strollTo({ x: Math.max(MARGIN, window.innerWidth - panel - MARGIN - AVATAR - 12), y: groundY() })
+    strollTo({
+      x: Math.max(MARGIN, window.innerWidth - panel - MARGIN - AVATAR - 12),
+      y: groundY(),
+    })
   }, [open, strollTo])
 
   useEffect(() => {
@@ -197,7 +226,10 @@ export default function Sam() {
   }
 
   const greeting = useMemo(
-    () => (profile?.name ? `Sam · here to help, ${profile.name.split(' ')[0]}!` : 'Sam · ISO 45001 buddy'),
+    () =>
+      profile?.name
+        ? `Sam · here to help, ${profile.name.split(' ')[0]}!`
+        : 'Sam · ISO 45001 buddy',
     [profile]
   )
 
@@ -218,12 +250,20 @@ export default function Sam() {
         transition={reduce ? { duration: 0 } : { type: 'tween', ease: 'linear', duration: travel }}
         drag
         dragMomentum={false}
-        onDragStart={() => { dragging.current = true }}
+        onDragStart={() => {
+          dragging.current = true
+        }}
         onDragEnd={(e, info) => {
           dragging.current = false
           const dropped = {
-            x: Math.min(Math.max(8, posRef.current.x + info.offset.x), window.innerWidth - AVATAR - 8),
-            y: Math.min(Math.max(8, posRef.current.y + info.offset.y), window.innerHeight - AVATAR - 8),
+            x: Math.min(
+              Math.max(8, posRef.current.x + info.offset.x),
+              window.innerWidth - AVATAR - 8
+            ),
+            y: Math.min(
+              Math.max(8, posRef.current.y + info.offset.y),
+              window.innerHeight - AVATAR - 8
+            ),
           }
           // Land where dropped, instantly — the drag already moved him there, so
           // animating would drag him a second time. His next stroll walks him
@@ -232,7 +272,9 @@ export default function Sam() {
           setTravel(0)
           setPos(dropped)
         }}
-        onClick={() => { if (!dragging.current) setOpen((o) => !o) }}
+        onClick={() => {
+          if (!dragging.current) setOpen((o) => !o)
+        }}
         whileHover={{ scale: 1.08 }}
         whileTap={{ scale: 0.95 }}
       >
@@ -266,19 +308,28 @@ export default function Sam() {
           >
             <div className="flex items-center justify-between border-b border-clay-200/70 bg-brand-600 px-4 py-3 text-white">
               <p className="text-sm font-bold">🦺 {greeting}</p>
-              <button onClick={() => setOpen(false)} aria-label="Close Sam" className="rounded-lg p-1 hover:bg-white/15">
+              <button
+                onClick={() => setOpen(false)}
+                aria-label="Close Sam"
+                className="rounded-lg p-1 hover:bg-white/15"
+              >
                 <X size={16} />
               </button>
             </div>
 
             <div ref={listRef} className="flex-1 space-y-3 overflow-y-auto p-3">
               {messages.map((m, i) => (
-                <div key={i} className={m.role === 'user' ? 'flex justify-end' : 'flex justify-start'}>
-                  <div className={
-                    m.role === 'user'
-                      ? 'max-w-[85%] rounded-2xl rounded-br-md bg-brand-600 px-3 py-2 text-sm text-white'
-                      : 'max-w-[92%] rounded-2xl rounded-bl-md bg-clay-100 px-3 py-2 shadow-clay-sm'
-                  }>
+                <div
+                  key={i}
+                  className={m.role === 'user' ? 'flex justify-end' : 'flex justify-start'}
+                >
+                  <div
+                    className={
+                      m.role === 'user'
+                        ? 'max-w-[85%] rounded-2xl rounded-br-md bg-brand-600 px-3 py-2 text-sm text-white'
+                        : 'max-w-[92%] rounded-2xl rounded-bl-md bg-clay-100 px-3 py-2 shadow-clay-sm'
+                    }
+                  >
                     {m.role === 'user' ? m.parts[0].text : <SamParts parts={m.parts} />}
                   </div>
                 </div>
@@ -286,8 +337,12 @@ export default function Sam() {
               {thinking && (
                 <div className="flex items-center gap-1 pl-2 text-ink-400">
                   {[0, 1, 2].map((i) => (
-                    <motion.span key={i} className="h-1.5 w-1.5 rounded-full bg-ink-400"
-                      animate={{ opacity: [0.3, 1, 0.3] }} transition={{ repeat: Infinity, duration: 0.9, delay: i * 0.15 }} />
+                    <motion.span
+                      key={i}
+                      className="h-1.5 w-1.5 rounded-full bg-ink-400"
+                      animate={{ opacity: [0.3, 1, 0.3] }}
+                      transition={{ repeat: Infinity, duration: 0.9, delay: i * 0.15 }}
+                    />
                   ))}
                 </div>
               )}
@@ -295,7 +350,11 @@ export default function Sam() {
 
             <div className="flex flex-wrap gap-1.5 px-3 pb-2">
               {SUGGESTIONS.map((s) => (
-                <button key={s} onClick={() => ask(s)} className="chip bg-clay-100 text-ink-600 transition hover:bg-brand-50 hover:text-brand-700">
+                <button
+                  key={s}
+                  onClick={() => ask(s)}
+                  className="chip bg-clay-100 text-ink-600 transition hover:bg-brand-50 hover:text-brand-700"
+                >
                   {s}
                 </button>
               ))}
@@ -303,7 +362,10 @@ export default function Sam() {
 
             <form
               className="flex items-center gap-2 border-t border-clay-200/70 p-3"
-              onSubmit={(e) => { e.preventDefault(); ask() }}
+              onSubmit={(e) => {
+                e.preventDefault()
+                ask()
+              }}
             >
               <input
                 className="input !py-2 text-sm"

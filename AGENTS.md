@@ -21,9 +21,15 @@ arbitrary.
 
 ## Three deployable units, two of them separate npm packages
 
-`src/` (the SPA) and `functions/` each have their own `package.json`, lockfile
-and test config. The root `npm test` only reaches `src/**`. CI runs both; a
-local check that only runs the root script has tested half the repository.
+The frontend is a set of Vite apps under `apps/` (a shell plus one app per
+operating module) sharing `src/shared` and the same Firebase project — see
+`docs/APPS.md`. `functions/` is its own npm package, lockfile and test config.
+The root `npm test` only reaches `src/**`. CI runs both; a local check that only
+runs the root script has tested half the repository.
+
+`npm run dev` still mounts the combined SPA so Playwright and day-to-day work
+do not need eighteen processes. `npm run build` builds the split apps that
+hosting deploys.
 
 There was a third package, `server/`, an Express + firebase-admin service meant
 to take over the write path. It is **gone**. It served no traffic, nothing
@@ -169,7 +175,7 @@ three times each:
    refuses something is worthless while a broader `match` grants it. Adding a
    restrictive match block restricts nothing on its own.
 2. **The post-state branch.** `request.resource.data` on an update is the state
-   *after* the write. A rule that authorises against it lets the writer supply
+   _after_ the write. A rule that authorises against it lets the writer supply
    the value that authorises them.
 
 ## Style
@@ -177,7 +183,7 @@ three times each:
 - JavaScript, not TypeScript. No `tsconfig.json` anywhere, and that is
   deliberate — do not introduce one incidentally.
 - Prettier: no semicolons, single quotes, width 100. `npm run format`.
-- Comments explain *why*, and name the failure that motivated the code. The
+- Comments explain _why_, and name the failure that motivated the code. The
   codebase carries no `TODO`, `FIXME`, or `console.log`; keep it that way.
 - Line endings are mixed across the repo and `core.autocrlf` is on. Preserve
   whatever a file already uses rather than normalising it in an unrelated diff.

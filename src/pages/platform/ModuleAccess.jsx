@@ -15,7 +15,15 @@ import toast from 'react-hot-toast'
 import { toastCaught } from '../../shared/lib/toastCaught'
 import { isPermissionDenied } from '../../shared/lib/permissionDenied'
 import {
-  Building2, Check, RotateCcw, Save, Search, ShieldCheck, SlidersHorizontal, X,
+  Building2,
+  Check,
+  Layers,
+  RotateCcw,
+  Save,
+  Search,
+  ShieldCheck,
+  SlidersHorizontal,
+  X,
 } from 'lucide-react'
 import { useAuth } from '../../shared/auth/AuthContext'
 import { listOrganizations } from '../../shared/org/orgData'
@@ -28,6 +36,14 @@ import {
   saveEntitlement,
   subscribeAllEntitlements,
 } from '../../shared/modules/entitlements'
+import {
+  SUITES,
+  activateSuite,
+  describeGrant,
+  suiteForModule,
+  suiteIsFullyOn,
+} from '../../shared/modules/suites'
+import { placeholderModulesMap } from '../../shared/modules/placeholders'
 import { PageHeader, Card, Button, Input, Badge, SkeletonCard, EmptyState } from '../../shared/ui'
 
 const TOTAL = ALL_MODULE_KEYS.length
@@ -64,13 +80,18 @@ export default function ModuleAccess() {
           setLoadError(err?.message || 'Could not load the organization list.')
         }
       })
-    return () => { live = false }
+    return () => {
+      live = false
+    }
   }, [])
 
   useEffect(
     () =>
       subscribeAllEntitlements(
-        (map) => { setEnts(map); setEntsReady(true) },
+        (map) => {
+          setEnts(map)
+          setEntsReady(true)
+        },
         (err) => {
           setEntsReady(true)
           if (!isPermissionDenied(err)) {
@@ -81,10 +102,7 @@ export default function ModuleAccess() {
     []
   )
 
-  const stored = useMemo(
-    () => ents[selected]?.map || normalizeEntitlement(null),
-    [ents, selected]
-  )
+  const stored = useMemo(() => ents[selected]?.map || normalizeEntitlement(null), [ents, selected])
 
   // Adopt the stored state when the selection changes. An in-flight edit for
   // the same org is left alone: a snapshot arriving from this very save (or
@@ -98,11 +116,14 @@ export default function ModuleAccess() {
 
   const rows = useMemo(() => {
     const q = filter.trim().toLowerCase()
-    const list = (orgs || []).filter((o) => !q || o.name.toLowerCase().includes(q) || o.id.toLowerCase().includes(q))
+    const list = (orgs || []).filter(
+      (o) => !q || o.name.toLowerCase().includes(q) || o.id.toLowerCase().includes(q)
+    )
     return list.map((o) => {
       const e = ents[o.id]
       const off = e ? disabledKeys(e.map).length : 0
-      return { ...o, configured: Boolean(e), off }
+      const grant = e ? describeGrant(e.map) : null
+      return { ...o, configured: Boolean(e), off, grant }
     })
   }, [orgs, ents, filter])
 
@@ -110,12 +131,18 @@ export default function ModuleAccess() {
 
   const setKey = (key, on) => setDraft({ ...working, [key]: on })
   const setAll = (on) => setDraft(Object.fromEntries(ALL_MODULE_KEYS.map((k) => [k, on])))
+  const applySuite = (key) => setDraft(activateSuite(working, key))
+  const clearToPlaceholders = () => setDraft(placeholderModulesMap())
+  const grant = describeGrant(working)
 
   const save = async () => {
     if (!selected) return
     setBusy(true)
     try {
-      await saveEntitlement(selected, working, { uid: user?.uid, email: profile?.email || user?.email || '' })
+      await saveEntitlement(selected, working, {
+        uid: user?.uid,
+        email: profile?.email || user?.email || '',
+      })
       setDraft(null)
       toast.success(`Saved — ${current?.name || selected}`)
     } catch (err) {
@@ -145,7 +172,7 @@ export default function ModuleAccess() {
     <>
       <PageHeader
         title="Module access"
-        subtitle="Which modules each organization can see and use"
+        subtitle="Suites and à-la-carte modules. Placeholders every organization starts with; a subscription turns them on."
         icon={SlidersHorizontal}
         actions={
           <Badge tone="brand">
@@ -166,7 +193,10 @@ export default function ModuleAccess() {
         <Card className="p-0">
           <div className="border-b border-ink-100 p-4">
             <div className="relative">
-              <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-400" />
+              <Search
+                size={15}
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-400"
+              />
               <Input
                 value={filter}
                 onChange={(e) => setFilter(e.target.value)}
@@ -181,13 +211,17 @@ export default function ModuleAccess() {
           </div>
 
           {loading ? (
-            <div className="p-4"><SkeletonCard /></div>
+            <div className="p-4">
+              <SkeletonCard />
+            </div>
           ) : rows.length === 0 ? (
             <div className="p-4">
               <EmptyState
                 icon={Building2}
                 title="No organizations"
-                description={filter ? 'Nothing matches that search.' : 'No organization has registered yet.'}
+                description={
+                  filter ? 'Nothing matches that search.' : 'No organization has registered yet.'
+                }
               />
             </div>
           ) : (
@@ -204,15 +238,23 @@ export default function ModuleAccess() {
                         active ? 'bg-brand-50 text-brand-900' : 'hover:bg-clay-100'
                       }`}
                     >
-                      <span className={`grid h-8 w-8 flex-none place-items-center rounded-lg ${active ? 'bg-brand-600 text-white' : 'bg-clay-100 text-ink-500'}`}>
+                      <span
+                        className={`grid h-8 w-8 flex-none place-items-center rounded-lg ${active ? 'bg-brand-600 text-white' : 'bg-clay-100 text-ink-500'}`}
+                      >
                         <Building2 size={15} />
                       </span>
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate text-[13.5px] font-semibold text-ink-900">{o.name}</span>
+                        <span className="block truncate text-[13.5px] font-semibold text-ink-900">
+                          {o.name}
+                        </span>
                         <span className="block text-[11.5px] text-ink-400">
-                          {o.off === 0
-                            ? o.configured ? 'All modules on' : 'All modules on (default)'
-                            : `${o.off} of ${TOTAL} off`}
+                          {o.off === TOTAL
+                            ? 'Placeholders only'
+                            : o.off === 0
+                              ? o.configured
+                                ? o.grant?.label || 'All modules active'
+                                : 'All modules on (legacy default)'
+                              : o.grant?.label || `${o.off} of ${TOTAL} placeholders`}
                         </span>
                       </span>
                       {o.off > 0 && <Badge tone="amber">{TOTAL - o.off}</Badge>}
@@ -246,18 +288,27 @@ export default function ModuleAccess() {
                   {current?.name || selected}
                 </p>
                 <p className="text-[11.5px] text-ink-400">
-                  {ALL_MODULE_KEYS.filter((k) => working[k] !== false).length} of {TOTAL} modules enabled
-                  {ents[selected]?.raw?.updatedByEmail ? ` · last set by ${ents[selected].raw.updatedByEmail}` : ''}
+                  {grant.label}
+                  {` · ${ALL_MODULE_KEYS.filter((k) => working[k] !== false).length} of ${TOTAL} keys on`}
+                  {ents[selected]?.raw?.updatedByEmail
+                    ? ` · last set by ${ents[selected].raw.updatedByEmail}`
+                    : ''}
                 </p>
               </div>
               <Button variant="ghost" size="sm" onClick={() => setAll(true)} disabled={busy}>
-                Enable all
+                Activate all
               </Button>
-              <Button variant="ghost" size="sm" onClick={() => setAll(false)} disabled={busy}>
-                Disable all
+              <Button variant="ghost" size="sm" onClick={clearToPlaceholders} disabled={busy}>
+                All placeholders
               </Button>
               {dirty && (
-                <Button variant="ghost" size="sm" icon={X} onClick={() => setDraft(null)} disabled={busy}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon={X}
+                  onClick={() => setDraft(null)}
+                  disabled={busy}
+                >
                   Discard
                 </Button>
               )}
@@ -272,13 +323,48 @@ export default function ModuleAccess() {
               </p>
             )}
 
+            <fieldset className="border-b border-ink-100 px-5 py-4">
+              <legend className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide text-ink-400">
+                <Layers size={13} aria-hidden="true" />
+                Subscription suites
+              </legend>
+              <p className="mt-1.5 text-[12px] leading-snug text-ink-500">
+                Assigning a suite turns those placeholders on. It does not turn other modules off —
+                add a second suite, or flip individual switches, for à-la-carte extras. Use All
+                placeholders first if you mean a replacement.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {SUITES.map((s) => {
+                  const exact = grant.key === s.key
+                  const included = suiteIsFullyOn(working, s.key)
+                  return (
+                    <Button
+                      key={s.key}
+                      type="button"
+                      variant={exact ? 'primary' : 'ghost'}
+                      size="sm"
+                      disabled={busy}
+                      aria-pressed={exact || included}
+                      title={s.description}
+                      onClick={() => applySuite(s.key)}
+                    >
+                      {s.label}
+                      {included && !exact ? ' · added' : ''}
+                    </Button>
+                  )
+                })}
+              </div>
+            </fieldset>
+
             <ul className="divide-y divide-ink-100">
               {MODULES.map((m) => (
                 <ModuleRow
                   key={m.key}
                   module={m}
                   on={working[m.key] !== false}
-                  changed={draft !== null && (stored[m.key] !== false) !== (working[m.key] !== false)}
+                  changed={
+                    draft !== null && (stored[m.key] !== false) !== (working[m.key] !== false)
+                  }
                   disabled={busy}
                   onChange={(on) => setKey(m.key, on)}
                 />
@@ -300,7 +386,9 @@ export default function ModuleAccess() {
                       key={a.key}
                       module={a}
                       on={working[a.key] === true}
-                      changed={draft !== null && (stored[a.key] === true) !== (working[a.key] === true)}
+                      changed={
+                        draft !== null && (stored[a.key] === true) !== (working[a.key] === true)
+                      }
                       disabled={busy}
                       onChange={(on) => setKey(a.key, on)}
                     />
@@ -311,9 +399,11 @@ export default function ModuleAccess() {
 
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-ink-100 p-5">
               <p className="max-w-md text-[11.5px] text-ink-400">
-                An organization with no record here gets the full product — every module on, every
-                add-on off. Restoring the default deletes its record rather than writing each switch,
-                so modules added later stay on and add-ons added later stay off.
+                A new organization is created with a placeholder for every module — none of them
+                usable until you assign a suite or activate modules here. That is the subscription
+                grant. Organizations registered before placeholders existed still have no record,
+                which means the full product. Restoring the default deletes the record rather than
+                writing each switch.
               </p>
               <Button
                 variant="ghost"
@@ -335,15 +425,23 @@ export default function ModuleAccess() {
 /** One module, its description, and the switch that governs it. */
 function ModuleRow({ module: m, on, changed, disabled, onChange }) {
   const Icon = m.icon
+  const suite = suiteForModule(m.key)
   return (
     <li className={`flex items-start gap-4 px-5 py-4 ${changed ? 'bg-amber-50/60' : ''}`}>
-      <span className={`mt-0.5 grid h-9 w-9 flex-none place-items-center rounded-xl ${on ? 'bg-brand-50 text-brand-700' : 'bg-clay-100 text-ink-400'}`}>
+      <span
+        className={`mt-0.5 grid h-9 w-9 flex-none place-items-center rounded-xl ${on ? 'bg-brand-50 text-brand-700' : 'bg-clay-100 text-ink-400'}`}
+      >
         <Icon size={17} />
       </span>
       <div className="min-w-0 flex-1">
         <p className={`text-[13.5px] font-bold ${on ? 'text-ink-900' : 'text-ink-400'}`}>
           {m.title}
-          {changed && <span className="ml-2 text-[11px] font-semibold text-amber-700">changed</span>}
+          {suite && (
+            <span className="ml-2 text-[11px] font-semibold text-ink-400">{suite.label}</span>
+          )}
+          {changed && (
+            <span className="ml-2 text-[11px] font-semibold text-amber-700">changed</span>
+          )}
         </p>
         <p className="mt-0.5 text-[12px] leading-snug text-ink-500">{m.description}</p>
       </div>

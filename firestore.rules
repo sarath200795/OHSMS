@@ -1036,6 +1036,49 @@ service cloud.firestore {
     // says otherwise. It also means a module added to the registry later is on
     // by default rather than silently withheld from every existing tenant until
     // someone re-saves each one.
+    // A newly created organization may persist a placeholder record — every
+    // known module off — in the same batch as the org itself. That is the
+    // only client write on this collection that is not a platform operator:
+    // it cannot activate anything, and an update (the way a module is turned
+    // on) is still refused. The founder is identified from the organization
+    // document AFTER the batch, so this works atomically with createOrganization.
+    //
+    // Each key is named. Rules cannot iterate a map, and a missing key must
+    // fail closed (the default of .get is `true`, which would let a founder
+    // omit a module and have it read as enabled). Adding a module to the
+    // registry means adding it here, or the seed write is refused.
+    function modulesArePlaceholders(mods) {
+      return mods is map
+        && mods.get('incidents', true) == false
+        && mods.get('hira', true) == false
+        && mods.get('inspections', true) == false
+        && mods.get('audit', true) == false
+        && mods.get('ptw', true) == false
+        && mods.get('loto', true) == false
+        && mods.get('equipment', true) == false
+        && mods.get('drills', true) == false
+        && mods.get('committee', true) == false
+        && mods.get('training', true) == false
+        && mods.get('documents', true) == false
+        && mods.get('emergency', true) == false
+        && mods.get('objectives', true) == false
+        && mods.get('weather', true) == false
+        && mods.get('cctv', true) == false
+        && mods.get('stakeholder', true) == false
+        && mods.get('actions', true) == false
+        && mods.get('odin', true) == false;
+    }
+
+    function isFounderPlaceholderSeed(orgId) {
+      return isSignedIn()
+        && existsAfter(/databases/$(database)/documents/organizations/$(orgId))
+        && getAfter(/databases/$(database)/documents/organizations/$(orgId)).data.createdBy == request.auth.uid
+        && request.resource.data.keys().hasAll(['modules', 'updatedBy'])
+        && request.resource.data.keys().hasOnly(['modules', 'updatedAt', 'updatedBy', 'updatedByEmail'])
+        && request.resource.data.updatedBy == request.auth.uid
+        && modulesArePlaceholders(request.resource.data.modules);
+    }
+
     match /moduleEntitlements/{orgId} {
       allow get: if isApprovedMemberOf(orgId) || isPlatformAdmin();
       allow list: if isPlatformAdmin();
@@ -1047,9 +1090,13 @@ service cloud.firestore {
       // `modules` key has to be refused by the key check, not by touching it.
       allow create, update: if isPlatformAdmin()
         && request.resource.data.keys().hasAll(['modules', 'updatedBy'])
-        && request.resource.data.keys().hasOnly(['modules', 'updatedAt', 'updatedBy', 'updatedByEmail'])
+        && request.resource.data.keys().hasOnly(['modules', 'updatedAt', 'updatedBy', 'updatedByEmail', 'suite'])
         && request.resource.data.modules is map
-        && request.resource.data.updatedBy == request.auth.uid;
+        && request.resource.data.updatedBy == request.auth.uid
+        && (!request.resource.data.keys().hasAny(['suite']) || request.resource.data.suite is string);
+      // The org-create path. Create only, and only while every flag is false.
+      // An update is how a module is activated, and that stays operator-only.
+      allow create: if isFounderPlaceholderSeed(orgId);
       // Deleting the document restores the default — the full product — which
       // is a legitimate thing for an operator to want, and is not a way to
       // gain anything: it is the state every org starts in.
