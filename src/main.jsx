@@ -34,7 +34,7 @@ createRoot(document.getElementById('root')).render(
               duration: 3500,
               className:
                 '!bg-surface/90 !text-ink-800 !shadow-elev-lg !rounded-full !ring-1 !ring-white/15 !backdrop-blur-xl',
-              success: { iconTheme: { primary: '#22d3ee', secondary: '#0c1024' } },
+              success: { iconTheme: { primary: '#a3e635', secondary: '#0c1024' } },
             }}
           />
         </AuthProvider>

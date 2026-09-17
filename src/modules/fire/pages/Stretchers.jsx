@@ -310,7 +310,7 @@ export default function Stretchers() {
                           a column of "Edit, Delete, Edit, Delete" gives no way
                           to tell which stretcher is about to be removed. */}
                       <div className="flex justify-end gap-1">
-                        <IconButton icon={Wrench} iconSize={14} label={`Log inspection for ${a.assetId || 'this stretcher'}`} className="!bg-green-600 !text-white hover:!bg-green-700" onClick={() => openService(a)} />
+                        <IconButton icon={Wrench} iconSize={14} label={`Log inspection for ${a.assetId || 'this stretcher'}`} className="!bg-green-600 !text-white hover:!brightness-110" onClick={() => openService(a)} />
                         <IconButton icon={QrCode} iconSize={15} variant="soft" label={a.qrToken ? `View QR code for ${a.assetId || 'this stretcher'}` : isAdmin ? `Generate QR code for ${a.assetId || 'this stretcher'}` : 'Only an admin can generate QR codes'} onClick={() => showQr(a)} disabled={busy || (!a.qrToken && !isAdmin)} />
                         <IconButton icon={Pencil} iconSize={15} variant="soft" label={`Edit ${a.assetId || 'this stretcher'}`} onClick={() => setEditing(a)} />
                         <IconButton icon={Trash2} iconSize={15} variant="soft" label={`Delete ${a.assetId || 'this stretcher'}`} className="!text-red-600" onClick={() => setRemoving(a)} />

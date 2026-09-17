@@ -199,7 +199,7 @@ export default function Sessions() {
                   </div>
                   {r.status === 'pending' ? (
                     <span className="flex flex-none gap-1">
-                      <button className="btn bg-green-600 px-2.5 py-1.5 text-xs text-white hover:bg-green-700" onClick={() => decide(r, 'approved')}><Check size={14} /></button>
+                      <button className="btn bg-green-600 px-2.5 py-1.5 text-xs text-white hover:brightness-110" onClick={() => decide(r, 'approved')}><Check size={14} /></button>
                       <button className="btn-ghost px-2.5 py-1.5 text-xs text-red-600 hover:bg-red-50" onClick={() => decide(r, 'declined')}><X size={14} /></button>
                     </span>
                   ) : (

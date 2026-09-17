@@ -276,7 +276,7 @@ export default function SitesMap({ sites, stats = {}, onSelect, onEdit, onDelete
                         <div className="mt-2 flex flex-wrap gap-1.5">
                           <button
                             onClick={() => onSelect?.(s)}
-                            className="rounded-lg bg-brand-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-brand-700"
+                            className="rounded-lg bg-brand-600 px-2.5 py-1 text-xs font-semibold text-white hover:brightness-110"
                           >
                             Summary
                           </button>

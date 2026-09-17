@@ -89,7 +89,7 @@ export default function PublicPermit() {
     <div className="min-h-screen bg-canvas px-4 py-6">
       <div className="mx-auto max-w-md space-y-4">
         {/* The verdict, before anything else. */}
-        <div className={`rounded-3xl p-5 text-center shadow-elev ${ok ? 'bg-emerald-600' : 'bg-red-700'}`}>
+        <div className={`rounded-3xl p-5 text-center shadow-elev ${ok ? 'bg-emerald-600' : 'bg-red-600'}`}>
           {ok ? <ShieldCheck size={34} className="mx-auto text-white" /> : <ShieldAlert size={34} className="mx-auto text-white" />}
           <p className="mt-2 text-lg font-black tracking-tight text-white">
             {ok ? 'Valid — work may proceed' : 'Not valid for work'}

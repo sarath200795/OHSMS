@@ -6,7 +6,7 @@ import { formatDate } from '../../../shared/lib/format'
  * WEHS training certificate — on-screen preview + print/PDF ("Save as PDF" in
  * the browser print dialog). The injected print style isolates the certificate
  * so only it prints, in landscape. Chrome matches the ops dashboard: white
- * surface, hairline, coral accent — not a serif diploma.
+ * surface, hairline, cyan accent — not a serif diploma.
  */
 export default function CertificateModal({ record, orgName, onClose }) {
   if (!record) return null
@@ -42,10 +42,14 @@ export default function CertificateModal({ record, orgName, onClose }) {
           style={{ aspectRatio: '297/200' }}
         >
           <div className="flex h-full flex-col rounded-lg ring-1 ring-ink-200">
-            <div className="h-1.5 w-full bg-[#e11d8a]" />
+            <div className="h-1.5 w-full bg-[#0369a1]" />
             <div className="flex h-full flex-col items-center px-10 py-7 text-center">
               <div className="flex items-center gap-3">
-                <img src="/wehs.svg" alt="WEHS" className="h-12 w-12 rounded-lg ring-1 ring-ink-200" />
+                <img
+                  src="/wehs.svg"
+                  alt="WEHS"
+                  className="h-12 w-12 rounded-lg ring-1 ring-ink-200"
+                />
                 <div className="text-left leading-tight">
                   <p className="text-base font-bold tracking-tight text-ink-900">WEHS</p>
                   <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-500">

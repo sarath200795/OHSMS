@@ -126,7 +126,7 @@ export default function RecycleBin() {
                               restore is in flight the label IS a spinner, so the
                               button loses its name at the moment the user most
                               wants to know which row they pressed. */}
-                          <button className="btn bg-green-600 px-2.5 py-1.5 text-xs text-white hover:bg-green-700" disabled={busyId === ext.id} onClick={() => restore(ext)} aria-label={`Restore extinguisher ${ext.serialNo || ext.id}`}>
+                          <button className="btn bg-green-600 px-2.5 py-1.5 text-xs text-white hover:brightness-110" disabled={busyId === ext.id} onClick={() => restore(ext)} aria-label={`Restore extinguisher ${ext.serialNo || ext.id}`}>
                             {busyId === ext.id ? <Spinner size={14} /> : (<><RotateCcw size={14} /> Restore</>)}
                           </button>
                           <button className="btn-danger px-2.5 py-1.5 text-xs" onClick={() => setPurgeFor(ext)} aria-label={`Permanently purge extinguisher ${ext.serialNo || ext.id}`}>

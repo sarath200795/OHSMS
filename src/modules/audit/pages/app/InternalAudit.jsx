@@ -631,7 +631,7 @@ const AuditeeWorkplace = ({ session, users, findings }) => {
         {/* inbox */}
         <div className={`${panel} flex w-full flex-col overflow-hidden lg:w-1/3`}>
           <div className="border-b border-ink-100 bg-surface-50 p-5">
-            <h3 className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-ink-800"><Inbox size={14} className="text-amber-500" /> Action Inbox <span className="rounded-full bg-amber-700 px-2 py-0.5 text-[10px] text-white">{myAudits.length}</span></h3>
+            <h3 className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-ink-800"><Inbox size={14} className="text-amber-500" /> Action Inbox <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] text-amber-700">{myAudits.length}</span></h3>
           </div>
           <div className="max-h-[60vh] space-y-3 overflow-y-auto p-4">
             {myAudits.length === 0 && <div className="mx-2 mt-6 rounded-2xl border-2 border-dashed border-ink-100 p-6 text-center text-sm italic text-ink-400">No audits in your inbox.</div>}
@@ -736,13 +736,13 @@ const AuditeeWorkplace = ({ session, users, findings }) => {
                 <Field label="5. Target Closure Date" labelClassName={lbl}><input type="date" className={`${fld} font-mono`} value={form.targetDate} onChange={(e) => setForm({ ...form, targetDate: e.target.value })} /></Field>
               </div>
               <div><label className={lbl} htmlFor="capa-evidence">6. Objective Evidence (Optional)</label>
-                <input id="capa-evidence" type="file" accept="application/pdf,image/*" onChange={handleFile} className="w-full text-xs text-ink-500 file:mr-3 file:rounded-lg file:border-none file:bg-amber-700 file:px-4 file:py-2 file:font-bold file:text-white" />
+                <input id="capa-evidence" type="file" accept="application/pdf,image/*" onChange={handleFile} className="w-full text-xs text-ink-500 file:mr-3 file:rounded-lg file:border-none file:bg-brand-600 file:px-4 file:py-2 file:font-bold file:text-white" />
                 {form.evidenceFileName && <span className="mt-2 inline-block text-[10px] font-bold text-emerald-600"><CheckCircle2 size={12} className="inline mr-1" />{form.evidenceFileName}</span>}
               </div>
             </div>
             <div className="flex justify-end gap-3 border-t border-ink-100 p-5">
               <button onClick={() => setModal(false)} className="rounded-xl bg-surface-100 px-8 py-3 text-sm font-bold text-ink-700 hover:bg-surface-200">Cancel</button>
-              <button onClick={saveResponse} className="rounded-xl bg-amber-700 px-10 py-3 text-sm font-bold text-white shadow-lg transition active:scale-95 hover:bg-amber-500"><Save size={16} className="inline mr-2" />Save Response</button>
+              <button onClick={saveResponse} className="rounded-xl bg-brand-600 px-10 py-3 text-sm font-bold text-white shadow-lg transition active:scale-95 hover:brightness-110"><Save size={16} className="inline mr-2" />Save Response</button>
             </div>
           </div>
         </div>

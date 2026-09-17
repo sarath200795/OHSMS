@@ -1,7 +1,22 @@
 import { useMemo, useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Boxes, Download, Trash2, QrCode, AlertTriangle, Filter, Pencil, CheckCircle2, Truck, FileText, CalendarX, Plus, Upload, Gauge } from 'lucide-react'
+import {
+  Boxes,
+  Download,
+  Trash2,
+  QrCode,
+  AlertTriangle,
+  Filter,
+  Pencil,
+  CheckCircle2,
+  Truck,
+  FileText,
+  CalendarX,
+  Plus,
+  Upload,
+  Gauge,
+} from 'lucide-react'
 import toast from 'react-hot-toast'
 import { toastCaught } from '../../../shared/lib/toastCaught'
 import { PageHeader, EmptyState, Modal, Spinner } from '../components/ui'
@@ -18,7 +33,13 @@ import { useFleet } from '../context/FleetContext'
 import { deriveStatus, isToBeRefilled, hasQuotation, hasDateIssue } from '../lib/extinguisherLogic'
 import { requiredStep, WORKFLOW_STEP } from '../lib/hpt'
 import { exportExtinguishers } from '../lib/exporter'
-import { bulkDeleteExtinguishers, markReceivedByVendor, resolveDefects, backfillExtinguisherQr, linkExtinguishersToSites } from '../lib/firestore'
+import {
+  bulkDeleteExtinguishers,
+  markReceivedByVendor,
+  resolveDefects,
+  backfillExtinguisherQr,
+  linkExtinguishersToSites,
+} from '../lib/firestore'
 import { planSiteLinks } from '../lib/siteLink'
 import { listLinkedAssets, filterByLinkState, siteIdSet, isLinkedToSite } from '../lib/linkedSites'
 import LinkStateChips from '../components/LinkStateChips'
@@ -111,15 +132,23 @@ export default function Repository() {
     }
   }
 
-  const toggleCat = (key) => setActiveCats((prev) => {
-    const next = new Set(prev); next.has(key) ? next.delete(key) : next.add(key); return next
-  })
-  const toggle = (id) => setSelected((prev) => {
-    const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next
-  })
-  const toggleAll = (ids) => setSelected((prev) => {
-    const allOn = ids.every((id) => prev.has(id)); return allOn ? new Set() : new Set(ids)
-  })
+  const toggleCat = (key) =>
+    setActiveCats((prev) => {
+      const next = new Set(prev)
+      next.has(key) ? next.delete(key) : next.add(key)
+      return next
+    })
+  const toggle = (id) =>
+    setSelected((prev) => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  const toggleAll = (ids) =>
+    setSelected((prev) => {
+      const allOn = ids.every((id) => prev.has(id))
+      return allOn ? new Set() : new Set(ids)
+    })
 
   const selectedItems = visible.filter((e) => selected.has(e.id))
 
@@ -140,7 +169,10 @@ export default function Repository() {
 
   // The units already attached to a site — the other half of the question the
   // link button answers, and the only half left once the linking has run.
-  const linkedRows = useMemo(() => listLinkedAssets(extinguishers, orgSites), [extinguishers, orgSites])
+  const linkedRows = useMemo(
+    () => listLinkedAssets(extinguishers, orgSites),
+    [extinguishers, orgSites]
+  )
 
   // Counts for the link-state chips, over the whole register rather than the
   // filtered view — a chip that renumbered itself as you filtered would be
@@ -156,7 +188,10 @@ export default function Repository() {
     if (!linkPlan?.linked.length) return
     setLinking(true)
     try {
-      const r = await linkExtinguishersToSites(orgId, orgName, linkPlan, { uid: profile?.uid, name: profile?.name })
+      const r = await linkExtinguishersToSites(orgId, orgName, linkPlan, {
+        uid: profile?.uid,
+        name: profile?.name,
+      })
       toast.success(`${r.linked} linked to sites · ${r.entityChanges} entity value(s) corrected`)
       setLinkOpen(false)
     } catch (err) {
@@ -168,8 +203,15 @@ export default function Repository() {
 
   const doGenerateQr = async () => {
     try {
-      const n = await backfillExtinguisherQr(orgId, orgName, extinguishers, { uid: profile?.uid, name: profile?.name })
-      toast.success(n ? `QR codes generated for ${n} extinguisher(s)` : 'Every extinguisher already has a QR code')
+      const n = await backfillExtinguisherQr(orgId, orgName, extinguishers, {
+        uid: profile?.uid,
+        name: profile?.name,
+      })
+      toast.success(
+        n
+          ? `QR codes generated for ${n} extinguisher(s)`
+          : 'Every extinguisher already has a QR code'
+      )
     } catch (err) {
       toastCaught(err, 'Could not generate QR codes')
     }
@@ -203,21 +245,39 @@ export default function Repository() {
   return (
     <div>
       <PageHeader title="Repository" subtitle={countLabel} icon={Boxes}>
-        <Link to="/equipment/add" className="btn-primary"><Plus size={16} /> Add extinguisher</Link>
-        <Link to="/equipment/bulk-upload" className="btn-soft"><Upload size={16} /> Bulk upload</Link>
-        <button className="btn-ghost" onClick={doExport}><Download size={16} /> Export</button>
-        <button className="btn-ghost" onClick={doPrint}><QrCode size={16} /> Print QR</button>
+        <Link to="/equipment/add" className="btn-primary">
+          <Plus size={16} /> Add extinguisher
+        </Link>
+        <Link to="/equipment/bulk-upload" className="btn-soft">
+          <Upload size={16} /> Bulk upload
+        </Link>
+        <button className="btn-ghost" onClick={doExport}>
+          <Download size={16} /> Export
+        </button>
+        <button className="btn-ghost" onClick={doPrint}>
+          <QrCode size={16} /> Print QR
+        </button>
         <button
-          className={linkPlan?.linked.length ? 'btn-soft !bg-brand-100 !text-brand-800' : 'btn-ghost'}
-          onClick={() => { setLinkTab(linkPlan?.linked.length ? 'pending' : 'linked'); setLinkOpen(true) }}
+          className={
+            linkPlan?.linked.length ? 'btn-soft !bg-brand-100 !text-brand-800' : 'btn-ghost'
+          }
+          onClick={() => {
+            setLinkTab(linkPlan?.linked.length ? 'pending' : 'linked')
+            setLinkOpen(true)
+          }}
           title="Which units are attached to a site, and which can still be matched to one"
         >
           <Boxes size={16} />
-          {linkPlan?.linked.length ? `Link ${linkPlan.linked.length} to sites` : `Site links (${linkedRows.length})`}
+          {linkPlan?.linked.length
+            ? `Link ${linkPlan.linked.length} to sites`
+            : `Site links (${linkedRows.length})`}
         </button>
         {missingQr > 0 && (
-          <button className="btn-soft !bg-amber-100 !text-amber-900" onClick={doGenerateQr}
-            title="These assets have no QR code, so they cannot be printed or scanned">
+          <button
+            className="btn-soft !bg-amber-100 !text-amber-900"
+            onClick={doGenerateQr}
+            title="These assets have no QR code, so they cannot be printed or scanned"
+          >
             <QrCode size={16} /> Generate {missingQr} missing QR
           </button>
         )}
@@ -241,9 +301,16 @@ export default function Repository() {
                 key={c.key}
                 onClick={() => toggleCat(c.key)}
                 className="chip transition"
-                style={on ? { backgroundColor: solidBackground(c.color), color: '#fff' } : { backgroundColor: `${c.color}1a`, color: readableOnTint(c.color) }}
+                style={
+                  on
+                    ? { backgroundColor: solidBackground(c.color), color: '#fff' }
+                    : { backgroundColor: `${c.color}1a`, color: readableOnTint(c.color) }
+                }
               >
-                <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: on ? '#fff' : c.color }} />
+                <span
+                  className="h-1.5 w-1.5 rounded-full"
+                  style={{ backgroundColor: on ? '#fff' : c.color }}
+                />
                 {c.label}
               </button>
             )
@@ -257,7 +324,7 @@ export default function Repository() {
           {issueCount > 0 && (
             <button
               onClick={() => setOnlyIssues((v) => !v)}
-              className={`chip transition ${onlyIssues ? 'bg-amber-700 text-white' : 'bg-amber-100 text-amber-700 hover:bg-amber-200'}`}
+              className={`chip transition ${onlyIssues ? 'bg-amber-50 text-amber-700 ring-1 ring-amber-400/50' : 'bg-amber-100 text-amber-700 hover:bg-amber-200'}`}
               title="Units with a missing or invalid refill/HPT date"
             >
               <CalendarX size={13} /> Date issues ({issueCount})
@@ -277,10 +344,21 @@ export default function Repository() {
           >
             <span className="font-bold">{selected.size} selected</span>
             <div className="ml-auto flex flex-wrap gap-2">
-              <button className="btn bg-white/10 text-white hover:bg-white/20" onClick={doExport}><Download size={15} /> Export</button>
-              <button className="btn bg-white/10 text-white hover:bg-white/20" onClick={doPrint}><QrCode size={15} /> Print QR</button>
-              <button className="btn-danger" onClick={() => setConfirmDelete(true)}><Trash2 size={15} /> Delete</button>
-              <button className="btn bg-white/10 text-white hover:bg-white/20" onClick={() => setSelected(new Set())}>Clear</button>
+              <button className="btn bg-white/10 text-white hover:bg-white/20" onClick={doExport}>
+                <Download size={15} /> Export
+              </button>
+              <button className="btn bg-white/10 text-white hover:bg-white/20" onClick={doPrint}>
+                <QrCode size={15} /> Print QR
+              </button>
+              <button className="btn-danger" onClick={() => setConfirmDelete(true)}>
+                <Trash2 size={15} /> Delete
+              </button>
+              <button
+                className="btn bg-white/10 text-white hover:bg-white/20"
+                onClick={() => setSelected(new Set())}
+              >
+                Clear
+              </button>
             </div>
           </motion.div>
         )}
@@ -292,21 +370,36 @@ export default function Repository() {
         <EmptyState
           icon={Boxes}
           title={extinguishers.length ? 'No matches' : 'No extinguishers yet'}
-          hint={extinguishers.length ? 'Try adjusting the filters above.' : 'Add one or bulk upload to get started.'}
-          action={filtersActive ? (
-            <button className="btn-ghost" onClick={() => { setFilters(emptyFilters()); setActiveCats(new Set()); setOnlyIssues(false) }}>Clear filters</button>
-          ) : undefined}
+          hint={
+            extinguishers.length
+              ? 'Try adjusting the filters above.'
+              : 'Add one or bulk upload to get started.'
+          }
+          action={
+            filtersActive ? (
+              <button
+                className="btn-ghost"
+                onClick={() => {
+                  setFilters(emptyFilters())
+                  setActiveCats(new Set())
+                  setOnlyIssues(false)
+                }}
+              >
+                Clear filters
+              </button>
+            ) : undefined
+          }
         />
       ) : (
         <>
-        <ExtinguisherTable
-          items={visible}
-          today={today}
-          selectable
-          selectedIds={selected}
-          onToggle={toggle}
-          onToggleAll={toggleAll}
-          showActionBy
+          <ExtinguisherTable
+            items={visible}
+            today={today}
+            selectable
+            selectedIds={selected}
+            onToggle={toggle}
+            onToggleAll={toggleAll}
+            showActionBy
             renderActions={(ext) => {
               const d = deriveStatus(ext, today)
               const canResolve = d.hasPhysicalDefect && !d.isClosed
@@ -325,7 +418,7 @@ export default function Repository() {
                 <>
                   {(canResolve || canSendToVendor) && hptDue && (
                     <button
-                      className="btn bg-violet-600 px-2.5 py-1.5 text-xs text-white hover:bg-violet-700"
+                      className="btn bg-violet-600 px-2.5 py-1.5 text-xs text-white hover:brightness-110"
                       onClick={() => setHptFor(ext)}
                       title={`Hydrostatic test due ${ext.dateOfNextHPT || ''} — record the test and its certificate before this can move forward`}
                     >
@@ -333,44 +426,81 @@ export default function Repository() {
                     </button>
                   )}
                   {needsQuote && (
-                    <button className="btn bg-cyan-700 px-2.5 py-1.5 text-xs text-white hover:bg-cyan-800" onClick={() => setQuoteFor(ext)} title="Submit a vendor quotation before this can move forward">
+                    <button
+                      className="btn bg-brand-600 px-2.5 py-1.5 text-xs text-white hover:brightness-110"
+                      onClick={() => setQuoteFor(ext)}
+                      title="Submit a vendor quotation before this can move forward"
+                    >
                       <FileText size={14} /> Submit quotation
                     </button>
                   )}
                   {canResolve && quoted && (
-                    <button className="btn bg-green-600 px-2.5 py-1.5 text-xs text-white hover:bg-green-700" disabled={busyId === ext.id} onClick={() => resolvePhysical(ext)} title="Resolve physical defects">
+                    <button
+                      className="btn bg-green-600 px-2.5 py-1.5 text-xs text-white hover:brightness-110"
+                      disabled={busyId === ext.id}
+                      onClick={() => resolvePhysical(ext)}
+                      title="Resolve physical defects"
+                    >
                       <CheckCircle2 size={14} /> Resolve
                     </button>
                   )}
                   {canSendToVendor && quoted && (
-                    <button className="btn-soft px-2.5 py-1.5 text-xs" disabled={busyId === ext.id} onClick={() => sendToVendor(ext)} title="Mark received by vendor (In Process)">
+                    <button
+                      className="btn-soft px-2.5 py-1.5 text-xs"
+                      disabled={busyId === ext.id}
+                      onClick={() => sendToVendor(ext)}
+                      title="Mark received by vendor (In Process)"
+                    >
                       <Truck size={14} /> Send to vendor
                     </button>
                   )}
-                  {(canResolve || canSendToVendor) && quoted && (
-                    (ext.quotation?.fileData || ext.quotation?.fileUrl) ? (
-                      <a href={safeHref(ext.quotation.fileData || ext.quotation.fileUrl)} target="_blank" rel="noreferrer" className="chip bg-cyan-50 text-cyan-700 hover:underline" title={`Quoted ${ext.quotation?.amount ?? ''} · ${ext.quotation?.vendor || ''} — view document`}>
+                  {(canResolve || canSendToVendor) &&
+                    quoted &&
+                    (ext.quotation?.fileData || ext.quotation?.fileUrl ? (
+                      <a
+                        href={safeHref(ext.quotation.fileData || ext.quotation.fileUrl)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="chip bg-cyan-50 text-cyan-700 hover:underline"
+                        title={`Quoted ${ext.quotation?.amount ?? ''} · ${ext.quotation?.vendor || ''} — view document`}
+                      >
                         <CheckCircle2 size={12} /> Quoted · View
                       </a>
                     ) : (
-                      <span className="chip bg-cyan-50 text-cyan-700" title={`Quoted ${ext.quotation?.amount ?? ''} · ${ext.quotation?.vendor || ''}`}>
+                      <span
+                        className="chip bg-cyan-50 text-cyan-700"
+                        title={`Quoted ${ext.quotation?.amount ?? ''} · ${ext.quotation?.vendor || ''}`}
+                      >
                         <CheckCircle2 size={12} /> Quoted
                       </span>
-                    )
-                  )}
-                  <button className="btn-ghost px-2.5 py-1.5 text-xs" onClick={() => setEditFor(ext)} title="Edit details">
+                    ))}
+                  <button
+                    className="btn-ghost px-2.5 py-1.5 text-xs"
+                    onClick={() => setEditFor(ext)}
+                    title="Edit details"
+                  >
                     <Pencil size={14} />
                   </button>
-                  <button className="btn-ghost px-2.5 py-1.5 text-xs" onClick={() => setReportFor(ext)} title="Report defect">
+                  <button
+                    className="btn-ghost px-2.5 py-1.5 text-xs"
+                    onClick={() => setReportFor(ext)}
+                    title="Report defect"
+                  >
                     <AlertTriangle size={14} />
                   </button>
-                  <a className="btn-ghost px-2.5 py-1.5 text-xs" href={`/qr/${ext.qrToken}`} target="_blank" rel="noreferrer" title="Open public QR page">
+                  <a
+                    className="btn-ghost px-2.5 py-1.5 text-xs"
+                    href={`/qr/${ext.qrToken}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    title="Open public QR page"
+                  >
                     <QrCode size={14} />
                   </a>
                 </>
               )
             }}
-        />
+          />
         </>
       )}
 
@@ -420,15 +550,27 @@ export default function Repository() {
         actor={{ uid: profile?.uid, name: profile?.name }}
       />
 
-      <Modal open={confirmDelete} onClose={() => setConfirmDelete(false)} title="Delete extinguishers?">
+      <Modal
+        open={confirmDelete}
+        onClose={() => setConfirmDelete(false)}
+        title="Delete extinguishers?"
+      >
         <p className="text-sm text-ink-600">
-          This moves <strong>{selected.size}</strong> extinguisher(s) to the Recycle Bin (restorable for
-          30 days) and removes their QR codes.
+          This moves <strong>{selected.size}</strong> extinguisher(s) to the Recycle Bin (restorable
+          for 30 days) and removes their QR codes.
         </p>
         <div className="mt-5 flex justify-end gap-2">
-          <button className="btn-ghost" onClick={() => setConfirmDelete(false)}>Cancel</button>
+          <button className="btn-ghost" onClick={() => setConfirmDelete(false)}>
+            Cancel
+          </button>
           <button className="btn-danger" onClick={doDelete} disabled={deleting}>
-            {deleting ? <Spinner size={18} /> : (<><Trash2 size={16} /> Delete {selected.size}</>)}
+            {deleting ? (
+              <Spinner size={18} />
+            ) : (
+              <>
+                <Trash2 size={16} /> Delete {selected.size}
+              </>
+            )}
           </button>
         </div>
       </Modal>

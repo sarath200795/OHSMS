@@ -4,13 +4,14 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Dark neon ops kit (UX board 5810331). Cyan is the system accent —
-        // focus rings, links, charts, active pills. Magenta is the CTA. The
-        // logo still carries coral; it is not the chrome.
+        // Dark glass neon-tech kit (UX board 6387098). Cyan/blue is the
+        // primary action (CTAs, focus, charts, sliders). Lime is success /
+        // ON / progress. Orange is highlight. Magenta/purple is secondary.
+        // The logo still carries coral; it is not the chrome.
         //
-        // brand-600 must carry white text at AA (the skip-link and a few
-        // filled chips). Bright cyan lives at 400/500; 700+ is text on a
-        // brand-50 wash.
+        // brand-600 must carry white text at AA (the skip-link and filled
+        // chips). Bright cyan lives at 400/500; 700+ is text on a brand-50
+        // wash — never `bg-*-700 text-white` (700 is a pastel, 1.4:1).
         brand: {
           50: '#0c2a38',
           100: '#0e3a4d',
@@ -66,6 +67,8 @@ export default {
         accent: {
           teal: '#2dd4bf',
           amber: '#fbbf24',
+          orange: '#fb923c',
+          lime: '#a3e635',
           steel: '#8b9cb8',
           leaf: '#a3e635',
         },
@@ -92,8 +95,10 @@ export default {
           DEFAULT: '#f87171',
         },
         // Tailwind's 50-tint palette is a light wash. On navy those chips
-        // flash white, and 700-text on them fails AA. Only the wash / text
-        // stops move; 500/600 stay saturated fills for solid badges.
+        // flash white, and 700-text on them fails AA. 50/100/200 are dark
+        // washes; 700/800/900 are light text on those washes. 500/600 stay
+        // saturated fills. Do not put white text on a 700 fill — that stop
+        // is a pastel now (axe measured white on cyan-700 at 1.44:1).
         red: {
           50: '#3a1522',
           100: '#4a1c2c',
@@ -233,7 +238,8 @@ export default {
         slate: { 50: '#121833', 100: '#1a2144', 200: '#243056' },
       },
       fontFamily: {
-        sans: ['"Open Sans"', 'system-ui', 'Segoe UI', 'sans-serif'],
+        sans: ['Roboto', 'system-ui', 'Segoe UI', 'sans-serif'],
+        body: ['"Open Sans"', 'system-ui', 'Segoe UI', 'sans-serif'],
       },
       // Emil Kowalski motion tokens — stronger-than-default custom curves.
       transitionTimingFunction: {
@@ -249,7 +255,7 @@ export default {
         'elev-sm': '0 0 0 1px rgba(255,255,255,0.06), 0 4px 14px rgba(4,8,24,0.28)',
         'elev-lg':
           '0 0 0 1px rgba(255,255,255,0.1), 0 18px 48px rgba(4,8,24,0.55), 0 0 40px rgba(34,211,238,0.08)',
-        'elev-brand': '0 0 0 1px rgba(255,45,146,0.35), 0 8px 24px rgba(255,45,146,0.28)',
+        'elev-brand': '0 0 0 1px rgba(56,189,248,0.4), 0 8px 24px rgba(14,165,233,0.32)',
       },
       keyframes: {
         // Skeleton shimmer sweep.

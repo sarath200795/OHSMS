@@ -355,7 +355,7 @@ export default function FASRepository() {
                           "Edit, Delete, Edit, Delete" give no way to tell which
                           panel is about to be removed. */}
                       <div className="flex justify-end gap-1">
-                        <IconButton icon={Wrench} iconSize={14} label={`Log service for ${a.deviceId || a.deviceType || 'this device'}`} className="!bg-green-600 !text-white hover:!bg-green-700" onClick={() => openService(a)} />
+                        <IconButton icon={Wrench} iconSize={14} label={`Log service for ${a.deviceId || a.deviceType || 'this device'}`} className="!bg-green-600 !text-white hover:!brightness-110" onClick={() => openService(a)} />
                         <IconButton icon={QrCode} iconSize={15} variant="soft" label={a.qrToken ? `View QR code for ${a.deviceId || a.deviceType || 'this device'}` : a.deviceType !== 'Control Panel' ? 'QR codes are only for Control Panels' : isAdmin ? `Generate QR code for ${a.deviceId || 'this device'}` : 'Only an admin can generate QR codes'} onClick={() => showQr(a)} disabled={busy || (!a.qrToken && (!isAdmin || a.deviceType !== 'Control Panel'))} />
                         <IconButton icon={Pencil} iconSize={15} variant="soft" label={`Edit ${a.deviceId || a.deviceType || 'this device'}`} onClick={() => setEditing(a)} />
                         <IconButton icon={Trash2} iconSize={15} variant="soft" label={`Delete ${a.deviceId || a.deviceType || 'this device'}`} className="!text-red-600" onClick={() => setRemoving(a)} />

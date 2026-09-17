@@ -144,7 +144,7 @@ export default function AppChrome({ children }) {
             aria-controls="account-menu"
             className="flex items-center gap-2.5 rounded-xl bg-surface px-1.5 py-1 ring-1 ring-white/10 transition-all duration-200 ease-emil hover:ring-white/20 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas sm:px-2 sm:py-1.5"
           >
-            <span className="grid h-[28px] w-[28px] place-items-center rounded-xl bg-gradient-to-br from-magenta-500 to-magenta-600 text-[11px] font-bold text-white">
+            <span className="grid h-[28px] w-[28px] place-items-center rounded-xl bg-brand-600 text-[11px] font-bold text-white shadow-glow">
               {initials(name)}
             </span>
             <span className="hidden text-left leading-tight sm:block">

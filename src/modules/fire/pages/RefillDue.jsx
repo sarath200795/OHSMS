@@ -1,5 +1,14 @@
 import { useMemo, useState } from 'react'
-import { RefreshCw, Truck, AlertTriangle, QrCode, Download, FileText, CheckCircle2, Gauge } from 'lucide-react'
+import {
+  RefreshCw,
+  Truck,
+  AlertTriangle,
+  QrCode,
+  Download,
+  FileText,
+  CheckCircle2,
+  Gauge,
+} from 'lucide-react'
 import toast from 'react-hot-toast'
 import { toastCaught } from '../../../shared/lib/toastCaught'
 import { PageHeader, EmptyState } from '../components/ui'
@@ -55,7 +64,9 @@ export default function RefillDue() {
         subtitle="Extinguishers due for refill/HPT (within 30 days) or flagged empty / over-pressurized."
         icon={RefreshCw}
       >
-        <button className="btn-ghost" onClick={doExport}><Download size={16} /> Export</button>
+        <button className="btn-ghost" onClick={doExport}>
+          <Download size={16} /> Export
+        </button>
       </PageHeader>
 
       {refillDue.length > 0 && <ListFilters filters={filters} onChange={setFilters} />}
@@ -63,7 +74,11 @@ export default function RefillDue() {
       {loading ? (
         <TableSkeleton rows={6} cols={7} />
       ) : refillDue.length === 0 ? (
-        <EmptyState icon={RefreshCw} title="Nothing due" hint="No extinguishers currently need refilling. 🎉" />
+        <EmptyState
+          icon={RefreshCw}
+          title="Nothing due"
+          hint="No extinguishers currently need refilling. 🎉"
+        />
       ) : visible.length === 0 ? (
         <EmptyState icon={RefreshCw} title="No matches" hint="Try adjusting the filters above." />
       ) : (
@@ -80,7 +95,7 @@ export default function RefillDue() {
                   the cylinder cannot be refilled until it has passed. */}
               {requiredStep(ext, today) === WORKFLOW_STEP.HPT ? (
                 <button
-                  className="btn bg-violet-600 px-2.5 py-1.5 text-xs text-white hover:bg-violet-700"
+                  className="btn bg-violet-600 px-2.5 py-1.5 text-xs text-white hover:brightness-110"
                   onClick={() => setHptFor(ext)}
                   title={`Hydrostatic test due ${ext.dateOfNextHPT || ''} — record the test and its certificate`}
                 >
@@ -97,7 +112,7 @@ export default function RefillDue() {
                 </button>
               ) : (
                 <button
-                  className="btn bg-cyan-700 px-2.5 py-1.5 text-xs text-white hover:bg-cyan-800"
+                  className="btn bg-brand-600 px-2.5 py-1.5 text-xs text-white hover:brightness-110"
                   onClick={() => setQuoteFor(ext)}
                   title="Submit a vendor quotation before this can move forward"
                 >
@@ -108,25 +123,46 @@ export default function RefillDue() {
               {/* A recorded failure is the one outcome that leaves the unit
                   here, so it is stated on the row rather than buried. */}
               {ext.hpt?.result === 'fail' && (
-                <span className="chip bg-red-50 text-red-700" title={`Failed on ${ext.hpt.testedOn || ''} · ${ext.hpt.vendor || ''}`}>
+                <span
+                  className="chip bg-red-50 text-red-700"
+                  title={`Failed on ${ext.hpt.testedOn || ''} · ${ext.hpt.vendor || ''}`}
+                >
                   <AlertTriangle size={12} /> HPT failed
                 </span>
               )}
-              {hasQuotation(ext) && (
-                (ext.quotation?.fileData || ext.quotation?.fileUrl) ? (
-                  <a href={safeHref(ext.quotation.fileData || ext.quotation.fileUrl)} target="_blank" rel="noreferrer" className="chip bg-cyan-50 text-cyan-700 hover:underline" title={`Quoted ${ext.quotation?.amount ?? ''} · ${ext.quotation?.vendor || ''} — view document`}>
+              {hasQuotation(ext) &&
+                (ext.quotation?.fileData || ext.quotation?.fileUrl ? (
+                  <a
+                    href={safeHref(ext.quotation.fileData || ext.quotation.fileUrl)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="chip bg-cyan-50 text-cyan-700 hover:underline"
+                    title={`Quoted ${ext.quotation?.amount ?? ''} · ${ext.quotation?.vendor || ''} — view document`}
+                  >
                     <CheckCircle2 size={12} /> Quoted · View
                   </a>
                 ) : (
-                  <span className="chip bg-cyan-50 text-cyan-700" title={`Quoted ${ext.quotation?.amount ?? ''} · ${ext.quotation?.vendor || ''}`}>
+                  <span
+                    className="chip bg-cyan-50 text-cyan-700"
+                    title={`Quoted ${ext.quotation?.amount ?? ''} · ${ext.quotation?.vendor || ''}`}
+                  >
                     <CheckCircle2 size={12} /> Quoted
                   </span>
-                )
-              )}
-              <button className="btn-ghost px-2.5 py-1.5 text-xs" onClick={() => setReportFor(ext)} title="Report defect">
+                ))}
+              <button
+                className="btn-ghost px-2.5 py-1.5 text-xs"
+                onClick={() => setReportFor(ext)}
+                title="Report defect"
+              >
                 <AlertTriangle size={14} />
               </button>
-              <a className="btn-ghost px-2.5 py-1.5 text-xs" href={`/qr/${ext.qrToken}`} target="_blank" rel="noreferrer" title="Public QR">
+              <a
+                className="btn-ghost px-2.5 py-1.5 text-xs"
+                href={`/qr/${ext.qrToken}`}
+                target="_blank"
+                rel="noreferrer"
+                title="Public QR"
+              >
                 <QrCode size={14} />
               </a>
             </>

@@ -97,7 +97,7 @@ export default class ErrorBoundary extends Component {
             type="button"
             onClick={() => window.location.reload()}
             style={{
-              background: 'linear-gradient(90deg, #ff2d92, #e11d8a)',
+              background: 'linear-gradient(180deg, #0369a1, #075985)',
               color: '#fff',
               border: 'none',
               cursor: 'pointer',

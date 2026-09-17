@@ -83,8 +83,8 @@ export default function AuthShell({ title, subtitle, children, footer }) {
     <div className="flex min-h-screen bg-canvas">
       {/* Dark brand panel */}
       <div className="relative hidden w-1/2 flex-col justify-between overflow-hidden bg-gradient-to-br from-[#0c1024] via-[#121833] to-[#151b36] p-12 text-white lg:flex">
-        <div className="pointer-events-none absolute -right-24 bottom-[-10%] h-96 w-96 rounded-full bg-magenta-500/25 blur-3xl" />
-        <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-magenta-500 to-brand-400" />
+        <div className="pointer-events-none absolute -right-24 bottom-[-10%] h-96 w-96 rounded-full bg-brand-400/25 blur-3xl" />
+        <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-400 via-accent-lime to-accent-orange" />
 
         <motion.div
           initial={{ opacity: 0, x: -20 }}

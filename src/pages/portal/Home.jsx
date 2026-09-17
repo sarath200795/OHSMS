@@ -577,8 +577,8 @@ export default function PortalHome() {
                   fill="#22d3ee"
                   radius={[6, 6, 0, 0]}
                 />
-                <Bar dataKey="aeds" name="AED" fill="#38bdf8" radius={[6, 6, 0, 0]} />
-                <Bar dataKey="fas" name="Fire alarm" fill="#ff2d92" radius={[6, 6, 0, 0]} />
+                <Bar dataKey="aeds" name="AED" fill="#a3e635" radius={[6, 6, 0, 0]} />
+                <Bar dataKey="fas" name="Fire alarm" fill="#fb923c" radius={[6, 6, 0, 0]} />
               </BarChart>
             </ChartFrame>
           ) : (

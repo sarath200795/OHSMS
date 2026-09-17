@@ -164,7 +164,7 @@ export default function QrLanding() {
 
   const d = describe(asset)
   const openDefects = d.openDefects || []
-  const headerBg = d.alert ? 'bg-red-600' : d.warn ? 'bg-amber-600' : 'bg-green-700'
+  const headerBg = d.alert ? 'bg-red-600' : d.warn ? 'bg-amber-600' : 'bg-green-600'
 
   return (
     <div className="min-h-screen bg-canvas p-4 sm:p-8">

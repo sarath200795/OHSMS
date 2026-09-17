@@ -118,7 +118,7 @@ export default function Approvals() {
                     <button className="btn-ghost px-3 py-1.5 text-xs" disabled={busyId === r.id} onClick={() => decide(r, false)}>
                       <X size={14} /> Reject
                     </button>
-                    <button className="btn bg-green-600 px-3 py-1.5 text-xs text-white hover:bg-green-700" disabled={busyId === r.id} onClick={() => decide(r, true)}>
+                    <button className="btn bg-green-600 px-3 py-1.5 text-xs text-white hover:brightness-110" disabled={busyId === r.id} onClick={() => decide(r, true)}>
                       <Check size={14} /> Approve
                     </button>
                   </div>
