@@ -69,7 +69,7 @@ export default class ErrorBoundary extends Component {
           minHeight: '100vh',
           display: 'grid',
           placeItems: 'center',
-          background: '#f4f6f8',
+          background: '#0c1024',
           padding: 24,
           fontFamily: 'system-ui, -apple-system, sans-serif',
         }}
@@ -77,19 +77,19 @@ export default class ErrorBoundary extends Component {
         <div
           style={{
             maxWidth: 420,
-            background: '#ffffff',
-            borderRadius: 12,
+            background: '#151b36',
+            borderRadius: 16,
             padding: 32,
             textAlign: 'center',
-            boxShadow: '0 10px 15px -3px rgba(15,23,42,0.08)',
-            border: '1px solid #e2e8f0',
+            boxShadow: '0 0 0 1px rgba(255,255,255,0.08), 0 18px 48px rgba(4,8,24,0.55)',
+            border: '1px solid rgba(255,255,255,0.1)',
           }}
         >
           <p style={{ fontSize: 40, margin: 0 }}>⚠️</p>
-          <h1 style={{ fontSize: 18, margin: '12px 0 6px', color: '#0f172a' }}>
+          <h1 style={{ fontSize: 18, margin: '12px 0 6px', color: '#f4f7ff' }}>
             Something went wrong
           </h1>
-          <p style={{ fontSize: 14, lineHeight: 1.5, color: '#4a5568', margin: '0 0 20px' }}>
+          <p style={{ fontSize: 14, lineHeight: 1.5, color: '#8b9cb8', margin: '0 0 20px' }}>
             The error has been recorded. Nothing you entered before this screen is lost — reload to
             carry on where you were.
           </p>
@@ -97,11 +97,11 @@ export default class ErrorBoundary extends Component {
             type="button"
             onClick={() => window.location.reload()}
             style={{
-              background: '#c74a33',
+              background: 'linear-gradient(90deg, #ff2d92, #e11d8a)',
               color: '#fff',
               border: 'none',
               cursor: 'pointer',
-              borderRadius: 12,
+              borderRadius: 999,
               padding: '12px 28px',
               fontSize: 14,
               fontWeight: 700,

@@ -47,7 +47,7 @@ export default function SosPoster({ site, contacts, accent = 'pink', onAccent, o
           backdrop focusable would put a nameless control in the tab order in
           front of the dialog it is dimming. */}
       {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
-      <div aria-hidden="true" className="absolute inset-0 bg-ink-950/60 backdrop-blur-sm print:hidden" onClick={onClose} />
+      <div aria-hidden="true" className="absolute inset-0 bg-black/60 backdrop-blur-sm print:hidden" onClick={onClose} />
 
       <div className="relative z-10 w-full max-w-[640px]">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2 print:hidden">

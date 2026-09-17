@@ -20,15 +20,46 @@ const FeatureIcon = ({ d }) => (
 
 const FEATURES = [
   {
-    icon: <FeatureIcon d={<><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><path d="M14 14h3v3M21 21v.01M17 21h.01M21 17h.01" /></>} />,
+    icon: (
+      <FeatureIcon
+        d={
+          <>
+            <rect x="3" y="3" width="7" height="7" rx="1" />
+            <rect x="14" y="3" width="7" height="7" rx="1" />
+            <rect x="3" y="14" width="7" height="7" rx="1" />
+            <path d="M14 14h3v3M21 21v.01M17 21h.01M21 17h.01" />
+          </>
+        }
+      />
+    ),
     label: 'QR-tagged procedures, publicly scannable',
   },
   {
-    icon: <FeatureIcon d={<><path d="M12 3l8 4v5c0 4.4-3.1 7.9-8 9-4.9-1.1-8-4.6-8-9V7l8-4z" /><path d="m9 12 2 2 4-4" /></>} />,
+    icon: (
+      <FeatureIcon
+        d={
+          <>
+            <path d="M12 3l8 4v5c0 4.4-3.1 7.9-8 9-4.9-1.1-8-4.6-8-9V7l8-4z" />
+            <path d="m9 12 2 2 4-4" />
+          </>
+        }
+      />
+    ),
     label: 'Org-scoped access with admin approvals',
   },
   {
-    icon: <FeatureIcon d={<><path d="M4 19V5M4 19h16" /><rect x="7" y="11" width="3" height="5" rx="0.5" /><rect x="12" y="8" width="3" height="8" rx="0.5" /><rect x="17" y="13" width="3" height="3" rx="0.5" /></>} />,
+    icon: (
+      <FeatureIcon
+        d={
+          <>
+            <path d="M4 19V5M4 19h16" />
+            <rect x="7" y="11" width="3" height="5" rx="0.5" />
+            <rect x="12" y="8" width="3" height="8" rx="0.5" />
+            <rect x="17" y="13" width="3" height="3" rx="0.5" />
+          </>
+        }
+      />
+    ),
     label: 'Live, color-coded LOTO register',
   },
 ]
@@ -45,16 +76,15 @@ const LEGAL = [
  * (logo, headline, feature rows, legal footer) and a white card on cool canvas
  * on the right. Collapses to the form column on mobile.
  *
- * Note: the app's `steel` Tailwind scale is inverted for light surfaces, so the
- * dark panel uses explicit light colors (white / cool grays), like the sidebar.
+ * Note: the app's steel scale is dark again (heading = steel-50 white).
  */
 export default function AuthShell({ title, subtitle, children, footer }) {
   return (
     <div className="flex min-h-screen bg-canvas">
       {/* Dark brand panel */}
-      <div className="relative hidden w-1/2 flex-col justify-between overflow-hidden bg-gradient-to-br from-ink-900 via-ink-950 to-[#020617] p-12 text-white lg:flex">
-        <div className="pointer-events-none absolute -right-24 bottom-[-10%] h-96 w-96 rounded-full bg-brand-600/20 blur-3xl" />
-        <div className="absolute inset-x-0 top-0 h-1 bg-brand-600" />
+      <div className="relative hidden w-1/2 flex-col justify-between overflow-hidden bg-gradient-to-br from-[#0c1024] via-[#121833] to-[#151b36] p-12 text-white lg:flex">
+        <div className="pointer-events-none absolute -right-24 bottom-[-10%] h-96 w-96 rounded-full bg-magenta-500/25 blur-3xl" />
+        <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-magenta-500 to-brand-400" />
 
         <motion.div
           initial={{ opacity: 0, x: -20 }}
@@ -77,8 +107,7 @@ export default function AuthShell({ title, subtitle, children, footer }) {
             transition={{ delay: 0.15, duration: 0.5 }}
             className="max-w-md text-4xl font-extrabold leading-tight tracking-tight text-white"
           >
-            Hazardous energy,{' '}
-            <span className="text-amber-400">locked down.</span>
+            Hazardous energy, <span className="text-amber-400">locked down.</span>
           </motion.h2>
           <motion.p
             initial={{ opacity: 0, y: 20 }}
@@ -86,8 +115,8 @@ export default function AuthShell({ title, subtitle, children, footer }) {
             transition={{ delay: 0.3, duration: 0.5 }}
             className="mt-4 max-w-md text-ink-300"
           >
-            Build LOTO procedures, generate energy tags &amp; QR codes, and track every
-            isolation point across your sites — in one auditable system.
+            Build LOTO procedures, generate energy tags &amp; QR codes, and track every isolation
+            point across your sites — in one auditable system.
           </motion.p>
 
           <div className="mt-8 max-w-md space-y-2.5">
@@ -143,7 +172,10 @@ export default function AuthShell({ title, subtitle, children, footer }) {
         </motion.div>
 
         {/* Legal links (kept reachable on mobile where the brand panel is hidden) */}
-        <nav aria-label="Legal and policy" className="mt-6 flex max-w-md flex-wrap justify-center gap-x-4 gap-y-1 text-xs text-steel-500 lg:hidden">
+        <nav
+          aria-label="Legal and policy"
+          className="mt-6 flex max-w-md flex-wrap justify-center gap-x-4 gap-y-1 text-xs text-steel-500 lg:hidden"
+        >
           {LEGAL.map((l) => (
             <Link key={l.to} to={l.to} className="hover:text-amber-600">
               {l.label}

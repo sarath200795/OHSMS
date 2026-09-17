@@ -58,9 +58,9 @@ export default function EditableNode({ id, data, selected }) {
   const toolbar = selected && (
     <div className="absolute -top-7 left-1/2 flex -translate-x-1/2 gap-1">
       {data.kind === 'gate' && (
-        <button onClick={toggleGate} aria-label={`Change gate to ${data.gateType === 'AND' ? 'OR' : 'AND'}`} className="rounded bg-ink-900 px-1.5 py-0.5 text-[10px] font-bold text-white">{data.gateType === 'AND' ? '→ OR' : '→ AND'}</button>
+        <button onClick={toggleGate} aria-label={`Change gate to ${data.gateType === 'AND' ? 'OR' : 'AND'}`} className="rounded bg-canvas px-1.5 py-0.5 text-[10px] font-bold text-ink-900">{data.gateType === 'AND' ? '→ OR' : '→ AND'}</button>
       )}
-      <button onClick={onDouble} aria-label={`Edit label: ${data.label || 'untitled node'}`} className="grid h-5 w-5 place-items-center rounded bg-ink-900 text-white"><Pencil size={11} /></button>
+      <button onClick={onDouble} aria-label={`Edit label: ${data.label || 'untitled node'}`} className="grid h-5 w-5 place-items-center rounded bg-canvas text-ink-900"><Pencil size={11} /></button>
       <button onClick={remove} aria-label={`Delete node: ${data.label || 'untitled node'}`} className="grid h-5 w-5 place-items-center rounded bg-red-500 text-white"><Trash2 size={11} /></button>
     </div>
   )
@@ -103,7 +103,7 @@ export default function EditableNode({ id, data, selected }) {
               ? <path d="M4 32 V14 a20 20 0 0 1 40 0 V32 Z" fill="#fff" stroke={color} strokeWidth="2" />
               : <path d="M4 32 q20 -10 40 0 q-6 -26 -20 -30 q-14 4 -20 30 Z" fill="#fff" stroke={color} strokeWidth="2" />}
           </svg>
-          <span className="-mt-1 rounded bg-ink-900 px-1.5 text-[9px] font-black text-white">{data.gateType || 'AND'}</span>
+          <span className="-mt-1 rounded bg-canvas px-1.5 text-[9px] font-black text-ink-900">{data.gateType || 'AND'}</span>
           <div className="mt-0.5 w-[92px]">{label}</div>
         </div>
         {handles}

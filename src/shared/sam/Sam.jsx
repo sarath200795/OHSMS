@@ -239,7 +239,7 @@ export default function Sam() {
         {/* Soft ground shadow — anchors the character instead of leaving it floating */}
         <span
           aria-hidden="true"
-          className="absolute bottom-1 left-1/2 h-1.5 -translate-x-1/2 rounded-[50%] bg-ink-900/15 blur-[2px]"
+          className="absolute bottom-1 left-1/2 h-1.5 -translate-x-1/2 rounded-[50%] bg-black/40 blur-[2px]"
           style={{ width: AVATAR * 0.42 }}
         />
         <SamCharacter3D

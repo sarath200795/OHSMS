@@ -4,99 +4,236 @@ export default {
   theme: {
     extend: {
       colors: {
-        // WEHS brand — coral from the logo siren & heart, used as an accent
-        // on an otherwise cool ops-dashboard palette. Not a material.
+        // Dark neon ops kit (UX board 5810331). Cyan is the system accent —
+        // focus rings, links, charts, active pills. Magenta is the CTA. The
+        // logo still carries coral; it is not the chrome.
+        //
+        // brand-600 must carry white text at AA (the skip-link and a few
+        // filled chips). Bright cyan lives at 400/500; 700+ is text on a
+        // brand-50 wash.
         brand: {
-          50: '#fdf4f1',
-          100: '#fbe5df',
-          200: '#f6c8bd',
-          300: '#efa392',
-          400: '#e77a64',
-          500: '#dd5a41',
-          600: '#c74a33',
-          700: '#a63c2a',
-          800: '#873426',
-          900: '#6f2f24',
+          50: '#0c2a38',
+          100: '#0e3a4d',
+          200: '#164e63',
+          300: '#0e7490',
+          400: '#22d3ee',
+          500: '#22d3ee',
+          600: '#0e7490',
+          700: '#67e8f9',
+          800: '#a5f3fc',
+          900: '#cffafe',
         },
-        // Cool slate ink. 400–900 are AA on canvas (#f4f6f8), the binding
-        // (darker) page surface; on white every figure is ~0.4 higher:
-        //   400 5.45   500 6.95   600 8.31   700 10.97   800 14.26   900 16.48
+        magenta: {
+          400: '#ff6bb5',
+          500: '#ff2d92',
+          600: '#e11d8a',
+          700: '#f9a8d4',
+        },
+        // Screen ink is inverted vs the previous light ops look: 50–300 are
+        // dark washes and hairlines, 400–900 are text. 400 is the AA floor
+        // on canvas (#0c1024) — 5.5:1. Do not use 50–300 as body text.
         //
-        // 50–300 are surfaces, borders and placeholder tones, never body text.
-        // If one of them ever becomes text, it needs this treatment first.
-        //
-        // The 400/500 stops used to fail AA on the old kraft canvas (2.12 and
-        // 3.29). Axe found 43 offending nodes on portal home alone. These
-        // numbers are the whole point of the ramp — a regression is silent.
+        // bg-ink-800/900/950 used to mean "near-black fill". Those sites are
+        // remapped to canvas / black overlays; do not reintroduce them as
+        // dark fills against this ramp.
         ink: {
-          DEFAULT: '#0f172a',
-          50: '#f8fafc',
-          100: '#f1f5f9',
-          200: '#e2e8f0',
-          300: '#cbd5e1',
-          400: '#5b6573',
-          500: '#4a5568',
-          600: '#3d4a5c',
-          700: '#2c3848',
-          800: '#1b2533',
-          900: '#0f172a',
-          950: '#020617',
+          DEFAULT: '#e8eefc',
+          50: '#121833',
+          100: '#1a2144',
+          200: '#2f3b63',
+          300: '#44527a',
+          400: '#8b9cb8',
+          500: '#a8b6cc',
+          600: '#c5d0e0',
+          700: '#dbe3f0',
+          800: '#e8eefc',
+          900: '#f4f7ff',
+          950: '#ffffff',
         },
-        // Page canvas. Cards sit on this as white panels with a hairline.
         canvas: {
-          DEFAULT: '#f4f6f8',
+          DEFAULT: '#0c1024',
         },
-        // Raised / inset surfaces. DEFAULT is a white card; 50–400 are the
-        // muted fills, row washes and hairline-adjacent greys. There is no
-        // recessed "pressed into paper" stop — muted fill + border is the well.
+        // Glass cards. DEFAULT is the raised panel; 50–400 are wells, row
+        // washes and hairline-adjacent fills.
         surface: {
-          DEFAULT: '#ffffff',
-          50: '#f8fafc',
-          100: '#f1f5f9',
-          200: '#e2e8f0',
-          300: '#cbd5e1',
-          400: '#94a3b8',
+          DEFAULT: '#151b36',
+          50: '#121833',
+          100: '#1a2144',
+          200: '#243056',
+          300: '#33406a',
+          400: '#4a5a82',
         },
-        // Logo accent set (icons): teal hands, amber vest, steel first-aid kit.
         accent: {
-          teal: '#0f766e',
-          amber: '#d97706',
-          steel: '#64748b',
-          leaf: '#4d7c0f',
+          teal: '#2dd4bf',
+          amber: '#fbbf24',
+          steel: '#8b9cb8',
+          leaf: '#a3e635',
         },
-        // LOTO was ported from a dark "steel + hazard-yellow" theme whose
-        // Tailwind palette never landed in this config. The classes still
-        // compiled (Tailwind does not error on unknown colours) and did
-        // nothing, so titles, muted copy, table headers and lock-out buttons
-        // all inherited body text — one weight, no hierarchy, no accent.
-        //
-        // These stops remap that vocabulary onto the cool ops scale rather
-        // than restoring the dark theme: steel-50 was "almost white heading"
-        // and is now the ink heading; steel-800 was "dark well" and is now a
-        // muted surface wash. hazard is the amber vest from the logo.
+        // LOTO's original dark steel + hazard-yellow vocabulary. steel-50 is
+        // the near-white heading again, now that the SPA is dark.
         steel: {
-          50: '#0f172a',
-          100: '#1b2533',
-          200: '#2c3848',
-          300: '#3d4a5c',
-          400: '#4a5568',
-          500: '#5b6573',
-          600: '#cbd5e1',
-          700: '#cbd5e1',
-          800: '#e2e8f0',
-          900: '#f1f5f9',
-          950: '#f4f6f8',
+          50: '#f4f7ff',
+          100: '#e8eefc',
+          200: '#c5d0e0',
+          300: '#a8b6cc',
+          400: '#8b9cb8',
+          500: '#64748b',
+          600: '#44527a',
+          700: '#2f3b63',
+          800: '#1a2144',
+          900: '#121833',
+          950: '#0c1024',
         },
         hazard: {
-          DEFAULT: '#d97706',
-          dark: '#b45309',
+          DEFAULT: '#fbbf24',
+          dark: '#d97706',
         },
         danger: {
-          DEFAULT: '#dc2626',
+          DEFAULT: '#f87171',
         },
+        // Tailwind's 50-tint palette is a light wash. On navy those chips
+        // flash white, and 700-text on them fails AA. Only the wash / text
+        // stops move; 500/600 stay saturated fills for solid badges.
+        red: {
+          50: '#3a1522',
+          100: '#4a1c2c',
+          200: '#7f2d40',
+          700: '#fca5a5',
+          800: '#fecaca',
+          900: '#fee2e2',
+        },
+        rose: {
+          50: '#3a1522',
+          100: '#4a1c2c',
+          200: '#7f2d40',
+          700: '#fda4af',
+          800: '#fecdd3',
+          900: '#ffe4e6',
+        },
+        orange: {
+          50: '#3a2414',
+          100: '#4a2e18',
+          200: '#7c4a1e',
+          700: '#fdba74',
+          800: '#fed7aa',
+          900: '#ffedd5',
+        },
+        amber: {
+          50: '#3a2e14',
+          100: '#4a3b18',
+          200: '#7c5c1e',
+          700: '#fcd34d',
+          800: '#fde68a',
+          900: '#fef3c7',
+        },
+        yellow: {
+          50: '#3a3514',
+          100: '#4a4418',
+          200: '#7c6e1e',
+          700: '#fde047',
+          800: '#fef08a',
+          900: '#fef9c3',
+        },
+        lime: {
+          50: '#1c3314',
+          100: '#244418',
+          200: '#3f6e1e',
+          700: '#bef264',
+          800: '#d9f99d',
+          900: '#ecfccb',
+        },
+        green: {
+          50: '#14331c',
+          100: '#184424',
+          200: '#1e6e3f',
+          700: '#86efac',
+          800: '#bbf7d0',
+          900: '#dcfce7',
+        },
+        emerald: {
+          50: '#14332c',
+          100: '#18443a',
+          200: '#1e6e5c',
+          700: '#6ee7b7',
+          800: '#a7f3d0',
+          900: '#d1fae5',
+        },
+        teal: {
+          50: '#14333a',
+          100: '#18444a',
+          200: '#1e6e7c',
+          700: '#5eead4',
+          800: '#99f6e4',
+          900: '#ccfbf1',
+        },
+        cyan: {
+          50: '#0c2a38',
+          100: '#0e3a4d',
+          200: '#164e63',
+          700: '#67e8f9',
+          800: '#a5f3fc',
+          900: '#cffafe',
+        },
+        sky: {
+          50: '#0c2438',
+          100: '#0e324d',
+          200: '#164e7c',
+          700: '#7dd3fc',
+          800: '#bae6fd',
+          900: '#e0f2fe',
+        },
+        blue: {
+          50: '#121833',
+          100: '#1a2144',
+          200: '#1e3a7c',
+          700: '#93c5fd',
+          800: '#bfdbfe',
+          900: '#dbeafe',
+        },
+        indigo: {
+          50: '#1a1538',
+          100: '#241c4a',
+          200: '#3f2d7c',
+          700: '#a5b4fc',
+          800: '#c7d2fe',
+          900: '#e0e7ff',
+        },
+        violet: {
+          50: '#221538',
+          100: '#2c1c4a',
+          200: '#4a2d7c',
+          700: '#c4b5fd',
+          800: '#ddd6fe',
+          900: '#ede9fe',
+        },
+        purple: {
+          50: '#2a1538',
+          100: '#361c4a',
+          200: '#5c2d7c',
+          700: '#d8b4fe',
+          800: '#e9d5ff',
+          900: '#f3e8ff',
+        },
+        fuchsia: {
+          50: '#33143a',
+          100: '#44184a',
+          200: '#6e1e7c',
+          700: '#f0abfc',
+          800: '#f5d0fe',
+          900: '#fae8ff',
+        },
+        pink: {
+          50: '#3a1528',
+          100: '#4a1c34',
+          200: '#7c2d52',
+          700: '#f9a8d4',
+          800: '#fbcfe8',
+          900: '#fce7f3',
+        },
+        slate: { 50: '#121833', 100: '#1a2144', 200: '#243056' },
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'Segoe UI', 'sans-serif'],
+        sans: ['"Open Sans"', 'system-ui', 'Segoe UI', 'sans-serif'],
       },
       // Emil Kowalski motion tokens — stronger-than-default custom curves.
       transitionTimingFunction: {
@@ -105,14 +242,14 @@ export default {
         drawer: 'cubic-bezier(0.32, 0.72, 0, 1)', // drawers/sheets
       },
       boxShadow: {
-        glow: '0 0 0 1px rgba(199,74,51,0.16), 0 8px 20px -10px rgba(199,74,51,0.35)',
-        card: '0 1px 2px rgba(15,23,42,0.05), 0 1px 3px rgba(15,23,42,0.04)',
-        // One-direction elevation. No dual-direction neumorphic pair, no
-        // inset "pressed into paper" well. Hairline borders do the rest.
-        elev: '0 1px 2px rgba(15,23,42,0.05), 0 1px 3px rgba(15,23,42,0.04)',
-        'elev-sm': '0 1px 2px rgba(15,23,42,0.06)',
-        'elev-lg': '0 10px 15px -3px rgba(15,23,42,0.08), 0 4px 6px -4px rgba(15,23,42,0.04)',
-        'elev-brand': '0 1px 2px rgba(199,74,51,0.12), 0 4px 12px -4px rgba(199,74,51,0.32)',
+        glow: '0 0 0 1px rgba(34,211,238,0.28), 0 8px 28px -8px rgba(34,211,238,0.45)',
+        card: '0 0 0 1px rgba(255,255,255,0.08), 0 12px 32px rgba(4,8,24,0.45)',
+        // Glass elevation + a thin light hairline. No dual-direction clay.
+        elev: '0 0 0 1px rgba(255,255,255,0.08), 0 10px 28px rgba(4,8,24,0.4)',
+        'elev-sm': '0 0 0 1px rgba(255,255,255,0.06), 0 4px 14px rgba(4,8,24,0.28)',
+        'elev-lg':
+          '0 0 0 1px rgba(255,255,255,0.1), 0 18px 48px rgba(4,8,24,0.55), 0 0 40px rgba(34,211,238,0.08)',
+        'elev-brand': '0 0 0 1px rgba(255,45,146,0.35), 0 8px 24px rgba(255,45,146,0.28)',
       },
       keyframes: {
         // Skeleton shimmer sweep.
@@ -120,9 +257,9 @@ export default {
           '100%': { transform: 'translateX(100%)' },
         },
         pulseRing: {
-          '0%': { boxShadow: '0 0 0 0 rgba(221,90,65,0.5)' },
-          '70%': { boxShadow: '0 0 0 14px rgba(221,90,65,0)' },
-          '100%': { boxShadow: '0 0 0 0 rgba(221,90,65,0)' },
+          '0%': { boxShadow: '0 0 0 0 rgba(34,211,238,0.5)' },
+          '70%': { boxShadow: '0 0 0 14px rgba(34,211,238,0)' },
+          '100%': { boxShadow: '0 0 0 0 rgba(34,211,238,0)' },
         },
         // Stagger entrance (decorative, short).
         fadeInUp: {
@@ -346,12 +483,6 @@ export default {
   // Custom shadow / canvas utilities must be generated even when they only
   // appear inside @apply, or PostCSS reports them as missing and the app
   // paints a blank page.
-  safelist: [
-    'bg-canvas',
-    'shadow-elev',
-    'shadow-elev-sm',
-    'shadow-elev-lg',
-    'shadow-elev-brand',
-  ],
+  safelist: ['bg-canvas', 'shadow-elev', 'shadow-elev-sm', 'shadow-elev-lg', 'shadow-elev-brand'],
   plugins: [],
 }

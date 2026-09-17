@@ -307,8 +307,8 @@ export default function FirstAid() {
     <div>
       <PageHeader title="First Aid Boxes" subtitle="Site-wise contents of every first aid box and whether they are actually available" icon={BriefcaseMedical}>
         <div className="flex rounded-xl bg-surface-100 p-1">
-          <button onClick={() => setView('matrix')} className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold ${view === 'matrix' ? 'bg-white text-ink-900 shadow-elev-sm' : 'text-ink-500'}`}><LayoutGrid size={14} /> Matrix</button>
-          <button onClick={() => setView('list')} className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold ${view === 'list' ? 'bg-white text-ink-900 shadow-elev-sm' : 'text-ink-500'}`}><List size={14} /> List</button>
+          <button onClick={() => setView('matrix')} className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold ${view === 'matrix' ? 'bg-surface text-ink-900 shadow-elev-sm' : 'text-ink-500'}`}><LayoutGrid size={14} /> Matrix</button>
+          <button onClick={() => setView('list')} className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold ${view === 'list' ? 'bg-surface text-ink-900 shadow-elev-sm' : 'text-ink-500'}`}><List size={14} /> List</button>
         </div>
         <button
           className={linkPlan?.linked.length ? 'btn-soft !bg-brand-100 !text-brand-800' : 'btn-soft'}

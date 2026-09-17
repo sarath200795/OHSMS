@@ -102,7 +102,7 @@ export default function BulkUpload() {
             type="button"
             onClick={() => pick(k)}
             className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-sm font-semibold transition ${
-              kind === k ? 'bg-ink-900 text-white' : 'bg-ink-100 text-ink-600 hover:bg-ink-200'
+              kind === k ? 'bg-magenta-500 text-white' : 'bg-ink-100 text-ink-600 hover:bg-ink-200'
             }`}
           >
             <c.icon size={14} /> {c.label}

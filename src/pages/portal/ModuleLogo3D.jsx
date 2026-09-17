@@ -335,8 +335,8 @@ function StakeholderOrg() {
             facade at this size without turning into noise. */}
         {[0, 1, 2].map((r) => (
           <span key={r}>
-            <span className="absolute h-[2px] w-[2px] bg-ink-800/70" style={{ left: -4, top: -10 + r * 5 }} />
-            <span className="absolute h-[2px] w-[2px] bg-ink-800/70" style={{ left: 1, top: -10 + r * 5 }} />
+            <span className="absolute h-[2px] w-[2px] bg-canvas/70" style={{ left: -4, top: -10 + r * 5 }} />
+            <span className="absolute h-[2px] w-[2px] bg-canvas/70" style={{ left: 1, top: -10 + r * 5 }} />
           </span>
         ))}
       </span>

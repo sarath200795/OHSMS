@@ -686,7 +686,7 @@ const AuditeeWorkplace = ({ session, users, findings }) => {
                           <span className={`rounded-lg px-3 py-1 text-[10px] font-bold uppercase tracking-widest ${getTypeClass(f.type)}`}>{f.type}</span>
                           {f.auditeeDueDate && !has && <span className={`rounded-lg border px-3 py-1 text-[10px] font-bold uppercase ${overdue ? 'border-rose-300 bg-rose-50 text-rose-600' : 'border-orange-200 bg-orange-50 text-orange-600'}`}>Due: {f.auditeeDueDate}{overdue && ' !'}</span>}
                         </div>
-                        {editable && <button onClick={() => openResp(f)} className={`rounded-xl px-5 py-2.5 text-xs font-bold uppercase tracking-widest text-white transition active:scale-95 ${has ? 'bg-ink-600 hover:bg-ink-800' : 'bg-gradient-to-r from-amber-500 to-orange-500'}`}>{has ? <><Pencil size={16} className="inline mr-1" />Edit Reply</> : <><Reply size={16} className="inline mr-1" />Respond Now</>}</button>}
+                        {editable && <button onClick={() => openResp(f)} className={`rounded-xl px-5 py-2.5 text-xs font-bold uppercase tracking-widest text-white transition active:scale-95 ${has ? 'bg-surface-200 hover:bg-surface-300 text-ink-900' : 'bg-gradient-to-r from-amber-500 to-orange-500'}`}>{has ? <><Pencil size={16} className="inline mr-1" />Edit Reply</> : <><Reply size={16} className="inline mr-1" />Respond Now</>}</button>}
                       </div>
                       <div className="mb-2 rounded-r-lg border-l-4 border-surface-300 bg-surface-50 py-1 pl-4 text-sm text-ink-700">“{f.desc}”</div>
                       {has && <CapaSummary r={f.response} />}
@@ -708,7 +708,7 @@ const AuditeeWorkplace = ({ session, users, findings }) => {
 
       {/* response modal */}
       {modal && current && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/40 p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
           <div className="flex max-h-[95vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-surface shadow-2xl">
             <div className="flex items-center justify-between border-b border-ink-100 p-6">
               <div>
@@ -937,7 +937,7 @@ const AuditDashboard = ({ findings, sites = [] }) => {
       </div>
 
       {selected && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/40 p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
           <div className="flex max-h-[95vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-surface shadow-2xl">
             <div className="flex items-start justify-between border-b border-ink-100 bg-surface-50 p-6">
               <div><h2 className="mb-1 text-2xl font-extrabold text-ink-800">Audit Details</h2><p className="inline-block rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1 font-mono text-sm font-bold text-emerald-600">Ref: {selected.docId}</p></div>

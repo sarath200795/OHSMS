@@ -273,7 +273,7 @@ export default function Repository() {
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
-            className="mb-4 flex flex-wrap items-center gap-3 rounded-2xl bg-ink-950 px-4 py-3 text-white"
+            className="mb-4 flex flex-wrap items-center gap-3 rounded-2xl bg-canvas px-4 py-3 text-ink-900"
           >
             <span className="font-bold">{selected.size} selected</span>
             <div className="ml-auto flex flex-wrap gap-2">

@@ -170,7 +170,7 @@ function Shell({ children }) {
       <div className="mx-auto max-w-lg">
         {/* First thing on the page, before any instruction, because this is the
             only sentence that stops it being read as a permit to work. */}
-        <div className="mb-4 flex items-start gap-2 rounded-2xl bg-ink-900 p-3 text-white">
+        <div className="mb-4 flex items-start gap-2 rounded-2xl bg-magenta-500/15 p-3 text-magenta-700 ring-1 ring-magenta-500/30">
           <ShieldAlert size={16} className="mt-0.5 flex-none" />
           <p className="text-xs font-semibold leading-snug">
             Reference copy. This is not authorisation to work — isolation must be applied and

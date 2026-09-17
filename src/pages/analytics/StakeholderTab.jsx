@@ -45,7 +45,7 @@ const clean = (v) => String(v ?? '').trim()
 
 // The constants carry a Tailwind palette name; Breakdown wants a hex. One map
 // here rather than a second severity palette invented per chart.
-const HEX = { emerald: '#22c55e', blue: '#0ea5e9', amber: '#f59e0b', red: '#ef4444', slate: '#8a7660' }
+const HEX = { emerald: '#22c55e', blue: '#0ea5e9', amber: '#f59e0b', red: '#ef4444', slate: '#8b9cb8' }
 
 // Badge speaks brand/gray/green/amber/red/blue/violet, the constants speak
 // emerald/slate. Mapped rather than passed through, because an unmapped tone

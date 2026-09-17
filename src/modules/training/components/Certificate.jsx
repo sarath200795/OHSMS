@@ -22,7 +22,7 @@ export default function CertificateModal({ record, orgName, onClose }) {
       {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
       <div
         aria-hidden="true"
-        className="absolute inset-0 bg-ink-950/50 backdrop-blur-sm"
+        className="absolute inset-0 bg-black/55 backdrop-blur-sm"
         onClick={onClose}
       />
 
@@ -38,11 +38,11 @@ export default function CertificateModal({ record, orgName, onClose }) {
 
         <div
           id="wehs-certificate"
-          className="relative overflow-hidden rounded-xl bg-white p-2 shadow-elev-lg ring-1 ring-ink-200"
+          className="relative overflow-hidden rounded-xl bg-white p-2 shadow-elev-lg ring-1 ring-ink-200 doc-sheet"
           style={{ aspectRatio: '297/200' }}
         >
           <div className="flex h-full flex-col rounded-lg ring-1 ring-ink-200">
-            <div className="h-1.5 w-full bg-brand-600" />
+            <div className="h-1.5 w-full bg-[#e11d8a]" />
             <div className="flex h-full flex-col items-center px-10 py-7 text-center">
               <div className="flex items-center gap-3">
                 <img src="/wehs.svg" alt="WEHS" className="h-12 w-12 rounded-lg ring-1 ring-ink-200" />

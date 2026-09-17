@@ -18,7 +18,7 @@ export default function ModuleTabs({ tabs, label = 'Module sections', toFor, cla
   return (
     <nav
       aria-label={label}
-      className={`mb-5 flex gap-1 overflow-x-auto overscroll-x-contain border-b border-ink-200 print:hidden [-webkit-overflow-scrolling:touch] ${className}`}
+      className={`mb-5 flex gap-1 overflow-x-auto overscroll-x-contain rounded-xl bg-surface/60 p-1 ring-1 ring-white/10 print:hidden [-webkit-overflow-scrolling:touch] ${className}`}
     >
       {tabs
         .filter((t) => !t.hidden)
@@ -29,12 +29,7 @@ export default function ModuleTabs({ tabs, label = 'Module sections', toFor, cla
             end={t.end}
             className={({ isActive }) => {
               const active = t.active != null ? t.active : isActive
-              return [
-                'nav-tab',
-                active
-                  ? 'nav-tab-active -mb-px rounded-b-none border-b-2 border-brand-600'
-                  : 'nav-tab-idle',
-              ].join(' ')
+              return ['nav-tab', active ? 'nav-tab-active' : 'nav-tab-idle'].join(' ')
             }}
           >
             {t.icon ? <t.icon size={16} /> : null}

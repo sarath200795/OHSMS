@@ -94,14 +94,20 @@ export default function PlatformLogin() {
     }
   }
 
-  const submit = (e) => { e.preventDefault(); run(() => login(form)) }
-  const verify = (e) => { e.preventDefault(); run(() => completeMfa(resolver, code)) }
+  const submit = (e) => {
+    e.preventDefault()
+    run(() => login(form))
+  }
+  const verify = (e) => {
+    e.preventDefault()
+    run(() => completeMfa(resolver, code))
+  }
 
   return (
-    <div className="grid min-h-screen place-items-center bg-ink-900 p-4">
+    <div className="grid min-h-screen place-items-center bg-canvas p-4">
       <div className="w-full max-w-sm">
         <div className="mb-6 flex flex-col items-center gap-3 text-center">
-          <span className="grid h-12 w-12 place-items-center rounded-2xl bg-ink-800 text-ink-200">
+          <span className="grid h-12 w-12 place-items-center rounded-2xl bg-surface text-ink-400">
             <SlidersHorizontal size={22} />
           </span>
           <div>
@@ -116,7 +122,7 @@ export default function PlatformLogin() {
           {refused && (
             <p
               role="alert"
-              className="mb-4 rounded-xl bg-red-50 px-3 py-2.5 text-[12.5px] font-semibold text-red-700"
+              className="mb-4 rounded-xl bg-red-500/15 px-3 py-2.5 text-[12.5px] font-semibold text-red-300"
             >
               {refused}
             </p>
@@ -145,12 +151,20 @@ export default function PlatformLogin() {
                   className="text-center text-lg tracking-[0.4em]"
                 />
               </Field>
-              <Button type="submit" loading={busy} disabled={!isCodeComplete(code)} className="w-full">
+              <Button
+                type="submit"
+                loading={busy}
+                disabled={!isCodeComplete(code)}
+                className="w-full"
+              >
                 Verify
               </Button>
               <button
                 type="button"
-                onClick={() => { setResolver(null); setCode('') }}
+                onClick={() => {
+                  setResolver(null)
+                  setCode('')
+                }}
                 className="w-full text-center text-xs font-semibold text-ink-500 hover:underline"
               >
                 Use a different account

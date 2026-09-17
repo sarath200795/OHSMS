@@ -40,7 +40,7 @@ export default function HomeBar() {
   return (
     <nav
       aria-label="Breadcrumb"
-      className="mb-5 flex flex-wrap items-center gap-0.5 rounded-lg bg-surface px-2 py-1.5 text-sm font-semibold ring-1 ring-ink-200"
+      className="mb-5 flex flex-wrap items-center gap-0.5 rounded-xl bg-surface px-2 py-1.5 text-sm font-semibold ring-1 ring-white/10"
     >
       <Link
         to="/portal"
@@ -52,7 +52,7 @@ export default function HomeBar() {
             The org's own logo, matching the header — the trail and the corner
             it points back to have to be the same shape, or the mark stops
             working as "the way home". */}
-        <OrgMark className="h-5 w-5 rounded-md ring-1 ring-ink-900/10" />
+        <OrgMark className="h-5 w-5 rounded-md ring-1 ring-white/10" />
         Home
       </Link>
 
@@ -70,7 +70,7 @@ export default function HomeBar() {
             // Already on the module's front page: name it, do not link it to
             // itself — a link that does nothing teaches people not to trust the
             // rest of the trail.
-            <span className="px-2 py-1 text-ink-900" aria-current="page">
+            <span className="px-2 py-1 text-brand-700" aria-current="page">
               {mod.label}
             </span>
           )}
@@ -80,7 +80,7 @@ export default function HomeBar() {
       {here && (
         <>
           <ChevronRight size={15} className="flex-none text-ink-500" aria-hidden="true" />
-          <span className="px-2 py-1 text-ink-900" aria-current="page">
+          <span className="px-2 py-1 text-brand-700" aria-current="page">
             {here}
           </span>
         </>

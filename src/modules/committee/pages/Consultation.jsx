@@ -60,7 +60,7 @@ const MeetingDetailModal = ({ meeting, siteLabel, onClose, onUpdateStatus, onPri
     };
 
     return (
-        <div className="fixed inset-0 bg-ink-950/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto animate-in fade-in zoom-in-95 duration-300 print:hidden">
+        <div className="fixed inset-0 bg-black/55 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto animate-in fade-in zoom-in-95 duration-300 print:hidden">
             <div className="bg-surface border border-surface-200 w-full max-w-5xl rounded-3xl flex flex-col shadow-2xl relative min-h-[50vh] max-h-[90vh] overflow-hidden">
                 <div className="p-6 border-b border-surface-200 flex justify-between items-center bg-surface-100">
                     <div>
@@ -1026,7 +1026,7 @@ export default function Consultation() {
                                         <thead className="bg-surface text-[10px] uppercase font-bold text-ink-400 tracking-widest sticky top-0 z-20 shadow-sm border-b border-surface-200/70">
                                             <tr><th className="p-4 pl-6">Action Description</th><th className="p-4 w-1/4">Owner / Assignee</th><th className="p-4 w-40">Due Date</th><th className="p-4 w-40 text-center">Status</th><th className="p-4 w-16 text-center"><span className="sr-only">Actions</span></th></tr>
                                         </thead>
-                                        <tbody className="divide-y divide-surface-200/60 bg-ink-950/40">
+                                        <tbody className="divide-y divide-surface-200/60 bg-surface-50">
                                             {(formData.actions || []).map((c, i) => {
                                                 const canEditRowStatus = canEditForm || (permissions.canEditOwnedActions && c.owner === (session.name || session.email || session.user));
                                                 return (

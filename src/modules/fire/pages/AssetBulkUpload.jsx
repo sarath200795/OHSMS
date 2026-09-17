@@ -131,7 +131,7 @@ export default function AssetBulkUpload() {
       <PageHeader title="Bulk Upload — Assets" subtitle={`Import many ${cfg.label} records from a spreadsheet. Every row is added as a new record with its own QR code.`} icon={Upload}>
         <div className="flex rounded-xl bg-surface-100 p-1 no-print">
           {Object.entries(CFG).map(([k, c]) => (
-            <button key={k} onClick={() => switchKind(k)} className={`rounded-lg px-3 py-1.5 text-xs font-bold ${kind === k ? 'bg-white text-ink-900 shadow-elev-sm' : 'text-ink-500'}`}>{c.label}</button>
+            <button key={k} onClick={() => switchKind(k)} className={`rounded-lg px-3 py-1.5 text-xs font-bold ${kind === k ? 'bg-surface text-ink-900 shadow-elev-sm' : 'text-ink-500'}`}>{c.label}</button>
           ))}
         </div>
         <button className="btn-ghost" onClick={() => downloadAssetTemplate(kind)}><Download size={16} /> Download template</button>

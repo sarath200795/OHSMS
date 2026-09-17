@@ -159,7 +159,7 @@ function WidgetPicker({ selected, onClose, onSave }) {
           could not see and could not use. Now the scrim is a sibling, decorative
           and aria-hidden, and Escape is the keyboard route out (useFocusTrap). */}
       {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
-      <div aria-hidden="true" className="absolute inset-0 bg-ink-900/40 backdrop-blur-sm" onClick={onClose} />
+      <div aria-hidden="true" className="absolute inset-0 bg-black/55 backdrop-blur-sm" onClick={onClose} />
       <div className="card relative max-h-[85vh] w-full max-w-2xl overflow-auto p-6">
         <div className="mb-4 flex items-start justify-between gap-3">
           <div>

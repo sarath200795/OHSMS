@@ -9,7 +9,7 @@ import { autoTable } from 'jspdf-autotable'
 import { initialRisk, residualRisk } from './raStats'
 import { categoryLabel } from './constants'
 
-const BRAND = [199, 74, 51] // #c74a33 coral accent
+const BRAND = [225, 29, 138] // #e11d8a magenta, matching screen CTA
 const INK = [15, 23, 42] // #0f172a
 const WASH = [248, 250, 252] // #f8fafc
 const RULE = [226, 232, 240] // #e2e8f0

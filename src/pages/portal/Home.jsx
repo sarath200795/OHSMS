@@ -122,11 +122,11 @@ function Tile({ to, icon: Icon, gradient, label, title, delay = 0, logoKey }) {
       <Link
         to={to}
         style={{ animationDelay: `${delay}ms` }}
-        className="group relative flex animate-fade-in-up items-center gap-4 rounded-xl bg-surface p-4 ring-1 ring-ink-200 shadow-elev
+        className="group relative flex animate-fade-in-up items-center gap-4 rounded-2xl bg-surface p-4 ring-1 ring-white/10 shadow-elev
                    transition-[transform,box-shadow] duration-200 ease-emil [transform-style:preserve-3d]
-                   hover:-translate-y-0.5 hover:shadow-elev-lg hover:ring-ink-300
+                   hover:-translate-y-0.5 hover:shadow-elev-lg hover:ring-brand-400/40
                    active:translate-y-0 active:scale-[0.99]
-                   focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white
+                   focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas
                    motion-reduce:transition-none motion-reduce:hover:translate-y-0"
       >
         {/* The logo lifts far enough off the card for the perspective to bend
@@ -334,7 +334,7 @@ export default function PortalHome() {
   const pie = stats.incidentsByType.map((r) => ({
     name: INCIDENT_TYPE_BY_KEY[r.key]?.label || 'Unspecified',
     value: r.value,
-    color: INCIDENT_TYPE_BY_KEY[r.key]?.color || '#8a7660',
+    color: INCIDENT_TYPE_BY_KEY[r.key]?.color || '#8b9cb8',
   }))
   const bars = stats.equipmentBySite.slice(0, 8)
 
@@ -558,7 +558,7 @@ export default function PortalHome() {
                   tickLine={false}
                   axisLine={false}
                   fontSize={11}
-                  tick={{ fill: '#8a7660' }}
+                  tick={{ fill: '#8b9cb8' }}
                   interval={0}
                   tickFormatter={(v) => String(v).slice(0, 10)}
                 />
@@ -567,18 +567,18 @@ export default function PortalHome() {
                   tickLine={false}
                   axisLine={false}
                   fontSize={11}
-                  tick={{ fill: '#8a7660' }}
+                  tick={{ fill: '#8b9cb8' }}
                 />
-                <Tooltip cursor={{ fill: 'rgba(227,204,191,0.35)' }} />
-                <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
+                <Tooltip cursor={{ fill: 'rgba(34,211,238,0.08)' }} />
+                <Legend iconType="circle" wrapperStyle={{ fontSize: 12, color: '#a8b6cc' }} />
                 <Bar
                   dataKey="extinguishers"
                   name="Extinguishers"
-                  fill="#dd5a41"
+                  fill="#22d3ee"
                   radius={[6, 6, 0, 0]}
                 />
-                <Bar dataKey="aeds" name="AED" fill="#7fc4bb" radius={[6, 6, 0, 0]} />
-                <Bar dataKey="fas" name="Fire alarm" fill="#e8a33d" radius={[6, 6, 0, 0]} />
+                <Bar dataKey="aeds" name="AED" fill="#38bdf8" radius={[6, 6, 0, 0]} />
+                <Bar dataKey="fas" name="Fire alarm" fill="#ff2d92" radius={[6, 6, 0, 0]} />
               </BarChart>
             </ChartFrame>
           ) : (
@@ -705,11 +705,11 @@ function DueList({ rows, empty, meta, loading }) {
       {rows.map((r) => (
         <li
           key={r.key}
-          className="flex items-center gap-3.5 rounded-xl bg-surface-50 px-4 py-3 ring-1 ring-ink-900/5"
+          className="flex items-center gap-3.5 rounded-xl bg-surface-50 px-4 py-3 ring-1 ring-white/10"
         >
           <span
             className="h-[34px] w-1 flex-none rounded"
-            style={{ background: r.overdue ? '#ef4444' : r.due ? '#e8a33d' : '#ab987f' }}
+            style={{ background: r.overdue ? '#f87171' : r.due ? '#fbbf24' : '#22d3ee' }}
           />
           <div className="min-w-0 flex-1">
             <p className="truncate text-[13.5px] font-semibold text-ink-900">{r.title}</p>

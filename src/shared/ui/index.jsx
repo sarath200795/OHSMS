@@ -102,6 +102,7 @@ export const IconButton = forwardRef(function IconButton(
         VARIANT[variant] || 'btn-ghost',
         'justify-center !px-0',
         ICON_SIZE[size] || ICON_SIZE.md,
+        '!rounded-xl',
         className
       )}
       disabled={disabled || loading}
@@ -210,7 +211,7 @@ export function Field({
         </p>
       )}
       {error && (
-        <p id={errorId} role="alert" className="mt-1 text-xs font-medium text-red-600">
+        <p id={errorId} role="alert" className="mt-1 text-xs font-medium text-red-400">
           {error}
         </p>
       )}
@@ -397,7 +398,7 @@ export function EmptyState({ icon: Icon, title, description, hint, message, acti
       )}
     >
       {Icon && (
-        <span className="grid h-12 w-12 place-items-center rounded-xl bg-surface-100 text-ink-400 ring-1 ring-ink-900/5">
+        <span className="grid h-12 w-12 place-items-center rounded-xl bg-surface-100 text-ink-400 ring-1 ring-white/10">
           <Icon size={24} />
         </span>
       )}
@@ -557,7 +558,7 @@ export function Modal({
           {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
           <div
             aria-hidden="true"
-            className="absolute inset-0 bg-ink-950/40 backdrop-blur-sm"
+            className="absolute inset-0 bg-black/55 backdrop-blur-sm"
             onClick={onClose}
           />
           <motion.div

@@ -409,7 +409,7 @@ function ActivityCard({ activity, index, internalMembers, canRemove, onTitle, on
   return (
     <div className="rounded-2xl border border-surface-200 bg-surface/60 p-4">
       <div className="mb-3 flex items-end gap-2">
-        <span className="mb-2.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-ink-900 text-xs font-bold text-white">{index + 1}</span>
+        <span className="mb-2.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-magenta-500 text-xs font-bold text-white">{index + 1}</span>
         <Field label="Activity / Task / Process" className="flex-1">
           <input className="input" placeholder="e.g. Unloading trailers" value={activity.title} onChange={(e) => onTitle(e.target.value)} />
         </Field>

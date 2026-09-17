@@ -219,7 +219,7 @@ export default function Inventory() {
             type="button"
             onClick={() => setTab(t.key)}
             className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-sm font-semibold transition ${
-              tab === t.key ? 'bg-ink-900 text-white' : 'bg-ink-100 text-ink-600 hover:bg-ink-200'
+              tab === t.key ? 'bg-magenta-500 text-white' : 'bg-ink-100 text-ink-600 hover:bg-ink-200'
             }`}
           >
             <t.icon size={14} /> {t.label}
@@ -485,7 +485,7 @@ function DefectModal({ target, onClose, onSave }) {
               type="button"
               onClick={() => toggle(d.key)}
               className={`rounded-xl px-3 py-1.5 text-sm font-semibold transition ${
-                picked.includes(d.key) ? 'bg-ink-900 text-white' : 'bg-ink-100 text-ink-600 hover:bg-ink-200'
+                picked.includes(d.key) ? 'bg-magenta-500 text-white' : 'bg-ink-100 text-ink-600 hover:bg-ink-200'
               }`}
             >
               {d.label}

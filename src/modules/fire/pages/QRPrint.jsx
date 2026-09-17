@@ -81,7 +81,7 @@ export default function QRPrint() {
       <PageHeader title="Print QR Codes" subtitle={`${items.length} selected for printing`} icon={QrCode}>
         <div className="flex rounded-xl bg-surface-100 p-1 no-print">
           {Object.entries(CFG).map(([k, c]) => (
-            <button key={k} onClick={() => switchType(k)} className={`rounded-lg px-3 py-1.5 text-xs font-bold ${assetType === k ? 'bg-white text-ink-900 shadow-elev-sm' : 'text-ink-500'}`}>
+            <button key={k} onClick={() => switchType(k)} className={`rounded-lg px-3 py-1.5 text-xs font-bold ${assetType === k ? 'bg-surface text-ink-900 shadow-elev-sm' : 'text-ink-500'}`}>
               {c.tab}
             </button>
           ))}

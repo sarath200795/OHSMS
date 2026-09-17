@@ -38,7 +38,7 @@ import {
   GRANULARITIES, GROUP_DIMS, PASS_MARK,
 } from './odinAnalytics'
 
-const axis = { tickLine: false, axisLine: false, fontSize: 11, tick: { fill: '#8a7660' } }
+const axis = { tickLine: false, axisLine: false, fontSize: 11, tick: { fill: '#8b9cb8' } }
 
 const num = (v) => (v == null ? '—' : Number(v).toLocaleString())
 
@@ -120,7 +120,7 @@ function Segments({ label, value, options, onChange }) {
             aria-pressed={value === o.key}
             onClick={() => onChange(o.key)}
             className={`rounded-xl px-2.5 py-1.5 text-[11.5px] font-semibold transition ${
-              value === o.key ? 'bg-ink-800 text-white shadow-elev-sm' : 'text-ink-500 hover:text-ink-800'
+              value === o.key ? 'bg-brand-500/20 text-brand-700 shadow-elev-sm' : 'text-ink-500 hover:text-ink-800'
             }`}
           >
             {o.label}
@@ -666,7 +666,7 @@ export default function OdinTab({ view = 'scores', sites = [], orgId, actor, isA
                     <Tooltip cursor={{ fill: 'rgba(227,204,191,0.35)' }} />
                     <Bar dataKey="value" name="Findings" radius={[0, 6, 6, 0]}>
                       {a.bySubCategoryAll.map((d) => <Cell key={d.name} fill={d.color} />)}
-                      <LabelList dataKey="value" position="right" style={{ fontSize: 11, fill: '#8a7660' }} />
+                      <LabelList dataKey="value" position="right" style={{ fontSize: 11, fill: '#8b9cb8' }} />
                     </Bar>
                   </BarChart>
                 </ChartFrame>
@@ -1188,7 +1188,7 @@ function ObservationsPanel({ observations }) {
                 radius={i === owners.length - 1 ? [0, 4, 4, 0] : undefined}
               >
                 {i === owners.length - 1 && (
-                  <LabelList dataKey="total" position="right" style={{ fontSize: 10.5, fill: '#8a7660' }} />
+                  <LabelList dataKey="total" position="right" style={{ fontSize: 10.5, fill: '#8b9cb8' }} />
                 )}
               </Bar>
             ))}
@@ -1490,7 +1490,7 @@ function issuePin(pin) {
       key,
       L.divIcon({
         className: '',
-        html: `<div style="transform:translate(-50%,-50%);display:grid;place-items:center;width:${size}px;height:${size}px;border-radius:50%;background:conic-gradient(${stops.join(',')});box-shadow:0 3px 10px rgba(16,24,40,.35)"><span style="display:grid;place-items:center;width:${inner}px;height:${inner}px;border-radius:50%;background:#fff;color:${lead};font:800 ${Math.round(inner / 2.4)}px Inter,sans-serif">${pin.total}</span></div>`,
+        html: `<div style="transform:translate(-50%,-50%);display:grid;place-items:center;width:${size}px;height:${size}px;border-radius:50%;background:conic-gradient(${stops.join(',')});box-shadow:0 3px 10px rgba(16,24,40,.35)"><span style="display:grid;place-items:center;width:${inner}px;height:${inner}px;border-radius:50%;background:#fff;color:${lead};font:800 ${Math.round(inner / 2.4)}px 'Open Sans',sans-serif">${pin.total}</span></div>`,
         iconSize: [size, size],
       })
     )
@@ -1530,7 +1530,7 @@ function IssueMap({ cities, sites }) {
               type="button"
               onClick={() => setBy(o.k)}
               className={`rounded-xl px-3 py-1.5 text-[11.5px] font-semibold transition ${
-                by === o.k ? 'bg-white text-ink-800 shadow-elev-sm' : 'text-ink-500 hover:text-ink-700'
+                by === o.k ? 'bg-surface text-ink-800 shadow-elev-sm' : 'text-ink-500 hover:text-ink-700'
               }`}
             >
               {o.label}
@@ -1902,10 +1902,10 @@ function PassPanel({ title, subtitle, rows }) {
           <Tooltip formatter={tip} cursor={{ fill: 'rgba(227,204,191,0.35)' }} />
           <Legend iconType="circle" wrapperStyle={{ fontSize: 11 }} />
           <Bar dataKey="day0" name="Day of audit" fill="#f59e0b" radius={[0, 5, 5, 0]}>
-            <LabelList dataKey="day0" position="right" formatter={(v) => (v == null ? '' : `${v}%`)} style={{ fontSize: 10.5, fill: '#8a7660' }} />
+            <LabelList dataKey="day0" position="right" formatter={(v) => (v == null ? '' : `${v}%`)} style={{ fontSize: 10.5, fill: '#8b9cb8' }} />
           </Bar>
           <Bar dataKey="n7" name="N+7" fill="#0d9488" radius={[0, 5, 5, 0]}>
-            <LabelList dataKey="n7" position="right" formatter={(v) => (v == null ? '' : `${v}%`)} style={{ fontSize: 10.5, fill: '#8a7660' }} />
+            <LabelList dataKey="n7" position="right" formatter={(v) => (v == null ? '' : `${v}%`)} style={{ fontSize: 10.5, fill: '#8b9cb8' }} />
           </Bar>
         </BarChart>
       </ChartFrame>

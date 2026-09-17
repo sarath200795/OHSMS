@@ -1,8 +1,8 @@
-@import '@fontsource/inter/400.css';
-@import '@fontsource/inter/500.css';
-@import '@fontsource/inter/600.css';
-@import '@fontsource/inter/700.css';
-@import '@fontsource/inter/800.css';
+@import '@fontsource/open-sans/400.css';
+@import '@fontsource/open-sans/500.css';
+@import '@fontsource/open-sans/600.css';
+@import '@fontsource/open-sans/700.css';
+@import '@fontsource/open-sans/800.css';
 /* Leaflet map (Sites map tab). */
 @import 'leaflet/dist/leaflet.css';
 @import 'leaflet.markercluster/dist/MarkerCluster.css';
@@ -12,11 +12,16 @@
 @tailwind utilities;
 
 :root {
-  color-scheme: light;
+  color-scheme: dark;
   /* Emil motion tokens available to raw CSS / inline styles. */
   --ease-emil: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-emil-in-out: cubic-bezier(0.77, 0, 0.175, 1);
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  --canvas: #0c1024;
+  --surface: #151b36;
+  --ink: #f4f7ff;
+  --cyan: #22d3ee;
+  --magenta: #ff2d92;
 }
 
 * {
@@ -24,27 +29,25 @@
 }
 
 ::selection {
-  background: rgba(199, 74, 51, 0.16);
-  color: #0f172a;
+  background: rgba(34, 211, 238, 0.28);
+  color: #f4f7ff;
 }
 
 body {
   @apply text-ink-900 font-sans antialiased;
-  background-color: #f4f6f8;
+  background-color: #0c1024;
   margin: 0;
   overflow-wrap: break-word;
-  font-feature-settings: 'cv11', 'ss01', 'ss03';
   letter-spacing: -0.011em;
 }
 
-/* Auth / public pages — cool slate with a restrained coral accent, not a
-   kraft glow over umber. */
+/* Auth / public pages — navy with cyan and magenta blooms, matching the kit. */
 .aurora {
   background:
-    radial-gradient(42% 52% at 12% 18%, rgba(199, 74, 51, 0.38), transparent 62%),
-    radial-gradient(38% 48% at 88% 12%, rgba(13, 148, 136, 0.22), transparent 60%),
-    radial-gradient(50% 60% at 78% 88%, rgba(51, 65, 85, 0.45), transparent 62%),
-    radial-gradient(40% 50% at 18% 92%, rgba(14, 165, 233, 0.14), transparent 60%), #020617;
+    radial-gradient(42% 52% at 12% 18%, rgba(255, 45, 146, 0.32), transparent 62%),
+    radial-gradient(38% 48% at 88% 12%, rgba(34, 211, 238, 0.28), transparent 60%),
+    radial-gradient(50% 60% at 78% 88%, rgba(56, 189, 248, 0.18), transparent 62%),
+    radial-gradient(40% 50% at 18% 92%, rgba(99, 102, 241, 0.22), transparent 60%), #0c1024;
   background-size: 200% 200%;
   animation: aurora-move 18s ease infinite;
 }
@@ -62,10 +65,10 @@ body {
 }
 
 .glass {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(21, 27, 54, 0.72);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 /* Custom scrollbar */
@@ -77,63 +80,83 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: #2f3b63;
   border-radius: 999px;
   border: 2px solid transparent;
   background-clip: content-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: #44527a;
   background-clip: content-box;
 }
 
 @layer components {
-  /* ── Surfaces (flat-to-subtle ops dashboard) ───────────────────────────────
-     White cards on a cool canvas, hairline borders, one-direction elevation.
-     Inputs are outlined, not recessed wells. Pressable controls still scale
-     on :active (Emil), durations < 300ms. Coral is an accent, not a material.
+  /* ── Surfaces (dark neon ops kit) ──────────────────────────────────────────
+     Glass cards on a navy canvas, hairline light borders, cyan/magenta glow.
+     Inputs are outlined dark fields. Pressable controls still scale on
+     :active (Emil), durations < 300ms. Pills for text buttons; squircles
+     for icon buttons (IconButton adds !rounded-xl).
 
-     The focus-visible ring is not decoration. A 1px slate border against a
-     slate canvas is easy to miss, so the browser's default outline — drawn
-     tight to a rounded edge it does not follow — was very nearly invisible
-     on .btn-ghost and .btn-soft. A keyboard user tabbing a permit approval
-     screen could not tell which control they were on. It matches .input's
-     `ring-2 ring-brand-200` below deliberately: focus should look like one
-     thing in this app, not two.
-
-     focus-visible rather than focus, so a mouse click does not leave a ring
-     behind on a button the user has already finished with. */
+     The focus-visible ring is not decoration. A 1px hairline against navy is
+     easy to miss. Cyan ring + canvas offset matches .input. focus-visible
+     rather than focus, so a mouse click does not leave a ring behind. */
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold
+    @apply inline-flex items-center justify-center gap-2 rounded-full px-4 py-2.5 text-sm font-semibold
       transition-all duration-200 ease-emil
       disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none disabled:pointer-events-none
       active:scale-[0.98]
       focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400
-      focus-visible:ring-offset-2 focus-visible:ring-offset-white;
+      focus-visible:ring-offset-2;
+    --tw-ring-offset-color: #0c1024;
   }
   .btn-primary {
-    @apply btn bg-brand-600 text-white hover:bg-brand-700;
+    @apply btn text-white;
+    background-image: linear-gradient(90deg, #ff2d92 0%, #e11d8a 100%);
     box-shadow: theme('boxShadow.elev-brand');
   }
+  .btn-primary:hover {
+    background-image: linear-gradient(90deg, #ff4da6 0%, #ff2d92 100%);
+  }
   .btn-ghost {
-    @apply btn bg-white text-ink-700 shadow-none ring-1 ring-ink-200
-      hover:bg-slate-50 hover:ring-ink-300;
+    @apply btn text-ink-800 shadow-none ring-1 ring-white/15;
+    background-color: rgba(21, 27, 54, 0.55);
+  }
+  .btn-ghost:hover {
+    background-color: rgba(255, 255, 255, 0.06);
   }
   .btn-soft {
-    @apply btn bg-brand-50 text-brand-700 ring-1 ring-brand-200/80 hover:bg-brand-100;
+    @apply btn text-brand-700 ring-1 ring-brand-400/40;
+    background-color: rgba(34, 211, 238, 0.12);
+  }
+  .btn-soft:hover {
+    background-color: rgba(34, 211, 238, 0.2);
   }
   .btn-danger {
     @apply btn bg-red-600 text-white hover:bg-red-700;
   }
 
   .input {
-    @apply w-full rounded-lg border border-ink-200 bg-white px-3.5 py-2.5 text-sm
-      text-ink-900 placeholder:text-ink-400 outline-none shadow-none transition
-      hover:border-ink-300
-      focus:border-brand-500 focus:ring-2 focus:ring-brand-200;
+    @apply w-full rounded-xl border px-3.5 py-2.5 text-sm
+      text-ink-900 outline-none shadow-none transition;
+    border-color: #2f3b63;
+    background-color: #121833;
+  }
+  .input::placeholder {
+    color: #8b9cb8;
+  }
+  .input:hover {
+    border-color: #44527a;
+  }
+  .input:focus {
+    border-color: #22d3ee;
+    box-shadow: 0 0 0 2px rgba(34, 211, 238, 0.28);
   }
   .input[aria-invalid='true'] {
-    @apply border-red-400 focus:border-red-500 focus:ring-red-200;
+    @apply border-red-400;
+  }
+  .input[aria-invalid='true']:focus {
+    border-color: #f87171;
+    box-shadow: 0 0 0 2px rgba(248, 113, 113, 0.28);
   }
   .label {
     @apply mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-500;
@@ -146,7 +169,7 @@ body {
      module cannot forget. */
   select.input,
   select.appearance-none {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%234a5568' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238b9cb8' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
     background-position: right 0.85rem center;
     background-repeat: no-repeat;
     background-size: 1rem 1rem;
@@ -159,37 +182,48 @@ body {
     @apply overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch];
   }
 
-  /* Surfaces. Hairline is the panel; the shadow is only there so it lifts
+  /* Surfaces. Hairline is the panel; the glow is only there so it lifts
      off the canvas. `.well` is a muted fill + border, not a recessed inset. */
   .card {
-    @apply rounded-xl bg-white ring-1 ring-ink-200;
+    @apply rounded-2xl ring-1 ring-white/10;
+    background-color: rgba(21, 27, 54, 0.78);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
     box-shadow: theme('boxShadow.elev');
   }
   .well {
-    @apply rounded-lg bg-slate-50 ring-1 ring-ink-200;
+    @apply rounded-xl ring-1 ring-white/10;
+    background-color: rgba(12, 16, 36, 0.55);
   }
   .chip {
-    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-ink-200;
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-white/10;
   }
 
   /* Secondary nav — module tabs, settings, sites, analytics. One active
-     treatment so moving between them does not feel like changing products. */
+     treatment so moving between them does not feel like changing products.
+     Kit: cyan/magenta active pills, not an underline. */
   .nav-tab {
-    @apply relative inline-flex shrink-0 items-center gap-2 rounded-md px-3 py-2 text-sm font-medium
+    @apply relative inline-flex shrink-0 items-center gap-2 rounded-full px-3 py-2 text-sm font-medium
       transition-colors duration-200 ease-emil
       focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400
-      focus-visible:ring-offset-2 focus-visible:ring-offset-white;
+      focus-visible:ring-offset-2;
+    --tw-ring-offset-color: #0c1024;
   }
   .nav-tab-idle {
-    @apply text-ink-500 hover:bg-slate-100 hover:text-ink-800 active:scale-[0.98];
+    @apply text-ink-500 hover:text-ink-800 active:scale-[0.98];
+  }
+  .nav-tab-idle:hover {
+    background-color: rgba(255, 255, 255, 0.05);
   }
   .nav-tab-active {
-    @apply bg-white text-ink-900 ring-1 ring-ink-200;
-    box-shadow: theme('boxShadow.elev-sm');
+    @apply text-brand-700 ring-1 ring-brand-400/40;
+    background-color: rgba(34, 211, 238, 0.14);
+    box-shadow: 0 0 18px rgba(34, 211, 238, 0.18);
   }
   .tab-strip {
-    @apply mb-5 flex gap-1 overflow-x-auto overscroll-x-contain rounded-lg bg-slate-100 p-1
-      ring-1 ring-ink-200 [-webkit-overflow-scrolling:touch];
+    @apply mb-5 flex gap-1 overflow-x-auto overscroll-x-contain rounded-xl p-1
+      ring-1 ring-white/10 [-webkit-overflow-scrolling:touch];
+    background-color: rgba(12, 16, 36, 0.55);
   }
 
   /* ── Skeleton loaders ──────────────────────────────────────────────────────
@@ -197,23 +231,26 @@ body {
      prefers-reduced-motion the sweep is removed and it degrades to a gentle
      opacity pulse (handled below). */
   .skeleton {
-    @apply relative overflow-hidden rounded-md bg-slate-200;
+    @apply relative overflow-hidden rounded-md;
+    background-color: #1a2144;
   }
   .skeleton::after {
     content: '';
     @apply absolute inset-0 -translate-x-full animate-shimmer;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.7), transparent);
+    background: linear-gradient(90deg, transparent, rgba(34, 211, 238, 0.16), transparent);
   }
 }
 
 /* ── Map (Leaflet) site hover bubble with live summary ───────────────────────*/
+/* ── Map (Leaflet) site hover bubble with live summary ───────────────────────*/
 .leaflet-tooltip.site-bubble {
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
+  background: #151b36;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
   box-shadow:
-    0 10px 15px -3px rgba(15, 23, 42, 0.08),
-    0 4px 6px -4px rgba(15, 23, 42, 0.04);
+    0 0 0 1px rgba(255, 255, 255, 0.06),
+    0 18px 48px rgba(4, 8, 24, 0.55);
+  color: #f4f7ff;
   padding: 8px 12px;
   white-space: normal;
 }
@@ -221,16 +258,16 @@ body {
    when there is no room above it, and Leaflet colours a different border edge
    for each direction. */
 .leaflet-tooltip.site-bubble.leaflet-tooltip-top::before {
-  border-top-color: #ffffff;
+  border-top-color: #151b36;
 }
 .leaflet-tooltip.site-bubble.leaflet-tooltip-bottom::before {
-  border-bottom-color: #ffffff;
+  border-bottom-color: #151b36;
 }
 .leaflet-tooltip.site-bubble.leaflet-tooltip-left::before {
-  border-left-color: #ffffff;
+  border-left-color: #151b36;
 }
 .leaflet-tooltip.site-bubble.leaflet-tooltip-right::before {
-  border-right-color: #ffffff;
+  border-right-color: #151b36;
 }
 /* Slid sideways to stay on the map, so the arrow no longer aims at the pin. */
 .leaflet-tooltip.site-bubble--shifted::before {
@@ -243,16 +280,16 @@ body {
 .site-bubble-title {
   font-weight: 700;
   font-size: 13px;
-  color: #0f172a;
+  color: #f4f7ff;
   line-height: 1.2;
 }
 .site-bubble-sub {
   font-size: 11px;
-  color: #64748b;
+  color: #8b9cb8;
 }
 .site-bubble-addr {
   font-size: 11px;
-  color: #94a3b8;
+  color: #8b9cb8;
   margin-top: 1px;
 }
 .site-bubble-stats {
@@ -261,28 +298,28 @@ body {
   gap: 2px 10px;
   margin-top: 6px;
   font-size: 11px;
-  color: #475569;
+  color: #a8b6cc;
 }
 .site-bubble-stats b {
-  color: #0f172a;
+  color: #f4f7ff;
 }
 .site-bubble-hint {
   margin-top: 6px;
   font-size: 10px;
   font-style: italic;
-  color: #94a3b8;
+  color: #8b9cb8;
 }
 
 .site-cluster {
   display: grid;
   place-items: center;
   border-radius: 50%;
-  background: #c74a33;
+  background: linear-gradient(180deg, #ff2d92, #e11d8a);
   color: #fff;
   font-weight: 800;
   font-size: 13px;
-  border: 2px solid #ffffff;
-  box-shadow: 0 4px 12px -4px rgba(199, 74, 51, 0.45);
+  border: 2px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 0 16px rgba(255, 45, 146, 0.45);
 }
 
 /* ── Data-dense areas stay crisp ───────────────────────────────────────────── */
@@ -290,7 +327,7 @@ body {
   @apply w-full text-sm;
 }
 .table-crisp thead th {
-  @apply bg-slate-50;
+  background-color: rgba(12, 16, 36, 0.55);
 }
 .table-crisp th,
 .table-crisp td {
@@ -300,10 +337,27 @@ body {
   @apply transition-colors duration-150;
 }
 .table-crisp tbody tr:hover td {
-  @apply bg-slate-50;
+  background-color: rgba(34, 211, 238, 0.06);
 }
 .table-crisp tbody tr:last-child td {
   @apply border-b-0;
+}
+
+.recharts-default-tooltip {
+  background: #151b36 !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 12px 32px rgba(4, 8, 24, 0.45) !important;
+  color: #f4f7ff !important;
+}
+.recharts-tooltip-item,
+.recharts-tooltip-label {
+  color: #e8eefc !important;
+}
+
+option {
+  background-color: #151b36;
+  color: #f4f7ff;
 }
 
 /* ── Accessibility: respect reduced motion ───────────────────────────────────
@@ -339,7 +393,19 @@ body {
 .doc-sheet {
   background: #ffffff;
   color: #0f172a;
-  font-family: Inter, system-ui, 'Segoe UI', sans-serif;
+  font-family: 'Open Sans', system-ui, 'Segoe UI', sans-serif;
+}
+/* Screen ink is inverted for the SPA. Printables that still use text-ink-*
+   on white paper must keep dark type or the certificate reads as blank. */
+.doc-sheet .text-ink-900,
+.doc-sheet .text-ink-800,
+.doc-sheet .text-ink-700,
+.doc-sheet .text-ink-600 {
+  color: #0f172a;
+}
+.doc-sheet .text-ink-500,
+.doc-sheet .text-ink-400 {
+  color: #5b6573;
 }
 .doc-kicker {
   margin: 0 0 4px;
@@ -347,7 +413,7 @@ body {
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: #c74a33;
+  color: #e11d8a;
 }
 .doc-title {
   margin: 0;
@@ -364,7 +430,7 @@ body {
   gap: 16px;
   margin-bottom: 24px;
   padding-bottom: 12px;
-  border-bottom: 2px solid #c74a33;
+  border-bottom: 2px solid #e11d8a;
 }
 .doc-meta {
   text-align: right;
@@ -423,7 +489,7 @@ body {
 .doc-quote {
   margin: 0 0 12px;
   padding: 8px 12px;
-  border-left: 3px solid #c74a33;
+  border-left: 3px solid #e11d8a;
   background: #f8fafc;
   color: #2c3848;
   font-size: 13px;

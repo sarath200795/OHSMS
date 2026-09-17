@@ -91,13 +91,13 @@ const PermitPrintable = forwardRef(function PermitPrintable({ permit, documents 
   const meta = statusMeta(permit.status)
 
   return (
-    <div ref={ref} className="print-area" style={{ position: 'relative', background: '#ffffff', color: '#0f172a', padding: 28, fontFamily: 'Inter, system-ui, sans-serif' }}>
+    <div ref={ref} className="print-area" style={{ position: 'relative', background: '#ffffff', color: '#0f172a', padding: 28, fontFamily: "'Open Sans', system-ui, sans-serif" }}>
       <Watermark label={meta.label} color={meta.color} />
 
       {/* Header */}
       <div style={{ position: 'relative', zIndex: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: `2px solid ${meta.color}`, paddingBottom: 10 }}>
         <div>
-          <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#c74a33', marginBottom: 4 }}>WEHS · Permit to work</div>
+          <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#e11d8a', marginBottom: 4 }}>WEHS · Permit to work</div>
           <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: '-0.02em', color: '#0f172a' }}>Permit to work</div>
           <div style={{ fontSize: 12, color: '#5b6573' }}>{permit.permitNo}</div>
         </div>

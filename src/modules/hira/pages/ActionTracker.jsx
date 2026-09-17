@@ -136,7 +136,7 @@ export default function ActionTracker() {
             <button
               key={f.key}
               onClick={() => setFocus(f.key)}
-              className={`chip transition hover:scale-105 ${focus === f.key ? 'bg-ink-900 text-white' : 'bg-surface-100 text-ink-600'}`}
+              className={`chip transition hover:scale-105 ${focus === f.key ? 'bg-magenta-500 text-white' : 'bg-surface-100 text-ink-600'}`}
             >
               {f.label}
             </button>

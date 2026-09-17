@@ -2,7 +2,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, Cell } from 'recharts'
 import ChartFrame from '../../shared/ui/ChartFrame'
 import { Panel, NoData } from './ui'
 
-const axis = { tickLine: false, axisLine: false, fontSize: 11, tick: { fill: '#8a7660' } }
+const axis = { tickLine: false, axisLine: false, fontSize: 11, tick: { fill: '#8b9cb8' } }
 
 /**
  * A horizontal bar list.
@@ -12,7 +12,7 @@ const axis = { tickLine: false, axisLine: false, fontSize: 11, tick: { fill: '#8
  * axis is unreadable. These panels exist to be read as labels, not compared as
  * heights, so the layout follows the label.
  */
-export default function Breakdown({ title, subtitle, rows = [], color = '#c74a33' }) {
+export default function Breakdown({ title, subtitle, rows = [], color = '#22d3ee' }) {
   const height = Math.max(160, rows.length * 34 + 24)
   return (
     <Panel title={title} subtitle={subtitle}>

@@ -35,7 +35,7 @@ export default function IdleGuard({ signOut }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/40 p-4 backdrop-blur-sm animate-fade-in"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm animate-fade-in"
       role="alertdialog"
       aria-modal="true"
       aria-labelledby="idle-title"

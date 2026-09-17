@@ -26,8 +26,8 @@ export default function PlatformShell({ children }) {
       >
         Skip to main content
       </a>
-      <header className="sticky top-0 z-30 flex items-center gap-3 border-b border-white/10 bg-ink-950/95 px-5 py-3 backdrop-blur-xl sm:px-7">
-        <span className="grid h-8 w-8 flex-none place-items-center rounded-lg bg-ink-800 text-ink-200 ring-1 ring-white/10">
+      <header className="sticky top-0 z-30 flex items-center gap-3 border-b border-white/10 bg-surface/95 px-5 py-3 backdrop-blur-xl sm:px-7">
+        <span className="grid h-8 w-8 flex-none place-items-center rounded-lg bg-white/10 text-ink-400 ring-1 ring-white/10">
           <SlidersHorizontal size={16} />
         </span>
         <span className="leading-tight">
@@ -45,7 +45,7 @@ export default function PlatformShell({ children }) {
         <button
           type="button"
           onClick={() => signOut?.()}
-          className="flex items-center gap-2 rounded-xl px-3 py-2 text-[12.5px] font-semibold text-ink-200 transition-colors hover:bg-ink-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+          className="flex items-center gap-2 rounded-xl px-3 py-2 text-[12.5px] font-semibold text-ink-200 transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
         >
           <LogOut size={15} />
           Sign out
