@@ -29,7 +29,8 @@
 }
 
 body {
-  @apply bg-canvas text-ink-900 font-sans antialiased;
+  @apply text-ink-900 font-sans antialiased;
+  background-color: #f4f6f8;
   margin: 0;
   overflow-wrap: break-word;
   font-feature-settings: 'cv11', 'ss01', 'ss03';
@@ -108,14 +109,15 @@ body {
       disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none disabled:pointer-events-none
       active:scale-[0.98]
       focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400
-      focus-visible:ring-offset-2 focus-visible:ring-offset-canvas;
+      focus-visible:ring-offset-2 focus-visible:ring-offset-white;
   }
   .btn-primary {
-    @apply btn bg-brand-600 text-white shadow-elev-brand hover:bg-brand-700;
+    @apply btn bg-brand-600 text-white hover:bg-brand-700;
+    box-shadow: theme('boxShadow.elev-brand');
   }
   .btn-ghost {
-    @apply btn bg-surface text-ink-700 shadow-none ring-1 ring-ink-200
-      hover:bg-surface-50 hover:ring-ink-300;
+    @apply btn bg-white text-ink-700 shadow-none ring-1 ring-ink-200
+      hover:bg-slate-50 hover:ring-ink-300;
   }
   .btn-soft {
     @apply btn bg-brand-50 text-brand-700 ring-1 ring-brand-200/80 hover:bg-brand-100;
@@ -125,7 +127,7 @@ body {
   }
 
   .input {
-    @apply w-full rounded-lg border border-ink-200 bg-surface px-3.5 py-2.5 text-sm
+    @apply w-full rounded-lg border border-ink-200 bg-white px-3.5 py-2.5 text-sm
       text-ink-900 placeholder:text-ink-400 outline-none shadow-none transition
       hover:border-ink-300
       focus:border-brand-500 focus:ring-2 focus:ring-brand-200;
@@ -160,10 +162,11 @@ body {
   /* Surfaces. Hairline is the panel; the shadow is only there so it lifts
      off the canvas. `.well` is a muted fill + border, not a recessed inset. */
   .card {
-    @apply rounded-xl bg-surface shadow-elev ring-1 ring-ink-200;
+    @apply rounded-xl bg-white ring-1 ring-ink-200;
+    box-shadow: theme('boxShadow.elev');
   }
   .well {
-    @apply rounded-lg bg-surface-50 ring-1 ring-ink-200;
+    @apply rounded-lg bg-slate-50 ring-1 ring-ink-200;
   }
   .chip {
     @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-ink-200;
@@ -175,16 +178,17 @@ body {
     @apply relative inline-flex shrink-0 items-center gap-2 rounded-md px-3 py-2 text-sm font-medium
       transition-colors duration-200 ease-emil
       focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400
-      focus-visible:ring-offset-2 focus-visible:ring-offset-canvas;
+      focus-visible:ring-offset-2 focus-visible:ring-offset-white;
   }
   .nav-tab-idle {
-    @apply text-ink-500 hover:bg-surface-100 hover:text-ink-800 active:scale-[0.98];
+    @apply text-ink-500 hover:bg-slate-100 hover:text-ink-800 active:scale-[0.98];
   }
   .nav-tab-active {
-    @apply bg-surface text-ink-900 shadow-elev-sm ring-1 ring-ink-200;
+    @apply bg-white text-ink-900 ring-1 ring-ink-200;
+    box-shadow: theme('boxShadow.elev-sm');
   }
   .tab-strip {
-    @apply mb-5 flex gap-1 overflow-x-auto overscroll-x-contain rounded-lg bg-surface-100 p-1
+    @apply mb-5 flex gap-1 overflow-x-auto overscroll-x-contain rounded-lg bg-slate-100 p-1
       ring-1 ring-ink-200 [-webkit-overflow-scrolling:touch];
   }
 
@@ -193,7 +197,7 @@ body {
      prefers-reduced-motion the sweep is removed and it degrades to a gentle
      opacity pulse (handled below). */
   .skeleton {
-    @apply relative overflow-hidden rounded-md bg-surface-200;
+    @apply relative overflow-hidden rounded-md bg-slate-200;
   }
   .skeleton::after {
     content: '';
@@ -286,7 +290,7 @@ body {
   @apply w-full text-sm;
 }
 .table-crisp thead th {
-  @apply bg-surface-50;
+  @apply bg-slate-50;
 }
 .table-crisp th,
 .table-crisp td {
@@ -296,7 +300,7 @@ body {
   @apply transition-colors duration-150;
 }
 .table-crisp tbody tr:hover td {
-  @apply bg-surface-50;
+  @apply bg-slate-50;
 }
 .table-crisp tbody tr:last-child td {
   @apply border-b-0;

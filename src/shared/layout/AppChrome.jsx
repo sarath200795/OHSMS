@@ -113,7 +113,7 @@ export default function AppChrome({ children }) {
         <NavLink
           to="/portal"
           aria-label={`${branded && orgName ? orgName : 'WEHS'} home`}
-          className="flex min-w-0 flex-none items-center gap-2.5 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
+          className="flex min-w-0 flex-none items-center gap-2.5 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
         >
           <OrgMark className="h-8 w-8 rounded-lg ring-1 ring-ink-900/10" />
           <span className="hidden min-w-0 leading-tight sm:block">
@@ -142,7 +142,7 @@ export default function AppChrome({ children }) {
             aria-expanded={menuOpen}
             aria-haspopup="menu"
             aria-controls="account-menu"
-            className="flex items-center gap-2.5 rounded-lg bg-surface px-1.5 py-1 ring-1 ring-ink-200 transition-all duration-200 ease-emil hover:ring-ink-300 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas sm:px-2 sm:py-1.5"
+            className="flex items-center gap-2.5 rounded-lg bg-surface px-1.5 py-1 ring-1 ring-ink-200 transition-all duration-200 ease-emil hover:ring-ink-300 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white sm:px-2 sm:py-1.5"
           >
             <span className="grid h-[28px] w-[28px] place-items-center rounded-lg bg-brand-600 text-[11px] font-bold text-white">
               {initials(name)}

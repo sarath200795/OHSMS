@@ -126,7 +126,7 @@ function Tile({ to, icon: Icon, gradient, label, title, delay = 0, logoKey }) {
                    transition-[transform,box-shadow] duration-200 ease-emil [transform-style:preserve-3d]
                    hover:-translate-y-0.5 hover:shadow-elev-lg hover:ring-ink-300
                    active:translate-y-0 active:scale-[0.99]
-                   focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas
+                   focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white
                    motion-reduce:transition-none motion-reduce:hover:translate-y-0"
       >
         {/* The logo lifts far enough off the card for the perspective to bend

@@ -43,7 +43,9 @@ export default {
           950: '#020617',
         },
         // Page canvas. Cards sit on this as white panels with a hairline.
-        canvas: '#f4f6f8',
+        canvas: {
+          DEFAULT: '#f4f6f8',
+        },
         // Raised / inset surfaces. DEFAULT is a white card; 50–400 are the
         // muted fills, row washes and hairline-adjacent greys. There is no
         // recessed "pressed into paper" stop — muted fill + border is the well.
@@ -341,5 +343,15 @@ export default {
       },
     },
   },
+  // Custom shadow / canvas utilities must be generated even when they only
+  // appear inside @apply, or PostCSS reports them as missing and the app
+  // paints a blank page.
+  safelist: [
+    'bg-canvas',
+    'shadow-elev',
+    'shadow-elev-sm',
+    'shadow-elev-lg',
+    'shadow-elev-brand',
+  ],
   plugins: [],
 }
