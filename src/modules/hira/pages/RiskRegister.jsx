@@ -147,7 +147,7 @@ export default function RiskRegister() {
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="card overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-clay-100/70 text-left text-xs uppercase tracking-wide text-ink-400">
+              <thead className="bg-surface-100/70 text-left text-xs uppercase tracking-wide text-ink-400">
                 <tr>
                   <th className="px-4 py-3">Assessment</th>
                   <th className="px-4 py-3">Site</th>
@@ -159,7 +159,7 @@ export default function RiskRegister() {
               </thead>
               <tbody className="divide-y divide-ink-100">
                 {pageItems.map((r, i) => (
-                  <tr key={`${r.assessmentId}-${r.hazard.id}-${i}`} className="cursor-pointer transition hover:bg-clay-100/40" onClick={() => navigate(`/hira/assessment/${r.assessmentId}`)}>
+                  <tr key={`${r.assessmentId}-${r.hazard.id}-${i}`} className="cursor-pointer transition hover:bg-surface-100/40" onClick={() => navigate(`/hira/assessment/${r.assessmentId}`)}>
                     <td className="px-4 py-3 font-semibold text-ink-900">{r.assessmentName}</td>
                     <td className="px-4 py-3">{r.siteName || '—'}</td>
                     <td className="px-4 py-3">{r.activityTitle}</td>

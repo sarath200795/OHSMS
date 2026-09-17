@@ -73,11 +73,11 @@ export default function MyActions() {
             type="button"
             onClick={() => setFilter(f.key)}
             className={`inline-flex items-center gap-2 rounded-2xl px-3.5 py-2 text-[12.5px] font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 ${
-              filter === f.key ? 'bg-clay-surface text-ink-900 shadow-clay-sm' : 'text-ink-500'
+              filter === f.key ? 'bg-surface text-ink-900 shadow-elev-sm' : 'text-ink-500'
             }`}
           >
             {f.label}
-            <span className="rounded-full bg-clay-100 px-2 py-0.5 text-[10.5px] font-bold text-ink-600">
+            <span className="rounded-full bg-surface-100 px-2 py-0.5 text-[10.5px] font-bold text-ink-600">
               {counts[f.key]}
             </span>
           </button>
@@ -104,7 +104,7 @@ export default function MyActions() {
             {visible.map((a) => (
               <div
                 key={a.key}
-                className="grid gap-3 px-5 py-4 transition-colors hover:bg-clay-50 lg:grid-cols-[1fr_130px_110px_110px_150px] lg:items-center"
+                className="grid gap-3 px-5 py-4 transition-colors hover:bg-surface-50 lg:grid-cols-[1fr_130px_110px_110px_150px] lg:items-center"
               >
                 <div className="min-w-0">
                   <p className="text-[13.5px] font-semibold text-ink-900">{a.title}</p>
@@ -122,7 +122,7 @@ export default function MyActions() {
                   value={a.norm}
                   disabled={savingKey === a.key}
                   onChange={(e) => setStatus(a, e.target.value)}
-                  className="w-full appearance-none rounded-2xl border border-transparent bg-clay-surface px-3 py-2 text-[12.5px] font-semibold text-ink-900 shadow-clay-inset outline-none disabled:opacity-50"
+                  className="w-full appearance-none rounded-2xl border border-transparent bg-surface px-3 py-2 text-[12.5px] font-semibold text-ink-900  outline-none disabled:opacity-50"
                 >
                   {NORM_STATUS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
                 </select>

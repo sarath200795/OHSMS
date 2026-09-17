@@ -19,7 +19,7 @@ export default function PlatformShell({ children }) {
   const { user, signOut } = useAuth()
 
   return (
-    <div className="min-h-screen bg-clay-bg">
+    <div className="min-h-screen bg-canvas">
       <a
         href="#main"
         className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[60] focus:rounded-xl focus:bg-brand-600 focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-white"
@@ -34,7 +34,7 @@ export default function PlatformShell({ children }) {
           <span className="block text-[13px] font-extrabold tracking-[-0.01em] text-white">
             Platform console
           </span>
-          <span className="block text-[11px] text-ink-400">Operator — all organizations</span>
+          <span className="block text-[11px] text-ink-300">Operator — all organizations</span>
         </span>
 
         <div className="flex-1" />

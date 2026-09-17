@@ -187,7 +187,7 @@ export default function EmployeeProvisioning({ orgId, orgName, actor, existingEm
             </button>
           </p>
 
-          <label className="clay-inset flex cursor-pointer flex-col items-center gap-2 rounded-2xl p-6 text-center transition hover:bg-clay-100">
+          <label className="well flex cursor-pointer flex-col items-center gap-2 rounded-2xl p-6 text-center transition hover:bg-surface-100">
             <Upload size={22} className="text-brand-600" />
             <span className="text-sm font-medium text-ink-700">{parsed ? parsed.fileName : 'Choose a CSV file'}</span>
             <span className="text-xs text-ink-400">Click to browse — .csv</span>
@@ -207,7 +207,7 @@ export default function EmployeeProvisioning({ orgId, orgName, actor, existingEm
                 {parsed.invalid.length > 0 && <Badge tone="red">{parsed.invalid.length} with errors (skipped)</Badge>}
               </div>
               {parsed.invalid.length > 0 && (
-                <ul className="max-h-32 space-y-1 overflow-y-auto rounded-xl bg-clay-surface p-3 text-xs text-ink-600 shadow-clay-inset">
+                <ul className="ring-1 ring-ink-200 max-h-32 space-y-1 overflow-y-auto rounded-xl bg-surface-50 p-3 text-xs text-ink-600 ">
                   {parsed.invalid.map((r) => (
                     <li key={r.__row}>
                       <AlertCircle size={12} className="mr-1 inline text-red-500" />
@@ -218,7 +218,7 @@ export default function EmployeeProvisioning({ orgId, orgName, actor, existingEm
               )}
               {progress && (
                 <div>
-                  <div className="h-2.5 w-full overflow-hidden rounded-full bg-clay-200">
+                  <div className="h-2.5 w-full overflow-hidden rounded-full bg-surface-200">
                     <div className="h-full rounded-full bg-brand-500 transition-all" style={{ width: `${(progress.done / progress.total) * 100}%` }} />
                   </div>
                   <p className="mt-1 text-xs text-ink-500">Creating accounts… {progress.done}/{progress.total}</p>

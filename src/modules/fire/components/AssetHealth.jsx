@@ -41,7 +41,7 @@ export function OpenDefectsPanel({ defects, hint, onDecide, canDecide = false, b
   const actionable = canDecide && typeof onDecide === 'function'
   return (
     <div className="card overflow-hidden">
-      <div className="flex items-center justify-between border-b border-clay-200/60 px-4 py-3">
+      <div className="flex items-center justify-between border-b border-surface-200/60 px-4 py-3">
         <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-ink-500">
           <AlertTriangle size={13} className="text-amber-500" /> Open defects
         </p>
@@ -54,7 +54,7 @@ export function OpenDefectsPanel({ defects, hint, onDecide, canDecide = false, b
           <p className="text-xs text-ink-400">{hint || 'Reports from QR scans will appear here for approval.'}</p>
         </div>
       ) : (
-        <ul className="divide-y divide-clay-200/60">
+        <ul className="divide-y divide-surface-200/60">
           {defects.map((r) => (
             <li key={r.id} className="flex items-center gap-3 px-4 py-2.5">
               <AlertTriangle size={15} className="shrink-0 text-red-500" />

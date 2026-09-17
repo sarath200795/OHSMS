@@ -27,7 +27,7 @@ function ControlTable({ controls, members, title }) {
   return (
     <div className="mt-3">
       <p className="mb-1.5 text-xs font-bold uppercase tracking-wide text-ink-500">{title}</p>
-      <div className="overflow-x-auto rounded-2xl bg-clay-surface shadow-clay-inset">
+      <div className="ring-1 ring-ink-200 overflow-x-auto rounded-2xl bg-surface-50 ">
         <table className="w-full text-sm">
           <thead className="text-left text-[11px] uppercase text-ink-400">
             <tr>
@@ -131,7 +131,7 @@ export default function AssessmentView() {
                 const init = initialRisk(h)
                 const resid = residualRisk(h)
                 return (
-                  <div key={h.id || hi} className="rounded-2xl bg-clay-bg/40 p-4 shadow-clay-inset">
+                  <div key={h.id || hi} className="ring-1 ring-ink-200 rounded-2xl bg-canvas/40 p-4 ">
                     <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                       <div className="flex items-center gap-2 font-bold text-ink-900">
                         <AlertTriangle size={16} className="text-brand-500" />
@@ -169,7 +169,7 @@ export default function AssessmentView() {
 function Detail({ icon: Icon, label, value }) {
   return (
     <div className="flex items-start gap-3">
-      <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-clay-surface text-brand-500 shadow-clay-inset"><Icon size={16} /></div>
+      <div className="ring-1 ring-ink-200 grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-surface-50 text-brand-500 "><Icon size={16} /></div>
       <div className="min-w-0">
         <p className="text-[11px] font-bold uppercase tracking-wide text-ink-400">{label}</p>
         <p className="truncate font-semibold text-ink-900">{value || '—'}</p>

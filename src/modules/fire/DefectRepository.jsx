@@ -118,7 +118,7 @@ export default function DefectRepository() {
                   <th className="px-4 py-3 text-right">Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-clay-200/60">
+              <tbody className="divide-y divide-surface-200/60">
                 {pageItems.map((row, i) => {
                   const Icon = row.icon
                   return (
@@ -127,7 +127,7 @@ export default function DefectRepository() {
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       transition={{ delay: Math.min(i * 0.02, 0.4) }}
-                      className="hover:bg-clay-100/50"
+                      className="hover:bg-surface-100/50"
                       style={{ boxShadow: `inset 4px 0 0 ${row.color}` }}
                     >
                       <td className="px-4 py-3">
@@ -187,7 +187,7 @@ export default function DefectRepository() {
             </table>
           </div>
           <Pager
-            className="border-t border-clay-200/60 px-4 py-3"
+            className="border-t border-surface-200/60 px-4 py-3"
             page={page}
             pageCount={pageCount}
             onPage={setPage}

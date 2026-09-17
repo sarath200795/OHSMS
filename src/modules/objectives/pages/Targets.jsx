@@ -125,9 +125,9 @@ export default function Targets() {
                   {isManager && <th className="px-4 py-3"><span className="sr-only">Actions</span></th>}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-clay-200/60">
+              <tbody className="divide-y divide-surface-200/60">
                 {pageItems.map((o) => (
-                  <tr key={o.id} className="hover:bg-clay-100/50">
+                  <tr key={o.id} className="hover:bg-surface-100/50">
                     <td className="px-5 py-3">
                       <p className="font-semibold text-ink-900">{o.kpiMeta?.label || o.kpi}</p>
                       <p className="text-xs text-ink-400">{o.kpiMeta?.source}</p>
@@ -180,7 +180,7 @@ export default function Targets() {
             </Field>
           </div>
 
-          <p className="rounded-xl bg-clay-surface px-3.5 py-2.5 text-xs text-ink-600 shadow-clay-inset">{kpi?.help}</p>
+          <p className="ring-1 ring-ink-200 rounded-xl bg-surface-50 px-3.5 py-2.5 text-xs text-ink-600 ">{kpi?.help}</p>
 
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Level *">

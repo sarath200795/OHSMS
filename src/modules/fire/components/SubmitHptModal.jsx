@@ -96,7 +96,7 @@ export default function SubmitHptModal({ open, onClose, ext, orgId, orgName, act
 
   return (
     <Modal open={open} onClose={onClose} title="Record hydrostatic test" maxWidth="max-w-lg">
-      <div className="mb-4 flex items-center gap-2 rounded-2xl bg-clay-surface px-3 py-2.5 text-sm text-ink-600 shadow-clay-inset">
+      <div className="ring-1 ring-ink-200 mb-4 flex items-center gap-2 rounded-2xl bg-surface-50 px-3 py-2.5 text-sm text-ink-600 ">
         <Gauge size={16} className="text-ink-400" />
         <span>
           Hydrostatic test for <span className="font-semibold text-ink-800">{label}</span>
@@ -145,7 +145,7 @@ export default function SubmitHptModal({ open, onClose, ext, orgId, orgName, act
 
       <Field label="Test certificate" className="mt-4">
         {file ? (
-          <div className="flex items-center gap-2 rounded-2xl bg-clay-surface px-3 py-2 shadow-clay-inset">
+          <div className="ring-1 ring-ink-200 flex items-center gap-2 rounded-2xl bg-surface-50 px-3 py-2 ">
             <Paperclip size={15} className="text-ink-400" />
             {file.data ? (
               <a href={safeHref(file.data)} target="_blank" rel="noreferrer" className="truncate text-sm text-ink-700 hover:underline">

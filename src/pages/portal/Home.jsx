@@ -106,13 +106,11 @@ const ADMIN_TOOLS = [
 ]
 
 /**
- * A module tile that tilts under the cursor.
+ * A module tile.
  *
- * The card and the logo move on different axes and by different amounts: the
- * card leans back, the logo lifts toward the viewer and turns slightly. Moving
- * them together would just be a scale — the gap between the two is what reads
- * as depth, and it is the reason the tile needs a perspective of its own rather
- * than inheriting one from the grid.
+ * The card stays flat (translate + hairline) so the home grid reads as an ops
+ * dashboard rather than a tray of clay objects. The logo still lifts in its
+ * own 3D scene — that is the object doing the thing it is for, not the panel.
  *
  * Everything is transform and opacity, so it stays off the main thread, and
  * `motion-reduce` drops the whole effect rather than softening it.
@@ -124,12 +122,12 @@ function Tile({ to, icon: Icon, gradient, label, title, delay = 0, logoKey }) {
       <Link
         to={to}
         style={{ animationDelay: `${delay}ms` }}
-        className="group relative flex animate-fade-in-up items-center gap-4 rounded-2xl bg-clay-surface p-4 ring-1 ring-ink-900/[0.06] shadow-clay
-                   transition-[transform,box-shadow] duration-300 ease-emil [transform-style:preserve-3d]
-                   hover:shadow-clay-lg hover:ring-ink-900/10 hover:[transform:translateY(-6px)_rotateX(7deg)_rotateY(-7deg)]
-                   active:[transform:translateY(-2px)_scale(0.985)]
-                   focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-clay-bg
-                   motion-reduce:transition-none motion-reduce:hover:[transform:none]"
+        className="group relative flex animate-fade-in-up items-center gap-4 rounded-xl bg-surface p-4 ring-1 ring-ink-200 shadow-elev
+                   transition-[transform,box-shadow] duration-200 ease-emil [transform-style:preserve-3d]
+                   hover:-translate-y-0.5 hover:shadow-elev-lg hover:ring-ink-300
+                   active:translate-y-0 active:scale-[0.99]
+                   focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas
+                   motion-reduce:transition-none motion-reduce:hover:translate-y-0"
       >
         {/* The logo lifts far enough off the card for the perspective to bend
             it — the wobble below only reads as rotation because of this gap. */}
@@ -149,7 +147,7 @@ function Tile({ to, icon: Icon, gradient, label, title, delay = 0, logoKey }) {
               rest keep the turn, since a static glyph has nothing else to say. */}
           <span
             className={`relative grid h-full w-full place-items-center overflow-hidden rounded-2xl
-                        bg-gradient-to-br ${gradient} text-white shadow-clay-sm [transform-style:preserve-3d]
+                        bg-gradient-to-br ${gradient} text-white shadow-elev-sm [transform-style:preserve-3d]
                         ${has3D ? '' : 'group-hover:animate-wobble3d'} motion-reduce:group-hover:animate-none`}
           >
             {/* A built object where one exists; the line icon otherwise, rather
@@ -475,7 +473,7 @@ export default function PortalHome() {
                 <Link
                   key={a.key}
                   to="/portal/actions"
-                  className="flex items-center gap-2.5 rounded-xl bg-clay-50 px-3 py-2 ring-1 ring-ink-900/5 transition-colors hover:bg-clay-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+                  className="flex items-center gap-2.5 rounded-xl bg-surface-50 px-3 py-2 ring-1 ring-ink-900/5 transition-colors hover:bg-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
                 >
                   <span
                     className="h-6 w-1 flex-none rounded"
@@ -697,7 +695,7 @@ function DueList({ rows, empty, meta, loading }) {
   }
   if (!rows.length) {
     return (
-      <p className="rounded-xl bg-clay-50 px-4 py-6 text-center text-[13px] text-ink-400 ring-1 ring-ink-900/5">
+      <p className="rounded-xl bg-surface-50 px-4 py-6 text-center text-[13px] text-ink-400 ring-1 ring-ink-900/5">
         {empty}
       </p>
     )
@@ -707,7 +705,7 @@ function DueList({ rows, empty, meta, loading }) {
       {rows.map((r) => (
         <li
           key={r.key}
-          className="flex items-center gap-3.5 rounded-xl bg-clay-50 px-4 py-3 ring-1 ring-ink-900/5"
+          className="flex items-center gap-3.5 rounded-xl bg-surface-50 px-4 py-3 ring-1 ring-ink-900/5"
         >
           <span
             className="h-[34px] w-1 flex-none rounded"
@@ -722,7 +720,7 @@ function DueList({ rows, empty, meta, loading }) {
           </div>
           <span
             className={`flex-none rounded-full px-2.5 py-1 text-[10.5px] font-bold ${
-              r.overdue ? 'bg-red-100 text-red-700' : 'bg-clay-100 text-ink-600'
+              r.overdue ? 'bg-red-100 text-red-700' : 'bg-surface-100 text-ink-600'
             }`}
           >
             {r.overdue ? 'Overdue' : r.due || 'No date'}

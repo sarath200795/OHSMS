@@ -19,13 +19,12 @@ import { OrgMark } from '../branding/OrgMark'
  * someone already standing on it is noise.
  *
  * It reads as a bar rather than a line of small print because it stopped being
- * legible otherwise: the trail was 12px semibold in ink-500, which lands at
- * about 3.3:1 against the kraft background and fails AA for text that size.
- * Raising it onto a clay surface buys the contrast (ink-800 on clay-surface is
- * ~10:1) and, more usefully, gives the thing an edge — navigation that is
- * flush with the page reads as a caption for the page rather than a control.
- * The brand mark anchors the Home end so the way out is findable by shape
- * before it is read.
+ * legible otherwise: the trail was 12px semibold in ink-500, which landed
+ * below AA against the old page canvas. Raising it onto a white surface buys
+ * the contrast (ink-800 on surface is well past 4.5:1) and, more usefully,
+ * gives the thing an edge — navigation that is flush with the page reads as a
+ * caption for the page rather than a control. The brand mark anchors the Home
+ * end so the way out is findable by shape before it is read.
  */
 export default function HomeBar() {
   const { pathname } = useLocation()
@@ -41,11 +40,11 @@ export default function HomeBar() {
   return (
     <nav
       aria-label="Breadcrumb"
-      className="mb-5 flex flex-wrap items-center gap-0.5 rounded-xl bg-clay-surface/80 px-2 py-1.5 text-sm font-semibold ring-1 ring-ink-900/[0.06] backdrop-blur-sm"
+      className="mb-5 flex flex-wrap items-center gap-0.5 rounded-lg bg-surface px-2 py-1.5 text-sm font-semibold ring-1 ring-ink-200"
     >
       <Link
         to="/portal"
-        className="flex items-center gap-2 rounded-xl px-2 py-1 text-ink-800 transition-colors hover:bg-clay-100 hover:text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+        className="flex items-center gap-2 rounded-xl px-2 py-1 text-ink-800 transition-colors hover:bg-surface-100 hover:text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
       >
         {/* Decorative: the word "Home" already names this link, so announcing
             the mark as well would just make the trail read twice.
@@ -63,7 +62,7 @@ export default function HomeBar() {
           {insideModule ? (
             <Link
               to={mod.path}
-              className="rounded-xl px-2 py-1 text-ink-700 transition-colors hover:bg-clay-100 hover:text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+              className="rounded-xl px-2 py-1 text-ink-700 transition-colors hover:bg-surface-100 hover:text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
             >
               {mod.label}
             </Link>

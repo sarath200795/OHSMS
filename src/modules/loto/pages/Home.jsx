@@ -162,7 +162,7 @@ export default function Home() {
           can(PERMISSIONS.PROCEDURE_CREATE) ? (
             <button
               onClick={() => navigate('/loto/procedures/new')}
-              className="rounded-2xl bg-hazard px-4 py-2 text-sm font-semibold text-ink shadow-clay hover:bg-hazard-dark"
+              className="rounded-2xl bg-hazard px-4 py-2 text-sm font-semibold text-ink shadow-elev hover:bg-hazard-dark"
             >
               + New procedure
             </button>
@@ -192,7 +192,7 @@ export default function Home() {
               <select
                 value={siteFilter}
                 onChange={(e) => setSiteFilter(e.target.value)}
-                className="rounded-xl bg-clay px-3 py-1.5 text-sm text-steel-100 shadow-clay-inset outline-none ring-2 ring-transparent focus:ring-hazard/50"
+                className="rounded-xl bg-surface px-3 py-1.5 text-sm text-steel-100  outline-none ring-2 ring-transparent focus:ring-hazard/50"
               >
                 <option value="">All sites</option>
                 {siteList.map((s) => (
@@ -261,7 +261,7 @@ export default function Home() {
               {ENERGY_SOURCES.map((e) => (
                 <span
                   key={e.key}
-                  className="inline-flex items-center gap-2 rounded-full bg-clay px-3 py-1 text-xs font-medium text-steel-200 shadow-clay-inset"
+                  className="ring-1 ring-ink-200 inline-flex items-center gap-2 rounded-full bg-surface-50 px-3 py-1 text-xs font-medium text-steel-200 "
                 >
                   <span className="grid h-5 w-5 place-items-center rounded text-[10px] font-bold" style={{ background: e.color, color: e.textColor }}>
                     {e.prefix}

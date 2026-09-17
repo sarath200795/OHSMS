@@ -103,7 +103,7 @@ export const TYPE_COLORS = { ABC: '#f73838', CO2: '#6366f1', Modular: '#0891b2' 
 // ΔE 9.1 (protan) and 22.9 (normal vision). Re-run the check before re-ordering
 // ENTITIES or swapping a hue; don't eyeball it.
 //
-// Four of these sit below 3:1 against the clay surface, which is allowed only
+// Four of these sit below 3:1 against the card surface, which is allowed only
 // because the chart direct-labels every bar with its count and the repository
 // table carries the same numbers.
 export const ENTITY_COLORS = {

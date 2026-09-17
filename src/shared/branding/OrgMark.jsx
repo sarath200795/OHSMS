@@ -47,8 +47,8 @@ export function OrgMark({ className = '', alt = '' }) {
       aria-hidden={alt ? undefined : 'true'}
       // object-contain, not cover: a logo is a shape someone approved, and
       // cropping it to fill a square is the one thing a brand guideline never
-      // permits. The white ground keeps a transparent PNG legible on the kraft
-      // background it sits against.
+      // permits. The white ground keeps a transparent PNG legible on the
+      // canvas it sits against.
       className={`flex-none object-contain ${custom ? 'bg-white' : ''} ${className}`}
     />
   )
@@ -64,9 +64,7 @@ export function OrgMark({ className = '', alt = '' }) {
  */
 export function PoweredByWeEhs() {
   return (
-    <div
-      className="pointer-events-none fixed bottom-3 right-3 z-20 flex items-center gap-2 rounded-xl bg-clay-surface/90 px-2.5 py-1.5 ring-1 ring-ink-900/10 backdrop-blur-md print:hidden"
-    >
+    <div className="pointer-events-none fixed bottom-3 right-3 z-20 flex items-center gap-2 rounded-xl bg-surface/90 px-2.5 py-1.5 ring-1 ring-ink-900/10 backdrop-blur-md print:hidden">
       <img src={WE_EHS_MARK} alt="" aria-hidden="true" className="h-5 w-5 flex-none rounded-md" />
       <span className="text-[10.5px] font-bold uppercase tracking-[0.08em] text-ink-400">
         Powered by WE EHS

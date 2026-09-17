@@ -68,7 +68,7 @@ export default function StepInjuryReports({ persons = [], value = [], onChange, 
             </div>
 
             {hidden ? (
-              <div className="flex items-start gap-3 rounded-xl bg-clay-100 p-4 text-sm text-ink-600">
+              <div className="flex items-start gap-3 rounded-xl bg-surface-100 p-4 text-sm text-ink-600">
                 <EyeOff size={16} className="mt-0.5 flex-none text-ink-400" />
                 <p>
                   <b className="text-ink-900">An injury report is on file for this person.</b> Its detail —
@@ -88,7 +88,7 @@ export default function StepInjuryReports({ persons = [], value = [], onChange, 
                           key={o.l}
                           type="button"
                           onClick={() => setReport(p, { firstAidDone: o.v })}
-                          className={`btn ${r.firstAidDone === o.v ? 'bg-brand-500 text-white shadow-clay-brand' : 'bg-clay-surface text-ink-600'}`}
+                          className={`btn ${r.firstAidDone === o.v ? 'bg-brand-500 text-white shadow-elev-brand' : 'bg-surface text-ink-600'}`}
                         >
                           {o.l}
                         </button>

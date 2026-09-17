@@ -145,7 +145,7 @@ export default function ReportIncident() {
     return (
       <div className="animate-fade-in-up">
         <Raised className="mx-auto max-w-lg px-8 py-10 text-center">
-          <span className="mx-auto mb-5 grid h-20 w-20 place-items-center rounded-full bg-accent-leaf text-white shadow-clay">
+          <span className="mx-auto mb-5 grid h-20 w-20 place-items-center rounded-full bg-accent-leaf text-white shadow-elev">
             <Check size={36} strokeWidth={2.8} />
           </span>
           <h2 className="text-2xl font-extrabold tracking-[-0.02em] text-ink-900">Reported. Thank you.</h2>
@@ -163,14 +163,14 @@ export default function ReportIncident() {
             <button
               type="button"
               onClick={() => navigate('/portal')}
-              className="rounded-2xl bg-brand-600 px-5 py-2.5 text-[13px] font-semibold text-white shadow-clay-brand transition-transform duration-200 ease-emil active:scale-[0.97]"
+              className="rounded-2xl bg-brand-600 px-5 py-2.5 text-[13px] font-semibold text-white shadow-elev-brand transition-transform duration-200 ease-emil active:scale-[0.97]"
             >
               Back to home
             </button>
             <button
               type="button"
               onClick={() => { setDone(null); setStep(0); set({ type: '', severity: '', narrative: '', hurt: null, bodyParts: [], injuryType: '', confirmed: false }) }}
-              className="rounded-2xl bg-clay-surface px-5 py-2.5 text-[13px] font-semibold text-ink-700 shadow-clay-sm transition-transform duration-200 ease-emil active:scale-[0.97]"
+              className="rounded-2xl bg-surface px-5 py-2.5 text-[13px] font-semibold text-ink-700 shadow-elev-sm transition-transform duration-200 ease-emil active:scale-[0.97]"
             >
               Report another
             </button>
@@ -193,7 +193,7 @@ export default function ReportIncident() {
   return (
     <div className="animate-fade-in-up">
       <div className="mb-5 flex items-center gap-3.5">
-        <span className="grid h-11 w-11 flex-none place-items-center rounded-2xl bg-brand-50 text-brand-700 shadow-clay-sm">
+        <span className="grid h-11 w-11 flex-none place-items-center rounded-2xl bg-brand-50 text-brand-700 shadow-elev-sm">
           <AlertTriangle size={21} strokeWidth={2.1} />
         </span>
         <div className="min-w-0">
@@ -203,7 +203,7 @@ export default function ReportIncident() {
         <button
           type="button"
           onClick={() => navigate('/portal')}
-          className="ml-auto flex-none rounded-2xl bg-clay-surface px-4 py-2.5 text-[12.5px] font-semibold text-ink-700 shadow-clay-sm"
+          className="ml-auto flex-none rounded-2xl bg-surface px-4 py-2.5 text-[12.5px] font-semibold text-ink-700 shadow-elev-sm"
         >
           Cancel
         </button>
@@ -217,12 +217,12 @@ export default function ReportIncident() {
             // Forward movement is gated by `blocker`; going back is always safe.
             onClick={() => i < step && setStep(i)}
             className={`flex flex-1 items-center justify-center gap-2 rounded-2xl px-3 py-2.5 text-[12.5px] font-semibold transition ${
-              i === step ? 'bg-clay-surface text-ink-900 shadow-clay-sm' : 'text-ink-500'
+              i === step ? 'bg-surface text-ink-900 shadow-elev-sm' : 'text-ink-500'
             } ${i < step ? 'cursor-pointer' : ''}`}
           >
             <span
               className={`grid h-[22px] w-[22px] place-items-center rounded-full text-[11px] font-extrabold ${
-                i <= step ? 'bg-brand-600 text-white' : 'bg-clay-200 text-ink-500'
+                i <= step ? 'bg-brand-600 text-white' : 'bg-surface-200 text-ink-500'
               }`}
             >
               {i + 1}
@@ -253,7 +253,7 @@ export default function ReportIncident() {
                     type="button"
                     onClick={() => set({ severity: s.key })}
                     className={`flex-1 rounded-2xl px-3 py-2.5 text-[12.5px] font-semibold transition ${
-                      form.severity === s.key ? 'bg-clay-surface shadow-clay-sm' : 'text-ink-500'
+                      form.severity === s.key ? 'bg-surface shadow-elev-sm' : 'text-ink-500'
                     }`}
                     style={form.severity === s.key ? { color: s.color } : undefined}
                   >
@@ -268,7 +268,7 @@ export default function ReportIncident() {
                   <input
                     id="when" type="datetime-local" value={form.when}
                     onChange={(e) => set({ when: e.target.value })}
-                    className="w-full rounded-2xl border border-transparent bg-clay-surface px-3.5 py-3 text-[13.5px] text-ink-900 shadow-clay-inset outline-none"
+                    className="w-full rounded-2xl border border-transparent bg-surface px-3.5 py-3 text-[13.5px] text-ink-900  outline-none"
                   />
                 </div>
                 <div>
@@ -276,7 +276,7 @@ export default function ReportIncident() {
                   <select
                     id="where" value={form.location}
                     onChange={(e) => set({ location: e.target.value })}
-                    className="w-full appearance-none rounded-2xl border border-transparent bg-clay-surface px-3.5 py-3 text-[13.5px] text-ink-900 shadow-clay-inset outline-none"
+                    className="w-full appearance-none rounded-2xl border border-transparent bg-surface px-3.5 py-3 text-[13.5px] text-ink-900  outline-none"
                   >
                     {LOCATIONS.map((l) => <option key={l}>{l}</option>)}
                   </select>
@@ -289,7 +289,7 @@ export default function ReportIncident() {
                   id="narrative" rows={4} value={form.narrative}
                   onChange={(e) => set({ narrative: e.target.value })}
                   placeholder="A pallet was stacked above the line marking and shifted when the forklift reversed…"
-                  className="w-full resize-y rounded-[18px] border border-transparent bg-clay-surface p-3.5 text-[13.5px] leading-relaxed text-ink-900 shadow-clay-inset outline-none"
+                  className="w-full resize-y rounded-[18px] border border-transparent bg-surface p-3.5 text-[13.5px] leading-relaxed text-ink-900  outline-none"
                 />
                 <p className="mt-2 text-[11.5px] text-ink-400">
                   No names needed. Describe what you saw, not who to blame.
@@ -309,8 +309,8 @@ export default function ReportIncident() {
                     onClick={() => set({ hurt: val, ...(val ? {} : { bodyParts: [], injuryType: '' }) })}
                     className={`flex-1 rounded-2xl px-4 py-3 text-[13px] font-semibold transition ${
                       form.hurt === val
-                        ? 'bg-brand-600 text-white shadow-clay-brand'
-                        : 'bg-clay-surface text-ink-700 shadow-clay-sm'
+                        ? 'bg-brand-600 text-white shadow-elev-brand'
+                        : 'bg-surface text-ink-700 shadow-elev-sm'
                     }`}
                   >
                     {label}
@@ -319,7 +319,7 @@ export default function ReportIncident() {
               </div>
 
               {form.hurt === false && (
-                <p className="mt-5 rounded-[18px] bg-clay-50 px-4 py-4 text-[13px] leading-relaxed text-ink-500 shadow-clay-sm">
+                <p className="mt-5 rounded-[18px] bg-surface-50 px-4 py-4 text-[13px] leading-relaxed text-ink-500 shadow-elev-sm">
                   Good. A near miss with nobody hurt is still worth reporting — it is the cheapest warning
                   the site will ever get.
                 </p>
@@ -356,7 +356,7 @@ export default function ReportIncident() {
                             bodyParts: on ? form.bodyParts.filter((x) => x !== b) : [...form.bodyParts, b],
                           })}
                           className={`rounded-full px-3.5 py-2 text-[12.5px] font-semibold transition ${
-                            on ? 'bg-brand-600 text-white shadow-clay-brand' : 'bg-clay-surface text-ink-600 shadow-clay-sm'
+                            on ? 'bg-brand-600 text-white shadow-elev-brand' : 'bg-surface text-ink-600 shadow-elev-sm'
                           }`}
                         >
                           {b}
@@ -384,11 +384,11 @@ export default function ReportIncident() {
               <button
                 type="button"
                 onClick={() => set({ confirmed: !form.confirmed })}
-                className="mt-4 flex w-full items-start gap-3 rounded-[18px] bg-clay-50 p-4 text-left shadow-clay-sm"
+                className="mt-4 flex w-full items-start gap-3 rounded-[18px] bg-surface-50 p-4 text-left shadow-elev-sm"
               >
                 <span
                   className={`mt-0.5 grid h-5 w-5 flex-none place-items-center rounded-md transition ${
-                    form.confirmed ? 'bg-brand-600' : 'bg-clay-surface shadow-clay-inset'
+                    form.confirmed ? 'bg-brand-600' : 'bg-surface-50 '
                   }`}
                 >
                   {form.confirmed && <Check size={13} strokeWidth={3.4} className="text-white" />}
@@ -406,7 +406,7 @@ export default function ReportIncident() {
               <button
                 type="button"
                 onClick={() => setStep((s) => s - 1)}
-                className="rounded-2xl bg-clay-surface px-4 py-2.5 text-[12.5px] font-semibold text-ink-700 shadow-clay-sm transition-transform duration-200 ease-emil active:scale-[0.97]"
+                className="rounded-2xl bg-surface px-4 py-2.5 text-[12.5px] font-semibold text-ink-700 shadow-elev-sm transition-transform duration-200 ease-emil active:scale-[0.97]"
               >
                 Back
               </button>
@@ -416,7 +416,7 @@ export default function ReportIncident() {
               type="button"
               disabled={busy || !!blocker}
               onClick={() => (step === 2 ? submit() : setStep((s) => s + 1))}
-              className="inline-flex flex-none items-center gap-2 rounded-2xl bg-brand-600 px-5 py-2.5 text-[13px] font-semibold text-white shadow-clay-brand transition-transform duration-200 ease-emil active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40"
+              className="inline-flex flex-none items-center gap-2 rounded-2xl bg-brand-600 px-5 py-2.5 text-[13px] font-semibold text-white shadow-elev-brand transition-transform duration-200 ease-emil active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40"
             >
               {step === 2 ? (busy ? 'Sending…' : 'Send report') : 'Continue'}
               {!busy && <ArrowRight size={15} strokeWidth={2.4} />}
@@ -431,8 +431,8 @@ export default function ReportIncident() {
               {PIPELINE.map((p, i) => (
                 <div key={p.label} className="flex gap-3.5">
                   <div className="flex flex-none flex-col items-center">
-                    <span className={`h-2.5 w-2.5 rounded-full ${i === 0 ? 'bg-brand-600' : 'bg-clay-300'}`} />
-                    {i < PIPELINE.length - 1 && <span className="w-px flex-1 bg-clay-200" />}
+                    <span className={`h-2.5 w-2.5 rounded-full ${i === 0 ? 'bg-brand-600' : 'bg-surface-300'}`} />
+                    {i < PIPELINE.length - 1 && <span className="w-px flex-1 bg-surface-200" />}
                   </div>
                   <div className="pb-4">
                     <p className="text-[13px] font-semibold text-ink-900">{p.label}</p>
@@ -464,7 +464,7 @@ function Choice({ on, onClick, dot, children }) {
       type="button"
       onClick={onClick}
       className={`flex items-center gap-2.5 rounded-2xl px-4 py-3 text-[13px] font-semibold transition ${
-        on ? 'bg-clay-surface text-ink-900 shadow-clay-inset' : 'bg-clay-surface text-ink-700 shadow-clay-sm'
+        on ? 'bg-surface-50 text-ink-900 ' : 'bg-surface-50 text-ink-700 shadow-elev-sm'
       }`}
     >
       {dot && <span className="h-2.5 w-2.5 flex-none rounded-full" style={{ background: dot }} />}

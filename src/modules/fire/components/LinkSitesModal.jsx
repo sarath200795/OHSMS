@@ -104,13 +104,13 @@ export default function LinkSitesModal({
 
       {showing === 'linked' ? (
         linkedRows.length === 0 ? (
-          <p className="rounded-2xl bg-clay-100/70 px-4 py-8 text-center text-sm text-ink-500">
+          <p className="rounded-2xl bg-surface-100/70 px-4 py-8 text-center text-sm text-ink-500">
             No {noun} is attached to a site yet.
           </p>
         ) : (
-          <div className="max-h-[45vh] overflow-auto rounded-2xl border border-clay-200/60">
+          <div className="max-h-[45vh] overflow-auto rounded-2xl border border-surface-200/60">
             <table className="w-full text-sm">
-              <thead className="sticky top-0 bg-clay-100 text-left text-[11px] uppercase tracking-wide text-ink-500">
+              <thead className="sticky top-0 bg-surface-100 text-left text-[11px] uppercase tracking-wide text-ink-500">
                 <tr>
                   {showKind && <th className="px-3 py-2">Type</th>}
                   <th className="px-3 py-2">{idLabel}</th>
@@ -119,9 +119,9 @@ export default function LinkSitesModal({
                   <th className="px-3 py-2">Entity</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-clay-200/60">
+              <tbody className="divide-y divide-surface-200/60">
                 {linkedRows.map(({ asset, site, label, kind }) => (
-                  <tr key={`${kind || ''}${asset.id}`} className="hover:bg-clay-100/40">
+                  <tr key={`${kind || ''}${asset.id}`} className="hover:bg-surface-100/40">
                     {showKind && <td className="px-3 py-2 text-xs font-semibold text-ink-500">{KIND_LABEL[kind] || '—'}</td>}
                     <td className="px-3 py-2 font-semibold text-ink-900">{label}</td>
                     <td className="px-3 py-2 text-ink-800">{site.name || site.id}</td>
@@ -134,27 +134,27 @@ export default function LinkSitesModal({
           </div>
         )
       ) : linked.length === 0 ? (
-        <p className="rounded-2xl bg-clay-100/70 px-4 py-8 text-center text-sm text-ink-500">
+        <p className="rounded-2xl bg-surface-100/70 px-4 py-8 text-center text-sm text-ink-500">
           Nothing left to link — every {noun} whose center name matches a site is already attached.
         </p>
       ) : (
         <>
           <div className="mb-3 flex flex-wrap gap-2 text-xs">
             {entityChanges > 0 && (
-              <span className="rounded-xl bg-clay-100 px-2.5 py-1 text-ink-600">
+              <span className="rounded-xl bg-surface-100 px-2.5 py-1 text-ink-600">
                 {entityChanges} will take a corrected <strong className="font-semibold text-ink-800">Entity</strong> from the site registry
               </span>
             )}
             {nameChanges > 0 && (
-              <span className="rounded-xl bg-clay-100 px-2.5 py-1 text-ink-600">
+              <span className="rounded-xl bg-surface-100 px-2.5 py-1 text-ink-600">
                 {nameChanges} will take the registry&rsquo;s <strong className="font-semibold text-ink-800">site name</strong>
               </span>
             )}
           </div>
 
-          <div className="max-h-[40vh] overflow-auto rounded-2xl border border-clay-200/60">
+          <div className="max-h-[40vh] overflow-auto rounded-2xl border border-surface-200/60">
             <table className="w-full text-sm">
-              <thead className="sticky top-0 bg-clay-100 text-left text-[11px] uppercase tracking-wide text-ink-500">
+              <thead className="sticky top-0 bg-surface-100 text-left text-[11px] uppercase tracking-wide text-ink-500">
                 <tr>
                   {showKind && <th className="px-3 py-2">Type</th>}
                   <th className="px-3 py-2">{idLabel}</th>
@@ -163,9 +163,9 @@ export default function LinkSitesModal({
                   <th className="px-3 py-2">Match</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-clay-200/60">
+              <tbody className="divide-y divide-surface-200/60">
                 {linked.map(({ asset, site, how, entityChanged, nameChanged, kind }) => (
-                  <tr key={`${kind || ''}${asset.id}`} className="hover:bg-clay-100/40">
+                  <tr key={`${kind || ''}${asset.id}`} className="hover:bg-surface-100/40">
                     {showKind && <td className="px-3 py-2 text-xs font-semibold text-ink-500">{KIND_LABEL[kind] || '—'}</td>}
                     <td className="px-3 py-2 font-semibold text-ink-900">{assetLabel(asset)}</td>
                     <td className="px-3 py-2 text-ink-600">{asset.centerName || <span className="text-ink-300">(no name)</span>}</td>
@@ -190,7 +190,7 @@ export default function LinkSitesModal({
           </div>
 
           {unmatched.length > 0 && (
-            <div className="mt-4 rounded-2xl bg-clay-100/70 p-3">
+            <div className="mt-4 rounded-2xl bg-surface-100/70 p-3">
               <p className="text-xs font-semibold text-ink-700">
                 Left alone — {unmatched.length} unit{unmatched.length === 1 ? '' : 's'} across {unmatchedCenters.length} name
                 {unmatchedCenters.length === 1 ? '' : 's'} with no site to match

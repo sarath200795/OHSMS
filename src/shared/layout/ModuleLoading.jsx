@@ -34,7 +34,7 @@ export default function ModuleLoading() {
         <span
           className={`group playing relative grid h-24 w-24 place-items-center rounded-2xl bg-gradient-to-br ${
             TONE[mod.tone] || TONE.brand
-          } shadow-clay-lg [perspective:520px] [transform-style:preserve-3d]`}
+          } shadow-elev-lg [perspective:520px] [transform-style:preserve-3d]`}
         >
           <ModuleLogo3D moduleKey={mod.key} />
         </span>

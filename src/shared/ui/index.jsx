@@ -241,10 +241,10 @@ export function MultiSelect({
 }) {
   const toggle = (v) => onChange(value.includes(v) ? value.filter((x) => x !== v) : [...value, v])
   if (!options.length) {
-    return <div className="clay-inset rounded-2xl p-3 text-sm text-ink-400">{empty}</div>
+    return <div className="well rounded-2xl p-3 text-sm text-ink-400">{empty}</div>
   }
   return (
-    <div className={cx('clay-inset space-y-0.5 overflow-y-auto rounded-2xl p-2', maxHeight)}>
+    <div className={cx('well space-y-0.5 overflow-y-auto rounded-2xl p-2', maxHeight)}>
       {options.map((o) => {
         const v = o.value ?? o
         const label = o.label ?? o
@@ -256,7 +256,7 @@ export function MultiSelect({
             onClick={() => toggle(v)}
             className={cx(
               'flex w-full items-center gap-2 rounded-xl px-2.5 py-1.5 text-left text-sm transition active:scale-[0.99]',
-              on ? 'bg-brand-50 text-brand-800' : 'text-ink-700 hover:bg-clay-100'
+              on ? 'bg-brand-50 text-brand-800' : 'text-ink-700 hover:bg-surface-100'
             )}
           >
             <span
@@ -346,7 +346,9 @@ export function StatCard({ label, value, icon: Icon, tone = 'brand', hint, class
         </span>
       )}
       <div className="min-w-0">
-        <p className="truncate text-[12px] font-medium uppercase tracking-[0.06em] text-ink-500">{label}</p>
+        <p className="truncate text-[12px] font-medium uppercase tracking-[0.06em] text-ink-500">
+          {label}
+        </p>
         <p className="truncate text-2xl font-bold tracking-[-0.03em] text-ink-900">{value}</p>
         {hint && <p className="truncate text-xs text-ink-400">{hint}</p>}
       </div>
@@ -395,7 +397,7 @@ export function EmptyState({ icon: Icon, title, description, hint, message, acti
       )}
     >
       {Icon && (
-        <span className="grid h-12 w-12 place-items-center rounded-xl bg-clay-100 text-ink-400 ring-1 ring-ink-900/5">
+        <span className="grid h-12 w-12 place-items-center rounded-xl bg-surface-100 text-ink-400 ring-1 ring-ink-900/5">
           <Icon size={24} />
         </span>
       )}
@@ -589,7 +591,7 @@ export function Modal({
                 type="button"
                 onClick={onClose}
                 aria-label="Close"
-                className="grid h-8 w-8 shrink-0 place-items-center rounded-xl text-ink-400 transition hover:bg-clay-100 hover:text-ink-700 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+                className="grid h-8 w-8 shrink-0 place-items-center rounded-xl text-ink-400 transition hover:bg-surface-100 hover:text-ink-700 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
               >
                 <X size={18} />
               </button>

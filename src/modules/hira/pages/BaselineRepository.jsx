@@ -29,7 +29,7 @@ export default function BaselineRepository() {
 
       {baselines.length === 0 ? (
         <div className="card flex flex-col items-center gap-3 p-10 text-center">
-          <span className="grid h-14 w-14 place-items-center rounded-2xl bg-clay-100 text-ink-400 shadow-clay-inset">
+          <span className="ring-1 ring-ink-200 grid h-14 w-14 place-items-center rounded-2xl bg-surface-100 text-ink-400 ">
             <Layers size={26} />
           </span>
           <div>
@@ -47,10 +47,10 @@ export default function BaselineRepository() {
           {baselines.map((b) => (
             <div key={b.id} className="card flex flex-col gap-3 p-5">
               <div className="flex items-start justify-between gap-2">
-                <span className="grid h-11 w-11 place-items-center rounded-2xl bg-brand-50 text-brand-700 shadow-clay-sm">
+                <span className="grid h-11 w-11 place-items-center rounded-2xl bg-brand-50 text-brand-700 shadow-elev-sm">
                   <Layers size={20} />
                 </span>
-                <span className="chip bg-clay-100 text-ink-600">
+                <span className="chip bg-surface-100 text-ink-600">
                   {(b.activities || []).length} activities · {countHazards(b)} hazards
                 </span>
               </div>

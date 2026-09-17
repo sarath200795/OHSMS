@@ -309,7 +309,7 @@ export default function CreateAssessment() {
           </Field>
           {form.refId && (
             <Field label="Reference ID">
-              <input className="input bg-clay-100 text-ink-500" value={form.refId} readOnly />
+              <input className="input bg-surface-100 text-ink-500" value={form.refId} readOnly />
             </Field>
           )}
         </div>
@@ -321,7 +321,7 @@ export default function CreateAssessment() {
           <AnimatePresence initial={false}>
             {form.members.map((m) => (
               <motion.div key={m.id} initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-                className="grid items-end gap-2 rounded-2xl bg-clay-bg/40 p-3 shadow-clay-inset sm:grid-cols-12">
+                className="grid items-end gap-2 rounded-2xl bg-canvas/40 p-3  sm:grid-cols-12">
                 {m.type === 'internal' && (
                   <Field label="Pick from employee directory — Department · Person" className="sm:col-span-12">
                     <DeptPersonPicker
@@ -357,7 +357,7 @@ export default function CreateAssessment() {
                   <Field label="Department" className="flex-1">
                     <DepartmentSelect value={m.department} onChange={(e) => updateMember(m.id, { department: e.target.value })} />
                   </Field>
-                  <button type="button" onClick={() => removeMember(m.id)} className="mb-0.5 rounded-xl p-2.5 text-red-500 shadow-clay-sm transition hover:bg-red-50" title="Remove"><Trash2 size={16} /></button>
+                  <button type="button" onClick={() => removeMember(m.id)} className="mb-0.5 rounded-xl p-2.5 text-red-500 shadow-elev-sm transition hover:bg-red-50" title="Remove"><Trash2 size={16} /></button>
                 </div>
               </motion.div>
             ))}
@@ -407,7 +407,7 @@ export default function CreateAssessment() {
 // ── Activity card ──────────────────────────────────────────────────────────────
 function ActivityCard({ activity, index, internalMembers, canRemove, onTitle, onNature, onRemove, onAddHazard, onUpdateHazard, onRemoveHazard, onAddControl, onUpdateControl, onRemoveControl }) {
   return (
-    <div className="rounded-2xl border border-clay-200 bg-clay-surface/60 p-4">
+    <div className="rounded-2xl border border-surface-200 bg-surface/60 p-4">
       <div className="mb-3 flex items-end gap-2">
         <span className="mb-2.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-ink-900 text-xs font-bold text-white">{index + 1}</span>
         <Field label="Activity / Task / Process" className="flex-1">
@@ -419,7 +419,7 @@ function ActivityCard({ activity, index, internalMembers, canRemove, onTitle, on
           </select>
         </Field>
         {canRemove && (
-          <button type="button" onClick={onRemove} className="mb-0.5 rounded-xl p-2.5 text-red-500 shadow-clay-sm transition hover:bg-red-50" title="Remove activity"><Trash2 size={16} /></button>
+          <button type="button" onClick={onRemove} className="mb-0.5 rounded-xl p-2.5 text-red-500 shadow-elev-sm transition hover:bg-red-50" title="Remove activity"><Trash2 size={16} /></button>
         )}
       </div>
 
@@ -452,13 +452,13 @@ function HazardCard({ hazard: h, index, internalMembers, canRemove, onUpdate, on
   const projected = riskLevel(h.projectedProbability, h.projectedSeverity)
 
   return (
-    <div className="rounded-2xl bg-clay-bg/50 p-4 shadow-clay-inset">
+    <div className="ring-1 ring-ink-200 rounded-2xl bg-canvas/50 p-4 ">
       <div className="mb-3 flex items-center justify-between">
         <span className="flex items-center gap-2 text-sm font-bold text-ink-700">
           <AlertTriangle size={15} className="text-brand-500" /> Hazard {index + 1}
         </span>
         {canRemove && (
-          <button type="button" onClick={onRemove} className="rounded-lg p-2 text-red-500 shadow-clay-sm transition hover:bg-red-50" title="Remove hazard"><Trash2 size={15} /></button>
+          <button type="button" onClick={onRemove} className="rounded-lg p-2 text-red-500 shadow-elev-sm transition hover:bg-red-50" title="Remove hazard"><Trash2 size={15} /></button>
         )}
       </div>
 
@@ -518,7 +518,7 @@ function HazardCard({ hazard: h, index, internalMembers, canRemove, onUpdate, on
             {initial && <span className="text-xs text-ink-400">{initial.guidance}</span>}
           </div>
         </div>
-        <div className="flex items-center justify-center rounded-2xl bg-clay-surface p-3 shadow-clay-sm">
+        <div className="flex items-center justify-center rounded-2xl bg-surface p-3 shadow-elev-sm">
           <MiniMatrix probability={h.probability} severity={h.severity} />
         </div>
       </div>
@@ -578,7 +578,7 @@ function ControlBlock({ title, controls, internalMembers, onAdd, onUpdate, onRem
       <p className="mb-2 text-xs font-bold uppercase tracking-wide text-ink-500">{title}</p>
       <div className="space-y-2">
         {controls.map((c) => (
-          <div key={c.id} className="grid items-end gap-2 rounded-xl bg-clay-surface p-2.5 shadow-clay-sm sm:grid-cols-12">
+          <div key={c.id} className="grid items-end gap-2 rounded-xl bg-surface p-2.5 shadow-elev-sm sm:grid-cols-12">
             <Field label="Hierarchy" className="sm:col-span-3">
               <select className="input" value={c.hierarchy} onChange={(e) => onUpdate(c.id, { hierarchy: e.target.value })}>
                 {CONTROL_HIERARCHY.map((x) => <option key={x.key} value={x.key}>{x.label}</option>)}
@@ -599,7 +599,7 @@ function ControlBlock({ title, controls, internalMembers, onAdd, onUpdate, onRem
               </select>
             </Field>
             <div className="sm:col-span-1 flex items-end">
-              <button type="button" onClick={() => onRemove(c.id)} className="mb-0.5 rounded-xl p-2.5 text-red-500 shadow-clay-sm transition hover:bg-red-50" title="Remove control"><Trash2 size={15} /></button>
+              <button type="button" onClick={() => onRemove(c.id)} className="mb-0.5 rounded-xl p-2.5 text-red-500 shadow-elev-sm transition hover:bg-red-50" title="Remove control"><Trash2 size={15} /></button>
             </div>
             <Field label="Department" className="sm:col-span-3">
               <DepartmentSelect value={c.department} onChange={(e) => onUpdate(c.id, { department: e.target.value })} />

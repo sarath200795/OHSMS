@@ -396,7 +396,7 @@ export default function Sites() {
           {activeFilters && (
             <button
               onClick={clearFilters}
-              className="inline-flex items-center gap-1 rounded-xl px-2.5 py-2 text-sm font-medium text-ink-500 hover:bg-clay-100 active:scale-95"
+              className="inline-flex items-center gap-1 rounded-xl px-2.5 py-2 text-sm font-medium text-ink-500 hover:bg-surface-100 active:scale-95"
             >
               <X size={15} /> Clear
             </button>
@@ -449,11 +449,11 @@ export default function Sites() {
             >
               <div className="flex items-start justify-between gap-3">
                 {selectMode ? (
-                  <span className={`grid h-11 w-11 place-items-center rounded-2xl shadow-clay-sm ${picked.includes(s.id) ? 'bg-red-50 text-red-600' : 'bg-clay-100 text-ink-400'}`}>
+                  <span className={`grid h-11 w-11 place-items-center rounded-2xl shadow-elev-sm ${picked.includes(s.id) ? 'bg-red-50 text-red-600' : 'bg-surface-100 text-ink-400'}`}>
                     {picked.includes(s.id) ? <CheckSquare size={20} /> : <Square size={20} />}
                   </span>
                 ) : (
-                  <span className="grid h-11 w-11 place-items-center rounded-2xl bg-brand-50 text-brand-700 shadow-clay-sm">
+                  <span className="grid h-11 w-11 place-items-center rounded-2xl bg-brand-50 text-brand-700 shadow-elev-sm">
                     <Building2 size={20} />
                   </span>
                 )}
@@ -587,7 +587,7 @@ export default function Sites() {
                   ['Near miss', stats.byType.nearMiss, 'blue'],
                   ['First aid', stats.byType.firstAid, 'green'],
                 ].map(([label, val, tone]) => (
-                  <div key={label} className="clay-inset rounded-2xl p-3 text-center">
+                  <div key={label} className="well rounded-2xl p-3 text-center">
                     <p className="text-2xl font-bold text-ink-900">{val}</p>
                     <Badge tone={tone}>{label}</Badge>
                   </div>
@@ -663,7 +663,7 @@ export default function Sites() {
             the addresses. Every row is listed below before anything is written.
           </p>
 
-          <label className="clay-inset flex cursor-pointer flex-col items-center gap-2 rounded-2xl p-6 text-center transition hover:bg-clay-100">
+          <label className="well flex cursor-pointer flex-col items-center gap-2 rounded-2xl p-6 text-center transition hover:bg-surface-100">
             <Upload size={22} className="text-brand-600" />
             <span className="text-sm font-medium text-ink-700">
               {bulkResult ? bulkResult.fileName : 'Choose a CSV file'}
@@ -782,9 +782,9 @@ export default function Sites() {
             This permanently removes the sites below from your organisation. It cannot be undone.
           </p>
 
-          <div className="max-h-56 overflow-auto rounded-2xl border border-clay-200">
+          <div className="max-h-56 overflow-auto rounded-2xl border border-surface-200">
             <table className="w-full text-sm">
-              <tbody className="divide-y divide-clay-100">
+              <tbody className="divide-y divide-surface-100">
                 {pickedSites.map((s) => (
                   <tr key={s.id}>
                     <td className="px-4 py-2 font-medium text-ink-800">{s.name}</td>
@@ -890,7 +890,7 @@ function CentreIdNotice({ sites, canManage, onExport, onImport }) {
   return (
     <div
       role="status"
-      className={`mb-4 rounded-2xl border p-4 shadow-clay-sm ${
+      className={`mb-4 rounded-2xl border p-4 shadow-elev-sm ${
         bad ? 'border-red-200 bg-red-50' : 'border-amber-200 bg-amber-50'
       }`}
     >

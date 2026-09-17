@@ -102,7 +102,7 @@ function worthTheBytes() {
 // Shared across all mounted SamCharacter3D instances. Ref-counted so the last
 // unmount tears it down and the next mount recreates it — the context is never
 // alive when Sam is not on screen.
-let _shared = null   // { renderer, THREE, refCount }
+let _shared = null // { renderer, THREE, refCount }
 
 async function acquireRenderer(size) {
   if (_shared) {
@@ -133,7 +133,13 @@ function releaseRenderer() {
   }
 }
 
-export default function SamCharacter3D({ walking = false, facing = 1, talking = false, reduce = false, size = 76 }) {
+export default function SamCharacter3D({
+  walking = false,
+  facing = 1,
+  talking = false,
+  reduce = false,
+  size = 76,
+}) {
   const hostRef = useRef(null)
   const [ready, setReady] = useState(false)
   // Props change far faster than frames; the loop reads this rather than being
@@ -180,9 +186,9 @@ export default function SamCharacter3D({ walking = false, facing = 1, talking = 
       camera.position.set(0, 0.95, 4.15)
       camera.lookAt(0, 0.78, 0)
 
-      // Warm key from the front-left, cool fill from the right, so the clay
+      // Warm key from the front-left, cool fill from the right, so the
       // shapes keep their edges without a hard shadow pass.
-      scene.add(new THREE.HemisphereLight(0xfff6e8, 0x8a7660, 1.05))
+      scene.add(new THREE.HemisphereLight(0xf8fafc, 0x64748b, 1.05))
       const key = new THREE.DirectionalLight(0xffffff, 1.5)
       key.position.set(-1.6, 2.4, 2.6)
       scene.add(key)
@@ -237,7 +243,9 @@ export default function SamCharacter3D({ walking = false, facing = 1, talking = 
         // A blink every few seconds, done by squashing the pupils.
         const cycle = t % 4.4
         const blink = cycle > 4.2 ? 0.1 : 1
-        rig.eyes.forEach((e) => { e.scale.y = blink })
+        rig.eyes.forEach((e) => {
+          e.scale.y = blink
+        })
 
         renderer.render(scene, camera)
 
@@ -264,19 +272,36 @@ export default function SamCharacter3D({ walking = false, facing = 1, talking = 
       }
     })()
 
-    return () => { alive = false; cleanup() }
+    return () => {
+      alive = false
+      cleanup()
+    }
   }, [reduce, size])
 
   return (
-    <div style={{ width: size, height: size, position: 'relative', pointerEvents: 'none' }} aria-hidden="true">
+    <div
+      style={{ width: size, height: size, position: 'relative', pointerEvents: 'none' }}
+      aria-hidden="true"
+    >
       {/* The CSS Sam holds the space until the 3D one has loaded, and is the
           whole answer under reduced motion or without WebGL. */}
       {!ready && (
-        <SamCharacter walking={walking} facing={facing} talking={talking} reduce={reduce} size={size} />
+        <SamCharacter
+          walking={walking}
+          facing={facing}
+          talking={talking}
+          reduce={reduce}
+          size={size}
+        />
       )}
       <div
         ref={hostRef}
-        style={{ position: 'absolute', inset: 0, opacity: ready ? 1 : 0, transition: 'opacity 240ms ease' }}
+        style={{
+          position: 'absolute',
+          inset: 0,
+          opacity: ready ? 1 : 0,
+          transition: 'opacity 240ms ease',
+        }}
       />
     </div>
   )

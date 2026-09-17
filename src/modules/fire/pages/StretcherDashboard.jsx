@@ -151,13 +151,13 @@ export default function StretcherDashboard() {
 
           <div className="mt-6 grid gap-6 lg:grid-cols-2">
             <div className="card overflow-hidden">
-              <p className="border-b border-clay-200/60 px-4 py-3 text-xs font-bold uppercase tracking-wide text-ink-500">By site — most needing attention first</p>
+              <p className="border-b border-surface-200/60 px-4 py-3 text-xs font-bold uppercase tracking-wide text-ink-500">By site — most needing attention first</p>
               <div className="max-h-[420px] overflow-auto">
                 <table className="w-full min-w-[420px] text-sm">
-                  <thead className="sticky top-0 bg-clay-100/90 text-left text-[11px] uppercase tracking-wide text-ink-500">
+                  <thead className="sticky top-0 bg-surface-100/90 text-left text-[11px] uppercase tracking-wide text-ink-500">
                     <tr><th className="px-4 py-2">Site</th><th className="px-4 py-2 text-center">Stretchers</th><th className="px-4 py-2 text-center">Need attention</th></tr>
                   </thead>
-                  <tbody className="divide-y divide-clay-200/60">
+                  <tbody className="divide-y divide-surface-200/60">
                     {bySite.map((r) => (
                       <tr key={r.site} className="hover:bg-ink-50/70">
                         <td className="px-4 py-2.5 font-semibold text-ink-800">{r.site}</td>
@@ -173,13 +173,13 @@ export default function StretcherDashboard() {
             </div>
 
             <div className="card overflow-hidden">
-              <p className="border-b border-clay-200/60 px-4 py-3 text-xs font-bold uppercase tracking-wide text-ink-500">By type</p>
+              <p className="border-b border-surface-200/60 px-4 py-3 text-xs font-bold uppercase tracking-wide text-ink-500">By type</p>
               <div className="max-h-[420px] overflow-auto">
                 <table className="w-full text-sm">
-                  <thead className="sticky top-0 bg-clay-100/90 text-left text-[11px] uppercase tracking-wide text-ink-500">
+                  <thead className="sticky top-0 bg-surface-100/90 text-left text-[11px] uppercase tracking-wide text-ink-500">
                     <tr><th className="px-4 py-2">Type</th><th className="px-4 py-2 text-center">Units</th><th className="px-4 py-2">Share</th></tr>
                   </thead>
-                  <tbody className="divide-y divide-clay-200/60">
+                  <tbody className="divide-y divide-surface-200/60">
                     {byType.map(([type, n]) => (
                       <tr key={type} className="hover:bg-ink-50/70">
                         <td className="px-4 py-2.5 font-semibold text-ink-800">{type}</td>

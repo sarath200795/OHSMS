@@ -243,7 +243,7 @@ export default function AdminWorkspace() {
           {mode === 'people' ? (
             <EmployeeChips users={users} picked={picked} onToggle={(uid) => setPicked((p) => (p.includes(uid) ? p.filter((x) => x !== uid) : [...p, uid]))} search={empSearch} setSearch={setEmpSearch} label="Employees *" />
           ) : (
-            <div className="rounded-xl bg-clay-surface px-3.5 py-2.5 text-sm text-ink-700 shadow-clay-inset">
+            <div className="ring-1 ring-ink-200 rounded-xl bg-surface-50 px-3.5 py-2.5 text-sm text-ink-700 ">
               {value
                 ? <><b>{targets.length}</b> employee{targets.length === 1 ? '' : 's'} in <b>{groupLabel}</b> will be assigned — anyone with this course already open is skipped.</>
                 : 'Pick a group to see how many employees it covers.'}
@@ -303,7 +303,7 @@ export default function AdminWorkspace() {
                     </p>
                   </div>
                   <div className="flex w-40 items-center gap-2">
-                    <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-clay-200">
+                    <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-surface-200">
                       <div className="h-full rounded-full transition-all" style={{ width: `${c.pct}%`, backgroundColor: c.pct >= 90 ? '#16a34a' : c.pct >= 50 ? '#d97706' : '#dc2626' }} />
                     </div>
                     <span className="text-xs font-bold text-ink-700">{c.pct}%</span>
@@ -320,11 +320,11 @@ export default function AdminWorkspace() {
                 </div>
 
                 {isOpen && (
-                  <div className="mt-3 border-t border-clay-200/60 pt-3">
+                  <div className="mt-3 border-t border-surface-200/60 pt-3">
                     <input className="input mb-2 !w-64 !py-1.5 !text-xs" placeholder="Search assignees…" value={itemSearch} onChange={(e) => setItemSearch(e.target.value)} />
                     <ul className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
                       {items.map((a) => (
-                        <li key={a.id} className="flex items-center gap-2 rounded-xl bg-clay-surface px-3 py-1.5 text-sm shadow-clay-inset">
+                        <li key={a.id} className="ring-1 ring-ink-200 flex items-center gap-2 rounded-xl bg-surface-50 px-3 py-1.5 text-sm ">
                           <span className="min-w-0 flex-1 truncate text-ink-800">{a.employeeName}</span>
                           {itemBadge(a, today)}
                           {a.status === 'assigned' && (

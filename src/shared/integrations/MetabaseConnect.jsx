@@ -295,7 +295,7 @@ export default function MetabaseConnect({ orgId, actor, onSaved, compact = false
         <button
           type="button"
           onClick={addSource}
-          className="inline-flex items-center gap-2 rounded-2xl bg-clay-surface px-3.5 py-2 text-[12.5px] font-semibold text-ink-700 shadow-clay-sm"
+          className="inline-flex items-center gap-2 rounded-2xl bg-surface px-3.5 py-2 text-[12.5px] font-semibold text-ink-700 shadow-elev-sm"
         >
           <Plus size={14} /> Add another instance
         </button>
@@ -342,7 +342,7 @@ function SourceRow({ source, index, many, loading, testing, result, sharedKey, o
   const [ownKey, setOwnKey] = useState(source.ownKey)
 
   return (
-    <div className="rounded-2xl bg-clay-surface/60 p-4 shadow-clay-inset">
+    <div className="ring-1 ring-ink-200 rounded-2xl bg-surface-50/60 p-4 ">
       <div className="mb-3 flex items-center justify-between gap-2">
         <span className="inline-flex items-center gap-2 text-[12.5px] font-bold text-ink-700">
           <Server size={14} className="text-ink-400" />

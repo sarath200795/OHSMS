@@ -79,7 +79,7 @@ export default function ExtinguisherTable({
     <div className="card overflow-hidden">
       <div className="overflow-x-auto">
         <table className="w-full min-w-[800px] text-sm">
-          <thead className="bg-clay-100/70 text-left text-xs uppercase tracking-wide text-ink-500">
+          <thead className="bg-surface-100/70 text-left text-xs uppercase tracking-wide text-ink-500">
             <tr>
               {selectable && (
                 <th className="w-10 px-4 py-3">
@@ -104,7 +104,7 @@ export default function ExtinguisherTable({
               {renderActions && <th className="px-4 py-3 text-right">Actions</th>}
             </tr>
           </thead>
-          <tbody className="divide-y divide-clay-200/60">
+          <tbody className="divide-y divide-surface-200/60">
             {pageItems.map((ext, i) => {
               const selected = selectedIds?.has(ext.id)
               return (

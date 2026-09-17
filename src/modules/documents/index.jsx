@@ -76,14 +76,14 @@ const NODE_TONE = {
 // is not done, and a bar that has gone green at 97% stops anybody reading the
 // number beside it.
 
-const readyTone = (r) => (r.complete ? 'bg-emerald-500' : r.ready ? 'bg-amber-500' : 'bg-clay-200')
+const readyTone = (r) => (r.complete ? 'bg-emerald-500' : r.ready ? 'bg-amber-500' : 'bg-surface-200')
 
 function ReadinessBar({ readiness, className = '' }) {
   return (
     <span
       role="img"
       aria-label={`${readiness.pct}% ready — ${readiness.ready} of ${readiness.total} documents attached`}
-      className={`block h-1.5 w-full overflow-hidden rounded-full bg-clay-100 ${className}`}
+      className={`block h-1.5 w-full overflow-hidden rounded-full bg-surface-100 ${className}`}
     >
       <span
         className={`block h-full rounded-full transition-[width] ${readyTone(readiness)}`}
@@ -158,7 +158,7 @@ function TileMenu({ label, items }) {
         aria-label={label}
         aria-expanded={open}
         onClick={(e) => { e.stopPropagation(); setOpen((v) => !v) }}
-        className="rounded-lg p-1.5 text-ink-400 transition hover:bg-clay-100 hover:text-ink-700"
+        className="rounded-lg p-1.5 text-ink-400 transition hover:bg-surface-100 hover:text-ink-700"
       >
         <MoreVertical size={16} />
       </button>
@@ -169,7 +169,7 @@ function TileMenu({ label, items }) {
               key={it.label}
               type="button"
               onClick={(e) => { e.stopPropagation(); setOpen(false); it.onClick() }}
-              className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-semibold transition hover:bg-clay-100 ${
+              className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-semibold transition hover:bg-surface-100 ${
                 it.danger ? 'text-red-600' : 'text-ink-700'
               }`}
             >
@@ -184,7 +184,7 @@ function TileMenu({ label, items }) {
 
 // ── Tiles ────────────────────────────────────────────────────────────────────
 
-const TILE = 'group card flex items-center gap-3 p-3 text-left transition hover:shadow-clay-md'
+const TILE = 'group card flex items-center gap-3 p-3 text-left transition hover:shadow-elev'
 
 function FolderTile({ node, count, readiness, onOpen, menu }) {
   // Pre Launch earns its own icon: it is the one folder whose contents are
@@ -734,7 +734,7 @@ export default function DocumentsModule() {
           <button
             type="button"
             onClick={() => go('')}
-            className={`rounded-lg px-2 py-1 text-sm font-semibold transition hover:bg-clay-100 ${
+            className={`rounded-lg px-2 py-1 text-sm font-semibold transition hover:bg-surface-100 ${
               atTop ? 'text-ink-900' : 'text-brand-600'
             }`}
           >
@@ -747,7 +747,7 @@ export default function DocumentsModule() {
                 type="button"
                 onClick={() => go(c.id)}
                 aria-current={i === trail.length - 1 ? 'page' : undefined}
-                className={`min-w-0 truncate rounded-lg px-2 py-1 text-sm transition hover:bg-clay-100 ${
+                className={`min-w-0 truncate rounded-lg px-2 py-1 text-sm transition hover:bg-surface-100 ${
                   i === trail.length - 1 ? 'font-bold text-ink-900' : 'font-semibold text-brand-600'
                 }`}
               >

@@ -54,7 +54,7 @@ const STATE_LABEL = { open: 'Running now', upcoming: 'Upcoming', closed: 'Finish
 function SessionPicker({ course, sessions, requests, sites, busyId, onRequest, onWithdraw }) {
   if (sessions.length === 0) {
     return (
-      <div className="my-3 rounded-2xl bg-clay-50 px-3.5 py-3 text-xs leading-relaxed text-ink-500 shadow-clay-sm">
+      <div className="my-3 rounded-2xl bg-surface-50 px-3.5 py-3 text-xs leading-relaxed text-ink-500 shadow-elev-sm">
         <span className="font-semibold text-ink-700">Classroom training.</span> No sittings are scheduled
         yet — it will appear here when a date is set.
       </div>
@@ -68,7 +68,7 @@ function SessionPicker({ course, sessions, requests, sites, busyId, onRequest, o
         const mine = requests.find((r) => r.sessionId === s.id) || null
         const closed = st === 'closed'
         return (
-          <div key={s.id} className={`rounded-2xl px-3.5 py-3 shadow-clay-sm ${closed ? 'bg-clay-100/60' : 'bg-clay-50'}`}>
+          <div key={s.id} className={`rounded-2xl px-3.5 py-3 shadow-elev-sm ${closed ? 'bg-surface-100/60' : 'bg-surface-50'}`}>
             <div className="flex items-center gap-2">
               {s.mode === 'online' ? <Video size={13} className="text-ink-400" /> : <MapPin size={13} className="text-ink-400" />}
               <span className={`text-xs font-semibold ${closed ? 'text-ink-400' : 'text-ink-800'}`}>
@@ -299,7 +299,7 @@ export default function MyLearning() {
             </Card>
           ))}
           <Pager
-            className="col-span-full border-t border-clay-200/60 px-1 pt-3"
+            className="col-span-full border-t border-surface-200/60 px-1 pt-3"
             page={catalogue.page} pageCount={catalogue.pageCount} onPage={catalogue.setPage}
             total={catalogue.total} pageSize={catalogue.pageSize}
           />
@@ -327,11 +327,11 @@ export default function MyLearning() {
                   <th className="px-4 py-3 text-right">Certificate</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-clay-200/60">
+              <tbody className="divide-y divide-surface-200/60">
                 {records.pageItems.map((r) => {
                   const st = recordStatus(r.expiresOn, today)
                   return (
-                    <tr key={r.id} className="hover:bg-clay-100/50">
+                    <tr key={r.id} className="hover:bg-surface-100/50">
                       <td className="px-4 py-3">
                         <span className="font-semibold text-ink-900">{r.courseName}</span>
                         {r.loggedBy === 'self' && <span className="ml-2 text-[10px] font-semibold uppercase text-ink-400">Self-declared</span>}
@@ -351,7 +351,7 @@ export default function MyLearning() {
             </table>
           </div>
           <Pager
-            className="border-t border-clay-200/60 px-4 py-3"
+            className="border-t border-surface-200/60 px-4 py-3"
             page={records.page} pageCount={records.pageCount} onPage={records.setPage}
             total={records.total} pageSize={records.pageSize}
           />

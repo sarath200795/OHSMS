@@ -141,7 +141,7 @@ const AuditScheduler = ({ setView, session, sites, users, locations = [], siteIn
           <p className="text-sm text-ink-500">Plan and assign audits across the organization.</p>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => window.print()} className="rounded-xl bg-clay-100 px-5 py-2.5 text-sm font-bold text-ink-700 transition hover:bg-clay-200">
+          <button onClick={() => window.print()} className="rounded-xl bg-surface-100 px-5 py-2.5 text-sm font-bold text-ink-700 transition hover:bg-surface-200">
             <Printer size={16} className="inline mr-2" />Print Plan
           </button>
           <button onClick={handleSave} className="rounded-xl bg-brand-gradient px-5 py-2.5 text-sm font-bold text-white shadow-brand transition active:scale-95">
@@ -187,11 +187,11 @@ const AuditScheduler = ({ setView, session, sites, users, locations = [], siteIn
               {/* No reference until there is one. It is reserved on save, from
                   the org-wide counter, so nothing here can predict it — and a
                   predicted one is a number somebody writes on a form. */}
-              <div className="rounded-lg bg-clay-50 px-3 py-2 text-xs text-ink-500">
+              <div className="rounded-lg bg-surface-50 px-3 py-2 text-xs text-ink-500">
                 Ref ID: <span className="font-semibold text-ink-600">assigned when this plan is saved</span>
               </div>
             </div>
-            <div className="flex flex-col rounded-2xl border border-ink-100 bg-clay-50 p-5">
+            <div className="flex flex-col rounded-2xl border border-ink-100 bg-surface-50 p-5">
               {/* A heading, not a <label>: what follows is a search box and a list of
                   checkboxes, so there is no single control for it to name. */}
               <span className={lbl}>Audit Team Members</span>
@@ -201,8 +201,8 @@ const AuditScheduler = ({ setView, session, sites, users, locations = [], siteIn
               </div>
               <div className="max-h-[160px] flex-1 space-y-1.5 overflow-y-auto">
                 {filteredAuditors.map((u) => (
-                  <button type="button" key={u.id} onClick={() => toggleTeam(u.name)} aria-pressed={plan.team.includes(u.name)} className={`flex w-full cursor-pointer items-center gap-3 rounded-lg border p-2.5 text-left transition ${plan.team.includes(u.name) ? 'border-brand-300 bg-brand-50' : 'border-transparent hover:bg-clay-surface'}`}>
-                    <div className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border ${plan.team.includes(u.name) ? 'border-brand-500 bg-brand-500 text-white' : 'border-clay-300 bg-clay-surface'}`}>
+                  <button type="button" key={u.id} onClick={() => toggleTeam(u.name)} aria-pressed={plan.team.includes(u.name)} className={`flex w-full cursor-pointer items-center gap-3 rounded-lg border p-2.5 text-left transition ${plan.team.includes(u.name) ? 'border-brand-300 bg-brand-50' : 'border-transparent hover:bg-surface'}`}>
+                    <div className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border ${plan.team.includes(u.name) ? 'border-brand-500 bg-brand-500 text-white' : 'border-surface-300 bg-surface'}`}>
                       {plan.team.includes(u.name) && <Check size={10} className="inline" />}
                     </div>
                     <div className="truncate">
@@ -221,13 +221,13 @@ const AuditScheduler = ({ setView, session, sites, users, locations = [], siteIn
         <div className={`${panel} border-t-4 border-t-emerald-500 p-7`}>
           <div className="mb-6 flex items-center justify-between">
             <h3 className="text-lg font-bold text-emerald-600">Section 2: Audit Execution Matrix</h3>
-            <button onClick={addRow} className="rounded-xl border border-ink-100 bg-clay-50 px-4 py-2 text-xs font-bold text-ink-700 transition hover:bg-clay-100">
+            <button onClick={addRow} className="rounded-xl border border-ink-100 bg-surface-50 px-4 py-2 text-xs font-bold text-ink-700 transition hover:bg-surface-100">
               <Plus size={16} className="inline mr-2 text-emerald-500" />Add Row
             </button>
           </div>
           <div className="overflow-x-auto rounded-xl border border-ink-100">
             <table className="w-full min-w-[1000px] text-left text-sm">
-              <thead className="bg-clay-50 text-[10px] uppercase tracking-widest text-ink-500">
+              <thead className="bg-surface-50 text-[10px] uppercase tracking-widest text-ink-500">
                 <tr>
                   <th className="p-3">Auditor</th><th className="p-3">Auditee</th><th className="p-3">Department</th>
                   <th className="p-3">Area</th><th className="p-3">Aspect / Process</th><th className="p-3 w-36">Date</th>
@@ -236,7 +236,7 @@ const AuditScheduler = ({ setView, session, sites, users, locations = [], siteIn
               </thead>
               <tbody className="divide-y divide-ink-100">
                 {rows.map((row, i) => (
-                  <tr key={i} className="hover:bg-clay-50">
+                  <tr key={i} className="hover:bg-surface-50">
                     <td className="p-2">
                       <select className={`${fld} text-xs`} value={row.auditor} onChange={(e) => updateRow(i, 'auditor', e.target.value)}>
                         <option value="">Select...</option>
@@ -434,7 +434,7 @@ const AuditorWorkplace = ({ setView, session, isGlobalOwner, plans, findings, si
               <input type="text" placeholder="Auditor" className={`${fld} w-36`} value={filters.auditor} onChange={(e) => setFilters({ ...filters, auditor: e.target.value })} maxLength={500} />
               <input type="text" placeholder="Auditee" className={`${fld} w-36`} value={filters.auditee} onChange={(e) => setFilters({ ...filters, auditee: e.target.value })} maxLength={500} />
               <input type="text" placeholder="Doc ID" className={`${fld} w-28`} value={filters.id} onChange={(e) => setFilters({ ...filters, id: e.target.value })} maxLength={500} />
-              <button onClick={() => setFilters({ date: '', auditor: '', auditee: '', id: '' })} className="rounded-lg bg-clay-100 px-3 py-2 text-xs font-bold uppercase tracking-wider text-ink-600 hover:bg-clay-200"><RotateCcw size={14} className="inline mr-1" />Reset</button>
+              <button onClick={() => setFilters({ date: '', auditor: '', auditee: '', id: '' })} className="rounded-lg bg-surface-100 px-3 py-2 text-xs font-bold uppercase tracking-wider text-ink-600 hover:bg-surface-200"><RotateCcw size={14} className="inline mr-1" />Reset</button>
             </div>
             <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {filtered.length === 0 ? (
@@ -452,11 +452,11 @@ const AuditorWorkplace = ({ setView, session, isGlobalOwner, plans, findings, si
                     <button type="button" key={i} onClick={() => openTask(task)} className={`${panel} w-full cursor-pointer border-t-4 ${brd} p-6 text-left transition hover:-translate-y-1 hover:shadow-md`}>
                       <div className="mb-4 flex items-start justify-between">
                         <span className={`rounded px-2 py-1 text-[9px] font-bold uppercase tracking-widest ${chip}`}>{label}</span>
-                        <span className="rounded border border-ink-100 bg-clay-50 px-2 py-1 text-[10px] font-bold text-ink-500"><Calendar size={12} className="inline mr-1" />{task.date || '—'}</span>
+                        <span className="rounded border border-ink-100 bg-surface-50 px-2 py-1 text-[10px] font-bold text-ink-500"><Calendar size={12} className="inline mr-1" />{task.date || '—'}</span>
                       </div>
                       <h3 className="mb-1 truncate text-lg font-bold text-ink-800">{task.dept} - {task.area}</h3>
                       <p className="mb-5 truncate text-xs text-ink-400"><Target size={14} className="inline mr-1.5" />{task.aspect}</p>
-                      <div className="space-y-2 rounded-xl border border-ink-100 bg-clay-50 p-3 text-[11px] text-ink-600">
+                      <div className="space-y-2 rounded-xl border border-ink-100 bg-surface-50 p-3 text-[11px] text-ink-600">
                         <div className="flex justify-between"><span>Site:</span><span className="font-bold text-ink-800">{siteName(task.siteId)}</span></div>
                         <div className="flex justify-between"><span>Auditor:</span><span className="font-bold text-emerald-600">{task.auditor}</span></div>
                         <div className="flex justify-between"><span>Auditee:</span><span className="font-bold text-amber-600">{task.auditee}</span></div>
@@ -482,7 +482,7 @@ const AuditorWorkplace = ({ setView, session, isGlobalOwner, plans, findings, si
               <h3 className="mb-6 border-b border-ink-100 pb-3 text-xs font-bold uppercase tracking-widest text-emerald-600"><Info size={14} className="inline mr-2" />Section 1: Audit Context</h3>
               <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
                 {[['Site', siteName(currentTask.siteId)], ['Auditor', currentTask.auditor], ['Auditee', currentTask.auditee], ['Date', currentTask.date]].map(([k, v]) => (
-                  <div key={k}><label className={lbl}>{k}</label><div className="rounded-lg border border-ink-100 bg-clay-50 p-2.5 text-sm font-bold text-ink-800">{v || '—'}</div></div>
+                  <div key={k}><label className={lbl}>{k}</label><div className="rounded-lg border border-ink-100 bg-surface-50 p-2.5 text-sm font-bold text-ink-800">{v || '—'}</div></div>
                 ))}
                 <Field label="Standard / Criteria Applied" labelClassName={lbl} className="col-span-2 md:col-span-4"><input value={criteria} onChange={(e) => setCriteria(e.target.value)} className={fld} maxLength={500} placeholder="e.g. ISO 45001:2018 Clause 8.1..." /></Field>
               </div>
@@ -494,7 +494,7 @@ const AuditorWorkplace = ({ setView, session, isGlobalOwner, plans, findings, si
               </div>
               <div className="space-y-6">
                 {findingRows.map((f, i) => (
-                  <div key={i} className="relative rounded-2xl border border-ink-100 bg-clay-50 p-6">
+                  <div key={i} className="relative rounded-2xl border border-ink-100 bg-surface-50 p-6">
                     <div className="absolute right-4 top-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1 font-mono text-[10px] font-bold text-emerald-600">{f.id}</div>
                     <div className="mt-2 grid grid-cols-12 gap-6">
                       <Field label="Finding Type" labelClassName={lbl} className="col-span-12 md:col-span-3">
@@ -508,7 +508,7 @@ const AuditorWorkplace = ({ setView, session, isGlobalOwner, plans, findings, si
                       <Field label="Ref Clause" labelClassName={lbl} className="col-span-12 md:col-span-3"><input value={f.clause} onChange={(e) => updateRow(i, 'clause', e.target.value)} className={fld} maxLength={500} placeholder="e.g. 9.1.2" /></Field>
                       <div className="col-span-12 md:col-span-6">
                         <label className={lbl} htmlFor={`finding-evidence-${i}`}>Objective Evidence <span className="text-rose-500">*</span></label>
-                        <input id={`finding-evidence-${i}`} type="file" accept="application/pdf,image/*" onChange={(e) => handleFile(i, e.target.files[0])} className="w-full text-[10px] text-ink-500 file:mr-3 file:rounded-lg file:border-none file:bg-clay-200 file:px-4 file:py-1.5 file:font-bold file:text-ink-600" />
+                        <input id={`finding-evidence-${i}`} type="file" accept="application/pdf,image/*" onChange={(e) => handleFile(i, e.target.files[0])} className="w-full text-[10px] text-ink-500 file:mr-3 file:rounded-lg file:border-none file:bg-surface-200 file:px-4 file:py-1.5 file:font-bold file:text-ink-600" />
                         {f.fileName ? (
                           <div className="mt-2 truncate text-[10px] font-bold text-emerald-600"><CheckCircle2 size={12} className="inline mr-1" />Attached: {f.fileName}</div>
                         ) : (
@@ -517,7 +517,7 @@ const AuditorWorkplace = ({ setView, session, isGlobalOwner, plans, findings, si
                       </div>
                       <Field label="Detailed Description of Finding" labelClassName={lbl} className="col-span-12"><textarea value={f.desc} onChange={(e) => updateRow(i, 'desc', e.target.value)} rows="3" className={fld} maxLength={2000} placeholder="Describe the specific observation or non-conformance..." /></Field>
                     </div>
-                    <button onClick={() => removeRow(i)} className="absolute bottom-4 right-4 flex h-9 w-9 items-center justify-center rounded-xl border border-ink-100 bg-clay-surface text-ink-400 transition hover:bg-rose-50 hover:text-rose-500"><Trash2 size={16} /></button>
+                    <button onClick={() => removeRow(i)} className="absolute bottom-4 right-4 flex h-9 w-9 items-center justify-center rounded-xl border border-ink-100 bg-surface text-ink-400 transition hover:bg-rose-50 hover:text-rose-500"><Trash2 size={16} /></button>
                   </div>
                 ))}
                 {findingRows.length === 0 && <div className="rounded-3xl border-2 border-dashed border-ink-100 p-12 text-center italic text-ink-400">No findings logged. The audit is completely clean!</div>}
@@ -531,7 +531,7 @@ const AuditorWorkplace = ({ setView, session, isGlobalOwner, plans, findings, si
             <div className="mb-6 flex items-center justify-between">
               <button onClick={() => setWView('list')} className="text-sm font-bold text-ink-500 hover:text-ink-800"><ArrowLeft size={16} className="inline mr-2" />Back to Audit List</button>
               <div className="flex gap-3">
-                <button onClick={() => window.print()} className="rounded-xl bg-clay-100 px-5 py-2.5 text-sm font-bold text-ink-700 hover:bg-clay-200"><Printer size={16} className="inline mr-2" />Print Report</button>
+                <button onClick={() => window.print()} className="rounded-xl bg-surface-100 px-5 py-2.5 text-sm font-bold text-ink-700 hover:bg-surface-200"><Printer size={16} className="inline mr-2" />Print Report</button>
                 {view === 'verify' && <button onClick={handleVerifyClose} className="rounded-xl bg-orange-600 px-6 py-2.5 text-sm font-bold text-white shadow-lg transition active:scale-95 hover:bg-orange-500"><CheckCheck size={16} className="inline mr-2" />Verify & Close Audit</button>}
               </div>
             </div>
@@ -630,7 +630,7 @@ const AuditeeWorkplace = ({ session, users, findings }) => {
       <div className="flex flex-col gap-6 lg:flex-row">
         {/* inbox */}
         <div className={`${panel} flex w-full flex-col overflow-hidden lg:w-1/3`}>
-          <div className="border-b border-ink-100 bg-clay-50 p-5">
+          <div className="border-b border-ink-100 bg-surface-50 p-5">
             <h3 className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-ink-800"><Inbox size={14} className="text-amber-500" /> Action Inbox <span className="rounded-full bg-amber-700 px-2 py-0.5 text-[10px] text-white">{myAudits.length}</span></h3>
           </div>
           <div className="max-h-[60vh] space-y-3 overflow-y-auto p-4">
@@ -639,10 +639,10 @@ const AuditeeWorkplace = ({ session, users, findings }) => {
               const tone = a.status === 'Reported' ? 'border-l-rose-500' : a.status === 'Submitted for Verification' ? 'border-l-orange-500' : 'border-l-emerald-500'
               const label = a.status === 'Reported' ? 'Action Required' : a.status === 'Submitted for Verification' ? 'Pending Approval' : 'Closed'
               return (
-                <button type="button" key={a.firebaseKey} onClick={() => setSelected(a)} className={`w-full cursor-pointer rounded-2xl border border-l-4 border-ink-100 ${tone} p-5 text-left transition hover:bg-clay-50 ${selected?.firebaseKey === a.firebaseKey ? 'ring-2 ring-amber-300' : ''}`}>
+                <button type="button" key={a.firebaseKey} onClick={() => setSelected(a)} className={`w-full cursor-pointer rounded-2xl border border-l-4 border-ink-100 ${tone} p-5 text-left transition hover:bg-surface-50 ${selected?.firebaseKey === a.firebaseKey ? 'ring-2 ring-amber-300' : ''}`}>
                   <div className="mb-3 flex items-start justify-between">
-                    <span className="rounded border border-ink-100 bg-clay-50 px-2 py-1 font-mono text-[10px] font-bold text-ink-600">{a.docId}</span>
-                    <span className="rounded bg-clay-100 px-2 py-1 text-[9px] font-bold uppercase tracking-widest text-ink-600">{label}</span>
+                    <span className="rounded border border-ink-100 bg-surface-50 px-2 py-1 font-mono text-[10px] font-bold text-ink-600">{a.docId}</span>
+                    <span className="rounded bg-surface-100 px-2 py-1 text-[9px] font-bold uppercase tracking-widest text-ink-600">{label}</span>
                   </div>
                   <h3 className="mb-1 truncate text-base font-bold text-ink-800">{a.taskDetails?.dept} - {a.taskDetails?.area}</h3>
                   <div className="mt-3 flex justify-between border-t border-ink-100 pt-3 text-xs text-ink-400">
@@ -659,13 +659,13 @@ const AuditeeWorkplace = ({ session, users, findings }) => {
         <div className={`${panel} flex w-full flex-col overflow-hidden lg:w-2/3`}>
           {!selected ? (
             <div className="flex h-full flex-col items-center justify-center p-16 text-center text-ink-400">
-              <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-3xl bg-clay-100 text-3xl text-amber-500"><FileSignature size={24} /></div>
+              <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-3xl bg-surface-100 text-3xl text-amber-500"><FileSignature size={24} /></div>
               <p className="mb-1 text-lg font-bold text-ink-800">No Audit Selected</p>
               <p className="text-sm">Select an assignment from your inbox to respond.</p>
             </div>
           ) : (
             <div className="flex h-full flex-col">
-              <div className="border-b border-ink-100 bg-clay-50 p-6">
+              <div className="border-b border-ink-100 bg-surface-50 p-6">
                 <div className="flex items-start justify-between">
                   <div>
                     <h2 className="mb-1 text-2xl font-extrabold text-ink-800">Audit Findings</h2>
@@ -679,22 +679,22 @@ const AuditeeWorkplace = ({ session, users, findings }) => {
                   const has = f.response?.status === 'Completed'
                   const overdue = !has && isOverdueDate(f.auditeeDueDate)
                   return (
-                    <div key={i} className={`rounded-2xl border bg-clay-surface p-6 ${has ? 'border-emerald-300' : 'border-ink-100'}`}>
+                    <div key={i} className={`rounded-2xl border bg-surface p-6 ${has ? 'border-emerald-300' : 'border-ink-100'}`}>
                       <div className="mb-4 flex items-start justify-between border-b border-ink-100 pb-4">
                         <div className="flex flex-wrap items-center gap-3">
                           <span className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1 font-mono text-xs font-bold text-rose-600">{f.id}</span>
                           <span className={`rounded-lg px-3 py-1 text-[10px] font-bold uppercase tracking-widest ${getTypeClass(f.type)}`}>{f.type}</span>
                           {f.auditeeDueDate && !has && <span className={`rounded-lg border px-3 py-1 text-[10px] font-bold uppercase ${overdue ? 'border-rose-300 bg-rose-50 text-rose-600' : 'border-orange-200 bg-orange-50 text-orange-600'}`}>Due: {f.auditeeDueDate}{overdue && ' !'}</span>}
                         </div>
-                        {editable && <button onClick={() => openResp(f)} className={`rounded-xl px-5 py-2.5 text-xs font-bold uppercase tracking-widest text-white transition active:scale-95 ${has ? 'bg-clay-500 hover:bg-ink-600' : 'bg-gradient-to-r from-amber-500 to-orange-500'}`}>{has ? <><Pencil size={16} className="inline mr-1" />Edit Reply</> : <><Reply size={16} className="inline mr-1" />Respond Now</>}</button>}
+                        {editable && <button onClick={() => openResp(f)} className={`rounded-xl px-5 py-2.5 text-xs font-bold uppercase tracking-widest text-white transition active:scale-95 ${has ? 'bg-ink-600 hover:bg-ink-800' : 'bg-gradient-to-r from-amber-500 to-orange-500'}`}>{has ? <><Pencil size={16} className="inline mr-1" />Edit Reply</> : <><Reply size={16} className="inline mr-1" />Respond Now</>}</button>}
                       </div>
-                      <div className="mb-2 rounded-r-lg border-l-4 border-clay-300 bg-clay-50 py-1 pl-4 text-sm text-ink-700">“{f.desc}”</div>
+                      <div className="mb-2 rounded-r-lg border-l-4 border-surface-300 bg-surface-50 py-1 pl-4 text-sm text-ink-700">“{f.desc}”</div>
                       {has && <CapaSummary r={f.response} />}
                     </div>
                   )
                 })}
               </div>
-              <div className="flex justify-end border-t border-ink-100 bg-clay-50 p-5">
+              <div className="flex justify-end border-t border-ink-100 bg-surface-50 p-5">
                 {editable ? (
                   <button onClick={submit} disabled={!(selected.findings || []).every((f) => f.response?.status === 'Completed')} className="rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 px-10 py-3 text-sm font-bold uppercase tracking-widest text-white shadow-lg transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"><Send size={16} className="inline mr-2" />Submit Responses to Auditor</button>
                 ) : (
@@ -709,16 +709,16 @@ const AuditeeWorkplace = ({ session, users, findings }) => {
       {/* response modal */}
       {modal && current && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/40 p-4 backdrop-blur-sm">
-          <div className="flex max-h-[95vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-clay-surface shadow-2xl">
+          <div className="flex max-h-[95vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-surface shadow-2xl">
             <div className="flex items-center justify-between border-b border-ink-100 p-6">
               <div>
                 <h2 className="flex items-center gap-3 text-xl font-extrabold text-amber-600"><Reply size={18} /> Submit Corrective Action</h2>
                 <p className="mt-1 font-mono text-xs text-ink-400">Finding ID: <span className="font-bold text-ink-800">{current.id}</span></p>
               </div>
-              <button onClick={() => setModal(false)} className="flex h-10 w-10 items-center justify-center rounded-xl bg-clay-100 text-ink-500 hover:bg-clay-200"><X size={20} /></button>
+              <button onClick={() => setModal(false)} className="flex h-10 w-10 items-center justify-center rounded-xl bg-surface-100 text-ink-500 hover:bg-surface-200"><X size={20} /></button>
             </div>
             <div className="flex-1 space-y-5 overflow-y-auto p-6">
-              <div className="rounded-xl border border-ink-100 bg-clay-50 p-4">
+              <div className="rounded-xl border border-ink-100 bg-surface-50 p-4">
                 <span className={lbl}>Auditor’s Finding</span>
                 <p className="border-l-4 border-amber-300 py-1 pl-4 text-sm text-ink-700">“{current.desc}”</p>
               </div>
@@ -741,7 +741,7 @@ const AuditeeWorkplace = ({ session, users, findings }) => {
               </div>
             </div>
             <div className="flex justify-end gap-3 border-t border-ink-100 p-5">
-              <button onClick={() => setModal(false)} className="rounded-xl bg-clay-100 px-8 py-3 text-sm font-bold text-ink-700 hover:bg-clay-200">Cancel</button>
+              <button onClick={() => setModal(false)} className="rounded-xl bg-surface-100 px-8 py-3 text-sm font-bold text-ink-700 hover:bg-surface-200">Cancel</button>
               <button onClick={saveResponse} className="rounded-xl bg-amber-700 px-10 py-3 text-sm font-bold text-white shadow-lg transition active:scale-95 hover:bg-amber-500"><Save size={16} className="inline mr-2" />Save Response</button>
             </div>
           </div>
@@ -795,8 +795,8 @@ const AuditReports = ({ plans, findings, sites = [] }) => {
 
       <div className="space-y-6 print:hidden">
         <div className="flex gap-3">
-          <button onClick={() => setTab('findings')} className={`rounded-xl px-6 py-3 text-xs font-bold uppercase tracking-widest transition ${tab === 'findings' ? 'bg-purple-600 text-white shadow-lg' : 'bg-clay-surface text-ink-500 border border-ink-100'}`}><Search size={14} className="inline mr-2" />Findings Reports</button>
-          <button onClick={() => setTab('schedules')} className={`rounded-xl px-6 py-3 text-xs font-bold uppercase tracking-widest transition ${tab === 'schedules' ? 'bg-purple-600 text-white shadow-lg' : 'bg-clay-surface text-ink-500 border border-ink-100'}`}><Calendar size={14} className="inline mr-2" />Master Schedules</button>
+          <button onClick={() => setTab('findings')} className={`rounded-xl px-6 py-3 text-xs font-bold uppercase tracking-widest transition ${tab === 'findings' ? 'bg-purple-600 text-white shadow-lg' : 'bg-surface text-ink-500 border border-ink-100'}`}><Search size={14} className="inline mr-2" />Findings Reports</button>
+          <button onClick={() => setTab('schedules')} className={`rounded-xl px-6 py-3 text-xs font-bold uppercase tracking-widest transition ${tab === 'schedules' ? 'bg-purple-600 text-white shadow-lg' : 'bg-surface text-ink-500 border border-ink-100'}`}><Calendar size={14} className="inline mr-2" />Master Schedules</button>
         </div>
 
         <div className={`${panel} flex flex-wrap items-center gap-4 p-5`}>
@@ -812,22 +812,22 @@ const AuditReports = ({ plans, findings, sites = [] }) => {
               </select>
             </>
           )}
-          <button onClick={() => setFilters({ search: '', status: '', dept: '' })} className="rounded-xl bg-clay-100 px-5 py-2.5 text-xs font-bold uppercase tracking-widest text-ink-600 hover:bg-clay-200"><RotateCcw size={14} className="inline mr-1" />Reset</button>
+          <button onClick={() => setFilters({ search: '', status: '', dept: '' })} className="rounded-xl bg-surface-100 px-5 py-2.5 text-xs font-bold uppercase tracking-widest text-ink-600 hover:bg-surface-200"><RotateCcw size={14} className="inline mr-1" />Reset</button>
         </div>
 
         <div className={`${panel} overflow-x-auto`}>
           {tab === 'findings' ? (
             <table className="w-full text-left text-sm">
-              <thead className="border-b border-ink-100 bg-clay-50 text-[10px] uppercase tracking-widest text-ink-500">
+              <thead className="border-b border-ink-100 bg-surface-50 text-[10px] uppercase tracking-widest text-ink-500">
                 <tr><th className="p-5">Report Ref</th><th className="p-5">Date</th><th className="p-5">Auditee / Dept</th><th className="p-5 text-center">Findings</th><th className="p-5 text-center">Status</th><th className="p-5 text-right">Action</th></tr>
               </thead>
               <tbody className="divide-y divide-ink-100">
                 {fReports.map((r, i) => (
-                  <tr key={i} className="hover:bg-clay-50">
+                  <tr key={i} className="hover:bg-surface-50">
                     <td className="p-5 font-mono text-xs font-bold text-brand-600">{r.docId}</td>
                     <td className="p-5 font-mono text-xs text-ink-500">{(r.auditDate || '').split('T')[0]}</td>
                     <td className="p-5"><div className="font-bold text-ink-800">{r.taskDetails?.dept}</div><div className="text-[10px] uppercase tracking-widest text-ink-400"><User size={12} className="inline mr-1" />{r.taskDetails?.auditee}</div></td>
-                    <td className="p-5 text-center"><span className="rounded-lg border border-ink-100 bg-clay-50 px-3 py-1.5 text-xs font-bold">{r.findings?.length || 0}</span></td>
+                    <td className="p-5 text-center"><span className="rounded-lg border border-ink-100 bg-surface-50 px-3 py-1.5 text-xs font-bold">{r.findings?.length || 0}</span></td>
                     <td className="p-5 text-center"><span className={`rounded-lg border px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest ${statusColor(r.status)}`}>{r.status === 'Submitted for Verification' ? 'Pending Verif.' : r.status}</span></td>
                     <td className="p-5 text-right"><button onClick={() => doPrint(r)} className="ml-auto flex items-center gap-2 rounded-xl bg-purple-600 px-5 py-2.5 text-xs font-bold uppercase tracking-widest text-white hover:bg-purple-500"><FileDown size={14} />Gen PDF</button></td>
                   </tr>
@@ -837,12 +837,12 @@ const AuditReports = ({ plans, findings, sites = [] }) => {
             </table>
           ) : (
             <table className="w-full text-left text-sm">
-              <thead className="border-b border-ink-100 bg-clay-50 text-[10px] uppercase tracking-widest text-ink-500">
+              <thead className="border-b border-ink-100 bg-surface-50 text-[10px] uppercase tracking-widest text-ink-500">
                 <tr><th className="p-5">Schedule Ref</th><th className="p-5">Target Site</th><th className="p-5">Standard</th><th className="p-5">Lead Auditor</th><th className="p-5">Range</th><th className="p-5 text-right">Action</th></tr>
               </thead>
               <tbody className="divide-y divide-ink-100">
                 {fPlans.map((p, i) => (
-                  <tr key={i} className="hover:bg-clay-50">
+                  <tr key={i} className="hover:bg-surface-50">
                     <td className="p-5 font-mono text-xs font-bold text-brand-600">{p.docId}</td>
                     <td className="p-5 font-bold text-ink-800">{siteName(p.siteId)}</td>
                     <td className="p-5 font-bold text-purple-600">{p.standard}</td>
@@ -898,8 +898,8 @@ const AuditDashboard = ({ findings, sites = [] }) => {
 
       <div className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-4">
         {cards.map(([l, v, Icon, txt, chipBg], i) => (
-          <div key={l} style={{ animationDelay: `${i * 55}ms` }} className="clay-rise flex items-center gap-4 p-5">
-            <span className={`clay-chip grid h-12 w-12 shrink-0 place-items-center rounded-2xl ${chipBg} ${txt}`}>
+          <div key={l} style={{ animationDelay: `${i * 55}ms` }} className="card flex items-center gap-4 p-5">
+            <span className={`icon-chip grid h-12 w-12 shrink-0 place-items-center rounded-2xl ${chipBg} ${txt}`}>
               <Icon size={20} />
             </span>
             <div className="min-w-0">
@@ -916,19 +916,19 @@ const AuditDashboard = ({ findings, sites = [] }) => {
           <span className="text-[10px] uppercase tracking-widest text-ink-400">Click row for details</span>
         </div>
         <table className="w-full min-w-[800px] text-left text-sm">
-          <thead className="bg-clay-50 text-[10px] uppercase tracking-widest text-ink-500">
+          <thead className="bg-surface-50 text-[10px] uppercase tracking-widest text-ink-500">
             <tr><th className="p-5">Ref ID</th><th className="p-5">Status</th><th className="p-5">Date</th><th className="p-5">Department</th><th className="p-5">Auditor</th><th className="p-5">Auditee</th><th className="p-5 text-center">Findings</th></tr>
           </thead>
           <tbody className="divide-y divide-ink-100">
             {findings.map((a, i) => (
-              <tr key={i} onClick={() => setSelected(a)} className="cursor-pointer hover:bg-clay-50">
+              <tr key={i} onClick={() => setSelected(a)} className="cursor-pointer hover:bg-surface-50">
                 <td className="p-5 font-mono text-xs font-bold text-brand-600">{a.docId}</td>
                 <td className="p-5"><span className={`rounded-lg border px-2.5 py-1 text-[9px] font-bold uppercase tracking-widest ${color(a.status)}`}>{label(a.status)}</span></td>
                 <td className="p-5 font-mono text-xs text-ink-500">{(a.auditDate || '').split('T')[0]}</td>
                 <td className="p-5 font-bold text-ink-800">{a.taskDetails?.dept}</td>
                 <td className="p-5">{a.auditor}</td>
                 <td className="p-5 italic text-ink-500">{a.taskDetails?.auditee}</td>
-                <td className="p-5 text-center"><span className="rounded-lg border border-ink-100 bg-clay-50 px-3 py-1.5 text-xs font-bold">{a.findings?.length || 0}</span></td>
+                <td className="p-5 text-center"><span className="rounded-lg border border-ink-100 bg-surface-50 px-3 py-1.5 text-xs font-bold">{a.findings?.length || 0}</span></td>
               </tr>
             ))}
             {findings.length === 0 && <tr><td colSpan="7" className="p-16 text-center text-lg italic text-ink-400">No audit records found.</td></tr>}
@@ -938,13 +938,13 @@ const AuditDashboard = ({ findings, sites = [] }) => {
 
       {selected && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/40 p-4 backdrop-blur-sm">
-          <div className="flex max-h-[95vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-clay-surface shadow-2xl">
-            <div className="flex items-start justify-between border-b border-ink-100 bg-clay-50 p-6">
+          <div className="flex max-h-[95vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-surface shadow-2xl">
+            <div className="flex items-start justify-between border-b border-ink-100 bg-surface-50 p-6">
               <div><h2 className="mb-1 text-2xl font-extrabold text-ink-800">Audit Details</h2><p className="inline-block rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1 font-mono text-sm font-bold text-emerald-600">Ref: {selected.docId}</p></div>
-              <button onClick={() => setSelected(null)} className="flex h-10 w-10 items-center justify-center rounded-xl bg-clay-100 text-ink-500 hover:bg-clay-200"><X size={20} /></button>
+              <button onClick={() => setSelected(null)} className="flex h-10 w-10 items-center justify-center rounded-xl bg-surface-100 text-ink-500 hover:bg-surface-200"><X size={20} /></button>
             </div>
             <div className="flex-1 overflow-y-auto p-6">
-              <div className="mb-8 grid grid-cols-2 gap-5 rounded-2xl border border-ink-100 bg-clay-50 p-6 md:grid-cols-4">
+              <div className="mb-8 grid grid-cols-2 gap-5 rounded-2xl border border-ink-100 bg-surface-50 p-6 md:grid-cols-4">
                 {[['Site', siteName(selected.taskDetails?.siteId)], ['Date', (selected.auditDate || '').split('T')[0]], ['Auditor', selected.auditor], ['Auditee', selected.taskDetails?.auditee], ['Department', selected.taskDetails?.dept], ['Area', selected.taskDetails?.area]].map(([k, v]) => (
                   <div key={k}><label className={lbl}>{k}</label><span className="text-sm font-bold text-ink-800">{v || '—'}</span></div>
                 ))}
@@ -1002,14 +1002,14 @@ const AuditCalendar = ({ sites, plans, findings }) => {
             {sites.map((s) => <option key={s.code} value={s.code}>{s.name}</option>)}
           </select>
         </div>
-        <div className="flex items-center gap-2 rounded-xl border border-ink-100 bg-clay-50 p-1.5">
-          <button onClick={() => { if (month === 0) { setMonth(11); setYear((y) => y - 1) } else setMonth((m) => m - 1) }} className="rounded-lg px-4 py-2 text-ink-500 hover:bg-clay-surface"><ChevronLeft size={16} className="inline" /></button>
+        <div className="flex items-center gap-2 rounded-xl border border-ink-100 bg-surface-50 p-1.5">
+          <button onClick={() => { if (month === 0) { setMonth(11); setYear((y) => y - 1) } else setMonth((m) => m - 1) }} className="rounded-lg px-4 py-2 text-ink-500 hover:bg-surface"><ChevronLeft size={16} className="inline" /></button>
           <span className="w-40 text-center text-sm font-bold text-ink-800">{months[month]} {year}</span>
-          <button onClick={() => { if (month === 11) { setMonth(0); setYear((y) => y + 1) } else setMonth((m) => m + 1) }} className="rounded-lg px-4 py-2 text-ink-500 hover:bg-clay-surface"><ChevronRight size={16} className="inline" /></button>
+          <button onClick={() => { if (month === 11) { setMonth(0); setYear((y) => y + 1) } else setMonth((m) => m + 1) }} className="rounded-lg px-4 py-2 text-ink-500 hover:bg-surface"><ChevronRight size={16} className="inline" /></button>
         </div>
       </div>
 
-      <div className="mb-4 flex flex-wrap justify-center gap-6 rounded-2xl border border-ink-100 bg-clay-surface p-4 text-[10px] font-bold uppercase tracking-widest text-ink-500">
+      <div className="mb-4 flex flex-wrap justify-center gap-6 rounded-2xl border border-ink-100 bg-surface p-4 text-[10px] font-bold uppercase tracking-widest text-ink-500">
         {[['bg-sky-500', 'Scheduled'], ['bg-orange-500', 'Assigned'], ['bg-yellow-400', 'Replied'], ['bg-emerald-500', 'Closed']].map(([c, l]) => (
           <span key={l} className="flex items-center"><span className={`mr-2 h-3 w-3 rounded-full ${c}`} /> {l}</span>
         ))}
@@ -1018,18 +1018,18 @@ const AuditCalendar = ({ sites, plans, findings }) => {
       <div className={`${panel} p-6`}>
         <div className="grid grid-cols-7 overflow-hidden rounded-xl border-l border-t border-ink-100">
           {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d) => (
-            <div key={d} className="border-b border-r border-ink-100 bg-clay-50 p-3 text-center text-xs font-bold uppercase tracking-widest text-ink-500">{d}</div>
+            <div key={d} className="border-b border-r border-ink-100 bg-surface-50 p-3 text-center text-xs font-bold uppercase tracking-widest text-ink-500">{d}</div>
           ))}
           {(() => {
             const daysIn = new Date(year, month + 1, 0).getDate()
             const first = new Date(year, month, 1).getDay()
             const boxes = []
-            for (let i = 0; i < first; i++) boxes.push(<div key={`e${i}`} className="min-h-[120px] border-b border-r border-ink-100 bg-clay-50/50" />)
+            for (let i = 0; i < first; i++) boxes.push(<div key={`e${i}`} className="min-h-[120px] border-b border-r border-ink-100 bg-surface-50/50" />)
             for (let d = 1; d <= daysIn; d++) {
               const ds = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
               const dayEvents = events.filter((e) => e.date === ds)
               boxes.push(
-                <div key={d} className="flex min-h-[120px] flex-col border-b border-r border-ink-100 bg-clay-surface p-2">
+                <div key={d} className="flex min-h-[120px] flex-col border-b border-r border-ink-100 bg-surface p-2">
                   <span className={`mb-2 block text-right text-sm font-bold ${today === ds ? 'text-indigo-600' : 'text-ink-400'}`}>{d}</span>
                   <div className="flex-1 space-y-1 overflow-y-auto">
                     {dayEvents.map((ev, i) => {
@@ -1054,8 +1054,8 @@ function CapaSummary({ r }) {
     <div className="mt-4 rounded-xl border-l-4 border-orange-400 bg-orange-50/50 p-5">
       <div className="mb-4 flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-orange-600"><Reply size={14} /> Auditee Corrective Action Plan</div>
       <div className="mb-4 grid grid-cols-1 gap-4 md:grid-cols-2">
-        <div className="rounded-xl border border-ink-100 bg-clay-surface p-4"><span className={lbl}>Root Cause</span><span className="text-sm font-medium text-ink-800">{r.rootCause}</span></div>
-        <div className="rounded-xl border border-ink-100 bg-clay-surface p-4"><span className={lbl}>CAPA</span><span className="text-sm font-medium text-ink-800">{r.capa}</span></div>
+        <div className="rounded-xl border border-ink-100 bg-surface p-4"><span className={lbl}>Root Cause</span><span className="text-sm font-medium text-ink-800">{r.rootCause}</span></div>
+        <div className="rounded-xl border border-ink-100 bg-surface p-4"><span className={lbl}>CAPA</span><span className="text-sm font-medium text-ink-800">{r.capa}</span></div>
       </div>
       <div className="flex items-center justify-between border-t border-orange-200 pt-3">
         {r.evidenceFileName ? <a href={safeHref(r.evidenceFile)} download={r.evidenceFileName} className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs font-bold text-emerald-600 hover:bg-emerald-600 hover:text-white"><Download size={14} />View Evidence</a> : <span className="text-xs italic text-ink-400">No Evidence Provided</span>}
@@ -1074,16 +1074,16 @@ function FindingList({ findings }) {
       <h3 className="mb-6 flex items-center gap-2 border-b border-ink-100 pb-2 text-xs font-bold uppercase tracking-widest text-brand-600"><ListChecks size={14} /> Documented Findings ({(findings || []).length})</h3>
       <div className="space-y-6">
         {(findings || []).map((f, i) => (
-          <div key={i} className="rounded-2xl border border-ink-100 bg-clay-50 p-6">
+          <div key={i} className="rounded-2xl border border-ink-100 bg-surface-50 p-6">
             <div className="mb-4 flex items-center justify-between border-b border-ink-100 pb-3">
               <div className="flex items-center gap-3">
                 <span className="rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 font-mono text-xs font-bold text-rose-600">{f.id}</span>
                 <span className={`rounded-lg px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest ${getTypeClass(f.type)}`}>{f.type}</span>
               </div>
-              <span className="rounded-lg border border-ink-100 bg-clay-surface px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-ink-500">Clause: <span className="text-ink-800">{f.clause}</span></span>
+              <span className="rounded-lg border border-ink-100 bg-surface px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-ink-500">Clause: <span className="text-ink-800">{f.clause}</span></span>
             </div>
-            <p className="mb-2 rounded-r-lg border-l-4 border-clay-300 bg-clay-surface py-1 pl-4 text-sm text-ink-700">“{f.desc}”</p>
-            {f.response?.status === 'Completed' ? <CapaSummary r={f.response} /> : <div className="rounded-xl border border-dashed border-ink-100 bg-clay-surface p-4 text-center text-xs italic text-ink-400">No response submitted by auditee yet.</div>}
+            <p className="mb-2 rounded-r-lg border-l-4 border-surface-300 bg-surface py-1 pl-4 text-sm text-ink-700">“{f.desc}”</p>
+            {f.response?.status === 'Completed' ? <CapaSummary r={f.response} /> : <div className="rounded-xl border border-dashed border-ink-100 bg-surface p-4 text-center text-xs italic text-ink-400">No response submitted by auditee yet.</div>}
           </div>
         ))}
       </div>
@@ -1096,7 +1096,7 @@ function PrintReport({ data, fallbackFindings, currentTask, docId, siteName }) {
   const td = data?.taskDetails || currentTask || {}
   const list = data?.findings || fallbackFindings || []
   return (
-    <div className="absolute inset-0 z-[9999] hidden min-h-screen bg-clay-surface p-10 text-black print:block" style={{ printColorAdjust: 'exact', WebkitPrintColorAdjust: 'exact' }}>
+    <div className="absolute inset-0 z-[9999] hidden min-h-screen bg-surface p-10 text-black print:block" style={{ printColorAdjust: 'exact', WebkitPrintColorAdjust: 'exact' }}>
       <div className="mb-8 flex items-end justify-between border-b-4 border-black pb-4">
         <div><div className="mb-1 text-sm font-bold uppercase tracking-widest text-gray-500">ISO 45001 OHSMS - Formal Record</div><h1 className="text-3xl font-black uppercase leading-none tracking-tighter">Internal Audit Report</h1></div>
         <div className="text-right"><p className="font-mono text-sm font-bold">Ref: {data?.docId || docId}</p><p className="mt-1 text-sm font-bold uppercase">Date: {(data?.auditDate || new Date().toISOString()).split('T')[0]}</p></div>
@@ -1135,7 +1135,7 @@ function PrintReport({ data, fallbackFindings, currentTask, docId, siteName }) {
 
 function PrintPlan({ plan, rows, siteName }) {
   return (
-    <div className="absolute inset-0 z-[9999] hidden min-h-screen bg-clay-surface p-10 text-black print:block" style={{ printColorAdjust: 'exact', WebkitPrintColorAdjust: 'exact' }}>
+    <div className="absolute inset-0 z-[9999] hidden min-h-screen bg-surface p-10 text-black print:block" style={{ printColorAdjust: 'exact', WebkitPrintColorAdjust: 'exact' }}>
       <div className="mb-8 flex items-end justify-between border-b-4 border-black pb-4">
         <div><div className="mb-1 text-sm font-bold uppercase tracking-widest text-gray-500">ISO 45001 OHSMS - Formal Record</div><h1 className="text-3xl font-black uppercase leading-none tracking-tighter">Internal Audit Schedule & Matrix</h1></div>
         <div className="text-right"><p className="font-mono text-sm font-bold">Ref ID: {plan.docId || 'DRAFT'}</p><p className="mt-1 text-sm font-bold uppercase">Printed: {new Date().toLocaleDateString()}</p></div>
@@ -1224,7 +1224,7 @@ export default function InternalAudit() {
       <div className="animate-fade-in">
         <button
           onClick={() => setView('hub')}
-          className="mb-4 inline-flex items-center gap-2 rounded-xl bg-clay-100 px-4 py-2 text-sm font-bold text-ink-600 transition hover:bg-clay-200 print:hidden"
+          className="mb-4 inline-flex items-center gap-2 rounded-xl bg-surface-100 px-4 py-2 text-sm font-bold text-ink-600 transition hover:bg-surface-200 print:hidden"
         >
           <ArrowLeft size={16} /> Back to Hub
         </button>
@@ -1247,9 +1247,9 @@ export default function InternalAudit() {
             data-tour={key}
             onClick={() => setView(key)}
             style={{ animationDelay: `${i * 55}ms` }}
-            className="clay-tile flex items-center gap-4 p-4 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400/50"
+            className="card flex items-center gap-4 p-4 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400/50"
           >
-            <span className={`clay-chip grid h-14 w-14 shrink-0 place-items-center rounded-2xl ${chipBg} ${color}`}>
+            <span className={`icon-chip grid h-14 w-14 shrink-0 place-items-center rounded-2xl ${chipBg} ${color}`}>
               <Icon size={24} />
             </span>
             <span className="min-w-0">

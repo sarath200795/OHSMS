@@ -94,7 +94,7 @@ export default function AppChrome({ children }) {
   const branded = Boolean(org?.logoUrl)
 
   return (
-    <div className="min-h-screen bg-clay-bg">
+    <div className="min-h-screen bg-canvas">
       {/* Skip link. The header carries the wordmark, the module switcher, the
           notification bell and the account menu, and it is sticky — so on every
           single route a keyboard user tabbed through all of it before reaching
@@ -106,14 +106,14 @@ export default function AppChrome({ children }) {
       >
         Skip to main content
       </a>
-      <header className="sticky top-0 z-30 flex items-center gap-2 border-b border-ink-900/10 bg-clay-bg/80 px-4 py-2.5 pt-[max(0.65rem,env(safe-area-inset-top))] backdrop-blur-xl sm:gap-3.5 sm:px-7">
+      <header className="sticky top-0 z-30 flex items-center gap-2 border-b border-ink-200 bg-surface/80 px-4 py-2.5 pt-[max(0.65rem,env(safe-area-inset-top))] backdrop-blur-xl sm:gap-3.5 sm:px-7">
         {/* aria-label rather than leaning on the wordmark beside it: that text
             is hidden below sm, and without this the only way home on a phone
             was a link announced as the single letter "W". */}
         <NavLink
           to="/portal"
           aria-label={`${branded && orgName ? orgName : 'WEHS'} home`}
-          className="flex min-w-0 flex-none items-center gap-2.5 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-clay-bg"
+          className="flex min-w-0 flex-none items-center gap-2.5 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
         >
           <OrgMark className="h-8 w-8 rounded-lg ring-1 ring-ink-900/10" />
           <span className="hidden min-w-0 leading-tight sm:block">
@@ -142,7 +142,7 @@ export default function AppChrome({ children }) {
             aria-expanded={menuOpen}
             aria-haspopup="menu"
             aria-controls="account-menu"
-            className="flex items-center gap-2.5 rounded-xl bg-clay-surface px-1.5 py-1 ring-1 ring-ink-900/10 transition-all duration-200 ease-emil hover:ring-ink-900/15 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-clay-bg sm:px-2 sm:py-1.5"
+            className="flex items-center gap-2.5 rounded-lg bg-surface px-1.5 py-1 ring-1 ring-ink-200 transition-all duration-200 ease-emil hover:ring-ink-300 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas sm:px-2 sm:py-1.5"
           >
             <span className="grid h-[28px] w-[28px] place-items-center rounded-lg bg-brand-600 text-[11px] font-bold text-white">
               {initials(name)}
@@ -153,7 +153,10 @@ export default function AppChrome({ children }) {
                 {ROLE_LABEL[role] || 'Employee'}
               </span>
             </span>
-            <ChevronDown size={14} className={`text-ink-400 transition-transform duration-200 ${menuOpen ? 'rotate-180' : ''}`} />
+            <ChevronDown
+              size={14}
+              className={`text-ink-400 transition-transform duration-200 ${menuOpen ? 'rotate-180' : ''}`}
+            />
           </button>
 
           {menuOpen && (
@@ -162,7 +165,7 @@ export default function AppChrome({ children }) {
               role="menu"
               tabIndex={-1}
               onKeyDown={onMenuKeyDown}
-              className="absolute right-0 z-40 mt-2 w-64 overflow-hidden rounded-xl bg-clay-surface p-1.5 shadow-clay-lg ring-1 ring-ink-900/10 animate-fade-in-up"
+              className="absolute right-0 z-40 mt-2 w-64 overflow-hidden rounded-xl bg-surface p-1.5 shadow-elev-lg ring-1 ring-ink-200 animate-fade-in-up"
             >
               <div className="border-b border-ink-100 px-3 py-2.5">
                 <p className="text-[13px] font-bold text-ink-900">{name}</p>
@@ -241,7 +244,7 @@ function MenuItem({ icon: Icon, children, onClick, danger }) {
       role="menuitem"
       onClick={onClick}
       className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 ${
-        danger ? 'text-red-600 hover:bg-red-50' : 'text-ink-700 hover:bg-clay-100'
+        danger ? 'text-red-600 hover:bg-red-50' : 'text-ink-700 hover:bg-surface-100'
       }`}
     >
       <Icon size={15} />

@@ -83,7 +83,7 @@ export default function MetabaseSettings({ orgId, actor }) {
 
         {/* The one distinction that catches people out, said where they will be
             looking when it catches them. */}
-        <p className="mt-5 rounded-2xl bg-clay-surface/60 px-3 py-2.5 text-[11.5px] leading-relaxed text-ink-600 shadow-clay-inset">
+        <p className="ring-1 ring-ink-200 mt-5 rounded-2xl bg-surface-50/60 px-3 py-2.5 text-[11.5px] leading-relaxed text-ink-600 ">
           <b>Pass</b> and <b>Pass %</b> are different columns. A bare <code>pass</code> beside a bare
           <code> fail</code> is read as a COUNT of checks; <code>pass %</code> is read as a percentage.
           Give ODIN the counts where you have them — they carry how big each audit was, which is what
@@ -108,7 +108,7 @@ function ColumnList({ title, rows, className = '' }) {
       <p className="mb-2 text-[10.5px] font-bold uppercase tracking-[0.1em] text-ink-400">{title}</p>
       <dl className="space-y-1.5">
         {rows.map(([name, desc]) => (
-          <div key={name} className="flex flex-wrap gap-x-2 rounded-xl bg-clay-surface/60 px-3 py-2 shadow-clay-inset">
+          <div key={name} className="ring-1 ring-ink-200 flex flex-wrap gap-x-2 rounded-xl bg-surface-50/60 px-3 py-2 ">
             <dt className="text-[12.5px] font-bold text-ink-800">{name}</dt>
             <dd className="text-[12px] text-ink-500">{desc}</dd>
           </div>

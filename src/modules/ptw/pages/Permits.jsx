@@ -84,7 +84,7 @@ export default function Permits() {
             const color = STATUS_META[s.key]?.color
             return (
               <button key={s.key} onClick={() => setStatus(s.key)}
-                className={`chip transition ${active ? 'text-white' : 'bg-clay-surface text-ink-600 hover:bg-clay-100'}`}
+                className={`chip transition ${active ? 'text-white' : 'bg-surface text-ink-600 hover:bg-surface-100'}`}
                 style={active ? { backgroundColor: color || '#ea580c' } : undefined}>
                 {s.label}
               </button>
@@ -109,7 +109,7 @@ export default function Permits() {
               onClick={() => navigate(`/permits/${p.id}`)}
               className="card pressable flex w-full items-center gap-4 p-4 text-left"
             >
-              <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-brand-50 text-brand-600 shadow-clay-sm">
+              <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-brand-50 text-brand-600 shadow-elev-sm">
                 <FileText size={20} />
               </div>
               <div className="min-w-0 flex-1">
@@ -126,7 +126,7 @@ export default function Permits() {
               </div>
               {p.qrToken && (
                 <div className="hidden flex-col items-center gap-0.5 sm:flex">
-                  <div className="rounded-lg bg-white p-1 shadow-clay-sm">
+                  <div className="rounded-lg bg-white p-1 shadow-elev-sm">
                     <QRCodeCanvas value={publicPermitUrl(p.qrToken)} size={56} level="M" />
                   </div>
                   <span className="text-[9px] font-semibold uppercase tracking-wide text-ink-400">Scan</span>

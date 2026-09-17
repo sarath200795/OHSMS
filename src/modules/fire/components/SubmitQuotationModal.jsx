@@ -87,7 +87,7 @@ export default function SubmitQuotationModal({ open, onClose, ext, orgId, orgNam
 
   return (
     <Modal open={open} onClose={onClose} title="Submit quotation" maxWidth="max-w-lg">
-      <div className="mb-4 flex items-center gap-2 rounded-2xl bg-clay-surface px-3 py-2.5 text-sm text-ink-600 shadow-clay-inset">
+      <div className="ring-1 ring-ink-200 mb-4 flex items-center gap-2 rounded-2xl bg-surface-50 px-3 py-2.5 text-sm text-ink-600 ">
         <FileText size={16} className="text-ink-400" />
         <span>Quotation for <span className="font-semibold text-ink-800">{label}</span> — required before it can move to the next step.</span>
       </div>
@@ -123,7 +123,7 @@ export default function SubmitQuotationModal({ open, onClose, ext, orgId, orgNam
           onChange={(e) => pickFile(e.target.files?.[0])}
         />
         {file ? (
-          <div className="flex items-center gap-2 rounded-2xl bg-clay-surface px-3 py-2.5 text-sm shadow-clay-inset">
+          <div className="ring-1 ring-ink-200 flex items-center gap-2 rounded-2xl bg-surface-50 px-3 py-2.5 text-sm ">
             <Paperclip size={15} className="shrink-0 text-ink-400" />
             <a
               href={safeHref(file.data)}
@@ -136,7 +136,7 @@ export default function SubmitQuotationModal({ open, onClose, ext, orgId, orgNam
             </a>
             <button
               type="button"
-              className="rounded-lg p-1 text-ink-400 hover:bg-clay-100 hover:text-ink-700"
+              className="rounded-lg p-1 text-ink-400 hover:bg-surface-100 hover:text-ink-700"
               onClick={() => setFile(null)}
               title="Remove file"
             >

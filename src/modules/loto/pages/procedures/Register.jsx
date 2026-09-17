@@ -97,7 +97,7 @@ export default function Register() {
       />
 
       {/* Tabs */}
-      <div className="mt-5 inline-flex rounded-2xl bg-steel-800 p-1 shadow-clay-inset">
+      <div className="ring-1 ring-ink-200 mt-5 inline-flex rounded-2xl bg-steel-800 p-1 ">
         {[
           { k: 'live', label: 'Live Status' },
           { k: 'log', label: `Activity Log${events.length ? ` (${events.length})` : ''}` },
@@ -106,7 +106,7 @@ export default function Register() {
             key={t.k}
             onClick={() => setTab(t.k)}
             className={`rounded-xl px-4 py-1.5 text-sm font-semibold transition-all ${
-              tab === t.k ? 'bg-claySurface text-steel-50 shadow-clay' : 'text-steel-300'
+              tab === t.k ? 'bg-surface text-steel-50 shadow-elev' : 'text-steel-300'
             }`}
           >
             {t.label}
@@ -147,7 +147,7 @@ function LiveStatus({ loading, stats, filter, setFilter, filtered, navigate }) {
             onClick={() => setFilter(f.key)}
             className={`rounded-full px-3 py-1.5 text-sm font-medium transition-all ${
               filter === f.key
-                ? 'bg-hazard/15 text-amber-600 shadow-clay-inset'
+                ? 'bg-hazard/15 text-amber-600 '
                 : 'bg-steel-800 text-steel-300'
             }`}
           >
@@ -327,7 +327,7 @@ function ActivityLog({ loading, events }) {
 
 function StatCard({ label, value, className }) {
   return (
-    <div className={`rounded-2xl p-4 shadow-clay ${className}`}>
+    <div className={`rounded-2xl p-4 shadow-elev ${className}`}>
       <div className="text-3xl font-extrabold">{value}</div>
       <div className="text-xs font-medium uppercase tracking-wider opacity-80">{label}</div>
     </div>

@@ -1,11 +1,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Portal primitives.
 //
-// The portal is built from the same clay tokens as the rest of the app — the
-// mockup's shadows are shadow-clay / -sm / -inset / -brand exactly, and its
-// palette is the existing brand / ink / clay / accent scales. Nothing here
-// introduces a colour or a shadow; these are just the four shapes the portal
-// repeats often enough that spelling them out each time obscures the layout.
+// The portal is built from the same tokens as the rest of the app — card,
+// well, elev, brand / ink / canvas / surface. Nothing here introduces a
+// colour or a shadow; these are just the four shapes the portal repeats
+// often enough that spelling them out each time obscures the layout.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** A raised panel — the portal's default surface. */
@@ -17,10 +16,10 @@ export function Raised({ as: Tag = 'div', className = '', children, ...rest }) {
   )
 }
 
-/** A pressed well — used for stat tiles, inputs and segmented controls. */
+/** A muted panel — used for stat tiles, inputs and segmented controls. */
 export function Inset({ as: Tag = 'div', className = '', children, ...rest }) {
   return (
-    <Tag className={`clay-inset ${className}`} {...rest}>
+    <Tag className={`well ${className}`} {...rest}>
       {children}
     </Tag>
   )
@@ -29,7 +28,9 @@ export function Inset({ as: Tag = 'div', className = '', children, ...rest }) {
 /** The small uppercase label that introduces every section. */
 export function SectionLabel({ className = '', children }) {
   return (
-    <p className={`text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-400 ${className}`}>
+    <p
+      className={`text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-400 ${className}`}
+    >
       {children}
     </p>
   )
@@ -51,11 +52,11 @@ export function Ring({ pct, color, size = 46 }) {
       style={{
         height: size,
         width: size,
-        background: `conic-gradient(${color} ${safe * 3.6}deg, #e5dccf 0deg)`,
+        background: `conic-gradient(${color} ${safe * 3.6}deg, #e2e8f0 0deg)`,
       }}
     >
       <span
-        className="grid place-items-center rounded-full bg-clay-surface text-[11px] font-extrabold"
+        className="grid place-items-center rounded-full bg-surface text-[11px] font-extrabold"
         style={{ height: size - 10, width: size - 10, color }}
       >
         {safe}%

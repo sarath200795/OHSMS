@@ -13,7 +13,7 @@ export default function SiteFilter() {
       <select
         value={siteFilter}
         onChange={(e) => setSiteFilter(e.target.value)}
-        className="rounded-2xl border border-transparent bg-clay-surface py-2.5 pl-9 pr-8 text-sm font-semibold text-ink-700 shadow-clay-inset outline-none focus:border-brand-300 focus:ring-2 focus:ring-brand-200"
+        className="rounded-2xl border border-transparent bg-surface py-2.5 pl-9 pr-8 text-sm font-semibold text-ink-700  outline-none focus:border-brand-300 focus:ring-2 focus:ring-brand-200"
         title="Filter by site"
       >
         <option value="All">All sites</option>

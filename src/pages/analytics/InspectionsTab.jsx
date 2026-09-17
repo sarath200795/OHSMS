@@ -114,7 +114,7 @@ export default function InspectionsTab({ records = [], sites = [], keepUnplaced 
                   <span className="text-xs font-bold text-ink-700">{actions.completion}% closed</span>
                   <span className="text-[11px] text-ink-400">{actions.done} of {actions.total}</span>
                 </div>
-                <div className="h-2.5 overflow-hidden rounded-full bg-clay-200">
+                <div className="h-2.5 overflow-hidden rounded-full bg-surface-200">
                   <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${actions.completion}%` }} />
                 </div>
               </div>
@@ -147,7 +147,7 @@ export default function InspectionsTab({ records = [], sites = [], keepUnplaced 
 
 function Tally({ label, value, tone }) {
   return (
-    <div className="rounded-xl bg-clay-surface py-3 shadow-clay-inset">
+    <div className="ring-1 ring-ink-200 rounded-xl bg-surface-50 py-3 ">
       <p className={`text-xl font-black ${tone}`}>{value}</p>
       <p className="mt-0.5 text-[11px] font-semibold text-ink-500">{label}</p>
     </div>

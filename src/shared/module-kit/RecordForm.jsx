@@ -135,14 +135,14 @@ function FileField({ field, value, form, lookups, onChange }) {
   }
 
   if (busy) {
-    return <p className="rounded-xl bg-clay-surface px-3 py-2.5 text-sm text-ink-500 shadow-clay-inset">Uploading…</p>
+    return <p className="ring-1 ring-ink-200 rounded-xl bg-surface-50 px-3 py-2.5 text-sm text-ink-500 ">Uploading…</p>
   }
 
   // Either an upload result ({url, name}) or, when deferred, the File itself —
   // both carry a name, and both mean "something is attached".
   if (value?.url || value?.name) {
     return (
-      <div className="flex items-center gap-2 rounded-xl bg-clay-surface px-3 py-2 shadow-clay-inset">
+      <div className="ring-1 ring-ink-200 flex items-center gap-2 rounded-xl bg-surface-50 px-3 py-2 ">
         <Paperclip size={15} className="flex-none text-ink-400" />
         <span className="truncate text-sm text-ink-700">{value.name || 'Attached file'}</span>
         {/* Nothing is stored yet, and saying so is what stops someone closing
@@ -168,7 +168,7 @@ function FileField({ field, value, form, lookups, onChange }) {
       accept={field.accept}
       required={field.required}
       onChange={(e) => pick(e.target.files?.[0])}
-      className="block w-full text-sm text-ink-600 file:mr-3 file:rounded-xl file:border-0 file:bg-clay-surface file:px-3 file:py-2 file:text-sm file:font-semibold file:text-ink-700 file:shadow-clay-sm"
+      className="block w-full text-sm text-ink-600 file:mr-3 file:rounded-xl file:border-0 file:bg-surface file:px-3 file:py-2 file:text-sm file:font-semibold file:text-ink-700 file:shadow-elev-sm"
     />
   )
 }

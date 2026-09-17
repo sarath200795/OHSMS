@@ -28,10 +28,10 @@ export default function PersonEditor({ value = [], onChange, users = [], allowRo
   return (
     <div className="space-y-3">
       {value.length === 0 && (
-        <p className="rounded-xl bg-clay-surface px-3 py-2 text-sm text-ink-400 shadow-clay-inset">No people added yet.</p>
+        <p className="ring-1 ring-ink-200 rounded-xl bg-surface-50 px-3 py-2 text-sm text-ink-400 ">No people added yet.</p>
       )}
       {value.map((p) => (
-        <div key={p.id} className="rounded-2xl bg-clay-surface p-3 shadow-clay-inset">
+        <div key={p.id} className="ring-1 ring-ink-200 rounded-2xl bg-surface-50 p-3 ">
           <div className="mb-2 flex items-center justify-between">
             <div className="flex gap-1 rounded-lg bg-white/60 p-0.5">
               {PERSON_KINDS.map((k) => (

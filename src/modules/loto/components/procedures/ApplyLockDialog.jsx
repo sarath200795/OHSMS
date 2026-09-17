@@ -4,7 +4,7 @@ import Modal from '../ui/Modal'
 import Button from '../ui/Button'
 
 const fieldCls =
-  'w-full rounded-xl bg-clay px-3.5 py-2.5 text-steel-100 shadow-clay-inset outline-none ring-2 ring-transparent focus:ring-hazard/50'
+  'w-full rounded-xl bg-surface px-3.5 py-2.5 text-steel-100  outline-none ring-2 ring-transparent focus:ring-hazard/50'
 
 /**
  * Apply-lock dialog. Two modes:
@@ -118,7 +118,7 @@ export default function ApplyLockDialog({
           </label>
 
           {!forceDepartment && selectedTech && (
-            <p className="rounded-xl bg-clay px-3.5 py-2.5 text-sm text-steel-300 shadow-clay-inset">
+            <p className="ring-1 ring-ink-200 rounded-xl bg-surface-50 px-3.5 py-2.5 text-sm text-steel-300 ">
               Personal lock applied:{' '}
               <span className="font-mono font-bold text-steel-100">#{selectedTech.lockNo}</span>
             </p>
@@ -130,7 +130,7 @@ export default function ApplyLockDialog({
                 Department lock <span className="text-amber-600">(unique per point)</span>
               </span>
               {availableDeptLocks.length === 0 ? (
-                <p className="rounded-xl bg-clay px-3.5 py-2.5 text-sm text-steel-400 shadow-clay-inset">
+                <p className="ring-1 ring-ink-200 rounded-xl bg-surface-50 px-3.5 py-2.5 text-sm text-steel-400 ">
                   No Department locks available — all in use or none added. Manage in{' '}
                   <Link to="/loto/locks" className="font-semibold text-amber-600">
                     Lock Inventory

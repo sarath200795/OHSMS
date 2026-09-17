@@ -22,7 +22,7 @@ export default function ApprovalFlow({ procedure, busy, onSend, onApprove, onRej
   const active = stepIndex(status)
 
   return (
-    <div className="mb-6 rounded-2xl bg-claySurface p-5 shadow-clay">
+    <div className="mb-6 rounded-2xl bg-surface p-5 shadow-elev">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold uppercase tracking-wider text-steel-400">
           Approval flow
@@ -50,7 +50,7 @@ export default function ApprovalFlow({ procedure, busy, onSend, onApprove, onRej
           return (
             <div key={s.key} className="flex flex-1 items-center last:flex-none">
               <div className="flex flex-col items-center">
-                <div className={`grid h-9 w-9 place-items-center rounded-full text-sm font-bold shadow-clay ${circleCls}`}>
+                <div className={`grid h-9 w-9 place-items-center rounded-full text-sm font-bold shadow-elev ${circleCls}`}>
                   {done || isApprovedStep ? '✓' : i + 1}
                 </div>
                 <span className={`mt-1.5 text-[11px] font-medium ${current || isApprovedStep ? 'text-steel-100' : 'text-steel-400'}`}>

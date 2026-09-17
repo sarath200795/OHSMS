@@ -112,7 +112,7 @@ export default function PlatformLogin() {
           </div>
         </div>
 
-        <div className="rounded-2xl bg-clay-surface p-6 shadow-clay">
+        <div className="rounded-2xl bg-surface p-6 shadow-elev">
           {refused && (
             <p
               role="alert"

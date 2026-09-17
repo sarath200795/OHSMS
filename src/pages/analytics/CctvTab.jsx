@@ -379,7 +379,7 @@ export default function CctvTab({ cameras = [], dvrs = [], merakis = [], sites =
         <button
           type="button"
           onClick={() => { setSiteId('all'); setKind('all'); setFrom(''); setTo('') }}
-          className="rounded-2xl bg-clay-surface px-4 py-2.5 text-[12.5px] font-semibold text-ink-700 shadow-clay-sm"
+          className="rounded-2xl bg-surface px-4 py-2.5 text-[12.5px] font-semibold text-ink-700 shadow-elev-sm"
         >
           Reset
         </button>

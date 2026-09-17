@@ -206,12 +206,12 @@ export default function Dashboard() {
                 <th className="px-4 py-2.5">Compliance</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-clay-200/60">
+            <tbody className="divide-y divide-surface-200/60">
               {deptBreakdown.map((d) => (
                 <tr
                   key={d.name}
                   onClick={() => setDeptFilter(deptFilter === d.name ? 'all' : d.name)}
-                  className={`cursor-pointer hover:bg-clay-100/50 ${deptFilter === d.name ? 'bg-brand-50/60' : ''}`}
+                  className={`cursor-pointer hover:bg-surface-100/50 ${deptFilter === d.name ? 'bg-brand-50/60' : ''}`}
                   title={deptFilter === d.name ? 'Click to clear the department focus' : 'Click to scope the dashboard to this department'}
                 >
                   <td className="px-5 py-2.5 font-semibold text-ink-800">{d.name}</td>
@@ -231,7 +231,7 @@ export default function Dashboard() {
                       {/* A bare div conveys a percentage by width alone. role="progressbar"
                           plus the value attributes is what makes the same figure
                           available to anyone not looking at the pixels. */}
-                      <div className="h-2.5 w-28 overflow-hidden rounded-full bg-clay-200" role="progressbar" aria-valuenow={d.pct} aria-valuemin={0} aria-valuemax={100} aria-label={`${d.name || 'Department'} training completion`}>
+                      <div className="h-2.5 w-28 overflow-hidden rounded-full bg-surface-200" role="progressbar" aria-valuenow={d.pct} aria-valuemin={0} aria-valuemax={100} aria-label={`${d.name || 'Department'} training completion`}>
                         <div className="h-full rounded-full" style={{ width: `${d.pct}%`, backgroundColor: d.pct >= 90 ? '#16a34a' : d.pct >= 60 ? '#d97706' : '#dc2626' }} />
                       </div>
                       <span className="text-xs font-semibold text-ink-600">{d.pct}%</span>
@@ -259,7 +259,7 @@ export default function Dashboard() {
             </Link>
           </div>
           {overdueAssignments.length > 0 && (
-            <ul className="mb-3 divide-y divide-clay-200/60 border-b border-clay-200/60 pb-2">
+            <ul className="mb-3 divide-y divide-surface-200/60 border-b border-surface-200/60 pb-2">
               {overdueAssignments.map((a) => (
                 <li key={a.id} className="flex items-center gap-3 py-2.5">
                   <div className="min-w-0 flex-1">
@@ -274,7 +274,7 @@ export default function Dashboard() {
           {attention.length === 0 && overdueAssignments.length === 0 ? (
             <EmptyState icon={BadgeCheck} title="Nothing needs attention" description="No overdue assignments, and no certifications expired or due within 30 days." />
           ) : (
-            <ul className="divide-y divide-clay-200/60">
+            <ul className="divide-y divide-surface-200/60">
               {attention.map((r) => {
                 const st = recordStatus(r.expiresOn, today)
                 const d = daysUntil(r.expiresOn)
@@ -316,7 +316,7 @@ export default function Dashboard() {
                     </span>
                     <span className="text-xs text-ink-500">{c.holders}/{users.length} · {c.pct}%</span>
                   </div>
-                  <div className="h-2.5 w-full overflow-hidden rounded-full bg-clay-200">
+                  <div className="h-2.5 w-full overflow-hidden rounded-full bg-surface-200">
                     <div
                       className="h-full rounded-full transition-all duration-300"
                       style={{ width: `${c.pct}%`, backgroundColor: c.pct >= 90 ? '#16a34a' : c.pct >= 60 ? '#d97706' : '#dc2626' }}

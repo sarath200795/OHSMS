@@ -105,11 +105,11 @@ export default function RecycleBin() {
                   <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-clay-200/60">
+              <tbody className="divide-y divide-surface-200/60">
                 {pageItems.map((ext) => {
                   const left = daysLeft(ext.deletedAt)
                   return (
-                    <tr key={ext.id} className="hover:bg-clay-100/50" style={{ boxShadow: 'inset 4px 0 0 #dc2626' }}>
+                    <tr key={ext.id} className="hover:bg-surface-100/50" style={{ boxShadow: 'inset 4px 0 0 #dc2626' }}>
                       <td className="px-4 py-3">
                         <div className="font-bold text-ink-900">{ext.serialNo || '—'}</div>
                         <div className="text-xs text-ink-500">{ext.type} · {ext.capacity}</div>
@@ -141,7 +141,7 @@ export default function RecycleBin() {
             </table>
           </div>
           <Pager
-            className="border-t border-clay-200/60 px-4 py-3"
+            className="border-t border-surface-200/60 px-4 py-3"
             page={page} pageCount={pageCount} onPage={setPage} total={total} pageSize={pageSize}
           />
         </div>

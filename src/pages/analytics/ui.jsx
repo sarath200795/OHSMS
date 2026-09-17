@@ -42,7 +42,7 @@ export function NoData({ height = 240, children }) {
   )
 }
 
-/** A labelled select styled as a pressed well, used across every filter bar. */
+/** A labelled select styled as an outlined control, used across every filter bar. */
 export function Picker({ id, label, value, onChange, children }) {
   return (
     <div className="min-w-0 flex-1">

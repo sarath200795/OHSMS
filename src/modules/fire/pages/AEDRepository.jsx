@@ -332,7 +332,7 @@ export default function AEDRepository() {
           )}
           <div className="card overflow-x-auto">
             <table className="w-full min-w-[860px] text-sm">
-              <thead className="bg-clay-100/70 text-left text-xs uppercase tracking-wide text-ink-500">
+              <thead className="bg-surface-100/70 text-left text-xs uppercase tracking-wide text-ink-500">
                 <tr>
                   <th className="px-4 py-3"><input type="checkbox" className="h-4 w-4 cursor-pointer accent-brand-500" checked={allOnPage} onChange={toggleAllOnPage} aria-label="Select all AEDs on this page" title="Select all on this page" /></th>
                   <th className="px-4 py-3">Asset ID</th><th className="px-4 py-3">Site</th><th className="px-4 py-3">Region</th>
@@ -340,7 +340,7 @@ export default function AEDRepository() {
                   <th className="px-4 py-3">Status</th><th className="px-4 py-3 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-clay-200/60">
+              <tbody className="divide-y divide-surface-200/60">
                 {pageItems.map((a) => (
                   <tr key={a.id} className={`hover:bg-ink-50/70 ${selected.has(a.id) ? 'bg-brand-50/60' : ''}`} style={{ boxShadow: `inset 4px 0 0 ${aedColor(a, today)}` }}>
                     <td className="px-4 py-3"><input type="checkbox" className="h-4 w-4 cursor-pointer accent-brand-500" checked={selected.has(a.id)} onChange={() => toggleSel(a.id)} aria-label={`Select ${a.assetId || 'this AED'}`} /></td>
@@ -453,7 +453,7 @@ export default function AEDRepository() {
       <Modal open={!!qrFor} onClose={() => setQrFor(null)} title={`QR — ${qrFor?.assetId || 'AED'}`}>
         {qrFor && (
           <div className="flex flex-col items-center gap-3 text-center">
-            <div className="rounded-2xl bg-white p-4 shadow-clay"><QRCodeSVG value={publicQrUrl(qrFor.qrToken)} size={200} level="H" includeMargin /></div>
+            <div className="rounded-2xl bg-white p-4 shadow-elev"><QRCodeSVG value={publicQrUrl(qrFor.qrToken)} size={200} level="H" includeMargin /></div>
             <p className="text-sm font-bold text-ink-900">{qrFor.assetId || 'AED'} · {qrFor.centerName}</p>
             <p className="break-all text-xs text-ink-400">{publicQrUrl(qrFor.qrToken)}</p>
             <p className="text-xs text-ink-500">Scanning opens a public status page where anyone can report a defect.</p>

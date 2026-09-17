@@ -38,7 +38,7 @@ export default function ForgotPassword() {
     >
       {sent ? (
         <div className="flex flex-col items-center gap-3 py-4 text-center">
-          <span className="grid h-14 w-14 place-items-center rounded-2xl bg-emerald-50 text-emerald-600 shadow-clay-sm">
+          <span className="grid h-14 w-14 place-items-center rounded-2xl bg-emerald-50 text-emerald-600 shadow-elev-sm">
             <MailCheck size={26} />
           </span>
           <p className="text-sm text-ink-600">

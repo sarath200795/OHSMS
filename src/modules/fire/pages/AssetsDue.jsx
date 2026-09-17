@@ -14,7 +14,7 @@ const dueTag = (s) => (s === 'expired' ? 'overdue' : s === 'due' ? 'due soon' : 
 function Section({ icon: Icon, title, color, count, to, cta, cols, rows, empty }) {
   return (
     <div className="card overflow-hidden">
-      <div className="flex items-center gap-3 border-b border-clay-200/60 px-4 py-3">
+      <div className="flex items-center gap-3 border-b border-surface-200/60 px-4 py-3">
         <div className="grid h-9 w-9 place-items-center rounded-xl text-white" style={{ backgroundColor: color }}><Icon size={18} /></div>
         <div className="min-w-0 flex-1">
           <p className="font-bold text-ink-900">{title}</p>
@@ -27,10 +27,10 @@ function Section({ icon: Icon, title, color, count, to, cta, cols, rows, empty }
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-clay-100/60 text-left text-[11px] uppercase tracking-wide text-ink-400">
+            <thead className="bg-surface-100/60 text-left text-[11px] uppercase tracking-wide text-ink-400">
               <tr>{cols.map((c) => <th key={c} className="px-4 py-2">{c}</th>)}</tr>
             </thead>
-            <tbody className="divide-y divide-clay-200/60">{rows}</tbody>
+            <tbody className="divide-y divide-surface-200/60">{rows}</tbody>
           </table>
         </div>
       )}

@@ -137,8 +137,8 @@ export default function IllnessWizard() {
           const active = s === step
           return (
             <button key={s} onClick={() => illness && goStep(s)} disabled={!illness && s !== 'initial'}
-              className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-bold transition disabled:opacity-40 ${active ? 'bg-brand-500 text-white shadow-clay-brand' : done ? 'bg-brand-50 text-brand-700' : 'text-ink-500 hover:bg-clay-100'}`}>
-              <span className={`grid h-5 w-5 place-items-center rounded-full text-[10px] ${active ? 'bg-white/25' : done ? 'bg-brand-500 text-white' : 'bg-clay-200 text-ink-500'}`}>{done && !active ? <Check size={12} /> : i + 1}</span>
+              className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-bold transition disabled:opacity-40 ${active ? 'bg-brand-500 text-white shadow-elev-brand' : done ? 'bg-brand-50 text-brand-700' : 'text-ink-500 hover:bg-surface-100'}`}>
+              <span className={`grid h-5 w-5 place-items-center rounded-full text-[10px] ${active ? 'bg-white/25' : done ? 'bg-brand-500 text-white' : 'bg-surface-200 text-ink-500'}`}>{done && !active ? <Check size={12} /> : i + 1}</span>
               {LABEL[s]}
             </button>
           )

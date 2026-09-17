@@ -231,7 +231,7 @@ export default function Security() {
         {step === 'scan' && enrolment && (
           <form onSubmit={confirm} className="space-y-4 border-t border-ink-100 pt-4">
             <div className="flex flex-wrap items-start gap-5">
-              <div className="rounded-xl bg-white p-3 shadow-clay-sm">
+              <div className="rounded-xl bg-white p-3 shadow-elev-sm">
                 <QRCodeSVG value={enrolment.uri} size={148} />
               </div>
               <div className="min-w-[16rem] flex-1 space-y-2">

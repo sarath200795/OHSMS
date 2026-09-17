@@ -26,7 +26,14 @@ export function parseHex(hex) {
 }
 
 const toHex = ([r, g, b]) =>
-  '#' + [r, g, b].map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('')
+  '#' +
+  [r, g, b]
+    .map((v) =>
+      Math.max(0, Math.min(255, Math.round(v)))
+        .toString(16)
+        .padStart(2, '0')
+    )
+    .join('')
 
 const channel = (v) => {
   const s = v / 255
@@ -51,7 +58,7 @@ export function contrastRatio(a, b) {
  * over `surface`. A browser reports the composited value to axe, not the alpha,
  * so this is what the ratio has to be measured against.
  */
-export function tintOver(hex, surface = '#f8f1e4', alpha = 0.1) {
+export function tintOver(hex, surface = '#ffffff', alpha = 0.1) {
   const c = parseHex(hex)
   const s = parseHex(surface)
   if (!c || !s) return surface
@@ -59,7 +66,9 @@ export function tintOver(hex, surface = '#f8f1e4', alpha = 0.1) {
 }
 
 function toHsl([r, g, b]) {
-  r /= 255; g /= 255; b /= 255
+  r /= 255
+  g /= 255
+  b /= 255
   const max = Math.max(r, g, b)
   const min = Math.min(r, g, b)
   const l = (max + min) / 2
@@ -67,9 +76,11 @@ function toHsl([r, g, b]) {
   const d = max - min
   const s = l > 0.5 ? d / (2 - max - min) : d / (max + min)
   const h =
-    max === r ? ((g - b) / d + (g < b ? 6 : 0)) / 6
-    : max === g ? ((b - r) / d + 2) / 6
-    : ((r - g) / d + 4) / 6
+    max === r
+      ? ((g - b) / d + (g < b ? 6 : 0)) / 6
+      : max === g
+        ? ((b - r) / d + 2) / 6
+        : ((r - g) / d + 4) / 6
   return [h, s, l]
 }
 
@@ -91,7 +102,7 @@ function fromHsl(h, s, l) {
  * untouched.
  *
  * @param hex      the chip's colour
- * @param surface  what the tint sits on (clay-surface by default)
+ * @param surface  what the tint sits on (white card surface by default)
  * @param target   required ratio; 4.5 is WCAG AA for body text
  */
 /**
@@ -119,7 +130,7 @@ export function solidBackground(hex, target = 4.5) {
   return '#000000'
 }
 
-export function readableOnTint(hex, surface = '#f8f1e4', target = 4.5) {
+export function readableOnTint(hex, surface = '#ffffff', target = 4.5) {
   const rgb = parseHex(hex)
   if (!rgb) return hex
   const bg = tintOver(hex, surface)

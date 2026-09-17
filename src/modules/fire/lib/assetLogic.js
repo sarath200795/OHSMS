@@ -40,7 +40,7 @@ export function dueState(value, today = new Date()) {
 const flagged = (s) => s === 'expired' || s === 'due'
 
 /**
- * Text colour for a due state, on a clay surface.
+ * Text colour for a due state, on a white card surface.
  *
  * Three tables wrote this palette out for themselves — the extinguisher table
  * and the AED and FAS date cells — and all three failed WCAG AA. The neutral
@@ -51,7 +51,7 @@ const flagged = (s) => s === 'expired' || s === 'due'
  *
  * Darkened one or two stops, and put HERE rather than in three files, because
  * three copies is how they drifted below the line together without anyone
- * comparing them. Ratios on clay-surface / clay-bg:
+ * comparing them. Ratios on surface / canvas:
  *   ok 6.75 / 5.75   due 6.31 / 5.38   expired 7.40 / 6.31
  */
 export const DUE_TEXT_COLOR = {

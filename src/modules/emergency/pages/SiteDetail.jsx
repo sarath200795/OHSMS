@@ -217,11 +217,11 @@ export default function SiteDetail() {
               key={s.key}
               onClick={() => setSection(s.key)}
               className={`flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-sm font-semibold transition ${
-                section === s.key ? 'bg-brand-600 text-white shadow-clay-brand' : 'bg-clay-surface text-ink-500 shadow-clay-sm hover:text-ink-800'
+                section === s.key ? 'bg-brand-600 text-white shadow-elev-brand' : 'bg-surface text-ink-500 shadow-elev-sm hover:text-ink-800'
               }`}
             >
               <s.icon size={15} /> {s.label}
-              <span className={`rounded-full px-1.5 text-[10px] font-bold ${section === s.key ? 'bg-white/20' : 'bg-clay-100 text-ink-500'}`}>{count}</span>
+              <span className={`rounded-full px-1.5 text-[10px] font-bold ${section === s.key ? 'bg-white/20' : 'bg-surface-100 text-ink-500'}`}>{count}</span>
             </button>
           )
         })}
@@ -257,7 +257,7 @@ export default function SiteDetail() {
             <>
               <div className="grid gap-4 lg:grid-cols-2">
                 {floors.map((f, i) => (
-                  <div key={f.id} className="rounded-2xl bg-clay-surface p-3 shadow-clay-inset">
+                  <div key={f.id} className="ring-1 ring-ink-200 rounded-2xl bg-surface-50 p-3 ">
                     <div className="mb-2 flex items-center gap-2">
                       <Layers size={14} className="shrink-0 text-accent-amber" />
                       <p className="min-w-0 flex-1 truncate font-semibold text-ink-800">{f.label}</p>

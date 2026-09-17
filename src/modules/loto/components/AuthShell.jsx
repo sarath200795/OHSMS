@@ -50,7 +50,7 @@ const LEGAL = [
  */
 export default function AuthShell({ title, subtitle, children, footer }) {
   return (
-    <div className="flex min-h-screen bg-clay">
+    <div className="flex min-h-screen bg-surface">
       {/* Dark brand panel */}
       <div className="relative hidden w-1/2 flex-col justify-between overflow-hidden bg-gradient-to-br from-[#221d16] via-[#19150f] to-[#0e0c08] p-12 text-white lg:flex">
         {/* warm amber glow + hazard stripe accent */}
@@ -63,7 +63,7 @@ export default function AuthShell({ title, subtitle, children, footer }) {
           transition={{ duration: 0.5 }}
           className="relative flex items-center gap-3"
         >
-          <div className="grid h-10 w-10 place-items-center rounded-2xl bg-gradient-to-br from-hazard to-hazard-dark text-ink shadow-clay">
+          <div className="grid h-10 w-10 place-items-center rounded-2xl bg-gradient-to-br from-hazard to-hazard-dark text-ink shadow-elev">
             <LockMcbMark size={24} />
           </div>
           <span className="text-lg font-extrabold tracking-tight text-white">
@@ -127,7 +127,7 @@ export default function AuthShell({ title, subtitle, children, footer }) {
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4 }}
-          className="clay-card w-full max-w-md p-8"
+          className="card w-full max-w-md p-8"
         >
           <div className="mb-6 flex items-center gap-2 lg:hidden">
             <span className="grid h-8 w-8 place-items-center rounded-xl bg-gradient-to-br from-hazard to-hazard-dark text-ink">

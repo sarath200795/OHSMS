@@ -46,7 +46,7 @@ export function sitePanelRows(rows = [], limit = SITE_ROWS) {
 
 function Meter({ pct }) {
   return (
-    <span className="block h-1.5 w-full overflow-hidden rounded-full bg-clay-100">
+    <span className="block h-1.5 w-full overflow-hidden rounded-full bg-surface-100">
       <span
         className="block h-full rounded-full"
         style={{ width: `${pct}%`, background: readyColor(pct) }}
@@ -58,7 +58,7 @@ function Meter({ pct }) {
 /** A row of the worklist: a name, how far it has got, and the bar. */
 function ProgressRow({ name, sub, ready, total, pct }) {
   return (
-    <li className="rounded-[14px] bg-clay-50 px-3.5 py-2.5 shadow-clay-sm">
+    <li className="rounded-[14px] bg-surface-50 px-3.5 py-2.5 shadow-elev-sm">
       <div className="flex items-baseline gap-3">
         <span className="min-w-0 flex-1">
           <span className="block truncate text-[13px] font-semibold text-ink-900">{name}</span>

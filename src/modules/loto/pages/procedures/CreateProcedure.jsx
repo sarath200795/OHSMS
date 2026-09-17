@@ -198,7 +198,7 @@ export default function CreateProcedure() {
         <div className="block">
           <span className="mb-1.5 block text-sm font-medium text-steel-200">Site scope</span>
           {siteInventory.length === 0 ? (
-            <div className="rounded-xl bg-clay px-3.5 py-2.5 text-sm text-steel-400 shadow-clay-inset">
+            <div className="ring-1 ring-ink-200 rounded-xl bg-surface-50 px-3.5 py-2.5 text-sm text-steel-400 ">
               No sites you can access yet.{' '}
               {isAdmin ? (
                 <Link to="/sites" className="font-semibold text-amber-600">

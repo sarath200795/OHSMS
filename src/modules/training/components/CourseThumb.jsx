@@ -1,7 +1,7 @@
 import { safeSrc } from '../../../shared/safeUrl'
 import { useFileUrl } from '../../../shared/storage/useFileUrl'
 // Course card thumbnail — uploaded image when set, otherwise category art
-// (kraft-toned gradient + icon) so every course reads well in the grid.
+// (category gradient + icon) so every course reads well in the grid.
 const ART = {
   'Fire Safety': ['🔥', '#dd5a41'],
   'First Aid': ['⛑️', '#e8877c'],
@@ -11,12 +11,12 @@ const ART = {
   'Chemical Handling': ['🧪', '#8fbc74'],
   'Confined Space': ['🛢️', '#a98e6b'],
   'Emergency Response': ['🚨', '#c94f43'],
-  'Manual Handling': ['📦', '#b29470'],
-  PPE: ['🦺', '#e8a33d'],
-  Induction: ['🎓', '#7fc4bb'],
-  Statutory: ['📜', '#a98e6b'],
-  Refresher: ['🔁', '#7fc4bb'],
-  Other: ['📘', '#8ba7bd'],
+  'Manual Handling': ['📦', '#64748b'],
+  PPE: ['🦺', '#d97706'],
+  Induction: ['🎓', '#0d9488'],
+  Statutory: ['📜', '#475569'],
+  Refresher: ['🔁', '#0d9488'],
+  Other: ['📘', '#64748b'],
 }
 
 export default function CourseThumb({ course, className = '' }) {
@@ -30,7 +30,13 @@ export default function CourseThumb({ course, className = '' }) {
   // violation that makes the art and the photo swap places on re-render.
   const { src } = useFileUrl({ url: course?.thumbnail, path: course?.thumbnailPath })
   if (src) {
-    return <img src={safeSrc(src)} alt="" className={`aspect-video w-full rounded-xl object-cover ${className}`} />
+    return (
+      <img
+        src={safeSrc(src)}
+        alt=""
+        className={`aspect-video w-full rounded-xl object-cover ${className}`}
+      />
+    )
   }
   const [emoji, color] = ART[course?.category] || ART.Other
   return (

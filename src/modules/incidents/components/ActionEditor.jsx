@@ -21,13 +21,13 @@ export default function ActionEditor({ value = [], onChange, users = [] }) {
   return (
     <div className="space-y-3">
       {value.length === 0 && (
-        <div className="flex flex-col items-center gap-2 rounded-2xl bg-clay-surface py-8 text-center text-ink-400 shadow-clay-inset">
+        <div className="ring-1 ring-ink-200 flex flex-col items-center gap-2 rounded-2xl bg-surface-50 py-8 text-center text-ink-400 ">
           <ListChecks size={28} />
           <p className="text-sm">No actions yet. Add corrective or preventive actions.</p>
         </div>
       )}
       {value.map((a, i) => (
-        <div key={a.id} className="rounded-2xl bg-clay-surface p-4 shadow-clay-inset">
+        <div key={a.id} className="ring-1 ring-ink-200 rounded-2xl bg-surface-50 p-4 ">
           <div className="mb-2 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="grid h-6 w-6 place-items-center rounded-full bg-brand-500 text-xs font-bold text-white">{i + 1}</span>

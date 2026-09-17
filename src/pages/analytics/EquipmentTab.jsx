@@ -70,7 +70,7 @@ export default function EquipmentTab({ extinguishers, aeds, fas, stretchers, fir
         <button
           type="button"
           onClick={() => { setSiteId('all'); setDefectType('all'); setKind('all') }}
-          className="rounded-2xl bg-clay-surface px-4 py-2.5 text-[12.5px] font-semibold text-ink-700 shadow-clay-sm"
+          className="rounded-2xl bg-surface px-4 py-2.5 text-[12.5px] font-semibold text-ink-700 shadow-elev-sm"
         >
           Reset
         </button>

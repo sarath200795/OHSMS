@@ -144,12 +144,12 @@ export default function Records() {
                   <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-clay-200/60">
+              <tbody className="divide-y divide-surface-200/60">
                 {pageItems.map((r) => {
                   const st = recordStatus(r.expiresOn, today)
                   const d = daysUntil(r.expiresOn)
                   return (
-                    <tr key={r.id} className="hover:bg-clay-100/50" style={{ boxShadow: `inset 4px 0 0 ${STATUS_META[st].color}` }}>
+                    <tr key={r.id} className="hover:bg-surface-100/50" style={{ boxShadow: `inset 4px 0 0 ${STATUS_META[st].color}` }}>
                       <td className="px-4 py-3">
                         <p className="font-semibold text-ink-900">{r.employeeName}</p>
                         {r.trainerName && <p className="text-xs text-ink-400">Trainer: {r.trainerName}</p>}
@@ -192,7 +192,7 @@ export default function Records() {
               </tbody>
             </table>
           </div>
-          <Pager className="border-t border-clay-200/60 px-4 py-3" page={safePage} pageCount={pageCount} onPage={setPage} total={filtered.length} pageSize={RECORDS_PAGE} />
+          <Pager className="border-t border-surface-200/60 px-4 py-3" page={safePage} pageCount={pageCount} onPage={setPage} total={filtered.length} pageSize={RECORDS_PAGE} />
         </Card>
       )}
 

@@ -24,40 +24,40 @@
 }
 
 ::selection {
-  background: rgba(199, 74, 51, 0.18);
-  color: #261f19;
+  background: rgba(199, 74, 51, 0.16);
+  color: #0f172a;
 }
 
 body {
-  @apply bg-clay-bg text-ink-900 font-sans antialiased;
+  @apply bg-canvas text-ink-900 font-sans antialiased;
   margin: 0;
   overflow-wrap: break-word;
   font-feature-settings: 'cv11', 'ss01', 'ss03';
-  /* A quiet brand wash on the linen canvas — enough to stop the page reading
-     as a flat kraft slab, not enough to compete with the data on it. */
-  background-image:
-    radial-gradient(ellipse 90% 55% at 0% -10%, rgba(221, 90, 65, 0.07), transparent 55%),
-    radial-gradient(ellipse 70% 45% at 100% 0%, rgba(127, 196, 187, 0.08), transparent 50%);
-  background-attachment: fixed;
+  letter-spacing: -0.011em;
 }
 
-/* Animated aurora background for auth / public pages — warm kraft & coral
-   glows over deep umber, echoing the WEHS paper-craft logo. */
+/* Auth / public pages — cool slate with a restrained coral accent, not a
+   kraft glow over umber. */
 .aurora {
   background:
-    radial-gradient(42% 52% at 12% 18%, rgba(221, 90, 65, 0.42), transparent 62%),
-    radial-gradient(38% 48% at 88% 12%, rgba(232, 163, 61, 0.28), transparent 60%),
-    radial-gradient(50% 60% at 78% 88%, rgba(178, 148, 112, 0.34), transparent 62%),
-    radial-gradient(40% 50% at 18% 92%, rgba(127, 196, 187, 0.20), transparent 60%),
-    #1b1610;
+    radial-gradient(42% 52% at 12% 18%, rgba(199, 74, 51, 0.38), transparent 62%),
+    radial-gradient(38% 48% at 88% 12%, rgba(13, 148, 136, 0.22), transparent 60%),
+    radial-gradient(50% 60% at 78% 88%, rgba(51, 65, 85, 0.45), transparent 62%),
+    radial-gradient(40% 50% at 18% 92%, rgba(14, 165, 233, 0.14), transparent 60%), #020617;
   background-size: 200% 200%;
   animation: aurora-move 18s ease infinite;
 }
 
 @keyframes aurora-move {
-  0% { background-position: 0% 0%; }
-  50% { background-position: 100% 100%; }
-  100% { background-position: 0% 0%; }
+  0% {
+    background-position: 0% 0%;
+  }
+  50% {
+    background-position: 100% 100%;
+  }
+  100% {
+    background-position: 0% 0%;
+  }
 }
 
 .glass {
@@ -68,60 +68,74 @@ body {
 }
 
 /* Custom scrollbar */
-::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #d1ba98; border-radius: 999px; border: 2px solid transparent; background-clip: content-box; }
-::-webkit-scrollbar-thumb:hover { background: #b29470; background-clip: content-box; }
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+  background-clip: content-box;
+}
 
 @layer components {
-  /* ── Surfaces (warm kraft, contemporary elevation) ─────────────────────────
-     Cards and buttons sit on the linen canvas with a hairline + a single
-     downward shadow. Inputs are outlined, not recessed wells. Pressable
-     controls still scale on :active (Emil), durations < 300ms. Coral = accent.
+  /* ── Surfaces (flat-to-subtle ops dashboard) ───────────────────────────────
+     White cards on a cool canvas, hairline borders, one-direction elevation.
+     Inputs are outlined, not recessed wells. Pressable controls still scale
+     on :active (Emil), durations < 300ms. Coral is an accent, not a material.
 
-     The focus-visible ring is not decoration. Every kraft surface is a soft
-     warm grey against a warm background, so the browser's default outline —
-     drawn tight to a rounded edge it does not follow — was very nearly
-     invisible on .btn-ghost and .btn-soft, and a keyboard user tabbing a
-     permit approval screen could not tell which control they were on. It
-     matches .input's `ring-2 ring-brand-200` below deliberately: focus should
-     look like one thing in this app, not two.
+     The focus-visible ring is not decoration. A 1px slate border against a
+     slate canvas is easy to miss, so the browser's default outline — drawn
+     tight to a rounded edge it does not follow — was very nearly invisible
+     on .btn-ghost and .btn-soft. A keyboard user tabbing a permit approval
+     screen could not tell which control they were on. It matches .input's
+     `ring-2 ring-brand-200` below deliberately: focus should look like one
+     thing in this app, not two.
 
      focus-visible rather than focus, so a mouse click does not leave a ring
      behind on a button the user has already finished with. */
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold
       transition-all duration-200 ease-emil
       disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none disabled:pointer-events-none
       active:scale-[0.98]
       focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400
-      focus-visible:ring-offset-2 focus-visible:ring-offset-clay-bg;
+      focus-visible:ring-offset-2 focus-visible:ring-offset-canvas;
   }
   .btn-primary {
-    @apply btn bg-brand-600 text-white shadow-clay-brand hover:bg-brand-700 hover:shadow-glow;
+    @apply btn bg-brand-600 text-white shadow-elev-brand hover:bg-brand-700;
   }
   .btn-ghost {
-    @apply btn bg-clay-surface text-ink-700 shadow-clay-sm ring-1 ring-ink-900/10
-      hover:bg-clay-50 hover:ring-ink-900/15;
+    @apply btn bg-surface text-ink-700 shadow-none ring-1 ring-ink-200
+      hover:bg-surface-50 hover:ring-ink-300;
   }
   .btn-soft {
     @apply btn bg-brand-50 text-brand-700 ring-1 ring-brand-200/80 hover:bg-brand-100;
   }
   .btn-danger {
-    @apply btn bg-red-600 text-white shadow-[0_1px_2px_rgba(220,38,38,0.2),0_8px_20px_-8px_rgba(220,38,38,0.4)]
-      hover:bg-red-700;
+    @apply btn bg-red-600 text-white hover:bg-red-700;
   }
 
   .input {
-    @apply w-full rounded-xl border border-ink-200 bg-clay-surface px-3.5 py-2.5 text-sm
-      text-ink-900 placeholder:text-ink-400 outline-none shadow-clay-inset transition
+    @apply w-full rounded-lg border border-ink-200 bg-surface px-3.5 py-2.5 text-sm
+      text-ink-900 placeholder:text-ink-400 outline-none shadow-none transition
       hover:border-ink-300
-      focus:border-brand-400 focus:ring-2 focus:ring-brand-200;
+      focus:border-brand-500 focus:ring-2 focus:ring-brand-200;
   }
   .input[aria-invalid='true'] {
     @apply border-red-400 focus:border-red-500 focus:ring-red-200;
   }
-  .label { @apply mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-500; }
+  .label {
+    @apply mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-500;
+  }
 
   /* Native <select> strips its arrow under appearance-none (we do that so the
      OS chrome isn't fighting the hairline). Without a replacement chevron
@@ -130,7 +144,7 @@ body {
      module cannot forget. */
   select.input,
   select.appearance-none {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23615344' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%234a5568' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
     background-position: right 0.85rem center;
     background-repeat: no-repeat;
     background-size: 1rem 1rem;
@@ -143,31 +157,35 @@ body {
     @apply overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch];
   }
 
-  /* Surfaces. Hairline is what makes a card read as a panel rather than a
-     puff of clay; the shadow is only there so it lifts off the linen. */
-  .card         { @apply rounded-2xl bg-clay-surface shadow-clay ring-1 ring-ink-900/[0.06]; }
-  .clay         { @apply rounded-2xl bg-clay-surface shadow-clay ring-1 ring-ink-900/[0.06]; }
-  .clay-inset   { @apply rounded-xl bg-clay-50 shadow-clay-inset ring-1 ring-ink-900/[0.05]; }
-  .clay-pressed { @apply rounded-xl bg-clay-100 shadow-clay-pressed ring-1 ring-ink-900/[0.06]; }
-  .chip         { @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-ink-900/5; }
+  /* Surfaces. Hairline is the panel; the shadow is only there so it lifts
+     off the canvas. `.well` is a muted fill + border, not a recessed inset. */
+  .card {
+    @apply rounded-xl bg-surface shadow-elev ring-1 ring-ink-200;
+  }
+  .well {
+    @apply rounded-lg bg-surface-50 ring-1 ring-ink-200;
+  }
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-ink-200;
+  }
 
   /* Secondary nav — module tabs, settings, sites, analytics. One active
      treatment so moving between them does not feel like changing products. */
   .nav-tab {
-    @apply relative inline-flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium
+    @apply relative inline-flex shrink-0 items-center gap-2 rounded-md px-3 py-2 text-sm font-medium
       transition-colors duration-200 ease-emil
       focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400
-      focus-visible:ring-offset-2 focus-visible:ring-offset-clay-bg;
+      focus-visible:ring-offset-2 focus-visible:ring-offset-canvas;
   }
   .nav-tab-idle {
-    @apply text-ink-500 hover:bg-clay-100 hover:text-ink-800 active:scale-[0.98];
+    @apply text-ink-500 hover:bg-surface-100 hover:text-ink-800 active:scale-[0.98];
   }
   .nav-tab-active {
-    @apply bg-clay-surface text-ink-900 shadow-clay-pressed ring-1 ring-ink-900/10;
+    @apply bg-surface text-ink-900 shadow-elev-sm ring-1 ring-ink-200;
   }
   .tab-strip {
-    @apply mb-5 flex gap-1 overflow-x-auto overscroll-x-contain rounded-xl bg-clay-100/80 p-1
-      ring-1 ring-ink-900/[0.06] [-webkit-overflow-scrolling:touch];
+    @apply mb-5 flex gap-1 overflow-x-auto overscroll-x-contain rounded-lg bg-surface-100 p-1
+      ring-1 ring-ink-200 [-webkit-overflow-scrolling:touch];
   }
 
   /* ── Skeleton loaders ──────────────────────────────────────────────────────
@@ -175,37 +193,64 @@ body {
      prefers-reduced-motion the sweep is removed and it degrades to a gentle
      opacity pulse (handled below). */
   .skeleton {
-    @apply relative overflow-hidden rounded-lg bg-clay-200;
+    @apply relative overflow-hidden rounded-md bg-surface-200;
   }
   .skeleton::after {
     content: '';
     @apply absolute inset-0 -translate-x-full animate-shimmer;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.65), transparent);
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.7), transparent);
   }
 }
 
 /* ── Map (Leaflet) site hover bubble with live summary ───────────────────────*/
 .leaflet-tooltip.site-bubble {
-  background: #f8f1e4;
-  border: 1px solid rgba(38, 31, 25, 0.08);
-  border-radius: 12px;
-  box-shadow: 0 8px 24px -10px rgba(67, 56, 45, 0.28);
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  box-shadow:
+    0 10px 15px -3px rgba(15, 23, 42, 0.08),
+    0 4px 6px -4px rgba(15, 23, 42, 0.04);
   padding: 8px 12px;
   white-space: normal;
 }
 /* The arrow colour has to be set per direction — the bubble flips below the pin
    when there is no room above it, and Leaflet colours a different border edge
    for each direction. */
-.leaflet-tooltip.site-bubble.leaflet-tooltip-top::before { border-top-color: #f8f1e4; }
-.leaflet-tooltip.site-bubble.leaflet-tooltip-bottom::before { border-bottom-color: #f8f1e4; }
-.leaflet-tooltip.site-bubble.leaflet-tooltip-left::before { border-left-color: #f8f1e4; }
-.leaflet-tooltip.site-bubble.leaflet-tooltip-right::before { border-right-color: #f8f1e4; }
+.leaflet-tooltip.site-bubble.leaflet-tooltip-top::before {
+  border-top-color: #ffffff;
+}
+.leaflet-tooltip.site-bubble.leaflet-tooltip-bottom::before {
+  border-bottom-color: #ffffff;
+}
+.leaflet-tooltip.site-bubble.leaflet-tooltip-left::before {
+  border-left-color: #ffffff;
+}
+.leaflet-tooltip.site-bubble.leaflet-tooltip-right::before {
+  border-right-color: #ffffff;
+}
 /* Slid sideways to stay on the map, so the arrow no longer aims at the pin. */
-.leaflet-tooltip.site-bubble--shifted::before { display: none; }
-.site-bubble-card { min-width: 200px; max-width: 260px; }
-.site-bubble-title { font-weight: 700; font-size: 13px; color: #0f172a; line-height: 1.2; }
-.site-bubble-sub { font-size: 11px; color: #64748b; }
-.site-bubble-addr { font-size: 11px; color: #94a3b8; margin-top: 1px; }
+.leaflet-tooltip.site-bubble--shifted::before {
+  display: none;
+}
+.site-bubble-card {
+  min-width: 200px;
+  max-width: 260px;
+}
+.site-bubble-title {
+  font-weight: 700;
+  font-size: 13px;
+  color: #0f172a;
+  line-height: 1.2;
+}
+.site-bubble-sub {
+  font-size: 11px;
+  color: #64748b;
+}
+.site-bubble-addr {
+  font-size: 11px;
+  color: #94a3b8;
+  margin-top: 1px;
+}
 .site-bubble-stats {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -214,10 +259,16 @@ body {
   font-size: 11px;
   color: #475569;
 }
-.site-bubble-stats b { color: #0f172a; }
-.site-bubble-hint { margin-top: 6px; font-size: 10px; font-style: italic; color: #94a3b8; }
+.site-bubble-stats b {
+  color: #0f172a;
+}
+.site-bubble-hint {
+  margin-top: 6px;
+  font-size: 10px;
+  font-style: italic;
+  color: #94a3b8;
+}
 
-/* Clay-styled marker cluster badge */
 .site-cluster {
   display: grid;
   place-items: center;
@@ -226,17 +277,16 @@ body {
   color: #fff;
   font-weight: 800;
   font-size: 13px;
-  border: 2px solid rgba(255, 251, 242, 0.92);
-  box-shadow: 0 6px 16px -4px rgba(166, 60, 42, 0.45);
+  border: 2px solid #ffffff;
+  box-shadow: 0 4px 12px -4px rgba(199, 74, 51, 0.45);
 }
 
-/* ── Data-dense areas stay crisp (legibility guard) ──────────────────────────
-   Tables and form-heavy views opt out of puffy clay for scannability. */
+/* ── Data-dense areas stay crisp ───────────────────────────────────────────── */
 .table-crisp table {
   @apply w-full text-sm;
 }
 .table-crisp thead th {
-  @apply bg-clay-50/90;
+  @apply bg-surface-50;
 }
 .table-crisp th,
 .table-crisp td {
@@ -246,7 +296,7 @@ body {
   @apply transition-colors duration-150;
 }
 .table-crisp tbody tr:hover td {
-  @apply bg-clay-50;
+  @apply bg-surface-50;
 }
 .table-crisp tbody tr:last-child td {
   @apply border-b-0;
@@ -263,15 +313,36 @@ body {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
-  .skeleton::after { display: none; }
-  .skeleton { @apply animate-pulse; }
-  .aurora { animation: none; }
-  body { background-image: none; }
+  .skeleton::after {
+    display: none;
+  }
+  .skeleton {
+    @apply animate-pulse;
+  }
+  .aurora {
+    animation: none;
+  }
+  body {
+    background-image: none;
+  }
 }
 
 @media print {
-  .no-print { display: none !important; }
-  body { background: #fff; background-image: none; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  @page { size: A4; margin: 12mm; }
-  .print-block { break-inside: avoid; page-break-inside: avoid; }
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: #fff;
+    background-image: none;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
+  .print-block {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
 }

@@ -178,7 +178,7 @@ export default function BulkUpload() {
                 e.preventDefault()
                 handleFile(e.dataTransfer.files?.[0])
               }}
-              className="flex w-full cursor-pointer flex-col items-center justify-center gap-3 rounded-3xl bg-clay-surface px-6 py-14 text-center shadow-clay-inset transition hover:bg-brand-50/40"
+              className="flex w-full cursor-pointer flex-col items-center justify-center gap-3 rounded-3xl bg-surface-50 px-6 py-14 text-center ring-1 ring-ink-200 transition hover:bg-brand-50/40"
             >
               <div className="grid h-14 w-14 place-items-center rounded-2xl bg-brand-50 text-brand-500">
                 {parsing ? <Loader2 className="animate-spin" /> : <FileSpreadsheet size={26} />}
@@ -253,7 +253,7 @@ export default function BulkUpload() {
                     </div>
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
-                        <thead className="bg-clay-100/70 text-left text-xs uppercase text-ink-400">
+                        <thead className="bg-surface-100/70 text-left text-xs uppercase text-ink-400">
                           <tr>
                             <th className="px-3 py-2">Action</th>
                             <th className="px-3 py-2">Serial</th>
@@ -347,16 +347,16 @@ export default function BulkUpload() {
               <li>3. Upload — we validate against the allowed values.</li>
               <li>4. Review: rows matching an existing Serial No are <strong>overwritten</strong>; the rest are added.</li>
             </ol>
-            <div className="rounded-2xl bg-clay-surface p-3 text-xs text-ink-600 shadow-clay-inset">
+            <div className="ring-1 ring-ink-200 rounded-2xl bg-surface-50 p-3 text-xs text-ink-600 ">
               <p className="mb-1 font-bold uppercase text-ink-500">Serial No</p>
               Leave it blank to auto-assign a unique <code>FE-####</code>. A matching serial overwrites that
               record’s details but keeps its QR code, status and defects.
             </div>
-            <div className="rounded-2xl bg-clay-surface p-3 shadow-clay-inset">
+            <div className="ring-1 ring-ink-200 rounded-2xl bg-surface-50 p-3 ">
               <p className="mb-1 text-xs font-bold uppercase text-ink-500">Columns</p>
               <div className="flex flex-wrap gap-1.5">
                 {BULK_COLUMNS.map((c) => (
-                  <span key={c} className="chip bg-clay-surface text-ink-600">{c}</span>
+                  <span key={c} className="chip bg-surface text-ink-600">{c}</span>
                 ))}
               </div>
             </div>

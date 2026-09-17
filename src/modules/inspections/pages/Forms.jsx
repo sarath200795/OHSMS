@@ -98,7 +98,7 @@ export default function Forms() {
         <div className="flex gap-2">
           {['All', 'Active', 'Draft', 'Inactive'].map((s) => (
             <button key={s} onClick={() => setStatusFilter(s)}
-              className={`chip ${statusFilter === s ? 'bg-brand-500 text-white' : 'bg-clay-surface text-ink-600'}`}>
+              className={`chip ${statusFilter === s ? 'bg-brand-500 text-white' : 'bg-surface text-ink-600'}`}>
               {s}
             </button>
           ))}
@@ -154,7 +154,7 @@ export default function Forms() {
                   <Pencil size={14} /> Edit
                 </button>
                 <select
-                  className="rounded-xl bg-clay-surface px-2 py-1.5 text-xs font-semibold text-ink-600 shadow-clay-inset outline-none"
+                  className="rounded-xl bg-surface px-2 py-1.5 text-xs font-semibold text-ink-600  outline-none"
                   value={t.status}
                   onChange={(e) => handleStatus(t, e.target.value)}
                   title="Change status"

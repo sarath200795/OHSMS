@@ -94,7 +94,7 @@ export default function ReportDefectModal({ open, onClose, ext, orgId, reporter,
               onClick={() => setSelected(d)}
               className={`rounded-xl border-2 px-3 py-3 text-left text-sm font-semibold transition ${
                 lock
-                  ? 'cursor-not-allowed border-ink-100 bg-clay-100 text-ink-400'
+                  ? 'cursor-not-allowed border-ink-100 bg-surface-100 text-ink-400'
                   : active
                     ? 'border-transparent text-white shadow-card'
                     : 'border-ink-200 text-ink-700 hover:border-ink-300'

@@ -5,7 +5,7 @@ import { NavLink } from 'react-router-dom'
  *
  * There used to be a copy of this in each module's index, and three of them
  * (CCTV, stakeholder, objectives) had drifted into a different look — dark
- * pills vs pressed-clay vs brand fill — so moving between modules felt like
+ * pills vs filled chips vs brand fill — so moving between modules felt like
  * changing products. One component, one active state, and a phone can scroll
  * the row sideways instead of wrapping it into a tall stack of tabs.
  *
@@ -31,7 +31,9 @@ export default function ModuleTabs({ tabs, label = 'Module sections', toFor, cla
               const active = t.active != null ? t.active : isActive
               return [
                 'nav-tab',
-                active ? 'nav-tab-active -mb-px rounded-b-none border-b-2 border-brand-600' : 'nav-tab-idle',
+                active
+                  ? 'nav-tab-active -mb-px rounded-b-none border-b-2 border-brand-600'
+                  : 'nav-tab-idle',
               ].join(' ')
             }}
           >

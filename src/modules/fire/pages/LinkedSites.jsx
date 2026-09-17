@@ -120,13 +120,13 @@ export default function LinkedSites() {
         />
       ) : (
         <div className="card mb-5 overflow-hidden">
-          <div className="border-b border-clay-200/60 px-4 py-3">
+          <div className="border-b border-surface-200/60 px-4 py-3">
             <p className="font-bold text-ink-900">Linked sites</p>
             <p className="text-xs text-ink-500">Counted by the stored site link, not by the name typed on the asset.</p>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-clay-100/60 text-left text-[11px] uppercase tracking-wide text-ink-400">
+              <thead className="bg-surface-100/60 text-left text-[11px] uppercase tracking-wide text-ink-400">
                 <tr>
                   <th className="px-4 py-2">Site</th>
                   <th className="px-4 py-2">Region</th>
@@ -135,9 +135,9 @@ export default function LinkedSites() {
                   <th className="px-4 py-2 text-right">Total</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-clay-200/60">
+              <tbody className="divide-y divide-surface-200/60">
                 {linked.map(({ site, counts }) => (
-                  <tr key={site.id} className="hover:bg-clay-100/40">
+                  <tr key={site.id} className="hover:bg-surface-100/40">
                     <td className="px-4 py-2.5 font-semibold text-ink-900">{site.name || site.id}</td>
                     <td className="px-4 py-2.5 text-ink-500">{site.region || '—'}</td>
                     <td className="px-4 py-2.5 text-ink-500">{site.entity || '—'}</td>
@@ -153,7 +153,7 @@ export default function LinkedSites() {
 
       {unlinked.length > 0 && (
         <div className="card mb-5 overflow-hidden">
-          <div className="flex items-center gap-3 border-b border-clay-200/60 px-4 py-3">
+          <div className="flex items-center gap-3 border-b border-surface-200/60 px-4 py-3">
             <div className="min-w-0 flex-1">
               <p className="font-bold text-ink-900">Not linked to any site</p>
               <p className="text-xs text-ink-500">
@@ -171,16 +171,16 @@ export default function LinkedSites() {
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-clay-100/60 text-left text-[11px] uppercase tracking-wide text-ink-400">
+              <thead className="bg-surface-100/60 text-left text-[11px] uppercase tracking-wide text-ink-400">
                 <tr>
                   <th className="px-4 py-2">Center name on the asset</th>
                   {KINDS.map((k) => <th key={k.key} className="px-4 py-2 text-right">{k.short}</th>)}
                   <th className="px-4 py-2 text-right">Total</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-clay-200/60">
+              <tbody className="divide-y divide-surface-200/60">
                 {unlinked.map(({ centerName, counts }) => (
-                  <tr key={centerName} className="hover:bg-clay-100/40">
+                  <tr key={centerName} className="hover:bg-surface-100/40">
                     <td className="px-4 py-2.5 text-ink-800">{centerName}</td>
                     {KINDS.map((k) => <td key={k.key} className="px-4 py-2.5 text-right"><Count n={counts[k.key]} /></td>)}
                     <td className="px-4 py-2.5 text-right font-bold text-ink-900">{counts.total}</td>
@@ -206,10 +206,10 @@ export default function LinkedSites() {
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-clay-100/60 text-left text-[11px] uppercase tracking-wide text-ink-400">
+              <thead className="bg-surface-100/60 text-left text-[11px] uppercase tracking-wide text-ink-400">
                 <tr><th className="px-4 py-2">Site id</th><th className="px-4 py-2 text-right">Assets</th></tr>
               </thead>
-              <tbody className="divide-y divide-clay-200/60">
+              <tbody className="divide-y divide-surface-200/60">
                 {orphaned.map(({ siteId, counts }) => (
                   <tr key={siteId}>
                     <td className="px-4 py-2.5 font-mono text-xs text-ink-700">{siteId}</td>
@@ -243,7 +243,7 @@ export default function LinkedSites() {
           <p className="mb-3 text-xs text-ink-500">In the registry and within your scope, but nothing links to them.</p>
           <div className="flex flex-wrap gap-1.5">
             {empty.map((s) => (
-              <span key={s.id} className="rounded-xl bg-clay-100 px-2.5 py-1 text-xs text-ink-600">{s.name || s.id}</span>
+              <span key={s.id} className="rounded-xl bg-surface-100 px-2.5 py-1 text-xs text-ink-600">{s.name || s.id}</span>
             ))}
           </div>
         </div>

@@ -23,7 +23,7 @@ export default function WidgetGrid({ keys, onSave, data, sites }) {
         <button
           type="button"
           onClick={() => setPicking(true)}
-          className="inline-flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-[12px] font-semibold text-ink-500 transition hover:bg-clay-100 hover:text-ink-800"
+          className="inline-flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-[12px] font-semibold text-ink-500 transition hover:bg-surface-100 hover:text-ink-800"
         >
           <SlidersHorizontal size={13} /> Choose widgets
         </button>
@@ -52,7 +52,7 @@ export default function WidgetGrid({ keys, onSave, data, sites }) {
 
 function Shell({ w, children }) {
   return (
-    <Raised as={Link} to={w.to} className="block p-4 transition-all duration-200 ease-emil hover:-translate-y-0.5 hover:shadow-clay-lg hover:ring-ink-900/10">
+    <Raised as={Link} to={w.to} className="block p-4 transition-all duration-200 ease-emil hover:-translate-y-0.5 hover:shadow-elev-lg hover:ring-ink-900/10">
       {children}
     </Raised>
   )
@@ -168,7 +168,7 @@ function WidgetPicker({ selected, onClose, onSave }) {
               Pick the figures you want on your portal. Everything stays scoped to the sites you can see.
             </p>
           </div>
-          <button type="button" onClick={onClose} className="rounded-xl p-1.5 text-ink-400 hover:bg-clay-100">
+          <button type="button" onClick={onClose} className="rounded-xl p-1.5 text-ink-400 hover:bg-surface-100">
             <X size={18} />
           </button>
         </div>
@@ -186,7 +186,7 @@ function WidgetPicker({ selected, onClose, onSave }) {
                     onClick={() => toggle(w.key)}
                     aria-pressed={on}
                     className={`flex items-start gap-2.5 rounded-xl px-3 py-2.5 text-left transition ${
-                      on ? 'bg-clay-surface shadow-clay-sm ring-1 ring-ink-900/10' : 'hover:bg-clay-100'
+                      on ? 'bg-surface shadow-elev-sm ring-1 ring-ink-900/10' : 'hover:bg-surface-100'
                     }`}
                   >
                     <span

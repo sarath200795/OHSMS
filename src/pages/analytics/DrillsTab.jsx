@@ -74,12 +74,12 @@ export default function DrillsTab({ drills, sites, keepUnplaced = true }) {
           {a.perDrill.length === 0 ? <NoData height={160}>No drill raised an observation.</NoData> : (
             <ul className="flex flex-col gap-2">
               {a.perDrill.slice(0, 8).map((d) => (
-                <li key={d.key} className="flex items-center gap-3 rounded-[14px] bg-clay-50 px-3.5 py-2.5 shadow-clay-sm">
+                <li key={d.key} className="flex items-center gap-3 rounded-[14px] bg-surface-50 px-3.5 py-2.5 shadow-elev-sm">
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-[13px] font-semibold text-ink-900">{d.name}</span>
                     <span className="block truncate text-[11px] text-ink-400">{d.site}</span>
                   </span>
-                  <span className="flex-none rounded-full bg-clay-100 px-2.5 py-1 text-[10.5px] font-bold text-ink-600">
+                  <span className="flex-none rounded-full bg-surface-100 px-2.5 py-1 text-[10.5px] font-bold text-ink-600">
                     {d.value} obs
                   </span>
                   {d.open > 0 && (

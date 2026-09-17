@@ -4,7 +4,8 @@ export default {
   theme: {
     extend: {
       colors: {
-        // WEHS brand — warm coral/terracotta drawn from the logo's siren & heart.
+        // WEHS brand — coral from the logo siren & heart, used as an accent
+        // on an otherwise cool ops-dashboard palette. Not a material.
         brand: {
           50: '#fdf4f1',
           100: '#fbe5df',
@@ -17,72 +18,49 @@ export default {
           800: '#873426',
           900: '#6f2f24',
         },
-        // Warm stone ink for text (kraft-paper companion).
+        // Cool slate ink. 400–900 are AA on canvas (#f4f6f8), the binding
+        // (darker) page surface; on white every figure is ~0.4 higher:
+        //   400 5.45   500 6.95   600 8.31   700 10.97   800 14.26   900 16.48
         //
-        // ── The 400–900 stops were re-spaced for contrast ─────────────────────
-        // They failed WCAG AA, and not marginally. `text-ink-400` — 494 uses,
-        // the app's standard secondary text — was 2.12:1 on clay-bg against a
-        // 4.5:1 requirement, and `text-ink-500` (372 uses, every field label)
-        // was 3.29:1. The axe pass in e2e/accessibility.spec.js found 43
-        // offending nodes on the portal home alone. Nothing static could have
-        // caught it: the markup was correct, the colours were not.
+        // 50–300 are surfaces, borders and placeholder tones, never body text.
+        // If one of them ever becomes text, it needs this treatment first.
         //
-        // Fixing 400 and 500 alone would have inverted the ramp — a corrected
-        // 500 lands darker than the old 600 — so 600–900 moved with them. Each
-        // stop is the SAME HUE AND SATURATION as before with lightness lowered,
-        // so the palette is still warm kraft paper rather than grey, and the
-        // steps between stops stay visible.
-        //
-        // Ratios on clay-bg (#eadfcd), the darker of the two surfaces and so the
-        // binding one; on clay-surface every figure is ~0.8 higher:
-        //   400 4.60   500 5.63   600 6.93   700 8.65   800 10.66   900 12.33
-        //
-        // 50–300 are deliberately unchanged: they are surfaces, borders and
-        // placeholder tones, never body text, and 4.5:1 is not their bar. If one
-        // of them ever becomes text, it needs this treatment first.
+        // The 400/500 stops used to fail AA on the old kraft canvas (2.12 and
+        // 3.29). Axe found 43 offending nodes on portal home alone. These
+        // numbers are the whole point of the ramp — a regression is silent.
         ink: {
-          DEFAULT: '#261f19',
-          50: '#faf8f5',
-          100: '#f2ede5',
-          200: '#e5dccf',
-          300: '#d1c3af',
-          400: '#70604a',
-          500: '#615344',
-          600: '#534637',
-          700: '#43382d',
-          800: '#332a22',
-          900: '#261f19',
-          950: '#1b1610',
+          DEFAULT: '#0f172a',
+          50: '#f8fafc',
+          100: '#f1f5f9',
+          200: '#e2e8f0',
+          300: '#cbd5e1',
+          400: '#5b6573',
+          500: '#4a5568',
+          600: '#3d4a5c',
+          700: '#2c3848',
+          800: '#1b2533',
+          900: '#0f172a',
+          950: '#020617',
         },
-        // Kraft-paper "clay" surfaces: paper panels over a warm linen canvas.
-        // DEFAULT exists so `bg-clay` (LOTO's original surface class, ported
-        // from a dark-theme app that never learned `bg-clay-surface`) still
-        // paints the same paper as every other card.
-        //
-        // The 50–400 stops are a hair cleaner than the original muddy kraft so
-        // hairline borders and table rows stay crisp; bg/surface hexes are
-        // unchanged because ink-400/500 were spaced for AA on these exact
-        // values (see the ink comment above) and axe measures them.
-        clay: {
-          DEFAULT: '#f8f1e4',
-          bg: '#eadfcd',
-          surface: '#f8f1e4',
-          50: '#faf6ee',
-          100: '#f3eadc',
-          200: '#e6d9c4',
-          300: '#d1ba98',
-          400: '#b29470',
+        // Page canvas. Cards sit on this as white panels with a hairline.
+        canvas: '#f4f6f8',
+        // Raised / inset surfaces. DEFAULT is a white card; 50–400 are the
+        // muted fills, row washes and hairline-adjacent greys. There is no
+        // recessed "pressed into paper" stop — muted fill + border is the well.
+        surface: {
+          DEFAULT: '#ffffff',
+          50: '#f8fafc',
+          100: '#f1f5f9',
+          200: '#e2e8f0',
+          300: '#cbd5e1',
+          400: '#94a3b8',
         },
-        // CamelCase alias the LOTO module still spells. Same hex as clay-surface;
-        // renaming every `bg-claySurface` would be a 40-file churn for no visual
-        // change once this token exists.
-        claySurface: '#f8f1e4',
         // Logo accent set (icons): teal hands, amber vest, steel first-aid kit.
         accent: {
-          teal: '#7fc4bb',
-          amber: '#e8a33d',
-          steel: '#8ba7bd',
-          leaf: '#8fbc74',
+          teal: '#0f766e',
+          amber: '#d97706',
+          steel: '#64748b',
+          leaf: '#4d7c0f',
         },
         // LOTO was ported from a dark "steel + hazard-yellow" theme whose
         // Tailwind palette never landed in this config. The classes still
@@ -90,26 +68,26 @@ export default {
         // nothing, so titles, muted copy, table headers and lock-out buttons
         // all inherited body text — one weight, no hierarchy, no accent.
         //
-        // These stops remap that vocabulary onto the kraft-paper scale rather
+        // These stops remap that vocabulary onto the cool ops scale rather
         // than restoring the dark theme: steel-50 was "almost white heading"
         // and is now the ink heading; steel-800 was "dark well" and is now a
-        // recessed clay well. hazard is the amber vest from the logo.
+        // muted surface wash. hazard is the amber vest from the logo.
         steel: {
-          50: '#261f19',
-          100: '#332a22',
-          200: '#43382d',
-          300: '#534637',
-          400: '#615344',
-          500: '#70604a',
-          600: '#d1ba98',
-          700: '#d1ba98',
-          800: '#e5d6bd',
-          900: '#f1e7d5',
-          950: '#eadfcd',
+          50: '#0f172a',
+          100: '#1b2533',
+          200: '#2c3848',
+          300: '#3d4a5c',
+          400: '#4a5568',
+          500: '#5b6573',
+          600: '#cbd5e1',
+          700: '#cbd5e1',
+          800: '#e2e8f0',
+          900: '#f1f5f9',
+          950: '#f4f6f8',
         },
         hazard: {
-          DEFAULT: '#e8a33d',
-          dark: '#c4841f',
+          DEFAULT: '#d97706',
+          dark: '#b45309',
         },
         danger: {
           DEFAULT: '#dc2626',
@@ -125,19 +103,14 @@ export default {
         drawer: 'cubic-bezier(0.32, 0.72, 0, 1)', // drawers/sheets
       },
       boxShadow: {
-        glow: '0 0 0 1px rgba(199,74,51,0.18), 0 10px 28px -12px rgba(199,74,51,0.42)',
-        card: '0 1px 2px rgba(64,53,43,0.05), 0 10px 28px -14px rgba(64,53,43,0.16)',
-        // Named clay-* so every card/button/tile picks this up without a
-        // 100-file class rename. The dual-direction neumorphic pair (warm
-        // drop + paper highlight) is what made the app read as 2019 clay
-        // kitsch; these are one-direction elevation on kraft paper — the
-        // same warmth, a contemporary ops-dashboard silhouette.
-        clay: '0 1px 1px rgba(67,56,45,0.04), 0 8px 24px -12px rgba(67,56,45,0.18)',
-        'clay-sm': '0 1px 2px rgba(67,56,45,0.06), 0 2px 8px -2px rgba(67,56,45,0.10)',
-        'clay-lg': '0 4px 8px -2px rgba(67,56,45,0.08), 0 18px 40px -18px rgba(67,56,45,0.24)',
-        'clay-inset': 'inset 0 1px 2px rgba(67,56,45,0.08)',
-        'clay-pressed': 'inset 0 1px 3px rgba(67,56,45,0.12)',
-        'clay-brand': '0 1px 2px rgba(199,74,51,0.18), 0 8px 20px -8px rgba(199,74,51,0.38)',
+        glow: '0 0 0 1px rgba(199,74,51,0.16), 0 8px 20px -10px rgba(199,74,51,0.35)',
+        card: '0 1px 2px rgba(15,23,42,0.05), 0 1px 3px rgba(15,23,42,0.04)',
+        // One-direction elevation. No dual-direction neumorphic pair, no
+        // inset "pressed into paper" well. Hairline borders do the rest.
+        elev: '0 1px 2px rgba(15,23,42,0.05), 0 1px 3px rgba(15,23,42,0.04)',
+        'elev-sm': '0 1px 2px rgba(15,23,42,0.06)',
+        'elev-lg': '0 10px 15px -3px rgba(15,23,42,0.08), 0 4px 6px -4px rgba(15,23,42,0.04)',
+        'elev-brand': '0 1px 2px rgba(199,74,51,0.12), 0 4px 12px -4px rgba(199,74,51,0.32)',
       },
       keyframes: {
         // Skeleton shimmer sweep.

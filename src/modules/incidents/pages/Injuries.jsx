@@ -102,12 +102,12 @@ export default function Injuries() {
       <PageHeader title="Injury Reports" subtitle="Per-person injuries from all incidents — review and verify each one." icon={HeartPulse} tourId="injuries-header" />
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        <div className="flex gap-1 rounded-xl bg-clay-surface p-1 shadow-clay-inset">
+        <div className="ring-1 ring-ink-200 flex gap-1 rounded-xl bg-surface-50 p-1 ">
           {FILTERS.map((f) => (
             <button
               key={f.key}
               onClick={() => setFilter(f.key)}
-              className={`rounded-lg px-3 py-1.5 text-xs font-bold transition ${filter === f.key ? 'bg-brand-500 text-white shadow-clay-sm' : 'text-ink-500 hover:text-ink-800'}`}
+              className={`rounded-lg px-3 py-1.5 text-xs font-bold transition ${filter === f.key ? 'bg-brand-500 text-white shadow-elev-sm' : 'text-ink-500 hover:text-ink-800'}`}
             >
               {f.label}
               {f.key === 'pending' && counts.pending > 0 && <span className="ml-1 rounded-full bg-amber-400/90 px-1.5 text-[10px] font-extrabold text-ink-900">{counts.pending}</span>}
@@ -154,7 +154,7 @@ export default function Injuries() {
 
                   <div className="flex shrink-0 items-center gap-2">
                     {verified ? (
-                      <span className="inline-flex items-center gap-1 rounded-lg bg-clay-100 px-2.5 py-1.5 text-[11px] font-semibold text-ink-500"><Lock size={12} /> Locked</span>
+                      <span className="inline-flex items-center gap-1 rounded-lg bg-surface-100 px-2.5 py-1.5 text-[11px] font-semibold text-ink-500"><Lock size={12} /> Locked</span>
                     ) : (
                       mayEdit && (
                         <button onClick={() => openEdit(inj)} disabled={busy === inj.id} className="btn-ghost px-3 py-1.5 text-xs">
@@ -185,7 +185,7 @@ export default function Injuries() {
 
                 {(inj.bodyParts || []).length > 0 && (
                   <div className="mt-3 flex flex-wrap gap-1.5">
-                    {inj.bodyParts.map((k) => <span key={k} className="chip bg-clay-100 text-ink-600">{bodyPartLabel(k)}</span>)}
+                    {inj.bodyParts.map((k) => <span key={k} className="chip bg-surface-100 text-ink-600">{bodyPartLabel(k)}</span>)}
                   </div>
                 )}
 
@@ -207,7 +207,7 @@ export default function Injuries() {
                 <div className="flex gap-2">
                   {[{ v: true, l: 'Yes' }, { v: false, l: 'No' }].map((o) => (
                     <button key={o.l} type="button" onClick={() => setForm({ ...form, firstAidDone: o.v })}
-                      className={`btn ${form.firstAidDone === o.v ? 'bg-brand-500 text-white shadow-clay-brand' : 'bg-clay-surface text-ink-600'}`}>{o.l}</button>
+                      className={`btn ${form.firstAidDone === o.v ? 'bg-brand-500 text-white shadow-elev-brand' : 'bg-surface text-ink-600'}`}>{o.l}</button>
                   ))}
                 </div>
                 {form.firstAidDone && (

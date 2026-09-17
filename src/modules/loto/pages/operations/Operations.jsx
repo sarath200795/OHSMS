@@ -44,7 +44,7 @@ export default function Operations() {
             onClick={() => setFilter(f.key)}
             className={`rounded-full px-3 py-1.5 text-sm font-medium transition-all ${
               filter === f.key
-                ? 'bg-hazard/15 text-amber-600 shadow-clay-inset'
+                ? 'bg-hazard/15 text-amber-600 '
                 : 'bg-steel-800 text-steel-300'
             }`}
           >
