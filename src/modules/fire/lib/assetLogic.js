@@ -22,7 +22,9 @@ export function highestAssetSeq(prefix, list, field) {
   }
   return max
 }
-export function formatAssetId(prefix, n) { return `${prefix}-${String(n).padStart(4, '0')}` }
+export function formatAssetId(prefix, n) {
+  return `${prefix}-${String(n).padStart(4, '0')}`
+}
 // nextAssetId() lived here — highestAssetSeq + 1, computed in the browser. It
 // is gone rather than deprecated: leaving it exported is how the next register
 // gets colliding ids. Numbers now come from reserveAssetIds() in lib/firestore,
@@ -40,30 +42,35 @@ export function dueState(value, today = new Date()) {
 const flagged = (s) => s === 'expired' || s === 'due'
 
 /**
- * Text colour for a due state, on a white card surface.
+ * Text colour for a due state, on dark glass.
  *
- * Three tables wrote this palette out for themselves — the extinguisher table
- * and the AED and FAS date cells — and all three failed WCAG AA. The neutral
- * slate-500 measured 4.24:1 and the expired red-600 4.30:1 against a 4.5:1
- * requirement, and the "due" amber-500 was 2.15:1, which is not a colour so much
- * as a suggestion of one. On a screen whose entire job is to say which
- * extinguishers are overdue, the overdue ones were the hardest to read.
+ * Three tables share this palette — the extinguisher DueCell and the AED / FAS
+ * / stretcher date cells — so the colours live here rather than in four files.
+ * Four copies is how they drifted below the line together without anyone
+ * comparing them.
  *
- * Darkened one or two stops, and put HERE rather than in three files, because
- * three copies is how they drifted below the line together without anyone
- * comparing them. Ratios on surface / canvas:
- *   ok 6.75 / 5.75   due 6.31 / 5.38   expired 7.40 / 6.31
+ * The first cut darkened the hues for a white card. The neon kit inverted the
+ * surface to navy glass (`#151b36`, composited card `#131932`) and those same
+ * hexes failed WCAG AA in the other direction: slate-600 on glass was 2.28:1,
+ * which is how axe failed the extinguisher list on "in 300d". Lightened onto
+ * the kit's ink / hazard / danger stops instead. Ratios on card / surface /
+ * canvas:
+ *   ok 6.22 / 6.08 / 6.77   due 10.37 / 10.13 / 11.28   expired 6.26 / 6.11 / 6.81
  */
 export const DUE_TEXT_COLOR = {
-  expired: '#991b1b',
-  due: '#92400e',
-  ok: '#475569',
+  expired: '#f87171',
+  due: '#fbbf24',
+  ok: '#8b9cb8',
 }
 export const dueTextColor = (state) => DUE_TEXT_COLOR[state] || DUE_TEXT_COLOR.ok
 
 // ── AED ──────────────────────────────────────────────────────────────────────
 export function aedCondition(a, today = new Date()) {
-  const states = [dueState(a.batteryExpiry, today), dueState(a.padExpiry, today), dueState(a.nextInspection, today)]
+  const states = [
+    dueState(a.batteryExpiry, today),
+    dueState(a.padExpiry, today),
+    dueState(a.nextInspection, today),
+  ]
   const expired = a.status === AED_STATUS.OUT_OF_SERVICE || states.includes('expired')
   const due = !expired && (a.status === AED_STATUS.SERVICE_DUE || states.includes('due'))
   return { expired, due, ok: !expired && !due }
@@ -79,7 +86,16 @@ export function aedIncomplete(a) {
 }
 
 export function aedSummary(list, today = new Date()) {
-  const s = { total: list.length, ready: 0, due: 0, outOfService: 0, batteryExpiring: 0, padExpiring: 0, inspectionDue: 0, incomplete: 0 }
+  const s = {
+    total: list.length,
+    ready: 0,
+    due: 0,
+    outOfService: 0,
+    batteryExpiring: 0,
+    padExpiring: 0,
+    inspectionDue: 0,
+    incomplete: 0,
+  }
   for (const a of list) {
     const c = aedCondition(a, today)
     if (a.status === AED_STATUS.OUT_OF_SERVICE) s.outOfService++
@@ -146,7 +162,14 @@ export function stretcherIncomplete(a) {
 }
 
 export function stretcherSummary(list, today = new Date()) {
-  const s = { total: list.length, ready: 0, due: 0, outOfService: 0, inspectionDue: 0, incomplete: 0 }
+  const s = {
+    total: list.length,
+    ready: 0,
+    due: 0,
+    outOfService: 0,
+    inspectionDue: 0,
+    incomplete: 0,
+  }
   for (const a of list) {
     const c = stretcherCondition(a, today)
     if (a.status === STRETCHER_STATUS.OUT_OF_SERVICE) s.outOfService++
