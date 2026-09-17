@@ -30,6 +30,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../lib/toastCaught'
 import { Plug, Save, KeyRound, CheckCircle2, XCircle, Plus, Trash2, Server, AlertTriangle } from 'lucide-react'
 import { Card, Field, Input, Button } from '../ui'
 import { saveIntegration } from '../org/integrations'
@@ -161,7 +162,7 @@ export default function MetabaseConnect({ orgId, actor, onSaved, compact = false
       }
       onSaved?.(config)
     } catch (err) {
-      toast.error(err?.message || 'Could not save')
+      toastCaught(err, 'Could not save')
     } finally {
       setBusy(false)
     }
@@ -178,7 +179,7 @@ export default function MetabaseConnect({ orgId, actor, onSaved, compact = false
       toast.success('API key removed')
       onSaved?.(config)
     } catch (err) {
-      toast.error(err?.message || 'Could not remove the key')
+      toastCaught(err, 'Could not remove the key')
     } finally {
       setBusy(false)
     }

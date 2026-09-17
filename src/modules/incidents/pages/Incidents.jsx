@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../shared/lib/toastCaught'
 import { ClipboardList, Plus, Search, Filter, Trash2, ChevronRight, AlertTriangle, Download } from 'lucide-react'
 import { PageHeader, Badge, EmptyState } from '../components/ui'
 import { useAuth } from '../context/AuthContext'
@@ -78,7 +79,7 @@ export default function Incidents() {
       })
       toast.success(`Exported ${n} incident${n === 1 ? '' : 's'}, ${actions} action${actions === 1 ? '' : 's'} and ${chronology} chronology event${chronology === 1 ? '' : 's'}`)
     } catch (err) {
-      toast.error(err?.message || 'Export failed')
+      toastCaught(err, 'Export failed')
     }
   }
 
@@ -89,7 +90,7 @@ export default function Incidents() {
       await deleteIncident(orgId, inc.id, { uid: user.uid, name: profile.name })
       toast.success('Incident moved to Recycle Bin')
     } catch (err) {
-      toast.error(err.message || 'Could not delete')
+      toastCaught(err, 'Could not delete')
     }
   }
 

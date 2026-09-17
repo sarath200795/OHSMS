@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../shared/lib/toastCaught'
 import { Settings, Save, Activity, Plus, X, Layers, ChevronUp, ChevronDown, Lock, Building2, PhoneCall, LifeBuoy, ImageUp, Trash2, Plug } from 'lucide-react'
 import { ERP_ROLES, normalizeErpRoleLabels } from '../../shared/org/erpRoles'
 import { DEPARTMENTS } from '../../shared/auth/access'
@@ -161,7 +162,7 @@ export default function OrgSettings() {
       }
       toast.success('Logo updated')
     } catch (err) {
-      toast.error(err?.message || 'Could not save the logo')
+      toastCaught(err, 'Could not save the logo')
     } finally {
       setLogoBusy(false)
     }
@@ -173,7 +174,7 @@ export default function OrgSettings() {
       await saveLogo({ logoUrl: '', logoPath: '' })
       toast.success('Logo removed — the WE EHS mark is back in the header')
     } catch (err) {
-      toast.error(err?.message || 'Could not remove the logo')
+      toastCaught(err, 'Could not remove the logo')
     } finally {
       setLogoBusy(false)
     }
@@ -195,7 +196,7 @@ export default function OrgSettings() {
       }, actor)
       toast.success('Settings saved')
     } catch (err) {
-      toast.error(err?.message || 'Failed')
+      toastCaught(err, 'Failed')
     } finally {
       setBusy(false)
     }
@@ -264,7 +265,7 @@ export default function OrgSettings() {
       await updateOrgSettings(orgId, { scopeConfig: { customFields, modules } }, actor)
       toast.success('Scope settings saved')
     } catch (err) {
-      toast.error(err?.message || 'Failed')
+      toastCaught(err, 'Failed')
     } finally {
       setScopeBusy(false)
     }

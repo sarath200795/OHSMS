@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../shared/lib/toastCaught'
 import { ChevronLeft, Save, UserPlus, X, Trash2 } from 'lucide-react'
 import {
-  PageHeader, Button, Field, Input, Select, Textarea, SkeletonDetail, EmptyState,
+  PageHeader, Button, Field, Input, Select, Textarea, SkeletonDetail, EmptyState, AccessDenied,
 } from '../../../shared/ui'
 import SiteScopePicker from '../../../shared/org/SiteScopePicker'
 import { useAuth } from '../../../shared/auth/AuthContext'
@@ -72,7 +73,7 @@ export default function EscalationForm() {
       toast.success(id ? 'Saved' : 'Escalation logged')
       navigate('/stakeholder/escalations')
     } catch (e) {
-      toast.error(e.message)
+      toastCaught(e)
     } finally {
       setBusy(false)
     }
@@ -90,12 +91,12 @@ export default function EscalationForm() {
       toast.success('Deleted')
       navigate('/stakeholder/escalations')
     } catch (e) {
-      toast.error(e.message)
+      toastCaught(e)
     }
   }
 
   if (!isManager) {
-    return <EmptyState title="Managers only" hint="Ask an admin or manager to log escalations." />
+    return <AccessDenied description="Ask an admin or manager to log escalations." />
   }
   if (id && loading && !hydrated) return <SkeletonDetail />
   if (id && !loading && !hydrated) {

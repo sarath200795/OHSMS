@@ -1,7 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 const currentUser = { value: null }
-vi.mock('../firebase', () => ({ auth: { get currentUser() { return currentUser.value } } }))
+vi.mock('../firebase', () => ({
+  auth: {
+    get currentUser() {
+      return currentUser.value
+    },
+  },
+}))
 
 const { onReadError } = await import('./readError')
 
@@ -12,7 +18,10 @@ beforeEach(() => {
   warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
   debug = vi.spyOn(console, 'debug').mockImplementation(() => {})
 })
-afterEach(() => { warn.mockRestore(); debug.mockRestore() })
+afterEach(() => {
+  warn.mockRestore()
+  debug.mockRestore()
+})
 
 describe('onReadError', () => {
   it('unblocks the caller with an empty list', () => {
@@ -36,8 +45,8 @@ describe('onReadError', () => {
   })
 
   it('names the failure, not just the collection', () => {
-    onReadError('permits', vi.fn())({ message: 'Missing or insufficient permissions' })
-    expect(warn.mock.calls[0][1]).toContain('insufficient permissions')
+    onReadError('permits', vi.fn())({ message: 'The query requires an index' })
+    expect(warn.mock.calls[0][1]).toContain('index')
   })
 
   it('stays quiet when the session simply ended', () => {
@@ -59,9 +68,9 @@ describe('onReadError', () => {
     expect(cb).toHaveBeenCalledWith([])
   })
 
-  it('treats permission-denied WITH a live session as a real fault', () => {
+  it('stays quiet on permission-denied with a live session — that is an access check', () => {
     onReadError('injuries', vi.fn())({ code: 'permission-denied' })
-    expect(warn).toHaveBeenCalled()
+    expect(warn).not.toHaveBeenCalled()
   })
 
   it('survives an error with no message at all', () => {

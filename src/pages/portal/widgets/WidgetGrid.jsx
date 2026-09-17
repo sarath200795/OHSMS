@@ -89,8 +89,10 @@ const BAND_TONE = { none: '#16a34a', low: '#eab308', moderate: '#f97316', high: 
  * the number of sites showing it. The same reading the weather module gives, so
  * the tile and the page cannot disagree.
  */
-function WeatherWidget({ w, sites = [] }) {
-  const located = sites.filter((s) => Number.isFinite(s.lat) && Number.isFinite(s.lng))
+function WeatherWidget({ w, sites }) {
+  const loadingSites = sites == null
+  const list = sites || []
+  const located = list.filter((s) => Number.isFinite(s.lat) && Number.isFinite(s.lng))
   const { byId, done, total } = useAllSiteWeather(located)
 
   let worst = null
@@ -114,7 +116,7 @@ function WeatherWidget({ w, sites = [] }) {
         <CloudSun size={17} strokeWidth={2.2} />
       </span>
       <p className="mt-3 text-[17px] font-extrabold leading-tight tracking-[-0.02em] text-ink-900">
-        {located.length === 0 ? 'No mapped sites' : waiting ? <span className="text-ink-300">Checking…</span> : BAND_LABEL[band]}
+        {loadingSites ? <span className="text-ink-300">—</span> : located.length === 0 ? 'No mapped sites' : waiting ? <span className="text-ink-300">Checking…</span> : BAND_LABEL[band]}
       </p>
       <p className="mt-1.5 text-[12px] font-semibold leading-snug text-ink-700">{w.label}</p>
 
@@ -135,7 +137,7 @@ function WeatherWidget({ w, sites = [] }) {
         </div>
       ) : (
         <p className="truncate text-[11px] text-ink-400">
-          {located.length === 0 ? 'Add coordinates to a site' : waiting ? w.hint : 'Nothing restricting outdoor work'}
+          {loadingSites ? w.hint : located.length === 0 ? 'Add coordinates to a site' : waiting ? w.hint : 'Nothing restricting outdoor work'}
         </p>
       )}
     </Shell>

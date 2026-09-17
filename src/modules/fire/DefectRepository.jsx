@@ -3,6 +3,7 @@ import { motion } from 'framer-motion'
 import { format } from 'date-fns'
 import { Wrench, CheckCircle2, X, Flame, HeartPulse, BellRing } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../shared/lib/toastCaught'
 import { PageHeader, EmptyState, Badge } from './components/ui'
 import { Pager } from '../../shared/ui'
 import { usePagination } from '../../shared/ui/usePagination'
@@ -71,7 +72,7 @@ export default function DefectRepository() {
       await resolveDefects(orgId, orgName, row.raw.extId, remaining, profile?.name)
       toast.success(`Resolved: ${row.defect}`)
     } catch (err) {
-      toast.error(err.message || 'Could not resolve the defect')
+      toastCaught(err, 'Could not resolve the defect')
     } finally {
       setBusyId(null)
     }
@@ -83,7 +84,7 @@ export default function DefectRepository() {
       await decideAssetReport(orgId, row.raw, approve, profile?.name, { uid: profile?.uid, name: profile?.name })
       toast.success(approve ? 'Defect confirmed — asset flagged & report closed' : 'Defect report dismissed')
     } catch (err) {
-      toast.error(err.message || 'Could not update the report')
+      toastCaught(err, 'Could not update the report')
     } finally {
       setBusyId(null)
     }

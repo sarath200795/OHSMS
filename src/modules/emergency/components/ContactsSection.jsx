@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../shared/lib/toastCaught'
 import {
   PhoneCall, Phone, Plus, Pencil, Trash2, Wand2, Globe2, MapPin,
 } from 'lucide-react'
@@ -102,13 +103,13 @@ export default function ContactsSection({ site, contacts, users }) {
       if (editing === 'new') { await addContact(orgId, payload, actor); toast.success('Contact added') }
       else { await updateContact(orgId, editing.id, payload, actor); toast.success('Contact updated') }
       setEditing(null)
-    } catch (err) { toast.error(err?.message || 'Failed') } finally { setBusy(false) }
+    } catch (err) { toastCaught(err, 'Failed') } finally { setBusy(false) }
   }
 
   const remove = async (c) => {
     if (!window.confirm(`Remove ${c.role} contact "${c.name}"?`)) return
     try { await deleteContact(orgId, c.id, actor, `${c.role} · ${c.name}`); toast.success('Contact removed') }
-    catch (err) { toast.error(err?.message || 'Failed') }
+    catch (err) { toastCaught(err, 'Failed') }
   }
 
   // ── Nearest Police / Hospital / Fire from this site's coordinates ──
@@ -122,7 +123,7 @@ export default function ContactsSection({ site, contacts, users }) {
       if (!found.length) toast.error('No named services found nearby on OpenStreetMap')
       setAutoResults(found)
     } catch (err) {
-      toast.error(err?.message || 'Map lookup failed')
+      toastCaught(err, 'Map lookup failed')
     } finally {
       setAutoBusy(false)
     }
@@ -140,7 +141,7 @@ export default function ContactsSection({ site, contacts, users }) {
       setAutoOpen(false)
       setAutoResults(null)
     } catch (err) {
-      toast.error(err?.message || 'Failed to save contacts')
+      toastCaught(err, 'Failed to save contacts')
     } finally {
       setAutoBusy(false)
     }

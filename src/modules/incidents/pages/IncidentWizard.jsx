@@ -3,10 +3,12 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useReactToPrint } from 'react-to-print'
 import { motion } from 'framer-motion'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../shared/lib/toastCaught'
 import {
-  ClipboardList, Check, ChevronLeft, ChevronRight, Printer, Save, Loader2, ShieldAlert, CheckCircle2, Lock,
+  ClipboardList, Check, ChevronLeft, ChevronRight, Printer, Save, Loader2, CheckCircle2, Lock,
 } from 'lucide-react'
 import { PageHeader, Spinner } from '../components/ui'
+import { AccessDenied } from '../../../shared/ui'
 import StepInitialReport from '../components/wizard/StepInitialReport'
 import StepInjuryReports from '../components/wizard/StepInjuryReports'
 import StepTeam from '../components/wizard/StepTeam'
@@ -185,7 +187,7 @@ export default function IncidentWizard() {
         goStep(nextStep())
       }
     } catch (e) {
-      toast.error(e.message || 'Could not save')
+      toastCaught(e, 'Could not save')
     } finally {
       setSaving(false)
     }
@@ -207,7 +209,7 @@ export default function IncidentWizard() {
       toast.success('Injury reports saved')
       goStep(nextStep())
     } catch (e) {
-      toast.error(e.message || 'Could not save')
+      toastCaught(e, 'Could not save')
     } finally {
       setSaving(false)
     }
@@ -227,7 +229,7 @@ export default function IncidentWizard() {
       toast.success('Saved')
       if (nextKey) goStep(nextKey)
     } catch (e) {
-      toast.error(e.message || 'Could not save')
+      toastCaught(e, 'Could not save')
     } finally {
       setSaving(false)
     }
@@ -275,7 +277,7 @@ export default function IncidentWizard() {
       toast.success('Investigation saved')
       goStep(nextStep())
     } catch (e) {
-      toast.error(e.message || 'Could not save')
+      toastCaught(e, 'Could not save')
     } finally {
       setSaving(false)
     }
@@ -289,7 +291,7 @@ export default function IncidentWizard() {
       toast.success('Incident closed')
       navigate('/incidents')
     } catch (e) {
-      toast.error(e.message || 'Could not close')
+      toastCaught(e, 'Could not close')
     } finally {
       setSaving(false)
     }
@@ -462,10 +464,9 @@ export default function IncidentWizard() {
 
 function NoAccess() {
   return (
-    <div className="rounded-2xl bg-amber-50 p-6 text-center text-amber-800">
-      <ShieldAlert className="mx-auto mb-2" size={28} />
-      <p className="font-bold">Investigator access required</p>
-      <p className="text-sm">Steps 2–5 (team, investigation, CAPA, horizontal deployment) are available to Investigators and Admins.</p>
-    </div>
+    <AccessDenied
+      title="Investigator access required"
+      description="Steps 2–5 (team, investigation, CAPA, horizontal deployment) are available to Investigators and Admins."
+    />
   )
 }

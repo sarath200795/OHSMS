@@ -14,11 +14,10 @@
 // broken and asks IT to fix nothing.
 // ─────────────────────────────────────────────────────────────────────────────
 import { Link } from 'react-router-dom'
-import { Lock } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { MODULE_BY_KEY } from './registry'
 import ModuleLoading from '../layout/ModuleLoading'
-import { Card, Button } from '../ui'
+import { AccessDenied, Button } from '../ui'
 
 export default function ModuleGate({ moduleKey, children }) {
   const { moduleEnabled, modulesReady } = useAuth()
@@ -32,20 +31,14 @@ export default function ModuleGate({ moduleKey, children }) {
   const mod = MODULE_BY_KEY[moduleKey]
 
   return (
-    <Card className="mx-auto max-w-lg p-8 text-center">
-      <span className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-2xl bg-ink-100 text-ink-500">
-        <Lock size={22} />
-      </span>
-      <h2 className="text-lg font-bold text-ink-900">
-        {mod?.title || 'This module'} is not enabled
-      </h2>
-      <p className="mx-auto mt-2 max-w-sm text-[14px] text-ink-500">
-        Your organization does not currently have access to this module. Ask your administrator
-        to request it — nothing here is missing or broken.
-      </p>
-      <Button as={Link} to="/portal" className="mt-6">
-        Back to home
-      </Button>
-    </Card>
+    <AccessDenied
+      title={`${mod?.title || 'This module'} is not enabled`}
+      description="Your organization does not currently have access to this module. Ask your administrator to request it — nothing here is missing or broken."
+      action={
+        <Button as={Link} to="/portal" className="mt-2">
+          Back to home
+        </Button>
+      }
+    />
   )
 }

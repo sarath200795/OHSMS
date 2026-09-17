@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../shared/lib/toastCaught'
 import { BellRing, ShieldCheck, Wrench, AlertOctagon, CalendarClock, ArrowRight, AlertTriangle } from 'lucide-react'
 import { PageHeader, EmptyState, Spinner } from '../components/ui'
 import { useFleet } from '../context/FleetContext'
@@ -34,7 +35,7 @@ export default function FASDashboard() {
       await decideAssetReport(orgId, report, approve, profile?.name, { uid: profile?.uid, name: profile?.name })
       toast.success(approve ? 'Defect confirmed — device marked faulty' : 'Defect report dismissed')
     } catch (e) {
-      toast.error(e.message || 'Could not update the report')
+      toastCaught(e, 'Could not update the report')
     } finally {
       setBusyId(null)
     }

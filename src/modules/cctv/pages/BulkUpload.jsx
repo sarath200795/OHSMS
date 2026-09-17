@@ -1,8 +1,9 @@
 import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../shared/lib/toastCaught'
 import { Upload, Download, HardDrive, Cctv, CircleCheck, TriangleAlert } from 'lucide-react'
-import { PageHeader, Button, EmptyState } from '../../../shared/ui'
+import { PageHeader, Button, AccessDenied } from '../../../shared/ui'
 import { useAuth } from '../../../shared/auth/AuthContext'
 import { useCctv } from '../context/CctvContext'
 import { parseImport, DVR_COLUMNS, CAMERA_COLUMNS } from '../lib/bulkImport'
@@ -67,7 +68,7 @@ export default function BulkUpload() {
       toast.success(`Imported ${n} ${cfg.label}`)
       navigate('/cctv/inventory')
     } catch (e) {
-      toast.error(e.message)
+      toastCaught(e)
     } finally {
       setBusy(false)
     }
@@ -77,7 +78,7 @@ export default function BulkUpload() {
     return (
       <>
         <PageHeader title="Bulk import" />
-        <EmptyState icon={TriangleAlert} title="Managers only" hint="Ask an admin or manager to run the import." />
+        <AccessDenied description="Ask an admin or manager to run the import." />
       </>
     )
   }

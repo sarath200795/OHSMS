@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { HeartPulse, Plus, Pencil, Trash2, Search, Filter, X, Download, QrCode, Wrench, Upload, AlertTriangle, MapPin } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../shared/lib/toastCaught'
 import { PageHeader, EmptyState, Modal, Badge, Spinner, Field } from '../components/ui'
 import { Pager, IconButton } from '../../../shared/ui'
 import { usePagination } from '../../../shared/ui/usePagination'
@@ -117,7 +118,7 @@ export default function AEDRepository() {
       toast.success(`${r.linked} linked · ${r.nameChanges} renamed · ${r.entityChanges} entity value(s) corrected`)
       setLinkOpen(false)
     } catch (e) {
-      toast.error(e?.message || 'Could not link to sites')
+      toastCaught(e, 'Could not link to sites')
     } finally { setBusy(false) }
   }
 
@@ -135,7 +136,7 @@ export default function AEDRepository() {
       })
       setEditing({ ...EMPTY, assetId })
     } catch (e) {
-      toast.error(e?.message || 'Could not reserve an asset ID')
+      toastCaught(e, 'Could not reserve an asset ID')
     }
   }
 
@@ -154,7 +155,7 @@ export default function AEDRepository() {
       const rows = missingSites.map((s, i) => ({ assetId: ids[i], centerName: s, region: siteMeta[s]?.region || '', entity: siteMeta[s]?.entity || '', status: AED_STATUS.READY }))
       const res = await bulkAddAeds(orgId, orgName, rows, { uid: profile?.uid, name: profile?.name })
       toast.success(`Generated ${res.created} AED(s) with QR codes`)
-    } catch (e) { toast.error(e.message) } finally { setBusy(false) }
+    } catch (e) { toastCaught(e) } finally { setBusy(false) }
   }
 
   const toggle = (field, v) => setF((p) => ({ ...p, [field]: p[field].includes(v) ? p[field].filter((x) => x !== v) : [...p[field], v] }))
@@ -207,7 +208,7 @@ export default function AEDRepository() {
       await bulkDeleteAeds(orgId, items, { uid: profile?.uid, name: profile?.name })
       toast.success(`${items.length} AED(s) deleted`)
       setSelected(new Set()); setBulkRemoving(false)
-    } catch (e) { toast.error(e.message) } finally { setBusy(false) }
+    } catch (e) { toastCaught(e) } finally { setBusy(false) }
   }
 
   const save = async (e) => {
@@ -220,13 +221,13 @@ export default function AEDRepository() {
       if (editing.id) { await updateAed(orgId, orgName, editing.id, editing, actor); toast.success('AED updated') }
       else { await addAed(orgId, orgName, editing, actor); toast.success('AED added') }
       setEditing(null)
-    } catch (err) { toast.error(err.message) } finally { setBusy(false) }
+    } catch (err) { toastCaught(err) } finally { setBusy(false) }
   }
   const confirmDelete = async () => {
     try {
       await deleteAed(orgId, removing.id, removing.qrToken, { uid: profile?.uid, name: profile?.name }, `${removing.assetId || 'AED'} @ ${removing.centerName}`)
       toast.success('AED deleted')
-    } catch (err) { toast.error(err.message) } finally { setRemoving(null) }
+    } catch (err) { toastCaught(err) } finally { setRemoving(null) }
   }
   // View the QR — or, for admins, mint one first if the record lacks it.
   const showQr = async (a) => {
@@ -237,7 +238,7 @@ export default function AEDRepository() {
       const token = await generateAedQr(orgId, orgName, a, { uid: profile?.uid, name: profile?.name })
       setQrFor({ ...a, qrToken: token })
       toast.success('QR code generated')
-    } catch (e) { toast.error(e.message) } finally { setBusy(false) }
+    } catch (e) { toastCaught(e) } finally { setBusy(false) }
   }
   const openService = (a) => { setServiceFor(a); setNextDate(a.nextInspection || '') }
   const confirmService = async () => {
@@ -246,7 +247,7 @@ export default function AEDRepository() {
       await serviceAed(orgId, orgName, serviceFor, nextDate, { uid: profile?.uid, name: profile?.name })
       toast.success('Inspection logged')
       setServiceFor(null)
-    } catch (err) { toast.error(err.message) } finally { setBusy(false) }
+    } catch (err) { toastCaught(err) } finally { setBusy(false) }
   }
   const doExport = () => {
     if (!visible.length) return toast.error('Nothing to export')

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../lib/toastCaught'
 import { useAuth } from '../auth/AuthContext'
 import { subscribeSites, requestAccess } from '../org/orgData'
 import { orgDepartments, regionsOf, entitiesOf } from '../auth/access'
@@ -42,7 +43,7 @@ export default function RequestAccessModal({ open, onClose }) {
       onClose()
       setForm({ department: '', sites: [], regions: [], entities: [] })
     } catch (err) {
-      toast.error(err?.message || 'Failed')
+      toastCaught(err, 'Failed')
     } finally {
       setBusy(false)
     }

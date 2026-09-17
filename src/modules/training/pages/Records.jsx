@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../shared/lib/toastCaught'
 import { GraduationCap, Plus, Trash2, Search, RotateCcw, CalendarPlus, Award } from 'lucide-react'
 import { PageHeader, Card, Field, Input, Select, Button, Modal, Badge, EmptyState, SkeletonTable, Pager } from '../../../shared/ui'
 import SiteScopePicker from '../../../shared/org/SiteScopePicker'
@@ -56,13 +57,13 @@ export default function Records() {
       }, actor, openAssignments)
       toast.success(`Logged for ${n} employee${n === 1 ? '' : 's'}`)
       setOpen(false)
-    } catch (err) { toast.error(err?.message || 'Failed') } finally { setBusy(false) }
+    } catch (err) { toastCaught(err, 'Failed') } finally { setBusy(false) }
   }
 
   const remove = async (r) => {
     if (!window.confirm(`Delete ${r.employeeName}'s "${r.courseName}" record?`)) return
     try { await deleteRecord(orgId, r.id, actor, `${r.courseName} · ${r.employeeName}`); toast.success('Record deleted') }
-    catch (err) { toast.error(err?.message || 'Failed') }
+    catch (err) { toastCaught(err, 'Failed') }
   }
 
   const filtered = useMemo(() => {

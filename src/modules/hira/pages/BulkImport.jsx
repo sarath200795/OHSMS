@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Upload, Download, FileSpreadsheet, CheckCircle2, AlertTriangle, X, Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../shared/lib/toastCaught'
 import { PageHeader, Spinner } from '../components/ui'
 import { Pager } from '../../../shared/ui'
 import { usePagination } from '../../../shared/ui/usePagination'
@@ -69,7 +70,7 @@ export default function BulkImport() {
       setResult(null)
       setFileName('')
     } catch (e) {
-      toast.error(e.message || 'Import failed')
+      toastCaught(e, 'Import failed')
     } finally {
       setCommitting(false)
     }

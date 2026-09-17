@@ -40,6 +40,11 @@ describe('readNotice', () => {
     expect(n.message).toMatch(/could not be loaded/i)
   })
 
+  it('treats a denied query as empty, not incomplete', () => {
+    expect(readNotice(['denied'])).toBeNull()
+    expect(readNotice(['ok', 'denied'])).toBeNull()
+  })
+
   it('reports both when one query capped and another failed', () => {
     const n = readNotice(['capped', 'failed'])
     expect(n.capped).toHaveLength(1)
@@ -51,7 +56,9 @@ describe('readNotice', () => {
   // still saying that more than one slice was short.
   it('labels a lone query plainly and several by position', () => {
     expect(readNotice(['capped']).capped).toEqual(['documents'])
-    expect(readNotice(['capped', 'capped']).capped)
-      .toEqual(['documents (part 1)', 'documents (part 2)'])
+    expect(readNotice(['capped', 'capped']).capped).toEqual([
+      'documents (part 1)',
+      'documents (part 2)',
+    ])
   })
 })

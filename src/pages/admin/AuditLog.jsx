@@ -4,7 +4,8 @@ import { useAuth } from '../../shared/auth/AuthContext'
 import toast from 'react-hot-toast'
 import { subscribeAuditLogs, fetchAuditLogs, logAudit } from '../../shared/org/orgData'
 import { auditRows, auditExportSummary } from '../../shared/audit/auditExport'
-import { writeErrorMessage } from '../../shared/lib/writeError'
+import { toastCaught } from '../../shared/lib/toastCaught'
+import { isPermissionDenied } from '../../shared/lib/permissionDenied'
 import { auditLabel, AUDIT } from '../../shared/audit/audit'
 import { MODULE_BY_KEY } from '../../shared/modules/registry'
 import { PageHeader, Badge, Input, SkeletonTable, EmptyState } from '../../shared/ui'
@@ -40,7 +41,11 @@ export default function AuditLog() {
       .then((rows) => alive && setLogs(rows))
       .catch((e) => {
         if (!alive) return
-        toast.error(writeErrorMessage(e, { online: navigator.onLine, action: 'load the audit log' }))
+        if (isPermissionDenied(e)) {
+          setLogs([])
+          return
+        }
+        toastCaught(e, 'Could not load the audit log', { action: 'load the audit log' })
         setLogs([])
       })
     return () => { alive = false }
@@ -81,7 +86,7 @@ export default function AuditLog() {
       })
       toast.success(`Exported ${rows.length} entries`)
     } catch (e) {
-      toast.error(e?.message || 'Export failed')
+      toastCaught(e, 'Export failed')
     } finally {
       setBusy(false)
     }

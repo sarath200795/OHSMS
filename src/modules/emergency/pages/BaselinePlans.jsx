@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../shared/lib/toastCaught'
 import { Library, Info, PackagePlus, AlertTriangle } from 'lucide-react'
 import { PageHeader, Card, SkeletonCard, Button, Modal } from '../../../shared/ui'
 import { useAuth } from '../../../shared/auth/AuthContext'
@@ -52,7 +53,7 @@ export default function BaselinePlans() {
       setInstallOpen(false)
       setReplace(false)
     } catch (err) {
-      toast.error(err?.message || 'Failed to install the library')
+      toastCaught(err, 'Failed to install the library')
     } finally {
       setBusy(false)
     }

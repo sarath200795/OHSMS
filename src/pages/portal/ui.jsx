@@ -67,15 +67,17 @@ export function Ring({ pct, color, size = 46 }) {
 /** Page heading with an icon tile, used at the top of every inner screen. */
 export function PortalHeading({ icon: Icon, title, subtitle, action }) {
   return (
-    <div className="mb-5 flex items-center gap-3.5">
-      <span className="grid h-11 w-11 flex-none place-items-center rounded-2xl bg-brand-50 text-brand-700 shadow-clay-sm">
-        <Icon size={21} strokeWidth={2.1} />
-      </span>
-      <div className="min-w-0">
-        <h1 className="text-[22px] font-extrabold tracking-[-0.02em] text-ink-900">{title}</h1>
-        {subtitle && <p className="mt-0.5 text-[13px] text-ink-500">{subtitle}</p>}
+    <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center">
+      <div className="flex min-w-0 items-center gap-3.5">
+        <span className="grid h-11 w-11 flex-none place-items-center rounded-2xl bg-brand-50 text-brand-700 shadow-clay-sm">
+          <Icon size={21} strokeWidth={2.1} />
+        </span>
+        <div className="min-w-0">
+          <h1 className="text-[22px] font-extrabold tracking-[-0.02em] text-ink-900">{title}</h1>
+          {subtitle && <p className="mt-0.5 text-[13px] text-ink-500">{subtitle}</p>}
+        </div>
       </div>
-      {action && <div className="ml-auto flex-none">{action}</div>}
+      {action && <div className="sm:ml-auto sm:flex-none">{action}</div>}
     </div>
   )
 }

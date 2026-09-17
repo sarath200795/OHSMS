@@ -176,6 +176,7 @@ which is why CI runs both.
   of the gate `eslint-plugin-jsx-a11y` cannot be: this app binds most labels to
   their controls at runtime, which a static rule cannot see.
 - **Capped reads** — `e2e/capped-reads.spec.js`, run with `VITE_TEST_READ_CAP`
-  set low, asserts that every screen totalling a capped collection actually
-  renders the "these figures are incomplete" notice.
+  set low, asserts that screens totalling a capped collection actually render
+  the "these figures are incomplete" notice (portal home is the exception: it
+  must not).
 - **End-to-end** — `e2e/` under Playwright, against seeded emulators.

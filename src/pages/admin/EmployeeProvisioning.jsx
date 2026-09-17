@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../shared/lib/toastCaught'
 import { UserPlus, Upload, Download, KeyRound, CheckCircle2, AlertCircle } from 'lucide-react'
 import { Button, Field, Input, Select, Modal, Badge } from '../../shared/ui'
 import { useAuth } from '../../shared/auth/AuthContext'
@@ -96,7 +97,7 @@ export default function EmployeeProvisioning({ orgId, orgName, actor, existingEm
       setResult({ created: 1, failed: [], credentials: [{ email: form.email.trim().toLowerCase(), tempPassword }] })
       toast.success(`${form.name.trim()} added — copy their one-time password`)
     } catch (err) {
-      toast.error(err.message)
+      toastCaught(err)
     } finally {
       setBusy(false)
     }

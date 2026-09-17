@@ -2,7 +2,7 @@
 // with an optional actions slot on the right.
 export default function PageHeader({ icon, title, subtitle, actions }) {
   return (
-    <div className="flex flex-wrap items-start justify-between gap-3">
+    <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
       <div className="flex items-start gap-3">
         {icon && (
           <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-hazard to-hazard-dark text-ink shadow-clay">
@@ -21,7 +21,17 @@ export default function PageHeader({ icon, title, subtitle, actions }) {
 
 // Small inline icon helper so pages can pass consistent stroke icons.
 export const HdrIcon = ({ d }) => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+  <svg
+    width="22"
+    height="22"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.9"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden
+  >
     {d}
   </svg>
 )

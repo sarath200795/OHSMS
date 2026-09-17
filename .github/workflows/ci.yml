@@ -247,9 +247,10 @@ jobs:
           "node scripts/seed.mjs && npx playwright test
           e2e/smoke.spec.js e2e/accessibility.spec.js e2e/console-sweep.spec.js"
 
-      # e2e/capped-reads.spec.js asserts that every screen totalling a capped
-      # collection actually RENDERS the "these figures are incomplete" notice —
+      # e2e/capped-reads.spec.js asserts that screens totalling a capped
+      # collection actually RENDER the "these figures are incomplete" notice —
       # the difference between the notice existing and the page asking for it.
+      # Portal home is the exception: it must NOT show that notice.
       #
       # It skips itself unless VITE_TEST_READ_CAP is set, because at the real
       # 5 000 no fixture can trip the cap. The step above did not set it, so all

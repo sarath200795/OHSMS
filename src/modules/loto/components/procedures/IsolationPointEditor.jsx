@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../../shared/lib/toastCaught'
 import {
   ENERGY_SOURCES,
   LOTO_DEVICES,
@@ -52,7 +53,7 @@ export default function IsolationPointEditor({
       update({ photo: dataUrl })
       toast.success('Photo added')
     } catch (err) {
-      toast.error(err.message || 'Could not process image')
+      toastCaught(err, 'Could not process image')
     } finally {
       setUploading(false)
     }

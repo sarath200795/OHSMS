@@ -2,6 +2,7 @@ import { StoredImage } from '../../../shared/storage/StoredImage'
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../shared/lib/toastCaught'
 import { History, Search, Trash2, MapPin, User, Calendar } from 'lucide-react'
 import { PageHeader, EmptyState, Modal, StatusPill } from '../components/ui'
 import SiteFilter from '../components/SiteFilter'
@@ -87,10 +88,10 @@ export default function Records() {
   const { pageItems, page, setPage, pageCount, total, pageSize } = usePagination(filtered)
 
   const handleDelete = async (r) => {
-    if (!isAdmin) return toast.error('Only admins can delete records.')
+    if (!isAdmin) return
     if (!window.confirm('Permanently delete this inspection record?')) return
     try { await deleteRecord(orgId, r.id, r.templateTitle, profile); toast.success('Record deleted') }
-    catch (e) { toast.error('Delete failed: ' + e.message) }
+    catch (e) { toastCaught(e, 'Delete failed') }
   }
 
   return (

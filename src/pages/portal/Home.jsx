@@ -8,16 +8,30 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import {
-  PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, Legend,
-} from 'recharts'
+import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, Legend } from 'recharts'
 import ChartFrame from '../../shared/ui/ChartFrame'
-import { AlertTriangle, ArrowRight, MapPin, Building2, ScrollText, UsersRound, Settings, BarChart3, Wrench } from 'lucide-react'
+import {
+  AlertTriangle,
+  ArrowRight,
+  MapPin,
+  Building2,
+  ScrollText,
+  UsersRound,
+  Settings,
+  BarChart3,
+  Wrench,
+} from 'lucide-react'
 import { useAuth } from '../../shared/auth/AuthContext'
-import { subscribeCollections, emptyCollections, subscribeOrgUsers } from '../../shared/org/orgData'
-import { useAccessibleSites } from '../../shared/org/useAccessibleSites'
-import { subscribeActions, NORM_BY_KEY } from '../../modules/actions/lib/sources'
-import { subscribeAssignments } from '../../modules/training/lib/firestore'
+import {
+  subscribeCollections,
+  emptyCollections,
+  subscribeOrgUsersRead,
+  readReady,
+  collectionsAnswered,
+} from '../../shared/org/orgData'
+import { useAccessibleSitesRead } from '../../shared/org/useAccessibleSites'
+import { subscribeActions, NORM_BY_KEY, SOURCES } from '../../modules/actions/lib/sources'
+import { subscribeAssignmentsRead } from '../../modules/training/lib/firestore'
 import { INCIDENT_TYPE_BY_KEY } from '../../modules/incidents/lib/constants'
 import { enabledModules } from '../../shared/modules/entitlements'
 import { Raised, Inset, SectionLabel } from './ui'
@@ -28,7 +42,7 @@ import { useWidgetPrefs } from './widgets/useWidgetPrefs'
 import { dashboardBuckets } from '../../modules/ptw/lib/permitStatus'
 import { openUnsafeByPermit } from '../../modules/ptw/lib/observations'
 import ModuleLogo3D, { has3DLogo } from './ModuleLogo3D'
-import IncompleteNotice from '../../shared/ui/IncompleteNotice'
+import { Button, Skeleton, Spinner } from '../../shared/ui'
 
 // Same logo gradients the admin hub uses, so a module is recognisable by its
 // tile wherever it appears.
@@ -49,11 +63,46 @@ const GRADIENT = {
 // Route guards are unchanged and remain the real control; hiding a tile is
 // presentation, not permission.
 const ADMIN_TOOLS = [
-  { key: 'sites', label: 'Sites', title: 'Locations across your organization', path: '/sites', icon: Building2, tone: 'brand' },
-  { key: 'users', label: 'Employees', title: 'Roles, access and bulk upload', path: '/users', icon: UsersRound, tone: 'green' },
-  { key: 'settings', label: 'Org Settings', title: 'Organization profile and preferences', path: '/settings', icon: Settings, tone: 'amber' },
-  { key: 'audit-log', label: 'Audit Log', title: 'Append-only record of every action', path: '/audit-log', icon: ScrollText, tone: 'violet' },
-  { key: 'maintenance', label: 'Maintenance', title: 'One-off data repair jobs, each with a dry run', path: '/maintenance', icon: Wrench, tone: 'slate' },
+  {
+    key: 'sites',
+    label: 'Sites',
+    title: 'Locations across your organization',
+    path: '/sites',
+    icon: Building2,
+    tone: 'brand',
+  },
+  {
+    key: 'users',
+    label: 'Employees',
+    title: 'Roles, access and bulk upload',
+    path: '/users',
+    icon: UsersRound,
+    tone: 'green',
+  },
+  {
+    key: 'settings',
+    label: 'Org Settings',
+    title: 'Organization profile and preferences',
+    path: '/settings',
+    icon: Settings,
+    tone: 'amber',
+  },
+  {
+    key: 'audit-log',
+    label: 'Audit Log',
+    title: 'Append-only record of every action',
+    path: '/audit-log',
+    icon: ScrollText,
+    tone: 'violet',
+  },
+  {
+    key: 'maintenance',
+    label: 'Maintenance',
+    title: 'One-off data repair jobs, each with a dry run',
+    path: '/maintenance',
+    icon: Wrench,
+    tone: 'slate',
+  },
 ]
 
 /**
@@ -79,6 +128,7 @@ function Tile({ to, icon: Icon, gradient, label, title, delay = 0, logoKey }) {
                    transition-[transform,box-shadow] duration-300 ease-emil [transform-style:preserve-3d]
                    hover:shadow-clay-lg hover:[transform:translateY(-8px)_rotateX(9deg)_rotateY(-9deg)]
                    active:[transform:translateY(-3px)_scale(0.985)]
+                   focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-clay-bg
                    motion-reduce:transition-none motion-reduce:hover:[transform:none]"
       >
         {/* The logo lifts far enough off the card for the perspective to bend
@@ -104,9 +154,15 @@ function Tile({ to, icon: Icon, gradient, label, title, delay = 0, logoKey }) {
           >
             {/* A built object where one exists; the line icon otherwise, rather
                 than giving a module a shape that means something else. */}
-            {has3D
-              ? <ModuleLogo3D moduleKey={logoKey} />
-              : <Icon size={28} strokeWidth={2} className="relative z-10 drop-shadow-[0_2px_3px_rgba(0,0,0,0.28)]" />}
+            {has3D ? (
+              <ModuleLogo3D moduleKey={logoKey} />
+            ) : (
+              <Icon
+                size={28}
+                strokeWidth={2}
+                className="relative z-10 drop-shadow-[0_2px_3px_rgba(0,0,0,0.28)]"
+              />
+            )}
             {/* Specular sweep — what makes the face read as glossy rather than flat. */}
             <span
               aria-hidden="true"
@@ -117,7 +173,9 @@ function Tile({ to, icon: Icon, gradient, label, title, delay = 0, logoKey }) {
         </span>
 
         <span className="min-w-0 transition-transform duration-300 ease-emil group-hover:[transform:translateZ(26px)] motion-reduce:group-hover:[transform:none]">
-          <span className="block text-[15px] font-bold tracking-[-0.015em] text-ink-900">{label}</span>
+          <span className="block text-[15px] font-bold tracking-[-0.015em] text-ink-900">
+            {label}
+          </span>
           <span className="mt-0.5 block text-[12px] leading-snug text-ink-400">{title}</span>
         </span>
       </Link>
@@ -138,13 +196,25 @@ function withUnsafe(permits = [], observations = []) {
   return permits.map((p) => ({ ...p, openUnsafeCount: counts.get(p.id) || 0 }))
 }
 
-// Everything on this page that is a count comes from these. Read as one set so
-// the page cannot show a compliance figure without also showing that a cap or a
-// failed read made it short.
+// Everything on this page that is a count comes from these. Status rides
+// alongside the rows so a collection that has not loaded (or was refused)
+// stays in loading rather than reading as a confident zero.
 const COLLECTIONS = [
-  'extinguishers', 'aeds', 'fas', 'signages', 'incidents',
-  'consultations', 'mockDrills', 'permits', 'observations',
+  'extinguishers',
+  'aeds',
+  'fas',
+  'signages',
+  'incidents',
+  'consultations',
+  'mockDrills',
+  'permits',
+  'observations',
 ]
+
+// The action tracker fans out over these. Home waits until every one has
+// answered (ok / capped / denied) before showing "nothing is waiting on you",
+// because a missing source used to read as an empty inbox.
+const ACTION_COLLECTIONS = [...new Set(SOURCES.map((s) => s.collection))]
 
 const greeting = (d = new Date()) => {
   const h = d.getHours()
@@ -159,56 +229,108 @@ export default function PortalHome() {
   // route that refuses to open is worse than no tile at all.
   const modules = useMemo(() => enabledModules(moduleMap), [moduleMap])
   const navigate = useNavigate()
-  const sites = useAccessibleSites()
+  const { sites, status: sitesStatus } = useAccessibleSitesRead()
   const { keys: widgetKeys, save: saveWidgets } = useWidgetPrefs()
 
   const [siteId, setSiteId] = useState('all')
   const [store, setStore] = useState(() => emptyCollections(COLLECTIONS))
-  const [assignments, setAssignments] = useState([])
-  const [users, setUsers] = useState([])
+  const [assignments, setAssignments] = useState({ rows: [], status: 'pending' })
+  const [users, setUsers] = useState({ rows: [], status: 'pending' })
   const [actions, setActions] = useState([])
-  const [actionsIncomplete, setActionsIncomplete] = useState(null)
+  const [actionsStatus, setActionsStatus] = useState(() =>
+    Object.fromEntries(ACTION_COLLECTIONS.map((n) => [n, 'pending']))
+  )
 
   useEffect(() => {
     if (!orgId) return undefined
+    setStore(emptyCollections(COLLECTIONS))
+    setAssignments({ rows: [], status: 'pending' })
+    setUsers({ rows: [], status: 'pending' })
+    setActions([])
+    setActionsStatus(Object.fromEntries(ACTION_COLLECTIONS.map((n) => [n, 'pending'])))
     const unsubs = [
       subscribeCollections(orgId, COLLECTIONS, setStore),
-      subscribeAssignments(orgId, setAssignments),
-      subscribeOrgUsers(orgId, setUsers),
-      // Two independent incomplete reads feed this page — the collections and
-      // the action tracker — so the notice has to be the union of both, or one
-      // of them silently qualifies nothing.
-      subscribeActions(orgId, ({ rows, incomplete }) => {
+      subscribeAssignmentsRead(orgId, setAssignments),
+      subscribeOrgUsersRead(orgId, setUsers),
+      subscribeActions(orgId, ({ rows, status }) => {
         setActions(rows)
-        setActionsIncomplete(incomplete)
+        setActionsStatus(status)
       }),
     ]
     return () => unsubs.forEach((u) => u && u())
   }, [orgId])
 
   const {
-    extinguishers, aeds, fas, signages, incidents,
-    consultations: meetings, mockDrills: drills, permits, observations,
+    extinguishers,
+    aeds,
+    fas,
+    signages,
+    incidents,
+    consultations: meetings,
+    mockDrills: drills,
+    permits,
+    observations,
   } = store.data
+  const colStatus = store.status || {}
+
+  const sitesReady = readReady(sitesStatus)
+  const actionsReady = collectionsAnswered(actionsStatus, ACTION_COLLECTIONS)
+  const assignmentsReady = readReady(assignments.status)
+  const usersReady = readReady(users.status)
+  const incidentsReady = readReady(colStatus.incidents)
+  const equipmentReady = ['extinguishers', 'aeds', 'fas'].every((n) => readReady(colStatus[n]))
+  const trainingReady = assignmentsReady && usersReady
 
   // A filter pointing at a site the viewer lost access to would silently show
   // zeros, so fall back to everything rather than to an empty scope.
   const activeSite = sites.some((s) => s.id === siteId) ? siteId : 'all'
 
   const stats = useMemo(
-    () => portalStats({
-      sites, siteId: activeSite, extinguishers, aeds, fas, signages, incidents, assignments, users,
-      meetings, drills, permits,
-    }),
-    [sites, activeSite, extinguishers, aeds, fas, signages, incidents, assignments, users, meetings, drills, permits]
+    () =>
+      portalStats({
+        sites,
+        siteId: activeSite,
+        extinguishers,
+        aeds,
+        fas,
+        signages,
+        incidents,
+        assignments: assignments.rows,
+        users: users.rows,
+        meetings,
+        drills,
+        permits,
+      }),
+    [
+      sites,
+      activeSite,
+      extinguishers,
+      aeds,
+      fas,
+      signages,
+      incidents,
+      assignments.rows,
+      users.rows,
+      meetings,
+      drills,
+      permits,
+    ]
   )
 
   const mine = useMemo(() => myActions(actions, profile), [actions, profile])
   const open = mine.filter((a) => a.norm !== 'done')
 
   const pending = useMemo(
-    () => pendingWork({ sites, siteId: activeSite, actions, assignments, users, limit: 5 }),
-    [sites, activeSite, actions, assignments, users]
+    () =>
+      pendingWork({
+        sites,
+        siteId: activeSite,
+        actions,
+        assignments: assignments.rows,
+        users: users.rows,
+        limit: 5,
+      }),
+    [sites, activeSite, actions, assignments.rows, users.rows]
   )
 
   const pie = stats.incidentsByType.map((r) => ({
@@ -219,27 +341,45 @@ export default function PortalHome() {
   const bars = stats.equipmentBySite.slice(0, 8)
 
   const firstName = (profile?.name || '').split(' ')[0] || 'there'
-  const scopeLabel = activeSite === 'all'
-    ? `${sites.length} site${sites.length === 1 ? '' : 's'} you can see`
-    : sites.find((s) => s.id === activeSite)?.name
+  const scopeLabel = !sitesReady
+    ? 'your sites'
+    : activeSite === 'all'
+      ? `${sites.length} site${sites.length === 1 ? '' : 's'} you can see`
+      : sites.find((s) => s.id === activeSite)?.name
 
   // Everything a widget can ask for, already scoped. Widgets read from this
   // rather than from the raw collections, so none of them can reach around the
-  // scoping that portalStats applied.
-  const widgetData = useMemo(() => ({
-    stats,
-    extinguishers: extinguishers.length ? stats.scoped.extinguishers : null,
-    aeds: aeds.length ? stats.scoped.aeds : null,
-    fas: fas.length ? stats.scoped.fas : null,
-    meetings: meetings.length ? stats.counts.meetings : null,
-    drills: drills.length ? stats.counts.drills : null,
-    // Joined the same way the permits module does it, or the portal would
-    // count a permit with an unanswered unsafe report as merely open while the
-    // permits page flags it — two screens disagreeing about the same permit.
-    permits: permits.length ? dashboardBuckets(withUnsafe(stats.scoped.permits, observations)) : null,
-    myOpenActions: actions.length ? open.length : null,
-    myPendingTraining: assignments.length ? pending.training.length : null,
-  }), [stats, extinguishers, aeds, fas, meetings, drills, permits, observations, actions, assignments, open, pending])
+  // scoping that portalStats applied. A collection that has not loaded
+  // successfully is null, which the widgets already render as "—".
+  const widgetData = useMemo(
+    () => ({
+      stats: {
+        ...stats,
+        counts: {
+          ...stats.counts,
+          incidents: incidentsReady ? stats.counts.incidents : null,
+          extinguishers: readReady(colStatus.extinguishers) ? stats.counts.extinguishers : null,
+          aeds: readReady(colStatus.aeds) ? stats.counts.aeds : null,
+          fas: readReady(colStatus.fas) ? stats.counts.fas : null,
+        },
+      },
+      extinguishers: readReady(colStatus.extinguishers) ? stats.scoped.extinguishers : null,
+      aeds: readReady(colStatus.aeds) ? stats.scoped.aeds : null,
+      fas: readReady(colStatus.fas) ? stats.scoped.fas : null,
+      meetings: readReady(colStatus.consultations) ? stats.counts.meetings : null,
+      drills: readReady(colStatus.mockDrills) ? stats.counts.drills : null,
+      // Joined the same way the permits module does it, or the portal would
+      // count a permit with an unanswered unsafe report as merely open while
+      // the permits page flags it — two screens disagreeing about the same permit.
+      permits:
+        readReady(colStatus.permits) && readReady(colStatus.observations)
+          ? dashboardBuckets(withUnsafe(stats.scoped.permits, observations))
+          : null,
+      myOpenActions: actionsReady ? open.length : null,
+      myPendingTraining: trainingReady ? pending.training.length : null,
+    }),
+    [stats, colStatus, observations, incidentsReady, actionsReady, trainingReady, open, pending]
+  )
 
   return (
     <div className="animate-fade-in-up">
@@ -255,77 +395,100 @@ export default function PortalHome() {
             }}
           />
           <p className="relative text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-400">
-            {new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}
+            {new Date().toLocaleDateString(undefined, {
+              weekday: 'long',
+              day: 'numeric',
+              month: 'long',
+            })}
           </p>
-          <h1 className="relative mt-2 text-[30px] font-extrabold leading-[1.15] tracking-[-0.025em] text-ink-900">
+          <h1 className="relative mt-2 break-words text-[28px] font-extrabold leading-[1.15] tracking-[-0.025em] text-ink-900 sm:text-[30px]">
             {greeting()}, {firstName}.
           </h1>
-          <p className="relative mt-2 max-w-[46ch] text-sm leading-relaxed text-ink-500">
-            {open.length
-              ? `${open.length} action${open.length === 1 ? '' : 's'} assigned to you. Everything below is scoped to ${scopeLabel}.`
-              : `Nothing is waiting on you. Everything below is scoped to ${scopeLabel}.`}
-          </p>
+          {actionsReady ? (
+            <p className="relative mt-2 max-w-[46ch] text-sm leading-relaxed text-ink-500">
+              {open.length
+                ? `${open.length} action${open.length === 1 ? '' : 's'} assigned to you. Everything below is scoped to ${scopeLabel}.`
+                : `Nothing is waiting on you. Everything below is scoped to ${scopeLabel}.`}
+            </p>
+          ) : (
+            <div className="relative mt-2 max-w-[46ch]">
+              <Skeleton className="h-4 w-72 max-w-full" />
+            </div>
+          )}
           <div className="relative mt-5 flex flex-wrap gap-2.5">
             {/* With no navigation bar, this is the only way to the report
                 wizard — and reporting is the thing most people open the portal
                 to do, so it leads. */}
-            <button
-              type="button"
-              onClick={() => navigate('/portal/report')}
-              className="inline-flex items-center gap-1.5 rounded-2xl bg-brand-600 px-4 py-2.5 text-[13px] font-semibold text-white shadow-clay-brand transition-transform duration-200 ease-emil hover:bg-brand-700 active:scale-[0.97]"
-            >
-              <AlertTriangle size={15} strokeWidth={2.2} />
+            <Button type="button" onClick={() => navigate('/portal/report')} icon={AlertTriangle}>
               Report an incident
-            </button>
-            <button
-              type="button"
-              onClick={() => navigate('/portal/actions')}
-              className="inline-flex items-center gap-1.5 rounded-2xl bg-brand-100 px-4 py-2.5 text-[13px] font-semibold text-brand-700 shadow-clay-sm transition-transform duration-200 ease-emil active:scale-[0.97]"
-            >
-              {open.length ? `My ${open.length} open action${open.length === 1 ? '' : 's'}` : 'My actions'}
+            </Button>
+            <Button type="button" variant="soft" onClick={() => navigate('/portal/actions')}>
+              {actionsReady && open.length
+                ? `My ${open.length} open action${open.length === 1 ? '' : 's'}`
+                : 'My actions'}
               <ArrowRight size={14} strokeWidth={2.4} />
-            </button>
-            <button
-              type="button"
-              onClick={() => navigate('/portal/training')}
-              className="inline-flex items-center gap-1.5 rounded-2xl bg-clay-surface px-4 py-2.5 text-[13px] font-semibold text-ink-700 shadow-clay-sm transition-transform duration-200 ease-emil active:scale-[0.97]"
-            >
+            </Button>
+            <Button type="button" variant="ghost" onClick={() => navigate('/portal/training')}>
               My training
-            </button>
+            </Button>
           </div>
         </Raised>
 
         <Raised className="flex flex-col gap-3 p-5">
           <SectionLabel className="tracking-[0.14em]">Viewing</SectionLabel>
-          <label className="sr-only" htmlFor="site-scope">Site</label>
+          <label className="sr-only" htmlFor="site-scope">
+            Site
+          </label>
           <div className="relative">
-            <MapPin size={15} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-400" />
+            <MapPin
+              size={15}
+              className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-400"
+            />
             <select
               id="site-scope"
               value={activeSite}
               onChange={(e) => setSiteId(e.target.value)}
-              className="w-full appearance-none rounded-2xl border border-transparent bg-clay-surface py-3 pl-10 pr-3.5 text-[13.5px] font-semibold text-ink-900 shadow-clay-inset outline-none"
+              className="input w-full appearance-none py-3 pl-10 text-[13.5px] font-semibold"
             >
-              <option value="all">All my sites ({sites.length})</option>
-              {sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              <option value="all">All my sites{sitesReady ? ` (${sites.length})` : ''}</option>
+              {sites.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
             </select>
           </div>
-          <p className="text-[11.5px] leading-relaxed text-ink-400">
-            {sites.length === 0
-              ? 'No sites are mapped to you yet, so these figures cover nothing. Ask an admin to map your site.'
-              : 'Every figure on this page is limited to the sites your account can see.'}
-          </p>
-          {open.length > 0 && (
+          {!sitesReady ? (
+            <div>
+              <Skeleton className="h-3 w-56 max-w-full" />
+            </div>
+          ) : (
+            <p className="text-[11.5px] leading-relaxed text-ink-400">
+              {sites.length === 0
+                ? 'No sites are mapped to you yet, so these figures cover nothing. Ask an admin to map your site.'
+                : 'Every figure on this page is limited to the sites your account can see.'}
+            </p>
+          )}
+          {actionsReady && open.length > 0 && (
             <div className="mt-auto flex flex-col gap-2 border-t border-ink-100 pt-3">
               {open.slice(0, 2).map((a) => (
                 <Link
                   key={a.key}
                   to="/portal/actions"
-                  className="flex items-center gap-2.5 rounded-[14px] bg-clay-50 px-3 py-2 shadow-clay-sm"
+                  className="flex items-center gap-2.5 rounded-[14px] bg-clay-50 px-3 py-2 shadow-clay-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
                 >
-                  <span className="h-6 w-1 flex-none rounded" style={{ background: NORM_BY_KEY[a.norm]?.color || '#ab987f' }} />
-                  <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-ink-900">{a.title}</span>
-                  {a.overdue && <span className="flex-none rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-700">Overdue</span>}
+                  <span
+                    className="h-6 w-1 flex-none rounded"
+                    style={{ background: NORM_BY_KEY[a.norm]?.color || '#ab987f' }}
+                  />
+                  <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-ink-900">
+                    {a.title}
+                  </span>
+                  {a.overdue && (
+                    <span className="flex-none rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-700">
+                      Overdue
+                    </span>
+                  )}
                 </Link>
               ))}
             </div>
@@ -333,58 +496,95 @@ export default function PortalHome() {
         </Raised>
       </div>
 
-      {/* Ahead of the widgets, the charts and the due lists — everything below
-          counts these records, so the caveat cannot sit under them. */}
-      <IncompleteNotice incomplete={store.incomplete} className="mb-5" />
-      {/* The action tracker reads its own collections, so it can be short when
-          the ones above are whole. Two notices rather than one merged sentence:
-          they describe different data, and splicing them would produce a list
-          nobody could act on. */}
-      <IncompleteNotice incomplete={actionsIncomplete} className="mb-5" />
-
-      <WidgetGrid keys={widgetKeys} onSave={saveWidgets} data={widgetData} sites={sites} />
+      {/* The home page used to put IncompleteNotice here — amber "could not be
+          loaded" copy for a capped or failed listener. The owner asked that
+          this screen stay in loading instead, so a missing collection is a
+          spinner, not a warning, and a denied one is quiet. */}
+      <WidgetGrid
+        keys={widgetKeys}
+        onSave={saveWidgets}
+        data={widgetData}
+        sites={sitesReady ? sites : null}
+      />
 
       <div className="mb-6 grid gap-4 lg:grid-cols-2">
         <Raised className="p-5">
-          <p className="text-[15px] font-bold tracking-[-0.015em] text-ink-900">Incidents by type</p>
+          <p className="text-[15px] font-bold tracking-[-0.015em] text-ink-900">
+            Incidents by type
+          </p>
           <p className="mb-2 text-[11.5px] text-ink-400">{scopeLabel}</p>
-          {pie.length === 0 ? (
-            <EmptyChart>No incidents recorded for this scope — which is the result you want.</EmptyChart>
-          ) : (
+          {incidentsReady && pie.length === 0 ? (
+            <EmptyChart>
+              No incidents recorded for this scope — which is the result you want.
+            </EmptyChart>
+          ) : incidentsReady ? (
             <ChartFrame label="Incidents by type" width="100%" height={240}>
               <PieChart>
-                <Pie data={pie} dataKey="value" nameKey="name" outerRadius={82} innerRadius={46} paddingAngle={2}>
-                  {pie.map((d) => <Cell key={d.name} fill={d.color} />)}
+                <Pie
+                  data={pie}
+                  dataKey="value"
+                  nameKey="name"
+                  outerRadius={82}
+                  innerRadius={46}
+                  paddingAngle={2}
+                >
+                  {pie.map((d) => (
+                    <Cell key={d.name} fill={d.color} />
+                  ))}
                 </Pie>
                 <Tooltip />
                 <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
               </PieChart>
             </ChartFrame>
+          ) : (
+            <PanelBusy />
           )}
         </Raised>
 
         <Raised className="p-5">
-          <p className="text-[15px] font-bold tracking-[-0.015em] text-ink-900">Equipment by site</p>
-          <p className="mb-2 text-[11.5px] text-ink-400">
-            {bars.length ? `Busiest ${bars.length} of ${stats.equipmentBySite.length}` : scopeLabel}
+          <p className="text-[15px] font-bold tracking-[-0.015em] text-ink-900">
+            Equipment by site
           </p>
-          {bars.length === 0 ? (
+          <p className="mb-2 text-[11.5px] text-ink-400">
+            {equipmentReady && bars.length
+              ? `Busiest ${bars.length} of ${stats.equipmentBySite.length}`
+              : scopeLabel}
+          </p>
+          {equipmentReady && bars.length === 0 ? (
             <EmptyChart>No equipment is linked to these sites yet.</EmptyChart>
-          ) : (
+          ) : equipmentReady ? (
             <ChartFrame label="Equipment by site" width="100%" height={240}>
               <BarChart data={bars} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
                 <XAxis
-                  dataKey="name" tickLine={false} axisLine={false} fontSize={11}
-                  tick={{ fill: '#8a7660' }} interval={0} tickFormatter={(v) => String(v).slice(0, 10)}
+                  dataKey="name"
+                  tickLine={false}
+                  axisLine={false}
+                  fontSize={11}
+                  tick={{ fill: '#8a7660' }}
+                  interval={0}
+                  tickFormatter={(v) => String(v).slice(0, 10)}
                 />
-                <YAxis allowDecimals={false} tickLine={false} axisLine={false} fontSize={11} tick={{ fill: '#8a7660' }} />
+                <YAxis
+                  allowDecimals={false}
+                  tickLine={false}
+                  axisLine={false}
+                  fontSize={11}
+                  tick={{ fill: '#8a7660' }}
+                />
                 <Tooltip cursor={{ fill: 'rgba(227,204,191,0.35)' }} />
                 <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
-                <Bar dataKey="extinguishers" name="Extinguishers" fill="#dd5a41" radius={[6, 6, 0, 0]} />
+                <Bar
+                  dataKey="extinguishers"
+                  name="Extinguishers"
+                  fill="#dd5a41"
+                  radius={[6, 6, 0, 0]}
+                />
                 <Bar dataKey="aeds" name="AED" fill="#7fc4bb" radius={[6, 6, 0, 0]} />
                 <Bar dataKey="fas" name="Fire alarm" fill="#e8a33d" radius={[6, 6, 0, 0]} />
               </BarChart>
             </ChartFrame>
+          ) : (
+            <PanelBusy />
           )}
         </Raised>
       </div>
@@ -393,24 +593,40 @@ export default function PortalHome() {
       <div className="mb-6 grid gap-4 lg:grid-cols-2">
         <Raised className="p-5">
           <div className="mb-3 flex items-baseline justify-between">
-            <p className="text-[15px] font-bold tracking-[-0.015em] text-ink-900">Pending actions</p>
-            <Link to="/portal/actions" className="text-xs font-semibold text-brand-700">My actions</Link>
+            <p className="text-[15px] font-bold tracking-[-0.015em] text-ink-900">
+              Pending actions
+            </p>
+            <Link
+              to="/portal/actions"
+              className="rounded text-xs font-semibold text-brand-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+            >
+              My actions
+            </Link>
           </div>
           <DueList
             rows={pending.actions}
             empty="No open actions across these sites."
             meta={(r) => r.source}
+            loading={!actionsReady}
           />
         </Raised>
 
         <Raised className="p-5">
           <div className="mb-3 flex items-baseline justify-between">
-            <p className="text-[15px] font-bold tracking-[-0.015em] text-ink-900">Pending training</p>
-            <Link to="/portal/training" className="text-xs font-semibold text-brand-700">My training</Link>
+            <p className="text-[15px] font-bold tracking-[-0.015em] text-ink-900">
+              Pending training
+            </p>
+            <Link
+              to="/portal/training"
+              className="rounded text-xs font-semibold text-brand-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+            >
+              My training
+            </Link>
           </div>
           <DueList
             rows={pending.training}
             empty="Nothing outstanding for people at these sites."
+            loading={!trainingReady}
           />
         </Raised>
       </div>
@@ -469,7 +685,16 @@ export default function PortalHome() {
  * The owner is shown on every row rather than only where it differs, because
  * the question this list answers is "whose is it" as much as "what is it".
  */
-function DueList({ rows, empty, meta }) {
+function DueList({ rows, empty, meta, loading }) {
+  if (loading) {
+    return (
+      <div className="flex flex-col gap-2.5" role="status" aria-busy="true" aria-label="Loading">
+        <Skeleton className="h-14 rounded-[18px]" />
+        <Skeleton className="h-14 rounded-[18px]" />
+        <Skeleton className="h-14 rounded-[18px]" />
+      </div>
+    )
+  }
   if (!rows.length) {
     return (
       <p className="rounded-[18px] bg-clay-50 px-4 py-6 text-center text-[13px] text-ink-400 shadow-clay-sm">
@@ -491,7 +716,8 @@ function DueList({ rows, empty, meta }) {
           <div className="min-w-0 flex-1">
             <p className="truncate text-[13.5px] font-semibold text-ink-900">{r.title}</p>
             <p className="mt-0.5 truncate text-[11.5px] text-ink-400">
-              {r.owner}{meta && meta(r) ? ` · ${meta(r)}` : ''}
+              {r.owner}
+              {meta && meta(r) ? ` · ${meta(r)}` : ''}
             </p>
           </div>
           <span
@@ -504,6 +730,19 @@ function DueList({ rows, empty, meta }) {
         </li>
       ))}
     </ul>
+  )
+}
+
+function PanelBusy() {
+  return (
+    <Inset
+      className="grid h-[240px] place-items-center"
+      role="status"
+      aria-busy="true"
+      aria-label="Loading"
+    >
+      <Spinner />
+    </Inset>
   )
 }
 

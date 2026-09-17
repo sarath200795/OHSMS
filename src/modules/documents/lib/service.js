@@ -11,6 +11,7 @@ import { collection, query, where, orderBy, limit, onSnapshot } from 'firebase/f
 import { db } from '../../../shared/firebase'
 import { createModuleService } from '../../../shared/module-kit/service'
 import { incompleteReadNotice } from '../../../shared/org/orgData'
+import { isPermissionDenied } from '../../../shared/lib/permissionDenied'
 import { readPlan, mergeResults } from './readScope'
 
 export const MAX = 1000
@@ -101,14 +102,21 @@ export const documentsService = {
         },
         (err) => {
           // The generic service turns a read failure into an empty list, which
-          // is how a broken query reads as an empty library. Say it out loud
-          // instead, and let the other queries keep their rows.
+          // is how a broken query reads as an empty library. A permission
+          // refusal is the viewer not being allowed this slice — empty, quiet.
+          // Any other failure still has to say so, and let the other queries
+          // keep their rows.
+          parts[i] = []
+          if (isPermissionDenied(err)) {
+            status[i] = 'denied'
+            emit(i)
+            return
+          }
           // eslint-disable-next-line no-console
           console.error(
             `[Documents] ${p.field ? `${p.field} ${p.op}` : 'unfiltered'} listener failed:`,
             err?.message || err
           )
-          parts[i] = []
           status[i] = 'failed'
           emit(i)
         }

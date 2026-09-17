@@ -3,6 +3,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useReactToPrint } from 'react-to-print'
 import { motion } from 'framer-motion'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../shared/lib/toastCaught'
 import { Activity, Check, ChevronLeft, Save, Loader2, Printer, ListChecks, CheckCircle2 } from 'lucide-react'
 import { PageHeader, Spinner } from '../components/ui'
 import StepIllnessInitial from '../components/wizard/StepIllnessInitial'
@@ -65,12 +66,12 @@ export default function IllnessWizard() {
   const addFile = async (f) => {
     if (!illness) return
     try { await addIllnessFile(orgId, illness.id, { ...f, uploadedBy: actor.name }) }
-    catch (e) { toast.error(e?.message || 'File upload failed') }
+    catch (e) { toastCaught(e, 'File upload failed') }
   }
   const removeFile = async (fid) => {
     if (!illness) return
     try { await deleteIllnessFile(orgId, illness.id, fid) }
-    catch (e) { toast.error(e?.message || 'File removal failed') }
+    catch (e) { toastCaught(e, 'File removal failed') }
   }
 
   const saveInitial = async () => {
@@ -94,7 +95,7 @@ export default function IllnessWizard() {
         goStep('actions')
       }
     } catch (e) {
-      toast.error(e.message || 'Could not save')
+      toastCaught(e, 'Could not save')
     } finally {
       setSaving(false)
     }
@@ -113,7 +114,7 @@ export default function IllnessWizard() {
       setIllness(await getIllness(orgId, illness.id))
       toast.success('Saved')
     } catch (e) {
-      toast.error(e.message || 'Could not save')
+      toastCaught(e, 'Could not save')
     } finally {
       setSaving(false)
     }

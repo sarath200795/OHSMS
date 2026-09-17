@@ -28,20 +28,23 @@ vi.mock('firebase/firestore', () => ({ doc: () => ({}), getDoc: vi.fn(), updateD
 vi.mock('../../../shared/org/orgData', async () => {
   // The real notice builder — the wording is not what is under test here, but
   // using the real one means this breaks if the two drift apart.
-  const actual = await vi.importActual('../../../shared/org/orgData.js')
-    .catch(() => null)
+  const actual = await vi.importActual('../../../shared/org/orgData.js').catch(() => null)
   return {
-    incompleteReadNotice: actual?.incompleteReadNotice ?? ((status) => {
-      const capped = Object.keys(status).filter((k) => status[k] === 'capped')
-      const failed = Object.keys(status).filter((k) => status[k] === 'failed')
-      return capped.length || failed.length ? { capped, failed, message: 'incomplete' } : null
-    }),
+    incompleteReadNotice:
+      actual?.incompleteReadNotice ??
+      ((status) => {
+        const capped = Object.keys(status).filter((k) => status[k] === 'capped')
+        const failed = Object.keys(status).filter((k) => status[k] === 'failed')
+        return capped.length || failed.length ? { capped, failed, message: 'incomplete' } : null
+      }),
     // The cap constant travels with the seam: sources.js does not read it, but
     // orgData exports it and a partial mock of a module that does is an error.
     COLLECTION_READ_CAP: actual?.COLLECTION_READ_CAP ?? 5000,
     subscribeOrgCollection: (orgId, name, cb) => {
       listeners[name] = cb
-      return () => { listeners[name] = null }
+      return () => {
+        listeners[name] = null
+      }
     },
   }
 })
@@ -55,7 +58,9 @@ const { subscribeActions, SOURCES } = await import('./sources')
 // therefore no longer enough to have been called back; the tests await a turn
 // of the microtask queue first. openSnapshots also drops any batch that is no
 // longer the latest, which is why each feed is settled before the next.
-const settle = async () => { for (let i = 0; i < 5; i += 1) await Promise.resolve() }
+const settle = async () => {
+  for (let i = 0; i < 5; i += 1) await Promise.resolve()
+}
 
 // Every source's collection, deduplicated — two sources can share one.
 const COLLECTIONS = [...new Set(SOURCES.map((s) => s.collection))]
@@ -81,7 +86,18 @@ describe('subscribeActions', () => {
     const payload = cb.mock.calls.at(-1)[0]
     expect(payload).toHaveProperty('rows')
     expect(payload).toHaveProperty('incomplete')
+    expect(payload).toHaveProperty('status')
     expect(Array.isArray(payload.rows)).toBe(true)
+  })
+
+  it('starts every source pending until it answers', async () => {
+    const cb = vi.fn()
+    subscribeActions('orgA', cb)
+    listeners.incidents({ rows: [], status: 'ok' })
+    await settle()
+    const { status } = cb.mock.calls.at(-1)[0]
+    expect(status.incidents).toBe('ok')
+    expect(status.illnesses).toBe('pending')
   })
 
   it('says nothing when every source came back whole', async () => {
@@ -131,7 +147,9 @@ describe('subscribeActions', () => {
     await feedAll('ok')
     listeners.incidents({
       status: 'capped',
-      rows: [{ id: 'i1', refNo: 'INC-1', capa: [{ id: 'a1', description: 'Fix it', status: 'open' }] }],
+      rows: [
+        { id: 'i1', refNo: 'INC-1', capa: [{ id: 'a1', description: 'Fix it', status: 'open' }] },
+      ],
     })
     await settle()
     const { rows, incomplete } = cb.mock.calls.at(-1)[0]

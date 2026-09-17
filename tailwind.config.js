@@ -41,6 +41,7 @@ export default {
         // placeholder tones, never body text, and 4.5:1 is not their bar. If one
         // of them ever becomes text, it needs this treatment first.
         ink: {
+          DEFAULT: '#261f19',
           50: '#faf8f5',
           100: '#f2ede5',
           200: '#e5dccf',
@@ -54,7 +55,11 @@ export default {
           950: '#1b1610',
         },
         // Kraft-paper "clay" surfaces: raised panels over a warm paper base.
+        // DEFAULT exists so `bg-clay` (LOTO's original surface class, ported
+        // from a dark-theme app that never learned `bg-clay-surface`) still
+        // paints the same paper as every other card.
         clay: {
+          DEFAULT: '#f8f1e4',
           bg: '#eadfcd',
           surface: '#f8f1e4',
           50: '#faf4e9',
@@ -63,12 +68,46 @@ export default {
           300: '#d1ba98',
           400: '#b29470',
         },
+        // CamelCase alias the LOTO module still spells. Same hex as clay-surface;
+        // renaming every `bg-claySurface` would be a 40-file churn for no visual
+        // change once this token exists.
+        claySurface: '#f8f1e4',
         // Logo accent set (icons): teal hands, amber vest, steel first-aid kit.
         accent: {
           teal: '#7fc4bb',
           amber: '#e8a33d',
           steel: '#8ba7bd',
           leaf: '#8fbc74',
+        },
+        // LOTO was ported from a dark "steel + hazard-yellow" theme whose
+        // Tailwind palette never landed in this config. The classes still
+        // compiled (Tailwind does not error on unknown colours) and did
+        // nothing, so titles, muted copy, table headers and lock-out buttons
+        // all inherited body text — one weight, no hierarchy, no accent.
+        //
+        // These stops remap that vocabulary onto the kraft-paper scale rather
+        // than restoring the dark theme: steel-50 was "almost white heading"
+        // and is now the ink heading; steel-800 was "dark well" and is now a
+        // recessed clay well. hazard is the amber vest from the logo.
+        steel: {
+          50: '#261f19',
+          100: '#332a22',
+          200: '#43382d',
+          300: '#534637',
+          400: '#615344',
+          500: '#70604a',
+          600: '#d1ba98',
+          700: '#d1ba98',
+          800: '#e5d6bd',
+          900: '#f1e7d5',
+          950: '#eadfcd',
+        },
+        hazard: {
+          DEFAULT: '#e8a33d',
+          dark: '#c4841f',
+        },
+        danger: {
+          DEFAULT: '#dc2626',
         },
       },
       fontFamily: {
@@ -88,8 +127,10 @@ export default {
         'clay-sm': '3px 3px 8px rgba(178,148,112,0.38), -3px -3px 8px rgba(255,251,242,0.90)',
         // Lifted state — the shadow travels further and softens as a tile rises.
         'clay-lg': '9px 11px 22px rgba(178,148,112,0.46), -6px -6px 14px rgba(255,251,242,0.95)',
-        'clay-inset': 'inset 4px 4px 8px rgba(178,148,112,0.42), inset -4px -4px 8px rgba(255,251,242,0.95)',
-        'clay-pressed': 'inset 5px 5px 10px rgba(178,148,112,0.52), inset -4px -4px 8px rgba(255,251,242,0.85)',
+        'clay-inset':
+          'inset 4px 4px 8px rgba(178,148,112,0.42), inset -4px -4px 8px rgba(255,251,242,0.95)',
+        'clay-pressed':
+          'inset 5px 5px 10px rgba(178,148,112,0.52), inset -4px -4px 8px rgba(255,251,242,0.85)',
         'clay-brand': '5px 5px 12px rgba(199,74,51,0.28), -5px -5px 12px rgba(255,251,242,0.80)',
       },
       keyframes: {
@@ -148,7 +189,10 @@ export default {
           '70%': { transform: 'translateZ(16px) translateY(-4px) rotate(8deg)' },
         },
         trendRise: {
-          '0%,100%': { transform: 'translateZ(18px) translate(-4px,6px) rotate(-30deg)', opacity: '0.35' },
+          '0%,100%': {
+            transform: 'translateZ(18px) translate(-4px,6px) rotate(-30deg)',
+            opacity: '0.35',
+          },
           '50%': { transform: 'translateZ(22px) translate(6px,-6px) rotate(-30deg)', opacity: '1' },
         },
         tagSwing: {
@@ -212,7 +256,10 @@ export default {
         },
         // A stamp coming down on a permit.
         stampDown: {
-          '0%,100%': { transform: 'translateZ(26px) translateY(-13px) rotate(-9deg)', opacity: '0.9' },
+          '0%,100%': {
+            transform: 'translateZ(26px) translateY(-13px) rotate(-9deg)',
+            opacity: '0.9',
+          },
           '45%': { transform: 'translateZ(16px) translateY(1px) rotate(-3deg)', opacity: '1' },
           '60%': { transform: 'translateZ(18px) translateY(-2px) rotate(-4deg)', opacity: '1' },
         },
@@ -238,7 +285,10 @@ export default {
         arrowHit: {
           '0%': { transform: 'translateZ(28px) translate(17px,-15px) rotate(38deg)', opacity: '0' },
           '30%': { opacity: '1' },
-          '65%,100%': { transform: 'translateZ(28px) translate(1px,-1px) rotate(38deg)', opacity: '1' },
+          '65%,100%': {
+            transform: 'translateZ(28px) translate(1px,-1px) rotate(38deg)',
+            opacity: '1',
+          },
         },
         barGrow: {
           '0%,100%': { transform: 'scaleY(0.45)' },

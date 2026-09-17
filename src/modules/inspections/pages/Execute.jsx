@@ -2,6 +2,7 @@ import { StoredImage } from '../../../shared/storage/StoredImage'
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../shared/lib/toastCaught'
 import {
   ClipboardCheck, ArrowLeft, Check, X, Minus, Camera, Trash2, Send, MapPin, Tag,
 } from 'lucide-react'
@@ -202,7 +203,7 @@ export default function Execute() {
       toast.success(`Inspection submitted — ${score}% (${result})`)
       navigate('/inspections/records')
     } catch (e) {
-      toast.error('Submit failed: ' + e.message)
+      toastCaught(e, 'Submit failed')
     } finally {
       setBusy(false)
     }

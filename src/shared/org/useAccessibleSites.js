@@ -1,17 +1,22 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '../auth/AuthContext'
 import { resolveAccessibleSites } from '../auth/access'
-import { subscribeSites } from './orgData'
+import { subscribeSitesRead } from './orgData'
 
 /**
  * The sites this user may see, live. Replaces the subscribe-then-resolve pair
  * every module was repeating; the underlying sites listener is shared app-wide.
  *
  * Pass `sites` to resolve an already-subscribed list instead of opening one.
+ *
+ * Returns `{ sites, status }`. `status` is 'pending' until the live list has
+ * arrived successfully; 'denied' / 'failed' stay that way rather than looking
+ * like an empty register. Callers that only want the array can keep using
+ * `useAccessibleSites`.
  */
-export function useAccessibleSites(sites) {
+function useAccessibleSitesState(sites) {
   const { orgId, profile, isAdmin } = useAuth()
-  const [own, setOwn] = useState([])
+  const [own, setOwn] = useState({ rows: [], status: 'pending' })
   const external = sites !== undefined
 
   // Gated on an APPROVED profile, not just an orgId.
@@ -30,17 +35,34 @@ export function useAccessibleSites(sites) {
 
   useEffect(() => {
     if (external || !canRead) return undefined
-    return subscribeSites(orgId, setOwn)
+    return subscribeSitesRead(orgId, setOwn)
   }, [external, canRead, orgId])
 
-  const all = external ? sites : own
-  return useMemo(() => resolveAccessibleSites(profile, all || [], { isAdmin }), [profile, all, isAdmin])
+  const all = external ? sites : own.rows
+  const resolved = useMemo(
+    () => resolveAccessibleSites(profile, all || [], { isAdmin }),
+    [profile, all, isAdmin]
+  )
+  const status = external ? 'ok' : canRead ? own.status : 'pending'
+  return { sites: resolved, status }
+}
+
+export function useAccessibleSites(sites) {
+  return useAccessibleSitesState(sites).sites
+}
+
+/** Same sites list, plus whether the live read has succeeded. */
+export function useAccessibleSitesRead() {
+  return useAccessibleSitesState()
 }
 
 /** Distinct region / entity option lists derived from a site list. */
 export function useSiteFacets(sites = []) {
-  return useMemo(() => ({
-    regions: [...new Set(sites.map((s) => s.region).filter(Boolean))].sort(),
-    entities: [...new Set(sites.map((s) => s.entity).filter(Boolean))].sort(),
-  }), [sites])
+  return useMemo(
+    () => ({
+      regions: [...new Set(sites.map((s) => s.region).filter(Boolean))].sort(),
+      entities: [...new Set(sites.map((s) => s.entity).filter(Boolean))].sort(),
+    }),
+    [sites]
+  )
 }

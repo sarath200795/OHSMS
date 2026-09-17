@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { QRCodeCanvas } from 'qrcode.react'
 import { PlusCircle, CheckCircle2, RotateCcw, Printer, Hash } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../shared/lib/toastCaught'
 import { PageHeader, Spinner, Field } from '../components/ui'
 import { useAuth } from '../context/AuthContext'
 import { useFleet } from '../context/FleetContext'
@@ -48,7 +49,7 @@ export default function AddExtinguisher() {
       setCreated({ ...res, serialNo })
       toast.success('Extinguisher added with QR code!')
     } catch (err) {
-      toast.error(err.message)
+      toastCaught(err)
     } finally {
       setBusy(false)
     }

@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../shared/lib/toastCaught'
 import { Activity, Plus, Search, Trash2, ChevronRight, Link2 } from 'lucide-react'
 import { PageHeader, Badge, EmptyState } from '../components/ui'
 import { useAuth } from '../context/AuthContext'
@@ -35,7 +36,7 @@ export default function Illnesses() {
       await deleteIllness(orgId, ill.id, { uid: user.uid, name: profile.name })
       toast.success('Moved to Recycle Bin')
     } catch (err) {
-      toast.error(err.message || 'Could not delete')
+      toastCaught(err, 'Could not delete')
     }
   }
 

@@ -46,8 +46,12 @@ export default function AppChrome({ children }) {
   // a touch screen.
   useEffect(() => {
     if (!menuOpen) return undefined
-    const onDown = (e) => { if (!menuRef.current?.contains(e.target)) setMenuOpen(false) }
-    const onKey = (e) => { if (e.key === 'Escape') setMenuOpen(false) }
+    const onDown = (e) => {
+      if (!menuRef.current?.contains(e.target)) setMenuOpen(false)
+    }
+    const onKey = (e) => {
+      if (e.key === 'Escape') setMenuOpen(false)
+    }
     document.addEventListener('mousedown', onDown)
     document.addEventListener('keydown', onKey)
     return () => {
@@ -55,6 +59,32 @@ export default function AppChrome({ children }) {
       document.removeEventListener('keydown', onKey)
     }
   }, [menuOpen])
+
+  useEffect(() => {
+    if (!menuOpen) return undefined
+    const items = menuRef.current?.querySelectorAll('[role="menuitem"]')
+    items?.[0]?.focus?.({ preventScroll: true })
+    return undefined
+  }, [menuOpen])
+
+  const onMenuKeyDown = (e) => {
+    const items = Array.from(menuRef.current?.querySelectorAll('[role="menuitem"]') || [])
+    if (!items.length) return
+    const i = items.indexOf(document.activeElement)
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      items[(i + 1) % items.length]?.focus()
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      items[(i <= 0 ? items.length : i) - 1]?.focus()
+    } else if (e.key === 'Home') {
+      e.preventDefault()
+      items[0]?.focus()
+    } else if (e.key === 'End') {
+      e.preventDefault()
+      items[items.length - 1]?.focus()
+    }
+  }
 
   const name = profile?.name || 'There'
   // The wordmark beside the mark names the ORGANIZATION once it has a logo of
@@ -72,25 +102,25 @@ export default function AppChrome({ children }) {
           which is the point: it costs nothing to anyone who does not need it. */}
       <a
         href="#main"
-        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-xl focus:bg-brand-600 focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-white"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[60] focus:rounded-xl focus:bg-brand-600 focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-white"
       >
         Skip to main content
       </a>
-      <header className="sticky top-0 z-30 flex items-center gap-3.5 border-b border-ink-100 bg-clay-bg/90 px-5 py-3 backdrop-blur-md sm:px-7">
+      <header className="sticky top-0 z-30 flex items-center gap-2 border-b border-ink-100 bg-clay-bg/90 px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur-md sm:gap-3.5 sm:px-7">
         {/* aria-label rather than leaning on the wordmark beside it: that text
             is hidden below sm, and without this the only way home on a phone
             was a link announced as the single letter "W". */}
         <NavLink
           to="/portal"
           aria-label={`${branded && orgName ? orgName : 'WEHS'} home`}
-          className="flex flex-none items-center gap-2.5"
+          className="flex min-w-0 flex-none items-center gap-2.5 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-clay-bg"
         >
           <OrgMark className="h-9 w-9 rounded-[10px] shadow-clay-sm" />
-          <span className="hidden leading-tight sm:block">
-            <span className="block text-[13px] font-extrabold tracking-[-0.01em] text-ink-900">
+          <span className="hidden min-w-0 leading-tight sm:block">
+            <span className="block truncate text-[13px] font-extrabold tracking-[-0.01em] text-ink-900">
               {branded ? orgName || 'Your organization' : 'WEHS'}
             </span>
-            <span className="block text-[11px] text-ink-400">
+            <span className="block truncate text-[11px] text-ink-400">
               {branded ? 'Occupational Health & Safety' : 'Workplace Environment, Health & Safety'}
             </span>
           </span>
@@ -98,9 +128,11 @@ export default function AppChrome({ children }) {
 
         <div className="flex-1" />
 
-        <div className="ml-1.5 hidden items-center gap-2 border-l border-ink-200 pl-3.5 lg:flex">
-          <Building2 size={15} className="text-ink-400" />
-          <span className="text-[13px] font-semibold text-ink-700">{orgName || 'Your organization'}</span>
+        <div className="ml-1.5 hidden min-w-0 items-center gap-2 border-l border-ink-200 pl-3.5 lg:flex">
+          <Building2 size={15} className="shrink-0 text-ink-400" />
+          <span className="truncate text-[13px] font-semibold text-ink-700">
+            {orgName || 'Your organization'}
+          </span>
         </div>
 
         <div className="relative" ref={menuRef}>
@@ -109,35 +141,59 @@ export default function AppChrome({ children }) {
             onClick={() => setMenuOpen((o) => !o)}
             aria-expanded={menuOpen}
             aria-haspopup="menu"
-            className="flex items-center gap-2.5 rounded-2xl bg-clay-surface px-2 py-1.5 shadow-clay-sm transition-transform duration-200 ease-emil active:scale-[0.98]"
+            aria-controls="account-menu"
+            className="flex items-center gap-2.5 rounded-2xl bg-clay-surface px-2 py-1.5 shadow-clay-sm transition-transform duration-200 ease-emil active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-clay-bg"
           >
             <span className="grid h-[30px] w-[30px] place-items-center rounded-[10px] bg-brand-600 text-[11px] font-bold text-white">
               {initials(name)}
             </span>
             <span className="hidden text-left leading-tight sm:block">
               <span className="block text-[12.5px] font-bold text-ink-900">{name}</span>
-              <span className="block text-[10.5px] text-ink-400">{ROLE_LABEL[role] || 'Employee'}</span>
+              <span className="block text-[10.5px] text-ink-400">
+                {ROLE_LABEL[role] || 'Employee'}
+              </span>
             </span>
             <ChevronDown size={14} className="text-ink-400" />
           </button>
 
           {menuOpen && (
             <div
+              id="account-menu"
               role="menu"
+              tabIndex={-1}
+              onKeyDown={onMenuKeyDown}
               className="absolute right-0 z-40 mt-2 w-64 overflow-hidden rounded-2xl bg-clay-surface p-1.5 shadow-clay animate-fade-in-up"
             >
               <div className="border-b border-ink-100 px-3 py-2.5">
                 <p className="text-[13px] font-bold text-ink-900">{name}</p>
                 <p className="truncate text-[11.5px] text-ink-400">{profile?.email}</p>
-                <p className="mt-0.5 text-[11.5px] text-ink-400">{orgName}</p>
+                <p className="mt-0.5 truncate text-[11.5px] text-ink-400">{orgName}</p>
               </div>
-              <MenuItem icon={GraduationCap} onClick={() => { setMenuOpen(false); navigate('/portal/training') }}>
+              <MenuItem
+                icon={GraduationCap}
+                onClick={() => {
+                  setMenuOpen(false)
+                  navigate('/portal/training')
+                }}
+              >
                 My training record
               </MenuItem>
-              <MenuItem icon={KeyRound} onClick={() => { setMenuOpen(false); setReqOpen(true) }}>
+              <MenuItem
+                icon={KeyRound}
+                onClick={() => {
+                  setMenuOpen(false)
+                  setReqOpen(true)
+                }}
+              >
                 Request access
               </MenuItem>
-              <MenuItem icon={ShieldCheck} onClick={() => { setMenuOpen(false); navigate('/security') }}>
+              <MenuItem
+                icon={ShieldCheck}
+                onClick={() => {
+                  setMenuOpen(false)
+                  navigate('/security')
+                }}
+              >
                 Security &amp; two-factor
               </MenuItem>
               {/* No link to the platform console lives here, deliberately. It
@@ -152,7 +208,7 @@ export default function AppChrome({ children }) {
         </div>
       </header>
 
-      <main id="main" tabIndex={-1} className="mx-auto max-w-[1180px] px-5 pb-24 pt-6 sm:px-7">
+      <main id="main" tabIndex={-1} className="mx-auto max-w-[1180px] px-4 pb-24 pt-6 sm:px-7">
         <HomeBar />
         <motion.div
           key={location.pathname}
@@ -184,7 +240,7 @@ function MenuItem({ icon: Icon, children, onClick, danger }) {
       type="button"
       role="menuitem"
       onClick={onClick}
-      className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-[13px] font-semibold transition-colors ${
+      className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 ${
         danger ? 'text-red-600 hover:bg-red-50' : 'text-ink-700 hover:bg-clay-100'
       }`}
     >

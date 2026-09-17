@@ -5,6 +5,7 @@ import {
   FilePlus2, Save, Plus, Trash2, Shield, UserPlus, AlertTriangle,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../shared/lib/toastCaught'
 import { PageHeader, Spinner, Field } from '../components/ui'
 import { RiskBadge, MiniMatrix } from '../components/RiskBits'
 import { useAuth } from '../context/AuthContext'
@@ -230,7 +231,7 @@ export default function CreateAssessment() {
       })
       navigate('/hira/repository')
     } catch (err) {
-      toast.error(err.message || 'Could not save')
+      toastCaught(err, 'Could not save')
     } finally {
       setBusy(false)
     }

@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { Paperclip, X } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../lib/toastCaught'
 import { Field, Input, Textarea, Select } from '../ui'
 import { fieldOptions, visibleFields } from './fields'
 
@@ -125,7 +126,7 @@ function FileField({ field, value, form, lookups, onChange }) {
       if (!stored) throw new Error('Upload failed — the file was not saved')
       onChange(stored)
     } catch (e) {
-      toast.error(e?.message || 'Upload failed')
+      toastCaught(e, 'Upload failed')
       onChange(null)
     } finally {
       setBusy(false)

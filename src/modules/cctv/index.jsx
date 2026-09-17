@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate, NavLink, useLocation } from 'react-router-dom'
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { Activity, List, TriangleAlert, Upload } from 'lucide-react'
 import { CctvProvider } from './context/CctvContext'
 import Dashboard from './pages/Dashboard'
@@ -6,6 +6,7 @@ import Inventory from './pages/Inventory'
 import Defects from './pages/Defects'
 import BulkUpload from './pages/BulkUpload'
 import ScopeBar from './components/ScopeBar'
+import ModuleTabs from '../../shared/layout/ModuleTabs'
 
 // CCTV — an inventory of cameras, DVRs and Meraki devices, and the health that
 // falls out of how they are wired together. The module's whole reason for
@@ -43,22 +44,7 @@ function ModuleShell() {
 
   return (
     <>
-      <nav aria-label="CCTV sections" className="mb-4 flex flex-wrap gap-2">
-        {TABS.map((t) => (
-          <NavLink
-            key={t.to}
-            to={keepScope(t.to)}
-            end={t.end}
-            className={({ isActive }) =>
-              `flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-sm font-semibold transition ${
-                isActive ? 'bg-ink-900 text-white' : 'bg-ink-100 text-ink-600 hover:bg-ink-200'
-              }`
-            }
-          >
-            <t.icon size={14} /> {t.label}
-          </NavLink>
-        ))}
-      </nav>
+      <ModuleTabs label="CCTV sections" tabs={TABS} toFor={(to) => keepScope(to)} />
 
       {!onImport && <ScopeBar />}
 

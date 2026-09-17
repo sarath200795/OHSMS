@@ -11,7 +11,7 @@ import { indexSites, resolveSite, suggestSite } from '../lib/siteLink'
 import { useAccessibleSites } from '../../../shared/org/useAccessibleSites'
 import { Pager } from '../../../shared/ui'
 import { usePagination } from '../../../shared/ui/usePagination'
-import { writeErrorMessage } from '../../../shared/lib/writeError'
+import { toastCaught } from '../../../shared/lib/toastCaught'
 
 const CFG = {
   aed: {
@@ -108,7 +108,7 @@ export default function AssetBulkUpload() {
       // The guard's message names the actual problem — the file's size against
       // the limit, or the row count — and "Could not read that file" threw all
       // of that away and left the person guessing.
-    } catch (e) { toast.error(e?.message || 'Could not read that file') } finally { setParsing(false) }
+    } catch (e) { toastCaught(e, 'Could not read that file') } finally { setParsing(false) }
   }
 
   const commit = async () => {
@@ -123,7 +123,7 @@ export default function AssetBulkUpload() {
       const res = await cfg.add(orgId, orgName, rows, { uid: profile?.uid, name: profile?.name })
       reset(); setDone(res)
       toast.success(`${res.created} ${cfg.label} added`)
-    } catch (e) { toast.error(writeErrorMessage(e, { online: navigator.onLine, action: 'import these assets' })) } finally { setCommitting(false) }
+    } catch (e) { toastCaught(e, 'Could not import', { action: 'import these assets' }) } finally { setCommitting(false) }
   }
 
   return (

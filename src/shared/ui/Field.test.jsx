@@ -99,6 +99,19 @@ describe('Field labels its control', () => {
     expect(screen.getByLabelText('Latitude')).toBeTruthy()
     expect(screen.getByLabelText('Longitude')).toBeTruthy()
   })
+
+  it('wires error copy to the control for screen readers', () => {
+    render(
+      <Field label="Due date" error="Pick a date">
+        <input type="date" />
+      </Field>
+    )
+    const input = screen.getByLabelText('Due date')
+    expect(input.getAttribute('aria-invalid')).toBe('true')
+    const described = input.getAttribute('aria-describedby')
+    expect(described).toBeTruthy()
+    expect(document.getElementById(described).textContent).toBe('Pick a date')
+  })
 })
 
 describe('IconButton', () => {

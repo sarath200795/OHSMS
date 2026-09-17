@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Save, Hash } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../shared/lib/toastCaught'
 import { Modal, Spinner, Field } from './ui'
 import { updateExtinguisher } from '../lib/firestore'
 import { TYPES, CAPACITIES } from '../lib/constants'
@@ -59,7 +60,7 @@ export default function EditExtinguisherModal({ open, onClose, ext, orgId, orgNa
       toast.success('Extinguisher updated')
       onClose?.()
     } catch (e) {
-      toast.error(e.message)
+      toastCaught(e)
     } finally {
       setBusy(false)
     }

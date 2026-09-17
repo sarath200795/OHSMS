@@ -3,6 +3,7 @@ import { motion } from 'framer-motion'
 import { format } from 'date-fns'
 import { Wrench, CheckCircle2, Download, QrCode } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../shared/lib/toastCaught'
 import { PageHeader, EmptyState, Badge } from '../components/ui'
 import { Pager } from '../../../shared/ui'
 import { usePagination } from '../../../shared/ui/usePagination'
@@ -46,7 +47,7 @@ export default function PhysicalDefectLog({ mode = 'open' }) {
       await resolveDefects(orgId, orgName, r.extId, remaining, profile?.name)
       toast.success(`Resolved: ${r.defectLabel}`)
     } catch (e) {
-      toast.error(e.message || 'Could not resolve the defect')
+      toastCaught(e, 'Could not resolve the defect')
     } finally {
       setBusyId(null)
     }

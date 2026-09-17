@@ -13,7 +13,7 @@ import { linkImportRows } from '../lib/siteLink'
 import { useAccessibleSites } from '../../../shared/org/useAccessibleSites'
 import { assignSerials } from '../lib/serial'
 import { BULK_COLUMNS } from '../lib/constants'
-import { writeErrorMessage } from '../../../shared/lib/writeError'
+import { toastCaught } from '../../../shared/lib/toastCaught'
 
 export default function BulkUpload() {
   const { orgId, orgName, profile } = useAuth()
@@ -86,7 +86,7 @@ export default function BulkUpload() {
       // Say what was actually wrong. The size and row-count guards produce an
       // actionable sentence; discarding it for a generic one leaves someone
       // re-uploading the same oversized file.
-      toast.error(e?.message || 'Could not read that file')
+      toastCaught(e, 'Could not read that file')
     } finally {
       setParsing(false)
     }
@@ -104,7 +104,7 @@ export default function BulkUpload() {
       setResult(null)
       setFileName('')
     } catch (e) {
-      toast.error(writeErrorMessage(e, { online: navigator.onLine, action: 'import these extinguishers' }))
+      toastCaught(e, 'Could not import', { action: 'import these extinguishers' })
     } finally {
       setCommitting(false)
     }

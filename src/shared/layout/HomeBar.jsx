@@ -31,12 +31,12 @@ export default function HomeBar() {
   const { pathname } = useLocation()
 
   // The portal IS home. Its own sub-pages get a way back; its root gets nothing.
-  const onPortal = pathname === '/portal' || pathname.startsWith('/portal/')
   if (pathname === '/portal' || pathname === '/') return null
 
   const mod = moduleForPath(pathname)
   // Past the module's front page — /cctv/inventory but not /cctv.
   const insideModule = mod && pathname !== mod.path
+  const here = currentLabel(pathname, mod)
 
   return (
     <nav
@@ -45,7 +45,7 @@ export default function HomeBar() {
     >
       <Link
         to="/portal"
-        className="flex items-center gap-2 rounded-xl px-2 py-1 text-ink-800 transition-colors hover:bg-clay-100 hover:text-brand-700"
+        className="flex items-center gap-2 rounded-xl px-2 py-1 text-ink-800 transition-colors hover:bg-clay-100 hover:text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
       >
         {/* Decorative: the word "Home" already names this link, so announcing
             the mark as well would just make the trail read twice.
@@ -59,11 +59,11 @@ export default function HomeBar() {
 
       {mod && (
         <>
-          <ChevronRight size={15} className="flex-none text-ink-500" />
+          <ChevronRight size={15} className="flex-none text-ink-500" aria-hidden="true" />
           {insideModule ? (
             <Link
               to={mod.path}
-              className="rounded-xl px-2 py-1 text-ink-700 transition-colors hover:bg-clay-100 hover:text-brand-700"
+              className="rounded-xl px-2 py-1 text-ink-700 transition-colors hover:bg-clay-100 hover:text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
             >
               {mod.label}
             </Link>
@@ -71,23 +71,52 @@ export default function HomeBar() {
             // Already on the module's front page: name it, do not link it to
             // itself — a link that does nothing teaches people not to trust the
             // rest of the trail.
-            <span className="px-2 py-1 text-ink-900">{mod.label}</span>
+            <span className="px-2 py-1 text-ink-900" aria-current="page">
+              {mod.label}
+            </span>
           )}
         </>
       )}
 
-      {!mod && !onPortal && (
+      {here && (
         <>
-          <ChevronRight size={15} className="flex-none text-ink-500" />
-          <span className="px-2 py-1 text-ink-900">{adminLabel(pathname)}</span>
+          <ChevronRight size={15} className="flex-none text-ink-500" aria-hidden="true" />
+          <span className="px-2 py-1 text-ink-900" aria-current="page">
+            {here}
+          </span>
         </>
       )}
     </nav>
   )
 }
 
-/** Admin and analytics routes are not modules, but they still need a trail. */
-function adminLabel(pathname) {
+const PORTAL_PAGES = {
+  '/portal/report': 'Report an incident',
+  '/portal/actions': 'My actions',
+  '/portal/training': 'My training',
+}
+
+const ADMIN_LABELS = {
+  dashboard: 'Dashboard',
+  security: 'Security',
+  analytics: 'Analytics',
+  sites: 'Sites',
+  users: 'Employees',
+  settings: 'Org settings',
+  'audit-log': 'Audit log',
+  maintenance: 'Maintenance',
+}
+
+/**
+ * The last crumb when it is not the module's own name.
+ *
+ * Portal sub-pages used to render a trail that was only "Home": `onPortal`
+ * hid the admin-label branch, and portal routes are not modules, so the
+ * person standing on My actions had no indication of where they were.
+ */
+function currentLabel(pathname, mod) {
+  if (mod) return null
+  if (PORTAL_PAGES[pathname]) return PORTAL_PAGES[pathname]
   const seg = pathname.split('/').filter(Boolean)[0] || ''
-  return seg.charAt(0).toUpperCase() + seg.slice(1).replace(/-/g, ' ')
+  return ADMIN_LABELS[seg] || seg.charAt(0).toUpperCase() + seg.slice(1).replace(/-/g, ' ')
 }

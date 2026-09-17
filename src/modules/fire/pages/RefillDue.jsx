@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { RefreshCw, Truck, AlertTriangle, QrCode, Download, FileText, CheckCircle2, Gauge } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../shared/lib/toastCaught'
 import { PageHeader, EmptyState } from '../components/ui'
 import ExtinguisherTable from '../components/ExtinguisherTable'
 import ReportDefectModal from '../components/ReportDefectModal'
@@ -41,7 +42,7 @@ export default function RefillDue() {
       await markReceivedByVendor(orgId, orgName, ext.id, profile?.name)
       toast.success('Marked received by vendor — now In Process')
     } catch (e) {
-      toast.error(e.message)
+      toastCaught(e)
     } finally {
       setBusyId(null)
     }

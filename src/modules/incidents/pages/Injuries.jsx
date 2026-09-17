@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../shared/lib/toastCaught'
 import { HeartPulse, Search, CheckCircle2, Clock, ShieldCheck, RotateCcw, ExternalLink, Pencil, Lock, EyeOff } from 'lucide-react'
 import { PageHeader, Badge, EmptyState, Modal } from '../components/ui'
 import BodyMap from '../components/BodyMap'
@@ -46,7 +47,7 @@ export default function Injuries() {
       toast.success('Injury report updated')
       setEditing(null)
     } catch (e) {
-      toast.error(e.message || 'Could not update')
+      toastCaught(e, 'Could not update')
     } finally {
       setSavingEdit(false)
     }
@@ -67,7 +68,7 @@ export default function Injuries() {
       await setInjuryVerified(orgId, inj.id, next, { uid: profile?.uid, name: profile?.name }, `${inj.personName} · ${inj.incidentRefNo}`)
       toast.success(next ? 'Injury report verified' : 'Verification cleared')
     } catch (e) {
-      toast.error(e.message || 'Could not update')
+      toastCaught(e, 'Could not update')
     } finally {
       setBusy(null)
     }

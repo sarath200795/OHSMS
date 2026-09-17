@@ -3,6 +3,8 @@ import { useAuth } from '../../../shared/auth/AuthContext'
 import { subscribeSites } from '../../../shared/org/orgData'
 import { subscribeEscalations, subscribeLegalIssues } from '../lib/firestore'
 import { withLegal, withEscalation, summarise, repeatMembers } from '../lib/linkage'
+import { isPermissionDenied } from '../../../shared/lib/permissionDenied'
+import { AccessDenied } from '../../../shared/ui'
 
 const Ctx = createContext(null)
 
@@ -21,17 +23,28 @@ export function StakeholderProvider({ children }) {
   const [sites, setSites] = useState([])
   const [loaded, setLoaded] = useState({ escalations: false, legalIssues: false })
   const [error, setError] = useState(null)
+  const [denied, setDenied] = useState(false)
 
   useEffect(() => {
     if (!orgId) return undefined
     setLoaded({ escalations: false, legalIssues: false })
     setError(null)
+    setDenied(false)
 
     // A failed listener hands back null. Rendering an empty list then would say
-    // "no complaints" when the truth is "could not load them".
+    // "no complaints" when the truth is "could not load them". Permission-denied
+    // is the viewer not being allowed the module — empty, AccessDenied in the shell.
     const bind = (subscribe, set, key) =>
       subscribe(orgId, (rows, err) => {
-        if (err) return setError(err)
+        if (err) {
+          if (isPermissionDenied(err)) {
+            set([])
+            setDenied(true)
+            setLoaded((l) => ({ ...l, [key]: true }))
+            return
+          }
+          return setError(err)
+        }
         set(rows || [])
         setLoaded((l) => ({ ...l, [key]: true }))
       })
@@ -46,8 +59,14 @@ export function StakeholderProvider({ children }) {
 
   // Joined once here rather than per page, so every tab agrees about which
   // complaints turned into legal matters.
-  const joinedEscalations = useMemo(() => withLegal(escalations, legalIssues), [escalations, legalIssues])
-  const joinedLegal = useMemo(() => withEscalation(legalIssues, escalations), [legalIssues, escalations])
+  const joinedEscalations = useMemo(
+    () => withLegal(escalations, legalIssues),
+    [escalations, legalIssues]
+  )
+  const joinedLegal = useMemo(
+    () => withEscalation(legalIssues, escalations),
+    [legalIssues, escalations]
+  )
   const summary = useMemo(() => summarise(escalations, legalIssues), [escalations, legalIssues])
   const repeats = useMemo(() => repeatMembers(escalations), [escalations])
 
@@ -62,6 +81,7 @@ export function StakeholderProvider({ children }) {
       summary,
       repeats,
       error,
+      denied,
       loading: !(loaded.escalations && loaded.legalIssues),
       // For the "which complaint was this?" picker on a legal issue.
       escalationOptions: escalations.map((e) => ({
@@ -69,10 +89,22 @@ export function StakeholderProvider({ children }) {
         label: `${e.docId ? `${e.docId} · ` : ''}${e.title}`,
       })),
     }),
-    [orgId, orgName, sites, joinedEscalations, joinedLegal, escalations, summary, repeats, error, loaded]
+    [
+      orgId,
+      orgName,
+      sites,
+      joinedEscalations,
+      joinedLegal,
+      escalations,
+      summary,
+      repeats,
+      error,
+      denied,
+      loaded,
+    ]
   )
 
-  return <Ctx.Provider value={value}>{children}</Ctx.Provider>
+  return <Ctx.Provider value={value}>{denied ? <AccessDenied /> : children}</Ctx.Provider>
 }
 
 export function useStakeholder() {

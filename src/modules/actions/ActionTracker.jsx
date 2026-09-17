@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../shared/lib/toastCaught'
 import { ListChecks, AlertTriangle, CircleDot, Loader2, CheckCircle2, ExternalLink, Search, Repeat } from 'lucide-react'
 import { useAuth } from '../../shared/auth/AuthContext'
 import { PageHeader, Card, Select, StatCard, EmptyState, SkeletonTable, Pager } from '../../shared/ui'
@@ -67,7 +68,7 @@ export default function ActionTracker() {
       await updateActionStatus(orgId, row, norm)
       toast.success(`Updated in ${row.sourceLabel} → ${NORM_BY_KEY[norm]?.label}`)
     } catch (e) {
-      toast.error(e.message || 'Could not update the action')
+      toastCaught(e, 'Could not update the action')
     } finally {
       setBusyKey(null)
     }

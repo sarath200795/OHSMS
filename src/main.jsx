@@ -29,7 +29,7 @@ createRoot(document.getElementById('root')).render(
         <AuthProvider>
           <App />
           <Toaster
-            position="top-right"
+            position="top-center"
             toastOptions={{
               duration: 3500,
               className: '!bg-clay-surface !text-ink-800 !shadow-clay !rounded-2xl',

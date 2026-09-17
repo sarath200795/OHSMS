@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate, NavLink } from 'react-router-dom'
+import { Routes, Route, Navigate } from 'react-router-dom'
 import { LayoutGrid, MessageSquareWarning, Gavel } from 'lucide-react'
 import { StakeholderProvider } from './context/StakeholderContext'
 import Hub from './pages/Hub'
@@ -6,6 +6,7 @@ import Escalations from './pages/Escalations'
 import EscalationForm from './pages/EscalationForm'
 import LegalIssues from './pages/LegalIssues'
 import LegalIssueForm from './pages/LegalIssueForm'
+import ModuleTabs from '../../shared/layout/ModuleTabs'
 
 // Stakeholder Issues — what customers escalated, and what authorities did about
 // it. Two records rather than one with a type field: they are owned by
@@ -20,22 +21,7 @@ const TABS = [
 export default function StakeholderModule() {
   return (
     <StakeholderProvider>
-      <nav aria-label="Stakeholder sections" className="mb-4 flex flex-wrap gap-2">
-        {TABS.map((t) => (
-          <NavLink
-            key={t.to}
-            to={t.to}
-            end={t.end}
-            className={({ isActive }) =>
-              `flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-sm font-semibold transition ${
-                isActive ? 'bg-ink-900 text-white' : 'bg-ink-100 text-ink-600 hover:bg-ink-200'
-              }`
-            }
-          >
-            <t.icon size={14} /> {t.label}
-          </NavLink>
-        ))}
-      </nav>
+      <ModuleTabs label="Stakeholder sections" tabs={TABS} />
       <Routes>
         <Route index element={<Hub />} />
         <Route path="escalations" element={<Escalations />} />

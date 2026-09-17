@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../../shared/lib/toastCaught'
 import { useAuth } from '../../context/AuthContext'
 import ProcedureView from '../../components/procedures/ProcedureView'
 import ApprovalFlow from '../../components/procedures/ApprovalFlow'
@@ -60,7 +61,7 @@ export default function ProcedureDetail() {
       await fn()
       if (okMsg) toast.success(okMsg)
     } catch (err) {
-      toast.error(err.message || 'Action failed')
+      toastCaught(err, 'Action failed')
     } finally {
       setAction(false)
     }
@@ -94,7 +95,7 @@ export default function ProcedureDetail() {
       toast.success('Procedure deleted')
       navigate('/loto/inventory')
     } catch (err) {
-      toast.error(err.message || 'Delete failed')
+      toastCaught(err, 'Delete failed')
       setAction(false)
     }
   }

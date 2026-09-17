@@ -1,4 +1,5 @@
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../shared/lib/toastCaught'
 import { motion } from 'framer-motion'
 import { Trash2, RotateCcw, X, ClipboardList, Activity, HeartPulse } from 'lucide-react'
 import { PageHeader, EmptyState } from '../components/ui'
@@ -60,14 +61,14 @@ export default function RecycleBin() {
     try {
       await KINDS[it._kind].restore(orgId, it.id, actor)
       toast.success(`${it._label} restored`)
-    } catch (e) { toast.error(e.message || 'Could not restore') }
+    } catch (e) { toastCaught(e, 'Could not restore') }
   }
   const purge = async (it) => {
     if (!window.confirm(`Permanently delete ${it._label}? This cannot be undone.`)) return
     try {
       await KINDS[it._kind].purge(orgId, it.id, actor, it._label)
       toast.success(`${it._label} permanently deleted`)
-    } catch (e) { toast.error(e.message || 'Could not purge') }
+    } catch (e) { toastCaught(e, 'Could not purge') }
   }
 
   return (

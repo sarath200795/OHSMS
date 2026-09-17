@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../shared/lib/toastCaught'
 import { ListChecks, Filter, AlertTriangle, User, ExternalLink, ClipboardList, Activity } from 'lucide-react'
 import { PageHeader, Badge, EmptyState } from '../components/ui'
 import { useAuth } from '../context/AuthContext'
@@ -42,7 +43,7 @@ export default function ActionTracker() {
       await setActionStatus(orgId, action, newStatus, { uid: user.uid, name: profile.name })
       toast.success('Action updated')
     } catch (e) {
-      toast.error(e.message || 'Could not update')
+      toastCaught(e, 'Could not update')
     } finally {
       setBusyId(null)
     }

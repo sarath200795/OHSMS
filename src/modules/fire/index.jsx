@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate, Outlet, NavLink } from 'react-router-dom'
+import { Routes, Route, Navigate, Outlet } from 'react-router-dom'
 import { LayoutDashboard, Boxes, Wrench, Stamp, MapPin } from 'lucide-react'
 import { FleetProvider } from './context/FleetContext'
 import EquipmentHub from './EquipmentHub'
@@ -29,6 +29,7 @@ import PhysicalDefectLog from './pages/PhysicalDefectLog'
 import Closed from './pages/Closed'
 import Approvals from './pages/Approvals'
 import RecycleBin from './pages/RecycleBin'
+import ModuleTabs from '../../shared/layout/ModuleTabs'
 
 // Dashboard = per-type dashboards (EquipmentHub tabs, kept separate).
 // Repository = one consolidated inventory for every equipment class.
@@ -42,28 +43,7 @@ const TABS = [
 ]
 
 function ModuleNav() {
-  return (
-    <div className="mb-5 flex flex-wrap gap-1.5 border-b border-ink-100 pb-3">
-      {TABS.map((t) => (
-        <NavLink
-          key={t.to}
-          to={t.to}
-          end={t.end}
-          className={({ isActive }) =>
-            [
-              'inline-flex items-center gap-2 rounded-2xl px-3.5 py-2 text-sm font-medium transition-all duration-200 ease-emil',
-              isActive
-                ? 'bg-clay-surface text-ink-900 shadow-clay-pressed'
-                : 'text-ink-500 hover:bg-clay-100 hover:text-ink-800 active:scale-[0.98]',
-            ].join(' ')
-          }
-        >
-          <t.icon size={16} />
-          {t.label}
-        </NavLink>
-      ))}
-    </div>
-  )
+  return <ModuleTabs label="Emergency Equipment sections" tabs={TABS} />
 }
 
 function ListLayout() {

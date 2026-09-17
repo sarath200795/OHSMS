@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Boxes, Download, Trash2, QrCode, AlertTriangle, Filter, Pencil, CheckCircle2, Truck, FileText, CalendarX, Plus, Upload, Gauge } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../shared/lib/toastCaught'
 import { PageHeader, EmptyState, Modal, Spinner } from '../components/ui'
 import { TableSkeleton } from '../components/Skeleton'
 import ExtinguisherTable from '../components/ExtinguisherTable'
@@ -92,7 +93,7 @@ export default function Repository() {
       await markReceivedByVendor(orgId, orgName, ext.id, profile?.name)
       toast.success('Marked received by vendor — now In Process')
     } catch (e) {
-      toast.error(e.message)
+      toastCaught(e)
     } finally {
       setBusyId(null)
     }
@@ -104,7 +105,7 @@ export default function Repository() {
       await resolveDefects(orgId, orgName, ext.id, remaining, profile?.name)
       toast.success('Physical defects resolved')
     } catch (e) {
-      toast.error(e.message)
+      toastCaught(e)
     } finally {
       setBusyId(null)
     }
@@ -159,7 +160,7 @@ export default function Repository() {
       toast.success(`${r.linked} linked to sites · ${r.entityChanges} entity value(s) corrected`)
       setLinkOpen(false)
     } catch (err) {
-      toast.error(err?.message || 'Could not link to sites')
+      toastCaught(err, 'Could not link to sites')
     } finally {
       setLinking(false)
     }
@@ -170,7 +171,7 @@ export default function Repository() {
       const n = await backfillExtinguisherQr(orgId, orgName, extinguishers, { uid: profile?.uid, name: profile?.name })
       toast.success(n ? `QR codes generated for ${n} extinguisher(s)` : 'Every extinguisher already has a QR code')
     } catch (err) {
-      toast.error(err?.message || 'Could not generate QR codes')
+      toastCaught(err, 'Could not generate QR codes')
     }
   }
 
@@ -187,7 +188,7 @@ export default function Repository() {
       setSelected(new Set())
       setConfirmDelete(false)
     } catch (e) {
-      toast.error(e.message)
+      toastCaught(e)
     } finally {
       setDeleting(false)
     }

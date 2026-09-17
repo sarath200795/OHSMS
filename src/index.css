@@ -25,6 +25,7 @@
 body {
   @apply bg-clay-bg text-ink-900 font-sans antialiased;
   margin: 0;
+  overflow-wrap: break-word;
 }
 
 /* Animated aurora background for auth / public pages — warm kraft & coral
@@ -94,6 +95,26 @@ body {
       focus:border-brand-300 focus:ring-2 focus:ring-brand-200;
   }
   .label { @apply mb-1.5 block text-xs font-semibold uppercase tracking-wide text-ink-500; }
+
+  /* Native <select> strips its arrow under appearance-none (we do that so the
+     clay inset isn't fighting the OS chrome). Without a replacement chevron
+     the control looks like a text field that cannot be opened — the audit
+     module drew its own, everyone else didn't. One background-image, so a
+     module cannot forget. */
+  select.input,
+  select.appearance-none {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23615344' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+    background-position: right 0.85rem center;
+    background-repeat: no-repeat;
+    background-size: 1rem 1rem;
+    padding-right: 2.5rem;
+  }
+
+  /* Wide registers (equipment, users, findings) must scroll sideways on a
+     phone rather than crush columns or leak out of the card. */
+  .table-scroll {
+    @apply overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch];
+  }
 
   /* Clay surfaces */
   .card         { @apply rounded-3xl bg-clay-surface shadow-clay; }

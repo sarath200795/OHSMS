@@ -4,8 +4,16 @@ import { useAuth } from '../../../shared/auth/AuthContext'
 import { subscribeSites } from '../../../shared/org/orgData'
 import { subscribeCameras, subscribeDvrs, subscribeMerakis } from '../lib/firestore'
 import { estateHealth } from '../lib/health'
+import { isPermissionDenied } from '../../../shared/lib/permissionDenied'
+import { AccessDenied } from '../../../shared/ui'
 import {
-  siteMeta, scopeEstate, scopeFacets, narrowSites, reconcileScope, isScoped, filterByScope,
+  siteMeta,
+  scopeEstate,
+  scopeFacets,
+  narrowSites,
+  reconcileScope,
+  isScoped,
+  filterByScope,
 } from '../lib/filters'
 
 const Ctx = createContext(null)
@@ -26,18 +34,29 @@ export function CctvProvider({ children }) {
   const [sites, setSites] = useState([])
   const [loaded, setLoaded] = useState({ cameras: false, dvrs: false, merakis: false })
   const [error, setError] = useState(null)
+  const [denied, setDenied] = useState(false)
 
   useEffect(() => {
     if (!orgId) return undefined
     setLoaded({ cameras: false, dvrs: false, merakis: false })
     setError(null)
+    setDenied(false)
 
     // A listener that fails hands back null. Showing an empty estate then would
     // read as "no cameras installed" rather than "we could not load them", so
-    // the error is kept and the pages say so.
+    // a real fault is kept and the pages say so. Permission-denied is the
+    // viewer not being allowed the estate — empty, and the shell shows AccessDenied.
     const bind = (subscribe, set, key) =>
       subscribe(orgId, (rows, err) => {
-        if (err) return setError(err)
+        if (err) {
+          if (isPermissionDenied(err)) {
+            set([])
+            setDenied(true)
+            setLoaded((l) => ({ ...l, [key]: true }))
+            return
+          }
+          return setError(err)
+        }
         set(rows || [])
         setLoaded((l) => ({ ...l, [key]: true }))
       })
@@ -131,6 +150,7 @@ export function CctvProvider({ children }) {
       estate: scoped,
       fullEstate: estate,
       error,
+      denied,
       loading: !(loaded.cameras && loaded.dvrs && loaded.merakis),
 
       scope,
@@ -143,19 +163,46 @@ export function CctvProvider({ children }) {
       // inherit its site from its DVR, so the resolved id is the one tested —
       // read from a map built once, not a find() per row.
       scopedRows: {
-        cameras: filterByScope(cameras, scope, meta, (r) => resolvedCameraSite.get(r.id) || r.siteId),
+        cameras: filterByScope(
+          cameras,
+          scope,
+          meta,
+          (r) => resolvedCameraSite.get(r.id) || r.siteId
+        ),
         dvrs: filterByScope(dvrs, scope, meta),
         merakis: filterByScope(merakis, scope, meta),
       },
 
       // Named lookups the forms need, built once rather than in every render.
-      dvrOptions: dvrs.map((d) => ({ value: d.id, label: d.name, siteId: d.siteId, siteName: d.siteName })),
+      dvrOptions: dvrs.map((d) => ({
+        value: d.id,
+        label: d.name,
+        siteId: d.siteId,
+        siteName: d.siteName,
+      })),
       siteOptions: sites.map((s) => ({ value: s.id, label: s.name || s.siteName || s.id })),
     }),
-    [orgId, orgName, cameras, dvrs, merakis, sites, estate, scoped, scope, setScope, clearScope, meta, resolvedCameraSite, error, loaded]
+    [
+      orgId,
+      orgName,
+      cameras,
+      dvrs,
+      merakis,
+      sites,
+      estate,
+      scoped,
+      scope,
+      setScope,
+      clearScope,
+      meta,
+      resolvedCameraSite,
+      error,
+      denied,
+      loaded,
+    ]
   )
 
-  return <Ctx.Provider value={value}>{children}</Ctx.Provider>
+  return <Ctx.Provider value={value}>{denied ? <AccessDenied /> : children}</Ctx.Provider>
 }
 
 export function useCctv() {

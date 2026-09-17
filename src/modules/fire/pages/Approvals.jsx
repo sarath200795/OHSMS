@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { format } from 'date-fns'
 import { ClipboardCheck, Check, X, AlertTriangle, Truck, Smartphone, Building2 } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../shared/lib/toastCaught'
 import { PageHeader, EmptyState, Badge } from '../components/ui'
 import { useFleet } from '../context/FleetContext'
 import { useAuth } from '../context/AuthContext'
@@ -52,7 +53,7 @@ export default function Approvals() {
       else await rejectReport(orgId, r, profile?.name, actor)
       toast.success(approve ? 'Approved & applied' : 'Rejected')
     } catch (e) {
-      toast.error(e.message)
+      toastCaught(e)
     } finally {
       setBusyId(null)
     }

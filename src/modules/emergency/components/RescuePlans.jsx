@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../shared/lib/toastCaught'
 import {
   LifeBuoy, Plus, Pencil, Trash2, X, Users, Wrench, ChevronDown, ChevronUp, Library, Check,
   BadgeCheck, ShieldAlert, RefreshCw,
@@ -76,7 +77,7 @@ export default function RescuePlans({ site, plans, users, contacts = [], baselin
       await syncFromBaseline(orgId, plan, b, actor, { keepLocalEdits })
       toast.success('Updated from baseline — review and approve before use')
       setSyncing(null)
-    } catch (err) { toast.error(err?.message || 'Failed') } finally { setBusy(false) }
+    } catch (err) { toastCaught(err, 'Failed') } finally { setBusy(false) }
   }
 
   const syncAll = async () => {
@@ -175,14 +176,14 @@ export default function RescuePlans({ site, plans, users, contacts = [], baselin
         toast.success(wasApproved ? 'Updated — needs re-approval before use' : 'Rescue plan updated')
       }
       setEditing(null)
-    } catch (err) { toast.error(err?.message || 'Failed') } finally { setBusy(false) }
+    } catch (err) { toastCaught(err, 'Failed') } finally { setBusy(false) }
   }
 
   const approve = async (p) => {
     if (!window.confirm(`Approve "${p.title}" for use at ${site.name}?\n\nIt becomes the site's live procedure for ${p.scenario} and prints on the site FERP.`)) return
     setBusy(true)
     try { await approveRescuePlan(orgId, p, actor); toast.success('Approved for site use') }
-    catch (err) { toast.error(err?.message || 'Failed') } finally { setBusy(false) }
+    catch (err) { toastCaught(err, 'Failed') } finally { setBusy(false) }
   }
 
   const doRecall = async () => {
@@ -194,13 +195,13 @@ export default function RescuePlans({ site, plans, users, contacts = [], baselin
       toast.success(`${res.copied} plan(s) recalled to ${site.name}${res.skipped ? ` (${res.skipped} already covered)` : ''}`)
       setRecallOpen(false)
       setRecallPicked([])
-    } catch (err) { toast.error(err?.message || 'Failed') } finally { setBusy(false) }
+    } catch (err) { toastCaught(err, 'Failed') } finally { setBusy(false) }
   }
 
   const remove = async (p) => {
     if (!window.confirm(`Delete the "${p.title}" rescue plan?`)) return
     try { await deleteRescuePlan(orgId, p.id, actor, `${site.name} · ${p.title}`); toast.success('Plan deleted') }
-    catch (err) { toast.error(err?.message || 'Failed') }
+    catch (err) { toastCaught(err, 'Failed') }
   }
 
   return (

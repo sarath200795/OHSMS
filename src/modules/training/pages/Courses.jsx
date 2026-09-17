@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../shared/lib/toastCaught'
 import { BookOpen, Plus, Pencil, Trash2, Link2, Paperclip, X, ImagePlus } from 'lucide-react'
 import CourseThumb from '../components/CourseThumb'
 import DocIdTag from '../../../shared/docId/DocIdTag'
@@ -113,14 +114,14 @@ export default function Courses() {
       if (editing === 'new') { await createCourse(orgId, form, actor); toast.success('Course added') }
       else { await updateCourse(orgId, editing.id, form, actor); toast.success('Course updated') }
       setEditing(null)
-    } catch (err) { toast.error(err?.message || 'Failed') } finally { setBusy(false) }
+    } catch (err) { toastCaught(err, 'Failed') } finally { setBusy(false) }
   }
 
   const remove = async (c) => {
     const used = records.filter((r) => r.courseId === c.id).length
     if (!window.confirm(`Delete course "${c.name}"?${used ? ` ${used} training record(s) will keep their history.` : ''}`)) return
     try { await deleteCourse(orgId, c.id, actor, c.name); toast.success('Course deleted') }
-    catch (err) { toast.error(err?.message || 'Failed') }
+    catch (err) { toastCaught(err, 'Failed') }
   }
 
   return (

@@ -9,6 +9,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ListChecks } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../shared/lib/toastCaught'
 import { useAuth } from '../../shared/auth/AuthContext'
 import { subscribeActions, updateActionStatus, NORM_STATUS, NORM_BY_KEY } from '../../modules/actions/lib/sources'
 import { Raised, Inset, PortalHeading } from './ui'
@@ -50,7 +51,7 @@ export default function MyActions() {
       await updateActionStatus(orgId, action, norm)
       toast.success(`Marked ${NORM_BY_KEY[norm]?.label || norm}`)
     } catch (e) {
-      toast.error(e?.message || 'Could not update the action')
+      toastCaught(e, 'Could not update the action')
     } finally {
       setSavingKey(null)
     }
@@ -71,7 +72,7 @@ export default function MyActions() {
             key={f.key}
             type="button"
             onClick={() => setFilter(f.key)}
-            className={`inline-flex items-center gap-2 rounded-2xl px-3.5 py-2 text-[12.5px] font-semibold transition ${
+            className={`inline-flex items-center gap-2 rounded-2xl px-3.5 py-2 text-[12.5px] font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 ${
               filter === f.key ? 'bg-clay-surface text-ink-900 shadow-clay-sm' : 'text-ink-500'
             }`}
           >

@@ -1,5 +1,12 @@
-import { Routes, Route, Navigate, Outlet, NavLink } from 'react-router-dom'
-import { Home as HomeIcon, ListChecks, ClipboardList, PlayCircle, HardHat, Lock } from 'lucide-react'
+import { Routes, Route, Navigate, Outlet } from 'react-router-dom'
+import {
+  Home as HomeIcon,
+  ListChecks,
+  ClipboardList,
+  PlayCircle,
+  HardHat,
+  Lock,
+} from 'lucide-react'
 import { TutorialProvider } from './context/TutorialContext'
 import Home from './pages/Home'
 import Inventory from './pages/procedures/Inventory'
@@ -10,6 +17,7 @@ import Operations from './pages/operations/Operations'
 import OperateProcedure from './pages/operations/OperateProcedure'
 import Technicians from './pages/admin/Technicians'
 import LockInventory from './pages/admin/LockInventory'
+import ModuleTabs from '../../shared/layout/ModuleTabs'
 
 const TABS = [
   { to: '/loto', label: 'Home', icon: HomeIcon, end: true },
@@ -21,28 +29,7 @@ const TABS = [
 ]
 
 function ModuleNav() {
-  return (
-    <div className="mb-5 flex flex-wrap gap-1.5 border-b border-ink-100 pb-3">
-      {TABS.map((t) => (
-        <NavLink
-          key={t.to}
-          to={t.to}
-          end={t.end}
-          className={({ isActive }) =>
-            [
-              'inline-flex items-center gap-2 rounded-2xl px-3.5 py-2 text-sm font-medium transition-all duration-200 ease-emil',
-              isActive
-                ? 'bg-clay-surface text-ink-900 shadow-clay-pressed'
-                : 'text-ink-500 hover:bg-clay-100 hover:text-ink-800 active:scale-[0.98]',
-            ].join(' ')
-          }
-        >
-          <t.icon size={16} />
-          {t.label}
-        </NavLink>
-      ))}
-    </div>
-  )
+  return <ModuleTabs label="Lockout / Tagout sections" tabs={TABS} />
 }
 
 function ListLayout() {

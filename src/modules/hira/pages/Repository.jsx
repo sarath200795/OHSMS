@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { FolderOpen, Filter, Search, X, FilePlus2, Eye, Pencil, Trash2, AlertTriangle, FileDown, Layers, Upload, ArrowRight } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../shared/lib/toastCaught'
 import { PageHeader, EmptyState, Modal, Skeleton, Field } from '../components/ui'
 import { Pager } from '../../../shared/ui'
 import { usePagination } from '../../../shared/ui/usePagination'
@@ -78,7 +79,7 @@ export default function Repository() {
       })
       toast.success('Assessment deleted')
     } catch (e) {
-      toast.error(e.message || 'Could not delete')
+      toastCaught(e, 'Could not delete')
     } finally {
       setToDelete(null)
     }
@@ -178,7 +179,7 @@ export default function Repository() {
                               "View, Export, Edit, Delete" read out of the table
                               give no way to tell which assessment is which. */}
                           <Link to={`/hira/assessment/${a.id}`} className="rounded-lg p-2 text-ink-500 shadow-clay-sm transition hover:bg-clay-100 hover:text-ink-800" aria-label={`View assessment ${a.name || a.docId || a.id}`} title="View"><Eye size={16} /></Link>
-                          <button onClick={() => { try { exportAssessmentPdf(a) } catch (err) { toast.error(err.message || 'Could not export PDF') } }} className="rounded-lg p-2 text-ink-500 shadow-clay-sm transition hover:bg-clay-100 hover:text-ink-800" aria-label={`Export assessment ${a.name || a.docId || a.id} as PDF`} title="Export PDF"><FileDown size={16} /></button>
+                          <button onClick={() => { try { exportAssessmentPdf(a) } catch (err) { toastCaught(err, 'Could not export PDF') } }} className="rounded-lg p-2 text-ink-500 shadow-clay-sm transition hover:bg-clay-100 hover:text-ink-800" aria-label={`Export assessment ${a.name || a.docId || a.id} as PDF`} title="Export PDF"><FileDown size={16} /></button>
                           <Link to={`/hira/create/${a.id}`} className="rounded-lg p-2 text-ink-500 shadow-clay-sm transition hover:bg-clay-100 hover:text-ink-800" aria-label={`Edit assessment ${a.name || a.docId || a.id}`} title="Edit"><Pencil size={16} /></Link>
                           <button onClick={() => setToDelete(a)} className="rounded-lg p-2 text-red-500 shadow-clay-sm transition hover:bg-red-50" aria-label={`Delete assessment ${a.name || a.docId || a.id}`} title="Delete"><Trash2 size={16} /></button>
                         </div>

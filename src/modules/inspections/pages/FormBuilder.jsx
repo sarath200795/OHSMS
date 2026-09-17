@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import Papa from 'papaparse'
 import toast from 'react-hot-toast'
+import { toastCaught } from '../../../shared/lib/toastCaught'
 import {
   ClipboardCheck, Plus, Trash2, GripVertical, Download, FileUp, Save, ArrowLeft, Tag,
 } from 'lucide-react'
@@ -166,7 +167,7 @@ export default function FormBuilder() {
       }
       navigate('/inspections/forms')
     } catch (err) {
-      toast.error('Save failed: ' + err.message)
+      toastCaught(err, 'Save failed')
     } finally {
       setBusy(false)
     }
