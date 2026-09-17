@@ -135,6 +135,8 @@ describe('pathIsOwned', () => {
   it('gives the shell everything that is not a module', () => {
     expect(pathIsOwned('/portal', 'shell')).toBe(true)
     expect(pathIsOwned('/login', 'shell')).toBe(true)
+    expect(pathIsOwned('/register-org', 'shell')).toBe(true)
+    expect(pathIsOwned('/signup', 'shell')).toBe(true)
     expect(pathIsOwned('/platform', 'shell')).toBe(true)
     expect(pathIsOwned('/analytics', 'shell')).toBe(true)
     expect(pathIsOwned('/incidents', 'shell')).toBe(false)

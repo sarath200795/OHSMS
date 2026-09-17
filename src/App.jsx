@@ -133,7 +133,11 @@ export default function App() {
 
   return (
     <Routes>
-      {/* Public */}
+      {/* Public. These three paths are the weehs-landing handoff
+          (LANDING_ENTRY_ROUTES): Open app / trial existing user → /login,
+          new organisation → /register-org, join existing → /signup. The
+          shell owns them; hosting's catch-all sends them to the shell
+          index, not a module app. */}
       <Route path="/login" element={<Login />} />
       <Route path="/register-org" element={<RegisterOrg />} />
       <Route path="/signup" element={<Signup />} />

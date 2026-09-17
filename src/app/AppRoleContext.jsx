@@ -17,7 +17,15 @@ const AppRoleContext = createContext({
 })
 
 export function AppRoleProvider({ role = 'combined', moduleKey = null, children }) {
-  const shellOrigin = (import.meta.env.VITE_SHELL_ORIGIN || '').replace(/\/$/, '')
+  // VITE_SHELL_ORIGIN — two-port local (`npm run dev:module`). Relative links
+  // cannot bounce a module app on :5174 back to the shell on :5173.
+  // VITE_PUBLIC_ORIGIN — branded shell origin landing opens (see landing.js).
+  // Same-origin production leaves both blank so in-app links stay relative.
+  const shellOrigin = (
+    import.meta.env.VITE_SHELL_ORIGIN ||
+    import.meta.env.VITE_PUBLIC_ORIGIN ||
+    ''
+  ).replace(/\/$/, '')
   const value = useMemo(
     () => ({
       role,

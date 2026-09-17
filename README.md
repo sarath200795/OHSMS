@@ -45,6 +45,12 @@ dashboard, admin, platform console, module launcher) and **one Vite app per
 operating module**. They share `src/shared/` and the **same** Firebase project
 / Firestore database. See `docs/APPS.md`.
 
+The public marketing site is a separate repo,
+[weehs-landing](https://github.com/sarath200795/weehs-landing). Open app /
+trial / join on that site hit **this shell** at `https://suite.weehs.org`
+(`/login`, `/register-org`, `/signup`) — not a module app. The URL contract
+is in `docs/APPS.md`.
+
 - **Combined SPA** (`npm run dev`) — `src/main.jsx` still mounts every module
   in one process. Playwright and day-to-day work use this.
 - **Cloud Functions** (`functions/`) — its own npm package. Custom-claim sync,

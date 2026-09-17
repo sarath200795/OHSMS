@@ -126,3 +126,64 @@ After adding a registry module, run `node scripts/generate-apps.mjs` so
 `apps/<key>/` exists, add its key to `apps.js`, put it in exactly one packaging
 suite in `suites.js`, and add it to the placeholder check in `firestore.rules`
 (`modulesArePlaceholders`).
+
+## Handoff from weehs-landing
+
+The public front door is [weehs-landing](https://github.com/sarath200795/weehs-landing),
+not this repository. Trial / Open app / Join organisation on that site open
+**this shell**. Module apps stay under their registry prefixes (`/incidents`,
+`/hira`, `/permits`, …) and are reached from the shell after sign-in and
+entitlements. Do not deep-link a landing CTA at a module prefix unless a
+module-specific product card is added later.
+
+The contract lives in `src/shared/modules/landing.js`. A unit test fails if the
+paths move, a module prefix collides with them, or hosting rewrites them away
+from the shell.
+
+| Landing `CONFIG.routes` | Shell path      | Screen                                             |
+| ----------------------- | --------------- | -------------------------------------------------- |
+| `login`                 | `/login`        | Sign in                                            |
+| `register`              | `/register-org` | Create a new organisation (first account is admin) |
+| `join`                  | `/signup`       | Join an organisation that already exists           |
+
+Those three paths are already mounted on the shell `App` under those names —
+they are not aliases. Hosting's catch-all `**` → `/index.html` serves them.
+
+**Public origin of the shell:** `https://suite.weehs.org` (`PUBLIC_SHELL_ORIGIN`).
+Landing's OHS Suite `domain` (and `hosting`, until `domainsLive`) must point
+there. What landing should set:
+
+```
+OHS Suite domain / hosting  =  https://suite.weehs.org
+routes.login                =  /login
+routes.register             =  /register-org
+routes.join                 =  /signup
+```
+
+`VITE_PUBLIC_ORIGIN` in `.env.example` is the same origin, for documentation
+and for a module app on a different origin that needs an absolute bounce back
+to the branded shell. Production same-origin hosting leaves it blank so in-app
+links stay relative. `VITE_SHELL_ORIGIN` is the local two-port equivalent
+(`http://localhost:5173`); `scripts/dev-module.mjs` sets it.
+
+### Auth and App Check hosts
+
+Firebase Auth and App Check run on the **shell**, not on the landing page.
+
+| Host                          | Firebase Auth → Authorized domains | App Check / reCAPTCHA domain list |
+| ----------------------------- | ---------------------------------- | --------------------------------- |
+| `suite.weehs.org`             | **Required**                       | **Required**                      |
+| `weehs.org` / `www.weehs.org` | Not needed                         | Not needed                        |
+
+`suite.weehs.org` without Auth authorized-domains fails sign-in with
+`auth/unauthorized-domain`. The App Check site key is scoped to a domain list
+too — a key that still only listed the old `*.web.app` host minted no token
+the day the custom domain went live. `weehs.org` does not run Auth, so it
+does not need either list.
+
+If Google / Microsoft sign-in is enabled, the provider redirect URI is
+`https://suite.weehs.org/__/auth/handler`. Password-reset email templates
+should use that host too.
+
+The live Firebase project id, hosting target, and console toggle state belong
+in the private `docs/PRODUCTION.md`, not here.
