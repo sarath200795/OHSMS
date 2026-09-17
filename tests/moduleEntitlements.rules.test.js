@@ -394,28 +394,41 @@ const allOff = () => placeholderModulesMap()
 describe('a new organization seeds placeholders and cannot activate them', () => {
   beforeEach(async () => {
     await testEnv.withSecurityRulesDisabled(async (ctx) => {
-      await setDoc(doc(ctx.firestore(), 'organizations', NEW), { name: NEW, createdBy: 'riv' })
+      const db = ctx.firestore()
+      // A dedicated founder, not `riv`: riv is admin of another tenant, and a
+      // write into THIS org's incidents would then fail on membership — which
+      // is not the property this block is pinning.
+      await setDoc(doc(db, 'organizations', NEW), { name: NEW, createdBy: 'fresh' })
+      await setDoc(doc(db, 'users', 'fresh'), {
+        orgId: NEW,
+        role: 'admin',
+        status: 'approved',
+        name: 'fresh',
+        email: 'fresh@t.co',
+      })
     })
   })
 
   it('lets the founder write the all-off placeholder record', async () => {
     await assertSucceeds(
-      setDoc(doc(as('riv'), 'moduleEntitlements', NEW), payload('riv', allOff()))
+      setDoc(doc(as('fresh'), 'moduleEntitlements', NEW), payload('fresh', allOff()))
     )
   })
 
   it('is idempotent: a second write of the same placeholders is an update and is refused', async () => {
     await assertSucceeds(
-      setDoc(doc(as('riv'), 'moduleEntitlements', NEW), payload('riv', allOff()))
+      setDoc(doc(as('fresh'), 'moduleEntitlements', NEW), payload('fresh', allOff()))
     )
-    await assertFails(setDoc(doc(as('riv'), 'moduleEntitlements', NEW), payload('riv', allOff())))
+    await assertFails(
+      setDoc(doc(as('fresh'), 'moduleEntitlements', NEW), payload('fresh', allOff()))
+    )
   })
 
   it('refuses the founder activating any module in that first write', async () => {
     await assertFails(
       setDoc(
-        doc(as('riv'), 'moduleEntitlements', NEW),
-        payload('riv', { ...allOff(), incidents: true })
+        doc(as('fresh'), 'moduleEntitlements', NEW),
+        payload('fresh', { ...allOff(), incidents: true })
       )
     )
   })
@@ -423,12 +436,14 @@ describe('a new organization seeds placeholders and cannot activate them', () =>
   it('refuses the founder omitting a key, which would read as enabled', async () => {
     const partial = { ...allOff() }
     delete partial.loto
-    await assertFails(setDoc(doc(as('riv'), 'moduleEntitlements', NEW), payload('riv', partial)))
+    await assertFails(
+      setDoc(doc(as('fresh'), 'moduleEntitlements', NEW), payload('fresh', partial))
+    )
   })
 
   it('lets the platform operator activate a placeholder later without recreating the org', async () => {
     await assertSucceeds(
-      setDoc(doc(as('riv'), 'moduleEntitlements', NEW), payload('riv', allOff()))
+      setDoc(doc(as('fresh'), 'moduleEntitlements', NEW), payload('fresh', allOff()))
     )
     await assertSucceeds(
       setDoc(
@@ -440,9 +455,9 @@ describe('a new organization seeds placeholders and cannot activate them', () =>
 
   it('stops writes to a placeholder module, and allows them once it is activated', async () => {
     await assertSucceeds(
-      setDoc(doc(as('riv'), 'moduleEntitlements', NEW), payload('riv', allOff()))
+      setDoc(doc(as('fresh'), 'moduleEntitlements', NEW), payload('fresh', allOff()))
     )
-    const incident = doc(as('riv'), 'organizations', NEW, 'incidents', 'row1')
+    const incident = doc(as('fresh'), 'organizations', NEW, 'incidents', 'row1')
     await assertFails(setDoc(incident, { title: 'x' }))
     await testEnv.withSecurityRulesDisabled(async (ctx) => {
       await setDoc(
