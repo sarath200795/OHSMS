@@ -15,6 +15,7 @@ import { createModuleService } from '../shared/module-kit/service'
 import { dataProvider } from '../shared/data'
 import { subscribeAuditLogs } from '../shared/org/orgData'
 import { MODULES } from '../shared/modules/registry'
+import { PACKAGING_SUITES, describeGrant } from '../shared/modules/suites'
 import AppLink from '../app/AppLink'
 import { auditLabel } from '../shared/audit/audit'
 import { riskLists } from '../modules/hira/lib/raStats'
@@ -55,7 +56,8 @@ const MODULE_CARD_TONE = {
 }
 
 export default function Dashboard() {
-  const { orgId, profile, modulesReady, moduleEnabled } = useAuth()
+  const { orgId, profile, modulesReady, moduleEnabled, moduleMap } = useAuth()
+  const grant = describeGrant(moduleMap)
   const [incidents, setIncidents] = useState(null)
   const [risks, setRisks] = useState(null)
   const [tallies, setTallies] = useState(null)
@@ -124,8 +126,19 @@ export default function Dashboard() {
     <>
       <PageHeader
         title={`Welcome${profile?.name ? `, ${profile.name.split(' ')[0]}` : ''}`}
-        subtitle="Your organization's health & safety at a glance"
+        subtitle={
+          !modulesReady
+            ? "Your organization's health & safety at a glance"
+            : grant.key === ''
+              ? 'No modules in your subscription yet — placeholders only'
+              : `Your subscription: ${grant.label}`
+        }
         icon={Activity}
+        actions={
+          modulesReady && grant.key && grant.key !== 'custom' ? (
+            <Badge tone="brand">{grant.label}</Badge>
+          ) : null
+        }
       />
 
       {/* KPI row */}
@@ -255,58 +268,75 @@ export default function Dashboard() {
 
       {/* Module grid */}
       <h3 className="mb-3 mt-8 font-semibold text-ink-800">Modules</h3>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {modulesReady &&
-          MODULES.map((m, i) => {
-            const locked = !moduleEnabled(m.key)
-            const className =
-              'group card animate-fade-in-up flex flex-col gap-3 p-5 transition-transform duration-200 ease-emil hover:-translate-y-0.5 active:scale-[0.99]'
-            const body = (
-              <>
-                <div className="flex items-center justify-between">
-                  <span
-                    className={`grid h-11 w-11 place-items-center rounded-2xl ${MODULE_CARD_TONE[m.tone]}`}
-                  >
-                    {locked ? <Lock size={22} /> : <m.icon size={22} />}
-                  </span>
-                  {m.isNew && !locked && <Badge tone="brand">New</Badge>}
-                  {locked && <Badge tone="slate">Placeholder</Badge>}
-                </div>
-                <div>
-                  <p className="font-semibold text-ink-900">{m.title}</p>
-                  <p className="mt-1 text-sm text-ink-500">
-                    {locked
-                      ? 'Not in your subscription. Ask your administrator to request it.'
-                      : m.description}
-                  </p>
-                </div>
-                {!locked && (
-                  <span className="mt-auto flex items-center gap-1 text-sm font-medium text-brand-700 opacity-0 transition group-hover:opacity-100">
-                    Open <ArrowRight size={15} />
-                  </span>
-                )}
-              </>
-            )
-            return locked ? (
-              <div
-                key={m.key}
-                className={`${className} opacity-80`}
-                style={{ animationDelay: `${Math.min(i, 10) * 40}ms` }}
-              >
-                {body}
-              </div>
-            ) : (
-              <AppLink
-                key={m.key}
-                to={m.path}
-                className={className}
-                style={{ animationDelay: `${Math.min(i, 10) * 40}ms` }}
-              >
-                {body}
-              </AppLink>
-            )
-          })}
-      </div>
+      {PACKAGING_SUITES.map((suite) => {
+        const noneOn = suite.keys.every((k) => !moduleEnabled(k))
+        return (
+          <div key={suite.key} className="mb-6">
+            <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+              <h4 className="text-sm font-semibold text-ink-700">{suite.label}</h4>
+              {modulesReady && noneOn && (
+                <p className="text-xs text-ink-400">
+                  Not in your subscription — ask an administrator to request this suite.
+                </p>
+              )}
+            </div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {modulesReady &&
+                suite.keys.map((key, i) => {
+                  const m = MODULES.find((mod) => mod.key === key)
+                  if (!m) return null
+                  const locked = !moduleEnabled(m.key)
+                  const className =
+                    'group card animate-fade-in-up flex flex-col gap-3 p-5 transition-transform duration-200 ease-emil hover:-translate-y-0.5 active:scale-[0.99]'
+                  const body = (
+                    <>
+                      <div className="flex items-center justify-between">
+                        <span
+                          className={`grid h-11 w-11 place-items-center rounded-2xl ${MODULE_CARD_TONE[m.tone]}`}
+                        >
+                          {locked ? <Lock size={22} /> : <m.icon size={22} />}
+                        </span>
+                        {m.isNew && !locked && <Badge tone="brand">New</Badge>}
+                        {locked && <Badge tone="slate">Placeholder</Badge>}
+                      </div>
+                      <div>
+                        <p className="font-semibold text-ink-900">{m.title}</p>
+                        <p className="mt-1 text-sm text-ink-500">
+                          {locked
+                            ? `Included in ${suite.label} — not in your subscription. Ask your administrator to request it.`
+                            : m.description}
+                        </p>
+                      </div>
+                      {!locked && (
+                        <span className="mt-auto flex items-center gap-1 text-sm font-medium text-brand-700 opacity-0 transition group-hover:opacity-100">
+                          Open <ArrowRight size={15} />
+                        </span>
+                      )}
+                    </>
+                  )
+                  return locked ? (
+                    <div
+                      key={m.key}
+                      className={`${className} opacity-80`}
+                      style={{ animationDelay: `${Math.min(i, 10) * 40}ms` }}
+                    >
+                      {body}
+                    </div>
+                  ) : (
+                    <AppLink
+                      key={m.key}
+                      to={m.path}
+                      className={className}
+                      style={{ animationDelay: `${Math.min(i, 10) * 40}ms` }}
+                    >
+                      {body}
+                    </AppLink>
+                  )
+                })}
+            </div>
+          </div>
+        )
+      })}
     </>
   )
 }

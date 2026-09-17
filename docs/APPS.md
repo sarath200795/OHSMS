@@ -43,10 +43,25 @@ On **organization create**, the same batch that writes the org also writes
 to `false`**. Those rows are placeholders. They exist even for modules the
 org has not subscribed to.
 
-A platform operator activates modules on `/platform` (Module access). That
-screen is the subscription grant: flipping a key to `true` makes the module
-usable. Activating later does not recreate the org. Firestore rules refuse a
-founder activating anything themselves; they may only seed the all-off document.
+A platform operator activates modules on `/platform` (Module access), either
+**per module** or by assigning a **suite** (Core, Operations, Fire & Emergency,
+Compliance, Full). Suites are defined in `src/shared/modules/suites.js` — they
+group registry keys; they are not a second database. Assigning a suite flips
+those placeholders to active and does not turn other modules off, so a second
+suite or individual switches are à-la-carte extras. Activating later does not
+recreate the org. Firestore rules refuse a founder activating anything
+themselves; they may only seed the all-off document.
+
+`/moduleEntitlements/{orgId}` is still the one document:
+
+| Field     | Meaning                                                                                          |
+| --------- | ------------------------------------------------------------------------------------------------ |
+| `modules` | Map of every registry key (and add-on) to `true`/`false`. This is what the UI and rules enforce. |
+| `suite`   | The assigned bundle (`core`, `operations`, `fire`, `compliance`, `full`), `custom`, or `''`.     |
+
+`suite` is a label the console records. It does not authorize anything on its
+own — a forged `suite: 'full'` with every module `false` would still be a
+placeholder org.
 
 Organizations registered **before** this existed still have no entitlement
 document, which still means the full product. That default is unchanged so
@@ -108,5 +123,6 @@ Hosting rewrites in `firebase.json` send each module prefix to
 copied there at the end of the apps build).
 
 After adding a registry module, run `node scripts/generate-apps.mjs` so
-`apps/<key>/` exists, add its key to `apps.js`, and add it to the placeholder
-check in `firestore.rules` (`modulesArePlaceholders`).
+`apps/<key>/` exists, add its key to `apps.js`, put it in exactly one packaging
+suite in `suites.js`, and add it to the placeholder check in `firestore.rules`
+(`modulesArePlaceholders`).

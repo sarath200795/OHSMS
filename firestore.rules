@@ -1090,9 +1090,10 @@ service cloud.firestore {
       // `modules` key has to be refused by the key check, not by touching it.
       allow create, update: if isPlatformAdmin()
         && request.resource.data.keys().hasAll(['modules', 'updatedBy'])
-        && request.resource.data.keys().hasOnly(['modules', 'updatedAt', 'updatedBy', 'updatedByEmail'])
+        && request.resource.data.keys().hasOnly(['modules', 'updatedAt', 'updatedBy', 'updatedByEmail', 'suite'])
         && request.resource.data.modules is map
-        && request.resource.data.updatedBy == request.auth.uid;
+        && request.resource.data.updatedBy == request.auth.uid
+        && (!request.resource.data.keys().hasAny(['suite']) || request.resource.data.suite is string);
       // The org-create path. Create only, and only while every flag is false.
       // An update is how a module is activated, and that stays operator-only.
       allow create: if isFounderPlaceholderSeed(orgId);

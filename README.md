@@ -137,7 +137,7 @@ Runs the Vite app and the Firebase Emulator Suite in containers.
    had before placeholders existed.
 2. Or **Register organization** from the UI. That path writes a placeholder for
    every module (`inactive`). Nothing is usable until a platform operator
-   activates modules on `/platform`. See `docs/APPS.md`.
+   assigns a suite or activates modules on `/platform`. See `docs/APPS.md`.
 3. Teammates **Sign up** and pick your org, then appear as _pending_ on
    **Users**, where an admin approves them and assigns a role.
 4. Create records in any **activated** module. Everything writes to the unified

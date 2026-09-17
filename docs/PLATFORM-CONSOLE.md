@@ -108,8 +108,17 @@ Only an explicit `false` disables a module. `normalizeEntitlement` in
 **New organizations are not in that state.** `createOrganization` writes the
 document in the same batch as the org, with every known key `false` — a
 placeholder per registry module. They become usable when an operator activates
-them on this screen (the subscription grant). The founder cannot flip those
+them on this screen (the subscription grant), either one module at a time or by
+assigning a **suite**. Suites live in `src/shared/modules/suites.js` (Core,
+Operations, Fire & Emergency, Compliance, Full) and partition the registry.
+Assigning a suite turns those placeholders on; it does not turn others off, so
+an org can hold Core plus à-la-carte extras. The founder cannot flip those
 flags themselves; rules allow that first write only while every module is off.
+
+The document shape is `{ modules, suite?, updatedAt, updatedBy, updatedByEmail }`.
+`modules` is the grant. `suite` is which bundle the operator last assigned
+(`core` / `operations` / `fire` / `compliance` / `full` / `custom` / `''`) so
+the console can name it. A founder seed does not include `suite`.
 
 "Restore default" on the console **deletes** the record rather than writing every
 module `true`, so a legacy org keeps getting new modules automatically. On a
@@ -130,6 +139,10 @@ its own design: the mapping from module to collection is not one-to-one
 
 ## Adding a module to the system
 
-Nothing to do. Add it to `shared/modules/registry.js` as usual and mount its
-route with `moduleKey="<its key>"`. It appears on the console for every
-organization, on by default, and its route is gated automatically.
+Add it to `shared/modules/registry.js` as usual, mount its route with
+`moduleKey="<its key>"`, add it to `shared/modules/apps.js` and
+`scripts/generate-apps.mjs`, and put it in exactly one packaging suite in
+`shared/modules/suites.js`. The partition test fails if a registry key is
+missing from the suites or listed twice. It appears on the console for every
+organization; a new org still gets it as a placeholder until a suite or
+à-la-carte switch turns it on.

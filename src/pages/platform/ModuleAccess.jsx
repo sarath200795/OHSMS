@@ -17,6 +17,7 @@ import { isPermissionDenied } from '../../shared/lib/permissionDenied'
 import {
   Building2,
   Check,
+  Layers,
   RotateCcw,
   Save,
   Search,
@@ -35,6 +36,14 @@ import {
   saveEntitlement,
   subscribeAllEntitlements,
 } from '../../shared/modules/entitlements'
+import {
+  SUITES,
+  activateSuite,
+  describeGrant,
+  suiteForModule,
+  suiteIsFullyOn,
+} from '../../shared/modules/suites'
+import { placeholderModulesMap } from '../../shared/modules/placeholders'
 import { PageHeader, Card, Button, Input, Badge, SkeletonCard, EmptyState } from '../../shared/ui'
 
 const TOTAL = ALL_MODULE_KEYS.length
@@ -113,7 +122,8 @@ export default function ModuleAccess() {
     return list.map((o) => {
       const e = ents[o.id]
       const off = e ? disabledKeys(e.map).length : 0
-      return { ...o, configured: Boolean(e), off }
+      const grant = e ? describeGrant(e.map) : null
+      return { ...o, configured: Boolean(e), off, grant }
     })
   }, [orgs, ents, filter])
 
@@ -121,6 +131,9 @@ export default function ModuleAccess() {
 
   const setKey = (key, on) => setDraft({ ...working, [key]: on })
   const setAll = (on) => setDraft(Object.fromEntries(ALL_MODULE_KEYS.map((k) => [k, on])))
+  const applySuite = (key) => setDraft(activateSuite(working, key))
+  const clearToPlaceholders = () => setDraft(placeholderModulesMap())
+  const grant = describeGrant(working)
 
   const save = async () => {
     if (!selected) return
@@ -159,7 +172,7 @@ export default function ModuleAccess() {
     <>
       <PageHeader
         title="Module access"
-        subtitle="Placeholders every organization starts with, and the subscription that activates them"
+        subtitle="Suites and à-la-carte modules. Placeholders every organization starts with; a subscription turns them on."
         icon={SlidersHorizontal}
         actions={
           <Badge tone="brand">
@@ -239,9 +252,9 @@ export default function ModuleAccess() {
                             ? 'Placeholders only'
                             : o.off === 0
                               ? o.configured
-                                ? 'All modules active'
+                                ? o.grant?.label || 'All modules active'
                                 : 'All modules on (legacy default)'
-                              : `${o.off} of ${TOTAL} placeholders`}
+                              : o.grant?.label || `${o.off} of ${TOTAL} placeholders`}
                         </span>
                       </span>
                       {o.off > 0 && <Badge tone="amber">{TOTAL - o.off}</Badge>}
@@ -275,8 +288,8 @@ export default function ModuleAccess() {
                   {current?.name || selected}
                 </p>
                 <p className="text-[11.5px] text-ink-400">
-                  {ALL_MODULE_KEYS.filter((k) => working[k] !== false).length} of {TOTAL} modules
-                  active
+                  {grant.label}
+                  {` · ${ALL_MODULE_KEYS.filter((k) => working[k] !== false).length} of ${TOTAL} keys on`}
                   {ents[selected]?.raw?.updatedByEmail
                     ? ` · last set by ${ents[selected].raw.updatedByEmail}`
                     : ''}
@@ -285,7 +298,7 @@ export default function ModuleAccess() {
               <Button variant="ghost" size="sm" onClick={() => setAll(true)} disabled={busy}>
                 Activate all
               </Button>
-              <Button variant="ghost" size="sm" onClick={() => setAll(false)} disabled={busy}>
+              <Button variant="ghost" size="sm" onClick={clearToPlaceholders} disabled={busy}>
                 All placeholders
               </Button>
               {dirty && (
@@ -309,6 +322,39 @@ export default function ModuleAccess() {
                 Unsaved. Nothing changes for this organization until you save.
               </p>
             )}
+
+            <fieldset className="border-b border-ink-100 px-5 py-4">
+              <legend className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide text-ink-400">
+                <Layers size={13} aria-hidden="true" />
+                Subscription suites
+              </legend>
+              <p className="mt-1.5 text-[12px] leading-snug text-ink-500">
+                Assigning a suite turns those placeholders on. It does not turn other modules off —
+                add a second suite, or flip individual switches, for à-la-carte extras. Use All
+                placeholders first if you mean a replacement.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {SUITES.map((s) => {
+                  const exact = grant.key === s.key
+                  const included = suiteIsFullyOn(working, s.key)
+                  return (
+                    <Button
+                      key={s.key}
+                      type="button"
+                      variant={exact ? 'primary' : 'ghost'}
+                      size="sm"
+                      disabled={busy}
+                      aria-pressed={exact || included}
+                      title={s.description}
+                      onClick={() => applySuite(s.key)}
+                    >
+                      {s.label}
+                      {included && !exact ? ' · added' : ''}
+                    </Button>
+                  )
+                })}
+              </div>
+            </fieldset>
 
             <ul className="divide-y divide-ink-100">
               {MODULES.map((m) => (
@@ -354,9 +400,10 @@ export default function ModuleAccess() {
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-ink-100 p-5">
               <p className="max-w-md text-[11.5px] text-ink-400">
                 A new organization is created with a placeholder for every module — none of them
-                usable until you activate them here. That is the subscription grant. Organizations
-                registered before placeholders existed still have no record, which means the full
-                product. Restoring the default deletes the record rather than writing each switch.
+                usable until you assign a suite or activate modules here. That is the subscription
+                grant. Organizations registered before placeholders existed still have no record,
+                which means the full product. Restoring the default deletes the record rather than
+                writing each switch.
               </p>
               <Button
                 variant="ghost"
@@ -378,6 +425,7 @@ export default function ModuleAccess() {
 /** One module, its description, and the switch that governs it. */
 function ModuleRow({ module: m, on, changed, disabled, onChange }) {
   const Icon = m.icon
+  const suite = suiteForModule(m.key)
   return (
     <li className={`flex items-start gap-4 px-5 py-4 ${changed ? 'bg-amber-50/60' : ''}`}>
       <span
@@ -388,6 +436,9 @@ function ModuleRow({ module: m, on, changed, disabled, onChange }) {
       <div className="min-w-0 flex-1">
         <p className={`text-[13.5px] font-bold ${on ? 'text-ink-900' : 'text-ink-400'}`}>
           {m.title}
+          {suite && (
+            <span className="ml-2 text-[11px] font-semibold text-ink-400">{suite.label}</span>
+          )}
           {changed && (
             <span className="ml-2 text-[11px] font-semibold text-amber-700">changed</span>
           )}

@@ -20,7 +20,9 @@
 //
 // A NEW organization is not in that state: createOrganization writes the
 // document with every key false. Only an explicit `true` (the operator saving
-// Module access) turns a placeholder into a usable module.
+// Module access — a suite or an à-la-carte switch) turns a placeholder into a
+// usable module. The optional `suite` field on the same document names the
+// bundle that was assigned. It is a label, not a second grant.
 // ─────────────────────────────────────────────────────────────────────────────
 import {
   collection,
@@ -34,6 +36,7 @@ import {
 import { db } from '../firebase'
 import { MODULES, ADDONS, OPT_IN_KEYS } from './registry'
 import { activateKeys, placeholderEntitlementFields } from './placeholders'
+import { assignedSuiteKey } from './suites'
 
 export const ENTITLEMENTS_COLLECTION = 'moduleEntitlements'
 
@@ -160,10 +163,18 @@ export function subscribeAllEntitlements(cb, onError) {
  * did not exist when the operator last looked" — and that difference is what
  * the console shows an operator who is deciding what to change.
  */
-export async function saveEntitlement(orgId, map, actor) {
-  const modules = Object.fromEntries(ALL_MODULE_KEYS.map((key) => [key, map?.[key] !== false]))
+export async function saveEntitlement(orgId, map, actor, opts = {}) {
+  const modules = Object.fromEntries(
+    ALL_MODULE_KEYS.map((key) => [key, optIn.has(key) ? map?.[key] === true : map?.[key] !== false])
+  )
+  // `suite` is the operator's assigned bundle (or 'custom', or ''). It does
+  // not authorize anything — `modules` is what the rules and the launcher
+  // read. Recording it means the console can say "this org is on Core"
+  // without re-deriving a mixed à-la-carte set as a guess.
+  const suite = opts.suite !== undefined ? opts.suite : assignedSuiteKey(modules)
   await setDoc(entitlementRef(orgId), {
     modules,
+    suite,
     updatedAt: serverTimestamp(),
     updatedBy: actor?.uid || '',
     updatedByEmail: actor?.email || '',

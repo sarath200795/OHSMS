@@ -17,6 +17,7 @@ import {
 } from '@firebase/rules-unit-testing'
 import { doc, setDoc, getDoc, getDocs, updateDoc, deleteDoc, collection } from 'firebase/firestore'
 import { placeholderModulesMap } from '../src/shared/modules/placeholders.js'
+import { assignSuite } from '../src/shared/modules/suites.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 let testEnv
@@ -380,6 +381,24 @@ describe('the platform operator', () => {
       })
     )
   })
+
+  it('may record a suite alongside the modules map', async () => {
+    await assertSucceeds(
+      setDoc(doc(as('ops'), 'moduleEntitlements', ORG), {
+        ...payload('ops', { incidents: true, hira: true }),
+        suite: 'core',
+      })
+    )
+  })
+
+  it('refuses a suite that is not a string', async () => {
+    await assertFails(
+      setDoc(doc(as('ops'), 'moduleEntitlements', ORG), {
+        ...payload('ops', { incidents: true }),
+        suite: 1,
+      })
+    )
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -433,12 +452,37 @@ describe('a new organization seeds placeholders and cannot activate them', () =>
     )
   })
 
+  it('refuses the founder claiming a suite on that first write', async () => {
+    await assertFails(
+      setDoc(doc(as('fresh'), 'moduleEntitlements', NEW), {
+        ...payload('fresh', allOff()),
+        suite: 'full',
+      })
+    )
+  })
+
   it('refuses the founder omitting a key, which would read as enabled', async () => {
     const partial = { ...allOff() }
     delete partial.loto
     await assertFails(
       setDoc(doc(as('fresh'), 'moduleEntitlements', NEW), payload('fresh', partial))
     )
+  })
+
+  it('lets the platform operator activate a suite later without recreating the org', async () => {
+    await assertSucceeds(
+      setDoc(doc(as('fresh'), 'moduleEntitlements', NEW), payload('fresh', allOff()))
+    )
+    await assertSucceeds(
+      setDoc(doc(as('ops'), 'moduleEntitlements', NEW), {
+        ...payload('ops', assignSuite('core')),
+        suite: 'core',
+      })
+    )
+    const incident = doc(as('fresh'), 'organizations', NEW, 'incidents', 'row1')
+    await assertSucceeds(setDoc(incident, { title: 'x' }))
+    const permit = doc(as('fresh'), 'organizations', NEW, 'permits', 'row1')
+    await assertFails(setDoc(permit, { title: 'x' }))
   })
 
   it('lets the platform operator activate a placeholder later without recreating the org', async () => {

@@ -36,6 +36,7 @@ import { subscribeAssignmentsRead } from '../../modules/training/lib/firestore'
 import { INCIDENT_TYPE_BY_KEY } from '../../modules/incidents/lib/constants'
 import { MODULES } from '../../shared/modules/registry'
 import { isModuleEnabled } from '../../shared/modules/entitlements'
+import { PACKAGING_SUITES, describeGrant } from '../../shared/modules/suites'
 import AppLink from '../../app/AppLink'
 import { Raised, Inset, SectionLabel } from './ui'
 import { myActions } from './myWork'
@@ -120,7 +121,17 @@ const ADMIN_TOOLS = [
  * Everything is transform and opacity, so it stays off the main thread, and
  * `motion-reduce` drops the whole effect rather than softening it.
  */
-function Tile({ to, locked = false, icon: Icon, gradient, label, title, delay = 0, logoKey }) {
+function Tile({
+  to,
+  locked = false,
+  icon: Icon,
+  gradient,
+  label,
+  title,
+  delay = 0,
+  logoKey,
+  suiteLabel,
+}) {
   const has3D = has3DLogo(logoKey)
   const className = `group relative flex animate-fade-in-up items-center gap-4 rounded-[26px] bg-clay-surface p-5 shadow-clay
                    transition-[transform,box-shadow] duration-300 ease-emil [transform-style:preserve-3d]
@@ -172,7 +183,11 @@ function Tile({ to, locked = false, icon: Icon, gradient, label, title, delay = 
           {label}
         </span>
         <span className="mt-0.5 block text-[12px] leading-snug text-ink-400">
-          {locked ? 'Not in your subscription — ask an administrator to request it.' : title}
+          {locked
+            ? suiteLabel
+              ? `Included in ${suiteLabel} — not in your subscription. Ask an administrator to request it.`
+              : 'Not in your subscription — ask an administrator to request it.'
+            : title}
         </span>
       </span>
     </>
@@ -242,6 +257,7 @@ const greeting = (d = new Date()) => {
 
 export default function PortalHome() {
   const { orgId, profile, isAdmin, moduleMap, modulesReady, moduleEnabled } = useAuth()
+  const grant = describeGrant(moduleMap)
   const navigate = useNavigate()
   const { sites, status: sitesStatus } = useAccessibleSitesRead()
   const { keys: widgetKeys, save: saveWidgets } = useWidgetPrefs()
@@ -650,34 +666,62 @@ export default function PortalHome() {
         </Raised>
       </div>
 
-      <SectionLabel className="mb-3">All modules</SectionLabel>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {/* Analytics sits in the grid rather than above it — it is one more
-            destination, and a full-width banner claimed an importance the
-            others have equal claim to. */}
-        <Tile
-          to="/analytics"
-          icon={BarChart3}
-          gradient="from-sky-500 to-blue-600"
-          label="Analytics"
-          title="Trends and breakdowns across your sites"
-          logoKey="analytics"
-        />
-        {modulesReady &&
-          MODULES.map((m, i) => (
-            <Tile
-              key={m.key}
-              to={m.path}
-              locked={!moduleEnabled(m.key)}
-              icon={m.icon}
-              gradient={GRADIENT[m.tone] || GRADIENT.brand}
-              label={m.label}
-              title={m.title}
-              logoKey={m.key}
-              delay={Math.min(i, 8) * 40}
-            />
-          ))}
-      </div>
+      <SectionLabel className="mb-3">
+        {modulesReady && grant.key && grant.key !== 'custom'
+          ? `Modules · ${grant.label}`
+          : 'All modules'}
+      </SectionLabel>
+      {modulesReady && grant.key === '' && (
+        <p className="mb-3 text-[13px] text-ink-500">
+          No modules are in your subscription yet. Ask an administrator to request a suite.
+        </p>
+      )}
+      {PACKAGING_SUITES.map((suite) => {
+        const noneOn = suite.keys.every((k) => !moduleEnabled(k))
+        return (
+          <div key={suite.key} className="mb-6">
+            <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+              <SectionLabel className="mb-0">{suite.label}</SectionLabel>
+              {modulesReady && noneOn && (
+                <p className="text-[12px] text-ink-400">
+                  Not in your subscription — ask an administrator to request this suite.
+                </p>
+              )}
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {suite.key === 'core' && (
+                <Tile
+                  to="/analytics"
+                  icon={BarChart3}
+                  gradient="from-sky-500 to-blue-600"
+                  label="Analytics"
+                  title="Trends and breakdowns across your sites"
+                  logoKey="analytics"
+                />
+              )}
+              {modulesReady &&
+                suite.keys.map((key, i) => {
+                  const m = MODULES.find((mod) => mod.key === key)
+                  if (!m) return null
+                  return (
+                    <Tile
+                      key={m.key}
+                      to={m.path}
+                      locked={!moduleEnabled(m.key)}
+                      icon={m.icon}
+                      gradient={GRADIENT[m.tone] || GRADIENT.brand}
+                      label={m.label}
+                      title={m.title}
+                      logoKey={m.key}
+                      suiteLabel={suite.label}
+                      delay={Math.min(i, 8) * 40}
+                    />
+                  )
+                })}
+            </div>
+          </div>
+        )
+      })}
 
       {isAdmin && (
         <>

@@ -32,4 +32,8 @@ describe('organizationCreatePayload', () => {
     expect(payload.entitlement.updatedBy).toBe('u1')
     expect(payload.entitlement.updatedByEmail).toBe('ada@acme.test')
   })
+
+  it('does not record a suite — suites are an operator assignment, not a founder claim', () => {
+    expect(payload.entitlement).not.toHaveProperty('suite')
+  })
 })
