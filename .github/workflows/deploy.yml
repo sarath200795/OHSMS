@@ -20,11 +20,53 @@ concurrency:
   group: deploy
   cancel-in-progress: false   # never cancel a half-finished release
 
+# This job deploys. It does not push to the repo, comment, or open PRs.
+# contents:read is all checkout needs; the Firebase credential is a secret,
+# not the GITHUB_TOKEN. Without this block the token inherits the repository
+# default (often write) and a compromised Action inherits that too.
+permissions:
+  contents: read
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    # ── The approval between a tag and production ──────────────────────────────
+    #
+    # An ISO 27001 audit raised this as its first finding (A.8.32 change
+    # management, A.5.3 segregation of duties). This job deploys the Cloud
+    # Functions, the Firestore and Storage rulesets, the composite indexes and
+    # hosting — every enforcement surface the system has — and it was reachable
+    # by pushing any tag matching v*, from any commit, with nothing in between.
+    #
+    # The ruleset on `main` did not cover it and could not: its condition is
+    # ~DEFAULT_BRANCH, and A TAG IS NOT A BRANCH. A tag can point at any commit
+    # in the repository, including one that never entered main and never ran CI.
+    # The gates re-run below are a check on a BROKEN change; they were never a
+    # check on an UNREVIEWED one.
+    #
+    # `environment:` is what makes the deployment wait. The `production`
+    # environment carries a required reviewer and a deployment branch policy
+    # limited to `v*` tags, so a release now stops and asks before it ships.
+    #
+    # What this is NOT, stated plainly so nobody mistakes it for more than it
+    # is: with a single collaborator the reviewer is the person who cut the tag,
+    # and GitHub permits self-approval (prevent_self_review is deliberately
+    # false, because turning it on with one collaborator would make releases
+    # impossible rather than reviewed). So this converts an automatic deploy
+    # into a DELIBERATE one — it stops an accidental or mistimed tag, and it
+    # puts a timestamped approval in the deployment record. It is not a second
+    # pair of eyes. That gap needs a second person with write access and is
+    # recorded as an accepted risk in docs/SECURITY.md.
+    environment:
+      name: production
+      url: https://suite.weehs.org
+
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Check credentials are configured
         id: creds
@@ -37,6 +79,21 @@ jobs:
           else
             echo "configured=true" >> "$GITHUB_OUTPUT"
           fi
+
+      # Write the key ONCE, from an env var, and never interpolate it into the
+      # generated shell script. `echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}'`
+      # expands the JSON into the runner's script file (ISO 27001 LOW-29); a
+      # single quote inside the JSON would also break the command and could
+      # echo fragments into the log. The creds-check step above already binds
+      # the secret through `env:` — this is the same pattern, used for the
+      # file the CLI actually reads.
+      - name: Write the service-account key
+        if: steps.creds.outputs.configured == 'true'
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/sa.json"
+          chmod 600 "$RUNNER_TEMP/sa.json"
 
       - uses: actions/setup-node@v7
         if: steps.creds.outputs.configured == 'true'
@@ -79,6 +136,52 @@ jobs:
       - name: Rules tests
         if: steps.creds.outputs.configured == 'true'
         run: npm run test:rules
+
+      # The browser gate, and the one this job was missing.
+      #
+      # A tag deployed straight past Playwright, so the only tests that open the
+      # PUBLIC surfaces — the permit a stranger scans at a barrier, the
+      # equipment QR — never ran before a release. That is not hypothetical: a
+      # seeded fixture contradicted itself for four days, the two permit tests
+      # failed on every push to main, and three tagged releases shipped green
+      # over the top of it because this job could not see them.
+      #
+      # The trade-off is real and deliberate. A browser test can now block a
+      # release, and browser tests fail for reasons that have nothing to do with
+      # the change — a slow runner, a cold dev server. Retries are already
+      # configured for CI (playwright.config.js sets retries: 1 when CI is set),
+      # which absorbs the genuinely transient ones. What it does not absorb is a
+      # test that is actually red, and stopping there is the point: these cover
+      # a page somebody reads to decide whether it is safe to start work.
+      #
+      # Placed BEFORE the build and every deploy step, so a failure costs a
+      # cancelled release rather than a half-deployed one.
+      - name: Install Chromium
+        if: steps.creds.outputs.configured == 'true'
+        run: npx playwright install --with-deps chromium
+
+      - name: Smoke tests
+        if: steps.creds.outputs.configured == 'true'
+        env:
+          # Emulator config, scoped to THIS step. It must not reach the build
+          # below, which takes its VITE_* values from repository variables and
+          # would otherwise ship a production bundle pointed at an emulator that
+          # only ever existed on the runner.
+          VITE_USE_EMULATORS: 'true'
+          VITE_FIREBASE_PROJECT_ID: ohsms-demo
+          # Not a credential — the Auth emulator accepts any key and validates
+          # none. Present because the Firebase app does not initialise without
+          # one, and every flow would then fail at whatever it touched first.
+          VITE_FIREBASE_API_KEY: demo-api-key
+        # Named specs, same as ci.yml's smoke job. The default glob would also
+        # pick up e2e/capped-reads.spec.js, which skips unless VITE_TEST_READ_CAP
+        # is set — "7 skipped" on a release gate reads like a broken suite.
+        # Capped-reads is a separate CI step with its own Vite process.
+        run: >
+          npx firebase-tools emulators:exec --only auth,firestore
+          --project ohsms-demo
+          "node scripts/seed.mjs && npx playwright test
+          e2e/smoke.spec.js e2e/accessibility.spec.js e2e/console-sweep.spec.js"
 
       - name: Build
         if: steps.creds.outputs.configured == 'true'
@@ -129,7 +232,6 @@ jobs:
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json
         run: |
-          echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > "$GOOGLE_APPLICATION_CREDENTIALS"
           npx firebase-tools deploy --only functions \
             --project "${{ vars.VITE_FIREBASE_PROJECT_ID }}" --non-interactive --force
 
@@ -151,7 +253,6 @@ jobs:
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json
         run: |
-          echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > "$GOOGLE_APPLICATION_CREDENTIALS"
           npx firebase-tools deploy --only firestore:rules,firestore:indexes,storage \
             --project "${{ vars.VITE_FIREBASE_PROJECT_ID }}" --non-interactive
 
@@ -162,3 +263,7 @@ jobs:
         run: |
           npx firebase-tools deploy --only hosting \
             --project "${{ vars.VITE_FIREBASE_PROJECT_ID }}" --non-interactive
+
+      - name: Remove the service-account key
+        if: always() && steps.creds.outputs.configured == 'true'
+        run: rm -f "$RUNNER_TEMP/sa.json"

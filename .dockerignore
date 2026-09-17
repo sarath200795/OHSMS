@@ -1,0 +1,17 @@
+# Build context for Dockerfile.emulators (JDK + firebase-tools only).
+# The app itself is bind-mounted at runtime; it does not need to be in the image.
+node_modules
+dist
+.git
+.github
+coverage
+playwright-report
+test-results
+emulator-data
+.firebase
+.vendor
+Vedio
+*.log
+.env
+.env.*
+!.env.example

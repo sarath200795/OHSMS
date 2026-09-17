@@ -100,11 +100,59 @@ different tenants may sit under different regimes. Specifically:
 - `auditLogs` is append-only in the rules by design. Erasing from it is not
   currently possible even if it were decided to be lawful.
 
+### The specific decision now waiting on you: how long an injury report is kept
+
+An ISO 27001 audit (A.8.10) found `/injuries` had no deletion path of any kind —
+`deletedAt` was written as null and read by the list filter, and nothing ever set
+it, so the only home of a named colleague's clinical detail and of the GP letters
+and fit notes in its `records` subcollection was the one collection in this app
+whose contents could not be removed by any route the product offered. Comments in
+four other files referred to a `purgeIncidentMedicalRecords` that has never
+existed.
+
+**That half is now built**: `deleteInjury` / `restoreInjury` / `purgeInjury`
+(`src/modules/incidents/lib/injuries.js`), the Recycle Bin shows injury reports,
+and `functions/lib/retention.js` purges them thirty days after deletion together
+with the `records` subcollection and the Storage objects behind it. Writing
+`deletedAt` on an injury is manager-only in `firestore.rules`
+(`keepsInjuryDeletion`), because it now schedules an irreversible deletion rather
+than hiding a row.
+
+**What is deliberately NOT built is a maximum age.** An injury nobody deletes is
+kept indefinitely, exactly as before, and that is this section's general finding
+narrowed to the sharpest case. Two decisions are needed, and both are legal
+rather than engineering:
+
+1. **The period.** How long after the injury date must an injury report be kept,
+   and may it then be destroyed? Occupational injury records carry a statutory
+   minimum in most jurisdictions, and this app is multi-tenant, so tenants may
+   sit under different regimes.
+2. **Whether it is per-tenant.** If the answer differs by jurisdiction, the
+   period belongs on the organization document rather than in the code.
+
+When answered, the change is small and the place is already prepared:
+`planPurge()` in `functions/lib/retention.js` takes `days` per call, so enforcing
+a period is a `days` on the `injuries` entry in `PURGEABLE` plus one line in
+`purgeOrgCollection`, which currently passes the shared 30-day constant.
+`retention.test.js` asserts the absence of that field today, so adding one is a
+deliberate act that turns a test red rather than a quiet default.
+
+**Related decision, also open:** purging an *incident* does not touch the injury
+reports derived from it. That is intentional — an injury is a record in its own
+right, and destroying occupational health records nobody asked to delete is the
+direction that can hurt someone — and it is pinned by a test. It does mean an
+injury can outlive its parent incident and hold a `incidentRefNo` that no longer
+resolves. If the retention answer above is "injuries die with their incident",
+that test is where to start.
+
 ## 4. What is NOT built
 
 - **Execution of erasure.** Classification only. See the warning above.
 - **Retention periods.** Only the Recycle Bin's 30-day purge exists
-  (`functions/lib/retention.js`). Live records have no expiry.
+  (`functions/lib/retention.js`), and it now covers `injuries` and their
+  clinical documents as well as incidents and illnesses. Live records still have
+  no expiry — see the injury-retention decision in §3, which is the sharpest
+  case of exactly this gap.
 - **The mentions scan.** The places are named; nothing searches them.
 - **Self-service.** A subject cannot make the request themselves; a manager runs
   it for them. Reasonable while volumes are low, and it should be revisited if

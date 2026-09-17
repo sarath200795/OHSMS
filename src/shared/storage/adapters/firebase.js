@@ -32,13 +32,32 @@ function loadStorage() {
 export default {
   name: 'firebase',
 
+  // Upload, and DO NOT mint a download URL.
+  //
+  // This used to end with `getDownloadURL(ref)` and return that string, which
+  // every caller then persisted on the Firestore pointer. The comment on
+  // resolve() below has always described exactly what that string is — a
+  // permanent bearer credential that no rule is ever consulted about — and the
+  // read path was migrated to `getBlob` on the strength of it. The write path
+  // was not, so the app went on manufacturing one of these for every upload and
+  // filing it in a document, while the reader carefully avoided using it.
+  //
+  // A URL that is never read is still a credential once it is written down: it
+  // sits in a document readable by every member of the tenant and by the
+  // external auditor, it survives their leaving, and it outlives any rule
+  // change made afterwards. Not creating it is the only version of this that
+  // does not depend on nobody looking.
+  //
+  // Returns the path instead. `putFile` no longer requires a url in the result,
+  // and `fileUrl` already prefers an authenticated fetch by path — the stored
+  // url is its fallback for records written before paths were recorded, which
+  // is why that field still exists and is now written empty.
   async put(path, blob) {
     const loaded = await loadStorage()
     if (!loaded) return null
     const ref = loaded.mod.ref(loaded.storage, path)
     await loaded.mod.uploadBytes(ref, blob, { contentType: blob.type || undefined })
-    const url = await loaded.mod.getDownloadURL(ref)
-    return { url }
+    return { path }
   },
 
   // Fetch the bytes THROUGH storage.rules, as this signed-in user.

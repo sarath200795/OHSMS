@@ -4,6 +4,8 @@
       "https://suite.weehs.org",
       "https://weehs-4eb28.web.app",
       "https://weehs-4eb28.firebaseapp.com",
+      "https://weehs-staging.web.app",
+      "https://weehs-staging.firebaseapp.com",
       "http://localhost:5173"
     ],
     "method": ["GET", "HEAD"],

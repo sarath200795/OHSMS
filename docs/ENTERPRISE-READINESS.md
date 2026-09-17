@@ -29,12 +29,12 @@ disagree, `SECURITY.md` is right.
 | Backups / disaster recovery | PITR (7d) + weekly schedule (30d), delete protection, **restore drilled** 2026-08-16 | **Ready** |
 | Observability | Sentry wired with a DSN. No metrics, no uptime check, no on-call path | **Partial** |
 | Data lifecycle — export | Subject access implemented (`exportSubjectData`) | **Ready** |
-| Data lifecycle — erasure & retention | Classified, not executed. No retention periods | **Gap** |
-| Testing | 1754 unit, 448 rules, 357 functions, server suite, e2e smoke | **Ready** |
+| Data lifecycle — erasure & retention | Recycle Bin purge covers incidents, illnesses **and injuries with their clinical documents**. Erasure classified, not executed; no retention period for live records (DATA-RIGHTS.md §3) | **Partial** |
+| Testing | 2466 unit, 584 rules, 448 functions, e2e smoke | **Ready** |
 | CI/CD | Lint, tests (all four suites), build, audit gate; ordered deploy | **Ready** |
-| Environments | Staging pipeline built; production ships on a version tag | **Ready in code** |
+| Environments | Staging CI still cannot deploy functions (`iam.serviceAccounts.actAs` on the runtime SA — `DEPLOYMENT.md` §5). Production ships on `v*` tags through the `production` environment gate | **Partial** |
 | Secrets handling | Nothing committed; client keys are appropriately public | **Ready** |
-| Scalability | Uncapped collection listeners (`SECURITY.md` S-04) | **Gap** |
+| Scalability | Read caps on every collection listener, with an incomplete-data notice on every screen that totals one (`SECURITY.md` S-04, closed) | **Ready** |
 | Compliance artifacts | ISO 27001 self-audit written. No DPA, no subprocessor list, no pen test, no certification | **Gap** |
 
 ---
@@ -192,3 +192,25 @@ with no signal is the plausible case — treat it as a project, not a patch. The
 data path is the easy half; the hard half is conflict resolution on a permit or
 an isolation procedure that two people edited while apart, and that is a safety
 decision before it is a technical one.
+
+### Malware scanning — magic bytes are not a scanner (S-25)
+
+`src/shared/storage/sniffType.js` refuses an executable header and a declared
+type the bytes contradict. That is honesty about type, not detection of malice.
+A genuine PDF carrying a payload passes, and a test asserts that so the check
+cannot be mistaken for more than it is. `docs/SECURITY.md` S-25 is the closed
+write-up.
+
+A real scanner is a different decision, and it is not a small step from here:
+
+- It needs infrastructure this project does not have, or a vendor. Sending GP
+  letters and fit notes to that vendor makes them a **subprocessor of medical
+  data** — a DPA and a register entry before it is a line of code.
+- It cannot run where it matters most. Sealed collections are AES-GCM
+  ciphertext at rest; the comment in `src/shared/storage/index.js` already
+  says the octet-stream declaration exists so "a browser, a thumbnailer, a
+  virus scanner" does not try to interpret ciphertext.
+
+Until an owner chooses an in-project scanner over the unsealed prefixes, or
+explicitly excludes sealed medical documents, this stays accepted. Do not add
+a pretend scanner in front of ciphertext.

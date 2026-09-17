@@ -109,10 +109,42 @@ describe('what has to go with each record', () => {
   })
 
   // A pointer must not outlive its file, nor a public mirror its asset.
-  it('cascades subcollections for the two that carry attachments', () => {
+  it('cascades subcollections for the three that carry attachments', () => {
     const by = Object.fromEntries(PURGEABLE.map((p) => [p.collection, p]))
     expect(by.incidents.subcollections).toEqual(['photos'])
     expect(by.illnesses.subcollections).toEqual(['files'])
+    expect(by.injuries.subcollections).toEqual(['records'])
+  })
+
+  // The gap this list had. /injuries is the only home of a named colleague's
+  // clinical detail and of the GP letters and fit notes in `records`, and it was
+  // absent here — so a soft-deleted injury was kept for as long as the project
+  // existed while the screen counted down to a purge that could not reach it.
+  it('purges injury reports, and the clinical documents hanging off them', () => {
+    const spec = PURGEABLE.find((p) => p.collection === 'injuries')
+    expect(spec).toBeDefined()
+    expect(spec.subcollections).toContain('records')
+  })
+
+  // Deliberate, and load-bearing: purging an incident must not destroy the
+  // occupational health record derived from it. An injury is its own record
+  // with its own audience and its own bin entry; it leaves when somebody
+  // deletes THAT. If a future change adds a cascade, it has to come here and
+  // say so, rather than arriving as a surprise in a nightly job that deletes
+  // health data nobody asked to delete.
+  it('does not cascade from incidents into injuries', () => {
+    const incidents = PURGEABLE.find((p) => p.collection === 'incidents')
+    expect(incidents.subcollections).not.toContain('injuries')
+    expect(incidents.subcollections).toEqual(['photos'])
+  })
+
+  // No maximum age. An injury nobody deletes is kept, and that is the open
+  // question in docs/DATA-RIGHTS.md §3 rather than a number anyone invented
+  // here. This asserts the absence so that adding one is a deliberate act.
+  it('sets no age-based expiry on injuries, pending the retention decision', () => {
+    const spec = PURGEABLE.find((p) => p.collection === 'injuries')
+    expect(spec.days).toBeUndefined()
+    expect(spec.maxAgeDays).toBeUndefined()
   })
 
   it('cascades the public QR mirror for every asset that has one', () => {

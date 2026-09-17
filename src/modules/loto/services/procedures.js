@@ -12,7 +12,7 @@ import {
   limit,
 } from 'firebase/firestore'
 import { db } from '../../../shared/firebase'
-import { putFile, removeFile } from '../../../shared/storage'
+import { putFile, removeFile, fileUrl } from '../../../shared/storage'
 import { PROCEDURE_STATUS, computeLockSummary, mergeRevisedPoints } from '../constants/procedures'
 import { PUBLIC_COL, publicProcedure } from '../utils/publicProcedure'
 import { COLLECTION_READ_CAP } from '../../../shared/org/orgData'
@@ -50,7 +50,7 @@ async function resolvePhotoMap(orgId, incoming = {}, prevRaw = {}) {
   const out = {}
   for (const [key, v] of Object.entries(incoming)) {
     if (!v) continue
-    if (typeof v === 'object' && v.url) { out[key] = { url: v.url, path: v.path || '' }; continue }
+    if (typeof v === 'object' && (v.url || v.path)) { out[key] = { url: v.url || '', path: v.path || '' }; continue }
     const s = String(v)
     if (s.startsWith('data:')) {
       const up = await putFile(orgId, 'loto-photos', s, key + '.jpg')
@@ -198,7 +198,29 @@ export async function deleteProcedure(procedure) {
 export async function getProcedurePhotos(id) {
   const raw = await rawPhotoMap(id)
   const out = {}
-  for (const [k, v] of Object.entries(raw)) out[k] = typeof v === 'object' ? v.url : v
+  // Resolve at the seam, so neither the view nor the PDF generator changes.
+  //
+  // This used to be `typeof v === 'object' ? v.url : v`, and `v.url` was a
+  // Firebase download URL — a permanent bearer credential, filed in a document,
+  // working for anyone holding it forever (audit finding M-5). Uploads no longer
+  // mint one, so that expression now yields '' for every photo stored after the
+  // change and every isolation point renders blank.
+  //
+  // `fileUrl` prefers an authenticated fetch by `path` and falls back to the
+  // stored url, so procedures photographed before the change are unaffected.
+  // Both consumers still receive a plain string.
+  //
+  // The blob: URLs this creates are not revoked. `resolveFiles.js` explains why
+  // that matters for a gallery; here it is a handful of isolation points on a
+  // page somebody reads once before working on a machine, so the leak is bounded
+  // and the alternative — a revoke contract through the PDF generator — is not
+  // worth what it would cost the one output people rely on for compliance.
+  await Promise.all(Object.entries(raw).map(async ([k, v]) => {
+    if (!v) return
+    if (typeof v !== 'object') { out[k] = v; return }
+    const { url } = await fileUrl(v)
+    out[k] = url || ''
+  }))
   return out
 }
 

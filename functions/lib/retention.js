@@ -37,6 +37,55 @@ export const PURGEABLE = [
   // the file the pointer.
   { collection: 'incidents', subcollections: ['photos'] },
   { collection: 'illnesses', subcollections: ['files'] },
+  // Injury reports, and the clinical documents hanging off them.
+  //
+  // This collection was absent from this list, and the absence was not one
+  // missing line — it was the whole lifecycle. An injury had NO soft-delete
+  // path at all: `deletedAt` was written as null by injuryPayload and read back
+  // by the list filter, and nothing anywhere ever set it. So the field looked
+  // like a lifecycle and implemented none, and /injuries — the only home of a
+  // named colleague's body parts, injury type, medication and days off, plus
+  // the GP letters and fit notes in `records` — was the one collection in this
+  // app whose contents could not be deleted by any route the product offered.
+  //
+  // Comments in four other files refer to a `purgeIncidentMedicalRecords` that
+  // would find these by querying on the join keys. No such function has ever
+  // existed. That is worth stating here rather than quietly adding the entry,
+  // because the comments are what made the gap invisible: the codebase
+  // described a deletion path it did not have, and reading it left you
+  // believing this was handled.
+  //
+  // ── Why purging an INCIDENT does not reach its injuries ────────────────────
+  //
+  // An injury report is deliberately a record in its own right, not an
+  // attachment: its own register, its own audience (isManagerOf, so the outside
+  // auditor is refused), its own verification workflow, its own key class. The
+  // /injuries page lists the whole collection, so one whose incident has been
+  // purged is still found and still readable — what breaks is the link back to
+  // a parent that no longer exists, which is a dangling reference, not hidden
+  // data.
+  //
+  // So a cascade was considered and NOT taken. Purging an incident destroys
+  // what the manager asked to destroy; it must not also destroy occupational
+  // health records nobody asked to delete and that statute may require be kept.
+  // That is the same direction isExpired takes below, and for the same reason:
+  // keeping a record too long is a finding, destroying a live one is the
+  // record. An injury leaves this collection when somebody deletes THAT, and
+  // then only after the same 30 days everything else gets.
+  //
+  // ── What is still open ────────────────────────────────────────────────────
+  //
+  // How long an injury nobody deletes should be kept. This entry gives the
+  // collection a lifecycle; it does not give it a maximum age, and a record
+  // sitting here undeleted is kept indefinitely, exactly as before. That period
+  // is a legal question, not an engineering one — occupational injury records
+  // carry a statutory minimum in most jurisdictions and an indefinite hold is
+  // not made lawful by a statutory floor. docs/DATA-RIGHTS.md §3 is where the
+  // decision belongs, and planPurge already takes `days` per call, so enforcing
+  // one is a `days` on this entry and a line in purgeOrgCollection — not a
+  // redesign. It is deliberately absent until someone with the authority to
+  // answer has answered.
+  { collection: 'injuries', subcollections: ['records'] },
   // The QR mirror is public and keyed by token, so it lives outside the org
   // path — deleting the asset without it leaves a world-readable record of
   // equipment that no longer exists.
