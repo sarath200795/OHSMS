@@ -4,8 +4,10 @@ A unified, multi-tenant OHS platform that brings seventeen health-&-safety
 domains into one app with a single sign-on, one dashboard and one audit trail.
 
 Built with **Vite + React + Tailwind CSS + Firebase (Auth + Firestore + Storage
-+ Cloud Functions)**. UI follows a **claymorphism** design language with
-**Emil Kowalski**-style motion and **skeleton loaders** throughout.
+
+- Cloud Functions)**. UI is a **contemporary ops dashboard** (cool canvas,
+  white surfaces, hairline borders, coral accent) with **Emil Kowalski**-style
+  motion and **skeleton loaders** throughout.
 
 ## Modules
 
@@ -13,25 +15,25 @@ Built with **Vite + React + Tailwind CSS + Firebase (Auth + Firestore + Storage
 sidebar, the dashboard grid and route mounting in `App.jsx`. If this table and
 that file disagree, the file is right.
 
-| Module | Key | Directory | What it does |
-|--------|-----|-----------|--------------|
-| Incidents & Investigation | `incidents` | `incidents/` | Report incidents & near-misses, run 5-Why / Fishbone investigations, track CAPA |
-| Hazard Identification & Risk Assessment | `hira` | `hira/` | Hazard register with a likelihood × severity risk matrix and controls |
-| Inspections | `inspections` | `inspections/` | Scheduled inspections and checklist walkthroughs with findings |
-| Internal Audit | `audit` | `audit/` | ISO 45001 audit plans, findings and corrective actions |
-| Permit to Work | `ptw` | `ptw/` | Raise, approve and close work permits with QR verification |
-| Lockout / Tagout | `loto` | `loto/` | Hazardous energy control procedures and lock/tag records |
-| Emergency Equipment Inventory | `equipment` | `fire/` | Extinguishers, AEDs, fire-alarm systems and signages with full inspection lifecycle |
-| Mock Drills | `drills` | `fire/` | Fire drills and emergency scenarios with scored checklist reports |
-| HSE Committee Meetings | `committee` | `committee/` | Schedule meetings, capture minutes, track actions |
-| Training & Certifications | `training` | `training/` | Courses, certifications and expiry alerts |
-| Document Library & SDS | `documents` | `documents/` | Versioned policies, SOPs, forms and Safety Data Sheets |
-| Emergency Response (FERP) | `emergency` | `emergency/` | FERP contacts, evacuation plans, scenario rescue plans |
-| Objectives & Targets | `objectives` | `objectives/` | OH&S KPI scorecard against target at org, region and site level |
-| Site Weather Risk | `weather` | `weather/` | Conditions at every site read as occupational risk — heat stress, wind, lightning, UV |
-| CCTV Inventory & Health | `cctv` | `cctv/` | Cameras, DVRs and network devices as one chain, so a dead switch reads as one fault |
-| Customer Escalations & Legal | `stakeholder` | `stakeholder/` | Escalations and the legal matters they turn into |
-| Central Action Tracker | `actions` | `actions/` | Every CAPA and action item across all modules, updated in place |
+| Module                                  | Key           | Directory      | What it does                                                                          |
+| --------------------------------------- | ------------- | -------------- | ------------------------------------------------------------------------------------- |
+| Incidents & Investigation               | `incidents`   | `incidents/`   | Report incidents & near-misses, run 5-Why / Fishbone investigations, track CAPA       |
+| Hazard Identification & Risk Assessment | `hira`        | `hira/`        | Hazard register with a likelihood × severity risk matrix and controls                 |
+| Inspections                             | `inspections` | `inspections/` | Scheduled inspections and checklist walkthroughs with findings                        |
+| Internal Audit                          | `audit`       | `audit/`       | ISO 45001 audit plans, findings and corrective actions                                |
+| Permit to Work                          | `ptw`         | `ptw/`         | Raise, approve and close work permits with QR verification                            |
+| Lockout / Tagout                        | `loto`        | `loto/`        | Hazardous energy control procedures and lock/tag records                              |
+| Emergency Equipment Inventory           | `equipment`   | `fire/`        | Extinguishers, AEDs, fire-alarm systems and signages with full inspection lifecycle   |
+| Mock Drills                             | `drills`      | `fire/`        | Fire drills and emergency scenarios with scored checklist reports                     |
+| HSE Committee Meetings                  | `committee`   | `committee/`   | Schedule meetings, capture minutes, track actions                                     |
+| Training & Certifications               | `training`    | `training/`    | Courses, certifications and expiry alerts                                             |
+| Document Library & SDS                  | `documents`   | `documents/`   | Versioned policies, SOPs, forms and Safety Data Sheets                                |
+| Emergency Response (FERP)               | `emergency`   | `emergency/`   | FERP contacts, evacuation plans, scenario rescue plans                                |
+| Objectives & Targets                    | `objectives`  | `objectives/`  | OH&S KPI scorecard against target at org, region and site level                       |
+| Site Weather Risk                       | `weather`     | `weather/`     | Conditions at every site read as occupational risk — heat stress, wind, lightning, UV |
+| CCTV Inventory & Health                 | `cctv`        | `cctv/`        | Cameras, DVRs and network devices as one chain, so a dead switch reads as one fault   |
+| Customer Escalations & Legal            | `stakeholder` | `stakeholder/` | Escalations and the legal matters they turn into                                      |
+| Central Action Tracker                  | `actions`     | `actions/`     | Every CAPA and action item across all modules, updated in place                       |
 
 Two registry keys — `equipment` and `drills` — are both served by
 `src/modules/fire/`. That is the one place the registry and the filesystem do
@@ -80,7 +82,7 @@ Other cross-cutting pieces:
 
 ```
 src/
-  shared/       firebase · auth · org · audit · crypto · data · storage · ui (clay kit)
+  shared/       firebase · auth · org · audit · crypto · data · storage · ui kit
                 layout · module-kit · docId · modules registry
   pages/        auth/ · admin/ · analytics/ · platform/ · portal/ · Dashboard
   modules/      incidents hira inspections audit ptw loto fire committee training
@@ -129,7 +131,7 @@ Runs the Vite app and the Firebase Emulator Suite in containers.
 ### First run
 
 1. **Register organization** — you become the first admin (approved automatically).
-2. Teammates **Sign up** and pick your org, then appear as *pending* on
+2. Teammates **Sign up** and pick your org, then appear as _pending_ on
    **Users**, where an admin approves them and assigns a role.
 3. Create records in any module. Everything writes to the unified **Audit Log**
    and rolls up onto the **Dashboard**.
@@ -143,18 +145,18 @@ switch-on. Read §0 before deploying anything.
 
 ## Scripts
 
-| Script | Purpose |
-|--------|---------|
-| `npm run dev` | Vite dev server |
-| `npm run dev:full` | Emulators + Vite together |
-| `npm run emulators` | Firebase Emulator Suite (needs a JDK) |
-| `npm run build` | Production build |
-| `npm run seed` | Seed a demo organization into the emulators |
-| `npm test` | Unit tests (Vitest, `src/**` only) |
-| `npm run test:rules` | Firestore + Storage rules suite (needs a JDK) |
-| `npm run platform:grant` | Grant a user platform-operator access |
-| `npm run deploy:staging` | Deploy to the staging project |
-| `npm run lint` / `npm run format` | Lint / format |
+| Script                            | Purpose                                       |
+| --------------------------------- | --------------------------------------------- |
+| `npm run dev`                     | Vite dev server                               |
+| `npm run dev:full`                | Emulators + Vite together                     |
+| `npm run emulators`               | Firebase Emulator Suite (needs a JDK)         |
+| `npm run build`                   | Production build                              |
+| `npm run seed`                    | Seed a demo organization into the emulators   |
+| `npm test`                        | Unit tests (Vitest, `src/**` only)            |
+| `npm run test:rules`              | Firestore + Storage rules suite (needs a JDK) |
+| `npm run platform:grant`          | Grant a user platform-operator access         |
+| `npm run deploy:staging`          | Deploy to the staging project                 |
+| `npm run lint` / `npm run format` | Lint / format                                 |
 
 `functions/` has its own `npm test`; the root `npm test` does not reach it,
 which is why CI runs both.

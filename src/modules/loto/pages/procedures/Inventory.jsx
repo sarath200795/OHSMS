@@ -23,7 +23,7 @@ import { deleteProcedure, getProcedurePhotos } from '../../services/procedures'
 const loadPdf = () => import('../../utils/pdf')
 
 const inputCls =
-  'rounded-xl bg-clay px-3 py-2 text-sm text-steel-100 shadow-clay-inset outline-none ring-2 ring-transparent focus:ring-hazard/50'
+  'rounded-xl bg-surface px-3 py-2 text-sm text-steel-100  outline-none ring-2 ring-transparent focus:ring-hazard/50'
 
 export default function Inventory() {
   const { can } = useAuth()
@@ -184,7 +184,7 @@ export default function Inventory() {
 
       {/* Bulk selection bar */}
       {selected.size > 0 && (
-        <div className="sticky top-16 z-20 mt-4 flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-claySurface px-4 py-2.5 shadow-clay lg:top-3">
+        <div className="sticky top-16 z-20 mt-4 flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-surface px-4 py-2.5 shadow-elev lg:top-3">
           <span className="text-sm font-semibold text-steel-100">{selected.size} selected</span>
           <div className="flex flex-wrap gap-2">
             <Button size="sm" loading={bulkBusy} onClick={() => bulkPrint('procedures')}>

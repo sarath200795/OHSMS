@@ -187,7 +187,7 @@ export default function Dashboard() {
             <ul className="space-y-3">
               {logs.map((l) => (
                 <li key={l.id} className="flex items-start gap-3">
-                  <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-clay-100 text-ink-400">
+                  <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-surface-100 text-ink-400">
                     <Activity size={14} />
                   </span>
                   <div className="min-w-0">

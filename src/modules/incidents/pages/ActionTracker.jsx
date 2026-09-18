@@ -74,8 +74,8 @@ export default function ActionTracker() {
           <option value="">All statuses</option>
           {ACTION_STATUS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
         </select>
-        <button className={`chip ${mine ? 'bg-brand-500 text-white' : 'bg-clay-100 text-ink-600'}`} onClick={() => setMine((v) => !v)}><User size={12} /> My actions</button>
-        <button className={`chip ${overdueOnly ? 'bg-red-500 text-white' : 'bg-clay-100 text-ink-600'}`} onClick={() => setOverdueOnly((v) => !v)}><AlertTriangle size={12} /> Overdue</button>
+        <button className={`chip ${mine ? 'bg-brand-500 text-white' : 'bg-surface-100 text-ink-600'}`} onClick={() => setMine((v) => !v)}><User size={12} /> My actions</button>
+        <button className={`chip ${overdueOnly ? 'bg-red-500 text-white' : 'bg-surface-100 text-ink-600'}`} onClick={() => setOverdueOnly((v) => !v)}><AlertTriangle size={12} /> Overdue</button>
       </div>
 
       {filtered.length === 0 ? (

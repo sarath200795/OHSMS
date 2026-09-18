@@ -44,7 +44,15 @@ describe('readableOnTint', () => {
     empty: '#dc2626',
   }
 
-  it('lifts every failing category chip to AA', () => {
+  it('lifts every failing category chip to AA on a white card', () => {
+    for (const [name, color] of Object.entries(FAILING)) {
+      const text = readableOnTint(color, '#ffffff')
+      const bg = tintOver(color, '#ffffff')
+      expect(contrastRatio(text, bg), `${name} (${color} → ${text})`).toBeGreaterThanOrEqual(4.5)
+    }
+  })
+
+  it('lifts every failing category chip to AA on the dark glass card', () => {
     for (const [name, color] of Object.entries(FAILING)) {
       const text = readableOnTint(color)
       const bg = tintOver(color)
@@ -54,17 +62,17 @@ describe('readableOnTint', () => {
 
   it('leaves a colour that already passes exactly as it is', () => {
     // Near-black on its own near-white tint is already far past 4.5.
-    expect(readableOnTint('#1b1610')).toBe('#1b1610')
+    expect(readableOnTint('#1b1610', '#ffffff')).toBe('#1b1610')
   })
 
   it('keeps the hue, so a green chip still reads as green', () => {
-    const [r, g, b] = parseHex(readableOnTint('#16a34a'))
+    const [r, g, b] = parseHex(readableOnTint('#16a34a', '#ffffff'))
     expect(g).toBeGreaterThan(r)
     expect(g).toBeGreaterThan(b)
   })
 
   it('keeps distinct colours distinct', () => {
-    const results = Object.values(FAILING).map((c) => readableOnTint(c))
+    const results = Object.values(FAILING).map((c) => readableOnTint(c, '#ffffff'))
     expect(new Set(results).size).toBe(results.length)
   })
 

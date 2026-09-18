@@ -200,7 +200,7 @@ export default function Courses() {
                     type="button"
                     onClick={() => setForm({ ...form, deliveryMode: d.key })}
                     className={`rounded-2xl px-4 py-3 text-left transition ${
-                      on ? 'bg-clay-surface shadow-clay-inset' : 'bg-clay-surface shadow-clay-sm'
+                      on ? 'bg-surface-50 ' : 'bg-surface-50 shadow-elev-sm'
                     }`}
                   >
                     <span className={`block text-sm font-bold ${on ? 'text-brand-700' : 'text-ink-800'}`}>{d.label}</span>
@@ -245,7 +245,7 @@ export default function Courses() {
             {(form.content || []).length > 0 && (
               <div className="mb-2 flex flex-wrap gap-1.5">
                 {form.content.map((c) => (
-                  <span key={c.id} className="chip bg-clay-100 text-ink-700">
+                  <span key={c.id} className="chip bg-surface-100 text-ink-700">
                     {c.type === 'file' ? <Paperclip size={12} /> : <Link2 size={12} />} {c.label}
                     <button type="button" onClick={() => removeContent(c.id)} className="text-ink-400 hover:text-red-600"><X size={12} /></button>
                   </span>

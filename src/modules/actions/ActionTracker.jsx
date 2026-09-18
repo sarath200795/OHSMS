@@ -114,11 +114,11 @@ export default function ActionTracker() {
             <option value="all">All statuses</option>
             {NORM_STATUS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
           </Select>
-          <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-clay-surface px-3 py-2 text-sm font-medium text-ink-700 shadow-clay-inset">
+          <label className="ring-1 ring-ink-200 inline-flex cursor-pointer items-center gap-2 rounded-xl bg-surface-50 px-3 py-2 text-sm font-medium text-ink-700 ">
             <input type="checkbox" checked={f.overdue} onChange={(e) => setF((p) => ({ ...p, overdue: e.target.checked }))} />
             Overdue only
           </label>
-          <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-clay-surface px-3 py-2 text-sm font-medium text-ink-700 shadow-clay-inset">
+          <label className="ring-1 ring-ink-200 inline-flex cursor-pointer items-center gap-2 rounded-xl bg-surface-50 px-3 py-2 text-sm font-medium text-ink-700 ">
             <input type="checkbox" checked={f.repeating} onChange={(e) => setF((p) => ({ ...p, repeating: e.target.checked }))} />
             Repeating only
           </label>
@@ -147,7 +147,7 @@ export default function ActionTracker() {
                   <th className="px-4 py-3 text-right">Open</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-clay-200/60">
+              <tbody className="divide-y divide-surface-200/60">
                 {pageItems.map((r, i) => {
                   const od = isOverdue(r.due, r.norm, today)
                   return (
@@ -156,7 +156,7 @@ export default function ActionTracker() {
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       transition={{ delay: Math.min(i * 0.015, 0.3) }}
-                      className="hover:bg-clay-100/50"
+                      className="hover:bg-surface-100/50"
                       style={{ boxShadow: `inset 4px 0 0 ${r.tone}` }}
                     >
                       <td className="px-4 py-3">

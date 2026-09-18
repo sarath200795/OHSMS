@@ -92,10 +92,10 @@ export default function Hub() {
           <Link
             key={t.to}
             to={t.to}
-            className="group card flex flex-col gap-4 p-5 transition hover:-translate-y-0.5 hover:shadow-clay-lg"
+            className="group card flex flex-col gap-4 p-5 transition hover:-translate-y-0.5 hover:shadow-elev-lg"
           >
             <div className="flex items-start gap-3">
-              <span className={`grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br ${t.gradient} text-white shadow-clay-sm`}>
+              <span className={`grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br ${t.gradient} text-white shadow-elev-sm`}>
                 <t.icon size={22} />
               </span>
               <div className="min-w-0 flex-1">

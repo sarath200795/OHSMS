@@ -7,7 +7,7 @@ import { useAllSiteWeather } from '../lib/useAllSiteWeather'
 import { BANDS, BAND_LABEL, levelOf } from '../lib/weatherRisk'
 import { weatherExportRows, exportWeatherRisk } from '../lib/weatherExport'
 
-// Same five bands as the map bubble, in the clay palette rather than Leaflet's.
+// Same five bands as the map bubble, in the app palette rather than Leaflet's.
 const BAND_STYLE = {
   none: { chip: 'bg-emerald-50 text-emerald-700', dot: 'bg-emerald-500', ring: 'border-emerald-200' },
   low: { chip: 'bg-yellow-50 text-yellow-700', dot: 'bg-yellow-500', ring: 'border-yellow-200' },
@@ -133,7 +133,7 @@ export default function SiteWeather() {
           <button
             type="button"
             onClick={() => setBandFilter([])}
-            className="flex items-center gap-1 rounded-2xl px-2.5 py-2 text-xs font-semibold text-ink-500 hover:bg-clay-100"
+            className="flex items-center gap-1 rounded-2xl px-2.5 py-2 text-xs font-semibold text-ink-500 hover:bg-surface-100"
           >
             <X size={13} /> Clear
           </button>

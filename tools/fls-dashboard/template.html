@@ -13,78 +13,78 @@
    Nothing below this block declares a colour literal. ------------------- */
 :root {
   color-scheme: light;
-  --ground:    #f6f6f4;
+  --ground:    #f4f6f8;
   --surface:   #ffffff;
-  --plot:      #fcfcfb;
-  --ink:       #14150f;
-  --ink-2:     #56574f;
-  --ink-3:     #8a8b83;
-  --rule:      #e4e4dd;
-  --grid:      #ecece6;
-  --axis:      #c6c6bd;
-  --wash:      rgba(20, 21, 15, 0.04);
-  --wash-2:    rgba(20, 21, 15, 0.07);
-  --shadow:    0 1px 2px rgba(20, 21, 15, 0.05), 0 1px 12px rgba(20, 21, 15, 0.03);
+  --plot:      #f8fafc;
+  --ink:       #0f172a;
+  --ink-2:     #4a5568;
+  --ink-3:     #5b6573;
+  --rule:      #e2e8f0;
+  --grid:      #e2e8f0;
+  --axis:      #cbd5e1;
+  --wash:      rgba(15, 23, 42, 0.04);
+  --wash-2:    rgba(15, 23, 42, 0.07);
+  --shadow:    0 1px 2px rgba(15, 23, 42, 0.05), 0 1px 3px rgba(15, 23, 42, 0.04);
 
   /* Categorical series — the validated order, slots 1-3 only, which is the
      set that clears the all-pairs floors in both modes. */
   --s1: #2a78d6;
-  --s2: #eb6834;
-  --s3: #1baf7a;
+  --s2: #c74a33;
+  --s3: #0f766e;
 
   /* Status. Reserved: these four mean a state, never a series identity. */
   --good:     #0ca30c;
-  --warning:  #fab219;
-  --serious:  #ec835a;
-  --critical: #d03b3b;
+  --warning:  #d97706;
+  --serious:  #c74a33;
+  --critical: #dc2626;
   --good-ink: #006300;
 
-  /* The hazard rule. Ink and amber at 45°, the floor marking the audit
+  /* The hazard rule. Slate and amber at 45°, the floor marking the audit
      checkpoints keep asking about — spent once, under the masthead. */
-  --hazard-a: #14150f;
-  --hazard-b: #f0a500;
+  --hazard-a: #0f172a;
+  --hazard-b: #d97706;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --ground:  #0d0e0f;
-    --surface: #17181a;
-    --plot:    #1a1b1d;
-    --ink:     #f4f4f0;
-    --ink-2:   #a9aaa2;
-    --ink-3:   #83847d;
-    --rule:    #2a2c2e;
-    --grid:    #232527;
-    --axis:    #3a3c3e;
-    --wash:    rgba(244, 244, 240, 0.05);
-    --wash-2:  rgba(244, 244, 240, 0.09);
-    --shadow:  0 1px 2px rgba(0, 0, 0, 0.4);
-    --s1: #3987e5;
-    --s2: #d95926;
-    --s3: #199e70;
-    --good-ink: #0ca30c;
-    --hazard-a: #0d0e0f;
+    --ground:  #0c1024;
+    --surface: #151b36;
+    --plot:    #121833;
+    --ink:     #f4f7ff;
+    --ink-2:   #c5d0e0;
+    --ink-3:   #8b9cb8;
+    --rule:    #2f3b63;
+    --grid:    #2f3b63;
+    --axis:    #44527a;
+    --wash:    rgba(34, 211, 238, 0.06);
+    --wash-2:  rgba(251, 146, 60, 0.10);
+    --shadow:  0 0 0 1px rgba(255,255,255,0.08), 0 12px 32px rgba(4,8,24,0.45);
+    --s1: #22d3ee;
+    --s2: #fb923c;
+    --s3: #a3e635;
+    --good-ink: #6ee7b7;
+    --hazard-a: #0c1024;
   }
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --ground:  #0d0e0f;
-  --surface: #17181a;
-  --plot:    #1a1b1d;
-  --ink:     #f4f4f0;
-  --ink-2:   #a9aaa2;
-  --ink-3:   #83847d;
-  --rule:    #2a2c2e;
-  --grid:    #232527;
-  --axis:    #3a3c3e;
-  --wash:    rgba(244, 244, 240, 0.05);
-  --wash-2:  rgba(244, 244, 240, 0.09);
-  --shadow:  0 1px 2px rgba(0, 0, 0, 0.4);
-  --s1: #3987e5;
-  --s2: #d95926;
-  --s3: #199e70;
-  --good-ink: #0ca30c;
-  --hazard-a: #0d0e0f;
+  --ground:  #0c1024;
+  --surface: #151b36;
+  --plot:    #121833;
+  --ink:     #f4f7ff;
+  --ink-2:   #c5d0e0;
+  --ink-3:   #8b9cb8;
+  --rule:    #2f3b63;
+  --grid:    #2f3b63;
+  --axis:    #44527a;
+  --wash:    rgba(34, 211, 238, 0.06);
+  --wash-2:  rgba(251, 146, 60, 0.10);
+  --shadow:  0 0 0 1px rgba(255,255,255,0.08), 0 12px 32px rgba(4,8,24,0.45);
+  --s1: #22d3ee;
+  --s2: #fb923c;
+  --s3: #a3e635;
+  --good-ink: #6ee7b7;
+  --hazard-a: #0c1024;
 }
 
 * { box-sizing: border-box; }

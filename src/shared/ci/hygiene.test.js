@@ -7,7 +7,8 @@
 // says X when it must say Y", and they failed in production (or would have
 // on `docker compose up`) without any test ever opening the file.
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync, statSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, it, expect } from 'vitest'
 
 const read = (p) => readFileSync(p, 'utf8')
@@ -135,5 +136,41 @@ describe('admin MFA in rules stays off until enrolment is done', () => {
     expect(rules).toMatch(/function requireAdminMfa\(\) \{\s*return false;/)
     expect(rules).toMatch(/!requireAdminMfa\(\) \|\| hasSecondFactor\(\)/)
     expect(rules).toMatch(/sign_in_second_factor/)
+  })
+})
+
+describe('700 is not a white-text fill', () => {
+  // After the dark-kit remap, 700/800/900 are pastel text-on-wash stops.
+  // `bg-cyan-700 text-white` painted #67e8f9 under white at 1.44:1, and axe
+  // failed the extinguisher list on the quote button. 600 is the fill that
+  // still carries white. Decorative 700 without white text is fine.
+  const FILL_700 =
+    /(?:bg|hover:bg|file:bg|hover:!bg)-(?:cyan|sky|blue|green|lime|emerald|teal|amber|orange|red|rose|violet|purple|fuchsia|pink|brand)-(?:700|800|900)/
+
+  function walk(dir, acc = []) {
+    for (const name of readdirSync(dir)) {
+      if (name === 'node_modules' || name === 'dist') continue
+      const p = join(dir, name)
+      if (statSync(p).isDirectory()) walk(p, acc)
+      else if (/\.(js|jsx|css)$/.test(name)) acc.push(p)
+    }
+    return acc
+  }
+
+  it('does not pair remapped 700/800 fills with text-white', () => {
+    const hits = []
+    for (const file of walk('src')) {
+      if (file.includes('.test.')) continue
+      readFileSync(file, 'utf8')
+        .split('\n')
+        .forEach((line, i) => {
+          const trimmed = line.trim()
+          if (trimmed.startsWith('//') || trimmed.startsWith('*') || trimmed.startsWith('/*')) return
+          if (!FILL_700.test(line)) return
+          if (!/text-white/.test(line)) return
+          hits.push(`${file}:${i + 1}: ${trimmed}`)
+        })
+    }
+    expect(hits, hits.join('\n')).toEqual([])
   })
 })

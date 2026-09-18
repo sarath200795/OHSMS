@@ -38,7 +38,7 @@ import {
   GRANULARITIES, GROUP_DIMS, PASS_MARK,
 } from './odinAnalytics'
 
-const axis = { tickLine: false, axisLine: false, fontSize: 11, tick: { fill: '#8a7660' } }
+const axis = { tickLine: false, axisLine: false, fontSize: 11, tick: { fill: '#8b9cb8' } }
 
 const num = (v) => (v == null ? '—' : Number(v).toLocaleString())
 
@@ -112,7 +112,7 @@ function Segments({ label, value, options, onChange }) {
   return (
     <div className="flex flex-col gap-1">
       <span className="text-[10.5px] font-semibold uppercase tracking-wide text-ink-400">{label}</span>
-      <div role="group" aria-label={label} className="flex flex-wrap gap-1 rounded-2xl bg-clay-surface p-1 shadow-clay-sm">
+      <div role="group" aria-label={label} className="flex flex-wrap gap-1 rounded-2xl bg-surface p-1 shadow-elev-sm">
         {options.map((o) => (
           <button
             key={o.key}
@@ -120,7 +120,7 @@ function Segments({ label, value, options, onChange }) {
             aria-pressed={value === o.key}
             onClick={() => onChange(o.key)}
             className={`rounded-xl px-2.5 py-1.5 text-[11.5px] font-semibold transition ${
-              value === o.key ? 'bg-ink-800 text-white shadow-clay-sm' : 'text-ink-500 hover:text-ink-800'
+              value === o.key ? 'bg-brand-500/20 text-brand-700 shadow-elev-sm' : 'text-ink-500 hover:text-ink-800'
             }`}
           >
             {o.label}
@@ -429,7 +429,7 @@ export default function OdinTab({ view = 'scores', sites = [], orgId, actor, isA
 
           Identical on all three tabs, so moving between them does not move the
           controls. */}
-      <div className="card mb-5 divide-y divide-clay-100 p-0">
+      <div className="card mb-5 divide-y divide-surface-100 p-0">
         <FilterRow label="Period">
           <DateField
             id="odin-from" label="From" value={f.from} min={opts.minDate} max={f.to || opts.maxDate}
@@ -452,7 +452,7 @@ export default function OdinTab({ view = 'scores', sites = [], orgId, actor, isA
             <button
               type="button"
               onClick={() => setF({ ...EMPTY_FILTER, groupBy: defaultGroupBy(view) })}
-              className="rounded-2xl bg-clay-surface px-4 py-2.5 text-[12.5px] font-semibold text-ink-700 shadow-clay-sm"
+              className="rounded-2xl bg-surface px-4 py-2.5 text-[12.5px] font-semibold text-ink-700 shadow-elev-sm"
             >
               Reset
             </button>
@@ -461,7 +461,7 @@ export default function OdinTab({ view = 'scores', sites = [], orgId, actor, isA
               onClick={load}
               disabled={loading || !hasRange}
               title={hasRange ? undefined : 'Set a From and To date first'}
-              className="inline-flex items-center gap-2 rounded-2xl bg-clay-surface px-4 py-2.5 text-[12.5px] font-semibold text-ink-700 shadow-clay-sm disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-2xl bg-surface px-4 py-2.5 text-[12.5px] font-semibold text-ink-700 shadow-elev-sm disabled:opacity-50"
             >
               <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh
             </button>
@@ -470,7 +470,7 @@ export default function OdinTab({ view = 'scores', sites = [], orgId, actor, isA
                 type="button"
                 onClick={() => setConnecting(true)}
                 title="Metabase connection settings"
-                className="inline-flex items-center gap-2 rounded-2xl bg-clay-surface px-4 py-2.5 text-[12.5px] font-semibold text-ink-500 shadow-clay-sm hover:text-ink-800"
+                className="inline-flex items-center gap-2 rounded-2xl bg-surface px-4 py-2.5 text-[12.5px] font-semibold text-ink-500 shadow-elev-sm hover:text-ink-800"
               >
                 <SlidersHorizontal size={14} /> Connection
               </button>
@@ -666,7 +666,7 @@ export default function OdinTab({ view = 'scores', sites = [], orgId, actor, isA
                     <Tooltip cursor={{ fill: 'rgba(227,204,191,0.35)' }} />
                     <Bar dataKey="value" name="Findings" radius={[0, 6, 6, 0]}>
                       {a.bySubCategoryAll.map((d) => <Cell key={d.name} fill={d.color} />)}
-                      <LabelList dataKey="value" position="right" style={{ fontSize: 11, fill: '#8a7660' }} />
+                      <LabelList dataKey="value" position="right" style={{ fontSize: 11, fill: '#8b9cb8' }} />
                     </Bar>
                   </BarChart>
                 </ChartFrame>
@@ -843,7 +843,7 @@ function RecoveryPanel({ recovery }) {
                 {st.rate == null ? '—' : `${st.rate}%`}
               </span>
             </div>
-            <div className="mt-1.5 h-3.5 overflow-hidden rounded-full bg-clay-100">
+            <div className="mt-1.5 h-3.5 overflow-hidden rounded-full bg-surface-100">
               <div
                 className="h-full rounded-full transition-[width] duration-500 ease-emil"
                 style={{ width: `${Math.max(1, st.rate || 0)}%`, background: RECOVERY_STEPS[i] || RECOVERY_STEPS[2] }}
@@ -875,7 +875,7 @@ function DistributionPanel({ distribution }) {
         {bands.map((b) => (
           <div key={b.name} className="flex items-center gap-3">
             <span className="w-16 shrink-0 text-right text-[11.5px] tabular-nums text-ink-500">{b.name}</span>
-            <div className="h-3.5 flex-1 overflow-hidden rounded-full bg-clay-100">
+            <div className="h-3.5 flex-1 overflow-hidden rounded-full bg-surface-100">
               <div
                 className="h-full rounded-full"
                 style={{ width: `${(b.value / max) * 100}%`, background: b.passing ? '#0ca30c' : '#d03b3b' }}
@@ -972,7 +972,7 @@ function QoqPanel({ qoq }) {
     >
       <div className="table-crisp overflow-auto">
         <table className="w-full text-left text-[12.5px]">
-          <thead className="bg-clay-surface">
+          <thead className="bg-surface">
             <tr className="text-[10.5px] uppercase tracking-wide text-ink-400">
               <th className="px-3 py-2">Metric</th>
               {shown.map((q) => (
@@ -988,7 +988,7 @@ function QoqPanel({ qoq }) {
           </thead>
           <tbody>
             {QOQ_METRICS.map((m) => (
-              <tr key={m.key} className="border-t border-clay-100">
+              <tr key={m.key} className="border-t border-surface-100">
                 <td className="px-3 py-2 font-medium text-ink-800">{m.label}</td>
                 {shown.map((q) => (
                   <td key={q.key} className="px-3 py-2 text-right tabular-nums text-ink-700">
@@ -1059,7 +1059,7 @@ function FlsPanel({ fls }) {
     >
       <div className="table-crisp max-h-[26rem] overflow-auto">
         <table className="w-full text-left text-[12.5px]">
-          <thead className="sticky top-0 bg-clay-surface">
+          <thead className="sticky top-0 bg-surface">
             <tr className="text-[10.5px] uppercase tracking-wide text-ink-400">
               <th className="px-3 py-2">L2 category</th>
               <th className="px-3 py-2 text-right">Open</th>
@@ -1073,7 +1073,7 @@ function FlsPanel({ fls }) {
           </thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.name} className="border-t border-clay-100">
+              <tr key={r.name} className="border-t border-surface-100">
                 <td className="px-3 py-2 font-medium text-ink-800">{r.name}</td>
                 <td className="px-3 py-2 text-right tabular-nums font-semibold text-red-600">{num(r.open)}</td>
                 <td className="px-3 py-2 text-right tabular-nums text-amber-600">{num(r.inProgress)}</td>
@@ -1086,7 +1086,7 @@ function FlsPanel({ fls }) {
             ))}
           </tbody>
           <tfoot>
-            <tr className="border-t-2 border-clay-line text-[12.5px] font-bold">
+            <tr className="border-t-2 border-ink-200 text-[12.5px] font-bold">
               <td className="px-3 py-2 text-ink-800">All FLS</td>
               <td className="px-3 py-2 text-right tabular-nums text-red-600">{num(open)}</td>
               <td className="px-3 py-2 text-right tabular-nums text-amber-600">{num(inProgress)}</td>
@@ -1188,7 +1188,7 @@ function ObservationsPanel({ observations }) {
                 radius={i === owners.length - 1 ? [0, 4, 4, 0] : undefined}
               >
                 {i === owners.length - 1 && (
-                  <LabelList dataKey="total" position="right" style={{ fontSize: 10.5, fill: '#8a7660' }} />
+                  <LabelList dataKey="total" position="right" style={{ fontSize: 10.5, fill: '#8b9cb8' }} />
                 )}
               </Bar>
             ))}
@@ -1251,7 +1251,7 @@ function AgeingPanel({ ageing }) {
       className="mb-5"
     >
       {closed?.n > 0 && (
-        <div className="mb-4 rounded-2xl bg-clay-surface/60 p-4 shadow-clay-inset">
+        <div className="ring-1 ring-ink-200 mb-4 rounded-2xl bg-surface-50/60 p-4 ">
           <p className="text-[10.5px] font-bold uppercase tracking-[0.1em] text-ink-400">
             Average time to close
           </p>
@@ -1285,7 +1285,7 @@ function AgeingPanel({ ageing }) {
                     <span className="ml-1 text-[11px] font-normal text-ink-400">days</span>
                   </span>
                 </div>
-                <div className="mt-1.5 h-2.5 overflow-hidden rounded-full bg-clay-100">
+                <div className="mt-1.5 h-2.5 overflow-hidden rounded-full bg-surface-100">
                   <div
                     className="h-full rounded-full"
                     style={{ width: `${Math.max(2, ((r.days || 0) / worst) * 100)}%`, background: r.color }}
@@ -1389,7 +1389,7 @@ function PriorityPanel({ rows }) {
               <span className="text-[12.5px] font-medium text-ink-700">{r.name}</span>
               <span className="text-[13px] font-bold tabular-nums text-ink-900">{r.value.toLocaleString()}</span>
             </div>
-            <div className="mt-1.5 h-3 overflow-hidden rounded-full bg-clay-100">
+            <div className="mt-1.5 h-3 overflow-hidden rounded-full bg-surface-100">
               <div className="h-full rounded-full" style={{ width: `${(r.value / max) * 100}%`, background: r.color }} />
             </div>
             <p className="mt-1 text-[11px] tabular-nums text-ink-400">{r.open.toLocaleString()} still open</p>
@@ -1427,7 +1427,7 @@ function CheckpointPanel({ rows }) {
                 <span className="ml-1.5 font-normal text-ink-400">{r.open.toLocaleString()} open</span>
               </span>
             </div>
-            <div className="mt-1.5 h-2.5 overflow-hidden rounded-full bg-clay-100">
+            <div className="mt-1.5 h-2.5 overflow-hidden rounded-full bg-surface-100">
               <div className="h-full rounded-full bg-brand-500" style={{ width: `${(r.value / max) * 100}%` }} />
             </div>
           </div>
@@ -1490,7 +1490,7 @@ function issuePin(pin) {
       key,
       L.divIcon({
         className: '',
-        html: `<div style="transform:translate(-50%,-50%);display:grid;place-items:center;width:${size}px;height:${size}px;border-radius:50%;background:conic-gradient(${stops.join(',')});box-shadow:0 3px 10px rgba(16,24,40,.35)"><span style="display:grid;place-items:center;width:${inner}px;height:${inner}px;border-radius:50%;background:#fff;color:${lead};font:800 ${Math.round(inner / 2.4)}px Inter,sans-serif">${pin.total}</span></div>`,
+        html: `<div style="transform:translate(-50%,-50%);display:grid;place-items:center;width:${size}px;height:${size}px;border-radius:50%;background:conic-gradient(${stops.join(',')});box-shadow:0 3px 10px rgba(16,24,40,.35)"><span style="display:grid;place-items:center;width:${inner}px;height:${inner}px;border-radius:50%;background:#fff;color:${lead};font:800 ${Math.round(inner / 2.4)}px Roboto,sans-serif">${pin.total}</span></div>`,
         iconSize: [size, size],
       })
     )
@@ -1523,14 +1523,14 @@ function IssueMap({ cities, sites }) {
         : 'One pin per site; the ring is its status mix, the number is how many'}
       className="mb-5"
       right={
-        <div className="flex rounded-2xl bg-clay-surface p-1 shadow-clay-sm">
+        <div className="flex rounded-2xl bg-surface p-1 shadow-elev-sm">
           {[{ k: 'city', label: 'By city' }, { k: 'site', label: 'By site' }].map((o) => (
             <button
               key={o.k}
               type="button"
               onClick={() => setBy(o.k)}
               className={`rounded-xl px-3 py-1.5 text-[11.5px] font-semibold transition ${
-                by === o.k ? 'bg-white text-ink-800 shadow-clay-sm' : 'text-ink-500 hover:text-ink-700'
+                by === o.k ? 'bg-surface text-ink-800 shadow-elev-sm' : 'text-ink-500 hover:text-ink-700'
               }`}
             >
               {o.label}
@@ -1635,7 +1635,7 @@ function SiteIssueList({ rows }) {
     >
       <div className="table-crisp max-h-[30rem] overflow-auto">
         <table className="w-full text-left text-[12.5px]">
-          <thead className="sticky top-0 bg-clay-surface">
+          <thead className="sticky top-0 bg-surface">
             <tr className="text-[10.5px] uppercase tracking-wide text-ink-400">
               <th className="px-3 py-2">Site</th>
               <th className="px-3 py-2 text-right">Issues</th>
@@ -1646,7 +1646,7 @@ function SiteIssueList({ rows }) {
           </thead>
           <tbody>
             {shown.map((r) => (
-              <tr key={r.id} className="border-t border-clay-100">
+              <tr key={r.id} className="border-t border-surface-100">
                 <td className="px-3 py-2">
                   <span className="font-medium text-ink-800">{r.site}</span>
                   {(r.city || r.region || r.entity) && (
@@ -1692,7 +1692,7 @@ function Watchlist({ rows, join }) {
     >
       <div className="table-crisp max-h-[26rem] overflow-auto">
         <table className="w-full text-left text-[12.5px]">
-          <thead className="sticky top-0 bg-clay-surface">
+          <thead className="sticky top-0 bg-surface">
             <tr className="text-[10.5px] uppercase tracking-wide text-ink-400">
               <th className="px-3 py-2">Centre</th>
               <th className="px-3 py-2 text-right">Audits</th>
@@ -1705,7 +1705,7 @@ function Watchlist({ rows, join }) {
           </thead>
           <tbody>
             {shown.map((r) => (
-              <tr key={r.key} className="border-t border-clay-100">
+              <tr key={r.key} className="border-t border-surface-100">
                 <td className="px-3 py-2">
                   <span className="font-medium text-ink-800">{r.site}</span>
                   {(r.city || r.region) && (
@@ -1770,7 +1770,7 @@ function PassRates({ audits, byGroup, groupLabel, overall, source, isAdmin, onCo
             <button
               type="button"
               onClick={onConnect}
-              className="inline-flex items-center gap-2 rounded-2xl bg-clay-surface px-4 py-2.5 text-[12.5px] font-semibold text-ink-700 shadow-clay-sm"
+              className="inline-flex items-center gap-2 rounded-2xl bg-surface px-4 py-2.5 text-[12.5px] font-semibold text-ink-700 shadow-elev-sm"
             >
               <Plug size={14} /> Connection settings
             </button>
@@ -1902,10 +1902,10 @@ function PassPanel({ title, subtitle, rows }) {
           <Tooltip formatter={tip} cursor={{ fill: 'rgba(227,204,191,0.35)' }} />
           <Legend iconType="circle" wrapperStyle={{ fontSize: 11 }} />
           <Bar dataKey="day0" name="Day of audit" fill="#f59e0b" radius={[0, 5, 5, 0]}>
-            <LabelList dataKey="day0" position="right" formatter={(v) => (v == null ? '' : `${v}%`)} style={{ fontSize: 10.5, fill: '#8a7660' }} />
+            <LabelList dataKey="day0" position="right" formatter={(v) => (v == null ? '' : `${v}%`)} style={{ fontSize: 10.5, fill: '#8b9cb8' }} />
           </Bar>
           <Bar dataKey="n7" name="N+7" fill="#0d9488" radius={[0, 5, 5, 0]}>
-            <LabelList dataKey="n7" position="right" formatter={(v) => (v == null ? '' : `${v}%`)} style={{ fontSize: 10.5, fill: '#8a7660' }} />
+            <LabelList dataKey="n7" position="right" formatter={(v) => (v == null ? '' : `${v}%`)} style={{ fontSize: 10.5, fill: '#8b9cb8' }} />
           </Bar>
         </BarChart>
       </ChartFrame>
@@ -1959,7 +1959,7 @@ function KeyExpiry({ conn, onConnect }) {
         <button
           type="button"
           onClick={onConnect}
-          className="inline-flex items-center gap-2 rounded-2xl bg-clay-surface px-4 py-2.5 text-[12.5px] font-semibold text-ink-700 shadow-clay-sm"
+          className="inline-flex items-center gap-2 rounded-2xl bg-surface px-4 py-2.5 text-[12.5px] font-semibold text-ink-700 shadow-elev-sm"
         >
           <Plug size={14} /> Update the key
         </button>
@@ -2033,7 +2033,7 @@ function Caveats({ findings, audits, totals, coverage, showScores }) {
   return (
     <div role="status" className="mb-5 space-y-2">
       {notes.map((n) => (
-        <div key={n} className="flex items-start gap-2.5 rounded-2xl bg-amber-50 px-4 py-3 shadow-clay-sm">
+        <div key={n} className="flex items-start gap-2.5 rounded-2xl bg-amber-50 px-4 py-3 shadow-elev-sm">
           <AlertTriangle size={16} className="mt-0.5 flex-none text-amber-700" />
           <p className="text-[12.5px] leading-relaxed text-amber-900">{n}</p>
         </div>
@@ -2088,7 +2088,7 @@ function Blocked({ title, body, detail, onRetry, onConnect, connectLabel = 'Conn
       {detail && (
         // Monospace and left-aligned: this is a machine's sentence, and
         // centring it as prose makes a stack-trace-shaped thing unreadable.
-        <p className="mx-auto mt-3 max-w-[62ch] rounded-xl bg-clay-surface px-3 py-2 text-left font-mono text-[11.5px] leading-relaxed text-ink-600 shadow-clay-inset">
+        <p className="ring-1 ring-ink-200 mx-auto mt-3 max-w-[62ch] rounded-xl bg-surface-50 px-3 py-2 text-left font-mono text-[11.5px] leading-relaxed text-ink-600 ">
           {detail}
         </p>
       )}
@@ -2109,7 +2109,7 @@ function Blocked({ title, body, detail, onRetry, onConnect, connectLabel = 'Conn
           <button
             type="button"
             onClick={onRetry}
-            className="inline-flex items-center gap-2 rounded-2xl bg-clay-surface px-4 py-2.5 text-[12.5px] font-semibold text-ink-700 shadow-clay-sm"
+            className="inline-flex items-center gap-2 rounded-2xl bg-surface px-4 py-2.5 text-[12.5px] font-semibold text-ink-700 shadow-elev-sm"
           >
             <RefreshCw size={14} /> Try again
           </button>

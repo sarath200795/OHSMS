@@ -1,7 +1,12 @@
-@import '@fontsource/inter/400.css';
-@import '@fontsource/inter/500.css';
-@import '@fontsource/inter/600.css';
-@import '@fontsource/inter/700.css';
+@import '@fontsource/roboto/400.css';
+@import '@fontsource/roboto/500.css';
+@import '@fontsource/roboto/700.css';
+@import '@fontsource/roboto/900.css';
+@import '@fontsource/open-sans/400.css';
+@import '@fontsource/open-sans/500.css';
+@import '@fontsource/open-sans/600.css';
+@import '@fontsource/open-sans/700.css';
+@import '@fontsource/open-sans/800.css';
 /* Leaflet map (Sites map tab). */
 @import 'leaflet/dist/leaflet.css';
 @import 'leaflet.markercluster/dist/MarkerCluster.css';
@@ -11,99 +16,184 @@
 @tailwind utilities;
 
 :root {
-  color-scheme: light;
+  color-scheme: dark;
   /* Emil motion tokens available to raw CSS / inline styles. */
   --ease-emil: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-emil-in-out: cubic-bezier(0.77, 0, 0.175, 1);
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  --canvas: #0c1024;
+  --surface: #151b36;
+  --ink: #f4f7ff;
+  --cyan: #22d3ee;
+  --lime: #a3e635;
+  --orange: #fb923c;
+  --magenta: #ff2d92;
 }
 
 * {
   -webkit-tap-highlight-color: transparent;
 }
 
-body {
-  @apply bg-clay-bg text-ink-900 font-sans antialiased;
-  margin: 0;
-  overflow-wrap: break-word;
+::selection {
+  background: rgba(34, 211, 238, 0.28);
+  color: #f4f7ff;
 }
 
-/* Animated aurora background for auth / public pages — warm kraft & coral
-   glows over deep umber, echoing the WEHS paper-craft logo. */
+body {
+  color: #f4f7ff;
+  font-family: 'Open Sans', system-ui, 'Segoe UI', sans-serif;
+  background-color: #0c1024;
+  margin: 0;
+  overflow-wrap: break-word;
+  letter-spacing: -0.011em;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+h4,
+.btn,
+.label,
+.nav-tab,
+.chip,
+thead {
+  font-family: Roboto, system-ui, 'Segoe UI', sans-serif;
+}
+
+/* Auth / public pages — navy with cyan, lime and orange blooms (board 6387098). */
 .aurora {
   background:
-    radial-gradient(40% 50% at 15% 20%, rgba(221, 90, 65, 0.40), transparent 60%),
-    radial-gradient(40% 50% at 85% 15%, rgba(232, 163, 61, 0.30), transparent 60%),
-    radial-gradient(50% 60% at 75% 85%, rgba(178, 148, 112, 0.38), transparent 60%),
-    radial-gradient(40% 50% at 20% 90%, rgba(127, 196, 187, 0.22), transparent 60%),
-    #221812;
+    radial-gradient(42% 52% at 12% 18%, rgba(34, 211, 238, 0.3), transparent 62%),
+    radial-gradient(38% 48% at 88% 12%, rgba(163, 230, 53, 0.18), transparent 60%),
+    radial-gradient(50% 60% at 78% 88%, rgba(251, 146, 60, 0.16), transparent 62%),
+    radial-gradient(40% 50% at 18% 92%, rgba(255, 45, 146, 0.14), transparent 60%), #0c1024;
   background-size: 200% 200%;
   animation: aurora-move 18s ease infinite;
 }
 
 @keyframes aurora-move {
-  0% { background-position: 0% 0%; }
-  50% { background-position: 100% 100%; }
-  100% { background-position: 0% 0%; }
+  0% {
+    background-position: 0% 0%;
+  }
+  50% {
+    background-position: 100% 100%;
+  }
+  100% {
+    background-position: 0% 0%;
+  }
 }
 
 .glass {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(21, 27, 54, 0.72);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 /* Custom scrollbar */
-::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #d1ba98; border-radius: 8px; border: 2px solid transparent; background-clip: content-box; }
-::-webkit-scrollbar-thumb:hover { background: #b29470; background-clip: content-box; }
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #2f3b63;
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #44527a;
+  background-clip: content-box;
+}
 
 @layer components {
-  /* ── Claymorphism core surfaces (warm kraft paper) ─────────────────────────
-     Raised = paper-white top-left highlight + warm brown bottom-right drop.
-     Inputs are recessed (inset). Pressable controls sink on :active (Emil press
-     feedback: scale + pressed shadow). Coral = accent. Durations < 300ms. */
-  /* The focus-visible ring is not decoration. Every clay surface is a soft warm
-     grey against a warm background, so the browser's default outline — drawn
-     tight to a rounded-2xl edge it does not follow — was very nearly invisible
-     on .btn-ghost and .btn-soft, and a keyboard user tabbing a permit approval
-     screen could not tell which control they were on. It matches .input's
-     `ring-2 ring-brand-200` below deliberately: focus should look like one
-     thing in this app, not two.
+  /* ── Surfaces (dark glass neon-tech kit) ─────────────────────────────────
+     Glass cards on a charcoal-navy canvas, hairline light borders, cyan glow
+     on primary / lime on success. Inputs are outlined dark fields. Pressable
+     controls still scale on :active (Emil), durations < 300ms. Pills for
+     text buttons; squircles for icon buttons (IconButton adds !rounded-xl).
 
-     focus-visible rather than focus, so a mouse click does not leave a ring
-     behind on a button the user has already finished with. */
+     The focus-visible ring is not decoration. A 1px hairline against navy is
+     easy to miss. Cyan ring + canvas offset matches .input. focus-visible
+     rather than focus, so a mouse click does not leave a ring behind. */
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-semibold
-      transition-all duration-200 ease-emil shadow-clay-sm
-      disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none
-      active:scale-[0.97] active:shadow-clay-pressed
+    @apply inline-flex items-center justify-center gap-2 rounded-full px-4 py-2.5 text-sm font-semibold
+      transition-all duration-200 ease-emil
+      disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none disabled:pointer-events-none
+      active:scale-[0.98]
       focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400
-      focus-visible:ring-offset-2 focus-visible:ring-offset-clay-bg;
+      focus-visible:ring-offset-2;
+    --tw-ring-offset-color: #0c1024;
   }
-  .btn-primary { @apply btn bg-brand-600 text-white hover:bg-brand-700 shadow-clay-brand; }
-  .btn-ghost   { @apply btn bg-clay-surface text-ink-700 hover:bg-clay-100; }
-  .btn-soft    { @apply btn bg-brand-50 text-brand-700 hover:bg-brand-100; }
-  .btn-danger  { @apply btn bg-red-600 text-white hover:bg-red-700
-      shadow-[5px_5px_12px_rgba(220,38,38,0.28),-5px_-5px_12px_rgba(255,255,255,0.75)]; }
+  .btn-primary {
+    @apply btn text-white;
+    /* Solid AA fill (#0369a1 is 5.93:1 with white). The gradient stays in
+       that band so axe cannot sample a bright cyan stop. Glow is the neon. */
+    background-color: #0369a1;
+    background-image: linear-gradient(180deg, #0369a1 0%, #075985 100%);
+    box-shadow: theme('boxShadow.elev-brand');
+  }
+  .btn-primary:hover {
+    background-color: #075985;
+    background-image: linear-gradient(180deg, #075985 0%, #0c4a6e 100%);
+  }
+  .btn-ghost {
+    @apply btn text-ink-800 shadow-none ring-1 ring-white/15;
+    background-color: rgba(21, 27, 54, 0.55);
+  }
+  .btn-ghost:hover {
+    background-color: rgba(255, 255, 255, 0.06);
+  }
+  .btn-soft {
+    @apply btn text-brand-700 ring-1 ring-brand-400/40;
+    background-color: rgba(34, 211, 238, 0.12);
+  }
+  .btn-soft:hover {
+    background-color: rgba(34, 211, 238, 0.2);
+  }
+  .btn-danger {
+    @apply btn bg-red-600 text-white hover:bg-red-500;
+  }
 
   .input {
-    @apply w-full rounded-2xl border border-transparent bg-clay-surface px-3.5 py-2.5 text-sm
-      text-ink-900 placeholder:text-ink-400 outline-none shadow-clay-inset transition
-      focus:border-brand-300 focus:ring-2 focus:ring-brand-200;
+    @apply w-full rounded-xl border px-3.5 py-2.5 text-sm
+      text-ink-900 outline-none shadow-none transition;
+    border-color: #2f3b63;
+    background-color: #121833;
   }
-  .label { @apply mb-1.5 block text-xs font-semibold uppercase tracking-wide text-ink-500; }
+  .input::placeholder {
+    color: #8b9cb8;
+  }
+  .input:hover {
+    border-color: #44527a;
+  }
+  .input:focus {
+    border-color: #22d3ee;
+    box-shadow: 0 0 0 2px rgba(34, 211, 238, 0.28);
+  }
+  .input[aria-invalid='true'] {
+    @apply border-red-400;
+  }
+  .input[aria-invalid='true']:focus {
+    border-color: #f87171;
+    box-shadow: 0 0 0 2px rgba(248, 113, 113, 0.28);
+  }
+  .label {
+    @apply mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-500;
+  }
 
   /* Native <select> strips its arrow under appearance-none (we do that so the
-     clay inset isn't fighting the OS chrome). Without a replacement chevron
+     OS chrome isn't fighting the hairline). Without a replacement chevron
      the control looks like a text field that cannot be opened — the audit
      module drew its own, everyone else didn't. One background-image, so a
      module cannot forget. */
   select.input,
   select.appearance-none {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23615344' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238b9cb8' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
     background-position: right 0.85rem center;
     background-repeat: no-repeat;
     background-size: 1rem 1rem;
@@ -116,78 +206,182 @@ body {
     @apply overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch];
   }
 
-  /* Clay surfaces */
-  .card         { @apply rounded-3xl bg-clay-surface shadow-clay; }
-  .clay         { @apply rounded-3xl bg-clay-surface shadow-clay; }
-  .clay-inset   { @apply rounded-2xl bg-clay-surface shadow-clay-inset; }
-  .clay-pressed { @apply rounded-2xl bg-clay-surface shadow-clay-pressed; }
-  .chip         { @apply inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold shadow-clay-sm; }
+  /* Surfaces. Hairline is the panel; the glow is only there so it lifts
+     off the canvas. `.well` is a muted fill + border, not a recessed inset. */
+  .card {
+    @apply rounded-2xl ring-1 ring-white/10;
+    background-color: rgba(21, 27, 54, 0.78);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    box-shadow: theme('boxShadow.elev');
+  }
+  .well {
+    @apply rounded-xl ring-1 ring-white/10;
+    background-color: rgba(12, 16, 36, 0.55);
+  }
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-white/10;
+  }
+
+  /* Secondary nav — module tabs, settings, sites, analytics. One active
+     treatment so moving between them does not feel like changing products.
+     Kit: cyan active pills, not an underline. */
+  .nav-tab {
+    @apply relative inline-flex shrink-0 items-center gap-2 rounded-full px-3 py-2 text-sm font-medium
+      transition-colors duration-200 ease-emil
+      focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400
+      focus-visible:ring-offset-2;
+    --tw-ring-offset-color: #0c1024;
+  }
+  .nav-tab-idle {
+    @apply text-ink-500 hover:text-ink-800 active:scale-[0.98];
+  }
+  .nav-tab-idle:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+  }
+  .nav-tab-active {
+    @apply text-brand-700 ring-1 ring-brand-400/40;
+    background-color: rgba(34, 211, 238, 0.14);
+    box-shadow: 0 0 18px rgba(34, 211, 238, 0.18);
+  }
+  .tab-strip {
+    @apply mb-5 flex gap-1 overflow-x-auto overscroll-x-contain rounded-xl p-1
+      ring-1 ring-white/10 [-webkit-overflow-scrolling:touch];
+    background-color: rgba(12, 16, 36, 0.55);
+  }
 
   /* ── Skeleton loaders ──────────────────────────────────────────────────────
      Content-shaped placeholders with a GPU-only shimmer sweep. Under
      prefers-reduced-motion the sweep is removed and it degrades to a gentle
      opacity pulse (handled below). */
   .skeleton {
-    @apply relative overflow-hidden rounded-xl bg-clay-200;
+    @apply relative overflow-hidden rounded-md;
+    background-color: #1a2144;
   }
   .skeleton::after {
     content: '';
     @apply absolute inset-0 -translate-x-full animate-shimmer;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.65), transparent);
+    background: linear-gradient(90deg, transparent, rgba(34, 211, 238, 0.16), transparent);
   }
 }
 
 /* ── Map (Leaflet) site hover bubble with live summary ───────────────────────*/
+/* ── Map (Leaflet) site hover bubble with live summary ───────────────────────*/
 .leaflet-tooltip.site-bubble {
-  background: #ffffff;
-  border: none;
-  border-radius: 14px;
-  box-shadow: 0 8px 22px rgba(16, 24, 40, 0.18);
+  background: #151b36;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.06),
+    0 18px 48px rgba(4, 8, 24, 0.55);
+  color: #f4f7ff;
   padding: 8px 12px;
   white-space: normal;
 }
 /* The arrow colour has to be set per direction — the bubble flips below the pin
    when there is no room above it, and Leaflet colours a different border edge
    for each direction. */
-.leaflet-tooltip.site-bubble.leaflet-tooltip-top::before { border-top-color: #ffffff; }
-.leaflet-tooltip.site-bubble.leaflet-tooltip-bottom::before { border-bottom-color: #ffffff; }
-.leaflet-tooltip.site-bubble.leaflet-tooltip-left::before { border-left-color: #ffffff; }
-.leaflet-tooltip.site-bubble.leaflet-tooltip-right::before { border-right-color: #ffffff; }
+.leaflet-tooltip.site-bubble.leaflet-tooltip-top::before {
+  border-top-color: #151b36;
+}
+.leaflet-tooltip.site-bubble.leaflet-tooltip-bottom::before {
+  border-bottom-color: #151b36;
+}
+.leaflet-tooltip.site-bubble.leaflet-tooltip-left::before {
+  border-left-color: #151b36;
+}
+.leaflet-tooltip.site-bubble.leaflet-tooltip-right::before {
+  border-right-color: #151b36;
+}
 /* Slid sideways to stay on the map, so the arrow no longer aims at the pin. */
-.leaflet-tooltip.site-bubble--shifted::before { display: none; }
-.site-bubble-card { min-width: 200px; max-width: 260px; }
-.site-bubble-title { font-weight: 700; font-size: 13px; color: #0f172a; line-height: 1.2; }
-.site-bubble-sub { font-size: 11px; color: #64748b; }
-.site-bubble-addr { font-size: 11px; color: #94a3b8; margin-top: 1px; }
+.leaflet-tooltip.site-bubble--shifted::before {
+  display: none;
+}
+.site-bubble-card {
+  min-width: 200px;
+  max-width: 260px;
+}
+.site-bubble-title {
+  font-weight: 700;
+  font-size: 13px;
+  color: #f4f7ff;
+  line-height: 1.2;
+}
+.site-bubble-sub {
+  font-size: 11px;
+  color: #8b9cb8;
+}
+.site-bubble-addr {
+  font-size: 11px;
+  color: #8b9cb8;
+  margin-top: 1px;
+}
 .site-bubble-stats {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 2px 10px;
   margin-top: 6px;
   font-size: 11px;
-  color: #475569;
+  color: #a8b6cc;
 }
-.site-bubble-stats b { color: #0f172a; }
-.site-bubble-hint { margin-top: 6px; font-size: 10px; font-style: italic; color: #94a3b8; }
+.site-bubble-stats b {
+  color: #f4f7ff;
+}
+.site-bubble-hint {
+  margin-top: 6px;
+  font-size: 10px;
+  font-style: italic;
+  color: #8b9cb8;
+}
 
-/* Clay-styled marker cluster badge */
 .site-cluster {
   display: grid;
   place-items: center;
   border-radius: 50%;
-  background: linear-gradient(145deg, #dd5a41, #a63c2a);
+  background: linear-gradient(180deg, #0369a1, #075985);
   color: #fff;
   font-weight: 800;
   font-size: 13px;
-  border: 2px solid rgba(255, 251, 242, 0.9);
-  box-shadow: 0 6px 16px rgba(166, 60, 42, 0.4);
+  border: 2px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 0 16px rgba(56, 189, 248, 0.45);
 }
 
-/* ── Data-dense areas stay crisp (legibility guard) ──────────────────────────
-   Tables and form-heavy views opt out of puffy clay for scannability. */
+/* ── Data-dense areas stay crisp ───────────────────────────────────────────── */
+.table-crisp table {
+  @apply w-full text-sm;
+}
+.table-crisp thead th {
+  background-color: rgba(12, 16, 36, 0.55);
+}
 .table-crisp th,
 .table-crisp td {
   @apply border-b border-ink-100;
+}
+.table-crisp tbody tr {
+  @apply transition-colors duration-150;
+}
+.table-crisp tbody tr:hover td {
+  background-color: rgba(34, 211, 238, 0.06);
+}
+.table-crisp tbody tr:last-child td {
+  @apply border-b-0;
+}
+
+.recharts-default-tooltip {
+  background: #151b36 !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 12px 32px rgba(4, 8, 24, 0.45) !important;
+  color: #f4f7ff !important;
+}
+.recharts-tooltip-item,
+.recharts-tooltip-label {
+  color: #e8eefc !important;
+}
+
+option {
+  background-color: #151b36;
+  color: #f4f7ff;
 }
 
 /* ── Accessibility: respect reduced motion ───────────────────────────────────
@@ -201,14 +395,180 @@ body {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
-  .skeleton::after { display: none; }
-  .skeleton { @apply animate-pulse; }
-  .aurora { animation: none; }
+  .skeleton::after {
+    display: none;
+  }
+  .skeleton {
+    @apply animate-pulse;
+  }
+  .aurora {
+    animation: none;
+  }
+  body {
+    background-image: none;
+  }
+}
+
+/* ── Print / export document chrome ─────────────────────────────────────────
+   Shared by the certificate, FERP, audit report, meeting minutes, mock-drill
+   report, incident and illness printables. Hairline + coral on white, matching
+   the ops dashboard — not the old 4px-black Word template. react-to-print
+   clones the page stylesheet, so these classes travel with the print job. */
+.doc-sheet {
+  background: #ffffff;
+  color: #0f172a;
+  font-family: 'Open Sans', system-ui, 'Segoe UI', sans-serif;
+}
+/* Screen ink is inverted for the SPA. Printables that still use text-ink-*
+   on white paper must keep dark type or the certificate reads as blank. */
+.doc-sheet .text-ink-900,
+.doc-sheet .text-ink-800,
+.doc-sheet .text-ink-700,
+.doc-sheet .text-ink-600 {
+  color: #0f172a;
+}
+.doc-sheet .text-ink-500,
+.doc-sheet .text-ink-400 {
+  color: #5b6573;
+}
+.doc-sheet .text-brand-700,
+.doc-sheet .text-brand-600,
+.doc-sheet .text-brand-500,
+.doc-sheet .text-brand-400 {
+  color: #0369a1;
+}
+.doc-kicker {
+  margin: 0 0 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #0369a1;
+  font-family: Roboto, system-ui, 'Segoe UI', sans-serif;
+}
+.doc-title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  color: #0f172a;
+}
+.doc-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid #0369a1;
+}
+.doc-meta {
+  text-align: right;
+  font-size: 12px;
+  color: #5b6573;
+}
+.doc-meta b,
+.doc-meta strong {
+  color: #0f172a;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.doc-section {
+  margin: 0 0 20px;
+}
+.doc-section-title {
+  margin: 0 0 10px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #5b6573;
+}
+.doc-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.doc-table th,
+.doc-table td {
+  border: 1px solid #e2e8f0;
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+.doc-table th {
+  background: #f8fafc;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #5b6573;
+}
+.doc-table td.lbl,
+.doc-table .lbl {
+  width: 22%;
+  background: #f8fafc;
+  font-weight: 600;
+  color: #2c3848;
+}
+.doc-panel {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 14px 16px;
+}
+.doc-quote {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border-left: 3px solid #0369a1;
+  background: #f8fafc;
+  color: #2c3848;
+  font-size: 13px;
+}
+.doc-sigs {
+  width: 100%;
+  margin-top: 56px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #5b6573;
+}
+.doc-sigs td {
+  width: 45%;
+  padding-top: 8px;
+  border-top: 1px solid #cbd5e1;
+  text-align: center;
+}
+.doc-sigs td.gutter {
+  width: 10%;
+  border: none;
+  padding: 0;
+}
+.doc-foot {
+  margin-top: 32px;
+  padding-top: 12px;
+  border-top: 1px solid #e2e8f0;
+  font-size: 10px;
+  color: #5b6573;
 }
 
 @media print {
-  .no-print { display: none !important; }
-  body { background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  @page { size: A4; margin: 12mm; }
-  .print-block { break-inside: avoid; page-break-inside: avoid; }
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: #fff;
+    background-image: none;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
+  .print-block {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
 }

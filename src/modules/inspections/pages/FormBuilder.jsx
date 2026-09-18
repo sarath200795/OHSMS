@@ -241,7 +241,7 @@ export default function FormBuilder() {
                 invite people to work out why they cannot fill them in. The dates
                 themselves are kept, so switching back restores the window. */}
             {onDemand ? (
-              <div className="rounded-2xl bg-clay-surface p-3 shadow-clay-inset">
+              <div className="ring-1 ring-ink-200 rounded-2xl bg-surface-50 p-3 ">
                 <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-ink-500">On demand</p>
                 <p className="text-[11px] text-ink-400">
                   This form never schedules itself. Run it from <strong>Checklists → Start now</strong>{' '}
@@ -250,7 +250,7 @@ export default function FormBuilder() {
                 </p>
               </div>
             ) : (
-              <div className="rounded-2xl bg-clay-surface p-3 shadow-clay-inset">
+              <div className="ring-1 ring-ink-200 rounded-2xl bg-surface-50 p-3 ">
                 <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-ink-500">Recurring window (optional)</p>
                 <div className="grid grid-cols-2 gap-3">
                   <Field label="From">
@@ -287,13 +287,13 @@ export default function FormBuilder() {
           </div>
 
           {tpl.fields.length === 0 ? (
-            <div className="rounded-2xl border-2 border-dashed border-clay-300 p-8 text-center text-sm text-ink-400">
+            <div className="rounded-2xl border-2 border-dashed border-surface-300 p-8 text-center text-sm text-ink-400">
               No questions yet. Add one or import from Excel.
             </div>
           ) : (
             <div className="space-y-3">
               {tpl.fields.map((f, i) => (
-                <div key={f.id} className="rounded-2xl bg-clay-surface p-3 shadow-clay-sm">
+                <div key={f.id} className="rounded-2xl bg-surface p-3 shadow-elev-sm">
                   <div className="flex items-start gap-3">
                     <div className="mt-2 flex items-center gap-1 text-ink-300">
                       <GripVertical size={16} />
@@ -327,7 +327,7 @@ export default function FormBuilder() {
                   </div>
 
                   {isChoice(f.type) && (
-                    <div className="mt-3 ml-7 rounded-xl bg-clay-bg/60 p-3">
+                    <div className="mt-3 ml-7 rounded-xl bg-canvas/60 p-3">
                       <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-ink-500">
                         Options <span className="text-ink-400">({f.type === 'Single Choice' ? 'pick one' : 'pick many'})</span>
                       </p>
@@ -353,7 +353,7 @@ export default function FormBuilder() {
             </div>
           )}
 
-          <button onClick={addField} className="btn-ghost mt-4 w-full border border-dashed border-clay-300">
+          <button onClick={addField} className="btn-ghost mt-4 w-full border border-dashed border-surface-300">
             <Plus size={16} /> Add question
           </button>
 

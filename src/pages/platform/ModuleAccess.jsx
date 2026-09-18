@@ -201,10 +201,10 @@ export default function ModuleAccess() {
                       onClick={() => setSelected(o.id)}
                       aria-current={active ? 'true' : undefined}
                       className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors ${
-                        active ? 'bg-brand-50 text-brand-900' : 'hover:bg-clay-100'
+                        active ? 'bg-brand-50 text-brand-900' : 'hover:bg-surface-100'
                       }`}
                     >
-                      <span className={`grid h-8 w-8 flex-none place-items-center rounded-lg ${active ? 'bg-brand-600 text-white' : 'bg-clay-100 text-ink-500'}`}>
+                      <span className={`grid h-8 w-8 flex-none place-items-center rounded-lg ${active ? 'bg-brand-600 text-white' : 'bg-surface-100 text-ink-500'}`}>
                         <Building2 size={15} />
                       </span>
                       <span className="min-w-0 flex-1">
@@ -291,7 +291,7 @@ export default function ModuleAccess() {
                 different meanings under one set of switches. */}
             {ADDONS.length > 0 && (
               <>
-                <p className="border-y border-ink-100 bg-clay-50 px-5 py-2.5 text-[11px] font-bold uppercase tracking-wide text-ink-400">
+                <p className="border-y border-ink-100 bg-surface-50 px-5 py-2.5 text-[11px] font-bold uppercase tracking-wide text-ink-400">
                   Add-ons · off unless switched on
                 </p>
                 <ul className="divide-y divide-ink-100">
@@ -337,7 +337,7 @@ function ModuleRow({ module: m, on, changed, disabled, onChange }) {
   const Icon = m.icon
   return (
     <li className={`flex items-start gap-4 px-5 py-4 ${changed ? 'bg-amber-50/60' : ''}`}>
-      <span className={`mt-0.5 grid h-9 w-9 flex-none place-items-center rounded-xl ${on ? 'bg-brand-50 text-brand-700' : 'bg-clay-100 text-ink-400'}`}>
+      <span className={`mt-0.5 grid h-9 w-9 flex-none place-items-center rounded-xl ${on ? 'bg-brand-50 text-brand-700' : 'bg-surface-100 text-ink-400'}`}>
         <Icon size={17} />
       </span>
       <div className="min-w-0 flex-1">
@@ -372,7 +372,7 @@ function Switch({ checked, onChange, disabled, label }) {
       }`}
     >
       <span
-        className={`absolute top-0.5 grid h-5 w-5 place-items-center rounded-full bg-white shadow-clay-sm transition-transform duration-200 ease-emil ${
+        className={`absolute top-0.5 grid h-5 w-5 place-items-center rounded-full bg-white shadow-elev-sm transition-transform duration-200 ease-emil ${
           checked ? 'translate-x-[22px]' : 'translate-x-0.5'
         }`}
       >

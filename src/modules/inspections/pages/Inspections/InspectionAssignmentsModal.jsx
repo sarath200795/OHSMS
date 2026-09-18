@@ -143,7 +143,7 @@ export default function InspectionAssignmentsModal({ template, currentUserEmail,
   return (
     <Modal open onClose={onClose} title={`Assignments · ${template.title}`} maxWidth="max-w-3xl">
       {/* Add new */}
-      <div className="rounded-2xl bg-clay-surface p-4 shadow-clay-inset">
+      <div className="ring-1 ring-ink-200 rounded-2xl bg-surface-50 p-4 ">
         <p className="mb-3 text-[10px] font-bold uppercase tracking-widest text-ink-500">Schedule a new inspection</p>
         {sites.length === 0 && (
           <div className="mb-3 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-700">
@@ -167,29 +167,29 @@ export default function InspectionAssignmentsModal({ template, currentUserEmail,
             {/* bulk-selection controls */}
             <div className="mb-1.5 flex flex-wrap gap-2">
               <button type="button" onClick={toggleAll}
-                className={`chip transition ${allSelected ? 'bg-brand-600 text-white shadow-clay-brand' : 'bg-clay-surface text-ink-600 shadow-clay-sm'}`}>
+                className={`chip transition ${allSelected ? 'bg-brand-600 text-white shadow-elev-brand' : 'bg-surface text-ink-600 shadow-elev-sm'}`}>
                 {allSelected ? <Check size={12} /> : <Globe size={12} />} All sites ({sites.length})
               </button>
               {siteSearch.trim() && filteredSites.length > 0 && (
                 <button type="button" onClick={selectAllShown}
-                  className="chip bg-brand-50 text-brand-700 shadow-clay-sm transition hover:bg-brand-100">
+                  className="chip bg-brand-50 text-brand-700 shadow-elev-sm transition hover:bg-brand-100">
                   <Check size={12} /> Select all shown ({filteredSites.length})
                 </button>
               )}
               {newSiteIds.length > 0 && (
                 <button type="button" onClick={() => setNewSiteIds([])}
-                  className="chip bg-clay-surface text-ink-500 shadow-clay-sm transition hover:bg-clay-100">
+                  className="chip bg-surface text-ink-500 shadow-elev-sm transition hover:bg-surface-100">
                   Clear selection
                 </button>
               )}
             </div>
-            {/* recessed clay tray holding raised clay chips (scrolls for long lists) */}
-            <div className="flex max-h-48 flex-wrap gap-2 overflow-y-auto custom-scroll rounded-2xl bg-clay-surface p-2.5 shadow-clay-inset">
+            {/* muted tray holding selected chips (scrolls for long lists) */}
+            <div className="ring-1 ring-ink-200 flex max-h-48 flex-wrap gap-2 overflow-y-auto custom-scroll rounded-2xl bg-surface-50 p-2.5 ">
               {filteredSites.map((s) => {
                 const sel = newSiteIds.includes(s.id)
                 return (
                   <button key={s.id} type="button" onClick={() => toggleSite(s.id)}
-                    className={`chip transition ${sel ? 'bg-brand-500 text-white shadow-clay-brand' : 'bg-clay-surface text-ink-600 shadow-clay-sm'}`}>
+                    className={`chip transition ${sel ? 'bg-brand-500 text-white shadow-elev-brand' : 'bg-surface text-ink-600 shadow-elev-sm'}`}>
                     {sel && <Check size={12} />}{s.name}{s.code ? ` (${s.code})` : ''}
                   </button>
                 )
@@ -241,7 +241,7 @@ export default function InspectionAssignmentsModal({ template, currentUserEmail,
         Existing assignments ({existing.length})
       </p>
       {existing.length === 0 ? (
-        <div className="rounded-2xl border-2 border-dashed border-clay-300 p-6 text-center text-sm italic text-ink-400">
+        <div className="rounded-2xl border-2 border-dashed border-surface-300 p-6 text-center text-sm italic text-ink-400">
           No assignments yet. Schedule one above.
         </div>
       ) : (
@@ -250,7 +250,7 @@ export default function InspectionAssignmentsModal({ template, currentUserEmail,
             const isOverdue = a.status === 'Pending' && a.scheduledDate < todayIso
             const isResch = rescheduleId === a.id
             return (
-              <div key={a.id} className="rounded-2xl bg-clay-surface p-4 shadow-clay-sm">
+              <div key={a.id} className="rounded-2xl bg-surface p-4 shadow-elev-sm">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1">
                     <div className="mb-1.5 flex flex-wrap items-center gap-2">
@@ -294,7 +294,7 @@ export default function InspectionAssignmentsModal({ template, currentUserEmail,
                     )}
                     {a.status === 'Pending' && (
                       <button onClick={() => handleCancel(a)} disabled={busy}
-                        className="rounded-lg border border-clay-300 bg-clay-surface px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-ink-500 transition hover:bg-clay-100">
+                        className="rounded-lg border border-surface-300 bg-surface px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-ink-500 transition hover:bg-surface-100">
                         Cancel
                       </button>
                     )}
@@ -312,7 +312,7 @@ export default function InspectionAssignmentsModal({ template, currentUserEmail,
                 </div>
 
                 {isResch && (
-                  <div className="mt-3 grid grid-cols-1 gap-2 rounded-xl bg-clay-bg p-3 sm:grid-cols-[160px,1fr,auto]">
+                  <div className="mt-3 grid grid-cols-1 gap-2 rounded-xl bg-canvas p-3 sm:grid-cols-[160px,1fr,auto]">
                     <input type="date" className="input font-mono" value={rescheduleDate}
                       onChange={(e) => setRescheduleDate(e.target.value)} />
                     <input className="input" placeholder="Reason (optional)" value={rescheduleReason}

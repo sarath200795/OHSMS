@@ -9,8 +9,10 @@ import { autoTable } from 'jspdf-autotable'
 import { initialRisk, residualRisk } from './raStats'
 import { categoryLabel } from './constants'
 
-const BRAND = [37, 99, 235] // #2563eb
-const INK = [28, 34, 48] // #1c2230
+const BRAND = [3, 105, 161] // #0369a1 cyan, matching screen CTA (AA on white)
+const INK = [15, 23, 42] // #0f172a
+const WASH = [248, 250, 252] // #f8fafc
+const RULE = [226, 232, 240] // #e2e8f0
 const MARGIN = 12
 
 function hexToRgb(hex) {
@@ -42,7 +44,11 @@ function controlsText(controls, members, withOwner = false, withMeta = false) {
 
 function refIdOf(a) {
   if (a.refId) return a.refId
-  const slug = (a.siteName || 'SITE').toUpperCase().replace(/[^A-Z0-9]+/g, '').slice(0, 6) || 'SITE'
+  const slug =
+    (a.siteName || 'SITE')
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, '')
+      .slice(0, 6) || 'SITE'
   return `HIRA-${slug}-${(a.id || '').slice(0, 6).toUpperCase()}`
 }
 
@@ -70,13 +76,27 @@ export function exportAssessmentPdf(assessment, generatedAt = new Date()) {
     theme: 'grid',
     styles: { fontSize: 8.5, cellPadding: 1.6 },
     body: [
-      ['Ref ID', refId, 'Assessment Name', assessment.name || '—', 'Status', assessment.status || 'ACTIVE'],
-      ['Date', assessment.assessmentDate || '—', 'Site / Location', [assessment.siteName, assessment.location].filter(Boolean).join(' / ') || '—', 'Prepared by', assessment.createdByName || '—'],
+      [
+        'Ref ID',
+        refId,
+        'Assessment Name',
+        assessment.name || '—',
+        'Status',
+        assessment.status || 'ACTIVE',
+      ],
+      [
+        'Date',
+        assessment.assessmentDate || '—',
+        'Site / Location',
+        [assessment.siteName, assessment.location].filter(Boolean).join(' / ') || '—',
+        'Prepared by',
+        assessment.createdByName || '—',
+      ],
     ],
     columnStyles: {
-      0: { fontStyle: 'bold', fillColor: [243, 244, 246], cellWidth: 24 },
-      2: { fontStyle: 'bold', fillColor: [243, 244, 246], cellWidth: 34 },
-      4: { fontStyle: 'bold', fillColor: [243, 244, 246], cellWidth: 26 },
+      0: { fontStyle: 'bold', fillColor: WASH, cellWidth: 24 },
+      2: { fontStyle: 'bold', fillColor: WASH, cellWidth: 34 },
+      4: { fontStyle: 'bold', fillColor: WASH, cellWidth: 26 },
     },
     margin: { left: MARGIN, right: MARGIN },
   })
@@ -84,7 +104,9 @@ export function exportAssessmentPdf(assessment, generatedAt = new Date()) {
 
   // ── Assessment team ──
   if (members.length) {
-    const sorted = [...members].sort((a, b) => (a.type === 'internal' ? -1 : 1) - (b.type === 'internal' ? -1 : 1))
+    const sorted = [...members].sort(
+      (a, b) => (a.type === 'internal' ? -1 : 1) - (b.type === 'internal' ? -1 : 1)
+    )
     const team = sorted.map((m) => `${m.name}${m.role ? ` (${m.role})` : ''}`).join(' · ')
     doc.setTextColor(...INK)
     doc.setFont('helvetica', 'bold')
@@ -115,12 +137,19 @@ export function exportAssessmentPdf(assessment, generatedAt = new Date()) {
 
   activities.forEach((act, ai) => {
     // Activity heading (avoid orphan at page bottom).
-    if (y + 16 > pageH - 14) { doc.addPage(); y = 20 }
+    if (y + 16 > pageH - 14) {
+      doc.addPage()
+      y = 20
+    }
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(10)
     doc.setTextColor(...BRAND)
     const nature = act.nature ? ` [${String(act.nature).toUpperCase()}]` : ''
-    doc.text(`ACTIVITY ${ai + 1}: ${(act.title || 'Untitled').toUpperCase()}${nature}`, MARGIN, y + 4)
+    doc.text(
+      `ACTIVITY ${ai + 1}: ${(act.title || 'Untitled').toUpperCase()}${nature}`,
+      MARGIN,
+      y + 4
+    )
     y += 6
 
     const body = []
@@ -134,11 +163,17 @@ export function exportAssessmentPdf(assessment, generatedAt = new Date()) {
         init ? String(init.score) : '—',
         controlsText(h.controls, members),
         resid ? String(resid.score) : '—',
-        [controlsText(h.additionalControls, members, true, true), h.alarp ? '— Residual accepted (ALARP)' : '']
+        [
+          controlsText(h.additionalControls, members, true, true),
+          h.alarp ? '— Residual accepted (ALARP)' : '',
+        ]
           .filter((s) => s && s !== '—')
           .join('\n') || (h.alarp ? 'Residual accepted (ALARP)' : '—'),
       ])
-      rowMeta.push({ r1: init ? hexToRgb(init.color) : null, r2: resid ? hexToRgb(resid.color) : null })
+      rowMeta.push({
+        r1: init ? hexToRgb(init.color) : null,
+        r2: resid ? hexToRgb(resid.color) : null,
+      })
     }
     if (!body.length) {
       body.push(['—', 'No hazards recorded', '—', '—', '—', '—'])
@@ -149,7 +184,14 @@ export function exportAssessmentPdf(assessment, generatedAt = new Date()) {
       startY: y,
       head: [COLS.map((c) => c.header)],
       body,
-      styles: { fontSize: 8, cellPadding: 1.5, valign: 'top', overflow: 'linebreak', lineColor: [220, 220, 220], lineWidth: 0.1 },
+      styles: {
+        fontSize: 8,
+        cellPadding: 1.5,
+        valign: 'top',
+        overflow: 'linebreak',
+        lineColor: RULE,
+        lineWidth: 0.15,
+      },
       headStyles: { fillColor: INK, textColor: 255, fontSize: 8, halign: 'left' },
       columnStyles: COLS.reduce((acc, c, i) => {
         acc[i] = { cellWidth: c.width }

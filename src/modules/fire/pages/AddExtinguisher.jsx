@@ -91,7 +91,7 @@ export default function AddExtinguisher() {
               print its QR code below.
             </p>
 
-            <div className="mx-auto mt-6 w-fit rounded-3xl bg-clay-surface p-4 shadow-clay">
+            <div className="mx-auto mt-6 w-fit rounded-3xl bg-surface p-4 shadow-elev">
               <QRCodeCanvas value={publicQrUrl(created.qrToken)} size={176} level="M" includeMargin />
             </div>
             <p className="mt-2 break-all text-xs text-ink-400">{publicQrUrl(created.qrToken)}</p>

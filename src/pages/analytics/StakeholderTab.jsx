@@ -45,7 +45,7 @@ const clean = (v) => String(v ?? '').trim()
 
 // The constants carry a Tailwind palette name; Breakdown wants a hex. One map
 // here rather than a second severity palette invented per chart.
-const HEX = { emerald: '#22c55e', blue: '#0ea5e9', amber: '#f59e0b', red: '#ef4444', slate: '#8a7660' }
+const HEX = { emerald: '#22c55e', blue: '#0ea5e9', amber: '#f59e0b', red: '#ef4444', slate: '#8b9cb8' }
 
 // Badge speaks brand/gray/green/amber/red/blue/violet, the constants speak
 // emerald/slate. Mapped rather than passed through, because an unmapped tone
@@ -300,7 +300,7 @@ export default function StakeholderTab({ escalations, legalIssues, sites, keepUn
       <button
         type="button"
         onClick={reset}
-        className="rounded-2xl bg-clay-surface px-4 py-2.5 text-[12.5px] font-semibold text-ink-700 shadow-clay-sm"
+        className="rounded-2xl bg-surface px-4 py-2.5 text-[12.5px] font-semibold text-ink-700 shadow-elev-sm"
       >
         Reset
       </button>
@@ -438,7 +438,7 @@ export default function StakeholderTab({ escalations, legalIssues, sites, keepUn
                 return (
                   <li
                     key={e.id}
-                    className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-2xl bg-clay-surface px-3.5 py-2.5 shadow-clay-inset"
+                    className="ring-1 ring-ink-200 flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-2xl bg-surface-50 px-3.5 py-2.5 "
                   >
                     <span className="font-mono text-[11px] text-ink-400">{e.docId || '—'}</span>
                     <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-ink-900">
@@ -559,7 +559,7 @@ export default function StakeholderTab({ escalations, legalIssues, sites, keepUn
                 {a.repeats.slice(0, REPEATS_SHOWN).map((m) => (
                   <li
                     key={m.memberId || m.name}
-                    className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-2xl bg-clay-surface px-3.5 py-2.5 shadow-clay-inset"
+                    className="ring-1 ring-ink-200 flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-2xl bg-surface-50 px-3.5 py-2.5 "
                   >
                     <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-ink-900">
                       {m.name || m.memberId}

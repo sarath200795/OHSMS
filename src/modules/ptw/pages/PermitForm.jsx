@@ -51,7 +51,7 @@ function SectionCard({ icon: Icon, title, subtitle, children }) {
   return (
     <motion.section initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="card p-5 sm:p-6">
       <div className="mb-4 flex items-center gap-3">
-        <div className="grid h-9 w-9 place-items-center rounded-xl bg-brand-50 text-brand-600 shadow-clay-sm">
+        <div className="grid h-9 w-9 place-items-center rounded-xl bg-brand-50 text-brand-600 shadow-elev-sm">
           <Icon size={18} />
         </div>
         <div>
@@ -67,7 +67,7 @@ function SectionCard({ icon: Icon, title, subtitle, children }) {
 function ToggleChip({ active, onClick, children }) {
   return (
     <button type="button" onClick={onClick}
-      className={`chip transition ${active ? 'bg-brand-500 text-white' : 'bg-clay-surface text-ink-600 hover:bg-clay-100'}`}>
+      className={`chip transition ${active ? 'bg-brand-500 text-white' : 'bg-surface text-ink-600 hover:bg-surface-100'}`}>
       {active && <Check size={13} />}
       {children}
     </button>
@@ -277,11 +277,11 @@ export default function PermitForm() {
 
         {/* 3 — JSA */}
         <SectionCard icon={Table} title="Job Safety Analysis (JSA) *" subtitle={form.typeOfWork ? 'Required — complete at least one row (step, hazard & precaution)' : 'Select a work type to seed suggested steps'}>
-          <div className="overflow-hidden rounded-2xl shadow-clay-inset">
-            <div className="hidden grid-cols-[1fr_1fr_1fr_auto] gap-2 bg-clay-100 px-3 py-2 text-xs font-bold uppercase tracking-wide text-ink-500 sm:grid">
+          <div className="ring-1 ring-ink-200 overflow-hidden rounded-2xl ">
+            <div className="hidden grid-cols-[1fr_1fr_1fr_auto] gap-2 bg-surface-100 px-3 py-2 text-xs font-bold uppercase tracking-wide text-ink-500 sm:grid">
               <span>Activity step</span><span>Hazard during activity</span><span>Precaution</span><span className="w-8" />
             </div>
-            <div className="divide-y divide-clay-100 bg-clay-surface">
+            <div className="divide-y divide-surface-100 bg-surface">
               {form.jsa.length === 0 && <p className="px-3 py-4 text-sm text-ink-400">No steps yet — add one below.</p>}
               {form.jsa.map((r, i) => (
                 <div key={i} className="grid grid-cols-1 gap-2 p-2 sm:grid-cols-[1fr_1fr_1fr_auto] sm:items-center">
@@ -329,7 +329,7 @@ export default function PermitForm() {
               {requiredDocs.map((req) => {
                 const attached = docs[req.key]
                 return (
-                  <div key={req.key} className="flex flex-wrap items-center gap-2 rounded-2xl bg-clay-surface p-3 shadow-clay-inset">
+                  <div key={req.key} className="ring-1 ring-ink-200 flex flex-wrap items-center gap-2 rounded-2xl bg-surface-50 p-3 ">
                     <div className="min-w-0 flex-1">
                       <p className="flex items-center gap-2 text-sm font-semibold text-ink-800">
                         {req.label}
@@ -349,7 +349,7 @@ export default function PermitForm() {
                 )
               })}
               {extraDocs.map((d) => (
-                <div key={d.id} className="flex flex-wrap items-center gap-2 rounded-2xl bg-clay-surface p-3 shadow-clay-inset">
+                <div key={d.id} className="ring-1 ring-ink-200 flex flex-wrap items-center gap-2 rounded-2xl bg-surface-50 p-3 ">
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold text-ink-800">Other document</p>
                     <p className="truncate text-xs text-ink-500">{d.fileName} · {formatBytes(d.size)}</p>
@@ -368,7 +368,7 @@ export default function PermitForm() {
           <SectionCard icon={Flame} title="Fire watcher(s)" subtitle="Required for hot work — fire watch maintained ≥30 min after completion">
             <div className="space-y-2">
               {form.fireWatchers.map((w, i) => (
-                <div key={i} className="grid grid-cols-1 gap-2 rounded-2xl bg-clay-surface p-3 shadow-clay-inset sm:grid-cols-[1fr_1fr_auto] sm:items-center">
+                <div key={i} className="grid grid-cols-1 gap-2 rounded-2xl bg-surface p-3  sm:grid-cols-[1fr_1fr_auto] sm:items-center">
                   <input className="input" placeholder="Fire watcher name" value={w.name} onChange={(e) => updateFireWatcher(i, { name: e.target.value })} />
                   <input className="input" placeholder="Details (phone / role)" value={w.details} onChange={(e) => updateFireWatcher(i, { details: e.target.value })} />
                   <button type="button" onClick={() => removeFireWatcher(i)} className="justify-self-end rounded-lg p-1.5 text-ink-400 hover:text-red-600"><Trash2 size={15} /></button>
@@ -393,13 +393,13 @@ export default function PermitForm() {
         <SectionCard icon={UsersIcon} title="Participants *" subtitle="At least one participant is required">
           <div className="space-y-3">
             {form.participants.map((p, i) => (
-              <div key={i} className="rounded-2xl bg-clay-surface p-3 shadow-clay-inset">
+              <div key={i} className="ring-1 ring-ink-200 rounded-2xl bg-surface-50 p-3 ">
                 <div className="mb-2 flex items-center justify-between">
                   <div className="flex gap-1.5">
                     <button type="button" onClick={() => updateParticipant(i, { type: 'internal', name: '', contact: '' })}
-                      className={`chip ${p.type === 'internal' ? 'bg-brand-500 text-white' : 'bg-clay-100 text-ink-600'}`}><User size={13} /> Internal</button>
+                      className={`chip ${p.type === 'internal' ? 'bg-brand-500 text-white' : 'bg-surface-100 text-ink-600'}`}><User size={13} /> Internal</button>
                     <button type="button" onClick={() => updateParticipant(i, { type: 'external', name: '', contact: '' })}
-                      className={`chip ${p.type === 'external' ? 'bg-brand-500 text-white' : 'bg-clay-100 text-ink-600'}`}><Building2 size={13} /> External</button>
+                      className={`chip ${p.type === 'external' ? 'bg-brand-500 text-white' : 'bg-surface-100 text-ink-600'}`}><Building2 size={13} /> External</button>
                   </div>
                   <button type="button" onClick={() => removeParticipant(i)} className="rounded-lg p-1.5 text-ink-400 hover:text-red-600"><Trash2 size={15} /></button>
                 </div>

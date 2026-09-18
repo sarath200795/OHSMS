@@ -79,9 +79,9 @@ export default function QRPrint() {
   return (
     <div>
       <PageHeader title="Print QR Codes" subtitle={`${items.length} selected for printing`} icon={QrCode}>
-        <div className="flex rounded-xl bg-clay-100 p-1 no-print">
+        <div className="flex rounded-xl bg-surface-100 p-1 no-print">
           {Object.entries(CFG).map(([k, c]) => (
-            <button key={k} onClick={() => switchType(k)} className={`rounded-lg px-3 py-1.5 text-xs font-bold ${assetType === k ? 'bg-white text-ink-900 shadow-clay-sm' : 'text-ink-500'}`}>
+            <button key={k} onClick={() => switchType(k)} className={`rounded-lg px-3 py-1.5 text-xs font-bold ${assetType === k ? 'bg-surface text-ink-900 shadow-elev-sm' : 'text-ink-500'}`}>
               {c.tab}
             </button>
           ))}
@@ -149,8 +149,8 @@ export default function QRPrint() {
             ) : (
               <div ref={printRef} className="qr-print-grid grid grid-cols-2 gap-4 sm:grid-cols-3">
                 {items.map((e) => (
-                  <div key={e.id} className="qr-print-card flex flex-col items-center rounded-2xl border border-ink-200 bg-white p-4 text-center">
-                    <div className="mb-1 text-xs font-extrabold uppercase tracking-wide text-brand-600">{HEADER[assetType]}</div>
+                  <div key={e.id} className="qr-print-card flex flex-col items-center rounded-xl bg-white p-4 text-center ring-1 ring-ink-200">
+                    <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-brand-600">{HEADER[assetType]}</div>
                     <QRCodeSVG className="qr-print-code" value={publicQrUrl(e.qrToken)} size={148} level="H" includeMargin fgColor="#000000" bgColor="#ffffff" />
                     <p className="mt-2 text-sm font-extrabold text-ink-900">{cfg.big(e)}</p>
                     <p className="text-xs text-ink-500">{cfg.sub(e)}</p>

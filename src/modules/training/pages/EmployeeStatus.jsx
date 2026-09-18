@@ -155,7 +155,7 @@ export default function EmployeeStatus() {
                 <span className="font-medium text-ink-700">Mandatory compliance</span>
                 <span className="text-lg font-bold text-ink-900">{org.mandPct}%</span>
               </div>
-              <div className="h-3 w-full overflow-hidden rounded-full bg-clay-200">
+              <div className="h-3 w-full overflow-hidden rounded-full bg-surface-200">
                 <div className="h-full rounded-full transition-all duration-300"
                   style={{ width: `${org.mandPct}%`, backgroundColor: org.mandPct >= 90 ? '#16a34a' : org.mandPct >= 60 ? '#d97706' : '#dc2626' }} />
               </div>
@@ -166,7 +166,7 @@ export default function EmployeeStatus() {
                 <span className="font-medium text-ink-700">Overall course coverage</span>
                 <span className="text-lg font-bold text-ink-900">{org.overallPct}%</span>
               </div>
-              <div className="h-3 w-full overflow-hidden rounded-full bg-clay-200">
+              <div className="h-3 w-full overflow-hidden rounded-full bg-surface-200">
                 <div className="h-full rounded-full bg-brand-500 transition-all duration-300" style={{ width: `${org.overallPct}%` }} />
               </div>
               <p className="mt-1 text-xs text-ink-400">Share of all employee × course combinations currently trained.</p>
@@ -184,7 +184,7 @@ export default function EmployeeStatus() {
                       <span className="text-ink-700">{d.name} <span className="text-xs text-ink-400">({d.n})</span></span>
                       <span className="text-xs font-semibold text-ink-600">{d.pct}%</span>
                     </div>
-                    <div className="h-2 w-full overflow-hidden rounded-full bg-clay-200">
+                    <div className="h-2 w-full overflow-hidden rounded-full bg-surface-200">
                       <div className="h-full rounded-full"
                         style={{ width: `${d.pct}%`, backgroundColor: d.pct >= 90 ? '#16a34a' : d.pct >= 60 ? '#d97706' : '#dc2626' }} />
                     </div>
@@ -248,9 +248,9 @@ export default function EmployeeStatus() {
                   <th className="px-4 py-3">Mandatory compliance</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-clay-200/60">
+              <tbody className="divide-y divide-surface-200/60">
                 {pageItems.map((r) => (
-                  <tr key={r.uid} className="cursor-pointer hover:bg-clay-100/50" onClick={() => setDetail(r)} title="Click for course-level detail">
+                  <tr key={r.uid} className="cursor-pointer hover:bg-surface-100/50" onClick={() => setDetail(r)} title="Click for course-level detail">
                     <td className="px-4 py-3">
                       <p className="font-semibold text-ink-900">{r.name}</p>
                       {r.department && <p className="text-xs text-ink-400">{r.department}</p>}
@@ -270,7 +270,7 @@ export default function EmployeeStatus() {
                       <div className="flex items-center gap-2">
                         {/* See Dashboard.jsx: width alone is not a value anyone
                             can read but a sighted user. */}
-                        <div className="h-2.5 w-28 overflow-hidden rounded-full bg-clay-200" role="progressbar" aria-valuenow={r.pct} aria-valuemin={0} aria-valuemax={100} aria-label={`${r.name || 'Employee'} training completion`}>
+                        <div className="h-2.5 w-28 overflow-hidden rounded-full bg-surface-200" role="progressbar" aria-valuenow={r.pct} aria-valuemin={0} aria-valuemax={100} aria-label={`${r.name || 'Employee'} training completion`}>
                           <div className="h-full rounded-full" style={{ width: `${r.pct}%`, backgroundColor: r.pct >= 90 ? '#16a34a' : r.pct >= 60 ? '#d97706' : '#dc2626' }} />
                         </div>
                         <span className="text-xs font-semibold text-ink-600">{r.pct}%</span>
@@ -281,7 +281,7 @@ export default function EmployeeStatus() {
               </tbody>
             </table>
           </div>
-          <Pager className="border-t border-clay-200/60 px-4 py-3" page={safePage} pageCount={pageCount} onPage={setPage} total={shown.length} pageSize={PAGE_SIZE} />
+          <Pager className="border-t border-surface-200/60 px-4 py-3" page={safePage} pageCount={pageCount} onPage={setPage} total={shown.length} pageSize={PAGE_SIZE} />
         </Card>
       )}
 
@@ -299,7 +299,7 @@ export default function EmployeeStatus() {
                   <th className="pb-2">Assignment due</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-clay-200/60">
+              <tbody className="divide-y divide-surface-200/60">
                 {detail.cells.map((cell) => {
                   const course = courses.find((c) => c.id === cell.courseId)
                   const asn = openAssignments.find((a) => a.employeeUid === detail.uid && a.courseId === cell.courseId)

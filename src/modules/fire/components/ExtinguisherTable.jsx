@@ -4,7 +4,13 @@ import { AlertTriangle } from 'lucide-react'
 import { Pager } from '../../../shared/ui'
 import { usePagination } from '../../../shared/ui/usePagination'
 import CategoryBadges from './CategoryBadges'
-import { healthColor, toDate, daysUntil, dateFieldState, hasDateIssue } from '../lib/extinguisherLogic'
+import {
+  healthColor,
+  toDate,
+  daysUntil,
+  dateFieldState,
+  hasDateIssue,
+} from '../lib/extinguisherLogic'
 import { STATUS_LABEL, STATUS_COLOR, REGION_COLORS } from '../lib/constants'
 import { dueTextColor } from '../lib/assetLogic'
 import { Badge } from './ui'
@@ -20,17 +26,24 @@ function DueCell({ value }) {
   // Surface data-quality problems instead of a silent "—".
   if (state === 'invalid') {
     return (
-      <span className="inline-flex items-center gap-1 rounded-md bg-red-50 px-1.5 py-0.5 text-[11px] font-bold text-red-600" title="This date is stored in an invalid format — please edit and re-save this unit.">
+      <span
+        className="inline-flex items-center gap-1 rounded-md bg-red-50 px-1.5 py-0.5 text-[11px] font-bold text-red-700"
+        title="This date is stored in an invalid format — please edit and re-save this unit."
+      >
         <AlertTriangle size={12} /> Invalid date
       </span>
     )
   }
   if (state === 'missing') {
-    // amber-700, not amber-600: on amber-50 the 600 measures 3.07:1 against a
-    // 4.5:1 requirement, and this chip is the only thing marking a unit whose
-    // refill date nobody recorded.
+    // amber-700, not amber-600: 700 is the AA text stop on the remapped
+    // amber-50 wash (dark glass). 600 was 3.07:1 on the old light wash and is
+    // still short of 4.5:1 on the new one. This chip is the only thing marking
+    // a unit whose refill date nobody recorded.
     return (
-      <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-1.5 py-0.5 text-[11px] font-semibold text-amber-700" title="No date recorded — add one to track this unit's due status.">
+      <span
+        className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-1.5 py-0.5 text-[11px] font-semibold text-amber-700"
+        title="No date recorded — add one to track this unit's due status."
+      >
         Not set
       </span>
     )
@@ -79,7 +92,7 @@ export default function ExtinguisherTable({
     <div className="card overflow-hidden">
       <div className="overflow-x-auto">
         <table className="w-full min-w-[800px] text-sm">
-          <thead className="bg-clay-100/70 text-left text-xs uppercase tracking-wide text-ink-500">
+          <thead className="bg-surface-100/70 text-left text-xs uppercase tracking-wide text-ink-500">
             <tr>
               {selectable && (
                 <th className="w-10 px-4 py-3">
@@ -104,7 +117,7 @@ export default function ExtinguisherTable({
               {renderActions && <th className="px-4 py-3 text-right">Actions</th>}
             </tr>
           </thead>
-          <tbody className="divide-y divide-clay-200/60">
+          <tbody className="divide-y divide-surface-200/60">
             {pageItems.map((ext, i) => {
               const selected = selectedIds?.has(ext.id)
               return (
@@ -145,29 +158,38 @@ export default function ExtinguisherTable({
                         recorded rendered as "ABC ·", a separator pointing at
                         nothing. */}
                     <div className="text-xs text-ink-500">
-                      {[ext.type, ext.capacity].map((v) => String(v ?? '').trim()).filter(Boolean).join(' · ') || '—'}
+                      {[ext.type, ext.capacity]
+                        .map((v) => String(v ?? '').trim())
+                        .filter(Boolean)
+                        .join(' · ') || '—'}
                     </div>
                   </td>
                   {/* Dashes rather than nothing. An empty cell reads as a
                       rendering fault; a dash says the field is genuinely blank,
                       which is the same thing Region already did. */}
                   <td className="px-4 py-3">
-                    {ext.entity
-                      ? <span className="font-medium text-ink-700">{ext.entity}</span>
-                      : <span className="text-ink-300">—</span>}
+                    {ext.entity ? (
+                      <span className="font-medium text-ink-700">{ext.entity}</span>
+                    ) : (
+                      <span className="text-ink-400">—</span>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     {ext.region ? (
                       <Badge color={REGION_COLORS[ext.region] || '#64748b'}>{ext.region}</Badge>
                     ) : (
-                      <span className="text-ink-300">—</span>
+                      <span className="text-ink-400">—</span>
                     )}
                   </td>
                   <td className="px-4 py-3 text-ink-700">
-                    {ext.centerName || <span className="text-ink-300">—</span>}
+                    {ext.centerName || <span className="text-ink-400">—</span>}
                   </td>
-                  <td className="px-4 py-3"><DueCell value={ext.dateOfNextRefill} /></td>
-                  <td className="px-4 py-3"><DueCell value={ext.dateOfNextHPT} /></td>
+                  <td className="px-4 py-3">
+                    <DueCell value={ext.dateOfNextRefill} />
+                  </td>
+                  <td className="px-4 py-3">
+                    <DueCell value={ext.dateOfNextHPT} />
+                  </td>
                   {showStatus && (
                     <td className="px-4 py-3">
                       <Badge color={STATUS_COLOR[ext.status] || '#64748b'}>
@@ -185,10 +207,12 @@ export default function ExtinguisherTable({
                       {ext.lastActionBy ? (
                         <div className="leading-tight">
                           <div className="font-medium text-ink-800">{ext.lastActionBy}</div>
-                          {ext.lastAction && <div className="text-[11px] text-ink-400">{ext.lastAction}</div>}
+                          {ext.lastAction && (
+                            <div className="text-[11px] text-ink-400">{ext.lastAction}</div>
+                          )}
                         </div>
                       ) : (
-                        <span className="text-ink-300">—</span>
+                        <span className="text-ink-400">—</span>
                       )}
                     </td>
                   )}

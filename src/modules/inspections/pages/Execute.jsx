@@ -34,7 +34,7 @@ function PF({ value, onPick }) {
     <div className="flex gap-2">
       {PF_OPTIONS.map((o) => (
         <button key={o.v} type="button" onClick={() => onPick(o.v)}
-          className={`inline-flex items-center gap-1 rounded-xl px-3 py-2 text-xs font-bold shadow-clay-sm transition active:scale-95 ${value === o.v ? o.on : `bg-clay-surface ${o.off}`}`}>
+          className={`inline-flex items-center gap-1 rounded-xl px-3 py-2 text-xs font-bold shadow-elev-sm transition active:scale-95 ${value === o.v ? o.on : `bg-surface ${o.off}`}`}>
           <o.icon size={14} /> {o.v}
         </button>
       ))}
@@ -224,7 +224,7 @@ export default function Execute() {
               <span>{progress.answered}/{progress.total} answered</span>
               <span>{progress.percent}%</span>
             </div>
-            <div className="h-2 overflow-hidden rounded-full bg-clay-200">
+            <div className="h-2 overflow-hidden rounded-full bg-surface-200">
               <div className="h-full rounded-full bg-brand-500 transition-all" style={{ width: `${progress.percent}%` }} />
             </div>
             {progress.photoNeed > 0 && (
@@ -242,7 +242,7 @@ export default function Execute() {
               render time, so there is no control this can name in every case. */}
             <span className="label"><MapPin size={12} className="mr-1 inline" /> Site</span>
             {task.siteId && task.siteName ? (
-              <div className="input flex items-center bg-clay-bg font-semibold text-ink-700">{task.siteName}</div>
+              <div className="input flex items-center bg-canvas font-semibold text-ink-700">{task.siteName}</div>
             ) : (
               <select className="input" value={inspSiteId} onChange={(e) => setInspSiteId(e.target.value)}>
                 <option value="">{sites.length ? 'Select a site…' : 'No sites available'}</option>
@@ -313,7 +313,7 @@ export default function Execute() {
                               const sel = r.answer === opt
                               return (
                                 <button key={opt} type="button" onClick={() => update(f.id, { answer: opt })}
-                                  className={`rounded-xl px-3 py-2 text-xs font-bold shadow-clay-sm transition active:scale-95 ${sel ? 'bg-brand-500 text-white' : 'bg-clay-surface text-ink-600'}`}>
+                                  className={`rounded-xl px-3 py-2 text-xs font-bold shadow-elev-sm transition active:scale-95 ${sel ? 'bg-brand-500 text-white' : 'bg-surface text-ink-600'}`}>
                                   {opt}
                                 </button>
                               )
@@ -328,7 +328,7 @@ export default function Execute() {
                               return (
                                 <button key={opt} type="button"
                                   onClick={() => update(f.id, { answer: sel ? arr.filter((x) => x !== opt) : [...arr, opt] })}
-                                  className={`inline-flex items-center gap-1 rounded-xl px-3 py-2 text-xs font-bold shadow-clay-sm transition active:scale-95 ${sel ? 'bg-brand-500 text-white' : 'bg-clay-surface text-ink-600'}`}>
+                                  className={`inline-flex items-center gap-1 rounded-xl px-3 py-2 text-xs font-bold shadow-elev-sm transition active:scale-95 ${sel ? 'bg-brand-500 text-white' : 'bg-surface text-ink-600'}`}>
                                   {sel && <Check size={13} />}{opt}
                                 </button>
                               )
@@ -345,7 +345,7 @@ export default function Execute() {
                         person who found it, standing there, is the one who knows;
                         asking later means asking someone who was not present. */}
                     {f.type === 'Pass/Fail' && r.answer === 'Fail' && (
-                      <div className="mt-3 space-y-2 rounded-2xl bg-clay-surface p-3 shadow-clay-inset">
+                      <div className="ring-1 ring-ink-200 mt-3 space-y-2 rounded-2xl bg-surface-50 p-3 ">
                         <textarea
                           className="input min-h-[60px]"
                           placeholder="What is wrong? (observation)"
@@ -387,7 +387,7 @@ export default function Execute() {
                       <div className="mt-3">
                         {r.photoEvidence ? (
                           <div className="flex items-center gap-3">
-                            <StoredImage pointer={{ url: r.photoEvidence, path: r.photoEvidencePath }} alt="evidence" className="h-16 w-16 rounded-xl object-cover shadow-clay-sm" />
+                            <StoredImage pointer={{ url: r.photoEvidence, path: r.photoEvidencePath }} alt="evidence" className="h-16 w-16 rounded-xl object-cover shadow-elev-sm" />
                             <span className="text-xs text-ink-500">{r.photoEvidenceName}</span>
                             <button onClick={() => update(f.id, { photoEvidence: null, photoEvidenceName: '' })}
                               className="rounded-lg p-1.5 text-ink-400 hover:bg-red-50 hover:text-red-600"><Trash2 size={15} /></button>

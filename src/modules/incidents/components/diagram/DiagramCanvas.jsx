@@ -47,7 +47,7 @@ function Canvas({ method, initial, onChange, flowRef }) {
         <span className="ml-auto self-center text-xs text-ink-400">Tip: click a node to select it, then “Add…” to branch from it · double-click to rename · Del to remove · drag handles to connect</span>
       </div>
 
-      <div ref={flowRef} className="h-[520px] overflow-hidden rounded-2xl border border-clay-300 bg-white shadow-clay-inset">
+      <div ref={flowRef} className="h-[520px] overflow-hidden rounded-2xl border border-surface-300 bg-white ">
         <ReactFlow
           nodes={nodes}
           edges={edges}

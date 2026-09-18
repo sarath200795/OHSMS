@@ -25,12 +25,12 @@ export default function EmployeeChips({ users, picked, onToggle, search, setSear
             onChange={(e) => setSearch(e.target.value)} />
         )}
       </div>
-      <div className="flex max-h-40 flex-wrap gap-2 overflow-y-auto rounded-2xl bg-clay-surface p-2.5 shadow-clay-inset">
+      <div className="ring-1 ring-ink-200 flex max-h-40 flex-wrap gap-2 overflow-y-auto rounded-2xl bg-surface-50 p-2.5 ">
         {shown.map((u) => {
           const sel = picked.includes(u.uid)
           return (
             <button key={u.uid} type="button" onClick={() => onToggle(u.uid)}
-              className={`chip transition ${sel ? 'bg-brand-500 text-white shadow-clay-brand' : 'bg-clay-surface text-ink-600 shadow-clay-sm'}`}>
+              className={`chip transition ${sel ? 'bg-brand-500 text-white shadow-elev-brand' : 'bg-surface text-ink-600 shadow-elev-sm'}`}>
               {sel && <Check size={12} />}{u.name || u.email}
             </button>
           )

@@ -32,7 +32,7 @@ export function StoredImage({ pointer, orgId, collection, fallback = null, alt =
   if (restricted) {
     return (
       <span
-        className="grid h-full w-full place-items-center rounded-xl bg-clay-surface text-[10px] font-semibold text-ink-400"
+        className="grid h-full w-full place-items-center rounded-xl bg-surface text-[10px] font-semibold text-ink-400"
         title="You do not have the key for this file"
       >
         Restricted

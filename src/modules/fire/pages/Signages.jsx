@@ -286,7 +286,7 @@ export default function Signages() {
   }
 
   const cellStyles = {
-    none: 'bg-clay-50 text-ink-300',
+    none: 'bg-surface-50 text-ink-300',
     ok: 'bg-green-50 text-green-700',
     issue: 'bg-amber-50 text-amber-700',
     missing: 'bg-red-50 text-red-700',
@@ -295,9 +295,9 @@ export default function Signages() {
   return (
     <div>
       <PageHeader title="Safety Signage" subtitle="Site-wise availability of fire & safety signage" icon={Signpost}>
-        <div className="flex rounded-xl bg-clay-100 p-1">
-          <button onClick={() => setView('matrix')} className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold ${view === 'matrix' ? 'bg-white text-ink-900 shadow-clay-sm' : 'text-ink-500'}`}><LayoutGrid size={14} /> Matrix</button>
-          <button onClick={() => setView('list')} className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold ${view === 'list' ? 'bg-white text-ink-900 shadow-clay-sm' : 'text-ink-500'}`}><List size={14} /> List</button>
+        <div className="flex rounded-xl bg-surface-100 p-1">
+          <button onClick={() => setView('matrix')} className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold ${view === 'matrix' ? 'bg-surface text-ink-900 shadow-elev-sm' : 'text-ink-500'}`}><LayoutGrid size={14} /> Matrix</button>
+          <button onClick={() => setView('list')} className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold ${view === 'list' ? 'bg-surface text-ink-900 shadow-elev-sm' : 'text-ink-500'}`}><List size={14} /> List</button>
         </div>
         <button
           className={linkPlan?.linked.length ? 'btn-soft !bg-brand-100 !text-brand-800' : 'btn-soft'}
@@ -362,7 +362,7 @@ export default function Signages() {
             <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded bg-green-200" /> Available</span>
             <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded bg-amber-200" /> Needs attention</span>
             <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded bg-red-200" /> Missing</span>
-            <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded bg-clay-200" /> Not recorded</span>
+            <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded bg-surface-200" /> Not recorded</span>
             <span className="ml-auto text-ink-400">🧯 column shows signs / extinguishers — they should match. Click a cell to manage records.</span>
           </div>
 
@@ -371,18 +371,18 @@ export default function Signages() {
               <table className="w-full border-separate border-spacing-0 text-sm">
                 <thead>
                   <tr>
-                    <th className="sticky left-0 z-10 border-b border-clay-200/60 bg-clay-surface px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wide text-ink-500">Site</th>
+                    <th className="sticky left-0 z-10 border-b border-surface-200/60 bg-surface px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wide text-ink-500">Site</th>
                     {visibleTypes.map((t) => (
                       <th
                         key={t}
                         title={t === EXT_SIGN_TYPE ? 'Recorded signs / fire extinguishers at the site — these should match' : undefined}
-                        className="border-b border-clay-200/60 bg-clay-surface px-2 py-3 text-center text-[10px] font-semibold leading-tight text-ink-500"
+                        className="border-b border-surface-200/60 bg-surface px-2 py-3 text-center text-[10px] font-semibold leading-tight text-ink-500"
                         style={{ minWidth: 78 }}
                       >
                         {t}{t === EXT_SIGN_TYPE ? ' 🧯' : ''}
                       </th>
                     ))}
-                    <th className="border-b border-clay-200/60 bg-clay-surface px-3 py-3 text-center text-[10px] font-bold uppercase tracking-wide text-ink-500" style={{ minWidth: 78 }}>Coverage</th>
+                    <th className="border-b border-surface-200/60 bg-surface px-3 py-3 text-center text-[10px] font-bold uppercase tracking-wide text-ink-500" style={{ minWidth: 78 }}>Coverage</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -396,11 +396,11 @@ export default function Signages() {
                     const pct = Math.round((covered / visibleTypes.length) * 100)
                     return (
                       <tr key={site} className="group">
-                        <td className="sticky left-0 z-10 border-b border-clay-200/40 bg-white px-4 py-2 font-semibold text-ink-800 group-hover:bg-clay-50">
+                        <td className="sticky left-0 z-10 border-b border-surface-200/40 bg-white px-4 py-2 font-semibold text-ink-800 group-hover:bg-surface-50">
                           <span className="flex items-center gap-1.5"><MapPin size={13} className="text-brand-400" /> {site}</span>
                         </td>
                         {cells.map((c) => (
-                          <td key={c.t} className="border-b border-l border-clay-200/40 p-1 text-center">
+                          <td key={c.t} className="border-b border-l border-surface-200/40 p-1 text-center">
                             <button
                               onClick={() => (c.count > 0 ? setCellView({ site, type: c.t }) : openAddFor(site, c.t))}
                               title={c.count > 0 ? `${c.count} record(s) — click to manage` : 'Not recorded — click to add'}
@@ -411,7 +411,7 @@ export default function Signages() {
                             </button>
                           </td>
                         ))}
-                        <td className="border-b border-l border-clay-200/40 px-3 py-2 text-center">
+                        <td className="border-b border-l border-surface-200/40 px-3 py-2 text-center">
                           <span className={`font-bold ${pct >= 80 ? 'text-green-700' : pct >= 40 ? 'text-amber-700' : 'text-red-700'}`}>{covered}/{visibleTypes.length}</span>
                         </td>
                       </tr>
@@ -421,7 +421,7 @@ export default function Signages() {
               </table>
             </div>
             <Pager
-              className="border-t border-clay-200/60 px-4 py-3"
+              className="border-t border-surface-200/60 px-4 py-3"
               page={matrixPager.page} pageCount={matrixPager.pageCount} onPage={matrixPager.setPage}
               total={matrixPager.total} pageSize={matrixPager.pageSize}
             />
@@ -446,7 +446,7 @@ export default function Signages() {
               </div>
               <div className="card overflow-x-auto">
                 <table className="w-full text-left text-sm">
-                  <thead className="border-b border-clay-200/60 text-[11px] uppercase tracking-wide text-ink-400">
+                  <thead className="border-b border-surface-200/60 text-[11px] uppercase tracking-wide text-ink-400">
                     <tr>
                       <th className="px-4 py-2.5">Type</th>
                       <th className="px-4 py-2.5">Floor</th>
@@ -457,9 +457,9 @@ export default function Signages() {
                       <th className="px-4 py-2.5 text-right">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-clay-200/50">
+                  <tbody className="divide-y divide-surface-200/50">
                     {items.map((s) => (
-                      <tr key={s.id} className="hover:bg-clay-50">
+                      <tr key={s.id} className="hover:bg-surface-50">
                         <td className="px-4 py-2.5 font-semibold text-ink-800">{s.type}</td>
                         <td className="px-4 py-2.5 text-ink-500">{isFerp(s.type) ? (s.totalFloors ? `${ferpCovered(s)}/${s.totalFloors} floors` : '—') : (s.floor || '—')}</td>
                         <td className="px-4 py-2.5 text-ink-500">{s.location || '—'}</td>
@@ -532,7 +532,7 @@ export default function Signages() {
               </Field>
             </div>
             {isFerp(editing.type) && (
-              <div className="rounded-xl bg-clay-surface/60 p-3 shadow-clay-inset">
+              <div className="ring-1 ring-ink-200 rounded-xl bg-surface-50/60 p-3 ">
                 <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-ink-700">
                   <input type="checkbox" checked={!!editing.allFloors} onChange={(e) => setEditing({ ...editing, allFloors: e.target.checked })} />
                   FERP available on all floors
@@ -599,7 +599,7 @@ export default function Signages() {
               ) : (
                 <ul className="space-y-2">
                   {recs.map((s) => (
-                    <li key={s.id} className="flex items-center gap-3 rounded-xl border border-clay-200/60 px-3 py-2.5">
+                    <li key={s.id} className="flex items-center gap-3 rounded-xl border border-surface-200/60 px-3 py-2.5">
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <Badge color={SIGNAGE_CONDITION_COLOR[s.condition] || '#64748b'}>{s.condition}</Badge>
@@ -622,7 +622,7 @@ export default function Signages() {
                   ))}
                 </ul>
               )}
-              <div className="mt-4 flex justify-end gap-2 border-t border-clay-200/60 pt-3">
+              <div className="mt-4 flex justify-end gap-2 border-t border-surface-200/60 pt-3">
                 <button className="btn-ghost" onClick={() => setCellView(null)}>Close</button>
                 <button className="btn-primary" onClick={() => { openAddFor(cellView.site, cellView.type); setCellView(null) }}>
                   <Plus size={16} /> Add another

@@ -28,7 +28,7 @@ import ReportAssetDefectModal from '../components/ReportAssetDefectModal'
 import { STATUS_LABEL, AED_STATUS, AED_STATUS_LABEL, FAS_STATUS, FAS_STATUS_LABEL, STRETCHER_STATUS, STRETCHER_STATUS_LABEL } from '../lib/constants'
 
 const Row = ({ icon: Icon, label, value }) => (
-  <div className="flex items-start gap-3 border-b border-clay-200/70 py-2.5 last:border-0">
+  <div className="flex items-start gap-3 border-b border-surface-200/70 py-2.5 last:border-0">
     <Icon size={16} className="mt-0.5 shrink-0 text-ink-400" />
     <span className="w-32 shrink-0 text-sm text-ink-500">{label}</span>
     <span className="min-w-0 flex-1 text-sm font-semibold text-ink-900">{value || '—'}</span>
@@ -141,7 +141,7 @@ export default function QrLanding() {
 
   if (asset === undefined) {
     return (
-      <div className="grid min-h-screen place-items-center bg-clay-bg">
+      <div className="grid min-h-screen place-items-center bg-canvas">
         <Loader2 size={28} className="animate-spin text-brand-600" />
       </div>
     )
@@ -149,7 +149,7 @@ export default function QrLanding() {
 
   if (asset === null) {
     return (
-      <div className="grid min-h-screen place-items-center bg-clay-bg p-6">
+      <div className="grid min-h-screen place-items-center bg-canvas p-6">
         <div className="card max-w-sm p-8 text-center">
           <QrCode size={32} className="mx-auto text-ink-300" />
           <h1 className="mt-3 text-lg font-bold text-ink-900">Code not recognised</h1>
@@ -164,10 +164,10 @@ export default function QrLanding() {
 
   const d = describe(asset)
   const openDefects = d.openDefects || []
-  const headerBg = d.alert ? 'bg-red-600' : d.warn ? 'bg-amber-600' : 'bg-green-700'
+  const headerBg = d.alert ? 'bg-red-600' : d.warn ? 'bg-amber-600' : 'bg-green-600'
 
   return (
-    <div className="min-h-screen bg-clay-bg p-4 sm:p-8">
+    <div className="min-h-screen bg-canvas p-4 sm:p-8">
       <div className="mx-auto max-w-md">
         <div className="card overflow-hidden !p-0">
           <div className={`p-5 text-white ${headerBg}`}>
@@ -206,7 +206,7 @@ export default function QrLanding() {
             </div>
           )}
 
-          <div className="border-t border-clay-200/70 p-5">
+          <div className="border-t border-surface-200/70 p-5">
             <button className="btn-primary w-full justify-center" onClick={() => setReporting(true)}>
               <AlertTriangle size={16} /> Report a defect
             </button>

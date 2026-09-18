@@ -35,23 +35,25 @@ export default function IdleGuard({ signOut }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/40 p-4 backdrop-blur-sm animate-fade-in"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm animate-fade-in"
       role="alertdialog"
       aria-modal="true"
       aria-labelledby="idle-title"
     >
-      <div className="w-full max-w-sm rounded-2xl bg-clay-surface p-6 shadow-clay-lg">
-        <h2 id="idle-title" className="mb-2 text-lg font-bold text-ink-900">Session expiring soon</h2>
+      <div className="card w-full max-w-sm p-6 shadow-elev-lg">
+        <h2 id="idle-title" className="mb-2 text-lg font-bold text-ink-900">
+          Session expiring soon
+        </h2>
         <p className="mb-6 text-[14px] text-ink-600">
           You have been inactive for a while. You will be signed out in{' '}
-          <span className="font-bold text-red-600">{remainingSeconds}</span> seconds to protect
-          your account.
+          <span className="font-bold text-red-600">{remainingSeconds}</span> seconds to protect your
+          account.
         </p>
         <div className="flex justify-end gap-3">
           <button
             type="button"
             onClick={() => signOut?.()}
-            className="rounded-xl px-4 py-2 text-[13px] font-bold text-ink-600 transition-colors hover:bg-clay-100"
+            className="rounded-xl px-4 py-2 text-[13px] font-bold text-ink-600 transition-colors hover:bg-surface-100"
           >
             Sign out
           </button>

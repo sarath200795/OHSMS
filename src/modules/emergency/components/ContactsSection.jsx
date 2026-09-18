@@ -184,7 +184,7 @@ export default function ContactsSection({ site, contacts, users }) {
               />
             </div>
           ) : (
-            <ul className="divide-y divide-clay-200/60">
+            <ul className="divide-y divide-surface-200/60">
               {external.map((c) => (
                 <ContactRow key={c.id} c={c} tone="red" isManager={isManager} onEdit={openEdit} onDelete={remove} roleLabels={roleLabels} />
               ))}
@@ -205,7 +205,7 @@ export default function ContactsSection({ site, contacts, users }) {
               <EmptyState icon={Phone} title="No internal contacts" description="Add this site's CM, CLM, Safety L1/L2, Legal and HR contacts." />
             </div>
           ) : (
-            <ul className="divide-y divide-clay-200/60">
+            <ul className="divide-y divide-surface-200/60">
               {internal.map((c) => (
                 <ContactRow key={c.id} c={c} tone="brand" isManager={isManager} onEdit={openEdit} onDelete={remove} roleLabels={roleLabels} />
               ))}
@@ -221,7 +221,7 @@ export default function ContactsSection({ site, contacts, users }) {
             {['external', 'internal'].map((k) => (
               <button key={k} type="button"
                 onClick={() => setForm((f) => ({ ...f, kind: k, role: k === 'internal' ? 'CM' : 'Police', employeeUid: '', department: '' }))}
-                className={`flex-1 rounded-xl px-3 py-2 text-sm font-bold transition ${form.kind === k ? 'bg-brand-600 text-white shadow-clay-brand' : 'bg-clay-surface text-ink-600 shadow-clay-sm'}`}>
+                className={`flex-1 rounded-xl px-3 py-2 text-sm font-bold transition ${form.kind === k ? 'bg-brand-600 text-white shadow-elev-brand' : 'bg-surface text-ink-600 shadow-elev-sm'}`}>
                 {k === 'external' ? 'External service' : 'Internal contact'}
               </button>
             ))}
@@ -274,7 +274,7 @@ export default function ContactsSection({ site, contacts, users }) {
             </Field>
           </div>
 
-          <label className="flex items-center gap-2.5 rounded-xl bg-clay-surface px-3.5 py-2.5 shadow-clay-inset">
+          <label className="ring-1 ring-ink-200 flex items-center gap-2.5 rounded-xl bg-surface-50 px-3.5 py-2.5 ">
             <input type="checkbox" className="h-4 w-4 accent-current text-brand-600" checked={form.orgWide}
               onChange={(e) => setForm({ ...form, orgWide: e.target.checked })} />
             <span className="text-sm text-ink-700">
@@ -303,7 +303,7 @@ export default function ContactsSection({ site, contacts, users }) {
             Finds the closest named <b>Hospital</b>, <b>Police station</b> and <b>Fire station</b> to this site&apos;s
             coordinates (OpenStreetMap) and saves them as its external contacts.
           </p>
-          <div className="flex flex-wrap items-center gap-3 rounded-xl bg-clay-surface px-3.5 py-2.5 text-sm shadow-clay-inset">
+          <div className="ring-1 ring-ink-200 flex flex-wrap items-center gap-3 rounded-xl bg-surface-50 px-3.5 py-2.5 text-sm ">
             <MapPin size={15} className="text-brand-600" />
             <span className="text-ink-700">
               {hasCoords ? <>{site.name} — <span className="font-mono text-xs">{site.lat}, {site.lng}</span></> : 'This site has no coordinates yet — add them in the Sites module.'}
@@ -317,7 +317,7 @@ export default function ContactsSection({ site, contacts, users }) {
             <>
               <div className="grid gap-3 sm:grid-cols-3">
                 {autoResults.map((r) => (
-                  <div key={r.role} className="rounded-2xl bg-clay-surface p-3.5 shadow-clay-inset">
+                  <div key={r.role} className="ring-1 ring-ink-200 rounded-2xl bg-surface-50 p-3.5 ">
                     <p className="text-xs font-bold uppercase tracking-widest text-ink-400">{r.role}</p>
                     <p className="mt-1 font-semibold leading-snug text-ink-900">{r.name}</p>
                     {r.phone ? (

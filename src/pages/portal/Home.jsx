@@ -106,13 +106,11 @@ const ADMIN_TOOLS = [
 ]
 
 /**
- * A module tile that tilts under the cursor.
+ * A module tile.
  *
- * The card and the logo move on different axes and by different amounts: the
- * card leans back, the logo lifts toward the viewer and turns slightly. Moving
- * them together would just be a scale — the gap between the two is what reads
- * as depth, and it is the reason the tile needs a perspective of its own rather
- * than inheriting one from the grid.
+ * The card stays flat (translate + hairline) so the home grid reads as an ops
+ * dashboard rather than a tray of clay objects. The logo still lifts in its
+ * own 3D scene — that is the object doing the thing it is for, not the panel.
  *
  * Everything is transform and opacity, so it stays off the main thread, and
  * `motion-reduce` drops the whole effect rather than softening it.
@@ -124,12 +122,12 @@ function Tile({ to, icon: Icon, gradient, label, title, delay = 0, logoKey }) {
       <Link
         to={to}
         style={{ animationDelay: `${delay}ms` }}
-        className="group relative flex animate-fade-in-up items-center gap-4 rounded-[26px] bg-clay-surface p-5 shadow-clay
-                   transition-[transform,box-shadow] duration-300 ease-emil [transform-style:preserve-3d]
-                   hover:shadow-clay-lg hover:[transform:translateY(-8px)_rotateX(9deg)_rotateY(-9deg)]
-                   active:[transform:translateY(-3px)_scale(0.985)]
-                   focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-clay-bg
-                   motion-reduce:transition-none motion-reduce:hover:[transform:none]"
+        className="group relative flex animate-fade-in-up items-center gap-4 rounded-2xl bg-surface p-4 ring-1 ring-white/10 shadow-elev
+                   transition-[transform,box-shadow] duration-200 ease-emil [transform-style:preserve-3d]
+                   hover:-translate-y-0.5 hover:shadow-elev-lg hover:ring-brand-400/40
+                   active:translate-y-0 active:scale-[0.99]
+                   focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas
+                   motion-reduce:transition-none motion-reduce:hover:translate-y-0"
       >
         {/* The logo lifts far enough off the card for the perspective to bend
             it — the wobble below only reads as rotation because of this gap. */}
@@ -142,14 +140,14 @@ function Tile({ to, icon: Icon, gradient, label, title, delay = 0, logoKey }) {
           {/* Colour cast on the card beneath, so the lift has somewhere to fall from. */}
           <span
             aria-hidden="true"
-            className={`absolute inset-0 rounded-[20px] bg-gradient-to-br ${gradient} opacity-0 blur-lg
-                        transition-opacity duration-300 group-hover:opacity-60 motion-reduce:hidden`}
+            className={`absolute inset-0 rounded-2xl bg-gradient-to-br ${gradient} opacity-0 blur-lg
+                        transition-opacity duration-300 group-hover:opacity-50 motion-reduce:hidden`}
           />
           {/* Modules with a built object let the object do the moving; the
               rest keep the turn, since a static glyph has nothing else to say. */}
           <span
-            className={`relative grid h-full w-full place-items-center overflow-hidden rounded-[20px]
-                        bg-gradient-to-br ${gradient} text-white shadow-clay-sm [transform-style:preserve-3d]
+            className={`relative grid h-full w-full place-items-center overflow-hidden rounded-2xl
+                        bg-gradient-to-br ${gradient} text-white shadow-elev-sm [transform-style:preserve-3d]
                         ${has3D ? '' : 'group-hover:animate-wobble3d'} motion-reduce:group-hover:animate-none`}
           >
             {/* A built object where one exists; the line icon otherwise, rather
@@ -336,7 +334,7 @@ export default function PortalHome() {
   const pie = stats.incidentsByType.map((r) => ({
     name: INCIDENT_TYPE_BY_KEY[r.key]?.label || 'Unspecified',
     value: r.value,
-    color: INCIDENT_TYPE_BY_KEY[r.key]?.color || '#8a7660',
+    color: INCIDENT_TYPE_BY_KEY[r.key]?.color || '#8b9cb8',
   }))
   const bars = stats.equipmentBySite.slice(0, 8)
 
@@ -384,7 +382,7 @@ export default function PortalHome() {
   return (
     <div className="animate-fade-in-up">
       <div className="mb-5 grid gap-4 lg:grid-cols-[1.55fr_1fr]">
-        <Raised className="relative overflow-hidden px-7 py-6">
+        <Raised className="relative overflow-hidden px-6 py-6 sm:px-7">
           <div
             aria-hidden="true"
             className="pointer-events-none absolute inset-0"
@@ -475,7 +473,7 @@ export default function PortalHome() {
                 <Link
                   key={a.key}
                   to="/portal/actions"
-                  className="flex items-center gap-2.5 rounded-[14px] bg-clay-50 px-3 py-2 shadow-clay-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+                  className="flex items-center gap-2.5 rounded-xl bg-surface-50 px-3 py-2 ring-1 ring-ink-900/5 transition-colors hover:bg-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
                 >
                   <span
                     className="h-6 w-1 flex-none rounded"
@@ -560,7 +558,7 @@ export default function PortalHome() {
                   tickLine={false}
                   axisLine={false}
                   fontSize={11}
-                  tick={{ fill: '#8a7660' }}
+                  tick={{ fill: '#8b9cb8' }}
                   interval={0}
                   tickFormatter={(v) => String(v).slice(0, 10)}
                 />
@@ -569,18 +567,18 @@ export default function PortalHome() {
                   tickLine={false}
                   axisLine={false}
                   fontSize={11}
-                  tick={{ fill: '#8a7660' }}
+                  tick={{ fill: '#8b9cb8' }}
                 />
-                <Tooltip cursor={{ fill: 'rgba(227,204,191,0.35)' }} />
-                <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
+                <Tooltip cursor={{ fill: 'rgba(34,211,238,0.08)' }} />
+                <Legend iconType="circle" wrapperStyle={{ fontSize: 12, color: '#a8b6cc' }} />
                 <Bar
                   dataKey="extinguishers"
                   name="Extinguishers"
-                  fill="#dd5a41"
+                  fill="#22d3ee"
                   radius={[6, 6, 0, 0]}
                 />
-                <Bar dataKey="aeds" name="AED" fill="#7fc4bb" radius={[6, 6, 0, 0]} />
-                <Bar dataKey="fas" name="Fire alarm" fill="#e8a33d" radius={[6, 6, 0, 0]} />
+                <Bar dataKey="aeds" name="AED" fill="#a3e635" radius={[6, 6, 0, 0]} />
+                <Bar dataKey="fas" name="Fire alarm" fill="#fb923c" radius={[6, 6, 0, 0]} />
               </BarChart>
             </ChartFrame>
           ) : (
@@ -689,15 +687,15 @@ function DueList({ rows, empty, meta, loading }) {
   if (loading) {
     return (
       <div className="flex flex-col gap-2.5" role="status" aria-busy="true" aria-label="Loading">
-        <Skeleton className="h-14 rounded-[18px]" />
-        <Skeleton className="h-14 rounded-[18px]" />
-        <Skeleton className="h-14 rounded-[18px]" />
+        <Skeleton className="h-14 rounded-xl" />
+        <Skeleton className="h-14 rounded-xl" />
+        <Skeleton className="h-14 rounded-xl" />
       </div>
     )
   }
   if (!rows.length) {
     return (
-      <p className="rounded-[18px] bg-clay-50 px-4 py-6 text-center text-[13px] text-ink-400 shadow-clay-sm">
+      <p className="rounded-xl bg-surface-50 px-4 py-6 text-center text-[13px] text-ink-400 ring-1 ring-ink-900/5">
         {empty}
       </p>
     )
@@ -707,11 +705,11 @@ function DueList({ rows, empty, meta, loading }) {
       {rows.map((r) => (
         <li
           key={r.key}
-          className="flex items-center gap-3.5 rounded-[18px] bg-clay-50 px-4 py-3 shadow-clay-sm"
+          className="flex items-center gap-3.5 rounded-xl bg-surface-50 px-4 py-3 ring-1 ring-white/10"
         >
           <span
             className="h-[34px] w-1 flex-none rounded"
-            style={{ background: r.overdue ? '#ef4444' : r.due ? '#e8a33d' : '#ab987f' }}
+            style={{ background: r.overdue ? '#f87171' : r.due ? '#fbbf24' : '#22d3ee' }}
           />
           <div className="min-w-0 flex-1">
             <p className="truncate text-[13.5px] font-semibold text-ink-900">{r.title}</p>
@@ -722,7 +720,7 @@ function DueList({ rows, empty, meta, loading }) {
           </div>
           <span
             className={`flex-none rounded-full px-2.5 py-1 text-[10.5px] font-bold ${
-              r.overdue ? 'bg-red-100 text-red-700' : 'bg-clay-100 text-ink-600'
+              r.overdue ? 'bg-red-100 text-red-700' : 'bg-surface-100 text-ink-600'
             }`}
           >
             {r.overdue ? 'Overdue' : r.due || 'No date'}

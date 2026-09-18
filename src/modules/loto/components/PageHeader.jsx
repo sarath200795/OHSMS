@@ -5,7 +5,7 @@ export default function PageHeader({ icon, title, subtitle, actions }) {
     <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
       <div className="flex items-start gap-3">
         {icon && (
-          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-hazard to-hazard-dark text-ink shadow-clay">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-hazard to-hazard-dark text-ink-900 shadow-elev-sm ring-1 ring-ink-900/10">
             {icon}
           </span>
         )}

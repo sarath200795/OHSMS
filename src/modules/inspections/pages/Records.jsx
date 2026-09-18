@@ -35,7 +35,7 @@ function RecordDetail({ record, onClose }) {
               <li key={i} className="text-sm">
                 <span className="font-semibold text-ink-800">{f.label}</span>
                 {f.observation && <span className="text-ink-600"> — {f.observation}</span>}
-                {(f.photoEvidence || f.photoEvidencePath) && <StoredImage pointer={{ url: f.photoEvidence, path: f.photoEvidencePath }} alt="" className="mt-1.5 h-20 w-20 rounded-lg object-cover shadow-clay-sm" />}
+                {(f.photoEvidence || f.photoEvidencePath) && <StoredImage pointer={{ url: f.photoEvidence, path: f.photoEvidencePath }} alt="" className="mt-1.5 h-20 w-20 rounded-lg object-cover shadow-elev-sm" />}
               </li>
             ))}
           </ul>
@@ -47,7 +47,7 @@ function RecordDetail({ record, onClose }) {
         {Object.values(record.responses || {}).map((r, i) => {
           const ans = Array.isArray(r.answer) ? r.answer.join(', ') : r.answer
           return (
-            <div key={i} className="flex items-center justify-between gap-3 rounded-xl bg-clay-surface px-3 py-2 text-sm shadow-clay-sm">
+            <div key={i} className="flex items-center justify-between gap-3 rounded-xl bg-surface px-3 py-2 text-sm shadow-elev-sm">
               <span className="text-ink-700">{r.label}</span>
               <span className={`text-right font-bold ${r.answer === 'Pass' ? 'text-emerald-600' : r.answer === 'Fail' ? 'text-red-600' : 'text-ink-500'}`}>
                 {ans || '—'}
@@ -110,7 +110,7 @@ export default function Records() {
       ) : (
         <div className="overflow-hidden card">
           <table className="w-full text-left text-sm">
-            <thead className="bg-clay-surface text-[10px] uppercase tracking-widest text-ink-400">
+            <thead className="bg-surface text-[10px] uppercase tracking-widest text-ink-400">
               <tr>
                 <th className="px-4 py-3">Form</th>
                 <th className="px-4 py-3">Site</th>
@@ -122,7 +122,7 @@ export default function Records() {
             </thead>
             <tbody>
               {pageItems.map((r) => (
-                <tr key={r.id} className="cursor-pointer border-t border-clay-200/60 hover:bg-clay-surface/60" onClick={() => setActive(r)}>
+                <tr key={r.id} className="cursor-pointer border-t border-surface-200/60 hover:bg-surface/60" onClick={() => setActive(r)}>
                   <td className="px-4 py-3 font-semibold text-ink-800">{r.templateTitle}<DocIdTag id={r.docId} className="mt-0.5 block" /></td>
                   <td className="px-4 py-3 text-ink-500">{r.siteName || r.location || '—'}</td>
                   <td className="px-4 py-3 text-ink-500">{r.inspector}</td>
@@ -138,7 +138,7 @@ export default function Records() {
             </tbody>
           </table>
           <Pager
-            className="border-t border-clay-200/60 px-3 py-2"
+            className="border-t border-surface-200/60 px-3 py-2"
             page={page} pageCount={pageCount} onPage={setPage} total={total} pageSize={pageSize}
           />
         </div>

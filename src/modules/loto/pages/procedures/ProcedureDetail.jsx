@@ -145,7 +145,7 @@ export default function ProcedureDetail() {
       />
 
       {procedure.status === PROCEDURE_STATUS.APPROVED && can(PERMISSIONS.LOTO_PERFORM) && (
-        <div className="mb-4 rounded-2xl bg-claySurface px-4 py-3 text-sm text-steel-300 shadow-clay">
+        <div className="mb-4 rounded-2xl bg-surface px-4 py-3 text-sm text-steel-300 shadow-elev">
           🔧 Lock / unlock this equipment from the{' '}
           <button onClick={() => navigate(`/loto/operations/${procedure.id}`)} className="font-semibold text-amber-600">
             LOTO Operations

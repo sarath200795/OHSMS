@@ -39,7 +39,7 @@ describe('ModuleTabs', () => {
       </MemoryRouter>
     )
     expect(screen.getByRole('link', { name: 'Site Repository' }).className).toMatch(
-      /shadow-clay-pressed/
+      /nav-tab-active/
     )
   })
 })

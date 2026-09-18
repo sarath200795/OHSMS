@@ -165,7 +165,7 @@ export default function AuditLog() {
             </thead>
             <tbody>
               {filtered.map((l) => (
-                <tr key={l.id} className="hover:bg-clay-100">
+                <tr key={l.id} className="hover:bg-surface-100">
                   <td className="whitespace-nowrap px-5 py-3 text-ink-500">{formatDateTime(l.at)}</td>
                   <td className="px-5 py-3 font-medium text-ink-800">{l.actorName}</td>
                   <td className="px-5 py-3">

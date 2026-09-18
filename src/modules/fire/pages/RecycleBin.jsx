@@ -105,11 +105,11 @@ export default function RecycleBin() {
                   <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-clay-200/60">
+              <tbody className="divide-y divide-surface-200/60">
                 {pageItems.map((ext) => {
                   const left = daysLeft(ext.deletedAt)
                   return (
-                    <tr key={ext.id} className="hover:bg-clay-100/50" style={{ boxShadow: 'inset 4px 0 0 #dc2626' }}>
+                    <tr key={ext.id} className="hover:bg-surface-100/50" style={{ boxShadow: 'inset 4px 0 0 #dc2626' }}>
                       <td className="px-4 py-3">
                         <div className="font-bold text-ink-900">{ext.serialNo || '—'}</div>
                         <div className="text-xs text-ink-500">{ext.type} · {ext.capacity}</div>
@@ -126,7 +126,7 @@ export default function RecycleBin() {
                               restore is in flight the label IS a spinner, so the
                               button loses its name at the moment the user most
                               wants to know which row they pressed. */}
-                          <button className="btn bg-green-600 px-2.5 py-1.5 text-xs text-white hover:bg-green-700" disabled={busyId === ext.id} onClick={() => restore(ext)} aria-label={`Restore extinguisher ${ext.serialNo || ext.id}`}>
+                          <button className="btn bg-green-600 px-2.5 py-1.5 text-xs text-white hover:brightness-110" disabled={busyId === ext.id} onClick={() => restore(ext)} aria-label={`Restore extinguisher ${ext.serialNo || ext.id}`}>
                             {busyId === ext.id ? <Spinner size={14} /> : (<><RotateCcw size={14} /> Restore</>)}
                           </button>
                           <button className="btn-danger px-2.5 py-1.5 text-xs" onClick={() => setPurgeFor(ext)} aria-label={`Permanently purge extinguisher ${ext.serialNo || ext.id}`}>
@@ -141,7 +141,7 @@ export default function RecycleBin() {
             </table>
           </div>
           <Pager
-            className="border-t border-clay-200/60 px-4 py-3"
+            className="border-t border-surface-200/60 px-4 py-3"
             page={page} pageCount={pageCount} onPage={setPage} total={total} pageSize={pageSize}
           />
         </div>

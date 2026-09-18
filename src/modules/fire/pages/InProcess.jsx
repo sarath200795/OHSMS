@@ -75,7 +75,7 @@ export default function InProcess() {
           showActionBy
           renderActions={(ext) => (
             <>
-              <button className="btn bg-green-600 px-2.5 py-1.5 text-xs text-white hover:bg-green-700" onClick={() => openClose(ext)}>
+              <button className="btn bg-green-600 px-2.5 py-1.5 text-xs text-white hover:brightness-110" onClick={() => openClose(ext)}>
                 <CheckCircle2 size={14} /> Refilled & closed
               </button>
               <a className="btn-ghost px-2.5 py-1.5 text-xs" href={`/qr/${ext.qrToken}`} target="_blank" rel="noreferrer" title="Public QR">
@@ -101,7 +101,7 @@ export default function InProcess() {
         </div>
         <div className="mt-5 flex justify-end gap-2">
           <button className="btn-ghost" onClick={() => setClosing(null)}>Cancel</button>
-          <button className="btn bg-green-600 text-white hover:bg-green-700" onClick={confirmClose} disabled={busy}>
+          <button className="btn bg-green-600 text-white hover:brightness-110" onClick={confirmClose} disabled={busy}>
             {busy ? <Spinner size={18} /> : (<><CheckCircle2 size={16} /> Confirm & close</>)}
           </button>
         </div>

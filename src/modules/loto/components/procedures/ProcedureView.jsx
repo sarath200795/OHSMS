@@ -49,7 +49,7 @@ export default function ProcedureView({ procedure, photos = {}, headerActions })
   return (
     <div className="space-y-6">
       {/* Header card */}
-      <div className="overflow-hidden rounded-2xl bg-claySurface shadow-clay">
+      <div className="overflow-hidden rounded-2xl bg-surface shadow-elev">
         <div className="hazard-stripes h-1.5" />
         <div className="flex flex-col gap-5 p-6 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
@@ -104,7 +104,7 @@ export default function ProcedureView({ procedure, photos = {}, headerActions })
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.04 }}
-            className="overflow-hidden rounded-2xl bg-claySurface shadow-clay"
+            className="overflow-hidden rounded-2xl bg-surface shadow-elev"
           >
             <div className="flex items-stretch">
               <div

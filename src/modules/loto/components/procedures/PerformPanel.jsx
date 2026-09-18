@@ -98,7 +98,7 @@ export default function PerformPanel({
   return (
     <div className="space-y-4">
       {/* Perform checklist */}
-      <div className="overflow-hidden rounded-2xl bg-claySurface shadow-clay">
+      <div className="overflow-hidden rounded-2xl bg-surface shadow-elev">
         <div className="flex items-center justify-between px-5 py-3">
           <h3 className="text-sm font-bold text-steel-50">Perform — lock out each isolation point</h3>
           <span className="text-xs font-semibold text-steel-400">
@@ -179,7 +179,7 @@ export default function PerformPanel({
 
       {/* Group lock — only once equipment is fully locked */}
       {fullyLocked && (
-        <div className="rounded-2xl bg-claySurface p-5 shadow-clay">
+        <div className="rounded-2xl bg-surface p-5 shadow-elev">
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-sm font-bold text-steel-50">Group Lock</h3>
@@ -204,7 +204,7 @@ export default function PerformPanel({
               {group.members.map((mem) => (
                 <li
                   key={mem.techId}
-                  className="flex items-center justify-between rounded-lg bg-clay px-3 py-2 text-sm shadow-clay-inset"
+                  className="ring-1 ring-ink-200 flex items-center justify-between rounded-lg bg-surface-50 px-3 py-2 text-sm "
                 >
                   <span className="min-w-0 text-steel-100">
                     {mem.name}
@@ -238,7 +238,7 @@ export default function PerformPanel({
                 {tallyEntries.map(([key, count]) => (
                   <span
                     key={key}
-                    className="inline-flex items-center gap-1.5 rounded-full bg-clay px-3 py-1 text-xs font-medium text-steel-200 shadow-clay-inset"
+                    className="ring-1 ring-ink-200 inline-flex items-center gap-1.5 rounded-full bg-surface-50 px-3 py-1 text-xs font-medium text-steel-200 "
                   >
                     {deviceLabel(key)}
                     <span className="font-bold text-steel-50">×{count}</span>

@@ -259,7 +259,7 @@ export default function RescuePlans({ site, plans, users, contacts = [], baselin
             const meta = statusMeta(p.status)
             const isOpen = open === p.id
             return (
-              <div key={p.id} className="rounded-2xl bg-clay-surface p-3.5 shadow-clay-inset">
+              <div key={p.id} className="ring-1 ring-ink-200 rounded-2xl bg-surface-50 p-3.5 ">
                 <div className="flex flex-wrap items-center gap-2">
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
@@ -307,7 +307,7 @@ export default function RescuePlans({ site, plans, users, contacts = [], baselin
                 </div>
 
                 {isOpen && (
-                  <div className="mt-3 space-y-3 border-t border-clay-200/60 pt-3">
+                  <div className="mt-3 space-y-3 border-t border-surface-200/60 pt-3">
                     {p.description && <p className="text-sm text-ink-700">{p.description}</p>}
                     {p.triggers && <p className="text-xs text-ink-500"><b>Activate when:</b> {p.triggers}</p>}
                     <ol className="space-y-1.5">
@@ -330,7 +330,7 @@ export default function RescuePlans({ site, plans, users, contacts = [], baselin
                         <p className="mb-1 flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-ink-400"><Users size={12} /> Rescue team</p>
                         <div className="flex flex-wrap gap-1.5">
                           {p.team.map((t) => (
-                            <span key={t.id} className="chip bg-clay-100 text-ink-700">
+                            <span key={t.id} className="chip bg-surface-100 text-ink-700">
                               {t.role ? `${erpRoleLabel(t.role, roleLabels)}: ` : ''}{t.name}{t.phone ? ` · ${t.phone}` : ''}
                             </span>
                           ))}
@@ -356,18 +356,18 @@ export default function RescuePlans({ site, plans, users, contacts = [], baselin
       {/* Scenario coverage: baselines are authored centrally, so at site level
           we surface the gap and route to the library rather than ad-hoc creation. */}
       {isManager && missing.length > 0 && (
-        <div className="mt-4 border-t border-clay-200/60 pt-3">
+        <div className="mt-4 border-t border-surface-200/60 pt-3">
           <p className="mb-2 flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-ink-400">
             <ShieldAlert size={12} /> Scenarios without a plan
           </p>
           <div className="flex flex-wrap gap-1.5">
             {missing.map((s) => (
               baseline ? (
-                <button key={s} className="chip bg-clay-100 text-ink-500 transition hover:bg-brand-50 hover:text-brand-700" onClick={() => openNew(s)}>
+                <button key={s} className="chip bg-surface-100 text-ink-500 transition hover:bg-brand-50 hover:text-brand-700" onClick={() => openNew(s)}>
                   <Plus size={11} /> {s}
                 </button>
               ) : (
-                <span key={s} className="chip bg-clay-100 text-ink-400">{s}</span>
+                <span key={s} className="chip bg-surface-100 text-ink-400">{s}</span>
               )
             ))}
           </div>
@@ -396,10 +396,10 @@ export default function RescuePlans({ site, plans, users, contacts = [], baselin
                   type="button"
                   onClick={() => setRecallPicked((p) => (sel ? p.filter((x) => x !== b.id) : [...p, b.id]))}
                   className={`flex w-full items-center gap-3 rounded-xl px-3.5 py-2.5 text-left transition ${
-                    sel ? 'bg-brand-50 shadow-clay-sm' : 'bg-clay-surface shadow-clay-inset'
+                    sel ? 'bg-brand-50 shadow-elev-sm' : 'bg-surface-50 '
                   }`}
                 >
-                  <span className={`grid h-5 w-5 shrink-0 place-items-center rounded-md ${sel ? 'bg-brand-600 text-white' : 'bg-clay-200'}`}>
+                  <span className={`grid h-5 w-5 shrink-0 place-items-center rounded-md ${sel ? 'bg-brand-600 text-white' : 'bg-surface-200'}`}>
                     {sel && <Check size={13} />}
                   </span>
                   <span className="min-w-0 flex-1">
@@ -465,7 +465,7 @@ export default function RescuePlans({ site, plans, users, contacts = [], baselin
             </div>
             <div className="space-y-2">
               {form.steps.map((s, i) => (
-                <div key={s.id} className="flex items-start gap-2 rounded-xl bg-clay-surface p-2 shadow-clay-inset">
+                <div key={s.id} className="ring-1 ring-ink-200 flex items-start gap-2 rounded-xl bg-surface-50 p-2 ">
                   <div className="flex flex-col items-center gap-0.5 pt-1.5">
                     <span className="grid h-6 w-6 place-items-center rounded-lg bg-brand-600 text-xs font-bold text-white">{i + 1}</span>
                     <button type="button" className="text-ink-300 hover:text-ink-600" onClick={() => moveStep(i, -1)} title="Move up"><ChevronUp size={12} /></button>
@@ -507,7 +507,7 @@ export default function RescuePlans({ site, plans, users, contacts = [], baselin
             </div>
             <div className="space-y-2">
               {form.team.map((t) => (
-                <div key={t.id} className="rounded-xl bg-clay-surface p-2.5 shadow-clay-inset">
+                <div key={t.id} className="ring-1 ring-ink-200 rounded-xl bg-surface-50 p-2.5 ">
                   <div className="mb-2 grid gap-2 sm:grid-cols-[1fr,1fr]">
                     <Input value={t.role} onChange={(e) => setMember(t.id, { role: e.target.value })} placeholder="Role — e.g. Fire Marshal / First Aider" />
                     <Input value={t.phone} onChange={(e) => setMember(t.id, { phone: e.target.value })} placeholder="Phone" />
@@ -539,7 +539,7 @@ export default function RescuePlans({ site, plans, users, contacts = [], baselin
             {form.equipment.length > 0 && (
               <div className="mb-2 flex flex-wrap gap-1.5">
                 {form.equipment.map((eq) => (
-                  <span key={eq} className="chip bg-clay-100 text-ink-700">
+                  <span key={eq} className="chip bg-surface-100 text-ink-700">
                     {eq}
                     <button type="button" onClick={() => setForm((f) => ({ ...f, equipment: f.equipment.filter((x) => x !== eq) }))} className="text-ink-400 hover:text-red-600">
                       <X size={12} />

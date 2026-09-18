@@ -223,7 +223,7 @@ export default function Dashboard() {
         <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} className="mb-4 flex flex-wrap items-center gap-2">
           <span className="text-xs font-bold uppercase tracking-wide text-ink-400">Active:</span>
           {search && (
-            <button className="chip bg-clay-100 text-ink-600" onClick={() => setSearch('')}>
+            <button className="chip bg-surface-100 text-ink-600" onClick={() => setSearch('')}>
               “{search}” <X size={12} />
             </button>
           )}

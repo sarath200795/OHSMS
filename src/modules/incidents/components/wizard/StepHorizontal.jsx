@@ -26,7 +26,7 @@ export default function StepHorizontal({ value = {}, onChange }) {
       <div className="mb-4 flex gap-2">
         {[{ v: true, l: 'Yes' }, { v: false, l: 'No' }].map((o) => (
           <button key={o.l} type="button" onClick={() => set({ required: o.v })}
-            className={`btn ${value.required === o.v ? 'bg-brand-500 text-white shadow-clay-brand' : 'bg-clay-surface text-ink-600'}`}>
+            className={`btn ${value.required === o.v ? 'bg-brand-500 text-white shadow-elev-brand' : 'bg-surface text-ink-600'}`}>
             {o.l}
           </button>
         ))}

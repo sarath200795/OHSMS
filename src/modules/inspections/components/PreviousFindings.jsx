@@ -41,7 +41,7 @@ export default function PreviousFindingsPanel({ previous }) {
       <button
         type="button"
         onClick={() => setManual(!open)}
-        className="flex w-full items-center gap-3 p-4 text-left transition-colors hover:bg-clay-100/60"
+        className="flex w-full items-center gap-3 p-4 text-left transition-colors hover:bg-surface-100/60"
       >
         <span className={`grid h-9 w-9 flex-none place-items-center rounded-xl ${hasFindings ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
           {hasFindings ? <AlertTriangle size={17} /> : <CheckCircle2 size={17} />}

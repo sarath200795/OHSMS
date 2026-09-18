@@ -161,13 +161,13 @@ export default function FirstAidDashboard() {
 
               <div className="mt-6 grid gap-6 lg:grid-cols-2">
                 <div className="card overflow-hidden">
-                  <p className="border-b border-clay-200/60 px-4 py-3 text-xs font-bold uppercase tracking-wide text-ink-500">By item — weakest first</p>
+                  <p className="border-b border-surface-200/60 px-4 py-3 text-xs font-bold uppercase tracking-wide text-ink-500">By item — weakest first</p>
                   <div className="max-h-[420px] overflow-auto">
                     <table className="w-full text-sm">
-                      <thead className="sticky top-0 bg-clay-100/90 text-left text-[11px] uppercase tracking-wide text-ink-500">
+                      <thead className="sticky top-0 bg-surface-100/90 text-left text-[11px] uppercase tracking-wide text-ink-500">
                         <tr><th className="px-4 py-2">Item</th><th className="px-4 py-2 text-center">Min</th><th className="px-4 py-2 text-center">Sites</th><th className="px-4 py-2 text-center">Gaps</th><th className="px-4 py-2">Availability</th></tr>
                       </thead>
-                      <tbody className="divide-y divide-clay-200/60">
+                      <tbody className="divide-y divide-surface-200/60">
                         {s.byItem.map((r) => (
                           <tr key={r.item} className="hover:bg-ink-50/70">
                             <td className="px-4 py-2.5 font-semibold text-ink-800">{r.item}</td>
@@ -183,13 +183,13 @@ export default function FirstAidDashboard() {
                 </div>
 
                 <div className="card overflow-hidden">
-                  <p className="border-b border-clay-200/60 px-4 py-3 text-xs font-bold uppercase tracking-wide text-ink-500">By site — most gaps first</p>
+                  <p className="border-b border-surface-200/60 px-4 py-3 text-xs font-bold uppercase tracking-wide text-ink-500">By site — most gaps first</p>
                   <div className="max-h-[420px] overflow-auto">
                     <table className="w-full min-w-[460px] text-sm">
-                      <thead className="sticky top-0 bg-clay-100/90 text-left text-[11px] uppercase tracking-wide text-ink-500">
+                      <thead className="sticky top-0 bg-surface-100/90 text-left text-[11px] uppercase tracking-wide text-ink-500">
                         <tr><th className="px-4 py-2">Site</th><th className="px-4 py-2">Region / Entity</th><th className="px-4 py-2 text-center">Gaps</th><th className="px-4 py-2 text-center">Expired</th><th className="px-4 py-2">Availability</th></tr>
                       </thead>
-                      <tbody className="divide-y divide-clay-200/60">
+                      <tbody className="divide-y divide-surface-200/60">
                         {s.bySite.map((r) => (
                           <tr key={r.site} className="hover:bg-ink-50/70">
                             <td className="px-4 py-2.5 font-semibold text-ink-800" title={r.missingItems.length ? `Not available: ${r.missingItems.join(', ')}` : 'Every item stocked'}>{r.site}</td>

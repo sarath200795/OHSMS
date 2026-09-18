@@ -154,9 +154,9 @@ export default function BaselinePlans() {
           </p>
 
           {missingFromLibrary.length > 0 && (
-            <div className="max-h-56 overflow-auto rounded-2xl border border-clay-200">
+            <div className="max-h-56 overflow-auto rounded-2xl border border-surface-200">
               <table className="w-full text-sm">
-                <tbody className="divide-y divide-clay-100">
+                <tbody className="divide-y divide-surface-100">
                   {missingFromLibrary.map((e) => (
                     <tr key={e.scenario}>
                       <td className="px-4 py-2 font-medium text-ink-800">{e.scenario}</td>

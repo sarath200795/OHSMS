@@ -313,7 +313,7 @@ export default function MockDrills() {
         <div className="card overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
-              <thead className="border-b border-clay-200/60 text-[11px] uppercase tracking-wide text-ink-400">
+              <thead className="border-b border-surface-200/60 text-[11px] uppercase tracking-wide text-ink-400">
                 <tr>
                   <th className="px-4 py-2.5">Type</th>
                   <th className="px-4 py-2.5">Scenario</th>
@@ -324,9 +324,9 @@ export default function MockDrills() {
                   <th className="px-4 py-2.5 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-clay-200/50">
+              <tbody className="divide-y divide-surface-200/50">
                 {pageItems.map((d) => (
-                  <tr key={d.id} className="hover:bg-clay-50">
+                  <tr key={d.id} className="hover:bg-surface-50">
                     <td className="px-4 py-2.5">
                       <Badge color={d.eventType === 'Real Emergency' ? '#dc2626' : '#3b82f6'}>{d.eventType || 'Mock Drill'}</Badge>
                     </td>
@@ -354,7 +354,7 @@ export default function MockDrills() {
             </table>
           </div>
           <Pager
-            className="border-t border-clay-200/60 px-4 py-3"
+            className="border-t border-surface-200/60 px-4 py-3"
             page={page} pageCount={pageCount} onPage={setPage} total={total} pageSize={pageSize}
           />
         </div>
@@ -365,7 +365,7 @@ export default function MockDrills() {
         {scenario && (
           <div className="max-h-[76vh] space-y-5 overflow-y-auto pr-1">
             {/* event type toggle */}
-            <div className="flex rounded-xl bg-clay-100 p-1">
+            <div className="flex rounded-xl bg-surface-100 p-1">
               {EVENT_TYPES.map((t) => (
                 <button key={t} onClick={() => setForm({ ...form, eventType: t })}
                   className={`flex-1 rounded-lg px-3 py-2 text-xs font-bold transition ${
@@ -395,7 +395,7 @@ export default function MockDrills() {
             </div>
 
             {/* commanders */}
-            <div className="rounded-xl bg-clay-surface/60 p-4 shadow-clay-inset">
+            <div className="ring-1 ring-ink-200 rounded-xl bg-surface-50/60 p-4 ">
               <p className="mb-1 flex items-center gap-2 text-sm font-bold text-ink-700"><ShieldCheck size={16} /> Incident commanders</p>
               <p className="mb-2 text-xs text-ink-400">
                 {autoCmRef.current
@@ -452,28 +452,28 @@ export default function MockDrills() {
 
             {/* teams + checklist */}
             <div className="grid gap-4 lg:grid-cols-2">
-              <div className="rounded-xl bg-clay-surface/60 p-4 shadow-clay-inset">
+              <div className="ring-1 ring-ink-200 rounded-xl bg-surface-50/60 p-4 ">
                 <p className="mb-2 text-sm font-bold text-ink-700">Emergency teams alerted</p>
                 <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
                   {EMERGENCY_TEAMS.map((t, i) => (
-                    <label key={t} className={`flex cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs ${teamChecks[i] ? 'border-green-300 bg-green-50 text-green-800' : 'border-clay-200'}`}>
+                    <label key={t} className={`flex cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs ${teamChecks[i] ? 'border-green-300 bg-green-50 text-green-800' : 'border-surface-200'}`}>
                       <input type="checkbox" checked={!!teamChecks[i]} onChange={() => setTeamChecks((p) => ({ ...p, [i]: !p[i] }))} />
                       {t}
                     </label>
                   ))}
                 </div>
               </div>
-              <div className="rounded-xl bg-clay-surface/60 p-4 shadow-clay-inset">
+              <div className="ring-1 ring-ink-200 rounded-xl bg-surface-50/60 p-4 ">
                 <div className="mb-2 flex items-center justify-between">
                   <p className="text-sm font-bold text-ink-700">Procedural checklist</p>
                   <span className="chip bg-ink-100 text-ink-600">{Object.values(checks).filter(Boolean).length}/{checklist.length} · {score}%</span>
                 </div>
                 {checklist.length === 0 ? (
-                  <p className="rounded-lg border border-dashed border-clay-200 p-3 text-xs italic text-ink-400">Select the fire source / medical incident to load the checklist.</p>
+                  <p className="rounded-lg border border-dashed border-surface-200 p-3 text-xs italic text-ink-400">Select the fire source / medical incident to load the checklist.</p>
                 ) : (
                   <div className="space-y-1.5">
                     {checklist.map((item, i) => (
-                      <label key={i} className={`flex cursor-pointer items-start gap-2 rounded-lg border px-2.5 py-1.5 text-xs ${checks[i] ? 'border-brand-200 bg-brand-50' : 'border-clay-200'}`}>
+                      <label key={i} className={`flex cursor-pointer items-start gap-2 rounded-lg border px-2.5 py-1.5 text-xs ${checks[i] ? 'border-brand-200 bg-brand-50' : 'border-surface-200'}`}>
                         <input type="checkbox" className="mt-0.5" checked={!!checks[i]} onChange={() => setChecks((p) => ({ ...p, [i]: !p[i] }))} />
                         <span className={checks[i] ? 'text-ink-400 line-through' : 'text-ink-700'}>{item}</span>
                       </label>
@@ -484,7 +484,7 @@ export default function MockDrills() {
             </div>
 
             {/* action log */}
-            <div className="rounded-xl bg-clay-surface/60 p-4 shadow-clay-inset">
+            <div className="ring-1 ring-ink-200 rounded-xl bg-surface-50/60 p-4 ">
               <p className="mb-2 text-sm font-bold text-ink-700">Chronological action log</p>
               <div className="space-y-2">
                 {actionLog.map((row, i) => (
@@ -503,17 +503,17 @@ export default function MockDrills() {
             <Field label="Debrief notes">
               <textarea className="input" rows={2} value={form.debrief} onChange={set('debrief')} placeholder="Observations, failures, discussion points…" />
             </Field>
-            <div className="rounded-xl bg-clay-surface/60 p-4 shadow-clay-inset">
+            <div className="ring-1 ring-ink-200 rounded-xl bg-surface-50/60 p-4 ">
               <div className="mb-2 flex items-center justify-between">
                 <p className="text-sm font-bold text-ink-700">Improvement actions (CAPA)</p>
                 <button className="btn-soft text-xs" onClick={addCapa}><Plus size={14} /> Add action</button>
               </div>
               {capa.length === 0 ? (
-                <p className="rounded-lg border border-dashed border-clay-200 p-3 text-center text-xs italic text-ink-400">No corrective actions.</p>
+                <p className="rounded-lg border border-dashed border-surface-200 p-3 text-center text-xs italic text-ink-400">No corrective actions.</p>
               ) : (
                 <div className="space-y-2">
                   {capa.map((c, i) => (
-                    <div key={i} className="rounded-xl border border-clay-200 p-2">
+                    <div key={i} className="rounded-xl border border-surface-200 p-2">
                       <div className="grid grid-cols-[1fr_150px_170px_130px_120px_auto] gap-2">
                         <input className="input px-2 py-1.5" placeholder="Action…" value={c.action} onChange={(e) => setCapaRow(i, 'action', e.target.value)} />
                         {/* A corrective action is owned by a department and worked
@@ -576,7 +576,7 @@ export default function MockDrills() {
             </div>
 
             {/* evidence photos */}
-            <div className="rounded-xl bg-clay-surface/60 p-4 shadow-clay-inset">
+            <div className="ring-1 ring-ink-200 rounded-xl bg-surface-50/60 p-4 ">
               <div className="mb-2 flex items-center justify-between">
                 <p className="text-sm font-bold text-ink-700">Evidence photos</p>
                 <span className="text-xs text-ink-400">{photos.length}/{MAX_DRILL_PHOTOS}</span>
@@ -584,12 +584,12 @@ export default function MockDrills() {
               <div className="flex flex-wrap gap-2">
                 {photos.map((p) => (
                   <div key={p.id} className="group relative">
-                    <button type="button" onClick={() => setEnlarge(p.dataUrl)} aria-label="Enlarge drill evidence photo" className="block"><img src={safeSrc(p.dataUrl)} alt="Drill evidence" className="h-20 w-20 cursor-pointer rounded-lg border border-clay-200 object-cover" /></button>
+                    <button type="button" onClick={() => setEnlarge(p.dataUrl)} aria-label="Enlarge drill evidence photo" className="block"><img src={safeSrc(p.dataUrl)} alt="Drill evidence" className="h-20 w-20 cursor-pointer rounded-lg border border-surface-200 object-cover" /></button>
                     <button type="button" onClick={() => removeDrillPhoto(p.id)} className="absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full bg-red-600 text-white shadow" title="Remove"><X size={11} /></button>
                   </div>
                 ))}
                 {photos.length < MAX_DRILL_PHOTOS && (
-                  <label className="grid h-20 w-20 cursor-pointer place-items-center rounded-lg border border-dashed border-clay-300 text-ink-400 hover:bg-clay-50">
+                  <label className="grid h-20 w-20 cursor-pointer place-items-center rounded-lg border border-dashed border-surface-300 text-ink-400 hover:bg-surface-50">
                     {uploadingPhoto ? <Spinner size={18} /> : <ImagePlus size={18} />}
                     <input type="file" accept="image/*" multiple className="hidden" onChange={onDrillPhoto} disabled={uploadingPhoto} />
                   </label>
@@ -598,7 +598,7 @@ export default function MockDrills() {
               <p className="mt-2 text-xs text-ink-400">Photos of the drill, assembly point, issues, etc. Each image up to 10 MB.</p>
             </div>
 
-            <div className="flex items-center justify-end gap-2 border-t border-clay-200/60 pt-4">
+            <div className="flex items-center justify-end gap-2 border-t border-surface-200/60 pt-4">
               <button className="btn-ghost" onClick={closeRecorder}>Cancel</button>
               <button className="btn-primary" onClick={submit} disabled={busy || uploadingPhoto}>
                 {busy ? <Spinner size={16} /> : (<><ShieldCheck size={16} /> Submit report</>)}
@@ -622,7 +622,7 @@ export default function MockDrills() {
                 ['ERT', viewing.ertResponseMin != null ? `${viewing.ertResponseMin} min` : '—'],
                 ['Head count', viewing.headCount ?? '—'],
                 ['Outcome', viewing.outcome || '—']].map(([k, v]) => (
-                <div key={k} className="rounded-xl bg-clay-100 p-3"><p className="text-xs text-ink-500">{k}</p><p className="font-bold text-ink-800">{v}</p></div>
+                <div key={k} className="rounded-xl bg-surface-100 p-3"><p className="text-xs text-ink-500">{k}</p><p className="font-bold text-ink-800">{v}</p></div>
               ))}
             </div>
             <div><p className="label">Commander(s)</p><p className="text-sm text-ink-700">{viewing.commander || '—'}</p></div>
@@ -639,7 +639,7 @@ export default function MockDrills() {
                 </ul>
               </div>
             )}
-            {viewing.debrief && <div><p className="label">Debrief</p><p className="whitespace-pre-wrap rounded-xl bg-clay-100 p-3 text-sm text-ink-700">{viewing.debrief}</p></div>}
+            {viewing.debrief && <div><p className="label">Debrief</p><p className="whitespace-pre-wrap rounded-xl bg-surface-100 p-3 text-sm text-ink-700">{viewing.debrief}</p></div>}
             {(viewing.photoCount > 0 || viewPhotos.length > 0) && (
               <div>
                 <p className="label">Evidence photos {viewing.photoCount ? `(${viewing.photoCount})` : ''}</p>
@@ -648,7 +648,7 @@ export default function MockDrills() {
                 ) : viewPhotos.length > 0 ? (
                   <div className="flex flex-wrap gap-2">
                     {viewPhotos.map((p) => (
-                      <button key={p.id} type="button" onClick={() => setEnlarge(p.dataUrl)} aria-label="Enlarge drill evidence photo" className="block"><img src={safeSrc(p.dataUrl)} alt="Drill evidence" className="h-20 w-20 cursor-pointer rounded-lg border border-clay-200 object-cover" /></button>
+                      <button key={p.id} type="button" onClick={() => setEnlarge(p.dataUrl)} aria-label="Enlarge drill evidence photo" className="block"><img src={safeSrc(p.dataUrl)} alt="Drill evidence" className="h-20 w-20 cursor-pointer rounded-lg border border-surface-200 object-cover" /></button>
                     ))}
                   </div>
                 ) : (
@@ -656,7 +656,7 @@ export default function MockDrills() {
                 )}
               </div>
             )}
-            <div className="flex justify-end gap-2 border-t border-clay-200/60 pt-4">
+            <div className="flex justify-end gap-2 border-t border-surface-200/60 pt-4">
               <button className="btn-ghost" onClick={() => setViewing(null)}>Close</button>
               <button className="btn-primary" onClick={() => { const rec = { ...viewing, photos: viewPhotos.map((p) => p.dataUrl) }; setViewing(null); setPrintRecord(rec) }}><FileText size={16} /> Download PDF</button>
             </div>

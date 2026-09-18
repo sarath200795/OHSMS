@@ -36,7 +36,7 @@ export default function FilterBar({ f, setF, sites = [], opts, idPrefix = 'flt' 
       <button
         type="button"
         onClick={reset}
-        className="rounded-2xl bg-clay-surface px-4 py-2.5 text-[12.5px] font-semibold text-ink-700 shadow-clay-sm"
+        className="btn-ghost"
       >
         Reset
       </button>

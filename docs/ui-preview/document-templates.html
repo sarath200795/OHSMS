@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>WEHS document templates — ops-dashboard chrome</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700;800&family=Roboto:wght@400;500;700;900&display=swap" />
+  <style>
+    :root { --canvas:#0c1024; --surface:#fff; --ink:#0f172a; --muted:#5b6573; --rule:#e2e8f0; --well:#f8fafc; --brand:#0369a1; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--canvas); color: #f4f7ff; font-family: 'Open Sans', system-ui, sans-serif; }
+    .doc-kicker, .doc-title, h1, h2 { font-family: Roboto, system-ui, sans-serif; }
+    .page { max-width: 920px; margin: 0 auto; padding: 32px 20px 72px; }
+    .intro h1 { margin: 0; font-size: 22px; letter-spacing: -0.02em; }
+    .intro p { color: #8b9cb8; font-size: 14px; max-width: 62ch; }
+    .sheet { background: var(--surface); color: var(--ink); border: 1px solid var(--rule); border-radius: 12px; box-shadow: 0 0 0 1px rgba(255,255,255,0.06), 0 18px 48px rgba(4,8,24,0.45); padding: 28px; margin-top: 28px; }
+    .label { font-size: 11px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px; }
+    .doc-kicker { margin: 0 0 4px; font-size: 11px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--brand); }
+    .doc-title { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
+    .doc-header { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 2px solid var(--brand); }
+    .doc-meta { text-align: right; font-size: 12px; color: var(--muted); }
+    .doc-meta b { color: var(--ink); font-family: ui-monospace, Menlo, monospace; }
+    .doc-section-title { margin: 16px 0 8px; font-size: 11px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { border: 1px solid var(--rule); padding: 8px 10px; text-align: left; }
+    th, td.lbl { background: var(--well); font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+    td.lbl { font-size: 12px; letter-spacing: 0; text-transform: none; color: #2c3848; width: 22%; }
+    .quote { margin: 0; padding: 8px 12px; border-left: 3px solid var(--brand); background: var(--well); font-size: 13px; color: #2c3848; }
+    .cert { aspect-ratio: 297/180; display: flex; flex-direction: column; border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; text-align: center; }
+    .cert-bar { height: 6px; background: var(--brand); }
+    .cert-body { flex: 1; padding: 28px 36px 20px; display: flex; flex-direction: column; align-items: center; }
+    .cert h2 { margin: 6px 0 0; font-size: 24px; letter-spacing: -0.02em; }
+    .qr { width: 72px; height: 72px; background: repeating-conic-gradient(#0f172a 0% 25%, #fff 0% 50%) 0 0 / 8px 8px; border: 1px solid var(--rule); border-radius: 6px; }
+    .tag { display: inline-block; background: var(--well); border: 1px solid var(--rule); border-radius: 6px; padding: 2px 8px; font-size: 11px; }
+    .hira-band { background: var(--brand); color: #fff; padding: 10px 14px; display: flex; justify-content: space-between; font-weight: 700; font-size: 13px; border-radius: 6px 6px 0 0; }
+    .loto-band { background: #0f172a; color: #fff; padding: 10px 14px; font-weight: 700; border-radius: 6px 6px 0 0; position: relative; }
+    .loto-band::after { content: ''; display: block; height: 3px; background: #d97706; margin: 8px -14px -10px; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="intro">
+      <p class="doc-kicker">PR #56 · Dark glass neon-tech kit</p>
+      <h1>Document templates on light paper</h1>
+      <p>Print, PDF and certificate chrome stay white paper so they remain printable. Cyan kickers, Roboto titles and Open Sans body match the on-screen kit. Invented seed data only.</p>
+    </div>
+
+    <article class="sheet" id="certificate">
+      <p class="label">Training certificate</p>
+      <div class="cert">
+        <div class="cert-bar"></div>
+        <div class="cert-body">
+          <p class="doc-kicker">Training record</p>
+          <h2>Certificate of completion</h2>
+          <p style="color:var(--muted);margin:18px 0 4px;font-size:13px">This certifies that</p>
+          <p style="margin:0;font-size:28px;font-weight:700;letter-spacing:-0.02em">Jordan Hale</p>
+          <p style="color:var(--muted);margin:12px 0 4px;font-size:13px">has completed</p>
+          <p style="margin:0;font-size:18px;font-weight:600;color:#0369a1">Working at Height — Refresher</p>
+          <p style="font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#94a3b8;margin-top:6px">Mandatory · Trainer: A. Mensah</p>
+          <p style="margin-top:16px;font-size:13px"><b>Completed</b> 12 Mar 2026 &nbsp;·&nbsp; <b>Valid until</b> 12 Mar 2027</p>
+          <div style="margin-top:auto;width:100%;display:flex;justify-content:space-between;align-items:flex-end;padding-top:18px;font-size:11px;color:var(--muted)">
+            <div style="text-align:left"><div style="letter-spacing:.12em;text-transform:uppercase;font-weight:600">Certificate no.</div><div style="font-family:ui-monospace,Menlo,monospace;color:var(--ink);font-weight:600">WEHS-TR-A1B2C3D4</div></div>
+            <div style="text-align:right;border-top:1px solid var(--rule);padding-top:6px;min-width:160px;letter-spacing:.1em;text-transform:uppercase;font-weight:600">HSE Manager</div>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <article class="sheet" id="mock-drill">
+      <p class="label">Mock-drill / emergency report</p>
+      <div class="doc-header">
+        <div><p class="doc-kicker">WEHS · Fire Marshal</p><h1 class="doc-title">Mock drill report</h1></div>
+        <div class="doc-meta"><div><b>ID MD-2401</b></div><div>Date 2026-03-12</div></div>
+      </div>
+      <table>
+        <tr><td class="lbl">Scenario</td><td colspan="3" style="font-weight:600">Fire Emergency</td></tr>
+        <tr><td class="lbl">Site</td><td>Plant 2 — Bay C</td><td class="lbl">Time</td><td style="font-family:ui-monospace">10:15</td></tr>
+        <tr><td class="lbl">Commander</td><td>A. Mensah</td><td class="lbl">Outcome</td><td>Pass</td></tr>
+      </table>
+      <p class="doc-section-title">1. Execution metrics</p>
+      <table>
+        <tr><td class="lbl">Evacuation</td><td>4 min</td><td class="lbl">ERT response</td><td>2 min</td></tr>
+      </table>
+    </article>
+
+    <article class="sheet" id="permit">
+      <p class="label">Permit to work</p>
+      <div class="doc-header" style="border-bottom-color:#c74a33">
+        <div>
+          <p class="doc-kicker">WEHS · Permit to work</p>
+          <h1 class="doc-title">Permit to work</h1>
+          <div style="font-size:12px;color:var(--muted)">PTW-PL2-0042</div>
+        </div>
+        <div style="display:flex;gap:12px;align-items:center">
+          <div class="doc-meta"><span style="background:var(--brand);color:#fff;border-radius:6px;padding:4px 12px;font-weight:700;font-size:12px">Approved</span><div style="margin-top:4px">Printed 17 Sep 2026</div></div>
+          <div class="qr" aria-hidden></div>
+        </div>
+      </div>
+      <p class="doc-section-title">Work details</p>
+      <div style="display:flex;gap:8px;font-size:12px;padding:3px 0"><span style="width:150px;color:var(--muted)">Type of work</span><span style="font-weight:600">Hot work</span></div>
+      <div style="display:flex;gap:8px;font-size:12px;padding:3px 0"><span style="width:150px;color:var(--muted)">Job location</span><span style="font-weight:600">Mezzanine weld bay</span></div>
+      <p class="doc-section-title">PPE required</p>
+      <span class="tag">Face shield</span> <span class="tag">FR clothing</span> <span class="tag">Gloves</span>
+    </article>
+
+    <article class="sheet" id="audit">
+      <p class="label">Internal audit report</p>
+      <div class="doc-header">
+        <div><p class="doc-kicker">WEHS · ISO 45001 OHSMS</p><h1 class="doc-title">Internal audit report</h1></div>
+        <div class="doc-meta"><div><b>Ref IA-2026-09</b></div><div>Date 2026-09-04</div></div>
+      </div>
+      <table>
+        <tr><td class="lbl">Site</td><td>Plant 2</td><td class="lbl">Standard</td><td>ISO 45001:2018</td></tr>
+        <tr><td class="lbl">Auditor</td><td>K. Owusu</td><td class="lbl">Auditee</td><td>Maintenance</td></tr>
+      </table>
+      <p class="doc-section-title">1. Findings summary</p>
+      <table>
+        <thead><tr><th>ID</th><th>Type</th><th>Clause</th><th>Description</th></tr></thead>
+        <tbody><tr><td style="font-family:ui-monospace;font-weight:600">NC-01</td><td>NC</td><td>8.1.2</td><td>LOTO procedure at press #4 not posted at the point of use.</td></tr></tbody>
+      </table>
+      <p class="quote" style="margin-top:12px">“The posted procedure at Hydraulic Press #4 is revision 2; live procedure is revision 3.”</p>
+    </article>
+
+    <article class="sheet" id="minutes">
+      <p class="label">Consultation minutes</p>
+      <div class="doc-header">
+        <div><p class="doc-kicker">WEHS · ISO 45001 OHSMS</p><h1 class="doc-title">Consultation &amp; meeting minutes</h1></div>
+        <div class="doc-meta"><div><b>Ref CM-0912</b></div><div>Printed 17 Sep 2026</div></div>
+      </div>
+      <p class="doc-section-title">1. Meeting details</p>
+      <table>
+        <tr><td class="lbl">Type</td><td style="font-weight:600">HSE committee</td><td class="lbl">Date</td><td>2026-09-12</td></tr>
+        <tr><td class="lbl">Subject</td><td colspan="3">Q3 near-miss review and working-at-height campaign</td></tr>
+      </table>
+    </article>
+
+    <article class="sheet" id="incident">
+      <p class="label">Incident report</p>
+      <div class="doc-header">
+        <div>
+          <p class="doc-kicker">WEHS · Incident IRA</p>
+          <h1 class="doc-title">Initial incident report</h1>
+          <p style="margin:4px 0 0;font-size:13px;color:var(--muted)">North Plant</p>
+        </div>
+        <div class="doc-meta"><div><b>INC-2026-014</b></div><div>Generated 17 Sep 2026</div></div>
+      </div>
+      <p class="doc-section-title">Incident details</p>
+      <div style="font-size:13px"><b>Type</b> Slip / trip &nbsp;·&nbsp; <b>Severity</b> First aid &nbsp;·&nbsp; <b>Location</b> Packing hall aisle 3</div>
+      <p class="doc-section-title">Narrative</p>
+      <p style="margin:0;font-size:13px;line-height:1.5">A pallet wrap remnant was left in the aisle after a shift change. An operator caught a heel and sat down; no lost time.</p>
+    </article>
+
+    <article class="sheet" id="ferp">
+      <p class="label">Site FERP print</p>
+      <div class="doc-header">
+        <div><p class="doc-kicker">WEHS · Fire &amp; emergency response</p><h1 class="doc-title">Fire &amp; emergency response plan — Plant 2</h1></div>
+        <div class="doc-meta"><div>Manufacturing · North</div><div>Printed 17 Sep 2026</div></div>
+      </div>
+      <p class="doc-section-title">External emergency services</p>
+      <table>
+        <tr><td class="lbl">Hospital</td><td>City General</td><td style="font-family:ui-monospace;font-weight:600">102 / 108</td></tr>
+        <tr><td class="lbl">Fire</td><td>Station 4</td><td style="font-family:ui-monospace;font-weight:600">101</td></tr>
+      </table>
+    </article>
+
+    <article class="sheet" id="hira">
+      <p class="label">HIRA PDF (jsPDF header)</p>
+      <div class="hira-band"><span>HAZARD IDENTIFICATION &amp; RISK ASSESSMENT</span><span style="font-weight:500;font-size:11px">HIRA — ISO 45001 OHSMS</span></div>
+      <table>
+        <tr><td class="lbl">Ref ID</td><td>HIRA-PLANT2-A1B2C3</td><td class="lbl">Status</td><td>ACTIVE</td></tr>
+        <tr><td class="lbl">Site</td><td>Plant 2 / Bay C</td><td class="lbl">Prepared by</td><td>A. Mensah</td></tr>
+      </table>
+      <p class="doc-section-title" style="color:var(--brand)">Activity 1: Belt tracking adjustment [ROUTINE]</p>
+      <table>
+        <thead><tr><th>Category / Type</th><th>Hazard event</th><th>R1</th><th>R2</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Mechanical<br>Entanglement</td>
+            <td>Unguarded drive shaft on the conveyor head pulley.</td>
+            <td style="background:#c74a33;color:#fff;text-align:center;font-weight:700">16</td>
+            <td style="background:#d97706;color:#fff;text-align:center;font-weight:700">6</td>
+          </tr>
+        </tbody>
+      </table>
+    </article>
+
+    <article class="sheet" id="loto">
+      <p class="label">LOTO posted procedure (jsPDF header)</p>
+      <div class="loto-band">Lockout / Tagout Posted Procedure</div>
+      <div style="padding-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:8px 24px;font-size:13px">
+        <div><b>Facility</b> Acme Manufacturing</div>
+        <div><b>ID #</b> ACME-PLANT-2-HYDRAULIC-PRESS-4</div>
+        <div><b>Description</b> Hydraulic Press #4</div>
+        <div><b>Revision</b> R3</div>
+        <div><b>Location</b> Plant 2 — Bay C</div>
+        <div><b>Lockout points</b> 2</div>
+      </div>
+      <div style="margin-top:16px;background:#0f172a;color:#fff;font-size:11px;font-weight:700;letter-spacing:.06em;padding:6px 10px;border-radius:4px 4px 0 0">LOCKOUT APPLICATION PROCESS</div>
+      <div style="background:var(--well);border:1px solid var(--rule);border-top:0;padding:10px;font-size:12px;border-radius:0 0 4px 4px">1. Notify affected associates. 2. Identify hazardous energy source. 3. Isolate equipment. 4. Shut down machinery. 5. Apply lockout devices.</div>
+    </article>
+  </div>
+</body>
+</html>

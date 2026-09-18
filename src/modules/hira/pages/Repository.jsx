@@ -126,7 +126,7 @@ export default function Repository() {
         <div className="card overflow-hidden p-4">
           <Skeleton className="mb-3 h-6 w-1/3" />
           {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="flex items-center gap-3 border-t border-clay-100 py-3">
+            <div key={i} className="flex items-center gap-3 border-t border-surface-100 py-3">
               <Skeleton className="h-4 flex-1" />
               <Skeleton className="h-4 w-24" />
               <Skeleton className="h-4 w-24" />
@@ -149,7 +149,7 @@ export default function Repository() {
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="card overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-clay-100/70 text-left text-xs uppercase tracking-wide text-ink-400">
+              <thead className="bg-surface-100/70 text-left text-xs uppercase tracking-wide text-ink-400">
                 <tr>
                   <th className="px-4 py-3">Name</th>
                   <th className="px-4 py-3">Site</th>
@@ -165,7 +165,7 @@ export default function Repository() {
                 {pageItems.map((a) => {
                   const r = topRisk(a)
                   return (
-                    <tr key={a.id} className="group cursor-pointer transition hover:bg-clay-100/40" onClick={() => navigate(`/hira/assessment/${a.id}`)}>
+                    <tr key={a.id} className="group cursor-pointer transition hover:bg-surface-100/40" onClick={() => navigate(`/hira/assessment/${a.id}`)}>
                       <td className="px-4 py-3 font-semibold text-ink-900">{a.name}<DocIdTag id={a.docId} className="mt-0.5 block" /></td>
                       <td className="px-4 py-3">{a.siteName || '—'}</td>
                       <td className="px-4 py-3">{a.location || '—'}</td>
@@ -178,10 +178,10 @@ export default function Repository() {
                           {/* Named by the assessment, not the verb: four rows of
                               "View, Export, Edit, Delete" read out of the table
                               give no way to tell which assessment is which. */}
-                          <Link to={`/hira/assessment/${a.id}`} className="rounded-lg p-2 text-ink-500 shadow-clay-sm transition hover:bg-clay-100 hover:text-ink-800" aria-label={`View assessment ${a.name || a.docId || a.id}`} title="View"><Eye size={16} /></Link>
-                          <button onClick={() => { try { exportAssessmentPdf(a) } catch (err) { toastCaught(err, 'Could not export PDF') } }} className="rounded-lg p-2 text-ink-500 shadow-clay-sm transition hover:bg-clay-100 hover:text-ink-800" aria-label={`Export assessment ${a.name || a.docId || a.id} as PDF`} title="Export PDF"><FileDown size={16} /></button>
-                          <Link to={`/hira/create/${a.id}`} className="rounded-lg p-2 text-ink-500 shadow-clay-sm transition hover:bg-clay-100 hover:text-ink-800" aria-label={`Edit assessment ${a.name || a.docId || a.id}`} title="Edit"><Pencil size={16} /></Link>
-                          <button onClick={() => setToDelete(a)} className="rounded-lg p-2 text-red-500 shadow-clay-sm transition hover:bg-red-50" aria-label={`Delete assessment ${a.name || a.docId || a.id}`} title="Delete"><Trash2 size={16} /></button>
+                          <Link to={`/hira/assessment/${a.id}`} className="rounded-lg p-2 text-ink-500 shadow-elev-sm transition hover:bg-surface-100 hover:text-ink-800" aria-label={`View assessment ${a.name || a.docId || a.id}`} title="View"><Eye size={16} /></Link>
+                          <button onClick={() => { try { exportAssessmentPdf(a) } catch (err) { toastCaught(err, 'Could not export PDF') } }} className="rounded-lg p-2 text-ink-500 shadow-elev-sm transition hover:bg-surface-100 hover:text-ink-800" aria-label={`Export assessment ${a.name || a.docId || a.id} as PDF`} title="Export PDF"><FileDown size={16} /></button>
+                          <Link to={`/hira/create/${a.id}`} className="rounded-lg p-2 text-ink-500 shadow-elev-sm transition hover:bg-surface-100 hover:text-ink-800" aria-label={`Edit assessment ${a.name || a.docId || a.id}`} title="Edit"><Pencil size={16} /></Link>
+                          <button onClick={() => setToDelete(a)} className="rounded-lg p-2 text-red-500 shadow-elev-sm transition hover:bg-red-50" aria-label={`Delete assessment ${a.name || a.docId || a.id}`} title="Delete"><Trash2 size={16} /></button>
                         </div>
                       </td>
                     </tr>
@@ -228,7 +228,7 @@ export default function Repository() {
               onClick={() => { setChooserOpen(false); navigate('/hira/create') }}
               className="card flex flex-col items-center gap-2 p-5 text-center transition-transform duration-200 ease-emil hover:-translate-y-0.5 active:scale-[0.99]"
             >
-              <span className="grid h-12 w-12 place-items-center rounded-2xl bg-brand-50 text-brand-700 shadow-clay-sm"><FilePlus2 size={22} /></span>
+              <span className="grid h-12 w-12 place-items-center rounded-2xl bg-brand-50 text-brand-700 shadow-elev-sm"><FilePlus2 size={22} /></span>
               <span className="font-semibold text-ink-900">New assessment</span>
               <span className="text-xs text-ink-400">Start from a blank form</span>
             </button>
@@ -238,7 +238,7 @@ export default function Repository() {
               onClick={() => setBaselinePick(baselinePick === 'open' ? '' : 'open')}
               className={`card flex flex-col items-center gap-2 p-5 text-center transition-transform duration-200 ease-emil hover:-translate-y-0.5 active:scale-[0.99] ${baselinePick === 'open' ? 'ring-2 ring-brand-300' : ''}`}
             >
-              <span className="grid h-12 w-12 place-items-center rounded-2xl bg-violet-50 text-violet-600 shadow-clay-sm"><Layers size={22} /></span>
+              <span className="grid h-12 w-12 place-items-center rounded-2xl bg-violet-50 text-violet-600 shadow-elev-sm"><Layers size={22} /></span>
               <span className="font-semibold text-ink-900">Create from baseline</span>
               <span className="text-xs text-ink-400">Reuse an activity template</span>
             </button>
@@ -248,14 +248,14 @@ export default function Repository() {
               onClick={() => { setChooserOpen(false); navigate('/hira/bulk-import') }}
               className="card flex flex-col items-center gap-2 p-5 text-center transition-transform duration-200 ease-emil hover:-translate-y-0.5 active:scale-[0.99]"
             >
-              <span className="grid h-12 w-12 place-items-center rounded-2xl bg-emerald-50 text-emerald-600 shadow-clay-sm"><Upload size={22} /></span>
+              <span className="grid h-12 w-12 place-items-center rounded-2xl bg-emerald-50 text-emerald-600 shadow-elev-sm"><Upload size={22} /></span>
               <span className="font-semibold text-ink-900">Bulk import</span>
               <span className="text-xs text-ink-400">Upload a CSV</span>
             </button>
           </div>
 
           {baselinePick === 'open' && (
-            <Field label="Choose a baseline to build from" className="clay-inset rounded-2xl p-4">
+            <Field label="Choose a baseline to build from" className="well rounded-2xl p-4">
               {baselines.length === 0 ? (
                 <p className="text-sm text-ink-500">
                   No baselines yet.{' '}
@@ -271,7 +271,7 @@ export default function Repository() {
                       key={b.id}
                       type="button"
                       onClick={() => { setChooserOpen(false); navigate(`/hira/create?from=${b.id}`) }}
-                      className="flex w-full items-center justify-between rounded-xl bg-clay-surface px-3.5 py-2.5 text-left shadow-clay-sm transition hover:bg-clay-100 active:scale-[0.99]"
+                      className="flex w-full items-center justify-between rounded-xl bg-surface px-3.5 py-2.5 text-left shadow-elev-sm transition hover:bg-surface-100 active:scale-[0.99]"
                     >
                       <span>
                         <span className="block text-sm font-medium text-ink-900">{b.name}</span>

@@ -163,7 +163,7 @@ export default function Sessions() {
                   <button
                     type="button"
                     onClick={() => setOpenRequests(s.id)}
-                    className="inline-flex items-center gap-1.5 rounded-xl bg-clay-100 px-3 py-1.5 text-xs font-bold text-ink-700"
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-surface-100 px-3 py-1.5 text-xs font-bold text-ink-700"
                   >
                     <Users size={13} /> {c.total} request{c.total === 1 ? '' : 's'}
                   </button>
@@ -186,20 +186,20 @@ export default function Sessions() {
       <Modal open={!!openRequests} onClose={() => setOpenRequests(null)} title="Requests for this session">
         <div className="p-6">
           {shown.length === 0 ? (
-            <p className="rounded-2xl bg-clay-50 px-4 py-6 text-center text-sm text-ink-400 shadow-clay-sm">
+            <p className="rounded-2xl bg-surface-50 px-4 py-6 text-center text-sm text-ink-400 shadow-elev-sm">
               Nobody has requested a place yet.
             </p>
           ) : (
             <ul className="flex flex-col gap-2">
               {shown.map((r) => (
-                <li key={r.id} className="flex items-center gap-3 rounded-2xl bg-clay-50 px-4 py-3 shadow-clay-sm">
+                <li key={r.id} className="flex items-center gap-3 rounded-2xl bg-surface-50 px-4 py-3 shadow-elev-sm">
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-semibold text-ink-900">{r.employeeName}</p>
                     <p className="truncate text-xs text-ink-400">{r.employeeEmail}</p>
                   </div>
                   {r.status === 'pending' ? (
                     <span className="flex flex-none gap-1">
-                      <button className="btn bg-green-600 px-2.5 py-1.5 text-xs text-white hover:bg-green-700" onClick={() => decide(r, 'approved')}><Check size={14} /></button>
+                      <button className="btn bg-green-600 px-2.5 py-1.5 text-xs text-white hover:brightness-110" onClick={() => decide(r, 'approved')}><Check size={14} /></button>
                       <button className="btn-ghost px-2.5 py-1.5 text-xs text-red-600 hover:bg-red-50" onClick={() => decide(r, 'declined')}><X size={14} /></button>
                     </span>
                   ) : (
@@ -229,7 +229,7 @@ export default function Sessions() {
                   type="button"
                   onClick={() => setForm({ ...form, mode: m.key })}
                   className={`rounded-2xl px-4 py-2.5 text-sm font-semibold transition ${
-                    form.mode === m.key ? 'bg-brand-600 text-white shadow-clay-brand' : 'bg-clay-surface text-ink-700 shadow-clay-sm'
+                    form.mode === m.key ? 'bg-brand-600 text-white shadow-elev-brand' : 'bg-surface text-ink-700 shadow-elev-sm'
                   }`}
                 >
                   {m.label}

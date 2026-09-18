@@ -23,7 +23,7 @@ function Gauge({ row }) {
         <span className="text-2xl font-black" style={{ color: rag.color }}>{value}%</span>
         {target != null && <span className="text-xs text-ink-400">target {target}%</span>}
       </div>
-      <div className="relative mt-1.5 h-2.5 w-full overflow-hidden rounded-full bg-clay-200">
+      <div className="relative mt-1.5 h-2.5 w-full overflow-hidden rounded-full bg-surface-200">
         <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(100, value)}%`, backgroundColor: rag.color }} />
         {target != null && (
           <div className="absolute top-0 h-full w-0.5 bg-ink-700" style={{ left: `${Math.min(100, target)}%` }} title={`Target ${target}%`} />
@@ -155,7 +155,7 @@ export default function Scorecard() {
                       {isOpen ? 'Hide' : `By ${drillLevel}`}
                     </button>
                     {isOpen && (
-                      <div className="mt-2 max-h-56 space-y-1 overflow-y-auto border-t border-clay-200/60 pt-2">
+                      <div className="mt-2 max-h-56 space-y-1 overflow-y-auto border-t border-surface-200/60 pt-2">
                         {drillRows.length === 0 && <p className="text-xs italic text-ink-400">Nothing to break down.</p>}
                         {drillRows.map((d) => (
                           <div key={d.value} className="flex items-center gap-2 text-xs">

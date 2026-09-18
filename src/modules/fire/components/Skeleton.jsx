@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Skeleton loading placeholders. A shimmering bar/box plus page-shaped layouts
 // (table, KPI cards) that mirror the real content so the swap-in is seamless.
-// Uses the existing `shimmer` keyframe (tailwind.config.js) over a clay base.
+// Uses the existing `shimmer` keyframe (tailwind.config.js) over a muted base.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** A single shimmering placeholder block. */
@@ -9,7 +9,7 @@ export function Skeleton({ className = '' }) {
   return (
     <span
       aria-hidden="true"
-      className={`relative block overflow-hidden rounded-md bg-clay-200/70 ${className}`}
+      className={`relative block overflow-hidden rounded-md bg-surface-200/70 ${className}`}
     >
       <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-white/60 to-transparent" />
     </span>
@@ -21,13 +21,13 @@ export function TableSkeleton({ rows = 6, cols = 6, className = '' }) {
   return (
     <div className={`card overflow-hidden ${className}`} aria-busy="true" aria-label="Loading">
       {/* header */}
-      <div className="flex gap-4 bg-clay-100/70 px-4 py-3">
+      <div className="flex gap-4 bg-surface-100/70 px-4 py-3">
         {Array.from({ length: cols }).map((_, i) => (
           <Skeleton key={i} className="h-3 flex-1" />
         ))}
       </div>
       {/* rows */}
-      <div className="divide-y divide-clay-200/60">
+      <div className="divide-y divide-surface-200/60">
         {Array.from({ length: rows }).map((_, r) => (
           <div key={r} className="flex items-center gap-4 px-4 py-3.5">
             {Array.from({ length: cols }).map((_, c) => (

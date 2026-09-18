@@ -73,11 +73,11 @@ function SamParts({ parts }) {
           )
         if (p.type === 'map')
           return (
-            <div key={i} className="max-h-64 overflow-y-auto rounded-xl bg-clay-100/70 p-2">
+            <div key={i} className="max-h-64 overflow-y-auto rounded-xl bg-surface-100/70 p-2">
               <table className="w-full text-xs">
                 <tbody>
                   {isoMap().map((row) => (
-                    <tr key={row.clause} className="border-b border-clay-200/60 last:border-0">
+                    <tr key={row.clause} className="border-b border-surface-200/60 last:border-0">
                       <td className="whitespace-nowrap py-1 pr-2 font-bold text-brand-700">{row.clause}</td>
                       <td className="py-1 pr-2 text-ink-700">{row.title}</td>
                       <td className="py-1">
@@ -239,7 +239,7 @@ export default function Sam() {
         {/* Soft ground shadow — anchors the character instead of leaving it floating */}
         <span
           aria-hidden="true"
-          className="absolute bottom-1 left-1/2 h-1.5 -translate-x-1/2 rounded-[50%] bg-ink-900/15 blur-[2px]"
+          className="absolute bottom-1 left-1/2 h-1.5 -translate-x-1/2 rounded-[50%] bg-black/40 blur-[2px]"
           style={{ width: AVATAR * 0.42 }}
         />
         <SamCharacter3D
@@ -249,7 +249,7 @@ export default function Sam() {
           talking={thinking || open}
           reduce={reduce}
         />
-        <span className="absolute -bottom-1 rounded-full bg-brand-600 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white shadow-clay-sm">
+        <span className="absolute -bottom-1 rounded-full bg-brand-600 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white shadow-elev-sm">
           Sam
         </span>
       </motion.button>
@@ -262,9 +262,9 @@ export default function Sam() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={reduce ? { opacity: 0 } : { opacity: 0, y: 12, scale: 0.97 }}
             transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}
-            className="pointer-events-auto absolute bottom-4 right-4 flex h-[28rem] w-[24rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-3xl bg-clay-surface shadow-clay"
+            className="card pointer-events-auto absolute bottom-4 right-4 flex h-[28rem] w-[24rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden !rounded-2xl p-0 shadow-elev-lg"
           >
-            <div className="flex items-center justify-between border-b border-clay-200/70 bg-brand-600 px-4 py-3 text-white">
+            <div className="flex items-center justify-between border-b border-surface-200/70 bg-brand-600 px-4 py-3 text-white">
               <p className="text-sm font-bold">🦺 {greeting}</p>
               <button onClick={() => setOpen(false)} aria-label="Close Sam" className="rounded-lg p-1 hover:bg-white/15">
                 <X size={16} />
@@ -277,7 +277,7 @@ export default function Sam() {
                   <div className={
                     m.role === 'user'
                       ? 'max-w-[85%] rounded-2xl rounded-br-md bg-brand-600 px-3 py-2 text-sm text-white'
-                      : 'max-w-[92%] rounded-2xl rounded-bl-md bg-clay-100 px-3 py-2 shadow-clay-sm'
+                      : 'max-w-[92%] rounded-2xl rounded-bl-md bg-surface-100 px-3 py-2 shadow-elev-sm'
                   }>
                     {m.role === 'user' ? m.parts[0].text : <SamParts parts={m.parts} />}
                   </div>
@@ -295,14 +295,14 @@ export default function Sam() {
 
             <div className="flex flex-wrap gap-1.5 px-3 pb-2">
               {SUGGESTIONS.map((s) => (
-                <button key={s} onClick={() => ask(s)} className="chip bg-clay-100 text-ink-600 transition hover:bg-brand-50 hover:text-brand-700">
+                <button key={s} onClick={() => ask(s)} className="chip bg-surface-100 text-ink-600 transition hover:bg-brand-50 hover:text-brand-700">
                   {s}
                 </button>
               ))}
             </div>
 
             <form
-              className="flex items-center gap-2 border-t border-clay-200/70 p-3"
+              className="flex items-center gap-2 border-t border-surface-200/70 p-3"
               onSubmit={(e) => { e.preventDefault(); ask() }}
             >
               <input

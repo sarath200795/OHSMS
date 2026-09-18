@@ -9,7 +9,7 @@ export default function Spinner({ size = 56, label }) {
 
 export function FullScreenLoader({ label = 'Loading…' }) {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-clay-bg">
+    <div className="flex min-h-screen items-center justify-center bg-canvas">
       <LockLoader size={84} label={label} />
     </div>
   )

@@ -35,7 +35,7 @@ export default function Schedule() {
   }
 
   const cells = []
-  for (let i = 0; i < firstDow; i++) cells.push(<div key={`e-${i}`} className="min-h-[110px] rounded-xl bg-clay-surface/40" />)
+  for (let i = 0; i < firstDow; i++) cells.push(<div key={`e-${i}`} className="min-h-[110px] rounded-xl bg-surface/40" />)
 
   for (let day = 1; day <= daysInMonth; day++) {
     const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
@@ -44,7 +44,7 @@ export default function Schedule() {
     const doneToday = completedByDay.get(dateStr) || []
 
     cells.push(
-      <div key={day} className={`flex min-h-[110px] flex-col rounded-xl p-2 shadow-clay-inset ${isToday ? 'bg-brand-50 ring-2 ring-brand-300' : 'bg-clay-surface'}`}>
+      <div key={day} className={`flex min-h-[110px] flex-col rounded-xl p-2  ${isToday ? 'bg-brand-50 ring-2 ring-brand-300' : 'bg-surface'}`}>
         <div className={`mb-1 text-right text-xs font-bold ${isToday ? 'text-brand-600' : 'text-ink-400'}`}>{day}</div>
         <div className="flex-1 space-y-1 overflow-y-auto custom-scroll pr-0.5">
           {doneToday.map((r) => (

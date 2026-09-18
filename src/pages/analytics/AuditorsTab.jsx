@@ -29,7 +29,7 @@ import {
   GROUP_DIMS, dimensionsPresent, dimensionHasData, resolveGroupBy, PASS_MARK, regionCoverage,
 } from './odinAnalytics'
 
-const axis = { tickLine: false, axisLine: false, fontSize: 11, tick: { fill: '#8a7660' } }
+const axis = { tickLine: false, axisLine: false, fontSize: 11, tick: { fill: '#8b9cb8' } }
 
 // Split by CITY, not region. This tab already tracks by auditor — that is what
 // its rows are — and the only question left is what colours the bars. Region
@@ -162,7 +162,7 @@ export default function AuditorsTab({ sites = [], keepUnplaced = true }) {
           Granularity is absent here alone: this tab has no chart bucketed by
           period, so the control would do nothing, and an inert control is
           exactly what the rest of this tidy-up was removing. */}
-      <div className="card mb-5 divide-y divide-clay-100 p-0">
+      <div className="card mb-5 divide-y divide-surface-100 p-0">
         <FilterRow label="Period">
           <DateField
             id="aud-from" label="From" value={f.from} min={opts.minDate} max={f.to || opts.maxDate}
@@ -176,7 +176,7 @@ export default function AuditorsTab({ sites = [], keepUnplaced = true }) {
             <button
               type="button"
               onClick={() => setF(EMPTY)}
-              className="rounded-2xl bg-clay-surface px-4 py-2.5 text-[12.5px] font-semibold text-ink-700 shadow-clay-sm"
+              className="rounded-2xl bg-surface px-4 py-2.5 text-[12.5px] font-semibold text-ink-700 shadow-elev-sm"
             >
               Reset
             </button>
@@ -185,7 +185,7 @@ export default function AuditorsTab({ sites = [], keepUnplaced = true }) {
               onClick={load}
               disabled={loading || !hasRange}
               title={hasRange ? undefined : 'Set a From and To date first'}
-              className="inline-flex items-center gap-2 rounded-2xl bg-clay-surface px-4 py-2.5 text-[12.5px] font-semibold text-ink-700 shadow-clay-sm disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-2xl bg-surface px-4 py-2.5 text-[12.5px] font-semibold text-ink-700 shadow-elev-sm disabled:opacity-50"
             >
               <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh
             </button>
@@ -234,10 +234,10 @@ export default function AuditorsTab({ sites = [], keepUnplaced = true }) {
         <p className="card mb-5 p-4 text-[12.5px] leading-relaxed text-ink-600">
           Your audits question returns no auditor column, so every audit below is pooled under
           “(not stated)”. Add the auditor’s name to the question — ODIN reads a column called
-          <code className="mx-1 rounded bg-clay-surface px-1.5 py-0.5 text-[11.5px]">Auditor</code>,
-          <code className="mx-1 rounded bg-clay-surface px-1.5 py-0.5 text-[11.5px]">Auditor_Name</code>,
-          <code className="mx-1 rounded bg-clay-surface px-1.5 py-0.5 text-[11.5px]">Inspector</code> or
-          <code className="mx-1 rounded bg-clay-surface px-1.5 py-0.5 text-[11.5px]">Audited_By</code>.
+          <code className="mx-1 rounded bg-surface px-1.5 py-0.5 text-[11.5px]">Auditor</code>,
+          <code className="mx-1 rounded bg-surface px-1.5 py-0.5 text-[11.5px]">Auditor_Name</code>,
+          <code className="mx-1 rounded bg-surface px-1.5 py-0.5 text-[11.5px]">Inspector</code> or
+          <code className="mx-1 rounded bg-surface px-1.5 py-0.5 text-[11.5px]">Audited_By</code>.
         </p>
       )}
 
@@ -307,7 +307,7 @@ export default function AuditorsTab({ sites = [], keepUnplaced = true }) {
                       dataKey="name"
                       position="right"
                       content={({ x, y, height, index }) => (
-                        <text x={x + 8} y={y + height / 2 + 4} fontSize={10.5} fill="#8a7660">
+                        <text x={x + 8} y={y + height / 2 + 4} fontSize={10.5} fill="#8b9cb8">
                           {m.rows[index]?.total}
                         </text>
                       )}
@@ -331,7 +331,7 @@ export default function AuditorsTab({ sites = [], keepUnplaced = true }) {
             <div className="overflow-x-auto">
               <table className="w-full text-[12.5px]">
                 <thead>
-                  <tr className="border-b border-clay-line text-left text-[10.5px] uppercase tracking-wide text-ink-400">
+                  <tr className="border-b border-ink-200 text-left text-[10.5px] uppercase tracking-wide text-ink-400">
                     <th className="py-2 pr-3 font-semibold">Auditor</th>
                     <th className="py-2 pr-3 text-right font-semibold">Audits</th>
                     <th className="py-2 pr-3 text-right font-semibold">Centres</th>
@@ -342,7 +342,7 @@ export default function AuditorsTab({ sites = [], keepUnplaced = true }) {
                 </thead>
                 <tbody>
                   {m.rows.map((r) => (
-                    <tr key={r.name} className="border-b border-clay-line/60 last:border-0">
+                    <tr key={r.name} className="border-b border-ink-200/60 last:border-0">
                       <td className="py-2 pr-3 font-semibold text-ink-800">{r.name}</td>
                       <td className="py-2 pr-3 text-right tabular-nums text-ink-700">{r.total.toLocaleString()}</td>
                       <td className="py-2 pr-3 text-right tabular-nums text-ink-600">{r.sites.toLocaleString()}</td>
@@ -415,7 +415,7 @@ function Blocked({ title, body, onRetry }) {
         <button
           type="button"
           onClick={onRetry}
-          className="mt-4 inline-flex items-center gap-2 rounded-2xl bg-clay-surface px-4 py-2.5 text-[12.5px] font-semibold text-ink-700 shadow-clay-sm"
+          className="mt-4 inline-flex items-center gap-2 rounded-2xl bg-surface px-4 py-2.5 text-[12.5px] font-semibold text-ink-700 shadow-elev-sm"
         >
           <RefreshCw size={14} /> Try again
         </button>

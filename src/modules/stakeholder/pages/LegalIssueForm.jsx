@@ -166,7 +166,7 @@ export default function LegalIssueForm() {
                       type="button"
                       onClick={() => toggleDept(d.key)}
                       className={`rounded-xl px-3 py-1.5 text-xs font-semibold transition ${
-                        form.departments.includes(d.key) ? 'bg-ink-900 text-white' : 'bg-ink-100 text-ink-600 hover:bg-ink-200'
+                        form.departments.includes(d.key) ? 'bg-magenta-500 text-white' : 'bg-ink-100 text-ink-600 hover:bg-ink-200'
                       }`}
                     >
                       {d.label}

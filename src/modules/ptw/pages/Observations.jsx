@@ -41,7 +41,7 @@ export default function Observations() {
       <div className="mb-5 flex flex-wrap gap-1.5">
         {FILTERS.map((f) => (
           <button key={f.key} onClick={() => setFilter(f.key)}
-            className={`chip transition ${filter === f.key ? 'bg-brand-500 text-white' : 'bg-clay-surface text-ink-600 hover:bg-clay-100'}`}>
+            className={`chip transition ${filter === f.key ? 'bg-brand-500 text-white' : 'bg-surface text-ink-600 hover:bg-surface-100'}`}>
             {f.label}
           </button>
         ))}

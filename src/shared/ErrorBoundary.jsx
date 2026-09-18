@@ -45,7 +45,7 @@ function reloadOnceForStaleChunk(error) {
 // A class component because that is still the only way to implement
 // componentDidCatch; do not convert it.
 //
-// Deliberately styled with plain inline CSS rather than the clay utility
+// Deliberately styled with plain inline CSS rather than the design-system
 // classes: if the crash happened before the stylesheet loaded, a fallback that
 // depends on the stylesheet renders as unstyled soup exactly when it matters.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -64,29 +64,47 @@ export default class ErrorBoundary extends Component {
   render() {
     if (!this.state.error) return this.props.children
     return (
-      <div style={{
-        minHeight: '100vh', display: 'grid', placeItems: 'center',
-        background: '#eadfcd', padding: 24,
-        fontFamily: 'system-ui, -apple-system, sans-serif',
-      }}>
-        <div style={{
-          maxWidth: 420, background: '#f8f1e4', borderRadius: 24, padding: 32,
-          textAlign: 'center', boxShadow: '0 10px 30px rgba(60,42,33,0.15)',
-        }}>
+      <div
+        style={{
+          minHeight: '100vh',
+          display: 'grid',
+          placeItems: 'center',
+          background: '#0c1024',
+          padding: 24,
+          fontFamily: 'system-ui, -apple-system, sans-serif',
+        }}
+      >
+        <div
+          style={{
+            maxWidth: 420,
+            background: '#151b36',
+            borderRadius: 16,
+            padding: 32,
+            textAlign: 'center',
+            boxShadow: '0 0 0 1px rgba(255,255,255,0.08), 0 18px 48px rgba(4,8,24,0.55)',
+            border: '1px solid rgba(255,255,255,0.1)',
+          }}
+        >
           <p style={{ fontSize: 40, margin: 0 }}>⚠️</p>
-          <h1 style={{ fontSize: 18, margin: '12px 0 6px', color: '#3d2c22' }}>
+          <h1 style={{ fontSize: 18, margin: '12px 0 6px', color: '#f4f7ff' }}>
             Something went wrong
           </h1>
-          <p style={{ fontSize: 14, lineHeight: 1.5, color: '#7d6a5c', margin: '0 0 20px' }}>
-            The error has been recorded. Nothing you entered before this screen
-            is lost — reload to carry on where you were.
+          <p style={{ fontSize: 14, lineHeight: 1.5, color: '#8b9cb8', margin: '0 0 20px' }}>
+            The error has been recorded. Nothing you entered before this screen is lost — reload to
+            carry on where you were.
           </p>
           <button
             type="button"
             onClick={() => window.location.reload()}
             style={{
-              background: '#c74a33', color: '#fff', border: 'none', cursor: 'pointer',
-              borderRadius: 16, padding: '12px 28px', fontSize: 14, fontWeight: 700,
+              background: 'linear-gradient(180deg, #0369a1, #075985)',
+              color: '#fff',
+              border: 'none',
+              cursor: 'pointer',
+              borderRadius: 999,
+              padding: '12px 28px',
+              fontSize: 14,
+              fontWeight: 700,
             }}
           >
             Reload the app

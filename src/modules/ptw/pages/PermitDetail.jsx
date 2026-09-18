@@ -59,7 +59,7 @@ function Chips({ items }) {
   if (!items?.length) return <p className="text-sm text-ink-400">None</p>
   return (
     <div className="flex flex-wrap gap-1.5">
-      {items.map((t) => <span key={t} className="chip bg-clay-surface text-ink-600">{t}</span>)}
+      {items.map((t) => <span key={t} className="chip bg-surface text-ink-600">{t}</span>)}
     </div>
   )
 }
@@ -67,7 +67,7 @@ function Chips({ items }) {
 /** A team approval row with Approve/Reject when the current user may act. */
 function TeamRow({ label, block, actionable, onApprove, onReject }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-clay-surface px-4 py-3 shadow-clay-inset">
+    <div className="ring-1 ring-ink-200 flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-surface-50 px-4 py-3 ">
       <div>
         <p className="text-xs font-bold uppercase tracking-wide text-ink-500">{label}</p>
         <DecisionState block={block} />
@@ -241,7 +241,7 @@ export default function PermitDetail() {
       {/* Header */}
       <div className="no-print mb-6 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <button onClick={() => navigate('/permits')} className="rounded-xl p-2 shadow-clay-sm transition hover:bg-clay-100 active:shadow-clay-pressed"><ArrowLeft size={18} /></button>
+          <button onClick={() => navigate('/permits')} className="rounded-xl p-2 shadow-elev-sm transition hover:bg-surface-100 active:bg-surface-100"><ArrowLeft size={18} /></button>
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-2xl font-extrabold tracking-tight text-ink-900">{permit.permitNo}</h1>
@@ -299,18 +299,18 @@ export default function PermitDetail() {
           {permit.jsa?.length > 0 && (
             <div className="card p-5">
               <h2 className="mb-3 flex items-center gap-2 text-base font-bold text-ink-900"><Table size={18} className="text-brand-600" /> Job Safety Analysis</h2>
-              <div className="overflow-x-auto rounded-2xl shadow-clay-inset">
+              <div className="ring-1 ring-ink-200 overflow-x-auto rounded-2xl ">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="bg-clay-100 text-left text-xs uppercase tracking-wide text-ink-500">
+                    <tr className="bg-surface-100 text-left text-xs uppercase tracking-wide text-ink-500">
                       <th className="px-3 py-2 font-bold">Activity step</th>
                       <th className="px-3 py-2 font-bold">Hazard</th>
                       <th className="px-3 py-2 font-bold">Precaution</th>
                     </tr>
                   </thead>
-                  <tbody className="bg-clay-surface">
+                  <tbody className="bg-surface">
                     {permit.jsa.map((r, i) => (
-                      <tr key={i} className="border-t border-clay-100 align-top">
+                      <tr key={i} className="border-t border-surface-100 align-top">
                         <td className="px-3 py-2 text-ink-800">{r.step || '—'}</td>
                         <td className="px-3 py-2 text-ink-700">{r.hazard || '—'}</td>
                         <td className="px-3 py-2 text-ink-700">{r.precaution || '—'}</td>
@@ -343,7 +343,7 @@ export default function PermitDetail() {
                     {p.type === 'internal' ? <User size={14} className="text-ink-400" /> : <Building2 size={14} className="text-ink-400" />}
                     <span className="font-semibold">{p.name}</span>
                     <span className="text-ink-400">{p.company ? `· ${p.company}` : ''} {p.contact ? `· ${p.contact}` : ''}</span>
-                    <span className="chip ml-auto bg-clay-surface text-ink-500">{p.type}</span>
+                    <span className="chip ml-auto bg-surface text-ink-500">{p.type}</span>
                   </div>
                 ))}
               </div>
@@ -404,7 +404,7 @@ export default function PermitDetail() {
 
             {/* Extra / other documents */}
             {documents.filter((d) => d.key === 'extra').length > 0 && (
-              <div className="space-y-1.5 border-t border-clay-100 pt-3">
+              <div className="space-y-1.5 border-t border-surface-100 pt-3">
                 {documents.filter((d) => d.key === 'extra').map((d) => (
                   <div key={d.id} className="flex items-center gap-2 text-sm">
                     <FileText size={15} className="shrink-0 text-ink-400" />
@@ -437,7 +437,7 @@ export default function PermitDetail() {
                   const unsafe = o.type === 'unsafe'
                   const color = unsafe ? '#991b1b' : '#16a34a'
                   return (
-                    <div key={o.id} className="rounded-2xl bg-clay-surface p-3 shadow-clay-inset">
+                    <div key={o.id} className="ring-1 ring-ink-200 rounded-2xl bg-surface-50 p-3 ">
                       <div className="flex items-center gap-2 text-sm">
                         <span className="chip" style={{ backgroundColor: `${color}1a`, color: readableOnTint(color) }}>{unsafe ? 'Unsafe' : 'Safe'}</span>
                         <span className="text-ink-500">{o.observedByName}</span>
@@ -459,7 +459,7 @@ export default function PermitDetail() {
             <h2 className="mb-3 flex items-center justify-center gap-2 text-base font-bold text-ink-900"><QrCode size={18} className="text-brand-600" /> Scan QR</h2>
             {permit.qrToken ? (
               <>
-                <div className="mx-auto w-fit rounded-2xl bg-white p-3 shadow-clay-inset">
+                <div className="ring-1 ring-ink-200 mx-auto w-fit rounded-2xl bg-white p-3 ">
                   <QRCodeCanvas value={publicPermitUrl(permit.qrToken)} size={150} level="M" includeMargin />
                 </div>
                 <p className="mt-3 text-xs text-ink-500">Scan to view this permit & log a safety observation.</p>
@@ -488,7 +488,7 @@ export default function PermitDetail() {
           {permit.extension && (
             <div className="card p-5">
               <h2 className="mb-2 flex items-center gap-2 text-base font-bold text-ink-900"><TimerReset size={18} className="text-brand-600" /> Extension</h2>
-              <div className="mb-3 space-y-1 rounded-2xl bg-clay-surface p-3 text-sm shadow-clay-inset">
+              <div className="ring-1 ring-ink-200 mb-3 space-y-1 rounded-2xl bg-surface-50 p-3 text-sm ">
                 <p><span className="text-ink-500">Reason:</span> {permit.extension.reason || '—'}</p>
                 <p><span className="text-ink-500">New valid to:</span> {fmt(permit.extension.newValidTo)}</p>
                 {permit.extension.participantChanges && <p><span className="text-ink-500">Participant changes:</span> {permit.extension.participantChanges}</p>}
@@ -617,11 +617,11 @@ export default function PermitDetail() {
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-2">
             <button type="button" onClick={() => setObs({ ...obs, type: 'safe' })}
-              className={`flex items-center justify-center gap-2 rounded-2xl border-2 p-3 text-sm font-bold transition ${obs.type === 'safe' ? 'border-green-500 bg-green-50 text-green-700' : 'border-transparent bg-clay-surface text-ink-500'}`}>
+              className={`flex items-center justify-center gap-2 rounded-2xl border-2 p-3 text-sm font-bold transition ${obs.type === 'safe' ? 'border-green-500 bg-green-50 text-green-700' : 'border-transparent bg-surface text-ink-500'}`}>
               <CheckCircle2 size={18} /> Safe
             </button>
             <button type="button" onClick={() => setObs({ ...obs, type: 'unsafe' })}
-              className={`flex items-center justify-center gap-2 rounded-2xl border-2 p-3 text-sm font-bold transition ${obs.type === 'unsafe' ? 'border-red-600 bg-red-50 text-red-700' : 'border-transparent bg-clay-surface text-ink-500'}`}>
+              className={`flex items-center justify-center gap-2 rounded-2xl border-2 p-3 text-sm font-bold transition ${obs.type === 'unsafe' ? 'border-red-600 bg-red-50 text-red-700' : 'border-transparent bg-surface text-ink-500'}`}>
               <AlertTriangle size={18} /> Unsafe
             </button>
           </div>

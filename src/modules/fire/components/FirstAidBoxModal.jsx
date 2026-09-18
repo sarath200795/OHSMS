@@ -117,9 +117,9 @@ export default function FirstAidBoxModal({ open, onClose, site, boxLocation, rec
           say you looked and there were none. Saving stamps today as the check date on every row below.
         </p>
 
-        <div className="max-h-[52vh] overflow-auto rounded-xl border border-clay-200/60">
+        <div className="max-h-[52vh] overflow-auto rounded-xl border border-surface-200/60">
           <table className="w-full min-w-[520px] text-sm">
-            <thead className="sticky top-0 bg-clay-100/90 text-left text-[11px] uppercase tracking-wide text-ink-500">
+            <thead className="sticky top-0 bg-surface-100/90 text-left text-[11px] uppercase tracking-wide text-ink-500">
               <tr>
                 <th className="px-3 py-2">Item</th>
                 <th className="px-3 py-2 text-center">Min</th>
@@ -129,7 +129,7 @@ export default function FirstAidBoxModal({ open, onClose, site, boxLocation, rec
                 <th className="px-3 py-2"><span className="sr-only">Remove</span></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-clay-200/50">
+            <tbody className="divide-y divide-surface-200/50">
               {FIRST_AID_ITEMS.map((item) => {
                 const row = rows[item.name] || { quantity: '', condition: 'Available', expiryDate: '' }
                 const extras = (existing.get(item.name) || []).length - 1
@@ -137,7 +137,7 @@ export default function FirstAidBoxModal({ open, onClose, site, boxLocation, rec
                 const stale = row.expiryDate && isExpired({ expiryDate: row.expiryDate }, today)
                 const soon = row.expiryDate && isExpiringSoon({ expiryDate: row.expiryDate }, today)
                 return (
-                  <tr key={item.name} className={gone ? 'opacity-40' : 'hover:bg-clay-50'}>
+                  <tr key={item.name} className={gone ? 'opacity-40' : 'hover:bg-surface-50'}>
                     <td className="px-3 py-2 font-semibold text-ink-800">
                       {item.name}
                       {extras > 0 && (

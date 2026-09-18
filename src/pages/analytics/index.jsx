@@ -150,7 +150,7 @@ export default function Analytics() {
       <div
         role="tablist"
         aria-label="Analytics modules"
-        className="mb-5 flex gap-1.5 overflow-x-auto rounded-2xl bg-clay-surface p-2 shadow-clay-inset"
+        className="tab-strip mb-5"
       >
         {tabs.map((t) => (
           <button
@@ -159,9 +159,7 @@ export default function Analytics() {
             type="button"
             aria-selected={tab === t.key}
             onClick={() => setTab(t.key)}
-            className={`inline-flex flex-none items-center gap-2 rounded-2xl px-4 py-2.5 text-[13px] font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 ${
-              tab === t.key ? 'bg-clay-surface text-ink-900 shadow-clay-sm' : 'text-ink-500 hover:text-ink-800'
-            }`}
+            className={`nav-tab ${tab === t.key ? 'nav-tab-active' : 'nav-tab-idle'}`}
           >
             <t.icon size={15} strokeWidth={2.2} />
             {t.label}

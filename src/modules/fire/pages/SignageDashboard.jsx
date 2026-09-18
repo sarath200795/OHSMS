@@ -68,7 +68,7 @@ function RegisterGaps({ result }) {
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {gaps.map((r) => (
-          <div key={r.key} className="rounded-xl bg-clay-50 p-3">
+          <div key={r.key} className="rounded-xl bg-surface-50 p-3">
             <p className="text-xs font-bold text-ink-800">
               Not on the {r.name.toLowerCase()} register
               <span className="ml-1.5 font-semibold text-ink-400">
@@ -246,13 +246,13 @@ export default function SignageDashboard() {
 
               <div className="mt-6 grid gap-6 lg:grid-cols-2">
                 <div className="card overflow-hidden">
-                  <p className="border-b border-clay-200/60 px-4 py-3 text-xs font-bold uppercase tracking-wide text-ink-500">By signage type — weakest first</p>
+                  <p className="border-b border-surface-200/60 px-4 py-3 text-xs font-bold uppercase tracking-wide text-ink-500">By signage type — weakest first</p>
                   <div className="max-h-[420px] overflow-auto">
                     <table className="w-full text-sm">
-                      <thead className="sticky top-0 bg-clay-100/90 text-left text-[11px] uppercase tracking-wide text-ink-500">
+                      <thead className="sticky top-0 bg-surface-100/90 text-left text-[11px] uppercase tracking-wide text-ink-500">
                         <tr><th className="px-4 py-2">Type</th><th className="px-4 py-2 text-center">Sites</th><th className="px-4 py-2 text-center">Gaps</th><th className="px-4 py-2 text-center">Issues</th><th className="px-4 py-2">Coverage</th></tr>
                       </thead>
-                      <tbody className="divide-y divide-clay-200/60">
+                      <tbody className="divide-y divide-surface-200/60">
                         {s.byType.map((r) => (
                           <tr key={r.type} className="hover:bg-ink-50/70">
                             <td className="px-4 py-2.5 font-semibold text-ink-800">{r.type}</td>
@@ -268,13 +268,13 @@ export default function SignageDashboard() {
                 </div>
 
                 <div className="card overflow-hidden">
-                  <p className="border-b border-clay-200/60 px-4 py-3 text-xs font-bold uppercase tracking-wide text-ink-500">By site — most gaps first</p>
+                  <p className="border-b border-surface-200/60 px-4 py-3 text-xs font-bold uppercase tracking-wide text-ink-500">By site — most gaps first</p>
                   <div className="max-h-[420px] overflow-auto">
                     <table className="w-full min-w-[420px] text-sm">
-                      <thead className="sticky top-0 bg-clay-100/90 text-left text-[11px] uppercase tracking-wide text-ink-500">
+                      <thead className="sticky top-0 bg-surface-100/90 text-left text-[11px] uppercase tracking-wide text-ink-500">
                         <tr><th className="px-4 py-2">Site</th><th className="px-4 py-2">Region / Entity</th><th className="px-4 py-2 text-center">Gaps</th><th className="px-4 py-2 text-center">Issues</th><th className="px-4 py-2">Coverage</th></tr>
                       </thead>
-                      <tbody className="divide-y divide-clay-200/60">
+                      <tbody className="divide-y divide-surface-200/60">
                         {s.bySite.map((r) => (
                           <tr key={r.site} className="hover:bg-ink-50/70">
                             <td className="px-4 py-2.5 font-semibold text-ink-800" title={r.missingTypes.length ? `Missing: ${r.missingTypes.join(', ')}` : 'All signage types covered'}>{r.site}</td>

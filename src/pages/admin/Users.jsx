@@ -175,7 +175,7 @@ export default function Users() {
                 const isSelf = u.uid === user?.uid
                 const reqPending = hasPendingAccessRequest(u)
                 return (
-                  <tr key={u.uid} className="hover:bg-clay-100">
+                  <tr key={u.uid} className="hover:bg-surface-100">
                     <td className="px-5 py-3.5">
                       <div className="flex items-center gap-3">
                         {/* Decorative: the initials are a visual restatement of the
@@ -296,7 +296,7 @@ export default function Users() {
               </Field>
             </div>
 
-            <div className="clay-inset rounded-2xl p-3 text-sm">
+            <div className="well rounded-2xl p-3 text-sm">
               <span className="font-medium text-ink-600">Resolves to </span>
               {form.role === 'admin' ? (
                 <Badge tone="brand">All sites (admin)</Badge>

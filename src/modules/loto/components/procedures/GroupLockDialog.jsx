@@ -5,9 +5,9 @@ import Button from '../ui/Button'
 
 const EMPTY_LOCK_SET = new Set()
 const fieldCls =
-  'w-full rounded-xl bg-clay px-3.5 py-2.5 font-mono text-steel-100 shadow-clay-inset outline-none ring-2 ring-transparent focus:ring-hazard/50'
+  'w-full rounded-xl bg-surface px-3.5 py-2.5 font-mono text-steel-100  outline-none ring-2 ring-transparent focus:ring-hazard/50'
 const plainCls =
-  'w-full rounded-xl bg-clay px-3.5 py-2.5 text-steel-100 shadow-clay-inset outline-none ring-2 ring-transparent focus:ring-hazard/50'
+  'w-full rounded-xl bg-surface px-3.5 py-2.5 text-steel-100  outline-none ring-2 ring-transparent focus:ring-hazard/50'
 
 /**
  * Add a technician to a group lockout. Two methods:
@@ -132,8 +132,8 @@ export default function GroupLockDialog({
                 onClick={() => setMethod(opt.k)}
                 className={`rounded-xl px-3 py-2 text-sm font-semibold transition-all disabled:opacity-40 ${
                   method === opt.k
-                    ? 'bg-hazard text-ink shadow-clay'
-                    : 'bg-clay text-steel-300 shadow-clay-inset'
+                    ? 'bg-hazard text-ink shadow-elev'
+                    : 'bg-surface-50 text-steel-300 '
                 }`}
               >
                 {opt.label}
@@ -155,7 +155,7 @@ export default function GroupLockDialog({
                   Replace {p.pointId} personal lock
                 </span>
                 {noDeptLocks ? (
-                  <p className="rounded-xl bg-clay px-3 py-2 text-xs text-steel-400 shadow-clay-inset">
+                  <p className="ring-1 ring-ink-200 rounded-xl bg-surface-50 px-3 py-2 text-xs text-steel-400 ">
                     No Department locks available —{' '}
                     <Link to="/loto/locks" className="font-semibold text-amber-600">
                       Lock Inventory
@@ -212,7 +212,7 @@ export default function GroupLockDialog({
                   Lock for the box <span className="text-steel-400">(personal or department)</span>
                 </span>
                 {boxOptions.length === 0 ? (
-                  <p className="rounded-xl bg-clay px-3.5 py-2.5 text-sm text-steel-400 shadow-clay-inset">
+                  <p className="ring-1 ring-ink-200 rounded-xl bg-surface-50 px-3.5 py-2.5 text-sm text-steel-400 ">
                     No locks available — free up a lock or add Department locks in{' '}
                     <Link to="/loto/locks" className="font-semibold text-amber-600">
                       Lock Inventory
@@ -239,7 +239,7 @@ export default function GroupLockDialog({
                   Department lock per point
                 </span>
                 {noDeptLocks ? (
-                  <p className="rounded-xl bg-clay px-3.5 py-2.5 text-sm text-steel-400 shadow-clay-inset">
+                  <p className="ring-1 ring-ink-200 rounded-xl bg-surface-50 px-3.5 py-2.5 text-sm text-steel-400 ">
                     No Department locks available —{' '}
                     <Link to="/loto/locks" className="font-semibold text-amber-600">
                       Lock Inventory

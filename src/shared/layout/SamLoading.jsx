@@ -34,7 +34,7 @@ export default function SamLoading({ label }) {
   }, [])
 
   return (
-    <div className="grid min-h-screen place-items-center bg-clay-bg">
+    <div className="grid min-h-screen place-items-center bg-canvas">
       <div className="flex flex-col items-center gap-4">
         <SamCharacter3D walking={!reduce} talking={false} reduce={reduce} size={96} />
 

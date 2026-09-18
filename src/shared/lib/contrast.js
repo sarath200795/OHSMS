@@ -9,8 +9,9 @@
 //
 // It is not a per-chip mistake to be fixed per chip. It is what the pattern
 // does, so the fix is a function the pattern calls: keep the hue and the
-// saturation, take the lightness down until the text clears 4.5:1 on its own
-// tint. The chip still reads as "the green one"; it is now also readable.
+// saturation, take the lightness down (on a light card) or up (on dark glass)
+// until the text clears 4.5:1 on its own tint. The chip still reads as "the
+// green one"; it is now also readable.
 //
 // Pure and colocated with a test, because the numbers here are the whole point
 // and a regression in them is silent.
@@ -26,7 +27,14 @@ export function parseHex(hex) {
 }
 
 const toHex = ([r, g, b]) =>
-  '#' + [r, g, b].map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('')
+  '#' +
+  [r, g, b]
+    .map((v) =>
+      Math.max(0, Math.min(255, Math.round(v)))
+        .toString(16)
+        .padStart(2, '0')
+    )
+    .join('')
 
 const channel = (v) => {
   const s = v / 255
@@ -51,7 +59,9 @@ export function contrastRatio(a, b) {
  * over `surface`. A browser reports the composited value to axe, not the alpha,
  * so this is what the ratio has to be measured against.
  */
-export function tintOver(hex, surface = '#f8f1e4', alpha = 0.1) {
+const DEFAULT_SURFACE = '#151b36'
+
+export function tintOver(hex, surface = DEFAULT_SURFACE, alpha = 0.1) {
   const c = parseHex(hex)
   const s = parseHex(surface)
   if (!c || !s) return surface
@@ -59,7 +69,9 @@ export function tintOver(hex, surface = '#f8f1e4', alpha = 0.1) {
 }
 
 function toHsl([r, g, b]) {
-  r /= 255; g /= 255; b /= 255
+  r /= 255
+  g /= 255
+  b /= 255
   const max = Math.max(r, g, b)
   const min = Math.min(r, g, b)
   const l = (max + min) / 2
@@ -67,9 +79,11 @@ function toHsl([r, g, b]) {
   const d = max - min
   const s = l > 0.5 ? d / (2 - max - min) : d / (max + min)
   const h =
-    max === r ? ((g - b) / d + (g < b ? 6 : 0)) / 6
-    : max === g ? ((b - r) / d + 2) / 6
-    : ((r - g) / d + 4) / 6
+    max === r
+      ? ((g - b) / d + (g < b ? 6 : 0)) / 6
+      : max === g
+        ? ((b - r) / d + 2) / 6
+        : ((r - g) / d + 4) / 6
   return [h, s, l]
 }
 
@@ -91,7 +105,7 @@ function fromHsl(h, s, l) {
  * untouched.
  *
  * @param hex      the chip's colour
- * @param surface  what the tint sits on (clay-surface by default)
+ * @param surface  what the tint sits on (glass card surface by default)
  * @param target   required ratio; 4.5 is WCAG AA for body text
  */
 /**
@@ -119,15 +133,27 @@ export function solidBackground(hex, target = 4.5) {
   return '#000000'
 }
 
-export function readableOnTint(hex, surface = '#f8f1e4', target = 4.5) {
+export function readableOnTint(hex, surface = DEFAULT_SURFACE, target = 4.5) {
   const rgb = parseHex(hex)
   if (!rgb) return hex
   const bg = tintOver(hex, surface)
   if (contrastRatio(hex, bg) >= target) return hex
 
   const [h, s, l0] = toHsl(rgb)
-  // 0.005 steps: fine enough that the result is never noticeably darker than it
-  // had to be, coarse enough to finish in well under a millisecond.
+  const surfaceRgb = parseHex(surface)
+  const lighten = surfaceRgb ? luminance(surfaceRgb) < 0.5 : false
+  // 0.005 steps: fine enough that the result is never noticeably further from
+  // the source than it had to be, coarse enough to finish in well under a
+  // millisecond. Dark glass needs the text lightened; a white card still
+  // darkens, which is how the original chips-on-white contract is preserved
+  // when a caller passes `#ffffff`.
+  if (lighten) {
+    for (let l = l0; l <= 1; l += 0.005) {
+      const candidate = fromHsl(h, s, l)
+      if (contrastRatio(candidate, bg) >= target) return candidate
+    }
+    return '#ffffff'
+  }
   for (let l = l0; l >= 0; l -= 0.005) {
     const candidate = fromHsl(h, s, l)
     if (contrastRatio(candidate, bg) >= target) return candidate

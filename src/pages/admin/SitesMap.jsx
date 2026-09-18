@@ -7,12 +7,22 @@ import { WeatherBubbleRow, WeatherRiskPanel } from '../../modules/weather/compon
 
 // Distinct, map-legible colours cycled across entities.
 const PALETTE = [
-  '#0d9488', '#dc2626', '#2563eb', '#d97706', '#7c3aed', '#059669',
-  '#db2777', '#0891b2', '#ca8a04', '#4f46e5', '#e11d48', '#65a30d',
+  '#0d9488',
+  '#dc2626',
+  '#2563eb',
+  '#d97706',
+  '#7c3aed',
+  '#059669',
+  '#db2777',
+  '#0891b2',
+  '#ca8a04',
+  '#4f46e5',
+  '#e11d48',
+  '#65a30d',
 ]
 const NO_ENTITY = '#64748b'
 
-// Coloured teal/… "clay" pin as an HTML divIcon, cached per colour so 100s of
+// Coloured teal/… pin as an HTML divIcon, cached per colour so 100s of
 // markers reuse a handful of icon instances.
 const iconCache = {}
 function pinIcon(color) {
@@ -55,8 +65,13 @@ function createClusterIcon(cluster) {
 const Dot = ({ color }) => (
   <span
     style={{
-      display: 'inline-block', width: 9, height: 9, borderRadius: '50%',
-      background: color, marginRight: 6, verticalAlign: 'middle',
+      display: 'inline-block',
+      width: 9,
+      height: 9,
+      borderRadius: '50%',
+      background: color,
+      marginRight: 6,
+      verticalAlign: 'middle',
     }}
   />
 )
@@ -130,7 +145,10 @@ function SiteMarker({ render, ...props }) {
     <Marker
       {...props}
       eventHandlers={{
-        tooltipopen: (e) => { setOpened(true); fitBubble(map, e) },
+        tooltipopen: (e) => {
+          setOpened(true)
+          fitBubble(map, e)
+        },
         popupopen: () => setOpened(true),
       }}
     >
@@ -149,13 +167,14 @@ export default function SitesMap({ sites, stats = {}, onSelect, onEdit, onDelete
     () => [...new Set(located.map((s) => s.entity).filter(Boolean))].sort(),
     [located]
   )
-  const colorOf = (entity) => (entity ? PALETTE[entities.indexOf(entity) % PALETTE.length] : NO_ENTITY)
+  const colorOf = (entity) =>
+    entity ? PALETTE[entities.indexOf(entity) % PALETTE.length] : NO_ENTITY
   const hasUnassigned = located.some((s) => !s.entity)
 
   if (located.length === 0) {
     return (
       <div className="card flex flex-col items-center gap-3 p-10 text-center">
-        <span className="grid h-14 w-14 place-items-center rounded-2xl bg-clay-100 text-ink-400 shadow-clay-inset">
+        <span className="ring-1 ring-ink-200 grid h-14 w-14 place-items-center rounded-2xl bg-surface-100 text-ink-400">
           <MapPin size={26} />
         </span>
         <div>
@@ -170,7 +189,12 @@ export default function SitesMap({ sites, stats = {}, onSelect, onEdit, onDelete
 
   return (
     <div className="card relative overflow-hidden p-0">
-      <MapContainer center={center} zoom={5} scrollWheelZoom style={{ height: '65vh', width: '100%' }}>
+      <MapContainer
+        center={center}
+        zoom={5}
+        scrollWheelZoom
+        style={{ height: '65vh', width: '100%' }}
+      >
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -183,69 +207,119 @@ export default function SitesMap({ sites, stats = {}, onSelect, onEdit, onDelete
           spiderfyOnMaxZoom
           iconCreateFunction={createClusterIcon}
         >
-        {located.map((s) => {
-          const st = stats[s.id]
-          const color = colorOf(s.entity)
-          return (
-            <SiteMarker
-              key={s.id}
-              position={[s.lat, s.lng]}
-              icon={pinIcon(color)}
-              render={(opened) => (
-                <>
-                  {/* Anchored to the pin rather than sticky to the cursor: a bubble
+          {located.map((s) => {
+            const st = stats[s.id]
+            const color = colorOf(s.entity)
+            return (
+              <SiteMarker
+                key={s.id}
+                position={[s.lat, s.lng]}
+                icon={pinIcon(color)}
+                render={(opened) => (
+                  <>
+                    {/* Anchored to the pin rather than sticky to the cursor: a bubble
                       this tall has to be measured and clamped to stay fully visible,
                       and one that re-flows under a moving cursor cannot settle. */}
-                  <Tooltip direction="top" offset={[0, -6]} opacity={1} className="site-bubble">
-                    <div className="site-bubble-card">
-                      <div className="site-bubble-title"><Dot color={color} />{s.name}</div>
-                      <div className="site-bubble-sub">{[s.region, s.entity].filter(Boolean).join(' · ') || '—'}</div>
-                      {s.address && <div className="site-bubble-addr">{s.address}</div>}
-                      {st && (
-                        <div className="site-bubble-stats">
-                          <span>🧯 Extinguishers <b>{st.extinguishers}</b></span>
-                          <span>❤️ AED <b>{st.aeds}</b></span>
-                          <span>🔔 Fire alarm <b>{st.fas}</b></span>
-                          <span>🩹 First aid <b>{st.firstAidBoxes}</b></span>
-                          <span>⚠️ Incidents <b>{st.incidentsTotal}</b></span>
-                          <span>✅ Open actions <b>{st.openActions}</b></span>
-                          <span>👤 Employees <b>{st.employees.length}</b></span>
+                    <Tooltip direction="top" offset={[0, -6]} opacity={1} className="site-bubble">
+                      <div className="site-bubble-card">
+                        <div className="site-bubble-title">
+                          <Dot color={color} />
+                          {s.name}
                         </div>
-                      )}
-                      <WeatherBubbleRow lat={s.lat} lng={s.lng} active={opened} />
-                      <div className="site-bubble-hint">Click the pin for actions</div>
-                    </div>
-                  </Tooltip>
-
-                  <Popup>
-                    <div style={{ minWidth: 170, maxWidth: 250 }}>
-                      <div style={{ fontWeight: 700, fontSize: 13, color: '#0f172a' }}><Dot color={color} />{s.name}</div>
-                      <div style={{ fontSize: 11, color: '#64748b' }}>{[s.region, s.entity].filter(Boolean).join(' · ') || '—'}</div>
-                      {s.address && <div style={{ fontSize: 11, color: '#94a3b8' }}>{s.address}</div>}
-                      <WeatherRiskPanel lat={s.lat} lng={s.lng} active={opened} />
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        <button onClick={() => onSelect?.(s)} className="rounded-lg bg-brand-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-brand-700">Summary</button>
-                        {canManage && <button onClick={() => onEdit?.(s)} className="rounded-lg bg-clay-100 px-2.5 py-1 text-xs font-semibold text-ink-700 hover:bg-clay-200">Edit</button>}
-                        {canManage && <button onClick={() => onDelete?.(s)} className="rounded-lg bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-600 hover:bg-red-100">Delete</button>}
+                        <div className="site-bubble-sub">
+                          {[s.region, s.entity].filter(Boolean).join(' · ') || '—'}
+                        </div>
+                        {s.address && <div className="site-bubble-addr">{s.address}</div>}
+                        {st && (
+                          <div className="site-bubble-stats">
+                            <span>
+                              🧯 Extinguishers <b>{st.extinguishers}</b>
+                            </span>
+                            <span>
+                              ❤️ AED <b>{st.aeds}</b>
+                            </span>
+                            <span>
+                              🔔 Fire alarm <b>{st.fas}</b>
+                            </span>
+                            <span>
+                              🩹 First aid <b>{st.firstAidBoxes}</b>
+                            </span>
+                            <span>
+                              ⚠️ Incidents <b>{st.incidentsTotal}</b>
+                            </span>
+                            <span>
+                              ✅ Open actions <b>{st.openActions}</b>
+                            </span>
+                            <span>
+                              👤 Employees <b>{st.employees.length}</b>
+                            </span>
+                          </div>
+                        )}
+                        <WeatherBubbleRow lat={s.lat} lng={s.lng} active={opened} />
+                        <div className="site-bubble-hint">Click the pin for actions</div>
                       </div>
-                    </div>
-                  </Popup>
-                </>
-              )}
-            />
-          )
-        })}
+                    </Tooltip>
+
+                    <Popup>
+                      <div style={{ minWidth: 170, maxWidth: 250 }}>
+                        <div style={{ fontWeight: 700, fontSize: 13, color: '#0f172a' }}>
+                          <Dot color={color} />
+                          {s.name}
+                        </div>
+                        <div style={{ fontSize: 11, color: '#64748b' }}>
+                          {[s.region, s.entity].filter(Boolean).join(' · ') || '—'}
+                        </div>
+                        {s.address && (
+                          <div style={{ fontSize: 11, color: '#94a3b8' }}>{s.address}</div>
+                        )}
+                        <WeatherRiskPanel lat={s.lat} lng={s.lng} active={opened} />
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          <button
+                            onClick={() => onSelect?.(s)}
+                            className="rounded-lg bg-brand-600 px-2.5 py-1 text-xs font-semibold text-white hover:brightness-110"
+                          >
+                            Summary
+                          </button>
+                          {canManage && (
+                            <button
+                              onClick={() => onEdit?.(s)}
+                              className="rounded-lg bg-surface-100 px-2.5 py-1 text-xs font-semibold text-ink-700 hover:bg-surface-200"
+                            >
+                              Edit
+                            </button>
+                          )}
+                          {canManage && (
+                            <button
+                              onClick={() => onDelete?.(s)}
+                              className="rounded-lg bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-600 hover:bg-red-100"
+                            >
+                              Delete
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </Popup>
+                  </>
+                )}
+              />
+            )
+          })}
         </MarkerClusterGroup>
       </MapContainer>
 
       {/* Entity colour legend */}
       {(entities.length > 0 || hasUnassigned) && (
         <div className="absolute right-3 top-3 z-[1000] max-h-[60%] w-44 overflow-auto rounded-2xl bg-white/95 p-3 shadow-lg backdrop-blur">
-          <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-ink-400">Entity</p>
+          <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-ink-400">
+            Entity
+          </p>
           <ul className="space-y-1">
             {entities.map((e) => (
               <li key={e} className="flex items-center gap-2 text-xs text-ink-700">
-                <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: colorOf(e) }} />
+                <span
+                  className="h-3 w-3 shrink-0 rounded-full"
+                  style={{ background: colorOf(e) }}
+                />
                 <span className="truncate">{e}</span>
               </li>
             ))}

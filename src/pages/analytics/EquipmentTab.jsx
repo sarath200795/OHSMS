@@ -19,7 +19,7 @@ function defectPin(count) {
   const { size, color } = pinCache[key]
   return L.divIcon({
     className: '',
-    html: `<div style="transform:translate(-50%,-50%);display:grid;place-items:center;width:${size}px;height:${size}px;border-radius:50%;background:${color};color:#fff;font:800 ${size / 2.8}px Inter,sans-serif;border:2.5px solid #fff;box-shadow:0 3px 10px rgba(16,24,40,.35)">${count}</div>`,
+    html: `<div style="transform:translate(-50%,-50%);display:grid;place-items:center;width:${size}px;height:${size}px;border-radius:50%;background:${color};color:#fff;font:800 ${size / 2.8}px Roboto,sans-serif;border:2.5px solid #fff;box-shadow:0 3px 10px rgba(16,24,40,.35)">${count}</div>`,
     iconSize: [size, size],
   })
 }
@@ -70,7 +70,7 @@ export default function EquipmentTab({ extinguishers, aeds, fas, stretchers, fir
         <button
           type="button"
           onClick={() => { setSiteId('all'); setDefectType('all'); setKind('all') }}
-          className="rounded-2xl bg-clay-surface px-4 py-2.5 text-[12.5px] font-semibold text-ink-700 shadow-clay-sm"
+          className="rounded-2xl bg-surface px-4 py-2.5 text-[12.5px] font-semibold text-ink-700 shadow-elev-sm"
         >
           Reset
         </button>

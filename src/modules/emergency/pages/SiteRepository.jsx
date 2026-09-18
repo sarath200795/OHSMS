@@ -228,11 +228,11 @@ export default function SiteRepository() {
                   <th className="px-4 py-3"><span className="sr-only">Actions</span></th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-clay-200/60">
+              <tbody className="divide-y divide-surface-200/60">
                 {pageItems.map((r) => (
                   <tr
                     key={r.site.id}
-                    className="cursor-pointer hover:bg-clay-100/50"
+                    className="cursor-pointer hover:bg-surface-100/50"
                     onClick={() => navigate(`/emergency-response/sites/${r.site.id}`)}
                     title="Open site repository"
                   >
@@ -272,7 +272,7 @@ export default function SiteRepository() {
               </tbody>
             </table>
           </div>
-          <Pager className="border-t border-clay-200/60 px-4 py-3" page={safePage} pageCount={pageCount} onPage={setPage} total={shown.length} pageSize={PAGE_SIZE} />
+          <Pager className="border-t border-surface-200/60 px-4 py-3" page={safePage} pageCount={pageCount} onPage={setPage} total={shown.length} pageSize={PAGE_SIZE} />
         </Card>
       )}
 
@@ -323,7 +323,7 @@ export default function SiteRepository() {
             )}
 
             <div className="space-y-2">
-              <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-clay-200 p-3">
+              <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-surface-200 p-3">
                 <input type="radio" className="mt-1" checked={refreshScope === 'needed'} onChange={() => setRefreshScope('needed')} />
                 <span>
                   <span className="font-semibold text-ink-900">Only sites that need it ({needingRefresh.length})</span>
@@ -332,7 +332,7 @@ export default function SiteRepository() {
                   </span>
                 </span>
               </label>
-              <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-clay-200 p-3">
+              <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-surface-200 p-3">
                 <input type="radio" className="mt-1" checked={refreshScope === 'all'} onChange={() => setRefreshScope('all')} />
                 <span>
                   <span className="font-semibold text-ink-900">All sites with coordinates ({withCoords.length})</span>
@@ -344,7 +344,7 @@ export default function SiteRepository() {
             </div>
 
             {noCoords > 0 && (
-              <p className="flex items-start gap-2 rounded-2xl bg-clay-100 p-3 text-sm text-ink-600">
+              <p className="flex items-start gap-2 rounded-2xl bg-surface-100 p-3 text-sm text-ink-600">
                 <MapPin size={15} className="mt-0.5 shrink-0" />
                 {noCoords} site{noCoords === 1 ? ' has' : 's have'} no latitude/longitude and will be skipped.
                 Add coordinates in the Sites module, then run this again.
@@ -367,7 +367,7 @@ export default function SiteRepository() {
               </span>
               <span className="text-ink-500">{run.done} / {run.total}</span>
             </div>
-            <div className="h-2 overflow-hidden rounded-full bg-clay-200">
+            <div className="h-2 overflow-hidden rounded-full bg-surface-200">
               <div
                 className="h-full rounded-full bg-brand-500 transition-all duration-300"
                 style={{ width: `${run.total ? (run.done / run.total) * 100 : 0}%` }}
@@ -375,7 +375,7 @@ export default function SiteRepository() {
             </div>
 
             {run.summary && (
-              <div className="rounded-2xl bg-clay-100 p-3 text-sm text-ink-700">
+              <div className="rounded-2xl bg-surface-100 p-3 text-sm text-ink-700">
                 <p className="font-semibold text-ink-900">
                   {run.summary.ok} site(s) refreshed
                   {run.summary.failed ? ` · ${run.summary.failed} failed` : ''}
@@ -389,7 +389,7 @@ export default function SiteRepository() {
               </div>
             )}
 
-            <div className="max-h-64 space-y-1 overflow-auto rounded-2xl border border-clay-200 p-2 text-sm">
+            <div className="max-h-64 space-y-1 overflow-auto rounded-2xl border border-surface-200 p-2 text-sm">
               {run.log.map((l, i) => (
                 <div key={`${l.site}-${i}`} className="flex items-start gap-2 px-2 py-1">
                   {l.status === 'done'

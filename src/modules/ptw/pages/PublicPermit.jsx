@@ -60,7 +60,7 @@ export default function PublicPermit() {
 
   if (permit === undefined) {
     return (
-      <div className="grid min-h-screen place-items-center bg-clay-bg">
+      <div className="grid min-h-screen place-items-center bg-canvas">
         <Loader2 size={28} className="animate-spin text-brand-600" />
       </div>
     )
@@ -68,7 +68,7 @@ export default function PublicPermit() {
 
   if (permit === null) {
     return (
-      <div className="grid min-h-screen place-items-center bg-clay-bg p-6">
+      <div className="grid min-h-screen place-items-center bg-canvas p-6">
         <div className="card max-w-sm p-8 text-center">
           <QrCode size={32} className="mx-auto text-ink-300" />
           <h1 className="mt-3 text-lg font-bold text-ink-900">Code not recognised</h1>
@@ -86,10 +86,10 @@ export default function PublicPermit() {
   const ok = workable && !remaining?.expired
 
   return (
-    <div className="min-h-screen bg-clay-bg px-4 py-6">
+    <div className="min-h-screen bg-canvas px-4 py-6">
       <div className="mx-auto max-w-md space-y-4">
         {/* The verdict, before anything else. */}
-        <div className={`rounded-3xl p-5 text-center shadow-clay ${ok ? 'bg-emerald-600' : 'bg-red-700'}`}>
+        <div className={`rounded-3xl p-5 text-center shadow-elev ${ok ? 'bg-emerald-600' : 'bg-red-600'}`}>
           {ok ? <ShieldCheck size={34} className="mx-auto text-white" /> : <ShieldAlert size={34} className="mx-auto text-white" />}
           <p className="mt-2 text-lg font-black tracking-tight text-white">
             {ok ? 'Valid — work may proceed' : 'Not valid for work'}
@@ -232,8 +232,8 @@ function ObservationForm({ permit, token }) {
         <button
           type="button"
           onClick={() => setType('safe')}
-          className={`rounded-2xl px-3 py-3 text-sm font-bold shadow-clay-sm transition active:scale-95 ${
-            type === 'safe' ? 'bg-emerald-600 text-white' : 'bg-clay-surface text-emerald-700'
+          className={`rounded-2xl px-3 py-3 text-sm font-bold shadow-elev-sm transition active:scale-95 ${
+            type === 'safe' ? 'bg-emerald-600 text-white' : 'bg-surface text-emerald-700'
           }`}
         >
           Looks safe
@@ -241,8 +241,8 @@ function ObservationForm({ permit, token }) {
         <button
           type="button"
           onClick={() => setType('unsafe')}
-          className={`rounded-2xl px-3 py-3 text-sm font-bold shadow-clay-sm transition active:scale-95 ${
-            type === 'unsafe' ? 'bg-red-600 text-white' : 'bg-clay-surface text-red-700'
+          className={`rounded-2xl px-3 py-3 text-sm font-bold shadow-elev-sm transition active:scale-95 ${
+            type === 'unsafe' ? 'bg-red-600 text-white' : 'bg-surface text-red-700'
           }`}
         >
           Unsafe
@@ -254,7 +254,7 @@ function ObservationForm({ permit, token }) {
           <div>
             <label htmlFor="public-permit-role" className="text-[10px] font-bold uppercase tracking-widest text-ink-400">You are</label>
             <select id="public-permit-role"
-              className="mt-1 w-full rounded-xl bg-clay-surface px-3 py-2.5 text-sm shadow-clay-inset outline-none"
+              className="mt-1 w-full rounded-xl bg-surface px-3 py-2.5 text-sm  outline-none"
               value={role}
               onChange={(e) => setRole(e.target.value)}
             >
@@ -264,7 +264,7 @@ function ObservationForm({ permit, token }) {
           </div>
 
           <textarea
-            className="min-h-[72px] w-full rounded-xl bg-clay-surface px-3 py-2.5 text-sm shadow-clay-inset outline-none"
+            className="min-h-[72px] w-full rounded-xl bg-surface px-3 py-2.5 text-sm  outline-none"
             placeholder={type === 'unsafe' ? 'What is unsafe about it?' : 'Anything worth noting (optional)'}
             maxLength={500}
             value={note}
@@ -282,7 +282,7 @@ function ObservationForm({ permit, token }) {
             type="button"
             onClick={submit}
             disabled={busy || !role}
-            className="w-full rounded-2xl bg-brand-600 px-4 py-3 text-sm font-bold text-white shadow-clay-brand transition active:scale-[0.98] disabled:opacity-50"
+            className="w-full rounded-2xl bg-brand-600 px-4 py-3 text-sm font-bold text-white shadow-elev-brand transition active:scale-[0.98] disabled:opacity-50"
           >
             {busy ? 'Sending…' : 'Send observation'}
           </button>

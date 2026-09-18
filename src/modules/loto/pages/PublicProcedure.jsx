@@ -68,7 +68,7 @@ export default function PublicProcedure() {
 
   return (
     <Shell>
-      <div className="rounded-2xl bg-clay-surface p-5 shadow-clay">
+      <div className="rounded-2xl bg-surface p-5 shadow-elev">
         <p className="text-[10px] font-bold uppercase tracking-widest text-ink-500">Isolation procedure</p>
         <h1 className="mt-1 text-xl font-black text-ink-900">{p.equipment || p.title || 'Equipment'}</h1>
         <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-sm text-ink-600">
@@ -77,7 +77,7 @@ export default function PublicProcedure() {
           {Number.isFinite(p.revision) && <span className="text-xs">Rev {p.revision}</span>}
         </div>
 
-        <div className="mt-4 flex items-center gap-2 rounded-xl bg-clay-bg px-3 py-2 text-sm font-bold">
+        <div className="mt-4 flex items-center gap-2 rounded-xl bg-canvas px-3 py-2 text-sm font-bold">
           {locked > 0
             ? <><Lock size={16} className="text-danger" /><span className="text-danger">{locked} of {points.length} points locked out</span></>
             : <><LockOpen size={16} className="text-ink-500" /><span className="text-ink-700">No points are locked out</span></>}
@@ -93,7 +93,7 @@ export default function PublicProcedure() {
       {/* The reference itself. Read-only, in the order it must be performed. */}
       <ol className="mt-4 space-y-3">
         {points.map((pt) => (
-          <li key={pt.key} className="rounded-2xl bg-clay-surface p-4 shadow-clay-sm">
+          <li key={pt.key} className="rounded-2xl bg-surface p-4 shadow-elev-sm">
             <div className="flex items-start justify-between gap-3">
               <span
                 className="grid h-7 min-w-12 flex-none place-items-center rounded-md px-2 text-xs font-extrabold"
@@ -114,7 +114,7 @@ export default function PublicProcedure() {
               </div>
               <span
                 className={`flex-none rounded-lg px-2 py-1 text-[11px] font-bold ${
-                  pt.locked ? 'bg-danger/15 text-danger' : 'bg-clay-bg text-ink-500'
+                  pt.locked ? 'bg-danger/15 text-danger' : 'bg-canvas text-ink-500'
                 }`}
               >
                 {pt.locked ? 'Locked' : 'Unlocked'}
@@ -157,7 +157,7 @@ function SignIn({ id, label }) {
     <Link
       to="/login"
       state={id ? { from: { pathname: `/loto/operations/${id}` } } : undefined}
-      className="mt-5 flex w-full items-center justify-center gap-2 rounded-2xl bg-brand-600 px-4 py-3 text-sm font-bold text-white shadow-clay-sm transition hover:brightness-95"
+      className="mt-5 flex w-full items-center justify-center gap-2 rounded-2xl bg-brand-600 px-4 py-3 text-sm font-bold text-white shadow-elev-sm transition hover:brightness-95"
     >
       <LogIn size={16} /> {label}
     </Link>
@@ -166,11 +166,11 @@ function SignIn({ id, label }) {
 
 function Shell({ children }) {
   return (
-    <div className="min-h-screen bg-clay-bg px-4 py-6">
+    <div className="min-h-screen bg-canvas px-4 py-6">
       <div className="mx-auto max-w-lg">
         {/* First thing on the page, before any instruction, because this is the
             only sentence that stops it being read as a permit to work. */}
-        <div className="mb-4 flex items-start gap-2 rounded-2xl bg-ink-900 p-3 text-white">
+        <div className="mb-4 flex items-start gap-2 rounded-2xl bg-magenta-500/15 p-3 text-magenta-700 ring-1 ring-magenta-500/30">
           <ShieldAlert size={16} className="mt-0.5 flex-none" />
           <p className="text-xs font-semibold leading-snug">
             Reference copy. This is not authorisation to work — isolation must be applied and

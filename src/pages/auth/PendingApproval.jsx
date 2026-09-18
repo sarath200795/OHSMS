@@ -13,7 +13,7 @@ export default function PendingApproval() {
   return (
     <AuthLayout title="Awaiting approval" subtitle={orgName}>
       <div className="flex flex-col items-center gap-4 py-2 text-center">
-        <span className="grid h-16 w-16 animate-pulse place-items-center rounded-2xl bg-amber-50 text-amber-600 shadow-clay-sm">
+        <span className="grid h-16 w-16 animate-pulse place-items-center rounded-2xl bg-amber-50 text-amber-600 shadow-elev-sm">
           <Hourglass size={30} />
         </span>
         <p className="text-sm text-ink-600">

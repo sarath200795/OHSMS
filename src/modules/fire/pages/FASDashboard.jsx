@@ -110,12 +110,12 @@ export default function FASDashboard() {
 
           <div className="mt-6 grid gap-6 lg:grid-cols-2">
             <div className="card overflow-x-auto">
-              <p className="border-b border-clay-200/60 px-4 py-3 text-xs font-bold uppercase tracking-wide text-ink-500">By device type</p>
+              <p className="border-b border-surface-200/60 px-4 py-3 text-xs font-bold uppercase tracking-wide text-ink-500">By device type</p>
               <table className="w-full text-sm">
-                <thead className="bg-clay-100/50 text-left text-[11px] uppercase tracking-wide text-ink-500">
+                <thead className="bg-surface-100/50 text-left text-[11px] uppercase tracking-wide text-ink-500">
                   <tr><th className="px-4 py-2">Type</th><th className="px-4 py-2 text-center">Count</th><th className="px-4 py-2 text-center">Faulty</th><th className="px-4 py-2 text-center">Attention</th></tr>
                 </thead>
-                <tbody className="divide-y divide-clay-200/60">
+                <tbody className="divide-y divide-surface-200/60">
                   {byType.map((r) => (
                     <tr key={r.type} className={`hover:bg-ink-50/70 ${r.total === 0 ? 'text-ink-400' : ''}`}>
                       <td className="px-4 py-2.5 font-semibold text-ink-800">{r.type}</td>
@@ -128,9 +128,9 @@ export default function FASDashboard() {
               </table>
             </div>
             <div className="card overflow-x-auto">
-              <p className="border-b border-clay-200/60 px-4 py-3 text-xs font-bold uppercase tracking-wide text-ink-500">By site</p>
+              <p className="border-b border-surface-200/60 px-4 py-3 text-xs font-bold uppercase tracking-wide text-ink-500">By site</p>
               <table className="w-full text-sm">
-                <tbody className="divide-y divide-clay-200/60">
+                <tbody className="divide-y divide-surface-200/60">
                   {bySite.map((r) => (
                     <tr key={r.site} className="hover:bg-ink-50/70">
                       <td className="px-4 py-2.5 font-semibold text-ink-800">{r.site}</td>

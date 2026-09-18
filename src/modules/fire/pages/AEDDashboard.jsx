@@ -106,10 +106,10 @@ export default function AEDDashboard() {
 
           <div className="card mt-6 overflow-x-auto">
             <table className="w-full min-w-[420px] text-sm">
-              <thead className="bg-clay-100/70 text-left text-xs uppercase tracking-wide text-ink-500">
+              <thead className="bg-surface-100/70 text-left text-xs uppercase tracking-wide text-ink-500">
                 <tr><th className="px-4 py-3">Site</th><th className="px-4 py-3 text-center">AEDs</th><th className="px-4 py-3 text-center">Need attention</th></tr>
               </thead>
-              <tbody className="divide-y divide-clay-200/60">
+              <tbody className="divide-y divide-surface-200/60">
                 {bySite.map((r) => (
                   <tr key={r.site} className="hover:bg-ink-50/70">
                     <td className="px-4 py-2.5 font-semibold text-ink-800">{r.site}</td>

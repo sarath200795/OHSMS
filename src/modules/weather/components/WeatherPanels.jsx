@@ -1,6 +1,6 @@
 // Weather risk, rendered for the map. Inline styles rather than Tailwind
 // classes because these mount inside Leaflet's tooltip and popup panes, where
-// the surrounding stylesheet is Leaflet's own and the clay tokens do not apply.
+// the surrounding stylesheet is Leaflet's own and the app tokens do not apply.
 //
 // Named WeatherPanels, not WeatherRisk, because a `WeatherRisk.jsx` beside
 // `weatherRisk.js` differs only in case: Windows and macOS resolve the import

@@ -299,7 +299,7 @@ export default function ActionsTab({ orgId, sites = [], keepUnplaced = true }) {
         <button
           type="button"
           onClick={() => { setSiteId('all'); setSource('all'); setFrom(''); setTo('') }}
-          className="rounded-2xl bg-clay-surface px-4 py-2.5 text-[12.5px] font-semibold text-ink-700 shadow-clay-sm"
+          className="rounded-2xl bg-surface px-4 py-2.5 text-[12.5px] font-semibold text-ink-700 shadow-elev-sm"
         >
           Reset
         </button>

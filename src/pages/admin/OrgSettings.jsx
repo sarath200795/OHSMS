@@ -292,15 +292,12 @@ export default function OrgSettings() {
       <PageHeader title="Organization settings" subtitle="Profile, branding, scope granularity & integrations" icon={Settings} />
 
       {/* Tab bar */}
-      <div className="mb-5 flex flex-wrap gap-1.5 border-b border-ink-100 pb-3">
+      <div className="mb-5 flex flex-wrap gap-1 border-b border-ink-200">
         {TABS.map((t) => (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
-            className={[
-              'inline-flex items-center gap-2 rounded-2xl px-3.5 py-2 text-sm font-medium transition-all duration-200 ease-emil',
-              tab === t.key ? 'bg-clay-surface text-ink-900 shadow-clay-pressed' : 'text-ink-500 hover:bg-clay-100 hover:text-ink-800 active:scale-[0.98]',
-            ].join(' ')}
+            className={`nav-tab ${tab === t.key ? 'nav-tab-active -mb-px rounded-b-none border-b-2 border-brand-600' : 'nav-tab-idle'}`}
           >
             <t.icon size={16} /> {t.label}
           </button>
@@ -336,7 +333,7 @@ export default function OrgSettings() {
               looks best; up to {formatSize(MAX_LOGO_BYTES)}.
             </p>
             <div className="flex flex-wrap items-center gap-4">
-              <div className="grid h-20 w-20 flex-none place-items-center rounded-2xl bg-clay-surface shadow-clay-inset">
+              <div className="ring-1 ring-ink-200 grid h-20 w-20 flex-none place-items-center rounded-2xl bg-surface-50 ">
                 {logoSrc ? (
                   <img
                     src={safeSrc(logoSrc)}
@@ -472,7 +469,7 @@ export default function OrgSettings() {
             </div>
             <div className="mt-3 flex flex-wrap gap-1.5">
               {form.departments.map((d) => (
-                <span key={d} className="chip bg-clay-100 text-ink-700">
+                <span key={d} className="chip bg-surface-100 text-ink-700">
                   {d}
                   <button type="button" onClick={() => removeDept(d)} className="text-ink-400 hover:text-red-600" title="Remove department">
                     <X size={13} />
@@ -524,7 +521,7 @@ export default function OrgSettings() {
             <div className="mt-3 space-y-3">
               {customFields.length === 0 && <p className="text-sm text-ink-400">No custom fields yet.</p>}
               {customFields.map((f) => (
-                <div key={f.key} className="rounded-2xl bg-clay-surface/60 p-3 shadow-clay-inset">
+                <div key={f.key} className="ring-1 ring-ink-200 rounded-2xl bg-surface-50/60 p-3 ">
                   <div className="flex items-center justify-between">
                     <p className="text-sm font-semibold text-ink-800">{f.label}</p>
                     <button type="button" onClick={() => removeCustomField(f.key)} className="rounded-lg p-1 text-ink-400 hover:bg-red-50 hover:text-red-600"><X size={15} /></button>
@@ -533,7 +530,7 @@ export default function OrgSettings() {
                   {f.options.length > 0 && (
                     <div className="mt-2 flex flex-wrap gap-1.5">
                       {f.options.map((o) => (
-                        <span key={o} className="chip bg-clay-100 text-ink-700">
+                        <span key={o} className="chip bg-surface-100 text-ink-700">
                           {o}
                           <button type="button" onClick={() => removeOption(f.key, o)} className="text-ink-400 hover:text-red-600"><X size={12} /></button>
                         </span>
@@ -570,14 +567,14 @@ export default function OrgSettings() {
 
             <ol className="space-y-2">
               {levelsForModule.map((key, i) => (
-                <li key={key} className="flex items-center gap-2 rounded-2xl bg-clay-surface/60 px-3 py-2 shadow-clay-inset">
+                <li key={key} className="ring-1 ring-ink-200 flex items-center gap-2 rounded-2xl bg-surface-50/60 px-3 py-2 ">
                   <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-brand-500 text-xs font-bold text-white">{i + 1}</span>
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold text-ink-800">{fieldLabel(key)}</p>
                     <p className="truncate text-xs text-ink-400">{previewFor(key)}</p>
                   </div>
-                  <button type="button" onClick={() => moveLevel(i, -1)} disabled={i === 0} className="rounded-lg p-1 text-ink-400 hover:bg-clay-100 hover:text-ink-700 disabled:opacity-30"><ChevronUp size={16} /></button>
-                  <button type="button" onClick={() => moveLevel(i, 1)} disabled={i === levelsForModule.length - 1} className="rounded-lg p-1 text-ink-400 hover:bg-clay-100 hover:text-ink-700 disabled:opacity-30"><ChevronDown size={16} /></button>
+                  <button type="button" onClick={() => moveLevel(i, -1)} disabled={i === 0} className="rounded-lg p-1 text-ink-400 hover:bg-surface-100 hover:text-ink-700 disabled:opacity-30"><ChevronUp size={16} /></button>
+                  <button type="button" onClick={() => moveLevel(i, 1)} disabled={i === levelsForModule.length - 1} className="rounded-lg p-1 text-ink-400 hover:bg-surface-100 hover:text-ink-700 disabled:opacity-30"><ChevronDown size={16} /></button>
                   <button type="button" onClick={() => removeLevel(key)} disabled={levelsForModule.length === 1} title={levelsForModule.length === 1 ? 'At least one level is required' : 'Remove level'} className="rounded-lg p-1 text-ink-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-30"><X size={16} /></button>
                 </li>
               ))}

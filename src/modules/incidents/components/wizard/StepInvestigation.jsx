@@ -144,7 +144,7 @@ export default function StepInvestigation({ incident, onPersist, saving }) {
       {list.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
           {list.map((e) => (
-            <div key={e.id} className={`flex items-center gap-1 rounded-xl border px-1 ${e.id === activeId && !picking ? 'border-brand-500 bg-brand-500/10' : 'border-clay-300 bg-white'}`}>
+            <div key={e.id} className={`flex items-center gap-1 rounded-xl border px-1 ${e.id === activeId && !picking ? 'border-brand-500 bg-brand-500/10' : 'border-surface-300 bg-white'}`}>
               <button className="py-1.5 pl-2 pr-1 text-xs font-semibold text-ink-700" onClick={() => selectEntry(e.id)}>{labelOf(e.method)}</button>
               <button className="grid h-5 w-5 place-items-center rounded text-ink-400 hover:bg-red-50 hover:text-red-500" onClick={() => removeEntry(e.id)} title="Remove"><Trash2 size={11} /></button>
             </div>

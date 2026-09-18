@@ -119,7 +119,7 @@ export default function BulkImport() {
                     type="button"
                     onClick={() => setImportKind(o.key)}
                     className={`flex-1 rounded-2xl border p-3 text-left transition active:scale-[0.99] ${
-                      importKind === o.key ? 'border-brand-400 bg-brand-50 shadow-clay-sm' : 'border-ink-200 hover:bg-clay-100'
+                      importKind === o.key ? 'border-brand-400 bg-brand-50 shadow-elev-sm' : 'border-ink-200 hover:bg-surface-100'
                     }`}
                   >
                     <p className="text-sm font-semibold text-ink-900">{o.label}</p>
@@ -133,7 +133,7 @@ export default function BulkImport() {
               onClick={() => inputRef.current?.click()}
               onDragOver={(e) => e.preventDefault()}
               onDrop={(e) => { e.preventDefault(); handleFile(e.dataTransfer.files?.[0]) }}
-              className="flex w-full cursor-pointer flex-col items-center justify-center gap-3 rounded-3xl bg-clay-surface px-6 py-14 text-center shadow-clay-inset transition hover:bg-brand-50/40"
+              className="flex w-full cursor-pointer flex-col items-center justify-center gap-3 rounded-3xl bg-surface-50 px-6 py-14 text-center ring-1 ring-ink-200 transition hover:bg-brand-50/40"
             >
               <div className="grid h-14 w-14 place-items-center rounded-2xl bg-brand-50 text-brand-500">
                 {parsing ? <Loader2 className="animate-spin" /> : <FileSpreadsheet size={26} />}
@@ -163,7 +163,7 @@ export default function BulkImport() {
                     </div>
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
-                        <thead className="bg-clay-100/70 text-left text-xs uppercase text-ink-400">
+                        <thead className="bg-surface-100/70 text-left text-xs uppercase text-ink-400">
                           <tr>
                             <th className="px-3 py-2">Assessment</th>
                             <th className="px-3 py-2">Site</th>
@@ -242,15 +242,15 @@ export default function BulkImport() {
               <li>3. Upload — rows are validated and grouped into assessments.</li>
               <li>4. Review the preview, then import.</li>
             </ol>
-            <div className="rounded-2xl bg-clay-surface p-3 text-xs text-ink-600 shadow-clay-inset">
+            <div className="ring-1 ring-ink-200 rounded-2xl bg-surface-50 p-3 text-xs text-ink-600 ">
               Responsible-person names become <strong>internal members</strong> automatically. Set
               <strong> ALARP = Yes</strong> to skip additional controls &amp; projected risk.
             </div>
-            <div className="rounded-2xl bg-clay-surface p-3 shadow-clay-inset">
+            <div className="ring-1 ring-ink-200 rounded-2xl bg-surface-50 p-3 ">
               <p className="mb-1 text-xs font-bold uppercase text-ink-500">Columns</p>
               <div className="flex flex-wrap gap-1.5">
                 {CSV_COLUMNS.map((c) => (
-                  <span key={c} className="chip bg-clay-surface text-ink-600">{c}</span>
+                  <span key={c} className="chip bg-surface text-ink-600">{c}</span>
                 ))}
               </div>
             </div>

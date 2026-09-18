@@ -4,7 +4,7 @@ import Card from './ui/Card'
 export default function EmptyState({ title = 'All caught up', subtitle, icon }) {
   return (
     <Card className="!p-12 text-center">
-      <span className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-clay text-steel-400 shadow-clay-inset">
+      <span className="ring-1 ring-ink-200 mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-surface-50 text-steel-400 ">
         {icon || (
           <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M20 6 9 17l-5-5" />

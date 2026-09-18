@@ -62,7 +62,7 @@ export default function OperateProcedure() {
       </button>
 
       {!approved && (
-        <div className="mb-4 rounded-2xl bg-amber-100 px-4 py-3 text-sm text-amber-800 shadow-clay">
+        <div className="mb-4 rounded-2xl bg-amber-100 px-4 py-3 text-sm text-amber-800 shadow-elev">
           ⚠️ This procedure is not approved yet — LOTO operations are disabled.
         </div>
       )}

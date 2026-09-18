@@ -192,14 +192,14 @@ function BodyFigure({ view, mode = 'select', value = [], counts = {}, onToggle, 
 
 function ViewTabs({ view, setView }) {
   return (
-    <div className="mx-auto flex w-fit gap-1 rounded-xl bg-clay-surface p-1 shadow-clay-inset">
+    <div className="ring-1 ring-ink-200 mx-auto flex w-fit gap-1 rounded-xl bg-surface-50 p-1 ">
       {BODY_VIEWS.map((v) => (
         <button
           key={v.key}
           type="button"
           onClick={() => setView(v.key)}
           className={`rounded-lg px-3 py-1 text-xs font-bold transition ${
-            view === v.key ? 'bg-brand-500 text-white shadow-clay-sm' : 'text-ink-500 hover:text-ink-800'
+            view === v.key ? 'bg-brand-500 text-white shadow-elev-sm' : 'text-ink-500 hover:text-ink-800'
           }`}
         >
           {v.label}
@@ -222,7 +222,7 @@ export default function BodyMap({ value = [], onChange, height = 320 }) {
   return (
     <div className="space-y-3">
       <ViewTabs view={view} setView={setView} />
-      <div className="rounded-2xl bg-clay-surface p-3 shadow-clay-inset">
+      <div className="ring-1 ring-ink-200 rounded-2xl bg-surface-50 p-3 ">
         <BodyFigure view={view} mode="select" value={value} onToggle={toggle} height={height} />
       </div>
       {/* Dropdown fallback — reaches every part (fingers, wrists, joints, organs) even if hard to tap on the figure. */}
@@ -293,7 +293,7 @@ export function BodyHeatmap({ counts = {}, onSelect, height = 300 }) {
                 key={k}
                 type="button"
                 onClick={onSelect ? () => onSelect(k) : undefined}
-                className={`chip bg-clay-100 text-ink-700 ${onSelect ? 'hover:bg-clay-200' : 'cursor-default'}`}
+                className={`chip bg-surface-100 text-ink-700 ${onSelect ? 'hover:bg-surface-200' : 'cursor-default'}`}
                 title={`${bodyPartLabel(k)}: ${n}`}
               >
                 {bodyPartLabel(k)}
@@ -324,7 +324,7 @@ export function BodyMapStatic({ parts = [], height = 240 }) {
       <div className="flex flex-wrap items-start justify-center gap-4">
         {shown.map((v) => (
           <div key={v.key} className="text-center">
-            <div className="rounded-2xl bg-clay-surface p-2 shadow-clay-inset print:border print:border-ink-200 print:bg-white print:shadow-none">
+            <div className="rounded-2xl bg-surface p-2  print:border print:border-ink-200 print:bg-white print:shadow-none">
               <BodyFigure view={v.key} mode="select" value={list} height={height} />
             </div>
             <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-ink-400">

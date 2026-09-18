@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Shared claymorphism UI kit. One import surface for every module:
+// Shared UI kit. One import surface for every module:
 //   import { Button, Card, StatCard, Skeleton, Modal, ... } from '@/shared/ui'
 //
 // Motion follows Emil Kowalski's principles: buttons scale on :active (CSS, in
@@ -102,6 +102,7 @@ export const IconButton = forwardRef(function IconButton(
         VARIANT[variant] || 'btn-ghost',
         'justify-center !px-0',
         ICON_SIZE[size] || ICON_SIZE.md,
+        '!rounded-xl',
         className
       )}
       disabled={disabled || loading}
@@ -210,7 +211,7 @@ export function Field({
         </p>
       )}
       {error && (
-        <p id={errorId} role="alert" className="mt-1 text-xs font-medium text-red-600">
+        <p id={errorId} role="alert" className="mt-1 text-xs font-medium text-red-400">
           {error}
         </p>
       )}
@@ -241,10 +242,10 @@ export function MultiSelect({
 }) {
   const toggle = (v) => onChange(value.includes(v) ? value.filter((x) => x !== v) : [...value, v])
   if (!options.length) {
-    return <div className="clay-inset rounded-2xl p-3 text-sm text-ink-400">{empty}</div>
+    return <div className="well rounded-2xl p-3 text-sm text-ink-400">{empty}</div>
   }
   return (
-    <div className={cx('clay-inset space-y-0.5 overflow-y-auto rounded-2xl p-2', maxHeight)}>
+    <div className={cx('well space-y-0.5 overflow-y-auto rounded-2xl p-2', maxHeight)}>
       {options.map((o) => {
         const v = o.value ?? o
         const label = o.label ?? o
@@ -256,7 +257,7 @@ export function MultiSelect({
             onClick={() => toggle(v)}
             className={cx(
               'flex w-full items-center gap-2 rounded-xl px-2.5 py-1.5 text-left text-sm transition active:scale-[0.99]',
-              on ? 'bg-brand-50 text-brand-800' : 'text-ink-700 hover:bg-clay-100'
+              on ? 'bg-brand-50 text-brand-800' : 'text-ink-700 hover:bg-surface-100'
             )}
           >
             <span
@@ -341,13 +342,15 @@ export function StatCard({ label, value, icon: Icon, tone = 'brand', hint, class
   return (
     <div className={cx('card flex min-w-0 items-center gap-4 p-5', className)}>
       {Icon && (
-        <span className={cx('grid h-12 w-12 shrink-0 place-items-center rounded-2xl', t)}>
-          <Icon size={22} />
+        <span className={cx('grid h-11 w-11 shrink-0 place-items-center rounded-xl', t)}>
+          <Icon size={20} />
         </span>
       )}
       <div className="min-w-0">
-        <p className="truncate text-sm font-medium text-ink-500">{label}</p>
-        <p className="truncate text-2xl font-bold tracking-tight text-ink-900">{value}</p>
+        <p className="truncate text-[12px] font-medium uppercase tracking-[0.06em] text-ink-500">
+          {label}
+        </p>
+        <p className="truncate text-2xl font-bold tracking-[-0.03em] text-ink-900">{value}</p>
         {hint && <p className="truncate text-xs text-ink-400">{hint}</p>}
       </div>
     </div>
@@ -367,12 +370,12 @@ export function PageHeader({ title, subtitle, icon: Icon, actions, children, tou
     >
       <div className="flex min-w-0 items-start gap-3">
         {Icon && (
-          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-brand-50 text-brand-700 shadow-clay-sm">
-            <Icon size={22} />
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-brand-50 text-brand-700 ring-1 ring-brand-200/70">
+            <Icon size={20} />
           </span>
         )}
         <div className="min-w-0">
-          <h1 className="text-xl font-bold tracking-tight text-ink-900 sm:text-2xl">{title}</h1>
+          <h1 className="text-xl font-bold tracking-[-0.02em] text-ink-900 sm:text-2xl">{title}</h1>
           {subtitle && <p className="mt-0.5 text-sm text-ink-500">{subtitle}</p>}
         </div>
       </div>
@@ -395,8 +398,8 @@ export function EmptyState({ icon: Icon, title, description, hint, message, acti
       )}
     >
       {Icon && (
-        <span className="grid h-14 w-14 place-items-center rounded-2xl bg-clay-100 text-ink-400 shadow-clay-inset">
-          <Icon size={26} />
+        <span className="grid h-12 w-12 place-items-center rounded-xl bg-surface-100 text-ink-400 ring-1 ring-white/10">
+          <Icon size={24} />
         </span>
       )}
       <div className="max-w-md">
@@ -555,7 +558,7 @@ export function Modal({
           {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
           <div
             aria-hidden="true"
-            className="absolute inset-0 bg-ink-950/40 backdrop-blur-sm"
+            className="absolute inset-0 bg-black/55 backdrop-blur-sm"
             onClick={onClose}
           />
           <motion.div
@@ -589,7 +592,7 @@ export function Modal({
                 type="button"
                 onClick={onClose}
                 aria-label="Close"
-                className="grid h-8 w-8 shrink-0 place-items-center rounded-xl text-ink-400 transition hover:bg-clay-100 hover:text-ink-700 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+                className="grid h-8 w-8 shrink-0 place-items-center rounded-xl text-ink-400 transition hover:bg-surface-100 hover:text-ink-700 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
               >
                 <X size={18} />
               </button>

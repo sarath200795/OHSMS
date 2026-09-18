@@ -297,7 +297,7 @@ export default function FirstAid() {
   }
 
   const cellStyles = {
-    none: 'bg-clay-50 text-ink-300',
+    none: 'bg-surface-50 text-ink-300',
     ok: 'bg-green-50 text-green-700',
     issue: 'bg-amber-50 text-amber-700',
     missing: 'bg-red-50 text-red-700',
@@ -306,9 +306,9 @@ export default function FirstAid() {
   return (
     <div>
       <PageHeader title="First Aid Boxes" subtitle="Site-wise contents of every first aid box and whether they are actually available" icon={BriefcaseMedical}>
-        <div className="flex rounded-xl bg-clay-100 p-1">
-          <button onClick={() => setView('matrix')} className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold ${view === 'matrix' ? 'bg-white text-ink-900 shadow-clay-sm' : 'text-ink-500'}`}><LayoutGrid size={14} /> Matrix</button>
-          <button onClick={() => setView('list')} className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold ${view === 'list' ? 'bg-white text-ink-900 shadow-clay-sm' : 'text-ink-500'}`}><List size={14} /> List</button>
+        <div className="flex rounded-xl bg-surface-100 p-1">
+          <button onClick={() => setView('matrix')} className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold ${view === 'matrix' ? 'bg-surface text-ink-900 shadow-elev-sm' : 'text-ink-500'}`}><LayoutGrid size={14} /> Matrix</button>
+          <button onClick={() => setView('list')} className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold ${view === 'list' ? 'bg-surface text-ink-900 shadow-elev-sm' : 'text-ink-500'}`}><List size={14} /> List</button>
         </div>
         <button
           className={linkPlan?.linked.length ? 'btn-soft !bg-brand-100 !text-brand-800' : 'btn-soft'}
@@ -366,7 +366,7 @@ export default function FirstAid() {
               <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded bg-green-200" /> Stocked</span>
               <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded bg-amber-200" /> Short, damaged or expiring</span>
               <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded bg-red-200" /> None usable</span>
-              <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded bg-clay-200" /> Not checked</span>
+              <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded bg-surface-200" /> Not checked</span>
               <span className="ml-auto text-ink-400">Each cell shows held / required. Click a cell to manage its records, or “Check box” to record the whole box.</span>
             </div>
 
@@ -375,19 +375,19 @@ export default function FirstAid() {
                 <table className="w-full border-separate border-spacing-0 text-sm">
                   <thead>
                     <tr>
-                      <th className="sticky left-0 z-10 border-b border-clay-200/60 bg-clay-surface px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wide text-ink-500">Site</th>
+                      <th className="sticky left-0 z-10 border-b border-surface-200/60 bg-surface px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wide text-ink-500">Site</th>
                       {visibleItems.map((item) => (
                         <th
                           key={item}
                           title={`${item} — a site is expected to hold at least ${requiredQty(item)}`}
-                          className="border-b border-clay-200/60 bg-clay-surface px-2 py-3 text-center text-[10px] font-semibold leading-tight text-ink-500"
+                          className="border-b border-surface-200/60 bg-surface px-2 py-3 text-center text-[10px] font-semibold leading-tight text-ink-500"
                           style={{ minWidth: 78 }}
                         >
                           {item}
                           <span className="block font-normal text-ink-400">min {requiredQty(item)}</span>
                         </th>
                       ))}
-                      <th className="border-b border-clay-200/60 bg-clay-surface px-3 py-3 text-center text-[10px] font-bold uppercase tracking-wide text-ink-500" style={{ minWidth: 150 }}>Availability</th>
+                      <th className="border-b border-surface-200/60 bg-surface px-3 py-3 text-center text-[10px] font-bold uppercase tracking-wide text-ink-500" style={{ minWidth: 150 }}>Availability</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -402,11 +402,11 @@ export default function FirstAid() {
                       const firstBox = firstAid.find((r) => r.centerName === site && r.boxLocation)?.boxLocation || ''
                       return (
                         <tr key={site} className="group">
-                          <td className="sticky left-0 z-10 border-b border-clay-200/40 bg-white px-4 py-2 font-semibold text-ink-800 group-hover:bg-clay-50">
+                          <td className="sticky left-0 z-10 border-b border-surface-200/40 bg-white px-4 py-2 font-semibold text-ink-800 group-hover:bg-surface-50">
                             <span className="flex items-center gap-1.5"><MapPin size={13} className="text-brand-400" /> {site}</span>
                           </td>
                           {cells.map((c) => (
-                            <td key={c.item} className="border-b border-l border-clay-200/40 p-1 text-center">
+                            <td key={c.item} className="border-b border-l border-surface-200/40 p-1 text-center">
                               <button
                                 onClick={() => (c.count > 0 ? setCellView({ site, item: c.item }) : openAddFor(site, c.item))}
                                 title={c.count > 0 ? `${c.qty} of ${c.required} held across ${c.count} record(s)${c.expired ? ` · ${c.expired} expired` : ''} — click to manage` : 'Not checked — click to add'}
@@ -418,7 +418,7 @@ export default function FirstAid() {
                               </button>
                             </td>
                           ))}
-                          <td className="flex items-center justify-center gap-2 border-b border-l border-clay-200/40 px-3 py-2 text-center">
+                          <td className="flex items-center justify-center gap-2 border-b border-l border-surface-200/40 px-3 py-2 text-center">
                             <span className={`font-bold ${pct >= 80 ? 'text-green-700' : pct >= 40 ? 'text-amber-700' : 'text-red-700'}`}>{available}/{visibleItems.length}</span>
                             <button
                               className="btn-soft !px-2 !py-1 text-[11px]"
@@ -435,7 +435,7 @@ export default function FirstAid() {
                 </table>
               </div>
               <Pager
-                className="border-t border-clay-200/60 px-4 py-3"
+                className="border-t border-surface-200/60 px-4 py-3"
                 page={matrixPager.page} pageCount={matrixPager.pageCount} onPage={matrixPager.setPage}
                 total={matrixPager.total} pageSize={matrixPager.pageSize}
               />
@@ -460,7 +460,7 @@ export default function FirstAid() {
               </div>
               <div className="card overflow-x-auto">
                 <table className="w-full text-left text-sm">
-                  <thead className="border-b border-clay-200/60 text-[11px] uppercase tracking-wide text-ink-400">
+                  <thead className="border-b border-surface-200/60 text-[11px] uppercase tracking-wide text-ink-400">
                     <tr>
                       <th className="px-4 py-2.5">Item</th>
                       <th className="px-4 py-2.5">Box</th>
@@ -471,14 +471,14 @@ export default function FirstAid() {
                       <th className="px-4 py-2.5 text-right">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-clay-200/50">
+                  <tbody className="divide-y divide-surface-200/50">
                     {items.map((r) => {
                       const required = requiredQty(r.item)
                       const short = (Number(r.quantity) || 0) < required
                       const stale = isExpired(r, today)
                       const soon = isExpiringSoon(r, today)
                       return (
-                        <tr key={r.id} className="hover:bg-clay-50">
+                        <tr key={r.id} className="hover:bg-surface-50">
                           <td className="px-4 py-2.5 font-semibold text-ink-800">{r.item}</td>
                           <td className="px-4 py-2.5 text-ink-500">{r.boxLocation || '—'}</td>
                           <td className={`px-4 py-2.5 font-semibold ${short ? 'text-amber-700' : 'text-ink-600'}`}>{r.quantity ?? 0} / {required}</td>
@@ -588,7 +588,7 @@ export default function FirstAid() {
               ) : (
                 <ul className="space-y-2">
                   {recs.map((r) => (
-                    <li key={r.id} className="flex items-center gap-3 rounded-xl border border-clay-200/60 px-3 py-2.5">
+                    <li key={r.id} className="flex items-center gap-3 rounded-xl border border-surface-200/60 px-3 py-2.5">
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <Badge color={FIRST_AID_CONDITION_COLOR[r.condition] || '#64748b'}>{r.condition}</Badge>
@@ -608,7 +608,7 @@ export default function FirstAid() {
                   ))}
                 </ul>
               )}
-              <div className="mt-4 flex justify-end gap-2 border-t border-clay-200/60 pt-3">
+              <div className="mt-4 flex justify-end gap-2 border-t border-surface-200/60 pt-3">
                 <button className="btn-ghost" onClick={() => setCellView(null)}>Close</button>
                 <button className="btn-primary" onClick={() => { openAddFor(cellView.site, cellView.item); setCellView(null) }}>
                   <Plus size={16} /> Add another
