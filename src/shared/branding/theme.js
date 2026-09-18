@@ -18,7 +18,15 @@
 // is darkened until white text clears AA (`solidBackground`). A colour that
 // already passes is left alone.
 // ─────────────────────────────────────────────────────────────────────────────
-import { lightCanvas, mixHex, parseHex, readableOnTint, solidBackground } from '../lib/contrast'
+import {
+  contrastRatio,
+  lightCanvas,
+  mixHex,
+  parseHex,
+  readableOnTint,
+  solidBackground,
+  tintOver,
+} from '../lib/contrast'
 
 export const DEFAULT_CANVAS = '#f6e3bb'
 export const DEFAULT_ACCENT = '#6db3aa'
@@ -120,10 +128,18 @@ export function normalizeTheme(raw) {
 /**
  * Brand scale from one accent. 400 is the sampled colour (rings, glass tint);
  * 600 is the AA solid for white text; 50–300 are washes; 700+ are ink on tints.
+ *
+ * 700 is the colour of `.btn-soft` / `text-brand-700`. Those sit on a 14%
+ * accent wash over the canvas (and sometimes on white frost). Mixing a fixed
+ * 18% toward black was how kit teal produced `#376a63` and failed axe at
+ * 4.46:1 on that composite — so 700 is darkened until it clears 4.5:1 on
+ * the soft fill, the canvas, and white.
  */
-export function brandScale(accent) {
+export function brandScale(accent, canvas = DEFAULT_CANVAS) {
   const hex = normHex(accent) || DEFAULT_ACCENT
   const solid = solidBackground(hex)
+  const wash = lightCanvas(canvas)
+  const seven = inkOnSoft(hex, wash, mixHex(solid, '#000000', 0.18))
   return {
     50: mixHex(hex, '#ffffff', 0.92),
     100: mixHex(hex, '#ffffff', 0.82),
@@ -132,16 +148,27 @@ export function brandScale(accent) {
     400: hex,
     500: mixHex(hex, solid, 0.55),
     600: solid,
-    700: mixHex(solid, '#000000', 0.18),
-    800: mixHex(solid, '#000000', 0.32),
-    900: mixHex(solid, '#000000', 0.48),
+    700: seven,
+    800: mixHex(seven, '#000000', 0.18),
+    900: mixHex(seven, '#000000', 0.32),
   }
+}
+
+function inkOnSoft(accent, canvas, seed) {
+  const surfaces = [tintOver(accent, canvas, 0.14), canvas, '#ffffff']
+  const ok = (c) => surfaces.every((bg) => contrastRatio(c, bg) >= 4.5)
+  if (ok(seed)) return seed
+  for (let t = 0.02; t <= 1; t += 0.02) {
+    const candidate = mixHex(seed, '#000000', t)
+    if (ok(candidate)) return candidate
+  }
+  return '#000000'
 }
 
 /** Tokens the CSS / Tailwind variables consume. Always contrast-checked. */
 export function themeTokens({ accent, canvas } = {}) {
-  const brand = brandScale(accent || DEFAULT_ACCENT)
   const wash = lightCanvas(canvas || DEFAULT_CANVAS)
+  const brand = brandScale(accent || DEFAULT_ACCENT, wash)
   return {
     accent: brand[400],
     canvas: wash,

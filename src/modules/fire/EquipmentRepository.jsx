@@ -30,6 +30,8 @@ export default function EquipmentRepository() {
             key={t.key}
             type="button"
             onClick={() => setTab(t.key)}
+            role="tab"
+            aria-selected={tab === t.key}
             className={`nav-tab ${tab === t.key ? 'nav-tab-active' : 'nav-tab-idle'}`}
           >
             <t.icon size={16} /> {t.label}

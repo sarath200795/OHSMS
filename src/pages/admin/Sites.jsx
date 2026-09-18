@@ -336,6 +336,8 @@ export default function Sites() {
             key={t.key}
             type="button"
             onClick={() => { setTab(t.key); if (t.key !== 'list') exitSelect() }}
+            role="tab"
+            aria-selected={tab === t.key}
             className={`nav-tab ${tab === t.key ? 'nav-tab-active' : 'nav-tab-idle'}`}
           >
             <t.icon size={16} /> {t.label}

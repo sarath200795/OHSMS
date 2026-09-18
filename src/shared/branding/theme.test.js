@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from 'vitest'
-import { contrastRatio, lightCanvas } from '../lib/contrast'
+import { contrastRatio, lightCanvas, tintOver } from '../lib/contrast'
 import {
   DEFAULT_ACCENT,
   DEFAULT_CANVAS,
@@ -94,6 +94,19 @@ describe('themeTokens', () => {
     for (const accent of ['#6db3aa', '#4a90d9', '#e8a33d', '#c43d32', '#8fbc74']) {
       const scale = brandScale(accent)
       expect(contrastRatio('#ffffff', scale[600]), accent).toBeGreaterThanOrEqual(4.5)
+    }
+  })
+
+  it('makes brand-700 readable on the soft button wash over canvas', () => {
+    // The smoke axe failure: kit teal 700 generated as #376a63 on 14% teal
+    // over amber was 4.46:1. `.btn-soft` is that composite.
+    const t = themeTokens()
+    const soft = tintOver(t.accent, t.canvas, 0.14)
+    expect(contrastRatio(t.brand[700], soft)).toBeGreaterThanOrEqual(4.5)
+    for (const accent of ['#4a90d9', '#e8a33d', '#c43d32', '#8fbc74']) {
+      const tokens = themeTokens({ accent, canvas: DEFAULT_CANVAS })
+      const bg = tintOver(tokens.accent, tokens.canvas, 0.14)
+      expect(contrastRatio(tokens.brand[700], bg), accent).toBeGreaterThanOrEqual(4.5)
     }
   })
 

@@ -40,7 +40,17 @@ export default function OrgTheme() {
     const needsSample = hasOrgLogo(org) && src && (!accentReady || !canvasReady)
 
     const paint = (accent, canvas) => {
-      if (!cancelled) applyOrgTheme(themeTokens({ accent, canvas }))
+      if (cancelled) return
+      // Kit defaults already live in :root. Rewriting them with a generated
+      // scale from the same teal is how `.btn-soft` dropped to 4.46:1 — the
+      // baked brand-700 is darker than mix(solid, black, 0.18).
+      const a = accent || DEFAULT_ACCENT
+      const c = canvas || DEFAULT_CANVAS
+      if (a.toLowerCase() === DEFAULT_ACCENT && c.toLowerCase() === DEFAULT_CANVAS) {
+        applyOrgTheme(null)
+        return
+      }
+      applyOrgTheme(themeTokens({ accent: a, canvas: c }))
     }
 
     paint(accentReady || DEFAULT_ACCENT, canvasReady || DEFAULT_CANVAS)
