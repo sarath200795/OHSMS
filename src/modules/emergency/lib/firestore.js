@@ -12,6 +12,7 @@ import {
 } from 'firebase/firestore'
 import { db } from '../../../shared/firebase'
 import { logAudit, COLLECTION_READ_CAP } from '../../../shared/org/orgData'
+import { todayISO, addDaysISO } from '../../../shared/lib/dates'
 import { ERP_ROLE_KEYS } from '../../../shared/org/erpRoles'
 import { reserveDocId } from '../../../shared/docId/reserve'
 
@@ -299,7 +300,7 @@ export async function recallBaselines(orgId, site, baselines, existingSitePlans,
  * preview can show exactly what will be written before anything is.
  */
 export function baselinePlanFrom(entry) {
-  const today = new Date().toISOString().slice(0, 10)
+  const today = todayISO()
   return cleanPlan({
     kind: 'baseline',
     scenario: entry.scenario,
@@ -313,7 +314,7 @@ export function baselinePlanFrom(entry) {
     // Baselines are the org's approved templates; sites still approve their own copies.
     status: 'approved',
     reviewedOn: today,
-    nextReviewOn: new Date(Date.now() + 365 * 86400000).toISOString().slice(0, 10),
+    nextReviewOn: addDaysISO(365, today),
     revision: 1,
   })
 }
@@ -449,7 +450,7 @@ export async function approveRescuePlan(orgId, plan, actor) {
     status: 'approved',
     approvedBy: actor?.uid || null,
     approvedByName: actor?.name || '',
-    approvedOn: new Date().toISOString().slice(0, 10),
+    approvedOn: todayISO(),
     updatedAt: serverTimestamp(),
   })
   await logAudit(orgId, actor, 'erp.plan_approve', {

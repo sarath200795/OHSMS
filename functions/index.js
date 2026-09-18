@@ -1507,6 +1507,10 @@ async function purgeStoredFile(store, path, ctx) {
  *
  * Exported for index.test.js, not for deploy: function discovery only picks up
  * exports carrying an __endpoint, which a plain function does not.
+ *
+ * Live age-based deletion of records nobody has deleted is a different job,
+ * and it is off (`LIVE_AGE_PURGE_ENABLED` in retentionPolicy.js) until counsel
+ * signs a period. This sweep only honours the Recycle Bin.
  */
 export async function purgeOrgCollection(db, orgId, spec, now, store = null) {
   const col = db.collection('organizations').doc(orgId).collection(spec.collection)

@@ -10,6 +10,11 @@ import {
   planRevoke,
   applyTargets,
   runRevoke,
+  planBackfill,
+  assertApplyAllowed,
+  FILE_POINTER_ORG_COLLECTIONS,
+  FILE_POINTER_TOP_LEVEL,
+  POINTER_SUBCOLLECTIONS,
 } from './legacyDownloadUrls'
 
 const TOKEN = '11111111-2222-4333-8444-555555555555'
@@ -143,5 +148,81 @@ describe('runRevoke is dry by default and never strips a review path', () => {
     expect(out.revoked).toBe(1)
     expect(stripped).toEqual(['orgs/a/safe.jpg'])
     expect(out.review).toBe(1)
+  })
+})
+
+describe('planBackfill never becomes a revoke list', () => {
+  it('lists suggested paths for a human, and applyTargets still drops them', () => {
+    const plan = planRevoke([classifyPointer({ url: downloadUrl('orgs/a/legacy.jpg') })])
+    const backfill = planBackfill(plan.review)
+    expect(backfill).toEqual([expect.objectContaining({ suggestedPath: 'orgs/a/legacy.jpg' })])
+    expect(applyTargets({ revoke: backfill })).toEqual([])
+  })
+})
+
+describe('assertApplyAllowed — dry by default, live --apply is gated twice', () => {
+  it('allows a dry run with nothing else set', () => {
+    expect(assertApplyAllowed({})).toMatchObject({ ok: true, dryRun: true })
+  })
+
+  it('refuses apply without Admin credentials', () => {
+    const out = assertApplyAllowed({ apply: true })
+    expect(out.ok).toBe(false)
+    expect(out.code).toBe('no-admin')
+  })
+
+  it('refuses apply against a live project without CONFIRM_REVOKE=yes', () => {
+    const out = assertApplyAllowed({
+      apply: true,
+      hasAdminCreds: true,
+      againstLiveProject: true,
+      confirmRevoke: '',
+    })
+    expect(out.ok).toBe(false)
+    expect(out.code).toBe('no-confirm')
+  })
+
+  it('allows apply on emulators with Admin credentials and no extra confirm', () => {
+    expect(
+      assertApplyAllowed({ apply: true, hasAdminCreds: true, againstLiveProject: false })
+    ).toMatchObject({ ok: true, dryRun: false })
+  })
+
+  it('allows apply against a live project only with the confirm env', () => {
+    expect(
+      assertApplyAllowed({
+        apply: true,
+        hasAdminCreds: true,
+        againstLiveProject: true,
+        confirmRevoke: 'yes',
+      })
+    ).toMatchObject({ ok: true, dryRun: false })
+  })
+})
+
+describe('the inventory walk list covers the file-bearing collections', () => {
+  it('names the org collections putFile writes into, not only the original five', () => {
+    expect(FILE_POINTER_ORG_COLLECTIONS).toEqual(
+      expect.arrayContaining([
+        'extinguishers',
+        'aeds',
+        'inspectionRecords',
+        'escalations',
+        'documents',
+        'trainingCourses',
+      ])
+    )
+    expect(POINTER_SUBCOLLECTIONS.map((s) => `${s.parent}/${s.sub}`)).toEqual(
+      expect.arrayContaining(['injuries/records', 'illnesses/files', 'permits/documents'])
+    )
+  })
+
+  it('includes the top-level LOTO photo maps, filtered by orgId', () => {
+    expect(FILE_POINTER_TOP_LEVEL).toEqual(
+      expect.arrayContaining([
+        { collection: 'procedures', orgField: 'orgId' },
+        { collection: 'procedurePhotos', orgField: 'orgId' },
+      ])
+    )
   })
 })

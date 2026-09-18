@@ -1,0 +1,46 @@
+# Hosting uptime. Errors-while-up are Sentry (VITE_SENTRY_DSN); this job is
+# the half that notices the URL a user types is not serving.
+#
+# A green check means Firebase Hosting served public/health.json. It does not
+# mean Firestore, Auth or Functions are healthy — Sentry and the Functions
+# invocation failures cover those. See docs/OBSERVABILITY.md.
+name: Uptime
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  production:
+    name: Production hosting
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: GET /health.json
+        env:
+          URL: ${{ vars.PRODUCTION_HOSTING_URL }}
+        run: |
+          set -euo pipefail
+          TARGET="${URL:-https://suite.weehs.org}"
+          TARGET="${TARGET%/}"
+          echo "Checking ${TARGET}/health.json"
+          curl -fsS --max-time 20 "${TARGET}/health.json" | grep -q '"status": "ok"'
+
+  staging:
+    name: Staging hosting
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: ${{ vars.STAGING_HOSTING_URL != '' }}
+    steps:
+      - name: GET /health.json
+        env:
+          URL: ${{ vars.STAGING_HOSTING_URL }}
+        run: |
+          set -euo pipefail
+          TARGET="${URL%/}"
+          echo "Checking ${TARGET}/health.json"
+          curl -fsS --max-time 20 "${TARGET}/health.json" | grep -q '"status": "ok"'

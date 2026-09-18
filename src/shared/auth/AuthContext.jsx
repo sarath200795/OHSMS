@@ -15,6 +15,7 @@ import {
 import { auth, isFirebaseConfigured } from '../firebase'
 import { clearKeyring } from '../crypto'
 import { clearSharedSubscriptions } from '../org/sharedSubscription'
+import { reportError } from '../monitoring'
 import { isMfaRequired, resolverFor, completeTotpSignIn } from './mfa'
 import { subscribePlatformAdmin } from './platformAdmin'
 import { startSession, endSession } from './sessionConstants'
@@ -80,25 +81,36 @@ export function AuthProvider({ children }) {
     }
     const unsub = onAuthStateChanged(auth, async (u) => {
       setUser(u)
-      if (u) await refreshProfile(u.uid)
-      else {
+      try {
+        if (u) await refreshProfile(u.uid)
+        else {
+          setProfile(null)
+          // Every identity change drops the encryption keys, not just an explicit
+          // sign-out: a token revoked by the claims trigger, an expired session,
+          // a switch of account on a shared site laptop all arrive here and
+          // nowhere else. Without this, a manager's medical private key — and the
+          // content keys derived from it — would still be in memory when a member
+          // signed in next, and their session would open records their own role
+          // is refused. The keys are non-extractable, so dropping the reference
+          // is the only way they go.
+          clearKeyring()
+          // And the cached org rows, for the same reason and in the same breath.
+          // The shared listeners linger for 30 seconds after their last
+          // subscriber leaves and serve their cache synchronously to the next
+          // one — which on a shared laptop can be somebody else.
+          clearSharedSubscriptions()
+        }
+      } catch (err) {
+        // getUserProfile is a bare getDoc. Offline, unavailable, or a rules
+        // refusal during a claims refresh used to reject this callback, skip
+        // setLoading(false), and leave ProtectedRoute on a permanent spinner
+        // (August audit D-01). Signed-in-with-no-profile is a state the tree
+        // already renders.
+        reportError(err, { where: 'onAuthStateChanged' })
         setProfile(null)
-        // Every identity change drops the encryption keys, not just an explicit
-        // sign-out: a token revoked by the claims trigger, an expired session,
-        // a switch of account on a shared site laptop all arrive here and
-        // nowhere else. Without this, a manager's medical private key — and the
-        // content keys derived from it — would still be in memory when a member
-        // signed in next, and their session would open records their own role
-        // is refused. The keys are non-extractable, so dropping the reference
-        // is the only way they go.
-        clearKeyring()
-        // And the cached org rows, for the same reason and in the same breath.
-        // The shared listeners linger for 30 seconds after their last
-        // subscriber leaves and serve their cache synchronously to the next
-        // one — which on a shared laptop can be somebody else.
-        clearSharedSubscriptions()
+      } finally {
+        setLoading(false)
       }
-      setLoading(false)
     })
     return unsub
   }, [refreshProfile])

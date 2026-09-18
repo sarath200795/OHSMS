@@ -27,15 +27,15 @@ disagree, `SECURITY.md` is right.
 | Encryption at rest (application layer) | Envelope encryption, escrowed master key in Secret Manager, on | **Ready** |
 | Abuse control on public surfaces | App Check enforced | **Ready** |
 | Backups / disaster recovery | PITR (7d) + weekly schedule (30d), delete protection, **restore drilled** 2026-08-16 | **Ready** |
-| Observability | Sentry wired with a DSN. No metrics, no uptime check, no on-call path | **Partial** |
+| Observability | Sentry wired with a DSN. Hosting uptime is a GitHub Action curling `/health.json` (`docs/OBSERVABILITY.md`). No metrics, no on-call rotation | **Partial** |
 | Data lifecycle — export | Subject access implemented (`exportSubjectData`) | **Ready** |
-| Data lifecycle — erasure & retention | Recycle Bin purge covers incidents, illnesses **and injuries with their clinical documents**. Erasure classified, not executed; no retention period for live records (DATA-RIGHTS.md §3) | **Partial** |
+| Data lifecycle — erasure & retention | Recycle Bin purge covers incidents, illnesses **and injuries with their clinical documents**. Period table exists with `NEEDS_LEGAL_SIGN_OFF` (`functions/lib/retentionPolicy.js`). Live age-purge of statutory records is off. | **Partial** |
 | Testing | 2466 unit, 584 rules, 448 functions, e2e smoke | **Ready** |
 | CI/CD | Lint, tests (all four suites), build, audit gate; ordered deploy | **Ready** |
 | Environments | Staging CI still cannot deploy functions (`iam.serviceAccounts.actAs` on the runtime SA — `DEPLOYMENT.md` §5). Production ships on `v*` tags through the `production` environment gate | **Partial** |
 | Secrets handling | Nothing committed; client keys are appropriately public | **Ready** |
 | Scalability | Read caps on every collection listener, with an incomplete-data notice on every screen that totals one (`SECURITY.md` S-04, closed) | **Ready** |
-| Compliance artifacts | ISO 27001 self-audit written. No DPA, no subprocessor list, no pen test, no certification | **Gap** |
+| Compliance artifacts | ISO 27001 self-audit written. DPA / subprocessor / pen-test **drafts** in `docs/compliance/` (not signed, not a certification) | **Partial** |
 
 ---
 
@@ -69,17 +69,14 @@ for admins, application-layer encryption on, API key referrer restrictions.
 
 ## The remaining gaps
 
-**No data lifecycle beyond export.** Subject access works: `exportSubjectData`
-gathers a person's records, manager-gated and org-scoped, and reports the
-collections it could not read rather than omitting them silently. Erasure is
-*classified but not executed*, and that is deliberate — in an occupational
-health system the honest answer to "delete everything about me" is mostly "most
-of this cannot be deleted, and here is each part and why". What is genuinely
-missing is **retention periods**: a record classed `STATUTORY` is currently kept
-forever, and indefinite retention is not lawful merely because some retention
-is. See `DATA-RIGHTS.md`, including the warning that the retention table is an
-engineering reading of the law and needs someone with legal authority to sign it
-off. A buyer's privacy review will ask.
+**Retention periods still need a lawyer, not another engineer.** Subject access
+works. Erasure is classified but not executed, deliberately. Recycle Bin purge
+already destroys manager-deleted incidents, illnesses, injuries and equipment
+after 30 days. What a privacy review will still ask is **how long a live
+statutory record is kept**: that table now exists
+(`functions/lib/retentionPolicy.js`) with every personal-data row marked
+`NEEDS_LEGAL_SIGN_OFF`, and live age-purge is off until those questions are
+signed. See `DATA-RIGHTS.md` §3. A buyer's privacy review will ask.
 
 **One trap worth naming, because encryption is now on.** Every field the
 subject-access "mentions" scan would search is a field the crypto policy seals.
@@ -90,26 +87,26 @@ mentioned**. That is a silent wrong answer to a legal request.
 the browser of somebody entitled to the keys, or recorded as not performed. It
 must never be reported as "none found". `DATA-RIGHTS.md` §2.
 
-**Nothing is watching in real time.** Sentry has a DSN, so errors reach
-somebody. There are still no metrics, no uptime check and no on-call path, so
-the way you find out production is *down* — as opposed to throwing — is that a
-user tells you.
+**Nothing is watching in real time** used to be true. Sentry still has a DSN
+for errors-while-up. Hosting uptime is now a scheduled GitHub Action against
+`/health.json` (`docs/OBSERVABILITY.md`). A down site emails whoever has
+Actions failure notifications on this repository. Metrics and an on-call
+rotation are still absent.
+
+**Console state is invisible to version control.** App Check, MFA, the API key
+restrictions, backups — all of them are toggles in a console, and nothing in
+this repository fails if one is switched off later. Re-verifying them is
+`docs/CONSOLE-HARDENING.md`, on a calendar, not in a code review.
+
+**Compliance artifacts are drafts.** `ISO27001-AUDIT.md` is a substantial
+internal self-audit (private). `docs/compliance/` now has a DPA stub, a
+subprocessor list derived from what the app uses, and a pen-test scope
+outline — all marked DRAFT / not legal advice. They are not a certification.
 
 **Scalability has a known ceiling.** Whole collections are read with no limit
 (`SECURITY.md` S-04) and aggregation happens in the browser. The analytics page
 opens eleven such listeners at once. Fine now; a tenant with tens of thousands
 of records will find the edge.
-
-**Compliance artifacts are thin.** `ISO27001-AUDIT.md` is a substantial internal
-self-audit, which is real work and worth showing. It is not a certification. No
-DPA template, no data-flow or subprocessor list, no security whitepaper, no
-penetration test, no SOC 2 or ISO 27001. Assembling these takes months of
-calendar time — worth starting before the first enterprise deal, not during it.
-
-**Console state is invisible to version control.** App Check, MFA, the API key
-restrictions, backups — all of them are toggles in a console, and nothing in
-this repository fails if one is switched off later. There is no test for it and
-no diff that shows it. Re-verifying them belongs in a periodic review.
 
 ---
 
@@ -137,13 +134,15 @@ Worth saying plainly, because gap lists read worse than the system is:
 
 ## Suggested order
 
-1. Retention periods and an erasure decision signed off by someone with legal
-   authority (`DATA-RIGHTS.md` §3) — the largest remaining gap, and the one a
-   privacy review will find first
-2. An uptime check and one alert, so a total outage is not user-reported
-3. DPA template, data-flow diagram and subprocessor list — paperwork, but it is
-   what actually gets asked for
-4. A penetration test, once 1–3 are done
+1. Retention periods signed off by someone with legal authority
+   (`docs/DATA-RIGHTS.md` §3, `functions/lib/retentionPolicy.js`) — the largest
+   remaining gap, and the one a privacy review will find first
+2. Confirm the uptime Action is watched (`docs/OBSERVABILITY.md`) and that
+   Sentry notifications actually reach someone
+3. Counsel-complete the DPA / subprocessor drafts in `docs/compliance/`
+4. A penetration test against `docs/compliance/PENTEST-SCOPE.md`, once 1–3
+   are done
+5. Walk `docs/CONSOLE-HARDENING.md` on a calendar (S-05)
 
 ---
 
@@ -195,22 +194,16 @@ decision before it is a technical one.
 
 ### Malware scanning — magic bytes are not a scanner (S-25)
 
+Decision record: `docs/ADR-0001-malware-scanning.md`. Sniff ≠ malware scan;
+sealed ciphertext cannot be scanned as plaintext; the two owner choices are
+an in-project scanner on unsealed prefixes, or a written exclusion of sealed
+medical documents (plus a subprocessor if a vendor is later chosen).
+
 `src/shared/storage/sniffType.js` refuses an executable header and a declared
 type the bytes contradict. That is honesty about type, not detection of malice.
 A genuine PDF carrying a payload passes, and a test asserts that so the check
 cannot be mistaken for more than it is. `docs/SECURITY.md` S-25 is the closed
 write-up.
 
-A real scanner is a different decision, and it is not a small step from here:
-
-- It needs infrastructure this project does not have, or a vendor. Sending GP
-  letters and fit notes to that vendor makes them a **subprocessor of medical
-  data** — a DPA and a register entry before it is a line of code.
-- It cannot run where it matters most. Sealed collections are AES-GCM
-  ciphertext at rest; the comment in `src/shared/storage/index.js` already
-  says the octet-stream declaration exists so "a browser, a thumbnailer, a
-  virus scanner" does not try to interpret ciphertext.
-
-Until an owner chooses an in-project scanner over the unsealed prefixes, or
-explicitly excludes sealed medical documents, this stays accepted. Do not add
-a pretend scanner in front of ciphertext.
+Until an owner chooses one of the two options in the ADR, this stays accepted.
+Do not add a pretend scanner in front of ciphertext.

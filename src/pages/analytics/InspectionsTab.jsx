@@ -10,6 +10,7 @@ import {
   filterRecords, checklistOptions, byCategory, actionProgress, summary, recordMonth,
 } from './inspectionAnalytics'
 import FilterBar from './FilterBar'
+import { todayISO } from '../../shared/lib/dates'
 
 const axis = { tickLine: false, axisLine: false, fontSize: 11, tick: { fill: '#8b9cb8' } }
 
@@ -17,8 +18,6 @@ const axis = { tickLine: false, axisLine: false, fontSize: 11, tick: { fill: '#8
 // what it checks reads differently from one that fails occasionally — the count
 // alone cannot say that.
 const heat = (rate) => (rate >= 50 ? '#ef4444' : rate >= 25 ? '#f59e0b' : '#0ea5e9')
-
-const todayISO = () => new Date().toISOString().slice(0, 10)
 
 export default function InspectionsTab({ records = [], sites = [], keepUnplaced = true }) {
   const [f, setF] = useState({ siteId: 'all', region: 'all', entity: 'all', from: '', to: '', templateId: 'all' })

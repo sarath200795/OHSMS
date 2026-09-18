@@ -90,8 +90,10 @@ this change still works. Revoking them means stripping the
 would permanently break any pointer that has a url and no `path` — records from
 before uploads recorded one. The inventory is `scripts/inventory-download-tokens.mjs`:
 dry-run by default, `--apply` only strips tokens on pointers that already have
-a path, and url-only rows are listed for a person. Running it against production
-is an operator decision, not a deploy step.
+a path, and url-only rows are listed for a person. Against a live project
+`--apply` also needs `CONFIRM_REVOKE=yes`. The operator runbook is
+`docs/LEGACY-DOWNLOAD-URLS.md`. Running it against production is an operator
+decision, not a deploy step.
 
 ### S-25 · Uploaded files are not scanned for malware — MEDIUM, mitigated and accepted
 
@@ -134,11 +136,13 @@ A real scanner is not a small step from here:
   interpret ciphertext — the impossibility was written down long before it was
   assessed.
 
-**What would close it:** a bucket-triggered function over the *unsealed*
-prefixes only, backed by a scanner running inside our own project, plus a
-written decision about whether sealed medical documents are scanned client-side
-before sealing or explicitly excluded. Until one of those is chosen this is a
-residual risk somebody has looked at rather than a gap nobody noticed.
+**What would close it:** an owner-signed choice of the two options in
+`docs/ADR-0001-malware-scanning.md` (in-project scanner over the *unsealed*
+prefixes only, or a written exclusion of sealed medical documents plus a
+subprocessor if a vendor is chosen), plus the matching function or exclusion
+text. Until one of those is chosen this is a residual risk somebody has looked
+at rather than a gap nobody noticed. Hygiene pins that this repository does
+not grow a ClamAV / scanning-vendor package by accident.
 
 ### S-04 · Unbounded collection listeners — CLOSED
 

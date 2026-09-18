@@ -227,3 +227,93 @@ export const POINTER_SUBCOLLECTIONS = [
   { parent: 'mockDrills', sub: 'photos' },
   { parent: 'permits', sub: 'documents' },
 ]
+
+/**
+ * Org-scoped collections whose documents (not only a named subcollection) can
+ * carry a file pointer. The inventory walks each of these plus the org document.
+ *
+ * Keep this next to the `putFile(..., kind)` call sites. A kind uploaded into
+ * a collection that is not named here is a silent gap in the leftover-token
+ * inventory — the dry-run prints this list so an operator can see the hole.
+ */
+export const FILE_POINTER_ORG_COLLECTIONS = [
+  'extinguishers',
+  'aeds',
+  'fas',
+  'signages',
+  'stretchers',
+  'firstAid',
+  'trainingCourses',
+  'documents',
+  'inspectionRecords',
+  'escalations',
+  'legalIssues',
+  ...new Set(POINTER_SUBCOLLECTIONS.map((s) => s.parent)),
+]
+
+/**
+ * File-bearing collections that are tenanted by an `orgId` field rather than
+ * by path. LOTO procedures and their photo maps live at the root, same as
+ * `/lockClaims`. The inventory filters to the signed-in org.
+ */
+export const FILE_POINTER_TOP_LEVEL = [
+  { collection: 'procedures', orgField: 'orgId' },
+  { collection: 'procedurePhotos', orgField: 'orgId' },
+]
+
+/**
+ * Review rows that name a path in the URL, for a human who may backfill `path`
+ * on the Firestore pointer and then re-inventory. Never fed to applyTargets:
+ * recovering a path from the URL and then stripping the token is the blind
+ * revoke this module exists to refuse.
+ */
+export function planBackfill(reviewRows = []) {
+  return (reviewRows || [])
+    .filter((row) => row?.action === REVIEW && norm(row.suggestedPath))
+    .map((row) => ({
+      loc: row.loc,
+      suggestedPath: row.suggestedPath,
+      token: row.token,
+    }))
+}
+
+/**
+ * Whether --apply may run.
+ *
+ * Dry-run is always allowed, including against a live project (that is how an
+ * operator inventories production). The destructive half still needs Admin
+ * credentials, and against a live project it also needs CONFIRM_REVOKE=yes so
+ * a CI job or a copied command cannot strip tokens by accident.
+ */
+export function assertApplyAllowed({
+  apply = false,
+  hasAdminCreds = false,
+  againstLiveProject = false,
+  confirmRevoke = '',
+} = {}) {
+  if (!apply) return { ok: true, dryRun: true }
+  if (!hasAdminCreds) {
+    return {
+      ok: false,
+      dryRun: false,
+      code: 'no-admin',
+      message:
+        'Refusing --apply without Admin credentials. The client SDK cannot strip ' +
+        'firebaseStorageDownloadTokens; that write is a bucket metadata change. Set ' +
+        'GOOGLE_APPLICATION_CREDENTIALS to a service-account JSON (or FIREBASE_SERVICE_ACCOUNT). ' +
+        'Review rows still will not be touched.',
+    }
+  }
+  if (againstLiveProject && String(confirmRevoke).trim().toLowerCase() !== 'yes') {
+    return {
+      ok: false,
+      dryRun: false,
+      code: 'no-confirm',
+      message:
+        'Refusing --apply against a live Firebase project without CONFIRM_REVOKE=yes. ' +
+        'Read a dry-run first, backfill path on every review row you still need, and ' +
+        'only then re-run with --apply. Url-only pointers are never stripped.',
+    }
+  }
+  return { ok: true, dryRun: false }
+}

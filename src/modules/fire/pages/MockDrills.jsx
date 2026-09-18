@@ -28,7 +28,7 @@ import IncompleteNotice from '../../../shared/ui/IncompleteNotice'
 import { isFutureDate, todayISO } from '../../../shared/lib/dates'
 
 const nowTime = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
-const today = () => new Date().toISOString().slice(0, 10)
+const today = () => todayISO()
 
 const freshForm = () => ({
   centerName: '', region: '', entity: '', siteId: '', eventType: 'Mock Drill',
