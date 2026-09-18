@@ -14,6 +14,7 @@ import {
 import { can, roleLabel } from '../../shared/auth/permissions'
 import {
   PageHeader, Button, Modal, Field, Input, Select, SkeletonTable, EmptyState, Badge, StatCard,
+  ModuleMark,
 } from '../../shared/ui'
 // This page used to declare its own IncompleteNotice — same amber panel, same
 // role="status", a different prop name (`notice` rather than `incomplete`) and
@@ -326,17 +327,18 @@ export default function Sites() {
       <CentreIdNotice sites={sites} canManage={canManage} onExport={exportSites} onImport={() => setBulkOpen(true)} />
 
       {/* Tabs */}
-      <div className="mb-5 flex gap-1 border-b border-ink-200">
+      <div className="tab-strip mb-5" role="tablist" aria-label="Sites views">
         {[
           { key: 'list', label: 'Sites', icon: List },
           { key: 'map', label: 'Map', icon: MapIcon },
         ].map((t) => (
           <button
             key={t.key}
+            type="button"
             onClick={() => { setTab(t.key); if (t.key !== 'list') exitSelect() }}
-            className={`nav-tab ${
-              tab === t.key ? 'nav-tab-active -mb-px rounded-b-none border-b-2 border-brand-600' : 'nav-tab-idle'
-            }`}
+            role="tab"
+            aria-selected={tab === t.key}
+            className={`nav-tab ${tab === t.key ? 'nav-tab-active' : 'nav-tab-idle'}`}
           >
             <t.icon size={16} /> {t.label}
           </button>
@@ -444,18 +446,24 @@ export default function Sites() {
               aria-pressed={selectMode ? picked.includes(s.id) : undefined}
               className={[
                 'card group flex flex-col gap-3 p-5 text-left transition-transform duration-200 ease-emil hover:-translate-y-0.5 active:scale-[0.99]',
-                selectMode && picked.includes(s.id) ? 'ring-2 ring-red-500' : '',
+                selectMode && picked.includes(s.id) ? 'is-on ring-2 ring-red-500' : '',
               ].join(' ')}
             >
               <div className="flex items-start justify-between gap-3">
                 {selectMode ? (
-                  <span className={`grid h-11 w-11 place-items-center rounded-2xl shadow-elev-sm ${picked.includes(s.id) ? 'bg-red-50 text-red-600' : 'bg-surface-100 text-ink-400'}`}>
-                    {picked.includes(s.id) ? <CheckSquare size={20} /> : <Square size={20} />}
-                  </span>
+                  picked.includes(s.id) ? (
+                    <ModuleMark tone="red" size="md">
+                      <CheckSquare size={20} />
+                    </ModuleMark>
+                  ) : (
+                    <ModuleMark tone="slate" size="md">
+                      <Square size={20} />
+                    </ModuleMark>
+                  )
                 ) : (
-                  <span className="grid h-11 w-11 place-items-center rounded-2xl bg-brand-50 text-brand-700 shadow-elev-sm">
+                  <ModuleMark tone="brand" size="md">
                     <Building2 size={20} />
-                  </span>
+                  </ModuleMark>
                 )}
                 {(s.region || s.entity) && (
                   <Badge tone="gray">{[s.region, s.entity].filter(Boolean).join(' · ')}</Badge>

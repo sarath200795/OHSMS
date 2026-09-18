@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>WEHS amber+white glass kit — shell preview</title>
+    <title>WEHS liquid glass — module marks &amp; selections</title>
     <link
       rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700;800&family=Roboto:wght@400;500;700;900&display=swap"
@@ -135,15 +135,50 @@
         padding: 16px;
       }
       .icon {
+        --mark-tint: #6db3aa;
+        --mark-ink: #1a4a44;
         width: 56px;
         height: 56px;
-        border-radius: 16px;
+        border-radius: 18px;
         display: grid;
         place-items: center;
-        color: #fff;
+        color: var(--mark-ink);
         font-weight: 800;
         font-size: 13px;
         flex: none;
+        position: relative;
+        overflow: hidden;
+        background:
+          radial-gradient(120% 80% at 18% 10%, rgba(255, 255, 255, 0.78), transparent 46%),
+          linear-gradient(
+            165deg,
+            color-mix(in srgb, var(--mark-tint) 46%, #ffffff) 0%,
+            color-mix(in srgb, var(--mark-tint) 22%, rgba(255, 255, 255, 0.55)) 100%
+          );
+        backdrop-filter: blur(18px) saturate(1.35);
+        box-shadow:
+          inset 0 1px 0 rgba(255, 255, 255, 0.88),
+          inset 0 -1px 0 rgba(38, 33, 26, 0.06),
+          0 1px 2px rgba(38, 33, 26, 0.05),
+          0 10px 24px rgba(38, 33, 26, 0.1);
+      }
+      .icon::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.38), transparent 42%);
+      }
+      .icon.siren {
+        --mark-tint: #d94a3c;
+        --mark-ink: #7a241e;
+      }
+      .icon.teal {
+        --mark-tint: #6db3aa;
+        --mark-ink: #1a4a44;
+      }
+      .icon.amber {
+        --mark-tint: #e8a33d;
+        --mark-ink: #7a4e10;
       }
       .tile h3 {
         margin: 0;
@@ -198,19 +233,52 @@
         padding: 4px 10px;
         font-size: 11px;
         font-weight: 600;
-        border: 1px solid rgba(232, 220, 200, 0.8);
+        border: 1px solid rgba(255, 255, 255, 0.7);
+        background: rgba(255, 255, 255, 0.48);
+        backdrop-filter: blur(10px);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
       }
-      input {
+      .chip.on,
+      .is-on {
+        color: #246058;
+        background:
+          radial-gradient(120% 90% at 18% 0%, rgba(255, 255, 255, 0.8), transparent 48%),
+          linear-gradient(180deg, rgba(255, 255, 255, 0.55), rgba(109, 179, 170, 0.22));
+        box-shadow:
+          inset 0 1px 0 rgba(255, 255, 255, 0.88),
+          0 8px 18px rgba(47, 109, 102, 0.12),
+          0 0 0 1px rgba(109, 179, 170, 0.42);
+      }
+      input,
+      select {
         width: 100%;
         border-radius: 16px;
-        border: 1px solid #e8dcc8;
-        background: rgba(255, 255, 255, 0.78);
+        border: 1px solid rgba(255, 255, 255, 0.82);
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.42), transparent 42%),
+          rgba(255, 255, 255, 0.58);
+        backdrop-filter: blur(14px);
         color: var(--ink);
         padding: 10px 14px;
         font:
           14px 'Open Sans',
           sans-serif;
         outline: none;
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78);
+      }
+      select {
+        appearance: none;
+        padding-right: 2.2rem;
+        background-image:
+          url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236b5744' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E"),
+          linear-gradient(180deg, rgba(255, 255, 255, 0.42), transparent 42%);
+        background-repeat: no-repeat, no-repeat;
+        background-position:
+          right 0.85rem center,
+          0 0;
+        background-size:
+          1rem,
+          100% 100%;
       }
       .panel {
         padding: 22px;
@@ -243,8 +311,10 @@
         gap: 6px;
         padding: 4px;
         border-radius: 16px;
-        background: rgba(255, 255, 255, 0.45);
-        border: 1px solid rgba(232, 220, 200, 0.8);
+        background: rgba(255, 255, 255, 0.38);
+        backdrop-filter: blur(16px);
+        border: 1px solid rgba(255, 255, 255, 0.7);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
         width: fit-content;
         margin-bottom: 16px;
       }
@@ -255,9 +325,48 @@
         color: var(--muted);
       }
       .tab.on {
-        background: rgba(109, 179, 170, 0.16);
         color: #246058;
-        border: 1px solid rgba(109, 179, 170, 0.35);
+        background:
+          radial-gradient(120% 90% at 18% 0%, rgba(255, 255, 255, 0.8), transparent 48%),
+          linear-gradient(180deg, rgba(255, 255, 255, 0.55), rgba(109, 179, 170, 0.2));
+        box-shadow:
+          inset 0 1px 0 rgba(255, 255, 255, 0.88),
+          0 8px 18px rgba(47, 109, 102, 0.12),
+          0 0 0 1px rgba(109, 179, 170, 0.42);
+      }
+      .row-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-top: 14px;
+      }
+      .row-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 12px;
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.4);
+        border: 1px solid rgba(255, 255, 255, 0.7);
+        font-size: 13px;
+      }
+      .check {
+        width: 16px;
+        height: 16px;
+        border-radius: 5px;
+        border: 1px solid #d2c4b4;
+        background: rgba(255, 255, 255, 0.5);
+        flex: none;
+      }
+      .row-item.on .check {
+        border-color: #6db3aa;
+        background: rgba(255, 255, 255, 0.78);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+        display: grid;
+        place-items: center;
+        color: #246058;
+        font-size: 11px;
+        font-weight: 800;
       }
     </style>
   </head>
@@ -277,12 +386,14 @@
       </div>
     </header>
     <main>
-      <p class="kicker">WEHS amber+white glass kit</p>
-      <h1 class="title">Soft frosted panels on amber paper</h1>
+      <p class="kicker">WEHS liquid glass</p>
+      <h1 class="title">Frosted marks and selected states on amber paper</h1>
       <p class="lede">
-        Canvas is the logo cream/amber wash. Glass is white frost with blur. Primary is the
-        hands/mint teal, darkened so white text clears AA. Amber is hi-vis, siren is danger, leaf is
-        success. No cyan, no magenta, no neon halo.
+        Module icons sit on tinted glass discs — specular highlight, inner rim, kit colour showing
+        through frost — not neon 500-gradients. Selected tabs, chips, rows and pickers use the same
+        language: translucent glass with a teal rim, never an opaque fill. An uploaded organization
+        logo retints those accents; the page wash is a picker on Organization settings. The vendor
+        mark is not pinned to the corner.
       </p>
 
       <div class="tabs" role="tablist">
@@ -294,21 +405,21 @@
 
       <div class="grid">
         <article class="glass tile">
-          <span class="icon" style="background: linear-gradient(180deg, #d94a3c, #c43d32)">IR</span>
+          <span class="icon siren">IR</span>
           <div>
             <h3>Incidents</h3>
             <p>Report, investigate, CAPA</p>
           </div>
         </article>
         <article class="glass tile">
-          <span class="icon" style="background: linear-gradient(180deg, #3d7a72, #2f6d66)">HI</span>
+          <span class="icon teal">HI</span>
           <div>
             <h3>HIRA</h3>
             <p>Risk matrix and controls</p>
           </div>
         </article>
         <article class="glass tile">
-          <span class="icon" style="background: linear-gradient(180deg, #e8a33d, #c77f18)">EQ</span>
+          <span class="icon amber">EQ</span>
           <div>
             <h3>Equipment</h3>
             <p>Extinguishers, AEDs, FAS</p>
@@ -318,8 +429,8 @@
 
       <div class="grid" style="margin-top: 16px; grid-template-columns: 1.4fr 1fr">
         <section class="glass panel">
-          <p class="kicker">Form chrome</p>
-          <h2 style="margin: 0 0 14px; font-size: 16px">Sign-in card</h2>
+          <p class="kicker">Selections</p>
+          <h2 style="margin: 0 0 14px; font-size: 16px">Picker, chips, chosen rows</h2>
           <label
             class="sub"
             style="
@@ -329,17 +440,39 @@
               text-transform: uppercase;
               font-weight: 600;
             "
-            >Work email</label
+            >Site</label
           >
-          <input value="jordan.hale@plant2.example" readonly />
+          <select>
+            <option>All my sites (12)</option>
+            <option selected>Plant 2 — finishing</option>
+          </select>
           <div class="row">
             <button class="btn btn-primary" type="button">Sign in</button>
             <button class="btn btn-ghost" type="button">Ghost</button>
             <button class="btn btn-soft" type="button">Soft</button>
           </div>
+          <div class="chips">
+            <span class="chip on">Open · selected</span>
+            <span class="chip">Draft</span>
+            <span class="chip">Closed</span>
+          </div>
+          <div class="row-list">
+            <div class="row-item on">
+              <span class="check">✓</span>
+              Permits — chosen
+            </div>
+            <div class="row-item">
+              <span class="check"></span>
+              Inspections
+            </div>
+          </div>
         </section>
         <section class="glass panel">
           <p class="kicker">Logo mapping</p>
+          <p class="sub" style="margin: 0 0 8px">
+            Kit defaults from <code>wehs.svg</code>. Live app rewrites <code>--canvas</code> and
+            <code>--brand-*</code> from the org logo / background picker.
+          </p>
           <div class="swatches">
             <div class="swatch"><i style="background: #f6e3bb"></i><span>canvas</span></div>
             <div class="swatch"><i style="background: #ffffff"></i><span>surface</span></div>
@@ -364,6 +497,42 @@
           </div>
         </section>
       </div>
+
+      <section
+        class="glass panel"
+        style="
+          margin-top: 22px;
+          --canvas: #e4eef6;
+          --teal: #4a90d9;
+          --teal-cta: #215a8c;
+          background:
+            radial-gradient(46% 54% at 14% 16%, rgba(255, 255, 255, 0.72), transparent 64%),
+            #e4eef6;
+        "
+      >
+        <p class="kicker">Logo → theme</p>
+        <h2 style="margin: 0 0 8px; font-size: 16px">A navy mark washes the paper blue</h2>
+        <p class="sub" style="margin: 0 0 14px">
+          Sampled accent on selections and the primary button; canvas lightened until ink clears AA.
+          Owner can still pick cream / white / a custom swatch.
+        </p>
+        <div class="tabs" role="tablist">
+          <span class="tab on" style="color: #215a8c; box-shadow: 0 0 0 1px rgba(74, 144, 217, 0.42)">
+            Selected
+          </span>
+          <span class="tab">Idle</span>
+        </div>
+        <div class="row">
+          <button class="btn btn-primary" type="button" style="background: #215a8c">Save</button>
+          <button class="btn btn-ghost" type="button">Cancel</button>
+        </div>
+        <div class="swatches" style="grid-template-columns: repeat(4, 1fr)">
+          <div class="swatch"><i style="background: #e4eef6"></i><span>canvas (washed)</span></div>
+          <div class="swatch"><i style="background: #4a90d9"></i><span>accent</span></div>
+          <div class="swatch"><i style="background: #215a8c"></i><span>brand-600 AA</span></div>
+          <div class="swatch"><i style="background: #f6e3bb"></i><span>kit default</span></div>
+        </div>
+      </section>
     </main>
   </body>
 </html>

@@ -1,7 +1,24 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import { toastCaught } from '../../shared/lib/toastCaught'
-import { Settings, Save, Activity, Plus, X, Layers, ChevronUp, ChevronDown, Lock, Building2, PhoneCall, LifeBuoy, ImageUp, Trash2, Plug } from 'lucide-react'
+import {
+  Settings,
+  Save,
+  Activity,
+  Plus,
+  X,
+  Layers,
+  ChevronUp,
+  ChevronDown,
+  Lock,
+  Building2,
+  PhoneCall,
+  LifeBuoy,
+  ImageUp,
+  Trash2,
+  Plug,
+  Palette,
+} from 'lucide-react'
 import { ERP_ROLES, normalizeErpRoleLabels } from '../../shared/org/erpRoles'
 import { DEPARTMENTS } from '../../shared/auth/access'
 import { useAuth } from '../../shared/auth/AuthContext'
@@ -9,18 +26,48 @@ import { subscribeOrg, updateOrgSettings, subscribeSites } from '../../shared/or
 import { ACTIVITY_TYPES } from '../../shared/org/orgConstants'
 import { MODULES } from '../../shared/modules/registry'
 import {
-  BUILTIN_FIELDS, SITE_LEVEL, SITE_LEVEL_KEY, DEFAULT_LEVEL_KEYS,
-  normalizeScopeConfig, moduleLevelKeys, distinctSiteValues, toFieldKey,
+  BUILTIN_FIELDS,
+  SITE_LEVEL,
+  SITE_LEVEL_KEY,
+  DEFAULT_LEVEL_KEYS,
+  normalizeScopeConfig,
+  moduleLevelKeys,
+  distinctSiteValues,
+  toFieldKey,
 } from '../../shared/org/scopeConfig'
 import {
-  putFile, removeFile, MAX_INLINE_BYTES, tooLargeForInline, formatSize,
+  putFile,
+  removeFile,
+  MAX_INLINE_BYTES,
+  tooLargeForInline,
+  formatSize,
 } from '../../shared/storage'
 import { fileToDataUrl } from '../../shared/lib/files'
 import { safeSrc } from '../../shared/safeUrl'
 import { useFileUrl } from '../../shared/storage/useFileUrl'
-import { PageHeader, Card, Field, Input, Select, Button, MultiSelect, SkeletonCard } from '../../shared/ui'
+import { hasOrgLogo } from '../../shared/branding/OrgMark'
+import {
+  CANVAS_SWATCHES,
+  DEFAULT_ACCENT,
+  DEFAULT_CANVAS,
+  extractPaletteFromFile,
+  extractPaletteFromSrc,
+  lightCanvas,
+  mixHex,
+  nextTheme,
+  normalizeTheme,
+} from '../../shared/branding/theme'
+import {
+  PageHeader,
+  Card,
+  Field,
+  Input,
+  Select,
+  Button,
+  MultiSelect,
+  SkeletonCard,
+} from '../../shared/ui'
 import MetabaseSettings from './MetabaseSettings'
-
 
 const TABS = [
   { key: 'general', label: 'General', icon: Settings },
@@ -43,11 +90,20 @@ export default function OrgSettings() {
   // finding M-5), so a logo set after that change carries only `logoPath` —
   // and the old check would have reported "No logo yet" for a logo that had
   // just been uploaded successfully.
-  const { src: logoSrc } = useFileUrl({ url: org?.logoUrl, path: org?.logoPath })
+  const { src: logoSrc, loading: logoLoading } = useFileUrl({
+    url: org?.logoUrl,
+    path: org?.logoPath,
+  })
+  const hasLogo = hasOrgLogo(org)
 
   const [form, setForm] = useState({
-    name: '', address: '', notificationEmail: '', activityTypes: [], departments: [],
-    safetyHelplinePrimary: '', safetyHelplineSecondary: '',
+    name: '',
+    address: '',
+    notificationEmail: '',
+    activityTypes: [],
+    departments: [],
+    safetyHelplinePrimary: '',
+    safetyHelplineSecondary: '',
     erpRoleLabels: {},
   })
   const [customActivity, setCustomActivity] = useState('')
@@ -61,6 +117,7 @@ export default function OrgSettings() {
   // the instant it is chosen, and read back off the live `org`.
   const [logoBusy, setLogoBusy] = useState(false)
   const logoRef = useRef(null)
+  const [themeBusy, setThemeBusy] = useState(false)
 
   // Scope granularity state
   const [customFields, setCustomFields] = useState([]) // [{ key, label, options }]
@@ -82,7 +139,8 @@ export default function OrgSettings() {
           safetyHelplinePrimary: o.safetyHelplinePrimary || '',
           safetyHelplineSecondary: o.safetyHelplineSecondary || '',
           activityTypes: o.activityTypes || [],
-          departments: Array.isArray(o.departments) && o.departments.length ? o.departments : DEPARTMENTS,
+          departments:
+            Array.isArray(o.departments) && o.departments.length ? o.departments : DEPARTMENTS,
           erpRoleLabels: normalizeErpRoleLabels(o.erpRoleLabels),
         })
         const cfg = normalizeScopeConfig(o.scopeConfig)
@@ -105,18 +163,21 @@ export default function OrgSettings() {
   const addCustomActivity = () => {
     const v = customActivity.trim()
     if (!v) return
-    if (!form.activityTypes.includes(v)) setForm({ ...form, activityTypes: [...form.activityTypes, v] })
+    if (!form.activityTypes.includes(v))
+      setForm({ ...form, activityTypes: [...form.activityTypes, v] })
     setCustomActivity('')
   }
 
   const addDept = () => {
     const v = newDept.trim()
     if (!v) return
-    if (form.departments.some((d) => d.toLowerCase() === v.toLowerCase())) return toast.error('That department already exists')
+    if (form.departments.some((d) => d.toLowerCase() === v.toLowerCase()))
+      return toast.error('That department already exists')
     setForm({ ...form, departments: [...form.departments, v] })
     setNewDept('')
   }
-  const removeDept = (d) => setForm({ ...form, departments: form.departments.filter((x) => x !== d) })
+  const removeDept = (d) =>
+    setForm({ ...form, departments: form.departments.filter((x) => x !== d) })
 
   // ── Organization logo ───────────────────────────────────────────────────────
   //
@@ -152,13 +213,28 @@ export default function OrgSettings() {
     }
     setLogoBusy(true)
     try {
+      let palette = null
+      try {
+        palette = await extractPaletteFromFile(file)
+      } catch {
+        // A decoder that refuses the file must not block the upload — OrgTheme
+        // will sample the stored bytes once they resolve, and the owner can
+        // still pick a canvas by hand.
+      }
+      const prev = normalizeTheme(org?.theme)
+      const keepCanvas = prev.canvasSource === 'custom'
+      const theme = nextTheme(prev, {
+        accent: palette?.accent || prev.accent,
+        canvas: keepCanvas ? prev.canvas : palette?.canvasWash || DEFAULT_CANVAS,
+        canvasSource: keepCanvas ? 'custom' : palette ? 'logo' : prev.canvasSource,
+      })
       const up = await putFile(orgId, 'org-logo', file, file.name)
       if (up) {
-        await saveLogo({ logoUrl: up.url, logoPath: up.path })
+        await saveLogo({ logoUrl: up.url, logoPath: up.path, theme })
       } else {
         if (file.size > MAX_INLINE_BYTES) return toast.error(tooLargeForInline(file.name))
         const dataUrl = await fileToDataUrl(file)
-        await saveLogo({ logoUrl: dataUrl, logoPath: '' })
+        await saveLogo({ logoUrl: dataUrl, logoPath: '', theme })
       }
       toast.success('Logo updated')
     } catch (err) {
@@ -171,7 +247,16 @@ export default function OrgSettings() {
   const clearLogo = async () => {
     setLogoBusy(true)
     try {
-      await saveLogo({ logoUrl: '', logoPath: '' })
+      const prev = normalizeTheme(org?.theme)
+      await saveLogo({
+        logoUrl: '',
+        logoPath: '',
+        theme: nextTheme(prev, {
+          accent: DEFAULT_ACCENT,
+          canvas: prev.canvasSource === 'custom' ? prev.canvas : DEFAULT_CANVAS,
+          canvasSource: prev.canvasSource === 'custom' ? 'custom' : 'default',
+        }),
+      })
       toast.success('Logo removed — the WE EHS mark is back in the header')
     } catch (err) {
       toastCaught(err, 'Could not remove the logo')
@@ -180,20 +265,64 @@ export default function OrgSettings() {
     }
   }
 
+  const persistTheme = async (patch, ok = 'Appearance updated') => {
+    setThemeBusy(true)
+    try {
+      const theme = nextTheme(org?.theme, patch)
+      await updateOrgSettings(orgId, { theme }, actor)
+      toast.success(ok)
+    } catch (err) {
+      toastCaught(err, 'Could not save appearance')
+    } finally {
+      setThemeBusy(false)
+    }
+  }
+
+  const onPickCanvas = (hex, source) => persistTheme({ canvas: hex, canvasSource: source })
+
+  const onResampleLogo = async () => {
+    if (!logoSrc) return toast.error('Upload a logo first')
+    setThemeBusy(true)
+    try {
+      const palette = await extractPaletteFromSrc(logoSrc)
+      const prev = normalizeTheme(org?.theme)
+      await updateOrgSettings(
+        orgId,
+        {
+          theme: nextTheme(prev, {
+            accent: palette.accent,
+            canvas: prev.canvasSource === 'custom' ? prev.canvas : palette.canvasWash,
+            canvasSource: prev.canvasSource === 'custom' ? 'custom' : 'logo',
+          }),
+        },
+        actor
+      )
+      toast.success('Colours taken from the logo')
+    } catch (err) {
+      toastCaught(err, 'Could not read colours from the logo')
+    } finally {
+      setThemeBusy(false)
+    }
+  }
+
   const saveGeneral = async (e) => {
     e.preventDefault()
     setBusy(true)
     try {
-      await updateOrgSettings(orgId, {
-        name: form.name,
-        address: form.address,
-        notificationEmail: form.notificationEmail,
-        safetyHelplinePrimary: form.safetyHelplinePrimary,
-        safetyHelplineSecondary: form.safetyHelplineSecondary,
-        activityTypes: form.activityTypes,
-        departments: form.departments,
-        erpRoleLabels: form.erpRoleLabels,
-      }, actor)
+      await updateOrgSettings(
+        orgId,
+        {
+          name: form.name,
+          address: form.address,
+          notificationEmail: form.notificationEmail,
+          safetyHelplinePrimary: form.safetyHelplinePrimary,
+          safetyHelplineSecondary: form.safetyHelplineSecondary,
+          activityTypes: form.activityTypes,
+          departments: form.departments,
+          erpRoleLabels: form.erpRoleLabels,
+        },
+        actor
+      )
       toast.success('Settings saved')
     } catch (err) {
       toastCaught(err, 'Failed')
@@ -213,7 +342,9 @@ export default function OrgSettings() {
   )
   const setLevelsFor = (keys) => setModuleLevels((m) => ({ ...m, [scopeModule]: keys }))
 
-  const addLevel = (key) => { if (key && !levelsForModule.includes(key)) setLevelsFor([...levelsForModule, key]) }
+  const addLevel = (key) => {
+    if (key && !levelsForModule.includes(key)) setLevelsFor([...levelsForModule, key])
+  }
   const removeLevel = (key) => setLevelsFor(levelsForModule.filter((k) => k !== key))
   const moveLevel = (i, dir) => {
     const j = i + dir
@@ -227,20 +358,31 @@ export default function OrgSettings() {
     const label = newField.trim()
     const key = toFieldKey(label)
     if (!label || !key) return
-    if (allFields.some((f) => f.key === key)) { toast.error('That field already exists'); return }
+    if (allFields.some((f) => f.key === key)) {
+      toast.error('That field already exists')
+      return
+    }
     setCustomFields((f) => [...f, { key, label, options: [] }])
     setNewField('')
   }
   const addOption = (fieldKey) => {
     const val = (optionDraft[fieldKey] || '').trim()
     if (!val) return
-    setCustomFields((fields) => fields.map((f) =>
-      f.key === fieldKey ? { ...f, options: f.options.includes(val) ? f.options : [...f.options, val] } : f))
+    setCustomFields((fields) =>
+      fields.map((f) =>
+        f.key === fieldKey
+          ? { ...f, options: f.options.includes(val) ? f.options : [...f.options, val] }
+          : f
+      )
+    )
     setOptionDraft((d) => ({ ...d, [fieldKey]: '' }))
   }
   const removeOption = (fieldKey, val) =>
-    setCustomFields((fields) => fields.map((f) =>
-      f.key === fieldKey ? { ...f, options: f.options.filter((o) => o !== val) } : f))
+    setCustomFields((fields) =>
+      fields.map((f) =>
+        f.key === fieldKey ? { ...f, options: f.options.filter((o) => o !== val) } : f
+      )
+    )
   const removeCustomField = (key) => {
     setCustomFields((f) => f.filter((x) => x.key !== key))
     // Drop it from every module's level list too.
@@ -259,7 +401,10 @@ export default function OrgSettings() {
       // Persist only modules that differ from the default, keeping the doc lean.
       const modules = {}
       for (const m of MODULES) {
-        const keys = moduleLevelKeys({ scopeConfig: { customFields, modules: moduleLevels } }, m.key)
+        const keys = moduleLevelKeys(
+          { scopeConfig: { customFields, modules: moduleLevels } },
+          m.key
+        )
         if (JSON.stringify(keys) !== JSON.stringify(DEFAULT_LEVEL_KEYS)) modules[m.key] = keys
       }
       await updateOrgSettings(orgId, { scopeConfig: { customFields, modules } }, actor)
@@ -272,16 +417,28 @@ export default function OrgSettings() {
   }
 
   const previewFor = (key) => {
-    if (key === SITE_LEVEL_KEY) return `The specific site record — ${sites.length} site${sites.length === 1 ? '' : 's'} available`
+    if (key === SITE_LEVEL_KEY)
+      return `The specific site record — ${sites.length} site${sites.length === 1 ? '' : 's'} available`
     const vals = distinctSiteValues(sites, key)
     if (!vals.length) return 'No values in site data yet'
     return `${vals.slice(0, 4).join(', ')}${vals.length > 4 ? `, +${vals.length - 4} more` : ''} (${vals.length})`
   }
 
+  const theme = normalizeTheme(org?.theme)
+  const logoWash = lightCanvas(mixHex(theme.accent, '#ffffff', 0.82))
+  const canvasSwatches = [
+    ...CANVAS_SWATCHES,
+    ...(hasLogo ? [{ id: 'logo', hex: logoWash, label: 'From logo' }] : []),
+  ]
+
   if (org === null) {
     return (
       <>
-        <PageHeader title="Organization settings" subtitle="Manage your organization profile" icon={Settings} />
+        <PageHeader
+          title="Organization settings"
+          subtitle="Manage your organization profile"
+          icon={Settings}
+        />
         <SkeletonCard className="max-w-2xl" />
       </>
     )
@@ -289,15 +446,22 @@ export default function OrgSettings() {
 
   return (
     <>
-      <PageHeader title="Organization settings" subtitle="Profile, branding, scope granularity & integrations" icon={Settings} />
+      <PageHeader
+        title="Organization settings"
+        subtitle="Profile, branding, scope granularity & integrations"
+        icon={Settings}
+      />
 
       {/* Tab bar */}
-      <div className="mb-5 flex flex-wrap gap-1 border-b border-ink-200">
+      <div className="tab-strip mb-5" role="tablist" aria-label="Organization settings">
         {TABS.map((t) => (
           <button
             key={t.key}
+            type="button"
             onClick={() => setTab(t.key)}
-            className={`nav-tab ${tab === t.key ? 'nav-tab-active -mb-px rounded-b-none border-b-2 border-brand-600' : 'nav-tab-idle'}`}
+            role="tab"
+            aria-selected={tab === t.key}
+            className={`nav-tab ${tab === t.key ? 'nav-tab-active' : 'nav-tab-idle'}`}
           >
             <t.icon size={16} /> {t.label}
           </button>
@@ -310,13 +474,30 @@ export default function OrgSettings() {
             <h3 className="mb-4 font-semibold text-ink-800">Profile</h3>
             <div className="space-y-4">
               <Field label="Organization name" htmlFor="name">
-                <Input id="name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+                <Input
+                  id="name"
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                />
               </Field>
               <Field label="Address" htmlFor="address">
-                <Input id="address" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
+                <Input
+                  id="address"
+                  value={form.address}
+                  onChange={(e) => setForm({ ...form, address: e.target.value })}
+                />
               </Field>
-              <Field label="Notification email" htmlFor="email" hint="Where safety notifications are sent">
-                <Input id="email" type="email" value={form.notificationEmail} onChange={(e) => setForm({ ...form, notificationEmail: e.target.value })} />
+              <Field
+                label="Notification email"
+                htmlFor="email"
+                hint="Where safety notifications are sent"
+              >
+                <Input
+                  id="email"
+                  type="email"
+                  value={form.notificationEmail}
+                  onChange={(e) => setForm({ ...form, notificationEmail: e.target.value })}
+                />
               </Field>
             </div>
           </Card>
@@ -328,18 +509,20 @@ export default function OrgSettings() {
               <ImageUp size={17} className="text-brand-600" /> Organization logo
             </h3>
             <p className="mb-4 mt-1 text-sm text-ink-500">
-              Shown in the top-left corner of every screen, in place of the WE EHS mark — which moves
-              to a small badge in the bottom-right corner. PNG or SVG with a transparent background
-              looks best; up to {formatSize(MAX_LOGO_BYTES)}.
+              Shown in the top-left corner of every screen, in place of the WE EHS mark when none is
+              set. PNG or JPEG with a transparent background looks best; up to{' '}
+              {formatSize(MAX_LOGO_BYTES)}.
             </p>
             <div className="flex flex-wrap items-center gap-4">
-              <div className="ring-1 ring-ink-200 grid h-20 w-20 flex-none place-items-center rounded-2xl bg-surface-50 ">
-                {logoSrc ? (
+              <div className="grid h-20 w-20 flex-none place-items-center rounded-2xl bg-ink-50 ring-1 ring-white/70">
+                {safeSrc(logoSrc) ? (
                   <img
                     src={safeSrc(logoSrc)}
                     alt={`${form.name || 'Organization'} logo`}
-                    className="h-16 w-16 rounded-xl bg-white object-contain"
+                    className="h-16 w-16 rounded-xl bg-ink-50 object-contain p-0.5"
                   />
+                ) : hasLogo && logoLoading ? (
+                  <span className="skeleton h-16 w-16 rounded-xl" />
                 ) : (
                   <span className="px-2 text-center text-[10.5px] font-semibold leading-tight text-ink-400">
                     No logo yet
@@ -356,10 +539,16 @@ export default function OrgSettings() {
                   loading={logoBusy}
                   onClick={() => logoRef.current?.click()}
                 >
-                  {org?.logoUrl ? 'Replace logo' : 'Upload logo'}
+                  {hasLogo ? 'Replace logo' : 'Upload logo'}
                 </Button>
-                {org?.logoUrl && (
-                  <Button type="button" variant="ghost" icon={Trash2} disabled={logoBusy} onClick={clearLogo}>
+                {hasLogo && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    icon={Trash2}
+                    disabled={logoBusy}
+                    onClick={clearLogo}
+                  >
                     Remove
                   </Button>
                 )}
@@ -374,23 +563,122 @@ export default function OrgSettings() {
             </div>
           </Card>
 
+          <Card>
+            <h3 className="flex items-center gap-2 font-semibold text-ink-800">
+              <Palette size={17} className="text-brand-600" /> Appearance
+            </h3>
+            <p className="mb-4 mt-1 text-sm text-ink-500">
+              Accents follow the uploaded logo. The page background is yours to pick — a dark colour
+              is lightened automatically so text stays readable.
+            </p>
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center gap-3">
+                <span
+                  className="grid h-10 w-10 place-items-center rounded-2xl ring-1 ring-white/70"
+                  style={{ backgroundColor: theme.accent }}
+                  title="Accent from logo"
+                />
+                <span
+                  className="grid h-10 w-14 rounded-2xl ring-1 ring-ink-200"
+                  style={{ backgroundColor: theme.canvas }}
+                  title="Page background"
+                />
+                <p className="text-sm text-ink-500">
+                  {theme.canvasSource === 'logo'
+                    ? 'Background taken from the logo.'
+                    : theme.canvasSource === 'custom'
+                      ? 'Custom background.'
+                      : 'Default amber wash.'}
+                </p>
+              </div>
+              <div>
+                <p className="label" id="canvas-swatches-label">
+                  Page background
+                </p>
+                <div
+                  role="radiogroup"
+                  aria-labelledby="canvas-swatches-label"
+                  className="flex flex-wrap items-center gap-2"
+                >
+                  {canvasSwatches.map((s) => {
+                    const selected =
+                      theme.canvas.toLowerCase() === s.hex.toLowerCase() ||
+                      (s.id === 'logo' && theme.canvasSource === 'logo')
+                    return (
+                      <button
+                        key={s.id}
+                        type="button"
+                        role="radio"
+                        aria-checked={selected}
+                        aria-label={s.label}
+                        disabled={themeBusy}
+                        onClick={() =>
+                          onPickCanvas(
+                            s.hex,
+                            s.id === 'logo' ? 'logo' : s.id === 'amber' ? 'default' : 'custom'
+                          )
+                        }
+                        className={`h-9 w-9 rounded-full ring-1 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas ${
+                          selected ? 'ring-2 ring-brand-600' : 'ring-ink-200 hover:ring-ink-400'
+                        }`}
+                        style={{ backgroundColor: s.hex }}
+                        title={s.label}
+                      />
+                    )
+                  })}
+                </div>
+              </div>
+              <div className="flex flex-wrap items-end gap-3">
+                <Field label="Custom colour" htmlFor="canvas-color">
+                  <input
+                    id="canvas-color"
+                    type="color"
+                    value={theme.canvas}
+                    disabled={themeBusy}
+                    onChange={(e) => onPickCanvas(e.target.value, 'custom')}
+                    className="h-10 w-16 cursor-pointer rounded-xl border-0 bg-transparent p-0"
+                  />
+                </Field>
+                {hasLogo && (
+                  <Button
+                    type="button"
+                    variant="soft"
+                    icon={Palette}
+                    disabled={themeBusy || !logoSrc}
+                    onClick={onResampleLogo}
+                  >
+                    Use colours from logo
+                  </Button>
+                )}
+              </div>
+            </div>
+          </Card>
+
           {/* Org-wide emergency helpline — same on every site's SOS poster */}
           <Card>
             <h3 className="flex items-center gap-2 font-semibold text-ink-800">
               <PhoneCall size={17} className="text-red-600" /> Safety &amp; Security helpline
             </h3>
             <p className="mb-3 mt-1 text-sm text-ink-500">
-              Your organization-wide helpline numbers. These are common to every site and print on the
-              <b> Safety &amp; Security (Help Line)</b> row of each site&apos;s SOS emergency poster.
+              Your organization-wide helpline numbers. These are common to every site and print on
+              the
+              <b> Safety &amp; Security (Help Line)</b> row of each site&apos;s SOS emergency
+              poster.
             </p>
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Primary helpline" htmlFor="hl1" hint="e.g. 1800 102 4100">
-                <Input id="hl1" value={form.safetyHelplinePrimary}
-                  onChange={(e) => setForm({ ...form, safetyHelplinePrimary: e.target.value })} />
+                <Input
+                  id="hl1"
+                  value={form.safetyHelplinePrimary}
+                  onChange={(e) => setForm({ ...form, safetyHelplinePrimary: e.target.value })}
+                />
               </Field>
               <Field label="Secondary helpline" htmlFor="hl2" hint="e.g. 9591900100">
-                <Input id="hl2" value={form.safetyHelplineSecondary}
-                  onChange={(e) => setForm({ ...form, safetyHelplineSecondary: e.target.value })} />
+                <Input
+                  id="hl2"
+                  value={form.safetyHelplineSecondary}
+                  onChange={(e) => setForm({ ...form, safetyHelplineSecondary: e.target.value })}
+                />
               </Field>
             </div>
           </Card>
@@ -403,22 +691,29 @@ export default function OrgSettings() {
               <LifeBuoy size={17} className="text-red-600" /> Emergency response roles
             </h3>
             <p className="mb-3 mt-1 text-sm text-ink-500">
-              The baseline rescue plans name a <b>role</b> for every step, never a person. Set what your
-              organization calls each role and it will read in your own language across rescue plans,
-              emergency contacts, mock drills and printed plans. Renaming is safe at any time — existing
-              records are unaffected.
+              The baseline rescue plans name a <b>role</b> for every step, never a person. Set what
+              your organization calls each role and it will read in your own language across rescue
+              plans, emergency contacts, mock drills and printed plans. Renaming is safe at any time
+              — existing records are unaffected.
             </p>
             <div className="grid gap-4 sm:grid-cols-2">
               {ERP_ROLES.filter((r) => r.key !== 'Other').map((r) => (
-                <Field key={r.key} label={r.duty} htmlFor={`role-${r.key}`} hint={`Default: ${r.label}`}>
+                <Field
+                  key={r.key}
+                  label={r.duty}
+                  htmlFor={`role-${r.key}`}
+                  hint={`Default: ${r.label}`}
+                >
                   <Input
                     id={`role-${r.key}`}
                     value={form.erpRoleLabels?.[r.key] ?? ''}
                     placeholder={r.label}
-                    onChange={(e) => setForm({
-                      ...form,
-                      erpRoleLabels: { ...form.erpRoleLabels, [r.key]: e.target.value },
-                    })}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        erpRoleLabels: { ...form.erpRoleLabels, [r.key]: e.target.value },
+                      })
+                    }
                   />
                 </Field>
               ))}
@@ -430,7 +725,8 @@ export default function OrgSettings() {
               <Activity size={17} className="text-brand-600" /> Activities performed
             </h3>
             <p className="mb-3 mt-1 text-sm text-ink-500">
-              Select the types of activity your organization performs. Add your own if it&apos;s not listed.
+              Select the types of activity your organization performs. Add your own if it&apos;s not
+              listed.
             </p>
             <MultiSelect
               options={activityOptions}
@@ -443,9 +739,16 @@ export default function OrgSettings() {
                 placeholder="Add a custom activity…"
                 value={customActivity}
                 onChange={(e) => setCustomActivity(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCustomActivity() } }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    addCustomActivity()
+                  }
+                }}
               />
-              <Button type="button" variant="soft" icon={Plus} onClick={addCustomActivity}>Add</Button>
+              <Button type="button" variant="soft" icon={Plus} onClick={addCustomActivity}>
+                Add
+              </Button>
             </div>
           </Card>
 
@@ -455,38 +758,56 @@ export default function OrgSettings() {
               <Building2 size={17} className="text-brand-600" /> Departments
             </h3>
             <p className="mb-3 mt-1 text-sm text-ink-500">
-              Your organization&apos;s departments. These populate the department dropdowns across all
-              modules — employee provisioning, access requests, training group assignments and reports.
+              Your organization&apos;s departments. These populate the department dropdowns across
+              all modules — employee provisioning, access requests, training group assignments and
+              reports.
             </p>
             <div className="flex gap-2">
               <Input
                 placeholder="e.g. Quality Assurance"
                 value={newDept}
                 onChange={(e) => setNewDept(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addDept() } }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    addDept()
+                  }
+                }}
               />
-              <Button type="button" variant="soft" icon={Plus} onClick={addDept}>Add</Button>
+              <Button type="button" variant="soft" icon={Plus} onClick={addDept}>
+                Add
+              </Button>
             </div>
             <div className="mt-3 flex flex-wrap gap-1.5">
               {form.departments.map((d) => (
                 <span key={d} className="chip bg-surface-100 text-ink-700">
                   {d}
-                  <button type="button" onClick={() => removeDept(d)} className="text-ink-400 hover:text-red-600" title="Remove department">
+                  <button
+                    type="button"
+                    onClick={() => removeDept(d)}
+                    className="text-ink-400 hover:text-red-600"
+                    title="Remove department"
+                  >
                     <X size={13} />
                   </button>
                 </span>
               ))}
               {form.departments.length === 0 && (
-                <span className="text-sm text-ink-400">No departments — the defaults ({DEPARTMENTS.join(', ')}) will be used.</span>
+                <span className="text-sm text-ink-400">
+                  No departments — the defaults ({DEPARTMENTS.join(', ')}) will be used.
+                </span>
               )}
             </div>
             <p className="mt-2 text-xs text-ink-400">
-              Removing a department here doesn&apos;t change employees already mapped to it — their records keep the old name.
+              Removing a department here doesn&apos;t change employees already mapped to it — their
+              records keep the old name.
             </p>
           </Card>
 
           <div className="flex justify-end">
-            <Button type="submit" icon={Save} loading={busy}>Save changes</Button>
+            <Button type="submit" icon={Save} loading={busy}>
+              Save changes
+            </Button>
           </div>
         </form>
       )}
@@ -498,33 +819,55 @@ export default function OrgSettings() {
               <Layers size={17} className="text-brand-600" /> Custom scope fields
             </h3>
             <p className="mb-3 mt-1 text-sm text-ink-500">
-              Define extra location attributes (e.g. <b>Building</b>, <b>Floor</b>, <b>Zone</b>) beyond Region and Entity.
-              These become fields on every Site and can be added as granularity levels below. Give each one its predefined
-              dropdown values here — any extra values found in your site data are added automatically.
+              Define extra location attributes (e.g. <b>Building</b>, <b>Floor</b>, <b>Zone</b>)
+              beyond Region and Entity. These become fields on every Site and can be added as
+              granularity levels below. Give each one its predefined dropdown values here — any
+              extra values found in your site data are added automatically.
             </p>
             <div className="flex gap-2">
               <Input
                 placeholder="e.g. Building"
                 value={newField}
                 onChange={(e) => setNewField(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCustomField() } }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    addCustomField()
+                  }
+                }}
               />
-              <Button type="button" variant="soft" icon={Plus} onClick={addCustomField}>Add field</Button>
+              <Button type="button" variant="soft" icon={Plus} onClick={addCustomField}>
+                Add field
+              </Button>
             </div>
 
             <div className="mt-3 flex flex-wrap gap-1.5">
               {BUILTIN_FIELDS.map((f) => (
-                <span key={f.key} className="chip bg-ink-100 text-ink-500" title="Built-in field — values come from site data"><Lock size={12} /> {f.label}</span>
+                <span
+                  key={f.key}
+                  className="chip bg-ink-100 text-ink-500"
+                  title="Built-in field — values come from site data"
+                >
+                  <Lock size={12} /> {f.label}
+                </span>
               ))}
             </div>
 
             <div className="mt-3 space-y-3">
-              {customFields.length === 0 && <p className="text-sm text-ink-400">No custom fields yet.</p>}
+              {customFields.length === 0 && (
+                <p className="text-sm text-ink-400">No custom fields yet.</p>
+              )}
               {customFields.map((f) => (
                 <div key={f.key} className="ring-1 ring-ink-200 rounded-2xl bg-surface-50/60 p-3 ">
                   <div className="flex items-center justify-between">
                     <p className="text-sm font-semibold text-ink-800">{f.label}</p>
-                    <button type="button" onClick={() => removeCustomField(f.key)} className="rounded-lg p-1 text-ink-400 hover:bg-red-50 hover:text-red-600"><X size={15} /></button>
+                    <button
+                      type="button"
+                      onClick={() => removeCustomField(f.key)}
+                      className="rounded-lg p-1 text-ink-400 hover:bg-red-50 hover:text-red-600"
+                    >
+                      <X size={15} />
+                    </button>
                   </div>
                   <p className="mt-0.5 text-xs text-ink-400">Predefined dropdown values</p>
                   {f.options.length > 0 && (
@@ -532,7 +875,13 @@ export default function OrgSettings() {
                       {f.options.map((o) => (
                         <span key={o} className="chip bg-surface-100 text-ink-700">
                           {o}
-                          <button type="button" onClick={() => removeOption(f.key, o)} className="text-ink-400 hover:text-red-600"><X size={12} /></button>
+                          <button
+                            type="button"
+                            onClick={() => removeOption(f.key, o)}
+                            className="text-ink-400 hover:text-red-600"
+                          >
+                            <X size={12} />
+                          </button>
                         </span>
                       ))}
                     </div>
@@ -542,9 +891,21 @@ export default function OrgSettings() {
                       placeholder={`Add a ${f.label.toLowerCase()} value…`}
                       value={optionDraft[f.key] || ''}
                       onChange={(e) => setOptionDraft((d) => ({ ...d, [f.key]: e.target.value }))}
-                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addOption(f.key) } }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          addOption(f.key)
+                        }
+                      }}
                     />
-                    <Button type="button" variant="soft" icon={Plus} onClick={() => addOption(f.key)}>Add value</Button>
+                    <Button
+                      type="button"
+                      variant="soft"
+                      icon={Plus}
+                      onClick={() => addOption(f.key)}
+                    >
+                      Add value
+                    </Button>
                   </div>
                 </div>
               ))}
@@ -556,35 +917,82 @@ export default function OrgSettings() {
               <h3 className="flex items-center gap-2 font-semibold text-ink-800">
                 <Layers size={17} className="text-brand-600" /> Scope levels per module
               </h3>
-              <Select className="!w-auto !py-2" value={scopeModule} onChange={(e) => setScopeModule(e.target.value)}>
-                {MODULES.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
+              <Select
+                className="!w-auto !py-2"
+                value={scopeModule}
+                onChange={(e) => setScopeModule(e.target.value)}
+              >
+                {MODULES.map((m) => (
+                  <option key={m.key} value={m.key}>
+                    {m.label}
+                  </option>
+                ))}
               </Select>
             </div>
             <p className="mb-4 mt-1 text-sm text-ink-500">
               Choose which fields — and in what order — a user fills to define scope in{' '}
-              <b>{MODULES.find((m) => m.key === scopeModule)?.label}</b>. Any level, including Site, can be added, reordered or removed.
+              <b>{MODULES.find((m) => m.key === scopeModule)?.label}</b>. Any level, including Site,
+              can be added, reordered or removed.
             </p>
 
             <ol className="space-y-2">
               {levelsForModule.map((key, i) => (
-                <li key={key} className="ring-1 ring-ink-200 flex items-center gap-2 rounded-2xl bg-surface-50/60 px-3 py-2 ">
-                  <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-brand-500 text-xs font-bold text-white">{i + 1}</span>
+                <li
+                  key={key}
+                  className="ring-1 ring-ink-200 flex items-center gap-2 rounded-2xl bg-surface-50/60 px-3 py-2 "
+                >
+                  <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-brand-500 text-xs font-bold text-white">
+                    {i + 1}
+                  </span>
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold text-ink-800">{fieldLabel(key)}</p>
                     <p className="truncate text-xs text-ink-400">{previewFor(key)}</p>
                   </div>
-                  <button type="button" onClick={() => moveLevel(i, -1)} disabled={i === 0} className="rounded-lg p-1 text-ink-400 hover:bg-surface-100 hover:text-ink-700 disabled:opacity-30"><ChevronUp size={16} /></button>
-                  <button type="button" onClick={() => moveLevel(i, 1)} disabled={i === levelsForModule.length - 1} className="rounded-lg p-1 text-ink-400 hover:bg-surface-100 hover:text-ink-700 disabled:opacity-30"><ChevronDown size={16} /></button>
-                  <button type="button" onClick={() => removeLevel(key)} disabled={levelsForModule.length === 1} title={levelsForModule.length === 1 ? 'At least one level is required' : 'Remove level'} className="rounded-lg p-1 text-ink-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-30"><X size={16} /></button>
+                  <button
+                    type="button"
+                    onClick={() => moveLevel(i, -1)}
+                    disabled={i === 0}
+                    className="rounded-lg p-1 text-ink-400 hover:bg-surface-100 hover:text-ink-700 disabled:opacity-30"
+                  >
+                    <ChevronUp size={16} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => moveLevel(i, 1)}
+                    disabled={i === levelsForModule.length - 1}
+                    className="rounded-lg p-1 text-ink-400 hover:bg-surface-100 hover:text-ink-700 disabled:opacity-30"
+                  >
+                    <ChevronDown size={16} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => removeLevel(key)}
+                    disabled={levelsForModule.length === 1}
+                    title={
+                      levelsForModule.length === 1
+                        ? 'At least one level is required'
+                        : 'Remove level'
+                    }
+                    className="rounded-lg p-1 text-ink-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-30"
+                  >
+                    <X size={16} />
+                  </button>
                 </li>
               ))}
             </ol>
 
             {unusedFields.length > 0 && (
               <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-ink-100 pt-4">
-                <span className="text-xs font-bold uppercase tracking-wide text-ink-400">Add level</span>
+                <span className="text-xs font-bold uppercase tracking-wide text-ink-400">
+                  Add level
+                </span>
                 {unusedFields.map((f) => (
-                  <button key={f.key} type="button" onClick={() => addLevel(f.key)} className="chip bg-brand-50 text-brand-700 hover:bg-brand-100">
+                  <button
+                    key={f.key}
+                    type="button"
+                    onClick={() => addLevel(f.key)}
+                    className="chip bg-brand-50 text-brand-700 hover:bg-brand-100"
+                  >
                     <Plus size={13} /> {f.label}
                   </button>
                 ))}
@@ -593,13 +1001,14 @@ export default function OrgSettings() {
           </Card>
 
           <div className="flex justify-end">
-            <Button type="button" icon={Save} loading={scopeBusy} onClick={saveScope}>Save scope settings</Button>
+            <Button type="button" icon={Save} loading={scopeBusy} onClick={saveScope}>
+              Save scope settings
+            </Button>
           </div>
         </div>
       )}
 
       {tab === 'integrations' && <MetabaseSettings orgId={orgId} actor={actor} />}
-
     </>
   )
 }

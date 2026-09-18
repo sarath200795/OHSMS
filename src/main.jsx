@@ -6,6 +6,7 @@ import App from './App'
 import ErrorBoundary from './shared/ErrorBoundary'
 import { installMonitoring } from './shared/monitoring'
 import { AuthProvider } from './shared/auth/AuthContext'
+import OrgTheme from './shared/branding/OrgTheme'
 import './index.css'
 
 installMonitoring()
@@ -27,6 +28,7 @@ createRoot(document.getElementById('root')).render(
           navigation is navigate(-1), which is history and unaffected. */}
       <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <AuthProvider>
+          <OrgTheme />
           <App />
           <Toaster
             position="top-center"

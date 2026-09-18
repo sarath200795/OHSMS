@@ -14,6 +14,9 @@ import { Loader2, X, Check, Lock } from 'lucide-react'
 // not re-exported here so this file stays components-only for fast refresh.
 import { useFocusTrap } from './useFocusTrap'
 import { readableOnTint, solidBackground } from '../lib/contrast'
+import ModuleMark from './ModuleMark'
+
+export { default as ModuleMark } from './ModuleMark'
 
 const cx = (...c) => c.filter(Boolean).join(' ')
 
@@ -257,13 +260,13 @@ export function MultiSelect({
             onClick={() => toggle(v)}
             className={cx(
               'flex w-full items-center gap-2 rounded-xl px-2.5 py-1.5 text-left text-sm transition active:scale-[0.99]',
-              on ? 'bg-brand-50 text-brand-800' : 'text-ink-700 hover:bg-surface-100'
+              on ? 'is-on text-brand-800' : 'text-ink-700 hover:bg-white/45'
             )}
           >
             <span
               className={cx(
                 'grid h-4 w-4 shrink-0 place-items-center rounded border',
-                on ? 'border-brand-600 bg-brand-600 text-white' : 'border-ink-300'
+                on ? 'border-brand-500 bg-white/70 text-brand-700' : 'border-ink-300 bg-white/40'
               )}
             >
               {on && <Check size={12} />}
@@ -338,13 +341,12 @@ export function Badge({ tone = 'gray', color, soft = true, className, children, 
 
 // ── Stat card (dashboard KPI tile) ────────────────────────────────────────────
 export function StatCard({ label, value, icon: Icon, tone = 'brand', hint, className }) {
-  const t = TONE[tone] || TONE.brand
   return (
     <div className={cx('card flex min-w-0 items-center gap-4 p-5', className)}>
       {Icon && (
-        <span className={cx('grid h-11 w-11 shrink-0 place-items-center rounded-2xl', t)}>
+        <ModuleMark tone={tone} size="md">
           <Icon size={20} />
-        </span>
+        </ModuleMark>
       )}
       <div className="min-w-0">
         <p className="truncate text-[12px] font-medium uppercase tracking-[0.06em] text-ink-500">
@@ -370,9 +372,9 @@ export function PageHeader({ title, subtitle, icon: Icon, actions, children, tou
     >
       <div className="flex min-w-0 items-start gap-3">
         {Icon && (
-          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-brand-50 text-brand-700 ring-1 ring-brand-200/70">
+          <ModuleMark tone="brand" size="sm">
             <Icon size={20} />
-          </span>
+          </ModuleMark>
         )}
         <div className="min-w-0">
           <h1 className="text-xl font-bold tracking-[-0.02em] text-ink-900 sm:text-2xl">{title}</h1>
@@ -398,9 +400,9 @@ export function EmptyState({ icon: Icon, title, description, hint, message, acti
       )}
     >
       {Icon && (
-        <span className="grid h-12 w-12 place-items-center rounded-2xl bg-surface-100 text-ink-400 ring-1 ring-ink-200">
+        <ModuleMark tone="slate" size="md">
           <Icon size={24} />
-        </span>
+        </ModuleMark>
       )}
       <div className="max-w-md">
         <h3 className="font-semibold text-ink-800">{title}</h3>

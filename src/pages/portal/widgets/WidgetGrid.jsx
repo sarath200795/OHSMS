@@ -186,14 +186,13 @@ function WidgetPicker({ selected, onClose, onSave }) {
                     onClick={() => toggle(w.key)}
                     aria-pressed={on}
                     className={`flex items-start gap-2.5 rounded-xl px-3 py-2.5 text-left transition ${
-                      on ? 'bg-surface shadow-elev-sm ring-1 ring-ink-900/10' : 'hover:bg-surface-100'
+                      on ? 'is-on' : 'hover:bg-white/40'
                     }`}
                   >
                     <span
                       className={`mt-0.5 grid h-4 w-4 flex-none place-items-center rounded-[5px] ${
-                        on ? 'text-white' : 'border border-ink-200'
+                        on ? 'border border-brand-500 bg-white/70 text-brand-700' : 'border border-ink-200 bg-white/40'
                       }`}
-                      style={on ? { background: w.tone } : undefined}
                     >
                       {on && <Check size={11} strokeWidth={3} />}
                     </span>

@@ -78,7 +78,9 @@ export const MAX_INLINE_BYTES = 700 * 1024
 
 /** Human size, for messages people read. */
 export const formatSize = (bytes) =>
-  bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} MB` : `${Math.round(bytes / 1024)} KB`
+  bytes >= 1024 * 1024
+    ? `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+    : `${Math.round(bytes / 1024)} KB`
 
 /**
  * The message shown when the bucket is unavailable and the file is too big to
@@ -207,7 +209,11 @@ export async function putFile(orgId, kind, file, fileName, { collection } = {}) 
     // path segment ('medical-records') and the policy is keyed by the Firestore
     // collection the POINTER lives in ('injuries/records'). Guessing one from
     // the other is how a file ends up sealed under the wrong class.
-    const { bytes, meta } = await sealFileBytes(orgId, collection, new Uint8Array(await blob.arrayBuffer()))
+    const { bytes, meta } = await sealFileBytes(
+      orgId,
+      collection,
+      new Uint8Array(await blob.arrayBuffer())
+    )
     // Uploaded as octet-stream when sealed, so nothing downstream — a browser,
     // a thumbnailer, a virus scanner — tries to interpret ciphertext as a PDF.
     // The real type stays on the pointer for the reader to rebuild the Blob.
@@ -279,7 +285,9 @@ export async function removeFile(path) {
     const adapter = await loadAdapter()
     if (!adapter) return
     await adapter.remove(path)
-  } catch { /* orphan tolerated */ }
+  } catch {
+    /* orphan tolerated */
+  }
 }
 
 /**
@@ -313,11 +321,18 @@ export async function fileUrl(record, { orgId, collection } = {}) {
       const adapter = await loadAdapter()
       const blob = adapter?.resolveBlob ? await adapter.resolveBlob(path) : null
       if (!blob) return { url: null, revoke: () => {}, restricted: true }
-      const plain = await openFileBytes(orgId, collection, record, new Uint8Array(await blob.arrayBuffer()))
+      const plain = await openFileBytes(
+        orgId,
+        collection,
+        record,
+        new Uint8Array(await blob.arrayBuffer())
+      )
       // The real content type is on the POINTER, not on the object: the object
       // was uploaded as application/octet-stream so nothing tries to render
       // ciphertext as a PDF.
-      const url = URL.createObjectURL(new Blob([plain], { type: record?.type || 'application/octet-stream' }))
+      const url = URL.createObjectURL(
+        new Blob([plain], { type: record?.type || 'application/octet-stream' })
+      )
       return { url, revoke: () => URL.revokeObjectURL(url) }
     } catch (e) {
       reportError(e, { source: 'storage.fileUrl.sealed', collection })
@@ -328,8 +343,18 @@ export async function fileUrl(record, { orgId, collection } = {}) {
   try {
     const adapter = await loadAdapter()
     const resolved = adapter?.resolve ? await adapter.resolve(path) : null
-    if (resolved) return { url: resolved, revoke: () => URL.revokeObjectURL(resolved) }
-  } catch { /* fall through to the stored URL */ }
+    if (resolved) {
+      // Only blob: URLs are ours to revoke. resolve() may return a download URL
+      // when getBlob cannot run (no CORS); revoking that string is a no-op at
+      // best and would be the wrong cleanup at worst.
+      const revoke = String(resolved).startsWith('blob:')
+        ? () => URL.revokeObjectURL(resolved)
+        : () => {}
+      return { url: resolved, revoke }
+    }
+  } catch {
+    /* fall through to the stored URL */
+  }
 
   return { url: stored, revoke: () => {} }
 }

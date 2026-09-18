@@ -3,6 +3,7 @@
 // a dashboard where each panel is a slightly different shape is harder to read
 // than one where the eye can stop noticing the frame.
 import { Inset } from '../portal/ui'
+import { ModuleMark } from '../../shared/ui'
 
 export function Panel({ title, subtitle, right, children, className = '' }) {
   return (
@@ -23,11 +24,13 @@ export function Stat({ icon: Icon, label, value, sub, tone }) {
   return (
     <div className="card p-4">
       {Icon && (
-        <span className="grid h-9 w-9 place-items-center rounded-xl text-white" style={{ background: tone }}>
+        <ModuleMark tint={tone} size="sm">
           <Icon size={17} strokeWidth={2.2} />
-        </span>
+        </ModuleMark>
       )}
-      <p className="mt-3 text-[26px] font-extrabold leading-none tracking-[-0.03em] text-ink-900">{value}</p>
+      <p className="mt-3 text-[26px] font-extrabold leading-none tracking-[-0.03em] text-ink-900">
+        {value}
+      </p>
       <p className="mt-1.5 text-[12px] font-semibold leading-snug text-ink-700">{label}</p>
       {sub && <p className="text-[11px] text-ink-400">{sub}</p>}
     </div>
@@ -46,7 +49,10 @@ export function NoData({ height = 240, children }) {
 export function Picker({ id, label, value, onChange, children }) {
   return (
     <div className="min-w-0 flex-1">
-      <label htmlFor={id} className="mb-1 block text-[10.5px] font-bold uppercase tracking-[0.1em] text-ink-400">
+      <label
+        htmlFor={id}
+        className="mb-1 block text-[10.5px] font-bold uppercase tracking-[0.1em] text-ink-400"
+      >
         {label}
       </label>
       <select
@@ -87,7 +93,10 @@ export function FilterRow({ label, children }) {
 export function DateField({ id, label, value, min, max, onChange }) {
   return (
     <div className="flex flex-col gap-1">
-      <label htmlFor={id} className="text-[10.5px] font-bold uppercase tracking-[0.1em] text-ink-400">
+      <label
+        htmlFor={id}
+        className="text-[10.5px] font-bold uppercase tracking-[0.1em] text-ink-400"
+      >
         {label}
       </label>
       <input

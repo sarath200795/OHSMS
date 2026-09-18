@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, Cell,
-} from 'recharts'
+import { BarChart, Bar, XAxis, YAxis, Tooltip, Cell } from 'recharts'
 import ChartFrame from '../shared/ui/ChartFrame'
 import {
-  AlertTriangle, ShieldAlert, FileCheck, GraduationCap, ArrowRight, Activity,
+  AlertTriangle,
+  ShieldAlert,
+  FileCheck,
+  GraduationCap,
+  ArrowRight,
+  Activity,
 } from 'lucide-react'
 import { useAuth } from '../shared/auth/AuthContext'
 import { createModuleService } from '../shared/module-kit/service'
@@ -14,7 +17,7 @@ import { subscribeAuditLogs } from '../shared/org/orgData'
 import { enabledModules } from '../shared/modules/entitlements'
 import { auditLabel } from '../shared/audit/audit'
 import { riskLists } from '../modules/hira/lib/raStats'
-import { StatCard, Card, PageHeader, SkeletonStat, Skeleton, Badge } from '../shared/ui'
+import { StatCard, Card, PageHeader, SkeletonStat, Skeleton, Badge, ModuleMark } from '../shared/ui'
 import { fromNow } from '../shared/lib/format'
 
 // Only the two collections whose documents are actually needed are streamed:
@@ -39,15 +42,6 @@ function isoInDays(n) {
   const d = new Date()
   d.setDate(d.getDate() + n)
   return d.toISOString().slice(0, 10)
-}
-
-const MODULE_CARD_TONE = {
-  red: 'bg-red-50 text-red-600',
-  amber: 'bg-amber-50 text-amber-600',
-  blue: 'bg-sky-50 text-sky-600',
-  violet: 'bg-violet-50 text-violet-600',
-  green: 'bg-emerald-50 text-emerald-600',
-  brand: 'bg-brand-50 text-brand-700',
 }
 
 export default function Dashboard() {
@@ -129,14 +123,41 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {loading ? (
           <>
-            <SkeletonStat /><SkeletonStat /><SkeletonStat /><SkeletonStat />
+            <SkeletonStat />
+            <SkeletonStat />
+            <SkeletonStat />
+            <SkeletonStat />
           </>
         ) : (
           <>
-            <StatCard label="Open incidents" value={kpis.openIncidents} icon={AlertTriangle} tone="red" hint="Not yet closed" />
-            <StatCard label="High / critical risks" value={kpis.highRisks} icon={ShieldAlert} tone="amber" hint="Residual band" />
-            <StatCard label="Active permits" value={kpis.activePermits ?? '—'} icon={FileCheck} tone="green" hint="Approved or extended" />
-            <StatCard label="Certs expiring ≤30d" value={kpis.expiringCerts ?? '—'} icon={GraduationCap} tone="brand" hint="Includes overdue" />
+            <StatCard
+              label="Open incidents"
+              value={kpis.openIncidents}
+              icon={AlertTriangle}
+              tone="red"
+              hint="Not yet closed"
+            />
+            <StatCard
+              label="High / critical risks"
+              value={kpis.highRisks}
+              icon={ShieldAlert}
+              tone="amber"
+              hint="Residual band"
+            />
+            <StatCard
+              label="Active permits"
+              value={kpis.activePermits ?? '—'}
+              icon={FileCheck}
+              tone="green"
+              hint="Approved or extended"
+            />
+            <StatCard
+              label="Certs expiring ≤30d"
+              value={kpis.expiringCerts ?? '—'}
+              icon={GraduationCap}
+              tone="brand"
+              hint="Includes overdue"
+            />
           </>
         )}
       </div>
@@ -148,14 +169,33 @@ export default function Dashboard() {
           {loading ? (
             <Skeleton className="h-56 w-full" />
           ) : (incidents || []).length === 0 ? (
-            <div className="grid h-56 place-items-center text-sm text-ink-400">No incidents recorded yet</div>
+            <div className="grid h-56 place-items-center text-sm text-ink-400">
+              No incidents recorded yet
+            </div>
           ) : (
             <div className="h-56">
               <ChartFrame label="Incidents by severity" width="100%" height="100%">
                 <BarChart data={severityData} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
-                  <XAxis dataKey="name" tick={{ fontSize: 12, fill: '#64748b' }} axisLine={false} tickLine={false} />
-                  <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: '#64748b' }} axisLine={false} tickLine={false} />
-                  <Tooltip cursor={{ fill: 'rgba(148,163,184,0.12)' }} contentStyle={{ borderRadius: 16, border: 'none', boxShadow: '0 8px 24px rgba(16,24,40,0.14)' }} />
+                  <XAxis
+                    dataKey="name"
+                    tick={{ fontSize: 12, fill: '#64748b' }}
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <YAxis
+                    allowDecimals={false}
+                    tick={{ fontSize: 12, fill: '#64748b' }}
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <Tooltip
+                    cursor={{ fill: 'rgba(148,163,184,0.12)' }}
+                    contentStyle={{
+                      borderRadius: 16,
+                      border: 'none',
+                      boxShadow: '0 8px 24px rgba(16,24,40,0.14)',
+                    }}
+                  />
                   <Bar dataKey="value" radius={[8, 8, 0, 0]}>
                     {severityData.map((d) => (
                       <Cell key={d.name} fill={SEV_COLOR[d.name]} />
@@ -187,8 +227,10 @@ export default function Dashboard() {
             <ul className="space-y-3">
               {logs.map((l) => (
                 <li key={l.id} className="flex items-start gap-3">
-                  <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-surface-100 text-ink-400">
-                    <Activity size={14} />
+                  <span className="mt-0.5">
+                    <ModuleMark tone="slate" size="sm" className="h-8 w-8 rounded-xl">
+                      <Activity size={14} />
+                    </ModuleMark>
                   </span>
                   <div className="min-w-0">
                     <p className="truncate text-sm text-ink-700">
@@ -215,9 +257,9 @@ export default function Dashboard() {
             style={{ animationDelay: `${Math.min(i, 10) * 40}ms` }}
           >
             <div className="flex items-center justify-between">
-              <span className={`grid h-11 w-11 place-items-center rounded-2xl ${MODULE_CARD_TONE[m.tone]}`}>
+              <ModuleMark tone={m.tone} size="md">
                 <m.icon size={22} />
-              </span>
+              </ModuleMark>
               {m.isNew && <Badge tone="brand">New</Badge>}
             </div>
             <div>

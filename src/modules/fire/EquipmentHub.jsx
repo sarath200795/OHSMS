@@ -1,6 +1,14 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Flame, HeartPulse, BellRing, Signpost, Ambulance, BriefcaseMedical, Plus } from 'lucide-react'
+import {
+  Flame,
+  HeartPulse,
+  BellRing,
+  Signpost,
+  Ambulance,
+  BriefcaseMedical,
+  Plus,
+} from 'lucide-react'
 import Dashboard from './pages/Dashboard'
 import AEDDashboard from './pages/AEDDashboard'
 import FASDashboard from './pages/FASDashboard'
@@ -27,17 +35,22 @@ export default function EquipmentHub() {
 
   return (
     <div>
-      <div className="mb-5 flex flex-wrap items-center gap-1 border-b border-ink-200">
-        {TABS.map((t) => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            className={`nav-tab ${tab === t.key ? 'nav-tab-active -mb-px rounded-b-none border-b-2 border-brand-600' : 'nav-tab-idle'}`}
-          >
-            <t.icon size={16} /> {t.label}
-          </button>
-        ))}
-        <Link to="/equipment/add" className="btn-primary ml-auto !py-1.5 text-xs">
+      <div className="mb-5 flex flex-wrap items-center gap-2">
+        <div className="tab-strip min-w-0 flex-1" role="tablist" aria-label="Equipment dashboards">
+          {TABS.map((t) => (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => setTab(t.key)}
+              role="tab"
+              aria-selected={tab === t.key}
+              className={`nav-tab ${tab === t.key ? 'nav-tab-active' : 'nav-tab-idle'}`}
+            >
+              <t.icon size={16} /> {t.label}
+            </button>
+          ))}
+        </div>
+        <Link to="/equipment/add" className="btn-primary !py-1.5 text-xs">
           <Plus size={14} /> Add extinguisher
         </Link>
       </div>

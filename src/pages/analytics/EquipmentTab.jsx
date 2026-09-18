@@ -3,6 +3,7 @@ import { MapContainer, TileLayer, Marker, Tooltip as LeafletTooltip } from 'reac
 import L from 'leaflet'
 import { HeartPulse, ShieldCheck, TriangleAlert, MapPin, FireExtinguisher, BellRing, Ambulance, BriefcaseMedical } from 'lucide-react'
 import { Panel, Stat, NoData, Picker } from './ui'
+import { ModuleMark } from '../../shared/ui'
 import { equipmentAnalytics, ASSET_KINDS } from './moduleAnalytics'
 import Breakdown from './Breakdown'
 
@@ -96,12 +97,12 @@ export default function EquipmentTab({ extinguishers, aeds, fas, stretchers, fir
               onClick={() => setKind(kind === k.key ? 'all' : k.key)}
               aria-pressed={kind === k.key}
               className={`card flex items-center gap-4 p-4 text-left transition duration-200 ease-emil hover:-translate-y-0.5 ${
-                kind === k.key ? 'ring-2 ring-brand-500' : ''
+                kind === k.key ? 'is-on' : ''
               }`}
             >
-              <span className="grid h-11 w-11 flex-none place-items-center rounded-2xl text-white" style={{ background: KIND_TONE[k.key] }}>
+              <ModuleMark tint={KIND_TONE[k.key]} size="md">
                 <Icon size={20} strokeWidth={2.1} />
-              </span>
+              </ModuleMark>
               <span className="min-w-0">
                 <span className="block text-[20px] font-extrabold leading-none tracking-[-0.03em] text-ink-900">
                   {k.healthPct === null ? '—' : `${k.healthPct}%`}

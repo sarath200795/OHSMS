@@ -23,7 +23,7 @@ import { initials } from '../lib/format'
 import RequestAccessModal from './RequestAccessModal'
 import Sam from '../sam/Sam'
 import HomeBar from './HomeBar'
-import { OrgMark, PoweredByWeEhs } from '../branding/OrgMark'
+import { OrgMark, hasOrgLogo } from '../branding/OrgMark'
 import IdleGuard from '../auth/IdleGuard'
 
 const ROLE_LABEL = {
@@ -89,9 +89,11 @@ export default function AppChrome({ children }) {
   const name = profile?.name || 'There'
   // The wordmark beside the mark names the ORGANIZATION once it has a logo of
   // its own. Leaving "WEHS / Workplace Environment, Health & Safety" standing
-  // next to a customer's logo reads as a co-brand nobody agreed to; the vendor
-  // gets the badge in the opposite corner instead.
-  const branded = Boolean(org?.logoUrl)
+  // next to a customer's logo reads as a co-brand nobody agreed to.
+  // `hasOrgLogo` (not `logoUrl` alone): uploads after M-5 often store only
+  // `logoPath`, and treating the empty URL as "no logo" kept the vendor name
+  // in the header after a successful upload.
+  const branded = hasOrgLogo(org)
 
   return (
     <div className="min-h-screen bg-canvas">
@@ -226,11 +228,6 @@ export default function AppChrome({ children }) {
       <RequestAccessModal open={reqOpen} onClose={() => setReqOpen(false)} />
       {/* Sam the Buddy — the ISO 45001 assistant, available on every screen. */}
       <Sam />
-
-      {/* Vendor attribution, bottom-right on every screen. Below Sam's panel
-          (z-40) and the session dialog (z-50), so it can never sit on top of
-          something a person is trying to use. */}
-      <PoweredByWeEhs />
 
       <IdleGuard signOut={signOut} />
     </div>

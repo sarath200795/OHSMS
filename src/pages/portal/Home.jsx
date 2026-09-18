@@ -42,18 +42,7 @@ import { useWidgetPrefs } from './widgets/useWidgetPrefs'
 import { dashboardBuckets } from '../../modules/ptw/lib/permitStatus'
 import { openUnsafeByPermit } from '../../modules/ptw/lib/observations'
 import ModuleLogo3D, { has3DLogo } from './ModuleLogo3D'
-import { Button, Skeleton, Spinner } from '../../shared/ui'
-
-// Same logo gradients the admin hub uses, so a module is recognisable by its
-// tile wherever it appears.
-const GRADIENT = {
-  red: 'from-red-500 to-rose-600',
-  amber: 'from-amber-500 to-orange-600',
-  blue: 'from-sky-500 to-blue-600',
-  violet: 'from-violet-500 to-purple-600',
-  green: 'from-emerald-500 to-teal-600',
-  brand: 'from-brand-500 to-brand-700',
-}
+import { Button, Skeleton, Spinner, ModuleMark } from '../../shared/ui'
 
 // Admin tools. These configure the organization rather than record work in it,
 // so the whole section is admin-only — a manager or auditor who can read the
@@ -109,13 +98,14 @@ const ADMIN_TOOLS = [
  * A module tile.
  *
  * The card stays flat (translate + hairline) so the home grid reads as an ops
- * dashboard rather than a tray of clay objects. The logo still lifts in its
- * own 3D scene — that is the object doing the thing it is for, not the panel.
+ * dashboard rather than a tray of clay objects. The logo sits on a liquid-glass
+ * disc — tinted frost of the module tone, not a neon 500-gradient leftover —
+ * and still lifts in its own 3D scene.
  *
  * Everything is transform and opacity, so it stays off the main thread, and
  * `motion-reduce` drops the whole effect rather than softening it.
  */
-function Tile({ to, icon: Icon, gradient, label, title, delay = 0, logoKey }) {
+function Tile({ to, icon: Icon, tone = 'brand', label, title, delay = 0, logoKey }) {
   const has3D = has3DLogo(logoKey)
   return (
     <div className="[perspective:760px]">
@@ -137,37 +127,22 @@ function Tile({ to, icon: Icon, gradient, label, title, delay = 0, logoKey }) {
                      group-hover:[transform:translateZ(56px)_scale(1.12)]
                      motion-reduce:transition-none motion-reduce:group-hover:[transform:none]"
         >
-          {/* Colour cast on the card beneath, so the lift has somewhere to fall from. */}
-          <span
-            aria-hidden="true"
-            className={`absolute inset-0 rounded-2xl bg-gradient-to-br ${gradient} opacity-0 blur-lg
-                        transition-opacity duration-300 group-hover:opacity-50 motion-reduce:hidden`}
-          />
+          <span aria-hidden="true" className="glass-mark-glow rounded-[22px]" data-tone={tone} />
           {/* Modules with a built object let the object do the moving; the
               rest keep the turn, since a static glyph has nothing else to say. */}
-          <span
-            className={`relative grid h-full w-full place-items-center overflow-hidden rounded-2xl
-                        bg-gradient-to-br ${gradient} text-white shadow-elev-sm [transform-style:preserve-3d]
-                        ${has3D ? '' : 'group-hover:animate-wobble3d'} motion-reduce:group-hover:animate-none`}
+          <ModuleMark
+            tone={tone}
+            size="lg"
+            className={`[transform-style:preserve-3d] ${has3D ? '' : 'group-hover:animate-wobble3d'} motion-reduce:group-hover:animate-none`}
           >
-            {/* A built object where one exists; the line icon otherwise, rather
-                than giving a module a shape that means something else. */}
-            {has3D ? (
-              <ModuleLogo3D moduleKey={logoKey} />
-            ) : (
-              <Icon
-                size={28}
-                strokeWidth={2}
-                className="relative z-10 drop-shadow-[0_2px_3px_rgba(0,0,0,0.28)]"
-              />
-            )}
+            {has3D ? <ModuleLogo3D moduleKey={logoKey} /> : <Icon size={28} strokeWidth={2} />}
             {/* Specular sweep — what makes the face read as glossy rather than flat. */}
             <span
               aria-hidden="true"
-              className="pointer-events-none absolute inset-y-0 -left-1/3 w-1/2 bg-white/45 opacity-0
+              className="pointer-events-none absolute inset-y-0 -left-1/3 z-[2] w-1/2 bg-white/45 opacity-0
                          group-hover:animate-sheen motion-reduce:group-hover:animate-none"
             />
-          </span>
+          </ModuleMark>
         </span>
 
         <span className="min-w-0 transition-transform duration-300 ease-emil group-hover:[transform:translateZ(26px)] motion-reduce:group-hover:[transform:none]">
@@ -637,7 +612,7 @@ export default function PortalHome() {
         <Tile
           to="/analytics"
           icon={BarChart3}
-          gradient="from-sky-500 to-blue-600"
+          tone="blue"
           label="Analytics"
           title="Trends and breakdowns across your sites"
           logoKey="analytics"
@@ -647,7 +622,7 @@ export default function PortalHome() {
             key={m.key}
             to={m.path}
             icon={m.icon}
-            gradient={GRADIENT[m.tone] || GRADIENT.brand}
+            tone={m.tone}
             label={m.label}
             title={m.title}
             logoKey={m.key}
@@ -665,7 +640,7 @@ export default function PortalHome() {
                 key={s.key}
                 to={s.path}
                 icon={s.icon}
-                gradient={GRADIENT[s.tone] || GRADIENT.brand}
+                tone={s.tone}
                 label={s.label}
                 title={s.title}
               />

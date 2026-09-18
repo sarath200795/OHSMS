@@ -22,6 +22,7 @@
   --ease-emil-in-out: cubic-bezier(0.77, 0, 0.175, 1);
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
   --canvas: #f6e3bb;
+  --canvas-rgb: 246 227 187;
   --surface: #ffffff;
   --ink: #26211a;
   --teal: #6db3aa;
@@ -29,6 +30,32 @@
   --amber: #e8a33d;
   --siren: #d94a3c;
   --kraft: #c6946c;
+  /* Brand scale. Kit defaults match public/wehs.svg; OrgTheme rewrites these
+     from the organization's logo / canvas pick so Liquid Glass follows the
+     mark. Space-separated *-rgb channels feed Tailwind opacity modifiers. */
+  --brand-50: #e8f4f2;
+  --brand-50-rgb: 232 244 242;
+  --brand-100: #d0e8e4;
+  --brand-100-rgb: 208 232 228;
+  --brand-200: #b5ddd7;
+  --brand-200-rgb: 181 221 215;
+  --brand-300: #7fc4bb;
+  --brand-300-rgb: 127 196 187;
+  --brand-400: #6db3aa;
+  --brand-400-rgb: 109 179 170;
+  --brand-rgb: 109, 179, 170;
+  --brand-500: #3d7a72;
+  --brand-500-rgb: 61 122 114;
+  --brand-600: #2f6d66;
+  --brand-600-rgb: 47 109 102;
+  --brand-600-rgb-comma: 47, 109, 102;
+  --brand-700: #246058;
+  --brand-700-rgb: 36 96 88;
+  --brand-800: #1a4a44;
+  --brand-800-rgb: 26 74 68;
+  --brand-900: #123632;
+  --brand-900-rgb: 18 54 50;
+  --brand-ink: #1a4a44;
 }
 
 * {
@@ -36,14 +63,14 @@
 }
 
 ::selection {
-  background: rgba(109, 179, 170, 0.28);
+  background: rgba(var(--brand-rgb), 0.28);
   color: #26211a;
 }
 
 body {
   color: #26211a;
   font-family: 'Open Sans', system-ui, 'Segoe UI', sans-serif;
-  background-color: #f6e3bb;
+  background-color: var(--canvas);
   margin: 0;
   overflow-wrap: break-word;
   letter-spacing: -0.011em;
@@ -68,7 +95,8 @@ thead {
     radial-gradient(46% 54% at 14% 16%, rgba(255, 255, 255, 0.72), transparent 64%),
     radial-gradient(40% 48% at 86% 10%, rgba(232, 163, 61, 0.42), transparent 62%),
     radial-gradient(48% 58% at 78% 88%, rgba(240, 162, 49, 0.28), transparent 64%),
-    radial-gradient(38% 48% at 16% 90%, rgba(109, 179, 170, 0.18), transparent 62%), #f6e3bb;
+    radial-gradient(38% 48% at 16% 90%, rgba(var(--brand-rgb), 0.18), transparent 62%),
+    var(--canvas);
   background-size: 200% 200%;
   animation: aurora-move 18s ease infinite;
 }
@@ -128,19 +156,19 @@ thead {
       active:scale-[0.98]
       focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400
       focus-visible:ring-offset-2;
-    --tw-ring-offset-color: #f6e3bb;
+    --tw-ring-offset-color: var(--canvas);
   }
   .btn-primary {
     @apply btn text-white;
-    /* Solid AA fill (#2f6d66 is 6.00:1 with white). Soft kraft umbra, not a
-       neon halo. */
-    background-color: #2f6d66;
-    background-image: linear-gradient(180deg, #3d7a72 0%, #2f6d66 100%);
+    /* Solid AA fill. Soft kraft umbra, not a neon halo. Brand-600 is
+       contrast-checked in theme.js whenever the accent comes from a logo. */
+    background-color: var(--brand-600);
+    background-image: linear-gradient(180deg, var(--brand-500) 0%, var(--brand-600) 100%);
     box-shadow: theme('boxShadow.elev-brand');
   }
   .btn-primary:hover {
-    background-color: #2a5f59;
-    background-image: linear-gradient(180deg, #2f6d66 0%, #246058 100%);
+    background-color: var(--brand-700);
+    background-image: linear-gradient(180deg, var(--brand-600) 0%, var(--brand-700) 100%);
   }
   .btn-ghost {
     @apply btn text-ink-800 shadow-none ring-1 ring-ink-200;
@@ -151,10 +179,10 @@ thead {
   }
   .btn-soft {
     @apply btn text-brand-700 ring-1 ring-brand-400/40;
-    background-color: rgba(109, 179, 170, 0.14);
+    background-color: rgba(var(--brand-rgb), 0.14);
   }
   .btn-soft:hover {
-    background-color: rgba(109, 179, 170, 0.22);
+    background-color: rgba(var(--brand-rgb), 0.22);
   }
   .btn-danger {
     @apply btn text-white;
@@ -166,9 +194,15 @@ thead {
 
   .input {
     @apply w-full rounded-2xl border px-3.5 py-2.5 text-sm
-      text-ink-900 outline-none shadow-none transition;
-    border-color: #e8dcc8;
-    background-color: rgba(255, 255, 255, 0.78);
+      text-ink-900 outline-none transition;
+    border-color: rgba(255, 255, 255, 0.82);
+    background-color: rgba(255, 255, 255, 0.58);
+    background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.42), transparent 42%);
+    backdrop-filter: blur(14px) saturate(1.2);
+    -webkit-backdrop-filter: blur(14px) saturate(1.2);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.78),
+      0 1px 2px rgba(38, 33, 26, 0.04);
   }
   .input::placeholder {
     color: #615344;
@@ -177,8 +211,8 @@ thead {
     border-color: #c6946c;
   }
   .input:focus {
-    border-color: #6db3aa;
-    box-shadow: 0 0 0 2px rgba(109, 179, 170, 0.28);
+    border-color: var(--brand-400);
+    box-shadow: 0 0 0 2px rgba(var(--brand-rgb), 0.28);
   }
   .input[aria-invalid='true'] {
     @apply border-red-400;
@@ -198,10 +232,16 @@ thead {
      module cannot forget. */
   select.input,
   select.appearance-none {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236b5744' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
-    background-position: right 0.85rem center;
-    background-repeat: no-repeat;
-    background-size: 1rem 1rem;
+    background-image:
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236b5744' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E"),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.42), transparent 42%);
+    background-position:
+      right 0.85rem center,
+      0 0;
+    background-repeat: no-repeat, no-repeat;
+    background-size:
+      1rem 1rem,
+      100% 100%;
     padding-right: 2.5rem;
   }
 
@@ -221,22 +261,29 @@ thead {
     box-shadow: theme('boxShadow.elev');
   }
   .well {
-    @apply rounded-2xl ring-1 ring-ink-200/80;
-    background-color: rgba(255, 255, 255, 0.45);
+    @apply rounded-2xl ring-1 ring-white/70;
+    background-color: rgba(255, 255, 255, 0.4);
+    backdrop-filter: blur(14px) saturate(1.15);
+    -webkit-backdrop-filter: blur(14px) saturate(1.15);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
   }
   .chip {
-    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-ink-200/80;
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-white/70;
+    background-color: rgba(255, 255, 255, 0.48);
+    backdrop-filter: blur(10px) saturate(1.15);
+    -webkit-backdrop-filter: blur(10px) saturate(1.15);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
   }
 
   /* Secondary nav — module tabs, settings, sites, analytics. One active
      treatment so moving between them does not feel like changing products.
-     Kit: soft teal pills, not an underline and not a neon glow. */
+     Kit: liquid-glass pills, not an underline and not a neon glow. */
   .nav-tab {
     @apply relative inline-flex shrink-0 items-center gap-2 rounded-full px-3 py-2 text-sm font-medium
       transition-colors duration-200 ease-emil
       focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400
       focus-visible:ring-offset-2;
-    --tw-ring-offset-color: #f6e3bb;
+    --tw-ring-offset-color: var(--canvas);
   }
   .nav-tab-idle {
     @apply text-ink-500 hover:text-ink-800 active:scale-[0.98];
@@ -245,13 +292,24 @@ thead {
     background-color: rgba(255, 255, 255, 0.55);
   }
   .nav-tab-active {
-    @apply text-brand-700 ring-1 ring-brand-400/35;
-    background-color: rgba(109, 179, 170, 0.16);
+    @apply text-brand-700;
+    background-color: rgba(255, 255, 255, 0.62);
+    background-image:
+      radial-gradient(120% 90% at 18% 0%, rgba(255, 255, 255, 0.8), transparent 48%),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.55), rgba(var(--brand-rgb), 0.2));
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.88),
+      0 1px 2px rgba(38, 33, 26, 0.05),
+      0 8px 18px rgba(var(--brand-600-rgb-comma), 0.12),
+      0 0 0 1px rgba(var(--brand-rgb), 0.42);
   }
   .tab-strip {
-    @apply mb-5 flex gap-1 overflow-x-auto overscroll-x-contain rounded-2xl p-1
-      ring-1 ring-ink-200/80 [-webkit-overflow-scrolling:touch];
-    background-color: rgba(255, 255, 255, 0.45);
+    @apply flex gap-1 overflow-x-auto overscroll-x-contain rounded-2xl p-1
+      ring-1 ring-white/70 [-webkit-overflow-scrolling:touch];
+    background-color: rgba(255, 255, 255, 0.38);
+    backdrop-filter: blur(16px) saturate(1.2);
+    -webkit-backdrop-filter: blur(16px) saturate(1.2);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
   }
 
   /* ── Skeleton loaders ──────────────────────────────────────────────────────
@@ -267,6 +325,167 @@ thead {
     @apply absolute inset-0 -translate-x-full animate-shimmer;
     background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.72), transparent);
   }
+}
+
+/* ── Liquid Glass marks & selected states ────────────────────────────────────
+   Unlayered so these win over Tailwind fill utilities (`bg-brand-500
+   text-white` on a toggle chip, a leftover 500-gradient on a module tile).
+   The kit restyle left those selected fills opaque; a second restyle that
+   only lives in @layer components cannot beat them.
+
+   Marks are tinted frost, not neon squares: a module colour at ~40% through
+   white glass, dark ink for the lucide glyph (AA on the composited disc),
+   specular blob top-left, inner rim. 3D logos keep their own paint.
+
+   `.is-on` is the selected language for tabs, chips, rows, segmented
+   controls and tiles. Specular + teal rim so "on" is obvious without a
+   solid fill. */
+.glass-mark {
+  --mark-tint: var(--brand-400);
+  --mark-ink: var(--brand-ink);
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: none;
+  overflow: hidden;
+  color: var(--mark-ink);
+  background:
+    radial-gradient(120% 80% at 18% 10%, rgba(255, 255, 255, 0.78), transparent 46%),
+    linear-gradient(
+      165deg,
+      color-mix(in srgb, var(--mark-tint) 46%, #ffffff) 0%,
+      color-mix(in srgb, var(--mark-tint) 22%, rgba(255, 255, 255, 0.55)) 100%
+    );
+  backdrop-filter: blur(18px) saturate(1.35);
+  -webkit-backdrop-filter: blur(18px) saturate(1.35);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.88),
+    inset 0 -1px 0 rgba(38, 33, 26, 0.06),
+    0 1px 2px rgba(38, 33, 26, 0.05),
+    0 10px 24px rgba(38, 33, 26, 0.1);
+}
+.glass-mark::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.38), transparent 42%);
+}
+.glass-mark::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.55);
+}
+.glass-mark > * {
+  position: relative;
+  z-index: 1;
+}
+.glass-mark[data-tone='red'],
+.glass-mark-glow[data-tone='red'] {
+  --mark-tint: #d94a3c;
+  --mark-ink: #7a241e;
+}
+.glass-mark[data-tone='amber'],
+.glass-mark[data-tone='orange'],
+.glass-mark[data-tone='yellow'],
+.glass-mark-glow[data-tone='amber'],
+.glass-mark-glow[data-tone='orange'],
+.glass-mark-glow[data-tone='yellow'] {
+  --mark-tint: #e8a33d;
+  --mark-ink: #7a4e10;
+}
+.glass-mark[data-tone='blue'],
+.glass-mark[data-tone='sky'],
+.glass-mark-glow[data-tone='blue'],
+.glass-mark-glow[data-tone='sky'] {
+  --mark-tint: #8ba7bd;
+  --mark-ink: #3a5060;
+}
+.glass-mark[data-tone='violet'],
+.glass-mark[data-tone='purple'],
+.glass-mark-glow[data-tone='violet'],
+.glass-mark-glow[data-tone='purple'] {
+  --mark-tint: #c6946c;
+  --mark-ink: #4a3c30;
+}
+.glass-mark[data-tone='green'],
+.glass-mark[data-tone='emerald'],
+.glass-mark-glow[data-tone='green'],
+.glass-mark-glow[data-tone='emerald'] {
+  --mark-tint: #8fbc74;
+  --mark-ink: #2c5024;
+}
+.glass-mark[data-tone='brand'],
+.glass-mark[data-tone='teal'],
+.glass-mark-glow[data-tone='brand'],
+.glass-mark-glow[data-tone='teal'] {
+  --mark-tint: var(--brand-400);
+  --mark-ink: var(--brand-ink);
+}
+.glass-mark[data-tone='slate'],
+.glass-mark[data-tone='gray'],
+.glass-mark-glow[data-tone='slate'],
+.glass-mark-glow[data-tone='gray'] {
+  --mark-tint: #d2c4b4;
+  --mark-ink: #332a22;
+}
+
+/* Hover bloom behind a portal tile mark — tinted, not a neon halo. */
+.glass-mark-glow {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--mark-tint, var(--brand-400));
+  opacity: 0;
+  filter: blur(16px);
+  pointer-events: none;
+  transition: opacity 0.3s cubic-bezier(0.23, 1, 0.32, 1);
+}
+.group:hover .glass-mark-glow {
+  opacity: 0.38;
+}
+
+.is-on,
+.chip.is-on,
+.chip[aria-pressed='true'],
+.chip.bg-brand-500,
+.chip.bg-brand-600,
+.bg-brand-500.text-white:not(.btn-primary):not(.btn-danger):not(.site-cluster) {
+  color: var(--brand-700);
+  background-color: rgba(255, 255, 255, 0.62);
+  background-image:
+    radial-gradient(120% 90% at 18% 0%, rgba(255, 255, 255, 0.8), transparent 48%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.55), rgba(var(--brand-rgb), 0.22));
+  backdrop-filter: blur(14px) saturate(1.3);
+  -webkit-backdrop-filter: blur(14px) saturate(1.3);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.88),
+    0 1px 2px rgba(38, 33, 26, 0.05),
+    0 8px 18px rgba(var(--brand-600-rgb-comma), 0.12),
+    0 0 0 1px rgba(var(--brand-rgb), 0.42);
+}
+.card.is-on {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.88),
+    0 1px 2px rgba(38, 33, 26, 0.05),
+    0 12px 32px rgba(38, 33, 26, 0.1),
+    0 0 0 1px rgba(var(--brand-rgb), 0.48);
+}
+
+.table-crisp tbody tr.is-on td,
+.table-crisp tbody tr[aria-selected='true'] td {
+  background-color: rgba(var(--brand-rgb), 0.12);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
+}
+
+input[type='checkbox'],
+input[type='radio'] {
+  accent-color: var(--brand-600);
+  width: 1.05rem;
+  height: 1.05rem;
 }
 
 /* ── Map (Leaflet) site hover bubble with live summary ───────────────────────*/
@@ -341,12 +560,12 @@ thead {
   display: grid;
   place-items: center;
   border-radius: 50%;
-  background: linear-gradient(180deg, #3d7a72, #2f6d66);
+  background: linear-gradient(180deg, var(--brand-500), var(--brand-600));
   color: #fff;
   font-weight: 800;
   font-size: 13px;
   border: 2px solid rgba(255, 255, 255, 0.85);
-  box-shadow: 0 8px 20px rgba(47, 109, 102, 0.32);
+  box-shadow: 0 8px 20px rgba(var(--brand-600-rgb-comma), 0.32);
 }
 
 /* ── Data-dense areas stay crisp ───────────────────────────────────────────── */
@@ -364,7 +583,7 @@ thead {
   @apply transition-colors duration-150;
 }
 .table-crisp tbody tr:hover td {
-  background-color: rgba(109, 179, 170, 0.08);
+  background-color: rgba(var(--brand-rgb), 0.08);
 }
 .table-crisp tbody tr:last-child td {
   @apply border-b-0;
@@ -403,6 +622,9 @@ option {
   }
   .skeleton {
     @apply animate-pulse;
+  }
+  .group:hover .glass-mark-glow {
+    opacity: 0;
   }
   .aurora {
     animation: none;

@@ -24,12 +24,15 @@ export default function EquipmentRepository() {
 
   return (
     <div>
-      <div className="mb-5 flex flex-wrap items-center gap-1 border-b border-ink-200">
+      <div className="tab-strip mb-5" role="tablist" aria-label="Equipment registers">
         {TABS.map((t) => (
           <button
             key={t.key}
+            type="button"
             onClick={() => setTab(t.key)}
-            className={`nav-tab ${tab === t.key ? 'nav-tab-active -mb-px rounded-b-none border-b-2 border-brand-600' : 'nav-tab-idle'}`}
+            role="tab"
+            aria-selected={tab === t.key}
+            className={`nav-tab ${tab === t.key ? 'nav-tab-active' : 'nav-tab-idle'}`}
           >
             <t.icon size={16} /> {t.label}
           </button>

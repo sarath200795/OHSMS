@@ -25,7 +25,8 @@ export default function LinkStateChips({ value, onChange, linkedCount = 0, unlin
         key={key}
         onClick={() => onChange(on ? null : key)}
         aria-pressed={on}
-        className={`chip transition ${on ? tone.on : tone.off}`}
+        className={`chip transition ${on ? 'is-on' : tone}`}
+        type="button"
         title={
           key === 'linked'
             ? 'Attached to a site in the registry'
@@ -39,14 +40,8 @@ export default function LinkStateChips({ value, onChange, linkedCount = 0, unlin
 
   return (
     <>
-      {chip('linked', 'Linked to site', Link2, linkedCount, {
-        on: 'bg-lime-50 text-lime-700 ring-1 ring-lime-400/40',
-        off: 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200',
-      })}
-      {chip('unlinked', 'Not linked', Link2Off, unlinkedCount, {
-        on: 'bg-ink-100 text-ink-800 ring-1 ring-white/20',
-        off: 'bg-ink-100 text-ink-600 hover:bg-ink-200',
-      })}
+      {chip('linked', 'Linked to site', Link2, linkedCount, 'text-emerald-700 hover:bg-white/45')}
+      {chip('unlinked', 'Not linked', Link2Off, unlinkedCount, 'text-ink-600 hover:bg-white/45')}
     </>
   )
 }

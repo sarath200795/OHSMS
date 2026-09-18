@@ -28,7 +28,7 @@ import {
   saveEntitlement,
   subscribeAllEntitlements,
 } from '../../shared/modules/entitlements'
-import { PageHeader, Card, Button, Input, Badge, SkeletonCard, EmptyState } from '../../shared/ui'
+import { PageHeader, Card, Button, Input, Badge, SkeletonCard, EmptyState, ModuleMark } from '../../shared/ui'
 
 const TOTAL = ALL_MODULE_KEYS.length
 
@@ -201,12 +201,12 @@ export default function ModuleAccess() {
                       onClick={() => setSelected(o.id)}
                       aria-current={active ? 'true' : undefined}
                       className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors ${
-                        active ? 'bg-brand-50 text-brand-900' : 'hover:bg-surface-100'
+                        active ? 'is-on' : 'hover:bg-white/45'
                       }`}
                     >
-                      <span className={`grid h-8 w-8 flex-none place-items-center rounded-lg ${active ? 'bg-brand-600 text-white' : 'bg-surface-100 text-ink-500'}`}>
+                      <ModuleMark tone={active ? 'brand' : 'slate'} size="sm" className="h-8 w-8 rounded-xl">
                         <Building2 size={15} />
-                      </span>
+                      </ModuleMark>
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-[13.5px] font-semibold text-ink-900">{o.name}</span>
                         <span className="block text-[11.5px] text-ink-400">

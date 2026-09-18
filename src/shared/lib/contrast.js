@@ -133,6 +133,42 @@ export function solidBackground(hex, target = 4.5) {
   return '#000000'
 }
 
+/**
+ * Mix two hex colours. `t = 0` is `a`, `t = 1` is `b`.
+ *
+ * Used to wash a logo colour into a page canvas, and to build the brand scale
+ * from a single accent, without leaving the WCAG helpers.
+ */
+export function mixHex(a, b, t) {
+  const ca = parseHex(a)
+  const cb = parseHex(b)
+  if (!ca || !cb) return a
+  const u = Math.max(0, Math.min(1, Number(t) || 0))
+  return toHex(ca.map((v, i) => v + (cb[i] - v) * u))
+}
+
+const INK = '#26211a'
+
+/**
+ * A page background `hex` that dark ink can sit on at AA.
+ *
+ * The product is a light glass kit: body text is `#26211a` and does not flip
+ * when someone picks a navy from a colour picker. Mixing toward white until
+ * the ratio clears 4.5:1 keeps the kit coherent; returning the pick unchanged
+ * when it already passes means a cream the owner chose is not "corrected".
+ */
+export function lightCanvas(hex, ink = INK, target = 4.5) {
+  const rgb = parseHex(hex)
+  if (!rgb) return '#ffffff'
+  let candidate = toHex(rgb)
+  if (contrastRatio(ink, candidate) >= target) return candidate
+  for (let t = 0.04; t <= 1; t += 0.04) {
+    candidate = mixHex(hex, '#ffffff', t)
+    if (contrastRatio(ink, candidate) >= target) return candidate
+  }
+  return '#ffffff'
+}
+
 export function readableOnTint(hex, surface = DEFAULT_SURFACE, target = 4.5) {
   const rgb = parseHex(hex)
   if (!rgb) return hex
