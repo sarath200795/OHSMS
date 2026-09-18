@@ -1,12 +1,14 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
-import { LayoutGrid, MessageSquareWarning, Gavel } from 'lucide-react'
+import { LayoutGrid, MessageSquareWarning, Gavel, BarChart3 } from 'lucide-react'
 import { StakeholderProvider } from './context/StakeholderContext'
 import Hub from './pages/Hub'
 import Escalations from './pages/Escalations'
 import EscalationForm from './pages/EscalationForm'
 import LegalIssues from './pages/LegalIssues'
 import LegalIssueForm from './pages/LegalIssueForm'
+import Reports from './pages/Reports'
 import ModuleTabs from '../../shared/layout/ModuleTabs'
+import { reportsNavTab } from '../../shared/modules/reports'
 
 // Stakeholder Issues — what customers escalated, and what authorities did about
 // it. Two records rather than one with a type field: they are owned by
@@ -16,6 +18,7 @@ const TABS = [
   { to: '/stakeholder', end: true, label: 'Overview', icon: LayoutGrid },
   { to: '/stakeholder/escalations', label: 'Customer Escalations', icon: MessageSquareWarning },
   { to: '/stakeholder/legal', label: 'Legal Issues', icon: Gavel },
+  { ...reportsNavTab('/stakeholder'), icon: BarChart3 },
 ]
 
 export default function StakeholderModule() {
@@ -32,6 +35,7 @@ export default function StakeholderModule() {
         <Route path="legal" element={<LegalIssues />} />
         <Route path="legal/new" element={<LegalIssueForm />} />
         <Route path="legal/:id" element={<LegalIssueForm />} />
+        <Route path="reports" element={<Reports />} />
         <Route path="*" element={<Navigate to="/stakeholder" replace />} />
       </Routes>
     </StakeholderProvider>

@@ -6,6 +6,7 @@ import {
   PlayCircle,
   HardHat,
   Lock,
+  BarChart3,
 } from 'lucide-react'
 import { TutorialProvider } from './context/TutorialContext'
 import Home from './pages/Home'
@@ -17,7 +18,9 @@ import Operations from './pages/operations/Operations'
 import OperateProcedure from './pages/operations/OperateProcedure'
 import Technicians from './pages/admin/Technicians'
 import LockInventory from './pages/admin/LockInventory'
+import Reports from './pages/Reports'
 import ModuleTabs from '../../shared/layout/ModuleTabs'
+import { reportsNavTab } from '../../shared/modules/reports'
 
 const TABS = [
   { to: '/loto', label: 'Home', icon: HomeIcon, end: true },
@@ -26,6 +29,7 @@ const TABS = [
   { to: '/loto/operations', label: 'Operations', icon: PlayCircle },
   { to: '/loto/technicians', label: 'Technicians', icon: HardHat },
   { to: '/loto/locks', label: 'Locks', icon: Lock },
+  { ...reportsNavTab('/loto'), icon: BarChart3 },
 ]
 
 function ModuleNav() {
@@ -53,6 +57,7 @@ export default function LotoModule() {
           <Route path="operations" element={<Operations />} />
           <Route path="technicians" element={<Technicians />} />
           <Route path="locks" element={<LockInventory />} />
+          <Route path="reports" element={<Reports />} />
         </Route>
         <Route path="operations/:id" element={<OperateProcedure />} />
         <Route path="procedures/new" element={<CreateProcedure />} />

@@ -1,5 +1,5 @@
 import { Routes, Route, Navigate, Outlet } from 'react-router-dom'
-import { Library, Layers, Grid3x3, ListChecks, Upload } from 'lucide-react'
+import { Library, Layers, Grid3x3, ListChecks, Upload, BarChart3 } from 'lucide-react'
 import { RaProvider } from './context/RaContext'
 import Repository from './pages/Repository'
 import BaselineRepository from './pages/BaselineRepository'
@@ -8,7 +8,9 @@ import AssessmentView from './pages/AssessmentView'
 import RiskRegister from './pages/RiskRegister'
 import ActionTracker from './pages/ActionTracker'
 import BulkImport from './pages/BulkImport'
+import Reports from './pages/Reports'
 import ModuleTabs from '../../shared/layout/ModuleTabs'
+import { reportsNavTab } from '../../shared/modules/reports'
 
 const TABS = [
   { to: '/hira', label: 'Assessments', icon: Library, end: true },
@@ -16,6 +18,7 @@ const TABS = [
   { to: '/hira/risk-register', label: 'Risk Register', icon: Grid3x3 },
   { to: '/hira/action-tracker', label: 'Action Tracker', icon: ListChecks },
   { to: '/hira/bulk-import', label: 'Bulk Import', icon: Upload },
+  { ...reportsNavTab('/hira'), icon: BarChart3 },
 ]
 
 function ModuleNav() {
@@ -43,6 +46,7 @@ export default function HiraModule() {
           <Route path="risk-register" element={<RiskRegister />} />
           <Route path="action-tracker" element={<ActionTracker />} />
           <Route path="bulk-import" element={<BulkImport />} />
+          <Route path="reports" element={<Reports />} />
         </Route>
         <Route path="create" element={<CreateAssessment />} />
         <Route path="create/:id" element={<CreateAssessment />} />

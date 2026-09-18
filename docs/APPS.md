@@ -34,7 +34,34 @@ A unit test fails if those two drift.
 
 Every app initialises the same config from `src/shared/firebase.js` (`VITE_FIREBASE_*`).
 Module data is still `/organizations/{orgId}/…`. Entitlements are still
-`/moduleEntitlements/{orgId}`.
+`/moduleEntitlements/{orgId}`. There is still **one** Firestore project: a HIRA
+report and a Permit to Work report are different screens on different SPAs
+reading the same `organizations/{orgId}` tree. A module app never gets its own
+database.
+
+## Per-module reports
+
+Each operating app owns a reports surface at `<pathPrefix>/reports` (for
+example `/equipment/reports`, `/permits/reports`, `/hira/reports`). That path
+is inside the module prefix, so the existing hosting rewrite still serves the
+module app — reports are not a shell route.
+
+Where Analytics already had a tab for the module (incidents, inspections,
+equipment, mock drills, committee, CCTV, stakeholder, action tracker,
+documents / pre-launch), the module page reuses that tab against the module's
+own live context so the two cannot disagree. Modules that had no Analytics tab
+(HIRA, Permit to Work, LOTO, Internal Audit, Training, Emergency Response,
+Objectives, Weather) get a module-local dashboard and CSV/workbook export
+built from the same collections the rest of that app already reads.
+
+The shell `/analytics` page remains a **cross-suite rollup** — one tabbed
+dashboard for an operator who works across modules. It is in addition to the
+per-module reports, not a substitute. ODIN / Auditors stay there: they are
+add-ons that read a warehouse, not a registry module.
+
+`src/shared/modules/reports.js` is the path contract. A unit test fails if an
+operating app has no `/reports` route, if that path would be served by the
+shell, or if this file stops describing the split.
 
 ## Placeholders and subscription
 

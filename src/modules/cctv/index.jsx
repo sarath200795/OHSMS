@@ -1,12 +1,14 @@
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
-import { Activity, List, TriangleAlert, Upload } from 'lucide-react'
+import { Activity, List, TriangleAlert, Upload, BarChart3 } from 'lucide-react'
 import { CctvProvider } from './context/CctvContext'
 import Dashboard from './pages/Dashboard'
 import Inventory from './pages/Inventory'
 import Defects from './pages/Defects'
 import BulkUpload from './pages/BulkUpload'
+import Reports from './pages/Reports'
 import ScopeBar from './components/ScopeBar'
 import ModuleTabs from '../../shared/layout/ModuleTabs'
+import { reportsNavTab } from '../../shared/modules/reports'
 
 // CCTV — an inventory of cameras, DVRs and Meraki devices, and the health that
 // falls out of how they are wired together. The module's whole reason for
@@ -17,6 +19,7 @@ const TABS = [
   { to: '/cctv/inventory', label: 'Inventory', icon: List },
   { to: '/cctv/defects', label: 'Defects', icon: TriangleAlert },
   { to: '/cctv/import', label: 'Import', icon: Upload },
+  { ...reportsNavTab('/cctv'), icon: BarChart3 },
 ]
 
 export default function CctvModule() {
@@ -53,6 +56,7 @@ function ModuleShell() {
         <Route path="inventory" element={<Inventory />} />
         <Route path="defects" element={<Defects />} />
         <Route path="import" element={<BulkUpload />} />
+        <Route path="reports" element={<Reports />} />
         <Route path="*" element={<Navigate to="/cctv" replace />} />
       </Routes>
     </>

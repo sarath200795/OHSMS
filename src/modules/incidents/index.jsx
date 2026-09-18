@@ -9,6 +9,7 @@ import IllnessWizard from './pages/IllnessWizard'
 import Injuries from './pages/Injuries'
 import ActionTracker from './pages/ActionTracker'
 import RecycleBin from './pages/RecycleBin'
+import Reports from './pages/Reports'
 
 // List pages share the secondary tab nav; the wizards render full-width.
 function ListLayout() {
@@ -33,6 +34,7 @@ export default function IncidentsModule() {
             <Route path="injuries" element={<Injuries />} />
             <Route path="actions" element={<ActionTracker />} />
             <Route path="recycle" element={<RecycleBin />} />
+            <Route path="reports" element={<Reports />} />
           </Route>
           <Route path="new" element={<IncidentWizard />} />
           <Route path=":id" element={<IncidentWizard />} />

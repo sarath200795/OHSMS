@@ -7,6 +7,7 @@ import {
   UsersRound,
   ClipboardList,
   CalendarClock,
+  BarChart3,
 } from 'lucide-react'
 import { useAuth } from '../../shared/auth/AuthContext'
 import { TrainingProvider } from './context/TrainingContext'
@@ -17,7 +18,9 @@ import Records from './pages/Records'
 import EmployeeStatus from './pages/EmployeeStatus'
 import AdminWorkspace from './pages/AdminWorkspace'
 import Sessions from './pages/Sessions'
+import Reports from './pages/Reports'
 import ModuleTabs from '../../shared/layout/ModuleTabs'
+import { reportsNavTab } from '../../shared/modules/reports'
 
 const TABS = [
   { to: '/training', label: 'Dashboard', icon: LayoutDashboard, end: true },
@@ -27,6 +30,7 @@ const TABS = [
   { to: '/training/records', label: 'Records', icon: GraduationCap },
   { to: '/training/employees', label: 'Employee Status', icon: UsersRound },
   { to: '/training/admin', label: 'Admin Workspace', icon: ClipboardList, managerOnly: true },
+  { ...reportsNavTab('/training'), icon: BarChart3 },
 ]
 
 function ModuleNav() {
@@ -59,6 +63,7 @@ export default function TrainingModule() {
           <Route path="records" element={<Records />} />
           <Route path="employees" element={<EmployeeStatus />} />
           <Route path="admin" element={<AdminWorkspace />} />
+          <Route path="reports" element={<Reports />} />
           <Route path="matrix" element={<Navigate to="/training/employees" replace />} />
         </Route>
         <Route path="*" element={<Navigate to="/training" replace />} />

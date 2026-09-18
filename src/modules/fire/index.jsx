@@ -1,5 +1,5 @@
 import { Routes, Route, Navigate, Outlet } from 'react-router-dom'
-import { LayoutDashboard, Boxes, Wrench, Stamp, MapPin } from 'lucide-react'
+import { LayoutDashboard, Boxes, Wrench, Stamp, MapPin, BarChart3 } from 'lucide-react'
 import { FleetProvider } from './context/FleetContext'
 import EquipmentHub from './EquipmentHub'
 import EquipmentRepository from './EquipmentRepository'
@@ -29,7 +29,9 @@ import PhysicalDefectLog from './pages/PhysicalDefectLog'
 import Closed from './pages/Closed'
 import Approvals from './pages/Approvals'
 import RecycleBin from './pages/RecycleBin'
+import EquipmentReports from './pages/EquipmentReports'
 import ModuleTabs from '../../shared/layout/ModuleTabs'
+import { reportsNavTab } from '../../shared/modules/reports'
 
 // Dashboard = per-type dashboards (EquipmentHub tabs, kept separate).
 // Repository = one consolidated inventory for every equipment class.
@@ -40,6 +42,7 @@ const TABS = [
   { to: '/equipment/defects', label: 'Defects', icon: Wrench },
   { to: '/equipment/sites', label: 'Sites', icon: MapPin },
   { to: '/equipment/approvals', label: 'Approvals', icon: Stamp },
+  { ...reportsNavTab('/equipment'), icon: BarChart3 },
 ]
 
 function ModuleNav() {
@@ -90,6 +93,7 @@ export default function EquipmentModule() {
           <Route path="closed" element={<Closed />} />
           <Route path="approvals" element={<Approvals />} />
           <Route path="recycle" element={<RecycleBin />} />
+          <Route path="reports" element={<EquipmentReports />} />
         </Route>
         <Route path="add" element={<AddExtinguisher />} />
         <Route path="bulk-upload" element={<BulkUpload />} />
