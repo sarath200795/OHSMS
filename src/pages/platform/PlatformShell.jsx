@@ -22,30 +22,30 @@ export default function PlatformShell({ children }) {
     <div className="min-h-screen bg-canvas">
       <a
         href="#main"
-        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[60] focus:rounded-xl focus:bg-brand-600 focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-white"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[60] focus:rounded-2xl focus:bg-brand-600 focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-white"
       >
         Skip to main content
       </a>
-      <header className="sticky top-0 z-30 flex items-center gap-3 border-b border-white/10 bg-surface/95 px-5 py-3 backdrop-blur-xl sm:px-7">
-        <span className="grid h-8 w-8 flex-none place-items-center rounded-lg bg-white/10 text-ink-400 ring-1 ring-white/10">
+      <header className="sticky top-0 z-30 flex items-center gap-3 border-b border-[#f7f3ec]/12 bg-[rgba(44,36,28,0.72)] px-5 py-3 backdrop-blur-2xl sm:px-7">
+        <span className="grid h-8 w-8 flex-none place-items-center rounded-xl bg-[#f7f3ec]/10 text-ink-400 ring-1 ring-[#f7f3ec]/12">
           <SlidersHorizontal size={16} />
         </span>
         <span className="leading-tight">
-          <span className="block text-[13px] font-extrabold tracking-[-0.01em] text-white">
+          <span className="block text-[13px] font-extrabold tracking-[-0.01em] text-ink-900">
             Platform console
           </span>
-          <span className="block text-[11px] text-ink-300">Operator — all organizations</span>
+          <span className="block text-[11px] text-ink-400">Operator — all organizations</span>
         </span>
 
         <div className="flex-1" />
 
         {/* The operator's own address, so a shared machine cannot leave someone
             editing customers as an account they did not realise was signed in. */}
-        <span className="hidden truncate text-[12px] text-ink-300 sm:block">{user?.email}</span>
+        <span className="hidden truncate text-[12px] text-ink-400 sm:block">{user?.email}</span>
         <button
           type="button"
           onClick={() => signOut?.()}
-          className="flex items-center gap-2 rounded-xl px-3 py-2 text-[12.5px] font-semibold text-ink-200 transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+          className="flex items-center gap-2 rounded-2xl px-3 py-2 text-[12.5px] font-semibold text-ink-700 transition-colors hover:bg-[#f7f3ec]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
         >
           <LogOut size={15} />
           Sign out

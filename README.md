@@ -5,8 +5,8 @@ domains into one app with a single sign-on, one dashboard and one audit trail.
 
 Built with **Vite + React + Tailwind CSS + Firebase (Auth + Firestore + Storage
 
-- Cloud Functions)**. UI is a **contemporary ops dashboard** (cool canvas,
-  white surfaces, hairline borders, coral accent) with **Emil Kowalski**-style
+- Cloud Functions)**. UI is a **kraft-glass** ops dashboard (espresso kraft
+  canvas, frosted cream panels, logo teal / amber / siren) with **Emil Kowalski**-style
   motion and **skeleton loaders** throughout.
 
 ## Modules

@@ -149,7 +149,7 @@ const PermitPrintable = forwardRef(function PermitPrintable({ permit, documents 
               fontWeight: 600,
               letterSpacing: '0.12em',
               textTransform: 'uppercase',
-              color: '#0369a1',
+              color: '#3d7a72',
               marginBottom: 4,
             }}
           >

@@ -102,7 +102,7 @@ export const IconButton = forwardRef(function IconButton(
         VARIANT[variant] || 'btn-ghost',
         'justify-center !px-0',
         ICON_SIZE[size] || ICON_SIZE.md,
-        '!rounded-xl',
+        '!rounded-2xl',
         className
       )}
       disabled={disabled || loading}
@@ -342,7 +342,7 @@ export function StatCard({ label, value, icon: Icon, tone = 'brand', hint, class
   return (
     <div className={cx('card flex min-w-0 items-center gap-4 p-5', className)}>
       {Icon && (
-        <span className={cx('grid h-11 w-11 shrink-0 place-items-center rounded-xl', t)}>
+        <span className={cx('grid h-11 w-11 shrink-0 place-items-center rounded-2xl', t)}>
           <Icon size={20} />
         </span>
       )}
@@ -370,7 +370,7 @@ export function PageHeader({ title, subtitle, icon: Icon, actions, children, tou
     >
       <div className="flex min-w-0 items-start gap-3">
         {Icon && (
-          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-brand-50 text-brand-700 ring-1 ring-brand-200/70">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-brand-50 text-brand-700 ring-1 ring-brand-200/70">
             <Icon size={20} />
           </span>
         )}
@@ -398,7 +398,7 @@ export function EmptyState({ icon: Icon, title, description, hint, message, acti
       )}
     >
       {Icon && (
-        <span className="grid h-12 w-12 place-items-center rounded-xl bg-surface-100 text-ink-400 ring-1 ring-white/10">
+        <span className="grid h-12 w-12 place-items-center rounded-2xl bg-surface-100 text-ink-400 ring-1 ring-[#f7f3ec]/12">
           <Icon size={24} />
         </span>
       )}

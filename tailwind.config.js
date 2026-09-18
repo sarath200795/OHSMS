@@ -4,238 +4,242 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Dark glass neon-tech kit (UX board 6387098). Cyan/blue is the
-        // primary action (CTAs, focus, charts, sliders). Lime is success /
-        // ON / progress. Orange is highlight. Magenta/purple is secondary.
-        // The logo still carries coral; it is not the chrome.
+        // WEHS kraft-glass kit, sourced from public/wehs.svg.
         //
-        // brand-600 must carry white text at AA (the skip-link and filled
-        // chips). Bright cyan lives at 400/500; 700+ is text on a brand-50
-        // wash — never `bg-*-700 text-white` (700 is a pastel, 1.4:1).
+        // Canvas is espresso kraft (ink #26211a, deepened). Glass is cream
+        // paper (#f7f3ec) at low alpha over that canvas. Brand is the logo
+        // teal (hands / mint), darkened at 600 so white text clears AA.
+        // Amber is hi-vis, siren red is danger, leaf green is success,
+        // slate is the first-aid kit. Magenta is no longer neon pink — it
+        // aliases the kraft outline so existing `magenta-*` chips stay
+        // secondary without bringing cyan/magenta back.
+        //
+        // brand-600 must carry white text at AA (skip-link, filled chips).
+        // Bright teal lives at 400/500; 700+ is text on a brand-50 wash —
+        // never `bg-*-700 text-white` (700 is a pastel).
         brand: {
-          50: '#0c2a38',
-          100: '#0e3a4d',
-          200: '#164e63',
-          300: '#0e7490',
-          400: '#22d3ee',
-          500: '#22d3ee',
-          600: '#0e7490',
-          700: '#67e8f9',
-          800: '#a5f3fc',
-          900: '#cffafe',
+          50: '#1a2e2c',
+          100: '#21403c',
+          200: '#2d5650',
+          300: '#3d7a72',
+          400: '#6db3aa',
+          500: '#6db3aa',
+          600: '#2f6d66',
+          700: '#7fc4bb',
+          800: '#b5ddd7',
+          900: '#dcefee',
         },
         magenta: {
-          400: '#ff6bb5',
-          500: '#ff2d92',
-          600: '#e11d8a',
-          700: '#f9a8d4',
+          400: '#c6946c',
+          500: '#8a6844',
+          600: '#6b4e32',
+          700: '#e4bd97',
         },
-        // Screen ink is inverted vs the previous light ops look: 50–300 are
-        // dark washes and hairlines, 400–900 are text. 400 is the AA floor
-        // on canvas (#0c1024) — 5.5:1. Do not use 50–300 as body text.
+        // Screen ink stays inverted: 50–300 are dark kraft washes and
+        // hairlines, 400–900 are cream text. 400 is the AA floor on canvas
+        // (#1f1a16) — 8.2:1. Do not use 50–300 as body text.
         //
         // bg-ink-800/900/950 used to mean "near-black fill". Those sites are
         // remapped to canvas / black overlays; do not reintroduce them as
         // dark fills against this ramp.
         ink: {
-          DEFAULT: '#e8eefc',
-          50: '#121833',
-          100: '#1a2144',
-          200: '#2f3b63',
-          300: '#44527a',
-          400: '#8b9cb8',
-          500: '#a8b6cc',
-          600: '#c5d0e0',
-          700: '#dbe3f0',
-          800: '#e8eefc',
-          900: '#f4f7ff',
-          950: '#ffffff',
+          DEFAULT: '#f7f3ec',
+          50: '#261f19',
+          100: '#332a22',
+          200: '#4a3c30',
+          300: '#6b5744',
+          400: '#c4b09a',
+          500: '#d4c4b0',
+          600: '#e4d8c8',
+          700: '#ebe3d8',
+          800: '#f4f1ea',
+          900: '#f7f3ec',
+          950: '#faf3ea',
         },
         canvas: {
-          DEFAULT: '#0c1024',
+          DEFAULT: '#1f1a16',
         },
-        // Glass cards. DEFAULT is the raised panel; 50–400 are wells, row
-        // washes and hairline-adjacent fills.
+        // Opaque kraft panels used where glass cannot (menus, wells, map
+        // bubbles). `.card` overlays cream frost on top of these.
         surface: {
-          DEFAULT: '#151b36',
-          50: '#121833',
-          100: '#1a2144',
-          200: '#243056',
-          300: '#33406a',
-          400: '#4a5a82',
+          DEFAULT: '#2c241c',
+          50: '#261f19',
+          100: '#332a22',
+          200: '#3f342a',
+          300: '#524539',
+          400: '#6b5744',
         },
         accent: {
-          teal: '#2dd4bf',
-          amber: '#fbbf24',
-          orange: '#fb923c',
-          lime: '#a3e635',
-          steel: '#8b9cb8',
-          leaf: '#a3e635',
+          teal: '#6db3aa',
+          amber: '#e8a33d',
+          orange: '#f0a231',
+          lime: '#8fbc74',
+          steel: '#8ba7bd',
+          leaf: '#8fbc74',
         },
-        // LOTO's original dark steel + hazard-yellow vocabulary. steel-50 is
-        // the near-white heading again, now that the SPA is dark.
+        // LOTO steel + hazard. steel-50 is the cream heading on dark kraft.
         steel: {
-          50: '#f4f7ff',
-          100: '#e8eefc',
-          200: '#c5d0e0',
-          300: '#a8b6cc',
-          400: '#8b9cb8',
-          500: '#64748b',
-          600: '#44527a',
-          700: '#2f3b63',
-          800: '#1a2144',
-          900: '#121833',
-          950: '#0c1024',
+          50: '#f7f3ec',
+          100: '#f4f1ea',
+          200: '#e4d8c8',
+          300: '#d4c4b0',
+          400: '#8ba7bd',
+          500: '#8d99a5',
+          600: '#6b5744',
+          700: '#4a3c30',
+          800: '#332a22',
+          900: '#261f19',
+          950: '#1f1a16',
         },
         hazard: {
-          DEFAULT: '#fbbf24',
-          dark: '#d97706',
+          DEFAULT: '#e8a33d',
+          dark: '#c77f18',
         },
         danger: {
-          DEFAULT: '#f87171',
+          DEFAULT: '#e8877c',
         },
-        // Tailwind's 50-tint palette is a light wash. On navy those chips
-        // flash white, and 700-text on them fails AA. 50/100/200 are dark
-        // washes; 700/800/900 are light text on those washes. 500/600 stay
-        // saturated fills. Do not put white text on a 700 fill — that stop
-        // is a pastel now (axe measured white on cyan-700 at 1.44:1).
+        // Tailwind's 50-tint palette is a light wash. On kraft those chips
+        // flash cream-white, and 700-text on them fails AA. 50/100/200 are
+        // dark washes; 700/800/900 are light text on those washes. 500/600
+        // stay saturated fills. Do not put white text on a 700 fill — that
+        // stop is a pastel.
         red: {
-          50: '#3a1522',
-          100: '#4a1c2c',
-          200: '#7f2d40',
-          700: '#fca5a5',
-          800: '#fecaca',
-          900: '#fee2e2',
+          50: '#3a1c18',
+          100: '#4a2420',
+          200: '#7c3a32',
+          700: '#f0897d',
+          800: '#f5b5ae',
+          900: '#f8d4d0',
         },
         rose: {
-          50: '#3a1522',
-          100: '#4a1c2c',
-          200: '#7f2d40',
-          700: '#fda4af',
-          800: '#fecdd3',
-          900: '#ffe4e6',
+          50: '#3a1c18',
+          100: '#4a2420',
+          200: '#7c3a32',
+          700: '#e8877c',
+          800: '#f0b0a8',
+          900: '#f6d4ce',
         },
         orange: {
           50: '#3a2414',
           100: '#4a2e18',
           200: '#7c4a1e',
-          700: '#fdba74',
-          800: '#fed7aa',
-          900: '#ffedd5',
+          700: '#f0a231',
+          800: '#e8b93d',
+          900: '#f6e3bb',
         },
         amber: {
           50: '#3a2e14',
           100: '#4a3b18',
           200: '#7c5c1e',
-          700: '#fcd34d',
-          800: '#fde68a',
-          900: '#fef3c7',
+          700: '#e8a33d',
+          800: '#e8b93d',
+          900: '#f6e3bb',
         },
         yellow: {
-          50: '#3a3514',
-          100: '#4a4418',
-          200: '#7c6e1e',
-          700: '#fde047',
-          800: '#fef08a',
-          900: '#fef9c3',
+          50: '#3a3214',
+          100: '#4a4218',
+          200: '#7c6a1e',
+          700: '#e8b93d',
+          800: '#f6e3bb',
+          900: '#faf3ea',
         },
         lime: {
-          50: '#1c3314',
-          100: '#244418',
-          200: '#3f6e1e',
-          700: '#bef264',
-          800: '#d9f99d',
-          900: '#ecfccb',
+          50: '#24301c',
+          100: '#2c3c22',
+          200: '#4a6a32',
+          700: '#8fbc74',
+          800: '#b5d49e',
+          900: '#dcecc8',
         },
         green: {
-          50: '#14331c',
-          100: '#184424',
-          200: '#1e6e3f',
-          700: '#86efac',
-          800: '#bbf7d0',
-          900: '#dcfce7',
+          50: '#24301c',
+          100: '#2c3c22',
+          200: '#3f6e32',
+          700: '#8fbc74',
+          800: '#b5d49e',
+          900: '#dcecc8',
         },
         emerald: {
-          50: '#14332c',
-          100: '#18443a',
-          200: '#1e6e5c',
-          700: '#6ee7b7',
-          800: '#a7f3d0',
-          900: '#d1fae5',
+          50: '#1a2e2c',
+          100: '#21403c',
+          200: '#2d5650',
+          700: '#6db3aa',
+          800: '#7fc4bb',
+          900: '#c5e6e0',
         },
         teal: {
-          50: '#14333a',
-          100: '#18444a',
-          200: '#1e6e7c',
-          700: '#5eead4',
-          800: '#99f6e4',
-          900: '#ccfbf1',
+          50: '#1a2e2c',
+          100: '#21403c',
+          200: '#2d5650',
+          700: '#6db3aa',
+          800: '#7fc4bb',
+          900: '#c5e6e0',
         },
         cyan: {
-          50: '#0c2a38',
-          100: '#0e3a4d',
-          200: '#164e63',
-          700: '#67e8f9',
-          800: '#a5f3fc',
-          900: '#cffafe',
+          50: '#1a2e2c',
+          100: '#21403c',
+          200: '#2d5650',
+          700: '#6db3aa',
+          800: '#7fc4bb',
+          900: '#c5e6e0',
         },
         sky: {
-          50: '#0c2438',
-          100: '#0e324d',
-          200: '#164e7c',
-          700: '#7dd3fc',
-          800: '#bae6fd',
-          900: '#e0f2fe',
+          50: '#1c2830',
+          100: '#243440',
+          200: '#3a5060',
+          700: '#8ba7bd',
+          800: '#b3c5d4',
+          900: '#d6e2ea',
         },
         blue: {
-          50: '#121833',
-          100: '#1a2144',
-          200: '#1e3a7c',
-          700: '#93c5fd',
-          800: '#bfdbfe',
-          900: '#dbeafe',
+          50: '#1c2830',
+          100: '#243440',
+          200: '#3a5060',
+          700: '#8ba7bd',
+          800: '#b3c5d4',
+          900: '#d6e2ea',
         },
         indigo: {
-          50: '#1a1538',
-          100: '#241c4a',
-          200: '#3f2d7c',
-          700: '#a5b4fc',
-          800: '#c7d2fe',
-          900: '#e0e7ff',
+          50: '#261f19',
+          100: '#332a22',
+          200: '#4a3c30',
+          700: '#c4b09a',
+          800: '#e4d8c8',
+          900: '#f4f1ea',
         },
         violet: {
-          50: '#221538',
-          100: '#2c1c4a',
-          200: '#4a2d7c',
-          700: '#c4b5fd',
-          800: '#ddd6fe',
-          900: '#ede9fe',
+          50: '#2a221c',
+          100: '#3a3028',
+          200: '#524539',
+          700: '#c4b09a',
+          800: '#e4d8c8',
+          900: '#f4f1ea',
         },
         purple: {
-          50: '#2a1538',
-          100: '#361c4a',
-          200: '#5c2d7c',
-          700: '#d8b4fe',
-          800: '#e9d5ff',
-          900: '#f3e8ff',
+          50: '#2a221c',
+          100: '#3a3028',
+          200: '#524539',
+          700: '#c4b09a',
+          800: '#e4d8c8',
+          900: '#f4f1ea',
         },
         fuchsia: {
-          50: '#33143a',
-          100: '#44184a',
-          200: '#6e1e7c',
-          700: '#f0abfc',
-          800: '#f5d0fe',
-          900: '#fae8ff',
+          50: '#3a1c18',
+          100: '#4a2420',
+          200: '#7c3a32',
+          700: '#e8877c',
+          800: '#f0b0a8',
+          900: '#f6d4ce',
         },
         pink: {
-          50: '#3a1528',
-          100: '#4a1c34',
-          200: '#7c2d52',
-          700: '#f9a8d4',
-          800: '#fbcfe8',
-          900: '#fce7f3',
+          50: '#3a1c18',
+          100: '#4a2420',
+          200: '#7c3a32',
+          700: '#e8877c',
+          800: '#f0b0a8',
+          900: '#f6d4ce',
         },
-        slate: { 50: '#121833', 100: '#1a2144', 200: '#243056' },
+        slate: { 50: '#261f19', 100: '#332a22', 200: '#3f342a' },
       },
       fontFamily: {
         sans: ['Roboto', 'system-ui', 'Segoe UI', 'sans-serif'],
@@ -248,14 +252,16 @@ export default {
         drawer: 'cubic-bezier(0.32, 0.72, 0, 1)', // drawers/sheets
       },
       boxShadow: {
-        glow: '0 0 0 1px rgba(34,211,238,0.28), 0 8px 28px -8px rgba(34,211,238,0.45)',
-        card: '0 0 0 1px rgba(255,255,255,0.08), 0 12px 32px rgba(4,8,24,0.45)',
-        // Glass elevation + a thin light hairline. No dual-direction clay.
-        elev: '0 0 0 1px rgba(255,255,255,0.08), 0 10px 28px rgba(4,8,24,0.4)',
-        'elev-sm': '0 0 0 1px rgba(255,255,255,0.06), 0 4px 14px rgba(4,8,24,0.28)',
+        // Soft kraft umbra + cream hairline. No neon halo, no clay dual-inset.
+        glow: '0 1px 2px rgba(38,33,26,0.12), 0 10px 28px -8px rgba(38,33,26,0.38), 0 0 0 1px rgba(247,243,236,0.14)',
+        card: '0 1px 2px rgba(38,33,26,0.08), 0 12px 32px rgba(38,33,26,0.28), 0 0 0 1px rgba(247,243,236,0.12)',
+        elev: '0 1px 2px rgba(38,33,26,0.08), 0 10px 28px rgba(38,33,26,0.24), 0 0 0 1px rgba(247,243,236,0.12)',
+        'elev-sm':
+          '0 1px 1px rgba(38,33,26,0.06), 0 4px 14px rgba(38,33,26,0.16), 0 0 0 1px rgba(247,243,236,0.1)',
         'elev-lg':
-          '0 0 0 1px rgba(255,255,255,0.1), 0 18px 48px rgba(4,8,24,0.55), 0 0 40px rgba(34,211,238,0.08)',
-        'elev-brand': '0 0 0 1px rgba(56,189,248,0.4), 0 8px 24px rgba(14,165,233,0.32)',
+          '0 2px 4px rgba(38,33,26,0.1), 0 18px 48px rgba(38,33,26,0.32), 0 0 0 1px rgba(247,243,236,0.14)',
+        'elev-brand':
+          '0 1px 2px rgba(47,109,102,0.2), 0 8px 24px rgba(47,109,102,0.22), 0 0 0 1px rgba(109,179,170,0.28)',
       },
       keyframes: {
         // Skeleton shimmer sweep.
@@ -263,9 +269,9 @@ export default {
           '100%': { transform: 'translateX(100%)' },
         },
         pulseRing: {
-          '0%': { boxShadow: '0 0 0 0 rgba(34,211,238,0.5)' },
-          '70%': { boxShadow: '0 0 0 14px rgba(34,211,238,0)' },
-          '100%': { boxShadow: '0 0 0 0 rgba(34,211,238,0)' },
+          '0%': { boxShadow: '0 0 0 0 rgba(109,179,170,0.45)' },
+          '70%': { boxShadow: '0 0 0 14px rgba(109,179,170,0)' },
+          '100%': { boxShadow: '0 0 0 0 rgba(109,179,170,0)' },
         },
         // Stagger entrance (decorative, short).
         fadeInUp: {

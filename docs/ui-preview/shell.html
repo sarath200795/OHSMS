@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>WEHS kraft-glass kit — shell preview</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700;800&family=Roboto:wght@400;500;700;900&display=swap" />
+  <style>
+    :root {
+      --canvas: #1f1a16;
+      --surface: #2c241c;
+      --cream: #f7f3ec;
+      --ink: #f7f3ec;
+      --muted: #c4b09a;
+      --teal: #6db3aa;
+      --teal-cta: #2f6d66;
+      --amber: #e8a33d;
+      --siren: #d94a3c;
+      --leaf: #8fbc74;
+      --kraft: #c6946c;
+      --outline: #8a6844;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(46% 54% at 14% 16%, rgba(210,164,126,0.34), transparent 64%),
+        radial-gradient(40% 48% at 86% 10%, rgba(109,179,170,0.22), transparent 62%),
+        radial-gradient(48% 58% at 78% 88%, rgba(232,163,61,0.16), transparent 64%),
+        var(--canvas);
+      color: var(--ink);
+      font-family: 'Open Sans', system-ui, sans-serif;
+    }
+    h1, h2, .brand { font-family: Roboto, system-ui, sans-serif; }
+    .glass {
+      background: rgba(247,243,236,0.12);
+      backdrop-filter: blur(22px) saturate(1.25);
+      -webkit-backdrop-filter: blur(22px) saturate(1.25);
+      border: 1px solid rgba(247,243,236,0.16);
+      box-shadow: 0 1px 2px rgba(38,33,26,0.08), 0 12px 32px rgba(38,33,26,0.28);
+      border-radius: 24px;
+    }
+    header {
+      position: sticky; top: 0; z-index: 10;
+      display: flex; align-items: center; gap: 12px;
+      padding: 10px 28px;
+      background: rgba(44,36,28,0.72);
+      backdrop-filter: blur(24px);
+      border-bottom: 1px solid rgba(247,243,236,0.12);
+    }
+    .mark { width: 32px; height: 32px; border-radius: 12px; }
+    .wordmark { font-weight: 800; font-size: 13px; letter-spacing: -0.02em; line-height: 1.15; }
+    .sub { font-size: 11px; color: var(--muted); }
+    .avatar {
+      margin-left: auto;
+      display: flex; align-items: center; gap: 10px;
+      padding: 4px 10px 4px 4px;
+      border-radius: 16px;
+      background: rgba(247,243,236,0.08);
+      border: 1px solid rgba(247,243,236,0.15);
+    }
+    .initials {
+      width: 28px; height: 28px; border-radius: 12px;
+      background: var(--teal-cta); color: #fff;
+      display: grid; place-items: center;
+      font-size: 11px; font-weight: 700;
+    }
+    main { max-width: 1180px; margin: 0 auto; padding: 28px 28px 72px; }
+    .kicker { font-size: 11px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--teal); margin: 0 0 6px; }
+    .title { margin: 0 0 8px; font-size: 22px; letter-spacing: -0.02em; }
+    .lede { color: var(--muted); font-size: 14px; max-width: 64ch; margin: 0 0 28px; }
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    .tile { display: flex; align-items: center; gap: 14px; padding: 16px; }
+    .icon {
+      width: 56px; height: 56px; border-radius: 16px; display: grid; place-items: center;
+      color: #fff; font-weight: 800; font-size: 13px; flex: none;
+    }
+    .tile h3 { margin: 0; font-size: 14px; }
+    .tile p { margin: 2px 0 0; font-size: 12px; color: var(--muted); }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 22px; }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      border: 0; cursor: pointer; font: 600 13px Roboto, sans-serif;
+      border-radius: 999px; padding: 10px 18px;
+    }
+    .btn-primary { background: linear-gradient(180deg, #3d7a72, #2f6d66); color: #fff; box-shadow: 0 8px 24px rgba(47,109,102,0.22); }
+    .btn-ghost { background: rgba(247,243,236,0.08); color: var(--cream); border: 1px solid rgba(247,243,236,0.16); }
+    .btn-soft { background: rgba(109,179,170,0.16); color: #7fc4bb; border: 1px solid rgba(109,179,170,0.35); }
+    .chips { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 18px; }
+    .chip { border-radius: 999px; padding: 4px 10px; font-size: 11px; font-weight: 600; border: 1px solid rgba(247,243,236,0.12); }
+    input {
+      width: 100%; border-radius: 16px; border: 1px solid #4a3c30;
+      background: rgba(247,243,236,0.08); color: var(--cream);
+      padding: 10px 14px; font: 14px 'Open Sans', sans-serif; outline: none;
+    }
+    .panel { padding: 22px; }
+    .swatches { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin-top: 14px; }
+    .swatch { border-radius: 16px; overflow: hidden; border: 1px solid rgba(247,243,236,0.12); }
+    .swatch i { display: block; height: 42px; }
+    .swatch span { display: block; padding: 6px 8px; font-size: 10px; color: var(--muted); font-family: ui-monospace, Menlo, monospace; }
+    .tabs { display: flex; gap: 6px; padding: 4px; border-radius: 16px; background: rgba(31,26,22,0.45); border: 1px solid rgba(247,243,236,0.12); width: fit-content; margin-bottom: 16px; }
+    .tab { border-radius: 999px; padding: 8px 14px; font-size: 13px; color: var(--muted); }
+    .tab.on { background: rgba(109,179,170,0.16); color: #7fc4bb; border: 1px solid rgba(109,179,170,0.35); }
+  </style>
+</head>
+<body>
+  <header>
+    <img class="mark" src="../../public/wehs.svg" alt="" />
+    <div>
+      <div class="wordmark brand">WEHS</div>
+      <div class="sub">Workplace Environment, Health &amp; Safety</div>
+    </div>
+    <div class="avatar">
+      <span class="initials">AM</span>
+      <div>
+        <div style="font-size:12.5px;font-weight:700">A. Mensah</div>
+        <div class="sub">Administrator</div>
+      </div>
+    </div>
+  </header>
+  <main>
+    <p class="kicker">WEHS kraft-glass kit</p>
+    <h1 class="title">Soft frosted panels on espresso kraft</h1>
+    <p class="lede">Canvas is the logo ink deepened. Glass is cream paper at low alpha with blur. Primary is the hands/mint teal, darkened so white text clears AA. Amber is hi-vis, siren is danger, leaf is success. No cyan, no magenta, no neon halo.</p>
+
+    <div class="tabs" role="tablist">
+      <span class="tab on">Home</span>
+      <span class="tab">Incidents</span>
+      <span class="tab">HIRA</span>
+      <span class="tab">Equipment</span>
+    </div>
+
+    <div class="grid">
+      <article class="glass tile">
+        <span class="icon" style="background:linear-gradient(180deg,#d94a3c,#c43d32)">IR</span>
+        <div><h3>Incidents</h3><p>Report, investigate, CAPA</p></div>
+      </article>
+      <article class="glass tile">
+        <span class="icon" style="background:linear-gradient(180deg,#3d7a72,#2f6d66)">HI</span>
+        <div><h3>HIRA</h3><p>Risk matrix and controls</p></div>
+      </article>
+      <article class="glass tile">
+        <span class="icon" style="background:linear-gradient(180deg,#e8a33d,#c77f18)">EQ</span>
+        <div><h3>Equipment</h3><p>Extinguishers, AEDs, FAS</p></div>
+      </article>
+    </div>
+
+    <div class="grid" style="margin-top:16px;grid-template-columns:1.4fr 1fr">
+      <section class="glass panel">
+        <p class="kicker">Form chrome</p>
+        <h2 style="margin:0 0 14px;font-size:16px">Sign-in card</h2>
+        <label class="sub" style="display:block;margin-bottom:6px;letter-spacing:0.08em;text-transform:uppercase;font-weight:600">Work email</label>
+        <input value="jordan.hale@plant2.example" readonly />
+        <div class="row">
+          <button class="btn btn-primary" type="button">Sign in</button>
+          <button class="btn btn-ghost" type="button">Ghost</button>
+          <button class="btn btn-soft" type="button">Soft</button>
+        </div>
+      </section>
+      <section class="glass panel">
+        <p class="kicker">Logo mapping</p>
+        <div class="swatches">
+          <div class="swatch"><i style="background:#1f1a16"></i><span>canvas</span></div>
+          <div class="swatch"><i style="background:#2c241c"></i><span>surface</span></div>
+          <div class="swatch"><i style="background:#f7f3ec"></i><span>cream</span></div>
+          <div class="swatch"><i style="background:#2f6d66"></i><span>brand</span></div>
+          <div class="swatch"><i style="background:#e8a33d"></i><span>amber</span></div>
+          <div class="swatch"><i style="background:#d94a3c"></i><span>siren</span></div>
+        </div>
+        <div class="chips">
+          <span class="chip" style="background:rgba(109,179,170,0.16);color:#7fc4bb">Teal · primary</span>
+          <span class="chip" style="background:rgba(232,163,61,0.16);color:#e8a33d">Amber · warning</span>
+          <span class="chip" style="background:rgba(232,135,124,0.16);color:#e8877c">Siren · danger</span>
+          <span class="chip" style="background:rgba(143,188,116,0.16);color:#8fbc74">Leaf · success</span>
+        </div>
+      </section>
+    </div>
+  </main>
+</body>
+</html>

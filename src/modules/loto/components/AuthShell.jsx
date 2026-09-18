@@ -72,19 +72,19 @@ const LEGAL = [
 ]
 
 /**
- * Two-tone split-screen auth layout: a dark slate brand panel on the left
- * (logo, headline, feature rows, legal footer) and a white card on cool canvas
- * on the right. Collapses to the form column on mobile.
+ * Two-tone split-screen auth layout: a kraft brand panel on the left
+ * (logo, headline, feature rows, legal footer) and a frosted cream card
+ * on espresso canvas on the right. Collapses to the form column on mobile.
  *
- * Note: the app's steel scale is dark again (heading = steel-50 white).
+ * Note: the app's steel scale is cream at the heading (steel-50).
  */
 export default function AuthShell({ title, subtitle, children, footer }) {
   return (
     <div className="flex min-h-screen bg-canvas">
       {/* Dark brand panel */}
-      <div className="relative hidden w-1/2 flex-col justify-between overflow-hidden bg-gradient-to-br from-[#0c1024] via-[#121833] to-[#151b36] p-12 text-white lg:flex">
-        <div className="pointer-events-none absolute -right-24 bottom-[-10%] h-96 w-96 rounded-full bg-brand-400/25 blur-3xl" />
-        <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-400 via-accent-lime to-accent-orange" />
+      <div className="relative hidden w-1/2 flex-col justify-between overflow-hidden bg-gradient-to-br from-[#1f1a16] via-[#2c241c] to-[#3a3028] p-12 text-ink-900 lg:flex">
+        <div className="pointer-events-none absolute -right-24 bottom-[-10%] h-96 w-96 rounded-full bg-brand-400/20 blur-3xl" />
+        <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-400 via-accent-amber to-[#d94a3c]" />
 
         <motion.div
           initial={{ opacity: 0, x: -20 }}
@@ -105,15 +105,15 @@ export default function AuthShell({ title, subtitle, children, footer }) {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.15, duration: 0.5 }}
-            className="max-w-md text-4xl font-extrabold leading-tight tracking-tight text-white"
+            className="max-w-md text-4xl font-extrabold leading-tight tracking-tight text-ink-900"
           >
-            Hazardous energy, <span className="text-amber-400">locked down.</span>
+            Hazardous energy, <span className="text-accent-amber">locked down.</span>
           </motion.h2>
           <motion.p
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3, duration: 0.5 }}
-            className="mt-4 max-w-md text-ink-300"
+            className="mt-4 max-w-md text-ink-400"
           >
             Build LOTO procedures, generate energy tags &amp; QR codes, and track every isolation
             point across your sites — in one auditable system.
@@ -126,18 +126,18 @@ export default function AuthShell({ title, subtitle, children, footer }) {
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.4 + i * 0.08 }}
-                className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.05] px-4 py-3"
+                className="flex items-center gap-3 rounded-2xl border border-[#f7f3ec]/12 bg-[#f7f3ec]/[0.06] px-4 py-3"
               >
                 <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-hazard/20 text-amber-400">
                   {f.icon}
                 </span>
-                <span className="text-sm font-medium text-white/90">{f.label}</span>
+                <span className="text-sm font-medium text-ink-800">{f.label}</span>
               </motion.div>
             ))}
           </div>
         </div>
 
-        <div className="relative space-y-2 text-xs text-white/45">
+        <div className="relative space-y-2 text-xs text-ink-400">
           <nav aria-label="Legal and policy" className="flex flex-wrap gap-x-4 gap-y-1">
             {LEGAL.map((l) => (
               <Link key={l.to} to={l.to} className="transition-colors hover:text-amber-400">

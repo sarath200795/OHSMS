@@ -69,7 +69,7 @@ export default class ErrorBoundary extends Component {
           minHeight: '100vh',
           display: 'grid',
           placeItems: 'center',
-          background: '#0c1024',
+          background: '#1f1a16',
           padding: 24,
           fontFamily: 'system-ui, -apple-system, sans-serif',
         }}
@@ -77,19 +77,20 @@ export default class ErrorBoundary extends Component {
         <div
           style={{
             maxWidth: 420,
-            background: '#151b36',
-            borderRadius: 16,
+            background: 'rgba(247, 243, 236, 0.12)',
+            borderRadius: 24,
             padding: 32,
             textAlign: 'center',
-            boxShadow: '0 0 0 1px rgba(255,255,255,0.08), 0 18px 48px rgba(4,8,24,0.55)',
-            border: '1px solid rgba(255,255,255,0.1)',
+            boxShadow:
+              '0 1px 2px rgba(38,33,26,0.08), 0 18px 48px rgba(38,33,26,0.32), 0 0 0 1px rgba(247,243,236,0.14)',
+            border: '1px solid rgba(247, 243, 236, 0.16)',
           }}
         >
           <p style={{ fontSize: 40, margin: 0 }}>⚠️</p>
-          <h1 style={{ fontSize: 18, margin: '12px 0 6px', color: '#f4f7ff' }}>
+          <h1 style={{ fontSize: 18, margin: '12px 0 6px', color: '#f7f3ec' }}>
             Something went wrong
           </h1>
-          <p style={{ fontSize: 14, lineHeight: 1.5, color: '#8b9cb8', margin: '0 0 20px' }}>
+          <p style={{ fontSize: 14, lineHeight: 1.5, color: '#c4b09a', margin: '0 0 20px' }}>
             The error has been recorded. Nothing you entered before this screen is lost — reload to
             carry on where you were.
           </p>
@@ -97,7 +98,7 @@ export default class ErrorBoundary extends Component {
             type="button"
             onClick={() => window.location.reload()}
             style={{
-              background: 'linear-gradient(180deg, #0369a1, #075985)',
+              background: 'linear-gradient(180deg, #3d7a72, #2f6d66)',
               color: '#fff',
               border: 'none',
               cursor: 'pointer',

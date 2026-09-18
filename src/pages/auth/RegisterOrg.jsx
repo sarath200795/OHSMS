@@ -40,7 +40,10 @@ export default function RegisterOrg() {
       footer={
         <>
           Already have an account?{' '}
-          <Link to="/login" className="font-semibold text-white underline-offset-2 hover:underline">
+          <Link
+            to="/login"
+            className="font-semibold text-brand-700 underline-offset-2 hover:underline"
+          >
             Sign in
           </Link>
         </>
@@ -48,20 +51,54 @@ export default function RegisterOrg() {
     >
       <form onSubmit={submit} className="space-y-4">
         <Field label="Organization name" htmlFor="orgName">
-          <Input id="orgName" required value={form.orgName} onChange={set('orgName')} placeholder="Acme Manufacturing Ltd" />
+          <Input
+            id="orgName"
+            required
+            value={form.orgName}
+            onChange={set('orgName')}
+            placeholder="Acme Manufacturing Ltd"
+          />
         </Field>
         <Field label="Address" htmlFor="address" hint="Optional">
-          <Input id="address" value={form.address} onChange={set('address')} placeholder="City, Country" />
+          <Input
+            id="address"
+            value={form.address}
+            onChange={set('address')}
+            placeholder="City, Country"
+          />
         </Field>
         <div className="h-px bg-ink-100" />
         <Field label="Your name" htmlFor="name">
-          <Input id="name" required value={form.name} onChange={set('name')} placeholder="Jane Doe" autoComplete="name" />
+          <Input
+            id="name"
+            required
+            value={form.name}
+            onChange={set('name')}
+            placeholder="Jane Doe"
+            autoComplete="name"
+          />
         </Field>
         <Field label="Work email" htmlFor="email">
-          <Input id="email" type="email" required value={form.email} onChange={set('email')} placeholder="jane@acme.com" autoComplete="email" />
+          <Input
+            id="email"
+            type="email"
+            required
+            value={form.email}
+            onChange={set('email')}
+            placeholder="jane@acme.com"
+            autoComplete="email"
+          />
         </Field>
         <Field label="Password" htmlFor="password" hint="At least 6 characters">
-          <Input id="password" type="password" required value={form.password} onChange={set('password')} placeholder="••••••••" autoComplete="new-password" />
+          <Input
+            id="password"
+            type="password"
+            required
+            value={form.password}
+            onChange={set('password')}
+            placeholder="••••••••"
+            autoComplete="new-password"
+          />
         </Field>
         <Button type="submit" loading={busy} className="w-full">
           Create organization

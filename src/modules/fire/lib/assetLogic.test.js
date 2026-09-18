@@ -2,20 +2,19 @@ import { describe, it, expect } from 'vitest'
 import { contrastRatio } from '../../../shared/lib/contrast'
 import { DUE_TEXT_COLOR, dueTextColor } from './assetLogic'
 
-// The surfaces the due-date text actually sits on. `#151b36` is the token;
-// `#131932` is the composited card axe measured on the extinguisher list
-// (glass + hairline + elevation). Canvas is the floor underneath both.
+// The surfaces the due-date text actually sits on. `#2c241c` is the token;
+// `#35302b` is cream frost at 10% over espresso canvas (the composited card).
+// Canvas is the floor underneath both.
 const SURFACES = {
-  card: '#131932',
-  surface: '#151b36',
-  canvas: '#0c1024',
+  card: '#35302b',
+  surface: '#2c241c',
+  canvas: '#1f1a16',
 }
 
 describe('DUE_TEXT_COLOR', () => {
   // The previous white-card palette (red-800 / amber-800 / slate-600) dropped
-  // to ~2.3:1 on navy glass. Axe failed the extinguisher repository on
-  // "in 300d". These numbers are the whole point of the palette.
-  it('clears WCAG AA on dark glass for every due state', () => {
+  // to ~2.3:1 on navy glass. These numbers are the whole point of the palette.
+  it('clears WCAG AA on kraft glass for every due state', () => {
     for (const [state, color] of Object.entries(DUE_TEXT_COLOR)) {
       for (const [name, surface] of Object.entries(SURFACES)) {
         expect(

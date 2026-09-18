@@ -12,11 +12,7 @@ function imageFormat(dataUrl) {
 
 function hexToRgb(hex) {
   const h = (hex || '#000000').replace('#', '')
-  return [
-    parseInt(h.slice(0, 2), 16),
-    parseInt(h.slice(2, 4), 16),
-    parseInt(h.slice(4, 6), 16),
-  ]
+  return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)]
 }
 
 function fmtDate(ts) {
@@ -29,10 +25,10 @@ function fmtDate(ts) {
   return d.toLocaleDateString()
 }
 
-const STEEL = [15, 23, 42] // #0f172a
-const HAZARD = [217, 119, 6] // #d97706
-const LIGHT = [248, 250, 252] // #f8fafc
-const BORDER = [226, 232, 240] // #e2e8f0
+const STEEL = [38, 33, 26] // #26211a logo ink
+const HAZARD = [199, 127, 24] // #c77f18 logo amber
+const LIGHT = [250, 243, 234] // #faf3ea cream paper
+const BORDER = [232, 220, 200] // #e8dcc8 kraft rule
 
 // US-Letter in points.
 const PAGE_W = 612
@@ -102,7 +98,7 @@ export async function generateProcedurePdf(procedure, photos = {}) {
     '1. Notify affected associates.   2. Identify hazardous energy source.   3. Isolate equipment.   4. Shut down machinery.   5. Apply lockout devices/locks & tags.   6. Control or release stored energy.   7. Verify isolation.',
     M + 6,
     y + 11,
-    { maxWidth: PAGE_W - M * 2 - 12 },
+    { maxWidth: PAGE_W - M * 2 - 12 }
   )
   y += 34
 
@@ -112,9 +108,7 @@ export async function generateProcedurePdf(procedure, photos = {}) {
     energy: `${p.pointId}\n${p.energyLabel.replace(' Energy', '')}${
       p.rating ? `\n${p.rating}` : ''
     }\n${pointDevicesLabel(p)}`,
-    action: `${p.isolationDetails || '—'}${
-      p.hazard ? `\n\nHazard: ${p.hazard}` : ''
-    }`,
+    action: `${p.isolationDetails || '—'}${p.hazard ? `\n\nHazard: ${p.hazard}` : ''}`,
     info: photoData[i] ? '' : '—',
     verification: p.verification || '—',
   }))
@@ -140,7 +134,12 @@ export async function generateProcedurePdf(procedure, photos = {}) {
       { header: 'Verification', dataKey: 'verification' },
     ],
     styles: { fontSize: 8, cellPadding: 4, valign: 'top', lineColor: BORDER, lineWidth: 0.5 },
-    headStyles: { fillColor: STEEL, textColor: [255, 255, 255], fontStyle: 'bold', halign: 'center' },
+    headStyles: {
+      fillColor: STEEL,
+      textColor: [255, 255, 255],
+      fontStyle: 'bold',
+      halign: 'center',
+    },
     columnStyles: {
       step: { cellWidth: 34, halign: 'center', valign: 'middle' },
       energy: { cellWidth: 92, halign: 'center', fontStyle: 'bold' },
@@ -187,7 +186,7 @@ export async function generateProcedurePdf(procedure, photos = {}) {
     doc.text(
       `${procedure.procedureCode || ''}  ·  Generated ${new Date().toLocaleDateString()}`,
       M,
-      PAGE_H - 18,
+      PAGE_H - 18
     )
     doc.text(`Page ${i} of ${pages}`, PAGE_W - M, PAGE_H - 18, { align: 'right' })
   }
@@ -246,7 +245,7 @@ function drawPostedHeader(doc, procedure, points, energySummary, qr) {
   doc.text(
     'Any machine modification must be reflected in this procedure. Contact Maintenance to update.',
     M,
-    140,
+    140
   )
   doc.setDrawColor(...BORDER)
   doc.line(M, 144, PAGE_W - M, 144)
@@ -276,15 +275,15 @@ function addOshaPage(doc) {
   }
   para(
     'Purpose:',
-    'To protect authorized employees against unexpected or unplanned activation of equipment or energy while servicing equipment.',
+    'To protect authorized employees against unexpected or unplanned activation of equipment or energy while servicing equipment.'
   )
   para(
     'Scope:',
-    'Utilize this procedure for all scheduled PM shutdowns, any maintenance task that requires you to place your body in harm’s way of the equipment, or if you have to leave the area while the equipment is in service.',
+    'Utilize this procedure for all scheduled PM shutdowns, any maintenance task that requires you to place your body in harm’s way of the equipment, or if you have to leave the area while the equipment is in service.'
   )
   para(
     'Enforcement:',
-    'Failure to properly follow the lockout-tagout procedure may result in corrective action.',
+    'Failure to properly follow the lockout-tagout procedure may result in corrective action.'
   )
 
   doc.setFont('helvetica', 'bold')
@@ -296,17 +295,48 @@ function addOshaPage(doc) {
     margin: { left: M, right: M },
     head: [['#', 'Step', 'Description']],
     body: [
-      ['1', 'Notify Employees', 'Notify all affected employees that servicing or maintenance is required and that the machine must be shut down and locked out.'],
-      ['2', 'Review Lockout Procedure', 'Refer to the procedure to identify the type and magnitude of energy, understand the hazards, and know the control methods.'],
-      ['3', 'Perform Machine Stop', 'If operating, shut down by the normal stopping procedure (stop button, open switch, close valve, etc.).'],
-      ['4', 'Isolate Energy', 'Operate the energy-isolating device(s) so the equipment is isolated from the energy source(s).'],
-      ['5', 'Lockout Energy', 'Lock out and tag out the energy-isolating device(s) with assigned individual lock(s) and tag(s).'],
-      ['6', 'Dissipate Energy', 'Stored or residual energy (capacitors, springs, elevated members, hydraulic/pneumatic pressure, etc.) must be dissipated or restrained.'],
-      ['7', 'Attempt Restart', 'Verify isolation by operating normal controls. Caution: return controls to neutral/off after verifying.'],
+      [
+        '1',
+        'Notify Employees',
+        'Notify all affected employees that servicing or maintenance is required and that the machine must be shut down and locked out.',
+      ],
+      [
+        '2',
+        'Review Lockout Procedure',
+        'Refer to the procedure to identify the type and magnitude of energy, understand the hazards, and know the control methods.',
+      ],
+      [
+        '3',
+        'Perform Machine Stop',
+        'If operating, shut down by the normal stopping procedure (stop button, open switch, close valve, etc.).',
+      ],
+      [
+        '4',
+        'Isolate Energy',
+        'Operate the energy-isolating device(s) so the equipment is isolated from the energy source(s).',
+      ],
+      [
+        '5',
+        'Lockout Energy',
+        'Lock out and tag out the energy-isolating device(s) with assigned individual lock(s) and tag(s).',
+      ],
+      [
+        '6',
+        'Dissipate Energy',
+        'Stored or residual energy (capacitors, springs, elevated members, hydraulic/pneumatic pressure, etc.) must be dissipated or restrained.',
+      ],
+      [
+        '7',
+        'Attempt Restart',
+        'Verify isolation by operating normal controls. Caution: return controls to neutral/off after verifying.',
+      ],
     ],
     styles: { fontSize: 8, cellPadding: 4, lineColor: BORDER, lineWidth: 0.5 },
     headStyles: { fillColor: STEEL, textColor: [255, 255, 255] },
-    columnStyles: { 0: { cellWidth: 24, halign: 'center' }, 1: { cellWidth: 120, fontStyle: 'bold' } },
+    columnStyles: {
+      0: { cellWidth: 24, halign: 'center' },
+      1: { cellWidth: 120, fontStyle: 'bold' },
+    },
   })
 
   let y2 = doc.lastAutoTable.finalY + 16
@@ -319,15 +349,30 @@ function addOshaPage(doc) {
     margin: { left: M, right: M },
     head: [['#', 'Step', 'Description']],
     body: [
-      ['1', 'Check Machine', 'Ensure nonessential items are removed and components are operationally intact.'],
+      [
+        '1',
+        'Check Machine',
+        'Ensure nonessential items are removed and components are operationally intact.',
+      ],
       ['2', 'Check Area', 'Ensure all employees are safely positioned or removed from the area.'],
       ['3', 'Verify Machine', 'Verify that the controls are in neutral.'],
-      ['4', 'Remove Lockout', 'Remove locks, tags and lockout devices and re-energize the equipment.'],
-      ['5', 'Notify Employees', 'Notify affected employees that servicing is complete and the equipment is ready for use.'],
+      [
+        '4',
+        'Remove Lockout',
+        'Remove locks, tags and lockout devices and re-energize the equipment.',
+      ],
+      [
+        '5',
+        'Notify Employees',
+        'Notify affected employees that servicing is complete and the equipment is ready for use.',
+      ],
     ],
     styles: { fontSize: 8, cellPadding: 4, lineColor: BORDER, lineWidth: 0.5 },
     headStyles: { fillColor: STEEL, textColor: [255, 255, 255] },
-    columnStyles: { 0: { cellWidth: 24, halign: 'center' }, 1: { cellWidth: 120, fontStyle: 'bold' } },
+    columnStyles: {
+      0: { cellWidth: 24, halign: 'center' },
+      1: { cellWidth: 120, fontStyle: 'bold' },
+    },
   })
 
   doc.setFontSize(7)
@@ -335,7 +380,7 @@ function addOshaPage(doc) {
   doc.text(
     'Reference: OSHA 29 CFR 1910.147, Appendix A — Typical minimal lockout procedures.',
     M,
-    doc.lastAutoTable.finalY + 16,
+    doc.lastAutoTable.finalY + 16
   )
 }
 
@@ -369,8 +414,8 @@ export function generateRegisterPdf(procedures = []) {
       proc.lockSummary?.status === 'locked'
         ? 'EQUIPMENT LOCKED'
         : proc.lockSummary?.status === 'partial'
-        ? 'PARTIAL'
-        : 'UNLOCKED'
+          ? 'PARTIAL'
+          : 'UNLOCKED'
     points.forEach((p, i) => {
       const ls = p.lockState || {}
       const lockDesc = ls.locked
@@ -397,11 +442,25 @@ export function generateRegisterPdf(procedures = []) {
   autoTable(doc, {
     startY: 40,
     margin: { left: M, right: M },
-    head: [['Equipment / Site', 'Point', 'Energy', 'Status', 'Technician', 'Lock', 'Locked At', 'Unlocked At']],
+    head: [
+      [
+        'Equipment / Site',
+        'Point',
+        'Energy',
+        'Status',
+        'Technician',
+        'Lock',
+        'Locked At',
+        'Unlocked At',
+      ],
+    ],
     body: body.length ? body : [['No procedures', '', '', '', '', '', '', '']],
     styles: { fontSize: 8, cellPadding: 4, lineColor: BORDER, lineWidth: 0.5, valign: 'top' },
     headStyles: { fillColor: STEEL, textColor: [255, 255, 255] },
-    columnStyles: { 0: { cellWidth: 140, fontStyle: 'bold' }, 1: { cellWidth: 38, halign: 'center' } },
+    columnStyles: {
+      0: { cellWidth: 140, fontStyle: 'bold' },
+      1: { cellWidth: 38, halign: 'center' },
+    },
     didParseCell: (data) => {
       if (data.section === 'body' && data.column.index === 3) {
         if (data.cell.raw === 'LOCKED') {
@@ -501,8 +560,8 @@ export async function generateTagsPdf(procedure) {
     points.map((p) =>
       qrDataUrl(p.key ? tagScanUrl(procedure.id, p.key) : procedureScanUrl(procedure.id), {
         scale: 8,
-      }),
-    ),
+      })
+    )
   )
 
   let col = 0
@@ -556,11 +615,7 @@ function drawTag(doc, x, y, w, h, p, procedure, qr) {
   doc.setFont('helvetica', 'bold')
   doc.text(doc.splitTextToSize(procedure.equipment || '—', w - 38), x + 5, y + bandH + 27)
   doc.setFont('helvetica', 'normal')
-  doc.text(
-    doc.splitTextToSize(`Hardware: ${pointDevicesLabel(p)}`, w - 10),
-    x + 5,
-    y + bandH + 36,
-  )
+  doc.text(doc.splitTextToSize(`Hardware: ${pointDevicesLabel(p)}`, w - 10), x + 5, y + bandH + 36)
 
   const qrSize = 22
   if (qr) doc.addImage(qr, 'PNG', x + w - qrSize - 4, y + h - qrSize - 4, qrSize, qrSize)

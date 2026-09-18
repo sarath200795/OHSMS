@@ -102,11 +102,11 @@ export default function AppChrome({ children }) {
           which is the point: it costs nothing to anyone who does not need it. */}
       <a
         href="#main"
-        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[60] focus:rounded-xl focus:bg-brand-600 focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-white"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[60] focus:rounded-2xl focus:bg-brand-600 focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-white"
       >
         Skip to main content
       </a>
-      <header className="sticky top-0 z-30 flex items-center gap-2 border-b border-white/10 bg-surface/80 px-4 py-2.5 pt-[max(0.65rem,env(safe-area-inset-top))] backdrop-blur-xl sm:gap-3.5 sm:px-7">
+      <header className="sticky top-0 z-30 flex items-center gap-2 border-b border-[#f7f3ec]/12 bg-[rgba(44,36,28,0.72)] px-4 py-2.5 pt-[max(0.65rem,env(safe-area-inset-top))] backdrop-blur-2xl sm:gap-3.5 sm:px-7">
         {/* aria-label rather than leaning on the wordmark beside it: that text
             is hidden below sm, and without this the only way home on a phone
             was a link announced as the single letter "W". */}
@@ -115,7 +115,7 @@ export default function AppChrome({ children }) {
           aria-label={`${branded && orgName ? orgName : 'WEHS'} home`}
           className="flex min-w-0 flex-none items-center gap-2.5 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
         >
-          <OrgMark className="h-8 w-8 rounded-lg ring-1 ring-white/10" />
+          <OrgMark className="h-8 w-8 rounded-xl ring-1 ring-[#f7f3ec]/15" />
           <span className="hidden min-w-0 leading-tight sm:block">
             <span className="block truncate text-[13px] font-extrabold tracking-[-0.02em] text-ink-900">
               {branded ? orgName || 'Your organization' : 'WEHS'}
@@ -142,9 +142,9 @@ export default function AppChrome({ children }) {
             aria-expanded={menuOpen}
             aria-haspopup="menu"
             aria-controls="account-menu"
-            className="flex items-center gap-2.5 rounded-xl bg-surface px-1.5 py-1 ring-1 ring-white/10 transition-all duration-200 ease-emil hover:ring-white/20 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas sm:px-2 sm:py-1.5"
+            className="flex items-center gap-2.5 rounded-2xl bg-surface/80 px-1.5 py-1 ring-1 ring-[#f7f3ec]/15 transition-all duration-200 ease-emil hover:ring-[#f7f3ec]/25 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas sm:px-2 sm:py-1.5"
           >
-            <span className="grid h-[28px] w-[28px] place-items-center rounded-xl bg-brand-600 text-[11px] font-bold text-white shadow-glow">
+            <span className="grid h-[28px] w-[28px] place-items-center rounded-2xl bg-brand-600 text-[11px] font-bold text-white shadow-elev-sm">
               {initials(name)}
             </span>
             <span className="hidden text-left leading-tight sm:block">
@@ -165,7 +165,7 @@ export default function AppChrome({ children }) {
               role="menu"
               tabIndex={-1}
               onKeyDown={onMenuKeyDown}
-              className="absolute right-0 z-40 mt-2 w-64 overflow-hidden rounded-2xl bg-surface p-1.5 shadow-elev-lg ring-1 ring-white/10 animate-fade-in-up"
+              className="absolute right-0 z-40 mt-2 w-64 overflow-hidden rounded-3xl bg-[rgba(44,36,28,0.92)] p-1.5 shadow-elev-lg ring-1 ring-[#f7f3ec]/15 backdrop-blur-2xl animate-fade-in-up"
             >
               <div className="border-b border-ink-100 px-3 py-2.5">
                 <p className="text-[13px] font-bold text-ink-900">{name}</p>

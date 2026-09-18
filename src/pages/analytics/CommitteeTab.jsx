@@ -9,7 +9,7 @@ import { committeeAnalytics, attachSites, facetsOf } from './moduleAnalytics'
 import Breakdown from './Breakdown'
 import FilterBar from './FilterBar'
 
-const axis = { tickLine: false, axisLine: false, fontSize: 11, tick: { fill: '#8b9cb8' } }
+const axis = { tickLine: false, axisLine: false, fontSize: 11, tick: { fill: '#8ba7bd' } }
 
 export default function CommitteeTab({ consultations, sites, keepUnplaced = true }) {
   const [f, setF] = useState({ siteId: 'all', region: 'all', entity: 'all', from: '', to: '' })

@@ -31,11 +31,20 @@ import { useMemo, useState } from 'react'
 import { ArrowRightLeft, MessageSquareWarning, Gavel, ShieldAlert } from 'lucide-react'
 import { Badge } from '../../shared/ui'
 import {
-  DEPARTMENT_BY_KEY, NOTICE_TYPES, NOTICE_BY_KEY, SEVERE_NOTICES,
-  ESCALATION_STATUS, ESCALATION_STATUS_BY_KEY, LEGAL_STATUS,
+  DEPARTMENT_BY_KEY,
+  NOTICE_TYPES,
+  NOTICE_BY_KEY,
+  SEVERE_NOTICES,
+  ESCALATION_STATUS,
+  ESCALATION_STATUS_BY_KEY,
+  LEGAL_STATUS,
 } from '../../modules/stakeholder/lib/constants'
 import {
-  withLegal, withEscalation, summarise, repeatMembers, legalByEscalation,
+  withLegal,
+  withEscalation,
+  summarise,
+  repeatMembers,
+  legalByEscalation,
 } from '../../modules/stakeholder/lib/linkage'
 import { monthOf } from './moduleAnalytics'
 import { Panel, Stat, NoData, Picker } from './ui'
@@ -45,7 +54,13 @@ const clean = (v) => String(v ?? '').trim()
 
 // The constants carry a Tailwind palette name; Breakdown wants a hex. One map
 // here rather than a second severity palette invented per chart.
-const HEX = { emerald: '#22c55e', blue: '#0ea5e9', amber: '#f59e0b', red: '#ef4444', slate: '#8b9cb8' }
+const HEX = {
+  emerald: '#22c55e',
+  blue: '#0ea5e9',
+  amber: '#f59e0b',
+  red: '#ef4444',
+  slate: '#8ba7bd',
+}
 
 // Badge speaks brand/gray/green/amber/red/blue/violet, the constants speak
 // emerald/slate. Mapped rather than passed through, because an unmapped tone
@@ -65,8 +80,13 @@ const CHIP = { emerald: 'green', slate: 'gray', blue: 'blue', amber: 'amber', re
 // confidently wrong.
 // eslint-disable-next-line react-refresh/only-export-components
 export function stakeholderAnalytics({
-  escalations = [], legalIssues = [], sites = [], siteId = 'all', keepUnplaced = true,
-  from = '', to = '',
+  escalations = [],
+  legalIssues = [],
+  sites = [],
+  siteId = 'all',
+  keepUnplaced = true,
+  from = '',
+  to = '',
 } = {}) {
   const byId = new Map(sites.map((s) => [s.id, s]))
 
@@ -119,7 +139,9 @@ export function stakeholderAnalytics({
       ...escalations.filter((e) => e && visible(e)).map((e) => monthOf(e.raisedOn)),
       ...legalIssues.filter((l) => l && visible(l)).map((l) => monthOf(l.incidentDate)),
     ]),
-  ].filter(Boolean).sort()
+  ]
+    .filter(Boolean)
+    .sort()
 
   const undated = {
     escalations: esc.filter((e) => !monthOf(e.raisedOn)).length,
@@ -165,8 +187,11 @@ export function stakeholderAnalytics({
   // two visits.
   const deptCount = new Map()
   for (const l of legal) {
-    const keys = [...new Set((Array.isArray(l.departments) ? l.departments : []).map(clean).filter(Boolean))]
-    for (const k of keys.length ? keys : ['__unrecorded']) deptCount.set(k, (deptCount.get(k) || 0) + 1)
+    const keys = [
+      ...new Set((Array.isArray(l.departments) ? l.departments : []).map(clean).filter(Boolean)),
+    ]
+    for (const k of keys.length ? keys : ['__unrecorded'])
+      deptCount.set(k, (deptCount.get(k) || 0) + 1)
   }
   const byDepartment = [...deptCount.entries()]
     .map(([key, value]) => ({
@@ -185,7 +210,12 @@ export function stakeholderAnalytics({
     noticeCount.set(k, (noticeCount.get(k) || 0) + 1)
   }
   const byNotice = [
-    ...NOTICE_TYPES.map((n) => ({ key: n.key, name: n.label, value: noticeCount.get(n.key) || 0, color: HEX[n.tone] })),
+    ...NOTICE_TYPES.map((n) => ({
+      key: n.key,
+      name: n.label,
+      value: noticeCount.get(n.key) || 0,
+      color: HEX[n.tone],
+    })),
     // A notice type this build does not know about still happened. Showing it
     // raw beats dropping it and reporting a mix that is missing a row.
     ...[...noticeCount.entries()]
@@ -200,7 +230,12 @@ export function stakeholderAnalytics({
       counts.set(k, (counts.get(k) || 0) + 1)
     }
     return [
-      ...defs.map((s) => ({ key: s.key, name: s.label, value: counts.get(s.key) || 0, color: HEX[s.tone] })),
+      ...defs.map((s) => ({
+        key: s.key,
+        name: s.label,
+        value: counts.get(s.key) || 0,
+        color: HEX[s.tone],
+      })),
       ...[...counts.entries()]
         .filter(([k]) => !defs.some((s) => s.key === k))
         .map(([key, value]) => ({ key, name: key, value, color: HEX.slate })),
@@ -219,7 +254,8 @@ export function stakeholderAnalytics({
   const touch = (r) => {
     const at = place(r)
     const key = at.id || `name:${at.name}`
-    if (!bucket.has(key)) bucket.set(key, { key, name: at.name, complaints: 0, escalated: 0, legal: 0, severe: 0 })
+    if (!bucket.has(key))
+      bucket.set(key, { key, name: at.name, complaints: 0, escalated: 0, legal: 0, severe: 0 })
     return bucket.get(key)
   }
   for (const e of joined) {
@@ -279,23 +315,40 @@ export default function StakeholderTab({ escalations, legalIssues, sites, keepUn
 
   // The months as the dropdowns spell them, so the sentence and the control the
   // reader just used say the same thing.
-  const rangeLabel = f.from && f.to
-    ? (f.from === f.to ? f.from : `${f.from} to ${f.to}`)
-    : f.from ? `${f.from} onwards` : `up to ${f.to}`
+  const rangeLabel =
+    f.from && f.to
+      ? f.from === f.to
+        ? f.from
+        : `${f.from} to ${f.to}`
+      : f.from
+        ? `${f.from} onwards`
+        : `up to ${f.to}`
 
   const picker = (
     <div className="card mb-5 flex flex-wrap items-end gap-3 p-4">
       <Picker id="sh-site" label="Site" value={f.siteId} onChange={set('siteId')}>
         <option value="all">All sites ({sites.length})</option>
-        {sites.map((site) => <option key={site.id} value={site.id}>{site.name}</option>)}
+        {sites.map((site) => (
+          <option key={site.id} value={site.id}>
+            {site.name}
+          </option>
+        ))}
       </Picker>
       <Picker id="sh-from" label="From" value={f.from} onChange={set('from')}>
         <option value="">Earliest</option>
-        {a.months.map((m) => <option key={m} value={m}>{m}</option>)}
+        {a.months.map((m) => (
+          <option key={m} value={m}>
+            {m}
+          </option>
+        ))}
       </Picker>
       <Picker id="sh-to" label="To" value={f.to} onChange={set('to')}>
         <option value="">Latest</option>
-        {a.months.map((m) => <option key={m} value={m}>{m}</option>)}
+        {a.months.map((m) => (
+          <option key={m} value={m}>
+            {m}
+          </option>
+        ))}
       </Picker>
       <button
         type="button"
@@ -315,7 +368,9 @@ export default function StakeholderTab({ escalations, legalIssues, sites, keepUn
           <p className="text-[15px] font-bold text-ink-900">
             {ranged
               ? 'Nothing in this month range'
-              : scoped ? 'Nothing recorded at this site' : 'No stakeholder issues recorded'}
+              : scoped
+                ? 'Nothing recorded at this site'
+                : 'No stakeholder issues recorded'}
           </p>
           <p className="mx-auto mt-1.5 max-w-[52ch] text-[13px] leading-relaxed text-ink-500">
             {ranged
@@ -333,14 +388,22 @@ export default function StakeholderTab({ escalations, legalIssues, sites, keepUn
   // stated once here rather than repeated on each panel.
   const crossoverNote = [
     'Worst notice first — the notice served is what the complaint actually became.',
-    scoped && 'Both sides are narrowed to this site, so a notice filed against another site will not appear here.',
-    ranged && 'Both sides are dated on their own, so a complaint appears here only when the matter it became falls in this range too.',
-  ].filter(Boolean).join(' ')
+    scoped &&
+      'Both sides are narrowed to this site, so a notice filed against another site will not appear here.',
+    ranged &&
+      'Both sides are dated on their own, so a complaint appears here only when the matter it became falls in this range too.',
+  ]
+    .filter(Boolean)
+    .join(' ')
 
-  const orphanCause = ranged && scoped
-    ? 'the site filter or the month range excludes it'
-    : ranged ? 'the month range excludes it'
-      : scoped ? 'the site filter excludes it' : 'it has been deleted'
+  const orphanCause =
+    ranged && scoped
+      ? 'the site filter or the month range excludes it'
+      : ranged
+        ? 'the month range excludes it'
+        : scoped
+          ? 'the site filter excludes it'
+          : 'it has been deleted'
 
   const inScopeTotal = s.escalations.total + s.legal.total
   const noteBelowStats = ranged || a.undated.total > 0
@@ -353,7 +416,9 @@ export default function StakeholderTab({ escalations, legalIssues, sites, keepUn
     <div className="animate-fade-in-up">
       {picker}
 
-      <div className={`${noteBelowStats ? 'mb-2' : 'mb-5'} grid gap-3 sm:grid-cols-2 lg:grid-cols-4`}>
+      <div
+        className={`${noteBelowStats ? 'mb-2' : 'mb-5'} grid gap-3 sm:grid-cols-2 lg:grid-cols-4`}
+      >
         <Stat
           icon={ArrowRightLeft}
           label="Reached an authority"
@@ -392,9 +457,9 @@ export default function StakeholderTab({ escalations, legalIssues, sites, keepUn
             `Narrowed to ${rangeLabel} — complaints by the date they were raised, department visits by the date of the incident. `}
           {a.undated.total > 0 &&
             `${a.undated.total} of ${inScopeTotal} ${plural(a.undated.total, 'record carries', 'records carry')} no date ` +
-            `(${a.undated.escalations} ${plural(a.undated.escalations, 'complaint', 'complaints')}, ` +
-            `${a.undated.legal} ${plural(a.undated.legal, 'visit', 'visits')}) and ` +
-            `${plural(a.undated.total, 'is', 'are')} counted in every range rather than hidden.`}
+              `(${a.undated.escalations} ${plural(a.undated.escalations, 'complaint', 'complaints')}, ` +
+              `${a.undated.legal} ${plural(a.undated.legal, 'visit', 'visits')}) and ` +
+              `${plural(a.undated.total, 'is', 'are')} counted in every range rather than hidden.`}
         </p>
       )}
 
@@ -422,12 +487,13 @@ export default function StakeholderTab({ escalations, legalIssues, sites, keepUn
               <div className="mb-3 rounded-2xl bg-red-50 px-4 py-3">
                 <p className="text-[12.5px] font-bold leading-snug text-red-700">
                   {a.closedButLive.length}{' '}
-                  {plural(a.closedButLive.length, 'complaint is', 'complaints are')} marked resolved or closed
-                  with a notice still open
+                  {plural(a.closedButLive.length, 'complaint is', 'complaints are')} marked resolved
+                  or closed with a notice still open
                 </p>
                 <p className="mt-0.5 text-[11.5px] leading-relaxed text-red-700/80">
-                  Off the customer-service list, still live with an authority. The escalation status alone
-                  would read {plural(a.closedButLive.length, 'this one', 'these')} as finished.
+                  Off the customer-service list, still live with an authority. The escalation status
+                  alone would read {plural(a.closedButLive.length, 'this one', 'these')} as
+                  finished.
                 </p>
               </div>
             )}
@@ -445,8 +511,12 @@ export default function StakeholderTab({ escalations, legalIssues, sites, keepUn
                       {e.title || 'Untitled complaint'}
                     </span>
                     <span className="truncate text-[11.5px] text-ink-400">{e.siteLabel}</span>
-                    <Badge tone={CHIP[status?.tone] || 'gray'}>{status?.label || clean(e.status) || '—'}</Badge>
-                    <Badge tone={CHIP[notice?.tone] || 'gray'}>{notice?.label || clean(e.worstNotice) || '—'}</Badge>
+                    <Badge tone={CHIP[status?.tone] || 'gray'}>
+                      {status?.label || clean(e.status) || '—'}
+                    </Badge>
+                    <Badge tone={CHIP[notice?.tone] || 'gray'}>
+                      {notice?.label || clean(e.worstNotice) || '—'}
+                    </Badge>
                     <span className="text-[11.5px] font-semibold text-ink-500">
                       {e.openLegal > 0
                         ? `${e.openLegal} of ${e.legalCount} open`
@@ -466,15 +536,17 @@ export default function StakeholderTab({ escalations, legalIssues, sites, keepUn
         <div className="mb-5 space-y-1.5 text-[11.5px] leading-relaxed text-ink-400">
           {a.orphanLegal > 0 && (
             <p>
-              {a.orphanLegal} legal {plural(a.orphanLegal, 'issue', 'issues')} here came from a complaint that is
-              not in this scope — {orphanCause}. Counted in the panels below, but not in the crossover above.
+              {a.orphanLegal} legal {plural(a.orphanLegal, 'issue', 'issues')} here came from a
+              complaint that is not in this scope — {orphanCause}. Counted in the panels below, but
+              not in the crossover above.
             </p>
           )}
           {showSevered && (
             <p>
-              {a.escalatedOutOfRange} {plural(a.escalatedOutOfRange, 'complaint', 'complaints')} here reached an
-              authority in a matter dated outside this range, so {plural(a.escalatedOutOfRange, 'it counts', 'they count')} above
-              as never escalated. Clear From and To to see {plural(a.escalatedOutOfRange, 'it', 'them')}.
+              {a.escalatedOutOfRange} {plural(a.escalatedOutOfRange, 'complaint', 'complaints')}{' '}
+              here reached an authority in a matter dated outside this range, so{' '}
+              {plural(a.escalatedOutOfRange, 'it counts', 'they count')} above as never escalated.
+              Clear From and To to see {plural(a.escalatedOutOfRange, 'it', 'them')}.
             </p>
           )}
         </div>
@@ -527,13 +599,23 @@ export default function StakeholderTab({ escalations, legalIssues, sites, keepUn
                 <tbody>
                   {a.bySite.map((row) => (
                     <tr key={row.key} className="border-t border-ink-100">
-                      <td className="max-w-[180px] truncate px-2 py-2 font-semibold text-ink-800">{row.name}</td>
-                      <td className="px-2 py-2 text-right tabular-nums text-ink-700">{row.complaints}</td>
-                      <td className={`px-2 py-2 text-right tabular-nums ${row.escalated ? 'font-bold text-red-700' : 'text-ink-300'}`}>
+                      <td className="max-w-[180px] truncate px-2 py-2 font-semibold text-ink-800">
+                        {row.name}
+                      </td>
+                      <td className="px-2 py-2 text-right tabular-nums text-ink-700">
+                        {row.complaints}
+                      </td>
+                      <td
+                        className={`px-2 py-2 text-right tabular-nums ${row.escalated ? 'font-bold text-red-700' : 'text-ink-300'}`}
+                      >
                         {row.escalated}
                       </td>
-                      <td className="px-2 py-2 text-right tabular-nums text-ink-700">{row.legal}</td>
-                      <td className={`px-2 py-2 text-right tabular-nums ${row.severe ? 'font-bold text-red-700' : 'text-ink-300'}`}>
+                      <td className="px-2 py-2 text-right tabular-nums text-ink-700">
+                        {row.legal}
+                      </td>
+                      <td
+                        className={`px-2 py-2 text-right tabular-nums ${row.severe ? 'font-bold text-red-700' : 'text-ink-300'}`}
+                      >
                         {row.severe}
                       </td>
                     </tr>
@@ -550,8 +632,9 @@ export default function StakeholderTab({ escalations, legalIssues, sites, keepUn
         <Panel title="Repeat complainants" subtitle="Members appearing in more than one complaint">
           {a.repeats.length === 0 ? (
             <NoData height={180}>
-              No member appears in more than one complaint here. Names are read from the members recorded on
-              each escalation, so a complaint logged without one cannot be matched to another.
+              No member appears in more than one complaint here. Names are read from the members
+              recorded on each escalation, so a complaint logged without one cannot be matched to
+              another.
             </NoData>
           ) : (
             <>
@@ -564,7 +647,9 @@ export default function StakeholderTab({ escalations, legalIssues, sites, keepUn
                     <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-ink-900">
                       {m.name || m.memberId}
                     </span>
-                    {m.name && m.memberId && <span className="font-mono text-[11px] text-ink-400">{m.memberId}</span>}
+                    {m.name && m.memberId && (
+                      <span className="font-mono text-[11px] text-ink-400">{m.memberId}</span>
+                    )}
                     <Badge tone="gray">{m.count} complaints</Badge>
                     {m.escalated > 0 && (
                       <Badge tone="red">{m.escalated} reached an authority</Badge>
