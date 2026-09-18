@@ -122,7 +122,7 @@ function Tile({ to, icon: Icon, gradient, label, title, delay = 0, logoKey }) {
       <Link
         to={to}
         style={{ animationDelay: `${delay}ms` }}
-        className="group relative flex animate-fade-in-up items-center gap-4 rounded-3xl bg-[rgba(247,243,236,0.1)] p-4 ring-1 ring-[#f7f3ec]/12 shadow-elev
+        className="group relative flex animate-fade-in-up items-center gap-4 rounded-3xl bg-white/70 p-4 ring-1 ring-white/70 shadow-elev
                    transition-[transform,box-shadow] duration-200 ease-emil [transform-style:preserve-3d]
                    hover:-translate-y-0.5 hover:shadow-elev-lg hover:ring-brand-400/35
                    active:translate-y-0 active:scale-[0.99]
@@ -558,7 +558,7 @@ export default function PortalHome() {
                   tickLine={false}
                   axisLine={false}
                   fontSize={11}
-                  tick={{ fill: '#8ba7bd' }}
+                  tick={{ fill: '#8a6844' }}
                   interval={0}
                   tickFormatter={(v) => String(v).slice(0, 10)}
                 />
@@ -567,10 +567,10 @@ export default function PortalHome() {
                   tickLine={false}
                   axisLine={false}
                   fontSize={11}
-                  tick={{ fill: '#8ba7bd' }}
+                  tick={{ fill: '#8a6844' }}
                 />
                 <Tooltip cursor={{ fill: 'rgba(34,211,238,0.08)' }} />
-                <Legend iconType="circle" wrapperStyle={{ fontSize: 12, color: '#a8b6cc' }} />
+                <Legend iconType="circle" wrapperStyle={{ fontSize: 12, color: '#8a6844' }} />
                 <Bar
                   dataKey="extinguishers"
                   name="Extinguishers"
@@ -705,7 +705,7 @@ function DueList({ rows, empty, meta, loading }) {
       {rows.map((r) => (
         <li
           key={r.key}
-          className="flex items-center gap-3.5 rounded-2xl bg-surface-50 px-4 py-3 ring-1 ring-[#f7f3ec]/12"
+          className="flex items-center gap-3.5 rounded-2xl bg-surface-50 px-4 py-3 ring-1 ring-ink-200"
         >
           <span
             className="h-[34px] w-1 flex-none rounded"

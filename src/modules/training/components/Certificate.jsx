@@ -5,7 +5,7 @@ import { formatDate } from '../../../shared/lib/format'
 /**
  * WEHS training certificate — on-screen preview + print/PDF ("Save as PDF" in
  * the browser print dialog). The injected print style isolates the certificate
- * so only it prints, in landscape. Chrome matches the kraft-glass kit: white
+ * so only it prints, in landscape. Chrome matches the amber+white glass kit: white
  * paper, hairline, logo teal accent — not a serif diploma.
  */
 export default function CertificateModal({ record, orgName, onClose }) {

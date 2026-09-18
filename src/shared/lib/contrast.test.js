@@ -52,7 +52,7 @@ describe('readableOnTint', () => {
     }
   })
 
-  it('lifts every failing category chip to AA on the kraft glass card', () => {
+  it('lifts every failing category chip to AA on the amber glass card', () => {
     for (const [name, color] of Object.entries(FAILING)) {
       const text = readableOnTint(color)
       const bg = tintOver(color)

@@ -69,7 +69,7 @@ export default class ErrorBoundary extends Component {
           minHeight: '100vh',
           display: 'grid',
           placeItems: 'center',
-          background: '#1f1a16',
+          background: '#f6e3bb',
           padding: 24,
           fontFamily: 'system-ui, -apple-system, sans-serif',
         }}
@@ -77,20 +77,20 @@ export default class ErrorBoundary extends Component {
         <div
           style={{
             maxWidth: 420,
-            background: 'rgba(247, 243, 236, 0.12)',
+            background: 'rgba(255, 255, 255, 0.78)',
             borderRadius: 24,
             padding: 32,
             textAlign: 'center',
             boxShadow:
-              '0 1px 2px rgba(38,33,26,0.08), 0 18px 48px rgba(38,33,26,0.32), 0 0 0 1px rgba(247,243,236,0.14)',
-            border: '1px solid rgba(247, 243, 236, 0.16)',
+              '0 1px 2px rgba(38,33,26,0.05), 0 18px 48px rgba(38,33,26,0.14), 0 0 0 1px rgba(255,255,255,0.75)',
+            border: '1px solid rgba(255, 255, 255, 0.78)',
           }}
         >
           <p style={{ fontSize: 40, margin: 0 }}>⚠️</p>
-          <h1 style={{ fontSize: 18, margin: '12px 0 6px', color: '#f7f3ec' }}>
+          <h1 style={{ fontSize: 18, margin: '12px 0 6px', color: '#1b1610' }}>
             Something went wrong
           </h1>
-          <p style={{ fontSize: 14, lineHeight: 1.5, color: '#c4b09a', margin: '0 0 20px' }}>
+          <p style={{ fontSize: 14, lineHeight: 1.5, color: '#6b5744', margin: '0 0 20px' }}>
             The error has been recorded. Nothing you entered before this screen is lost — reload to
             carry on where you were.
           </p>

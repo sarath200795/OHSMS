@@ -52,7 +52,7 @@ export function Ring({ pct, color, size = 46 }) {
       style={{
         height: size,
         width: size,
-        background: `conic-gradient(${color} ${safe * 3.6}deg, #3f342a 0deg)`,
+        background: `conic-gradient(${color} ${safe * 3.6}deg, #e8dcc8 0deg)`,
       }}
     >
       <span

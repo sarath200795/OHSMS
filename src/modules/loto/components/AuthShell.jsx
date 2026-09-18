@@ -72,17 +72,17 @@ const LEGAL = [
 ]
 
 /**
- * Two-tone split-screen auth layout: a kraft brand panel on the left
- * (logo, headline, feature rows, legal footer) and a frosted cream card
- * on espresso canvas on the right. Collapses to the form column on mobile.
+ * Two-tone split-screen auth layout: an amber brand panel on the left
+ * (logo, headline, feature rows, legal footer) and a frosted white card
+ * on amber canvas on the right. Collapses to the form column on mobile.
  *
- * Note: the app's steel scale is cream at the heading (steel-50).
+ * Note: the app's steel scale is dark ink at the heading (steel-50).
  */
 export default function AuthShell({ title, subtitle, children, footer }) {
   return (
     <div className="flex min-h-screen bg-canvas">
-      {/* Dark brand panel */}
-      <div className="relative hidden w-1/2 flex-col justify-between overflow-hidden bg-gradient-to-br from-[#1f1a16] via-[#2c241c] to-[#3a3028] p-12 text-ink-900 lg:flex">
+      {/* Amber brand panel */}
+      <div className="relative hidden w-1/2 flex-col justify-between overflow-hidden bg-gradient-to-br from-[#f6e3bb] via-[#faf3ea] to-white p-12 text-ink-900 lg:flex">
         <div className="pointer-events-none absolute -right-24 bottom-[-10%] h-96 w-96 rounded-full bg-brand-400/20 blur-3xl" />
         <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-400 via-accent-amber to-[#d94a3c]" />
 
@@ -95,8 +95,8 @@ export default function AuthShell({ title, subtitle, children, footer }) {
           <div className="grid h-10 w-10 place-items-center rounded-2xl bg-gradient-to-br from-hazard to-hazard-dark text-ink shadow-elev">
             <LockMcbMark size={24} />
           </div>
-          <span className="text-lg font-extrabold tracking-tight text-white">
-            HECP <span className="text-amber-400">LOTO</span>
+          <span className="text-lg font-extrabold tracking-tight text-ink-900">
+            HECP <span className="text-brand-800">LOTO</span>
           </span>
         </motion.div>
 
@@ -113,7 +113,7 @@ export default function AuthShell({ title, subtitle, children, footer }) {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3, duration: 0.5 }}
-            className="mt-4 max-w-md text-ink-400"
+            className="mt-4 max-w-md text-ink-600"
           >
             Build LOTO procedures, generate energy tags &amp; QR codes, and track every isolation
             point across your sites — in one auditable system.
@@ -126,9 +126,9 @@ export default function AuthShell({ title, subtitle, children, footer }) {
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.4 + i * 0.08 }}
-                className="flex items-center gap-3 rounded-2xl border border-[#f7f3ec]/12 bg-[#f7f3ec]/[0.06] px-4 py-3"
+                className="flex items-center gap-3 rounded-2xl border border-white/70 bg-white/55 px-4 py-3"
               >
-                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-hazard/20 text-amber-400">
+                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-white/70 text-brand-700">
                   {f.icon}
                 </span>
                 <span className="text-sm font-medium text-ink-800">{f.label}</span>
@@ -137,10 +137,10 @@ export default function AuthShell({ title, subtitle, children, footer }) {
           </div>
         </div>
 
-        <div className="relative space-y-2 text-xs text-ink-400">
+        <div className="relative space-y-2 text-xs text-ink-500">
           <nav aria-label="Legal and policy" className="flex flex-wrap gap-x-4 gap-y-1">
             {LEGAL.map((l) => (
-              <Link key={l.to} to={l.to} className="transition-colors hover:text-amber-400">
+              <Link key={l.to} to={l.to} className="transition-colors hover:text-brand-800">
                 {l.label}
               </Link>
             ))}

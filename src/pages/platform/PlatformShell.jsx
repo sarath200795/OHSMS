@@ -7,7 +7,7 @@
 // wrong — it is the operator's own tenant, sitting above a list of everybody
 // else's, which is precisely the confusion this separation removes.
 //
-// Dark, and it says "Platform console" and nothing else. Whoever is looking at
+// Quiet, and it says "Platform console" and nothing else. Whoever is looking at
 // this screen should never have to check which app they are in.
 // ─────────────────────────────────────────────────────────────────────────────
 import { LogOut, SlidersHorizontal } from 'lucide-react'
@@ -26,8 +26,8 @@ export default function PlatformShell({ children }) {
       >
         Skip to main content
       </a>
-      <header className="sticky top-0 z-30 flex items-center gap-3 border-b border-[#f7f3ec]/12 bg-[rgba(44,36,28,0.72)] px-5 py-3 backdrop-blur-2xl sm:px-7">
-        <span className="grid h-8 w-8 flex-none place-items-center rounded-xl bg-[#f7f3ec]/10 text-ink-400 ring-1 ring-[#f7f3ec]/12">
+      <header className="sticky top-0 z-30 flex items-center gap-3 border-b border-ink-200/80 bg-white/72 px-5 py-3 backdrop-blur-2xl sm:px-7">
+        <span className="grid h-8 w-8 flex-none place-items-center rounded-xl bg-white/70 text-ink-400 ring-1 ring-ink-200">
           <SlidersHorizontal size={16} />
         </span>
         <span className="leading-tight">
@@ -45,7 +45,7 @@ export default function PlatformShell({ children }) {
         <button
           type="button"
           onClick={() => signOut?.()}
-          className="flex items-center gap-2 rounded-2xl px-3 py-2 text-[12.5px] font-semibold text-ink-700 transition-colors hover:bg-[#f7f3ec]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+          className="flex items-center gap-2 rounded-2xl px-3 py-2 text-[12.5px] font-semibold text-ink-700 transition-colors hover:bg-white/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
         >
           <LogOut size={15} />
           Sign out

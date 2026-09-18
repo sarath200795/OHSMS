@@ -42,22 +42,22 @@ export function dueState(value, today = new Date()) {
 const flagged = (s) => s === 'expired' || s === 'due'
 
 /**
- * Text colour for a due state, on kraft glass.
+ * Text colour for a due state, on amber+white glass.
  *
  * Three tables share this palette — the extinguisher DueCell and the AED / FAS
  * / stretcher date cells — so the colours live here rather than in four files.
  * Four copies is how they drifted below the line together without anyone
  * comparing them.
  *
- * The neon kit used cyan-adjacent slate on navy. Kraft glass is cream frost
- * over espresso (`#2c241c`, composited card ~`#35302b`). Logo siren / amber /
- * slate, lightened onto those surfaces so "in 300d" still clears AA:
- *   expired #e8877c   due #e8a33d   ok #8ba7bd
+ * White frost over amber canvas (`#f6e3bb`, composited card ~`#fcf7ec`). Logo
+ * siren / amber / kraft, darkened onto those surfaces so "in 300d" still
+ * clears AA:
+ *   expired #991b1b   due #92400e   ok #6b5744
  */
 export const DUE_TEXT_COLOR = {
-  expired: '#e8877c',
-  due: '#e8a33d',
-  ok: '#8ba7bd',
+  expired: '#991b1b',
+  due: '#92400e',
+  ok: '#6b5744',
 }
 export const dueTextColor = (state) => DUE_TEXT_COLOR[state] || DUE_TEXT_COLOR.ok
 

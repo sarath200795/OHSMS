@@ -6,7 +6,7 @@ export default function NotFound() {
   return (
     <div className="grid min-h-screen place-items-center bg-canvas p-4">
       <div className="card flex max-w-md flex-col items-center gap-4 p-10 text-center">
-        <span className="grid h-14 w-14 place-items-center rounded-2xl bg-surface-100 text-ink-400 ring-1 ring-[#f7f3ec]/12">
+        <span className="grid h-14 w-14 place-items-center rounded-2xl bg-surface-100 text-ink-400 ring-1 ring-ink-200">
           <Compass size={28} />
         </span>
         <div>

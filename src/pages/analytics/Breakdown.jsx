@@ -2,7 +2,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, Cell } from 'recharts'
 import ChartFrame from '../../shared/ui/ChartFrame'
 import { Panel, NoData } from './ui'
 
-const axis = { tickLine: false, axisLine: false, fontSize: 11, tick: { fill: '#8ba7bd' } }
+const axis = { tickLine: false, axisLine: false, fontSize: 11, tick: { fill: '#8a6844' } }
 
 /**
  * A horizontal bar list.

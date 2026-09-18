@@ -11,7 +11,7 @@ import {
 } from './inspectionAnalytics'
 import FilterBar from './FilterBar'
 
-const axis = { tickLine: false, axisLine: false, fontSize: 11, tick: { fill: '#8ba7bd' } }
+const axis = { tickLine: false, axisLine: false, fontSize: 11, tick: { fill: '#8a6844' } }
 
 // Warm through red as the failure rate climbs, so a category that fails most of
 // what it checks reads differently from one that fails occasionally — the count

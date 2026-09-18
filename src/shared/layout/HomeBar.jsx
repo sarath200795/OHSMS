@@ -40,7 +40,7 @@ export default function HomeBar() {
   return (
     <nav
       aria-label="Breadcrumb"
-      className="mb-5 flex flex-wrap items-center gap-0.5 rounded-2xl bg-[rgba(247,243,236,0.1)] px-2 py-1.5 text-sm font-semibold ring-1 ring-[#f7f3ec]/12 backdrop-blur-xl"
+      className="mb-5 flex flex-wrap items-center gap-0.5 rounded-2xl bg-white/70 px-2 py-1.5 text-sm font-semibold ring-1 ring-ink-200 backdrop-blur-xl"
     >
       <Link
         to="/portal"
@@ -52,7 +52,7 @@ export default function HomeBar() {
             The org's own logo, matching the header — the trail and the corner
             it points back to have to be the same shape, or the mark stops
             working as "the way home". */}
-        <OrgMark className="h-5 w-5 rounded-lg ring-1 ring-[#f7f3ec]/15" />
+        <OrgMark className="h-5 w-5 rounded-lg ring-1 ring-ink-200" />
         Home
       </Link>
 

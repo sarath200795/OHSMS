@@ -398,7 +398,7 @@ export function EmptyState({ icon: Icon, title, description, hint, message, acti
       )}
     >
       {Icon && (
-        <span className="grid h-12 w-12 place-items-center rounded-2xl bg-surface-100 text-ink-400 ring-1 ring-[#f7f3ec]/12">
+        <span className="grid h-12 w-12 place-items-center rounded-2xl bg-surface-100 text-ink-400 ring-1 ring-ink-200">
           <Icon size={24} />
         </span>
       )}

@@ -33,8 +33,8 @@ createRoot(document.getElementById('root')).render(
             toastOptions={{
               duration: 3500,
               className:
-                '!bg-surface/90 !text-ink-800 !shadow-elev-lg !rounded-full !ring-1 !ring-[#f7f3ec]/15 !backdrop-blur-xl',
-              success: { iconTheme: { primary: '#8fbc74', secondary: '#1f1a16' } },
+                '!bg-surface/90 !text-ink-800 !shadow-elev-lg !rounded-full !ring-1 !ring-ink-200 !backdrop-blur-xl',
+              success: { iconTheme: { primary: '#8fbc74', secondary: '#faf3ea' } },
             }}
           />
         </AuthProvider>

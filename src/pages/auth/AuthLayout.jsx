@@ -14,7 +14,7 @@ export default function AuthLayout({ title, subtitle, children, footer }) {
           <img
             src="/wehs.svg"
             alt="WEHS"
-            className="mb-3 h-16 w-16 rounded-3xl ring-1 ring-[#f7f3ec]/20 shadow-elev"
+            className="mb-3 h-16 w-16 rounded-3xl ring-1 ring-ink-200 shadow-elev"
           />
           <h1 className="text-2xl font-bold tracking-[-0.02em] text-ink-900">{title}</h1>
           {subtitle && <p className="mt-1 text-sm text-ink-500">{subtitle}</p>}

@@ -59,7 +59,7 @@ export function contrastRatio(a, b) {
  * over `surface`. A browser reports the composited value to axe, not the alpha,
  * so this is what the ratio has to be measured against.
  */
-const DEFAULT_SURFACE = '#2c241c'
+const DEFAULT_SURFACE = '#faf3ea'
 
 export function tintOver(hex, surface = DEFAULT_SURFACE, alpha = 0.1) {
   const c = parseHex(hex)

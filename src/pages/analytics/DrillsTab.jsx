@@ -9,7 +9,7 @@ import { drillAnalytics, attachSites, facetsOf } from './moduleAnalytics'
 import Breakdown from './Breakdown'
 import FilterBar from './FilterBar'
 
-const axis = { tickLine: false, axisLine: false, fontSize: 11, tick: { fill: '#8ba7bd' } }
+const axis = { tickLine: false, axisLine: false, fontSize: 11, tick: { fill: '#8a6844' } }
 
 export default function DrillsTab({ drills, sites, keepUnplaced = true }) {
   const [f, setF] = useState({ siteId: 'all', region: 'all', entity: 'all', from: '', to: '' })
