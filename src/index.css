@@ -143,7 +143,7 @@ thead {
     background-image: linear-gradient(180deg, #2f6d66 0%, #246058 100%);
   }
   .btn-ghost {
-    @apply btn text-ink-800 shadow-none ring-1 ring-[#f7f3ec]/15;
+    @apply btn text-ink-800 shadow-none ring-1 ring-ink-900/15;
     background-color: rgba(247, 243, 236, 0.08);
   }
   .btn-ghost:hover {
@@ -214,18 +214,18 @@ thead {
   /* Surfaces. Hairline is the panel; the umbra is only there so it lifts
      off the canvas. `.well` is a muted fill + border, not a recessed inset. */
   .card {
-    @apply rounded-3xl ring-1 ring-[#f7f3ec]/15;
+    @apply rounded-3xl ring-1 ring-ink-900/15;
     background-color: rgba(247, 243, 236, 0.12);
     backdrop-filter: blur(22px) saturate(1.25);
     -webkit-backdrop-filter: blur(22px) saturate(1.25);
     box-shadow: theme('boxShadow.elev');
   }
   .well {
-    @apply rounded-2xl ring-1 ring-[#f7f3ec]/12;
+    @apply rounded-2xl ring-1 ring-ink-900/10;
     background-color: rgba(31, 26, 22, 0.45);
   }
   .chip {
-    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-[#f7f3ec]/12;
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-ink-900/10;
   }
 
   /* Secondary nav — module tabs, settings, sites, analytics. One active
@@ -250,7 +250,7 @@ thead {
   }
   .tab-strip {
     @apply mb-5 flex gap-1 overflow-x-auto overscroll-x-contain rounded-2xl p-1
-      ring-1 ring-[#f7f3ec]/12 [-webkit-overflow-scrolling:touch];
+      ring-1 ring-ink-900/10 [-webkit-overflow-scrolling:touch];
     background-color: rgba(31, 26, 22, 0.45);
   }
 
