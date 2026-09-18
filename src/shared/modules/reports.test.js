@@ -76,7 +76,11 @@ describe('module reports contract', () => {
       const rel = ROUTER[app.key]
       const file = join(root, rel)
       expect(existsSync(file), rel).toBe(true)
-      const src = readFileSync(file, 'utf8')
+      const nav = join(dirname(file), 'ModuleNav.jsx')
+      const src = [file, existsSync(nav) ? nav : null]
+        .filter(Boolean)
+        .map((f) => readFileSync(f, 'utf8'))
+        .join('\n')
       expect(src, rel).toContain('path="reports"')
       const hasLiteral = src.includes(moduleReportsPath(app.pathPrefix))
       const hasHelper =
