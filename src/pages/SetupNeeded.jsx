@@ -8,10 +8,10 @@ export default function SetupNeeded() {
           <img
             src="/wehs.svg"
             alt="WEHS"
-            className="mb-3 h-16 w-16 rounded-2xl ring-1 ring-white/20"
+            className="mb-3 h-16 w-16 rounded-3xl ring-1 ring-ink-200 shadow-elev"
           />
-          <h1 className="text-2xl font-bold tracking-[-0.02em] text-white">Connect Firebase</h1>
-          <p className="mt-1 text-sm text-white/80">One step to start WEHS</p>
+          <h1 className="text-2xl font-bold tracking-[-0.02em] text-ink-900">Connect Firebase</h1>
+          <p className="mt-1 text-sm text-ink-500">One step to start WEHS</p>
         </div>
         <div className="card space-y-4 p-6 sm:p-8">
           <div className="flex items-start gap-3">

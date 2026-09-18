@@ -12,7 +12,7 @@ import {
 import FilterBar from './FilterBar'
 import { todayISO } from '../../shared/lib/dates'
 
-const axis = { tickLine: false, axisLine: false, fontSize: 11, tick: { fill: '#8b9cb8' } }
+const axis = { tickLine: false, axisLine: false, fontSize: 11, tick: { fill: '#8a6844' } }
 
 // Warm through red as the failure rate climbs, so a category that fails most of
 // what it checks reads differently from one that fails occasionally — the count

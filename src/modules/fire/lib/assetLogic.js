@@ -42,25 +42,22 @@ export function dueState(value, today = new Date()) {
 const flagged = (s) => s === 'expired' || s === 'due'
 
 /**
- * Text colour for a due state, on dark glass.
+ * Text colour for a due state, on amber+white glass.
  *
  * Three tables share this palette — the extinguisher DueCell and the AED / FAS
  * / stretcher date cells — so the colours live here rather than in four files.
  * Four copies is how they drifted below the line together without anyone
  * comparing them.
  *
- * The first cut darkened the hues for a white card. The neon kit inverted the
- * surface to navy glass (`#151b36`, composited card `#131932`) and those same
- * hexes failed WCAG AA in the other direction: slate-600 on glass was 2.28:1,
- * which is how axe failed the extinguisher list on "in 300d". Lightened onto
- * the kit's ink / hazard / danger stops instead. Ratios on card / surface /
- * canvas:
- *   ok 6.22 / 6.08 / 6.77   due 10.37 / 10.13 / 11.28   expired 6.26 / 6.11 / 6.81
+ * White frost over amber canvas (`#f6e3bb`, composited card ~`#fcf7ec`). Logo
+ * siren / amber / kraft, darkened onto those surfaces so "in 300d" still
+ * clears AA:
+ *   expired #991b1b   due #92400e   ok #6b5744
  */
 export const DUE_TEXT_COLOR = {
-  expired: '#f87171',
-  due: '#fbbf24',
-  ok: '#8b9cb8',
+  expired: '#991b1b',
+  due: '#92400e',
+  ok: '#6b5744',
 }
 export const dueTextColor = (state) => DUE_TEXT_COLOR[state] || DUE_TEXT_COLOR.ok
 

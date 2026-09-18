@@ -31,7 +31,10 @@ export default function ForgotPassword() {
       title="Reset password"
       subtitle="We'll email you a secure reset link"
       footer={
-        <Link to="/login" className="font-semibold text-white underline-offset-2 hover:underline">
+        <Link
+          to="/login"
+          className="font-semibold text-brand-700 underline-offset-2 hover:underline"
+        >
           Back to sign in
         </Link>
       }
@@ -42,14 +45,21 @@ export default function ForgotPassword() {
             <MailCheck size={26} />
           </span>
           <p className="text-sm text-ink-600">
-            If an account exists for <span className="font-semibold">{email}</span>, a reset link is on
-            its way. Check your inbox (and the emulator UI / MailHog in local dev).
+            If an account exists for <span className="font-semibold">{email}</span>, a reset link is
+            on its way. Check your inbox (and the emulator UI / MailHog in local dev).
           </p>
         </div>
       ) : (
         <form onSubmit={submit} className="space-y-4">
           <Field label="Email" htmlFor="email">
-            <Input id="email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@company.com" />
+            <Input
+              id="email"
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@company.com"
+            />
           </Field>
           <Button type="submit" loading={busy} className="w-full">
             Send reset link

@@ -111,18 +111,18 @@ export default function PlatformLogin() {
             <SlidersHorizontal size={22} />
           </span>
           <div>
-            <h1 className="text-lg font-bold tracking-tight text-white">Platform console</h1>
+            <h1 className="text-lg font-bold tracking-tight text-ink-900">Platform console</h1>
             <p className="mt-0.5 text-[12.5px] text-ink-400">
               Operator access only. This is not the customer sign-in.
             </p>
           </div>
         </div>
 
-        <div className="rounded-2xl bg-surface p-6 shadow-elev">
+        <div className="rounded-3xl bg-white/72 p-6 shadow-elev ring-1 ring-white/70 backdrop-blur-2xl">
           {refused && (
             <p
               role="alert"
-              className="mb-4 rounded-xl bg-red-500/15 px-3 py-2.5 text-[12.5px] font-semibold text-red-300"
+              className="mb-4 rounded-xl bg-red-50 px-3 py-2.5 text-[12.5px] font-semibold text-red-700"
             >
               {refused}
             </p>

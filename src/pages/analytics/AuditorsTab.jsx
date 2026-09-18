@@ -29,7 +29,7 @@ import {
   GROUP_DIMS, dimensionsPresent, dimensionHasData, resolveGroupBy, PASS_MARK, regionCoverage,
 } from './odinAnalytics'
 
-const axis = { tickLine: false, axisLine: false, fontSize: 11, tick: { fill: '#8b9cb8' } }
+const axis = { tickLine: false, axisLine: false, fontSize: 11, tick: { fill: '#8a6844' } }
 
 // Split by CITY, not region. This tab already tracks by auditor — that is what
 // its rows are — and the only question left is what colours the bars. Region
@@ -307,7 +307,7 @@ export default function AuditorsTab({ sites = [], keepUnplaced = true }) {
                       dataKey="name"
                       position="right"
                       content={({ x, y, height, index }) => (
-                        <text x={x + 8} y={y + height / 2 + 4} fontSize={10.5} fill="#8b9cb8">
+                        <text x={x + 8} y={y + height / 2 + 4} fontSize={10.5} fill="#8a6844">
                           {m.rows[index]?.total}
                         </text>
                       )}

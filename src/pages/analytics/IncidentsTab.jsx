@@ -26,7 +26,7 @@ const TREND_TYPES = [
   { key: 'property_damage', label: 'Property damage' },
 ]
 
-const axis = { tickLine: false, axisLine: false, fontSize: 11, tick: { fill: '#8b9cb8' } }
+const axis = { tickLine: false, axisLine: false, fontSize: 11, tick: { fill: '#8a6844' } }
 
 export default function IncidentsTab({ incidents, sites, keepUnplaced = true }) {
   const [f, setF] = useState({ siteId: 'all', region: 'all', entity: 'all', from: '', to: '' })

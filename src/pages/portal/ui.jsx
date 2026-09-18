@@ -52,7 +52,7 @@ export function Ring({ pct, color, size = 46 }) {
       style={{
         height: size,
         width: size,
-        background: `conic-gradient(${color} ${safe * 3.6}deg, #243056 0deg)`,
+        background: `conic-gradient(${color} ${safe * 3.6}deg, #e8dcc8 0deg)`,
       }}
     >
       <span
@@ -70,7 +70,7 @@ export function PortalHeading({ icon: Icon, title, subtitle, action }) {
   return (
     <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center">
       <div className="flex min-w-0 items-center gap-3.5">
-        <span className="grid h-10 w-10 flex-none place-items-center rounded-xl bg-brand-50 text-brand-700 ring-1 ring-brand-200/70">
+        <span className="grid h-10 w-10 flex-none place-items-center rounded-2xl bg-brand-50 text-brand-700 ring-1 ring-brand-200/70">
           <Icon size={20} strokeWidth={2.1} />
         </span>
         <div className="min-w-0">

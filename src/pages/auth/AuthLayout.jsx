@@ -14,13 +14,13 @@ export default function AuthLayout({ title, subtitle, children, footer }) {
           <img
             src="/wehs.svg"
             alt="WEHS"
-            className="mb-3 h-16 w-16 rounded-2xl ring-1 ring-white/20"
+            className="mb-3 h-16 w-16 rounded-3xl ring-1 ring-ink-200 shadow-elev"
           />
-          <h1 className="text-2xl font-bold tracking-[-0.02em] text-white">{title}</h1>
-          {subtitle && <p className="mt-1 text-sm text-white/80">{subtitle}</p>}
+          <h1 className="text-2xl font-bold tracking-[-0.02em] text-ink-900">{title}</h1>
+          {subtitle && <p className="mt-1 text-sm text-ink-500">{subtitle}</p>}
         </div>
         <div className="card p-6 sm:p-8">{children}</div>
-        {footer && <div className="mt-5 text-center text-sm text-white/80">{footer}</div>}
+        {footer && <div className="mt-5 text-center text-sm text-ink-600">{footer}</div>}
       </motion.div>
     </div>
   )

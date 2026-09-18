@@ -6,14 +6,14 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700;800&family=Roboto:wght@400;500;700;900&display=swap" />
   <style>
-    :root { --canvas:#0c1024; --surface:#fff; --ink:#0f172a; --muted:#5b6573; --rule:#e2e8f0; --well:#f8fafc; --brand:#0369a1; }
+    :root { --canvas:#f6e3bb; --surface:#fff; --ink:#26211a; --muted:#8a6844; --rule:#e8dcc8; --well:#faf3ea; --brand:#3d7a72; --siren:#d94a3c; --amber:#e8a33d; }
     * { box-sizing: border-box; }
-    body { margin: 0; background: var(--canvas); color: #f4f7ff; font-family: 'Open Sans', system-ui, sans-serif; }
+    body { margin: 0; background: var(--canvas); color: var(--ink); font-family: 'Open Sans', system-ui, sans-serif; }
     .doc-kicker, .doc-title, h1, h2 { font-family: Roboto, system-ui, sans-serif; }
     .page { max-width: 920px; margin: 0 auto; padding: 32px 20px 72px; }
     .intro h1 { margin: 0; font-size: 22px; letter-spacing: -0.02em; }
-    .intro p { color: #8b9cb8; font-size: 14px; max-width: 62ch; }
-    .sheet { background: var(--surface); color: var(--ink); border: 1px solid var(--rule); border-radius: 12px; box-shadow: 0 0 0 1px rgba(255,255,255,0.06), 0 18px 48px rgba(4,8,24,0.45); padding: 28px; margin-top: 28px; }
+    .intro p { color: var(--muted); font-size: 14px; max-width: 62ch; }
+    .sheet { background: var(--surface); color: var(--ink); border: 1px solid var(--rule); border-radius: 20px; box-shadow: 0 1px 2px rgba(38,33,26,0.05), 0 18px 48px rgba(38,33,26,0.12); padding: 28px; margin-top: 28px; }
     .label { font-size: 11px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px; }
     .doc-kicker { margin: 0 0 4px; font-size: 11px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--brand); }
     .doc-title { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
@@ -24,25 +24,25 @@
     table { width: 100%; border-collapse: collapse; font-size: 13px; }
     th, td { border: 1px solid var(--rule); padding: 8px 10px; text-align: left; }
     th, td.lbl { background: var(--well); font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
-    td.lbl { font-size: 12px; letter-spacing: 0; text-transform: none; color: #2c3848; width: 22%; }
-    .quote { margin: 0; padding: 8px 12px; border-left: 3px solid var(--brand); background: var(--well); font-size: 13px; color: #2c3848; }
+    td.lbl { font-size: 12px; letter-spacing: 0; text-transform: none; color: #4a3c30; width: 22%; }
+    .quote { margin: 0; padding: 8px 12px; border-left: 3px solid var(--brand); background: var(--well); font-size: 13px; color: #4a3c30; }
     .cert { aspect-ratio: 297/180; display: flex; flex-direction: column; border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; text-align: center; }
     .cert-bar { height: 6px; background: var(--brand); }
     .cert-body { flex: 1; padding: 28px 36px 20px; display: flex; flex-direction: column; align-items: center; }
     .cert h2 { margin: 6px 0 0; font-size: 24px; letter-spacing: -0.02em; }
     .qr { width: 72px; height: 72px; background: repeating-conic-gradient(#0f172a 0% 25%, #fff 0% 50%) 0 0 / 8px 8px; border: 1px solid var(--rule); border-radius: 6px; }
     .tag { display: inline-block; background: var(--well); border: 1px solid var(--rule); border-radius: 6px; padding: 2px 8px; font-size: 11px; }
-    .hira-band { background: var(--brand); color: #fff; padding: 10px 14px; display: flex; justify-content: space-between; font-weight: 700; font-size: 13px; border-radius: 6px 6px 0 0; }
-    .loto-band { background: #0f172a; color: #fff; padding: 10px 14px; font-weight: 700; border-radius: 6px 6px 0 0; position: relative; }
-    .loto-band::after { content: ''; display: block; height: 3px; background: #d97706; margin: 8px -14px -10px; }
+    .hira-band { background: var(--brand); color: #fff; padding: 10px 14px; display: flex; justify-content: space-between; font-weight: 700; font-size: 13px; border-radius: 12px 12px 0 0; }
+    .loto-band { background: #26211a; color: #fff; padding: 10px 14px; font-weight: 700; border-radius: 12px 12px 0 0; position: relative; }
+    .loto-band::after { content: ''; display: block; height: 3px; background: #c77f18; margin: 8px -14px -10px; }
   </style>
 </head>
 <body>
   <div class="page">
     <div class="intro">
-      <p class="doc-kicker">PR #56 · Dark glass neon-tech kit</p>
+      <p class="doc-kicker">WEHS amber+white glass kit · logo teal on paper</p>
       <h1>Document templates on light paper</h1>
-      <p>Print, PDF and certificate chrome stay white paper so they remain printable. Cyan kickers, Roboto titles and Open Sans body match the on-screen kit. Invented seed data only.</p>
+      <p>Print, PDF and certificate chrome stay white paper so they remain printable. Kickers use the logo teal (darkened to AA on white), Roboto titles and Open Sans body. Invented seed data only.</p>
     </div>
 
     <article class="sheet" id="certificate">
@@ -55,7 +55,7 @@
           <p style="color:var(--muted);margin:18px 0 4px;font-size:13px">This certifies that</p>
           <p style="margin:0;font-size:28px;font-weight:700;letter-spacing:-0.02em">Jordan Hale</p>
           <p style="color:var(--muted);margin:12px 0 4px;font-size:13px">has completed</p>
-          <p style="margin:0;font-size:18px;font-weight:600;color:#0369a1">Working at Height — Refresher</p>
+          <p style="margin:0;font-size:18px;font-weight:600;color:#3d7a72">Working at Height — Refresher</p>
           <p style="font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#94a3b8;margin-top:6px">Mandatory · Trainer: A. Mensah</p>
           <p style="margin-top:16px;font-size:13px"><b>Completed</b> 12 Mar 2026 &nbsp;·&nbsp; <b>Valid until</b> 12 Mar 2027</p>
           <div style="margin-top:auto;width:100%;display:flex;justify-content:space-between;align-items:flex-end;padding-top:18px;font-size:11px;color:var(--muted)">
@@ -85,7 +85,7 @@
 
     <article class="sheet" id="permit">
       <p class="label">Permit to work</p>
-      <div class="doc-header" style="border-bottom-color:#c74a33">
+      <div class="doc-header" style="border-bottom-color:#d94a3c">
         <div>
           <p class="doc-kicker">WEHS · Permit to work</p>
           <h1 class="doc-title">Permit to work</h1>
@@ -177,8 +177,8 @@
           <tr>
             <td>Mechanical<br>Entanglement</td>
             <td>Unguarded drive shaft on the conveyor head pulley.</td>
-            <td style="background:#c74a33;color:#fff;text-align:center;font-weight:700">16</td>
-            <td style="background:#d97706;color:#fff;text-align:center;font-weight:700">6</td>
+            <td style="background:#c43d32;color:#fff;text-align:center;font-weight:700">16</td>
+            <td style="background:#c77f18;color:#fff;text-align:center;font-weight:700">6</td>
           </tr>
         </tbody>
       </table>
@@ -195,7 +195,7 @@
         <div><b>Location</b> Plant 2 — Bay C</div>
         <div><b>Lockout points</b> 2</div>
       </div>
-      <div style="margin-top:16px;background:#0f172a;color:#fff;font-size:11px;font-weight:700;letter-spacing:.06em;padding:6px 10px;border-radius:4px 4px 0 0">LOCKOUT APPLICATION PROCESS</div>
+      <div style="margin-top:16px;background:#26211a;color:#fff;font-size:11px;font-weight:700;letter-spacing:.06em;padding:6px 10px;border-radius:8px 8px 0 0">LOCKOUT APPLICATION PROCESS</div>
       <div style="background:var(--well);border:1px solid var(--rule);border-top:0;padding:10px;font-size:12px;border-radius:0 0 4px 4px">1. Notify affected associates. 2. Identify hazardous energy source. 3. Isolate equipment. 4. Shut down machinery. 5. Apply lockout devices.</div>
     </article>
   </div>

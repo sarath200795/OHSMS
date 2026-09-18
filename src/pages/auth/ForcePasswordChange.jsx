@@ -30,7 +30,8 @@ export default function ForcePasswordChange() {
     e.preventDefault()
     const pwError = validatePassword(pw, { email: auth.currentUser?.email })
     if (pwError) return toast.error(pwError)
-    if (current && pw === current) return toast.error('Choose a different password than the temporary one')
+    if (current && pw === current)
+      return toast.error('Choose a different password than the temporary one')
     if (pw !== pw2) return toast.error('Passwords do not match')
     setBusy(true)
     try {
@@ -64,10 +65,15 @@ export default function ForcePasswordChange() {
     <div className="aurora grid min-h-screen place-items-center p-4">
       <div className="w-full max-w-md">
         <div className="mb-6 flex flex-col items-center text-center">
-          <img src="/wehs.svg" alt="WEHS" className="mb-3 h-16 w-16 rounded-2xl drop-shadow-lg" />
-          <h1 className="text-2xl font-bold tracking-tight text-white">Set your password</h1>
-          <p className="mt-1 text-sm text-white/70">
-            {profile?.name ? `Hi ${profile.name.split(' ')[0]} — ` : ''}replace the temporary password to continue.
+          <img
+            src="/wehs.svg"
+            alt="WEHS"
+            className="mb-3 h-16 w-16 rounded-3xl ring-1 ring-ink-200 shadow-elev"
+          />
+          <h1 className="text-2xl font-bold tracking-tight text-ink-900">Set your password</h1>
+          <p className="mt-1 text-sm text-ink-500">
+            {profile?.name ? `Hi ${profile.name.split(' ')[0]} — ` : ''}replace the temporary
+            password to continue.
           </p>
         </div>
         <form onSubmit={submit} className="card space-y-4 p-6 sm:p-8">

@@ -269,7 +269,7 @@ describe('notices', () => {
 
   it('drops notice types nobody served and keeps ones it does not recognise', () => {
     const a = run([], [leg({ noticeType: 'seizure_order' })])
-    expect(a.byNotice).toEqual([{ key: 'seizure_order', name: 'seizure_order', value: 1, color: '#8b9cb8' }])
+    expect(a.byNotice).toEqual([{ key: 'seizure_order', name: 'seizure_order', value: 1, color: '#8ba7bd' }])
   })
 
   it('counts only notices with a clock still running as open and serious', () => {

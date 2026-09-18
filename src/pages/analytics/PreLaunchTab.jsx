@@ -135,7 +135,7 @@ export default function PreLaunchTab({ sites = [], orgId }) {
               icon={Rocket}
               label="Handover documents ready"
               value={`${a.pct}%`}
-              tone="#22d3ee"
+              tone="#6db3aa"
               sub={`${a.ready} of ${a.required} across ${a.sites} site${a.sites === 1 ? '' : 's'}`}
             />
             <Stat
@@ -149,7 +149,7 @@ export default function PreLaunchTab({ sites = [], orgId }) {
               icon={CircleDashed}
               label="Documents not filed"
               value={a.missing}
-              tone="#8b9cb8"
+              tone="#8ba7bd"
               sub={a.untouched ? `${a.untouched} site${a.untouched === 1 ? ' has' : 's have'} not started` : 'every site has started'}
             />
             {/* Its own tile, because it is the failure nobody chases: a row with

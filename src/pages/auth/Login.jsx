@@ -12,8 +12,15 @@ import AuthLayout from './AuthLayout'
 
 export default function Login() {
   const {
-    login, loginWithSso, completeMfa, pendingMfa, clearPendingMfa, isAuthed, profile,
-    isPlatformAdmin, platformAdminReady,
+    login,
+    loginWithSso,
+    completeMfa,
+    pendingMfa,
+    clearPendingMfa,
+    isAuthed,
+    profile,
+    isPlatformAdmin,
+    platformAdminReady,
   } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
@@ -119,7 +126,11 @@ export default function Login() {
         title="Enter your code"
         subtitle="Two-factor authentication"
         footer={
-          <button type="button" onClick={cancelMfa} className="font-semibold text-white underline-offset-2 hover:underline">
+          <button
+            type="button"
+            onClick={cancelMfa}
+            className="font-semibold text-brand-700 underline-offset-2 hover:underline"
+          >
             Use a different account
           </button>
         }
@@ -168,11 +179,17 @@ export default function Login() {
       footer={
         <>
           New organization?{' '}
-          <Link to="/register-org" className="font-semibold text-white underline-offset-2 hover:underline">
+          <Link
+            to="/register-org"
+            className="font-semibold text-brand-700 underline-offset-2 hover:underline"
+          >
             Register
           </Link>{' '}
           ·{' '}
-          <Link to="/signup" className="font-semibold text-white underline-offset-2 hover:underline">
+          <Link
+            to="/signup"
+            className="font-semibold text-brand-700 underline-offset-2 hover:underline"
+          >
             Join an existing one
           </Link>
         </>
@@ -199,7 +216,9 @@ export default function Login() {
           ))}
           <div className="flex items-center gap-3 pt-1">
             <span className="h-px flex-1 bg-ink-200" />
-            <span className="text-[11px] font-semibold uppercase tracking-wide text-ink-400">or</span>
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-ink-400">
+              or
+            </span>
             <span className="h-px flex-1 bg-ink-200" />
           </div>
         </div>
@@ -221,7 +240,10 @@ export default function Login() {
           label="Password"
           htmlFor="password"
           action={
-            <Link to="/forgot-password" className="text-xs font-medium text-brand-700 hover:underline">
+            <Link
+              to="/forgot-password"
+              className="text-xs font-medium text-brand-700 hover:underline"
+            >
               Forgot password?
             </Link>
           }

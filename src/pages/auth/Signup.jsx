@@ -27,13 +27,20 @@ import { validatePassword } from '../../shared/auth/passwordPolicy'
 export default function Signup() {
   const { signUpMember, isAuthed, profile } = useAuth()
   const navigate = useNavigate()
-  const [form, setForm] = useState({ orgName: '', name: '', email: '', password: '', department: '' })
+  const [form, setForm] = useState({
+    orgName: '',
+    name: '',
+    email: '',
+    password: '',
+    department: '',
+  })
   // null = not looked up yet, false = looked for and not there, object = found.
   const [org, setOrg] = useState(null)
   const [checking, setChecking] = useState(false)
   const [busy, setBusy] = useState(false)
 
-  if (isAuthed && profile) return <Navigate to={profile.status === 'approved' ? '/portal' : '/pending'} replace />
+  if (isAuthed && profile)
+    return <Navigate to={profile.status === 'approved' ? '/portal' : '/pending'} replace />
 
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value })
 
@@ -47,7 +54,10 @@ export default function Signup() {
    */
   const lookup = async (orgName) => {
     const wanted = orgName.trim()
-    if (!wanted) { setOrg(null); return null }
+    if (!wanted) {
+      setOrg(null)
+      return null
+    }
     setChecking(true)
     try {
       const found = await findOrgByName(wanted)
@@ -68,11 +78,14 @@ export default function Signup() {
     e.preventDefault()
     // Re-resolved here rather than trusted from the blur: the name may have
     // been edited since, and this is the value the account is created against.
-    const found = org && form.orgName.trim().toLowerCase() === org.name.trim().toLowerCase()
-      ? org
-      : await lookup(form.orgName)
+    const found =
+      org && form.orgName.trim().toLowerCase() === org.name.trim().toLowerCase()
+        ? org
+        : await lookup(form.orgName)
     if (!found) {
-      return toast.error('We could not find an organization with that name. Check the spelling with your administrator.')
+      return toast.error(
+        'We could not find an organization with that name. Check the spelling with your administrator.'
+      )
     }
     const pwError = validatePassword(form.password, { email: form.email, name: form.name })
     if (pwError) return toast.error(pwError)
@@ -95,11 +108,17 @@ export default function Signup() {
       footer={
         <>
           Don&apos;t see your org?{' '}
-          <Link to="/register-org" className="font-semibold text-white underline-offset-2 hover:underline">
+          <Link
+            to="/register-org"
+            className="font-semibold text-brand-700 underline-offset-2 hover:underline"
+          >
             Register it
           </Link>{' '}
           ·{' '}
-          <Link to="/login" className="font-semibold text-white underline-offset-2 hover:underline">
+          <Link
+            to="/login"
+            className="font-semibold text-brand-700 underline-offset-2 hover:underline"
+          >
             Sign in
           </Link>
         </>
@@ -109,14 +128,27 @@ export default function Signup() {
         <Field
           label="Organization"
           htmlFor="org"
-          hint={checking ? 'Checking…' : org ? `Found ${org.name}` : 'Type the name exactly as your administrator registered it'}
-          error={org === false ? 'No organization with that name. Check the spelling with your administrator, or register it below.' : ''}
+          hint={
+            checking
+              ? 'Checking…'
+              : org
+                ? `Found ${org.name}`
+                : 'Type the name exactly as your administrator registered it'
+          }
+          error={
+            org === false
+              ? 'No organization with that name. Check the spelling with your administrator, or register it below.'
+              : ''
+          }
         >
           <Input
             id="org"
             required
             value={form.orgName}
-            onChange={(e) => { setOrg(null); set('orgName')(e) }}
+            onChange={(e) => {
+              setOrg(null)
+              set('orgName')(e)
+            }}
             onBlur={(e) => lookup(e.target.value)}
             autoComplete="organization"
           />
@@ -128,15 +160,31 @@ export default function Signup() {
           <Select id="dept" value={form.department} onChange={set('department')}>
             <option value="">Select department…</option>
             {DEPARTMENTS.map((d) => (
-              <option key={d} value={d}>{d}</option>
+              <option key={d} value={d}>
+                {d}
+              </option>
             ))}
           </Select>
         </Field>
         <Field label="Work email" htmlFor="email">
-          <Input id="email" type="email" required value={form.email} onChange={set('email')} autoComplete="email" />
+          <Input
+            id="email"
+            type="email"
+            required
+            value={form.email}
+            onChange={set('email')}
+            autoComplete="email"
+          />
         </Field>
         <Field label="Password" htmlFor="password" hint="At least 6 characters">
-          <Input id="password" type="password" required value={form.password} onChange={set('password')} autoComplete="new-password" />
+          <Input
+            id="password"
+            type="password"
+            required
+            value={form.password}
+            onChange={set('password')}
+            autoComplete="new-password"
+          />
         </Field>
         <Button type="submit" loading={busy} className="w-full">
           Request access
