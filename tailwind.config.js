@@ -34,16 +34,17 @@ export default {
           700: '#4a3c30',
         },
         // Light-theme ink: 50–300 are cream washes and hairlines, 400–900
-        // are body text. 400 is the AA floor on amber canvas (#f6e3bb).
-        // Do not use 50–300 as body text.
+        // are body text. 400 is the AA floor on amber canvas and on frosted
+        // glass over a dim overlay (axe measured a site-dialog hint at 4.2:1
+        // when 400 was the lighter kraft stop). Do not use 50–300 as body text.
         ink: {
           DEFAULT: '#26211a',
           50: '#faf3ea',
           100: '#f4f1ea',
           200: '#e8dcc8',
           300: '#d2c4b4',
-          400: '#70604a',
-          500: '#615344',
+          400: '#615344',
+          500: '#534637',
           600: '#4a3c30',
           700: '#332a22',
           800: '#261f19',
