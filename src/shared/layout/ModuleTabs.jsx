@@ -16,10 +16,7 @@ import { NavLink } from 'react-router-dom'
  */
 export default function ModuleTabs({ tabs, label = 'Module sections', toFor, className = '' }) {
   return (
-    <nav
-      aria-label={label}
-      className={`mb-5 flex gap-1 overflow-x-auto overscroll-x-contain rounded-xl bg-surface/60 p-1 ring-1 ring-white/10 print:hidden [-webkit-overflow-scrolling:touch] ${className}`}
-    >
+    <nav aria-label={label} className={`tab-strip mb-5 print:hidden ${className}`}>
       {tabs
         .filter((t) => !t.hidden)
         .map((t) => (

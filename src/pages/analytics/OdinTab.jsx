@@ -112,16 +112,14 @@ function Segments({ label, value, options, onChange }) {
   return (
     <div className="flex flex-col gap-1">
       <span className="text-[10.5px] font-semibold uppercase tracking-wide text-ink-400">{label}</span>
-      <div role="group" aria-label={label} className="flex flex-wrap gap-1 rounded-2xl bg-surface p-1 shadow-elev-sm">
+      <div role="group" aria-label={label} className="tab-strip flex-wrap">
         {options.map((o) => (
           <button
             key={o.key}
             type="button"
             aria-pressed={value === o.key}
             onClick={() => onChange(o.key)}
-            className={`rounded-xl px-2.5 py-1.5 text-[11.5px] font-semibold transition ${
-              value === o.key ? 'bg-brand-500/20 text-brand-700 shadow-elev-sm' : 'text-ink-500 hover:text-ink-800'
-            }`}
+            className={`nav-tab ${value === o.key ? 'is-on nav-tab-active' : 'nav-tab-idle'}`}
           >
             {o.label}
           </button>

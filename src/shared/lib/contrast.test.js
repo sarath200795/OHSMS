@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest'
-import { contrastRatio, parseHex, readableOnTint, solidBackground, tintOver } from './contrast'
+import {
+  contrastRatio,
+  lightCanvas,
+  mixHex,
+  parseHex,
+  readableOnTint,
+  solidBackground,
+  tintOver,
+} from './contrast'
 
 describe('parseHex', () => {
   it('reads both shorthand and full form', () => {
@@ -100,5 +108,27 @@ describe('solidBackground', () => {
     const [r, g, b] = parseHex(solidBackground('#0891b2'))
     expect(b).toBeGreaterThan(r)
     expect(g).toBeGreaterThan(r)
+  })
+})
+
+describe('mixHex', () => {
+  it('is a at t=0 and b at t=1', () => {
+    expect(mixHex('#000000', '#ffffff', 0)).toBe('#000000')
+    expect(mixHex('#000000', '#ffffff', 1)).toBe('#ffffff')
+  })
+  it('is halfway on a channel', () => {
+    expect(mixHex('#000000', '#ffffff', 0.5)).toBe('#808080')
+  })
+})
+
+describe('lightCanvas', () => {
+  it('leaves the kit amber unchanged — ink already clears AA on it', () => {
+    expect(lightCanvas('#f6e3bb')).toBe('#f6e3bb')
+  })
+  it('washes a navy until ink is readable', () => {
+    const washed = lightCanvas('#0b1f3a')
+    expect(contrastRatio('#26211a', washed)).toBeGreaterThanOrEqual(4.5)
+    const [r, g, b] = parseHex(washed)
+    expect(b).toBeGreaterThan(r)
   })
 })

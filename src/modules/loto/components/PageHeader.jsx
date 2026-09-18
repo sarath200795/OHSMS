@@ -1,13 +1,15 @@
-// Fire-Marshal style page header: rounded gradient icon tile + title + subtitle,
-// with an optional actions slot on the right.
+// Page header: liquid-glass icon disc + title + subtitle, with an optional
+// actions slot on the right.
+import { ModuleMark } from '../../../shared/ui'
+
 export default function PageHeader({ icon, title, subtitle, actions }) {
   return (
     <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
       <div className="flex items-start gap-3">
         {icon && (
-          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-hazard to-hazard-dark text-ink-900 shadow-elev-sm ring-1 ring-ink-900/10">
+          <ModuleMark tone="amber" size="sm">
             {icon}
-          </span>
+          </ModuleMark>
         )}
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-steel-50">{title}</h1>

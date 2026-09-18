@@ -28,6 +28,7 @@ import { MapContainer, TileLayer, Marker, Tooltip as LeafletTooltip } from 'reac
 import L from 'leaflet'
 import { Cctv, HardDrive, Router, TriangleAlert, MapPin, Unplug, CalendarClock } from 'lucide-react'
 import { Panel, Stat, NoData, Picker } from './ui'
+import { ModuleMark } from '../../shared/ui'
 import Breakdown from './Breakdown'
 import { monthOf, prettyMonth } from './moduleAnalytics'
 import { estateHealth, cameraSummary, dvrSummary } from '../../modules/cctv/lib/health'
@@ -457,12 +458,12 @@ export default function CctvTab({ cameras = [], dvrs = [], merakis = [], sites =
               onClick={() => setKind(kind === k.key ? 'all' : k.key)}
               aria-pressed={kind === k.key}
               className={`card flex items-center gap-4 p-4 text-left transition duration-200 ease-emil hover:-translate-y-0.5 ${
-                kind === k.key ? 'ring-2 ring-brand-500' : ''
+                kind === k.key ? 'is-on' : ''
               }`}
             >
-              <span className="grid h-11 w-11 flex-none place-items-center rounded-2xl text-white" style={{ background: k.color }}>
+              <ModuleMark tint={k.color} size="md">
                 <Icon size={20} strokeWidth={2.1} />
-              </span>
+              </ModuleMark>
               <span className="min-w-0">
                 <span className="block text-[20px] font-extrabold leading-none tracking-[-0.03em] text-ink-900">
                   {k.value}

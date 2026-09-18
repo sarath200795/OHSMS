@@ -3,7 +3,9 @@
 export default function ChipRow({ label, options, selected, onToggle }) {
   return (
     <div className="flex flex-wrap items-center gap-2 border-t border-ink-100 pt-3">
-      <span className="w-20 shrink-0 text-xs font-bold uppercase tracking-wide text-ink-400">{label}</span>
+      <span className="w-20 shrink-0 text-xs font-bold uppercase tracking-wide text-ink-400">
+        {label}
+      </span>
       {options.map((opt) => {
         const on = selected.includes(opt)
         return (
@@ -11,7 +13,8 @@ export default function ChipRow({ label, options, selected, onToggle }) {
             key={opt}
             type="button"
             onClick={() => onToggle(opt)}
-            className={`chip transition ${on ? 'bg-brand-500 text-white' : 'bg-ink-100 text-ink-600 hover:bg-ink-200'}`}
+            className={`chip transition ${on ? 'is-on' : ''}`}
+            aria-pressed={on}
           >
             {opt}
           </button>

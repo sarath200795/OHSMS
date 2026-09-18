@@ -23,6 +23,7 @@ import { reserveDocId } from '../../../shared/docId/reserve';
 import { usePagination } from '../../../shared/ui/usePagination';
 import Logo from '../components/Logo';
 import LogoLoader from '../components/LogoLoader';
+import { ModuleMark } from '../../../shared/ui';
 import { isFutureDate, todayISO, isOverdueDate, toISODate } from '../../../shared/lib/dates';
 import {
     subscribeSites,
@@ -558,7 +559,7 @@ export default function Consultation() {
         <div>
             {/* PAGE HEADER */}
             <div className="mb-6 flex items-center gap-3 print:hidden">
-                <div className="grid h-11 w-11 place-items-center rounded-xl bg-brand-500 text-white shadow-glow"><Logo size={24} /></div>
+                <ModuleMark tone="brand" size="md"><Logo size={24} /></ModuleMark>
                 <div>
                     <h1 className="text-2xl font-extrabold tracking-tight text-ink-900">
                         {view === 'calendar' ? 'Compliance Calendar' : view === 'form' ? (formData.firebaseKey ? (canEditForm ? 'Edit Meeting' : 'Meeting Record') : 'New Meeting') : 'Consultation & Meetings'}

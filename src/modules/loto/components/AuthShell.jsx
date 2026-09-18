@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion'
 import { Link } from 'react-router-dom'
 import LockMcbMark from './LockMcbMark'
+import { ModuleMark } from '../../../shared/ui'
 
 const FeatureIcon = ({ d }) => (
   <svg
@@ -92,9 +93,9 @@ export default function AuthShell({ title, subtitle, children, footer }) {
           transition={{ duration: 0.5 }}
           className="relative flex items-center gap-3"
         >
-          <div className="grid h-10 w-10 place-items-center rounded-2xl bg-gradient-to-br from-hazard to-hazard-dark text-ink shadow-elev">
+          <ModuleMark tone="amber" size="sm">
             <LockMcbMark size={24} />
-          </div>
+          </ModuleMark>
           <span className="text-lg font-extrabold tracking-tight text-ink-900">
             HECP <span className="text-brand-800">LOTO</span>
           </span>
@@ -158,9 +159,9 @@ export default function AuthShell({ title, subtitle, children, footer }) {
           className="card w-full max-w-md p-8"
         >
           <div className="mb-6 flex items-center gap-2 lg:hidden">
-            <span className="grid h-8 w-8 place-items-center rounded-xl bg-gradient-to-br from-hazard to-hazard-dark text-ink">
+            <ModuleMark tone="amber" size="sm" className="h-8 w-8 rounded-xl">
               <LockMcbMark size={18} />
-            </span>
+            </ModuleMark>
             <span className="text-lg font-extrabold tracking-tight">
               HECP <span className="text-amber-600">LOTO</span>
             </span>

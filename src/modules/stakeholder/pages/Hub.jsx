@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { MessageSquareWarning, Gavel, ArrowRight, Scale } from 'lucide-react'
-import { PageHeader, SkeletonTable, EmptyState } from '../../../shared/ui'
+import { PageHeader, SkeletonTable, EmptyState, ModuleMark } from '../../../shared/ui'
 import { useStakeholder } from '../context/StakeholderContext'
 import { NOTICE_BY_KEY } from '../lib/constants'
 
@@ -18,7 +18,7 @@ const TILES = [
     label: 'Customer Escalations',
     icon: MessageSquareWarning,
     // Warm red: a complaint is a relationship problem.
-    gradient: 'from-rose-500 to-red-600',
+    tone: 'red',
     blurb: 'Complaints raised by members, who was involved, and what was finally done about them.',
   },
   {
@@ -26,17 +26,21 @@ const TILES = [
     label: 'Legal Issues',
     icon: Gavel,
     // Amber: an authority turning up is an exposure, not yet a failure.
-    gradient: 'from-amber-500 to-orange-600',
+    tone: 'amber',
     blurb: 'Departments that visited, what they served, and the response owed on each.',
   },
 ]
 
 const Metric = ({ value, label, tone = 'ink' }) => (
   <div className="min-w-0">
-    <div className={`text-xl font-bold ${tone === 'red' ? 'text-red-600' : tone === 'amber' ? 'text-amber-600' : 'text-ink-900'}`}>
+    <div
+      className={`text-xl font-bold ${tone === 'red' ? 'text-red-600' : tone === 'amber' ? 'text-amber-600' : 'text-ink-900'}`}
+    >
       {value}
     </div>
-    <div className="truncate text-[11px] font-semibold uppercase tracking-wide text-ink-400">{label}</div>
+    <div className="truncate text-[11px] font-semibold uppercase tracking-wide text-ink-400">
+      {label}
+    </div>
   </div>
 )
 
@@ -56,7 +60,13 @@ export default function Hub() {
     )
   }
 
-  if (loading) return (<><PageHeader title="Stakeholder Issues" /><SkeletonTable rows={4} /></>)
+  if (loading)
+    return (
+      <>
+        <PageHeader title="Stakeholder Issues" />
+        <SkeletonTable rows={4} />
+      </>
+    )
 
   const openSevere = legalIssues.filter(
     (l) => l.status !== 'closed' && NOTICE_BY_KEY[l.noticeType]?.severe
@@ -95,13 +105,16 @@ export default function Hub() {
             className="group card flex flex-col gap-4 p-5 transition hover:-translate-y-0.5 hover:shadow-elev-lg"
           >
             <div className="flex items-start gap-3">
-              <span className={`grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br ${t.gradient} text-white shadow-elev-sm`}>
+              <ModuleMark tone={t.tone} size="md">
                 <t.icon size={22} />
-              </span>
+              </ModuleMark>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5 font-bold text-ink-900">
                   {t.label}
-                  <ArrowRight size={15} className="text-ink-300 transition group-hover:translate-x-0.5 group-hover:text-ink-500" />
+                  <ArrowRight
+                    size={15}
+                    className="text-ink-300 transition group-hover:translate-x-0.5 group-hover:text-ink-500"
+                  />
                 </div>
                 <p className="mt-0.5 text-xs leading-relaxed text-ink-500">{t.blurb}</p>
               </div>
@@ -121,8 +134,8 @@ export default function Hub() {
       {summary.escalations.escalatedToLegal > 0 && (
         <p className="mt-4 text-xs text-ink-500">
           <b>{summary.escalations.escalatedToLegal}</b> customer complaint
-          {summary.escalations.escalatedToLegal === 1 ? ' has' : 's have'} become a legal matter. Those appear in
-          both places — the escalation carries the notice served against it.
+          {summary.escalations.escalatedToLegal === 1 ? ' has' : 's have'} become a legal matter.
+          Those appear in both places — the escalation carries the notice served against it.
         </p>
       )}
     </>

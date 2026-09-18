@@ -75,7 +75,20 @@ export default {
   // fails to render is a worse outcome than one served the old way.
   async resolve(path) {
     const blob = await this.resolveBlob(path)
-    return blob ? URL.createObjectURL(blob) : null
+    if (blob) return URL.createObjectURL(blob)
+    // getBlob needs a CORS rule on the bucket (PRODUCTION.md). When that is
+    // missing the fetch fails closed and — after M-5 — there is no stored
+    // download URL to fall back to, so every new upload rendered as a broken
+    // image. getDownloadURL still works as <img src> without CORS. The token
+    // lives only in this tab's memory; it is not written to Firestore, which
+    // is the credential-in-a-document M-5 closed.
+    const loaded = await loadStorage()
+    if (!loaded) return null
+    try {
+      return await loaded.mod.getDownloadURL(loaded.mod.ref(loaded.storage, path))
+    } catch {
+      return null
+    }
   },
 
   // The same fetch, stopping one step earlier.

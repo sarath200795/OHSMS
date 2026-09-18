@@ -1,7 +1,7 @@
 import { useLocation } from 'react-router-dom'
 import { moduleForPath } from '../modules/registry'
 import ModuleLogo3D, { has3DLogo } from '../../pages/portal/ModuleLogo3D'
-import { SkeletonDetail } from '../ui'
+import { ModuleMark, SkeletonDetail } from '../ui'
 
 /**
  * What you look at while a module's chunk downloads.
@@ -29,14 +29,12 @@ export default function ModuleLoading() {
   return (
     <div className="grid min-h-[60vh] place-items-center">
       <div className="flex flex-col items-center gap-4">
-        {/* Same tile treatment as the portal, so the thing that was clicked and
+        {/* Same glass disc as the portal tile, so the thing that was clicked and
             the thing that answers are visibly the same object. */}
-        <span
-          className={`group playing relative grid h-24 w-24 place-items-center rounded-2xl bg-gradient-to-br ${
-            TONE[mod.tone] || TONE.brand
-          } shadow-elev-lg [perspective:520px] [transform-style:preserve-3d]`}
-        >
-          <ModuleLogo3D moduleKey={mod.key} />
+        <span className="group playing relative [perspective:520px] [transform-style:preserve-3d]">
+          <ModuleMark tone={mod.tone} size="xl">
+            <ModuleLogo3D moduleKey={mod.key} />
+          </ModuleMark>
         </span>
 
         <div className="text-center">
@@ -46,15 +44,4 @@ export default function ModuleLoading() {
       </div>
     </div>
   )
-}
-
-// The tile gradients, keyed by the registry's `tone`.
-const TONE = {
-  red: 'from-rose-500 to-red-600',
-  amber: 'from-amber-500 to-orange-600',
-  blue: 'from-sky-500 to-blue-600',
-  green: 'from-emerald-500 to-green-600',
-  violet: 'from-violet-500 to-purple-600',
-  brand: 'from-brand-500 to-brand-700',
-  slate: 'from-slate-500 to-slate-700',
 }

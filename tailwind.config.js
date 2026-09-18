@@ -16,16 +16,16 @@ export default {
         // Bright teal lives at 400/500; 700+ is dark text on a brand-50
         // wash — never `bg-*-700 text-white`.
         brand: {
-          50: '#e8f4f2',
-          100: '#d0e8e4',
-          200: '#b5ddd7',
-          300: '#7fc4bb',
-          400: '#6db3aa',
-          500: '#3d7a72',
-          600: '#2f6d66',
-          700: '#246058',
-          800: '#1a4a44',
-          900: '#123632',
+          50: 'rgb(var(--brand-50-rgb) / <alpha-value>)',
+          100: 'rgb(var(--brand-100-rgb) / <alpha-value>)',
+          200: 'rgb(var(--brand-200-rgb) / <alpha-value>)',
+          300: 'rgb(var(--brand-300-rgb) / <alpha-value>)',
+          400: 'rgb(var(--brand-400-rgb) / <alpha-value>)',
+          500: 'rgb(var(--brand-500-rgb) / <alpha-value>)',
+          600: 'rgb(var(--brand-600-rgb) / <alpha-value>)',
+          700: 'rgb(var(--brand-700-rgb) / <alpha-value>)',
+          800: 'rgb(var(--brand-800-rgb) / <alpha-value>)',
+          900: 'rgb(var(--brand-900-rgb) / <alpha-value>)',
         },
         magenta: {
           400: '#c6946c',
@@ -52,7 +52,7 @@ export default {
           950: '#14110d',
         },
         canvas: {
-          DEFAULT: '#f6e3bb',
+          DEFAULT: 'rgb(var(--canvas-rgb) / <alpha-value>)',
         },
         // Opaque cream/white panels where glass cannot (menus, wells).
         // `.card` overlays white frost on top of these.
@@ -65,7 +65,7 @@ export default {
           400: '#c6946c',
         },
         accent: {
-          teal: '#6db3aa',
+          teal: 'rgb(var(--brand-400-rgb) / <alpha-value>)',
           amber: '#e8a33d',
           orange: '#f0a231',
           lime: '#8fbc74',
