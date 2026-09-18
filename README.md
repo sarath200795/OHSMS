@@ -3,11 +3,10 @@
 A unified, multi-tenant OHS platform that brings seventeen health-&-safety
 domains into one app with a single sign-on, one dashboard and one audit trail.
 
-Built with **Vite + React + Tailwind CSS + Firebase (Auth + Firestore + Storage
-
-- Cloud Functions)**. UI is an **amber+white glass** ops dashboard (amber
-  canvas, frosted white panels, logo teal / amber / siren) with **Emil Kowalski**-style
-  motion and **skeleton loaders** throughout.
+Built with **Vite + React + Tailwind CSS + Firebase** (Auth, Firestore, Storage,
+and Cloud Functions). UI is an **amber+white glass** ops dashboard (amber canvas,
+frosted white panels, logo teal / amber / siren) with **Emil Kowalski**-style
+motion and **skeleton loaders** throughout.
 
 ## Modules
 
