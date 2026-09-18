@@ -17,6 +17,7 @@ const WORKFLOWS = [
   '.github/workflows/ci.yml',
   '.github/workflows/deploy.yml',
   '.github/workflows/deploy-staging.yml',
+  '.github/workflows/uptime.yml',
 ]
 
 describe('GitHub Actions least privilege', () => {
@@ -174,3 +175,50 @@ describe('700 is not a white-text fill', () => {
     expect(hits, hits.join('\n')).toEqual([])
   })
 })
+
+describe('uptime check and health file', () => {
+  it('the scheduled workflow curls /health.json and does not inherit write', () => {
+    const yml = read('.github/workflows/uptime.yml')
+    expect(yml).toMatch(/cron:\s*'.*'/)
+    expect(yml).toMatch(/health\.json/)
+    expect(yml).toMatch(/vars\.PRODUCTION_HOSTING_URL/)
+    expect(yml).toMatch(/permissions:\s*\n\s+contents:\s+read/)
+  })
+
+  it('hosting has a static health file that is not rewritten into the SPA', () => {
+    const health = JSON.parse(read('public/health.json'))
+    expect(health).toMatchObject({ status: 'ok', service: 'wehs' })
+    const hosting = JSON.parse(read('firebase.json'))
+    expect(hosting.hosting.headers.some((h) => h.source === '/health.json')).toBe(true)
+  })
+})
+
+describe('malware scanning stays a decision, not a pretend scanner', () => {
+  it('does not add a ClamAV / scanning-vendor package', () => {
+    const root = JSON.parse(read('package.json'))
+    const fn = JSON.parse(read('functions/package.json'))
+    const names = [
+      ...Object.keys(root.dependencies || {}),
+      ...Object.keys(root.devDependencies || {}),
+      ...Object.keys(fn.dependencies || {}),
+      ...Object.keys(fn.devDependencies || {}),
+    ].join(' ')
+    expect(names).not.toMatch(/clamav|clamscan|virus-total|virustotal|opswat/i)
+  })
+
+  it('still asserts that a genuine PDF with a payload passes the sniffer', () => {
+    const test = read('src/shared/storage/sniffType.test.js')
+    expect(test).toMatch(/passes a real PDF regardless of what is inside it/)
+    expect(read('docs/ADR-0001-malware-scanning.md')).toMatch(/Sniff ≠ malware scan/)
+  })
+})
+
+describe('legacy download-token apply stays gated', () => {
+  it('the inventory script requires CONFIRM_REVOKE on a live --apply', () => {
+    const script = read('scripts/inventory-download-tokens.mjs')
+    expect(script).toMatch(/CONFIRM_REVOKE/)
+    expect(script).toMatch(/assertApplyAllowed/)
+    expect(read('docs/LEGACY-DOWNLOAD-URLS.md')).toMatch(/url-only/)
+  })
+})
+

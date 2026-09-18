@@ -7,6 +7,7 @@ import { submitQuotation } from '../lib/firestore'
 import { readFileAsDataUrl, MAX_ATTACHMENT_BYTES } from '../../../shared/lib/files'
 import { formatSize } from '../../../shared/storage'
 import { safeHref } from '../../../shared/safeUrl'
+import { todayISO } from '../../../shared/lib/dates'
 
 /**
  * Submit a vendor quotation for a defective / refill-due extinguisher. A
@@ -72,7 +73,7 @@ export default function SubmitQuotationModal({ open, onClose, ext, orgId, orgNam
         fileName: payload.fileName,
         fileType: payload.fileType,
         fileData: payload.fileData,
-        submittedAt: new Date().toISOString().slice(0, 10),
+        submittedAt: todayISO(),
         submittedBy: actor?.name || '',
       })
       onClose?.()

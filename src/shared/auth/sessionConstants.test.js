@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
-import { idleStatus, startSession, endSession, LAST_ACTIVITY_KEY, IDLE_TIMEOUT_MS } from './sessionConstants'
+import { vi } from 'vitest'
+import { idleStatus, startSession, endSession, LAST_ACTIVITY_KEY, IDLE_TIMEOUT_MS, readLastActivity, writeLastActivity } from './sessionConstants'
 
 const IDLE = 30 * 60_000 // 30 min
 const WARN = 60_000 // 60 s
@@ -64,5 +65,26 @@ describe('the session clock', () => {
     startSession()
     const last = Number(localStorage.getItem(LAST_ACTIVITY_KEY))
     expect(idleStatus(last + IDLE_TIMEOUT_MS + 1, last).phase).toBe('expired')
+  })
+
+  it('does not throw when localStorage is blocked', () => {
+    // Private mode / locked-down managed browsers throw. D-08 was the hook
+    // taking the whole app down because startSession wrapped this and the
+    // hook did not.
+    const proto = Object.getPrototypeOf(localStorage)
+    const getSpy = vi.spyOn(proto, 'getItem').mockImplementation(() => {
+      throw new Error('blocked')
+    })
+    const setSpy = vi.spyOn(proto, 'setItem').mockImplementation(() => {
+      throw new Error('blocked')
+    })
+    try {
+      expect(() => readLastActivity()).not.toThrow()
+      expect(readLastActivity()).toBeNull()
+      expect(() => writeLastActivity('1')).not.toThrow()
+    } finally {
+      getSpy.mockRestore()
+      setSpy.mockRestore()
+    }
   })
 })

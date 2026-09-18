@@ -7,6 +7,7 @@ import { submitHpt } from '../lib/firestore'
 import { validateHpt, nextHptDate, HPT_RESULT } from '../lib/hpt'
 import { readFileAsDataUrl } from '../../../shared/lib/files'
 import { safeHref } from '../../../shared/safeUrl'
+import { todayISO } from '../../../shared/lib/dates'
 
 /**
  * Record the hydrostatic pressure test for a cylinder whose HPT has come due.
@@ -30,7 +31,7 @@ export default function SubmitHptModal({ open, onClose, ext, orgId, orgName, act
   useEffect(() => {
     if (!ext) return
     const h = ext.hpt || {}
-    const testedOn = h.testedOn || new Date().toISOString().slice(0, 10)
+    const testedOn = h.testedOn || todayISO()
     setForm({
       testedOn,
       result: h.result || HPT_RESULT.PASS,

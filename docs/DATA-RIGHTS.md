@@ -94,9 +94,11 @@ different tenants may sit under different regimes. Specifically:
 
 - Exposure and health-surveillance records carry the longest statutory periods
   and the exact number varies by jurisdiction and by agent.
-- No retention *period* is encoded anywhere — only a class. A record classed
-  `STATUTORY` is currently kept forever, which is itself a data-protection
-  finding: indefinite retention is not lawful merely because some retention is.
+- A period table now exists (`functions/lib/retentionPolicy.js`) but every
+  personal-data row is `NEEDS_LEGAL_SIGN_OFF`. A record classed `STATUTORY` is
+  currently kept forever, which is itself a data-protection finding: indefinite
+  retention is not lawful merely because some retention is. Counsel must sign
+  `counselSignOffQuestions()` before any live age-purge is enabled.
 - `auditLogs` is append-only in the rules by design. Erasing from it is not
   currently possible even if it were decided to be lawful.
 
@@ -152,7 +154,11 @@ that test is where to start.
   (`functions/lib/retention.js`), and it now covers `injuries` and their
   clinical documents as well as incidents and illnesses. Live records still have
   no expiry — see the injury-retention decision in §3, which is the sharpest
-  case of exactly this gap.
+  case of exactly this gap. The period table that was missing is now
+  `functions/lib/retentionPolicy.js`: every personal-data class is marked
+  `NEEDS_LEGAL_SIGN_OFF`, live age-purge is off, and `counselSignOffQuestions()`
+  is the list counsel must actually answer. A number in that file is a
+  proposal, not a rule.
 - **The mentions scan.** The places are named; nothing searches them.
 - **Self-service.** A subject cannot make the request themselves; a manager runs
   it for them. Reasonable while volumes are low, and it should be revisited if

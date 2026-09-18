@@ -22,6 +22,7 @@ import {
 } from 'firebase/firestore'
 import { db } from '../../../shared/firebase'
 import { isSessionEnd } from '../../../shared/sessionEnd'
+import { todayISO } from '../../../shared/lib/dates'
 
 // ── Read-only demo guard ─────────────────────────────────────────────────────
 // When the demo account is signed in, every Firestore write is blocked
@@ -829,7 +830,7 @@ export async function submitQuotation(orgId, orgName, id, { amount, vendor, ref,
     fileData: up ? null : fileData || null, // legacy inline fallback (≤~700KB)
     fileUrl: up?.url || null,
     filePath: up?.path || null,
-    submittedAt: new Date().toISOString().slice(0, 10),
+    submittedAt: todayISO(),
     submittedBy: actorName || '',
   }
   await updateExtinguisher(orgId, orgName, id, {
@@ -873,7 +874,7 @@ export async function submitHpt(orgId, orgName, id, { testedOn, result, nextDueO
     fileData: up ? null : fileData || null,
     fileUrl: up?.url || null,
     filePath: up?.path || null,
-    submittedAt: new Date().toISOString().slice(0, 10),
+    submittedAt: todayISO(),
     submittedBy: actorName || '',
   }
 
@@ -903,7 +904,7 @@ export async function markRefilledAndClosed(orgId, orgName, id, { dateOfNextRefi
     dateOfNextHPT,
     physicalDefects: [],
     quotation: null,
-    lastRefilledAt: new Date().toISOString().slice(0, 10),
+    lastRefilledAt: todayISO(),
     ...actionStamp(actorName, 'Refilled & Closed'),
   }, { actor: { name: actorName }, action: AUDIT.WF_REFILLED_CLOSED, summary: `Refilled & closed (next refill ${dateOfNextRefill}, next HPT ${dateOfNextHPT})` })
   // A refill clears every defect, so every one of them becomes reportable again.
@@ -1412,7 +1413,7 @@ export async function generateAedQr(orgId, orgName, asset, actor) {
 
 /** Log a service/inspection: stamps last inspection today, sets the next due, marks Ready. */
 export async function serviceAed(orgId, orgName, asset, nextInspection, actor) {
-  const today = new Date().toISOString().slice(0, 10)
+  const today = todayISO()
   const merged = { ...asset, lastInspection: today, nextInspection: nextInspection || '', status: 'ready' }
   const a = { ...cleanAed(merged), updatedAt: serverTimestamp() }
   const batch = writeBatch(db)
@@ -1522,7 +1523,7 @@ export async function generateStretcherQr(orgId, orgName, asset, actor) {
 
 /** Log an inspection: stamps last inspection today, sets the next due, marks Ready. */
 export async function serviceStretcher(orgId, orgName, asset, nextInspection, actor) {
-  const today = new Date().toISOString().slice(0, 10)
+  const today = todayISO()
   const merged = { ...asset, lastInspection: today, nextInspection: nextInspection || '', status: 'ready' }
   const a = { ...cleanStretcher(merged), updatedAt: serverTimestamp() }
   const batch = writeBatch(db)
@@ -1644,7 +1645,7 @@ export async function generateFasQr(orgId, orgName, asset, actor) {
 
 /** Log a service: stamps last service today, sets the next due, marks Operational. */
 export async function serviceFas(orgId, orgName, asset, nextService, actor) {
-  const today = new Date().toISOString().slice(0, 10)
+  const today = todayISO()
   const merged = { ...asset, lastService: today, nextService: nextService || '', status: 'operational' }
   const a = { ...cleanFas(merged), updatedAt: serverTimestamp() }
   const batch = writeBatch(db)

@@ -22,9 +22,10 @@ import {
 } from '../lib/ptwData'
 import { fileToDataUrl, formatBytes } from '../lib/files'
 import { ROLES } from '../lib/permissions'
+import { todayISO } from '../../../shared/lib/dates'
 
 const EMPTY = {
-  date: new Date().toISOString().slice(0, 10),
+  date: todayISO(),
   time: '09:00',
   typeOfWork: '',
   region: '',

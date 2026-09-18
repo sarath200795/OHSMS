@@ -49,6 +49,31 @@ export function endSession() {
 }
 
 /**
+ * Read/write the shared clock without taking the tab down.
+ *
+ * useIdleTimeout used to call localStorage directly. In private mode or a
+ * locked-down managed browser those calls throw, and because the first throw
+ * is inside useEffect, AppChrome unmounted into the root ErrorBoundary —
+ * "Something went wrong" on every page, for a session timer (August audit
+ * D-08). startSession / endSession already wrapped; the hook did not.
+ */
+export function readLastActivity() {
+  try {
+    return localStorage.getItem(LAST_ACTIVITY_KEY)
+  } catch {
+    return null
+  }
+}
+
+export function writeLastActivity(value) {
+  try {
+    localStorage.setItem(LAST_ACTIVITY_KEY, value)
+  } catch {
+    /* private mode or a full quota — the timer still runs in memory */
+  }
+}
+
+/**
  * Pure idle-state calculation (no DOM/storage) so it can be unit-tested.
  * @returns {{ phase: 'active'|'warn'|'expired', secondsLeft: number }}
  *   secondsLeft is the whole seconds until logout (0 once expired).

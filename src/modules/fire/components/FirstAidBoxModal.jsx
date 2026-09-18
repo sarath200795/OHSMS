@@ -4,6 +4,7 @@ import toast from 'react-hot-toast'
 import { Modal, Spinner, Field } from './ui'
 import { FIRST_AID_ITEMS, FIRST_AID_CONDITIONS, FIRST_AID_CONDITION_COLOR } from '../lib/constants'
 import { isExpired, isExpiringSoon } from '../lib/firstAidLogic'
+import { todayISO } from '../../../shared/lib/dates'
 
 /**
  * Check a whole first aid box in one pass.
@@ -90,7 +91,7 @@ export default function FirstAidBoxModal({ open, onClose, site, boxLocation, rec
         quantity: qty ?? 0,
         condition: row.condition,
         expiryDate: item.expires ? row.expiryDate : '',
-        lastChecked: new Date().toISOString().slice(0, 10),
+        lastChecked: todayISO(),
       })
     }
     const removals = [...removed]
