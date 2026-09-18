@@ -214,36 +214,3 @@ if (result.failed?.length) {
   process.exit(1)
 }
 process.exit(0)
-
-const { getStorage } = await import('firebase-admin/storage')
-const { initializeApp, getApps, cert } = await import('firebase-admin/app')
-
-if (!getApps().length) {
-  if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
-    initializeApp({ storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET })
-  } else {
-    initializeApp({
-      credential: cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)),
-      storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET,
-    })
-  }
-}
-
-const bucket = getStorage().bucket()
-const result = await runRevoke(plan, {
-  apply: true,
-  stripToken: async (path) => {
-    await bucket.file(path).setMetadata({ metadata: { firebaseStorageDownloadTokens: null } })
-  },
-})
-
-console.log(
-  `\nDone. ${result.revoked} token(s) stripped` +
-    (result.failed?.length ? `, ${result.failed.length} failed` : '') +
-    `. ${result.review} review row(s) left untouched.\n`
-)
-if (result.failed?.length) {
-  result.failed.forEach((f) => console.error(`  ! ${f.path}  ${f.error}`))
-  process.exit(1)
-}
-process.exit(0)
