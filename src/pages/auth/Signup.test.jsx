@@ -26,6 +26,7 @@ vi.mock('react-router-dom', () => ({
   Link: ({ children }) => children,
   Navigate: () => null,
   useNavigate: () => navigate,
+  useLocation: () => ({ pathname: '/signup', search: '', state: null }),
 }))
 vi.mock('react-hot-toast', () => ({
   default: { success: (...a) => toastSuccess(...a), error: (...a) => toastError(...a) },

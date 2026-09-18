@@ -7,7 +7,7 @@ import { authErrorMessage } from '../../shared/lib/authErrors'
 import { SSO_PROVIDERS, hasSso } from '../../shared/auth/sso'
 import { isCodeComplete } from '../../shared/auth/mfa'
 import { Button, Field, Input } from '../../shared/ui'
-import { safeInternalPath } from '../../shared/safeUrl'
+import { continueToPath, locationPath, withContinueTo } from '../../shared/auth/continueTo'
 import AuthLayout from './AuthLayout'
 import { useAppRole } from '../../app/AppRoleContext'
 import CrossAppRedirect from '../../app/CrossAppRedirect'
@@ -40,15 +40,17 @@ export default function Login() {
     if (pendingMfa) setResolver(pendingMfa)
   }, [pendingMfa])
 
-  // Where ProtectedRoute bounced us from, if anywhere. Run through
+  // Where ProtectedRoute bounced us from, if anywhere. continueToPath wraps
   // safeInternalPath because this is the classic open-redirect sink: the
   // destination is derived from where the browser was pointed, so it is
   // attacker-influenceable, and it is followed at the exact moment the user has
   // just proved who they are. `//evil.com` and `/\evil.com` are paths to
-  // react-router and other origins to the browser.
+  // react-router and other origins to the browser. Auth pages themselves are
+  // refused so a module deep-link cannot loop /login?next=/login.
   const { ownsPath, shellHref } = useAppRole()
   const nextParam = new URLSearchParams(location.search).get('next')
-  const back = safeInternalPath(nextParam || location.state?.from?.pathname, '/portal')
+  const from = location.state?.from
+  const back = continueToPath(nextParam || (from && locationPath(from)), '/portal')
 
   // Only redirect once the profile has loaded — redirecting on isAuthed alone
   // races ProtectedRoute (which needs the profile) and causes a redirect loop.
@@ -186,14 +188,14 @@ export default function Login() {
         <>
           New organization?{' '}
           <Link
-            to="/register-org"
+            to={withContinueTo('/register-org', back)}
             className="font-semibold text-white underline-offset-2 hover:underline"
           >
             Register
           </Link>{' '}
           ·{' '}
           <Link
-            to="/signup"
+            to={withContinueTo('/signup', back)}
             className="font-semibold text-white underline-offset-2 hover:underline"
           >
             Join an existing one

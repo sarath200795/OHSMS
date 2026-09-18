@@ -130,15 +130,41 @@ suite in `suites.js`, and add it to the placeholder check in `firestore.rules`
 ## Handoff from weehs-landing
 
 The public front door is [weehs-landing](https://github.com/sarath200795/weehs-landing),
-not this repository. Trial / Open app / Join organisation on that site open
-**this shell**. Module apps stay under their registry prefixes (`/incidents`,
-`/hira`, `/permits`, …) and are reached from the shell after sign-in and
-entitlements. Do not deep-link a landing CTA at a module prefix unless a
-module-specific product card is added later.
+not this repository. **All six product cards** open this origin
+(`https://suite.weehs.org`). The five standalone Vercel apps are no longer
+landing destinations.
 
-The contract lives in `src/shared/modules/landing.js`. A unit test fails if the
-paths move, a module prefix collides with them, or hosting rewrites them away
-from the shell.
+- **OHS Suite** opens the **shell** (`/login`, `/register-org`, `/signup`).
+- **Fire Marshal, HECP LOTO, Online Permit to Work, ISO 45001 Auditor, HIRA**
+  deep-link the matching **module app**. An unauthenticated visit hits that
+  prefix, `ProtectedRoute` bounces to `/login?next=…` on the shell, and after
+  sign-in the browser resumes the prefix. If the org is not entitled,
+  `ModuleGate` shows the locked placeholder (org create still seeds every
+  module as inactive; suites / à-la-carte on `/platform` activate access).
+
+The contract lives in `src/shared/modules/landing.js`. A unit test fails if a
+product’s key or prefix drifts from the registry, if hosting stops rewriting
+that prefix to the module app, or if the shell auth paths move.
+
+### Public URLs landing should set
+
+Every product’s `domain` / `hosting` is `https://suite.weehs.org`. Per-product
+`routes` (what landing’s `appLink` appends):
+
+| Landing product       | Registry key | Open app (`routes.login`) | Register (`routes.register`)      | Join (`routes.join`)        |
+| --------------------- | ------------ | ------------------------- | --------------------------------- | --------------------------- |
+| Fire Marshal          | `equipment`  | `/equipment`              | `/register-org?next=%2Fequipment` | `/signup?next=%2Fequipment` |
+| HECP LOTO             | `loto`       | `/loto`                   | `/register-org?next=%2Floto`      | `/signup?next=%2Floto`      |
+| Online Permit to Work | `ptw`        | `/permits`                | `/register-org?next=%2Fpermits`   | `/signup?next=%2Fpermits`   |
+| ISO 45001 Auditor     | `audit`      | `/audit`                  | `/register-org?next=%2Faudit`     | `/signup?next=%2Faudit`     |
+| HIRA                  | `hira`       | `/hira`                   | `/register-org?next=%2Fhira`      | `/signup?next=%2Fhira`      |
+| OHS Suite             | _(shell)_    | `/login`                  | `/register-org`                   | `/signup`                   |
+
+Those Open-app paths are the **deployed prefixes** in `apps.js`, not the
+source folder and not always the registry key: Fire Marshal is `/equipment`
+(code lives in `src/modules/fire/`), Permit to Work is `/permits` (key `ptw`).
+
+OHS Suite still uses landing’s shared `CONFIG.routes`:
 
 | Landing `CONFIG.routes` | Shell path      | Screen                                             |
 | ----------------------- | --------------- | -------------------------------------------------- |
@@ -146,18 +172,22 @@ from the shell.
 | `register`              | `/register-org` | Create a new organisation (first account is admin) |
 | `join`                  | `/signup`       | Join an organisation that already exists           |
 
-Those three paths are already mounted on the shell `App` under those names —
-they are not aliases. Hosting's catch-all `**` → `/index.html` serves them.
+Those three paths are mounted on the shell `App` under those names — they are
+not aliases. Hosting’s catch-all `**` → `/index.html` serves them. Module
+prefixes are rewritten to `/apps/<key>/index.html`.
 
-**Public origin of the shell:** `https://suite.weehs.org` (`PUBLIC_SHELL_ORIGIN`).
-Landing's OHS Suite `domain` (and `hosting`, until `domainsLive`) must point
-there. What landing should set:
+`landingProductRoutes()` in `landing.js` is the machine-readable form of the
+table above. What a product card should open:
 
 ```
-OHS Suite domain / hosting  =  https://suite.weehs.org
-routes.login                =  /login
-routes.register             =  /register-org
-routes.join                 =  /signup
+all six products, domain / hosting  =  https://suite.weehs.org
+
+OHS Suite     routes.login     =  /login
+Fire Marshal  routes.login     =  /equipment
+HECP LOTO     routes.login     =  /loto
+Permit        routes.login     =  /permits
+Auditor       routes.login     =  /audit
+HIRA          routes.login     =  /hira
 ```
 
 `VITE_PUBLIC_ORIGIN` in `.env.example` is the same origin, for documentation

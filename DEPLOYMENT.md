@@ -120,9 +120,10 @@ names `iam.serviceAccounts.actAs` is this gap, not a new one.
 
 ## 6. Opening from weehs-landing
 
-The marketing site is a different repository. It must open **this shell**, not
-a module app. The URL contract (`/login`, `/register-org`, `/signup` on
-`https://suite.weehs.org`), `VITE_PUBLIC_ORIGIN`, and which hosts belong on
-Firebase Auth's authorized-domain list are in `docs/APPS.md` (Handoff from
-weehs-landing). Do not deep-link a landing CTA at `/incidents` or another
-module prefix.
+The marketing site is a different repository. All six product cards open
+**this origin** (`https://suite.weehs.org`). OHS Suite hits the shell; the
+other five deep-link a module prefix (`/equipment`, `/loto`, `/permits`,
+`/audit`, `/hira`). Unauthenticated visits bounce to `/login?next=…` and
+resume that prefix — or the locked placeholder — after sign-in. The URL
+contract, `VITE_PUBLIC_ORIGIN`, and Auth authorized-domain hosts are in
+`docs/APPS.md`.

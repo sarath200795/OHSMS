@@ -1,6 +1,7 @@
 import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from './AuthContext'
 import { can } from './permissions'
+import { loginPathFor } from './continueTo'
 import SamLoading from '../layout/SamLoading'
 import ForcePasswordChange from '../../pages/auth/ForcePasswordChange'
 import { useAppRole } from '../../app/AppRoleContext'
@@ -8,7 +9,7 @@ import CrossAppRedirect from '../../app/CrossAppRedirect'
 
 /**
  * Guards the authenticated app. Redirects:
- *   - not signed in            → /login
+ *   - not signed in            → /login?next=<here> (landing module deep-links)
  *   - signed in, no profile    → /login (edge case: half-created account)
  *   - signed in, pending       → /pending
  *   - requireAdmin & not admin → /dashboard
@@ -32,13 +33,7 @@ export default function ProtectedRoute({ children, requireAdmin = false, require
     appRole === 'module' ? <CrossAppRedirect to={path} /> : <Navigate to={path} replace />
 
   if (loading) return <SamLoading label="Getting your workspace ready…" />
-  if (!isAuthed) {
-    if (appRole === 'module') {
-      const next = `/login?next=${encodeURIComponent(location.pathname + location.search)}`
-      return <CrossAppRedirect to={next} />
-    }
-    return <Navigate to="/login" state={{ from: location }} replace />
-  }
+  if (!isAuthed) return bounce(loginPathFor(location))
   // A platform operator belongs to no organization ON PURPOSE, so it has no
   // profile and never will — the wait below would never end for them. Send them
   // to their own console instead of a loading screen that never resolves.

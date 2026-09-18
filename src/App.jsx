@@ -133,11 +133,10 @@ export default function App() {
 
   return (
     <Routes>
-      {/* Public. These three paths are the weehs-landing handoff
-          (LANDING_ENTRY_ROUTES): Open app / trial existing user → /login,
-          new organisation → /register-org, join existing → /signup. The
-          shell owns them; hosting's catch-all sends them to the shell
-          index, not a module app. */}
+      {/* Public shell handoff (LANDING_ENTRY_ROUTES). OHS Suite Open app /
+          trial hits these. The five product cards deep-link a module
+          prefix instead; unauthenticated visits bounce here with ?next=
+          (loginPathFor) and resume that prefix after sign-in. */}
       <Route path="/login" element={<Login />} />
       <Route path="/register-org" element={<RegisterOrg />} />
       <Route path="/signup" element={<Signup />} />

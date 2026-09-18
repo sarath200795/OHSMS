@@ -46,10 +46,11 @@ operating module**. They share `src/shared/` and the **same** Firebase project
 / Firestore database. See `docs/APPS.md`.
 
 The public marketing site is a separate repo,
-[weehs-landing](https://github.com/sarath200795/weehs-landing). Open app /
-trial / join on that site hit **this shell** at `https://suite.weehs.org`
-(`/login`, `/register-org`, `/signup`) — not a module app. The URL contract
-is in `docs/APPS.md`.
+[weehs-landing](https://github.com/sarath200795/weehs-landing). All six product
+cards open **this origin** (`https://suite.weehs.org`). OHS Suite hits the
+shell (`/login`, `/register-org`, `/signup`); Fire Marshal, HECP LOTO, Permit
+to Work, Internal Audit and HIRA deep-link their module prefixes. The URL
+contract is in `docs/APPS.md`.
 
 - **Combined SPA** (`npm run dev`) — `src/main.jsx` still mounts every module
   in one process. Playwright and day-to-day work use this.
