@@ -1,41 +1,18 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Public module roster on the sign-in screen.
 //
-// A line list, not tiles, and short on purpose. The registry descriptions are
-// written for the signed-in dashboard, where a paragraph has room. Pasting
-// them here made the sign-in page ramble below the fold. Login shows one line
-// per module (name — brief) in a narrow column beside the form. Anything
-// missing from LOGIN_BRIEF falls back to the registry text so a new module
-// cannot appear nameless.
+// A line list, not tiles. Registry descriptions are for the signed-in
+// dashboard; here each module is one line (mark, name, brief) so the form and
+// the list still share a viewport. The mark is the registry icon on a small
+// Liquid Glass disc. Lines fade in staggered, and a soft wash travels down
+// the list — motion-reduce drops both.
 // ─────────────────────────────────────────────────────────────────────────────
+import { motion, useReducedMotion } from 'framer-motion'
 import { MODULES } from '../../shared/modules/registry'
-
-/** One line each — enough to say what the module is for, not how it works. */
-const LOGIN_BRIEF = {
-  incidents: 'Report, investigate, track CAPA',
-  hira: 'Hazard register and risk matrix',
-  inspections: 'Checklists and findings',
-  audit: 'ISO 45001 plans and actions',
-  ptw: 'Raise, approve, close permits',
-  loto: 'Energy isolation records',
-  equipment: 'Extinguishers, AEDs, alarms',
-  drills: 'Fire and emergency drills',
-  committee: 'Meetings, minutes, actions',
-  training: 'Courses and expiry alerts',
-  documents: 'Policies, SOPs, and SDS',
-  emergency: 'Contacts and evacuation plans',
-  objectives: 'OH&S targets and scorecard',
-  weather: 'Site conditions as work risk',
-  cctv: 'Cameras, recorders, and health',
-  stakeholder: 'Escalations and legal matters',
-  actions: 'Open actions across modules',
-}
-
-export function loginBrief(module) {
-  return LOGIN_BRIEF[module.key] || module.description
-}
+import { loginBrief } from './loginBriefs'
 
 export default function LoginModules() {
+  const reduce = useReducedMotion()
   return (
     <section aria-labelledby="login-modules-heading" className="mx-auto w-full max-w-md lg:mx-0">
       <h2
@@ -45,15 +22,33 @@ export default function LoginModules() {
         Modules
       </h2>
       <ul className="mt-1.5 list-none p-0">
-        {MODULES.map((m) => (
-          <li
-            key={m.key}
-            className="flex items-baseline gap-x-2 border-b border-ink-200/40 py-1 text-[12.5px] leading-tight last:border-b-0"
-          >
-            <span className="shrink-0 font-semibold text-ink-900">{m.label}</span>
-            <span className="min-w-0 text-ink-500">{loginBrief(m)}</span>
-          </li>
-        ))}
+        {MODULES.map((m, i) => {
+          const Icon = m.icon
+          return (
+            <motion.li
+              key={m.key}
+              className="login-line flex items-center gap-2 px-1.5 py-1 text-[12.5px] leading-tight"
+              style={{ animationDelay: `${i * 1.25}s` }}
+              initial={reduce ? false : { opacity: 0, x: 10 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{
+                duration: 0.35,
+                delay: reduce ? 0 : i * 0.035,
+                ease: [0.23, 1, 0.32, 1],
+              }}
+            >
+              <span
+                data-tone={m.tone}
+                className="glass-mark h-5 w-5 shrink-0 rounded-md transition-transform duration-200"
+                aria-hidden="true"
+              >
+                <Icon size={11} strokeWidth={2.2} className="block" />
+              </span>
+              <span className="shrink-0 font-semibold text-ink-900">{m.label}</span>
+              <span className="min-w-0 truncate text-ink-500">{loginBrief(m)}</span>
+            </motion.li>
+          )
+        })}
       </ul>
     </section>
   )

@@ -542,6 +542,35 @@ thead {
   opacity: 0.18;
 }
 
+/* Sign-in module lines. A wash travels down the list so the roster feels
+   alive without tiles or a looping marquee. Hover wins over the wash.
+   Reduced motion drops the cycle; the marks stay. */
+@keyframes login-line-glow {
+  0%,
+  4% {
+    background-color: rgba(255, 255, 255, 0.62);
+  }
+  10%,
+  100% {
+    background-color: transparent;
+  }
+}
+.login-line {
+  border-radius: 8px;
+  animation: login-line-glow 22s ease-in-out infinite;
+}
+.login-line:hover {
+  background-color: rgba(255, 255, 255, 0.7);
+}
+.login-line:hover .glass-mark {
+  transform: scale(1.06);
+}
+@media (prefers-reduced-motion: reduce) {
+  .login-line {
+    animation: none;
+  }
+}
+
 .is-on,
 .chip.is-on,
 .chip[aria-pressed='true'],

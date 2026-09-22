@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import LoginModules, { loginBrief } from './LoginModules'
+import LoginModules from './LoginModules'
+import { loginBrief } from './loginBriefs'
 import { MODULES } from '../../shared/modules/registry'
 
 describe('LoginModules', () => {
@@ -16,19 +17,21 @@ describe('LoginModules', () => {
     }
   })
 
-  it('is a narrow line list, not a tile grid', () => {
+  it('pairs each line with a small glass mark, not a tile', () => {
     const { container } = render(<LoginModules />)
     expect(container.querySelector('.glass-tile')).toBeNull()
     const section = container.querySelector('section')
     expect(section.className).toMatch(/max-w-md/)
-    const list = container.querySelector('ul')
-    expect(list.className).not.toMatch(/grid-cols/)
-    const rows = list.querySelectorAll('li')
+    const rows = container.querySelectorAll('li')
     expect(rows.length).toBe(MODULES.length)
     rows.forEach((row) => {
+      expect(row.className).toMatch(/login-line/)
       expect(row.className).toMatch(/py-1/)
-      expect(row.className).toMatch(/leading-tight/)
-      expect(row.querySelectorAll('span').length).toBe(2)
+      const mark = row.querySelector('.glass-mark')
+      expect(mark).toBeTruthy()
+      expect(mark.className).toMatch(/h-5/)
+      expect(mark.className).toMatch(/w-5/)
+      expect(mark.querySelector('svg')).toBeTruthy()
     })
   })
 })
