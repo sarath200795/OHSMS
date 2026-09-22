@@ -614,9 +614,14 @@ export const has3DLogo = (key) => !!LOGOS[key]
 export default function ModuleLogo3D({ moduleKey }) {
   const Logo = LOGOS[moduleKey]
   if (!Logo) return null
+  // Absolute slabs offset from a point origin. Without the centred 0×0
+  // anchor they sit at the static top-left of the mark, which is why portal
+  // tiles looked off-centre after Liquid Glass landed on the logo chip.
   return (
     <span className="relative grid h-full w-full place-items-center [transform-style:preserve-3d]">
-      <Logo />
+      <span className="absolute left-1/2 top-1/2 h-0 w-0 [transform-style:preserve-3d]">
+        <Logo />
+      </span>
     </span>
   )
 }

@@ -42,7 +42,7 @@ import { useWidgetPrefs } from './widgets/useWidgetPrefs'
 import { dashboardBuckets } from '../../modules/ptw/lib/permitStatus'
 import { openUnsafeByPermit } from '../../modules/ptw/lib/observations'
 import ModuleLogo3D, { has3DLogo } from './ModuleLogo3D'
-import { Button, Skeleton, Spinner, ModuleMark } from '../../shared/ui'
+import { Button, Skeleton, Spinner } from '../../shared/ui'
 
 // Admin tools. These configure the organization rather than record work in it,
 // so the whole section is admin-only — a manager or auditor who can read the
@@ -97,10 +97,10 @@ const ADMIN_TOOLS = [
 /**
  * A module tile.
  *
- * The card stays flat (translate + hairline) so the home grid reads as an ops
- * dashboard rather than a tray of clay objects. The logo sits on a liquid-glass
- * disc — tinted frost of the module tone, not a neon 500-gradient leftover —
- * and still lifts in its own 3D scene.
+ * The whole card is Liquid Glass (tinted frost of the module tone) so the grid
+ * reads as glass app tiles rather than flat white cards with a glass badge on
+ * the logo. The logo sits centered on that surface — no nested `.glass-mark`
+ * disc — and still lifts in its own 3D scene on hover.
  *
  * Everything is transform and opacity, so it stays off the main thread, and
  * `motion-reduce` drops the whole effect rather than softening it.
@@ -111,45 +111,46 @@ function Tile({ to, icon: Icon, tone = 'brand', label, title, delay = 0, logoKey
     <div className="[perspective:760px]">
       <Link
         to={to}
+        data-tone={tone}
         style={{ animationDelay: `${delay}ms` }}
-        className="group relative flex animate-fade-in-up items-center gap-4 rounded-3xl bg-white/70 p-4 ring-1 ring-white/70 shadow-elev
+        className="group glass-tile relative flex min-h-[152px] animate-fade-in-up flex-col items-center justify-center gap-3 rounded-3xl p-5 text-center
                    transition-[transform,box-shadow] duration-200 ease-emil [transform-style:preserve-3d]
-                   hover:-translate-y-0.5 hover:shadow-elev-lg hover:ring-brand-400/35
+                   hover:-translate-y-0.5 hover:shadow-elev-lg
                    active:translate-y-0 active:scale-[0.99]
                    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas
                    motion-reduce:transition-none motion-reduce:hover:translate-y-0"
       >
+        <span aria-hidden="true" className="glass-tile-glow" data-tone={tone} />
         {/* The logo lifts far enough off the card for the perspective to bend
             it — the wobble below only reads as rotation because of this gap. */}
         <span
-          className="relative grid h-[60px] w-[60px] flex-none place-items-center [transform-style:preserve-3d]
+          className="relative mx-auto grid h-[60px] w-[60px] flex-none place-items-center [transform-style:preserve-3d]
                      transition-transform duration-300 ease-emil
                      group-hover:[transform:translateZ(56px)_scale(1.12)]
                      motion-reduce:transition-none motion-reduce:group-hover:[transform:none]"
         >
-          <span aria-hidden="true" className="glass-mark-glow rounded-[22px]" data-tone={tone} />
           {/* Modules with a built object let the object do the moving; the
               rest keep the turn, since a static glyph has nothing else to say. */}
-          <ModuleMark
-            tone={tone}
-            size="lg"
-            className={`[transform-style:preserve-3d] ${has3D ? '' : 'group-hover:animate-wobble3d'} motion-reduce:group-hover:animate-none`}
+          <span
+            className={`relative grid h-full w-full place-items-center [transform-style:preserve-3d] ${
+              has3D ? '' : 'group-hover:animate-wobble3d'
+            } motion-reduce:group-hover:animate-none`}
           >
             {has3D ? <ModuleLogo3D moduleKey={logoKey} /> : <Icon size={28} strokeWidth={2} />}
-            {/* Specular sweep — what makes the face read as glossy rather than flat. */}
-            <span
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-y-0 -left-1/3 z-[2] w-1/2 bg-white/45 opacity-0
-                         group-hover:animate-sheen motion-reduce:group-hover:animate-none"
-            />
-          </ModuleMark>
+          </span>
+          {/* Specular sweep — what makes the face read as glossy rather than flat. */}
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-y-0 -left-1/3 z-[2] w-1/2 overflow-hidden rounded-[22px] bg-white/45 opacity-0
+                       group-hover:animate-sheen motion-reduce:group-hover:animate-none"
+          />
         </span>
 
         <span className="min-w-0 transition-transform duration-300 ease-emil group-hover:[transform:translateZ(26px)] motion-reduce:group-hover:[transform:none]">
           <span className="block text-[15px] font-bold tracking-[-0.015em] text-ink-900">
             {label}
           </span>
-          <span className="mt-0.5 block text-[12px] leading-snug text-ink-400">{title}</span>
+          <span className="mt-0.5 block text-[12px] leading-snug text-ink-500">{title}</span>
         </span>
       </Link>
     </div>

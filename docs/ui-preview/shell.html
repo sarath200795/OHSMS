@@ -130,16 +130,54 @@
       }
       .tile {
         display: flex;
+        flex-direction: column;
         align-items: center;
-        gap: 14px;
-        padding: 16px;
-      }
-      .icon {
+        justify-content: center;
+        gap: 12px;
+        min-height: 152px;
+        padding: 20px;
+        text-align: center;
+        position: relative;
+        overflow: hidden;
+        border-radius: 24px;
         --mark-tint: #6db3aa;
         --mark-ink: #1a4a44;
+        color: var(--mark-ink);
+        background:
+          radial-gradient(120% 80% at 18% 10%, rgba(255, 255, 255, 0.78), transparent 46%),
+          linear-gradient(
+            165deg,
+            color-mix(in srgb, var(--mark-tint) 40%, #ffffff) 0%,
+            color-mix(in srgb, var(--mark-tint) 18%, rgba(255, 255, 255, 0.52)) 100%
+          );
+        backdrop-filter: blur(22px) saturate(1.3);
+        -webkit-backdrop-filter: blur(22px) saturate(1.3);
+        border: 0;
+        box-shadow:
+          inset 0 1px 0 rgba(255, 255, 255, 0.88),
+          inset 0 -1px 0 rgba(38, 33, 26, 0.05),
+          0 1px 2px rgba(38, 33, 26, 0.05),
+          0 12px 32px rgba(38, 33, 26, 0.1),
+          0 0 0 1px rgba(255, 255, 255, 0.55);
+      }
+      .tile::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        border-radius: inherit;
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.42), transparent 48%);
+      }
+      .tile > * {
+        position: relative;
+        z-index: 1;
+      }
+      .icon {
+        --mark-tint: inherit;
+        --mark-ink: inherit;
         width: 56px;
         height: 56px;
-        border-radius: 18px;
+        border-radius: 0;
         display: grid;
         place-items: center;
         color: var(--mark-ink);
@@ -147,35 +185,25 @@
         font-size: 13px;
         flex: none;
         position: relative;
-        overflow: hidden;
-        background:
-          radial-gradient(120% 80% at 18% 10%, rgba(255, 255, 255, 0.78), transparent 46%),
-          linear-gradient(
-            165deg,
-            color-mix(in srgb, var(--mark-tint) 46%, #ffffff) 0%,
-            color-mix(in srgb, var(--mark-tint) 22%, rgba(255, 255, 255, 0.55)) 100%
-          );
-        backdrop-filter: blur(18px) saturate(1.35);
-        box-shadow:
-          inset 0 1px 0 rgba(255, 255, 255, 0.88),
-          inset 0 -1px 0 rgba(38, 33, 26, 0.06),
-          0 1px 2px rgba(38, 33, 26, 0.05),
-          0 10px 24px rgba(38, 33, 26, 0.1);
+        overflow: visible;
+        background: none;
+        backdrop-filter: none;
+        box-shadow: none;
       }
       .icon::before {
-        content: '';
-        position: absolute;
-        inset: 0;
-        background: linear-gradient(180deg, rgba(255, 255, 255, 0.38), transparent 42%);
+        display: none;
       }
+      .tile.siren,
       .icon.siren {
         --mark-tint: #d94a3c;
         --mark-ink: #7a241e;
       }
+      .tile.teal,
       .icon.teal {
         --mark-tint: #6db3aa;
         --mark-ink: #1a4a44;
       }
+      .tile.amber,
       .icon.amber {
         --mark-tint: #e8a33d;
         --mark-ink: #7a4e10;
@@ -183,6 +211,7 @@
       .tile h3 {
         margin: 0;
         font-size: 14px;
+        color: var(--ink);
       }
       .tile p {
         margin: 2px 0 0;
@@ -387,13 +416,12 @@
     </header>
     <main>
       <p class="kicker">WEHS liquid glass</p>
-      <h1 class="title">Frosted marks and selected states on amber paper</h1>
+      <h1 class="title">Full-tile Liquid Glass module cards on amber paper</h1>
       <p class="lede">
-        Module icons sit on tinted glass discs — specular highlight, inner rim, kit colour showing
-        through frost — not neon 500-gradients. Selected tabs, chips, rows and pickers use the same
-        language: translucent glass with a teal rim, never an opaque fill. An uploaded organization
-        logo retints those accents; the page wash is a picker on Organization settings. The vendor
-        mark is not pinned to the corner.
+        Module tiles are frosted glass surfaces — specular highlight, soft rim, kit colour through
+        frost — with the logo centred on the card. Selected tabs, chips, rows and pickers use the
+        same language: translucent glass with a teal rim, never an opaque fill. An uploaded
+        organization logo retints those accents; the page wash is a picker on Organization settings.
       </p>
 
       <div class="tabs" role="tablist">
@@ -404,22 +432,22 @@
       </div>
 
       <div class="grid">
-        <article class="glass tile">
-          <span class="icon siren">IR</span>
+        <article class="tile siren">
+          <span class="icon">IR</span>
           <div>
             <h3>Incidents</h3>
             <p>Report, investigate, CAPA</p>
           </div>
         </article>
-        <article class="glass tile">
-          <span class="icon teal">HI</span>
+        <article class="tile teal">
+          <span class="icon">HI</span>
           <div>
             <h3>HIRA</h3>
             <p>Risk matrix and controls</p>
           </div>
         </article>
-        <article class="glass tile">
-          <span class="icon amber">EQ</span>
+        <article class="tile amber">
+          <span class="icon">EQ</span>
           <div>
             <h3>Equipment</h3>
             <p>Extinguishers, AEDs, FAS</p>
