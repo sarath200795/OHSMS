@@ -6,13 +6,16 @@ import ModuleLogo3D, { has3DLogo } from './ModuleLogo3D'
 afterEach(cleanup)
 
 describe('ModuleLogo3D', () => {
-  it('anchors absolute slabs on a centred origin so logos sit in the mark', () => {
+  it('keeps the grid as the containing block so slabs centre as boxes', () => {
     expect(has3DLogo('incidents')).toBe(true)
     const { container } = render(<ModuleLogo3D moduleKey="incidents" />)
-    const origin = container.querySelector('.absolute.left-1\\/2.top-1\\/2')
-    expect(origin).toBeTruthy()
-    expect(origin.className).toMatch(/h-0/)
-    expect(origin.className).toMatch(/w-0/)
+    const scene = container.firstElementChild
+    expect(scene.className).toMatch(/grid/)
+    expect(scene.className).toMatch(/place-items-center/)
+    // A 0×0 anchor at 50%/50% pins each slab's top-left to the centre, so the
+    // artwork grows down and to the right of the tile. The grid has to be the
+    // containing block or Home / All Modules shifts every mark.
+    expect(container.querySelector('.left-1\\/2.top-1\\/2.h-0')).toBeNull()
   })
 
   it('renders nothing for modules without a built object', () => {

@@ -102,6 +102,11 @@ const ADMIN_TOOLS = [
  * no translateZ and no tilt. A Z-lift used the tile as the vanishing point, so
  * the mark slid toward the middle of the card and off the row it shares with
  * its neighbours.
+ *
+ * The 3D artwork is drawn in absolute pixels and centred by the grid. Growing
+ * the square alone only adds padding around that drawing. A scale on the same
+ * in-flow grid enlarges it without a 0×0 left/top 50% anchor — that anchor
+ * made every slab's top-left the centre, so the picture grew down and right.
  */
 function Tile({ to, icon: Icon, tone = 'brand', label, title, delay = 0, logoKey }) {
   const has3D = has3DLogo(logoKey)
@@ -110,7 +115,7 @@ function Tile({ to, icon: Icon, tone = 'brand', label, title, delay = 0, logoKey
       to={to}
       data-tone={tone}
       style={{ animationDelay: `${delay}ms` }}
-      className="group glass-tile relative flex min-h-[152px] animate-fade-in-up flex-col items-center justify-center gap-3 rounded-3xl p-5 text-center
+      className="group glass-tile relative flex min-h-[168px] animate-fade-in-up flex-col items-center justify-center gap-3 rounded-3xl p-5 text-center
                  transition-[transform,box-shadow] duration-200 ease-emil
                  hover:-translate-y-0.5 hover:shadow-elev-lg
                  active:translate-y-0 active:scale-[0.99]
@@ -121,16 +126,18 @@ function Tile({ to, icon: Icon, tone = 'brand', label, title, delay = 0, logoKey
       {/* Perspective lives on the mark, not the card, so any depth in a 3D
           logo expands around this square instead of drifting toward the tile. */}
       <span
-        className="relative grid h-[60px] w-[60px] flex-none origin-center place-items-center [perspective:480px] [perspective-origin:center]
+        className="relative grid h-[76px] w-[76px] flex-none origin-center place-items-center [perspective:520px] [perspective-origin:center]
                    transition-transform duration-300 ease-emil
                    group-hover:scale-110
                    motion-reduce:transition-none motion-reduce:group-hover:transform-none"
       >
         <span className="grid h-full w-full origin-center place-items-center [transform-style:preserve-3d]">
           {has3D ? (
-            <ModuleLogo3D moduleKey={logoKey} />
+            <span className="grid h-full w-full origin-center place-items-center scale-[1.28] [transform-style:preserve-3d]">
+              <ModuleLogo3D moduleKey={logoKey} />
+            </span>
           ) : (
-            <Icon size={28} strokeWidth={2} className="block" />
+            <Icon size={36} strokeWidth={2} className="block" />
           )}
         </span>
       </span>

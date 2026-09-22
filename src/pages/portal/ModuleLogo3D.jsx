@@ -614,14 +614,24 @@ export const has3DLogo = (key) => !!LOGOS[key]
 export default function ModuleLogo3D({ moduleKey }) {
   const Logo = LOGOS[moduleKey]
   if (!Logo) return null
-  // Absolute slabs offset from a point origin. Without the centred 0×0
-  // anchor they sit at the static top-left of the mark, which is why portal
-  // tiles looked off-centre after Liquid Glass landed on the logo chip.
+  // This grid is the containing block, and that is the whole alignment.
+  //
+  // A direct absolute slab has auto insets, so place-items centres the box
+  // and only then does its translate run. An in-flow relative group whose
+  // children are all absolute collapses to a point, and the same placement
+  // puts that point on the centre — left/top on those children are offsets
+  // from the middle of the mark, which is how the extinguisher, hooter and
+  // camera were drawn.
+  //
+  // A 0×0 box at left/top 50% looks like the same idea and is not. It becomes
+  // the containing block, so each slab's top-left sits on the centre and the
+  // artwork grows down and to the right. That is the shift on Home / All
+  // Modules after the Liquid Glass tiles: the 60px square was centred, the
+  // picture inside it was not. Hover scales that square from its own centre
+  // and must not be given a translate that moves the origin.
   return (
     <span className="relative grid h-full w-full place-items-center [transform-style:preserve-3d]">
-      <span className="absolute left-1/2 top-1/2 h-0 w-0 [transform-style:preserve-3d]">
-        <Logo />
-      </span>
+      <Logo />
     </span>
   )
 }
