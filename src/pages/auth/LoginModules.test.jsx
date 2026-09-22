@@ -22,6 +22,7 @@ describe('LoginModules', () => {
     expect(container.querySelector('.glass-tile')).toBeNull()
     const section = container.querySelector('section')
     expect(section.className).toMatch(/max-w-md/)
+    expect(section.className).toMatch(/login-glass/)
     const rows = container.querySelectorAll('li')
     expect(rows.length).toBe(MODULES.length)
     rows.forEach((row) => {

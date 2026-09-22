@@ -15,11 +15,11 @@ import BrandMark from '../../shared/branding/BrandMark'
 export default function AuthLayout({ title, subtitle, children, footer, showcase }) {
   const reduce = useReducedMotion()
   const brand = (
-    <div className="mb-4 flex flex-col items-center px-1 text-center sm:mb-6">
+    <div
+      className={`flex flex-col items-center px-1 text-center ${showcase ? 'mb-3' : 'mb-4 sm:mb-6'}`}
+    >
       <BrandMark className="mb-2.5 sm:mb-3" size="lg" alt="WEHS" />
-      <h1 className="text-[22px] font-bold tracking-[-0.02em] text-ink-900 sm:text-2xl">
-        {title}
-      </h1>
+      <h1 className="text-[22px] font-bold tracking-[-0.02em] text-ink-900 sm:text-2xl">{title}</h1>
       {subtitle && (
         <p className="mt-1 max-w-[28ch] text-[13px] leading-snug text-ink-500 sm:max-w-none sm:text-sm sm:leading-normal">
           {subtitle}
@@ -52,9 +52,20 @@ export default function AuthLayout({ title, subtitle, children, footer, showcase
         transition={{ duration: 0.35, ease: [0.23, 1, 0.32, 1] }}
       >
         {showcase ? (
-          <div className="grid items-center gap-6 lg:grid-cols-[20rem_minmax(0,1fr)] lg:gap-8">
-            <div className="mx-auto w-full max-w-md lg:mx-0">{panel}</div>
-            {showcase}
+          <div className="login-stage grid items-center gap-6 lg:grid-cols-[20rem_minmax(0,1fr)] lg:gap-8">
+            <span aria-hidden="true" className="login-orb login-orb-a" />
+            <span aria-hidden="true" className="login-orb login-orb-b" />
+            <span aria-hidden="true" className="login-orb login-orb-c" />
+            <div className="relative z-[1] mx-auto w-full max-w-md lg:mx-0">
+              {brand}
+              <div className="login-glass card p-5 sm:p-6">{children}</div>
+              {footer && (
+                <div className="mt-3 px-1 text-center text-[13px] leading-relaxed text-ink-600">
+                  {footer}
+                </div>
+              )}
+            </div>
+            <div className="relative z-[1]">{showcase}</div>
           </div>
         ) : (
           <div className="mx-auto w-full max-w-md">{panel}</div>
