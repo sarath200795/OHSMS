@@ -46,6 +46,7 @@ import { fileToDataUrl } from '../../shared/lib/files'
 import { safeSrc } from '../../shared/safeUrl'
 import { useFileUrl } from '../../shared/storage/useFileUrl'
 import { hasOrgLogo } from '../../shared/branding/OrgMark'
+import { fileToLogoThumb } from '../../shared/branding/logoThumb'
 import {
   CANVAS_SWATCHES,
   DEFAULT_ACCENT,
@@ -155,6 +156,31 @@ export default function OrgSettings() {
     return subscribeSites(orgId, setSites)
   }, [orgId])
 
+  // Path-only logos (uploads that landed after M-5 with an empty logoUrl) leave
+  // the header depending on Storage. When an admin opens this page and the path
+  // resolves, write the small thumb back so every member has a chrome fallback
+  // without re-uploading.
+  useEffect(() => {
+    if (!orgId || !actor || !org?.logoPath || org?.logoUrl || !logoSrc || logoLoading) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch(logoSrc)
+        const blob = await res.blob()
+        if (!blob.type.startsWith('image/')) return
+        const thumb = await fileToLogoThumb(blob)
+        if (cancelled || !thumb) return
+        await updateOrgSettings(orgId, { logoUrl: thumb }, actor)
+      } catch {
+        // Best-effort. A failed backfill leaves the path in place; re-upload
+        // still writes a thumb.
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [orgId, actor, org?.logoPath, org?.logoUrl, logoSrc, logoLoading])
+
   const activityOptions = useMemo(
     () => [...new Set([...ACTIVITY_TYPES, ...form.activityTypes])],
     [form.activityTypes]
@@ -229,11 +255,26 @@ export default function OrgSettings() {
         canvasSource: keepCanvas ? 'custom' : palette ? 'logo' : prev.canvasSource,
       })
       const up = await putFile(orgId, 'org-logo', file, file.name)
+      // Always keep a small inline thumb in `logoUrl`. putFile returns an empty
+      // url after M-5 (no permanent download token), and when the Storage fetch
+      // then fails the header had nothing to fall back to — so OrgMark painted
+      // WE EHS over a logo that was sitting in the bucket unused.
+      let thumb = ''
+      try {
+        thumb = await fileToLogoThumb(file)
+      } catch {
+        // Decoder refused — fall through; path-only still works when Storage
+        // resolves, and the full-file inline path below still applies.
+      }
       if (up) {
-        await saveLogo({ logoUrl: up.url, logoPath: up.path, theme })
+        await saveLogo({
+          logoUrl: thumb || up.url || '',
+          logoPath: up.path,
+          theme,
+        })
       } else {
         if (file.size > MAX_INLINE_BYTES) return toast.error(tooLargeForInline(file.name))
-        const dataUrl = await fileToDataUrl(file)
+        const dataUrl = thumb || (await fileToDataUrl(file))
         await saveLogo({ logoUrl: dataUrl, logoPath: '', theme })
       }
       toast.success('Logo updated')
