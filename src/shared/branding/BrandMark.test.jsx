@@ -21,4 +21,10 @@ describe('BrandMark', () => {
     const { container } = render(<BrandMark alt="" />)
     expect(container.querySelector('img').getAttribute('aria-hidden')).toBe('true')
   })
+
+  it('uses a compact disc on phones and full size from sm up', () => {
+    const { container } = render(<BrandMark alt="WEHS" />)
+    expect(container.firstChild.className).toMatch(/h-12/)
+    expect(container.firstChild.className).toMatch(/sm:h-16/)
+  })
 })

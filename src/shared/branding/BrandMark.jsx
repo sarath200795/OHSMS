@@ -12,7 +12,8 @@ import { WE_EHS_MARK } from './OrgMark'
 const SIZE = {
   sm: 'h-10 w-10 rounded-2xl',
   md: 'h-12 w-12 rounded-[18px]',
-  lg: 'h-16 w-16 rounded-[22px]',
+  // Phone: compact so the mark does not crowd the form; sm+: full auth size.
+  lg: 'h-12 w-12 rounded-[18px] sm:h-16 sm:w-16 sm:rounded-[22px]',
 }
 
 /**

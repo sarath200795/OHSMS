@@ -18,6 +18,10 @@ describe('LoginModules', () => {
     const { container } = render(<LoginModules />)
     const tiles = container.querySelectorAll('.glass-tile')
     expect(tiles.length).toBe(MODULES.length)
+    const list = container.querySelector('ul')
+    // Narrow phones stay single-column; two columns only from md up.
+    expect(list.className).toMatch(/md:grid-cols-2/)
+    expect(list.className).not.toMatch(/(?:^|\s)sm:grid-cols-2(?:\s|$)/)
     tiles.forEach((tile) => {
       // Text-forward: left-aligned row, not a centred logo stack.
       expect(tile.className).toMatch(/items-start/)
@@ -25,11 +29,11 @@ describe('LoginModules', () => {
       expect(tile.className).not.toMatch(/items-center/)
       expect(tile.className).not.toMatch(/text-center/)
       expect(tile.className).not.toMatch(/min-h-\[152px\]/)
-      const accent = tile.querySelector('.h-7.w-7, [class*="h-7"][class*="w-7"]')
+      const accent = tile.querySelector('[class*="h-6"][class*="w-6"]')
       expect(accent).toBeTruthy()
-      const icon = accent.querySelector('svg')
-      // lucide size={14} → width/height 14 on the svg
-      expect(icon?.getAttribute('width')).toBe('14')
+      const icons = accent.querySelectorAll('svg')
+      expect(icons.length).toBe(1)
+      expect(icons[0].getAttribute('width')).toBe('14')
       const brief = tile.querySelector('p')
       expect(brief?.textContent?.length).toBeGreaterThan(20)
     })

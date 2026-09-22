@@ -239,6 +239,8 @@ export default function Login() {
             value={form.email}
             onChange={(e) => setForm({ ...form, email: e.target.value })}
             placeholder="you@company.com"
+            // 16px on phones avoids iOS focus-zoom; sm+ keeps the denser auth type.
+            className="text-base sm:text-sm"
           />
         </Field>
         <Field
@@ -261,6 +263,7 @@ export default function Login() {
             value={form.password}
             onChange={(e) => setForm({ ...form, password: e.target.value })}
             placeholder="••••••••"
+            className="text-base sm:text-sm"
           />
         </Field>
         <Button type="submit" loading={busy} className="w-full">
