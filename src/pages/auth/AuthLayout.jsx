@@ -1,5 +1,6 @@
 import { motion, useReducedMotion } from 'framer-motion'
 import BrandMark from '../../shared/branding/BrandMark'
+import LoginFloatLogos from './LoginFloatLogos'
 
 /**
  * Shared chrome for public auth screens (sign-in, register, forgot password).
@@ -53,6 +54,7 @@ export default function AuthLayout({ title, subtitle, children, footer, showcase
       >
         {showcase ? (
           <div className="login-stage grid items-center gap-6 lg:grid-cols-[20rem_minmax(0,1fr)] lg:gap-8">
+            <LoginFloatLogos />
             <span aria-hidden="true" className="login-orb login-orb-a" />
             <span aria-hidden="true" className="login-orb login-orb-b" />
             <span aria-hidden="true" className="login-orb login-orb-c" />

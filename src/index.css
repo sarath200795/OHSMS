@@ -589,6 +589,33 @@ thead {
     transform: translate3d(14px, -18px, 0) scale(1.08);
   }
 }
+/* Module marks behind the frost. The layer is larger than the stage so marks
+   ring the form; backdrop-filter on the panes softens the ones they cover. */
+.login-float {
+  position: absolute;
+  z-index: 0;
+  inset: -72px -96px;
+  pointer-events: none;
+  overflow: visible;
+}
+.login-float-mark {
+  position: absolute;
+  opacity: 0.38;
+  border-radius: 22%;
+  animation-name: login-bob;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+  filter: blur(0.3px);
+}
+@keyframes login-bob {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) rotate(-8deg);
+  }
+  50% {
+    transform: translate3d(10px, -26px, 0) rotate(7deg);
+  }
+}
 .login-glass {
   position: relative;
   z-index: 1;
@@ -686,7 +713,8 @@ thead {
 @media (prefers-reduced-motion: reduce) {
   .login-orb,
   .login-glass::after,
-  .login-line {
+  .login-line,
+  .login-float-mark {
     animation: none;
   }
   .login-line:hover {
