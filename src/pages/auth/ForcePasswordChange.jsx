@@ -7,6 +7,7 @@ import { auth, db } from '../../shared/firebase'
 import { useAuth } from '../../shared/auth/AuthContext'
 import { Button, Field, Input } from '../../shared/ui'
 import { validatePassword } from '../../shared/auth/passwordPolicy'
+import BrandMark from '../../shared/branding/BrandMark'
 
 /**
  * Full-screen gate shown after first login for provisioned employees
@@ -65,11 +66,7 @@ export default function ForcePasswordChange() {
     <div className="aurora grid min-h-screen place-items-center p-4">
       <div className="w-full max-w-md">
         <div className="mb-6 flex flex-col items-center text-center">
-          <img
-            src="/wehs.svg"
-            alt="WEHS"
-            className="mb-3 h-16 w-16 rounded-3xl ring-1 ring-ink-200 shadow-elev"
-          />
+          <BrandMark className="mb-3" alt="WEHS" />
           <h1 className="text-2xl font-bold tracking-tight text-ink-900">Set your password</h1>
           <p className="mt-1 text-sm text-ink-500">
             {profile?.name ? `Hi ${profile.name.split(' ')[0]} — ` : ''}replace the temporary
