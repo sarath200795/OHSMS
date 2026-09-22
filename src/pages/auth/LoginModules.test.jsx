@@ -25,6 +25,8 @@ describe('LoginModules', () => {
       expect(mark).toBeTruthy()
       expect(mark.className).toMatch(/h-11/)
       expect(mark.className).toMatch(/w-11/)
+      const icon = mark.querySelector('svg')
+      expect(icon?.classList.contains('block') || icon?.getAttribute('class')?.includes('block')).toBeTruthy()
     })
   })
 })

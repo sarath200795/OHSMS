@@ -12,8 +12,9 @@ describe('BrandMark', () => {
     expect(disc.className).toMatch(/place-items-center/)
     const img = container.querySelector('img')
     expect(img.getAttribute('src')).toBe(WE_EHS_MARK)
-    expect(img.className).toMatch(/object-contain/)
-    expect(img.className).toMatch(/h-\[82%\]/)
+    expect(img.className).toMatch(/object-cover/)
+    expect(img.className).toMatch(/object-center/)
+    expect(img.className).toMatch(/inset-0/)
   })
 
   it('hides the image from assistive tech when alt is empty', () => {

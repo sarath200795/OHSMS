@@ -2,11 +2,10 @@
 // The WEHS vendor mark, centred in a Liquid Glass slot.
 //
 // Auth pages used a bare `<img className="h-16 w-16 rounded-3xl">`. The SVG
-// already paints its own rounded kraft tile (rx=72), so a second CSS radius
-// clipped the corners while the face looked optically off-centre against the
-// amber aurora. One square glass disc, equal inset, `object-contain` — the
-// kraft face sits dead centre horizontally and vertically. OrgMark keeps the
-// same contain + cream pattern for uploaded org logos in the signed-in shell.
+// already paints its own kraft tile, so a second CSS radius clipped unevenly
+// and the artwork's asymmetric inset (more pad top/left than bottom/right)
+// read as off-centre. The SVG art is now balanced; this disc covers it with
+// `object-cover` + `object-center` so the kraft face fills the glass evenly.
 // ─────────────────────────────────────────────────────────────────────────────
 import { WE_EHS_MARK } from './OrgMark'
 
@@ -24,15 +23,16 @@ export default function BrandMark({ size = 'lg', className = '', alt = 'WEHS' })
   return (
     <span
       data-tone="brand"
-      className={`glass-mark grid flex-none place-items-center overflow-hidden ${SIZE[size] || SIZE.lg} ${className}`}
+      className={`glass-mark relative grid flex-none place-items-center overflow-hidden p-0 ${SIZE[size] || SIZE.lg} ${className}`}
     >
       <img
         src={WE_EHS_MARK}
         alt={alt}
         aria-hidden={alt ? undefined : 'true'}
-        // Fixed fraction of the disc, not the full box: filling 100% made the
-        // kraft corners fight the glass radius and read as clipped high-left.
-        className="h-[82%] w-[82%] object-contain"
+        // Cover the disc: the kraft SVG is already a square face. Insetting it
+        // left a glass halo that made the mark look high-left; object-cover +
+        // overflow-hidden lets the glass radius clip the SVG's own rx evenly.
+        className="absolute inset-0 m-auto h-full w-full object-cover object-center"
       />
     </span>
   )

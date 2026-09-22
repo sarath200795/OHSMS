@@ -17,11 +17,11 @@ function ModuleTile({ tone, icon: Icon, label, description }) {
       data-tone={tone}
       className="glass-tile relative flex min-h-[152px] flex-col items-center justify-center gap-2.5 rounded-3xl p-4 text-center"
     >
-      {/* Fixed square + place-items-center so lucide glyphs (and any future
-          raster marks) share one optical centre — icons alone sat high-left
-          when the tile used justify without a sized slot. */}
+      {/* Fixed square + place-items-center so lucide glyphs share one optical
+          centre. `block` kills the inline SVG baseline gap that left icons
+          sitting high in the slot. */}
       <span className="grid h-11 w-11 flex-none place-items-center" aria-hidden="true">
-        <Icon size={22} strokeWidth={2} />
+        <Icon size={22} strokeWidth={2} className="block" />
       </span>
       <div className="min-w-0">
         <h3 className="text-[14px] font-bold tracking-[-0.015em] text-ink-900">{label}</h3>
