@@ -1,7 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { logger } from 'firebase-functions'
 import { FieldValue } from 'firebase-admin/firestore'
-import { purgeOrgCollection, moveMedicalRecords, assertPathSegment } from './index.js'
+import {
+  purgeOrgCollection, moveMedicalRecords, assertPathSegment,
+  notifyIncidentAssignment, notifyIllnessAssignment, notifyDrillAssignment, notifyTrainingAssignment,
+} from './index.js'
+import { ASSIGNMENT_COLLECTIONS } from './lib/assignmentNotify.js'
 import { PURGEABLE } from './lib/retention.js'
 import { planMedicalRecordMove } from './lib/medicalRecords.js'
 
@@ -556,5 +560,26 @@ describe('validating a caller-supplied path segment', () => {
 
   it('names the field it rejected, so the caller can tell uid from personId', () => {
     expect(() => assertPathSegment('a/b', 'personId')).toThrow(/personId/)
+  })
+})
+
+describe('assignment mail triggers', () => {
+  // Firebase only deploys functions that are statically exported. A collection
+  // added to the planner and not to a trigger would classify mail that nothing
+  // ever sends. The reverse — a trigger whose collection the planner does not
+  // know — would wake on every write and send nothing, which is the cheaper
+  // mistake, so the list in the planner is what this checks against.
+  const triggers = {
+    incidents: notifyIncidentAssignment,
+    illnesses: notifyIllnessAssignment,
+    mockDrills: notifyDrillAssignment,
+    trainingAssignments: notifyTrainingAssignment,
+  }
+
+  it('exports one trigger for every collection the planner knows', () => {
+    expect(Object.keys(triggers).sort()).toEqual([...ASSIGNMENT_COLLECTIONS].sort())
+    for (const name of ASSIGNMENT_COLLECTIONS) {
+      expect(typeof triggers[name]).toBe('function')
+    }
   })
 })

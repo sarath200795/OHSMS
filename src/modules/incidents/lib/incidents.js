@@ -27,6 +27,7 @@ import { logAudit } from './firestore'
 import { AUDIT, diffSummary } from './audit'
 import { statsDeltaFor, emptyStats, BUCKETS } from './stats'
 import { incidentInjuryStubs } from './injuries'
+import { stampNewAssignees } from '../../../shared/org/stampAssignee'
 import { reserveDocId } from '../../../shared/docId/reserve'
 import { putFile, removeFile, MAX_INLINE_BYTES, tooLargeForInline } from '../../../shared/storage'
 // Sealed under the GENERAL class — a symmetric org key held by everyone who can
@@ -240,9 +241,18 @@ export async function createIncident(orgId, actor, initial = {}) {
  * will not know about.
  */
 export async function updateIncident(orgId, id, updates, opts = {}) {
-  const safe = 'injuryReports' in updates
+  // assignedByUid is what the assignment-mail trigger uses to skip a person
+  // assigning the action to themselves, and to name the assigner. It is a
+  // uid, so it stays unsealed — the same decision ownerUid already got.
+  // Stamped only when the owner changed: a later edit of the due date must
+  // not replace the person who actually assigned it.
+  let safe = 'injuryReports' in updates
     ? { ...updates, injuryReports: incidentInjuryStubs(updates.injuryReports) }
-    : updates
+    : { ...updates }
+  if (Array.isArray(safe.capa) && opts.actor?.uid) {
+    const prev = await getDoc(incidentRef(orgId, id))
+    safe.capa = stampNewAssignees(prev.exists() ? prev.data()?.capa : [], safe.capa, opts.actor.uid)
+  }
   // Sealed OUTSIDE the transaction. It depends only on `updates`, and a
   // transaction body can retry — running RSA/AES over the same fields on every
   // attempt would be work for nothing.

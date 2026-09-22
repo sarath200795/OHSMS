@@ -227,6 +227,11 @@ jobs:
       # --force because a scheduled function that has been renamed or removed
       # otherwise prompts, and a non-interactive run would hang until it timed
       # out. Nothing here deletes data; the worst case is a stale function going.
+      #
+      # Assignment mail sends as info@weehs.org and binds SMTP_PASS, that
+      # mailbox's password. Create it before this step
+      # (`firebase functions:secrets:set SMTP_PASS`) or the deploy stops here.
+      # A placeholder deploys but does not send. See DEPLOYMENT.md §6.
       - name: Deploy functions
         if: steps.creds.outputs.configured == 'true'
         env:

@@ -1727,8 +1727,9 @@ service cloud.firestore {
         // already been sent. The moment a sender exists, a member can pre-seed
         // rows to suppress a notification they are not allowed to read, which
         // for an escalation or an approval is the notification most worth
-        // suppressing. The writer its rule cites, functions/lib/notify.js, does
-        // not exist yet, and a grant that is only wrong later is still the kind
+        // suppressing. The writer is sendOnce() in functions/lib/notify.js,
+        // which claims the row before it sends. The exclusion landed before
+        // that sender did: a grant that is only wrong later is still the kind
         // nobody notices, because nothing fails while it waits.
         //
         // The immediate one: an unbounded write channel into a collection with

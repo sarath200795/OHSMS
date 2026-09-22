@@ -18,7 +18,7 @@ import { getStorage } from 'firebase-admin/storage'
 import { onDocumentWritten } from 'firebase-functions/v2/firestore'
 import { onSchedule } from 'firebase-functions/v2/scheduler'
 import { onCall, HttpsError } from 'firebase-functions/v2/https'
-import { defineSecret } from 'firebase-functions/params'
+import { defineSecret, defineString } from 'firebase-functions/params'
 import { logger } from 'firebase-functions'
 import { claimsFor, claimsChanged, mergeClaims, revokesAccess } from './lib/claims.js'
 import { planBackfill } from './lib/docVisibility.js'
@@ -41,6 +41,8 @@ import {
   FILE_TARGETS, MAX_OBJECTS_PER_RUN, needsObjectSealing, sealedPath,
   sealObjectBytes, openObjectBytes, sameBytes, pointerUpdate,
 } from './lib/objectSeal.js'
+import { deliverAssignments, writtenData } from './lib/assignmentNotify.js'
+import { createMailer, DEFAULT_MAIL } from './lib/mailer.js'
 
 initializeApp()
 
@@ -66,6 +68,22 @@ initializeApp()
  * rotation that replaced it has been verified against real data.
  */
 const DATA_KEY_MASTER = defineSecret('DATA_KEY_MASTER')
+
+// Assignment mail sends as info@weehs.org, the mailbox that already exists.
+// Host, username, from-address and the app origin default to that mailbox
+// (functions/lib/mailer.js DEFAULT_MAIL). SMTP_PASS is its password, and it
+// is a secret on purpose: a mail credential in the Cloud Run environment, in
+// cleartext, is the finding LOW-13 recorded. These four triggers bind it, so
+// the secret has to exist before they deploy. A placeholder deploys; nothing
+// is sent until the value is the real mailbox password. See DEPLOYMENT.md §6.
+//
+//   firebase functions:secrets:set SMTP_PASS
+const SMTP_PASS = defineSecret('SMTP_PASS')
+const SMTP_HOST = defineString('SMTP_HOST', { default: DEFAULT_MAIL.host })
+const SMTP_PORT = defineString('SMTP_PORT', { default: DEFAULT_MAIL.port })
+const SMTP_USER = defineString('SMTP_USER', { default: DEFAULT_MAIL.user })
+const MAIL_FROM = defineString('MAIL_FROM', { default: DEFAULT_MAIL.from })
+const APP_ORIGIN = defineString('APP_ORIGIN', { default: DEFAULT_MAIL.appOrigin })
 
 // Keep the functions beside the data they trigger on. This project's Firestore
 // is in asia-south1 (Mumbai), and a Firestore trigger's Eventarc plumbing is
@@ -2402,3 +2420,69 @@ function fingerprint(secret) {
   for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0
   return h.toString(36)
 }
+
+function assignmentMailer() {
+  return createMailer({
+    SMTP_HOST: SMTP_HOST.value(),
+    SMTP_PORT: SMTP_PORT.value(),
+    SMTP_USER: SMTP_USER.value(),
+    SMTP_PASS: SMTP_PASS.value(),
+    MAIL_FROM: MAIL_FROM.value(),
+    APP_ORIGIN: APP_ORIGIN.value(),
+  })
+}
+
+/**
+ * Email whoever a task was just assigned to.
+ *
+ * Runs after the write. A failure here must not come back as a failed save,
+ * and it must not retry into a second copy of a mail that already went out —
+ * both of those are deliverAssignments' job. Reading the secret throws when
+ * it is unbound (the emulator, before functions/.secret.local exists). That
+ * is the same outcome as an empty configuration: log it and return. Throwing
+ * would make Cloud Functions retry the event for days.
+ */
+async function onAssignmentWritten(collection, event) {
+  let mailer
+  try {
+    mailer = assignmentMailer()
+  } catch (err) {
+    logger.error('assignment mail is not configured', {
+      error: err?.message || String(err),
+      missing: ['SMTP_PASS'],
+      collection,
+    })
+    return
+  }
+  await deliverAssignments({
+    db: getFirestore(),
+    collection,
+    orgId: event.params.orgId,
+    docId: event.params.docId,
+    before: writtenData(event.data?.before),
+    after: writtenData(event.data?.after),
+    eventId: event.id,
+    mailer,
+    logger,
+  })
+}
+
+// One trigger per collection, not a wildcard over organizations/{orgId}/{col}.
+// A wildcard would wake this on every document in the tenant. The names are
+// static exports because that is what the deploy discovers; they have to
+// stay in step with ASSIGNMENT_COLLECTIONS, which index.test.js checks.
+function assignmentTrigger(collection) {
+  return onDocumentWritten(
+    {
+      document: `organizations/{orgId}/${collection}/{docId}`,
+      region: REGION,
+      secrets: [SMTP_PASS],
+    },
+    (event) => onAssignmentWritten(collection, event),
+  )
+}
+
+export const notifyIncidentAssignment = assignmentTrigger('incidents')
+export const notifyIllnessAssignment = assignmentTrigger('illnesses')
+export const notifyDrillAssignment = assignmentTrigger('mockDrills')
+export const notifyTrainingAssignment = assignmentTrigger('trainingAssignments')
