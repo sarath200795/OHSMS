@@ -594,18 +594,18 @@ thead {
 .login-float {
   position: absolute;
   z-index: 0;
-  inset: -72px -96px;
+  inset: -120px -160px;
   pointer-events: none;
   overflow: visible;
 }
 .login-float-mark {
   position: absolute;
-  opacity: 0.38;
+  opacity: 0.32;
   border-radius: 22%;
   animation-name: login-bob;
   animation-timing-function: ease-in-out;
   animation-iteration-count: infinite;
-  filter: blur(0.3px);
+  filter: blur(0.6px);
 }
 @keyframes login-bob {
   0%,
@@ -613,7 +613,7 @@ thead {
     transform: translate3d(0, 0, 0) rotate(-8deg);
   }
   50% {
-    transform: translate3d(10px, -26px, 0) rotate(7deg);
+    transform: translate3d(16px, -34px, 0) rotate(8deg);
   }
 }
 .login-glass {
