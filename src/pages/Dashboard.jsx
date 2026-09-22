@@ -263,8 +263,8 @@ export default function Dashboard() {
                 <Badge tone="brand">New</Badge>
               </span>
             )}
-            <span className="grid h-11 w-11 place-items-center">
-              <m.icon size={22} />
+            <span className="grid h-11 w-11 origin-center place-items-center">
+              <m.icon size={22} className="block" />
             </span>
             <div className="min-w-0">
               <p className="font-semibold text-ink-900">{m.title}</p>

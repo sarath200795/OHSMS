@@ -97,63 +97,51 @@ const ADMIN_TOOLS = [
 /**
  * A module tile.
  *
- * The whole card is Liquid Glass (tinted frost of the module tone) so the grid
- * reads as glass app tiles rather than flat white cards with a glass badge on
- * the logo. The logo sits centered on that surface — no nested `.glass-mark`
- * disc — and still lifts in its own 3D scene on hover.
- *
- * Everything is transform and opacity, so it stays off the main thread, and
- * `motion-reduce` drops the whole effect rather than softening it.
+ * The whole card is Liquid Glass. The logo sits in a fixed square at the
+ * centre of that surface. Hover only scales that square from its own centre —
+ * no translateZ and no tilt. A Z-lift used the tile as the vanishing point, so
+ * the mark slid toward the middle of the card and off the row it shares with
+ * its neighbours.
  */
 function Tile({ to, icon: Icon, tone = 'brand', label, title, delay = 0, logoKey }) {
   const has3D = has3DLogo(logoKey)
   return (
-    <div className="[perspective:760px]">
-      <Link
-        to={to}
-        data-tone={tone}
-        style={{ animationDelay: `${delay}ms` }}
-        className="group glass-tile relative flex min-h-[152px] animate-fade-in-up flex-col items-center justify-center gap-3 rounded-3xl p-5 text-center
-                   transition-[transform,box-shadow] duration-200 ease-emil [transform-style:preserve-3d]
-                   hover:-translate-y-0.5 hover:shadow-elev-lg
-                   active:translate-y-0 active:scale-[0.99]
-                   focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas
-                   motion-reduce:transition-none motion-reduce:hover:translate-y-0"
+    <Link
+      to={to}
+      data-tone={tone}
+      style={{ animationDelay: `${delay}ms` }}
+      className="group glass-tile relative flex min-h-[152px] animate-fade-in-up flex-col items-center justify-center gap-3 rounded-3xl p-5 text-center
+                 transition-[transform,box-shadow] duration-200 ease-emil
+                 hover:-translate-y-0.5 hover:shadow-elev-lg
+                 active:translate-y-0 active:scale-[0.99]
+                 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas
+                 motion-reduce:transition-none motion-reduce:hover:translate-y-0"
+    >
+      <span aria-hidden="true" className="glass-tile-glow" data-tone={tone} />
+      {/* Perspective lives on the mark, not the card, so any depth in a 3D
+          logo expands around this square instead of drifting toward the tile. */}
+      <span
+        className="relative grid h-[60px] w-[60px] flex-none origin-center place-items-center [perspective:480px] [perspective-origin:center]
+                   transition-transform duration-300 ease-emil
+                   group-hover:scale-110
+                   motion-reduce:transition-none motion-reduce:group-hover:transform-none"
       >
-        <span aria-hidden="true" className="glass-tile-glow" data-tone={tone} />
-        {/* The logo lifts far enough off the card for the perspective to bend
-            it — the wobble below only reads as rotation because of this gap. */}
-        <span
-          className="relative mx-auto grid h-[60px] w-[60px] flex-none place-items-center [transform-style:preserve-3d]
-                     transition-transform duration-300 ease-emil
-                     group-hover:[transform:translateZ(56px)_scale(1.12)]
-                     motion-reduce:transition-none motion-reduce:group-hover:[transform:none]"
-        >
-          {/* Modules with a built object let the object do the moving; the
-              rest keep the turn, since a static glyph has nothing else to say. */}
-          <span
-            className={`relative grid h-full w-full place-items-center [transform-style:preserve-3d] ${
-              has3D ? '' : 'group-hover:animate-wobble3d'
-            } motion-reduce:group-hover:animate-none`}
-          >
-            {has3D ? <ModuleLogo3D moduleKey={logoKey} /> : <Icon size={28} strokeWidth={2} />}
-          </span>
-          {/* Specular sweep — what makes the face read as glossy rather than flat. */}
-          <span
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-y-0 -left-1/3 z-[2] w-1/2 overflow-hidden rounded-[22px] bg-white/45 opacity-0
-                       group-hover:animate-sheen motion-reduce:group-hover:animate-none"
-          />
+        <span className="grid h-full w-full origin-center place-items-center [transform-style:preserve-3d]">
+          {has3D ? (
+            <ModuleLogo3D moduleKey={logoKey} />
+          ) : (
+            <Icon size={28} strokeWidth={2} className="block" />
+          )}
         </span>
+      </span>
 
-        <span className="min-w-0 transition-transform duration-300 ease-emil group-hover:[transform:translateZ(26px)] motion-reduce:group-hover:[transform:none]">
-          <span className="block text-[15px] font-bold tracking-[-0.015em] text-ink-900">
-            {label}
-          </span>
-          <span className="mt-0.5 block text-[12px] leading-snug text-ink-500">{title}</span>
+      <span className="min-w-0">
+        <span className="block text-[15px] font-bold tracking-[-0.015em] text-ink-900">
+          {label}
         </span>
-      </Link>
-    </div>
+        <span className="mt-0.5 block text-[12px] leading-snug text-ink-500">{title}</span>
+      </span>
+    </Link>
   )
 }
 
