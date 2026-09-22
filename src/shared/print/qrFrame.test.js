@@ -23,6 +23,8 @@ describe('printed QR frame', () => {
     expect(box.border).toBe('2px solid #26211a')
     expect(box.background).toBe('#ffffff')
     expect(box.padding).toBeGreaterThanOrEqual(4)
+    expect(box.width).toBe('fit-content')
+    expect(box.display).toBe('inline-block')
   })
 
   it('keeps padding inside the stroke so the quiet zone is not the border', () => {

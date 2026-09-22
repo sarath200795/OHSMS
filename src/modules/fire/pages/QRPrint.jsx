@@ -74,7 +74,8 @@ export default function QRPrint() {
       @media print {
         body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         .qr-print-grid { display: grid !important; grid-template-columns: repeat(3, 1fr) !important; gap: 8mm !important; }
-        .qr-print-card { break-inside: avoid; page-break-inside: avoid; min-height: 46mm; box-shadow: none !important; border: 0.4mm solid ${QR_FRAME_INK} !important; }
+        .qr-print-card { break-inside: avoid; page-break-inside: avoid; min-height: 46mm; box-shadow: none !important; border: 0.4mm solid ${QR_FRAME_INK} !important; overflow: hidden; }
+        .qr-print-card p { overflow-wrap: anywhere; word-break: break-word; max-width: 100%; }
         .qr-print-code { width: 34mm !important; height: 34mm !important; ${QR_PRINT_CODE_RULE} }
       }
     `,
@@ -153,12 +154,12 @@ export default function QRPrint() {
             ) : (
               <div ref={printRef} className="qr-print-grid grid grid-cols-2 gap-4 sm:grid-cols-3">
                 {items.map((e) => (
-                  <div key={e.id} className="qr-print-card flex flex-col items-center rounded-xl border border-ink-900 bg-white p-4 text-center">
-                    <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-brand-600">{HEADER[assetType]}</div>
+                  <div key={e.id} className="qr-print-card flex min-w-0 flex-col items-center rounded-xl border border-ink-900 bg-white p-4 text-center">
+                    <div className="mb-1 max-w-full break-words text-[10px] font-semibold uppercase tracking-[0.12em] text-brand-600">{HEADER[assetType]}</div>
                     <QRCodeSVG className="qr-print-code" style={qrCodeBorderStyle()} value={publicQrUrl(e.qrToken)} size={148} level="H" includeMargin fgColor="#000000" bgColor="#ffffff" />
-                    <p className="mt-2 text-sm font-extrabold text-ink-900">{cfg.big(e)}</p>
-                    <p className="text-xs text-ink-500">{cfg.sub(e)}</p>
-                    <p className="truncate text-xs text-ink-400">{e.centerName}</p>
+                    <p className="mt-2 max-w-full break-words text-sm font-extrabold text-ink-900">{cfg.big(e)}</p>
+                    <p className="max-w-full break-words text-xs text-ink-500">{cfg.sub(e)}</p>
+                    <p className="max-w-full break-words text-xs text-ink-400">{e.centerName}</p>
                   </div>
                 ))}
               </div>

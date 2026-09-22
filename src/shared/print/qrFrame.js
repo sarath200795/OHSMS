@@ -29,6 +29,12 @@ export function qrFrameStyle(padding = 8) {
     padding,
     lineHeight: 0,
     boxSizing: 'content-box',
+    // A block box stretches to the column and the border becomes a wide bar
+    // with the code in one corner. Hug the QR so the frame stays a box.
+    display: 'inline-block',
+    width: 'fit-content',
+    maxWidth: '100%',
+    verticalAlign: 'top',
   }
 }
 

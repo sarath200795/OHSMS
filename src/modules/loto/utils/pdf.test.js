@@ -36,13 +36,41 @@ vi.mock('jspdf', async (importOriginal) => {
     const doc = new Real(...args)
     const addImage = doc.addImage.bind(doc)
     const rect = doc.rect.bind(doc)
+    const text = doc.text.bind(doc)
     doc.addImage = (...a) => {
       draws.push({ op: 'image', args: a })
       return addImage(...a)
     }
     doc.rect = (...a) => {
-      draws.push({ op: 'rect', args: a, lineWidth: doc.getLineWidth() })
+      draws.push({
+        op: 'rect',
+        args: a,
+        lineWidth: doc.getLineWidth(),
+        page: doc.getCurrentPageInfo().pageNumber,
+      })
       return rect(...a)
+    }
+    doc.text = (...a) => {
+      const raw = a[0]
+      const x = Number(a[1])
+      const y = Number(a[2])
+      const lines = Array.isArray(raw) ? raw.map(String) : [String(raw)]
+      const scale = doc.internal.scaleFactor || 1
+      const fontSize = doc.getFontSize() / scale
+      const lineH = doc.getLineHeight() / scale
+      const page = doc.getCurrentPageInfo().pageNumber
+      lines.forEach((line, i) => {
+        draws.push({
+          op: 'text',
+          text: line,
+          x,
+          y: y + i * lineH,
+          width: doc.getTextWidth(line),
+          fontSize,
+          page,
+        })
+      })
+      return text(...a)
     }
     doc.save = (filename) => {
       saved.push({ filename, bytes: doc.output('arraybuffer').byteLength })
@@ -86,6 +114,23 @@ function framesAround(size) {
       return covers && w < iw + 4 && h < ih + 4
     })
     return { image, frame, ix, iy, iw, ih }
+  })
+}
+
+// A line whose box crosses the frame (or the gutter beside it) is the overlap
+// the procedure code had: one unbreakable token drawn through the modules.
+function textCrowdingFrame(frame, gutter) {
+  const [fx, fy, fw, fh] = frame.args
+  return draws.filter((t) => {
+    if (t.op !== 'text') return false
+    const top = t.y - t.fontSize * 0.9
+    const bottom = t.y + t.fontSize * 0.25
+    if (t.page !== frame.page) return false
+    const vertical = bottom > fy && top < fy + fh
+    if (!vertical) return false
+    const left = t.x
+    const right = t.x + t.width
+    return right > fx - gutter && left < fx + fw + gutter
   })
 }
 
@@ -175,6 +220,20 @@ describe('LOTO posted procedure PDF', () => {
     expect(iy - frame.args[1]).toBeGreaterThan(0.2)
     expect(frame.args[2]).toBeCloseTo(iw + frame.lineWidth, 2)
   })
+
+  // "ACME-PLANT-2-HYDRAULIC-PRESS-4" has no spaces. maxWidth that still
+  // reached the QR drew it as one line through the frame.
+  it('wraps the procedure code clear of the header QR', async () => {
+    await generateProcedurePdf(procedure)
+    const framed = framesAround(54)
+    expect(framed).toHaveLength(1)
+    const crowding = textCrowdingFrame(framed[0].frame, 4)
+    expect(crowding.map((t) => t.text)).toEqual([])
+    const header = draws.filter((t) => t.op === 'text' && t.page === 1 && t.y < 160)
+    expect(header.some((t) => t.text === procedure.procedureCode)).toBe(false)
+    expect(header.some((t) => String(t.text).includes('ACME-PLANT'))).toBe(true)
+    expect(header.some((t) => String(t.text).includes('PRESS-4'))).toBe(true)
+  })
 })
 
 describe('LOTO register PDF', () => {
@@ -263,6 +322,17 @@ describe('LOTO tag sheet PDF', () => {
       expect(iy - frame.args[1]).toBeGreaterThan(0.2)
       expect(frame.args[2]).toBeCloseTo(iw + frame.lineWidth, 2)
     }
+  })
+
+  it('keeps the procedure code and hardware out of each tag QR', async () => {
+    await generateTagsPdf(procedure)
+    const framed = framesAround(22)
+    expect(framed).toHaveLength(3)
+    for (const { frame } of framed) {
+      expect(textCrowdingFrame(frame, 1).map((t) => t.text)).toEqual([])
+    }
+    const codes = draws.filter((t) => t.op === 'text' && String(t.text).includes('ACME-PLANT'))
+    expect(codes.length).toBeGreaterThan(0)
   })
 
   it('falls back to the procedure code for a point with no key', async () => {

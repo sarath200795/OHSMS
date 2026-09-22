@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi } from 'vitest'
-import { render } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { QR_FRAME_INK } from '../../../shared/print/qrFrame'
 
 const fleet = {
@@ -55,6 +55,9 @@ describe('fire QR label print', () => {
     const card = qr.closest('.qr-print-card')
     expect(card.className).toMatch(/border/)
     expect(card.className).not.toMatch(/ring-/)
+    const caption = screen.getAllByText('FE-100').find((el) => el.tagName === 'P')
+    expect(caption.className).toMatch(/break-words/)
+    expect(caption.className).not.toMatch(/truncate/)
 
     // The print stylesheet is what react-to-print actually applies. A ring
     // would be stripped by box-shadow: none; the rule has to be a border.
@@ -62,5 +65,6 @@ describe('fire QR label print', () => {
     expect(printOpts[0].pageStyle).toContain('0.55mm solid #26211a')
     expect(printOpts[0].pageStyle).toContain('content-box')
     expect(printOpts[0].pageStyle).toContain('box-shadow: none')
+    expect(printOpts[0].pageStyle).toContain('overflow-wrap: anywhere')
   })
 })

@@ -52,6 +52,16 @@ function drawFramedQr(doc, qr, x, y, size, stroke) {
   doc.setLineWidth(prevWidth)
 }
 
+// splitTextToSize breaks on spaces and, for a token longer than the line
+// (a procedure code is one word), on characters. maxWidth on doc.text does
+// the same, but only if the width actually stops before the QR — 180pt from
+// the value column ran through the frame.
+function wrapToWidth(doc, text, maxWidth) {
+  const width = Math.max(12, maxWidth)
+  const lines = doc.splitTextToSize(String(text ?? '—'), width)
+  return lines.length ? lines : ['—']
+}
+
 // US-Letter in points.
 const PAGE_W = 612
 const PAGE_H = 792
@@ -99,10 +109,11 @@ export async function generateProcedurePdf(procedure, photos = {}) {
       .map(([k, n]) => `${k}-${String(n).padStart(2, '0')}`)
       .join(', ') || '—'
 
-  drawPostedHeader(doc, procedure, points, energySummary, qr)
+  // The header grows when a long procedure code wraps beside the QR.
+  // A fixed start buried that second line under the process strip.
+  let y = drawPostedHeader(doc, procedure, points, energySummary, qr)
 
   // ---- Lockout Application Process strip ----
-  let y = 150
   doc.setFillColor(...STEEL)
   doc.rect(M, y, PAGE_W - M * 2, 16, 'F')
   doc.setTextColor(255, 255, 255)
@@ -227,9 +238,18 @@ function drawPostedHeader(doc, procedure, points, energySummary, qr) {
   doc.setFontSize(15)
   doc.text('Lockout / Tagout Posted Procedure', M, 21)
 
-  // QR top-right
+  // QR top-right. The value column stops a gutter short of this frame:
+  // the procedure code has no spaces, so a width that reaches the frame
+  // draws the tail through the modules.
   const qrSize = 54
-  drawFramedQr(doc, qr, PAGE_W - M - qrSize, 40, qrSize, QR_STROKE_PT)
+  const qrX = PAGE_W - M - qrSize
+  const qrY = 40
+  drawFramedQr(doc, qr, qrX, qrY, qrSize, QR_STROKE_PT)
+  const frameLeft = qrX - QR_STROKE_PT / 2
+  const frameBottom = qrY + qrSize + QR_STROKE_PT / 2
+  const gutter = 8
+  const labelW = 92
+  const rightX = 300
 
   // Left info block
   const left = [
@@ -246,31 +266,41 @@ function drawPostedHeader(doc, procedure, points, energySummary, qr) {
     ['Revised', fmtDate(procedure.updatedAt)],
     ['Lockout Points', String(points.length)],
   ]
-  doc.setFontSize(9)
-  const drawPairs = (rows, x, startY) => {
-    rows.forEach((r, i) => {
-      const ry = startY + i * 13
+  const drawPairs = (rows, x, startY, valueWidth) => {
+    const lineH = 11
+    let y = startY
+    doc.setFontSize(9)
+    rows.forEach((r) => {
+      doc.setFont('helvetica', 'normal')
+      const lines = wrapToWidth(doc, r[1], valueWidth)
       doc.setFont('helvetica', 'bold')
       doc.setTextColor(...STEEL)
-      doc.text(`${r[0]}:`, x, ry)
+      doc.text(`${r[0]}:`, x, y)
       doc.setFont('helvetica', 'normal')
       doc.setTextColor(60, 60, 60)
-      doc.text(String(r[1]), x + 92, ry, { maxWidth: 180 })
+      lines.forEach((line, i) => {
+        doc.text(line, x + labelW, y + i * lineH)
+      })
+      y += Math.max(13, lines.length * lineH + 2)
     })
+    return y
   }
-  drawPairs(left, M, 50)
-  drawPairs(right, 300, 50)
+  const leftBottom = drawPairs(left, M, 50, rightX - gutter - (M + labelW))
+  const rightBottom = drawPairs(right, rightX, 50, frameLeft - gutter - (rightX + labelW))
 
-  // Modification note
+  // Modification note sits under the columns and under the QR, so a wrapped
+  // code does not land on this line and this line does not land on the code.
+  let y = Math.max(leftBottom, rightBottom, frameBottom) + 12
   doc.setFontSize(7)
   doc.setTextColor(120, 120, 120)
-  doc.text(
-    'Any machine modification must be reflected in this procedure. Contact Maintenance to update.',
-    M,
-    140
-  )
+  const note =
+    'Any machine modification must be reflected in this procedure. Contact Maintenance to update.'
+  const noteLines = wrapToWidth(doc, note, PAGE_W - M * 2)
+  noteLines.forEach((line, i) => doc.text(line, M, y + i * 9))
+  y += noteLines.length * 9 + 2
   doc.setDrawColor(...BORDER)
-  doc.line(M, 144, PAGE_W - M, 144)
+  doc.line(M, y, PAGE_W - M, y)
+  return y + 8
 }
 
 function addOshaPage(doc) {
@@ -625,23 +655,53 @@ function drawTag(doc, x, y, w, h, p, procedure, qr) {
   doc.setFontSize(7)
   doc.text((p.energyLabel || '').toUpperCase(), x + 4, y + 11)
 
+  const qrSize = 22
+  const qrPad = 4
+  const qrX = x + w - qrSize - qrPad
+  const qrY = y + h - qrSize - qrPad
+  // Text lives in the column left of the frame. The procedure code used to
+  // start at the QR's left edge and run right, through the modules and off
+  // the tag. Hardware used a width that reached the same place.
+  const textX = x + 5
+  const gutter = 2
+  const frameLeft = qrX - QR_STROKE_MM / 2
+  const textW = frameLeft - gutter - textX
+
   doc.setTextColor(20, 20, 20)
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(22)
-  doc.text(p.pointId, x + 5, y + bandH + 14)
+  const idLines = wrapToWidth(doc, p.pointId, textW)
+  doc.text(idLines, textX, y + bandH + 12)
 
   doc.setFontSize(8)
   doc.setFont('helvetica', 'normal')
   doc.setTextColor(40, 40, 40)
-  doc.text('Equipment:', x + 5, y + bandH + 22)
+  doc.text('Equipment:', textX, y + bandH + 20)
   doc.setFont('helvetica', 'bold')
-  doc.text(doc.splitTextToSize(procedure.equipment || '—', w - 38), x + 5, y + bandH + 27)
+  const equipLines = wrapToWidth(doc, procedure.equipment || '—', textW)
+  doc.text(equipLines, textX, y + bandH + 24)
   doc.setFont('helvetica', 'normal')
-  doc.text(doc.splitTextToSize(`Hardware: ${pointDevicesLabel(p)}`, w - 10), x + 5, y + bandH + 36)
+  const hardwareY = y + bandH + 24 + equipLines.length * 3.4 + 1.2
+  const hwLines = wrapToWidth(doc, `Hardware: ${pointDevicesLabel(p)}`, textW)
+  doc.text(hwLines, textX, hardwareY)
 
-  const qrSize = 22
-  drawFramedQr(doc, qr, x + w - qrSize - 4, y + h - qrSize - 4, qrSize, QR_STROKE_MM)
-  doc.setFontSize(5.5)
-  doc.setTextColor(110, 110, 110)
-  doc.text(procedure.procedureCode || '', x + w - qrSize - 4, y + h - 2)
+  if (procedure.procedureCode) {
+    doc.setFontSize(6)
+    doc.setTextColor(110, 110, 110)
+    const codeLines = wrapToWidth(doc, procedure.procedureCode, textW)
+    const lineH = 2.5
+    // A single line fits in the gap under the frame. A wrapped code is taller
+    // than that gap, so it stays in the left column — still short of the QR —
+    // rather than climbing back into the modules.
+    const frameBottom = qrY + qrSize + QR_STROKE_MM / 2
+    const afterHardware = hardwareY + hwLines.length * 3.2 + 1
+    const limit = y + h - 1.2
+    let codeY = codeLines.length === 1 ? frameBottom + 2.8 : afterHardware
+    if (codeY < afterHardware) codeY = afterHardware
+    const last = codeY + (codeLines.length - 1) * lineH
+    if (last > limit) codeY -= last - limit
+    codeLines.forEach((line, i) => doc.text(line, textX, codeY + i * lineH))
+  }
+
+  drawFramedQr(doc, qr, qrX, qrY, qrSize, QR_STROKE_MM)
 }

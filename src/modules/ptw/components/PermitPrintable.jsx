@@ -143,7 +143,7 @@ const PermitPrintable = forwardRef(function PermitPrintable({ permit, documents 
           paddingBottom: 10,
         }}
       >
-        <div>
+        <div style={{ minWidth: 0, flex: '1 1 auto', marginRight: 16 }}>
           <div
             style={{
               fontSize: 11,
@@ -152,19 +152,28 @@ const PermitPrintable = forwardRef(function PermitPrintable({ permit, documents 
               textTransform: 'uppercase',
               color: '#3d7a72',
               marginBottom: 4,
+              overflowWrap: 'anywhere',
             }}
           >
             WEHS · Permit to work
           </div>
           <div
-            style={{ fontSize: 20, fontWeight: 700, letterSpacing: '-0.02em', color: '#0f172a' }}
+            style={{
+              fontSize: 20,
+              fontWeight: 700,
+              letterSpacing: '-0.02em',
+              color: '#0f172a',
+              overflowWrap: 'anywhere',
+            }}
           >
             Permit to work
           </div>
-          <div style={{ fontSize: 12, color: '#5b6573' }}>{permit.permitNo}</div>
+          <div style={{ fontSize: 12, color: '#5b6573', overflowWrap: 'anywhere' }}>
+            {permit.permitNo}
+          </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ textAlign: 'right' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, flex: '0 0 auto' }}>
+          <div style={{ textAlign: 'right', maxWidth: 140 }}>
             <span
               style={{
                 display: 'inline-block',
@@ -174,11 +183,12 @@ const PermitPrintable = forwardRef(function PermitPrintable({ permit, documents 
                 padding: '4px 12px',
                 fontSize: 12,
                 fontWeight: 700,
+                overflowWrap: 'anywhere',
               }}
             >
               {meta.label}
             </span>
-            <div style={{ fontSize: 11, color: '#5b6573', marginTop: 4 }}>
+            <div style={{ fontSize: 11, color: '#5b6573', marginTop: 4, overflowWrap: 'anywhere' }}>
               Printed {fmt(new Date().toISOString())}
             </div>
           </div>

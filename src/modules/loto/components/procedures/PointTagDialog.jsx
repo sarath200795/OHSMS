@@ -36,8 +36,10 @@ export default function PointTagDialog({ procedure, point, onClose }) {
           {point.pointId}
         </div>
 
-        <p className="text-[13px] font-bold uppercase tracking-wide text-danger">Do not operate</p>
-        <p className="mt-0.5 text-[11px] leading-snug text-steel-700">
+        <p className="break-words text-[13px] font-bold uppercase tracking-wide text-danger">
+          Do not operate
+        </p>
+        <p className="mt-0.5 break-words text-[11px] leading-snug text-steel-700">
           This point is locked out. Scan before touching it.
         </p>
 
@@ -47,17 +49,21 @@ export default function PointTagDialog({ procedure, point, onClose }) {
           </div>
         </div>
 
-        <p className="text-[11px] font-semibold text-steel-800">{procedure.title || 'Isolation procedure'}</p>
+        <p className="break-words text-[11px] font-semibold text-steel-800">
+          {procedure.title || 'Isolation procedure'}
+        </p>
         {procedure.equipment && (
-          <p className="text-[11px] text-steel-600">{procedure.equipment}</p>
+          <p className="break-words text-[11px] text-steel-600">{procedure.equipment}</p>
         )}
-        {tech && <p className="mt-1 text-[11px] text-steel-600">Locked by {tech}</p>}
+        {tech && <p className="mt-1 break-words text-[11px] text-steel-600">Locked by {tech}</p>}
         {/* No date. A printed date is the one thing on here that cannot stay
             true, and next to "Do not operate" a stale one reads as authority. */}
       </div>
 
       <div className="mt-4 flex justify-end gap-2 print:hidden">
-        <Button variant="ghost" onClick={onClose}>Close</Button>
+        <Button variant="ghost" onClick={onClose}>
+          Close
+        </Button>
         <Button onClick={() => window.print()}>Print</Button>
       </div>
     </Modal>
