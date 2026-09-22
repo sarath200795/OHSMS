@@ -253,20 +253,24 @@ export default function Dashboard() {
           <Link
             key={m.key}
             to={m.path}
-            className="group card animate-fade-in-up flex flex-col gap-3 p-5 transition-transform duration-200 ease-emil hover:-translate-y-0.5 active:scale-[0.99]"
+            data-tone={m.tone}
+            className="group glass-tile relative flex min-h-[168px] animate-fade-in-up flex-col items-center justify-center gap-3 p-5 text-center transition-transform duration-200 ease-emil hover:-translate-y-0.5 active:scale-[0.99]"
             style={{ animationDelay: `${Math.min(i, 10) * 40}ms` }}
           >
-            <div className="flex items-center justify-between">
-              <ModuleMark tone={m.tone} size="md">
-                <m.icon size={22} />
-              </ModuleMark>
-              {m.isNew && <Badge tone="brand">New</Badge>}
-            </div>
-            <div>
+            <span aria-hidden="true" className="glass-tile-glow" data-tone={m.tone} />
+            {m.isNew && (
+              <span className="absolute right-3 top-3 z-[2]">
+                <Badge tone="brand">New</Badge>
+              </span>
+            )}
+            <span className="grid h-11 w-11 place-items-center">
+              <m.icon size={22} />
+            </span>
+            <div className="min-w-0">
               <p className="font-semibold text-ink-900">{m.title}</p>
               <p className="mt-1 text-sm text-ink-500">{m.description}</p>
             </div>
-            <span className="mt-auto flex items-center gap-1 text-sm font-medium text-brand-700 opacity-0 transition group-hover:opacity-100">
+            <span className="mt-auto flex items-center justify-center gap-1 text-sm font-medium text-brand-700 opacity-0 transition group-hover:opacity-100">
               Open <ArrowRight size={15} />
             </span>
           </Link>

@@ -43,18 +43,26 @@ export function OrgMark({ className = '', alt = '' }) {
   const customSet = hasOrgLogo(org)
   // Resolved by PATH. Uploads no longer mint a permanent download URL (audit
   // finding M-5), so `logoPath` is what a logo set after that change carries;
-  // the hook falls back to `logoUrl` for the ones set before it, which is why
-  // both are passed and neither is trusted alone.
+  // the hook falls back to `logoUrl` for the ones set before it, and for the
+  // small inline thumb Org Settings now writes alongside every path so the
+  // header still has something when Storage is briefly unreachable.
   const { src, loading } = useFileUrl({ url: org?.logoUrl, path: org?.logoPath })
   // safeSrc, not the raw field: this URL comes out of a Firestore document that
   // an org admin writes, and an <img src> is fetched without anyone clicking.
   const custom = safeSrc(src)
 
-  // While a stored logo is resolving, keep the slot rather than flashing the
-  // vendor mark — that flash is what made a successful upload look like it
-  // had been ignored.
-  if (customSet && !custom && loading) {
-    return <span aria-hidden="true" className={`flex-none bg-ink-50 ${className}`} />
+  // A logo is configured but not yet on screen. Keep a cream slot rather than
+  // flashing (or settling on) the vendor mark — that swap is what made a
+  // successful upload look like it had been ignored. Covers both "still
+  // resolving" and "fetch failed, no thumb to fall back to".
+  if (customSet && !custom) {
+    return (
+      <span
+        aria-hidden="true"
+        title={loading ? undefined : 'Organization logo unavailable'}
+        className={`flex-none bg-ink-50 ${className}`}
+      />
+    )
   }
 
   return (

@@ -34,6 +34,9 @@
 import { useEffect, useState } from 'react'
 import { fileUrl } from './index'
 
+/** How many times to retry a path fetch before accepting the stored fallback. */
+const MAX_ATTEMPTS = 3
+
 /**
  * @param pointer   `{ url, path }`, or a bare path string, or a data: URL
  * @param options   `{ orgId, collection }` — required only for SEALED
@@ -47,13 +50,22 @@ import { fileUrl } from './index'
  * medical record and an unreadable one came to look identical.
  */
 export function useFileUrl(pointer, { orgId, collection } = {}) {
-  const [state, setState] = useState({ src: '', loading: false, restricted: false })
-
   // The identity of a pointer, for the dependency array. An object literal
   // rebuilt on every render would re-fetch on every render — and each fetch
   // mints a blob URL, so that is a leak as well as a waste.
   const path = typeof pointer === 'string' ? pointer : pointer?.path || ''
   const stored = typeof pointer === 'string' ? '' : pointer?.url || pointer?.dataUrl || ''
+
+  // Start in loading when a path must be fetched. The previous default
+  // (`loading: false`) let OrgMark paint the vendor mark for one frame — and,
+  // when the fetch then failed with an empty stored url, keep it forever —
+  // which is exactly how a successful logo upload looked like it had been
+  // ignored.
+  const [state, setState] = useState(() => ({
+    src: path ? '' : stored,
+    loading: Boolean(path),
+    restricted: false,
+  }))
 
   useEffect(() => {
     // Nothing to resolve. A data: URL is already the bytes and never had a
@@ -65,23 +77,54 @@ export function useFileUrl(pointer, { orgId, collection } = {}) {
 
     let live = true
     let release = () => {}
-    setState((s) => ({ ...s, loading: true }))
+    let timer = 0
+    let attempt = 0
 
-    fileUrl(typeof pointer === 'string' ? pointer : { ...pointer }, { orgId, collection })
-      .then(({ url, revoke, restricted }) => {
-        release = revoke || (() => {})
-        // Resolved after the component went away, or after the pointer changed:
-        // release immediately rather than setting state on a dead component.
-        // Without this an object URL created by a superseded fetch is pinned in
-        // memory with nothing left holding a reference to revoke it.
-        if (!live) { release(); return }
-        setState({ src: url || '', loading: false, restricted: Boolean(restricted) })
-      })
-      .catch(() => {
-        if (live) setState({ src: stored, loading: false, restricted: false })
-      })
+    const run = () => {
+      attempt += 1
+      setState((s) => ({ ...s, loading: true }))
 
-    return () => { live = false; release() }
+      fileUrl(typeof pointer === 'string' ? pointer : { ...pointer }, { orgId, collection })
+        .then(({ url, revoke, restricted }) => {
+          release = revoke || (() => {})
+          // Resolved after the component went away, or after the pointer changed:
+          // release immediately rather than setting state on a dead component.
+          // Without this an object URL created by a superseded fetch is pinned in
+          // memory with nothing left holding a reference to revoke it.
+          if (!live) {
+            release()
+            return
+          }
+          if (url) {
+            setState({ src: url, loading: false, restricted: Boolean(restricted) })
+            return
+          }
+          // Empty result: retry a couple of times for the App Check / claims
+          // races that lose the first Storage request after sign-in, then fall
+          // back to whatever was persisted (logo thumb, legacy download URL).
+          if (attempt < MAX_ATTEMPTS) {
+            timer = window.setTimeout(run, 280 * attempt)
+            return
+          }
+          setState({ src: stored || '', loading: false, restricted: Boolean(restricted) })
+        })
+        .catch(() => {
+          if (!live) return
+          if (attempt < MAX_ATTEMPTS) {
+            timer = window.setTimeout(run, 280 * attempt)
+            return
+          }
+          setState({ src: stored || '', loading: false, restricted: false })
+        })
+    }
+
+    run()
+
+    return () => {
+      live = false
+      if (timer) window.clearTimeout(timer)
+      release()
+    }
     // `pointer` itself is deliberately absent: callers pass object literals, and
     // depending on one would re-run this every render. path + stored are the
     // only parts that change what gets fetched.

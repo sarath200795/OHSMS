@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Module tiles — before (glass on logo chip only)</title>
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700;800&family=Roboto:wght@400;500;700;900&display=swap"
+    />
+    <style>
+      :root {
+        --canvas: #f6e3bb;
+        --ink: #26211a;
+        --muted: #615344;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background:
+          radial-gradient(46% 54% at 14% 16%, rgba(255, 255, 255, 0.72), transparent 64%),
+          radial-gradient(40% 48% at 86% 10%, rgba(232, 163, 61, 0.42), transparent 62%),
+          radial-gradient(48% 58% at 78% 88%, rgba(240, 162, 49, 0.28), transparent 64%),
+          var(--canvas);
+        color: var(--ink);
+        font-family: 'Open Sans', system-ui, sans-serif;
+      }
+      h1 {
+        font-family: Roboto, system-ui, sans-serif;
+        font-size: 20px;
+        letter-spacing: -0.02em;
+        margin: 0 0 6px;
+      }
+      .lede {
+        color: var(--muted);
+        font-size: 13px;
+        margin: 0 0 22px;
+        max-width: 62ch;
+      }
+      main {
+        max-width: 960px;
+        margin: 0 auto;
+        padding: 32px 28px 64px;
+      }
+      .badge {
+        display: inline-block;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: #7a4e10;
+        background: rgba(232, 163, 61, 0.22);
+        border-radius: 999px;
+        padding: 4px 10px;
+        margin-bottom: 12px;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 16px;
+      }
+      .tile {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 16px;
+        border-radius: 24px;
+        background: rgba(255, 255, 255, 0.7);
+        box-shadow:
+          0 1px 2px rgba(38, 33, 26, 0.05),
+          0 12px 32px rgba(38, 33, 26, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.7);
+      }
+      .icon {
+        --mark-tint: #6db3aa;
+        --mark-ink: #1a4a44;
+        width: 60px;
+        height: 60px;
+        border-radius: 22px;
+        /* Intentionally off-centre: the pre-fix logo chip stacked absolute
+           3D marks without a centred origin, so glyphs sat high-left. */
+        display: block;
+        position: relative;
+        overflow: hidden;
+        flex: none;
+        color: var(--mark-ink);
+        background:
+          radial-gradient(120% 80% at 18% 10%, rgba(255, 255, 255, 0.78), transparent 46%),
+          linear-gradient(
+            165deg,
+            color-mix(in srgb, var(--mark-tint) 46%, #ffffff) 0%,
+            color-mix(in srgb, var(--mark-tint) 22%, rgba(255, 255, 255, 0.55)) 100%
+          );
+        backdrop-filter: blur(18px) saturate(1.35);
+        box-shadow:
+          inset 0 1px 0 rgba(255, 255, 255, 0.88),
+          0 10px 24px rgba(38, 33, 26, 0.1);
+      }
+      .icon span {
+        position: absolute;
+        top: 10px;
+        left: 12px;
+        font-family: Roboto, system-ui, sans-serif;
+        font-weight: 800;
+        font-size: 14px;
+      }
+      .icon.siren {
+        --mark-tint: #d94a3c;
+        --mark-ink: #7a241e;
+      }
+      .icon.amber {
+        --mark-tint: #e8a33d;
+        --mark-ink: #7a4e10;
+      }
+      .icon.blue {
+        --mark-tint: #8ba7bd;
+        --mark-ink: #3a5060;
+      }
+      .tile h3 {
+        margin: 0;
+        font-size: 15px;
+        font-weight: 700;
+      }
+      .tile p {
+        margin: 2px 0 0;
+        font-size: 12px;
+        color: var(--muted);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <span class="badge">Before</span>
+      <h1>Liquid Glass only on the logo chip</h1>
+      <p class="lede">
+        Portal module tiles were flat white cards. Frost lived on a 60px mark; logos inside that
+        mark often sat high-left rather than centred.
+      </p>
+      <div class="grid">
+        <article class="tile">
+          <span class="icon siren"><span>IR</span></span>
+          <div>
+            <h3>Incidents</h3>
+            <p>Report, investigate, CAPA</p>
+          </div>
+        </article>
+        <article class="tile">
+          <span class="icon"><span>HI</span></span>
+          <div>
+            <h3>HIRA</h3>
+            <p>Risk matrix and controls</p>
+          </div>
+        </article>
+        <article class="tile">
+          <span class="icon amber"><span>EQ</span></span>
+          <div>
+            <h3>Equipment</h3>
+            <p>Extinguishers, AEDs, FAS</p>
+          </div>
+        </article>
+        <article class="tile">
+          <span class="icon blue"><span>AN</span></span>
+          <div>
+            <h3>Analytics</h3>
+            <p>Trends across your sites</p>
+          </div>
+        </article>
+        <article class="tile">
+          <span class="icon"><span>PT</span></span>
+          <div>
+            <h3>Permit to Work</h3>
+            <p>Issue, isolate, hand back</p>
+          </div>
+        </article>
+        <article class="tile">
+          <span class="icon amber"><span>TR</span></span>
+          <div>
+            <h3>Training</h3>
+            <p>Assignments and certificates</p>
+          </div>
+        </article>
+      </div>
+    </main>
+  </body>
+</html>

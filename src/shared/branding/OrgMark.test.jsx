@@ -56,4 +56,13 @@ describe('OrgMark', () => {
     expect(screen.queryByAltText('org')).toBeNull()
     expect(container.querySelector('img')).toBeNull()
   })
+
+  it('keeps a cream slot when a configured logo fails to resolve, rather than the vendor mark', () => {
+    useAuth.mockReturnValue({ org: { logoPath: 'orgs/a/org-logo/x.png', logoUrl: '' } })
+    useFileUrl.mockReturnValue({ src: '', loading: false })
+    const { container } = render(<OrgMark alt="org" />)
+    expect(screen.queryByAltText('org')).toBeNull()
+    expect(container.querySelector('img')).toBeNull()
+    expect(container.querySelector('span.bg-ink-50')).toBeTruthy()
+  })
 })
