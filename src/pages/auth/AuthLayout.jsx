@@ -8,8 +8,9 @@ import BrandMark from '../../shared/branding/BrandMark'
  * it for the module roster. Other auth routes stay the narrow centred card so
  * a password reset is not buried under seventeen glass tiles.
  *
- * On a phone the showcase stacks under the form: tighter chrome and a hairline
- * before the briefs so the long module list does not feel glued to the card.
+ * With a showcase, the pair is a compact block centred in the viewport: the
+ * form stays narrow and the line list sits beside it, so neither stretches
+ * across the page.
  */
 export default function AuthLayout({ title, subtitle, children, footer, showcase }) {
   const reduce = useReducedMotion()
@@ -39,16 +40,20 @@ export default function AuthLayout({ title, subtitle, children, footer, showcase
   )
 
   return (
-    <div className="aurora min-h-screen px-3.5 pb-10 pt-6 sm:px-4 sm:py-12">
+    <div
+      className={`aurora min-h-screen px-3.5 sm:px-4 ${
+        showcase ? 'flex items-center py-6' : 'px-3.5 pb-10 pt-6 sm:py-12'
+      }`}
+    >
       <motion.div
-        className={`mx-auto w-full ${showcase ? 'max-w-6xl' : 'max-w-md'}`}
+        className={`mx-auto w-full ${showcase ? 'max-w-[920px]' : 'max-w-md'}`}
         initial={reduce ? { opacity: 0 } : { opacity: 0, y: 12, scale: 0.98 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ duration: 0.35, ease: [0.23, 1, 0.32, 1] }}
       >
         {showcase ? (
-          <div className="grid gap-7 sm:gap-8 lg:grid-cols-[minmax(18rem,24rem)_minmax(0,1fr)] lg:items-start">
-            <div className="mx-auto w-full max-w-md lg:mx-0 lg:sticky lg:top-8">{panel}</div>
+          <div className="grid items-center gap-6 lg:grid-cols-[20rem_minmax(0,1fr)] lg:gap-8">
+            <div className="mx-auto w-full max-w-md lg:mx-0">{panel}</div>
             {showcase}
           </div>
         ) : (

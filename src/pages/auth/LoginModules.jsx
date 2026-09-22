@@ -1,42 +1,57 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Public module roster on the sign-in screen.
 //
-// Visitors see what the platform covers before they authenticate. Copy comes
-// from `MODULES` in the registry — the same names and descriptions the signed-in
-// dashboard already uses — so inventing a second catalogue cannot drift. Rows
-// are not links: there is nowhere to go until sign-in succeeds.
-//
-// A line list, not tiles. Glass cards (even text-forward ones) still read as a
-// gallery. Each module is a name and its brief, stacked with a hairline.
+// A line list, not tiles, and short on purpose. The registry descriptions are
+// written for the signed-in dashboard, where a paragraph has room. Pasting
+// them here made the sign-in page ramble below the fold. Login shows one line
+// per module (name — brief) in a narrow column beside the form. Anything
+// missing from LOGIN_BRIEF falls back to the registry text so a new module
+// cannot appear nameless.
 // ─────────────────────────────────────────────────────────────────────────────
 import { MODULES } from '../../shared/modules/registry'
 
+/** One line each — enough to say what the module is for, not how it works. */
+const LOGIN_BRIEF = {
+  incidents: 'Report, investigate, track CAPA',
+  hira: 'Hazard register and risk matrix',
+  inspections: 'Checklists and findings',
+  audit: 'ISO 45001 plans and actions',
+  ptw: 'Raise, approve, close permits',
+  loto: 'Energy isolation records',
+  equipment: 'Extinguishers, AEDs, alarms',
+  drills: 'Fire and emergency drills',
+  committee: 'Meetings, minutes, actions',
+  training: 'Courses and expiry alerts',
+  documents: 'Policies, SOPs, and SDS',
+  emergency: 'Contacts and evacuation plans',
+  objectives: 'OH&S targets and scorecard',
+  weather: 'Site conditions as work risk',
+  cctv: 'Cameras, recorders, and health',
+  stakeholder: 'Escalations and legal matters',
+  actions: 'Open actions across modules',
+}
+
+export function loginBrief(module) {
+  return LOGIN_BRIEF[module.key] || module.description
+}
+
 export default function LoginModules() {
   return (
-    <section
-      aria-labelledby="login-modules-heading"
-      className="min-w-0 border-t border-ink-200/70 pt-6 lg:border-t-0 lg:pt-0"
-    >
-      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-brand-700">
-        Platform modules
-      </p>
+    <section aria-labelledby="login-modules-heading" className="mx-auto w-full max-w-md lg:mx-0">
       <h2
         id="login-modules-heading"
-        className="mt-1 text-[18px] font-extrabold tracking-[-0.02em] text-ink-900 sm:text-[20px]"
+        className="text-[11px] font-semibold uppercase tracking-[0.14em] text-brand-700"
       >
-        What you can run in WEHS
+        Modules
       </h2>
-      <p className="mt-1.5 max-w-[52ch] text-[12.5px] leading-relaxed text-ink-500 sm:text-[13px]">
-        A short brief for each practice — from incident reporting to permits,
-        training and emergency response.
-      </p>
-      <ul className="mt-4 list-none divide-y divide-ink-200/70 p-0 sm:mt-5">
+      <ul className="mt-1.5 list-none p-0">
         {MODULES.map((m) => (
-          <li key={m.key} className="py-3 first:pt-0 last:pb-0">
-            <p className="text-[14px] font-bold tracking-[-0.015em] text-ink-900">{m.label}</p>
-            <p className="mt-0.5 break-words text-[13px] leading-relaxed text-ink-500">
-              {m.description}
-            </p>
+          <li
+            key={m.key}
+            className="flex items-baseline gap-x-2 border-b border-ink-200/40 py-1 text-[12.5px] leading-tight last:border-b-0"
+          >
+            <span className="shrink-0 font-semibold text-ink-900">{m.label}</span>
+            <span className="min-w-0 text-ink-500">{loginBrief(m)}</span>
           </li>
         ))}
       </ul>

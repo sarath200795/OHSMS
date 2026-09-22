@@ -1,33 +1,34 @@
 // @vitest-environment jsdom
 import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import LoginModules from './LoginModules'
+import LoginModules, { loginBrief } from './LoginModules'
 import { MODULES } from '../../shared/modules/registry'
 
 describe('LoginModules', () => {
-  it('lists every registry module with its label and full brief', () => {
+  it('lists every module as a short one-line brief', () => {
     render(<LoginModules />)
-    expect(screen.getByRole('heading', { name: /what you can run in wehs/i })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: /^modules$/i })).toBeTruthy()
     for (const m of MODULES) {
+      const brief = loginBrief(m)
       expect(screen.getByText(m.label)).toBeTruthy()
-      expect(screen.getByText(m.description)).toBeTruthy()
+      expect(screen.getByText(brief)).toBeTruthy()
+      expect(brief.length).toBeLessThan(42)
     }
   })
 
-  it('is a line list, not a tile grid', () => {
+  it('is a narrow line list, not a tile grid', () => {
     const { container } = render(<LoginModules />)
     expect(container.querySelector('.glass-tile')).toBeNull()
-    expect(container.querySelector('svg')).toBeNull()
+    const section = container.querySelector('section')
+    expect(section.className).toMatch(/max-w-md/)
     const list = container.querySelector('ul')
-    expect(list.className).toMatch(/divide-y/)
     expect(list.className).not.toMatch(/grid-cols/)
     const rows = list.querySelectorAll('li')
     expect(rows.length).toBe(MODULES.length)
     rows.forEach((row) => {
-      const name = row.querySelector('p')
-      const brief = row.querySelectorAll('p')[1]
-      expect(name.textContent.length).toBeGreaterThan(0)
-      expect(brief.textContent.length).toBeGreaterThan(20)
+      expect(row.className).toMatch(/py-1/)
+      expect(row.className).toMatch(/leading-tight/)
+      expect(row.querySelectorAll('span').length).toBe(2)
     })
   })
 })
