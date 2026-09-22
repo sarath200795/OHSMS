@@ -1,12 +1,18 @@
 // @vitest-environment jsdom
-import { render, cleanup, screen } from '@testing-library/react'
+import { render, cleanup, screen, fireEvent } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const useAuth = vi.hoisted(() => vi.fn())
 const useFileUrl = vi.hoisted(() => vi.fn())
 
 vi.mock('../auth/AuthContext', () => ({ useAuth }))
-vi.mock('../storage/useFileUrl', () => ({ useFileUrl }))
+vi.mock('../storage/useFileUrl', () => ({
+  useFileUrl,
+  inlineImageSrc: (url) => {
+    const s = typeof url === 'string' ? url.trim() : ''
+    return s.startsWith('data:image/') || s.startsWith('blob:') ? s : ''
+  },
+}))
 
 const { OrgMark, hasOrgLogo, WE_EHS_MARK } = await import('./OrgMark')
 
@@ -63,6 +69,36 @@ describe('OrgMark', () => {
     const { container } = render(<OrgMark alt="org" />)
     expect(screen.queryByAltText('org')).toBeNull()
     expect(container.querySelector('img')).toBeNull()
+    expect(container.querySelector('span.bg-ink-50')).toBeTruthy()
+  })
+
+  it('paints the inline thumb while the path fetch has not produced a src', () => {
+    useAuth.mockReturnValue({
+      org: { logoPath: 'orgs/a/org-logo/x.png', logoUrl: 'data:image/jpeg;base64,thumb' },
+    })
+    useFileUrl.mockReturnValue({ src: '', loading: true })
+    render(<OrgMark alt="org" />)
+    expect(screen.getByAltText('org').getAttribute('src')).toBe('data:image/jpeg;base64,thumb')
+  })
+
+  it('prefers the inline thumb over a download URL the browser may not paint', () => {
+    useAuth.mockReturnValue({
+      org: { logoPath: 'orgs/a/org-logo/x.png', logoUrl: 'data:image/jpeg;base64,thumb' },
+    })
+    useFileUrl.mockReturnValue({
+      src: 'https://firebasestorage.googleapis.com/o/logo.jpg?alt=media&token=t',
+      loading: false,
+    })
+    render(<OrgMark alt="org" />)
+    expect(screen.getByAltText('org').getAttribute('src')).toBe('data:image/jpeg;base64,thumb')
+  })
+
+  it('drops a download URL that errors and keeps the cream slot when there is no thumb', () => {
+    useAuth.mockReturnValue({ org: { logoPath: 'orgs/a/org-logo/x.png', logoUrl: '' } })
+    useFileUrl.mockReturnValue({ src: 'https://cdn.example/logo.jpg', loading: false })
+    const { container } = render(<OrgMark alt="org" />)
+    fireEvent.error(screen.getByAltText('org'))
+    expect(screen.queryByAltText('org')).toBeNull()
     expect(container.querySelector('span.bg-ink-50')).toBeTruthy()
   })
 })

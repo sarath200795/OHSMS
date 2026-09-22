@@ -14,6 +14,10 @@
   <polygon points="470,300 360,420 480,440" fill="#a97e55" opacity="0.18"/>
   <polygon points="90,430 220,360 260,470" fill="#e4bd97" opacity="0.16"/>
 
+  <!-- Artwork sat high-left inside the kraft tile (≈52px top / 21px bottom,
+       46px left / 32px right). Translate so pads read even when the mark is
+       clipped into a Liquid Glass disc on the login screen. -->
+  <g transform="translate(-7 -16)">
   <!-- ── Siren (top-left) ── -->
   <g>
     <g stroke="#e8a33d" stroke-width="9" stroke-linecap="round">
@@ -73,4 +77,5 @@
 
   <!-- ── S (bottom-right, dark — same column as E and H) ── -->
   <text x="428" y="466" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="104" font-weight="700" fill="#26211a">S</text>
+  </g>
 </svg>

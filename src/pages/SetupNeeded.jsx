@@ -1,15 +1,12 @@
 import { PlugZap, Terminal } from 'lucide-react'
+import BrandMark from '../shared/branding/BrandMark'
 
 export default function SetupNeeded() {
   return (
     <div className="aurora grid min-h-screen place-items-center p-4">
       <div className="w-full max-w-lg">
         <div className="mb-6 flex flex-col items-center text-center">
-          <img
-            src="/wehs.svg"
-            alt="WEHS"
-            className="mb-3 h-16 w-16 rounded-3xl ring-1 ring-ink-200 shadow-elev"
-          />
+          <BrandMark className="mb-3" alt="WEHS" />
           <h1 className="text-2xl font-bold tracking-[-0.02em] text-ink-900">Connect Firebase</h1>
           <p className="mt-1 text-sm text-ink-500">One step to start WEHS</p>
         </div>

@@ -11,9 +11,10 @@
 // Both the header and the breadcrumb read this component, so "which logo"
 // cannot drift between them.
 // ─────────────────────────────────────────────────────────────────────────────
+import { useEffect, useRef, useState } from 'react'
 import { useAuth } from '../auth/AuthContext'
 import { safeSrc } from '../safeUrl'
-import { useFileUrl } from '../storage/useFileUrl'
+import { inlineImageSrc, useFileUrl } from '../storage/useFileUrl'
 
 /** The vendor mark, in /public. Also the fallback identity when none is set. */
 export const WE_EHS_MARK = '/wehs.svg'
@@ -49,7 +50,38 @@ export function OrgMark({ className = '', alt = '' }) {
   const { src, loading } = useFileUrl({ url: org?.logoUrl, path: org?.logoPath })
   // safeSrc, not the raw field: this URL comes out of a Firestore document that
   // an org admin writes, and an <img src> is fetched without anyone clicking.
-  const custom = safeSrc(src)
+  // The inline thumb is read here as well as from the hook so a path fetch
+  // that has not settled — or that handed back a download URL the browser
+  // will not paint — cannot blank a logo that is already on the org document.
+  const inline = safeSrc(inlineImageSrc(org?.logoUrl))
+  const resolved = safeSrc(src)
+  const [dead, setDead] = useState({})
+  useEffect(() => {
+    setDead({})
+  }, [resolved, inline])
+  // Same-origin bytes first. A download URL is last: it is the src that
+  // resolves from Storage and then 403s, and putting it ahead of the thumb
+  // is how the header went blank after a successful upload.
+  const sameOrigin = resolved && (resolved.startsWith('blob:') || resolved.startsWith('data:'))
+  const candidates = [
+    sameOrigin ? resolved : '',
+    inline && inline !== resolved ? inline : '',
+    !sameOrigin ? resolved : '',
+  ]
+  const custom = candidates.find((u) => u && !dead[u])
+  const imgRef = useRef(null)
+  // `error` is not a click. A download URL can 403 after getDownloadURL
+  // resolved; dropping that src lets the next candidate (the inline thumb)
+  // paint instead of a broken image that never comes back. Bound in an
+  // effect because the a11y lint treats an onError prop on <img> as an
+  // interaction on a non-interactive element.
+  useEffect(() => {
+    const el = imgRef.current
+    if (!el || !custom) return undefined
+    const onErr = () => setDead((d) => (d[custom] ? d : { ...d, [custom]: true }))
+    el.addEventListener('error', onErr)
+    return () => el.removeEventListener('error', onErr)
+  }, [custom])
 
   // A logo is configured but not yet on screen. Keep a cream slot rather than
   // flashing (or settling on) the vendor mark — that swap is what made a
@@ -67,6 +99,7 @@ export function OrgMark({ className = '', alt = '' }) {
 
   return (
     <img
+      ref={imgRef}
       src={custom || WE_EHS_MARK}
       alt={alt}
       aria-hidden={alt ? undefined : 'true'}

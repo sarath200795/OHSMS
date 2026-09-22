@@ -1,16 +1,17 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // A tiny data-URL stand-in for the organization logo.
 //
-// Uploads after M-5 store `logoPath` with an empty `logoUrl`. The header then
-// depends entirely on an authenticated Storage fetch (getBlob → getDownloadURL).
-// When that fetch fails — CORS not yet on the bucket, App Check still warming,
-// a claims race on the first paint — `useFileUrl` has nothing to fall back to
-// and OrgMark paints the WE EHS mark over a logo that was saved successfully.
+// Uploads after M-5 store `logoPath` and used to leave `logoUrl` empty. The
+// header then depended on an authenticated Storage fetch (getBlob →
+// getDownloadURL). When that fetch failed — or when getDownloadURL returned a
+// URL the `<img>` would not paint — there was nothing else to show. This thumb
+// is written next to the path so the header and the theme sampler have the
+// bytes without a round trip.
 //
-// The full file still goes to Storage (`logoPath`) for theme sampling and for
-// a sharp mark once the fetch works. This thumb is only chrome insurance: a
-// few kilobytes on the org document, read with the snapshot, no Storage round
-// trip. It is not a bearer credential.
+// The full file still goes to Storage (`logoPath`) so a resolved blob can
+// replace this with a sharper mark. Until that fetch paints, the thumb is the
+// header and the theme sample. A few kilobytes on the org document, read with
+// the snapshot. It is not a bearer credential.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const MAX_EDGE = 128

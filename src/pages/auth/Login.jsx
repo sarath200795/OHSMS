@@ -9,6 +9,7 @@ import { isCodeComplete } from '../../shared/auth/mfa'
 import { Button, Field, Input } from '../../shared/ui'
 import { safeInternalPath } from '../../shared/safeUrl'
 import AuthLayout from './AuthLayout'
+import LoginModules from './LoginModules'
 
 export default function Login() {
   const {
@@ -172,10 +173,14 @@ export default function Login() {
   }
 
   // ── Password + SSO ─────────────────────────────────────────────────────────
+  // Module roster rides beside (desktop) / below (mobile) the form so visitors
+  // see what the platform covers before they authenticate. MFA stays form-only
+  // — the challenge is not a product tour.
   return (
     <AuthLayout
       title="Sign in"
       subtitle="Occupational Health & Safety Management System"
+      showcase={<LoginModules />}
       footer={
         <>
           New organization?{' '}
@@ -234,6 +239,8 @@ export default function Login() {
             value={form.email}
             onChange={(e) => setForm({ ...form, email: e.target.value })}
             placeholder="you@company.com"
+            // 16px on phones avoids iOS focus-zoom; sm+ keeps the denser auth type.
+            className="text-base sm:text-sm"
           />
         </Field>
         <Field
@@ -256,6 +263,7 @@ export default function Login() {
             value={form.password}
             onChange={(e) => setForm({ ...form, password: e.target.value })}
             placeholder="••••••••"
+            className="text-base sm:text-sm"
           />
         </Field>
         <Button type="submit" loading={busy} className="w-full">
