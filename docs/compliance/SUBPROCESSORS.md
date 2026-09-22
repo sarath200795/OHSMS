@@ -5,7 +5,7 @@ imports, calls, or is configured to use — not from a marketing architecture
 diagram. A service that is in `package.json` but never reached at runtime is
 still listed if a production build can load it.
 
-Last reviewed against the repository: 2026-09-18.
+Last reviewed against the repository: 2026-09-22.
 
 Counsel must confirm legal names, locations, and DPA links before this is
 shown to a customer. **Do not add live project ids, function names, or
@@ -19,6 +19,7 @@ regions here** — this repository is public.
 |---|---|---|---|
 | **Google Cloud / Firebase** (Google LLC and affiliates) | Authentication (email, SAML/OIDC, TOTP), Cloud Firestore, Cloud Storage, Cloud Functions, Firebase Hosting, Secret Manager (escrowed encryption master key), App Check | Yes — the database, files, and functions tier *are* the product. Includes special-category health data when encryption is on (ciphertext at rest) and when it is off (plaintext). | Always on for a deployed tenant. |
 | **Sentry** (Functional Software, Inc.) | Browser error reporting via `@sentry/browser`, loaded only when `VITE_SENTRY_DSN` is set. URLs on `/qr`, `/permit`, `/p` are sanitised so scan tokens do not leave the origin (`src/shared/monitoring.js`). | Possibly — stack traces, sanitised URLs, user-agent. **Must not** carry QR/permit tokens or medical field values; that is a product bug if it does. | Off unless the hosting build has a DSN. |
+| **Operator-configured SMTP server** | Assignment email from Cloud Functions (`functions/lib/mailer.js`, nodemailer) when `SMTP_HOST`, `MAIL_FROM` and the `SMTP_PASS` secret are all set. The message contains the assignee's address, the assigner's name when that person is in the same org, a due date, and a short task title when that title is stored in the clear. Occupational-illness action text is never included. Sealed values are never included. | Yes — email address, name, and unsealed task text. Not special-category health data: an illness notification names the record, not the clinical action. | Off until SMTP is configured. While any of the three is missing the function logs an error and does not send. |
 
 No other paid error/uptime SaaS is in use. Hosting uptime is a GitHub Action
 curling `/health.json` (`.github/workflows/uptime.yml`).

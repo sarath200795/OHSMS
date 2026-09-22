@@ -37,6 +37,7 @@ import { putFile, removeFile, MAX_INLINE_BYTES, tooLargeForInline } from '../../
 // reports an occupational illness and cannot read one back. A symmetric key
 // would have had to give every writer the key that opens every record.
 import { sealDoc, openDoc, openSnapshots } from '../../../shared/crypto'
+import { stampNewAssignees } from '../../../shared/org/stampAssignee'
 import { resolveSubscription } from '../../../shared/storage/resolveFiles'
 
 /** Policy keys for this collection and its attachments. See shared/crypto/policy.js. */
@@ -104,7 +105,12 @@ export async function updateIllness(orgId, id, updates, opts = {}) {
   const current = await getDoc(illnessRef(orgId, id))
   if (!current.exists()) throw new Error('Illness not found')
   const before = current.data()
-  await updateDoc(illnessRef(orgId, id), { ...await sealDoc(orgId, SEALED, updates), updatedAt: serverTimestamp() })
+  // Same stamp as updateIncident. Illness action text is health data and is
+  // not what gets stamped — only the uid of whoever just set ownerUid.
+  const patch = Array.isArray(updates.actions) && opts.actor?.uid
+    ? { ...updates, actions: stampNewAssignees(before.actions, updates.actions, opts.actor.uid) }
+    : updates
+  await updateDoc(illnessRef(orgId, id), { ...await sealDoc(orgId, SEALED, patch), updatedAt: serverTimestamp() })
   if (!opts.silent) {
     const merged = { ...before }
     for (const [k, v] of Object.entries(updates)) if (!k.includes('.')) merged[k] = v

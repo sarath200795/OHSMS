@@ -1,0 +1,102 @@
+import { describe, it, expect, vi } from 'vitest'
+import { parseFrom, mailConfigFrom, describeMailGap, safeOrigin, createMailer } from './mailer.js'
+
+describe('parseFrom', () => {
+  it('accepts a bare address and a named address', () => {
+    expect(parseFrom(' safety@example.com ')).toBe('safety@example.com')
+    expect(parseFrom('WEHS <safety@example.com>')).toBe('WEHS <safety@example.com>')
+  })
+
+  it('strips a newline so the header cannot be split', () => {
+    expect(parseFrom('safety@example.com\nBcc: evil@example.com')).toBe('')
+    expect(parseFrom('Evil\r\nBcc: x@y.z <safety@example.com>')).toBe('safety@example.com')
+  })
+
+  it('refuses a value that is not an address', () => {
+    expect(parseFrom('not an email')).toBe('')
+    expect(parseFrom('')).toBe('')
+  })
+})
+
+describe('safeOrigin', () => {
+  it('keeps an http(s) origin and drops the path', () => {
+    expect(safeOrigin('https://app.example/ohsms/')).toBe('https://app.example')
+  })
+
+  it('refuses an origin that would copy credentials into every mail', () => {
+    expect(safeOrigin('https://user:pass@app.example')).toBe('')
+  })
+
+  it('refuses anything that is not a URL', () => {
+    expect(safeOrigin('javascript:alert(1)')).toBe('')
+    expect(safeOrigin('/incidents')).toBe('')
+    expect(safeOrigin('')).toBe('')
+  })
+})
+
+describe('mail configuration', () => {
+  it('names every missing setting, and treats a blank password as missing', () => {
+    expect(describeMailGap(mailConfigFrom({}))).toEqual(['SMTP_HOST', 'MAIL_FROM', 'SMTP_PASS'])
+    expect(
+      mailConfigFrom({ SMTP_HOST: 'smtp.example', MAIL_FROM: 'a@b.co', SMTP_PASS: '' }).configured
+    ).toBe(false)
+  })
+
+  it('is configured only when host, from and password are all set', () => {
+    const config = mailConfigFrom({
+      SMTP_HOST: 'smtp.example',
+      SMTP_PORT: '2525',
+      SMTP_USER: 'safety',
+      SMTP_PASS: 'secret',
+      MAIL_FROM: 'WEHS <safety@example.com>',
+      APP_ORIGIN: 'https://app.example',
+    })
+    expect(config).toMatchObject({
+      host: 'smtp.example',
+      port: 2525,
+      user: 'safety',
+      pass: 'secret',
+      from: 'WEHS <safety@example.com>',
+      appOrigin: 'https://app.example',
+      configured: true,
+    })
+  })
+
+  it('defaults a nonsense port to 587 rather than failing open on port 0', () => {
+    expect(
+      mailConfigFrom({ SMTP_HOST: 'h', MAIL_FROM: 'a@b.co', SMTP_PASS: 'p', SMTP_PORT: 'nope' })
+        .port
+    ).toBe(587)
+  })
+})
+
+describe('createMailer', () => {
+  it('refuses to send when the provider is not configured, and does not call the transport', async () => {
+    const transport = { sendMail: vi.fn() }
+    const mailer = createMailer({}, { transport })
+    await expect(mailer.send({ to: 'a@b.co', subject: 's', text: 't' })).rejects.toMatchObject({
+      code: 'mail/not-configured',
+    })
+    expect(transport.sendMail).not.toHaveBeenCalled()
+  })
+
+  it('sends through the injected transport with the configured from address', async () => {
+    const transport = { sendMail: vi.fn(async () => {}) }
+    const mailer = createMailer(
+      {
+        SMTP_HOST: 'smtp.example',
+        MAIL_FROM: 'safety@example.com',
+        SMTP_PASS: 'secret',
+        SMTP_USER: 'safety',
+      },
+      { transport }
+    )
+    await mailer.send({ to: 'person@example.com', subject: 'Assigned', text: 'body' })
+    expect(transport.sendMail).toHaveBeenCalledWith({
+      from: 'safety@example.com',
+      to: 'person@example.com',
+      subject: 'Assigned',
+      text: 'body',
+    })
+  })
+})

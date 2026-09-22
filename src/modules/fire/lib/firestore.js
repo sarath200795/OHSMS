@@ -1166,6 +1166,15 @@ export async function addMockDrill(orgId, data, actor) {
   }))
   payload.createdAt = serverTimestamp()
   payload.docId = await reserveDocId(orgId, 'drills')
+  // The person saving the drill is the assigner of every CAPA row on it.
+  // Drill reports are written once; there is no later edit that would need
+  // the "only when the assignee changed" diff incidents use. The uid is what
+  // the assignment mail uses to skip a commander assigning themselves.
+  if (Array.isArray(payload.capa) && actor?.uid) {
+    payload.capa = payload.capa.map((row) =>
+      row && typeof row === 'object' ? { ...row, assignedByUid: actor.uid } : row,
+    )
+  }
   // Sealed AFTER the JSON round-trip above, not before: that round-trip exists
   // to strip undefined values, and JSON.parse(JSON.stringify(...)) on sealed
   // data would be harmless but the ORDER matters the other way round — a
