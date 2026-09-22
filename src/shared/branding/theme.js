@@ -242,10 +242,16 @@ export function applyOrgTheme(tokens) {
 /**
  * Dominant saturated hue + a light wash from an ImageData.
  *
- * Transparent, near-white and near-black pixels are skipped so a mark on a
- * transparent PNG does not sample as "white" and a drop shadow does not
- * sample as "black". Unsaturated light pixels become the canvas candidate
- * (the cream paper in a logo); saturated pixels vote by hue bucket.
+ * Transparent and near-black pixels are skipped so a mark on a transparent
+ * PNG does not sample as "white" and a drop shadow does not sample as
+ * "black". Light pixels become the canvas candidate (the cream paper in a
+ * logo); chromatic pixels vote by hue bucket.
+ *
+ * Saturation is chroma (max−min), not HSL s. HSL saturation divides by
+ * (1−lightness), so a warm off-white field — a few points between the
+ * channels — reports as "saturated" and outvotes the mark. That is how a
+ * red logo on cream paper persisted as a pale tint and the page never
+ * left the kit.
  */
 export function extractPaletteFromImageData(imageData) {
   const data = imageData?.data
@@ -264,9 +270,12 @@ export function extractPaletteFromImageData(imageData) {
     const r = data[i]
     const g = data[i + 1]
     const b = data[i + 2]
-    const [h, s, l] = rgbToHsl(r, g, b)
-    if (l > 0.93 || l < 0.07) continue
-    if (s < 0.18) {
+    const [h, , l] = rgbToHsl(r, g, b)
+    if (l < 0.07 || l > 0.97) continue
+    const chroma = (Math.max(r, g, b) - Math.min(r, g, b)) / 255
+    // Off-white paper. HSL s would call this saturated; chroma does not.
+    // Anything lighter than 0.92 is a wash, not a mark.
+    if (chroma < 0.18 || l > 0.92) {
       if (l > 0.55) {
         lightR += r
         lightG += g
@@ -281,7 +290,7 @@ export function extractPaletteFromImageData(imageData) {
     cur.r += r
     cur.g += g
     cur.b += b
-    cur.s += s
+    cur.s += chroma
     buckets.set(bucket, cur)
   }
 
@@ -367,6 +376,71 @@ export function nextTheme(current, patch) {
 export function isCustomTheme(theme) {
   const t = normalizeTheme(theme)
   return t.accent !== DEFAULT_ACCENT || t.canvas !== DEFAULT_CANVAS || t.canvasSource !== 'default'
+}
+
+/**
+ * A palette worth persisting as the logo's colours.
+ *
+ * The extractor's empty-bitmap fallback is the kit pair. Writing that down
+ * with `canvasSource: 'logo'` is how a failed read became permanent: the
+ * next page load treated the defaults as the brand and never sampled again.
+ */
+export function paletteFromLogo(palette) {
+  if (!palette || typeof palette !== 'object') return null
+  const accent = normHex(palette.accent)
+  const canvas = normHex(palette.canvasWash || palette.canvas)
+  if (!accent || !canvas) return null
+  if (accent === DEFAULT_ACCENT && canvas === DEFAULT_CANVAS) return null
+  return { accent, canvas }
+}
+
+/**
+ * Whether the logo bitmap still has to supply the theme.
+ *
+ * `canvasSource: 'logo'` and `'custom'` are choices already stored. A kit
+ * default map is not: uploads that failed to read the file still persisted
+ * those hexes (nextTheme fills them in), and OrgTheme used to treat any
+ * stored hex as final. An explicit amber pick after a real accent was chosen
+ * keeps that accent, so it is left alone.
+ */
+export function shouldSampleLogo(raw, hasLogo) {
+  if (!hasLogo) return false
+  const t = readTheme(raw)
+  if (t.canvasSource === 'logo' || t.canvasSource === 'custom') return false
+  if (t.accent && t.accent !== DEFAULT_ACCENT) return false
+  if (t.canvas && t.canvas !== DEFAULT_CANVAS) return false
+  return true
+}
+
+/** Theme map to store after a logo is read. Null when the bitmap said nothing. */
+export function themePatchForLogo(current, palette) {
+  const derived = paletteFromLogo(palette)
+  if (!derived) return null
+  const prev = normalizeTheme(current)
+  const keep = prev.canvasSource === 'custom'
+  return nextTheme(prev, {
+    accent: derived.accent,
+    canvas: keep ? prev.canvas : derived.canvas,
+    canvasSource: keep ? 'custom' : 'logo',
+  })
+}
+
+/**
+ * Bitmap to sample. Same-origin bytes win.
+ *
+ * An https download URL is tried only when there is no inline thumb: canvas
+ * sampling sets `crossOrigin=anonymous`, and a bucket without a CORS rule
+ * rejects that, which used to leave the kit teal in place even though the
+ * thumb on the org document was readable.
+ */
+export function sampleSrcForLogo(logoUrl, resolvedSrc) {
+  const resolved = typeof resolvedSrc === 'string' ? resolvedSrc.trim() : ''
+  if (resolved.startsWith('blob:') || resolved.startsWith('data:')) return resolved
+  const inline = typeof logoUrl === 'string' ? logoUrl.trim() : ''
+  if (inline.startsWith('data:image/') || inline.startsWith('blob:')) return inline
+  if (resolved.startsWith('https:') || resolved.startsWith('http:')) return resolved
+  if (inline.startsWith('https:') || inline.startsWith('http:')) return inline
+  return ''
 }
 
 export { lightCanvas, mixHex }

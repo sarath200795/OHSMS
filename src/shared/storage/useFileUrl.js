@@ -38,6 +38,37 @@ import { fileUrl } from './index'
 const MAX_ATTEMPTS = 3
 
 /**
+ * A `logoUrl` (or any pointer url) that is already the bytes.
+ *
+ * Data and blob URLs are not download tokens. They paint without Storage, and
+ * a canvas can sample them without a bucket CORS rule. An https download URL
+ * is the opposite: `getDownloadURL` can succeed and the `<img>` still fail
+ * (App Check, a revoked token), and sampling it with `crossOrigin=anonymous`
+ * fails closed when the bucket has no CORS rule.
+ */
+export function inlineImageSrc(url) {
+  const s = typeof url === 'string' ? url.trim() : ''
+  return s.startsWith('data:image/') || s.startsWith('blob:') ? s : ''
+}
+
+/**
+ * The URL an `<img>` should use once a path fetch has answered.
+ *
+ * A blob: (or data:) result is the authenticated bytes — sharper than the
+ * thumb, same-origin. An https result must not replace an inline thumb: that
+ * replacement is how a saved logo disappeared behind a download URL the
+ * header could not paint, and how theme sampling lost the only bitmap it
+ * could read.
+ */
+export function displayFileSrc(resolved, stored) {
+  const inline = inlineImageSrc(stored)
+  const next = typeof resolved === 'string' ? resolved.trim() : ''
+  if (next.startsWith('blob:') || next.startsWith('data:')) return next
+  if (inline) return inline
+  return next
+}
+
+/**
  * @param pointer   `{ url, path }`, or a bare path string, or a data: URL
  * @param options   `{ orgId, collection }` — required only for SEALED
  *                  collections, where the bytes have to be decrypted
@@ -55,15 +86,16 @@ export function useFileUrl(pointer, { orgId, collection } = {}) {
   // mints a blob URL, so that is a leak as well as a waste.
   const path = typeof pointer === 'string' ? pointer : pointer?.path || ''
   const stored = typeof pointer === 'string' ? '' : pointer?.url || pointer?.dataUrl || ''
+  const inline = inlineImageSrc(stored)
 
-  // Start in loading when a path must be fetched. The previous default
-  // (`loading: false`) let OrgMark paint the vendor mark for one frame — and,
-  // when the fetch then failed with an empty stored url, keep it forever —
-  // which is exactly how a successful logo upload looked like it had been
-  // ignored.
+  // An inline thumb paints on the first frame. Blanking `src` while a path
+  // exists — the previous default — hid that thumb for the whole fetch, and
+  // a later https download URL then replaced it permanently. A path with no
+  // inline url still starts empty so a missing logo does not flash the
+  // vendor mark (or a bearer download URL) before the governed fetch answers.
   const [state, setState] = useState(() => ({
-    src: path ? '' : stored,
-    loading: Boolean(path),
+    src: inline || (path ? '' : stored),
+    loading: Boolean(path) && !inline,
     restricted: false,
   }))
 
@@ -80,9 +112,13 @@ export function useFileUrl(pointer, { orgId, collection } = {}) {
     let timer = 0
     let attempt = 0
 
+    if (inline) setState({ src: inline, loading: false, restricted: false })
+
     const run = () => {
       attempt += 1
-      setState((s) => ({ ...s, loading: true }))
+      // Keep the thumb on screen while a sharper blob is in flight. Flipping
+      // `loading` here is what swapped a visible logo for an empty slot.
+      if (!inline) setState((s) => ({ ...s, loading: true }))
 
       fileUrl(typeof pointer === 'string' ? pointer : { ...pointer }, { orgId, collection })
         .then(({ url, revoke, restricted }) => {
@@ -96,9 +132,14 @@ export function useFileUrl(pointer, { orgId, collection } = {}) {
             return
           }
           if (url) {
-            setState({ src: url, loading: false, restricted: Boolean(restricted) })
+            setState({
+              src: displayFileSrc(url, stored),
+              loading: false,
+              restricted: Boolean(restricted),
+            })
             return
           }
+          if (inline) setState({ src: inline, loading: false, restricted: Boolean(restricted) })
           // Empty result: retry a couple of times for the App Check / claims
           // races that lose the first Storage request after sign-in, then fall
           // back to whatever was persisted (logo thumb, legacy download URL).
@@ -106,15 +147,20 @@ export function useFileUrl(pointer, { orgId, collection } = {}) {
             timer = window.setTimeout(run, 280 * attempt)
             return
           }
-          setState({ src: stored || '', loading: false, restricted: Boolean(restricted) })
+          setState({
+            src: inline || stored || '',
+            loading: false,
+            restricted: Boolean(restricted),
+          })
         })
         .catch(() => {
           if (!live) return
+          if (inline) setState({ src: inline, loading: false, restricted: false })
           if (attempt < MAX_ATTEMPTS) {
             timer = window.setTimeout(run, 280 * attempt)
             return
           }
-          setState({ src: stored || '', loading: false, restricted: false })
+          setState({ src: inline || stored || '', loading: false, restricted: false })
         })
     }
 

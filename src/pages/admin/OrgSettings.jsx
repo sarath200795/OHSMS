@@ -57,6 +57,8 @@ import {
   mixHex,
   nextTheme,
   normalizeTheme,
+  paletteFromLogo,
+  themePatchForLogo,
 } from '../../shared/branding/theme'
 import {
   PageHeader,
@@ -239,43 +241,39 @@ export default function OrgSettings() {
     }
     setLogoBusy(true)
     try {
-      let palette = null
-      try {
-        palette = await extractPaletteFromFile(file)
-      } catch {
-        // A decoder that refuses the file must not block the upload — OrgTheme
-        // will sample the stored bytes once they resolve, and the owner can
-        // still pick a canvas by hand.
+      // Sample the file and the thumb together. A decoder that refuses the
+      // original must not persist the kit hexes as if they had been read off
+      // the mark — that write is what stopped every later page from trying
+      // again. The thumb is a same-origin JPEG, so it still yields a palette
+      // when createObjectURL on the original does not. No palette at all means
+      // the theme field is left untouched and OrgTheme samples on load.
+      const [filePalette, thumb] = await Promise.all([
+        extractPaletteFromFile(file).catch(() => null),
+        fileToLogoThumb(file).catch(() => ''),
+      ])
+      let palette = filePalette
+      if (!paletteFromLogo(palette) && thumb) {
+        try {
+          palette = await extractPaletteFromSrc(thumb)
+        } catch {
+          palette = null
+        }
       }
-      const prev = normalizeTheme(org?.theme)
-      const keepCanvas = prev.canvasSource === 'custom'
-      const theme = nextTheme(prev, {
-        accent: palette?.accent || prev.accent,
-        canvas: keepCanvas ? prev.canvas : palette?.canvasWash || DEFAULT_CANVAS,
-        canvasSource: keepCanvas ? 'custom' : palette ? 'logo' : prev.canvasSource,
-      })
+      const theme = themePatchForLogo(org?.theme, palette)
       const up = await putFile(orgId, 'org-logo', file, file.name)
       // Always keep a small inline thumb in `logoUrl`. putFile returns an empty
-      // url after M-5 (no permanent download token), and when the Storage fetch
-      // then fails the header had nothing to fall back to — so OrgMark painted
-      // WE EHS over a logo that was sitting in the bucket unused.
-      let thumb = ''
-      try {
-        thumb = await fileToLogoThumb(file)
-      } catch {
-        // Decoder refused — fall through; path-only still works when Storage
-        // resolves, and the full-file inline path below still applies.
-      }
+      // url after M-5 (no permanent download token). The header paints that
+      // thumb even when the Storage fetch later returns a download URL it
+      // cannot display. Theme is attached only when the bitmap actually
+      // produced colours — persisting the kit pair used to lock the amber
+      // page in place.
+      const withTheme = (patch) => (theme ? { ...patch, theme } : patch)
       if (up) {
-        await saveLogo({
-          logoUrl: thumb || up.url || '',
-          logoPath: up.path,
-          theme,
-        })
+        await saveLogo(withTheme({ logoUrl: thumb || up.url || '', logoPath: up.path }))
       } else {
         if (file.size > MAX_INLINE_BYTES) return toast.error(tooLargeForInline(file.name))
         const dataUrl = thumb || (await fileToDataUrl(file))
-        await saveLogo({ logoUrl: dataUrl, logoPath: '', theme })
+        await saveLogo(withTheme({ logoUrl: dataUrl, logoPath: '' }))
       }
       toast.success('Logo updated')
     } catch (err) {
