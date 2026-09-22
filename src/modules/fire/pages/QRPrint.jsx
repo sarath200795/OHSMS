@@ -10,6 +10,7 @@ import ListFilters from '../components/ListFilters'
 import { useFleet } from '../context/FleetContext'
 import { publicQrUrl } from '../lib/qr'
 import { emptyFilters, applyListFilters, hasActiveFilters } from '../lib/listFilter'
+import { QR_FRAME_INK, QR_PRINT_CODE_RULE, qrCodeBorderStyle } from '../../../shared/print/qrFrame'
 
 const HEADER = { ext: '🔥 Fire Marshal', aed: '❤️ AED', fas: '🔔 Fire Alarm' }
 
@@ -65,13 +66,16 @@ export default function QRPrint() {
   const handlePrint = useReactToPrint({
     content: () => printRef.current,
     documentTitle: 'Fire-Marshal-QR-Codes',
+    // box-shadow: none keeps a soft ring off the paper. The label's old frame
+    // WAS that ring, so turning it off printed a bare QR. The card and the
+    // code now use a real border; the code's rule sits outside includeMargin.
     pageStyle: `
       @page { size: A4; margin: 12mm; }
       @media print {
         body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         .qr-print-grid { display: grid !important; grid-template-columns: repeat(3, 1fr) !important; gap: 8mm !important; }
-        .qr-print-card { break-inside: avoid; page-break-inside: avoid; min-height: 46mm; box-shadow: none !important; }
-        .qr-print-code { width: 34mm !important; height: 34mm !important; }
+        .qr-print-card { break-inside: avoid; page-break-inside: avoid; min-height: 46mm; box-shadow: none !important; border: 0.4mm solid ${QR_FRAME_INK} !important; }
+        .qr-print-code { width: 34mm !important; height: 34mm !important; ${QR_PRINT_CODE_RULE} }
       }
     `,
   })
@@ -149,9 +153,9 @@ export default function QRPrint() {
             ) : (
               <div ref={printRef} className="qr-print-grid grid grid-cols-2 gap-4 sm:grid-cols-3">
                 {items.map((e) => (
-                  <div key={e.id} className="qr-print-card flex flex-col items-center rounded-xl bg-white p-4 text-center ring-1 ring-ink-200">
+                  <div key={e.id} className="qr-print-card flex flex-col items-center rounded-xl border border-ink-900 bg-white p-4 text-center">
                     <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-brand-600">{HEADER[assetType]}</div>
-                    <QRCodeSVG className="qr-print-code" value={publicQrUrl(e.qrToken)} size={148} level="H" includeMargin fgColor="#000000" bgColor="#ffffff" />
+                    <QRCodeSVG className="qr-print-code" style={qrCodeBorderStyle()} value={publicQrUrl(e.qrToken)} size={148} level="H" includeMargin fgColor="#000000" bgColor="#ffffff" />
                     <p className="mt-2 text-sm font-extrabold text-ink-900">{cfg.big(e)}</p>
                     <p className="text-xs text-ink-500">{cfg.sub(e)}</p>
                     <p className="truncate text-xs text-ink-400">{e.centerName}</p>

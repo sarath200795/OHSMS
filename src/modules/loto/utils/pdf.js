@@ -3,6 +3,7 @@ import { autoTable } from 'jspdf-autotable'
 import { qrDataUrl } from './qr'
 import { numberIsolationPoints, procedureScanUrl, tagScanUrl } from './codes'
 import { pointDevicesLabel } from '../constants/energySources'
+import { QR_FRAME_RGB, QR_STROKE_MM, QR_STROKE_PT } from '../../../shared/print/qrFrame'
 
 function imageFormat(dataUrl) {
   const m = /^data:image\/(\w+)/.exec(dataUrl || '')
@@ -29,6 +30,27 @@ const STEEL = [38, 33, 26] // #26211a logo ink
 const HAZARD = [199, 127, 24] // #c77f18 logo amber
 const LIGHT = [250, 243, 234] // #faf3ea cream paper
 const BORDER = [232, 220, 200] // #e8dcc8 kraft rule
+
+/**
+ * Frame a QR image.
+ *
+ * The PNG from qrDataUrl already includes its quiet zone (one module of
+ * margin). jsPDF centres a stroke on the path, so a rect on the image edge
+ * covers the outer half of that zone and the code stops scanning. The path
+ * is shifted out by half the stroke width: the ink sits fully outside the
+ * zone. Weight comes from qrFrame — the kraft table rule is a hairline and
+ * printed as no border.
+ */
+function drawFramedQr(doc, qr, x, y, size, stroke) {
+  if (!qr) return
+  const prevWidth = doc.getLineWidth()
+  doc.addImage(qr, 'PNG', x, y, size, size)
+  doc.setDrawColor(...QR_FRAME_RGB)
+  doc.setLineWidth(stroke)
+  const half = stroke / 2
+  doc.rect(x - half, y - half, size + stroke, size + stroke, 'S')
+  doc.setLineWidth(prevWidth)
+}
 
 // US-Letter in points.
 const PAGE_W = 612
@@ -207,7 +229,7 @@ function drawPostedHeader(doc, procedure, points, energySummary, qr) {
 
   // QR top-right
   const qrSize = 54
-  if (qr) doc.addImage(qr, 'PNG', PAGE_W - M - qrSize, 40, qrSize, qrSize)
+  drawFramedQr(doc, qr, PAGE_W - M - qrSize, 40, qrSize, QR_STROKE_PT)
 
   // Left info block
   const left = [
@@ -618,7 +640,7 @@ function drawTag(doc, x, y, w, h, p, procedure, qr) {
   doc.text(doc.splitTextToSize(`Hardware: ${pointDevicesLabel(p)}`, w - 10), x + 5, y + bandH + 36)
 
   const qrSize = 22
-  if (qr) doc.addImage(qr, 'PNG', x + w - qrSize - 4, y + h - qrSize - 4, qrSize, qrSize)
+  drawFramedQr(doc, qr, x + w - qrSize - 4, y + h - qrSize - 4, qrSize, QR_STROKE_MM)
   doc.setFontSize(5.5)
   doc.setTextColor(110, 110, 110)
   doc.text(procedure.procedureCode || '', x + w - qrSize - 4, y + h - 2)

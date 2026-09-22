@@ -1,5 +1,6 @@
 import { QRCodeSVG } from 'qrcode.react'
 import { tagScanUrl } from '../../utils/codes'
+import { qrFrameStyle } from '../../../../shared/print/qrFrame'
 import Button from '../ui/Button'
 import Modal from '../ui/Modal'
 
@@ -41,7 +42,9 @@ export default function PointTagDialog({ procedure, point, onClose }) {
         </p>
 
         <div className="my-3 flex justify-center">
-          <QRCodeSVG value={url} size={132} />
+          <div style={qrFrameStyle()}>
+            <QRCodeSVG value={url} size={132} />
+          </div>
         </div>
 
         <p className="text-[11px] font-semibold text-steel-800">{procedure.title || 'Isolation procedure'}</p>

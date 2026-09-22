@@ -2,6 +2,7 @@ import { forwardRef } from 'react'
 import { QRCodeCanvas } from 'qrcode.react'
 import { statusMeta } from '../lib/permitStatus'
 import { publicPermitUrl } from '../lib/qr'
+import { qrFrameStyle } from '../../../shared/print/qrFrame'
 
 const fmt = (iso) => {
   if (!iso) return '—'
@@ -182,14 +183,7 @@ const PermitPrintable = forwardRef(function PermitPrintable({ permit, documents 
             </div>
           </div>
           {permit.qrToken && (
-            <div
-              style={{
-                background: '#fff',
-                padding: 4,
-                border: '1px solid #e2e8f0',
-                borderRadius: 8,
-              }}
-            >
+            <div style={qrFrameStyle()}>
               <QRCodeCanvas value={publicPermitUrl(permit.qrToken)} size={72} level="M" />
             </div>
           )}
