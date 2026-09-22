@@ -1,17 +1,26 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Outbound mail. There was no provider in this repo — a previous mail API key
-// was removed (functions/index.js, LOW-13) rather than replaced — so this is
-// the one path. SMTP via nodemailer, because the operator already has a mail
-// host and naming a second vendor here would put it on the subprocessor list
-// by default.
+// Outbound mail. Nothing else in this repo sends it — a previous mail API key
+// was removed (functions/index.js, LOW-13) and not replaced — so this file is
+// the one path. It does not stand up a second provider. info@weehs.org is an
+// existing Private Email mailbox (MX: mx1/mx2.privateemail.com). SMTP to
+// mail.privateemail.com is how that mailbox sends. The password is the only
+// thing that is not already determined: SMTP_PASS, the mailbox password.
 //
-// The password is a secret (SMTP_PASS), read by the caller and passed in.
-// This module does not touch Secret Manager, so the tests can run it with a
-// plain object. An unconfigured transport refuses to send; it does not
-// pretend the message went out.
+// The password is passed in. This module does not touch Secret Manager, so
+// the tests can run it with a plain object. A missing password refuses to
+// send; it does not pretend the message went out.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+/** The mailbox assignment mail sends as, unless an env value overrides it. */
+export const DEFAULT_MAIL = {
+  host: 'mail.privateemail.com',
+  port: '465',
+  user: 'info@weehs.org',
+  from: 'WEEHS <info@weehs.org>',
+  appOrigin: 'https://suite.weehs.org',
+}
 
 /** A bare address, or `Name <addr@host>`. Anything else is not a From. */
 export function parseFrom(value) {
@@ -31,15 +40,20 @@ export function parseFrom(value) {
 }
 
 export function mailConfigFrom(env = {}) {
-  const portNum = Number(env.SMTP_PORT)
-  const port = Number.isInteger(portNum) && portNum > 0 && portNum < 65536 ? portNum : 587
+  const portRaw = env.SMTP_PORT
+  const portBlank = portRaw === undefined || String(portRaw).trim() === ''
+  const portNum = portBlank ? Number(DEFAULT_MAIL.port) : Number(portRaw)
+  const port =
+    Number.isInteger(portNum) && portNum > 0 && portNum < 65536
+      ? portNum
+      : Number(DEFAULT_MAIL.port)
   const config = {
-    host: String(env.SMTP_HOST || '').trim(),
+    host: String(env.SMTP_HOST || '').trim() || DEFAULT_MAIL.host,
     port,
-    user: String(env.SMTP_USER || '').trim(),
+    user: String(env.SMTP_USER || '').trim() || DEFAULT_MAIL.user,
     pass: String(env.SMTP_PASS || ''),
-    from: parseFrom(env.MAIL_FROM),
-    appOrigin: safeOrigin(env.APP_ORIGIN),
+    from: parseFrom(env.MAIL_FROM) || parseFrom(DEFAULT_MAIL.from),
+    appOrigin: safeOrigin(env.APP_ORIGIN) || safeOrigin(DEFAULT_MAIL.appOrigin),
   }
   config.configured = describeMailGap(config).length === 0
   return config
@@ -82,6 +96,8 @@ async function defaultTransport(config) {
     host: config.host,
     port: config.port,
     secure: config.port === 465,
+    // 587 is STARTTLS. Require it so a fallback port cannot send in the clear.
+    requireTLS: config.port === 587,
     auth: { user: config.user, pass: config.pass },
     connectionTimeout: 10_000,
     greetingTimeout: 10_000,

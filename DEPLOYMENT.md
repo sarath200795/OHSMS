@@ -119,35 +119,37 @@ names `iam.serviceAccounts.actAs` is this gap, not a new one.
 ## 6. Assignment email
 
 Saving an incident CAPA, an illness corrective action, a mock-drill CAPA or a
-training assignment emails the assignee. The write does not wait on the mail.
-The triggers are `notifyIncidentAssignment`, `notifyIllnessAssignment`,
-`notifyDrillAssignment` and `notifyTrainingAssignment`.
+training assignment emails the assignee from **info@weehs.org**. That mailbox
+already exists (Private Email). The triggers do not use a second mail
+service. They are `notifyIncidentAssignment`, `notifyIllnessAssignment`,
+`notifyDrillAssignment` and `notifyTrainingAssignment`. The write does not
+wait on the mail.
 
-They will not deploy until the SMTP password exists as a secret. Create it
-once per project, before the next functions deploy. A placeholder value is
-enough to deploy; nothing is sent until the rest of the settings are present
-too, and each skipped assignment is logged as an error rather than recorded
-as delivered.
+Defaults, already set in code:
+
+- From: `WEEHS <info@weehs.org>`
+- SMTP: `mail.privateemail.com` port 465, username `info@weehs.org`
+- Links: `https://suite.weehs.org` plus the in-app path (`/incidents/{id}`,
+  `/incidents/illness/{id}`, `/mock-drills`, `/training/my`)
+
+The one value that is not in the repo is the mailbox password. The triggers
+will not deploy until it exists as a secret. Create it once per project,
+before the next functions deploy. A placeholder is enough to deploy; nothing
+is sent until the value is the real password, and each skipped assignment is
+logged as an error rather than recorded as delivered.
 
 ```bash
 firebase functions:secrets:set SMTP_PASS
 ```
 
-The other settings are not secret. Put them in `functions/.env` (gitignored)
-for the project you deploy, using `functions/.env.example` as the list:
+Use the password for info@weehs.org. Do not put it in `functions/.env`. A
+mail credential in the Cloud Run environment in cleartext is the finding
+recorded as LOW-13.
 
-- `SMTP_HOST` — the SMTP server
-- `SMTP_PORT` — defaults to 587 when unset or not a port number; 465 turns on TLS
-- `SMTP_USER` — optional, sent as the SMTP username when set
-- `MAIL_FROM` — `safety@example.com` or `WEHS <safety@example.com>`
-- `APP_ORIGIN` — `https://your-host` with no path. Links in the mail are
-  `${APP_ORIGIN}` plus the in-app path (`/incidents/{id}`,
-  `/incidents/illness/{id}`, `/mock-drills`, `/training/my`). When it is
-  unset the mail still sends and names the path on its own.
-
-Local emulators read the password from `functions/.secret.local` (one line,
+Local emulators read it from `functions/.secret.local` (one line,
 `SMTP_PASS=...`). Without that file the trigger logs the same configuration
 error and returns.
 
-The password is a secret, not an entry in `functions/.env`. A mail credential
-in the Cloud Run environment in cleartext is the finding recorded as LOW-13.
+`functions/.env` can override the defaults (`SMTP_HOST`, `SMTP_PORT`,
+`SMTP_USER`, `MAIL_FROM`, `APP_ORIGIN`). Leaving them unset keeps
+info@weehs.org. See `functions/.env.example`.

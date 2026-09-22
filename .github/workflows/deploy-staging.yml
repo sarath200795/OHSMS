@@ -165,9 +165,9 @@ jobs:
       # The JSON key in STAGING_FIREBASE_SERVICE_ACCOUNT cannot grant that to
       # itself. Failure here is that IAM gap, not a missing retry.
       #
-      # Assignment mail also requires the SMTP_PASS secret to exist in the
-      # project (DEPLOYMENT.md §6). A missing secret fails this step too, and
-      # that failure is not the IAM gap above.
+      # Assignment mail also requires SMTP_PASS (the info@weehs.org mailbox
+      # password) to exist in the project (DEPLOYMENT.md §6). A missing secret
+      # fails this step too, and that failure is not the IAM gap above.
       - name: Deploy functions
         if: steps.creds.outputs.configured == 'true'
         env:

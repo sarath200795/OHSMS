@@ -42,7 +42,7 @@ import {
   sealObjectBytes, openObjectBytes, sameBytes, pointerUpdate,
 } from './lib/objectSeal.js'
 import { deliverAssignments, writtenData } from './lib/assignmentNotify.js'
-import { createMailer } from './lib/mailer.js'
+import { createMailer, DEFAULT_MAIL } from './lib/mailer.js'
 
 initializeApp()
 
@@ -69,23 +69,21 @@ initializeApp()
  */
 const DATA_KEY_MASTER = defineSecret('DATA_KEY_MASTER')
 
-// Assignment mail. SMTP_PASS is a secret on purpose: a mail credential in the
-// Cloud Run environment, in cleartext, is the finding LOW-13 recorded, and
-// this is the same class of value. The host, the from-address and the app
-// origin are not secret — they live in functions/.env (see
-// functions/.env.example). An empty default is what lets every OTHER function
-// in this file still deploy when mail has not been set up; these four
-// triggers still bind SMTP_PASS, so that one secret has to exist first
-// (a placeholder is enough — the handler logs and skips until the rest is
-// set). See DEPLOYMENT.md.
+// Assignment mail sends as info@weehs.org, the mailbox that already exists.
+// Host, username, from-address and the app origin default to that mailbox
+// (functions/lib/mailer.js DEFAULT_MAIL). SMTP_PASS is its password, and it
+// is a secret on purpose: a mail credential in the Cloud Run environment, in
+// cleartext, is the finding LOW-13 recorded. These four triggers bind it, so
+// the secret has to exist before they deploy. A placeholder deploys; nothing
+// is sent until the value is the real mailbox password. See DEPLOYMENT.md §6.
 //
 //   firebase functions:secrets:set SMTP_PASS
 const SMTP_PASS = defineSecret('SMTP_PASS')
-const SMTP_HOST = defineString('SMTP_HOST', { default: '' })
-const SMTP_PORT = defineString('SMTP_PORT', { default: '587' })
-const SMTP_USER = defineString('SMTP_USER', { default: '' })
-const MAIL_FROM = defineString('MAIL_FROM', { default: '' })
-const APP_ORIGIN = defineString('APP_ORIGIN', { default: '' })
+const SMTP_HOST = defineString('SMTP_HOST', { default: DEFAULT_MAIL.host })
+const SMTP_PORT = defineString('SMTP_PORT', { default: DEFAULT_MAIL.port })
+const SMTP_USER = defineString('SMTP_USER', { default: DEFAULT_MAIL.user })
+const MAIL_FROM = defineString('MAIL_FROM', { default: DEFAULT_MAIL.from })
+const APP_ORIGIN = defineString('APP_ORIGIN', { default: DEFAULT_MAIL.appOrigin })
 
 // Keep the functions beside the data they trigger on. This project's Firestore
 // is in asia-south1 (Mumbai), and a Firestore trigger's Eventarc plumbing is

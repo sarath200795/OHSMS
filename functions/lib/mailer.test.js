@@ -35,8 +35,17 @@ describe('safeOrigin', () => {
 })
 
 describe('mail configuration', () => {
-  it('names every missing setting, and treats a blank password as missing', () => {
-    expect(describeMailGap(mailConfigFrom({}))).toEqual(['SMTP_HOST', 'MAIL_FROM', 'SMTP_PASS'])
+  it('uses info@weehs.org unless overridden, and the password is the only gap', () => {
+    const config = mailConfigFrom({})
+    expect(config).toMatchObject({
+      host: 'mail.privateemail.com',
+      port: 465,
+      user: 'info@weehs.org',
+      from: 'WEEHS <info@weehs.org>',
+      appOrigin: 'https://suite.weehs.org',
+      configured: false,
+    })
+    expect(describeMailGap(config)).toEqual(['SMTP_PASS'])
     expect(
       mailConfigFrom({ SMTP_HOST: 'smtp.example', MAIL_FROM: 'a@b.co', SMTP_PASS: '' }).configured
     ).toBe(false)
@@ -62,11 +71,11 @@ describe('mail configuration', () => {
     })
   })
 
-  it('defaults a nonsense port to 587 rather than failing open on port 0', () => {
+  it('defaults a nonsense port to the mailbox SSL port rather than failing open on port 0', () => {
     expect(
       mailConfigFrom({ SMTP_HOST: 'h', MAIL_FROM: 'a@b.co', SMTP_PASS: 'p', SMTP_PORT: 'nope' })
         .port
-    ).toBe(587)
+    ).toBe(465)
   })
 })
 
@@ -78,6 +87,18 @@ describe('createMailer', () => {
       code: 'mail/not-configured',
     })
     expect(transport.sendMail).not.toHaveBeenCalled()
+  })
+
+  it('sends as info@weehs.org when only the mailbox password is set', async () => {
+    const transport = { sendMail: vi.fn(async () => {}) }
+    const mailer = createMailer({ SMTP_PASS: 'secret' }, { transport })
+    await mailer.send({ to: 'person@example.com', subject: 'Assigned', text: 'body' })
+    expect(transport.sendMail).toHaveBeenCalledWith({
+      from: 'WEEHS <info@weehs.org>',
+      to: 'person@example.com',
+      subject: 'Assigned',
+      text: 'body',
+    })
   })
 
   it('sends through the injected transport with the configured from address', async () => {
