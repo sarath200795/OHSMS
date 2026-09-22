@@ -5,27 +5,31 @@
 // from `MODULES` in the registry — the same names and descriptions the signed-in
 // dashboard already uses — so inventing a second catalogue cannot drift. Tiles
 // are not links: there is nowhere to go until sign-in succeeds.
+//
+// Layout is text-forward on purpose. An earlier pass put a large centred mark
+// above a short label and read as a logo gallery; the brief is the point here.
 // ─────────────────────────────────────────────────────────────────────────────
 import { MODULES } from '../../shared/modules/registry'
 
 /**
- * One Liquid Glass tile: centred mark, module name, brief description.
+ * One Liquid Glass entry: module name + readable brief, with a small icon accent.
  */
-function ModuleTile({ tone, icon: Icon, label, description }) {
+function ModuleBrief({ tone, icon: Icon, label, description }) {
   return (
     <article
       data-tone={tone}
-      className="glass-tile relative flex min-h-[152px] flex-col items-center justify-center gap-2.5 rounded-3xl p-4 text-center"
+      className="glass-tile relative flex items-start gap-3 rounded-2xl p-4 text-left"
     >
-      {/* Fixed square + place-items-center so lucide glyphs share one optical
-          centre. `block` kills the inline SVG baseline gap that left icons
-          sitting high in the slot. */}
-      <span className="grid h-11 w-11 flex-none place-items-center" aria-hidden="true">
-        <Icon size={22} strokeWidth={2} className="block" />
+      {/* Accent only — sized so it never competes with the brief. */}
+      <span
+        className="mt-0.5 grid h-7 w-7 flex-none place-items-center rounded-lg bg-white/35 ring-1 ring-white/50"
+        aria-hidden="true"
+      >
+        <Icon size={14} strokeWidth={2.2} className="block opacity-80" />
       </span>
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         <h3 className="text-[14px] font-bold tracking-[-0.015em] text-ink-900">{label}</h3>
-        <p className="mt-1 line-clamp-3 text-[12px] leading-snug text-ink-500">{description}</p>
+        <p className="mt-1 text-[12.5px] leading-relaxed text-ink-500">{description}</p>
       </div>
     </article>
   )
@@ -44,14 +48,13 @@ export default function LoginModules() {
         What you can run in WEHS
       </h2>
       <p className="mt-1.5 max-w-[52ch] text-[13px] leading-relaxed text-ink-500">
-        Each module is a workplace health and safety practice — from incident
-        reporting to permits, training and emergency response — under one amber
-        glass shell.
+        A short brief for each practice — from incident reporting to permits,
+        training and emergency response — under one amber glass shell.
       </p>
-      <ul className="mt-5 grid list-none gap-3 p-0 sm:grid-cols-2 xl:grid-cols-3">
+      <ul className="mt-5 grid list-none gap-3 p-0 sm:grid-cols-2">
         {MODULES.map((m) => (
           <li key={m.key}>
-            <ModuleTile
+            <ModuleBrief
               tone={m.tone}
               icon={m.icon}
               label={m.label}

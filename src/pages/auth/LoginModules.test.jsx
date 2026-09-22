@@ -5,7 +5,7 @@ import LoginModules from './LoginModules'
 import { MODULES } from '../../shared/modules/registry'
 
 describe('LoginModules', () => {
-  it('lists every registry module with its label and description', () => {
+  it('lists every registry module with its label and full brief', () => {
     render(<LoginModules />)
     expect(screen.getByRole('heading', { name: /what you can run in wehs/i })).toBeTruthy()
     for (const m of MODULES) {
@@ -14,19 +14,24 @@ describe('LoginModules', () => {
     }
   })
 
-  it('centres each module mark in a Liquid Glass tile', () => {
+  it('keeps icons as small accents beside text-forward briefs', () => {
     const { container } = render(<LoginModules />)
     const tiles = container.querySelectorAll('.glass-tile')
     expect(tiles.length).toBe(MODULES.length)
     tiles.forEach((tile) => {
-      expect(tile.className).toMatch(/items-center/)
-      expect(tile.className).toMatch(/justify-center/)
-      const mark = tile.querySelector('.place-items-center')
-      expect(mark).toBeTruthy()
-      expect(mark.className).toMatch(/h-11/)
-      expect(mark.className).toMatch(/w-11/)
-      const icon = mark.querySelector('svg')
-      expect(icon?.classList.contains('block') || icon?.getAttribute('class')?.includes('block')).toBeTruthy()
+      // Text-forward: left-aligned row, not a centred logo stack.
+      expect(tile.className).toMatch(/items-start/)
+      expect(tile.className).toMatch(/text-left/)
+      expect(tile.className).not.toMatch(/items-center/)
+      expect(tile.className).not.toMatch(/text-center/)
+      expect(tile.className).not.toMatch(/min-h-\[152px\]/)
+      const accent = tile.querySelector('.h-7.w-7, [class*="h-7"][class*="w-7"]')
+      expect(accent).toBeTruthy()
+      const icon = accent.querySelector('svg')
+      // lucide size={14} → width/height 14 on the svg
+      expect(icon?.getAttribute('width')).toBe('14')
+      const brief = tile.querySelector('p')
+      expect(brief?.textContent?.length).toBeGreaterThan(20)
     })
   })
 })
