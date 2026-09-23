@@ -132,11 +132,10 @@ Defaults, already set in code:
 - Links: `https://suite.weehs.org` plus the in-app path (`/incidents/{id}`,
   `/incidents/illness/{id}`, `/mock-drills`, `/training/my`)
 
-The one value that is not in the repo is the mailbox password. The triggers
-will not deploy until it exists as a secret. Create it once per project,
-before the next functions deploy. A placeholder is enough to deploy; nothing
-is sent until the value is the real password, and each skipped assignment is
-logged as an error rather than recorded as delivered.
+The one value that is not in the repo is the mailbox password. It has to
+exist as a secret before the triggers will deploy. A placeholder is enough
+to deploy; nothing is sent until the value is the real password, and each
+skipped assignment is logged as an error rather than recorded as delivered.
 
 ```bash
 firebase functions:secrets:set SMTP_PASS
@@ -146,7 +145,17 @@ Use the password for info@weehs.org. Do not put it in `functions/.env`. A
 mail credential in the Cloud Run environment in cleartext is the finding
 recorded as LOW-13.
 
-Local emulators read it from `functions/.secret.local` (one line,
+Production CI (`.github/workflows/deploy.yml`, and the staging workflow the
+same way) writes the non-secret mail defaults into `functions/.env.<project>`
+before it deploys functions. String params have defaults in code, but a
+non-interactive deploy still stops until those values are in that file. CI
+expects `DATA_KEY_MASTER` and `SMTP_PASS` in Secret Manager. If `SMTP_PASS`
+is missing, CI creates it from the `SMTP_PASS` GitHub secret when that is
+set, and otherwise as the placeholder `UNSET-PLACEHOLDER`. CI does not create
+or replace `DATA_KEY_MASTER`. Repository variables `SMTP_HOST`, `SMTP_PORT`,
+`SMTP_USER`, `MAIL_FROM` and `APP_ORIGIN` override those CI defaults when set.
+
+Local emulators read the password from `functions/.secret.local` (one line,
 `SMTP_PASS=...`). Without that file the trigger logs the same configuration
 error and returns.
 
