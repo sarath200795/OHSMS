@@ -174,11 +174,19 @@ service firebase.storage {
     //
     // Only `read` is excluded, deliberately. create/update/delete below already
     // say the right thing for this prefix — an auditor cannot upload, nothing
-    // may be overwritten in place, and only a manager may delete — so adding
-    // `kind != 'medical-records'` to any of them would break the upload rather
+    // may be overwritten in place, and client delete is refused outright — so
+    // adding a kind exclusion to any of them would break the upload rather
     // than tighten it.
+    //
+    // `mailed-reports` is the print PDF the app uploads so a lifecycle mail
+    // can attach the same file. That PDF is the decrypted print: names,
+    // minutes, narratives. The generic read would hand it to every member and
+    // to the auditor, which undoes field encryption for anyone who can read
+    // the pointer. There is no second match that grants it back. The Admin
+    // SDK the mail functions use does not consult these rules. A member can
+    // still create the object; they already hold the plaintext they just typed.
     match /orgs/{orgId}/{kind}/{fileName} {
-      allow read: if inOrg(orgId) && kind != 'medical-records';
+      allow read: if inOrg(orgId) && kind != 'medical-records' && kind != 'mailed-reports';
 
       // `resource == null` is what actually prevents an overwrite, and it is
       // here because the emulator proved the obvious version does not work:

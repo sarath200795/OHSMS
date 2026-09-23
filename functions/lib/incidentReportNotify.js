@@ -35,7 +35,7 @@
 import { notificationId, sendOnce } from './notify.js'
 import { describeMailGap } from './mailer.js'
 import { loadReportAttachments } from './mailAttachments.js'
-import { incidentReportPdf } from './reportAttachments.js'
+import { loadAppReportAttachment } from './reportAttachments.js'
 import { renderIncidentReportedMail } from './mailTemplates/incidentReported.js'
 
 export const MAX_REPORT_MAILS = 100
@@ -173,6 +173,7 @@ export async function deliverIncidentReport({
   mailer,
   logger,
   now = () => new Date(),
+  readObject,
 }) {
   const log = logger || noopLogger()
   if (!isFreshReport(before, after))
@@ -216,12 +217,21 @@ export async function deliverIncidentReport({
     site,
   })
 
-  // Before any claim. The initial-report print is browser HTML; this is that
-  // report as a PDF. If it cannot be built, the body still goes and the row
-  // is 'sent', not 'failed' — a failed claim would suppress the retry of a
-  // mail that never left.
+  // Before any claim. The file is the initial-report PDF the app uploaded on
+  // this write. If it is missing, the body still goes and the row is 'sent',
+  // not 'failed' — a failed claim would suppress the retry of a mail that
+  // never left.
   const attachments = await loadReportAttachments(
-    () => [incidentReportPdf(after, { docId, site })],
+    () =>
+      loadAppReportAttachment({
+        orgId,
+        record: after,
+        readObject,
+        prefix: 'Incident-Report',
+        ref: after?.refNo || docId,
+        logger: log,
+        context: { orgId, docId, kind: 'incident.reported' },
+      }),
     log,
     { orgId, docId, kind: 'incident.reported' }
   )

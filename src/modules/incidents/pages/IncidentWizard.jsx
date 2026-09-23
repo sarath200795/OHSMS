@@ -29,6 +29,7 @@ import {
 import { sortChronology } from '../lib/chronology'
 import { syncIncidentInjuries, mergeInjuryDetail } from '../lib/injuries'
 import { isFutureDate } from '../../../shared/lib/dates'
+import { captureIncidentReport } from '../lib/incidentReportPdf'
 
 // Forward-only lifecycle: never downgrade when revisiting an earlier step.
 const forwardLifecycle = (current, target) =>
@@ -172,14 +173,30 @@ export default function IncidentWizard() {
     try {
       if (!incident) {
         const newId = await createIncident(orgId, actor, { ...draft })
-        await updateIncident(orgId, newId, { 'stagesDone.initial': true }, { silent: true })
+        const fresh = await getIncident(orgId, newId)
+        // The mail fires on the flag flip below, not on the create. The PDF
+        // has to be uploaded first and named on that write.
+        const reportPdfPath = await captureIncidentReport(
+          orgId,
+          { ...(fresh || {}), ...draft, refNo: fresh?.refNo, docId: fresh?.docId },
+          { org, photos: [] },
+        )
+        await updateIncident(orgId, newId, {
+          'stagesDone.initial': true,
+          ...(reportPdfPath ? { reportPdfPath } : {}),
+        }, { silent: true })
         toast.success('Incident created')
         navigate(`/incidents/${newId}?step=${requiresInjury ? 'injury' : 'team'}`, { replace: true })
       } else {
+        const flipping = incident.stagesDone?.initial !== true
+        const reportPdfPath = flipping
+          ? await captureIncidentReport(orgId, { ...incident, ...draft }, { org, photos })
+          : ''
         await updateIncident(orgId, incident.id, {
           ...draft,
           'stagesDone.initial': true,
           lifecycle: incident.lifecycle === 'reporting' ? 'reporting' : incident.lifecycle,
+          ...(reportPdfPath ? { reportPdfPath } : {}),
         }, { actor, summary: 'Updated initial report' })
         const fresh = await getIncident(orgId, incident.id)
         setIncident(fresh)

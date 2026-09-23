@@ -1,9 +1,18 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { planDrillReport, deliverDrillReport } from './drillReportNotify.js'
-import * as reports from './reportAttachments.js'
 import { memoryDb, mailer, user } from '../test-support/memoryDb.js'
 
 const SEALED = 'enc:1:general:abcdefghijklmnop:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
+const APP_PDF = Buffer.from('%PDF-1.4\n% app-mock-drill-report\n')
+const APP_PATH = 'orgs/orgA/mailed-reports/ab12cd34-Mock-Drill-Report.pdf'
+
+function appReader(bytes = APP_PDF, calls = []) {
+  return async (path) => {
+    calls.push(path)
+    if (path !== APP_PATH) throw new Error(`unexpected ${path}`)
+    return bytes
+  }
+}
 
 const drill = {
   scenario: 'Fire Emergency',
@@ -76,61 +85,100 @@ describe('deliverDrillReport', () => {
     expect(sent).toHaveLength(2)
   })
 
-  it('attaches the drill report and keeps a sealed debrief out of the file', async () => {
+  it('attaches the app PDF bytes and keeps the commander out of the body', async () => {
     const sent = []
+    const calls = []
     await deliverDrillReport({
       db: db(),
       orgId: 'orgA',
       docId: 'd1',
       before: null,
+      after: { ...drill, debrief: SEALED, reportPdfPath: APP_PATH },
+      mailer: mailer(sent),
+      logger,
+      users,
+      readObject: appReader(APP_PDF, calls),
+    })
+    const file = sent[0].attachments[0]
+    expect(file.filename).toBe('Mock-Drill-Report-DR-1.pdf')
+    expect(file.content.equals(APP_PDF)).toBe(true)
+    expect(calls).toEqual([APP_PATH])
+    expect(sent[0].text).not.toContain('Priya')
+    expect(sent[0].text).not.toContain('enc:')
+    expect(sent.every((message) => message.attachments[0].content.equals(APP_PDF))).toBe(true)
+  })
+
+  it('does not read a foreign, sealed, or missing report path', async () => {
+    const sent = []
+    const calls = []
+    const store = db()
+    const result = await deliverDrillReport({
+      db: store,
+      orgId: 'orgA',
+      docId: 'd1',
+      before: null,
       after: {
         ...drill,
-        checklist: ['Sound the alarm.'],
-        checklistStatus: { 0: true },
-        photoCount: 2,
+        reportPdfPath: 'orgs/orgB/mailed-reports/ab-other.pdf',
       },
       mailer: mailer(sent),
       logger,
       users,
+      readObject: async (path) => {
+        calls.push(path)
+        return APP_PDF
+      },
     })
-    const file = sent[0].attachments[0]
-    expect(file.filename).toBe('Mock-Drill-Report-DR-1.pdf')
-    expect(file.content.subarray(0, 5).toString()).toBe('%PDF-')
-    const pdf = file.content.toString('latin1')
-    expect(pdf).toContain('Fire Emergency')
-    expect(pdf).toContain('PASS')
-    expect(pdf).toContain('Sound the alarm.')
-    expect(pdf).toContain('Priya')
-    expect(pdf).toContain('not included in this copy')
-    expect(pdf).not.toContain('enc:')
-    expect(sent[0].text).not.toContain('Priya')
-    expect(sent.every((message) => message.attachments[0].filename === file.filename)).toBe(true)
+    expect(result.sent).toBe(2)
+    expect(calls).toEqual([])
+    expect(sent[0].attachments || []).toEqual([])
+    expect(sent[0].text).toContain('Fire Emergency')
+    for (const path of store.notifications()) expect(store.store.get(path).status).toBe('sent')
   })
 
-  it('still sends the body when the report cannot be built, and marks the ledger sent', async () => {
+  it('skips a sealed object and still marks the ledger sent', async () => {
     const sent = []
     const store = db()
-    const spy = vi.spyOn(reports, 'drillReportPdf').mockImplementation(() => {
-      throw new Error('pdf failed')
+    const result = await deliverDrillReport({
+      db: store,
+      orgId: 'orgA',
+      docId: 'd1',
+      before: null,
+      after: { ...drill, reportPdfPath: APP_PATH },
+      mailer: mailer(sent),
+      logger,
+      users,
+      readObject: async () => Buffer.from(`${SEALED}\n`),
     })
-    try {
-      const result = await deliverDrillReport({
-        db: store,
-        orgId: 'orgA',
-        docId: 'd1',
-        before: null,
-        after: drill,
-        mailer: mailer(sent),
-        logger,
-        users,
-      })
-      expect(result.sent).toBe(2)
-      expect(sent[0].text).toContain('Fire Emergency')
-      expect(sent[0].attachments || []).toEqual([])
-      for (const path of store.notifications()) expect(store.store.get(path).status).toBe('sent')
-    } finally {
-      spy.mockRestore()
-    }
+    expect(result.sent).toBe(2)
+    expect(sent[0].attachments || []).toEqual([])
+    expect(sent[0].text).not.toContain('enc:')
+    for (const path of store.notifications()) expect(store.store.get(path).status).toBe('sent')
+  })
+
+  it('still sends the body when the app PDF is missing, and marks the ledger sent', async () => {
+    const sent = []
+    const store = db()
+    let reads = 0
+    const result = await deliverDrillReport({
+      db: store,
+      orgId: 'orgA',
+      docId: 'd1',
+      before: null,
+      after: drill,
+      mailer: mailer(sent),
+      logger,
+      users,
+      readObject: async () => {
+        reads += 1
+        throw new Error('should not read')
+      },
+    })
+    expect(result.sent).toBe(2)
+    expect(reads).toBe(0)
+    expect(sent[0].text).toContain('Fire Emergency')
+    expect(sent[0].attachments || []).toEqual([])
+    for (const path of store.notifications()) expect(store.store.get(path).status).toBe('sent')
   })
 
   it('does not claim when mail is not configured', async () => {

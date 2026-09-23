@@ -31,6 +31,7 @@ import { computeWindow, derivePermitStatus } from './permitStatus'
 import { mirrorDisplayFields } from './publicPermit'
 import { generateQrToken } from './qr'
 import { logAudit as logOrgAudit, orgIndexRef } from '../../../shared/org/orgData'
+import { discardMailedReport } from '../../../shared/print/mailedReport'
 
 // ── Path helpers ─────────────────────────────────────────────────────────────
 const orgRef = (orgId) => doc(db, 'organizations', orgId)
@@ -80,6 +81,30 @@ export function subscribeOrg(orgId, cb) {
 // ── Permits ─────────────────────────────────────────────────────────────────
 
 const emptyDecision = () => ({ status: 'pending', by: null, byName: '', at: null, note: '' })
+
+async function storedPermitDocuments(orgId, permitId) {
+  try {
+    const snap = await getDocs(docCol(orgId, permitId))
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+  } catch {
+    return []
+  }
+}
+
+// The lifecycle mail reads reportPdfPath off the document this write stores.
+// The print has to be in Storage first, or the function attaches nothing and
+// sends the body alone. A failed capture must not fail the permit write.
+async function mailedPermitPdf(orgId, permit, documents) {
+  if (typeof document === 'undefined' || !permit) return ''
+  try {
+    const { capturePermitReport } = await import('./permitReportPdf.js')
+    return await capturePermitReport(orgId, permit, documents || [])
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('[Permit to Work] report PDF skipped:', e?.message || e)
+    return ''
+  }
+}
 
 /** Allocate the next sequential permit number for the org (PTW-YYYY-####). */
 async function nextPermitNo(orgId, year) {
@@ -245,6 +270,14 @@ export async function createPermit(orgId, data, actor) {
   const docPayloads = await Promise.all(
     (data.documents || []).map((d) => permitDocPayload(orgId, d, actor)),
   )
+  // Before the create that sends the raised mail. The documents are not in
+  // the subcollection yet; the print only needs their names and keys.
+  const reportPdfPath = await mailedPermitPdf(
+    orgId,
+    permit,
+    docPayloads.map((d, i) => ({ ...d, id: `new-${i}` })),
+  )
+  if (reportPdfPath) permit.reportPdfPath = reportPdfPath
 
   await setDoc(ref, permit)
   // Attached files live in a subcollection (each ≤ ~750 KB base64) so the parent
@@ -315,10 +348,16 @@ export async function createObservation(orgId, data, actor) {
     }
     const current = await getPermit(orgId, data.permitId)
     const merged = { ...(current || {}), closedDueToObservation: closure }
+    const reportPdfPath = await mailedPermitPdf(
+      orgId,
+      merged,
+      await storedPermitDocuments(orgId, data.permitId),
+    )
     await updateDoc(permitRef(orgId, data.permitId), {
       closedDueToObservation: closure,
       storedStatus: 'closed_noncompliance',
       updatedAt: serverTimestamp(),
+      ...(reportPdfPath ? { reportPdfPath } : {}),
     })
     await updatePermitMirror(data.token || current?.qrToken, merged)
   }
@@ -495,6 +534,8 @@ export async function deletePermit(orgId, permit, actor) {
     summary: `Deleted permit ${permit.permitNo || id}${permit.typeOfWork ? ` (${permit.typeOfWork})` : ''}`,
   })
 
+  discardMailedReport(orgId, permit.reportPdfPath)
+
   if (permit.qrToken) {
     try {
       await deleteDoc(qrRef(permit.qrToken))
@@ -531,7 +572,16 @@ export async function decideApproval(orgId, permitId, team, decision, note, acto
   if (!current) throw new Error('Permit no longer exists')
   const block = decisionBlock(decision, actor, note)
   const merged = { ...current, [team]: block }
-  await updateDoc(permitRef(orgId, permitId), { [team]: block, updatedAt: serverTimestamp() })
+  const reportPdfPath = await mailedPermitPdf(
+    orgId,
+    merged,
+    await storedPermitDocuments(orgId, permitId),
+  )
+  await updateDoc(permitRef(orgId, permitId), {
+    [team]: block,
+    updatedAt: serverTimestamp(),
+    ...(reportPdfPath ? { reportPdfPath } : {}),
+  })
   await syncStoredStatus(orgId, permitId, merged)
   await logAudit(orgId, actor, decision === 'approved' ? AUDIT.APPROVE : AUDIT.REJECT, {
     targetId: permitId, targetLabel: current.permitNo,
@@ -548,7 +598,18 @@ export async function requestClosure(orgId, permitId, actor) {
     engineering: emptyDecision(),
     operations: emptyDecision(),
   }
-  await updateDoc(permitRef(orgId, permitId), { closure, updatedAt: serverTimestamp() })
+  const current = await getPermit(orgId, permitId)
+  const merged = { ...(current || {}), closure }
+  const reportPdfPath = await mailedPermitPdf(
+    orgId,
+    merged,
+    await storedPermitDocuments(orgId, permitId),
+  )
+  await updateDoc(permitRef(orgId, permitId), {
+    closure,
+    updatedAt: serverTimestamp(),
+    ...(reportPdfPath ? { reportPdfPath } : {}),
+  })
   await logAudit(orgId, actor, AUDIT.CLOSURE_REQUEST, { targetId: permitId, summary: 'Submitted for closure' })
 }
 
@@ -558,7 +619,16 @@ export async function decideClosure(orgId, permitId, team, decision, note, actor
   const block = decisionBlock(decision, actor, note)
   const closure = { ...current.closure, [team]: block }
   const merged = { ...current, closure }
-  await updateDoc(permitRef(orgId, permitId), { closure, updatedAt: serverTimestamp() })
+  const reportPdfPath = await mailedPermitPdf(
+    orgId,
+    merged,
+    await storedPermitDocuments(orgId, permitId),
+  )
+  await updateDoc(permitRef(orgId, permitId), {
+    closure,
+    updatedAt: serverTimestamp(),
+    ...(reportPdfPath ? { reportPdfPath } : {}),
+  })
   await syncStoredStatus(orgId, permitId, merged)
   await logAudit(orgId, actor, AUDIT.CLOSURE_DECISION, {
     targetId: permitId, targetLabel: current.permitNo, summary: `Closure ${team} ${decision}`,
@@ -579,7 +649,18 @@ export async function requestExtension(orgId, permitId, { reason, newValidTo, pa
     engineering: emptyDecision(),
     operations: emptyDecision(),
   }
-  await updateDoc(permitRef(orgId, permitId), { extension, updatedAt: serverTimestamp() })
+  const current = await getPermit(orgId, permitId)
+  const merged = { ...(current || {}), extension }
+  const reportPdfPath = await mailedPermitPdf(
+    orgId,
+    merged,
+    await storedPermitDocuments(orgId, permitId),
+  )
+  await updateDoc(permitRef(orgId, permitId), {
+    extension,
+    updatedAt: serverTimestamp(),
+    ...(reportPdfPath ? { reportPdfPath } : {}),
+  })
   await logAudit(orgId, actor, AUDIT.EXTENSION_REQUEST, {
     targetId: permitId, summary: `Extension requested${reason ? ` — ${reason}` : ''}`,
   })
@@ -616,6 +697,12 @@ export async function decideExtension(orgId, permitId, team, decision, note, act
     patch.validTo = extension.newValidTo
     merged.validTo = extension.newValidTo
   }
+  const reportPdfPath = await mailedPermitPdf(
+    orgId,
+    merged,
+    await storedPermitDocuments(orgId, permitId),
+  )
+  if (reportPdfPath) patch.reportPdfPath = reportPdfPath
   await updateDoc(permitRef(orgId, permitId), patch)
   await syncStoredStatus(orgId, permitId, merged)
   await logAudit(orgId, actor, AUDIT.EXTENSION_DECISION, {

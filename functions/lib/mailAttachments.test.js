@@ -5,6 +5,7 @@ import {
   loadReportAttachments,
   permitObjectPath,
   prepareAttachments,
+  reportObjectPath,
   reportPdfName,
 } from './mailAttachments.js'
 
@@ -23,6 +24,24 @@ describe('reportPdfName', () => {
 
   it('strips a newline so the filename cannot split a MIME header', () => {
     expect(reportPdfName('Incident-Report', 'IRA\r\nBcc: x')).not.toMatch(/[\r\n]/)
+  })
+})
+
+describe('reportObjectPath', () => {
+  const ok = 'orgs/orgA/mailed-reports/ab12cd34-Mock-Drill-Report.pdf'
+
+  it('accepts this org mailed-reports prefix only', () => {
+    expect(reportObjectPath('orgA', ok)).toBe(ok)
+    expect(reportObjectPath('orgA', 'orgs/orgB/mailed-reports/ab-secret.pdf')).toBe('')
+    expect(reportObjectPath('orgA', 'orgs/orgA/permit-documents/ab-method.pdf')).toBe('')
+    expect(reportObjectPath('orgA', 'orgs/orgA/medical-records/ab-letter.pdf')).toBe('')
+    expect(reportObjectPath('orgA', 'orgs/orgA/mailed-reports/../orgB/secret.pdf')).toBe('')
+    expect(reportObjectPath('orgA', 'orgs/orgA/mailed-reports/nested/x.pdf')).toBe('')
+    expect(reportObjectPath('orgA', 'orgs/orgA/mailed-reports/ab-file.pdf.enc')).toBe('')
+    expect(reportObjectPath('orgA', 'https://storage.example/orgs/orgA/mailed-reports/a.pdf')).toBe(
+      ''
+    )
+    expect(reportObjectPath('orgA', SEALED)).toBe('')
   })
 })
 
