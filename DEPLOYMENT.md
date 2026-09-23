@@ -152,4 +152,6 @@ error and returns.
 
 `functions/.env` can override the defaults (`SMTP_HOST`, `SMTP_PORT`,
 `SMTP_USER`, `MAIL_FROM`, `APP_ORIGIN`). Leaving them unset keeps
-info@weehs.org. See `functions/.env.example`.
+info@weehs.org. See `functions/.env.example`. `functions/.env.weehs-4eb28`
+supplies non-secret SMTP defaults for CI, while `SMTP_PASS` remains a
+Secret Manager secret.
