@@ -183,8 +183,7 @@ function dbWith({ users = {}, sites = {} } = {}) {
           reads.push(`users?orgId=${orgId}`)
           const found = [...docs.entries()]
             .filter(
-              ([path, data]) =>
-                path.startsWith('users/') && !path.slice('users/'.length).includes('/')
+              ([path]) => path.startsWith('users/') && !path.slice('users/'.length).includes('/')
             )
             .filter(([, data]) => data.orgId === orgId)
             .map(([path, data]) => ({ id: path.slice('users/'.length), data: () => data }))

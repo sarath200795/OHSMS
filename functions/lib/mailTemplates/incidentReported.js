@@ -60,10 +60,16 @@ function classify(value) {
 function safeProse(value, max = 4000) {
   const text = readableText(value)
   if (!text) return ''
-  const cleaned = text
-    .replace(/\r\n/g, '\n')
-    .replace(/\r/g, '\n')
-    .replace(/[\t\f\v\u0000-\u0008\u000b\u000c\u000e-\u001f]+/g, ' ')
+  // C0 controls other than newline become spaces. A character class would be
+  // the short way, and no-control-regex rejects it: those escapes are how a
+  // pattern silently matches the wrong byte. Newlines stay so a narrative
+  // keeps its paragraphs; carriage returns were already folded into them.
+  let flattened = ''
+  for (const ch of text.replace(/\r\n/g, '\n').replace(/\r/g, '\n')) {
+    const code = ch.codePointAt(0)
+    flattened += code === 10 || code > 31 ? ch : ' '
+  }
+  const cleaned = flattened
     .replace(/[ \t]+\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim()
