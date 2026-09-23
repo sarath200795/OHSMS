@@ -22,6 +22,7 @@ import { Pager } from '../../../shared/ui';
 import { reserveDocId } from '../../../shared/docId/reserve';
 import { usePagination } from '../../../shared/ui/usePagination';
 import Logo from '../components/Logo';
+import MeetingMinutesDoc from '../components/MeetingMinutesDoc';
 import LogoLoader from '../components/LogoLoader';
 import { ModuleMark } from '../../../shared/ui';
 import { isFutureDate, todayISO, isOverdueDate, toISODate } from '../../../shared/lib/dates';
@@ -1080,110 +1081,8 @@ export default function Consultation() {
 
             {/* PRINT OVERLAY */}
             {printData && (
-                <div className="hidden print:block p-10 doc-sheet min-h-screen absolute inset-0 z-[9999]" style={{ WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}>
-                    <div className="doc-header">
-                        <div>
-                            <p className="doc-kicker">WEHS · ISO 45001 OHSMS</p>
-                            <h1 className="doc-title">Consultation &amp; meeting minutes</h1>
-                        </div>
-                        <div className="doc-meta">
-                            <div><b>Ref {printData.docId || printData.id}</b></div>
-                            <div className="mt-1">Printed {new Date().toLocaleDateString()}</div>
-                        </div>
-                    </div>
-
-                    <div className="doc-panel mb-8">
-                        <h2 className="doc-section-title">1. Meeting details</h2>
-                        <table className="w-full text-sm border-none">
-                            <tbody>
-                                <tr>
-                                    <td className="w-[15%] font-semibold py-2 border-b border-ink-200 text-ink-500">Type</td><td className="w-[35%] py-2 border-b border-ink-200 text-lg font-semibold">{printData.type}</td>
-                                    <td className="w-[15%] font-semibold py-2 border-b border-ink-200 pl-4 text-ink-500">Time</td><td className="w-[35%] py-2 border-b border-ink-200 font-mono">{printData.time || 'N/A'}</td>
-                                </tr>
-                                <tr>
-                                    <td className="w-[15%] font-semibold py-2 border-b border-ink-200 text-ink-500">Site/Location</td><td className="w-[35%] py-2 border-b border-ink-200">{siteName(printData.siteId)}</td>
-                                    <td className="w-[15%] font-semibold py-2 border-b border-ink-200 pl-4 text-ink-500">Date</td><td className="w-[35%] py-2 border-b border-ink-200 font-mono font-semibold">{printData.date}</td>
-                                </tr>
-                                <tr>
-                                    <td className="font-semibold py-3 align-top border-none text-ink-500">Subject/Agenda</td><td colSpan="3" className="py-3 text-lg font-semibold border-none leading-tight">{printData.subject}</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-
-                    <section className="doc-section">
-                        <h2 className="doc-section-title">2. Inputs / Pre-requisites</h2>
-                        <div className="doc-quote min-h-[50px] leading-relaxed">{printData.preRequisites || 'None specified.'}</div>
-                    </section>
-
-                    <section className="doc-section page-break-inside-avoid">
-                        <h2 className="doc-section-title">3. Attendance roster</h2>
-                        <table className="doc-table">
-                            <thead>
-                                <tr>
-                                    <th className="text-center w-12">#</th>
-                                    <th className="w-2/5">Full name</th>
-                                    <th className="w-1/3">Role / Affiliation</th>
-                                    <th className="text-center">Signature</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {(printData.attendees || []).map((a, i) => (
-                                    <tr key={i}>
-                                        <td className="text-center font-semibold">{i + 1}</td>
-                                        <td className="font-semibold">{a.name} {a.userId === 'External' ? '(Contractor/EXT)' : ''}</td>
-                                        <td>{a.role}</td>
-                                        <td className="h-12"><span className="sr-only">Signature — signed on the printed copy</span></td>
-                                    </tr>
-                                ))}
-                                {(!printData.attendees || printData.attendees.length === 0) && <tr><td colSpan="4" className="text-center italic text-ink-500">No attendees recorded.</td></tr>}
-                            </tbody>
-                        </table>
-                    </section>
-
-                    <section className="doc-section page-break">
-                        <h2 className="doc-section-title">4. Discussion minutes</h2>
-                        <div className="text-sm whitespace-pre-wrap leading-relaxed">{printData.minutes || 'No formal minutes documented.'}</div>
-                    </section>
-
-                    <section className="doc-section page-break-inside-avoid">
-                        <h2 className="doc-section-title">5. Agreed action plan (CAPA)</h2>
-                        <table className="doc-table">
-                            <thead>
-                                <tr>
-                                    <th className="text-center w-12">#</th>
-                                    <th>Action item</th>
-                                    <th className="w-1/4">Owner</th>
-                                    <th className="text-center w-32">Due date</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {(printData.actions || []).map((row, idx) => (
-                                    <tr key={idx}>
-                                        <td className="text-center font-semibold">{idx + 1}</td>
-                                        <td>{row.action}</td>
-                                        <td className="font-semibold">{row.owner}</td>
-                                        <td className="text-center font-mono">{row.due}</td>
-                                    </tr>
-                                ))}
-                                {(!printData.actions || printData.actions.length === 0) && (
-                                    <tr><td colSpan="4" className="text-center italic text-ink-500">No follow-up actions assigned during this meeting.</td></tr>
-                                )}
-                            </tbody>
-                        </table>
-                    </section>
-
-                    {/* Layout only: two signature rules side by side on the printed minutes. */}
-                    <table role="presentation" className="doc-sigs page-break-inside-avoid">
-                        <tbody>
-                            <tr>
-                                <td>Prepared by / Chairperson</td>
-                                <td className="gutter" aria-hidden="true"></td>
-                                <td>Site manager / EHS lead approval</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                    <div className="doc-foot text-center font-mono">Generated by WEHS · {new Date().toLocaleString()}</div>
+                <div className="hidden print:block absolute inset-0 z-[9999]">
+                    <MeetingMinutesDoc meeting={printData} siteLabel={siteName(printData.siteId)} />
                 </div>
             )}
         </div>

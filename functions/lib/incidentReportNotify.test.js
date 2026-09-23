@@ -9,6 +9,9 @@ import {
 } from './incidentReportNotify.js'
 import { notificationId } from './notify.js'
 
+const APP_PDF = Buffer.from('%PDF-1.4\n% app-incident-report\n')
+const APP_PATH = 'orgs/orgA/mailed-reports/ab12cd34-Incident-Report.pdf'
+
 const person = (uid, over = {}) => ({
   uid,
   orgId: 'orgA',
@@ -275,9 +278,10 @@ describe('deliverIncidentReport', () => {
     )
   })
 
-  it('attaches the initial incident report under the reference filename', async () => {
+  it('attaches the app initial-report PDF under the reference filename', async () => {
     const db = dbWith({ users, sites: { s1: { name: 'Plant A', region: 'North' } } })
     const box = mailer()
+    const calls = []
     const after = {
       ...draft,
       stagesDone: { initial: true },
@@ -285,6 +289,7 @@ describe('deliverIncidentReport', () => {
       incidentDate: '2026-09-01',
       location: 'Warehouse',
       injuryReports: [{ personName: 'Sam', personId: 'p1' }],
+      reportPdfPath: APP_PATH,
     }
     await deliverIncidentReport({
       db,
@@ -294,37 +299,42 @@ describe('deliverIncidentReport', () => {
       after,
       mailer: box,
       logger: log(),
+      readObject: async (path) => {
+        calls.push(path)
+        return APP_PDF
+      },
     })
     const file = box.sent[0].attachments[0]
     expect(file.filename).toBe('Incident-Report-IRA-2026-0007.pdf')
-    const pdf = file.content.toString('latin1')
-    expect(pdf).toContain('A pallet fell.')
-    expect(pdf).toContain('Near Miss')
-    expect(pdf).toContain('Warehouse')
-    expect(pdf).toContain('not included in this copy')
-    expect(pdf).not.toContain('enc:')
+    expect(file.content.equals(APP_PDF)).toBe(true)
+    expect(calls).toEqual([APP_PATH])
     expect(box.sent[0].text).toContain('A pallet fell.')
+    expect(box.sent.every((message) => message.attachments[0].content.equals(APP_PDF))).toBe(true)
   })
 
-  it('omits a sealed narrative from the report file and still sends', async () => {
+  it('does not invent a report file for a sealed narrative, and still sends', async () => {
     const sealed = 'enc:1:general:abcdefghijklmnop:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
     const db = dbWith({
       users: { reporter: person('reporter', { email: 'ada@example.com', siteId: 's1' }) },
     })
     const box = mailer()
+    let reads = 0
     const result = await deliverIncidentReport({
       db,
       orgId: 'orgA',
       docId: 'inc1',
       before: draft,
-      after: { ...draft, stagesDone: { initial: true }, narrative: sealed },
+      after: { ...draft, stagesDone: { initial: true }, narrative: sealed, reportPdfPath: sealed },
       mailer: box,
       logger: log(),
+      readObject: async () => {
+        reads += 1
+        return APP_PDF
+      },
     })
     expect(result.sent).toBe(1)
-    const pdf = box.sent[0].attachments[0].content.toString('latin1')
-    expect(pdf).not.toContain('enc:')
-    expect(pdf).toContain('Sealed')
+    expect(reads).toBe(0)
+    expect(box.sent[0].attachments || []).toEqual([])
     expect(box.sent[0].text).not.toContain('enc:')
     expect(
       db.docs.get(

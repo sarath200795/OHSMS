@@ -2531,6 +2531,7 @@ export const notifyIncidentReported = onDocumentWritten(
       after: writtenData(event.data?.after),
       mailer,
       logger,
+      readObject: readStorageObject,
     })
   },
 )
@@ -2600,13 +2601,13 @@ export const notifyFasDefect = assetDefectTrigger('fas')
 export const notifyDrillReport = lifecycleTrigger(
   'drill report',
   'organizations/{orgId}/mockDrills/{docId}',
-  deliverDrillReport,
+  (args) => deliverDrillReport({ ...args, readObject: readStorageObject }),
 )
 
 export const notifyCommitteeMeeting = lifecycleTrigger(
   'meeting',
   'organizations/{orgId}/consultations/{docId}',
-  deliverMeetingMail,
+  (args) => deliverMeetingMail({ ...args, readObject: readStorageObject }),
 )
 
 // UTC, not Asia/Kolkata: the ledger bucket is the UTC six-hour window, and

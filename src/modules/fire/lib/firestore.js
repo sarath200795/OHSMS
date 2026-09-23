@@ -49,6 +49,7 @@ import { lockId, duplicateDefectMessage } from './defectLock'
 import { putFile, removeFile, MAX_INLINE_BYTES, tooLargeForInline } from '../../../shared/storage'
 import { reserveDocId, reserveSeq } from '../../../shared/docId/reserve'
 import { reportError } from '../../../shared/monitoring'
+import { discardMailedReport } from '../../../shared/print/mailedReport'
 import { AUDIT, diffSummary } from './audit'
 import { logAudit as logOrgAudit, auditCol, orgIndexRef, COLLECTION_READ_CAP } from '../../../shared/org/orgData'
 import { onReadError } from '../../../shared/org/readError'
@@ -1166,6 +1167,11 @@ export async function addMockDrill(orgId, data, actor) {
   }))
   payload.createdAt = serverTimestamp()
   payload.docId = await reserveDocId(orgId, 'drills')
+  // Photos are still the data URLs the recorder holds. The stored document
+  // does not keep them — they go to the subcollection above — but the print
+  // embeds them, and this is the moment the mail's copy is made.
+  const reportPdfPath = await mailedDrillPdf(orgId, { ...payload, photos: valid })
+  if (reportPdfPath) payload.reportPdfPath = reportPdfPath
   // The person saving the drill is the assigner of every CAPA row on it.
   // Drill reports are written once; there is no later edit that would need
   // the "only when the assignee changed" diff incidents use. The uid is what
@@ -1216,7 +1222,24 @@ export async function getMockDrillPhotos(orgId, drillId) {
   return resolved
 }
 
+async function mailedDrillPdf(orgId, record) {
+  if (typeof document === 'undefined') return ''
+  try {
+    const { captureDrillReport } = await import('./drillReportPdf.js')
+    return await captureDrillReport(orgId, record)
+  } catch (e) {
+    reportError(e, { source: 'fire.mailedDrillPdf', orgId })
+    return ''
+  }
+}
+
 export async function deleteMockDrill(orgId, id, actor, label) {
+  try {
+    const parent = await getDoc(drillRef(orgId, id))
+    discardMailedReport(orgId, parent.data()?.reportPdfPath)
+  } catch (e) {
+    reportError(e, { source: 'fire.deleteMockDrill.pdf', orgId })
+  }
   // Remove evidence photos first (non-fatal if it fails). Cloud copies go too —
   // a photo doc is the only thing that remembers its storage path.
   try {

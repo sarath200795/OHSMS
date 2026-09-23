@@ -6,14 +6,17 @@
 // write, with its own ledger kind; this does not touch those keys.
 //
 // Commander names, the debrief and the action text are sealed when encryption
-// is on, and they name people even when they are not. They are not copied.
-// Scenario, event type, date, outcome and score stay readable on purpose
-// (src/shared/crypto/policy.js) and are the lines the mail is allowed to carry.
+// is on, and they name people even when they are not. They are not copied
+// into the body. The attachment is the print PDF the app uploaded; that file
+// is the report the saver was looking at, and storage.rules keep clients from
+// reading it back. Scenario, event type, date, outcome and score stay
+// readable on purpose (src/shared/crypto/policy.js) and are the lines the
+// body is allowed to carry.
 import { scopeFrom, selectScopedAudience, loadOrgUsers, loadDoc } from './audience.js'
 import { circulate } from './circulate.js'
 import { describeMailGap } from './mailer.js'
 import { loadReportAttachments } from './mailAttachments.js'
-import { drillReportPdf } from './reportAttachments.js'
+import { loadAppReportAttachment } from './reportAttachments.js'
 import { renderDrillReportMail } from './mailTemplates/lifecycle.js'
 
 export function planDrillReport(before, after) {
@@ -50,6 +53,7 @@ export async function deliverDrillReport({
   logger,
   now,
   users: usersIn,
+  readObject,
 }) {
   const drill = planDrillReport(before, after)
   if (!drill) return { sent: 0, skipped: 0, failed: 0 }
@@ -67,15 +71,25 @@ export async function deliverDrillReport({
     { appOrigin: origin }
   )
 
-  // Resolved before circulate claims the ledger. A failure to build the PDF
-  // skips the file and still sends the body; it does not fail the claim.
+  // Resolved before circulate claims the ledger. The file is the PDF the app
+  // uploaded for this save. A missing object skips the file and still sends
+  // the body; it does not fail the claim.
   let attachments = []
   if (recipients.length && describeMailGap(mailer?.config).length === 0) {
-    attachments = await loadReportAttachments(() => [drillReportPdf(after, scope)], logger, {
-      orgId,
-      docId,
-      kind: 'drill.reported',
-    })
+    attachments = await loadReportAttachments(
+      () =>
+        loadAppReportAttachment({
+          orgId,
+          record: after,
+          readObject,
+          prefix: 'Mock-Drill-Report',
+          ref: after?.docId,
+          logger,
+          context: { orgId, docId, kind: 'drill.reported' },
+        }),
+      logger,
+      { orgId, docId, kind: 'drill.reported' }
+    )
   }
 
   return circulate({

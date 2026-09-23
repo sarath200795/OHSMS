@@ -7,6 +7,9 @@ import {
 } from './permitNotify.js'
 import { memoryDb, mailer, user } from '../test-support/memoryDb.js'
 
+const APP_PDF = Buffer.from('%PDF-1.4\n% app-permit-to-work\n')
+const APP_PATH = 'orgs/orgA/mailed-reports/ab12cd34-Permit-to-Work.pdf'
+
 const pending = { status: 'pending' }
 const approved = (by, at = '2026-09-01T10:00:00.000Z') => ({
   status: 'approved',
@@ -245,6 +248,7 @@ describe('deliverPermitMails', () => {
       after: permit({
         jobDescription: 'Weld the bracket',
         requiredDocs: [{ key: 'method', label: 'Method statement', mandatory: true }],
+        reportPdfPath: APP_PATH,
       }),
       mailer: mailer(sent),
       logger,
@@ -252,6 +256,7 @@ describe('deliverPermitMails', () => {
       sites: SITES,
       readObject: async (path) => {
         calls.push(path)
+        if (path === APP_PATH) return APP_PDF
         return jpeg
       },
     })
@@ -261,12 +266,9 @@ describe('deliverPermitMails', () => {
       'method-statement.pdf',
       'site-photo.jpg',
     ])
-    const copy = sent[0].attachments[0].content.toString('latin1')
-    expect(copy).toContain('Hot work')
-    expect(copy).toContain('Weld the bracket')
-    expect(copy).toContain('Method statement')
+    expect(sent[0].attachments[0].content.equals(APP_PDF)).toBe(true)
     expect(sent[0].attachments[1].content.equals(extra)).toBe(true)
-    expect(calls).toEqual(['orgs/orgA/permit-documents/ab-site-photo.jpg'])
+    expect(calls).toEqual([APP_PATH, 'orgs/orgA/permit-documents/ab-site-photo.jpg'])
     expect(sent[0].text).not.toContain('Weld the bracket')
     expect(sent[0].text).not.toContain('Worker Wren')
   })
@@ -310,9 +312,7 @@ describe('deliverPermitMails', () => {
       },
     })
     expect(result).toMatchObject({ sent: 2, failed: 0 })
-    expect(sent[0].attachments.map((file) => file.filename)).toEqual([
-      'Permit-to-Work-PTW-2026-0007.pdf',
-    ])
+    expect(sent[0].attachments || []).toEqual([])
     expect(sent[0].text).toContain('PTW-2026-0007')
     expect(calls).toEqual(['orgs/orgA/permit-documents/ab-gone.pdf'])
     const joined = sent
@@ -359,16 +359,19 @@ describe('deliverPermitMails', () => {
       before: null,
       after: permit({
         permitNo: 'enc:1:general:abcdefghijklmnop:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+        reportPdfPath: APP_PATH,
       }),
       mailer: mailer(sent),
       logger,
       users: users(),
       sites: SITES,
+      readObject: async () => APP_PDF,
     })
     const blob = sent.map((m) => `${m.subject}\n${m.text}\n${m.html}`).join('\n')
     expect(blob).not.toContain('enc:')
     expect(blob).toContain('Sealed — open the record in the app')
     expect(sent[0].attachments[0].filename).toBe('Permit-to-Work.pdf')
+    expect(sent[0].attachments[0].content.equals(APP_PDF)).toBe(true)
     expect(sent[0].attachments[0].content.toString('latin1')).not.toContain('enc:')
   })
 })

@@ -14,7 +14,11 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { beforeAll, afterAll, beforeEach, describe, it, expect } from 'vitest'
-import { initializeTestEnvironment, assertFails, assertSucceeds } from '@firebase/rules-unit-testing'
+import {
+  initializeTestEnvironment,
+  assertFails,
+  assertSucceeds,
+} from '@firebase/rules-unit-testing'
 import { ref, uploadBytes, getBytes, deleteObject } from 'firebase/storage'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -33,7 +37,9 @@ beforeAll(async () => {
   })
 })
 
-afterAll(async () => { await testEnv?.cleanup() })
+afterAll(async () => {
+  await testEnv?.cleanup()
+})
 
 beforeEach(async () => {
   await testEnv.clearStorage()
@@ -46,7 +52,8 @@ beforeEach(async () => {
 })
 
 // An approved member of org A, as syncUserClaims would stamp them.
-const memberOfA = () => testEnv.authenticatedContext('alice', { orgId: A, role: 'member' }).storage()
+const memberOfA = () =>
+  testEnv.authenticatedContext('alice', { orgId: A, role: 'member' }).storage()
 const memberOfB = () => testEnv.authenticatedContext('bob', { orgId: B, role: 'member' }).storage()
 // Signed in, but carrying no org — a pending joiner, a revoked member, or
 // anyone whose claim has not been stamped yet.
@@ -176,7 +183,9 @@ describe('the auditor is read-only in Storage too, not only in Firestore', () =>
 describe('no client may delete, whatever their token claims', () => {
   it('refuses an ordinary member, who can still upload', async () => {
     await assertFails(deleteObject(ref(asRole('mem', 'member'), p(A))))
-    await assertSucceeds(uploadBytes(ref(asRole('mem', 'member'), `orgs/${A}/docs/mem.pdf`), bytes()))
+    await assertSucceeds(
+      uploadBytes(ref(asRole('mem', 'member'), `orgs/${A}/docs/mem.pdf`), bytes())
+    )
   })
 
   // These two used to be the ONLY ones allowed, on the strength of a claim that
@@ -203,7 +212,9 @@ describe('no client may delete, whatever their token claims', () => {
   // still the client's to do, and the auditor is still excluded from uploading.
   it('leaves reading and uploading exactly as they were', async () => {
     await assertSucceeds(getBytes(ref(asRole('mgr', 'manager'), p(A))))
-    await assertSucceeds(uploadBytes(ref(asRole('mgr', 'manager'), `orgs/${A}/docs/m.pdf`), bytes()))
+    await assertSucceeds(
+      uploadBytes(ref(asRole('mgr', 'manager'), `orgs/${A}/docs/m.pdf`), bytes())
+    )
     await assertFails(uploadBytes(ref(asRole('aud', 'auditor'), `orgs/${A}/docs/a.pdf`), bytes()))
   })
 })
@@ -258,10 +269,20 @@ describe('uploads are constrained by declared type', () => {
   })
 
   it('accepts the office formats training material arrives in', async () => {
-    await assertSucceeds(upload(memberOfA(), 'a.docx',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'))
-    await assertSucceeds(upload(memberOfA(), 'a.xlsx',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'))
+    await assertSucceeds(
+      upload(
+        memberOfA(),
+        'a.docx',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      )
+    )
+    await assertSucceeds(
+      upload(
+        memberOfA(),
+        'a.xlsx',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      )
+    )
   })
 
   it('accepts CSV, which the bulk importers use', async () => {
@@ -308,11 +329,50 @@ describe('uploads are constrained by declared type', () => {
   it('does not let the type stand in for membership', async () => {
     // The type check is a conjunct, not a replacement. A perfectly ordinary
     // JPEG is still refused across a tenant boundary.
-    await assertFails(uploadBytes(ref(memberOfB(), p(A, 'x.jpg')), bytes(), { contentType: 'image/jpeg' }))
+    await assertFails(
+      uploadBytes(ref(memberOfB(), p(A, 'x.jpg')), bytes(), { contentType: 'image/jpeg' })
+    )
   })
 
   it('does not let the type stand in for role', async () => {
     const auditor = testEnv.authenticatedContext('aud', { orgId: A, role: 'auditor' }).storage()
-    await assertFails(uploadBytes(ref(auditor, p(A, 'y.jpg')), bytes(), { contentType: 'image/jpeg' }))
+    await assertFails(
+      uploadBytes(ref(auditor, p(A, 'y.jpg')), bytes(), { contentType: 'image/jpeg' })
+    )
+  })
+})
+
+// The print PDF a lifecycle mail attaches. It is the decrypted report, so the
+// generic inOrg read must not cover this kind — a narrower match added beside
+// that read would grant nothing extra and restrict nothing. Create stays open
+// to writers: the person saving the record uploads the file they just rendered.
+describe('a mailed report PDF is not readable by clients', () => {
+  const path = `orgs/${A}/mailed-reports/ab12cd34-report.pdf`
+  const pdf = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x34])
+
+  beforeEach(async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await uploadBytes(ref(ctx.storage(), path), pdf, { contentType: 'application/pdf' })
+    })
+  })
+
+  it('lets a member upload one and not read it back', async () => {
+    const storage = memberOfA()
+    await assertFails(getBytes(ref(storage, path)))
+    await assertSucceeds(
+      uploadBytes(ref(storage, `orgs/${A}/mailed-reports/cd34ef56-report.pdf`), pdf, {
+        contentType: 'application/pdf',
+      })
+    )
+  })
+
+  it('refuses a manager, an admin and an auditor the same read', async () => {
+    await assertFails(getBytes(ref(asRole('mgr', 'manager'), path)))
+    await assertFails(getBytes(ref(asRole('adm', 'admin'), path)))
+    await assertFails(getBytes(ref(asRole('aud', 'auditor'), path)))
+  })
+
+  it('refuses another tenant', async () => {
+    await assertFails(getBytes(ref(memberOfB(), path)))
   })
 })

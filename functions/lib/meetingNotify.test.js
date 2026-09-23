@@ -3,6 +3,8 @@ import { planMeeting, deliverMeetingMail } from './meetingNotify.js'
 import { memoryDb, mailer, user } from '../test-support/memoryDb.js'
 
 const SEALED = 'enk:1:general:wrapped:iviviviviviviviv:ciphertextciphertext'
+const APP_PDF = Buffer.from('%PDF-1.4\n% app-meeting-minutes\n')
+const APP_PATH = 'orgs/orgA/mailed-reports/ab12cd34-Meeting-Minutes.pdf'
 
 function meeting(extra = {}) {
   return {
@@ -92,32 +94,36 @@ describe('deliverMeetingMail', () => {
     expect(sent[0].text).toContain('Organisation-wide')
   })
 
-  it('attaches the minutes when they are plaintext and still leaves them out of the body', async () => {
+  it('attaches the app minutes PDF and still leaves the minutes out of the body', async () => {
     const sent = []
+    const calls = []
     await deliverMeetingMail({
       db: db(),
       orgId: 'orgA',
       docId: 'm1',
       before: null,
-      after: meeting(),
+      after: meeting({ reportPdfPath: APP_PATH }),
       mailer: mailer(sent),
       logger,
       users,
+      readObject: async (path) => {
+        calls.push(path)
+        return APP_PDF
+      },
     })
     const file = sent[0].attachments[0]
     expect(file.filename).toBe('Meeting-Minutes-MOM-1.pdf')
-    const pdf = file.content.toString('latin1')
-    expect(pdf).toContain('Discussed the evacuation.')
-    expect(pdf).toContain('Fix the gate')
-    expect(pdf).toContain('Ada')
+    expect(file.content.equals(APP_PDF)).toBe(true)
+    expect(calls).toEqual([APP_PATH])
     const body = `${sent[0].subject}\n${sent[0].text}\n${sent[0].html}`
     expect(body).not.toContain('evacuation')
     expect(body).not.toContain('Fix the gate')
     expect(body).not.toContain('Ada')
   })
 
-  it('does not put a sealed minutes envelope into the MOM file', async () => {
+  it('does not fetch a minutes file when the path is missing or sealed', async () => {
     const sent = []
+    const calls = []
     await deliverMeetingMail({
       db: db(),
       orgId: 'orgA',
@@ -126,19 +132,22 @@ describe('deliverMeetingMail', () => {
       after: meeting({
         subject: SEALED,
         minutes: SEALED,
+        reportPdfPath: SEALED,
         attendees: [{ name: SEALED }],
         actions: [{ action: SEALED, owner: SEALED }],
       }),
       mailer: mailer(sent),
       logger,
       users,
+      readObject: async (path) => {
+        calls.push(path)
+        return APP_PDF
+      },
     })
-    const pdf = sent[0].attachments[0].content.toString('latin1')
-    expect(sent[0].attachments[0].filename).toBe('Meeting-Minutes-MOM-1.pdf')
-    expect(pdf).not.toContain('enk:')
-    expect(pdf).toContain('Sealed')
-    expect(pdf).toContain('HSE Committee Meeting')
+    expect(calls).toEqual([])
+    expect(sent[0].attachments || []).toEqual([])
     expect(`${sent[0].subject}\n${sent[0].text}`).not.toContain('enk:')
+    expect(sent[0].text).toContain('HSE Committee Meeting')
   })
 
   it('does not claim when mail is not configured', async () => {

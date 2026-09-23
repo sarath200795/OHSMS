@@ -36,6 +36,7 @@ import { putFile, removeFile, MAX_INLINE_BYTES, tooLargeForInline } from '../../
 // reaches the STORE rather than the app. The clinical detail that used to ride
 // on this document is in /injuries under the medical keypair instead.
 import { sealDoc, openDoc, openSnapshots } from '../../../shared/crypto'
+import { discardMailedReport } from '../../../shared/print/mailedReport'
 import { resolveSubscription } from '../../../shared/storage/resolveFiles'
 
 /** The policy key for this collection. See src/shared/crypto/policy.js. */
@@ -345,6 +346,13 @@ export async function restoreIncident(orgId, id, actor) {
 }
 
 export async function purgeIncident(orgId, id, actor, label) {
+  // The mailed PDF is a plaintext rendering of this report. It goes with the
+  // record; a purge that left it would keep the narrative after the incident
+  // itself was gone.
+  try {
+    const parent = await getDoc(incidentRef(orgId, id))
+    discardMailedReport(orgId, parent.data()?.reportPdfPath)
+  } catch { /* orphan tolerated */ }
   // Remove photos subcollection then the doc.
   const photos = await getDocs(photoCol(orgId, id))
   photos.docs.forEach((d) => { if (d.data().path) removeFile(d.data().path) })

@@ -226,14 +226,23 @@ export function decodeDataUrl(value) {
 }
 
 /**
- * A Storage path this function may download for a permit attachment.
+ * The Storage kind the SPA writes a print PDF under.
  *
- * Only this org's permit-documents prefix. Incident photos, another org's
- * files, a `.enc` object and a `..` segment are not this permit's copies.
- * A stored download URL is not a path: it is a bearer credential, and it is
- * not fetched from here.
+ * Keep this string in step with `MAILED_REPORT_KIND` in
+ * src/shared/print/mailedReport.js and with the read exclusion in storage.rules.
+ * A second copy is the cost of the two packages not being able to import each
+ * other. The functions test and the SPA test both pin the same literal.
  */
-export function permitObjectPath(orgId, filePath) {
+export const MAILED_REPORT_KIND = 'mailed-reports'
+
+/**
+ * A Storage path this process may download, limited to one kind under one org.
+ *
+ * Incident photos, another org's files, a `.enc` object and a `..` segment
+ * are not a copy this mail asked for. A stored download URL is not a path:
+ * it is a bearer credential, and it is not fetched from here.
+ */
+function orgKindPath(orgId, filePath, kind) {
   if (typeof orgId !== 'string' || !/^[A-Za-z0-9_-]+$/.test(orgId)) return ''
   if (typeof filePath !== 'string') return ''
   const path = filePath.trim()
@@ -242,11 +251,28 @@ export function permitObjectPath(orgId, filePath) {
     return ''
   }
   if (path.endsWith('.enc')) return ''
-  const prefix = `orgs/${orgId}/permit-documents/`
+  const prefix = `orgs/${orgId}/${kind}/`
   if (!path.startsWith(prefix)) return ''
   const rest = path.slice(prefix.length)
   if (!rest || rest.includes('/')) return ''
   return path
+}
+
+/**
+ * A Storage path this function may download for a permit attachment.
+ * Only this org's permit-documents prefix.
+ */
+export function permitObjectPath(orgId, filePath) {
+  return orgKindPath(orgId, filePath, 'permit-documents')
+}
+
+/**
+ * The print PDF the app uploaded for this record. Only this org's
+ * mailed-reports prefix — a client-writable field must not be able to point
+ * the mailer at a medical record or another tenant's object.
+ */
+export function reportObjectPath(orgId, filePath) {
+  return orgKindPath(orgId, filePath, MAILED_REPORT_KIND)
 }
 
 /**

@@ -25,6 +25,8 @@ import { orgIndexRef, COLLECTION_READ_CAP } from '../../../shared/org/orgData'
 // What stays readable is what the calendar and the site filter group by: type,
 // date, siteId, docId.
 import { sealDoc, openSnapshots } from '../../../shared/crypto'
+import { reportError } from '../../../shared/monitoring'
+import { discardMailedReport } from '../../../shared/print/mailedReport'
 
 /** The policy key for this collection. See src/shared/crypto/policy.js. */
 const SEALED = 'consultations'
@@ -75,7 +77,8 @@ export function subscribeConsultations(orgId, cb, onError) {
   // Capped: minutes accumulate for the life of the organization and nothing
   // ever removes them, so this is the collection most certain to grow without
   // bound. No orderBy, deliberately — see subscribeCollections in orgData.
-  return onSnapshot(query(consultationCol(orgId), limit(COLLECTION_READ_CAP)),
+  return onSnapshot(
+    query(consultationCol(orgId), limit(COLLECTION_READ_CAP)),
     (snap) => opened(snap.docs.map((d) => ({ firebaseKey: d.id, ...d.data() }))),
     (err) => {
       if (!isSessionEnd('consultations', err) && !isPermissionDenied(err)) {
@@ -83,27 +86,81 @@ export function subscribeConsultations(orgId, cb, onError) {
         console.warn('[HSE] consultations read failed:', err?.message || err)
       }
       onError?.(err)
-    },
+    }
   )
 }
 
+function hasMinutes(data) {
+  return typeof data?.minutes === 'string' && data.minutes.trim().length > 0
+}
+
+async function meetingSiteLabel(orgId, siteId) {
+  if (!siteId) return '—'
+  try {
+    const snap = await getDoc(doc(db, 'organizations', orgId, 'sites', siteId))
+    return snap.exists() ? snap.data()?.name || siteId : siteId
+  } catch {
+    return siteId
+  }
+}
+
+// The mail fires on the write that first stores minutes. The PDF has to be in
+// Storage before that write, named on the document, or the function attaches
+// nothing. A later edit of minutes that are already there is not a second mail,
+// so it does not upload another copy.
+async function mailedMeetingPdf(orgId, meeting) {
+  if (typeof document === 'undefined' || !hasMinutes(meeting)) return ''
+  try {
+    const { captureMeetingReport } = await import('./meetingReportPdf.js')
+    const siteLabel = await meetingSiteLabel(orgId, meeting.siteId)
+    return await captureMeetingReport(orgId, meeting, siteLabel)
+  } catch (e) {
+    reportError(e, { source: 'committee.mailedMeetingPdf', orgId })
+    return ''
+  }
+}
+
 export async function addConsultation(orgId, data) {
+  const docId = data.docId || (await reserveDocId(orgId, 'committee'))
+  const plain = { ...data, docId }
+  const reportPdfPath = await mailedMeetingPdf(orgId, plain)
+  if (reportPdfPath) plain.reportPdfPath = reportPdfPath
   const ref = await addDoc(consultationCol(orgId), {
-    ...await sealDoc(orgId, SEALED, data),
+    ...(await sealDoc(orgId, SEALED, plain)),
     // Sealed AFTER the spread so these two cannot be overwritten by a caller's
     // payload, and outside it because neither is in the policy: docId is the
     // org-wide reference the calendar and the printed minutes quote, and
     // createdAt is a write sentinel with no plaintext to seal.
-    docId: await reserveDocId(orgId, 'committee'),
+    docId,
     createdAt: serverTimestamp(),
   })
   return ref.id
 }
 
 export async function updateConsultation(orgId, id, data) {
-  await setDoc(consultationRef(orgId, id), await sealDoc(orgId, SEALED, data), { merge: true })
+  const plain = { ...data }
+  if (hasMinutes(plain)) {
+    let prior = false
+    try {
+      const prev = await getDoc(consultationRef(orgId, id))
+      prior = hasMinutes(prev.data())
+    } catch (e) {
+      reportError(e, { source: 'committee.updateConsultation.prior', orgId })
+    }
+    if (!prior) {
+      const reportPdfPath = await mailedMeetingPdf(orgId, plain)
+      if (reportPdfPath) plain.reportPdfPath = reportPdfPath
+    }
+  }
+  await setDoc(consultationRef(orgId, id), await sealDoc(orgId, SEALED, plain), { merge: true })
 }
 
 export async function deleteConsultation(orgId, id) {
+  try {
+    const snap = await getDoc(consultationRef(orgId, id))
+    discardMailedReport(orgId, snap.data()?.reportPdfPath)
+  } catch (e) {
+    reportError(e, { source: 'committee.deleteConsultation.pdf', orgId })
+  }
   await deleteDoc(consultationRef(orgId, id))
 }

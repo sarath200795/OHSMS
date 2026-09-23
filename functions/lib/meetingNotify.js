@@ -12,15 +12,16 @@
 // already present, is not.
 //
 // Subject, minutes, attendees and action text are sealed, and they are the
-// fields that name people (src/shared/crypto/policy.js). The mail may carry
+// fields that name people (src/shared/crypto/policy.js). The body may carry
 // the subject only when it is still plaintext. Minutes, the attendee list
-// and action rows are never copied, plaintext or not. Type, date and siteId
+// and action rows are never copied into the body, plaintext or not. They are
+// in the minutes PDF the app uploaded for this write. Type, date and siteId
 // stay readable. A meeting with no site is org-wide: only org admins.
 import { scopeFrom, selectScopedAudience, loadOrgUsers, loadDoc } from './audience.js'
 import { circulate } from './circulate.js'
 import { describeMailGap } from './mailer.js'
 import { loadReportAttachments } from './mailAttachments.js'
-import { meetingMinutesPdf } from './reportAttachments.js'
+import { loadAppReportAttachment } from './reportAttachments.js'
 import { renderMeetingMail } from './mailTemplates/lifecycle.js'
 
 function hasMinutes(data) {
@@ -52,6 +53,7 @@ export async function deliverMeetingMail({
   logger,
   now,
   users: usersIn,
+  readObject,
 }) {
   const meeting = planMeeting(before, after)
   if (!meeting) return { sent: 0, skipped: 0, failed: 0 }
@@ -73,11 +75,20 @@ export async function deliverMeetingMail({
   )
 
   // Minutes stay out of the body even when they are plaintext. They belong in
-  // the MOM attachment, and only when readableText can still see them.
+  // the minutes PDF the app uploaded on the write that first stored them.
   let attachments = []
   if (recipients.length && describeMailGap(mailer?.config).length === 0) {
     attachments = await loadReportAttachments(
-      () => [meetingMinutesPdf(after, { ...scope, orgWide: meeting.orgWide })],
+      () =>
+        loadAppReportAttachment({
+          orgId,
+          record: after,
+          readObject,
+          prefix: 'Meeting-Minutes',
+          ref: after?.docId,
+          logger,
+          context: { orgId, docId, kind: 'meeting.recorded' },
+        }),
       logger,
       { orgId, docId, kind: 'meeting.recorded' }
     )
