@@ -228,10 +228,49 @@ jobs:
       # otherwise prompts, and a non-interactive run would hang until it timed
       # out. Nothing here deletes data; the worst case is a stale function going.
       #
-      # Assignment mail sends as info@weehs.org and binds SMTP_PASS, that
-      # mailbox's password. Create it before this step
-      # (`firebase functions:secrets:set SMTP_PASS`) or the deploy stops here.
-      # A placeholder deploys but does not send. See DEPLOYMENT.md §6.
+      # firebase-tools 13 resolveParams, with --non-interactive, throws before
+      # it applies defineString defaults, and the error lists every unresolved
+      # param — including DATA_KEY_MASTER and SMTP_PASS — even when those
+      # secrets already exist. That stopped the v1.9.19 deploy. The CLI reads
+      # functions/.env.<projectId> (firebase.json functions source). Secrets
+      # stay out of that file: a key in dotenv is shipped as a plain env var
+      # and never bound through Secret Manager (LOW-13). Repository variables
+      # SMTP_HOST, SMTP_PORT, SMTP_USER, MAIL_FROM and APP_ORIGIN override the
+      # production mailbox defaults when they are set.
+      - name: Write functions param file
+        if: steps.creds.outputs.configured == 'true'
+        env:
+          PROJECT_ID: ${{ vars.VITE_FIREBASE_PROJECT_ID }}
+          SMTP_HOST: ${{ vars.SMTP_HOST }}
+          SMTP_PORT: ${{ vars.SMTP_PORT }}
+          SMTP_USER: ${{ vars.SMTP_USER }}
+          MAIL_FROM: ${{ vars.MAIL_FROM }}
+          APP_ORIGIN: ${{ vars.APP_ORIGIN }}
+        run: bash scripts/prepare-functions-deploy.sh write-env
+
+      # functions:secrets:get returns metadata only. functions:secrets:access
+      # prints the payload and must not be used here. An existing secret is
+      # left alone — functions:secrets:set always adds a version, and --force
+      # on that command destroys stale ones.
+      #
+      # SMTP_PASS, if missing, is created from the SMTP_PASS GitHub secret or
+      # as UNSET-PLACEHOLDER. A placeholder deploys and does not send
+      # (DEPLOYMENT.md §6).
+      #
+      # DATA_KEY_MASTER, if missing, fails the job. Do not invent a master
+      # key. Encrypted production data can only be opened with the key that
+      # already wrapped it; a new value would deploy and leave every sealed
+      # record unreadable.
+      - name: Ensure functions secrets
+        if: steps.creds.outputs.configured == 'true'
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json
+          PROJECT_ID: ${{ vars.VITE_FIREBASE_PROJECT_ID }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+        run: bash scripts/prepare-functions-deploy.sh ensure-secrets
+
+      # Params and secrets are prepared above. SMTP_PASS may be the
+      # placeholder; that deploys and does not send. See DEPLOYMENT.md §6.
       - name: Deploy functions
         if: steps.creds.outputs.configured == 'true'
         env:
