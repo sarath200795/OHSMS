@@ -6,15 +6,29 @@
 // prefix gains a character. A false positive only drops a line from a mail.
 
 // Prefixes of the envelopes in src/shared/crypto/envelope.js. The full format
-// is validated there; here a prefix is enough.
+// is validated there; here a prefix is enough. One check: a second copy is how
+// an envelope starts surviving into a subject the day the prefix gains a character.
 const SEALED_PREFIX = /^(?:enc|enk):1:/
+
+/**
+ * What a mailbox is allowed to do with a value. `sealed` is an envelope, not
+ * an empty field — callers that must admit the record exists use the stand-in,
+ * and callers that must drop the line use `readableText`.
+ */
+export const SEALED_STAND_IN = 'Sealed — open the record in the app'
+
+export function classifyMailText(value) {
+  if (typeof value !== 'string') return { kind: 'empty' }
+  const text = value.trim()
+  if (!text) return { kind: 'empty' }
+  if (SEALED_PREFIX.test(text)) return { kind: 'sealed' }
+  return { kind: 'text', text }
+}
 
 /** Text that is safe to put in a mail, or '' when it is sealed or not text. */
 export function readableText(value) {
-  if (typeof value !== 'string') return ''
-  const text = value.trim()
-  if (!text || SEALED_PREFIX.test(text)) return ''
-  return text
+  const found = classifyMailText(value)
+  return found.kind === 'text' ? found.text : ''
 }
 
 /** One line, no header injection, bounded. */

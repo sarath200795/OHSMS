@@ -107,13 +107,19 @@ const REGION = 'asia-south1'
 // logs, and "03:30" is chosen to be the quiet part of THEIR night.
 const SCHEDULE_TZ = 'Asia/Kolkata'
 
-// The bucket, resolved on first use rather than at import. Two jobs reach it —
-// the retention sweep, which deletes the object behind a purged pointer, and the
+// The bucket, resolved on first use rather than at import. Three jobs reach it —
+// the retention sweep, which deletes the object behind a purged pointer, the
 // medical-record move, which copies one from the photo prefix to the manager-only
-// one — and neither runs at deploy time, so nothing here should touch Storage
-// while the module is merely being loaded.
+// one, and permit mail, which reads a file already stored on that permit — and
+// none of them run at deploy time, so nothing here should touch Storage while
+// the module is merely being loaded.
 let bucket = null
 const getBucket = () => (bucket ||= getStorage().bucket())
+
+async function readStorageObject(path) {
+  const [bytes] = await getBucket().file(path).download()
+  return bytes
+}
 
 /**
  * Reject a caller-supplied value that is about to become ONE segment of a
@@ -2570,7 +2576,7 @@ function lifecycleTrigger(label, document, run) {
 export const notifyPermitLifecycle = lifecycleTrigger(
   'permit',
   'organizations/{orgId}/permits/{docId}',
-  deliverPermitMails,
+  (args) => deliverPermitMails({ ...args, readObject: readStorageObject }),
 )
 
 export const notifyDefectReported = lifecycleTrigger(

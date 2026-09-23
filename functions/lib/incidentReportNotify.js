@@ -34,6 +34,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { notificationId, sendOnce } from './notify.js'
 import { describeMailGap } from './mailer.js'
+import { loadReportAttachments } from './mailAttachments.js'
+import { incidentReportPdf } from './reportAttachments.js'
 import { renderIncidentReportedMail } from './mailTemplates/incidentReported.js'
 
 export const MAX_REPORT_MAILS = 100
@@ -214,6 +216,16 @@ export async function deliverIncidentReport({
     site,
   })
 
+  // Before any claim. The initial-report print is browser HTML; this is that
+  // report as a PDF. If it cannot be built, the body still goes and the row
+  // is 'sent', not 'failed' — a failed claim would suppress the retry of a
+  // mail that never left.
+  const attachments = await loadReportAttachments(
+    () => [incidentReportPdf(after, { docId, site })],
+    log,
+    { orgId, docId, kind: 'incident.reported' }
+  )
+
   let sent = 0
   let skipped = recipients.overflow
   let failed = 0
@@ -234,6 +246,7 @@ export async function deliverIncidentReport({
           subject: message.subject,
           text: message.text,
           html: message.html,
+          attachments,
         }),
     })
 

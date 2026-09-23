@@ -6,16 +6,14 @@
 // sentence so the mail still says the record exists.
 import { safeOrigin } from '../mailer.js'
 import { renderLayout, footerLine } from './layout.js'
-import { readableText, safeLine, safeMailPath } from './safe.js'
+import { classifyMailText, readableText, safeLine, safeMailPath, SEALED_STAND_IN } from './safe.js'
 
-export const SEALED_LINE = 'Sealed — open the record in the app'
-
-const SEALED_PREFIX = /^(?:enc|enk):1:/
+export const SEALED_LINE = SEALED_STAND_IN
 
 function reveal(value, max = 180) {
-  const text = safeLine(readableText(value), max)
-  if (text) return text
-  if (typeof value === 'string' && SEALED_PREFIX.test(value.trim())) return SEALED_LINE
+  const found = classifyMailText(value)
+  if (found.kind === 'text') return safeLine(found.text, max)
+  if (found.kind === 'sealed') return SEALED_LINE
   return ''
 }
 

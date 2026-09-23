@@ -21,6 +21,10 @@ function noopLogger() {
  * @param recipients [{ uid, email, ...extra }]
  * @param keyFor (recipient) => string[]  stable identity, no event id
  * @param messageFor (recipient) => { subject, text, html }
+ * @param attachments already-resolved files. Built by the caller BEFORE this
+ *   function claims the ledger. A missing report must not throw inside send:
+ *   sendOnce would mark the row failed, and the retry is required to skip, so
+ *   the body mail would never leave.
  */
 export async function circulate({
   db,
@@ -35,6 +39,7 @@ export async function circulate({
   cap = CIRCULATION_CAP,
   logLabel = 'circulation',
   context = {},
+  attachments = [],
 }) {
   const log = logger || noopLogger()
   const list = Array.isArray(recipients) ? recipients : []
@@ -84,6 +89,7 @@ export async function circulate({
           subject: message.subject,
           text: message.text,
           html: message.html,
+          attachments,
         }),
     })
 
