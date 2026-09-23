@@ -4,6 +4,7 @@ import { FieldValue } from 'firebase-admin/firestore'
 import {
   purgeOrgCollection, moveMedicalRecords, assertPathSegment,
   notifyIncidentAssignment, notifyIllnessAssignment, notifyDrillAssignment, notifyTrainingAssignment,
+  notifyIncidentReported,
 } from './index.js'
 import { ASSIGNMENT_COLLECTIONS } from './lib/assignmentNotify.js'
 import { PURGEABLE } from './lib/retention.js'
@@ -581,5 +582,10 @@ describe('assignment mail triggers', () => {
     for (const name of ASSIGNMENT_COLLECTIONS) {
       expect(typeof triggers[name]).toBe('function')
     }
+  })
+
+  it('exports a separate trigger for the incident-reported circulation', () => {
+    expect(typeof notifyIncidentReported).toBe('function')
+    expect(notifyIncidentReported).not.toBe(notifyIncidentAssignment)
   })
 })

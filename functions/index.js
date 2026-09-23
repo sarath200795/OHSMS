@@ -42,6 +42,7 @@ import {
   sealObjectBytes, openObjectBytes, sameBytes, pointerUpdate,
 } from './lib/objectSeal.js'
 import { deliverAssignments, writtenData } from './lib/assignmentNotify.js'
+import { deliverIncidentReport } from './lib/incidentReportNotify.js'
 import { createMailer, DEFAULT_MAIL } from './lib/mailer.js'
 
 initializeApp()
@@ -2486,3 +2487,39 @@ export const notifyIncidentAssignment = assignmentTrigger('incidents')
 export const notifyIllnessAssignment = assignmentTrigger('illnesses')
 export const notifyDrillAssignment = assignmentTrigger('mockDrills')
 export const notifyTrainingAssignment = assignmentTrigger('trainingAssignments')
+
+/**
+ * Circulate a newly reported incident to everyone whose grants reach its
+ * site, region or entity. Separate from notifyIncidentAssignment: that one
+ * mails a CAPA owner, and a report with no action yet would otherwise tell
+ * nobody. The two ledgers use different keys, so one incident can do both
+ * without either suppressing the other.
+ */
+export const notifyIncidentReported = onDocumentWritten(
+  {
+    document: 'organizations/{orgId}/incidents/{docId}',
+    region: REGION,
+    secrets: [SMTP_PASS],
+  },
+  async (event) => {
+    let mailer
+    try {
+      mailer = assignmentMailer()
+    } catch (err) {
+      logger.error('incident report mail is not configured', {
+        error: err?.message || String(err),
+        missing: ['SMTP_PASS'],
+      })
+      return
+    }
+    await deliverIncidentReport({
+      db: getFirestore(),
+      orgId: event.params.orgId,
+      docId: event.params.docId,
+      before: writtenData(event.data?.before),
+      after: writtenData(event.data?.after),
+      mailer,
+      logger,
+    })
+  },
+)
