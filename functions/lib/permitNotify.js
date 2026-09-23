@@ -38,6 +38,9 @@ import {
   loadOrgUsers,
 } from './audience.js'
 import { circulate } from './circulate.js'
+import { describeMailGap } from './mailer.js'
+import { loadReportAttachments } from './mailAttachments.js'
+import { permitMailAttachments } from './reportAttachments.js'
 import { renderPermitMail } from './mailTemplates/lifecycle.js'
 import { readableText } from './mailTemplates/safe.js'
 
@@ -401,6 +404,7 @@ export async function deliverPermitMails({
   now,
   users: usersIn,
   sites: sitesIn,
+  readObject,
 }) {
   const events = planPermitEvents(before, after)
   if (!events.length) return { sent: 0, skipped: 0, failed: 0 }
@@ -424,6 +428,28 @@ export async function deliverPermitMails({
   }
 
   const origin = mailer?.config?.appOrigin || ''
+  // The permit copy, plus files already stored on this permit. Built before
+  // the claim so a missing object cannot mark the row failed.
+  let attachments = []
+  if (flat.length && describeMailGap(mailer?.config).length === 0) {
+    const clock = typeof now === 'function' ? now() : new Date()
+    attachments = await loadReportAttachments(
+      () =>
+        permitMailAttachments({
+          db,
+          orgId,
+          permitId: docId,
+          permit: after,
+          readObject,
+          appOrigin: origin,
+          logger,
+          context: { orgId, docId, kind: 'permit.lifecycle' },
+          now: clock instanceof Date ? clock.getTime() : Date.now(),
+        }),
+      logger,
+      { orgId, docId, kind: 'permit.lifecycle' }
+    )
+  }
   return circulate({
     db,
     orgId,
@@ -441,5 +467,6 @@ export async function deliverPermitMails({
     now,
     logLabel: 'permit',
     context: { docId },
+    attachments,
   })
 }

@@ -217,7 +217,140 @@ describe('deliverPermitMails', () => {
     expect(sent).toHaveLength(2)
   })
 
-  it('omits a sealed permit number from the body', async () => {
+  it('attaches the permit copy and an extra file stored on that permit', async () => {
+    const extra = Buffer.from('%PDF-1.4\n% method-statement-marker\n')
+    const sent = []
+    const calls = []
+    const db = memoryDb({
+      'organizations/orgA/permits/p1/documents/method': {
+        key: 'method',
+        label: 'Method statement',
+        fileName: 'method-statement.pdf',
+        fileType: 'application/pdf',
+        fileData: `data:application/pdf;base64,${extra.toString('base64')}`,
+      },
+      'organizations/orgA/permits/p1/documents/photo': {
+        key: 'extra',
+        fileName: 'site-photo.jpg',
+        fileType: 'image/jpeg',
+        filePath: 'orgs/orgA/permit-documents/ab-site-photo.jpg',
+      },
+    })
+    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00])
+    await deliverPermitMails({
+      db,
+      orgId: 'orgA',
+      docId: 'p1',
+      before: null,
+      after: permit({
+        jobDescription: 'Weld the bracket',
+        requiredDocs: [{ key: 'method', label: 'Method statement', mandatory: true }],
+      }),
+      mailer: mailer(sent),
+      logger,
+      users: users(),
+      sites: SITES,
+      readObject: async (path) => {
+        calls.push(path)
+        return jpeg
+      },
+    })
+    const names = sent[0].attachments.map((file) => file.filename)
+    expect(names).toEqual([
+      'Permit-to-Work-PTW-2026-0007.pdf',
+      'method-statement.pdf',
+      'site-photo.jpg',
+    ])
+    const copy = sent[0].attachments[0].content.toString('latin1')
+    expect(copy).toContain('Hot work')
+    expect(copy).toContain('Weld the bracket')
+    expect(copy).toContain('Method statement')
+    expect(sent[0].attachments[1].content.equals(extra)).toBe(true)
+    expect(calls).toEqual(['orgs/orgA/permit-documents/ab-site-photo.jpg'])
+    expect(sent[0].text).not.toContain('Weld the bracket')
+    expect(sent[0].text).not.toContain('Worker Wren')
+  })
+
+  it('skips a missing, sealed, or foreign file and still marks the ledger sent', async () => {
+    const sent = []
+    const calls = []
+    const db = memoryDb({
+      'organizations/orgA/permits/p1/documents/gone': {
+        key: 'extra',
+        fileName: 'gone.pdf',
+        filePath: 'orgs/orgA/permit-documents/ab-gone.pdf',
+      },
+      'organizations/orgA/permits/p1/documents/sealed': {
+        key: 'extra',
+        fileName: 'sealed.pdf',
+        filePath: 'orgs/orgA/permit-documents/ab-sealed.pdf',
+        encIv: 'iv',
+        encKeyId: 'key',
+      },
+      'organizations/orgA/permits/p1/documents/other': {
+        key: 'extra',
+        fileName: 'other.pdf',
+        filePath: 'orgs/orgB/permit-documents/ab-other.pdf',
+        fileUrl: 'https://files.example/orgs/orgB/permit-documents/ab-other.pdf',
+      },
+    })
+    const result = await deliverPermitMails({
+      db,
+      orgId: 'orgA',
+      docId: 'p1',
+      before: null,
+      after: permit(),
+      mailer: mailer(sent),
+      logger,
+      users: users(),
+      sites: SITES,
+      readObject: async (path) => {
+        calls.push(path)
+        throw new Error('No such object')
+      },
+    })
+    expect(result).toMatchObject({ sent: 2, failed: 0 })
+    expect(sent[0].attachments.map((file) => file.filename)).toEqual([
+      'Permit-to-Work-PTW-2026-0007.pdf',
+    ])
+    expect(sent[0].text).toContain('PTW-2026-0007')
+    expect(calls).toEqual(['orgs/orgA/permit-documents/ab-gone.pdf'])
+    const joined = sent
+      .map((message) => `${message.subject}\n${message.text}\n${message.html}`)
+      .join('\n')
+    expect(joined).not.toContain('https://files.example')
+    expect(joined).not.toContain('orgs/orgB')
+    for (const path of db.notifications()) expect(db.store.get(path).status).toBe('sent')
+  })
+
+  it('does not read storage when mail is not configured, and does not claim', async () => {
+    const db = memoryDb({
+      'organizations/orgA/permits/p1/documents/gone': {
+        filePath: 'orgs/orgA/permit-documents/ab-gone.pdf',
+      },
+    })
+    let reads = 0
+    const result = await deliverPermitMails({
+      db,
+      orgId: 'orgA',
+      docId: 'p1',
+      before: null,
+      after: permit(),
+      mailer: mailer([], { pass: '' }),
+      logger,
+      users: users(),
+      sites: SITES,
+      readObject: async () => {
+        reads += 1
+        throw new Error('should not read')
+      },
+    })
+    expect(result.reason).toBe('not-configured')
+    expect(reads).toBe(0)
+    expect(db.notifications()).toHaveLength(0)
+  })
+
+  it('omits a sealed permit number from the body and from the filename', async () => {
     const sent = []
     await deliverPermitMails({
       db: memoryDb(),
@@ -235,5 +368,7 @@ describe('deliverPermitMails', () => {
     const blob = sent.map((m) => `${m.subject}\n${m.text}\n${m.html}`).join('\n')
     expect(blob).not.toContain('enc:')
     expect(blob).toContain('Sealed — open the record in the app')
+    expect(sent[0].attachments[0].filename).toBe('Permit-to-Work.pdf')
+    expect(sent[0].attachments[0].content.toString('latin1')).not.toContain('enc:')
   })
 })

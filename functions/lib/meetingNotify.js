@@ -18,6 +18,9 @@
 // stay readable. A meeting with no site is org-wide: only org admins.
 import { scopeFrom, selectScopedAudience, loadOrgUsers, loadDoc } from './audience.js'
 import { circulate } from './circulate.js'
+import { describeMailGap } from './mailer.js'
+import { loadReportAttachments } from './mailAttachments.js'
+import { meetingMinutesPdf } from './reportAttachments.js'
 import { renderMeetingMail } from './mailTemplates/lifecycle.js'
 
 function hasMinutes(data) {
@@ -69,6 +72,17 @@ export async function deliverMeetingMail({
     { appOrigin: origin }
   )
 
+  // Minutes stay out of the body even when they are plaintext. They belong in
+  // the MOM attachment, and only when readableText can still see them.
+  let attachments = []
+  if (recipients.length && describeMailGap(mailer?.config).length === 0) {
+    attachments = await loadReportAttachments(
+      () => [meetingMinutesPdf(after, { ...scope, orgWide: meeting.orgWide })],
+      logger,
+      { orgId, docId, kind: 'meeting.recorded' }
+    )
+  }
+
   return circulate({
     db,
     orgId,
@@ -81,5 +95,6 @@ export async function deliverMeetingMail({
     now,
     logLabel: 'meeting',
     context: { docId },
+    attachments,
   })
 }

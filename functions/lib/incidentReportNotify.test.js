@@ -275,6 +275,64 @@ describe('deliverIncidentReport', () => {
     )
   })
 
+  it('attaches the initial incident report under the reference filename', async () => {
+    const db = dbWith({ users, sites: { s1: { name: 'Plant A', region: 'North' } } })
+    const box = mailer()
+    const after = {
+      ...draft,
+      stagesDone: { initial: true },
+      type: 'near_miss',
+      incidentDate: '2026-09-01',
+      location: 'Warehouse',
+      injuryReports: [{ personName: 'Sam', personId: 'p1' }],
+    }
+    await deliverIncidentReport({
+      db,
+      orgId: 'orgA',
+      docId: 'inc1',
+      before: draft,
+      after,
+      mailer: box,
+      logger: log(),
+    })
+    const file = box.sent[0].attachments[0]
+    expect(file.filename).toBe('Incident-Report-IRA-2026-0007.pdf')
+    const pdf = file.content.toString('latin1')
+    expect(pdf).toContain('A pallet fell.')
+    expect(pdf).toContain('Near Miss')
+    expect(pdf).toContain('Warehouse')
+    expect(pdf).toContain('not included in this copy')
+    expect(pdf).not.toContain('enc:')
+    expect(box.sent[0].text).toContain('A pallet fell.')
+  })
+
+  it('omits a sealed narrative from the report file and still sends', async () => {
+    const sealed = 'enc:1:general:abcdefghijklmnop:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
+    const db = dbWith({
+      users: { reporter: person('reporter', { email: 'ada@example.com', siteId: 's1' }) },
+    })
+    const box = mailer()
+    const result = await deliverIncidentReport({
+      db,
+      orgId: 'orgA',
+      docId: 'inc1',
+      before: draft,
+      after: { ...draft, stagesDone: { initial: true }, narrative: sealed },
+      mailer: box,
+      logger: log(),
+    })
+    expect(result.sent).toBe(1)
+    const pdf = box.sent[0].attachments[0].content.toString('latin1')
+    expect(pdf).not.toContain('enc:')
+    expect(pdf).toContain('Sealed')
+    expect(box.sent[0].text).not.toContain('enc:')
+    expect(
+      db.docs.get(
+        `organizations/orgA/notifications/${notificationId(['incident.reported', 'orgA', 'inc1', 'reporter'])}`
+      ).status
+    ).toBe('sent')
+  })
+
   it('does not send again when the same report event is redelivered', async () => {
     const db = dbWith({ users })
     const after = { ...draft, stagesDone: { initial: true } }

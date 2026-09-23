@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { planDrillReport, deliverDrillReport } from './drillReportNotify.js'
+import * as reports from './reportAttachments.js'
 import { memoryDb, mailer, user } from '../test-support/memoryDb.js'
 
 const SEALED = 'enc:1:general:abcdefghijklmnop:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
@@ -73,6 +74,63 @@ describe('deliverDrillReport', () => {
     expect(blob).not.toContain('enc:')
     expect((await deliverDrillReport(args)).skipped).toBe(2)
     expect(sent).toHaveLength(2)
+  })
+
+  it('attaches the drill report and keeps a sealed debrief out of the file', async () => {
+    const sent = []
+    await deliverDrillReport({
+      db: db(),
+      orgId: 'orgA',
+      docId: 'd1',
+      before: null,
+      after: {
+        ...drill,
+        checklist: ['Sound the alarm.'],
+        checklistStatus: { 0: true },
+        photoCount: 2,
+      },
+      mailer: mailer(sent),
+      logger,
+      users,
+    })
+    const file = sent[0].attachments[0]
+    expect(file.filename).toBe('Mock-Drill-Report-DR-1.pdf')
+    expect(file.content.subarray(0, 5).toString()).toBe('%PDF-')
+    const pdf = file.content.toString('latin1')
+    expect(pdf).toContain('Fire Emergency')
+    expect(pdf).toContain('PASS')
+    expect(pdf).toContain('Sound the alarm.')
+    expect(pdf).toContain('Priya')
+    expect(pdf).toContain('not included in this copy')
+    expect(pdf).not.toContain('enc:')
+    expect(sent[0].text).not.toContain('Priya')
+    expect(sent.every((message) => message.attachments[0].filename === file.filename)).toBe(true)
+  })
+
+  it('still sends the body when the report cannot be built, and marks the ledger sent', async () => {
+    const sent = []
+    const store = db()
+    const spy = vi.spyOn(reports, 'drillReportPdf').mockImplementation(() => {
+      throw new Error('pdf failed')
+    })
+    try {
+      const result = await deliverDrillReport({
+        db: store,
+        orgId: 'orgA',
+        docId: 'd1',
+        before: null,
+        after: drill,
+        mailer: mailer(sent),
+        logger,
+        users,
+      })
+      expect(result.sent).toBe(2)
+      expect(sent[0].text).toContain('Fire Emergency')
+      expect(sent[0].attachments || []).toEqual([])
+      for (const path of store.notifications()) expect(store.store.get(path).status).toBe('sent')
+    } finally {
+      spy.mockRestore()
+    }
   })
 
   it('does not claim when mail is not configured', async () => {

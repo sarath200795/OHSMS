@@ -149,6 +149,78 @@ describe('createMailer', () => {
     expect(raw).toContain('<p>html body</p>')
   })
 
+  it('attaches a buffer and drops a sealed one without failing the send', async () => {
+    const transport = { sendMail: vi.fn(async () => {}) }
+    const mailer = createMailer({ SMTP_PASS: 'secret' }, { transport })
+    const report = Buffer.from('%PDF-1.4\n% drill\n')
+    await mailer.send({
+      to: 'person@example.com',
+      subject: 'Mock drill report',
+      text: 'body',
+      html: '<p>body</p>',
+      attachments: [
+        { filename: 'Mock-Drill-Report-DR-1.pdf', content: report, contentType: 'application/pdf' },
+        {
+          filename: 'secret.pdf',
+          content: Buffer.from('enc:1:general:abcdefghijklmnop:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'),
+        },
+      ],
+    })
+    expect(transport.sendMail).toHaveBeenCalledWith({
+      from: 'WEEHS <info@weehs.org>',
+      to: 'person@example.com',
+      subject: 'Mock drill report',
+      text: 'body',
+      html: '<p>body</p>',
+      attachments: [
+        {
+          filename: 'Mock-Drill-Report-DR-1.pdf',
+          content: report,
+          contentType: 'application/pdf',
+          contentDisposition: 'attachment',
+        },
+      ],
+    })
+  })
+
+  it('puts the filename on the wire when file and URL access are disabled', async () => {
+    const nodemailer = await import('nodemailer')
+    const lib = typeof nodemailer.createTransport === 'function' ? nodemailer : nodemailer.default
+    const transport = lib.createTransport({
+      streamTransport: true,
+      newline: 'unix',
+      buffer: true,
+      disableFileAccess: true,
+      disableUrlAccess: true,
+    })
+    const sent = []
+    const sendMail = transport.sendMail.bind(transport)
+    transport.sendMail = async (message) => {
+      const info = await sendMail(message)
+      sent.push(info)
+      return info
+    }
+    const mailer = createMailer({ SMTP_PASS: 'secret' }, { transport })
+    await mailer.send({
+      to: 'person@example.com',
+      subject: 'Assigned',
+      text: 'plain body',
+      attachments: [
+        {
+          filename: 'Incident-Report-IRA-2026-0007.pdf',
+          content: Buffer.from('%PDF-1.4\n% incident\n'),
+        },
+      ],
+    })
+    const raw = Buffer.isBuffer(sent[0].message)
+      ? sent[0].message.toString()
+      : String(sent[0].message)
+    expect(raw).toContain('Incident-Report-IRA-2026-0007.pdf')
+    expect(raw).toContain('Content-Disposition: attachment')
+    expect(raw).toContain('application/pdf')
+    expect(raw).not.toContain('\nBcc:')
+  })
+
   it('sends through the injected transport with the configured from address', async () => {
     const transport = { sendMail: vi.fn(async () => {}) }
     const mailer = createMailer(

@@ -11,6 +11,9 @@
 // (src/shared/crypto/policy.js) and are the lines the mail is allowed to carry.
 import { scopeFrom, selectScopedAudience, loadOrgUsers, loadDoc } from './audience.js'
 import { circulate } from './circulate.js'
+import { describeMailGap } from './mailer.js'
+import { loadReportAttachments } from './mailAttachments.js'
+import { drillReportPdf } from './reportAttachments.js'
 import { renderDrillReportMail } from './mailTemplates/lifecycle.js'
 
 export function planDrillReport(before, after) {
@@ -64,6 +67,17 @@ export async function deliverDrillReport({
     { appOrigin: origin }
   )
 
+  // Resolved before circulate claims the ledger. A failure to build the PDF
+  // skips the file and still sends the body; it does not fail the claim.
+  let attachments = []
+  if (recipients.length && describeMailGap(mailer?.config).length === 0) {
+    attachments = await loadReportAttachments(() => [drillReportPdf(after, scope)], logger, {
+      orgId,
+      docId,
+      kind: 'drill.reported',
+    })
+  }
+
   return circulate({
     db,
     orgId,
@@ -76,5 +90,6 @@ export async function deliverDrillReport({
     now,
     logLabel: 'drill report',
     context: { docId },
+    attachments,
   })
 }
