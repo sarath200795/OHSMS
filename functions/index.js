@@ -43,6 +43,11 @@ import {
 } from './lib/objectSeal.js'
 import { deliverAssignments, writtenData } from './lib/assignmentNotify.js'
 import { deliverIncidentReport } from './lib/incidentReportNotify.js'
+import { deliverPermitMails } from './lib/permitNotify.js'
+import { deliverDefectReport, deliverAssetDefects } from './lib/defectNotify.js'
+import { deliverDrillReport } from './lib/drillReportNotify.js'
+import { deliverMeetingMail } from './lib/meetingNotify.js'
+import { deliverWeatherDigest } from './lib/weatherDigest.js'
 import { createMailer, DEFAULT_MAIL } from './lib/mailer.js'
 
 initializeApp()
@@ -2522,4 +2527,101 @@ export const notifyIncidentReported = onDocumentWritten(
       logger,
     })
   },
+)
+
+// Lifecycle mail shares the assignment mailbox. A missing SMTP_PASS is logged
+// and swallowed: the document write has already committed, and throwing would
+// make Cloud Functions retry it for days. The ledger key does not include the
+// event id, so a retry that does get as far as sendOnce cannot send a second
+// copy. See functions/lib/circulate.js.
+async function withMailer(label, run) {
+  let mailer
+  try {
+    mailer = assignmentMailer()
+  } catch (err) {
+    logger.error(`${label} mail is not configured`, {
+      error: err?.message || String(err),
+      missing: ['SMTP_PASS'],
+    })
+    return
+  }
+  await run(mailer)
+}
+
+function writtenArgs(event, mailer) {
+  return {
+    db: getFirestore(),
+    orgId: event.params.orgId,
+    docId: event.params.docId,
+    before: writtenData(event.data?.before),
+    after: writtenData(event.data?.after),
+    mailer,
+    logger,
+  }
+}
+
+function lifecycleTrigger(label, document, run) {
+  return onDocumentWritten(
+    { document, region: REGION, secrets: [SMTP_PASS] },
+    (event) => withMailer(label, (mailer) => run(writtenArgs(event, mailer))),
+  )
+}
+
+export const notifyPermitLifecycle = lifecycleTrigger(
+  'permit',
+  'organizations/{orgId}/permits/{docId}',
+  deliverPermitMails,
+)
+
+export const notifyDefectReported = lifecycleTrigger(
+  'defect',
+  'organizations/{orgId}/reports/{docId}',
+  deliverDefectReport,
+)
+
+function assetDefectTrigger(collection) {
+  return lifecycleTrigger('defect', `organizations/{orgId}/${collection}/{docId}`, (args) =>
+    deliverAssetDefects({ ...args, collection }),
+  )
+}
+
+export const notifyExtinguisherDefect = assetDefectTrigger('extinguishers')
+export const notifyAedDefect = assetDefectTrigger('aeds')
+export const notifyFasDefect = assetDefectTrigger('fas')
+
+// The drill document already has notifyDrillAssignment for CAPA rows. This
+// trigger is the report itself, and it claims a different ledger kind.
+export const notifyDrillReport = lifecycleTrigger(
+  'drill report',
+  'organizations/{orgId}/mockDrills/{docId}',
+  deliverDrillReport,
+)
+
+export const notifyCommitteeMeeting = lifecycleTrigger(
+  'meeting',
+  'organizations/{orgId}/consultations/{docId}',
+  deliverMeetingMail,
+)
+
+// UTC, not Asia/Kolkata: the ledger bucket is the UTC six-hour window, and
+// the cron has to name that same window. A Kolkata clock would still be
+// every six hours, but the bucket function keys off the scheduled instant.
+export const sendWeatherRiskDigest = onSchedule(
+  {
+    schedule: '0 */6 * * *',
+    timeZone: 'UTC',
+    region: REGION,
+    retryCount: 0,
+    timeoutSeconds: 540,
+    secrets: [SMTP_PASS],
+  },
+  (event) =>
+    withMailer('weather digest', (mailer) =>
+      deliverWeatherDigest({
+        db: getFirestore(),
+        mailer,
+        logger,
+        scheduleTime: event?.scheduleTime,
+      }),
+    ),
 )
