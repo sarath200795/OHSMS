@@ -339,6 +339,7 @@ describe('renderAssignmentMail', () => {
   it('names the action, the assigner, the due date and an absolute link', () => {
     const message = renderAssignmentMail(
       {
+        kind: 'assignment.incident_capa',
         includeTitle: true,
         title: 'Fix the guard',
         what: 'corrective action',
@@ -348,16 +349,19 @@ describe('renderAssignmentMail', () => {
       },
       { assignerName: 'Priya Menon', appOrigin: 'https://app.example/' }
     )
-    expect(message.subject).toBe('Assigned: Fix the guard (IRA-2026-0001)')
+    expect(message.subject).toBe('Incident CAPA: Fix the guard (IRA-2026-0001)')
     expect(message.text).toContain('What: Fix the guard')
     expect(message.text).toContain('Record: IRA-2026-0001')
     expect(message.text).toContain('Assigned by: Priya Menon')
     expect(message.text).toContain('Due: 2026-10-01')
     expect(message.text).toContain('Open it: https://app.example/incidents/i1')
+    expect(message.html).toContain('href="https://app.example/incidents/i1"')
+    expect(message.html).toContain('Open the incident')
   })
 
   it('keeps a newline in the title out of the subject', () => {
     const message = renderAssignmentMail({
+      kind: 'assignment.incident_capa',
       includeTitle: true,
       title: 'Fix it\nBcc: evil@example.com',
       what: 'corrective action',
@@ -372,6 +376,7 @@ describe('renderAssignmentMail', () => {
 
   it('does not invent a description for an illness', () => {
     const message = renderAssignmentMail({
+      kind: 'assignment.illness_action',
       includeTitle: false,
       title: 'Review the asthma case',
       what: 'corrective action on an occupational illness record',
@@ -381,6 +386,7 @@ describe('renderAssignmentMail', () => {
     })
     expect(message.subject).not.toContain('asthma')
     expect(message.text).not.toContain('asthma')
+    expect(message.html).not.toContain('asthma')
     expect(message.text).toContain('ILL-1')
   })
 })
@@ -437,7 +443,9 @@ describe('deliverAssignments', () => {
     expect(box.sent).toHaveLength(1)
     expect(box.sent[0].subject).not.toContain('enc:')
     expect(box.sent[0].text).not.toContain('enc:')
+    expect(box.sent[0].html).not.toContain('enc:')
     expect(box.sent[0].text).toContain('IRA-1')
+    expect(box.sent[0].html).toContain('IRA-1')
     expect(box.sent[0].text).toContain('Open it: https://app.example/incidents/i1')
   })
 
@@ -463,7 +471,9 @@ describe('deliverAssignments', () => {
     expect(box.sent).toHaveLength(1)
     expect(box.sent[0].to).toBe('ravi@example.com')
     expect(box.sent[0].text).toContain('Assigned by: Priya Menon')
+    expect(box.sent[0].html).toContain('Priya Menon')
     expect(box.sent[0].text).toContain('https://app.example/incidents/i1')
+    expect(box.sent[0].html).toContain('https://app.example/incidents/i1')
     const ledger = [...db.docs.keys()].filter((k) => k.includes('/notifications/'))
     expect(ledger).toHaveLength(1)
     expect(db.docs.get(ledger[0]).status).toBe('sent')

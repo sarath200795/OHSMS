@@ -101,6 +101,54 @@ describe('createMailer', () => {
     })
   })
 
+  it('forwards an html body so nodemailer can send multipart/alternative', async () => {
+    const transport = { sendMail: vi.fn(async () => {}) }
+    const mailer = createMailer({ SMTP_PASS: 'secret' }, { transport })
+    await mailer.send({
+      to: 'person@example.com',
+      subject: 'Assigned',
+      text: 'body',
+      html: '<p>body</p>',
+    })
+    expect(transport.sendMail).toHaveBeenCalledWith({
+      from: 'WEEHS <info@weehs.org>',
+      to: 'person@example.com',
+      subject: 'Assigned',
+      text: 'body',
+      html: '<p>body</p>',
+    })
+  })
+
+  it('lets nodemailer build multipart/alternative when both parts are present', async () => {
+    const nodemailer = await import('nodemailer')
+    const lib = typeof nodemailer.createTransport === 'function' ? nodemailer : nodemailer.default
+    const transport = lib.createTransport({
+      streamTransport: true,
+      newline: 'unix',
+      buffer: true,
+    })
+    const sent = []
+    const sendMail = transport.sendMail.bind(transport)
+    transport.sendMail = async (message) => {
+      const info = await sendMail(message)
+      sent.push(info)
+      return info
+    }
+    const mailer = createMailer({ SMTP_PASS: 'secret' }, { transport })
+    await mailer.send({
+      to: 'person@example.com',
+      subject: 'Assigned',
+      text: 'plain body',
+      html: '<p>html body</p>',
+    })
+    const raw = Buffer.isBuffer(sent[0].message)
+      ? sent[0].message.toString()
+      : String(sent[0].message)
+    expect(raw).toContain('multipart/alternative')
+    expect(raw).toContain('plain body')
+    expect(raw).toContain('<p>html body</p>')
+  })
+
   it('sends through the injected transport with the configured from address', async () => {
     const transport = { sendMail: vi.fn(async () => {}) }
     const mailer = createMailer(
