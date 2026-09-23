@@ -5,6 +5,8 @@ import {
   purgeOrgCollection, moveMedicalRecords, assertPathSegment,
   notifyIncidentAssignment, notifyIllnessAssignment, notifyDrillAssignment, notifyTrainingAssignment,
   notifyIncidentReported,
+  notifyPermitLifecycle, notifyDefectReported, notifyExtinguisherDefect, notifyAedDefect, notifyFasDefect,
+  notifyDrillReport, notifyCommitteeMeeting, sendWeatherRiskDigest,
 } from './index.js'
 import { ASSIGNMENT_COLLECTIONS } from './lib/assignmentNotify.js'
 import { PURGEABLE } from './lib/retention.js'
@@ -587,5 +589,24 @@ describe('assignment mail triggers', () => {
   it('exports a separate trigger for the incident-reported circulation', () => {
     expect(typeof notifyIncidentReported).toBe('function')
     expect(notifyIncidentReported).not.toBe(notifyIncidentAssignment)
+  })
+})
+
+describe('lifecycle mail triggers', () => {
+  // Same rule as the assignment triggers: a deliver function with no exported
+  // Cloud Function never runs. Weather is a schedule, not a document trigger.
+  const triggers = [
+    notifyPermitLifecycle,
+    notifyDefectReported,
+    notifyExtinguisherDefect,
+    notifyAedDefect,
+    notifyFasDefect,
+    notifyDrillReport,
+    notifyCommitteeMeeting,
+    sendWeatherRiskDigest,
+  ]
+
+  it('exports a function for each lifecycle mail', () => {
+    for (const trigger of triggers) expect(typeof trigger).toBe('function')
   })
 })
