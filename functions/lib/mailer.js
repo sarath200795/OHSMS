@@ -102,8 +102,8 @@ async function defaultTransport(config) {
     connectionTimeout: 10_000,
     greetingTimeout: 10_000,
     socketTimeout: 15_000,
-    // The body is text we built. These stop a crafted body from making the
-    // transport read a local file or fetch a URL anyway.
+    // The body is the text and HTML this process built. These stop a crafted
+    // body from making the transport read a local file or fetch a URL anyway.
     disableFileAccess: true,
     disableUrlAccess: true,
   })
@@ -119,7 +119,7 @@ export function createMailer(env = {}, deps = {}) {
   let transport = deps.transport || null
   return {
     config,
-    async send({ to, subject, text }) {
+    async send({ to, subject, text, html }) {
       const missing = describeMailGap(config)
       if (missing.length) {
         const err = new Error(`Mail is not configured (missing ${missing.join(', ')})`)
@@ -127,7 +127,12 @@ export function createMailer(env = {}, deps = {}) {
         throw err
       }
       if (!transport) transport = await defaultTransport(config)
-      await transport.sendMail({ from: config.from, to, subject, text })
+      const message = { from: config.from, to, subject, text }
+      // Both parts: nodemailer sends them as multipart/alternative, so a
+      // client that cannot render HTML still gets the text. Callers with no
+      // template omit html and stay text-only.
+      if (typeof html === 'string' && html.trim()) message.html = html
+      await transport.sendMail(message)
     },
   }
 }

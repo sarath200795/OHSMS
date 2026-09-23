@@ -21,10 +21,16 @@
 // the mail would be ciphertext in someone's inbox. Illness action text is
 // health data even when it is still plaintext, so it is never copied out.
 // The mail names the record and, where it is safe, the action. The link is
-// how they read the rest.
+// how they read the rest. Subject, HTML and the text fallback are assembled
+// in mailTemplates/; this file only decides who is assigned and which fields
+// are safe to hand across.
 // ─────────────────────────────────────────────────────────────────────────────
 import { notificationId, sendOnce } from './notify.js'
-import { describeMailGap, safeOrigin } from './mailer.js'
+import { describeMailGap } from './mailer.js'
+import { renderAssignmentMessage } from './mailTemplates/assignments.js'
+import { readableText } from './mailTemplates/safe.js'
+
+export { readableText, safeLine } from './mailTemplates/safe.js'
 
 export const ASSIGNMENT_COLLECTIONS = [
   'incidents',
@@ -39,29 +45,6 @@ export const ASSIGNMENT_COLLECTIONS = [
 export const MAX_MAILS_PER_WRITE = 100
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-
-// Prefixes of the envelopes in src/shared/crypto/envelope.js. The full format
-// is validated there; here a prefix is enough, and a false positive only
-// drops a title from a mail. Copying the regex would drift the day the
-// envelope gained a character.
-const SEALED_PREFIX = /^(?:enc|enk):1:/
-
-/** Text that is safe to put in a mail, or '' when it is sealed or not text. */
-export function readableText(value) {
-  if (typeof value !== 'string') return ''
-  const text = value.trim()
-  if (!text || SEALED_PREFIX.test(text)) return ''
-  return text
-}
-
-/** One line, no header injection, bounded. */
-export function safeLine(value, max = 140) {
-  return String(value || '')
-    .replace(/[\r\n\t]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, max)
-}
 
 function closedStatus(status) {
   return (
@@ -276,23 +259,14 @@ export function deliveryDecision({ assigneeUid, actorUid, user, orgId }) {
   return { send: true, email }
 }
 
-export function renderAssignmentMail(plan, { assignerName = '', appOrigin = '' } = {}) {
-  const title = plan.includeTitle ? safeLine(plan.title, 180) : ''
-  const context = safeLine(plan.context, 80)
-  const what = title || plan.what
-  const subject = safeLine(context ? `Assigned: ${what} (${context})` : `Assigned: ${what}`, 120)
-  const lines = [`You have been assigned a ${plan.what}.`, '']
-  if (title) lines.push(`What: ${title}`)
-  if (context) lines.push(`Record: ${context}`)
-  const by = safeLine(assignerName, 80)
-  if (by) lines.push(`Assigned by: ${by}`)
-  const due = safeLine(plan.due, 40)
-  if (due) lines.push(`Due: ${due}`)
-  lines.push('')
-  const origin = safeOrigin(appOrigin)
-  if (plan.path && origin) lines.push(`Open it: ${origin}${plan.path}`)
-  else if (plan.path) lines.push(`Open it in the app: ${plan.path}`)
-  return { subject, text: lines.join('\n') }
+/**
+ * Subject, HTML and text for one planned assignment. The wording lives in
+ * mailTemplates so each module can change copy without the send ledger
+ * changing with it. sendOnce keys on the slot, not the body, so a template
+ * edit does not mail the same assignment a second time.
+ */
+export function renderAssignmentMail(plan, options) {
+  return renderAssignmentMessage(plan, options)
 }
 
 /**
@@ -412,7 +386,10 @@ export async function deliverAssignments({
       if (actor && actor.orgId === orgId) assignerName = readableText(actor.name)
     }
 
-    const message = renderAssignmentMail(plan, { assignerName, appOrigin: mailer.config.appOrigin })
+    const message = renderAssignmentMail(plan, {
+      assignerName,
+      appOrigin: mailer.config.appOrigin,
+    })
     const key = [orgId, collection, docId, plan.slotId, plan.assigneeUid, eventId || '']
     const ref = db.doc(`organizations/${orgId}/notifications/${notificationId(key)}`)
     const result = await sendOnce({
@@ -422,7 +399,13 @@ export async function deliverAssignments({
       uid: plan.assigneeUid,
       subject: message.subject,
       now: now(),
-      send: () => mailer.send({ to: resolved.email, subject: message.subject, text: message.text }),
+      send: () =>
+        mailer.send({
+          to: resolved.email,
+          subject: message.subject,
+          text: message.text,
+          html: message.html,
+        }),
     })
 
     if (result.status === 'sent') {
