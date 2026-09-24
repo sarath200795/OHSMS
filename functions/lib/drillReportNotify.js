@@ -12,7 +12,18 @@
 // reading it back. Scenario, event type, date, outcome and score stay
 // readable on purpose (src/shared/crypto/policy.js) and are the lines the
 // body is allowed to carry.
-import { scopeFrom, selectScopedAudience, loadOrgUsers, loadDoc } from './audience.js'
+//
+// The saver is included too. loggedBy is their display name and is sealed,
+// so ciphertext matches nobody. capa[].assignedByUid is that same person's
+// uid and is not sealed.
+import {
+  scopeFrom,
+  selectScopedAudience,
+  unionAddresses,
+  addressForToken,
+  loadOrgUsers,
+  loadDoc,
+} from './audience.js'
 import { loadOrgDisplayName } from './mailBrand.js'
 import { circulate } from './circulate.js'
 import { describeMailGap } from './mailer.js'
@@ -65,7 +76,11 @@ export async function deliverDrillReport({
   }
   const scope = scopeFrom(drill, site)
   const users = usersIn || (await loadOrgUsers(db, orgId))
-  const recipients = selectScopedAudience(users, orgId, scope)
+  const raisers = [addressForToken(users, orgId, after?.loggedBy)]
+  for (const row of Array.isArray(after?.capa) ? after.capa : []) {
+    raisers.push(addressForToken(users, orgId, row?.assignedByUid))
+  }
+  const recipients = unionAddresses(selectScopedAudience(users, orgId, scope), raisers)
   const origin = mailer?.config?.appOrigin || ''
   const sender = recipients.length ? await loadOrgDisplayName(db, orgId) : ''
   const message = renderDrillReportMail(

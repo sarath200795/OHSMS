@@ -16,8 +16,18 @@
 // the subject only when it is still plaintext. Minutes, the attendee list
 // and action rows are never copied into the body, plaintext or not. They are
 // in the minutes PDF the app uploaded for this write. Type, date and siteId
-// stay readable. A meeting with no site is org-wide: only org admins.
-import { scopeFrom, selectScopedAudience, loadOrgUsers, loadDoc } from './audience.js'
+// stay readable. A meeting with no site reaches org admins. createdBy is
+// the saver's name or email and is sealed; a plaintext value that names
+// one profile is included even when their grants miss the site, including
+// on an org-wide meeting.
+import {
+  scopeFrom,
+  selectScopedAudience,
+  unionAddresses,
+  addressForToken,
+  loadOrgUsers,
+  loadDoc,
+} from './audience.js'
 import { loadOrgDisplayName } from './mailBrand.js'
 import { circulate } from './circulate.js'
 import { describeMailGap } from './mailer.js'
@@ -63,7 +73,9 @@ export async function deliverMeetingMail({
   if (meeting.siteId) site = await loadDoc(db, `organizations/${orgId}/sites/${meeting.siteId}`)
   const scope = scopeFrom({ siteId: meeting.siteId }, site)
   const users = usersIn || (await loadOrgUsers(db, orgId))
-  const recipients = selectScopedAudience(users, orgId, scope)
+  const recipients = unionAddresses(selectScopedAudience(users, orgId, scope), [
+    addressForToken(users, orgId, after?.createdBy),
+  ])
   const origin = mailer?.config?.appOrigin || ''
   const sender = recipients.length ? await loadOrgDisplayName(db, orgId) : ''
   const message = renderMeetingMail(

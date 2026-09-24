@@ -266,6 +266,90 @@ describe('deliver defect mail', () => {
     expect(sent).toHaveLength(1)
   })
 
+  it('includes the reporter when their grants miss the site, and ignores a public scan', async () => {
+    const users = [
+      user('admin', { role: 'admin' }),
+      user('raiser', { role: 'member' }),
+      user('far', { siteId: 's9' }),
+    ]
+    const sent = []
+    const named = await deliverDefectReport({
+      db: db(),
+      orgId: 'orgA',
+      docId: 'r-raiser',
+      before: null,
+      after: {
+        kind: 'defect',
+        defectType: 'pin',
+        extId: 'e1',
+        reportedBy: 'raiser',
+      },
+      mailer: mailer(sent),
+      logger,
+      users,
+    })
+    expect(named.sent).toBe(2)
+    expect(sent.map((m) => m.to).sort()).toEqual(['admin@example.com', 'raiser@example.com'])
+
+    const aedSent = []
+    const aed = await deliverDefectReport({
+      db: db(),
+      orgId: 'orgA',
+      docId: 'r-aed',
+      before: null,
+      after: {
+        kind: 'asset_defect',
+        assetKind: 'aed',
+        assetRefId: 'a1',
+        defect: 'Pads Expired',
+        reportedBy: 'raiser',
+      },
+      mailer: mailer(aedSent),
+      logger,
+      users,
+    })
+    expect(aed.sent).toBe(2)
+    expect(aedSent.map((m) => m.to).sort()).toEqual(['admin@example.com', 'raiser@example.com'])
+
+    const fasSent = []
+    const fas = await deliverDefectReport({
+      db: db(),
+      orgId: 'orgA',
+      docId: 'r-fas',
+      before: null,
+      after: {
+        kind: 'asset_defect',
+        assetKind: 'fas',
+        assetRefId: 'f1',
+        defect: 'Hooter Not Working',
+        reportedBy: 'raiser',
+      },
+      mailer: mailer(fasSent),
+      logger,
+      users,
+    })
+    expect(fas.sent).toBe(2)
+
+    const publicSent = []
+    const anon = await deliverDefectReport({
+      db: db(),
+      orgId: 'orgA',
+      docId: 'r-public',
+      before: null,
+      after: {
+        kind: 'defect',
+        defectType: 'pin',
+        extId: 'e1',
+        reportedBy: 'public',
+      },
+      mailer: mailer(publicSent),
+      logger,
+      users,
+    })
+    expect(anon.sent).toBe(1)
+    expect(publicSent.map((m) => m.to)).toEqual(['admin@example.com'])
+  })
+
   it('caps the fan-out at 100', async () => {
     const sent = []
     const crowd = Array.from({ length: 101 }, (_, i) =>

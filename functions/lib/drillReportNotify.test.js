@@ -181,6 +181,71 @@ describe('deliverDrillReport', () => {
     for (const path of store.notifications()) expect(store.store.get(path).status).toBe('sent')
   })
 
+  it('includes a uniquely named logger and the capa saver, and ignores a sealed or shared name', async () => {
+    const directory = [
+      ...users,
+      user('rae', { name: 'Rae Cole', role: 'member' }),
+      user('saver', { role: 'member' }),
+      user('pat1', { name: 'Pat Lee' }),
+      user('pat2', { name: 'Pat Lee' }),
+    ]
+    const sent = []
+    const named = await deliverDrillReport({
+      db: db(),
+      orgId: 'orgA',
+      docId: 'd-named',
+      before: null,
+      after: {
+        ...drill,
+        loggedBy: 'Rae Cole',
+        capa: [{ assignedByUid: 'saver' }],
+      },
+      mailer: mailer(sent),
+      logger,
+      users: directory,
+    })
+    expect(named.sent).toBe(4)
+    expect(sent.map((m) => m.to).sort()).toEqual([
+      'admin@example.com',
+      'rae@example.com',
+      'region@example.com',
+      'saver@example.com',
+    ])
+
+    const sealedSent = []
+    const sealed = await deliverDrillReport({
+      db: db(),
+      orgId: 'orgA',
+      docId: 'd-sealed',
+      before: null,
+      after: { ...drill, loggedBy: SEALED, capa: [{ assignedByUid: 'saver' }] },
+      mailer: mailer(sealedSent),
+      logger,
+      users: directory,
+    })
+    expect(sealed.sent).toBe(3)
+    expect(sealedSent.map((m) => m.to).sort()).toEqual([
+      'admin@example.com',
+      'region@example.com',
+      'saver@example.com',
+    ])
+
+    const sharedSent = []
+    const shared = await deliverDrillReport({
+      db: db(),
+      orgId: 'orgA',
+      docId: 'd-shared',
+      before: null,
+      after: { ...drill, loggedBy: 'Pat Lee' },
+      mailer: mailer(sharedSent),
+      logger,
+      users: directory,
+    })
+    expect(shared.sent).toBe(2)
+    expect(sharedSent.map((m) => m.to)).not.toContain('pat1@example.com')
+    expect(sharedSent.map((m) => m.to)).not.toContain('pat2@example.com')
+  })
+
   it('does not claim when mail is not configured', async () => {
     const store = db()
     const result = await deliverDrillReport({

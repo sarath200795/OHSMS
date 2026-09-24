@@ -13,32 +13,13 @@
 // not recorded otherwise. A follow-up edit that adds the diagram is not a
 // new report, and must not send again.
 //
-// Recipients are the membership scope, not "every approved member". Incident
-// reads in firestore.rules are org-wide, which would mail a plant's report to
-// people at every other plant. Who may work a site is resolveAccessibleSites
-// in src/shared/auth/access.js, and the same union the document rule calls
-// reachesSite:
-//
-//   posting siteId, access.sites, access.regions, access.entities
-//
-// An admin reaches every site, so admins are included. A manager or auditor
-// is not elevated here: the document library elevates them, the site grants
-// do not. Empty strings are not a grant. A profile carrying '' in regions
-// must not match every incident that has no region — the same guard the rule
-// states. When the incident names a site but not its region, the site record
-// fills the gap, because a region grant is access to that site.
-//
-// An incident that names no site, region or entity has nothing to match. Only
-// admins receive it from the scope — they are the people the access model
-// already treats as reaching every site — plus the reporter, below.
-//
-// The reporter is createdBy. createIncident writes the actor's uid there.
-// Incidents do not store a second reporter uid. They are mailed even when
-// their grants do not reach the site, region or entity. The address checks still
-// apply: pending, suspended, another org, or not an email is not a mailbox.
-// A grant they also hold must not send a second copy. The cap keeps their
-// mailbox too: a list ordered by uid would drop them once the org is large,
-// which is the same "the person who reported it heard nothing" failure.
+// Recipients are the org's admins (`role === 'admin'`), plus the reporter.
+// "All the admins" is that role for the whole org, not a site grant: there
+// is no site-admin role, and a manager or a member posted at the site is
+// not on this list. createIncident writes the reporter's uid to createdBy.
+// They are included even when they are not an admin. Pending, suspended,
+// another org, or not an email is still not a mailbox. One shared mailbox
+// is one send. The cap keeps the reporter's copy.
 // ─────────────────────────────────────────────────────────────────────────────
 import { notificationId, sendOnce } from './notify.js'
 import { loadOrgDisplayName } from './mailBrand.js'
@@ -46,6 +27,7 @@ import { describeMailGap } from './mailer.js'
 import { loadReportAttachments } from './mailAttachments.js'
 import { loadAppReportAttachment } from './reportAttachments.js'
 import { renderIncidentReportedMail } from './mailTemplates/incidentReported.js'
+import { sendPaced } from './mailPace.js'
 
 export const MAX_REPORT_MAILS = 100
 
@@ -53,46 +35,6 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 function clean(value) {
   return typeof value === 'string' ? value.trim() : ''
-}
-
-function strings(value) {
-  if (!Array.isArray(value)) return []
-  return value.map(clean).filter(Boolean)
-}
-
-function unique(values) {
-  return [...new Set(values.filter(Boolean))]
-}
-
-/** Site, region and entity the report is filed against. Blanks are not scope. */
-export function incidentScope(incident, site) {
-  const siteId = clean(incident?.siteId)
-  const regions = unique([clean(incident?.region), clean(site?.region)])
-  const entities = unique([clean(incident?.entity), clean(site?.entity)])
-  return { siteId, regions, entities }
-}
-
-/**
- * True when this person's grants reach the report's site, region or entity.
- * Admins reach every site. No scope at all still includes admins — see the
- * file comment — and nobody else.
- */
-export function userReachesScope(user, scope) {
-  if (!user || typeof user !== 'object') return false
-  if (user.role === 'admin') return true
-  const hasScope =
-    Boolean(scope?.siteId) || scope?.regions?.length > 0 || scope?.entities?.length > 0
-  if (!hasScope) return false
-  const access = user.access && typeof user.access === 'object' ? user.access : {}
-  const sites = new Set(strings(access.sites))
-  const posting = clean(user.siteId)
-  if (posting) sites.add(posting)
-  if (scope.siteId && sites.has(scope.siteId)) return true
-  const regions = new Set(strings(access.regions))
-  if (scope.regions.some((region) => regions.has(region))) return true
-  const entities = new Set(strings(access.entities))
-  if (scope.entities.some((entity) => entities.has(entity))) return true
-  return false
 }
 
 function usableUid(uid) {
@@ -136,21 +78,20 @@ function keepReporter(uniquePeople, reporter, reporterEmail) {
 
 /**
  * One address per person. Duplicate profiles and two uids sharing a mailbox
- * collapse, so the reporter is not mailed twice for also holding a site grant.
+ * collapse, so an admin reporter is not mailed twice.
  * Order is the uid, so a retry that stops halfway resumes the same list.
  *
- * `reporterUid` is createdBy. They are included even when userReachesScope
- * is false. A missing address still drops them: the guarantee is a copy,
- * not a send to nowhere.
+ * `reporterUid` is createdBy. They are included even when they are not an
+ * admin. A missing address still drops them. A site grant does not.
  */
-export function selectRecipients(users, { orgId, scope, reporterUid } = {}) {
+export function selectRecipients(users, { orgId, reporterUid } = {}) {
   const reporter = clean(reporterUid)
   const byUidMap = new Map()
   for (const user of users || []) {
     const uid = clean(user?.uid)
     if (!usableUid(uid) || byUidMap.has(uid)) continue
     const isReporter = Boolean(reporter) && uid === reporter
-    if (!isReporter && !userReachesScope(user, scope)) continue
+    if (user?.role !== 'admin' && !isReporter) continue
     const decision = addressDecision(user, orgId)
     if (!decision.send) continue
     byUidMap.set(uid, { uid, email: decision.email })
@@ -211,6 +152,8 @@ export async function deliverIncidentReport({
   logger,
   now = () => new Date(),
   readObject,
+  sleep,
+  gapMs,
 }) {
   const log = logger || noopLogger()
   if (!isFreshReport(before, after))
@@ -231,10 +174,8 @@ export async function deliverIncidentReport({
 
   const usersSnap = await db.collection('users').where('orgId', '==', orgId).get()
   const users = usersSnap.docs.map((docSnap) => ({ uid: docSnap.id, ...(docSnap.data() || {}) }))
-  const scope = incidentScope(after, site)
   const recipients = selectRecipients(users, {
     orgId,
-    scope,
     reporterUid: after?.createdBy,
   })
 
@@ -282,26 +223,30 @@ export async function deliverIncidentReport({
   let skipped = recipients.overflow
   let failed = 0
 
-  for (const person of recipients.list) {
+  for (let i = 0; i < recipients.list.length; i += 1) {
+    const person = recipients.list[i]
     const key = ['incident.reported', orgId, docId, person.uid]
     const ref = db.doc(`organizations/${orgId}/notifications/${notificationId(key)}`)
-    const result = await sendOnce({
-      ref,
-      kind: 'incident.reported',
-      key,
-      uid: person.uid,
-      subject: message.subject,
-      now: now(),
-      send: () =>
-        mailer.send({
-          to: person.email,
-          subject: message.subject,
-          text: message.text,
-          html: message.html,
-          attachments,
-          senderName: message.senderName,
-        }),
-    })
+    const attempt = () =>
+      sendOnce({
+        ref,
+        kind: 'incident.reported',
+        key,
+        uid: person.uid,
+        subject: message.subject,
+        now: now(),
+        send: () =>
+          mailer.send({
+            to: person.email,
+            subject: message.subject,
+            text: message.text,
+            html: message.html,
+            attachments,
+            senderName: message.senderName,
+          }),
+      })
+    const paced = await sendPaced({ attempt, sleep, gapMs, first: i === 0 })
+    const result = paced.result
 
     if (result.status === 'sent') {
       sent += 1
@@ -312,6 +257,7 @@ export async function deliverIncidentReport({
         orgId,
         docId,
         uid: person.uid,
+        reason: result.reason,
         error: result.error?.message || 'send-failed',
       })
     } else {
@@ -322,6 +268,10 @@ export async function deliverIncidentReport({
         uid: person.uid,
         reason: result.reason,
       })
+    }
+    if (paced.stop) {
+      skipped += recipients.list.length - i - 1
+      return { sent, skipped, failed, reason: 'rate-limited' }
     }
   }
 

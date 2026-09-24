@@ -26,6 +26,9 @@ export function memoryDb(seed = {}) {
     async update(patch) {
       store.set(path, { ...(store.get(path) || {}), ...patch })
     },
+    async delete() {
+      store.delete(path)
+    },
   })
 
   function rowsUnder(prefix) {

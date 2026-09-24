@@ -2502,12 +2502,12 @@ export const notifyDrillAssignment = assignmentTrigger('mockDrills')
 export const notifyTrainingAssignment = assignmentTrigger('trainingAssignments')
 
 /**
- * Circulate a newly reported incident to everyone whose grants reach its
- * site, region or entity, and always to the reporter (createdBy). Separate
- * from notifyIncidentAssignment: that one
- * mails a CAPA owner, and a report with no action yet would otherwise tell
- * nobody. The two ledgers use different keys, so one incident can do both
- * without either suppressing the other.
+ * Circulate a newly reported incident to every org admin, and to the
+ * reporter (createdBy) even when they are not an admin. Separate from
+ * notifyIncidentAssignment: that one mails a CAPA owner, and a report
+ * with no action yet would otherwise tell nobody. The two ledgers use
+ * different keys, so one incident can do both without either suppressing
+ * the other.
  */
 export const notifyIncidentReported = onDocumentWritten(
   {

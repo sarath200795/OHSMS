@@ -150,6 +150,72 @@ describe('deliverMeetingMail', () => {
     expect(sent[0].text).toContain('HSE Committee Meeting')
   })
 
+  it('includes a uniquely named or emailed creator, and skips a sealed or shared name', async () => {
+    const directory = [
+      ...users,
+      user('rae', { name: 'Rae Cole' }),
+      user('pat1', { name: 'Pat Lee' }),
+      user('pat2', { name: 'Pat Lee' }),
+    ]
+    const sent = []
+    const named = await deliverMeetingMail({
+      db: db(),
+      orgId: 'orgA',
+      docId: 'm-rae',
+      before: null,
+      after: meeting({ createdBy: 'Rae Cole' }),
+      mailer: mailer(sent),
+      logger,
+      users: directory,
+    })
+    expect(named.sent).toBe(3)
+    expect(sent.map((m) => m.to).sort()).toEqual([
+      'admin@example.com',
+      'entity@example.com',
+      'rae@example.com',
+    ])
+
+    const mailed = []
+    const byEmail = await deliverMeetingMail({
+      db: memoryDb(),
+      orgId: 'orgA',
+      docId: 'm-mail',
+      before: null,
+      after: meeting({ siteId: '', createdBy: 'rae@example.com' }),
+      mailer: mailer(mailed),
+      logger,
+      users: directory,
+    })
+    expect(byEmail.sent).toBe(2)
+    expect(mailed.map((m) => m.to).sort()).toEqual(['admin@example.com', 'rae@example.com'])
+
+    const sealedSent = []
+    await deliverMeetingMail({
+      db: db(),
+      orgId: 'orgA',
+      docId: 'm-seal',
+      before: null,
+      after: meeting({ createdBy: SEALED }),
+      mailer: mailer(sealedSent),
+      logger,
+      users: directory,
+    })
+    expect(sealedSent.map((m) => m.to).sort()).toEqual(['admin@example.com', 'entity@example.com'])
+
+    const sharedSent = []
+    await deliverMeetingMail({
+      db: db(),
+      orgId: 'orgA',
+      docId: 'm-pat',
+      before: null,
+      after: meeting({ createdBy: 'Pat Lee' }),
+      mailer: mailer(sharedSent),
+      logger,
+      users: directory,
+    })
+    expect(sharedSent.map((m) => m.to).sort()).toEqual(['admin@example.com', 'entity@example.com'])
+  })
+
   it('does not claim when mail is not configured', async () => {
     const store = db()
     const result = await deliverMeetingMail({

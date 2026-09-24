@@ -1,4 +1,4 @@
-// Mail the people who can see a permit, when its lifecycle moves.
+// Mail the people a permit names, when its lifecycle moves.
 //
 // The document is organizations/{orgId}/permits/{id}. Status on screen is
 // derived (src/modules/ptw/lib/permitStatus.js); what is stored, and what this
@@ -11,38 +11,35 @@
 //
 // Create is the submit. There is no later "submit draft" write.
 //
-// Recipients are the incident-report audience (selectScopedAudience): org
-// admins, plus any approved member whose posting or access.sites /
-// access.regions / access.entities reaches the permit. An empty string is
-// not a grant. The site record fills region and entity when the permit
-// stored a site id, or only a site name that matches one site — createPermit
-// keeps the name and drops siteId, so the name match is how a live permit
-// finds its grants. An ambiguous name is not a grant.
+// Recipients, on every lifecycle event, are exactly:
 //
-// createdBy, the person who raised it, is on every lifecycle mail, including
-// the raise. They used to be removed: the event's actorUid was skipped, and
-// on a raise that uid is createdBy. The rest of the list was only the named
-// engineer and operator, or — when neither was named — roles admin, manager,
-// engineering and operations whose grants reached the site. The raiser was
-// the actor, so they were dropped from the only list that might have named
-// them, and a site, entity or region admin outside those roles was never on
-// it. That is why raising a permit could send the raiser nothing.
+//   createdBy                 the person who raised it. Always, including
+//                             when they are the event actor. Skipping the
+//                             actor is why a raise used to send them nothing.
+//   participants[].name       Internal Personnel. The form stores type
+//                             'internal' and the teammate's display name,
+//                             not a uid (PermitForm). An external participant
+//                             is not an org user. A name that matches two
+//                             profiles is not a guess, so neither is mailed.
+//   assignedEngineer          the specific Engineering approver, a uid.
+//                             Blank means "whole Engineering team" and that
+//                             team is not mailed.
+//   assignedOperator          the specific Operations approver, a uid.
+//                             Blank means the ops team is not mailed.
 //
-// A raiser with no usable address is still not mailed. Pending, suspended,
-// another org, or not an email: there is nowhere to send it. They are placed
-// first so the circulation cap, which sends the front of the list, cannot
-// drop them once the org is large.
+// Not the audience: site, entity or region grants, org admins who were not
+// named, fire watchers, the confined-space watcher, and the receiver
+// (issuedToName / issuedToPhone). Those last three are display names and a
+// phone, and they are not the internal-personnel list.
 //
-// Display-name participants, the receiver (issuedToName / issuedToPhone),
-// fire watchers and the confined-space watcher are not uids. Matching those
-// names against the directory would cross people who share one. They are
-// not mailed. A named engineer or operator is mailed when their own grants
-// reach the permit, the same as any other member. Being named does not
-// shrink the audience to those two.
+// A named person with no usable address is still not mailed. Pending,
+// suspended, another org, or not an email: there is nowhere to send it.
+// One mailbox is one send. The raiser is placed first so the circulation
+// cap cannot drop them.
 import { safePathSegment } from './assignmentNotify.js'
 import {
   scopeFrom,
-  selectScopedAudience,
+  addressForToken,
   recipientAddress,
   dedupeByEmail,
   loadOrgUsers,
@@ -322,10 +319,8 @@ export function matchPermitSite(permit, sites) {
 
 /**
  * Move the raiser's mailbox to the front. circulate sends the front of the
- * list and drops the rest at the cap; a uid that sorts last would be the
- * one dropped, and that is often the person who just raised the permit.
- * When another profile already owns the raiser's address, that row is the
- * copy — one mailbox, still first.
+ * list and drops the rest at the cap. When another profile already owns the
+ * raiser's address, that row is the copy — one mailbox, still first.
  */
 function raiserFirst(rows, raiserUid, raiserEmail) {
   const email = typeof raiserEmail === 'string' ? raiserEmail.toLowerCase() : ''
@@ -336,10 +331,17 @@ function raiserFirst(rows, raiserUid, raiserEmail) {
   return [rows[index], ...rows.slice(0, index), ...rows.slice(index + 1)]
 }
 
+function addressForUid(users, orgId, value) {
+  const id = uid(value)
+  if (!id) return null
+  const person = (users || []).find((user) => user && uid(user.uid) === id)
+  return recipientAddress(person, orgId)
+}
+
 /**
  * Recipients for one lifecycle event. The event is not a filter: a raise, an
  * approval and a close share this list, and event.actorUid is not removed.
- * The raiser is added even when their grants do not reach the permit.
+ * The raiser is included even when they hold no other role on the permit.
  */
 export function recipientsForPermitEvent(_event, permit, users, sites, orgId) {
   const site = matchPermitSite(permit, sites)
@@ -352,24 +354,23 @@ export function recipientsForPermitEvent(_event, permit, users, sites, orgId) {
     },
     site
   )
-  let rows = selectScopedAudience(users, orgId, scope)
-  const raiserUid = uid(permit?.createdBy)
-  let raiserEmail = ''
-  if (raiserUid && !rows.some((row) => row.uid === raiserUid)) {
-    const raiser = (users || []).find((user) => user && uid(user.uid) === raiserUid)
-    const addr = recipientAddress(raiser, orgId)
-    if (addr) {
-      raiserEmail = addr.email
-      // Another profile may already hold this mailbox. dedupe keeps one,
-      // the lowest uid, so the raiser is not mailed twice for also being
-      // outside the scope.
-      rows = dedupeByEmail([...rows, addr])
-    }
-  } else if (raiserUid) {
-    raiserEmail = rows.find((row) => row.uid === raiserUid)?.email || ''
+  const rows = []
+  const raiser = addressForUid(users, orgId, permit?.createdBy)
+  if (raiser) rows.push(raiser)
+  const participants = Array.isArray(permit?.participants) ? permit.participants : []
+  for (const person of participants) {
+    if (!person || person.type !== 'internal') continue
+    const addr = addressForToken(users, orgId, person.name)
+    if (addr) rows.push(addr)
   }
+  // Blank is "whole team" on the form. That is not a named contact.
+  const engineer = addressForUid(users, orgId, permit?.assignedEngineer)
+  if (engineer) rows.push(engineer)
+  const operator = addressForUid(users, orgId, permit?.assignedOperator)
+  if (operator) rows.push(operator)
+  const deduped = dedupeByEmail(rows)
   return {
-    recipients: raiserFirst(rows, raiserUid, raiserEmail),
+    recipients: raiserFirst(deduped, raiser?.uid || '', raiser?.email || ''),
     region: scope.region,
     entity: scope.entity,
   }
@@ -392,6 +393,8 @@ export async function deliverPermitMails({
   users: usersIn,
   sites: sitesIn,
   readObject,
+  sleep,
+  gapMs,
 }) {
   const events = planPermitEvents(before, after)
   if (!events.length) return { sent: 0, skipped: 0, failed: 0 }
@@ -456,5 +459,7 @@ export async function deliverPermitMails({
     logLabel: 'permit',
     context: { docId },
     attachments,
+    sleep,
+    gapMs,
   })
 }
