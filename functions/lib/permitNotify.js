@@ -11,7 +11,7 @@
 //
 // Create is the submit. There is no later "submit draft" write.
 //
-// Recipients, on every lifecycle event:
+// Recipients, on every lifecycle event, are exactly:
 //
 //   createdBy                 the person who raised it. Always, including
 //                             when they are the event actor. Skipping the
@@ -21,21 +21,16 @@
 //                             not a uid (PermitForm). An external participant
 //                             is not an org user. A name that matches two
 //                             profiles is not a guess, so neither is mailed.
-//   assignedEngineer          the specific Engineering approver, a uid,
-//                             even when their grants miss the site. Blank
-//                             means "whole Engineering team" and that team
-//                             is not mailed as a role.
-//   assignedOperator          the specific Operations approver, a uid, same
-//                             rule. Blank means the ops team is not mailed
-//                             as a role.
-//   site / entity / region    every approved member whose posting or access
-//                             grant reaches the permit, including org admins.
-//                             An empty-string grant matches nothing.
+//   assignedEngineer          the specific Engineering approver, a uid.
+//                             Blank means "whole Engineering team" and that
+//                             team is not mailed.
+//   assignedOperator          the specific Operations approver, a uid.
+//                             Blank means the ops team is not mailed.
 //
-// Not the audience: fire watchers, the confined-space watcher, and the
-// receiver (issuedToName / issuedToPhone). Those are display names and a
-// phone, and they are not the internal-personnel list. An approver who
-// acted but is not named and whose grants miss the site is not mailed.
+// Not the audience: site, entity or region grants, org admins who were not
+// named, fire watchers, the confined-space watcher, and the receiver
+// (issuedToName / issuedToPhone). Those last three are display names and a
+// phone, and they are not the internal-personnel list.
 //
 // A named person with no usable address is still not mailed. Pending,
 // suspended, another org, or not an email: there is nowhere to send it.
@@ -44,7 +39,6 @@
 import { safePathSegment } from './assignmentNotify.js'
 import {
   scopeFrom,
-  selectScopedAudience,
   addressForToken,
   recipientAddress,
   dedupeByEmail,
@@ -374,10 +368,7 @@ export function recipientsForPermitEvent(_event, permit, users, sites, orgId) {
   if (engineer) rows.push(engineer)
   const operator = addressForUid(users, orgId, permit?.assignedOperator)
   if (operator) rows.push(operator)
-  // Named contacts stay even when their grants miss. The scoped list is
-  // everyone else the site, entity or region already authorises, including
-  // org admins. event.actorUid is not removed from either list.
-  const deduped = dedupeByEmail([...rows, ...selectScopedAudience(users, orgId, scope)])
+  const deduped = dedupeByEmail(rows)
   return {
     recipients: raiserFirst(deduped, raiser?.uid || '', raiser?.email || ''),
     region: scope.region,

@@ -172,6 +172,31 @@ describe('sendOnce', () => {
     expect(store.get(ref.path).status).toBe('sent')
   })
 
+  it('releases a Brevo quota refusal so the same key can send later', async () => {
+    const store = new Map()
+    const ref = memoryRef(store, 'organizations/orgA/notifications/abc')
+    const limited = Object.assign(
+      new Error('554 5.7.1 You have exceeded your daily sending limit'),
+      {
+        responseCode: 554,
+        response: '554 5.7.1 daily limit exceeded',
+      }
+    )
+    const result = await sendOnce({
+      ref,
+      kind: 'defect.reported',
+      key: ['k'],
+      uid: 'u1',
+      subject: 's',
+      now: NOW,
+      send: async () => {
+        throw limited
+      },
+    })
+    expect(result.reason).toBe('rate-limited')
+    expect(store.has(ref.path)).toBe(false)
+  })
+
   it('keeps a 554 that is not a rate limit, so a permanent reject is not retried', async () => {
     const store = new Map()
     const ref = memoryRef(store, 'organizations/orgA/notifications/abc')

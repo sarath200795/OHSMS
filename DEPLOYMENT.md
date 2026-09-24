@@ -119,34 +119,36 @@ names `iam.serviceAccounts.actAs` is this gap, not a new one.
 ## 6. Assignment email
 
 Saving an incident CAPA, an illness corrective action, a mock-drill CAPA or a
-training assignment emails the assignee from **info@weehs.org**. That mailbox
-already exists (Private Email). The triggers do not use a second mail
-service. They are `notifyIncidentAssignment`, `notifyIllnessAssignment`,
-`notifyDrillAssignment` and `notifyTrainingAssignment`. The write does not
-wait on the mail.
+training assignment emails the assignee from **info@weehs.org**. The same
+relay carries permit, incident, defect, drill and meeting mail. The triggers
+do not use a second mail service. They are `notifyIncidentAssignment`,
+`notifyIllnessAssignment`, `notifyDrillAssignment` and `notifyTrainingAssignment`.
+The write does not wait on the mail.
 
 Defaults, already set in code:
 
-- From: `EHS notifications <info@weehs.org>`. The address is the mailbox.
-  The display name is the organisation's name (`organizations/{orgId}.name`)
-  when that field is set, and this label otherwise. A display name that is
-  only the old product name is not used.
-- SMTP: `mail.privateemail.com` port 465, username `info@weehs.org`
+- From: `EHS notifications <info@weehs.org>`. The address stays that mailbox.
+  Brevo must have the domain verified or it refuses the message. The display
+  name is the organisation's name (`organizations/{orgId}.name`) when that
+  field is set, and this label otherwise. A display name that is only the
+  old product name is not used.
+- SMTP: `smtp-relay.brevo.com` port 587 (STARTTLS). `SMTP_USER` is the Brevo
+  SMTP login and has no default. It is not the From address.
 - Links: `https://suite.weehs.org` plus the in-app path (`/incidents/{id}`,
   `/incidents/illness/{id}`, `/mock-drills`, `/training/my`)
 
-The one value that is not in the repo is the mailbox password. It has to
-exist as a secret before the triggers will deploy. A placeholder is enough
-to deploy; nothing is sent until the value is the real password, and each
-skipped assignment is logged as an error rather than recorded as delivered.
+The value that is not in the repo is the Brevo SMTP key. It has to exist as
+a secret before the triggers will deploy. A placeholder is enough to deploy;
+nothing is sent until the value is the real key and `SMTP_USER` is the login,
+and each skipped send is logged as an error rather than recorded as delivered.
 
 ```bash
 firebase functions:secrets:set SMTP_PASS
 ```
 
-Use the password for info@weehs.org. Do not put it in `functions/.env`. A
-mail credential in the Cloud Run environment in cleartext is the finding
-recorded as LOW-13.
+Use the Brevo SMTP key, not a mailbox password. Do not put it in
+`functions/.env`. A mail credential in the Cloud Run environment in cleartext
+is the finding recorded as LOW-13.
 
 Production CI (`.github/workflows/deploy.yml`, and the staging workflow the
 same way) writes the non-secret mail defaults into `functions/.env.<project>`
@@ -163,7 +165,8 @@ Local emulators read the password from `functions/.secret.local` (one line,
 error and returns.
 
 `functions/.env` can override the defaults (`SMTP_HOST`, `SMTP_PORT`,
-`SMTP_USER`, `MAIL_FROM`, `APP_ORIGIN`). Leaving them unset keeps
-info@weehs.org. See `functions/.env.example`. `functions/.env.weehs-4eb28`
+`SMTP_USER`, `MAIL_FROM`, `APP_ORIGIN`). Leaving the host and port unset
+keeps the Brevo relay. `SMTP_USER` stays empty until it is set. See
+`functions/.env.example`. `functions/.env.weehs-4eb28`
 supplies non-secret SMTP defaults for CI, while `SMTP_PASS` remains a
 Secret Manager secret.

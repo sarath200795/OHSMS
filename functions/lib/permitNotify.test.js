@@ -136,41 +136,29 @@ describe('permit recipients', () => {
       user('admin', { role: 'admin' }),
       user('posted', { siteId: 's1', role: 'member' }),
     ]
-    // The raiser is the actor and is still included. A site posting is too.
+    // The raiser is the actor and is still included. A site posting is not.
     // The external row is the same display name and is not a second person.
-    // eng and ops are named and have no grant; they are not dropped for that.
-    expect(uids(event, row, directory).sort()).toEqual([
-      'admin',
-      'boss',
-      'eng',
-      'member',
-      'ops',
-      'posted',
-      'raiser',
-      'wren',
-    ])
+    expect(uids(event, row, directory).sort()).toEqual(['eng', 'ops', 'raiser', 'wren'])
   })
 
   it('drops engineering or ops when that contact was left as the whole team', () => {
     const row = permit({ assignedEngineer: null, assignedOperator: '' })
     const event = planPermitEvents(null, row)[0]
-    expect(uids(event, row).sort()).toEqual(['admin', 'boss', 'member', 'raiser'])
+    expect(uids(event, row).sort()).toEqual(['raiser'])
   })
 
-  it('includes the raiser on a later event, and does not mail an actor the site does not reach', () => {
+  it('includes the raiser on a later event, and does not mail the actor who is not named', () => {
     const before = permit({ engineering: approved('eng') })
     const after = permit({
       engineering: approved('eng'),
-      operations: approved('far', '2026-09-01T12:00:00.000Z'),
+      operations: approved('boss', '2026-09-01T12:00:00.000Z'),
       assignedEngineer: 'eng',
       assignedOperator: null,
     })
     const event = planPermitEvents(before, after)[0]
     expect(event.name).toBe('issued')
-    expect(event.actorUid).toBe('far')
-    const got = uids(event, after)
-    expect(got).not.toContain('far')
-    expect(got.sort()).toEqual(['admin', 'boss', 'eng', 'member', 'raiser'])
+    expect(event.actorUid).toBe('boss')
+    expect(uids(event, after).sort()).toEqual(['eng', 'raiser'])
   })
 
   it('keeps the raiser once, first, and collapses a shared mailbox', () => {
@@ -215,8 +203,7 @@ describe('permit recipients', () => {
     const event = planPermitEvents(null, open)[0]
     const sites = [{ id: 's2', name: 'Other', region: '', entity: '' }]
     expect(matchPermitSite(open, sites)).toBeNull()
-    expect(uids(event, open, users(), sites).sort()).toEqual(['admin', 'raiser'])
-    expect(uids(event, open, users(), sites)).not.toContain('blank')
+    expect(uids(event, open, users(), sites)).toEqual(['raiser'])
   })
 })
 
@@ -238,16 +225,16 @@ describe('deliverPermitMails', () => {
       sites: SITES,
     }
     const first = await deliverPermitMails(args)
-    expect(first.sent).toBe(6)
-    expect(sent).toHaveLength(6)
+    expect(first.sent).toBe(3)
+    expect(sent).toHaveLength(3)
     expect(sent[0].text).not.toContain('Worker Wren')
     expect(sent[0].text).not.toContain('Do not mail')
     expect(sent[0].html).toContain('https://suite.weehs.org/permits/p1')
     const second = await deliverPermitMails(args)
     expect(second.sent).toBe(0)
-    expect(second.skipped).toBe(6)
-    expect(sent).toHaveLength(6)
-    expect(db.notifications()).toHaveLength(6)
+    expect(second.skipped).toBe(3)
+    expect(sent).toHaveLength(3)
+    expect(db.notifications()).toHaveLength(3)
   })
 
   it('does not claim the ledger when mail is not configured', async () => {
@@ -289,11 +276,11 @@ describe('deliverPermitMails', () => {
       sites: SITES,
     }
     const first = await deliverPermitMails(args)
-    expect(first.failed).toBe(6)
-    expect(sent).toHaveLength(6)
+    expect(first.failed).toBe(3)
+    expect(sent).toHaveLength(3)
     const second = await deliverPermitMails(args)
-    expect(second.skipped).toBe(6)
-    expect(sent).toHaveLength(6)
+    expect(second.skipped).toBe(3)
+    expect(sent).toHaveLength(3)
   })
 
   it('attaches the permit copy and an extra file stored on that permit', async () => {
@@ -387,7 +374,7 @@ describe('deliverPermitMails', () => {
         throw new Error('No such object')
       },
     })
-    expect(result).toMatchObject({ sent: 6, failed: 0 })
+    expect(result).toMatchObject({ sent: 3, failed: 0 })
     expect(sent[0].attachments || []).toEqual([])
     expect(sent[0].text).toContain('PTW-2026-0007')
     expect(calls).toEqual(['orgs/orgA/permit-documents/ab-gone.pdf'])
@@ -469,9 +456,9 @@ describe('deliverPermitMails', () => {
       },
       gapMs: 40,
     })
-    expect(result.sent).toBe(6)
-    expect(sent).toHaveLength(6)
-    expect(waits).toEqual([40, 40, 40, 40, 40])
+    expect(result.sent).toBe(3)
+    expect(sent).toHaveLength(3)
+    expect(waits).toEqual([40, 40])
   })
 
   it('stops on a rate limit, drops that claim, and sends the rest later', async () => {
@@ -505,7 +492,7 @@ describe('deliverPermitMails', () => {
       gapMs: 25,
     }
     const first = await deliverPermitMails(args)
-    expect(first).toMatchObject({ sent: 1, failed: 1, skipped: 4, reason: 'rate-limited' })
+    expect(first).toMatchObject({ sent: 1, failed: 1, skipped: 1, reason: 'rate-limited' })
     expect(sent.map((m) => m.to)).toEqual(['raiser@example.com'])
     expect(waits).toEqual([25, 5000])
     expect(db.notifications()).toHaveLength(1)
@@ -517,15 +504,9 @@ describe('deliverPermitMails', () => {
       sleep: async () => {},
       gapMs: 0,
     })
-    expect(second.sent).toBe(5)
+    expect(second.sent).toBe(2)
     expect(second.skipped).toBe(1)
-    expect(later.map((m) => m.to).sort()).toEqual([
-      'admin@example.com',
-      'boss@example.com',
-      'eng@example.com',
-      'member@example.com',
-      'ops@example.com',
-    ])
-    expect(db.notifications()).toHaveLength(6)
+    expect(later.map((m) => m.to).sort()).toEqual(['eng@example.com', 'ops@example.com'])
+    expect(db.notifications()).toHaveLength(3)
   })
 })

@@ -21,25 +21,22 @@ const person = (uid, over = {}) => ({
 })
 
 describe('selectRecipients', () => {
-  const scope = { siteId: 's1', region: 'North', entity: '' }
-
-  it('mails admins, site and region grants, and the reporter once per mailbox', () => {
+  it('mails every org admin and the reporter, and not a site or region grant', () => {
     const users = [
       person('reporter', { email: 'ada@example.com' }),
       person('boss', { role: 'admin', email: 'Ada@example.com' }),
       person('north', { role: 'admin', email: 'north@example.com' }),
       person('site', { email: 'site@example.com', siteId: 's1' }),
       person('region', { email: 'reg@example.com', access: { regions: ['North'] } }),
-      person('elsewhere', { email: 'else@example.com', siteId: 's9' }),
     ]
     const { list, overflow } = selectRecipients(users, {
       orgId: 'orgA',
-      scope,
       reporterUid: 'reporter',
     })
     expect(overflow).toBe(0)
     // boss sorts before reporter and shares the mailbox, so ada@ is one send.
-    expect(list.map((p) => p.uid)).toEqual(['boss', 'north', 'region', 'site'])
+    // A site posting and a region grant are not admins.
+    expect(list.map((p) => p.uid)).toEqual(['boss', 'north'])
     expect(list.filter((p) => p.email.toLowerCase() === 'ada@example.com')).toHaveLength(1)
   })
 
@@ -47,19 +44,18 @@ describe('selectRecipients', () => {
     const users = [
       person('ok', { role: 'admin' }),
       person('bare', { role: 'admin', email: 'not-an-email' }),
-      person('pending', { siteId: 's1', status: 'pending', email: 'p@example.com' }),
-      person('suspended', { siteId: 's1', status: 'suspended', email: 's@example.com' }),
-      person('other-org', { siteId: 's1', orgId: 'orgB', email: 'b@example.com' }),
-      person('a/b', { siteId: 's1', email: 'slash@example.com' }),
-      person('legacy', { siteId: 's1', status: undefined, email: 'legacy@example.com' }),
+      person('pending', { role: 'admin', status: 'pending', email: 'p@example.com' }),
+      person('suspended', { role: 'admin', status: 'suspended', email: 's@example.com' }),
+      person('other-org', { role: 'admin', orgId: 'orgB', email: 'b@example.com' }),
+      person('a/b', { role: 'admin', email: 'slash@example.com' }),
+      person('legacy', { role: 'admin', status: undefined, email: 'legacy@example.com' }),
       person('member', { siteId: 's1', email: 'member@example.com' }),
-      person('far', { siteId: 's9', email: 'far@example.com' }),
     ]
-    const { list } = selectRecipients(users, { orgId: 'orgA', scope })
-    expect(list.map((p) => p.uid).sort()).toEqual(['legacy', 'member', 'ok'])
+    const { list } = selectRecipients(users, { orgId: 'orgA' })
+    expect(list.map((p) => p.uid).sort()).toEqual(['legacy', 'ok'])
   })
 
-  it('mails the reporter when the incident names no place, besides admins', () => {
+  it('mails the reporter besides admins, including when the incident names no place', () => {
     const { list } = selectRecipients(
       [
         person('reporter', { siteId: 's9' }),
@@ -68,53 +64,52 @@ describe('selectRecipients', () => {
         person('manager', { role: 'manager', access: { sites: ['s1'] } }),
         person('blank-region', { access: { regions: [''] } }),
       ],
-      { orgId: 'orgA', scope: { siteId: '', region: '', entity: '' }, reporterUid: 'reporter' }
+      { orgId: 'orgA', reporterUid: 'reporter' }
     )
     expect(list.map((p) => p.uid).sort()).toEqual(['admin', 'reporter'])
   })
 
-  it('mails the reporter even when their grants do not reach the incident', () => {
+  it('mails the reporter even when they are not an admin', () => {
     const users = [
       person('reporter', { email: 'ada@example.com', role: 'member', siteId: 's9' }),
       person('north', { email: 'north@example.com', access: { regions: ['North'] } }),
       person('admin', { role: 'admin', email: 'admin@example.com' }),
       person('elsewhere', { email: 'else@example.com', siteId: 's9' }),
     ]
-    const { list } = selectRecipients(users, { orgId: 'orgA', scope, reporterUid: 'reporter' })
-    expect(list.map((p) => p.uid).sort()).toEqual(['admin', 'north', 'reporter'])
+    const { list } = selectRecipients(users, { orgId: 'orgA', reporterUid: 'reporter' })
+    expect(list.map((p) => p.uid).sort()).toEqual(['admin', 'reporter'])
   })
 
   it('does not mail a reporter twice, or one with no usable address', () => {
     const both = selectRecipients(
-      [person('reporter', { role: 'admin' }), person('north', { access: { regions: ['North'] } })],
-      { orgId: 'orgA', scope, reporterUid: 'reporter' }
+      [person('reporter', { role: 'admin' }), person('north', { role: 'admin' })],
+      { orgId: 'orgA', reporterUid: 'reporter' }
     )
     expect(both.list.map((p) => p.uid).sort()).toEqual(['north', 'reporter'])
 
     const pending = selectRecipients(
       [person('reporter', { status: 'pending', email: 'ada@example.com' })],
-      { orgId: 'orgA', scope, reporterUid: 'reporter' }
+      { orgId: 'orgA', reporterUid: 'reporter' }
     )
     expect(pending.list).toEqual([])
 
     const shared = selectRecipients(
       [
-        person('other', { siteId: 's1', email: 'ada@example.com' }),
-        person('reporter', { email: 'Ada@example.com', siteId: 's9' }),
+        person('other', { role: 'admin', email: 'ada@example.com' }),
+        person('reporter', { email: 'Ada@example.com' }),
       ],
-      { orgId: 'orgA', scope, reporterUid: 'reporter' }
+      { orgId: 'orgA', reporterUid: 'reporter' }
     )
     expect(shared.list.map((p) => p.uid)).toEqual(['other'])
   })
 
   it('keeps the reporter when the cap would drop their uid', () => {
     const users = Array.from({ length: MAX_REPORT_MAILS + 1 }, (_, i) =>
-      person(`u${String(i).padStart(3, '0')}`, { siteId: 's1', email: `u${i}@example.com` })
+      person(`u${String(i).padStart(3, '0')}`, { role: 'admin', email: `u${i}@example.com` })
     )
-    users.push(person('zzz-reporter', { siteId: 's9', email: 'reporter@example.com' }))
+    users.push(person('zzz-reporter', { role: 'member', email: 'reporter@example.com' }))
     const { list, overflow } = selectRecipients(users, {
       orgId: 'orgA',
-      scope,
       reporterUid: 'zzz-reporter',
     })
     expect(overflow).toBe(2)
@@ -123,7 +118,6 @@ describe('selectRecipients', () => {
     expect(list.some((p) => p.uid === 'u099')).toBe(false)
     const again = selectRecipients([...users].reverse(), {
       orgId: 'orgA',
-      scope,
       reporterUid: 'zzz-reporter',
     })
     expect(again.list.map((p) => p.uid)).toEqual(list.map((p) => p.uid))
@@ -131,10 +125,10 @@ describe('selectRecipients', () => {
 
   it('caps the send and keeps the same uids on every pass', () => {
     const users = Array.from({ length: MAX_REPORT_MAILS + 3 }, (_, i) =>
-      person(`u${String(i).padStart(3, '0')}`, { siteId: 's1', email: `u${i}@example.com` })
+      person(`u${String(i).padStart(3, '0')}`, { role: 'admin', email: `u${i}@example.com` })
     )
-    const first = selectRecipients(users, { orgId: 'orgA', scope })
-    const second = selectRecipients([...users].reverse(), { orgId: 'orgA', scope })
+    const first = selectRecipients(users, { orgId: 'orgA' })
+    const second = selectRecipients([...users].reverse(), { orgId: 'orgA' })
     expect(first.overflow).toBe(3)
     expect(first.list).toHaveLength(MAX_REPORT_MAILS)
     expect(second.list.map((p) => p.uid)).toEqual(first.list.map((p) => p.uid))
@@ -220,6 +214,7 @@ function mailer() {
     sent,
     config: {
       host: 'smtp.example',
+      user: 'smtp-login@example.com',
       from: 'EHS notifications <info@weehs.org>',
       pass: 'secret',
       appOrigin: 'https://suite.weehs.org',
@@ -274,12 +269,8 @@ describe('deliverIncidentReport', () => {
       mailer: box,
       logger: log(),
     })
-    expect(result).toMatchObject({ sent: 3, failed: 0 })
-    expect(box.sent.map((m) => m.to).sort()).toEqual([
-      'ada@example.com',
-      'admin@example.com',
-      'reg@example.com',
-    ])
+    expect(result).toMatchObject({ sent: 2, failed: 0 })
+    expect(box.sent.map((m) => m.to).sort()).toEqual(['ada@example.com', 'admin@example.com'])
     const ada = box.sent.find((m) => m.to === 'ada@example.com')
     expect(ada.subject).toBe('Incident reported: IRA-2026-0007')
     expect(ada.text).toContain('Description\nA pallet fell.')
@@ -288,7 +279,7 @@ describe('deliverIncidentReport', () => {
     expect(ada.text).toContain('Open it: https://suite.weehs.org/incidents/inc1')
     expect(box.sent.filter((m) => m.to === 'ada@example.com')).toHaveLength(1)
     const ledger = [...db.docs.keys()].filter((k) => k.includes('/notifications/'))
-    expect(ledger).toHaveLength(3)
+    expect(ledger).toHaveLength(2)
     expect(ledger).toContain(
       `organizations/orgA/notifications/${notificationId(['incident.reported', 'orgA', 'inc1', 'reporter'])}`
     )
@@ -406,7 +397,7 @@ describe('deliverIncidentReport', () => {
     })
     expect(second.sent).toBe(0)
     expect(again.sent).toEqual([])
-    expect(second.skipped).toBe(3)
+    expect(second.skipped).toBe(2)
   })
 
   it('does not send on a later edit, and does not read the directory to decide that', async () => {
@@ -445,7 +436,12 @@ describe('deliverIncidentReport', () => {
       logger,
     })
     expect(result.reason).toBe('not-configured')
-    expect(logger.entries[0].extra.missing).toEqual(['SMTP_HOST', 'MAIL_FROM', 'SMTP_PASS'])
+    expect(logger.entries[0].extra.missing).toEqual([
+      'SMTP_HOST',
+      'SMTP_USER',
+      'MAIL_FROM',
+      'SMTP_PASS',
+    ])
     expect([...db.docs.keys()].some((k) => k.includes('/notifications/'))).toBe(false)
     expect(db.reads).toEqual([])
   })
@@ -486,7 +482,7 @@ describe('deliverIncidentReport', () => {
     expect(again.sent).toEqual([])
   })
 
-  it('uses the site record so a region grant matches an incident that only stored the site id', async () => {
+  it('reads the site so the mail can name the region, and does not mail a region grant', async () => {
     const db = dbWith({
       users: {
         region: person('region', { access: { regions: ['North'] } }),
@@ -509,7 +505,7 @@ describe('deliverIncidentReport', () => {
       mailer: box,
       logger: log(),
     })
-    expect(box.sent.map((m) => m.to).sort()).toEqual(['admin@example.com', 'region@example.com'])
+    expect(box.sent.map((m) => m.to)).toEqual(['admin@example.com'])
     expect(box.sent[0].text).toContain('Region: North')
     expect(db.reads).toContain('organizations/orgA/sites/s1')
   })

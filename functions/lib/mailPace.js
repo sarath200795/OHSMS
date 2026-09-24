@@ -1,6 +1,6 @@
-// Private Email rejects a burst with
-// 554 5.7.1 Reject: too many messages from sender in last 60 minutes
-// on mail.privateemail.com. The ledger used to store that refusal as
+// A relay rejects a burst with a temporary quota error. Namecheap Private
+// Email said "554 5.7.1 too many messages". Brevo says the daily quota or
+// the rate limit was exceeded. The ledger used to store that refusal as
 // status:failed, and the next delivery treats any existing row as already
 // sent. The message was not accepted, so that claim must not stick.
 //
@@ -18,11 +18,23 @@ export const MAIL_SEND_GAP_MS = 1000
 export const MAIL_RATE_LIMIT_BACKOFF_MS = 5000
 export const MAIL_RATE_LIMIT_RETRIES = 1
 
-/** The Private Email hourly refusal. A bare 554 is some other reject. */
+// A bare 554 is some other reject (mailbox unavailable, sender not
+// authorised) and stays claimed. These phrases are the refusals that mean
+// the message was not accepted and a later delivery may try again.
+const RATE_LIMIT_MARKERS = [
+  'too many messages',
+  'too many emails',
+  'rate limit',
+  'quota exceeded',
+  'daily limit',
+  'sending limit',
+]
+
+/** A temporary quota refusal. A bare 554 is some other reject. */
 export function isSmtpRateLimit(err) {
   if (!err || typeof err !== 'object') return false
   const text = `${err.response || ''} ${err.message || ''}`.toLowerCase()
-  return text.includes('too many messages')
+  return RATE_LIMIT_MARKERS.some((marker) => text.includes(marker))
 }
 
 export function fanoutGapMs(explicit) {
@@ -36,7 +48,7 @@ export function defaultSleep(ms) {
 }
 
 /**
- * One recipient, then a backoff retry when Private Email refused the burst.
+ * One recipient, then a backoff retry when the relay refused the burst.
  * `stop` means the claim was released and the caller must not claim anyone
  * further down the list.
  */

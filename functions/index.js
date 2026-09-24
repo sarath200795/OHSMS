@@ -75,15 +75,17 @@ initializeApp()
  */
 const DATA_KEY_MASTER = defineSecret('DATA_KEY_MASTER')
 
-// Assignment mail sends as info@weehs.org, the mailbox that already exists.
-// Host, username and the app origin default to that mailbox
-// (functions/lib/mailer.js DEFAULT_MAIL). The From display name is the
-// organisation's name when that document has one, and a neutral label
-// otherwise. SMTP_PASS is the mailbox password, and it is a secret on
-// purpose: a mail credential in the Cloud Run environment, in
-// cleartext, is the finding LOW-13 recorded. These four triggers bind it, so
+// Notification mail is sent through the Brevo SMTP relay. The From address
+// stays info@weehs.org (functions/lib/mailer.js DEFAULT_MAIL). Host and port
+// default to that relay. SMTP_USER does not: it is the Brevo SMTP login, and
+// a default of the From mailbox would authenticate as the wrong account.
+// The From display name is the organisation's name when that document has
+// one, and a neutral label otherwise. SMTP_PASS is the Brevo SMTP key, and
+// it is a secret on purpose: a mail credential in the Cloud Run environment,
+// in cleartext, is the finding LOW-13 recorded. These triggers bind it, so
 // the secret has to exist before they deploy. A placeholder deploys; nothing
-// is sent until the value is the real mailbox password. See DEPLOYMENT.md §6.
+// is sent until the value is the real key and SMTP_USER is the login.
+// See DEPLOYMENT.md §6.
 //
 //   firebase functions:secrets:set SMTP_PASS
 const SMTP_PASS = defineSecret('SMTP_PASS')
@@ -2502,10 +2504,9 @@ export const notifyDrillAssignment = assignmentTrigger('mockDrills')
 export const notifyTrainingAssignment = assignmentTrigger('trainingAssignments')
 
 /**
- * Circulate a newly reported incident to everyone whose grants reach its
- * site, region or entity, and to the reporter (createdBy) even when they
- * do not. Separate from notifyIncidentAssignment: that one mails a CAPA
- * owner, and a report
+ * Circulate a newly reported incident to every org admin, and to the
+ * reporter (createdBy) even when they are not an admin. Separate from
+ * notifyIncidentAssignment: that one mails a CAPA owner, and a report
  * with no action yet would otherwise tell nobody. The two ledgers use
  * different keys, so one incident can do both without either suppressing
  * the other.

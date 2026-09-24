@@ -71,7 +71,9 @@ export function memoryDb(seed = {}) {
 export function mailer(sent, { pass = 'secret', origin = 'https://suite.weehs.org' } = {}) {
   return {
     config: {
-      host: 'mail.privateemail.com',
+      host: 'smtp-relay.brevo.com',
+      port: 587,
+      user: 'smtp-login@example.com',
       from: 'EHS notifications <info@weehs.org>',
       pass,
       appOrigin: origin,
