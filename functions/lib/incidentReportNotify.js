@@ -13,14 +13,17 @@
 // not recorded otherwise. A follow-up edit that adds the diagram is not a
 // new report, and must not send again.
 //
-// Recipients are the org's admins (`role === 'admin'`), plus the reporter.
-// "All the admins" is that role for the whole org, not a site grant: there
-// is no site-admin role, and a manager or a member posted at the site is
-// not on this list. createIncident writes the reporter's uid to createdBy.
-// They are included even when they are not an admin. Pending, suspended,
-// another org, or not an email is still not a mailbox. One shared mailbox
-// is one send. The cap keeps the reporter's copy.
+// Recipients are everyone whose grants reach the incident's site, entity or
+// region. Org `role === 'admin'` reaches every scope, including a report
+// that names no place. A manager or a member is included only when a
+// posting or an access grant actually reaches that place. An empty-string
+// grant matches nothing. createIncident writes the reporter's uid to
+// createdBy. They are included even when their grants miss and even when
+// they are the actor. Pending, suspended, another org, or not an email is
+// still not a mailbox. One shared mailbox is one send. The cap keeps the
+// reporter's copy.
 // ─────────────────────────────────────────────────────────────────────────────
+import { scopeFrom, selectScopedAudience, addressForToken, unionAddresses } from './audience.js'
 import { notificationId, sendOnce } from './notify.js'
 import { loadOrgDisplayName } from './mailBrand.js'
 import { describeMailGap } from './mailer.js'
@@ -31,24 +34,8 @@ import { sendPaced } from './mailPace.js'
 
 export const MAX_REPORT_MAILS = 100
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-
 function clean(value) {
   return typeof value === 'string' ? value.trim() : ''
-}
-
-function usableUid(uid) {
-  return typeof uid === 'string' && uid !== '' && uid !== '.' && uid !== '..' && !uid.includes('/')
-}
-
-/** Profile checks shared with assignment mail: tenancy, approval, a real address. */
-export function addressDecision(user, orgId) {
-  if (!user || typeof user !== 'object') return { send: false, reason: 'no-user' }
-  if (user.orgId !== orgId) return { send: false, reason: 'cross-tenant' }
-  if (user.status && user.status !== 'approved') return { send: false, reason: 'not-approved' }
-  const email = typeof user.email === 'string' ? user.email.trim() : ''
-  if (!EMAIL_RE.test(email)) return { send: false, reason: 'no-email' }
-  return { send: true, email }
 }
 
 function byUid(a, b) {
@@ -78,34 +65,17 @@ function keepReporter(uniquePeople, reporter, reporterEmail) {
 
 /**
  * One address per person. Duplicate profiles and two uids sharing a mailbox
- * collapse, so an admin reporter is not mailed twice.
+ * collapse, so a reporter who also holds a grant is not mailed twice.
  * Order is the uid, so a retry that stops halfway resumes the same list.
  *
- * `reporterUid` is createdBy. They are included even when they are not an
- * admin. A missing address still drops them. A site grant does not.
+ * `reporterUid` is createdBy. They are included even when their grants miss
+ * the incident. A missing address still drops them.
  */
-export function selectRecipients(users, { orgId, reporterUid } = {}) {
+export function selectRecipients(users, { orgId, scope, reporterUid } = {}) {
   const reporter = clean(reporterUid)
-  const byUidMap = new Map()
-  for (const user of users || []) {
-    const uid = clean(user?.uid)
-    if (!usableUid(uid) || byUidMap.has(uid)) continue
-    const isReporter = Boolean(reporter) && uid === reporter
-    if (user?.role !== 'admin' && !isReporter) continue
-    const decision = addressDecision(user, orgId)
-    if (!decision.send) continue
-    byUidMap.set(uid, { uid, email: decision.email })
-  }
-  const ordered = [...byUidMap.values()].sort(byUid)
-  const seen = new Set()
-  const uniquePeople = []
-  for (const person of ordered) {
-    const key = person.email.toLowerCase()
-    if (seen.has(key)) continue
-    seen.add(key)
-    uniquePeople.push(person)
-  }
-  return keepReporter(uniquePeople, reporter, byUidMap.get(reporter)?.email)
+  const reporterAddr = addressForToken(users, orgId, reporter)
+  const rows = unionAddresses(selectScopedAudience(users, orgId, scope || {}), [reporterAddr])
+  return keepReporter(rows, reporter, reporterAddr?.email)
 }
 
 /** The initial report has just been saved, and the incident is still live. */
@@ -174,8 +144,18 @@ export async function deliverIncidentReport({
 
   const usersSnap = await db.collection('users').where('orgId', '==', orgId).get()
   const users = usersSnap.docs.map((docSnap) => ({ uid: docSnap.id, ...(docSnap.data() || {}) }))
+  const scope = scopeFrom(
+    {
+      siteId: after?.siteId,
+      region: after?.region,
+      entity: after?.entity,
+      site: after?.site,
+    },
+    site ? { id: siteId, ...site } : null
+  )
   const recipients = selectRecipients(users, {
     orgId,
+    scope,
     reporterUid: after?.createdBy,
   })
 

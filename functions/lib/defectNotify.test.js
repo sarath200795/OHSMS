@@ -135,6 +135,12 @@ describe('deliver defect mail', () => {
         entity: 'COCO',
         assetId: 'AED-4',
       },
+      'organizations/orgA/fas/f1': {
+        siteId: 's1',
+        region: 'South',
+        entity: 'COCO',
+        deviceId: 'FAS-2',
+      },
     })
   }
 
@@ -269,6 +275,7 @@ describe('deliver defect mail', () => {
   it('includes the reporter when their grants miss the site, and ignores a public scan', async () => {
     const users = [
       user('admin', { role: 'admin' }),
+      user('posted', { siteId: 's1' }),
       user('raiser', { role: 'member' }),
       user('far', { siteId: 's9' }),
     ]
@@ -288,8 +295,12 @@ describe('deliver defect mail', () => {
       logger,
       users,
     })
-    expect(named.sent).toBe(2)
-    expect(sent.map((m) => m.to).sort()).toEqual(['admin@example.com', 'raiser@example.com'])
+    expect(named.sent).toBe(3)
+    expect(sent.map((m) => m.to).sort()).toEqual([
+      'admin@example.com',
+      'posted@example.com',
+      'raiser@example.com',
+    ])
 
     const aedSent = []
     const aed = await deliverDefectReport({
@@ -308,8 +319,12 @@ describe('deliver defect mail', () => {
       logger,
       users,
     })
-    expect(aed.sent).toBe(2)
-    expect(aedSent.map((m) => m.to).sort()).toEqual(['admin@example.com', 'raiser@example.com'])
+    expect(aed.sent).toBe(3)
+    expect(aedSent.map((m) => m.to).sort()).toEqual([
+      'admin@example.com',
+      'posted@example.com',
+      'raiser@example.com',
+    ])
 
     const fasSent = []
     const fas = await deliverDefectReport({
@@ -328,7 +343,7 @@ describe('deliver defect mail', () => {
       logger,
       users,
     })
-    expect(fas.sent).toBe(2)
+    expect(fas.sent).toBe(3)
 
     const publicSent = []
     const anon = await deliverDefectReport({
@@ -346,8 +361,8 @@ describe('deliver defect mail', () => {
       logger,
       users,
     })
-    expect(anon.sent).toBe(1)
-    expect(publicSent.map((m) => m.to)).toEqual(['admin@example.com'])
+    expect(anon.sent).toBe(2)
+    expect(publicSent.map((m) => m.to).sort()).toEqual(['admin@example.com', 'posted@example.com'])
   })
 
   it('caps the fan-out at 100', async () => {
