@@ -212,7 +212,7 @@ function clean(value) {
 
 export function renderIncidentReportedMail(
   incident = {},
-  { docId = '', appOrigin = '', site = null } = {}
+  { docId = '', appOrigin = '', site = null, sender = '' } = {}
 ) {
   const ref = safeLine(clean(incident.refNo) || clean(incident.docId) || docId, 80)
   const subject = safeLine(ref ? `Incident reported: ${ref}` : 'Incident reported', 120)
@@ -254,7 +254,7 @@ export function renderIncidentReportedMail(
   const origin = safeOrigin(appOrigin)
   const url = path && origin ? `${origin}${path}` : ''
 
-  const { text, html } = renderLayout({
+  const { text, html, senderName } = renderLayout({
     subject,
     label: 'Incident reported',
     headline: 'An incident has been reported.',
@@ -263,6 +263,7 @@ export function renderIncidentReportedMail(
     actionLabel: 'Open the incident',
     url,
     path,
+    sender,
   })
-  return { subject, text, html }
+  return { subject, text, html, senderName }
 }

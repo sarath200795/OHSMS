@@ -26,6 +26,7 @@
 // are safe to hand across.
 // ─────────────────────────────────────────────────────────────────────────────
 import { notificationId, sendOnce } from './notify.js'
+import { loadOrgDisplayName } from './mailBrand.js'
 import { describeMailGap } from './mailer.js'
 import { renderAssignmentMessage } from './mailTemplates/assignments.js'
 import { readableText } from './mailTemplates/safe.js'
@@ -342,6 +343,14 @@ export async function deliverAssignments({
   let sent = 0
   let skipped = plans.length - batch.length
   let failed = 0
+  // One read, and only once a recipient is actually going to be mailed.
+  // Loading it above the self-assign precheck would be a read on a save
+  // that sends nothing.
+  let senderName
+  const orgSender = async () => {
+    if (senderName === undefined) senderName = await loadOrgDisplayName(db, orgId)
+    return senderName
+  }
 
   for (const plan of batch) {
     // Self and a malformed uid need nothing from the directory. Fetching
@@ -389,6 +398,7 @@ export async function deliverAssignments({
     const message = renderAssignmentMail(plan, {
       assignerName,
       appOrigin: mailer.config.appOrigin,
+      sender: await orgSender(),
     })
     const key = [orgId, collection, docId, plan.slotId, plan.assigneeUid, eventId || '']
     const ref = db.doc(`organizations/${orgId}/notifications/${notificationId(key)}`)
@@ -405,6 +415,7 @@ export async function deliverAssignments({
           subject: message.subject,
           text: message.text,
           html: message.html,
+          senderName: message.senderName,
         }),
     })
 

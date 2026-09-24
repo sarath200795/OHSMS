@@ -204,7 +204,7 @@ function mailer() {
     sent,
     config: {
       host: 'smtp.example',
-      from: 'WEEHS <info@weehs.org>',
+      from: 'EHS notifications <info@weehs.org>',
       pass: 'secret',
       appOrigin: 'https://suite.weehs.org',
       configured: true,

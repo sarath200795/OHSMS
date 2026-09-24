@@ -27,7 +27,7 @@ function packaged(message) {
   const url = path && origin ? `${origin}${path}` : ''
   const subject = safeLine(message.subject, 120)
   const rows = (message.rows || []).filter((row) => row && row.value)
-  const { text, html } = renderLayout({
+  const { text, html, senderName } = renderLayout({
     subject,
     label: message.label,
     headline: message.headline,
@@ -35,15 +35,16 @@ function packaged(message) {
     actionLabel: message.actionLabel,
     url,
     path,
+    sender: message.sender,
   })
-  return { subject, text, html }
+  return { subject, text, html, senderName }
 }
 
 function row(label, value) {
   return value ? { label, value } : null
 }
 
-export function renderPermitMail(permit, event, { appOrigin = '' } = {}) {
+export function renderPermitMail(permit, event, { appOrigin = '', sender = '' } = {}) {
   const ref = reveal(permit?.permitNo, 40) || reveal(permit?.docId, 40)
   const type = reveal(permit?.typeOfWork, 80)
   const site = reveal(permit?.site, 80)
@@ -73,6 +74,7 @@ export function renderPermitMail(permit, event, { appOrigin = '' } = {}) {
     actionLabel: 'Open the permit',
     path: event?.path || '/permits',
     appOrigin,
+    sender,
   })
 }
 
@@ -82,7 +84,7 @@ const ASSET_LABEL = {
   fas: 'Fire alarm',
 }
 
-export function renderDefectMail(detail, { appOrigin = '' } = {}) {
+export function renderDefectMail(detail, { appOrigin = '', sender = '' } = {}) {
   const asset = ASSET_LABEL[detail?.assetKind] || 'Equipment'
   const summary = reveal(detail?.summary, 180)
   const ref = plain(detail?.ref, 80)
@@ -113,10 +115,11 @@ export function renderDefectMail(detail, { appOrigin = '' } = {}) {
     actionLabel: 'Open equipment',
     path: detail?.path || '/equipment/approvals',
     appOrigin,
+    sender,
   })
 }
 
-export function renderDrillReportMail(drill, { appOrigin = '' } = {}) {
+export function renderDrillReportMail(drill, { appOrigin = '', sender = '' } = {}) {
   const scenario = reveal(drill?.scenario, 120)
   const eventType = plain(drill?.eventType, 40)
   const when = [plain(drill?.date, 20), plain(drill?.time, 20)].filter(Boolean).join(' ')
@@ -147,10 +150,11 @@ export function renderDrillReportMail(drill, { appOrigin = '' } = {}) {
     actionLabel: 'Open mock drills',
     path: '/mock-drills',
     appOrigin,
+    sender,
   })
 }
 
-export function renderMeetingMail(meeting, { appOrigin = '' } = {}) {
+export function renderMeetingMail(meeting, { appOrigin = '', sender = '' } = {}) {
   const subjectLine = reveal(meeting?.subject, 120)
   const type = plain(meeting?.type, 80)
   const when = [plain(meeting?.date, 20), plain(meeting?.time, 20)].filter(Boolean).join(' ')
@@ -181,6 +185,7 @@ export function renderMeetingMail(meeting, { appOrigin = '' } = {}) {
     actionLabel: 'Open committee meetings',
     path: '/committee',
     appOrigin,
+    sender,
   })
 }
 
@@ -188,7 +193,7 @@ export function renderMeetingMail(meeting, { appOrigin = '' } = {}) {
 // copied: a region with two hundred sites is a spreadsheet, not a mail.
 export const DIGEST_AREA_CAP = 40
 
-export function renderWeatherDigest(digest, { appOrigin = '' } = {}) {
+export function renderWeatherDigest(digest, { appOrigin = '', sender = '' } = {}) {
   const areas = Array.isArray(digest?.areas) ? digest.areas : []
   const shown = areas.slice(0, DIGEST_AREA_CAP)
   const hidden = areas.length - shown.length
@@ -216,6 +221,7 @@ export function renderWeatherDigest(digest, { appOrigin = '' } = {}) {
     actionLabel: 'Open weather risk',
     path: '/weather',
     appOrigin,
+    sender,
   })
 }
 

@@ -3,8 +3,9 @@
 // One layout, four bodies, plus the incident-reported alert. Mail clients
 // strip <style> and grid, so the structure is tables with the colour on each
 // cell. There is no remote image: a client that fetched a logo would report
-// that the message was opened, and the product mark is text, which survives
-// image blocking.
+// that the message was opened, and the header is text, which survives
+// image blocking. The text is the organisation name when the caller has
+// one, and a neutral label when it does not.
 //
 // White on #1a4a44 is 9.97:1. The lighter brand teal (#3d7a72) is only 4.97:1
 // under white and fails as a button fill in clients that ignore font-weight.
@@ -14,13 +15,14 @@
 // `blocks` is optional. Assignment mail does not pass them. An empty list must
 // not change that mail's text or HTML — the incident alert is the caller that
 // needs a multi-line narrative and a 5 Why chain.
+import { NEUTRAL_SENDER, mailSenderName } from '../mailBrand.js'
 import { DEFAULT_MAIL } from '../mailer.js'
 import { escapeHtml, safeLine } from './safe.js'
 
-export const MAIL_SENDER = 'WEEHS OHSMS'
-// The mailbox createMailer sends as, unless MAIL_FROM overrides the header.
-// The footer names that mailbox even when the From display name changes, so
-// a recipient can see who actually sent it.
+export const MAIL_SENDER = NEUTRAL_SENDER
+// The mailbox createMailer sends as. The footer names that address even when
+// the From display name is the organisation, so a recipient can see which
+// mailbox actually sent the message.
 export const MAIL_ADDRESS = DEFAULT_MAIL.user
 export const MAIL_FOOTER_NOTE = 'Please do not reply to this transactional message.'
 
@@ -32,8 +34,12 @@ const MIST = '#e8f4f2'
 const LINE = '#d0e8e4'
 const PAPER = '#ffffff'
 
-export function footerLine() {
-  return `Sent by ${MAIL_SENDER} · ${MAIL_ADDRESS} · ${MAIL_FOOTER_NOTE}`
+export function senderLabel(sender) {
+  return mailSenderName(sender) || MAIL_SENDER
+}
+
+export function footerLine(sender) {
+  return `Sent by ${senderLabel(sender)} · ${MAIL_ADDRESS} · ${MAIL_FOOTER_NOTE}`
 }
 
 function detailTable(rows) {
@@ -91,7 +97,7 @@ function proseBlocks(blocks) {
     .join('')
 }
 
-function renderText({ label, headline, rows, blocks, url, path }) {
+function renderText({ label, headline, rows, blocks, url, path, sender }) {
   const lines = [label, headline, '']
   for (const row of rows) lines.push(`${row.label}: ${row.value}`)
   if (rows.length) lines.push('')
@@ -105,11 +111,11 @@ function renderText({ label, headline, rows, blocks, url, path }) {
   // HTML still has one unambiguous link.
   if (url) lines.push(`Open it: ${url}`)
   else if (path) lines.push(`Open it in the app: ${path}`)
-  lines.push('', footerLine())
+  lines.push('', footerLine(sender))
   return lines.join('\n')
 }
 
-function renderHtml({ subject, label, headline, rows, blocks, actionLabel, url, path }) {
+function renderHtml({ subject, label, headline, rows, blocks, actionLabel, url, path, sender }) {
   const preheader = safeLine(
     [headline, ...rows.map((row) => row.value), ...blocks.map((block) => block.text)]
       .filter(Boolean)
@@ -133,7 +139,7 @@ function renderHtml({ subject, label, headline, rows, blocks, actionLabel, url, 
 <table role="presentation" width="560" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:560px;background:${PAPER};border:1px solid ${LINE};border-radius:12px;">
 <tr>
 <td style="padding:18px 28px;background:${TEAL};border-radius:12px 12px 0 0;">
-<p style="margin:0;font-family:${SANS};font-size:12px;line-height:1.4;letter-spacing:0.14em;text-transform:uppercase;color:${LINE};">${MAIL_SENDER}</p>
+<p style="margin:0;font-family:${SANS};font-size:12px;line-height:1.4;letter-spacing:0.14em;text-transform:uppercase;color:${LINE};">${escapeHtml(senderLabel(sender))}</p>
 </td>
 </tr>
 <tr>
@@ -146,7 +152,7 @@ ${actionBlock({ actionLabel, url, path })}
 </tr>
 <tr>
 <td style="padding:16px 28px 22px;border-top:1px solid ${LINE};background:#f4faf8;">
-<p style="margin:0;font-family:${SANS};font-size:12px;line-height:1.55;color:${MUTED};">Sent by ${MAIL_SENDER} · <a href="mailto:${escapeHtml(MAIL_ADDRESS)}" style="color:${TEAL};text-decoration:underline;">${escapeHtml(MAIL_ADDRESS)}</a><br>${escapeHtml(MAIL_FOOTER_NOTE)}</p>
+<p style="margin:0;font-family:${SANS};font-size:12px;line-height:1.55;color:${MUTED};">Sent by ${escapeHtml(senderLabel(sender))} · <a href="mailto:${escapeHtml(MAIL_ADDRESS)}" style="color:${TEAL};text-decoration:underline;">${escapeHtml(MAIL_ADDRESS)}</a><br>${escapeHtml(MAIL_FOOTER_NOTE)}</p>
 </td>
 </tr>
 </table>
@@ -158,16 +164,18 @@ ${actionBlock({ actionLabel, url, path })}
 }
 
 /**
- * Branded HTML plus the plain-text equivalent. `rows` are already safe lines;
+ * HTML plus the plain-text equivalent. `rows` are already safe lines;
  * this still escapes them, because the caller that forgets is how a title
  * becomes a tag.
  */
 export function renderLayout(message) {
   const rows = Array.isArray(message.rows) ? message.rows.filter((row) => row && row.value) : []
   const blocks = presentBlocks(message.blocks)
-  const view = { ...message, rows, blocks }
+  const sender = senderLabel(message.sender)
+  const view = { ...message, rows, blocks, sender }
   return {
     text: renderText(view),
     html: renderHtml(view),
+    senderName: sender,
   }
 }

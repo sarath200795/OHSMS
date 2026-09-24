@@ -69,7 +69,7 @@ Firebase Hosting keeps every release:
 
 **Rules and indexes do not roll back with it.** If a rules change is at fault,
 redeploy the previous `firestore.rules` from git explicitly. This matters more
-than it sounds, because the deploy order ships rules *before* hosting — so a bad
+than it sounds, because the deploy order ships rules _before_ hosting — so a bad
 rules change is already live when the hosting rollback finishes, and the app
 will look broken in a way the release history does not explain.
 
@@ -127,7 +127,10 @@ wait on the mail.
 
 Defaults, already set in code:
 
-- From: `WEEHS <info@weehs.org>`
+- From: `EHS notifications <info@weehs.org>`. The address is the mailbox.
+  The display name is the organisation's name (`organizations/{orgId}.name`)
+  when that field is set, and this label otherwise. A display name that is
+  only the old product name is not used.
 - SMTP: `mail.privateemail.com` port 465, username `info@weehs.org`
 - Links: `https://suite.weehs.org` plus the in-app path (`/incidents/{id}`,
   `/incidents/illness/{id}`, `/mock-drills`, `/training/my`)

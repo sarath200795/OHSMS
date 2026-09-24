@@ -28,6 +28,7 @@
 // whose posting or access grant reaches the asset's site, region or entity.
 // Not every org member.
 import { scopeFrom, selectScopedAudience, loadOrgUsers, loadDoc } from './audience.js'
+import { loadOrgDisplayName } from './mailBrand.js'
 import { circulate } from './circulate.js'
 import { renderDefectMail } from './mailTemplates/lifecycle.js'
 import { readableText } from './mailTemplates/safe.js'
@@ -268,13 +269,14 @@ async function mailPlans({
       })
     }
   }
+  const sender = flat.length ? await loadOrgDisplayName(db, orgId) : ''
   return circulate({
     db,
     orgId,
     recipients: flat,
     kind,
     keyFor,
-    messageFor: (recipient) => renderDefectMail(recipient.detail, { appOrigin: origin }),
+    messageFor: (recipient) => renderDefectMail(recipient.detail, { appOrigin: origin, sender }),
     mailer,
     logger,
     now,

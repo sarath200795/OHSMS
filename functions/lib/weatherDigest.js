@@ -22,6 +22,7 @@ import { describeMailGap } from './mailer.js'
 import { circulate } from './circulate.js'
 import { assessWeather, digestLevel, digestHazards } from './weatherBands.js'
 import { gridKey, fetchObservation } from './openMeteo.js'
+import { loadOrgDisplayName, mailSenderName } from './mailBrand.js'
 import { readableText } from './mailTemplates/safe.js'
 import { renderWeatherDigest } from './mailTemplates/lifecycle.js'
 
@@ -141,10 +142,17 @@ export async function deliverWeatherDigest({
     log.error('weather digest mail is not configured', { missing, bucket })
     return { orgs: 0, sent: 0, skipped: 0, failed: 0, reason: 'not-configured', bucket }
   }
+  const knownNames = new Map()
   let orgList = orgIds
   if (!orgList) {
     const snap = await db.collection('organizations').get()
-    orgList = snap.docs.map((d) => d.id).filter(Boolean)
+    orgList = []
+    for (const docSnap of snap.docs) {
+      if (!docSnap.id || String(docSnap.id).includes('/')) continue
+      orgList.push(docSnap.id)
+      const data = typeof docSnap.data === 'function' ? docSnap.data() : null
+      knownNames.set(docSnap.id, mailSenderName(data?.name))
+    }
   }
 
   let sent = 0
@@ -170,7 +178,10 @@ export async function deliverWeatherDigest({
     const recipients = selectActiveAudience(users, orgId)
     if (!recipients.length) continue
     const origin = mailer?.config?.appOrigin || ''
-    const message = renderWeatherDigest(digest, { appOrigin: origin })
+    const sender = knownNames.has(orgId)
+      ? knownNames.get(orgId)
+      : await loadOrgDisplayName(db, orgId)
+    const message = renderWeatherDigest(digest, { appOrigin: origin, sender })
     const result = await circulate({
       db,
       orgId,

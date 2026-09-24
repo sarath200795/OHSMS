@@ -13,6 +13,7 @@
 // readable on purpose (src/shared/crypto/policy.js) and are the lines the
 // body is allowed to carry.
 import { scopeFrom, selectScopedAudience, loadOrgUsers, loadDoc } from './audience.js'
+import { loadOrgDisplayName } from './mailBrand.js'
 import { circulate } from './circulate.js'
 import { describeMailGap } from './mailer.js'
 import { loadReportAttachments } from './mailAttachments.js'
@@ -66,9 +67,10 @@ export async function deliverDrillReport({
   const users = usersIn || (await loadOrgUsers(db, orgId))
   const recipients = selectScopedAudience(users, orgId, scope)
   const origin = mailer?.config?.appOrigin || ''
+  const sender = recipients.length ? await loadOrgDisplayName(db, orgId) : ''
   const message = renderDrillReportMail(
     { ...drill, siteName: scope.siteName, region: scope.region, entity: scope.entity },
-    { appOrigin: origin }
+    { appOrigin: origin, sender }
   )
 
   // Resolved before circulate claims the ledger. The file is the PDF the app

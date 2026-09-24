@@ -18,6 +18,7 @@
 // in the minutes PDF the app uploaded for this write. Type, date and siteId
 // stay readable. A meeting with no site is org-wide: only org admins.
 import { scopeFrom, selectScopedAudience, loadOrgUsers, loadDoc } from './audience.js'
+import { loadOrgDisplayName } from './mailBrand.js'
 import { circulate } from './circulate.js'
 import { describeMailGap } from './mailer.js'
 import { loadReportAttachments } from './mailAttachments.js'
@@ -64,6 +65,7 @@ export async function deliverMeetingMail({
   const users = usersIn || (await loadOrgUsers(db, orgId))
   const recipients = selectScopedAudience(users, orgId, scope)
   const origin = mailer?.config?.appOrigin || ''
+  const sender = recipients.length ? await loadOrgDisplayName(db, orgId) : ''
   const message = renderMeetingMail(
     {
       ...meeting,
@@ -71,7 +73,7 @@ export async function deliverMeetingMail({
       region: scope.region,
       entity: scope.entity,
     },
-    { appOrigin: origin }
+    { appOrigin: origin, sender }
   )
 
   // Minutes stay out of the body even when they are plaintext. They belong in
