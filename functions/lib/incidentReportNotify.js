@@ -29,8 +29,16 @@
 // fills the gap, because a region grant is access to that site.
 //
 // An incident that names no site, region or entity has nothing to match. Only
-// admins receive it: they are the people the access model already treats as
-// reaching every site.
+// admins receive it from the scope — they are the people the access model
+// already treats as reaching every site — plus the reporter, below.
+//
+// The reporter is createdBy. createIncident writes the actor's uid there.
+// Incidents do not store a second reporter uid. They are mailed even when
+// their grants do not reach the site, region or entity. The address checks still
+// apply: pending, suspended, another org, or not an email is not a mailbox.
+// A grant they also hold must not send a second copy. The cap keeps their
+// mailbox too: a list ordered by uid would drop them once the org is large,
+// which is the same "the person who reported it heard nothing" failure.
 // ─────────────────────────────────────────────────────────────────────────────
 import { notificationId, sendOnce } from './notify.js'
 import { loadOrgDisplayName } from './mailBrand.js'
@@ -101,22 +109,53 @@ export function addressDecision(user, orgId) {
   return { send: true, email }
 }
 
+function byUid(a, b) {
+  return a.uid < b.uid ? -1 : a.uid > b.uid ? 1 : 0
+}
+
+/**
+ * The reporter's mailbox stays inside the cap. Dedupe may already have kept
+ * another profile on the same address; that row is the reporter's copy and
+ * is what has to survive. Overflow stays the count of people not sent.
+ */
+function keepReporter(uniquePeople, reporter, reporterEmail) {
+  const list = uniquePeople.slice(0, MAX_REPORT_MAILS)
+  const overflow = Math.max(0, uniquePeople.length - list.length)
+  const email = typeof reporterEmail === 'string' ? reporterEmail.toLowerCase() : ''
+  const already =
+    list.some((person) => person.uid === reporter) ||
+    (email && list.some((person) => person.email.toLowerCase() === email))
+  if (!reporter || already) return { list, overflow }
+  const held = uniquePeople.find(
+    (person) => person.uid === reporter || (email && person.email.toLowerCase() === email)
+  )
+  if (!held) return { list, overflow }
+  const room = list.slice(0, Math.max(0, MAX_REPORT_MAILS - 1))
+  return { list: [...room, held].sort(byUid), overflow }
+}
+
 /**
  * One address per person. Duplicate profiles and two uids sharing a mailbox
  * collapse, so the reporter is not mailed twice for also holding a site grant.
  * Order is the uid, so a retry that stops halfway resumes the same list.
+ *
+ * `reporterUid` is createdBy. They are included even when userReachesScope
+ * is false. A missing address still drops them: the guarantee is a copy,
+ * not a send to nowhere.
  */
-export function selectRecipients(users, { orgId, scope }) {
-  const byUid = new Map()
+export function selectRecipients(users, { orgId, scope, reporterUid } = {}) {
+  const reporter = clean(reporterUid)
+  const byUidMap = new Map()
   for (const user of users || []) {
     const uid = clean(user?.uid)
-    if (!usableUid(uid) || byUid.has(uid)) continue
-    if (!userReachesScope(user, scope)) continue
+    if (!usableUid(uid) || byUidMap.has(uid)) continue
+    const isReporter = Boolean(reporter) && uid === reporter
+    if (!isReporter && !userReachesScope(user, scope)) continue
     const decision = addressDecision(user, orgId)
     if (!decision.send) continue
-    byUid.set(uid, { uid, email: decision.email })
+    byUidMap.set(uid, { uid, email: decision.email })
   }
-  const ordered = [...byUid.values()].sort((a, b) => (a.uid < b.uid ? -1 : a.uid > b.uid ? 1 : 0))
+  const ordered = [...byUidMap.values()].sort(byUid)
   const seen = new Set()
   const uniquePeople = []
   for (const person of ordered) {
@@ -125,10 +164,7 @@ export function selectRecipients(users, { orgId, scope }) {
     seen.add(key)
     uniquePeople.push(person)
   }
-  return {
-    list: uniquePeople.slice(0, MAX_REPORT_MAILS),
-    overflow: Math.max(0, uniquePeople.length - MAX_REPORT_MAILS),
-  }
+  return keepReporter(uniquePeople, reporter, byUidMap.get(reporter)?.email)
 }
 
 /** The initial report has just been saved, and the incident is still live. */
@@ -196,7 +232,11 @@ export async function deliverIncidentReport({
   const usersSnap = await db.collection('users').where('orgId', '==', orgId).get()
   const users = usersSnap.docs.map((docSnap) => ({ uid: docSnap.id, ...(docSnap.data() || {}) }))
   const scope = incidentScope(after, site)
-  const recipients = selectRecipients(users, { orgId, scope })
+  const recipients = selectRecipients(users, {
+    orgId,
+    scope,
+    reporterUid: after?.createdBy,
+  })
 
   if (recipients.overflow) {
     log.error('incident report mail capped', {

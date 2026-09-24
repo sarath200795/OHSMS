@@ -1,4 +1,4 @@
-// Mail the people a permit to work actually names, when its lifecycle moves.
+// Mail the people who can see a permit, when its lifecycle moves.
 //
 // The document is organizations/{orgId}/permits/{id}. Status on screen is
 // derived (src/modules/ptw/lib/permitStatus.js); what is stored, and what this
@@ -11,28 +11,38 @@
 //
 // Create is the submit. There is no later "submit draft" write.
 //
-// Who has a uid:
-//   createdBy                         the person who raised it
-//   assignedEngineer / assignedOperator
-//   *.by / closure.requestedBy / extension.requestedBy
+// Recipients are the incident-report audience (selectScopedAudience): org
+// admins, plus any approved member whose posting or access.sites /
+// access.regions / access.entities reaches the permit. An empty string is
+// not a grant. The site record fills region and entity when the permit
+// stored a site id, or only a site name that matches one site — createPermit
+// keeps the name and drops siteId, so the name match is how a live permit
+// finds its grants. An ambiguous name is not a grant.
 //
-// Who does not: participants, the receiver (issuedToName / issuedToPhone),
-// fire watchers and the confined-space watcher are display names and a phone.
-// Matching those names against the directory would cross people who share
-// one, which is why assignment mail refuses to. A phone number is not an
-// address. They are not mailed.
+// createdBy, the person who raised it, is on every lifecycle mail, including
+// the raise. They used to be removed: the event's actorUid was skipped, and
+// on a raise that uid is createdBy. The rest of the list was only the named
+// engineer and operator, or — when neither was named — roles admin, manager,
+// engineering and operations whose grants reached the site. The raiser was
+// the actor, so they were dropped from the only list that might have named
+// them, and a site, entity or region admin outside those roles was never on
+// it. That is why raising a permit could send the raiser nothing.
 //
-// When a team has no named approver, the form says the permit routes to the
-// whole team. In this app that team is role admin, manager, engineering or
-// operations (src/modules/ptw/context/AuthContext.jsx maps manager → the
-// permit admin). Those people are included only when their grants reach the
-// permit's site. Members and auditors are not approvers. If the site name
-// matches more than one site, or none, the unassigned-team mail goes to org
-// admins only — a guess must not fan out to every manager.
+// A raiser with no usable address is still not mailed. Pending, suspended,
+// another org, or not an email: there is nowhere to send it. They are placed
+// first so the circulation cap, which sends the front of the list, cannot
+// drop them once the org is large.
+//
+// Display-name participants, the receiver (issuedToName / issuedToPhone),
+// fire watchers and the confined-space watcher are not uids. Matching those
+// names against the directory would cross people who share one. They are
+// not mailed. A named engineer or operator is mailed when their own grants
+// reach the permit, the same as any other member. Being named does not
+// shrink the audience to those two.
 import { safePathSegment } from './assignmentNotify.js'
 import {
   scopeFrom,
-  reachesScope,
+  selectScopedAudience,
   recipientAddress,
   dedupeByEmail,
   loadOrgUsers,
@@ -44,8 +54,6 @@ import { loadReportAttachments } from './mailAttachments.js'
 import { permitMailAttachments } from './reportAttachments.js'
 import { renderPermitMail } from './mailTemplates/lifecycle.js'
 import { readableText } from './mailTemplates/safe.js'
-
-export const PERMIT_APPROVER_ROLES = ['admin', 'manager', 'engineering', 'operations']
 
 const TEAMS = ['engineering', 'operations']
 
@@ -127,14 +135,6 @@ function blockDone(block) {
   )
 }
 
-function assigneeFor(permit, team) {
-  return uid(team === 'engineering' ? permit?.assignedEngineer : permit?.assignedOperator)
-}
-
-function unassignedTeams(permit) {
-  return TEAMS.filter((team) => !assigneeFor(permit, team))
-}
-
 function teamLabel(team) {
   if (team === 'engineering') return 'Engineering'
   if (team === 'operations') return 'Operations'
@@ -147,7 +147,6 @@ function makeEvent(name, fields) {
     actorUid: uid(fields.actorUid),
     token: fields.token,
     team: fields.team || '',
-    needsTeam: Boolean(fields.needsTeam),
     ...COPY[name],
   }
 }
@@ -164,12 +163,10 @@ function decisionEvents(
   const prev = before?.[blockName]
   const next = after?.[blockName]
   if (!prev && next) {
-    const open = unassignedTeams(after)
     return [
       makeEvent(requestedName, {
         actorUid: next.requestedBy,
         token: `${requestedName}:${next.requestedAt || ''}`,
-        needsTeam: open.length > 0,
       }),
     ]
   }
@@ -234,12 +231,10 @@ export function planPermitEvents(before, after) {
         ]
       }
     }
-    const open = unassignedTeams(after)
     return [
       makeEvent('raised', {
         actorUid: after.createdBy,
         token: 'raised',
-        needsTeam: open.length > 0,
       }),
     ]
   }
@@ -270,15 +265,11 @@ export function planPermitEvents(before, after) {
       const next = statusOf(after, team)
       if (prev === next) continue
       if (next !== 'approved' && next !== 'rejected') continue
-      const other = team === 'engineering' ? 'operations' : 'engineering'
-      const otherOpen =
-        next === 'approved' && statusOf(after, other) !== 'approved' && !assigneeFor(after, other)
       events.push(
         makeEvent(next === 'approved' ? 'approved' : 'rejected', {
           actorUid: after[team]?.by,
           token: `${next}:${team}:${after[team]?.at || ''}`,
           team,
-          needsTeam: otherOpen,
         })
       )
     }
@@ -309,25 +300,6 @@ export function planPermitEvents(before, after) {
   return events
 }
 
-function namedUsers(permit, users) {
-  const ids = [
-    permit?.createdBy,
-    permit?.assignedEngineer,
-    permit?.assignedOperator,
-    permit?.engineering?.by,
-    permit?.operations?.by,
-    permit?.closure?.requestedBy,
-    permit?.closure?.engineering?.by,
-    permit?.closure?.operations?.by,
-    permit?.extension?.requestedBy,
-    permit?.extension?.engineering?.by,
-    permit?.extension?.operations?.by,
-    permit?.closedDueToObservation?.by,
-  ]
-  const wanted = new Set(ids.map(uid).filter(Boolean))
-  return (users || []).filter((user) => user && wanted.has(user.uid))
-}
-
 /**
  * One site, or null when the name is missing or matches more than one.
  * An ambiguous match is not a grant.
@@ -348,16 +320,28 @@ export function matchPermitSite(permit, sites) {
   return hits.length === 1 ? hits[0] : null
 }
 
-export function isPermitApproverRole(user) {
-  return PERMIT_APPROVER_ROLES.includes(user?.role)
+/**
+ * Move the raiser's mailbox to the front. circulate sends the front of the
+ * list and drops the rest at the cap; a uid that sorts last would be the
+ * one dropped, and that is often the person who just raised the permit.
+ * When another profile already owns the raiser's address, that row is the
+ * copy — one mailbox, still first.
+ */
+function raiserFirst(rows, raiserUid, raiserEmail) {
+  const email = typeof raiserEmail === 'string' ? raiserEmail.toLowerCase() : ''
+  const index = rows.findIndex(
+    (row) => row.uid === raiserUid || (email && row.email.toLowerCase() === email)
+  )
+  if (index <= 0) return rows
+  return [rows[index], ...rows.slice(0, index), ...rows.slice(index + 1)]
 }
 
 /**
- * Recipients for one event. The actor is skipped: they just did the thing.
- * Named uids are included even when their role would not otherwise approve.
- * The unassigned-team fallback is approver roles whose grants reach the site.
+ * Recipients for one lifecycle event. The event is not a filter: a raise, an
+ * approval and a close share this list, and event.actorUid is not removed.
+ * The raiser is added even when their grants do not reach the permit.
  */
-export function recipientsForPermitEvent(event, permit, users, sites, orgId) {
+export function recipientsForPermitEvent(_event, permit, users, sites, orgId) {
   const site = matchPermitSite(permit, sites)
   const scope = scopeFrom(
     {
@@ -368,22 +352,24 @@ export function recipientsForPermitEvent(event, permit, users, sites, orgId) {
     },
     site
   )
-  const rows = []
-  const push = (user) => {
-    if (!user || user.uid === event.actorUid) return
-    const addr = recipientAddress(user, orgId)
-    if (addr) rows.push(addr)
-  }
-  for (const user of namedUsers(permit, users)) push(user)
-  if (event.needsTeam) {
-    for (const user of users || []) {
-      if (!isPermitApproverRole(user)) continue
-      if (!reachesScope(user, scope)) continue
-      push(user)
+  let rows = selectScopedAudience(users, orgId, scope)
+  const raiserUid = uid(permit?.createdBy)
+  let raiserEmail = ''
+  if (raiserUid && !rows.some((row) => row.uid === raiserUid)) {
+    const raiser = (users || []).find((user) => user && uid(user.uid) === raiserUid)
+    const addr = recipientAddress(raiser, orgId)
+    if (addr) {
+      raiserEmail = addr.email
+      // Another profile may already hold this mailbox. dedupe keeps one,
+      // the lowest uid, so the raiser is not mailed twice for also being
+      // outside the scope.
+      rows = dedupeByEmail([...rows, addr])
     }
+  } else if (raiserUid) {
+    raiserEmail = rows.find((row) => row.uid === raiserUid)?.email || ''
   }
   return {
-    recipients: dedupeByEmail(rows),
+    recipients: raiserFirst(rows, raiserUid, raiserEmail),
     region: scope.region,
     entity: scope.entity,
   }

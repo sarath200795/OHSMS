@@ -116,6 +116,76 @@ describe('selectRecipients', () => {
     expect(list.map((p) => p.uid).sort()).toEqual(['legacy', 'ok'])
   })
 
+  it('mails the reporter of an incident that names no place, besides admins', () => {
+    const blank = { siteId: '', regions: [], entities: [] }
+    const { list } = selectRecipients(
+      [
+        person('reporter', { siteId: 's9' }),
+        person('admin', { role: 'admin' }),
+        person('member', { siteId: 's1' }),
+        person('blank-region', { access: { regions: [''] } }),
+      ],
+      { orgId: 'orgA', scope: blank, reporterUid: 'reporter' }
+    )
+    expect(list.map((p) => p.uid).sort()).toEqual(['admin', 'reporter'])
+  })
+
+  it('mails the reporter even when their grants do not reach the incident', () => {
+    const users = [
+      person('reporter', { email: 'ada@example.com', siteId: 's9' }),
+      person('north', { email: 'north@example.com', access: { regions: ['North'] } }),
+      person('admin', { role: 'admin', email: 'admin@example.com' }),
+      person('elsewhere', { email: 'else@example.com', siteId: 's9' }),
+    ]
+    const { list } = selectRecipients(users, { orgId: 'orgA', scope, reporterUid: 'reporter' })
+    expect(list.map((p) => p.uid).sort()).toEqual(['admin', 'north', 'reporter'])
+  })
+
+  it('does not mail a reporter twice, or one with no usable address', () => {
+    const scoped = selectRecipients(
+      [person('reporter', { siteId: 's1' }), person('north', { access: { regions: ['North'] } })],
+      { orgId: 'orgA', scope, reporterUid: 'reporter' }
+    )
+    expect(scoped.list.map((p) => p.uid).sort()).toEqual(['north', 'reporter'])
+
+    const pending = selectRecipients(
+      [person('reporter', { status: 'pending', email: 'ada@example.com', siteId: 's9' })],
+      { orgId: 'orgA', scope, reporterUid: 'reporter' }
+    )
+    expect(pending.list).toEqual([])
+
+    const shared = selectRecipients(
+      [
+        person('other', { email: 'ada@example.com', siteId: 's1' }),
+        person('reporter', { email: 'Ada@example.com', siteId: 's9' }),
+      ],
+      { orgId: 'orgA', scope, reporterUid: 'reporter' }
+    )
+    expect(shared.list.map((p) => p.uid)).toEqual(['other'])
+  })
+
+  it('keeps the reporter when the cap would drop their uid', () => {
+    const users = Array.from({ length: MAX_REPORT_MAILS + 1 }, (_, i) =>
+      person(`u${String(i).padStart(3, '0')}`, { siteId: 's1', email: `u${i}@example.com` })
+    )
+    users.push(person('zzz-reporter', { siteId: 's9', email: 'reporter@example.com' }))
+    const { list, overflow } = selectRecipients(users, {
+      orgId: 'orgA',
+      scope,
+      reporterUid: 'zzz-reporter',
+    })
+    expect(overflow).toBe(2)
+    expect(list).toHaveLength(MAX_REPORT_MAILS)
+    expect(list.some((p) => p.uid === 'zzz-reporter')).toBe(true)
+    expect(list.some((p) => p.uid === 'u099')).toBe(false)
+    const again = selectRecipients([...users].reverse(), {
+      orgId: 'orgA',
+      scope,
+      reporterUid: 'zzz-reporter',
+    })
+    expect(again.list.map((p) => p.uid)).toEqual(list.map((p) => p.uid))
+  })
+
   it('caps the send and keeps the same uids on every pass', () => {
     const users = Array.from({ length: MAX_REPORT_MAILS + 3 }, (_, i) =>
       person(`u${String(i).padStart(3, '0')}`, { siteId: 's1', email: `u${i}@example.com` })
@@ -341,6 +411,29 @@ describe('deliverIncidentReport', () => {
         `organizations/orgA/notifications/${notificationId(['incident.reported', 'orgA', 'inc1', 'reporter'])}`
       ).status
     ).toBe('sent')
+  })
+
+  it('mails the reporter when their grants do not reach the site', async () => {
+    const db = dbWith({
+      users: {
+        reporter: person('reporter', { email: 'ada@example.com', siteId: 's9' }),
+        outsider: person('outsider', { email: 'out@example.com', siteId: 's9' }),
+        admin: person('admin', { role: 'admin', email: 'admin@example.com' }),
+      },
+      sites: { s1: { name: 'Plant A', region: 'North', entity: 'Acme' } },
+    })
+    const box = mailer()
+    const result = await deliverIncidentReport({
+      db,
+      orgId: 'orgA',
+      docId: 'inc1',
+      before: draft,
+      after: { ...draft, stagesDone: { initial: true }, createdBy: 'reporter' },
+      mailer: box,
+      logger: log(),
+    })
+    expect(result.sent).toBe(2)
+    expect(box.sent.map((m) => m.to).sort()).toEqual(['ada@example.com', 'admin@example.com'])
   })
 
   it('does not send again when the same report event is redelivered', async () => {
