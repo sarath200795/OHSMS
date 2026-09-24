@@ -90,7 +90,7 @@ write_env() {
   local host="${SMTP_HOST:-mail.privateemail.com}"
   local port="${SMTP_PORT:-465}"
   local user="${SMTP_USER:-info@weehs.org}"
-  local from="${MAIL_FROM:-WEEHS <info@weehs.org>}"
+  local from="${MAIL_FROM:-EHS notifications <info@weehs.org>}"
   local origin="${APP_ORIGIN:-https://suite.weehs.org}"
 
   reject_param_value SMTP_HOST "$host"

@@ -33,6 +33,7 @@
 // reaching every site.
 // ─────────────────────────────────────────────────────────────────────────────
 import { notificationId, sendOnce } from './notify.js'
+import { loadOrgDisplayName } from './mailBrand.js'
 import { describeMailGap } from './mailer.js'
 import { loadReportAttachments } from './mailAttachments.js'
 import { loadAppReportAttachment } from './reportAttachments.js'
@@ -215,6 +216,7 @@ export async function deliverIncidentReport({
     docId,
     appOrigin: mailer.config.appOrigin,
     site,
+    sender: await loadOrgDisplayName(db, orgId),
   })
 
   // Before any claim. The file is the initial-report PDF the app uploaded on
@@ -257,6 +259,7 @@ export async function deliverIncidentReport({
           text: message.text,
           html: message.html,
           attachments,
+          senderName: message.senderName,
         }),
     })
 

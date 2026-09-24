@@ -38,6 +38,7 @@ import {
   loadOrgUsers,
 } from './audience.js'
 import { circulate } from './circulate.js'
+import { loadOrgDisplayName } from './mailBrand.js'
 import { describeMailGap } from './mailer.js'
 import { loadReportAttachments } from './mailAttachments.js'
 import { permitMailAttachments } from './reportAttachments.js'
@@ -428,6 +429,7 @@ export async function deliverPermitMails({
   }
 
   const origin = mailer?.config?.appOrigin || ''
+  const sender = flat.length ? await loadOrgDisplayName(db, orgId) : ''
   // The permit copy, plus files already stored on this permit. Built before
   // the claim so a missing object cannot mark the row failed.
   let attachments = []
@@ -460,7 +462,7 @@ export async function deliverPermitMails({
       renderPermitMail(
         after,
         { ...recipient.event, teamLabel: teamLabel(recipient.event.team), path: permitPath(docId) },
-        { appOrigin: origin }
+        { appOrigin: origin, sender }
       ),
     mailer,
     logger,

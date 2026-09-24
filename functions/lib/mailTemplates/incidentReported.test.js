@@ -78,7 +78,7 @@ describe('renderIncidentReportedMail', () => {
     expect(message.html).toContain('href="https://suite.weehs.org/incidents/inc1"')
     expect(message.html).toContain('info@weehs.org')
     expect(message.html.toLowerCase()).toContain('do not reply')
-    expect(message.html).toContain('WEEHS OHSMS')
+    expect(message.html).toContain('EHS notifications')
   })
 
   it('escapes description and 5 Why in HTML and keeps the text part literal', () => {

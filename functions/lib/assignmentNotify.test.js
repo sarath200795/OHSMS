@@ -474,6 +474,8 @@ describe('deliverAssignments', () => {
     expect(box.sent[0].html).toContain('Priya Menon')
     expect(box.sent[0].text).toContain('https://app.example/incidents/i1')
     expect(box.sent[0].html).toContain('https://app.example/incidents/i1')
+    expect(box.sent[0].text).toContain('Sent by EHS notifications ·')
+    expect(box.sent[0].senderName).toBe('EHS notifications')
     const ledger = [...db.docs.keys()].filter((k) => k.includes('/notifications/'))
     expect(ledger).toHaveLength(1)
     expect(db.docs.get(ledger[0]).status).toBe('sent')
@@ -492,6 +494,31 @@ describe('deliverAssignments', () => {
     })
     expect(second.sent).toBe(0)
     expect(again.sent).toEqual([])
+  })
+
+  it('uses the organisation name as the sender when the org document has one', async () => {
+    const db = dbWith({
+      'users/u1': member(),
+      'organizations/orgA': { name: 'Northwind Steel' },
+    })
+    const box = mailer()
+    await deliverAssignments({
+      db,
+      collection: 'incidents',
+      orgId: 'orgA',
+      docId: 'i1',
+      before: null,
+      after,
+      eventId: 'evt-1',
+      mailer: box,
+      logger: log(),
+    })
+    expect(box.sent).toHaveLength(1)
+    expect(box.sent[0].senderName).toBe('Northwind Steel')
+    expect(box.sent[0].text).toContain('Sent by Northwind Steel ·')
+    expect(box.sent[0].html).toContain('Northwind Steel')
+    expect(`${box.sent[0].text}\n${box.sent[0].html}`).not.toContain('WEEHS')
+    expect(db.reads).toContain('organizations/orgA')
   })
 
   it('does not email the assigner when they picked themselves, and does not read their profile to decide that', async () => {

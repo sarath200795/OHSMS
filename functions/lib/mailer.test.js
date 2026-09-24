@@ -4,7 +4,7 @@ import { parseFrom, mailConfigFrom, describeMailGap, safeOrigin, createMailer } 
 describe('parseFrom', () => {
   it('accepts a bare address and a named address', () => {
     expect(parseFrom(' safety@example.com ')).toBe('safety@example.com')
-    expect(parseFrom('WEHS <safety@example.com>')).toBe('WEHS <safety@example.com>')
+    expect(parseFrom('Ops <safety@example.com>')).toBe('Ops <safety@example.com>')
   })
 
   it('strips a newline so the header cannot be split', () => {
@@ -41,7 +41,7 @@ describe('mail configuration', () => {
       host: 'mail.privateemail.com',
       port: 465,
       user: 'info@weehs.org',
-      from: 'WEEHS <info@weehs.org>',
+      from: 'EHS notifications <info@weehs.org>',
       appOrigin: 'https://suite.weehs.org',
       configured: false,
     })
@@ -57,7 +57,7 @@ describe('mail configuration', () => {
       SMTP_PORT: '2525',
       SMTP_USER: 'safety',
       SMTP_PASS: 'secret',
-      MAIL_FROM: 'WEHS <safety@example.com>',
+      MAIL_FROM: 'Ops <safety@example.com>',
       APP_ORIGIN: 'https://app.example',
     })
     expect(config).toMatchObject({
@@ -65,10 +65,22 @@ describe('mail configuration', () => {
       port: 2525,
       user: 'safety',
       pass: 'secret',
-      from: 'WEHS <safety@example.com>',
+      from: 'Ops <safety@example.com>',
       appOrigin: 'https://app.example',
       configured: true,
     })
+  })
+
+  it('replaces a product-name display name and keeps the mailbox address', () => {
+    expect(mailConfigFrom({ MAIL_FROM: 'WEEHS <info@weehs.org>' }).from).toBe(
+      'EHS notifications <info@weehs.org>'
+    )
+    expect(mailConfigFrom({ MAIL_FROM: 'WEHS OHSMS <safety@example.com>' }).from).toBe(
+      'EHS notifications <safety@example.com>'
+    )
+    expect(mailConfigFrom({ MAIL_FROM: 'Ops <ops@example.com>' }).from).toBe(
+      'Ops <ops@example.com>'
+    )
   })
 
   it('defaults a nonsense port to the mailbox SSL port rather than failing open on port 0', () => {
@@ -89,12 +101,49 @@ describe('createMailer', () => {
     expect(transport.sendMail).not.toHaveBeenCalled()
   })
 
+  it('puts the organisation name in front of the mailbox address', async () => {
+    const transport = { sendMail: vi.fn(async () => {}) }
+    const mailer = createMailer({ SMTP_PASS: 'secret' }, { transport })
+    await mailer.send({
+      to: 'person@example.com',
+      subject: 'Assigned',
+      text: 'body',
+      senderName: 'Northwind Steel',
+    })
+    expect(transport.sendMail).toHaveBeenCalledWith({
+      from: 'Northwind Steel <info@weehs.org>',
+      to: 'person@example.com',
+      subject: 'Assigned',
+      text: 'body',
+    })
+  })
+
+  it('does not send a product name when that is the name it was given', async () => {
+    const transport = { sendMail: vi.fn(async () => {}) }
+    const mailer = createMailer(
+      { SMTP_PASS: 'secret', MAIL_FROM: 'WEEHS <info@weehs.org>' },
+      { transport }
+    )
+    await mailer.send({
+      to: 'person@example.com',
+      subject: 'Assigned',
+      text: 'body',
+      senderName: 'WEEHS',
+    })
+    expect(transport.sendMail).toHaveBeenCalledWith({
+      from: 'EHS notifications <info@weehs.org>',
+      to: 'person@example.com',
+      subject: 'Assigned',
+      text: 'body',
+    })
+  })
+
   it('sends as info@weehs.org when only the mailbox password is set', async () => {
     const transport = { sendMail: vi.fn(async () => {}) }
     const mailer = createMailer({ SMTP_PASS: 'secret' }, { transport })
     await mailer.send({ to: 'person@example.com', subject: 'Assigned', text: 'body' })
     expect(transport.sendMail).toHaveBeenCalledWith({
-      from: 'WEEHS <info@weehs.org>',
+      from: 'EHS notifications <info@weehs.org>',
       to: 'person@example.com',
       subject: 'Assigned',
       text: 'body',
@@ -111,7 +160,7 @@ describe('createMailer', () => {
       html: '<p>body</p>',
     })
     expect(transport.sendMail).toHaveBeenCalledWith({
-      from: 'WEEHS <info@weehs.org>',
+      from: 'EHS notifications <info@weehs.org>',
       to: 'person@example.com',
       subject: 'Assigned',
       text: 'body',
@@ -167,7 +216,7 @@ describe('createMailer', () => {
       ],
     })
     expect(transport.sendMail).toHaveBeenCalledWith({
-      from: 'WEEHS <info@weehs.org>',
+      from: 'EHS notifications <info@weehs.org>',
       to: 'person@example.com',
       subject: 'Mock drill report',
       text: 'body',

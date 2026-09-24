@@ -99,7 +99,10 @@ function subjectFor(spec, { title, record, what }) {
  * readableText are omitted, not replaced with a placeholder — a blank line
  * is how a sealed title used to become ciphertext in a subject.
  */
-export function renderAssignmentMessage(plan = {}, { assignerName = '', appOrigin = '' } = {}) {
+export function renderAssignmentMessage(
+  plan = {},
+  { assignerName = '', appOrigin = '', sender = '' } = {}
+) {
   const spec = MODULES[plan.kind] || FALLBACK
   const what = safeLine(plan.what, 160)
   const title = actionTitle(plan, spec)
@@ -123,7 +126,7 @@ export function renderAssignmentMessage(plan = {}, { assignerName = '', appOrigi
   const origin = safeOrigin(appOrigin)
   const url = path && origin ? `${origin}${path}` : ''
 
-  const { text, html } = renderLayout({
+  const { text, html, senderName } = renderLayout({
     subject,
     label: spec.label,
     headline,
@@ -131,6 +134,7 @@ export function renderAssignmentMessage(plan = {}, { assignerName = '', appOrigi
     actionLabel: spec.actionLabel,
     url,
     path,
+    sender,
   })
-  return { subject, text, html }
+  return { subject, text, html, senderName }
 }

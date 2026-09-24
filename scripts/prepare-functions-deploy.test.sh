@@ -32,7 +32,7 @@ assert_eq "$(basename "$env_file")" ".env.weehs-4eb28" "dotenv filename"
 assert_eq "$(grep '^SMTP_HOST=' "$env_file")" "SMTP_HOST=mail.privateemail.com" "default host"
 assert_eq "$(grep '^SMTP_PORT=' "$env_file")" "SMTP_PORT=465" "default port"
 assert_eq "$(grep '^SMTP_USER=' "$env_file")" "SMTP_USER=info@weehs.org" "default user"
-assert_eq "$(grep '^MAIL_FROM=' "$env_file")" "MAIL_FROM=WEEHS <info@weehs.org>" "default from"
+assert_eq "$(grep '^MAIL_FROM=' "$env_file")" "MAIL_FROM=EHS notifications <info@weehs.org>" "default from"
 assert_eq "$(grep '^APP_ORIGIN=' "$env_file")" "APP_ORIGIN=https://suite.weehs.org" "default origin"
 if grep -Eq '^(DATA_KEY_MASTER|SMTP_PASS)=' "$env_file"; then
   fail "secret key written into dotenv"

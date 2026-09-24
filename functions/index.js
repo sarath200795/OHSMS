@@ -76,9 +76,11 @@ initializeApp()
 const DATA_KEY_MASTER = defineSecret('DATA_KEY_MASTER')
 
 // Assignment mail sends as info@weehs.org, the mailbox that already exists.
-// Host, username, from-address and the app origin default to that mailbox
-// (functions/lib/mailer.js DEFAULT_MAIL). SMTP_PASS is its password, and it
-// is a secret on purpose: a mail credential in the Cloud Run environment, in
+// Host, username and the app origin default to that mailbox
+// (functions/lib/mailer.js DEFAULT_MAIL). The From display name is the
+// organisation's name when that document has one, and a neutral label
+// otherwise. SMTP_PASS is the mailbox password, and it is a secret on
+// purpose: a mail credential in the Cloud Run environment, in
 // cleartext, is the finding LOW-13 recorded. These four triggers bind it, so
 // the secret has to exist before they deploy. A placeholder deploys; nothing
 // is sent until the value is the real mailbox password. See DEPLOYMENT.md §6.

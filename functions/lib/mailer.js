@@ -12,6 +12,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { prepareAttachments } from './mailAttachments.js'
+import { isProductBrandName, mailSenderName, NEUTRAL_SENDER } from './mailBrand.js'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -20,7 +21,9 @@ export const DEFAULT_MAIL = {
   host: 'mail.privateemail.com',
   port: '465',
   user: 'info@weehs.org',
-  from: 'WEEHS <info@weehs.org>',
+  // Display name only. The address is the mailbox. Callers that know the
+  // organisation replace this with its name; see applySenderName.
+  from: `${NEUTRAL_SENDER} <info@weehs.org>`,
   appOrigin: 'https://suite.weehs.org',
 }
 
@@ -41,6 +44,28 @@ export function parseFrom(value) {
   return EMAIL_RE.test(raw) ? raw : ''
 }
 
+/**
+ * From header for one message. The address is always the configured mailbox.
+ * `displayName` (the organisation, when the mail has one) replaces the name
+ * in front of it. A configured name that is only the old product name is
+ * replaced too, so a MAIL_FROM left over from before that change does not
+ * put the name back in the inbox.
+ */
+export function applySenderName(configuredFrom, displayName) {
+  const parsed = parseFrom(configuredFrom)
+  const angled = parsed.match(/^(.*)<([^<>]+)>$/)
+  const address = angled ? angled[2].trim() : ''
+  const bare = !angled && EMAIL_RE.test(parsed) ? parsed : ''
+  const mailbox = address || bare
+  if (!mailbox) return parsed
+  const requested = mailSenderName(displayName)
+  if (requested) return parseFrom(`${requested} <${mailbox}>`) || mailbox
+  if (!angled) return mailbox
+  const current = angled[1].trim()
+  if (current && !isProductBrandName(current)) return parsed
+  return parseFrom(`${NEUTRAL_SENDER} <${mailbox}>`) || mailbox
+}
+
 export function mailConfigFrom(env = {}) {
   const portRaw = env.SMTP_PORT
   const portBlank = portRaw === undefined || String(portRaw).trim() === ''
@@ -54,7 +79,7 @@ export function mailConfigFrom(env = {}) {
     port,
     user: String(env.SMTP_USER || '').trim() || DEFAULT_MAIL.user,
     pass: String(env.SMTP_PASS || ''),
-    from: parseFrom(env.MAIL_FROM) || parseFrom(DEFAULT_MAIL.from),
+    from: applySenderName(parseFrom(env.MAIL_FROM) || parseFrom(DEFAULT_MAIL.from)),
     appOrigin: safeOrigin(env.APP_ORIGIN) || safeOrigin(DEFAULT_MAIL.appOrigin),
   }
   config.configured = describeMailGap(config).length === 0
@@ -126,7 +151,7 @@ export function createMailer(env = {}, deps = {}) {
   let transport = deps.transport || null
   return {
     config,
-    async send({ to, subject, text, html, attachments }) {
+    async send({ to, subject, text, html, attachments, senderName }) {
       const missing = describeMailGap(config)
       if (missing.length) {
         const err = new Error(`Mail is not configured (missing ${missing.join(', ')})`)
@@ -134,7 +159,7 @@ export function createMailer(env = {}, deps = {}) {
         throw err
       }
       if (!transport) transport = await defaultTransport(config)
-      const message = { from: config.from, to, subject, text }
+      const message = { from: applySenderName(config.from, senderName), to, subject, text }
       // Both parts: nodemailer sends them as multipart/alternative, so a
       // client that cannot render HTML still gets the text. Callers with no
       // template omit html and stay text-only.

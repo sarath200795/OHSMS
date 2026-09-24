@@ -108,7 +108,7 @@ describe('assignment mail templates', () => {
       expect(message.text).toContain(`Open it: ${item.url}`)
       expect(message.html).toContain(`href="${item.url}"`)
       expect(message.html).toContain(item.action)
-      expect(message.text).toContain('Sent by WEEHS OHSMS · info@weehs.org')
+      expect(message.text).toContain('Sent by EHS notifications · info@weehs.org')
       expect(message.text.toLowerCase()).toContain('do not reply')
       expect(message.html).toContain('info@weehs.org')
       expect(message.html.toLowerCase()).toContain('do not reply')
@@ -275,8 +275,43 @@ describe('assignment mail templates', () => {
     expect(message.subject).toBe('Assigned: Do the thing (REF-1)')
     expect(message.text).toContain('Open it: https://app.example/somewhere')
     expect(message.html).toContain('href="https://app.example/somewhere"')
-    expect(message.html).toContain('WEEHS OHSMS')
+    expect(message.html).toContain('EHS notifications')
     expect(message.text).toContain('info@weehs.org')
+  })
+
+  it('uses the organisation name in the header and footer, and escapes it in HTML', () => {
+    const message = render(
+      {
+        kind: 'assignment.incident_capa',
+        includeTitle: true,
+        title: 'Fix the guard',
+        what: 'corrective action',
+        context: 'IRA-1',
+        path: '/incidents/i1',
+      },
+      { sender: 'Northwind & Co', appOrigin: 'https://app.example' }
+    )
+    expect(message.senderName).toBe('Northwind & Co')
+    expect(message.text).toContain('Sent by Northwind & Co · info@weehs.org')
+    expect(message.html).toContain('Northwind &amp; Co')
+    expect(message.html).not.toContain('Northwind & Co')
+    expect(message.text).not.toContain('EHS notifications')
+    expect(message.html).not.toContain('EHS notifications')
+  })
+
+  it('keeps the neutral label when the only name offered is the product name', () => {
+    const message = render(
+      {
+        kind: 'assignment.training',
+        includeTitle: true,
+        title: 'Working at Height',
+        path: '/training/my',
+      },
+      { sender: 'WEEHS OHSMS', appOrigin: 'https://app.example' }
+    )
+    expect(message.senderName).toBe('EHS notifications')
+    expect(message.text).toContain('Sent by EHS notifications ·')
+    expect(`${message.subject}\n${message.text}\n${message.html}`).not.toContain('WEEHS')
   })
 
   it('is the body renderAssignmentMail returns, for every kind the planner emits', () => {
@@ -348,7 +383,7 @@ describe('assignment mail templates', () => {
       const options = { assignerName: 'Priya Menon', appOrigin: ORIGIN }
       const message = renderAssignmentMail(plan, options)
       expect(message).toEqual(renderAssignmentMessage(plan, options))
-      expect(message.html).toContain('WEEHS OHSMS')
+      expect(message.html).toContain('EHS notifications')
       expect(message.html).toContain('info@weehs.org')
       expect(message.text).toContain('Open it: ')
       expect(JSON.stringify(message)).not.toContain('asthma')

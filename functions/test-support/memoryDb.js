@@ -69,7 +69,7 @@ export function mailer(sent, { pass = 'secret', origin = 'https://suite.weehs.or
   return {
     config: {
       host: 'mail.privateemail.com',
-      from: 'WEEHS <info@weehs.org>',
+      from: 'EHS notifications <info@weehs.org>',
       pass,
       appOrigin: origin,
     },

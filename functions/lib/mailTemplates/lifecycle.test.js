@@ -22,7 +22,7 @@ function assertClean(message) {
   expect(message.html).toContain('&lt;script&gt;')
   expect(message.text).toContain(footerLine())
   expect(message.html).toContain('info@weehs.org')
-  expect(message.html).toContain('WEEHS OHSMS')
+  expect(message.html).toContain('EHS notifications')
 }
 
 describe('permit mail', () => {
@@ -167,5 +167,24 @@ describe('defect, drill, meeting and weather mail', () => {
     expect(message.text).toContain('Unread: 2 sites could not be read')
     expect(message.html).toContain(`${ORIGIN}/weather`)
     assertClean(message)
+  })
+})
+
+describe('organisation name on a lifecycle mail', () => {
+  it('replaces the neutral label when the caller already has the name', () => {
+    const message = renderPermitMail(
+      { permitNo: 'PTW-1', typeOfWork: 'Hot work' },
+      {
+        subjectLead: 'Permit raised',
+        headline: 'A permit to work was raised and is waiting for approval.',
+        status: 'Waiting for approval',
+        path: '/permits/p1',
+      },
+      { appOrigin: 'https://app.example', sender: 'Northwind Steel' }
+    )
+    expect(message.senderName).toBe('Northwind Steel')
+    expect(message.text).toContain('Sent by Northwind Steel ·')
+    expect(message.html).toContain('Northwind Steel')
+    expect(message.html).not.toContain('EHS notifications')
   })
 })

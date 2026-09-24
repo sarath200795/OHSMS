@@ -90,6 +90,7 @@ export async function circulate({
           text: message.text,
           html: message.html,
           attachments,
+          senderName: message.senderName,
         }),
     })
 
