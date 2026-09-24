@@ -26,8 +26,17 @@
 //
 // The audience is selectScopedAudience: org admins, plus any approved member
 // whose posting or access grant reaches the asset's site, region or entity.
-// Not every org member.
-import { scopeFrom, selectScopedAudience, loadOrgUsers, loadDoc } from './audience.js'
+// Not every org member. The reporter (reportedBy, a uid; 'public' is a QR
+// scan and is not a profile) is included as well when they have an address,
+// even when their grants do not reach the asset.
+import {
+  scopeFrom,
+  selectScopedAudience,
+  unionAddresses,
+  addressForToken,
+  loadOrgUsers,
+  loadDoc,
+} from './audience.js'
 import { loadOrgDisplayName } from './mailBrand.js'
 import { circulate } from './circulate.js'
 import { renderDefectMail } from './mailTemplates/lifecycle.js'
@@ -54,6 +63,13 @@ function text(value) {
   return readableText(value)
 }
 
+/** A profile uid. 'public' is the anonymous QR reporter, not a user. */
+function reporterId(value) {
+  const id = text(value)
+  if (!id || id === 'public' || id === '.' || id === '..' || id.includes('/')) return ''
+  return id
+}
+
 export function extinguisherDefectLabel(key) {
   const known = EXTINGUISHER_DEFECT_LABEL[key]
   if (known) return known
@@ -77,6 +93,7 @@ export function planDefectReport(before, after) {
       label: after.extLabel,
       path: '/equipment/approvals',
       headline: 'A fire extinguisher defect was reported.',
+      reporterUid: reporterId(after.reportedBy),
     }
   }
   if (after.kind === 'asset_defect' && (after.assetKind === 'aed' || after.assetKind === 'fas')) {
@@ -93,6 +110,7 @@ export function planDefectReport(before, after) {
         after.assetKind === 'aed'
           ? 'An AED defect was reported.'
           : 'A fire alarm defect was reported.',
+      reporterUid: reporterId(after.reportedBy),
     }
   }
   return null
@@ -135,6 +153,7 @@ export function planAssetDefects(collection, before, after, docId) {
         stamp,
         path: '/equipment/physical-defects',
         headline: 'A fire extinguisher is now showing an open defect.',
+        reporterUid: reporterId(after.reportedBy),
       }))
   }
 
@@ -155,6 +174,7 @@ export function planAssetDefects(collection, before, after, docId) {
         stamp,
         path: '/equipment/aed',
         headline: 'An AED was marked out of service.',
+        reporterUid: reporterId(after.reportedBy),
       },
     ]
   }
@@ -172,6 +192,7 @@ export function planAssetDefects(collection, before, after, docId) {
         stamp,
         path: '/equipment/fas',
         headline: 'A fire alarm device was marked faulty.',
+        reporterUid: reporterId(after.reportedBy),
       },
     ]
   }
@@ -255,7 +276,9 @@ async function mailPlans({
   const flat = []
   for (const plan of plans) {
     const { scope, ref } = await scopeForAsset(db, orgId, plan)
-    const audience = selectScopedAudience(users, orgId, scope)
+    const audience = unionAddresses(selectScopedAudience(users, orgId, scope), [
+      addressForToken(users, orgId, plan.reporterUid),
+    ])
     for (const recipient of audience) {
       flat.push({
         ...recipient,

@@ -87,9 +87,10 @@ write_env() {
   require_project_id
   local dir="${FUNCTIONS_DIR:-functions}"
   local env_file="${dir}/.env.${PROJECT_ID}"
-  local host="${SMTP_HOST:-mail.privateemail.com}"
-  local port="${SMTP_PORT:-465}"
-  local user="${SMTP_USER:-info@weehs.org}"
+  local host="${SMTP_HOST:-smtp-relay.brevo.com}"
+  local port="${SMTP_PORT:-587}"
+  # The Brevo SMTP login. Empty until it is set; the From address is not it.
+  local user="${SMTP_USER:-}"
   local from="${MAIL_FROM:-EHS notifications <info@weehs.org>}"
   local origin="${APP_ORIGIN:-https://suite.weehs.org}"
 

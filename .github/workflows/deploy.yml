@@ -236,7 +236,7 @@ jobs:
       # stay out of that file: a key in dotenv is shipped as a plain env var
       # and never bound through Secret Manager (LOW-13). Repository variables
       # SMTP_HOST, SMTP_PORT, SMTP_USER, MAIL_FROM and APP_ORIGIN override the
-      # production mailbox defaults when they are set.
+      # Brevo relay defaults when they are set. SMTP_USER has no default.
       - name: Write functions param file
         if: steps.creds.outputs.configured == 'true'
         env:

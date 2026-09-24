@@ -16,14 +16,14 @@
 // not change that mail's text or HTML — the incident alert is the caller that
 // needs a multi-line narrative and a 5 Why chain.
 import { NEUTRAL_SENDER, mailSenderName } from '../mailBrand.js'
-import { DEFAULT_MAIL } from '../mailer.js'
+import { MAILBOX_ADDRESS } from '../mailer.js'
 import { escapeHtml, safeLine } from './safe.js'
 
 export const MAIL_SENDER = NEUTRAL_SENDER
-// The mailbox createMailer sends as. The footer names that address even when
-// the From display name is the organisation, so a recipient can see which
-// mailbox actually sent the message.
-export const MAIL_ADDRESS = DEFAULT_MAIL.user
+// The From address. The Brevo SMTP login is a different value and is not
+// printed here. The footer names this address even when the display name is
+// the organisation, so a recipient can see which mailbox the message is from.
+export const MAIL_ADDRESS = MAILBOX_ADDRESS
 export const MAIL_FOOTER_NOTE = 'Please do not reply to this transactional message.'
 
 const SANS = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif"

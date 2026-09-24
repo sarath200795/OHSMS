@@ -55,6 +55,7 @@ function mailer() {
     sent,
     config: {
       host: 'smtp.example',
+      user: 'smtp-login@example.com',
       from: 'safety@example.com',
       pass: 'secret',
       appOrigin: 'https://app.example',
@@ -603,7 +604,12 @@ describe('deliverAssignments', () => {
         (e) => e.level === 'error' && e.msg === 'assignment mail is not configured'
       )
     ).toBe(true)
-    expect(logger.entries[0].extra.missing).toEqual(['SMTP_HOST', 'MAIL_FROM', 'SMTP_PASS'])
+    expect(logger.entries[0].extra.missing).toEqual([
+      'SMTP_HOST',
+      'SMTP_USER',
+      'MAIL_FROM',
+      'SMTP_PASS',
+    ])
     expect([...db.docs.keys()].some((k) => k.includes('/notifications/'))).toBe(false)
     expect(db.reads).toEqual([])
   })

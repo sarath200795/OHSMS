@@ -1,5 +1,12 @@
 import { describe, it, expect, vi } from 'vitest'
-import { parseFrom, mailConfigFrom, describeMailGap, safeOrigin, createMailer } from './mailer.js'
+import {
+  parseFrom,
+  mailConfigFrom,
+  describeMailGap,
+  safeOrigin,
+  createMailer,
+  transportOptions,
+} from './mailer.js'
 
 describe('parseFrom', () => {
   it('accepts a bare address and a named address', () => {
@@ -35,19 +42,24 @@ describe('safeOrigin', () => {
 })
 
 describe('mail configuration', () => {
-  it('uses info@weehs.org unless overridden, and the password is the only gap', () => {
+  it('uses the Brevo relay and info@weehs.org as From, and does not invent an SMTP login', () => {
     const config = mailConfigFrom({})
     expect(config).toMatchObject({
-      host: 'mail.privateemail.com',
-      port: 465,
-      user: 'info@weehs.org',
+      host: 'smtp-relay.brevo.com',
+      port: 587,
+      user: '',
       from: 'EHS notifications <info@weehs.org>',
       appOrigin: 'https://suite.weehs.org',
       configured: false,
     })
-    expect(describeMailGap(config)).toEqual(['SMTP_PASS'])
+    expect(describeMailGap(config)).toEqual(['SMTP_USER', 'SMTP_PASS'])
     expect(
-      mailConfigFrom({ SMTP_HOST: 'smtp.example', MAIL_FROM: 'a@b.co', SMTP_PASS: '' }).configured
+      mailConfigFrom({
+        SMTP_HOST: 'smtp.example',
+        SMTP_USER: 'login@example.com',
+        MAIL_FROM: 'a@b.co',
+        SMTP_PASS: '',
+      }).configured
     ).toBe(false)
   })
 
@@ -83,11 +95,28 @@ describe('mail configuration', () => {
     )
   })
 
-  it('defaults a nonsense port to the mailbox SSL port rather than failing open on port 0', () => {
+  it('defaults a nonsense port to the Brevo submission port rather than failing open on port 0', () => {
     expect(
       mailConfigFrom({ SMTP_HOST: 'h', MAIL_FROM: 'a@b.co', SMTP_PASS: 'p', SMTP_PORT: 'nope' })
         .port
-    ).toBe(465)
+    ).toBe(587)
+  })
+
+  it('uses STARTTLS on 587 and implicit TLS only on 465', () => {
+    const brevo = transportOptions(
+      mailConfigFrom({ SMTP_PASS: 'secret', SMTP_USER: 'login@example.com' })
+    )
+    expect(brevo).toMatchObject({
+      host: 'smtp-relay.brevo.com',
+      port: 587,
+      secure: false,
+      requireTLS: true,
+      auth: { user: 'login@example.com', pass: 'secret' },
+    })
+    const implicit = transportOptions(
+      mailConfigFrom({ SMTP_PASS: 'secret', SMTP_USER: 'login@example.com', SMTP_PORT: '465' })
+    )
+    expect(implicit).toMatchObject({ port: 465, secure: true, requireTLS: false })
   })
 })
 
@@ -103,7 +132,10 @@ describe('createMailer', () => {
 
   it('puts the organisation name in front of the mailbox address', async () => {
     const transport = { sendMail: vi.fn(async () => {}) }
-    const mailer = createMailer({ SMTP_PASS: 'secret' }, { transport })
+    const mailer = createMailer(
+      { SMTP_PASS: 'secret', SMTP_USER: 'login@example.com' },
+      { transport }
+    )
     await mailer.send({
       to: 'person@example.com',
       subject: 'Assigned',
@@ -121,7 +153,7 @@ describe('createMailer', () => {
   it('does not send a product name when that is the name it was given', async () => {
     const transport = { sendMail: vi.fn(async () => {}) }
     const mailer = createMailer(
-      { SMTP_PASS: 'secret', MAIL_FROM: 'WEEHS <info@weehs.org>' },
+      { SMTP_PASS: 'secret', SMTP_USER: 'login@example.com', MAIL_FROM: 'WEEHS <info@weehs.org>' },
       { transport }
     )
     await mailer.send({
@@ -138,9 +170,12 @@ describe('createMailer', () => {
     })
   })
 
-  it('sends as info@weehs.org when only the mailbox password is set', async () => {
+  it('sends as info@weehs.org when the From address is left at the default', async () => {
     const transport = { sendMail: vi.fn(async () => {}) }
-    const mailer = createMailer({ SMTP_PASS: 'secret' }, { transport })
+    const mailer = createMailer(
+      { SMTP_PASS: 'secret', SMTP_USER: 'login@example.com' },
+      { transport }
+    )
     await mailer.send({ to: 'person@example.com', subject: 'Assigned', text: 'body' })
     expect(transport.sendMail).toHaveBeenCalledWith({
       from: 'EHS notifications <info@weehs.org>',
@@ -152,7 +187,10 @@ describe('createMailer', () => {
 
   it('forwards an html body so nodemailer can send multipart/alternative', async () => {
     const transport = { sendMail: vi.fn(async () => {}) }
-    const mailer = createMailer({ SMTP_PASS: 'secret' }, { transport })
+    const mailer = createMailer(
+      { SMTP_PASS: 'secret', SMTP_USER: 'login@example.com' },
+      { transport }
+    )
     await mailer.send({
       to: 'person@example.com',
       subject: 'Assigned',
@@ -183,7 +221,10 @@ describe('createMailer', () => {
       sent.push(info)
       return info
     }
-    const mailer = createMailer({ SMTP_PASS: 'secret' }, { transport })
+    const mailer = createMailer(
+      { SMTP_PASS: 'secret', SMTP_USER: 'login@example.com' },
+      { transport }
+    )
     await mailer.send({
       to: 'person@example.com',
       subject: 'Assigned',
@@ -200,7 +241,10 @@ describe('createMailer', () => {
 
   it('attaches a buffer and drops a sealed one without failing the send', async () => {
     const transport = { sendMail: vi.fn(async () => {}) }
-    const mailer = createMailer({ SMTP_PASS: 'secret' }, { transport })
+    const mailer = createMailer(
+      { SMTP_PASS: 'secret', SMTP_USER: 'login@example.com' },
+      { transport }
+    )
     const report = Buffer.from('%PDF-1.4\n% drill\n')
     await mailer.send({
       to: 'person@example.com',
@@ -249,7 +293,10 @@ describe('createMailer', () => {
       sent.push(info)
       return info
     }
-    const mailer = createMailer({ SMTP_PASS: 'secret' }, { transport })
+    const mailer = createMailer(
+      { SMTP_PASS: 'secret', SMTP_USER: 'login@example.com' },
+      { transport }
+    )
     await mailer.send({
       to: 'person@example.com',
       subject: 'Assigned',

@@ -1,13 +1,15 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Outbound mail. Nothing else in this repo sends it — a previous mail API key
 // was removed (functions/index.js, LOW-13) and not replaced — so this file is
-// the one path. It does not stand up a second provider. info@weehs.org is an
-// existing Private Email mailbox (MX: mx1/mx2.privateemail.com). SMTP to
-// mail.privateemail.com is how that mailbox sends. The password is the only
-// thing that is not already determined: SMTP_PASS, the mailbox password.
+// the one path. The relay is Brevo (smtp-relay.brevo.com, port 587, STARTTLS).
+// The From address stays info@weehs.org. Brevo will refuse it until that
+// domain is a verified sender; this file does not substitute another address.
 //
-// The password is passed in. This module does not touch Secret Manager, so
-// the tests can run it with a plain object. A missing password refuses to
+// SMTP_USER is the Brevo SMTP login, not the From mailbox. SMTP_PASS is the
+// SMTP key. Neither is a default: a guessed login would authenticate as the
+// wrong account, and a key in this file would be the LOW-13 finding again.
+// Both are passed in. This module does not touch Secret Manager, so the
+// tests can run it with a plain object. A missing login or key refuses to
 // send; it does not pretend the message went out.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -16,14 +18,18 @@ import { isProductBrandName, mailSenderName, NEUTRAL_SENDER } from './mailBrand.
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
-/** The mailbox assignment mail sends as, unless an env value overrides it. */
+/** The address on the From header. Not the Brevo SMTP login. */
+export const MAILBOX_ADDRESS = 'info@weehs.org'
+
+/** Brevo relay and the From mailbox, unless an env value overrides them. */
 export const DEFAULT_MAIL = {
-  host: 'mail.privateemail.com',
-  port: '465',
-  user: 'info@weehs.org',
+  host: 'smtp-relay.brevo.com',
+  port: '587',
+  // The Brevo SMTP login. Not the From address, and not known here.
+  user: '',
   // Display name only. The address is the mailbox. Callers that know the
   // organisation replace this with its name; see applySenderName.
-  from: `${NEUTRAL_SENDER} <info@weehs.org>`,
+  from: `${NEUTRAL_SENDER} <${MAILBOX_ADDRESS}>`,
   appOrigin: 'https://suite.weehs.org',
 }
 
@@ -90,6 +96,7 @@ export function mailConfigFrom(env = {}) {
 export function describeMailGap(config = {}) {
   const missing = []
   if (!config.host) missing.push('SMTP_HOST')
+  if (!config.user) missing.push('SMTP_USER')
   if (!config.from) missing.push('MAIL_FROM')
   if (!config.pass) missing.push('SMTP_PASS')
   return missing
@@ -116,14 +123,16 @@ export function safeOrigin(value) {
   }
 }
 
-async function defaultTransport(config) {
-  const loaded = await import('nodemailer')
-  const lib = typeof loaded.createTransport === 'function' ? loaded : loaded.default
-  return lib.createTransport({
+/**
+ * Nodemailer options for this config. 587 is STARTTLS (`secure: false` and
+ * `requireTLS`). 465 is implicit TLS. Any other port does neither, so a
+ * mistaken port cannot silently send in the clear on 587's behalf.
+ */
+export function transportOptions(config) {
+  return {
     host: config.host,
     port: config.port,
     secure: config.port === 465,
-    // 587 is STARTTLS. Require it so a fallback port cannot send in the clear.
     requireTLS: config.port === 587,
     auth: { user: config.user, pass: config.pass },
     connectionTimeout: 10_000,
@@ -138,7 +147,13 @@ async function defaultTransport(config) {
     // one anyway.
     disableFileAccess: true,
     disableUrlAccess: true,
-  })
+  }
+}
+
+async function defaultTransport(config) {
+  const loaded = await import('nodemailer')
+  const lib = typeof loaded.createTransport === 'function' ? loaded : loaded.default
+  return lib.createTransport(transportOptions(config))
 }
 
 /**

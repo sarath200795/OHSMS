@@ -12,6 +12,7 @@
 import { notificationId, sendOnce } from './notify.js'
 import { describeMailGap } from './mailer.js'
 import { CIRCULATION_CAP } from './audience.js'
+import { sendPaced } from './mailPace.js'
 
 function noopLogger() {
   return { info() {}, error() {} }
@@ -40,6 +41,8 @@ export async function circulate({
   logLabel = 'circulation',
   context = {},
   attachments = [],
+  sleep,
+  gapMs,
 }) {
   const log = logger || noopLogger()
   const list = Array.isArray(recipients) ? recipients : []
@@ -70,29 +73,34 @@ export async function circulate({
   let skipped = list.length - batch.length
   let failed = 0
 
-  // One socket at a time. A Promise.all of the cap would open a hundred SMTP
-  // sessions inside a single function invocation.
-  for (const recipient of batch) {
+  // One socket at a time, with a gap. A Promise.all of the cap would open a
+  // hundred SMTP sessions inside a single function invocation, and back-to-back
+  // sends are how Private Email answers 554 too many messages.
+  for (let i = 0; i < batch.length; i += 1) {
+    const recipient = batch[i]
     const message = messageFor(recipient)
     const key = keyFor(recipient)
     const ref = db.doc(`organizations/${orgId}/notifications/${notificationId(key)}`)
-    const result = await sendOnce({
-      ref,
-      kind,
-      key,
-      uid: recipient.uid,
-      subject: message.subject,
-      now: now(),
-      send: () =>
-        mailer.send({
-          to: recipient.email,
-          subject: message.subject,
-          text: message.text,
-          html: message.html,
-          attachments,
-          senderName: message.senderName,
-        }),
-    })
+    const attempt = () =>
+      sendOnce({
+        ref,
+        kind,
+        key,
+        uid: recipient.uid,
+        subject: message.subject,
+        now: now(),
+        send: () =>
+          mailer.send({
+            to: recipient.email,
+            subject: message.subject,
+            text: message.text,
+            html: message.html,
+            attachments,
+            senderName: message.senderName,
+          }),
+      })
+    const paced = await sendPaced({ attempt, sleep, gapMs, first: i === 0 })
+    const result = paced.result
 
     if (result.status === 'sent') {
       sent += 1
@@ -104,6 +112,7 @@ export async function circulate({
         ...context,
         kind,
         uid: recipient.uid,
+        reason: result.reason,
         error: result.error?.message || 'send-failed',
       })
     } else {
@@ -115,6 +124,12 @@ export async function circulate({
         uid: recipient.uid,
         reason: result.reason,
       })
+    }
+    if (paced.stop) {
+      // The rest are not claimed. A later delivery can send them. Claiming
+      // them as failed is how a rate limit used to silence the whole list.
+      skipped += batch.length - i - 1
+      return { sent, skipped, failed, reason: 'rate-limited' }
     }
   }
 

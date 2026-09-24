@@ -28,7 +28,7 @@ export const CIRCULATION_CAP = 100
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 function text(value) {
-  return readableText(value)
+  return readableText(value).trim()
 }
 
 /** Non-empty strings only. '' is not a grant. */
@@ -101,6 +101,39 @@ export function dedupeByEmail(rows) {
     out.push(row)
   }
   return out
+}
+
+/**
+ * The profile `token` names, or null.
+ * A uid matches that profile. An email matches that mailbox. A display name
+ * matches only when exactly one addressable member carries it: internal
+ * permit participants and a drill's loggedBy are stored as names, and two
+ * people who share one are not a guess. readableText drops a sealed value,
+ * so ciphertext does not match anyone.
+ */
+export function addressForToken(users, orgId, token) {
+  const raw = text(token)
+  if (!raw) return null
+  const list = users || []
+  const byUid = list.find((user) => user && text(user.uid) === raw)
+  if (byUid) return recipientAddress(byUid, orgId)
+  if (EMAIL_RE.test(raw)) {
+    const hits = list
+      .map((user) => recipientAddress(user, orgId))
+      .filter((addr) => addr && addr.email.toLowerCase() === raw.toLowerCase())
+    return hits.length === 1 ? hits[0] : null
+  }
+  const named = list.filter((user) => {
+    if (!user || text(user.name).toLowerCase() !== raw.toLowerCase()) return false
+    return Boolean(recipientAddress(user, orgId))
+  })
+  if (named.length !== 1) return null
+  return recipientAddress(named[0], orgId)
+}
+
+/** Scoped rows plus extra addresses. One mailbox, lowest uid. */
+export function unionAddresses(rows, extra) {
+  return dedupeByEmail([...(rows || []), ...(extra || []).filter(Boolean)])
 }
 
 /** Org admins plus members whose grants reach `scope`. */

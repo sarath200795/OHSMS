@@ -17,6 +17,13 @@ function memoryRef(store, path) {
     async update(patch) {
       store.set(path, { ...store.get(path), ...patch })
     },
+    async get() {
+      const data = store.get(path)
+      return { exists: data !== undefined, data: () => data }
+    },
+    async delete() {
+      store.delete(path)
+    },
   }
 }
 
@@ -124,6 +131,89 @@ describe('sendOnce', () => {
     expect(result.status).toBe('failed')
     expect(result.reason).toBe('send-failed')
     expect(result.error.message).toBe('smtp down')
+    expect(store.get(ref.path).status).toBe('failed')
+  })
+
+  it('releases a rate-limit refusal so the same key can send later', async () => {
+    const store = new Map()
+    const ref = memoryRef(store, 'organizations/orgA/notifications/abc')
+    const limited = Object.assign(
+      new Error('554 5.7.1 Reject: too many messages from sender in last 60 minutes'),
+      { responseCode: 554, response: '554 5.7.1 Reject: too many messages' }
+    )
+    const first = await sendOnce({
+      ref,
+      kind: 'permit.lifecycle',
+      key: ['k'],
+      uid: 'u1',
+      subject: 's',
+      now: NOW,
+      send: async () => {
+        throw limited
+      },
+    })
+    expect(first.reason).toBe('rate-limited')
+    expect(store.has(ref.path)).toBe(false)
+
+    const sent = []
+    const second = await sendOnce({
+      ref,
+      kind: 'permit.lifecycle',
+      key: ['k'],
+      uid: 'u1',
+      subject: 's',
+      now: NOW,
+      send: async () => {
+        sent.push('mail')
+      },
+    })
+    expect(second.status).toBe('sent')
+    expect(sent).toEqual(['mail'])
+    expect(store.get(ref.path).status).toBe('sent')
+  })
+
+  it('releases a Brevo quota refusal so the same key can send later', async () => {
+    const store = new Map()
+    const ref = memoryRef(store, 'organizations/orgA/notifications/abc')
+    const limited = Object.assign(
+      new Error('554 5.7.1 You have exceeded your daily sending limit'),
+      {
+        responseCode: 554,
+        response: '554 5.7.1 daily limit exceeded',
+      }
+    )
+    const result = await sendOnce({
+      ref,
+      kind: 'defect.reported',
+      key: ['k'],
+      uid: 'u1',
+      subject: 's',
+      now: NOW,
+      send: async () => {
+        throw limited
+      },
+    })
+    expect(result.reason).toBe('rate-limited')
+    expect(store.has(ref.path)).toBe(false)
+  })
+
+  it('keeps a 554 that is not a rate limit, so a permanent reject is not retried', async () => {
+    const store = new Map()
+    const ref = memoryRef(store, 'organizations/orgA/notifications/abc')
+    const result = await sendOnce({
+      ref,
+      kind: 'permit.lifecycle',
+      key: ['k'],
+      uid: 'u1',
+      subject: 's',
+      now: NOW,
+      send: async () => {
+        const err = new Error('554 5.7.1 mailbox unavailable')
+        err.responseCode = 554
+        throw err
+      },
+    })
+    expect(result.reason).toBe('send-failed')
     expect(store.get(ref.path).status).toBe('failed')
   })
 

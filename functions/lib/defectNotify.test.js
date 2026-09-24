@@ -135,6 +135,12 @@ describe('deliver defect mail', () => {
         entity: 'COCO',
         assetId: 'AED-4',
       },
+      'organizations/orgA/fas/f1': {
+        siteId: 's1',
+        region: 'South',
+        entity: 'COCO',
+        deviceId: 'FAS-2',
+      },
     })
   }
 
@@ -264,6 +270,99 @@ describe('deliver defect mail', () => {
     expect(sent[0].html).toContain('/equipment/physical-defects')
     expect((await deliverAssetDefects(args)).skipped).toBe(1)
     expect(sent).toHaveLength(1)
+  })
+
+  it('includes the reporter when their grants miss the site, and ignores a public scan', async () => {
+    const users = [
+      user('admin', { role: 'admin' }),
+      user('posted', { siteId: 's1' }),
+      user('raiser', { role: 'member' }),
+      user('far', { siteId: 's9' }),
+    ]
+    const sent = []
+    const named = await deliverDefectReport({
+      db: db(),
+      orgId: 'orgA',
+      docId: 'r-raiser',
+      before: null,
+      after: {
+        kind: 'defect',
+        defectType: 'pin',
+        extId: 'e1',
+        reportedBy: 'raiser',
+      },
+      mailer: mailer(sent),
+      logger,
+      users,
+    })
+    expect(named.sent).toBe(3)
+    expect(sent.map((m) => m.to).sort()).toEqual([
+      'admin@example.com',
+      'posted@example.com',
+      'raiser@example.com',
+    ])
+
+    const aedSent = []
+    const aed = await deliverDefectReport({
+      db: db(),
+      orgId: 'orgA',
+      docId: 'r-aed',
+      before: null,
+      after: {
+        kind: 'asset_defect',
+        assetKind: 'aed',
+        assetRefId: 'a1',
+        defect: 'Pads Expired',
+        reportedBy: 'raiser',
+      },
+      mailer: mailer(aedSent),
+      logger,
+      users,
+    })
+    expect(aed.sent).toBe(3)
+    expect(aedSent.map((m) => m.to).sort()).toEqual([
+      'admin@example.com',
+      'posted@example.com',
+      'raiser@example.com',
+    ])
+
+    const fasSent = []
+    const fas = await deliverDefectReport({
+      db: db(),
+      orgId: 'orgA',
+      docId: 'r-fas',
+      before: null,
+      after: {
+        kind: 'asset_defect',
+        assetKind: 'fas',
+        assetRefId: 'f1',
+        defect: 'Hooter Not Working',
+        reportedBy: 'raiser',
+      },
+      mailer: mailer(fasSent),
+      logger,
+      users,
+    })
+    expect(fas.sent).toBe(3)
+
+    const publicSent = []
+    const anon = await deliverDefectReport({
+      db: db(),
+      orgId: 'orgA',
+      docId: 'r-public',
+      before: null,
+      after: {
+        kind: 'defect',
+        defectType: 'pin',
+        extId: 'e1',
+        reportedBy: 'public',
+      },
+      mailer: mailer(publicSent),
+      logger,
+      users,
+    })
+    expect(anon.sent).toBe(2)
+    expect(publicSent.map((m) => m.to).sort()).toEqual(['admin@example.com', 'posted@example.com'])
   })
 
   it('caps the fan-out at 100', async () => {
