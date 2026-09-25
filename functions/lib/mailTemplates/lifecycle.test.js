@@ -5,6 +5,7 @@ import {
   renderDrillReportMail,
   renderMeetingMail,
   renderWeatherDigest,
+  groupDigestAreas,
   SEALED_LINE,
 } from './lifecycle.js'
 import { footerLine } from './layout.js'
@@ -150,23 +151,96 @@ describe('defect, drill, meeting and weather mail', () => {
     expect(message.html).toContain(`${ORIGIN}/committee`)
   })
 
-  it('lists high and medium areas by region and skips nothing that was not passed in', () => {
+  it('lists high then medium, grouped by region, and references the map by cid', () => {
+    const areas = [
+      {
+        region: 'South',
+        name: 'Plant <script>',
+        entity: 'COCO',
+        level: 'High',
+        lat: 17.44,
+        lng: 78.39,
+        drivers: [{ key: 'wind', label: 'High wind', value: '55 km/h' }],
+        observedAt: '2026-09-23T11:00',
+      },
+      {
+        region: 'East',
+        name: 'Yard',
+        entity: 'COCO',
+        level: 'High',
+        drivers: [{ key: 'heat', label: 'Heat stress', value: 'Feels like 46°C' }],
+      },
+      {
+        region: 'South',
+        name: 'Annex',
+        entity: 'FOFO',
+        level: 'High',
+        drivers: [{ key: 'lightning', label: 'Thunderstorm', value: 'Lightning reported' }],
+      },
+      {
+        region: 'East',
+        name: 'Depot',
+        entity: 'FOFO',
+        level: 'Medium',
+        drivers: [{ key: 'rain', label: 'Rain', value: 'Medium · 4.0 mm/h' }],
+      },
+      { region: 'North', name: 'Quiet', level: 'Low', hazards: 'Heat stress' },
+    ]
+    const sections = groupDigestAreas(areas)
+    expect(sections.map((section) => section.level)).toEqual(['High', 'Medium'])
+    expect(sections[0].groups.map((group) => group.region)).toEqual(['East', 'South'])
+    expect(sections[0].groups[0].sites.map((site) => site.name)).toEqual(['Yard'])
+    expect(sections[0].groups[1].sites.map((site) => site.name)).toEqual([
+      'Annex',
+      'Plant <script>',
+    ])
+    expect(sections[1].groups.map((group) => group.region)).toEqual(['East'])
+    expect(sections[1].groups[0].sites.map((site) => site.name)).toEqual(['Depot'])
+
+    const message = renderWeatherDigest(
+      { areas, unread: 2 },
+      { appOrigin: ORIGIN, mapCid: 'weather-risk-map', windowLabel: '2026-09-23 06:00-12:00 UTC' }
+    )
+    expect(message.subject).toBe('Weather risk: 3 high, 1 medium')
+    expect(message.text.indexOf('High risk')).toBeLessThan(message.text.indexOf('Medium risk'))
+    expect(message.text).toContain('Site: Plant <script>')
+    expect(message.text).toContain('Entity: COCO')
+    expect(message.text).toContain('Drivers: High wind · 55 km/h')
+    expect(message.text).toContain('When: 2026-09-23T11:00')
+    expect(message.text).toContain('When: 2026-09-23 06:00-12:00 UTC')
+    expect(message.text).toContain('Drivers: Rain · Medium · 4.0 mm/h')
+    expect(message.text).toContain('Window: 2026-09-23 06:00-12:00 UTC')
+    expect(message.text).not.toContain('Quiet')
+    expect(message.text).toContain('Unread: 2 sites could not be read')
+    expect(message.html).toContain('src="cid:weather-risk-map"')
+    expect(message.html).toContain('#dc2626')
+    expect(message.html).toContain('#eab308')
+    expect(message.html.indexOf('>High risk<')).toBeLessThan(message.html.indexOf('>Medium risk<'))
+    expect(message.html).toContain(`${ORIGIN}/weather`)
+    expect(message.html).not.toContain('17.44')
+    expect(message.text).toContain('© OpenStreetMap contributors')
+    assertClean(message)
+  })
+
+  it('keeps a site with no coordinates in the table and off the map', () => {
     const message = renderWeatherDigest(
       {
         areas: [
-          { region: 'South', name: 'Plant <script>', level: 'High', hazards: 'High wind' },
-          { region: 'East', name: 'Depot', level: 'Medium', hazards: 'Rain' },
+          {
+            region: 'South',
+            name: 'No pin',
+            entity: 'COCO',
+            level: 'High',
+            drivers: [{ label: 'Heat stress', value: 'Feels like 46°C' }],
+          },
         ],
-        unread: 2,
       },
       { appOrigin: ORIGIN }
     )
-    expect(message.subject).toBe('Weather risk: 1 high, 1 medium')
-    expect(message.text).toContain('South: Plant <script> — High · High wind')
-    expect(message.text).toContain('East: Depot — Medium · Rain')
-    expect(message.text).toContain('Unread: 2 sites could not be read')
-    expect(message.html).toContain(`${ORIGIN}/weather`)
-    assertClean(message)
+    expect(message.text).toContain('Site: No pin')
+    expect(message.text).toContain('Drivers: Heat stress · Feels like 46°C')
+    expect(message.html).not.toContain('cid:')
+    expect(message.html).not.toContain('<img')
   })
 })
 

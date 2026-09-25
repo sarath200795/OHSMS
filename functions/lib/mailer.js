@@ -184,12 +184,19 @@ export function createMailer(env = {}, deps = {}) {
       // standing between a candidate and the socket.
       const files = prepareAttachments(attachments).accepted
       if (files.length) {
-        message.attachments = files.map(({ filename, content, contentType }) => ({
-          filename,
-          content,
-          contentType,
-          contentDisposition: 'attachment',
-        }))
+        message.attachments = files.map(({ filename, content, contentType, cid }) => {
+          // An inline part is how an HTML cid: image is the map, not a file
+          // the client offers to download. A part with no cid stays a normal
+          // attachment — the permit PDF must not become inline.
+          const file = {
+            filename,
+            content,
+            contentType,
+            contentDisposition: cid ? 'inline' : 'attachment',
+          }
+          if (cid) file.cid = cid
+          return file
+        })
       }
       await transport.sendMail(message)
     },

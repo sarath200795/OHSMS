@@ -159,6 +159,32 @@ export function selectActiveAudience(users, orgId) {
   return dedupeByEmail(rows)
 }
 
+/**
+ * Approved, active admins of this org, one row per mailbox.
+ *
+ * The profile stores one role string. `admin` reaches every site in the org.
+ * There is no site, entity or region admin role beside it — a grant on a
+ * manager or a member is how that person sees a plant, and it is not this
+ * list. selectActiveAudience is every approved member. The weather digest
+ * used to call that, so a mail that names every elevated plant went to people
+ * who cannot open those plants.
+ *
+ * Suspended, pending and rejected profiles are dropped by recipientAddress.
+ * A missing status is a profile from before the field existed, same as the
+ * other mail. The survivor of a shared mailbox is the lowest uid, so a retry
+ * claims the same ledger row.
+ */
+export function selectAdminAudience(users, orgId) {
+  const rows = []
+  for (const user of users || []) {
+    if (!user || user.role !== 'admin') continue
+    const addr = recipientAddress(user, orgId)
+    if (!addr) continue
+    rows.push(addr)
+  }
+  return dedupeByEmail(rows)
+}
+
 export async function loadOrgUsers(db, orgId) {
   const snap = await db.collection('users').where('orgId', '==', orgId).get()
   return snap.docs.map((d) => ({ uid: d.id, ...(d.data() || {}) }))

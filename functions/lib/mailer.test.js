@@ -317,6 +317,51 @@ describe('createMailer', () => {
     expect(raw).not.toContain('\nBcc:')
   })
 
+  it('inlines a png referenced by content id and leaves a pdf as an attachment', async () => {
+    const nodemailer = await import('nodemailer')
+    const lib = typeof nodemailer.createTransport === 'function' ? nodemailer : nodemailer.default
+    const transport = lib.createTransport({
+      streamTransport: true,
+      newline: 'unix',
+      buffer: true,
+      disableFileAccess: true,
+      disableUrlAccess: true,
+    })
+    const sent = []
+    const sendMail = transport.sendMail.bind(transport)
+    transport.sendMail = async (message) => {
+      const info = await sendMail(message)
+      sent.push(info)
+      return info
+    }
+    const mailer = createMailer(
+      { SMTP_PASS: 'secret', SMTP_USER: 'login@example.com' },
+      { transport }
+    )
+    const png = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+      'base64'
+    )
+    await mailer.send({
+      to: 'person@example.com',
+      subject: 'Weather risk',
+      text: 'body',
+      html: '<img src="cid:weather-risk-map" alt="Map">',
+      attachments: [
+        { filename: 'weather-risk-map.png', content: png, cid: 'weather-risk-map' },
+        { filename: 'notes.pdf', content: Buffer.from('%PDF-1.4\n% notes\n') },
+      ],
+    })
+    const raw = Buffer.isBuffer(sent[0].message)
+      ? sent[0].message.toString()
+      : String(sent[0].message)
+    expect(raw).toContain('Content-ID: <weather-risk-map>')
+    expect(raw).toContain('Content-Disposition: inline')
+    expect(raw).toContain('filename=notes.pdf')
+    expect(raw).toContain('Content-Disposition: attachment')
+    expect(raw).toContain('cid:weather-risk-map')
+  })
+
   it('sends through the injected transport with the configured from address', async () => {
     const transport = { sendMail: vi.fn(async () => {}) }
     const mailer = createMailer(

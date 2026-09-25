@@ -97,8 +97,14 @@ function proseBlocks(blocks) {
     .join('')
 }
 
-function renderText({ label, headline, rows, blocks, url, path, sender }) {
+function renderText({ label, headline, rows, blocks, url, path, sender, bannerText }) {
   const lines = [label, headline, '']
+  // Only when a caller passed one. An empty string here would add a blank
+  // line to every other mail, and those texts are asserted.
+  if (bannerText) {
+    lines.push(bannerText)
+    lines.push('')
+  }
   for (const row of rows) lines.push(`${row.label}: ${row.value}`)
   if (rows.length) lines.push('')
   for (const block of blocks) {
@@ -115,7 +121,18 @@ function renderText({ label, headline, rows, blocks, url, path, sender }) {
   return lines.join('\n')
 }
 
-function renderHtml({ subject, label, headline, rows, blocks, actionLabel, url, path, sender }) {
+function renderHtml({
+  subject,
+  label,
+  headline,
+  rows,
+  blocks,
+  actionLabel,
+  url,
+  path,
+  sender,
+  bannerHtml,
+}) {
   const preheader = safeLine(
     [headline, ...rows.map((row) => row.value), ...blocks.map((block) => block.text)]
       .filter(Boolean)
@@ -146,7 +163,7 @@ function renderHtml({ subject, label, headline, rows, blocks, actionLabel, url, 
 <td style="padding:24px 28px 8px;">
 <p style="margin:0 0 12px;"><span style="display:inline-block;padding:4px 10px;background:${MIST};border-radius:999px;font-family:${SANS};font-size:12px;line-height:1.4;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:${TEAL};">${chip}</span></p>
 <h1 style="margin:0;font-family:${SANS};font-size:22px;line-height:1.35;font-weight:700;color:${INK};">${escapeHtml(headline)}</h1>
-${detailTable(rows)}${proseBlocks(blocks)}
+${bannerHtml || ''}${detailTable(rows)}${proseBlocks(blocks)}
 ${actionBlock({ actionLabel, url, path })}
 </td>
 </tr>
@@ -172,7 +189,9 @@ export function renderLayout(message) {
   const rows = Array.isArray(message.rows) ? message.rows.filter((row) => row && row.value) : []
   const blocks = presentBlocks(message.blocks)
   const sender = senderLabel(message.sender)
-  const view = { ...message, rows, blocks, sender }
+  const bannerHtml = typeof message.bannerHtml === 'string' ? message.bannerHtml : ''
+  const bannerText = typeof message.bannerText === 'string' ? message.bannerText.trim() : ''
+  const view = { ...message, rows, blocks, sender, bannerHtml, bannerText }
   return {
     text: renderText(view),
     html: renderHtml(view),

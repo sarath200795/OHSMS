@@ -5,6 +5,7 @@ import {
   loadReportAttachments,
   permitObjectPath,
   prepareAttachments,
+  safeCid,
   reportObjectPath,
   reportPdfName,
 } from './mailAttachments.js'
@@ -98,6 +99,22 @@ describe('prepareAttachments', () => {
     })
     expect(accepted[0].path).toBeUndefined()
     expect(accepted[0].href).toBeUndefined()
+  })
+
+  it('keeps a content id for an inline map and drops one that would split the header', () => {
+    const png = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+      'base64'
+    )
+    expect(safeCid('weather-risk-map')).toBe('weather-risk-map')
+    expect(safeCid('bad\r\nBcc: x')).toBe('')
+    const { accepted } = prepareAttachments([
+      { filename: 'weather-risk-map.png', content: png, cid: 'weather-risk-map' },
+      { filename: 'evil.png', content: png, cid: 'x\r\nBcc: y' },
+    ])
+    expect(accepted[0].cid).toBe('weather-risk-map')
+    expect(accepted[1].cid).toBeUndefined()
+    expect(accepted[0].path).toBeUndefined()
   })
 })
 
