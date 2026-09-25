@@ -29,6 +29,10 @@ export function memoryDb(seed = {}) {
     async delete() {
       store.delete(path)
     },
+    async set(data, opts = {}) {
+      const prev = opts.merge ? store.get(path) || {} : {}
+      store.set(path, { ...prev, ...data })
+    },
   })
 
   function rowsUnder(prefix) {
@@ -58,10 +62,32 @@ export function memoryDb(seed = {}) {
     },
   })
 
+  let tail = Promise.resolve()
   return {
     store,
     doc: docRef,
     collection,
+    // Serial, like the Admin SDK: two claims of one run cannot both pass
+    // the lock check. Writes land after the function returns so a get inside
+    // the transaction still sees the document it started with.
+    runTransaction(fn) {
+      const job = tail.then(async () => {
+        const writes = []
+        const result = await fn({
+          get: (ref) => ref.get(),
+          set: (ref, data, opts) => {
+            writes.push({ ref, data, opts })
+          },
+        })
+        for (const write of writes) await write.ref.set(write.data, write.opts)
+        return result
+      })
+      tail = job.then(
+        () => {},
+        () => {}
+      )
+      return job
+    },
     notifications() {
       return [...store.keys()].filter((p) => p.includes('/notifications/'))
     },

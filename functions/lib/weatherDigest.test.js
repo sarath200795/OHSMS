@@ -5,7 +5,10 @@ import {
   bucketWindowLabel,
   collectDigest,
   deliverWeatherDigest,
+  DIGEST_FALLBACK_MS,
+  slotStartMs,
 } from './weatherDigest.js'
+import { renderWeatherDigest } from './mailTemplates/lifecycle.js'
 import { memoryDb, mailer, user } from '../test-support/memoryDb.js'
 
 describe('six-hour bucket', () => {
@@ -101,6 +104,34 @@ describe('collectDigest', () => {
       drivers: [{ key: 'wind', label: 'High wind', value: '50 km/h' }],
     })
     expect(digest.areas[1].drivers).toEqual([{ key: 'wind', label: 'High wind', value: '39 km/h' }])
+    expect(digest.unlocated).toBe(1)
+    expect(digest.located).toBe(4)
+    expect(digest.checked).toBe(3)
+    expect(digest.complete).toBe(false)
+  })
+
+  it('reads every grid, and the risk count is not the table cap', async () => {
+    const sites = Array.from({ length: 90 }, (_, i) => ({
+      id: `s${i}`,
+      name: `Site ${i}`,
+      region: 'South',
+      lat: 10 + Math.floor(i / 50),
+      lng: 70 + (i % 50) * 0.05,
+    }))
+    const seen = []
+    const digest = await collectDigest(sites, async (lat, lng) => {
+      seen.push(`${lat},${lng}`)
+      return { windKph: 55 }
+    })
+    expect(new Set(seen).size).toBe(90)
+    expect(digest.located).toBe(90)
+    expect(digest.unread).toBe(0)
+    expect(digest.checked).toBe(90)
+    expect(digest.areas).toHaveLength(90)
+    const message = renderWeatherDigest(digest)
+    expect(message.subject).toBe('Weather risk: 90 high, 0 medium')
+    expect(message.text).toContain('Weather checked for 90 of 90 sites')
+    expect(message.text).toContain('50 further areas are in the app')
   })
 })
 
@@ -189,6 +220,8 @@ describe('deliverWeatherDigest', () => {
     expect(blob).toContain('Depot')
     expect(blob).toContain('2026-09-23T11:00')
     expect(blob).toContain('2026-09-23 06:00-12:00 IST')
+    expect(blob).toContain('Weather checked for 2 of 2 sites')
+    expect(blob).toContain('1 site has no usable coordinates and was not checked')
     expect(blob).toContain('https://suite.weehs.org/weather')
     expect(blob).toContain('src="cid:weather-risk-map"')
     expect(blob).toContain('Sent by Acme')
@@ -239,7 +272,9 @@ describe('deliverWeatherDigest', () => {
       db: failed,
       mailer: mailer(sent),
       logger,
-      scheduleTime: '2026-09-23T00:00:00.000Z',
+      // 00:05 IST, still inside the first 50 minutes, so a total miss waits.
+      scheduleTime: '2026-09-22T18:35:00.000Z',
+      now: () => new Date('2026-09-22T18:35:00.000Z'),
       orgIds: ['orgA'],
       fetchObs: async () => null,
     })
@@ -281,5 +316,126 @@ describe('deliverWeatherDigest', () => {
     })
     expect(result.reason).toBe('not-configured')
     expect(called).toBe(false)
+  })
+
+  it('holds the mail while a site is unread, then sends once that site arrives', async () => {
+    const sent = []
+    const store = db()
+    const asked = []
+    const slot = '2026-09-22T18:35:00.000Z'
+    let depotTries = 0
+    const args = {
+      db: store,
+      mailer: mailer(sent),
+      logger,
+      scheduleTime: slot,
+      now: () => new Date(slot),
+      orgIds: ['orgA'],
+      fetchObs: async (lat) => {
+        asked.push(Number(lat.toFixed(2)))
+        if (lat < 15) {
+          depotTries += 1
+          if (depotTries === 1) return null
+        }
+        return lat > 15
+          ? { windKph: 55, observedAt: '2026-09-23T01:00' }
+          : { windKph: 40, observedAt: '2026-09-23T01:00' }
+      },
+      renderMap: async () => ({ png: PNG }),
+    }
+    const held = await deliverWeatherDigest(args)
+    expect(held.sent).toBe(0)
+    expect(sent).toHaveLength(0)
+    expect(store.notifications()).toHaveLength(0)
+    const progress = store.store.get(`organizations/orgA/weatherDigestRuns/${held.bucket}`)
+    expect(progress.status).toBe('open')
+    expect(progress.observations.map((row) => row.key)).toEqual(['17.44,78.39'])
+
+    asked.length = 0
+    const released = await deliverWeatherDigest({ ...args, mailer: mailer(sent) })
+    expect(released.sent).toBe(3)
+    expect(asked).toEqual([13.08])
+    expect(sent[0].text).toContain('Weather checked for 2 of 2 sites')
+    expect(sent[0].text).not.toContain('Could not fetch')
+  })
+
+  it('mails the partial picture 50 minutes into the slot, once, and names the gaps', async () => {
+    const sent = []
+    const store = db()
+    const start = slotStartMs('2026-09-23T00+0530')
+    const early = new Date(start + 5 * 60 * 1000)
+    const late = new Date(start + DIGEST_FALLBACK_MS)
+    let fetches = 0
+    const args = {
+      db: store,
+      mailer: mailer(sent),
+      logger,
+      orgIds: ['orgA'],
+      renderMap: async () => ({ png: PNG }),
+      fetchObs: async (lat) => {
+        fetches += 1
+        if (lat < 15) return null
+        return { windKph: 55, observedAt: '2026-09-23T01:00' }
+      },
+    }
+    const held = await deliverWeatherDigest({
+      ...args,
+      scheduleTime: early.toISOString(),
+      now: () => early,
+    })
+    expect(held.sent).toBe(0)
+    expect(sent).toHaveLength(0)
+    const fetchesBeforeFallback = fetches
+
+    const mailed = await deliverWeatherDigest({
+      ...args,
+      mailer: mailer(sent),
+      scheduleTime: late.toISOString(),
+      now: () => late,
+    })
+    expect(mailed.sent).toBe(3)
+    expect(sent).toHaveLength(3)
+    expect(sent[0].text).toContain('Weather checked for 1 of 2 sites')
+    expect(sent[0].text).toContain('Could not fetch weather for 1 site: Depot')
+    expect(sent[0].text).toContain('This is not an all-clear for them')
+    expect(sent[0].subject).toBe('Weather risk: 1 high, 0 medium')
+    expect(fetches).toBeGreaterThan(fetchesBeforeFallback)
+
+    fetches = 0
+    const again = await deliverWeatherDigest({
+      ...args,
+      mailer: mailer(sent),
+      scheduleTime: late.toISOString(),
+      now: () => new Date(late.getTime() + 60 * 1000),
+      fetchObs: async () => {
+        fetches += 1
+        return { windKph: 80 }
+      },
+    })
+    expect(again.sent).toBe(0)
+    expect(sent).toHaveLength(3)
+    expect(fetches).toBe(0)
+  })
+
+  it('still mails when every read is still failing at the fallback', async () => {
+    const sent = []
+    const start = slotStartMs('2026-09-23T00+0530')
+    const late = new Date(start + DIGEST_FALLBACK_MS)
+    await deliverWeatherDigest({
+      db: db(),
+      mailer: mailer(sent),
+      logger,
+      scheduleTime: late.toISOString(),
+      now: () => late,
+      orgIds: ['orgA'],
+      fetchObs: async () => null,
+      renderMap: async () => ({ png: PNG }),
+    })
+    expect(sent).toHaveLength(3)
+    expect(sent[0].text).toContain('Weather checked for 0 of 2 sites')
+    expect(sent[0].text).toContain('Depot')
+    expect(sent[0].text).toContain('Plant 2')
+    expect(sent[0].text).toContain('This is not an all-clear for them')
+    expect(sent[0].text).not.toContain('High risk')
   })
 })

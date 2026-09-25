@@ -351,18 +351,45 @@ export function renderWeatherDigest(
     ? `<p style="margin:8px 0 0;font-family:${SANS};font-size:13px;line-height:1.4;color:#123632;">Window: ${escapeHtml(windowLine)}</p>`
     : ''
   const windowText = windowLine ? `Window: ${windowLine}` : ''
-  const bannerHtml = `${map.html}${windowHtml}${sections.map(sectionHtml).join('')}`
-  const bannerText = [map.text, windowText, ...sections.map(sectionText)]
+  // The sentence is the coverage, not a label plus a number. Callers that
+  // only render tables (the template test) omit located and get no line.
+  const coverageLine =
+    Number.isFinite(digest?.located) && digest.located > 0
+      ? `Weather checked for ${Number(digest.checked) || 0} of ${digest.located} sites`
+      : ''
+  const coverageHtml = coverageLine
+    ? `<p style="margin:8px 0 0;font-family:${SANS};font-size:13px;line-height:1.4;color:#123632;">${escapeHtml(coverageLine)}</p>`
+    : ''
+  const bannerHtml = `${map.html}${windowHtml}${coverageHtml}${sections.map(sectionHtml).join('')}`
+  const bannerText = [map.text, windowText, coverageLine, ...sections.map(sectionText)]
     .filter(Boolean)
     .join('\n\n')
   const rows = []
   if (hidden > 0) {
     rows.push({ label: 'More', value: `${hidden} further areas are in the app` })
   }
-  if (digest?.unread) {
+  const unreadNames = Array.isArray(digest?.unreadSites)
+    ? digest.unreadSites.map((name) => plain(name, 80)).filter(Boolean)
+    : []
+  if (unreadNames.length) {
+    const shown = unreadNames.slice(0, 80)
+    const more = unreadNames.length - shown.length
+    const list = `${shown.join(', ')}${more > 0 ? `, and ${more} more` : ''}`
+    rows.push({
+      label: 'Unread',
+      value: `Could not fetch weather for ${unreadNames.length} site${unreadNames.length === 1 ? '' : 's'}: ${list}. This is not an all-clear for them`,
+    })
+  } else if (digest?.unread) {
     rows.push({
       label: 'Unread',
       value: `${digest.unread} site${digest.unread === 1 ? '' : 's'} could not be read this run — this is not an all-clear for them`,
+    })
+  }
+  if (digest?.unlocated) {
+    const n = digest.unlocated
+    rows.push({
+      label: 'No coordinates',
+      value: `${n} site${n === 1 ? '' : 's'} ${n === 1 ? 'has' : 'have'} no usable coordinates and ${n === 1 ? 'was' : 'were'} not checked`,
     })
   }
   return packaged({

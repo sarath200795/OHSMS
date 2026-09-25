@@ -1625,6 +1625,13 @@ service cloud.firestore {
         allow read: if false;
       }
 
+      // See structuralOnly. The exclusion there is what refuses the collection.
+      // This block is the name a reader finds first; without the exclusion it
+      // would not hold.
+      match /weatherDigestRuns/{runId} {
+        allow read, write: if false;
+      }
+
       // ── Third-party credentials ─────────────────────────────────────────────
       //
       // integrations/metabase holds the API key ODIN queries the analytics
@@ -1741,6 +1748,15 @@ service cloud.firestore {
         // union, so the narrow `allow read: if false` block below restricts
         // nothing while this one still grants the same write.
         && col != 'notifications'
+        // 'weatherDigestRuns' is the in-progress forecast for the current
+        // digest slot: which ~1 km squares already have a reading, and whether
+        // the mail has gone. The function is the only writer. A member who
+        // could set status to 'sent' would suppress the rest of the slot, and
+        // one who could plant a reading would put a risk level in the mail
+        // that the provider never sent. Excluded from every operation, for the
+        // same reason as notifications: a narrow `if false` below restricts
+        // nothing while this generic grant still matches the collection.
+        && col != 'weatherDigestRuns'
         && notKeyset(col, docId);
     }
     function genericReadable(col, docId) {
