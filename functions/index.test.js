@@ -609,4 +609,11 @@ describe('lifecycle mail triggers', () => {
   it('exports a function for each lifecycle mail', () => {
     for (const trigger of triggers) expect(typeof trigger).toBe('function')
   })
+
+  it('runs the weather digest at 00:00, 06:00, 12:00 and 18:00 Asia/Kolkata', () => {
+    expect(sendWeatherRiskDigest.__endpoint.scheduleTrigger).toMatchObject({
+      schedule: '0 0,6,12,18 * * *',
+      timeZone: 'Asia/Kolkata',
+    })
+  })
 })

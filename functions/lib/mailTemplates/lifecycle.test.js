@@ -199,7 +199,7 @@ describe('defect, drill, meeting and weather mail', () => {
 
     const message = renderWeatherDigest(
       { areas, unread: 2 },
-      { appOrigin: ORIGIN, mapCid: 'weather-risk-map', windowLabel: '2026-09-23 06:00-12:00 UTC' }
+      { appOrigin: ORIGIN, mapCid: 'weather-risk-map', windowLabel: '2026-09-23 06:00-12:00 IST' }
     )
     expect(message.subject).toBe('Weather risk: 3 high, 1 medium')
     expect(message.text.indexOf('High risk')).toBeLessThan(message.text.indexOf('Medium risk'))
@@ -207,9 +207,9 @@ describe('defect, drill, meeting and weather mail', () => {
     expect(message.text).toContain('Entity: COCO')
     expect(message.text).toContain('Drivers: High wind · 55 km/h')
     expect(message.text).toContain('When: 2026-09-23T11:00')
-    expect(message.text).toContain('When: 2026-09-23 06:00-12:00 UTC')
+    expect(message.text).toContain('When: 2026-09-23 06:00-12:00 IST')
     expect(message.text).toContain('Drivers: Rain · Medium · 4.0 mm/h')
-    expect(message.text).toContain('Window: 2026-09-23 06:00-12:00 UTC')
+    expect(message.text).toContain('Window: 2026-09-23 06:00-12:00 IST')
     expect(message.text).not.toContain('Quiet')
     expect(message.text).toContain('Unread: 2 sites could not be read')
     expect(message.html).toContain('src="cid:weather-risk-map"')

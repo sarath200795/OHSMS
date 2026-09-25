@@ -2615,13 +2615,14 @@ export const notifyCommitteeMeeting = lifecycleTrigger(
   (args) => deliverMeetingMail({ ...args, readObject: readStorageObject }),
 )
 
-// UTC, not Asia/Kolkata: the ledger bucket is the UTC six-hour window, and
-// the cron has to name that same window. A Kolkata clock would still be
-// every six hours, but the bucket function keys off the scheduled instant.
+// 00:00, 06:00, 12:00 and 18:00 Asia/Kolkata. The hours are listed so this is
+// not read as the old `0 */6` UTC job, which landed at :30 past those hours.
+// The ledger key is that same Kolkata slot. A forced run's scheduleTime is
+// the next slot; bucketFromSchedule ignores one that is still in the future.
 export const sendWeatherRiskDigest = onSchedule(
   {
-    schedule: '0 */6 * * *',
-    timeZone: 'UTC',
+    schedule: '0 0,6,12,18 * * *',
+    timeZone: SCHEDULE_TZ,
     region: REGION,
     retryCount: 0,
     timeoutSeconds: 540,
