@@ -31,9 +31,13 @@
 // the mail: the tables still go, and the ledger is claimed for the text.
 // Throwing would drop the whole window, and this schedule does not retry.
 //
-// The ledger key is the UTC six-hour bucket of the schedule time, not the
-// clock when a retry happens to run and not the Cloud Functions event id.
-// 00:00, 06:00, 12:00 and 18:00 UTC are the windows `0 */6 * * *` fires.
+// The ledger key is the Asia/Kolkata six-hour slot (`YYYY-MM-DDTHH+0530`),
+// not the Cloud Functions event id and not a UTC hour floor. Flooring UTC
+// hours made 00:00 IST (18:30 UTC) the same key as 18:00 UTC, so the midnight
+// mail after the old 23:30 IST run would have been skipped as already sent.
+// A retry of a slot that has started reuses that slot. Cloud Scheduler gives
+// a forced run the NEXT cron instant as scheduleTime; trusting it filed a
+// 15:16 IST force under the following window and suppressed that run.
 import { selectAdminAudience, loadOrgUsers } from './audience.js'
 import { describeMailGap } from './mailer.js'
 import { circulate } from './circulate.js'
@@ -57,35 +61,55 @@ export function coord(value) {
   return null
 }
 
-/** `YYYY-MM-DDTHH` with HH at 00, 06, 12 or 18 UTC. */
+// Asia/Kolkata is UTC+05:30 all year. Shifting by that offset and reading the
+// UTC fields is the civil clock, with no DST table and no Intl dependency.
+const IST_OFFSET_MS = (5 * 60 + 30) * 60 * 1000
+
+// A start a few seconds before the slot still belongs to that slot. Ninety
+// seconds is the whole allowance: a force two minutes early stays on the
+// window already open instead of taking the next one.
+const SCHEDULE_EARLY_MS = 90 * 1000
+
+/** `YYYY-MM-DDTHH+0530` with HH at 00, 06, 12 or 18 Asia/Kolkata. */
 export function weatherBucket(date) {
   const d = date instanceof Date ? date : new Date(date)
   if (Number.isNaN(d.getTime())) return ''
-  const hour = Math.floor(d.getUTCHours() / 6) * 6
+  const ist = new Date(d.getTime() + IST_OFFSET_MS)
+  const hour = Math.floor(ist.getUTCHours() / 6) * 6
   const pad = String(hour).padStart(2, '0')
-  return `${d.toISOString().slice(0, 10)}T${pad}`
+  const y = ist.getUTCFullYear()
+  const m = String(ist.getUTCMonth() + 1).padStart(2, '0')
+  const day = String(ist.getUTCDate()).padStart(2, '0')
+  return `${y}-${m}-${day}T${pad}+0530`
 }
 
 /**
- * The bucket of the scheduled instant. A retry an hour later still names the
- * window that was supposed to run, so it claims the same rows.
+ * The open slot, or the scheduled instant when that instant has already
+ * arrived (a retry). A scheduleTime still ahead is the next cron slot, which
+ * a forced run is given; claiming it suppresses the real run of that slot.
  */
 export function bucketFromSchedule(scheduleTime, now = new Date()) {
-  if (scheduleTime) {
-    const scheduled = weatherBucket(new Date(scheduleTime))
-    if (scheduled) return scheduled
+  const clock = now instanceof Date ? now : new Date(now)
+  const clockMs = clock.getTime()
+  if (scheduleTime && Number.isFinite(clockMs)) {
+    const scheduled = new Date(scheduleTime)
+    const scheduledMs = scheduled.getTime()
+    if (Number.isFinite(scheduledMs) && scheduledMs <= clockMs + SCHEDULE_EARLY_MS) {
+      const bucket = weatherBucket(scheduled)
+      if (bucket) return bucket
+    }
   }
-  return weatherBucket(now)
+  return weatherBucket(clock)
 }
 
-/** `2026-09-23T06` → `2026-09-23 06:00-12:00 UTC`. Empty when the bucket is not one. */
+/** `2026-09-23T06+0530` → `2026-09-23 06:00-12:00 IST`. Empty when the bucket is not one. */
 export function bucketWindowLabel(bucket) {
-  const match = /^(\d{4}-\d{2}-\d{2})T(00|06|12|18)$/.exec(bucket || '')
+  const match = /^(\d{4}-\d{2}-\d{2})T(00|06|12|18)\+0530$/.exec(bucket || '')
   if (!match) return ''
   const start = Number(match[2])
   const end = start + 6
   const endLabel = String(end).padStart(2, '0')
-  return `${match[1]} ${match[2]}:00-${endLabel}:00 UTC`
+  return `${match[1]} ${match[2]}:00-${endLabel}:00 IST`
 }
 
 const LEVEL_RANK = { High: 0, Medium: 1 }

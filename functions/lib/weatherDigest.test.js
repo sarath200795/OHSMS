@@ -9,20 +9,65 @@ import {
 import { memoryDb, mailer, user } from '../test-support/memoryDb.js'
 
 describe('six-hour bucket', () => {
-  it('groups a window, and the next window is a new key', () => {
-    expect(weatherBucket(new Date('2026-09-23T00:30:00.000Z'))).toBe('2026-09-23T00')
-    expect(weatherBucket(new Date('2026-09-23T05:59:00.000Z'))).toBe('2026-09-23T00')
-    expect(weatherBucket(new Date('2026-09-23T06:00:00.000Z'))).toBe('2026-09-23T06')
+  it('gives each Asia/Kolkata slot its own key', () => {
+    // 00:00, 06:00, 12:00, 18:00 IST are 18:30 the previous UTC date, then 00:30, 06:30, 12:30.
+    expect(weatherBucket(new Date('2026-09-25T18:30:00.000Z'))).toBe('2026-09-26T00+0530')
+    expect(weatherBucket(new Date('2026-09-26T00:30:00.000Z'))).toBe('2026-09-26T06+0530')
+    expect(weatherBucket(new Date('2026-09-26T06:30:00.000Z'))).toBe('2026-09-26T12+0530')
+    expect(weatherBucket(new Date('2026-09-26T12:30:00.000Z'))).toBe('2026-09-26T18+0530')
+    const keys = [
+      weatherBucket(new Date('2026-09-25T18:30:00.000Z')),
+      weatherBucket(new Date('2026-09-26T00:30:00.000Z')),
+      weatherBucket(new Date('2026-09-26T06:30:00.000Z')),
+      weatherBucket(new Date('2026-09-26T12:30:00.000Z')),
+    ]
+    expect(new Set(keys).size).toBe(4)
   })
 
-  it('keys off the scheduled instant, not the clock a retry happens to run on', () => {
-    const late = new Date('2026-09-23T07:40:00.000Z')
-    expect(bucketFromSchedule('2026-09-23T06:00:00.000Z', late)).toBe('2026-09-23T06')
+  it('keeps midnight IST distinct from the old 23:30 IST instant', () => {
+    // 23:30 IST is 18:00 UTC. The following midnight is 18:30 UTC the same UTC date.
+    expect(weatherBucket(new Date('2026-09-25T18:00:00.000Z'))).toBe('2026-09-25T18+0530')
+    expect(weatherBucket(new Date('2026-09-25T18:30:00.000Z'))).toBe('2026-09-26T00+0530')
   })
 
-  it('names the six-hour window the bucket already is', () => {
-    expect(bucketWindowLabel('2026-09-23T06')).toBe('2026-09-23 06:00-12:00 UTC')
-    expect(bucketWindowLabel('2026-09-23T18')).toBe('2026-09-23 18:00-24:00 UTC')
+  it('rolls the civil date at midnight IST, including across a month', () => {
+    expect(weatherBucket(new Date('2026-09-30T18:29:00.000Z'))).toBe('2026-09-30T18+0530')
+    expect(weatherBucket(new Date('2026-09-30T18:30:00.000Z'))).toBe('2026-10-01T00+0530')
+  })
+
+  it('keys a late retry off the scheduled slot, not the window now open', () => {
+    const late = new Date('2026-09-26T07:10:00.000Z') // 12:40 IST
+    expect(bucketFromSchedule('2026-09-26T00:30:00.000Z', late)).toBe('2026-09-26T06+0530')
+  })
+
+  it('does not let a forced run claim the next slot', () => {
+    // 15:16 IST. The next cron instant is 18:00 IST (12:30Z).
+    const now = new Date('2026-09-25T09:46:00.000Z')
+    expect(bucketFromSchedule('2026-09-25T12:30:00.000Z', now)).toBe('2026-09-25T12+0530')
+    expect(weatherBucket(new Date('2026-09-25T12:30:00.000Z'))).toBe('2026-09-25T18+0530')
+  })
+
+  it('still uses a scheduleTime only a few seconds ahead', () => {
+    const now = new Date('2026-09-25T12:29:40.000Z') // 20s before 18:00 IST
+    expect(bucketFromSchedule('2026-09-25T12:30:00.000Z', now)).toBe('2026-09-25T18+0530')
+  })
+
+  it('treats two minutes early as the window already open', () => {
+    const now = new Date('2026-09-25T12:28:00.000Z') // 2 min before 18:00 IST
+    expect(bucketFromSchedule('2026-09-25T12:30:00.000Z', now)).toBe('2026-09-25T12+0530')
+  })
+
+  it('floors the clock when there is no schedule time', () => {
+    const now = new Date('2026-09-25T09:46:00.000Z') // 15:16 IST
+    expect(bucketFromSchedule('', now)).toBe('2026-09-25T12+0530')
+    expect(bucketFromSchedule('not-a-date', now)).toBe('2026-09-25T12+0530')
+  })
+
+  it('names the six-hour IST window the bucket already is', () => {
+    expect(bucketWindowLabel('2026-09-23T06+0530')).toBe('2026-09-23 06:00-12:00 IST')
+    expect(bucketWindowLabel('2026-09-23T00+0530')).toBe('2026-09-23 00:00-06:00 IST')
+    expect(bucketWindowLabel('2026-09-23T18+0530')).toBe('2026-09-23 18:00-24:00 IST')
+    expect(bucketWindowLabel('2026-09-23T06')).toBe('')
     expect(bucketWindowLabel('nope')).toBe('')
   })
 })
@@ -119,15 +164,15 @@ describe('deliverWeatherDigest', () => {
       db: store,
       mailer: mailer(sent),
       logger,
-      scheduleTime: '2026-09-23T06:10:00.000Z',
-      now: () => new Date('2026-09-23T09:00:00.000Z'),
+      scheduleTime: '2026-09-23T00:40:00.000Z',
+      now: () => new Date('2026-09-23T01:30:00.000Z'),
       orgIds: ['orgA'],
       fetchObs: mixed,
       renderMap: async () => ({ png: PNG }),
     }
     const first = await deliverWeatherDigest(args)
     expect(first.sent).toBe(3)
-    expect(first.bucket).toBe('2026-09-23T06')
+    expect(first.bucket).toBe('2026-09-23T06+0530')
     expect(sent.map((m) => m.to).sort()).toEqual([
       'admin@example.com',
       'region@example.com',
@@ -143,7 +188,7 @@ describe('deliverWeatherDigest', () => {
     expect(blob).toContain('East')
     expect(blob).toContain('Depot')
     expect(blob).toContain('2026-09-23T11:00')
-    expect(blob).toContain('2026-09-23 06:00-12:00 UTC')
+    expect(blob).toContain('2026-09-23 06:00-12:00 IST')
     expect(blob).toContain('https://suite.weehs.org/weather')
     expect(blob).toContain('src="cid:weather-risk-map"')
     expect(blob).toContain('Sent by Acme')
