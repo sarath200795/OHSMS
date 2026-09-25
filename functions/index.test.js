@@ -6,7 +6,7 @@ import {
   notifyIncidentAssignment, notifyIllnessAssignment, notifyDrillAssignment, notifyTrainingAssignment,
   notifyIncidentReported,
   notifyPermitLifecycle, notifyDefectReported, notifyExtinguisherDefect, notifyAedDefect, notifyFasDefect,
-  notifyDrillReport, notifyCommitteeMeeting, sendWeatherRiskDigest,
+  notifyDrillReport, notifyCommitteeMeeting, sendWeatherRiskDigest, retryWeatherRiskDigest,
 } from './index.js'
 import { ASSIGNMENT_COLLECTIONS } from './lib/assignmentNotify.js'
 import { PURGEABLE } from './lib/retention.js'
@@ -604,6 +604,7 @@ describe('lifecycle mail triggers', () => {
     notifyDrillReport,
     notifyCommitteeMeeting,
     sendWeatherRiskDigest,
+    retryWeatherRiskDigest,
   ]
 
   it('exports a function for each lifecycle mail', () => {
@@ -615,5 +616,11 @@ describe('lifecycle mail triggers', () => {
       schedule: '0 0,6,12,18 * * *',
       timeZone: 'Asia/Kolkata',
     })
+    expect(retryWeatherRiskDigest.__endpoint.scheduleTrigger).toMatchObject({
+      schedule: '10,20,30,40,50 0,6,12,18 * * *',
+      timeZone: 'Asia/Kolkata',
+    })
+    expect(sendWeatherRiskDigest.__endpoint.availableMemoryMb).toBe(512)
+    expect(retryWeatherRiskDigest.__endpoint.availableMemoryMb).toBe(512)
   })
 })

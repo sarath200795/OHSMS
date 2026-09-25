@@ -2615,26 +2615,45 @@ export const notifyCommitteeMeeting = lifecycleTrigger(
   (args) => deliverMeetingMail({ ...args, readObject: readStorageObject }),
 )
 
+// 512MiB: the run holds every grid's reading and then composites the map.
+// 540s is enough for one paced pass. A 429 is not waited out inside this
+// invocation — retryWeatherRiskDigest continues the same slot.
+const weatherDigestRun = {
+  region: REGION,
+  retryCount: 0,
+  timeoutSeconds: 540,
+  memory: '512MiB',
+  secrets: [SMTP_PASS],
+}
+
+const weatherDigestTask = (event) =>
+  withMailer('weather digest', (mailer) =>
+    deliverWeatherDigest({
+      db: getFirestore(),
+      mailer,
+      logger,
+      scheduleTime: event?.scheduleTime,
+    }),
+  )
+
 // 00:00, 06:00, 12:00 and 18:00 Asia/Kolkata. The hours are listed so this is
 // not read as the old `0 */6` UTC job, which landed at :30 past those hours.
 // The ledger key is that same Kolkata slot. A forced run's scheduleTime is
 // the next slot; bucketFromSchedule ignores one that is still in the future.
 export const sendWeatherRiskDigest = onSchedule(
+  { ...weatherDigestRun, schedule: '0 0,6,12,18 * * *', timeZone: SCHEDULE_TZ },
+  weatherDigestTask,
+)
+
+// Ten, twenty, thirty, forty and fifty minutes after each slot. The :00 run
+// fetches what it can. These ticks retry only the grids still missing, and
+// the :50 tick is the one that mails a partial picture if some never arrive.
+// Same ledger key as the slot, so a recipient still gets one mail.
+export const retryWeatherRiskDigest = onSchedule(
   {
-    schedule: '0 0,6,12,18 * * *',
+    ...weatherDigestRun,
+    schedule: '10,20,30,40,50 0,6,12,18 * * *',
     timeZone: SCHEDULE_TZ,
-    region: REGION,
-    retryCount: 0,
-    timeoutSeconds: 540,
-    secrets: [SMTP_PASS],
   },
-  (event) =>
-    withMailer('weather digest', (mailer) =>
-      deliverWeatherDigest({
-        db: getFirestore(),
-        mailer,
-        logger,
-        scheduleTime: event?.scheduleTime,
-      }),
-    ),
+  weatherDigestTask,
 )
