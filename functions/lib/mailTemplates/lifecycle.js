@@ -5,8 +5,16 @@
 // drops it, and a field that was clearly sealed is replaced with a fixed
 // sentence so the mail still says the record exists.
 import { safeOrigin } from '../mailer.js'
+import { safeCid } from '../mailAttachments.js'
 import { renderLayout, footerLine } from './layout.js'
-import { classifyMailText, readableText, safeLine, safeMailPath, SEALED_STAND_IN } from './safe.js'
+import {
+  classifyMailText,
+  readableText,
+  safeLine,
+  safeMailPath,
+  escapeHtml,
+  SEALED_STAND_IN,
+} from './safe.js'
 
 export const SEALED_LINE = SEALED_STAND_IN
 
@@ -36,6 +44,8 @@ function packaged(message) {
     url,
     path,
     sender: message.sender,
+    bannerHtml: message.bannerHtml,
+    bannerText: message.bannerText,
   })
   return { subject, text, html, senderName }
 }
@@ -193,17 +203,159 @@ export function renderMeetingMail(meeting, { appOrigin = '', sender = '' } = {})
 // copied: a region with two hundred sites is a spreadsheet, not a mail.
 export const DIGEST_AREA_CAP = 40
 
-export function renderWeatherDigest(digest, { appOrigin = '', sender = '' } = {}) {
+const SANS = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif"
+
+// High is red-800 on white (~7:1). Medium is amber-800 on white, with a
+// yellow swatch beside it: the swatch is the pin colour, and pale yellow as
+// the heading would fail as text.
+const LEVEL_STYLE = {
+  High: {
+    title: '#991b1b',
+    bar: '#dc2626',
+    wash: '#fef2f2',
+    swatch: '#dc2626',
+    label: 'High risk',
+  },
+  Medium: {
+    title: '#92400e',
+    bar: '#d97706',
+    wash: '#fffbeb',
+    swatch: '#eab308',
+    label: 'Medium risk',
+  },
+}
+
+/**
+ * High, then medium. Inside a level, regions A–Z, then sites A–Z.
+ * Anything that is not High or Medium is left out — a Low row is not a
+ * digest row, and an empty level is not a heading.
+ */
+export function groupDigestAreas(areas) {
+  const list = Array.isArray(areas) ? areas : []
+  const sections = []
+  for (const level of ['High', 'Medium']) {
+    const rows = list.filter((area) => area && area.level === level)
+    const byRegion = new Map()
+    for (const row of rows) {
+      const region = plain(row.region, 80) || 'Unassigned'
+      if (!byRegion.has(region)) byRegion.set(region, [])
+      byRegion.get(region).push(row)
+    }
+    const groups = [...byRegion.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([region, sites]) => ({
+        region,
+        sites: [...sites].sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''))),
+      }))
+    if (groups.length) sections.push({ level, groups })
+  }
+  return sections
+}
+
+function driverText(area) {
+  const drivers = Array.isArray(area?.drivers) ? area.drivers : []
+  if (drivers.length) {
+    return drivers
+      .map((driver) => {
+        const label = plain(driver?.label, 40)
+        const value = plain(driver?.value, 80)
+        if (!label) return ''
+        return value ? `${label} · ${value}` : label
+      })
+      .filter(Boolean)
+      .join('; ')
+  }
+  return plain(area?.hazards, 180)
+}
+
+function cell(text, { size = '13px', weight = '400', color = '#123632', transform = '' } = {}) {
+  const casing = transform ? `text-transform:${transform};` : ''
+  return `<td valign="top" style="padding:6px 8px;font-family:${SANS};font-size:${size};line-height:1.4;font-weight:${weight};color:${color};${casing}">${escapeHtml(text || '—')}</td>`
+}
+
+function sectionHtml(section) {
+  const style = LEVEL_STYLE[section.level]
+  const groups = section.groups
+    .map((group) => {
+      const headCell = { size: '11px', weight: '700', color: '#246058', transform: 'uppercase' }
+      const head = `<tr>
+${cell('Site', headCell)}
+${cell('Entity', headCell)}
+${cell('Drivers', headCell)}
+${cell('When', headCell)}
+</tr>`
+      const body = group.sites
+        .map((site) => {
+          const when = plain(site.observedAt, 40) || plain(site.windowLabel, 40)
+          return `<tr>
+${cell(plain(site.name, 80), { weight: '600' })}
+${cell(plain(site.entity, 80))}
+${cell(driverText(site))}
+${cell(when)}
+</tr>`
+        })
+        .join('')
+      return `<p style="margin:12px 0 4px;font-family:${SANS};font-size:13px;line-height:1.4;font-weight:700;color:#123632;">${escapeHtml(group.region)}</p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 8px;border-left:4px solid ${style.bar};background:${style.wash};">${head}${body}</table>`
+    })
+    .join('')
+  return `<h2 style="margin:18px 0 0;font-family:${SANS};font-size:16px;line-height:1.3;font-weight:700;color:${style.title};"><span style="display:inline-block;width:10px;height:10px;margin-right:6px;background:${style.swatch};border-radius:2px;vertical-align:baseline;"></span>${escapeHtml(style.label)}</h2>${groups}`
+}
+
+function sectionText(section) {
+  const style = LEVEL_STYLE[section.level]
+  const lines = [style.label]
+  for (const group of section.groups) {
+    lines.push(group.region)
+    for (const site of group.sites) {
+      lines.push(`Site: ${plain(site.name, 80) || '—'}`)
+      lines.push(`Entity: ${plain(site.entity, 80) || '—'}`)
+      lines.push(`Drivers: ${driverText(site) || '—'}`)
+      const when = plain(site.observedAt, 40) || plain(site.windowLabel, 40)
+      lines.push(`When: ${when || '—'}`)
+    }
+  }
+  return lines.join('\n')
+}
+
+function mapBlock(cid) {
+  if (!cid) return { html: '', text: '' }
+  const src = escapeHtml(`cid:${cid}`)
+  return {
+    html: `<p style="margin:16px 0 8px;"><img src="${src}" width="560" alt="Sites at high risk, marked with red pins, and medium risk, marked with yellow pins" style="display:block;width:100%;max-width:560px;height:auto;border:1px solid #d0e8e4;border-radius:8px;" /></p>
+<p style="margin:0 0 4px;font-family:${SANS};font-size:12px;line-height:1.45;color:#246058;">Red pin: high risk. Yellow pin: medium risk. Map data © OpenStreetMap contributors.</p>`,
+    text: 'Map: red pins are high risk, yellow pins are medium risk. Map data © OpenStreetMap contributors.',
+  }
+}
+
+export function renderWeatherDigest(
+  digest,
+  { appOrigin = '', sender = '', mapCid = '', windowLabel = '' } = {}
+) {
   const areas = Array.isArray(digest?.areas) ? digest.areas : []
-  const shown = areas.slice(0, DIGEST_AREA_CAP)
+  const shown = areas.slice(0, DIGEST_AREA_CAP).map((area) => ({
+    ...area,
+    windowLabel: plain(windowLabel, 40),
+  }))
   const hidden = areas.length - shown.length
   const high = areas.filter((a) => a.level === 'High').length
   const medium = areas.filter((a) => a.level === 'Medium').length
   const subject = `Weather risk: ${high} high, ${medium} medium`
-  const rows = shown.map((area) => ({
-    label: plain(area.region, 40) || 'Region',
-    value: safeLine(`${area.name} — ${area.level}${area.hazards ? ` · ${area.hazards}` : ''}`, 180),
-  }))
+  const sections = groupDigestAreas(shown)
+  const map = mapBlock(safeCid(mapCid))
+  // The bucket is the run's window. A site's When cell is the provider's
+  // clock for that reading when one was sent. Printing the window only as a
+  // fallback hid it on every row that had a reading.
+  const windowLine = plain(windowLabel, 48)
+  const windowHtml = windowLine
+    ? `<p style="margin:8px 0 0;font-family:${SANS};font-size:13px;line-height:1.4;color:#123632;">Window: ${escapeHtml(windowLine)}</p>`
+    : ''
+  const windowText = windowLine ? `Window: ${windowLine}` : ''
+  const bannerHtml = `${map.html}${windowHtml}${sections.map(sectionHtml).join('')}`
+  const bannerText = [map.text, windowText, ...sections.map(sectionText)]
+    .filter(Boolean)
+    .join('\n\n')
+  const rows = []
   if (hidden > 0) {
     rows.push({ label: 'More', value: `${hidden} further areas are in the app` })
   }
@@ -218,6 +370,8 @@ export function renderWeatherDigest(digest, { appOrigin = '', sender = '' } = {}
     label: 'Weather risk',
     headline: 'High and medium weather risk, by region.',
     rows,
+    bannerHtml,
+    bannerText,
     actionLabel: 'Open weather risk',
     path: '/weather',
     appOrigin,

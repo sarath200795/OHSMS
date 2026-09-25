@@ -115,6 +115,18 @@ function loggedName(name) {
   return text ? attachmentFileName(text, '') : ''
 }
 
+/**
+ * A Content-ID safe to put in a MIME header and in an HTML cid: URL.
+ * A newline here splits the header. The same class of mistake as a filename
+ * that contains one, and the HTML interpolates this string too.
+ */
+export function safeCid(value) {
+  if (typeof value !== 'string') return ''
+  const cid = value.trim()
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(cid)) return ''
+  return cid
+}
+
 function outgoingName(name, contentType) {
   return withExtension(publicFileName(name, 'attachment'), contentType)
 }
@@ -178,7 +190,8 @@ export function prepareAttachments(list) {
       continue
     }
     const safe = uniqueName(outgoingName(item.filename, contentType), used)
-    accepted.push({ filename: safe, content, contentType })
+    const cid = safeCid(item.cid)
+    accepted.push({ filename: safe, content, contentType, ...(cid ? { cid } : {}) })
     total += content.length
   }
   return { accepted, skipped }

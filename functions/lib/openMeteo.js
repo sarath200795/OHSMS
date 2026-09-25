@@ -55,6 +55,10 @@ export function normalizeOpenMeteo(json) {
     weatherCode: pick(cur.weather_code),
     visibilityM: at(hourly.visibility),
     uvIndex: at(hourly.uv_index),
+    // The provider's clock for this reading. Not a forecast interval — the
+    // request is current conditions, and a window invented here would be a
+    // time the service did not send.
+    observedAt: typeof cur.time === 'string' ? cur.time.trim() : '',
   }
 }
 

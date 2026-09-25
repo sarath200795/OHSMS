@@ -3,6 +3,7 @@ import {
   reachesScope,
   selectScopedAudience,
   selectActiveAudience,
+  selectAdminAudience,
   grantList,
   scopeFrom,
 } from './audience.js'
@@ -76,8 +77,60 @@ describe('audiences', () => {
     expect(rows.map((r) => r.uid)).toEqual(['admin', 'posted'])
   })
 
-  it('includes every approved address in the org for the weather digest', () => {
+  it('includes every approved address in the org', () => {
     const rows = selectActiveAudience(users, 'orgA')
     expect(rows.map((r) => r.uid).sort()).toEqual(['admin', 'other', 'posted'])
+  })
+})
+
+describe('selectAdminAudience', () => {
+  const users = [
+    user('org-admin', { role: 'admin', email: 'org@example.com' }),
+    user('region-admin', {
+      role: 'admin',
+      email: 'region@example.com',
+      access: { regions: ['South'] },
+    }),
+    user('entity-admin', {
+      role: 'admin',
+      email: 'entity@example.com',
+      access: { entities: ['COCO'] },
+    }),
+    user('site-admin', {
+      role: 'admin',
+      email: 'site@example.com',
+      access: { sites: ['s1'] },
+    }),
+    user('aaa', { role: 'admin', email: 'shared@example.com' }),
+    user('mmm', { role: 'admin', email: 'Shared@example.com' }),
+    user('legacy', { role: 'admin', status: undefined, email: 'legacy@example.com' }),
+    user('member', { role: 'member', siteId: 's1', email: 'member@example.com' }),
+    user('manager', {
+      role: 'manager',
+      email: 'manager@example.com',
+      access: { regions: ['South'], entities: ['COCO'], sites: ['s1'] },
+    }),
+    user('suspended', { role: 'admin', status: 'suspended', email: 'off@example.com' }),
+    user('pending', { role: 'admin', status: 'pending', email: 'pending@example.com' }),
+    user('foreign', { orgId: 'orgB', role: 'admin', email: 'foreign@example.com' }),
+    user('badmail', { role: 'admin', email: 'not-an-email' }),
+  ]
+
+  it('keeps every approved active admin and drops grants that are not an admin role', () => {
+    const rows = selectAdminAudience(users, 'orgA')
+    expect(rows.map((r) => r.uid)).toEqual([
+      'aaa',
+      'entity-admin',
+      'legacy',
+      'org-admin',
+      'region-admin',
+      'site-admin',
+    ])
+  })
+
+  it('dedupes a shared mailbox to the lowest uid', () => {
+    const rows = selectAdminAudience(users, 'orgA')
+    const shared = rows.filter((r) => r.email.toLowerCase() === 'shared@example.com')
+    expect(shared).toEqual([{ uid: 'aaa', email: 'shared@example.com' }])
   })
 })

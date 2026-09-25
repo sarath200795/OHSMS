@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { assessWeather, digestLevel, digestHazards } from './weatherBands.js'
+import { assessWeather, digestLevel, digestHazards, digestDrivers } from './weatherBands.js'
 import { forecastUrl, normalizeOpenMeteo, gridKey } from './openMeteo.js'
 
 const bandOf = (obs, key) => assessWeather(obs).hazards.find((h) => h.key === key)?.band ?? 'none'
@@ -31,6 +31,24 @@ describe('digest bands follow the published cut-offs', () => {
     const storm = assessWeather({ weatherCode: 95 })
     expect(digestLevel(storm.band)).toBe('High')
     expect(digestHazards(storm)).toContain('Thunderstorm')
+    expect(digestDrivers(storm)).toContainEqual({
+      key: 'lightning',
+      label: 'Thunderstorm',
+      value: 'Lightning reported',
+    })
+  })
+
+  it('keeps the reading on a digest driver and drops a low one', () => {
+    expect(digestDrivers(assessWeather({ windKph: 50 }))).toEqual([
+      { key: 'wind', label: 'High wind', value: '50 km/h' },
+    ])
+    expect(digestDrivers(assessWeather({ windKph: 20, gustKph: 65 }))).toEqual([
+      { key: 'wind', label: 'High wind', value: 'Gusting 65 km/h' },
+    ])
+    expect(digestDrivers(assessWeather({ precipMmHr: 12 }))).toEqual([
+      { key: 'rain', label: 'Rain', value: 'High · 12.0 mm/h' },
+    ])
+    expect(digestDrivers(assessWeather({ windKph: 20 }))).toEqual([])
   })
 })
 
@@ -56,5 +74,6 @@ describe('Open-Meteo request', () => {
     expect(obs.visibilityM).toBe(8000)
     expect(obs.uvIndex).toBe(6)
     expect(obs.tempC).toBe(30)
+    expect(obs.observedAt).toBe('2026-09-23T15:10')
   })
 })
