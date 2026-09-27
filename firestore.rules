@@ -739,12 +739,19 @@ service cloud.firestore {
     // batch are not the same value. Presence is the flag. A rewrite that
     // clears the mirror's flag while the asset stays in the bin would put a
     // retired unit back on the sticker.
+    //
+    // A status rewrite that does not touch deletedAt must not call getAfter.
+    // Older mirrors store extId as a label ("EXT-1") that is not the document
+    // id, and reading a path that is not there raises — a raising rule denies,
+    // which would refuse every ordinary update of those mirrors.
     function mirrorDeletionTracksAsset(d) {
-      return mirrorCollection(d) != ''
-        && mirrorAssetId(d) is string
-        && mirrorAssetId(d) != ''
-        && (d.get('deletedAt', null) != null)
-            == (getAfter(/databases/$(database)/documents/organizations/$(d.orgId)/$(mirrorCollection(d))/$(mirrorAssetId(d))).data.get('deletedAt', null) != null);
+      return (resource != null
+          && request.resource.data.get('deletedAt', null) == resource.data.get('deletedAt', null))
+        || (mirrorCollection(d) != ''
+          && mirrorAssetId(d) is string
+          && mirrorAssetId(d) != ''
+          && (d.get('deletedAt', null) != null)
+              == (getAfter(/databases/$(database)/documents/organizations/$(d.orgId)/$(mirrorCollection(d))/$(mirrorAssetId(d))).data.get('deletedAt', null) != null));
     }
 
     // The asset document is still there after this batch. Used so a writer
