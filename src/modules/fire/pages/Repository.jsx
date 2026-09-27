@@ -29,6 +29,7 @@ import SubmitQuotationModal from '../components/SubmitQuotationModal'
 import SubmitHptModal from '../components/SubmitHptModal'
 import ListFilters from '../components/ListFilters'
 import { useAuth } from '../context/AuthContext'
+import { canManageAsset } from '../lib/recycle'
 import { useFleet } from '../context/FleetContext'
 import { deriveStatus, isToBeRefilled, hasQuotation, hasDateIssue } from '../lib/extinguisherLogic'
 import { requiredStep, WORKFLOW_STEP } from '../lib/hpt'
@@ -51,7 +52,7 @@ import { readableOnTint, solidBackground } from '../../../shared/lib/contrast'
 
 export default function Repository() {
   const { org, extinguishers, loading, capped, loadCap } = useFleet()
-  const { orgId, orgName, profile } = useAuth()
+  const { orgId, orgName, profile, isAdmin, isManager } = useAuth()
   const navigate = useNavigate()
   const today = useMemo(() => new Date(), [])
 
@@ -221,12 +222,23 @@ export default function Repository() {
     const ids = selected.size ? Array.from(selected) : visible.map((e) => e.id)
     navigate('/equipment/qr-print', { state: { ids } })
   }
+  const deletable = selectedItems.filter((e) => canManageAsset(profile, e, { isAdmin, isManager }))
   const doDelete = async () => {
+    if (!deletable.length) {
+      toast.error('None of the selected extinguishers are in your sites.')
+      setConfirmDelete(false)
+      return
+    }
     setDeleting(true)
     try {
-      const items = selectedItems.map((e) => ({ id: e.id, qrToken: e.qrToken }))
+      const items = deletable.map((e) => ({ id: e.id, qrToken: e.qrToken }))
       await bulkDeleteExtinguishers(orgId, items, { uid: profile?.uid, name: profile?.name })
-      toast.success(`Deleted ${items.length} extinguishers`)
+      const skipped = selectedItems.length - deletable.length
+      toast.success(
+        skipped
+          ? `Moved ${items.length} to Recently deleted. ${skipped} ${skipped === 1 ? 'is' : 'are'} outside your sites.`
+          : `Moved ${items.length} to Recently deleted`,
+      )
       setSelected(new Set())
       setConfirmDelete(false)
     } catch (e) {
@@ -350,9 +362,11 @@ export default function Repository() {
               <button className="btn bg-white/10 text-white hover:bg-white/20" onClick={doPrint}>
                 <QrCode size={15} /> Print QR
               </button>
-              <button className="btn-danger" onClick={() => setConfirmDelete(true)}>
-                <Trash2 size={15} /> Delete
-              </button>
+              {isManager && (
+                <button className="btn-danger" onClick={() => setConfirmDelete(true)}>
+                  <Trash2 size={15} /> Delete
+                </button>
+              )}
               <button
                 className="btn bg-white/10 text-white hover:bg-white/20"
                 onClick={() => setSelected(new Set())}
@@ -556,8 +570,12 @@ export default function Repository() {
         title="Delete extinguishers?"
       >
         <p className="text-sm text-ink-600">
-          This moves <strong>{selected.size}</strong> extinguisher(s) to the Recycle Bin (restorable
-          for 30 days) and removes their QR codes.
+          This moves <strong>{deletable.length}</strong> extinguisher(s) to Recently deleted. They
+          drop out of lists, counts and QR inspections for 30 days. Restoring brings back the same
+          unit and the same QR code, so a sticker already on the cylinder works again.
+          {selected.size !== deletable.length && (
+            <> {selected.size - deletable.length} of the selection {selected.size - deletable.length === 1 ? 'is' : 'are'} outside your sites and will be left in place.</>
+          )}
         </p>
         <div className="mt-5 flex justify-end gap-2">
           <button className="btn-ghost" onClick={() => setConfirmDelete(false)}>

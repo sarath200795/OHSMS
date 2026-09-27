@@ -12,12 +12,13 @@ import { bulkUpsertExtinguishers } from '../lib/firestore'
 import { linkImportRows } from '../lib/siteLink'
 import { useAccessibleSites } from '../../../shared/org/useAccessibleSites'
 import { assignSerials } from '../lib/serial'
+import { holdRetiredImports } from '../lib/recycle'
 import { BULK_COLUMNS } from '../lib/constants'
 import { toastCaught } from '../../../shared/lib/toastCaught'
 
 export default function BulkUpload() {
   const { orgId, orgName, profile } = useAuth()
-  const { extinguishers } = useFleet()
+  const { extinguishers, deletedExtinguishers } = useFleet()
   const orgSites = useAccessibleSites()
   const inputRef = useRef(null)
   const [fileName, setFileName] = useState('')
@@ -67,10 +68,19 @@ export default function BulkUpload() {
         newRows.push(row)
       }
     }
-    const existingSerials = extinguishers.map((e) => e.serialNo).filter(Boolean)
-    const creates = assignSerials(newRows, existingSerials)
-    return { creates, updates, blocked, unmatched }
-  }, [result, bySerial, extinguishers, orgSites])
+    // A serial sitting in Recently deleted is not an overwrite of a live row,
+    // and it is not free either. Holding it here, before serials are assigned,
+    // keeps an auto-number from being spent on a row that will not be written.
+    const retired = deletedExtinguishers || []
+    const { fresh, held } = holdRetiredImports(newRows, {
+      live: extinguishers,
+      deleted: retired,
+      codeField: 'serialNo',
+    })
+    const existingSerials = [...extinguishers, ...retired].map((e) => e.serialNo).filter(Boolean)
+    const creates = assignSerials(fresh, existingSerials)
+    return { creates, updates, blocked, unmatched, held }
+  }, [result, bySerial, extinguishers, deletedExtinguishers, orgSites])
 
   const handleFile = async (file) => {
     if (!file) return
@@ -99,7 +109,7 @@ export default function BulkUpload() {
       const res = await bulkUpsertExtinguishers(orgId, orgName, plan, { uid: profile?.uid, name: profile?.name })
       // Carry the held-back count into the summary: `plan` is cleared below, and
       // "42 added" on a 50-row file should not be the only thing the person sees.
-      setDone({ ...res, heldBack: plan.blocked.length })
+      setDone({ ...res, heldBack: plan.blocked.length, retiredHeld: plan.held.length })
       toast.success(`${res.created} added, ${res.updated} updated`)
       setResult(null)
       setFileName('')
@@ -161,6 +171,13 @@ export default function BulkUpload() {
               {done.heldBack} row(s) were held back — their site is not in the registry.
             </p>
           )}
+          {done.retiredHeld > 0 && (
+            <p className="mt-2 text-sm font-medium text-amber-700">
+              {done.retiredHeld} row(s) were held back — the serial or QR code belongs to a unit
+              that is still on record, including Recently deleted. Restore that unit instead of
+              adding it again.
+            </p>
+          )}
           <div className="mt-6 flex justify-center gap-3">
             <button className="btn-primary" onClick={reset}>Import more</button>
             <a className="btn-ghost" href="/equipment/repository">View repository</a>
@@ -217,6 +234,11 @@ export default function BulkUpload() {
                       <MapPin size={14} /> {plan.blocked.length} held back
                     </span>
                   )}
+                  {plan.held.length > 0 && (
+                    <span className="chip bg-amber-100 text-amber-700">
+                      <AlertTriangle size={14} /> {plan.held.length} already on record
+                    </span>
+                  )}
                   <span className="text-sm text-ink-500">{result.total} total rows</span>
                 </div>
 
@@ -240,6 +262,26 @@ export default function BulkUpload() {
                           {u.suggestion && (
                             <span className="text-ink-500"> — did you mean “{u.suggestion.name}”?</span>
                           )}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {plan.held.length > 0 && (
+                  <div className="card border border-amber-200 bg-amber-50/40 p-4">
+                    <p className="text-sm font-bold text-amber-800">
+                      {plan.held.length} row(s) will not be imported — serial or QR already on record
+                    </p>
+                    <p className="mt-1 text-xs text-amber-700">
+                      A unit in Recently deleted can be restored with the same QR sticker. Adding
+                      it again would put that code on two cylinders.
+                    </p>
+                    <ul className="mt-3 space-y-1.5">
+                      {plan.held.map((h, i) => (
+                        <li key={`${h.row.serialNo || 'row'}-${i}`} className="text-sm text-ink-700">
+                          <span className="font-semibold">{h.row.serialNo || 'No serial'}</span>
+                          <span className="text-ink-500"> — {h.reason}</span>
                         </li>
                       ))}
                     </ul>
@@ -350,7 +392,8 @@ export default function BulkUpload() {
             <div className="ring-1 ring-ink-200 rounded-2xl bg-surface-50 p-3 text-xs text-ink-600 ">
               <p className="mb-1 font-bold uppercase text-ink-500">Serial No</p>
               Leave it blank to auto-assign a unique <code>FE-####</code>. A matching serial overwrites that
-              record’s details but keeps its QR code, status and defects.
+              record’s details but keeps its QR code, status and defects. A serial or QR code that is
+              in Recently deleted is held back — restore that extinguisher instead.
             </div>
             <div className="ring-1 ring-ink-200 rounded-2xl bg-surface-50 p-3 ">
               <p className="mb-1 text-xs font-bold uppercase text-ink-500">Columns</p>

@@ -146,6 +146,16 @@ export function FleetProvider({ children }) {
     // keeps its job of persisting them.
     const active = withSites(extinguishers.filter((e) => !isDeleted(e)), allSites)
     const deletedExtinguishers = extinguishers.filter((e) => isDeleted(e))
+    // AEDs and fire-alarm panels share the extinguisher bin. A missing
+    // deletedAt is in service, so a register written before the field existed
+    // does not disappear.
+    const activeAeds = aeds.filter((a) => !isDeleted(a))
+    const activeFas = fas.filter((a) => !isDeleted(a))
+    const deletedAeds = aeds.filter((a) => isDeleted(a))
+    const deletedFas = fas.filter((a) => isDeleted(a))
+    const deletedExtIds = new Set(deletedExtinguishers.map((e) => e.id))
+    const deletedAedIds = new Set(deletedAeds.map((a) => a.id))
+    const deletedFasIds = new Set(deletedFas.map((a) => a.id))
     const summary = fleetSummary(active, today)
     const defectLog = derivePhysicalDefectLog(reports, active)
     // Distinct site names (centerName) seen anywhere — used to populate the
@@ -156,8 +166,8 @@ export function FleetProvider({ children }) {
           ...active.map((e) => e.centerName),
           ...signages.map((s) => s.centerName),
           ...mockDrills.map((d) => d.centerName),
-          ...aeds.map((a) => a.centerName),
-          ...fas.map((a) => a.centerName),
+          ...activeAeds.map((a) => a.centerName),
+          ...activeFas.map((a) => a.centerName),
           ...firstAid.map((r) => r.centerName),
           ...stretchers.map((a) => a.centerName),
         ].filter((c) => c && c.trim())
@@ -170,13 +180,15 @@ export function FleetProvider({ children }) {
       auditLogs,
       signages,
       mockDrills,
-      aeds,
-      fas,
+      aeds: activeAeds,
+      fas: activeFas,
+      deletedAeds,
+      deletedFas,
       firstAid,
       stretchers,
       stretchersDue: stretchers.filter((a) => { const c = stretcherCondition(a, today); return c.due || c.expired }).length,
-      aedsDue: aeds.filter((a) => { const c = aedCondition(a, today); return c.due || c.expired }).length,
-      fasDue: fas.filter((a) => { const c = fasCondition(a, today); return c.due || c.expired }).length,
+      aedsDue: activeAeds.filter((a) => { const c = aedCondition(a, today); return c.due || c.expired }).length,
+      fasDue: activeFas.filter((a) => { const c = fasCondition(a, today); return c.due || c.expired }).length,
       sites,
       siteInventory,
       extinguishers: active,
@@ -204,7 +216,16 @@ export function FleetProvider({ children }) {
       reports,
       users,
       summary,
-      pendingReports: reports.filter((r) => r.approvalStatus === 'pending'),
+      // A defect on a unit in the bin is not work. The report document stays
+      // (it is the history); it just does not sit in the queue until the unit
+      // comes back.
+      pendingReports: reports.filter((r) => {
+        if (r.approvalStatus !== 'pending' || r.deletedAt) return false
+        if (r.kind === 'defect' && deletedExtIds.has(r.extId)) return false
+        if (r.kind === 'asset_defect' && r.assetKind === 'aed' && deletedAedIds.has(r.assetRefId)) return false
+        if (r.kind === 'asset_defect' && r.assetKind === 'fas' && deletedFasIds.has(r.assetRefId)) return false
+        return true
+      }),
       pendingUsers: users.filter((u) => u.status === 'pending'),
       refillDue: active.filter((e) => isToBeRefilled(e, today)),
       inProcess: active.filter((e) => isInProcess(e)),

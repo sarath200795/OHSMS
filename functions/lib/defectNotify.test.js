@@ -99,6 +99,14 @@ describe('which writes are a defect', () => {
     expect(planAssetDefects('fas', { status: 'faulty' }, { status: 'faulty' }, 'f1')).toEqual([])
   })
 
+  it('does not mail a soft-delete, or the restore that brings the same defects back', () => {
+    const live = { physicalDefects: ['pin'], deletedAt: null }
+    const bin = { physicalDefects: ['pin'], deletedAt: { seconds: 1 } }
+    expect(planAssetDefects('extinguishers', live, bin, 'e1')).toEqual([])
+    expect(planAssetDefects('extinguishers', bin, live, 'e1')).toEqual([])
+    expect(planDefectReport(null, { kind: 'defect', defectType: 'pin', deletedAt: { seconds: 1 } })).toBeNull()
+  })
+
   it('treats a non-rejected report as already owning the asset write', () => {
     const plan = { assetKind: 'extinguisher', assetId: 'e1', defectKey: 'pin' }
     expect(

@@ -478,7 +478,11 @@ service cloud.firestore {
     function scannedAsset(orgId, data) {
       return hasToken(data)
         && exists(/databases/$(database)/documents/qr/$(data.token))
-        && get(/databases/$(database)/documents/qr/$(data.token)).data.orgId == orgId;
+        && get(/databases/$(database)/documents/qr/$(data.token)).data.orgId == orgId
+        // A unit in the recycle bin keeps its mirror so the sticker still
+        // resolves, but it is not in service. .get defaults an older mirror
+        // that has no deletedAt to null, so a live label keeps working.
+        && get(/databases/$(database)/documents/qr/$(data.token)).data.get('deletedAt', null) == null;
     }
     function scannedPermit(orgId, data) {
       return hasToken(data)
@@ -660,7 +664,7 @@ service cloud.firestore {
         'orgId', 'orgName', 'token', 'status', 'updatedAt',
         'centerName', 'region', 'entity', 'location',
         // Extinguisher
-        'extId', 'serialNo', 'type', 'capacity', 'physicalDefects',
+        'extId', 'serialNo', 'type', 'capacity', 'physicalDefects', 'deletedAt',
         'dateOfDeployment', 'dateOfNextRefill', 'dateOfNextHPT',
         // AED / FAS / stretcher
         'assetKind', 'assetRefId', 'label', 'brand', 'model',
@@ -730,6 +734,30 @@ service cloud.firestore {
              .data.get('qrToken', '') == token;
     }
 
+    // The public page says "deleted" only while the asset itself is deleted.
+    // Comparing the timestamps would fail: the two server timestamps in one
+    // batch are not the same value. Presence is the flag. A rewrite that
+    // clears the mirror's flag while the asset stays in the bin would put a
+    // retired unit back on the sticker.
+    function mirrorDeletionTracksAsset(d) {
+      return mirrorCollection(d) != ''
+        && mirrorAssetId(d) is string
+        && mirrorAssetId(d) != ''
+        && (d.get('deletedAt', null) != null)
+            == (getAfter(/databases/$(database)/documents/organizations/$(d.orgId)/$(mirrorCollection(d))/$(mirrorAssetId(d))).data.get('deletedAt', null) != null);
+    }
+
+    // The asset document is still there after this batch. Used so a writer
+    // cannot peel the QR mirror off a unit that is only in the bin: the
+    // sticker has to keep resolving until an admin purges it, or until the
+    // asset itself is deleted in the same batch (stretchers still hard-delete).
+    function mirrorAssetRemains(d) {
+      return mirrorCollection(d) != ''
+        && mirrorAssetId(d) is string
+        && mirrorAssetId(d) != ''
+        && existsAfter(/databases/$(database)/documents/organizations/$(d.orgId)/$(mirrorCollection(d))/$(mirrorAssetId(d)));
+    }
+
     match /qr/{token} {
       allow get: if true;
       allow list: if false;
@@ -751,12 +779,20 @@ service cloud.firestore {
       // whatever the writer happened to send.
       allow create: if isWriterOf(request.resource.data.orgId)
         && mirrorsItsAsset(token, request.resource.data)
+        && mirrorDeletionTracksAsset(request.resource.data)
         && request.resource.data.keys().hasOnly(equipmentMirrorFields());
       allow update: if resource != null
         && isWriterOf(resource.data.orgId)
         && request.resource.data.orgId == resource.data.orgId
+        && mirrorDeletionTracksAsset(request.resource.data)
         && keepsMirrorShape(equipmentMirrorFields());
-      allow delete: if isWriterOf(resource.data.orgId);
+      // Admin may remove a mirror on its own (purge). Anyone else may remove
+      // it only when the asset goes in the same batch. A soft-deleted unit
+      // still exists, so its mirror cannot be stripped early.
+      allow delete: if resource != null && (
+        isAdminOf(resource.data.orgId)
+        || (isWriterOf(resource.data.orgId) && !mirrorAssetRemains(resource.data))
+      );
     }
 
     // ── Public LOTO procedure mirror ──────────────────────────────────────────
@@ -1767,8 +1803,8 @@ service cloud.firestore {
     // Soft-deleting an injury is the first half of destroying it, so it takes
     // the standing the second half takes.
     //
-    // `deletedAt` is an ordinary field to this ruleset — it appears nowhere else
-    // in it — and the generic rule below grants update to isWriterOf. That was
+    // `deletedAt` was an ordinary field here — nothing in the rules looked at
+    // it — and the generic rule below grants update to isWriterOf. That was
     // harmless for as long as nothing acted on the value: setting it hid the row
     // from one list and did nothing else. functions/lib/retention.js now purges
     // /injuries thirty days after that timestamp, together with the `records`
@@ -1804,6 +1840,54 @@ service cloud.firestore {
       return col != 'injuries'
         || resource == null
         || request.resource.data.get('deletedAt', null) == resource.data.get('deletedAt', null);
+    }
+
+    // Soft-deleting an extinguisher, AED or fire-alarm panel is the first half
+    // of destroying it. purgeSoftDeleted removes the document and its public
+    // QR mirror thirty days later. Until this, deletedAt was an ordinary
+    // field and the generic update rule let any member set it.
+    //
+    // Who may change it is the access model the rest of the app already uses.
+    // An org admin reaches every unit. A manager reaches a unit whose site,
+    // region or entity is in their grant, or whose site is their own posting
+    // — the same three scopes resolveAccessibleSites() applies. A member does
+    // not. Both directions: restoring is the same act as deleting.
+    //
+    // The scope is the document BEFORE the write. Authorising against
+    // request.resource.data would let the writer set siteId to their own site
+    // in the same update that sets deletedAt. The place fields are frozen on
+    // that write so the permission and the location cannot move together.
+    //
+    // .get(f, null) because units written before the field existed do not
+    // carry it. Absent and null compare equal, so a normal edit of an older
+    // record is not a deletion, and backfillDeletedAt writing null onto a
+    // missing field is not one either. A create may only store null: a
+    // document born already deleted, with the timestamp backdated, is how a
+    // writer would hand the nightly sweep a live unit to destroy.
+    function equipmentPlaceUnchanged() {
+      return request.resource.data.get('siteId', '') == resource.data.get('siteId', '')
+        && request.resource.data.get('region', '') == resource.data.get('region', '')
+        && request.resource.data.get('entity', '') == resource.data.get('entity', '');
+    }
+
+    function reachesEquipment(d) {
+      let p = myProfile();
+      let a = p.get('access', {});
+      return (d.get('siteId', '') != ''
+            && (p.get('siteId', '') == d.get('siteId', '')
+                || a.get('sites', []).hasAny([d.get('siteId', '')])))
+        || (d.get('region', '') != '' && a.get('regions', []).hasAny([d.get('region', '')]))
+        || (d.get('entity', '') != '' && a.get('entities', []).hasAny([d.get('entity', '')]));
+    }
+
+    function keepsEquipmentDeletion(col) {
+      return !(col in ['extinguishers', 'aeds', 'fas'])
+        || (resource == null
+            ? request.resource.data.get('deletedAt', null) == null
+            : request.resource.data.get('deletedAt', null) == resource.data.get('deletedAt', null)
+              || (isManagerOf(orgId)
+                  && (isAdminOf(orgId) || reachesEquipment(resource.data))
+                  && equipmentPlaceUnchanged()));
     }
 
     // A document's classification is enforced on READ and was unprotected on
@@ -1875,12 +1959,23 @@ service cloud.firestore {
           && (isElevatedOf(orgId) || keepsClassification(col))
           && (isManagerOf(orgId)
               || (col != 'sites' && keepsDecision(col, beforeData(), request.resource.data)
-                  && keepsInjuryDeletion(col)));
+                  && keepsInjuryDeletion(col)))
+          && keepsEquipmentDeletion(col);
         // Delete is deliberately NOT gated on the entitlement. Turning a module
         // off should stop it being used, not trap the data already in it — an
         // operator who disables a module must not leave a tenant unable to
         // remove their own records.
-        allow delete: if structuralOnly(col, docId) && isManagerOf(orgId);
+        //
+        // Permanent deletion of an extinguisher, AED or fire-alarm panel is
+        // the org admin's act. A manager soft-deletes, and the unit stays
+        // restorable for 30 days. A narrower match could not take the grant
+        // below away from a manager — rules OR together — so these three
+        // collections are excluded here and granted to isAdminOf on the next
+        // line. Signage, stretchers and first aid are unchanged.
+        allow delete: if structuralOnly(col, docId) && isManagerOf(orgId)
+          && !(col in ['extinguishers', 'aeds', 'fas']);
+        allow delete: if structuralOnly(col, docId) && isAdminOf(orgId)
+          && col in ['extinguishers', 'aeds', 'fas'];
 
         // Nested subcollections (e.g. incidents/{id}/photos).
         // The recursive wildcard also matches the parent {col}/{docId} itself, so
@@ -1899,8 +1994,12 @@ service cloud.firestore {
             && (isElevatedOf(orgId) || keepsClassification(col))
             && (isManagerOf(orgId)
                 || (col != 'sites' && keepsDecision(col, beforeData(), request.resource.data)
-                    && keepsInjuryDeletion(col)));
-          allow delete: if structuralOnly(col, docId) && isManagerOf(orgId);
+                    && keepsInjuryDeletion(col)))
+            && keepsEquipmentDeletion(col);
+          allow delete: if structuralOnly(col, docId) && isManagerOf(orgId)
+            && !(col in ['extinguishers', 'aeds', 'fas']);
+          allow delete: if structuralOnly(col, docId) && isAdminOf(orgId)
+            && col in ['extinguishers', 'aeds', 'fas'];
         }
       }
     }
