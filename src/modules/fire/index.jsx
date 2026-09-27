@@ -30,7 +30,11 @@ import Closed from './pages/Closed'
 import Approvals from './pages/Approvals'
 import RecycleBin from './pages/RecycleBin'
 import ModuleTabs from '../../shared/layout/ModuleTabs'
-import { useAuth } from './context/AuthContext'
+import {
+  RECYCLE_BIN_PATH,
+  BinCountBadge,
+  useRecycleBinEntry,
+} from './components/RecentlyDeletedLink'
 
 // Dashboard = per-type dashboards (EquipmentHub tabs, kept separate).
 // Repository = one consolidated inventory for every equipment class.
@@ -44,11 +48,26 @@ const TABS = [
 ]
 
 function ModuleNav() {
-  const { isManager } = useAuth()
-  // Members do not delete, so they have nothing to restore. The route still
-  // exists; the rules are what refuse the write.
-  const tabs = isManager
-    ? [...TABS, { to: '/equipment/recycle', label: 'Recently deleted', icon: Trash2 }]
+  // Org admins, and managers with a site/region/entity grant. Members do not
+  // delete, so they have nothing to restore. The route still exists; the rules
+  // are what refuse the write. Each register's header carries the same link,
+  // because this strip scrolls sideways and its last pill is off-screen on a
+  // phone.
+  const { visible, count } = useRecycleBinEntry()
+  const tabs = visible
+    ? [
+        ...TABS,
+        {
+          to: RECYCLE_BIN_PATH,
+          label: (
+            <>
+              Recently deleted
+              <BinCountBadge count={count} />
+            </>
+          ),
+          icon: Trash2,
+        },
+      ]
     : TABS
   return <ModuleTabs label="Emergency Equipment sections" tabs={tabs} />
 }

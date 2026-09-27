@@ -1,4 +1,5 @@
-import { NavLink } from 'react-router-dom'
+import { useEffect, useRef } from 'react'
+import { NavLink, useLocation } from 'react-router-dom'
 
 /**
  * Secondary nav used by every module.
@@ -15,8 +16,22 @@ import { NavLink } from 'react-router-dom'
  * sit under the first tab without matching `end`.
  */
 export default function ModuleTabs({ tabs, label = 'Module sections', toFor, className = '' }) {
+  const navRef = useRef(null)
+  const { pathname } = useLocation()
+  // On a phone the row is wider than the screen. Bring the active pill into
+  // view, so a tab near the end is not selected and yet off-screen. Only the
+  // strip's own horizontal scroll moves; the page does not.
+  useEffect(() => {
+    const nav = navRef.current
+    const active = nav?.querySelector('.nav-tab-active')
+    if (!nav || !active || nav.scrollWidth <= nav.clientWidth) return
+    const n = nav.getBoundingClientRect()
+    const t = active.getBoundingClientRect()
+    if (t.left < n.left) nav.scrollLeft -= n.left - t.left + 8
+    else if (t.right > n.right) nav.scrollLeft += t.right - n.right + 8
+  }, [pathname])
   return (
-    <nav aria-label={label} className={`tab-strip mb-5 print:hidden ${className}`}>
+    <nav ref={navRef} aria-label={label} className={`tab-strip mb-5 print:hidden ${className}`}>
       {tabs
         .filter((t) => !t.hidden)
         .map((t) => (

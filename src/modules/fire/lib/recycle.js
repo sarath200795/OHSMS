@@ -258,3 +258,33 @@ export function retiredQrCopy(asset) {
       : `It is not in service. It can be restored for ${PURGE_AFTER_DAYS} days; until then this sticker will not open an inspection.`,
   }
 }
+
+const hasAny = (list) => Array.isArray(list) && list.some(Boolean)
+
+/**
+ * Should this person be offered Recently deleted at all?
+ *
+ * Org admins always. A manager only when they hold some grant (a site, region
+ * or entity, or a posting of their own): canManageAsset() refuses every unit
+ * to a manager with none, so a link would open a list they can never act on.
+ * Members and auditors cannot delete, so they have nothing to restore.
+ *
+ * The flags are the platform ones, for the same reason canManageAsset() says.
+ */
+export function canOpenRecycleBin(user, { isAdmin = false, isManager = false } = {}) {
+  if (isAdmin) return true
+  if (!isManager || !user) return false
+  const access = user.access || {}
+  return (
+    Boolean(user.siteId) ||
+    hasAny(access.sites) ||
+    hasAny(access.regions) ||
+    hasAny(access.entities)
+  )
+}
+
+/** How many of these deleted rows this person could restore. */
+export function countRestorable(rows, user, flags = {}) {
+  if (!Array.isArray(rows)) return 0
+  return rows.filter((row) => isRetired(row) && canManageAsset(user, row, flags)).length
+}

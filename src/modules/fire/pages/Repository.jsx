@@ -30,6 +30,7 @@ import SubmitHptModal from '../components/SubmitHptModal'
 import ListFilters from '../components/ListFilters'
 import { useAuth } from '../context/AuthContext'
 import { canManageAsset } from '../lib/recycle'
+import RecentlyDeletedLink from '../components/RecentlyDeletedLink'
 import { useFleet } from '../context/FleetContext'
 import { deriveStatus, isToBeRefilled, hasQuotation, hasDateIssue } from '../lib/extinguisherLogic'
 import { requiredStep, WORKFLOW_STEP } from '../lib/hpt'
@@ -269,6 +270,7 @@ export default function Repository() {
         <button className="btn-ghost" onClick={doPrint}>
           <QrCode size={16} /> Print QR
         </button>
+        <RecentlyDeletedLink kinds={['extinguisher']} noun="extinguishers" />
         <button
           className={
             linkPlan?.linked.length ? 'btn-soft !bg-brand-100 !text-brand-800' : 'btn-ghost'
