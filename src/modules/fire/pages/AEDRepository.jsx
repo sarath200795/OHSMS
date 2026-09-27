@@ -10,6 +10,7 @@ import { usePagination } from '../../../shared/ui/usePagination'
 import { useAuth } from '../context/AuthContext'
 import { useFleet } from '../context/FleetContext'
 import { canManageAsset } from '../lib/recycle'
+import RecentlyDeletedLink from '../components/RecentlyDeletedLink'
 import { addAed, updateAed, deleteAed, serviceAed, bulkAddAeds, generateAedQr, bulkDeleteAeds, linkAedsToSites, reserveAssetIds } from '../lib/firestore'
 import { planSiteLinks } from '../lib/siteLink'
 import { useAccessibleSites } from '../../../shared/org/useAccessibleSites'
@@ -295,6 +296,7 @@ export default function AEDRepository() {
         )}
         {isAdmin && <Link to="/equipment/asset-bulk-upload" state={{ kind: 'aed' }} className="btn-soft"><Upload size={16} /> Bulk upload</Link>}
         <button className="btn-soft" onClick={doExport} disabled={!aeds.length}><Download size={16} /> Export</button>
+        <RecentlyDeletedLink kinds={['aed']} noun="AEDs" />
         <button className="btn-primary" onClick={openAdd}><Plus size={16} /> Add AED</button>
       </PageHeader>
 

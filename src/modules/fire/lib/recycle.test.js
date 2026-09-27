@@ -9,6 +9,8 @@ import {
   adoptionBlock,
   retiredQrCopy,
   matchesBinSearch,
+  canOpenRecycleBin,
+  countRestorable,
   PURGE_AFTER_DAYS,
 } from './recycle'
 
@@ -229,5 +231,47 @@ describe('the scan page names the deletion and nothing about who did it', () => 
       'This AED was deleted'
     )
     expect(retiredQrCopy({ assetKind: 'fas' }).title).toBe('This fire alarm panel was deleted')
+  })
+})
+
+describe('canOpenRecycleBin', () => {
+  it('opens for an org admin whatever their grant', () => {
+    expect(canOpenRecycleBin({ role: 'admin' }, { isAdmin: true, isManager: true })).toBe(true)
+    expect(canOpenRecycleBin(null, { isAdmin: true })).toBe(true)
+  })
+
+  it('opens for a manager with a site, region, entity or posting', () => {
+    const flags = { isManager: true }
+    expect(canOpenRecycleBin(mgr({ sites: ['s1'] }), flags)).toBe(true)
+    expect(canOpenRecycleBin(mgr({ regions: ['South'] }), flags)).toBe(true)
+    expect(canOpenRecycleBin(mgr({ entities: ['COCO'] }), flags)).toBe(true)
+    expect(canOpenRecycleBin(mgr({}, 's9'), flags)).toBe(true)
+  })
+
+  it('stays shut for a manager with an empty grant, a member and nobody', () => {
+    expect(canOpenRecycleBin(mgr({ sites: [], regions: [''] }), { isManager: true })).toBe(false)
+    expect(canOpenRecycleBin({ role: 'member', siteId: 's1' }, {})).toBe(false)
+    expect(canOpenRecycleBin(null, { isManager: true })).toBe(false)
+  })
+})
+
+describe('countRestorable', () => {
+  const gone = new Date('2026-09-20T08:00:00Z')
+  const rows = [
+    unit({ id: 'a', deletedAt: gone }),
+    unit({ id: 'b', siteId: 's2', region: '', entity: '', deletedAt: gone }),
+    unit({ id: 'c' }),
+  ]
+
+  it('counts deleted rows an admin can reach and ignores live ones', () => {
+    expect(countRestorable(rows, { role: 'admin' }, { isAdmin: true })).toBe(2)
+  })
+
+  it('counts only a manager’s own units', () => {
+    expect(countRestorable(rows, mgr({ sites: ['s1'] }), { isManager: true })).toBe(1)
+  })
+
+  it('treats a missing slice as empty', () => {
+    expect(countRestorable(undefined, { role: 'admin' }, { isAdmin: true })).toBe(0)
   })
 })
