@@ -8,6 +8,8 @@ import {
   Flame,
   HeartPulse,
   BellRing,
+  Search,
+  X,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { toastCaught } from '../../../shared/lib/toastCaught'
@@ -26,7 +28,7 @@ import {
 } from '../lib/firestore'
 import { downloadJsonBackup } from '../lib/exporter'
 import { toDate } from '../lib/extinguisherLogic'
-import { canManageAsset, daysRemaining, PURGE_AFTER_DAYS } from '../lib/recycle'
+import { canManageAsset, daysRemaining, matchesBinSearch, PURGE_AFTER_DAYS } from '../lib/recycle'
 
 const KINDS = {
   extinguisher: {
@@ -65,6 +67,7 @@ export default function RecycleBin() {
   const { orgId, orgName, profile, isAdmin, isManager } = useAuth()
   const actor = { uid: profile?.uid, name: profile?.name }
   const [selected, setSelected] = useState(new Set())
+  const [query, setQuery] = useState('')
   const [busy, setBusy] = useState(false)
   const [purgeFor, setPurgeFor] = useState(null)
 
@@ -84,7 +87,22 @@ export default function RecycleBin() {
       .sort((a, b) => (toDate(b.deletedAt) || 0) - (toDate(a.deletedAt) || 0))
   }, [deletedExtinguishers, deletedAeds, deletedFas, profile, isAdmin, isManager])
 
-  const { pageItems, page, setPage, pageCount, total, pageSize } = usePagination(rows)
+  // Filter after the deletedAt sort, so a search narrows the list the page
+  // already shows and does not reshuffle it. The slice is the in-memory bin
+  // (the same read cap as the live registers); a query cannot see a row the
+  // load already dropped.
+  const visible = useMemo(() => rows.filter((row) => matchesBinSearch(row, query)), [rows, query])
+  const { pageItems, page, setPage, pageCount, total, pageSize } = usePagination(visible)
+  const visibleKeys = useMemo(() => new Set(visible.map(keyOf)), [visible])
+  const shownSelected = [...selected].filter((key) => visibleKeys.has(key))
+  const hiddenSelected = selected.size - shownSelected.length
+
+  const setQueryAndReset = (value) => {
+    setQuery(value)
+    // A keystroke that leaves you on page 7 of a two-page result reads as
+    // "nothing matched". Start each query on the first page.
+    setPage(1)
+  }
 
   const toggle = (key) =>
     setSelected((prev) => {
@@ -103,7 +121,10 @@ export default function RecycleBin() {
     })
 
   const restoreKeys = async (keys) => {
-    const chosen = rows.filter((r) => keys.has(keyOf(r)))
+    // Only rows the current search still shows. A tick made before typing
+    // stays ticked, but it is not in `visible`, so Restore cannot bring back
+    // a unit the person can no longer see on this page.
+    const chosen = visible.filter((r) => keys.has(keyOf(r)))
     if (!chosen.length) return
     setBusy(true)
     try {
@@ -112,7 +133,11 @@ export default function RecycleBin() {
         if (ids.length) await KINDS[kind].restore(orgId, org?.name || orgName, ids, actor)
       }
       toast.success(chosen.length === 1 ? 'Restored' : `Restored ${chosen.length}`)
-      setSelected(new Set())
+      setSelected((prev) => {
+        const next = new Set(prev)
+        chosen.forEach((r) => next.delete(keyOf(r)))
+        return next
+      })
     } catch (e) {
       toastCaught(e, 'Could not restore')
     } finally {
@@ -172,20 +197,68 @@ export default function RecycleBin() {
         )}
       </PageHeader>
 
+      {rows.length > 0 && (
+        <div className="card mb-4 space-y-3 p-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="flex items-center gap-1 text-xs font-bold uppercase tracking-wide text-ink-400">
+              <Search size={13} /> Search
+            </span>
+            <div className="relative min-w-[200px] flex-1">
+              <Search
+                size={16}
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-400"
+              />
+              <input
+                className="input pl-9"
+                placeholder="Search serial, asset ID, QR, site or who deleted…"
+                aria-label="Search recently deleted"
+                value={query}
+                onChange={(e) => setQueryAndReset(e.target.value)}
+              />
+            </div>
+            {query.trim() && (
+              <button
+                type="button"
+                className="btn-ghost"
+                aria-label="Clear search"
+                onClick={() => setQueryAndReset('')}
+              >
+                <X size={15} /> Clear
+              </button>
+            )}
+          </div>
+          <p className="text-sm text-ink-500" aria-live="polite">
+            {query.trim()
+              ? `${visible.length} of ${rows.length} match`
+              : `${rows.length} recently deleted`}
+          </p>
+        </div>
+      )}
+
       {selected.size > 0 && (
         <div className="mb-4 flex flex-wrap items-center gap-3 rounded-2xl bg-canvas px-4 py-3 text-ink-900">
           <span className="font-bold">{selected.size} selected</span>
+          {hiddenSelected > 0 && (
+            <span>
+              {hiddenSelected === 1
+                ? '1 selected is hidden by this search and will not be restored.'
+                : `${hiddenSelected} selected are hidden by this search and will not be restored.`}
+            </span>
+          )}
           <div className="ml-auto flex flex-wrap gap-2">
             <button
               className="btn bg-green-600 text-white hover:brightness-110"
-              disabled={busy}
-              onClick={() => restoreKeys(selected)}
+              disabled={busy || shownSelected.length === 0}
+              onClick={() => restoreKeys(new Set(shownSelected))}
             >
               {busy ? (
                 <Spinner size={16} />
               ) : (
                 <>
-                  <RotateCcw size={15} /> Restore selected
+                  <RotateCcw size={15} />{' '}
+                  {hiddenSelected > 0 && shownSelected.length > 0
+                    ? `Restore ${shownSelected.length} shown`
+                    : 'Restore selected'}
                 </>
               )}
             </button>
@@ -204,6 +277,12 @@ export default function RecycleBin() {
           icon={Trash2}
           title="Nothing was recently deleted"
           hint="Deleted extinguishers, AEDs and fire-alarm panels can be restored from here before they are removed."
+        />
+      ) : visible.length === 0 ? (
+        <EmptyState
+          icon={Search}
+          title={`No deleted units match “${query.trim()}”`}
+          hint="Try a serial number, asset ID, QR code, site, or the name of the person who deleted it."
         />
       ) : (
         <div className="card overflow-hidden">

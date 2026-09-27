@@ -8,6 +8,7 @@ import {
   holdRetiredImports,
   adoptionBlock,
   retiredQrCopy,
+  matchesBinSearch,
   PURGE_AFTER_DAYS,
 } from './recycle'
 
@@ -145,6 +146,76 @@ describe('adding a unit does not take a code the bin is holding', () => {
     expect(adoptionBlock({ serial: 'FE-0099', token: 'brand-new', live: [unit()], deleted })).toBe(
       ''
     )
+  })
+})
+
+describe('searching the bin', () => {
+  const row = (over = {}) => ({
+    kind: 'extinguisher',
+    serialNo: 'FE-0001',
+    qrToken: 'tok-alpha',
+    centerName: 'North Depot',
+    location: 'Plant room',
+    zone: 'Loop 2',
+    type: 'ABC',
+    capacity: '6 Kg',
+    region: 'South',
+    entity: 'COCO',
+    deletedBy: 'Site lead',
+    ...over,
+  })
+
+  it('matches every row when the box is empty', () => {
+    expect(matchesBinSearch(row(), '')).toBe(true)
+    expect(matchesBinSearch(row(), '   ')).toBe(true)
+    expect(matchesBinSearch(null, '')).toBe(true)
+  })
+
+  it('matches a partial serial, asset id, device id, label, or QR token regardless of case', () => {
+    expect(matchesBinSearch(row(), 'fe-000')).toBe(true)
+    expect(matchesBinSearch(row({ kind: 'aed', serialNo: '', assetId: 'AED-42' }), 'aed-4')).toBe(
+      true
+    )
+    expect(matchesBinSearch(row({ kind: 'fas', serialNo: '', deviceId: 'PNL-7' }), 'pnl')).toBe(
+      true
+    )
+    expect(matchesBinSearch(row({ label: 'QR-STICKER-9' }), 'sticker')).toBe(true)
+    expect(matchesBinSearch(row(), 'TOK-AL')).toBe(true)
+  })
+
+  it('matches site, location, type, capacity, region, entity, and who deleted it', () => {
+    expect(matchesBinSearch(row(), 'north dep')).toBe(true)
+    expect(matchesBinSearch(row({ siteName: 'Harbour' }), 'harbour')).toBe(true)
+    expect(matchesBinSearch(row({ centerName: '', site: 'Wharf' }), 'wharf')).toBe(true)
+    expect(matchesBinSearch(row(), 'plant')).toBe(true)
+    expect(matchesBinSearch(row(), 'loop 2')).toBe(true)
+    expect(matchesBinSearch(row(), 'abc')).toBe(true)
+    expect(matchesBinSearch(row(), '6 kg')).toBe(true)
+    expect(matchesBinSearch(row(), 'south')).toBe(true)
+    expect(matchesBinSearch(row(), 'coco')).toBe(true)
+    expect(matchesBinSearch(row(), 'site lea')).toBe(true)
+    expect(matchesBinSearch(row({ kind: 'aed', brand: 'Philips', model: 'FRx' }), 'philips')).toBe(
+      true
+    )
+    expect(matchesBinSearch(row({ kind: 'fas', deviceType: 'Smoke detector' }), 'smoke')).toBe(true)
+  })
+
+  it('matches the equipment kind, and not a different kind', () => {
+    expect(matchesBinSearch(row(), 'fire extinguisher')).toBe(true)
+    expect(matchesBinSearch(row({ serialNo: 'X' }), 'aed')).toBe(false)
+    expect(matchesBinSearch(row({ kind: 'aed', serialNo: '', assetId: 'Z' }), 'aed')).toBe(true)
+    expect(matchesBinSearch(row({ kind: 'fas', serialNo: '', deviceId: 'P1' }), 'fire alarm')).toBe(
+      true
+    )
+    expect(
+      matchesBinSearch(row({ kind: 'fas', serialNo: '', deviceId: 'P1' }), 'extinguisher')
+    ).toBe(false)
+  })
+
+  it('refuses an unrelated query, and a sparse row does not throw', () => {
+    expect(matchesBinSearch(row(), 'no-such-unit')).toBe(false)
+    expect(matchesBinSearch({ kind: 'extinguisher' }, 'fe')).toBe(false)
+    expect(matchesBinSearch(null, 'fe')).toBe(false)
   })
 })
 

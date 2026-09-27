@@ -25,6 +25,53 @@ const norm = (value) =>
     .trim()
     .toLowerCase()
 
+// Words a person types when they mean the kind, not the serial. The noun on
+// EQUIPMENT_KINDS is what the scan page says; the short names are what the
+// registers are called in the navigation.
+const KIND_WORDS = {
+  extinguisher: ['extinguisher', 'fire extinguisher'],
+  aed: ['aed'],
+  fas: ['fas', 'fire alarm', 'fire alarm panel'],
+}
+
+/**
+ * Whether this bin row matches a search box.
+ *
+ * One substring over the fields someone hunts by, the same shape as the live
+ * extinguisher list (`serial / center / type`). Case-insensitive, partial.
+ * An empty query matches everything, so the unfiltered bin is the full list
+ * in its existing order.
+ *
+ * The bin is already the deleted slice of the in-memory fleet. Searching it
+ * here cannot see a row the load cap dropped, and neither can the live lists.
+ */
+export function matchesBinSearch(row, query) {
+  const q = norm(query)
+  if (!q || !row) return !q ? true : false
+  const parts = [
+    ...(KIND_WORDS[row.kind] || []),
+    row.serialNo,
+    row.assetId,
+    row.deviceId,
+    row.label,
+    row.qrToken,
+    row.centerName,
+    row.siteName,
+    row.site,
+    row.location,
+    row.zone,
+    row.type,
+    row.capacity,
+    row.deviceType,
+    row.brand,
+    row.model,
+    row.region,
+    row.entity,
+    row.deletedBy,
+  ]
+  return parts.filter(Boolean).join(' ').toLowerCase().includes(q)
+}
+
 /** In the recycle bin. A missing record is not; a missing deletedAt is not. */
 export function isRetired(record) {
   return Boolean(record && record.deletedAt)
