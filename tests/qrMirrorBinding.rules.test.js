@@ -201,8 +201,26 @@ describe('maintaining a published mirror still works', () => {
     await assertSucceeds(updateDoc(pqr(as('mem'), 'tok-permit'), { storedStatus: 'approved' }))
   })
 
-  it('lets the owner delete a mirror when the asset goes', async () => {
-    await assertSucceeds(deleteDoc(qr(as('mem'), 'tok-ext')))
+  it('refuses to strip a mirror while the extinguisher still exists', async () => {
+    // Soft-delete keeps the asset for 30 days. A member who can still write
+    // must not be able to peel the public page off in the meantime — a scan
+    // would then say "not recognised" instead of "this was deleted".
+    await assertFails(deleteDoc(qr(as('mem'), 'tok-ext')))
+  })
+
+  it('lets an admin delete a mirror, which is the purge', async () => {
+    await assertSucceeds(deleteDoc(qr(as('vic'), 'tok-ext')))
+  })
+
+  it('lets the mirror go in the same batch that deletes the asset', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'qr', 'tok-str'), assetMirror('stretcher', 'str-1', 'tok-str'))
+    })
+    const db = as('vic')
+    const batch = writeBatch(db)
+    batch.delete(doc(db, 'organizations', ORG, 'stretchers', 'str-1'))
+    batch.delete(qr(db, 'tok-str'))
+    await assertSucceeds(batch.commit())
   })
 
   it('still refuses another tenant re-pointing a live mirror', async () => {

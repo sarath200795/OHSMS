@@ -10,7 +10,8 @@ import { useFleet } from '../context/FleetContext'
 import { addExtinguisher } from '../lib/firestore'
 import { nextSerial } from '../lib/serial'
 import { TYPES, CAPACITIES } from '../lib/constants'
-import { publicQrUrl } from '../lib/qr'
+import { publicQrUrl, tokenFromQrValue } from '../lib/qr'
+import { adoptionBlock } from '../lib/recycle'
 import SiteScopePicker from '../../../shared/org/SiteScopePicker'
 
 const EMPTY = {
@@ -30,7 +31,7 @@ const EMPTY = {
 
 export default function AddExtinguisher() {
   const { orgId, orgName, profile } = useAuth()
-  const { extinguishers, siteInventory } = useFleet()
+  const { extinguishers, deletedExtinguishers, siteInventory } = useFleet()
   const [form, setForm] = useState(EMPTY)
   const [busy, setBusy] = useState(false)
   const [created, setCreated] = useState(null) // { id, qrToken, serialNo }
@@ -43,7 +44,20 @@ export default function AddExtinguisher() {
     setBusy(true)
     try {
       // Serial No is optional — auto-assign a unique FE-#### when left blank.
-      const serialNo = form.serialNo.trim() || nextSerial(extinguishers.map((x) => x.serialNo))
+      // The bin still holds its serials, so the next number has to see them or
+      // a new unit is handed the code of one that can still be restored.
+      const taken = [...extinguishers, ...(deletedExtinguishers || [])]
+      const serialNo = form.serialNo.trim() || nextSerial(taken.map((x) => x.serialNo))
+      const block = adoptionBlock({
+        serial: serialNo,
+        token: tokenFromQrValue(form.qrLink),
+        live: extinguishers,
+        deleted: deletedExtinguishers || [],
+      })
+      if (block) {
+        toast.error(block)
+        return
+      }
       const payload = { ...form, serialNo }
       const res = await addExtinguisher(orgId, orgName, payload, { uid: profile?.uid, name: profile?.name })
       setCreated({ ...res, serialNo })

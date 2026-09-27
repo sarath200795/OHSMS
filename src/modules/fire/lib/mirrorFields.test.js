@@ -36,7 +36,7 @@ const { liveFields, withdrawnFields } = await import('../../ptw/lib/publicPermit
 const EQUIPMENT_MIRROR_FIELDS = [
   'orgId', 'orgName', 'token', 'status', 'updatedAt',
   'centerName', 'region', 'entity', 'location',
-  'extId', 'serialNo', 'type', 'capacity', 'physicalDefects',
+  'extId', 'serialNo', 'type', 'capacity', 'physicalDefects', 'deletedAt',
   'dateOfDeployment', 'dateOfNextRefill', 'dateOfNextHPT',
   'assetKind', 'assetRefId', 'label', 'brand', 'model',
   'batteryExpiry', 'padExpiry', 'lastInspection', 'nextInspection',

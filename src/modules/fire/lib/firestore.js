@@ -19,6 +19,7 @@ import {
   runTransaction as _runTransaction,
   limit,
   increment,
+  where,
 } from 'firebase/firestore'
 import { db } from '../../../shared/firebase'
 import { isSessionEnd } from '../../../shared/sessionEnd'
@@ -44,6 +45,7 @@ const writeBatch = (...args) => { assertWritable(); return _writeBatch(...args) 
 // the size of every transactional path added from here on.
 const runTransaction = (...args) => { assertWritable(); return _runTransaction(...args) }
 import { generateQrToken, tokenFromQrValue } from './qr'
+import { restoreBlockMessage, EQUIPMENT_KINDS } from './recycle'
 import { STATUS, DEFECT_BY_KEY } from './constants'
 import { lockId, duplicateDefectMessage } from './defectLock'
 import { putFile, removeFile, MAX_INLINE_BYTES, tooLargeForInline } from '../../../shared/storage'
@@ -226,6 +228,10 @@ function mirrorPayload(orgId, orgName, id, ext) {
     dateOfNextHPT: ext.dateOfNextHPT || '',
     status: ext.status || '',
     physicalDefects: ext.physicalDefects || [],
+    // Null on a live unit, set while it sits in the bin. Omitting it on a
+    // rewrite would publish a retired unit as in service. The field is on the
+    // rules allow-list for the same reason.
+    deletedAt: ext.deletedAt || null,
     updatedAt: serverTimestamp(),
   }
 }
@@ -478,40 +484,117 @@ export async function updateExtinguisher(orgId, orgName, id, updates, opts = {})
   }
 }
 
-/** Bulk soft-delete extinguishers (+ remove mirrors) by [{id, qrToken}]. */
-export async function bulkDeleteExtinguishers(orgId, items, actor) {
-  for (let i = 0; i < items.length; i += 200) {
-    const chunk = items.slice(i, i + 200)
+// The bin keeps the asset AND its public QR mirror. Deleting the mirror here
+// is what made a scan say "code not recognised" — the same sentence as a
+// sticker we never printed — so a delete looked permanent. The mirror is
+// marked deleted instead, and the scan page says so. Purge, thirty days on
+// or from the bin, is what actually removes it.
+//
+// A missing mirror is left missing. set-merge on a token that has no document
+// is a create, and a create of `{deletedAt}` alone fails the mirror shape
+// rule and takes the whole batch with it.
+async function retireAssets(orgId, items, refOf, actor) {
+  const list = (items || []).filter((it) => it && it.id)
+  for (let i = 0; i < list.length; i += 200) {
+    const chunk = list.slice(i, i + 200)
+    const mirrors = await Promise.all(chunk.map(async (it) => {
+      if (!it.qrToken) return false
+      const snap = await getDoc(qrRef(it.qrToken))
+      return snap.exists()
+    }))
     const batch = writeBatch(db)
-    for (const { id, qrToken } of chunk) {
-      batch.update(extRef(orgId, id), {
+    chunk.forEach((it, n) => {
+      batch.update(refOf(orgId, it.id), {
         deletedAt: serverTimestamp(),
         deletedBy: actor?.name || '',
+        deletedByUid: actor?.uid || '',
       })
-      if (qrToken) batch.delete(qrRef(qrToken))
+      if (mirrors[n]) batch.set(qrRef(it.qrToken), { deletedAt: serverTimestamp() }, { merge: true })
+    })
+    await batch.commit()
+  }
+}
+
+// Live units that already hold this code or this token. Deleted rows are
+// ignored: they are the ones being restored. The query is case-sensitive,
+// which matches the value stored on the document.
+async function liveHolding(colOf, orgId, field, value, exceptId) {
+  const v = String(value || '').trim()
+  if (!v) return []
+  const snap = await getDocs(query(colOf(orgId), where(field, '==', v), limit(8)))
+  return snap.docs
+    .filter((d) => d.id !== exceptId && !d.data().deletedAt)
+    .map((d) => ({ id: d.id, ...d.data() }))
+}
+
+async function reviveAssets(orgId, orgName, kind, ids, actor, { refOf, colOf, mirror, audit, labelOf }) {
+  const spec = EQUIPMENT_KINDS[kind]
+  const rows = []
+  for (const id of ids || []) {
+    const snap = await getDoc(refOf(orgId, id))
+    if (!snap.exists()) throw new Error('That record is no longer there.')
+    const data = { id, ...snap.data() }
+    if (!data.deletedAt) throw new Error('That record is already active.')
+    rows.push(data)
+  }
+  if (!rows.length) return
+  const live = []
+  for (const row of rows) {
+    live.push(...await liveHolding(colOf, orgId, spec.codeField, row[spec.codeField], row.id))
+    live.push(...await liveHolding(colOf, orgId, 'qrToken', row.qrToken, row.id))
+  }
+  const blocked = restoreBlockMessage(rows, live, kind)
+  if (blocked) throw new Error(blocked)
+  for (let i = 0; i < rows.length; i += 200) {
+    const chunk = rows.slice(i, i + 200)
+    const batch = writeBatch(db)
+    for (const data of chunk) {
+      batch.update(refOf(orgId, data.id), {
+        deletedAt: null,
+        deletedBy: null,
+        deletedByUid: null,
+        updatedAt: serverTimestamp(),
+      })
+      if (data.qrToken) {
+        batch.set(qrRef(data.qrToken), mirror(orgId, orgName, data.id, { ...data, deletedAt: null }))
+      }
     }
     await batch.commit()
   }
+  await logAudit(orgId, actor, audit, {
+    summary: rows.length === 1 ? `${labelOf(rows[0])} restored` : `${rows.length} restored`,
+    targetId: rows.length === 1 ? rows[0].id : '',
+    targetLabel: rows.length === 1 ? labelOf(rows[0]) : '',
+  })
+  return rows
+}
+
+/** Bulk soft-delete extinguishers by [{id, qrToken}]. The QR mirror stays. */
+export async function bulkDeleteExtinguishers(orgId, items, actor) {
+  await retireAssets(orgId, items, extRef, actor)
   await recomputeStats(orgId).catch((e) => console.warn('[Fire Marshal] stats recompute skipped:', e?.message || e))
   await logAudit(orgId, actor, AUDIT.EXT_BULK_DELETE, {
-    summary: `${items.length} extinguisher(s) deleted`,
+    summary: `${items.length} extinguisher(s) moved to Recently deleted`,
   })
 }
 
-/** Restore a soft-deleted extinguisher: clear deletedAt + rebuild the QR mirror. */
-export async function restoreExtinguisher(orgId, orgName, id, actor) {
-  const snap = await getDoc(extRef(orgId, id))
-  if (!snap.exists()) throw new Error('Extinguisher not found')
-  const data = snap.data()
-  const batch = writeBatch(db)
-  batch.update(extRef(orgId, id), { deletedAt: null, deletedBy: null, updatedAt: serverTimestamp() })
-  if (data.qrToken) {
-    batch.set(qrRef(data.qrToken), mirrorPayload(orgId, orgName, id, { ...data, deletedAt: null }))
+/** Restore one or several. Same document, same QR token, history untouched. */
+export async function restoreExtinguishers(orgId, orgName, ids, actor) {
+  const rows = await reviveAssets(orgId, orgName, 'extinguisher', ids, actor, {
+    refOf: extRef,
+    colOf: extCol,
+    mirror: mirrorPayload,
+    audit: AUDIT.EXT_RESTORE,
+    labelOf: extLabelOf,
+  })
+  for (const data of rows || []) {
+    await bumpStats(orgId, statsDeltaFor(null, { ...data, deletedAt: null }))
   }
-  await batch.commit()
-  // Restoring re-adds the unit to the active fleet (+1 to its buckets).
-  await bumpStats(orgId, statsDeltaFor(null, { ...data, deletedAt: null }))
-  await logAudit(orgId, actor, AUDIT.EXT_RESTORE, { targetId: id, targetLabel: extLabelOf(data) })
+}
+
+/** Restore a soft-deleted extinguisher: clear deletedAt and republish the QR mirror. */
+export async function restoreExtinguisher(orgId, orgName, id, actor) {
+  return restoreExtinguishers(orgId, orgName, [id], actor)
 }
 
 /** Permanently delete a soft-deleted extinguisher (admin only — enforced by rules). */
@@ -1298,7 +1381,9 @@ function aedMirror(orgId, orgName, id, a) {
     label: a.assetId || 'AED', brand: a.brand || '', model: a.model || '',
     centerName: a.centerName || '', region: a.region || '', entity: a.entity || '', location: a.location || '',
     status: a.status || 'ready', batteryExpiry: a.batteryExpiry || '', padExpiry: a.padExpiry || '',
-    lastInspection: a.lastInspection || '', nextInspection: a.nextInspection || '', updatedAt: serverTimestamp(),
+    lastInspection: a.lastInspection || '', nextInspection: a.nextInspection || '',
+    deletedAt: a.deletedAt || null,
+    updatedAt: serverTimestamp(),
   }
 }
 
@@ -1456,24 +1541,39 @@ export async function serviceAed(orgId, orgName, asset, nextInspection, actor) {
 }
 
 export async function deleteAed(orgId, id, qrToken, actor, label) {
+  await retireAssets(orgId, [{ id, qrToken }], aedRef, actor)
+  await logAudit(orgId, actor, 'aed.delete', {
+    target: 'aed', targetId: id, targetLabel: label || '',
+    summary: `${label || 'AED'} moved to Recently deleted`,
+  })
+}
+
+/** Soft-delete AEDs by [{id, qrToken}]. The QR mirror stays until purge. */
+export async function bulkDeleteAeds(orgId, items, actor) {
+  await retireAssets(orgId, items, aedRef, actor)
+  await logAudit(orgId, actor, 'aed.bulk_delete', {
+    target: 'aed', summary: `${items.length} AED(s) moved to Recently deleted`,
+  })
+}
+
+const aedLabelOf = (a) => `${a?.assetId || 'AED'} @ ${a?.centerName || ''}`
+
+export async function restoreAeds(orgId, orgName, ids, actor) {
+  return reviveAssets(orgId, orgName, 'aed', ids, actor, {
+    refOf: aedRef, colOf: aedCol, mirror: aedMirror, audit: 'aed.restore', labelOf: aedLabelOf,
+  })
+}
+
+export async function restoreAed(orgId, orgName, id, actor) {
+  return restoreAeds(orgId, orgName, [id], actor)
+}
+
+export async function purgeAed(orgId, id, qrToken, actor, label) {
   const batch = writeBatch(db)
   batch.delete(aedRef(orgId, id))
   if (qrToken) batch.delete(qrRef(qrToken))
   await batch.commit()
-  await logAudit(orgId, actor, 'aed.delete', { target: 'aed', targetId: id, targetLabel: label || '' })
-}
-
-/** Bulk-delete AEDs (+ remove their QR mirrors) by [{id, qrToken}]. */
-export async function bulkDeleteAeds(orgId, items, actor) {
-  for (let i = 0; i < items.length; i += BULK_CHUNK) {
-    const batch = writeBatch(db)
-    for (const { id, qrToken } of items.slice(i, i + BULK_CHUNK)) {
-      batch.delete(aedRef(orgId, id))
-      if (qrToken) batch.delete(qrRef(qrToken))
-    }
-    await batch.commit()
-  }
-  await logAudit(orgId, actor, 'aed.bulk_delete', { target: 'aed', summary: `${items.length} AED(s) deleted` })
+  await logAudit(orgId, actor, 'aed.purge', { target: 'aed', targetId: id, targetLabel: label || '' })
 }
 
 // ── Stretchers (org-scoped) ───────────────────────────────────────────────────
@@ -1638,7 +1738,9 @@ function fasMirror(orgId, orgName, id, a) {
     label: a.deviceId || a.deviceType || 'FAS', deviceType: a.deviceType || '', zone: a.zone || '',
     centerName: a.centerName || '', region: a.region || '', entity: a.entity || '', location: a.location || '',
     status: a.status || 'operational', lastService: a.lastService || '', nextService: a.nextService || '',
-    amcVendor: a.amcVendor || '', updatedAt: serverTimestamp(),
+    amcVendor: a.amcVendor || '',
+    deletedAt: a.deletedAt || null,
+    updatedAt: serverTimestamp(),
   }
 }
 
@@ -1688,24 +1790,39 @@ export async function serviceFas(orgId, orgName, asset, nextService, actor) {
 }
 
 export async function deleteFas(orgId, id, qrToken, actor, label) {
+  await retireAssets(orgId, [{ id, qrToken }], fasRef, actor)
+  await logAudit(orgId, actor, 'fas.delete', {
+    target: 'fas', targetId: id, targetLabel: label || '',
+    summary: `${label || 'FAS device'} moved to Recently deleted`,
+  })
+}
+
+/** Soft-delete FAS devices by [{id, qrToken}]. The QR mirror stays until purge. */
+export async function bulkDeleteFas(orgId, items, actor) {
+  await retireAssets(orgId, items, fasRef, actor)
+  await logAudit(orgId, actor, 'fas.bulk_delete', {
+    target: 'fas', summary: `${items.length} FAS device(s) moved to Recently deleted`,
+  })
+}
+
+const fasLabelOf = (a) => `${a?.deviceId || a?.deviceType || 'FAS'} @ ${a?.centerName || ''}`
+
+export async function restoreFasMany(orgId, orgName, ids, actor) {
+  return reviveAssets(orgId, orgName, 'fas', ids, actor, {
+    refOf: fasRef, colOf: fasCol, mirror: fasMirror, audit: 'fas.restore', labelOf: fasLabelOf,
+  })
+}
+
+export async function restoreFas(orgId, orgName, id, actor) {
+  return restoreFasMany(orgId, orgName, [id], actor)
+}
+
+export async function purgeFas(orgId, id, qrToken, actor, label) {
   const batch = writeBatch(db)
   batch.delete(fasRef(orgId, id))
   if (qrToken) batch.delete(qrRef(qrToken))
   await batch.commit()
-  await logAudit(orgId, actor, 'fas.delete', { target: 'fas', targetId: id, targetLabel: label || '' })
-}
-
-/** Bulk-delete FAS devices (+ remove their QR mirrors) by [{id, qrToken}]. */
-export async function bulkDeleteFas(orgId, items, actor) {
-  for (let i = 0; i < items.length; i += BULK_CHUNK) {
-    const batch = writeBatch(db)
-    for (const { id, qrToken } of items.slice(i, i + BULK_CHUNK)) {
-      batch.delete(fasRef(orgId, id))
-      if (qrToken) batch.delete(qrRef(qrToken))
-    }
-    await batch.commit()
-  }
-  await logAudit(orgId, actor, 'fas.bulk_delete', { target: 'fas', summary: `${items.length} FAS device(s) deleted` })
+  await logAudit(orgId, actor, 'fas.purge', { target: 'fas', targetId: id, targetLabel: label || '' })
 }
 
 // ── AED / FAS public defect reports (submitted from a QR scan) ─────────────────

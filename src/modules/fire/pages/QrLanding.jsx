@@ -21,11 +21,24 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { doc, getDoc } from 'firebase/firestore'
-import { AlertTriangle, ShieldCheck, MapPin, Calendar, QrCode, Loader2, Wrench, HeartPulse, BellRing, Flame, Ambulance } from 'lucide-react'
+import toast from 'react-hot-toast'
+import { AlertTriangle, ShieldCheck, MapPin, Calendar, QrCode, Loader2, Wrench, HeartPulse, BellRing, Flame, Ambulance, RotateCcw } from 'lucide-react'
 import { db } from '../../../shared/firebase'
+import { toastCaught } from '../../../shared/lib/toastCaught'
 import ReportDefectModal from '../components/ReportDefectModal'
 import ReportAssetDefectModal from '../components/ReportAssetDefectModal'
+import { useAuth } from '../context/AuthContext'
+import { restoreExtinguisher, restoreAed, restoreFas } from '../lib/firestore'
+import { canManageAsset, daysRemaining, retiredQrCopy } from '../lib/recycle'
 import { STATUS_LABEL, AED_STATUS, AED_STATUS_LABEL, FAS_STATUS, FAS_STATUS_LABEL, STRETCHER_STATUS, STRETCHER_STATUS_LABEL } from '../lib/constants'
+
+// The public mirror does not carry siteId. A site manager's grant is that
+// field, so restore is decided against the asset document, not the mirror.
+const RETIRED = {
+  extinguisher: { col: 'extinguishers', idOf: (a) => a.extId, restore: restoreExtinguisher },
+  aed: { col: 'aeds', idOf: (a) => a.assetRefId, restore: restoreAed },
+  fas: { col: 'fas', idOf: (a) => a.assetRefId, restore: restoreFas },
+}
 
 const Row = ({ icon: Icon, label, value }) => (
   <div className="flex items-start gap-3 border-b border-surface-200/70 py-2.5 last:border-0">
@@ -121,10 +134,20 @@ function describe(asset) {
   }
 }
 
+function daysLeftLine(deletedAt) {
+  const left = daysRemaining(deletedAt)
+  if (left === 0) return 'It will be removed on the next cleanup.'
+  if (left === 1) return '1 day left before it is removed.'
+  return `${left} days left before it is removed.`
+}
+
 export default function QrLanding() {
   const { token } = useParams()
+  const { orgId, orgName, profile, isAdmin, isManager } = useAuth()
   const [asset, setAsset] = useState(undefined) // undefined = loading, null = not found
+  const [record, setRecord] = useState(null)
   const [reporting, setReporting] = useState(false)
+  const [restoring, setRestoring] = useState(false)
 
   useEffect(() => {
     let alive = true
@@ -138,6 +161,28 @@ export default function QrLanding() {
     })()
     return () => { alive = false }
   }, [token])
+
+  // Only a signed-in manager of this org is offered restore, and only after
+  // the asset itself says their grant reaches it. Anyone else gets the
+  // explanation and nothing they can press.
+  const retiredKind = asset?.deletedAt ? RETIRED[asset.assetKind || 'extinguisher'] : null
+  const retiredId = retiredKind && asset ? retiredKind.idOf(asset) : ''
+  useEffect(() => {
+    if (!retiredKind || !retiredId || !asset?.orgId || asset.orgId !== orgId || (!isAdmin && !isManager)) {
+      setRecord(null)
+      return undefined
+    }
+    let alive = true
+    ;(async () => {
+      try {
+        const snap = await getDoc(doc(db, 'organizations', asset.orgId, retiredKind.col, retiredId))
+        if (alive) setRecord(snap.exists() ? { id: snap.id, ...snap.data() } : null)
+      } catch {
+        if (alive) setRecord(null)
+      }
+    })()
+    return () => { alive = false }
+  }, [retiredKind, retiredId, asset, orgId, isAdmin, isManager])
 
   if (asset === undefined) {
     return (
@@ -157,6 +202,53 @@ export default function QrLanding() {
             This QR code does not match any equipment on record. It may belong to another system, or the
             asset may have been removed. Please report it to your safety team.
           </p>
+        </div>
+      </div>
+    )
+  }
+
+  // Before describe(): a retired unit must not offer "Report a defect". The
+  // mirror is still there so the sticker resolves; the sentence is what makes
+  // a delete look different from a code we never printed.
+  if (asset.deletedAt && retiredKind) {
+    const copy = retiredQrCopy(asset)
+    const mayRestore = Boolean(
+      record && canManageAsset(profile, record, { isAdmin, isManager }),
+    )
+    const restore = async () => {
+      setRestoring(true)
+      try {
+        await retiredKind.restore(asset.orgId, asset.orgName || orgName, retiredId, {
+          uid: profile?.uid,
+          name: profile?.name,
+        })
+        const snap = await getDoc(doc(db, 'qr', token))
+        setAsset(snap.exists() ? { id: snap.id, ...snap.data() } : null)
+        toast.success('Restored. This sticker works again.')
+      } catch (err) {
+        toastCaught(err, 'Could not restore')
+      } finally {
+        setRestoring(false)
+      }
+    }
+    return (
+      <div className="grid min-h-screen place-items-center bg-canvas p-6">
+        <div className="card max-w-sm p-8 text-center">
+          <QrCode size={32} className="mx-auto text-ink-300" />
+          <h1 className="mt-3 text-lg font-bold text-ink-900">{copy.title}</h1>
+          <p className="mt-1 text-sm text-ink-500">{copy.detail}</p>
+          <p className="mt-2 text-sm font-medium text-ink-700">{daysLeftLine(asset.deletedAt)}</p>
+          {mayRestore && (
+            <button
+              type="button"
+              className="btn-primary mt-5 w-full justify-center"
+              onClick={restore}
+              disabled={restoring}
+            >
+              {restoring ? <Loader2 size={16} className="animate-spin" /> : <RotateCcw size={16} />}
+              Restore
+            </button>
+          )}
         </div>
       </div>
     )

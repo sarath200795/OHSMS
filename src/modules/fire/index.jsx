@@ -1,5 +1,5 @@
 import { Routes, Route, Navigate, Outlet } from 'react-router-dom'
-import { LayoutDashboard, Boxes, Wrench, Stamp, MapPin } from 'lucide-react'
+import { LayoutDashboard, Boxes, Wrench, Stamp, MapPin, Trash2 } from 'lucide-react'
 import { FleetProvider } from './context/FleetContext'
 import EquipmentHub from './EquipmentHub'
 import EquipmentRepository from './EquipmentRepository'
@@ -30,6 +30,7 @@ import Closed from './pages/Closed'
 import Approvals from './pages/Approvals'
 import RecycleBin from './pages/RecycleBin'
 import ModuleTabs from '../../shared/layout/ModuleTabs'
+import { useAuth } from './context/AuthContext'
 
 // Dashboard = per-type dashboards (EquipmentHub tabs, kept separate).
 // Repository = one consolidated inventory for every equipment class.
@@ -43,7 +44,13 @@ const TABS = [
 ]
 
 function ModuleNav() {
-  return <ModuleTabs label="Emergency Equipment sections" tabs={TABS} />
+  const { isManager } = useAuth()
+  // Members do not delete, so they have nothing to restore. The route still
+  // exists; the rules are what refuse the write.
+  const tabs = isManager
+    ? [...TABS, { to: '/equipment/recycle', label: 'Recently deleted', icon: Trash2 }]
+    : TABS
+  return <ModuleTabs label="Emergency Equipment sections" tabs={tabs} />
 }
 
 function ListLayout() {

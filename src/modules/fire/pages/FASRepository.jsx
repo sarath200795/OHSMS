@@ -10,6 +10,7 @@ import { Pager, IconButton } from '../../../shared/ui'
 import { usePagination } from '../../../shared/ui/usePagination'
 import { useAuth } from '../context/AuthContext'
 import { useFleet } from '../context/FleetContext'
+import { canManageAsset } from '../lib/recycle'
 import { addFas, updateFas, deleteFas, serviceFas, bulkAddFas, generateFasQr, bulkDeleteFas, linkFasToSites, reserveAssetIds } from '../lib/firestore'
 import { planSiteLinks } from '../lib/siteLink'
 import { useAccessibleSites } from '../../../shared/org/useAccessibleSites'
@@ -65,7 +66,7 @@ function DateCell({ value }) {
 }
 
 export default function FASRepository() {
-  const { orgId, orgName, profile, isAdmin } = useAuth()
+  const { orgId, orgName, profile, isAdmin, isManager } = useAuth()
   const { fas, sites, siteInventory, loading } = useFleet()
   const siteMeta = useSiteMeta()
   const today = useMemo(() => new Date(), [])
@@ -188,12 +189,24 @@ export default function FASRepository() {
     if (allOnPage) pageIds.forEach((id) => n.delete(id)); else pageIds.forEach((id) => n.add(id))
     return n
   })
+  const selectedItems = fas.filter((a) => selected.has(a.id))
+  const deletable = selectedItems.filter((a) => canManageAsset(profile, a, { isAdmin, isManager }))
   const confirmBulkDelete = async () => {
-    const items = fas.filter((a) => selected.has(a.id)).map((a) => ({ id: a.id, qrToken: a.qrToken }))
+    if (!deletable.length) {
+      toast.error('None of the selected devices are in your sites.')
+      setBulkRemoving(false)
+      return
+    }
+    const items = deletable.map((a) => ({ id: a.id, qrToken: a.qrToken }))
     setBusy(true)
     try {
       await bulkDeleteFas(orgId, items, { uid: profile?.uid, name: profile?.name })
-      toast.success(`${items.length} FAS device(s) deleted`)
+      const skipped = selectedItems.length - deletable.length
+      toast.success(
+        skipped
+          ? `Moved ${items.length} to Recently deleted. ${skipped} ${skipped === 1 ? 'is' : 'are'} outside your sites.`
+          : `Moved ${items.length} to Recently deleted`,
+      )
       setSelected(new Set()); setBulkRemoving(false)
     } catch (e) { toastCaught(e) } finally { setBusy(false) }
   }
@@ -213,7 +226,7 @@ export default function FASRepository() {
   const confirmDelete = async () => {
     try {
       await deleteFas(orgId, removing.id, removing.qrToken, { uid: profile?.uid, name: profile?.name }, `${removing.deviceId || removing.deviceType} @ ${removing.centerName}`)
-      toast.success('FAS device deleted')
+      toast.success('Moved to Recently deleted')
     } catch (err) { toastCaught(err) } finally { setRemoving(null) }
   }
   // View the QR — or, for admins, mint one first if the record lacks it.
@@ -315,7 +328,9 @@ export default function FASRepository() {
               <span className="font-semibold text-brand-700">{selected.size} selected</span>
               <div className="flex gap-2">
                 <button className="btn-ghost px-3 py-1.5" onClick={() => setSelected(new Set())}>Clear</button>
-                <button className="btn-danger px-3 py-1.5" onClick={() => setBulkRemoving(true)}><Trash2 size={15} /> Delete selected</button>
+                {isManager && (
+                  <button className="btn-danger px-3 py-1.5" onClick={() => setBulkRemoving(true)}><Trash2 size={15} /> Delete selected</button>
+                )}
               </div>
             </div>
           )}
@@ -358,7 +373,9 @@ export default function FASRepository() {
                         <IconButton icon={Wrench} iconSize={14} label={`Log service for ${a.deviceId || a.deviceType || 'this device'}`} className="!bg-green-600 !text-white hover:!brightness-110" onClick={() => openService(a)} />
                         <IconButton icon={QrCode} iconSize={15} variant="soft" label={a.qrToken ? `View QR code for ${a.deviceId || a.deviceType || 'this device'}` : a.deviceType !== 'Control Panel' ? 'QR codes are only for Control Panels' : isAdmin ? `Generate QR code for ${a.deviceId || 'this device'}` : 'Only an admin can generate QR codes'} onClick={() => showQr(a)} disabled={busy || (!a.qrToken && (!isAdmin || a.deviceType !== 'Control Panel'))} />
                         <IconButton icon={Pencil} iconSize={15} variant="soft" label={`Edit ${a.deviceId || a.deviceType || 'this device'}`} onClick={() => setEditing(a)} />
-                        <IconButton icon={Trash2} iconSize={15} variant="soft" label={`Delete ${a.deviceId || a.deviceType || 'this device'}`} className="!text-red-600" onClick={() => setRemoving(a)} />
+                        {isManager && canManageAsset(profile, a, { isAdmin, isManager }) && (
+                          <IconButton icon={Trash2} iconSize={15} variant="soft" label={`Delete ${a.deviceId || a.deviceType || 'this device'}`} className="!text-red-600" onClick={() => setRemoving(a)} />
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -409,18 +426,23 @@ export default function FASRepository() {
       </Modal>
 
       <Modal open={!!removing} onClose={() => setRemoving(null)} title="Delete FAS device?">
-        <p className="text-sm text-ink-600">Remove <span className="font-semibold">{removing?.deviceId || removing?.deviceType}</span> at <span className="font-semibold">{removing?.centerName}</span>? This can’t be undone.</p>
+        <p className="text-sm text-ink-600">Move <span className="font-semibold">{removing?.deviceId || removing?.deviceType}</span> at <span className="font-semibold">{removing?.centerName}</span> to Recently deleted? It drops out of lists and QR scans for 30 days. Restoring brings back the same unit and the same QR code.</p>
         <div className="mt-5 flex justify-end gap-2">
           <button className="btn-ghost" onClick={() => setRemoving(null)}>Cancel</button>
           <button className="btn-danger" onClick={confirmDelete}>Delete</button>
         </div>
       </Modal>
 
-      <Modal open={bulkRemoving} onClose={() => setBulkRemoving(false)} title={`Delete ${selected.size} FAS device(s)?`}>
-        <p className="text-sm text-ink-600">Permanently remove <span className="font-semibold">{selected.size}</span> selected device{selected.size === 1 ? '' : 's'} and their QR codes? This can’t be undone.</p>
+      <Modal open={bulkRemoving} onClose={() => setBulkRemoving(false)} title={`Delete ${deletable.length} FAS device(s)?`}>
+        <p className="text-sm text-ink-600">
+          This moves <span className="font-semibold">{deletable.length}</span> device{deletable.length === 1 ? '' : 's'} to Recently deleted. They drop out of lists and QR scans for 30 days. Restoring brings back the same unit and the same QR code.
+          {selected.size !== deletable.length && (
+            <> {selected.size - deletable.length} of the selection {selected.size - deletable.length === 1 ? 'is' : 'are'} outside your sites and will be left in place.</>
+          )}
+        </p>
         <div className="mt-5 flex justify-end gap-2">
           <button className="btn-ghost" onClick={() => setBulkRemoving(false)}>Cancel</button>
-          <button className="btn-danger" onClick={confirmBulkDelete} disabled={busy}>{busy ? <Spinner size={16} /> : `Delete ${selected.size}`}</button>
+          <button className="btn-danger" onClick={confirmBulkDelete} disabled={busy || !deletable.length}>{busy ? <Spinner size={16} /> : `Delete ${deletable.length}`}</button>
         </div>
       </Modal>
 
