@@ -155,6 +155,24 @@ export const FLOOR_SIGNAGE_TYPES = ['FERP Signage']
 
 export const SIGNAGE_CONDITIONS = ['OK', 'Faded', 'Damaged', 'Missing', 'Obstructed']
 
+// Where a sign is in its life. Records written before this field existed carry
+// no status and are shown as "Not set" (SIGNAGE_STATUS_NOT_SET) — that is a
+// display label only, never stored, and an unset record stays fully valid.
+export const SIGNAGE_STATUSES = ['Planned', 'Deployed', 'Removed']
+export const SIGNAGE_STATUS_NOT_SET = 'Not set'
+export const SIGNAGE_STATUS_COLOR = {
+  Planned: '#2563eb',
+  Deployed: '#16a34a',
+  Removed: '#64748b',
+  [SIGNAGE_STATUS_NOT_SET]: '#94a3b8',
+}
+
+// A signage photo is downscaled and re-encoded in the browser before upload, the
+// same way LOTO isolation photos are (loto/utils/image.js), so a 12 MP phone
+// capture becomes a few hundred KB. The raw pick is still capped at the shared
+// upload limit (MAX_UPLOAD_BYTES) before any of that runs.
+export const SIGNAGE_PHOTO = { maxDim: 1280, quality: 0.7 }
+
 export const SIGNAGE_CONDITION_COLOR = {
   OK: '#16a34a',
   Faded: '#f59e0b',

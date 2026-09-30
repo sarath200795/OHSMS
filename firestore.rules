@@ -1887,6 +1887,30 @@ service cloud.firestore {
         || (d.get('entity', '') != '' && a.get('entities', []).hasAny([d.get('entity', '')]));
     }
 
+    // A signage record may only BECOME Deployed with evidence: a photo and a
+    // last-checked date. The register's form enforces the same thing; this is
+    // what stops the SDK writing it without.
+    //
+    // It watches the way IN only. A record whose stored status is already
+    // Deployed is left alone — those were saved before this rule, may have no
+    // photo or date, and must stay editable for their other fields (and the
+    // site-link batch, which touches neither, must keep working). A create has
+    // no stored state, so it is judged on what it writes.
+    //
+    // .get(f, default) on every read because older records carry none of these
+    // fields, and reading an absent field raises — a raising rule denies. The
+    // photo is the stored pointer, a map; a cleared one is null, which is not a
+    // map, so it fails here rather than passing on the mere presence of the key.
+    function keepsSignageEvidence(col) {
+      return col != 'signages'
+        || request.resource.data.get('status', '') != 'Deployed'
+        || (resource != null && resource.data.get('status', '') == 'Deployed')
+        || (request.resource.data.get('photo', null) is map
+            && request.resource.data.get('photo', null).size() > 0
+            && request.resource.data.get('lastChecked', '') is string
+            && request.resource.data.get('lastChecked', '') != '');
+    }
+
     function keepsEquipmentDeletion(col) {
       return !(col in ['extinguishers', 'aeds', 'fas'])
         || (resource == null
@@ -1967,7 +1991,8 @@ service cloud.firestore {
           && (isManagerOf(orgId)
               || (col != 'sites' && keepsDecision(col, beforeData(), request.resource.data)
                   && keepsInjuryDeletion(col)))
-          && keepsEquipmentDeletion(col);
+          && keepsEquipmentDeletion(col)
+          && keepsSignageEvidence(col);
         // Delete is deliberately NOT gated on the entitlement. Turning a module
         // off should stop it being used, not trap the data already in it — an
         // operator who disables a module must not leave a tenant unable to
@@ -2002,7 +2027,8 @@ service cloud.firestore {
             && (isManagerOf(orgId)
                 || (col != 'sites' && keepsDecision(col, beforeData(), request.resource.data)
                     && keepsInjuryDeletion(col)))
-            && keepsEquipmentDeletion(col);
+            && keepsEquipmentDeletion(col)
+            && keepsSignageEvidence(col);
           allow delete: if structuralOnly(col, docId) && isManagerOf(orgId)
             && !(col in ['extinguishers', 'aeds', 'fas']);
           allow delete: if structuralOnly(col, docId) && isAdminOf(orgId)
