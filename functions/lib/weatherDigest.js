@@ -4,8 +4,11 @@
 // UV, cold, thunderstorm, ice, snow). Each section has its own region → sites
 // tables. A site with several hazards is listed under each, at that hazard's
 // own level; the subject and summary count each site once, at its worst level.
-// The row cap (DIGEST_AREA_CAP) applies per section, and the map pins only the
-// sites that made it into at least one section. The digest data stays one row
+// Above those sections, after the summary and map, sits one table of EVERY
+// High site-hazard pair (Region, Site Name, Type of Alert, Precautions), with
+// static precautions per hazard. It has no row cap. The row cap
+// (DIGEST_AREA_CAP) applies per section, and the map pins only the sites that
+// made it into at least one section or into the High table. The digest data stays one row
 // per site (`areas`); the sectioning lives in the mail template.
 //
 // There is no stored weather collection. The screen reads Open-Meteo in the

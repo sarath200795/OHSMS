@@ -134,6 +134,9 @@ describe('collectDigest', () => {
     expect(message.subject).toBe('Weather risk: 90 high, 0 medium')
     expect(message.text).toContain('Weather checked for 90 of 90 sites')
     expect(message.text).toContain('Other hazards: 50 further readings — in the app')
+    // The all-High table is not capped: all 90 High wind sites are in it.
+    expect(message.text).toContain('HIGH-RISK SITES AND PRECAUTIONS (90 alerts at 90 sites)')
+    expect(message.text.match(/^Type of Alert: Adverse Weather – High wind$/gm)).toHaveLength(90)
   })
 })
 

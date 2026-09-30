@@ -205,7 +205,9 @@ export function renderMeetingMail(meeting, { appOrigin = '', sender = '' } = {})
 // section, not overall, so a wide heat event cannot push the rain section
 // out of the mail. A section's rows are taken High first, so the cap only ever
 // drops Medium rows before High ones. Rows are sites in Heat Stress and Rain
-// Risk, and site-hazard pairs in Other hazards.
+// Risk, and site-hazard pairs in Other hazards. The cap does NOT apply to the
+// all-High precautions table (highAlertRows), which lists every High
+// site-hazard pair.
 export const DIGEST_AREA_CAP = 40
 
 const SANS = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif"
@@ -344,16 +346,92 @@ export function groupDigestSections(areas, cap = DIGEST_AREA_CAP) {
   return sections
 }
 
+// Static, hazard-specific OHS precautions for the all-High table. They are
+// general guidance, written once here; they do not read the forecast and are
+// not tunable per org. Keyed by the driver key (weatherBands.js).
+const ALERT_TYPE = {
+  heat: 'Heat Stress',
+  rain: 'Rain Risk',
+}
+const ADVERSE = 'Adverse Weather'
+const PRECAUTIONS = {
+  heat: 'Provide cool drinking water and enforce shade and rest breaks. Move heavy outdoor work to the cooler hours. Watch for heat-illness signs (dizziness, cramps, confusion) and act at once.',
+  rain: 'Watch for slips, trips and wet electrical equipment; keep tools and cables off wet ground. Secure loose materials and check drainage. Stop work at height and hot work if conditions are unsafe.',
+  wind: 'Secure scaffolding, sheeting and loose items. Stop crane, lifting and work-at-height operations. Keep people clear of overhead and edge areas.',
+  visibility:
+    'Slow vehicles and plant, and keep lights and high-visibility clothing on. Use spotters and marked routes. Pause lifting and reversing where the operator cannot see.',
+  uv: 'Limit work in direct sun at midday. Use sunscreen, hats, long sleeves and eye protection. Provide shade and water, and rotate people on exposed tasks.',
+  cold: 'Provide warm clothing, gloves and warm rest breaks. Limit time on exposed tasks and watch for numbness or shivering. Check for ice on walkways and equipment.',
+  lightning:
+    'Stop outdoor work and move people indoors or into a vehicle. Keep clear of tall structures, cranes, scaffolding and open ground. Resume only when the storm has passed.',
+  ice: 'Grit or close icy walkways, ramps and stairs. Slow vehicles and plant. Stop work at height and lifting where surfaces are slippery.',
+  snow: 'Clear and grit access routes. Take extra care with vehicles and plant. Check roofs, scaffolding and temporary structures for snow load before use.',
+  other:
+    'Review the task risk assessment. Stop work that cannot be done safely, and follow site emergency procedures.',
+}
+// Labels for rows written before drivers carried a key.
+const PRECAUTION_KEY_BY_LABEL = {
+  'high wind': 'wind',
+  'poor visibility': 'visibility',
+  'uv exposure': 'uv',
+  'cold stress': 'cold',
+  thunderstorm: 'lightning',
+  'freezing rain': 'ice',
+  snow: 'snow',
+}
+
+function precautionKey(reading) {
+  if (PRECAUTIONS[reading.key] && reading.key !== 'other') return reading.key
+  return PRECAUTION_KEY_BY_LABEL[String(reading.label || '').toLowerCase()] || 'other'
+}
+
+const TYPE_RANK = { 'Heat Stress': 0, 'Rain Risk': 1 }
+
+/**
+ * One row per site-hazard pair at High level: { region, name, type, precautions }.
+ * `type` is Heat Stress, Rain Risk, or 'Adverse Weather – <hazard>' for every
+ * other hazard. Sorted by region, then site, then heat, rain, other. Not capped.
+ */
+export function highAlertRows(areas) {
+  const rows = []
+  for (const area of Array.isArray(areas) ? areas : []) {
+    if (!area) continue
+    for (const reading of readingsOf(area)) {
+      if (reading.level !== 'High') continue
+      const key = HAZARD_ORDER.includes(reading.key) ? reading.key : precautionKey(reading)
+      const type = ALERT_TYPE[key] || `${ADVERSE} – ${reading.label}`
+      rows.push({
+        region: plain(area.region, 80) || 'Unassigned',
+        name: plain(area.name, 80) || '—',
+        type,
+        precautions: PRECAUTIONS[key] || PRECAUTIONS.other,
+        area,
+      })
+    }
+  }
+  rows.sort(
+    (a, b) =>
+      a.region.localeCompare(b.region) ||
+      a.name.localeCompare(b.name) ||
+      (TYPE_RANK[a.type] ?? 2) - (TYPE_RANK[b.type] ?? 2) ||
+      a.type.localeCompare(b.type)
+  )
+  return rows
+}
+
 /**
  * The distinct areas that made it into at least one section after the
- * per-section cap. The map pins these, so it never marks a site the tables
- * dropped.
+ * per-section cap, or into the all-High table. The map pins these, so it
+ * never marks a site the mail dropped.
  */
 export function shownDigestAreas(areas, cap = DIGEST_AREA_CAP) {
   const shown = new Set()
   for (const section of groupDigestSections(areas, cap)) {
     for (const group of section.groups) for (const row of group.rows) shown.add(row.area)
   }
+  // The all-High table is not capped, so a High site the sections cut is
+  // still listed in the mail and is pinned.
+  for (const row of highAlertRows(areas)) shown.add(row.area)
   return (Array.isArray(areas) ? areas : []).filter((area) => shown.has(area))
 }
 
@@ -427,6 +505,47 @@ function sectionText(section, when) {
   return lines.join('\n')
 }
 
+const ALERT_COLUMNS = ['Region', 'Site Name', 'Type of Alert', 'Precautions']
+const ALERT_NOTE =
+  'One row per site and hazard at High level. Precautions are general guidance: follow your site risk assessment, permits and emergency procedures.'
+
+function alertCounts(rows) {
+  const sites = new Set(rows.map((r) => r.area)).size
+  return `${rows.length} alert${rows.length === 1 ? '' : 's'} at ${sites} site${sites === 1 ? '' : 's'}`
+}
+
+function alertsHtml(rows) {
+  if (!rows.length) return ''
+  const headCell = { size: '11px', weight: '700', color: '#7f1d1d', transform: 'uppercase' }
+  const head = `<tr style="background:${LEVEL_STYLE.High.wash};">${ALERT_COLUMNS.map((c) => cell(c, headCell)).join('')}</tr>`
+  const body = rows
+    .map(
+      (row) => `<tr style="background:${LEVEL_STYLE.High.wash};border-top:1px solid #fecaca;">
+${cell(row.region)}
+${cell(row.name, { weight: '600' })}
+${cell(row.type, { weight: '700', color: LEVEL_STYLE.High.title })}
+${cell(row.precautions)}
+</tr>`
+    )
+    .join('')
+  return `<h2 style="margin:18px 0 0;font-family:${SANS};font-size:16px;line-height:1.3;font-weight:700;color:${LEVEL_STYLE.High.title};">High-risk sites and precautions</h2><p style="margin:2px 0 0;font-family:${SANS};font-size:12px;line-height:1.4;color:#246058;">${escapeHtml(alertCounts(rows))}. ${escapeHtml(ALERT_NOTE)}</p><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 8px;border-left:4px solid ${LEVEL_STYLE.High.bar};">${head}${body}</table>`
+}
+
+function alertsText(rows) {
+  if (!rows.length) return ''
+  const lines = [`HIGH-RISK SITES AND PRECAUTIONS (${alertCounts(rows)})`, ALERT_NOTE]
+  for (const row of rows) {
+    lines.push(
+      '',
+      `Region: ${row.region}`,
+      `Site Name: ${row.name}`,
+      `Type of Alert: ${row.type}`,
+      `Precautions: ${row.precautions}`
+    )
+  }
+  return lines.join('\n')
+}
+
 function mapBlock(cid) {
   if (!cid) return { html: '', text: '' }
   const src = escapeHtml(`cid:${cid}`)
@@ -450,6 +569,7 @@ export function renderWeatherDigest(
   const subject = `Weather risk: ${high} high, ${medium} medium`
   const when = plain(windowLabel, 40)
   const sections = groupDigestSections(areas)
+  const alerts = highAlertRows(areas)
   const hidden = sections.filter((section) => section.hidden > 0)
   const map = mapBlock(safeCid(mapCid))
   // The bucket is the run's window. A site's When cell is the provider's
@@ -475,12 +595,13 @@ export function renderWeatherDigest(
   const summaryHtml = summaryLine
     ? `<p style="margin:8px 0 0;font-family:${SANS};font-size:13px;line-height:1.4;color:#123632;">${escapeHtml(summaryLine)}</p>`
     : ''
-  const bannerHtml = `${map.html}${windowHtml}${coverageHtml}${summaryHtml}${sections.map((s) => sectionHtml(s, when)).join('')}`
+  const bannerHtml = `${map.html}${windowHtml}${coverageHtml}${summaryHtml}${alertsHtml(alerts)}${sections.map((s) => sectionHtml(s, when)).join('')}`
   const bannerText = [
     map.text,
     windowText,
     coverageLine,
     summaryLine,
+    alertsText(alerts),
     ...sections.map((s) => sectionText(s, when)),
   ]
     .filter(Boolean)
