@@ -205,9 +205,8 @@ export function renderMeetingMail(meeting, { appOrigin = '', sender = '' } = {})
 // section, not overall, so a wide heat event cannot push the rain section
 // out of the mail. A section's rows are taken High first, so the cap only ever
 // drops Medium rows before High ones. Rows are sites in Heat Stress and Rain
-// Risk, and site-hazard pairs in Other hazards. The cap does NOT apply to the
-// all-High precautions table (highAlertRows), which lists every High
-// site-hazard pair.
+// Risk, and site-hazard pairs in Other hazards. The High-risk precautions
+// table has its own, smaller cap: HIGH_SITES_PER_REGION sites per region.
 export const DIGEST_AREA_CAP = 40
 
 const SANS = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif"
@@ -419,9 +418,47 @@ export function highAlertRows(areas) {
   return rows
 }
 
+// The High-risk table shows this many SITES per region (every High hazard row
+// of each), then a line with the count of the rest and a link to the app.
+export const HIGH_SITES_PER_REGION = 5
+
+/**
+ * The High-risk table, one block per region (A–Z). In each region the sites
+ * with the most High alerts come first, then by name, and only the first
+ * `limit` sites keep their rows; `hiddenSites` counts the rest.
+ * Shape: [{ region, sites, hiddenSites, alerts, rows }] — `rows` are the shown
+ * sites' hazard rows, `alerts` counts every High row in the region.
+ */
+export function highAlertRegions(areas, limit = HIGH_SITES_PER_REGION) {
+  const byRegion = new Map()
+  for (const row of highAlertRows(areas)) {
+    if (!byRegion.has(row.region)) byRegion.set(row.region, new Map())
+    const sites = byRegion.get(row.region)
+    if (!sites.has(row.area)) sites.set(row.area, [])
+    sites.get(row.area).push(row)
+  }
+  return [...byRegion.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([region, sites]) => {
+      const ranked = [...sites.values()].sort(
+        (a, b) => b.length - a.length || a[0].name.localeCompare(b[0].name)
+      )
+      const kept = ranked.slice(0, Math.max(0, limit))
+      // Shown sites read A–Z inside the region, as the sections do.
+      kept.sort((a, b) => a[0].name.localeCompare(b[0].name))
+      return {
+        region,
+        sites: ranked.length,
+        hiddenSites: ranked.length - kept.length,
+        alerts: ranked.reduce((n, rows) => n + rows.length, 0),
+        rows: kept.flat(),
+      }
+    })
+}
+
 /**
  * The distinct areas that made it into at least one section after the
- * per-section cap, or into the all-High table. The map pins these, so it
+ * per-section cap, or into the High-risk table. The map pins these, so it
  * never marks a site the mail dropped.
  */
 export function shownDigestAreas(areas, cap = DIGEST_AREA_CAP) {
@@ -429,9 +466,9 @@ export function shownDigestAreas(areas, cap = DIGEST_AREA_CAP) {
   for (const section of groupDigestSections(areas, cap)) {
     for (const group of section.groups) for (const row of group.rows) shown.add(row.area)
   }
-  // The all-High table is not capped, so a High site the sections cut is
-  // still listed in the mail and is pinned.
-  for (const row of highAlertRows(areas)) shown.add(row.area)
+  // A High site the sections cut can still be one of its region's five in the
+  // High-risk table, and is pinned for that.
+  for (const region of highAlertRegions(areas)) for (const row of region.rows) shown.add(row.area)
   return (Array.isArray(areas) ? areas : []).filter((area) => shown.has(area))
 }
 
@@ -505,43 +542,65 @@ function sectionText(section, when) {
   return lines.join('\n')
 }
 
-const ALERT_COLUMNS = ['Region', 'Site Name', 'Type of Alert', 'Precautions']
+const ALERT_COLUMNS = ['Site Name', 'Type of Alert', 'Precautions']
 const ALERT_NOTE =
   'One row per site and hazard at High level. Precautions are general guidance: follow your site risk assessment, permits and emergency procedures.'
 
-function alertCounts(rows) {
-  const sites = new Set(rows.map((r) => r.area)).size
-  return `${rows.length} alert${rows.length === 1 ? '' : 's'} at ${sites} site${sites === 1 ? '' : 's'}`
+function alertCounts(regions) {
+  const alerts = regions.reduce((n, r) => n + r.alerts, 0)
+  const sites = regions.reduce((n, r) => n + r.sites, 0)
+  return `${alerts} alert${alerts === 1 ? '' : 's'} at ${sites} site${sites === 1 ? '' : 's'}`
 }
 
-function alertsHtml(rows) {
-  if (!rows.length) return ''
+// "N more high-risk sites in <Region>. Log in to see all: <link>"
+function moreLine(region, link) {
+  const n = region.hiddenSites
+  return `${n} more high-risk site${n === 1 ? '' : 's'} in ${region.region}. Log in to see all${link ? `: ${link}` : '.'}`
+}
+
+function alertsHtml(regions, link) {
+  if (!regions.length) return ''
   const headCell = { size: '11px', weight: '700', color: '#7f1d1d', transform: 'uppercase' }
   const head = `<tr style="background:${LEVEL_STYLE.High.wash};">${ALERT_COLUMNS.map((c) => cell(c, headCell)).join('')}</tr>`
-  const body = rows
-    .map(
-      (row) => `<tr style="background:${LEVEL_STYLE.High.wash};border-top:1px solid #fecaca;">
-${cell(row.region)}
+  const blocks = regions
+    .map((region) => {
+      const body = region.rows
+        .map(
+          (row) => `<tr style="background:${LEVEL_STYLE.High.wash};border-top:1px solid #fecaca;">
 ${cell(row.name, { weight: '600' })}
 ${cell(row.type, { weight: '700', color: LEVEL_STYLE.High.title })}
 ${cell(row.precautions)}
 </tr>`
-    )
+        )
+        .join('')
+      const more = region.hiddenSites
+        ? `<p style="margin:0 0 8px;font-family:${SANS};font-size:13px;line-height:1.4;font-weight:600;color:${LEVEL_STYLE.High.title};">${
+            link
+              ? `${escapeHtml(`${region.hiddenSites} more high-risk site${region.hiddenSites === 1 ? '' : 's'} in ${region.region}. Log in to see all: `)}<a href="${escapeHtml(link)}" style="color:#1a4a44;">${escapeHtml(link)}</a>`
+              : escapeHtml(moreLine(region, ''))
+          }</p>`
+        : ''
+      return `<p style="margin:12px 0 4px;font-family:${SANS};font-size:13px;line-height:1.4;font-weight:700;color:#123632;">${escapeHtml(region.region)}</p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 8px;border-left:4px solid ${LEVEL_STYLE.High.bar};">${head}${body}</table>${more}`
+    })
     .join('')
-  return `<h2 style="margin:18px 0 0;font-family:${SANS};font-size:16px;line-height:1.3;font-weight:700;color:${LEVEL_STYLE.High.title};">High-risk sites and precautions</h2><p style="margin:2px 0 0;font-family:${SANS};font-size:12px;line-height:1.4;color:#246058;">${escapeHtml(alertCounts(rows))}. ${escapeHtml(ALERT_NOTE)}</p><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 8px;border-left:4px solid ${LEVEL_STYLE.High.bar};">${head}${body}</table>`
+  return `<h2 style="margin:18px 0 0;font-family:${SANS};font-size:16px;line-height:1.3;font-weight:700;color:${LEVEL_STYLE.High.title};">High-risk sites and precautions</h2><p style="margin:2px 0 0;font-family:${SANS};font-size:12px;line-height:1.4;color:#246058;">${escapeHtml(alertCounts(regions))}. ${escapeHtml(ALERT_NOTE)}</p>${blocks}`
 }
 
-function alertsText(rows) {
-  if (!rows.length) return ''
-  const lines = [`HIGH-RISK SITES AND PRECAUTIONS (${alertCounts(rows)})`, ALERT_NOTE]
-  for (const row of rows) {
-    lines.push(
-      '',
-      `Region: ${row.region}`,
-      `Site Name: ${row.name}`,
-      `Type of Alert: ${row.type}`,
-      `Precautions: ${row.precautions}`
-    )
+function alertsText(regions, link) {
+  if (!regions.length) return ''
+  const lines = [`HIGH-RISK SITES AND PRECAUTIONS (${alertCounts(regions)})`, ALERT_NOTE]
+  for (const region of regions) {
+    lines.push('', region.region.toUpperCase())
+    for (const row of region.rows) {
+      lines.push(
+        '',
+        `Site Name: ${row.name}`,
+        `Type of Alert: ${row.type}`,
+        `Precautions: ${row.precautions}`
+      )
+    }
+    if (region.hiddenSites) lines.push('', moreLine(region, link))
   }
   return lines.join('\n')
 }
@@ -569,7 +628,9 @@ export function renderWeatherDigest(
   const subject = `Weather risk: ${high} high, ${medium} medium`
   const when = plain(windowLabel, 40)
   const sections = groupDigestSections(areas)
-  const alerts = highAlertRows(areas)
+  const alerts = highAlertRegions(areas)
+  const origin = safeOrigin(appOrigin)
+  const alertLink = origin ? `${origin}/weather` : ''
   const hidden = sections.filter((section) => section.hidden > 0)
   const map = mapBlock(safeCid(mapCid))
   // The bucket is the run's window. A site's When cell is the provider's
@@ -595,13 +656,13 @@ export function renderWeatherDigest(
   const summaryHtml = summaryLine
     ? `<p style="margin:8px 0 0;font-family:${SANS};font-size:13px;line-height:1.4;color:#123632;">${escapeHtml(summaryLine)}</p>`
     : ''
-  const bannerHtml = `${map.html}${windowHtml}${coverageHtml}${summaryHtml}${alertsHtml(alerts)}${sections.map((s) => sectionHtml(s, when)).join('')}`
+  const bannerHtml = `${map.html}${windowHtml}${coverageHtml}${summaryHtml}${alertsHtml(alerts, alertLink)}${sections.map((s) => sectionHtml(s, when)).join('')}`
   const bannerText = [
     map.text,
     windowText,
     coverageLine,
     summaryLine,
-    alertsText(alerts),
+    alertsText(alerts, alertLink),
     ...sections.map((s) => sectionText(s, when)),
   ]
     .filter(Boolean)

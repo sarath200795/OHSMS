@@ -7,6 +7,8 @@ import {
   renderWeatherDigest,
   groupDigestSections,
   highAlertRows,
+  highAlertRegions,
+  HIGH_SITES_PER_REGION,
   shownDigestAreas,
   DIGEST_AREA_CAP,
   SEALED_LINE,
@@ -409,27 +411,121 @@ describe('defect, drill, meeting and weather mail', () => {
       expect(new Set(byType.values()).size).toBe(byType.size)
     })
 
-    it('is not capped, however many sites are High', () => {
+    const heatRain = (region, name, both = false) => ({
+      region,
+      name,
+      level: 'High',
+      drivers: [
+        drv('heat', 'Heat stress', 'Feels like 46°C', 'High'),
+        ...(both ? [drv('rain', 'Rain', 'High · 12.0 mm/h', 'High')] : []),
+      ],
+    })
+
+    it('shows 5 sites per region, most High alerts first then by name, all their hazard rows', () => {
+      expect(HIGH_SITES_PER_REGION).toBe(5)
+      const south = [
+        heatRain('South', 'Site G'),
+        heatRain('South', 'Site F'),
+        heatRain('South', 'Site E'),
+        heatRain('South', 'Site D'),
+        heatRain('South', 'Site C'),
+        heatRain('South', 'Site B', true),
+        heatRain('South', 'Site A'),
+      ]
+      // Site B has two alerts so it ranks first; then A, C, D, E by name. F and G are cut.
+      const [region] = highAlertRegions(south)
+      expect(region).toMatchObject({ region: 'South', sites: 7, hiddenSites: 2, alerts: 8 })
+      expect(region.rows.map((r) => `${r.name}|${r.type}`)).toEqual([
+        'Site A|Heat Stress',
+        'Site B|Heat Stress',
+        'Site B|Rain Risk',
+        'Site C|Heat Stress',
+        'Site D|Heat Stress',
+        'Site E|Heat Stress',
+      ])
+      const message = renderWeatherDigest({ areas: south }, { appOrigin: ORIGIN })
+      const text = message.text.slice(
+        message.text.indexOf('HIGH-RISK SITES'),
+        message.text.indexOf('HEAT STRESS (')
+      )
+      expect(text.match(/^Site Name: /gm)).toHaveLength(6)
+      expect(text).toContain('Site Name: Site E')
+      expect(text).not.toContain('Site Name: Site F')
+      expect(text).not.toContain('Site Name: Site G')
+      expect(text).toContain(
+        `2 more high-risk sites in South. Log in to see all: ${ORIGIN}/weather`
+      )
+      expect(text).not.toContain('Region:')
+      const htmlTable = message.html.slice(
+        message.html.indexOf('High-risk sites and precautions'),
+        message.html.indexOf('>Heat Stress</h2>')
+      )
+      expect(htmlTable.match(/>Rain Risk<\/td>/g)).toHaveLength(1)
+      expect(htmlTable).not.toContain('Site F')
+      expect(htmlTable).toContain('2 more high-risk sites in South. Log in to see all: ')
+      expect(htmlTable).toContain(`href="${ORIGIN}/weather"`)
+      for (const column of ['Site Name', 'Type of Alert', 'Precautions']) {
+        expect(htmlTable).toContain(`>${column}</td>`)
+      }
+      expect(htmlTable).not.toContain('>Region</td>')
+      // Site F and G are cut from the High table but stay in the per-section tables.
+      expect(message.text).toContain('Site: Site F')
+    })
+
+    it('keeps a separate table per region, each with its own limit and more-line', () => {
+      const many = [
+        ...Array.from({ length: 6 }, (_, i) => heatRain('North', `N${i}`)),
+        ...Array.from({ length: 5 }, (_, i) => heatRain('East', `E${i}`)),
+        heatRain('West', 'W0', true),
+      ]
+      const regions = highAlertRegions(many)
+      expect(regions.map((r) => `${r.region}:${r.rows.length}:${r.hiddenSites}`)).toEqual([
+        'East:5:0',
+        'North:5:1',
+        'West:2:0',
+      ])
+      const message = renderWeatherDigest({ areas: many }, { appOrigin: ORIGIN })
+      const text = message.text.slice(
+        message.text.indexOf('HIGH-RISK SITES'),
+        message.text.indexOf('HEAT STRESS (')
+      )
+      expect(text.indexOf('EAST')).toBeLessThan(text.indexOf('NORTH'))
+      expect(text.indexOf('NORTH')).toBeLessThan(text.indexOf('WEST'))
+      // Only North is over the limit, so only North gets a line.
+      expect(text.match(/more high-risk sites? in/g)).toHaveLength(1)
+      expect(text).toContain('1 more high-risk site in North. Log in to see all: ')
+      expect(text).not.toContain('in East')
+      expect(text).not.toContain('in West')
+      expect(text).toContain('HIGH-RISK SITES AND PRECAUTIONS (13 alerts at 12 sites)')
+      expect(message.html.match(/more high-risk sites? in/g)).toHaveLength(1)
+    })
+
+    it('a region with 5 or fewer High sites has no more-line', () => {
+      const five = Array.from({ length: 5 }, (_, i) => heatRain('East', `E${i}`))
+      const message = renderWeatherDigest({ areas: five }, { appOrigin: ORIGIN })
+      expect(message.text).not.toContain('more high-risk')
+      expect(message.html).not.toContain('more high-risk')
+      expect(message.text.match(/^Site Name: /gm)).toHaveLength(5)
+    })
+
+    it('drops the link, not the count, when there is no app origin', () => {
+      const six = Array.from({ length: 6 }, (_, i) => heatRain('East', `E${i}`))
+      const { text } = renderWeatherDigest({ areas: six }, { appOrigin: '' })
+      expect(text).toContain('1 more high-risk site in East. Log in to see all.')
+    })
+
+    it("pins a High site that is one of its region's five, not one that is cut", () => {
       const many = Array.from({ length: DIGEST_AREA_CAP * 3 }, (_, i) => ({
         region: `R${i % 4}`,
         name: `Site ${String(i).padStart(3, '0')}`,
         level: 'High',
-        drivers: [
-          drv('heat', 'Heat stress', 'Feels like 46°C', 'High'),
-          drv('rain', 'Rain', 'High · 12.0 mm/h', 'High'),
-        ],
+        drivers: [drv('heat', 'Heat stress', 'Feels like 46°C', 'High')],
       }))
-      expect(highAlertRows(many)).toHaveLength(DIGEST_AREA_CAP * 6)
+      // 120 heat rows, 40 kept by the section cap; 4 regions x 5 sites are in the High table.
+      const pinned = shownDigestAreas(many)
+      expect(pinned.length).toBeGreaterThanOrEqual(DIGEST_AREA_CAP)
       const message = renderWeatherDigest({ areas: many }, { appOrigin: ORIGIN })
-      expect(message.text.match(/^Type of Alert: Heat Stress$/gm)).toHaveLength(DIGEST_AREA_CAP * 3)
-      expect(message.text.match(/^Type of Alert: Rain Risk$/gm)).toHaveLength(DIGEST_AREA_CAP * 3)
-      expect(message.html.match(/>Rain Risk<\/td>/g)).toHaveLength(DIGEST_AREA_CAP * 3)
-      // The per-section cap still trims the region sections.
-      expect(message.text).toContain(
-        'Heat Stress: 80 further sites; Rain Risk: 80 further sites — in the app'
-      )
-      // Sites cut from every section are still in the High table, so they are pinned.
-      expect(shownDigestAreas(many)).toHaveLength(DIGEST_AREA_CAP * 3)
+      expect(message.text.match(/more high-risk sites in R\d/g)).toHaveLength(4)
     })
 
     it('renders in text and HTML after the summary and before the hazard sections', () => {
@@ -443,14 +539,14 @@ describe('defect, drill, meeting and weather mail', () => {
       expect(table).toBeGreaterThan(text.indexOf('sites at risk:'))
       expect(table).toBeLessThan(text.indexOf('HEAT STRESS ('))
       expect(text).toContain(
-        'Region: South\nSite Name: Plant <script>\nType of Alert: Heat Stress\nPrecautions: '
+        'SOUTH\n\nSite Name: Plant <script>\nType of Alert: Heat Stress\nPrecautions: '
       )
       expect(text).toContain('Type of Alert: Adverse Weather – High wind')
       const th = html.indexOf('High-risk sites and precautions')
       expect(th).toBeGreaterThan(html.indexOf('cid:weather-risk-map'))
       expect(th).toBeGreaterThan(html.indexOf('sites at risk:'))
       expect(th).toBeLessThan(html.indexOf('>Heat Stress</h2>'))
-      for (const column of ['Region', 'Site Name', 'Type of Alert', 'Precautions']) {
+      for (const column of ['Site Name', 'Type of Alert', 'Precautions']) {
         expect(html).toContain(`>${column}</td>`)
       }
       expect(html).not.toContain('Plant <script>')
