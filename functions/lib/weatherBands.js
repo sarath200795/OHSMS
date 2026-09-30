@@ -155,7 +155,12 @@ export function digestHazards(assessment) {
   return (assessment?.hazards || []).filter((h) => digestLevel(h.band)).map((h) => h.label)
 }
 
-/** Those same hazards, with the reading. Low and none are not a digest cell. */
+/**
+ * Those same hazards, with the reading and that hazard's OWN level. Low and
+ * none are not a digest cell. The mail files a site under each hazard with
+ * this level, not with the site's worst level: a site that is High for heat
+ * and Medium for rain is High under Heat Stress and Medium under Rain Risk.
+ */
 export function digestDrivers(assessment) {
   return (assessment?.hazards || [])
     .filter((h) => digestLevel(h.band))
@@ -163,5 +168,6 @@ export function digestDrivers(assessment) {
       key: h.key,
       label: h.label,
       value: typeof h.value === 'string' ? h.value : '',
+      level: digestLevel(h.band),
     }))
 }

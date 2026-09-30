@@ -101,9 +101,11 @@ describe('collectDigest', () => {
       entity: 'COCO',
       lat: 17.44,
       lng: 78.39,
-      drivers: [{ key: 'wind', label: 'High wind', value: '50 km/h' }],
+      drivers: [{ key: 'wind', label: 'High wind', value: '50 km/h', level: 'High' }],
     })
-    expect(digest.areas[1].drivers).toEqual([{ key: 'wind', label: 'High wind', value: '39 km/h' }])
+    expect(digest.areas[1].drivers).toEqual([
+      { key: 'wind', label: 'High wind', value: '39 km/h', level: 'Medium' },
+    ])
     expect(digest.unlocated).toBe(1)
     expect(digest.located).toBe(4)
     expect(digest.checked).toBe(3)
@@ -131,7 +133,7 @@ describe('collectDigest', () => {
     const message = renderWeatherDigest(digest)
     expect(message.subject).toBe('Weather risk: 90 high, 0 medium')
     expect(message.text).toContain('Weather checked for 90 of 90 sites')
-    expect(message.text).toContain('50 further areas are in the app')
+    expect(message.text).toContain('Other hazards: 50 further readings — in the app')
   })
 })
 
@@ -210,8 +212,12 @@ describe('deliverWeatherDigest', () => {
       'shared@example.com',
     ])
     const blob = sent.map((m) => `${m.subject}\n${m.text}\n${m.html}`).join('\n')
-    expect(blob.indexOf('High risk')).toBeGreaterThan(-1)
-    expect(blob.indexOf('High risk')).toBeLessThan(blob.indexOf('Medium risk'))
+    expect(blob).toContain('OTHER HAZARDS')
+    expect(blob).toContain('Level: High')
+    expect(blob).toContain('Level: Medium')
+    expect(blob).toContain('Hazard: High wind')
+    expect(blob).not.toContain('HEAT STRESS')
+    expect(blob).not.toContain('RAIN RISK')
     expect(blob).toContain('South')
     expect(blob).toContain('Plant 2')
     expect(blob).toContain('COCO')
@@ -237,6 +243,63 @@ describe('deliverWeatherDigest', () => {
     const second = await deliverWeatherDigest({ ...args, mailer: mailer(sent) })
     expect(second.sent).toBe(0)
     expect(sent).toHaveLength(3)
+  })
+
+  it("files a site under Heat Stress and Rain Risk at each hazard's own level, and counts it once", async () => {
+    const sent = []
+    const store = memoryDb({
+      'organizations/orgA': { name: 'Acme' },
+      'organizations/orgA/sites/s1': { name: 'Both', region: 'South', lat: 17.44, lng: 78.39 },
+      'organizations/orgA/sites/s2': { name: 'Rain only', region: 'East', lat: 13.08, lng: 80.27 },
+      'organizations/orgA/sites/s3': { name: 'Heat only', region: 'East', lat: 28.61, lng: 77.2 },
+      'organizations/orgA/sites/s4': { name: 'Windy', region: 'West', lat: 19.07, lng: 72.87 },
+      'users/admin': user('admin', { role: 'admin' }),
+    })
+    const byLat = {
+      17.44: { apparentTempC: 52, precipMmHr: 5, observedAt: '2026-09-23T11:00' },
+      13.08: { apparentTempC: 30, precipMmHr: 12 },
+      28.61: { apparentTempC: 46 },
+      19.07: { windKph: 55 },
+    }
+    const pinned = []
+    await deliverWeatherDigest({
+      db: store,
+      mailer: mailer(sent),
+      logger,
+      scheduleTime: '2026-09-23T06:00:00.000Z',
+      orgIds: ['orgA'],
+      fetchObs: async (lat) => byLat[lat.toFixed(2)] || null,
+      renderMap: async (pins) => {
+        pinned.push(...pins)
+        return { png: PNG }
+      },
+    })
+    expect(sent).toHaveLength(1)
+    const { subject, text } = sent[0]
+    // Four sites: Both (High heat), Rain only (High), Heat only (Medium), Windy (High).
+    expect(subject).toBe('Weather risk: 3 high, 1 medium')
+    const heat = text.indexOf('HEAT STRESS')
+    const rain = text.indexOf('RAIN RISK')
+    const other = text.indexOf('OTHER HAZARDS')
+    expect(heat).toBeGreaterThan(-1)
+    expect(heat).toBeLessThan(rain)
+    expect(rain).toBeLessThan(other)
+    const heatText = text.slice(heat, rain)
+    const rainText = text.slice(rain, other)
+    const otherText = text.slice(other)
+    expect(heatText).toContain('Site: Both')
+    expect(heatText).toContain('Site: Heat only')
+    expect(heatText).not.toContain('Rain only')
+    expect(heatText).toContain('Reading: Feels like 52°C')
+    expect(rainText).toContain('Site: Both')
+    expect(rainText).toContain('Site: Rain only')
+    expect(rainText).toContain('Level: Medium')
+    expect(rainText).toContain('Reading: Medium · 5.0 mm/h')
+    expect(otherText).toContain('Site: Windy')
+    expect(otherText).toContain('Hazard: High wind')
+    // The map pins each site once, at its worst level.
+    expect(pinned).toHaveLength(4)
+    expect(sent[0].attachments).toHaveLength(1)
   })
 
   it('still sends the tables when the map cannot be drawn', async () => {

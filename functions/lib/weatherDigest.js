@@ -1,5 +1,12 @@
 // Every six hours, mail each org's admins the High and Medium weather risk
-// across that org's sites, grouped by region, with a static map of the pins.
+// across that org's sites, with a static map of the pins. The mail is split by
+// hazard: Heat Stress, then Rain Risk, then Other hazards (wind, visibility,
+// UV, cold, thunderstorm, ice, snow). Each section has its own region → sites
+// tables. A site with several hazards is listed under each, at that hazard's
+// own level; the subject and summary count each site once, at its worst level.
+// The row cap (DIGEST_AREA_CAP) applies per section, and the map pins only the
+// sites that made it into at least one section. The digest data stays one row
+// per site (`areas`); the sectioning lives in the mail template.
 //
 // There is no stored weather collection. The screen reads Open-Meteo in the
 // browser (src/modules/weather). This run does the same request from the
@@ -47,7 +54,7 @@ import { assessWeather, digestLevel, digestHazards, digestDrivers } from './weat
 import { gridKey, fetchGrids } from './openMeteo.js'
 import { loadOrgDisplayName, mailSenderName } from './mailBrand.js'
 import { readableText } from './mailTemplates/safe.js'
-import { renderWeatherDigest, DIGEST_AREA_CAP } from './mailTemplates/lifecycle.js'
+import { renderWeatherDigest, shownDigestAreas } from './mailTemplates/lifecycle.js'
 import { renderRiskMap, pinsFromAreas, MAP_CID } from './weatherMap.js'
 
 // Fifty minutes is inside the 45–60 minute window a partial picture is allowed
@@ -161,8 +168,10 @@ export function planSites(sites) {
 }
 
 /**
- * Region-wise High and Medium areas. `observations` is grid key → reading.
- * A key with no reading is unread, not low. Low and none are omitted.
+ * High and Medium areas, one row per site. `observations` is grid key →
+ * reading. A key with no reading is unread, not low. Low and none are omitted.
+ * `level` is the site's worst hazard; each driver carries its own `level`, which
+ * is what the mail files the site under.
  */
 export function assembleDigest(plan, observations) {
   const areas = []
@@ -183,6 +192,7 @@ export function assembleDigest(plan, observations) {
       key: driver.key,
       label: readableText(driver.label),
       value: readableText(driver.value),
+      level: driver.level,
     }))
     const observedAt = readableText(obs.observedAt)
     for (const site of group) {
@@ -461,7 +471,7 @@ async function deliverOrg({
   }
   const origin = mailer?.config?.appOrigin || ''
   const sender = knownNames.has(orgId) ? knownNames.get(orgId) : await loadOrgDisplayName(db, orgId)
-  const pins = pinsFromAreas(digest.areas.slice(0, DIGEST_AREA_CAP))
+  const pins = pinsFromAreas(shownDigestAreas(digest.areas))
   let mapCid = ''
   let attachments = []
   if (pins.length && typeof renderMap === 'function') {

@@ -5,7 +5,9 @@ import {
   renderDrillReportMail,
   renderMeetingMail,
   renderWeatherDigest,
-  groupDigestAreas,
+  groupDigestSections,
+  shownDigestAreas,
+  DIGEST_AREA_CAP,
   SEALED_LINE,
 } from './lifecycle.js'
 import { footerLine } from './layout.js'
@@ -151,7 +153,8 @@ describe('defect, drill, meeting and weather mail', () => {
     expect(message.html).toContain(`${ORIGIN}/committee`)
   })
 
-  it('lists high then medium, grouped by region, and references the map by cid', () => {
+  describe('weather digest sections', () => {
+    const drv = (key, label, value, level) => ({ key, label, value, level })
     const areas = [
       {
         region: 'South',
@@ -160,7 +163,11 @@ describe('defect, drill, meeting and weather mail', () => {
         level: 'High',
         lat: 17.44,
         lng: 78.39,
-        drivers: [{ key: 'wind', label: 'High wind', value: '55 km/h' }],
+        drivers: [
+          drv('heat', 'Heat stress', 'Feels like 52°C', 'High'),
+          drv('rain', 'Rain', 'Medium · 4.0 mm/h', 'Medium'),
+          drv('wind', 'High wind', '55 km/h', 'High'),
+        ],
         observedAt: '2026-09-23T11:00',
       },
       {
@@ -168,58 +175,173 @@ describe('defect, drill, meeting and weather mail', () => {
         name: 'Yard',
         entity: 'COCO',
         level: 'High',
-        drivers: [{ key: 'heat', label: 'Heat stress', value: 'Feels like 46°C' }],
+        drivers: [drv('heat', 'Heat stress', 'Feels like 46°C', 'Medium')],
       },
       {
         region: 'South',
         name: 'Annex',
         entity: 'FOFO',
         level: 'High',
-        drivers: [{ key: 'lightning', label: 'Thunderstorm', value: 'Lightning reported' }],
+        drivers: [
+          drv('lightning', 'Thunderstorm', 'Lightning reported', 'High'),
+          drv('rain', 'Rain', 'High · 12.0 mm/h', 'High'),
+        ],
       },
       {
         region: 'East',
         name: 'Depot',
         entity: 'FOFO',
         level: 'Medium',
-        drivers: [{ key: 'rain', label: 'Rain', value: 'Medium · 4.0 mm/h' }],
+        drivers: [drv('rain', 'Rain', 'Medium · 4.0 mm/h', 'Medium')],
       },
       { region: 'North', name: 'Quiet', level: 'Low', hazards: 'Heat stress' },
     ]
-    const sections = groupDigestAreas(areas)
-    expect(sections.map((section) => section.level)).toEqual(['High', 'Medium'])
-    expect(sections[0].groups.map((group) => group.region)).toEqual(['East', 'South'])
-    expect(sections[0].groups[0].sites.map((site) => site.name)).toEqual(['Yard'])
-    expect(sections[0].groups[1].sites.map((site) => site.name)).toEqual([
-      'Annex',
-      'Plant <script>',
-    ])
-    expect(sections[1].groups.map((group) => group.region)).toEqual(['East'])
-    expect(sections[1].groups[0].sites.map((site) => site.name)).toEqual(['Depot'])
 
-    const message = renderWeatherDigest(
-      { areas, unread: 2 },
-      { appOrigin: ORIGIN, mapCid: 'weather-risk-map', windowLabel: '2026-09-23 06:00-12:00 IST' }
-    )
-    expect(message.subject).toBe('Weather risk: 3 high, 1 medium')
-    expect(message.text.indexOf('High risk')).toBeLessThan(message.text.indexOf('Medium risk'))
-    expect(message.text).toContain('Site: Plant <script>')
-    expect(message.text).toContain('Entity: COCO')
-    expect(message.text).toContain('Drivers: High wind · 55 km/h')
-    expect(message.text).toContain('When: 2026-09-23T11:00')
-    expect(message.text).toContain('When: 2026-09-23 06:00-12:00 IST')
-    expect(message.text).toContain('Drivers: Rain · Medium · 4.0 mm/h')
-    expect(message.text).toContain('Window: 2026-09-23 06:00-12:00 IST')
-    expect(message.text).not.toContain('Quiet')
-    expect(message.text).toContain('Unread: 2 sites could not be read')
-    expect(message.html).toContain('src="cid:weather-risk-map"')
-    expect(message.html).toContain('#dc2626')
-    expect(message.html).toContain('#eab308')
-    expect(message.html.indexOf('>High risk<')).toBeLessThan(message.html.indexOf('>Medium risk<'))
-    expect(message.html).toContain(`${ORIGIN}/weather`)
-    expect(message.html).not.toContain('17.44')
-    expect(message.text).toContain('© OpenStreetMap contributors')
-    assertClean(message)
+    it('makes one section per hazard, Heat Stress and Rain Risk first, with region tables', () => {
+      const sections = groupDigestSections(areas)
+      expect(sections.map((section) => section.title)).toEqual([
+        'Heat Stress',
+        'Rain Risk',
+        'Other hazards',
+      ])
+      const [heat, rain, other] = sections
+      // Heat: East (Yard, Medium) and South (Plant, High).
+      expect(heat.groups.map((group) => group.region)).toEqual(['East', 'South'])
+      expect(heat.groups[0].rows.map((row) => `${row.name}:${row.level}`)).toEqual(['Yard:Medium'])
+      expect(heat.groups[1].rows.map((row) => `${row.name}:${row.level}`)).toEqual([
+        'Plant <script>:High',
+      ])
+      // Rain: a site is under Rain Risk at ITS rain level, not its worst level.
+      expect(rain.groups.map((group) => group.region)).toEqual(['East', 'South'])
+      expect(rain.groups[0].rows.map((row) => `${row.name}:${row.level}`)).toEqual(['Depot:Medium'])
+      expect(rain.groups[1].rows.map((row) => `${row.name}:${row.level}`)).toEqual([
+        'Annex:High',
+        'Plant <script>:Medium',
+      ])
+      // Other: one row per site-hazard pair, High before Medium inside a region.
+      expect(other.groups).toHaveLength(1)
+      expect(other.groups[0].rows.map((row) => `${row.name}:${row.hazard}`)).toEqual([
+        'Annex:Thunderstorm',
+        'Plant <script>:High wind',
+      ])
+      expect(
+        sections.flatMap((s) => s.groups.flatMap((g) => g.rows)).some((r) => r.name === 'Quiet')
+      ).toBe(false)
+      expect(heat).toMatchObject({ sites: 2, high: 1, medium: 1, hidden: 0 })
+    })
+
+    it('renders the sections in order, counts sites once, and references the map by cid', () => {
+      const message = renderWeatherDigest(
+        { areas, unread: 2 },
+        { appOrigin: ORIGIN, mapCid: 'weather-risk-map', windowLabel: '2026-09-23 06:00-12:00 IST' }
+      )
+      // Plant, Yard, Annex are High sites; Depot is Medium; Quiet is Low.
+      expect(message.subject).toBe('Weather risk: 3 high, 1 medium')
+      const { text, html } = message
+      const heat = text.indexOf('HEAT STRESS')
+      const rain = text.indexOf('RAIN RISK')
+      const other = text.indexOf('OTHER HAZARDS')
+      expect(heat).toBeGreaterThan(-1)
+      expect(heat).toBeLessThan(rain)
+      expect(rain).toBeLessThan(other)
+      expect(text).toContain('HEAT STRESS (2 sites: 1 high, 1 medium)')
+      expect(text).toContain('RAIN RISK (3 sites: 1 high, 2 medium)')
+      expect(text).toContain('OTHER HAZARDS (2 readings: 2 high)')
+      // Plant is under all three sections.
+      expect(text.slice(heat, rain)).toContain('Site: Plant <script>')
+      expect(text.slice(rain, other)).toContain('Site: Plant <script>')
+      expect(text.slice(other)).toContain('Site: Plant <script>')
+      expect(text.slice(rain, other)).toContain('Level: Medium')
+      expect(text.slice(other)).toContain('Hazard: High wind')
+      expect(text.slice(heat, rain)).not.toContain('Hazard:')
+      expect(text).toContain('Entity: COCO')
+      expect(text).toContain('Reading: Feels like 52°C')
+      expect(text).toContain('When: 2026-09-23T11:00')
+      expect(text).toContain('When: 2026-09-23 06:00-12:00 IST')
+      expect(text).toContain('Window: 2026-09-23 06:00-12:00 IST')
+      expect(text).toContain('counted once here at its worst level')
+      expect(text).not.toContain('Quiet')
+      expect(text).toContain('Unread: 2 sites could not be read')
+      expect(html).toContain('src="cid:weather-risk-map"')
+      expect(html).toContain('#dc2626')
+      expect(html).toContain('#eab308')
+      expect(html.indexOf('>Heat Stress<')).toBeLessThan(html.indexOf('>Rain Risk<'))
+      expect(html.indexOf('>Rain Risk<')).toBeLessThan(html.indexOf('>Other hazards<'))
+      expect(html).toContain(`${ORIGIN}/weather`)
+      expect(html).not.toContain('17.44')
+      expect(text).toContain('© OpenStreetMap contributors')
+      assertClean(message)
+    })
+
+    it('omits a section with no rows', () => {
+      const message = renderWeatherDigest(
+        {
+          areas: [
+            {
+              region: 'East',
+              name: 'Depot',
+              level: 'Medium',
+              drivers: [drv('rain', 'Rain', 'Medium · 4.0 mm/h', 'Medium')],
+            },
+          ],
+        },
+        { appOrigin: ORIGIN }
+      )
+      expect(message.text).toContain('RAIN RISK')
+      expect(message.text).not.toContain('HEAT STRESS')
+      expect(message.text).not.toContain('OTHER HAZARDS')
+      expect(message.subject).toBe('Weather risk: 0 high, 1 medium')
+    })
+
+    it('caps each section on its own, worst first, and says what was left out', () => {
+      const many = Array.from({ length: DIGEST_AREA_CAP + 5 }, (_, i) => ({
+        region: 'South',
+        name: `Heat ${String(i).padStart(3, '0')}`,
+        level: i < 3 ? 'High' : 'Medium',
+        drivers: [drv('heat', 'Heat stress', 'Feels like 46°C', i < 3 ? 'High' : 'Medium')],
+      }))
+      // Listed last, and still shown: Rain Risk has room even though Heat Stress is full.
+      many.push({
+        region: 'South',
+        name: 'Rainy',
+        level: 'Medium',
+        drivers: [drv('rain', 'Rain', 'Medium · 4.0 mm/h', 'Medium')],
+      })
+      const sections = groupDigestSections(many)
+      expect(sections[0]).toMatchObject({ key: 'heat', total: DIGEST_AREA_CAP + 5, hidden: 5 })
+      expect(sections[0].groups[0].rows).toHaveLength(DIGEST_AREA_CAP)
+      expect(sections[0].groups[0].rows.slice(0, 3).every((r) => r.level === 'High')).toBe(true)
+      expect(sections[1]).toMatchObject({ key: 'rain', hidden: 0 })
+      const message = renderWeatherDigest({ areas: many }, { appOrigin: ORIGIN })
+      expect(message.text).toContain('Heat Stress: 5 further sites — in the app')
+      expect(message.text).toContain('Site: Rainy')
+      expect(message.subject).toBe(`Weather risk: 3 high, ${DIGEST_AREA_CAP + 3} medium`)
+      // Sites cut from every section are not pinned.
+      const pinned = shownDigestAreas(many)
+      expect(pinned).toHaveLength(DIGEST_AREA_CAP + 1)
+    })
+
+    it('reads older rows that carry only hazards or a driver without a level', () => {
+      const sections = groupDigestSections([
+        {
+          region: 'East',
+          name: 'Old',
+          level: 'High',
+          hazards: 'Heat stress, Rain',
+        },
+        {
+          region: 'East',
+          name: 'Older',
+          level: 'Medium',
+          drivers: [{ label: 'Rain', value: 'Medium · 4.0 mm/h' }],
+        },
+      ])
+      expect(sections.map((s) => s.key)).toEqual(['heat', 'rain'])
+      expect(sections[1].groups[0].rows.map((r) => `${r.name}:${r.level}`)).toEqual([
+        'Old:High',
+        'Older:Medium',
+      ])
+    })
   })
 
   it('keeps a site with no coordinates in the table and off the map', () => {
@@ -231,14 +353,16 @@ describe('defect, drill, meeting and weather mail', () => {
             name: 'No pin',
             entity: 'COCO',
             level: 'High',
-            drivers: [{ label: 'Heat stress', value: 'Feels like 46°C' }],
+            drivers: [
+              { key: 'heat', label: 'Heat stress', value: 'Feels like 46°C', level: 'High' },
+            ],
           },
         ],
       },
       { appOrigin: ORIGIN }
     )
     expect(message.text).toContain('Site: No pin')
-    expect(message.text).toContain('Drivers: Heat stress · Feels like 46°C')
+    expect(message.text).toContain('Reading: Feels like 46°C')
     expect(message.html).not.toContain('cid:')
     expect(message.html).not.toContain('<img')
   })

@@ -35,20 +35,28 @@ describe('digest bands follow the published cut-offs', () => {
       key: 'lightning',
       label: 'Thunderstorm',
       value: 'Lightning reported',
+      level: 'High',
     })
   })
 
   it('keeps the reading on a digest driver and drops a low one', () => {
     expect(digestDrivers(assessWeather({ windKph: 50 }))).toEqual([
-      { key: 'wind', label: 'High wind', value: '50 km/h' },
+      { key: 'wind', label: 'High wind', value: '50 km/h', level: 'High' },
     ])
     expect(digestDrivers(assessWeather({ windKph: 20, gustKph: 65 }))).toEqual([
-      { key: 'wind', label: 'High wind', value: 'Gusting 65 km/h' },
+      { key: 'wind', label: 'High wind', value: 'Gusting 65 km/h', level: 'High' },
     ])
     expect(digestDrivers(assessWeather({ precipMmHr: 12 }))).toEqual([
-      { key: 'rain', label: 'Rain', value: 'High · 12.0 mm/h' },
+      { key: 'rain', label: 'Rain', value: 'High · 12.0 mm/h', level: 'High' },
     ])
     expect(digestDrivers(assessWeather({ windKph: 20 }))).toEqual([])
+  })
+
+  it('gives each driver its own level, so one site can be High for heat and Medium for rain', () => {
+    const drivers = digestDrivers(assessWeather({ apparentTempC: 52, precipMmHr: 4, windKph: 20 }))
+    expect(drivers.map((d) => `${d.key}:${d.level}`)).toEqual(['heat:High', 'rain:Medium'])
+    // Wind at 20 km/h is Low, and Low is not a driver at all.
+    expect(drivers.some((d) => d.key === 'wind')).toBe(false)
   })
 })
 
