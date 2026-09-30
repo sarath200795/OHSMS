@@ -68,8 +68,8 @@ describe('equipment uptime', () => {
     const d = [{ ...N, status: 'operational' }, { ...N, status: 'faulty' }, { ...N }]
     expect(fasUptime(d, 'org').value).toBe(66.7)
   })
-  it('signage counts OK condition only', () => {
-    const s = [{ ...N, condition: 'OK' }, { ...N, condition: 'Faded' }, { ...N, condition: 'Missing' }, { ...N, condition: 'OK' }]
+  it('signage counts Deployed status only', () => {
+    const s = [{ ...N, status: 'Deployed' }, { ...N, status: 'Planned' }, { ...N }, { ...N, status: 'Deployed', condition: 'Missing' }]
     expect(signageUptime(s, 'org').value).toBe(50)
   })
 })
@@ -122,7 +122,7 @@ describe('buildScorecard / breakdown', () => {
     actions: [{ ...N, status: 'done' }],
     extinguishers: [{ ...N, physicalDefects: [] }, { ...S, physicalDefects: ['pin'] }],
     fas: [{ ...N, status: 'operational' }],
-    signages: [{ ...N, condition: 'OK' }],
+    signages: [{ ...N, status: 'Deployed' }],
     incidents: [N, S],
   }
   const objectives = [{ kpi: 'incidents', level: 'org', scope: '', entity: 'all', target: 0 }]

@@ -1887,9 +1887,19 @@ service cloud.firestore {
         || (d.get('entity', '') != '' && a.get('entities', []).hasAny([d.get('entity', '')]));
     }
 
-    // A signage record may only BECOME Deployed with evidence: a photo and a
-    // last-checked date. The register's form enforces the same thing; this is
-    // what stops the SDK writing it without.
+    // A signage record may only BECOME Deployed with evidence: the photos it needs
+    // and a last-checked date. The register's form enforces the same thing; this
+    // is what stops the SDK writing it without.
+    //
+    // Photos: the `photos` list (the field now) counts by its length; a record
+    // that still carries only the legacy single `photo` map counts as one.
+    // Required number, mirroring requiredSignagePhotos in lib/signageLogic.js:
+    //   Fire Extinguisher Sign → `quantity`
+    //   FERP Signage           → totalFloors when allFloors, else floorsCovered
+    //   anything else          → 1
+    // and never fewer than 1. Only the COUNT is checked here — rules cannot loop
+    // over the entries to inspect each one, so the form (and storage.rules on the
+    // upload path) remain what make each entry a real photo.
     //
     // It watches the way IN only. A record whose stored status is already
     // Deployed is left alone — those were saved before this rule, may have no
@@ -1898,15 +1908,25 @@ service cloud.firestore {
     // no stored state, so it is judged on what it writes.
     //
     // .get(f, default) on every read because older records carry none of these
-    // fields, and reading an absent field raises — a raising rule denies. The
-    // photo is the stored pointer, a map; a cleared one is null, which is not a
-    // map, so it fails here rather than passing on the mere presence of the key.
+    // fields, and reading an absent field raises — a raising rule denies.
+    function signagePhotoCount(d) {
+      return d.get('photos', null) is list
+        ? d.get('photos', null).size()
+        : (d.get('photo', null) is map && d.get('photo', null).size() > 0 ? 1 : 0);
+    }
+    function signagePhotosWanted(d) {
+      let n = d.get('type', '') == 'Fire Extinguisher Sign'
+        ? d.get('quantity', 1)
+        : (d.get('type', '') == 'FERP Signage'
+            ? (d.get('allFloors', false) == true ? d.get('totalFloors', 1) : d.get('floorsCovered', 1))
+            : 1);
+      return n is number && math.ceil(n) > 1 ? math.ceil(n) : 1;
+    }
     function keepsSignageEvidence(col) {
       return col != 'signages'
         || request.resource.data.get('status', '') != 'Deployed'
         || (resource != null && resource.data.get('status', '') == 'Deployed')
-        || (request.resource.data.get('photo', null) is map
-            && request.resource.data.get('photo', null).size() > 0
+        || (signagePhotoCount(request.resource.data) >= signagePhotosWanted(request.resource.data)
             && request.resource.data.get('lastChecked', '') is string
             && request.resource.data.get('lastChecked', '') != '');
     }

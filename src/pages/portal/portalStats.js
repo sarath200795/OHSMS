@@ -14,8 +14,8 @@ import { linkAssets } from '../admin/siteStats'
 
 const norm = (s) => String(s ?? '').trim().toLowerCase()
 
-/** Compliant signage conditions. Everything else is a finding. */
-const SIGNAGE_OK = new Set(['ok'])
+/** Signage is compliant when its status is Deployed. Everything else is a finding. */
+const SIGNAGE_OK = new Set(['deployed'])
 
 /**
  * Which asset site-ids are in scope.
@@ -109,7 +109,7 @@ export function portalStats({
   const live = relevant.filter((a) => a.status !== 'cancelled')
   const completed = live.filter((a) => a.status === 'completed')
 
-  const signageOk = sig.filter((s) => SIGNAGE_OK.has(norm(s.condition)))
+  const signageOk = sig.filter((s) => SIGNAGE_OK.has(norm(s.status)))
 
   const meet = meetings.filter((m) => alive(m) && namedSiteInScope(m, sites, ids, ['site', 'siteName', 'centerName', 'location']))
   const drill = drills.filter((d) => alive(d) && namedSiteInScope(d, sites, ids, ['centerName', 'site', 'siteName']))

@@ -6,7 +6,7 @@ import ChipRow from '../components/ChipRow'
 import { useFleet } from '../context/FleetContext'
 import { signageSummary, siteAttributeMap } from '../lib/signageLogic'
 import { REGISTERS, registerGapSummary, siteRegisters } from '../lib/siteRegisters'
-import { SIGNAGE_CONDITION_COLOR, REGIONS, ENTITIES } from '../lib/constants'
+import { SIGNAGE_STATUS_COLOR, REGIONS, ENTITIES } from '../lib/constants'
 import { HealthBar } from '../components/AssetHealth'
 import IncompleteNotice from '../../../shared/ui/IncompleteNotice'
 
@@ -204,7 +204,7 @@ export default function SignageDashboard() {
                 <Stat icon={ShieldCheck} label="Overall coverage" value={`${s.compliance}%`} color="#16a34a" />
                 <Stat icon={ShieldCheck} label="Fully compliant sites" value={s.fullyCompliant} color="#0ea5e9" />
                 <Stat icon={Ban} label="Sites with gaps" value={s.sitesWithGaps} color="#dc2626" />
-                <Stat icon={AlertTriangle} label="Signs needing attention" value={s.issue} color="#f59e0b" />
+                <Stat icon={AlertTriangle} label="Partly deployed" value={s.issue} color="#f59e0b" />
                 <Stat icon={ClipboardList} label="Signage records" value={s.records} color="#7c3aed" />
               </div>
 
@@ -212,20 +212,20 @@ export default function SignageDashboard() {
                 <HealthBar
                   title={`Signage status — ${s.cells} checks (${s.sites} sites × ${s.types} types)`}
                   segments={[
-                    { label: 'In place', value: s.ok, color: '#16a34a' },
-                    { label: 'Needs attention', value: s.issue, color: '#f59e0b' },
-                    { label: 'Recorded missing', value: s.missing, color: '#dc2626' },
+                    { label: 'Deployed', value: s.ok, color: '#16a34a' },
+                    { label: 'Partly deployed', value: s.issue, color: '#f59e0b' },
+                    { label: 'Recorded, none deployed', value: s.missing, color: '#dc2626' },
                     { label: 'Never recorded', value: s.notRecorded, color: '#cbd5e1' },
                   ]}
                 />
                 <div className="card p-4">
-                  <p className="mb-3 text-xs font-bold uppercase tracking-wide text-ink-500">Condition of recorded signage</p>
+                  <p className="mb-3 text-xs font-bold uppercase tracking-wide text-ink-500">Status of recorded signage</p>
                   {s.records === 0 ? (
                     <p className="py-6 text-center text-sm text-ink-400">No signage recorded for these sites yet.</p>
                   ) : (
                     <div className="space-y-2">
-                      {Object.entries(SIGNAGE_CONDITION_COLOR).map(([cond, color]) => {
-                        const n = s.byCondition[cond] || 0
+                      {Object.entries(SIGNAGE_STATUS_COLOR).map(([cond, color]) => {
+                        const n = s.byStatus[cond] || 0
                         const pct = s.records ? Math.round((n / s.records) * 100) : 0
                         return (
                           <div key={cond} className="flex items-center gap-3 text-sm">
@@ -291,11 +291,10 @@ export default function SignageDashboard() {
               </div>
 
               <p className="mt-3 flex items-center gap-1.5 text-xs text-ink-500">
-                <CircleSlash size={13} /> Coverage counts a signage type as covered once the site has a record saying the sign
-                is THERE; the fire-extinguisher sign additionally has to match the site&rsquo;s extinguisher count. Damaged, faded
-                and obstructed signs still count as covered — they are listed under Issues. A sign recorded as Missing does not:
-                that record is a survey saying the sign is absent.
-              </p>
+                <CircleSlash size={13} /> Coverage counts a signage type as covered once the site has a <strong>Deployed</strong> record for it (green tick); the
+                fire-extinguisher sign additionally has to match the site&rsquo;s extinguisher count, and FERP the floors covered.
+                Planned, Removed and Not-set records are non-compliant and do not count. Partly deployed types are listed under Issues.
+                </p>
             </>
           )}
 
