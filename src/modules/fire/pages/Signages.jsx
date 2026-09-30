@@ -33,6 +33,8 @@ import {
   signagePhotos,
   signagePhotoCount,
   requiredSignagePhotos,
+  signagePhotoProgress,
+  photoShortfallMessage,
   deployedRequirementErrors,
 } from '../lib/signageLogic'
 import {
@@ -78,6 +80,21 @@ function ComplianceMark({ rec }) {
     </span>
   ) : (
     <span className="text-xs font-semibold text-red-600">Non-compliant</span>
+  )
+}
+
+/** 'Photos: 2 / 5' — uploaded vs the count expected for the sign; amber when short. Informational. */
+function PhotoCount({ rec }) {
+  const { have, need, missing, per } = signagePhotoProgress(rec)
+  const short = missing > 0
+  return (
+    <span
+      data-testid="photo-count"
+      className={`inline-flex items-center gap-1 whitespace-nowrap text-xs font-semibold ${short ? 'text-amber-600' : 'text-ink-500'}`}
+      title={short ? `${missing} more expected${per ? ` (one per ${per})` : ''}` : 'Photos uploaded'}
+    >
+      <ImageIcon size={13} aria-hidden="true" /> Photos: {have} / {need}
+    </span>
   )
 }
 
@@ -249,6 +266,8 @@ export default function Signages() {
 
   const formPhotos = editing ? signagePhotos(editing) : []
   const required = editing ? requiredSignagePhotos(editing) : { count: 1, per: null }
+  // Fewer photos than expected is a warning only — Save is not held for it.
+  const photoWarning = editing ? photoShortfallMessage(editing) : ''
   // The photo list lives in `photos`; writing it also retires the legacy `photo`
   // (its pointer is already one of the entries), so it migrates on save.
   const setPhotos = (list) => setEditing((p) => (p ? { ...p, photos: list, photo: null } : p))
@@ -373,7 +392,8 @@ export default function Signages() {
         Location: s.location || '',
         Status: signageStatus(s),
         Compliant: isSignageCompliant(s) ? 'Yes' : 'No',
-        Photos: signagePhotoCount(s),
+        'Required Photos': requiredSignagePhotos(s).count,
+        'Uploaded Photos': signagePhotoCount(s),
         Quantity: s.quantity ?? '',
         'Last Checked': s.lastChecked || '',
         Notes: s.notes || '',
@@ -553,6 +573,7 @@ export default function Signages() {
                       <th className="px-4 py-2.5">Qty</th>
                       <th className="px-4 py-2.5">Status</th>
                       <th className="px-4 py-2.5">Compliant</th>
+                      <th className="px-4 py-2.5">Photos</th>
                       <th className="px-4 py-2.5">Last checked</th>
                       <th className="px-4 py-2.5 text-right">Actions</th>
                     </tr>
@@ -573,6 +594,7 @@ export default function Signages() {
                         <td className="px-4 py-2.5">
                           <ComplianceMark rec={s} />
                         </td>
+                        <td className="px-4 py-2.5"><PhotoCount rec={s} /></td>
                         <td className="px-4 py-2.5 text-ink-500">{s.lastChecked || '—'}</td>
                         <td className="px-4 py-2.5">
                           <div className="flex justify-end gap-1">
@@ -642,8 +664,13 @@ export default function Signages() {
                 <p className="mb-2 text-xs text-ink-500" data-testid="photo-counter">
                   {formPhotos.length} of {required.count} photo{required.count === 1 ? '' : 's'} added
                   {required.per ? ` (one per ${required.per})` : ''}
-                  {editing.status !== 'Deployed' ? ' — needed to mark as Deployed' : ''}
+                  {editing.status !== 'Deployed' ? ' — at least 1 is needed to mark as Deployed' : ''}
                 </p>
+                {photoWarning && (
+                  <p role="status" data-testid="photo-warning" className="mb-2 flex items-start gap-1.5 text-xs font-medium text-amber-600">
+                    <AlertTriangle size={13} className="mt-px shrink-0" /> {photoWarning}
+                  </p>
+                )}
                 {formPhotos.length > 0 && (
                   <ul className="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
                     {formPhotos.map((ph, i) => (
@@ -757,11 +784,7 @@ export default function Signages() {
                         <div className="flex flex-wrap items-center gap-2">
                           <Badge color={SIGNAGE_STATUS_COLOR[signageStatus(s)]}>{signageStatus(s)}</Badge>
                           <ComplianceMark rec={s} />
-                          {signagePhotoCount(s) > 0 && (
-                            <span className="flex items-center gap-1 text-xs text-ink-400">
-                              <ImageIcon size={13} aria-label="Photos attached" /> {signagePhotoCount(s)}
-                            </span>
-                          )}
+                          <PhotoCount rec={s} />
                           {isFerp(s.type) && s.totalFloors ? (
                             <span className="text-xs text-ink-500">{ferpCovered(s)}/{s.totalFloors} floors</span>
                           ) : s.floor ? (

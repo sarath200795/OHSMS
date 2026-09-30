@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 //
 // The Signage Register's edit form: the Status field, the photos control, and
-// the rule that a sign cannot be saved as Deployed without its photos (one, or
-// one per floor / per extinguisher) AND a last-checked date. Status alone drives
+// the rule that a sign cannot be saved as Deployed without at least one photo AND a
+// last-checked date. The fuller count (one per floor / per extinguisher) is shown
+// as "Photos: n / m" and a warning, and never blocks Save. Status alone drives
 // compliance (Deployed = tick); there is no Condition field any more. deployedRequirementErrors is unit-tested in
 // lib/signageLogic.test.js; these check the page actually asks it the right
 // question — with the STORED record as `prev` — and shows the answer.
@@ -206,7 +207,7 @@ describe('Signage — compliance follows status', () => {
     expect(tds[cell('Fire Exit')].querySelector('button').className).toContain('bg-red-50')
   })
 
-  it('exports Status, Compliant and Photos count (no Condition)', async () => {
+  it('exports Status, Compliant and Required / Uploaded photos (no Condition)', async () => {
     const { exportSignage } = await import('../lib/exporter')
     fleet.value = {
       loading: false, incomplete: null, sites: ['Alpha'], siteInventory: [],
@@ -219,10 +220,11 @@ describe('Signage — compliance follows status', () => {
     render(<Signages />)
     fireEvent.click(screen.getByRole('button', { name: /Export/ }))
     const [, detail] = exportSignage.mock.calls[0]
-    expect(detail.find((r) => r.Type === 'No Smoking')).toMatchObject({ Status: 'Deployed', Compliant: 'Yes', Photos: 2 })
-    expect(detail.find((r) => r.Type === 'Fire Exit')).toMatchObject({ Status: 'Planned', Compliant: 'No', Photos: 1 })
+    expect(detail.find((r) => r.Type === 'No Smoking')).toMatchObject({ Status: 'Deployed', Compliant: 'Yes', 'Required Photos': 1, 'Uploaded Photos': 2 })
+    expect(detail.find((r) => r.Type === 'Fire Exit')).toMatchObject({ Status: 'Planned', Compliant: 'No', 'Required Photos': 1, 'Uploaded Photos': 1 })
     expect(Object.keys(detail[0])).not.toContain('Condition')
     expect(Object.keys(detail[0])).not.toContain('Photo')
+    expect(Object.keys(detail[0])).not.toContain('Photos')
   })
 })
 
@@ -262,29 +264,37 @@ describe('Signage form — the photos control', () => {
   })
 })
 
-describe('Signage form — one photo per floor (FERP)', () => {
+describe('Signage form — one photo per floor (FERP): counted, not enforced', () => {
   const ferp = (over) => rec({ type: 'FERP Signage', totalFloors: 3, allFloors: true, status: 'Planned', lastChecked: '2026-09-01', ...over })
   const openFerp = (over) => open([ferp(over)], /Edit FERP Signage signage/)
 
-  it('asks for one photo per floor and counts them as they are added', async () => {
+  it('needs one photo to be Deployed; more only change the counter and a soft warning', async () => {
     const dlg = openFerp()
     fireEvent.change(status(dlg), { target: { value: 'Deployed' } })
-    expect(within(dlg).getByText('Add 3 photos (one per floor)')).toBeTruthy()
+    expect(within(dlg).getByText('Add a photo before marking as deployed')).toBeTruthy()
     expect(within(dlg).getByTestId('photo-counter').textContent).toContain('0 of 3 photos added')
     expect(save(dlg).disabled).toBe(true)
-    await pick(dlg, 2)
-    expect(within(dlg).getByTestId('photo-counter').textContent).toContain('2 of 3 photos added')
-    expect(within(dlg).getByText('Add 1 more photo (one per floor)')).toBeTruthy()
-    expect(save(dlg).disabled).toBe(true)
     await pick(dlg, 1)
+    expect(within(dlg).getByTestId('photo-counter').textContent).toContain('1 of 3 photos added')
     expect(within(dlg).queryByRole('alert')).toBeNull()
+    expect(within(dlg).getByTestId('photo-warning').textContent).toContain('one per floor')
+    expect(save(dlg).disabled).toBe(false)
+    await pick(dlg, 2)
+    expect(within(dlg).queryByTestId('photo-warning')).toBeNull()
     expect(save(dlg).disabled).toBe(false)
   })
 
-  it('needs fewer photos when only some floors are covered', () => {
-    const dlg = openFerp({ allFloors: false, floorsCovered: 2 })
+  it('still needs the last-checked date', async () => {
+    const dlg = openFerp({ lastChecked: '' })
     fireEvent.change(status(dlg), { target: { value: 'Deployed' } })
-    expect(within(dlg).getByText('Add 2 photos (one per floor)')).toBeTruthy()
+    await pick(dlg, 1)
+    expect(within(dlg).getByText('Enter the last checked date')).toBeTruthy()
+    expect(save(dlg).disabled).toBe(true)
+  })
+
+  it('needs fewer expected photos when only some floors are covered', () => {
+    const dlg = openFerp({ allFloors: false, floorsCovered: 2 })
+    expect(within(dlg).getByTestId('photo-counter').textContent).toContain('0 of 2 photos added')
   })
 
   it('asks for nothing while the status is not Deployed', () => {
@@ -294,29 +304,50 @@ describe('Signage form — one photo per floor (FERP)', () => {
   })
 })
 
-describe('Signage form — one photo per extinguisher', () => {
-  it('follows the quantity', async () => {
+describe('Signage form — one photo per extinguisher: counted, not enforced', () => {
+  it('follows the quantity in the counter, and saves with a single photo', async () => {
     const dlg = open([rec({ type: 'Fire Extinguisher Sign', quantity: 3, status: 'Planned', lastChecked: '2026-09-01' })], /Edit Fire Extinguisher Sign signage/)
     fireEvent.change(status(dlg), { target: { value: 'Deployed' } })
-    expect(within(dlg).getByText('Add 3 photos (one per extinguisher)')).toBeTruthy()
-    await pick(dlg, 3)
-    expect(save(dlg).disabled).toBe(false)
-    fireEvent.change(within(dlg).getByLabelText('Quantity'), { target: { value: '4' } })
-    expect(within(dlg).getByText('Add 1 more photo (one per extinguisher)')).toBeTruthy()
+    expect(within(dlg).getByTestId('photo-counter').textContent).toContain('0 of 3 photos added (one per extinguisher)')
     expect(save(dlg).disabled).toBe(true)
+    await pick(dlg, 1)
+    expect(save(dlg).disabled).toBe(false)
+    expect(within(dlg).getByTestId('photo-warning').textContent).toContain('1 of 3')
+    fireEvent.change(within(dlg).getByLabelText('Quantity'), { target: { value: '4' } })
+    expect(within(dlg).getByTestId('photo-counter').textContent).toContain('1 of 4 photos added')
+    expect(save(dlg).disabled).toBe(false)
   })
 
-  it('other types need just one photo whatever the quantity', async () => {
+  it('other types expect just one photo whatever the quantity', async () => {
     const dlg = open([rec({ quantity: 6, status: 'Planned', lastChecked: '2026-09-01' })])
     fireEvent.change(status(dlg), { target: { value: 'Deployed' } })
     expect(within(dlg).getByText('Add a photo before marking as deployed')).toBeTruthy()
     await pick(dlg, 1)
     expect(save(dlg).disabled).toBe(false)
+    expect(within(dlg).queryByTestId('photo-warning')).toBeNull()
   })
 
-  it('an already-Deployed record is not blocked by the new count', () => {
+  it('an already-Deployed record is not blocked', () => {
     const dlg = open([rec({ type: 'Fire Extinguisher Sign', quantity: 5, status: 'Deployed' })], /Edit Fire Extinguisher Sign signage/)
     expect(within(dlg).queryByRole('alert')).toBeNull()
     expect(save(dlg).disabled).toBe(false)
+  })
+})
+
+describe('Signage list — Photos: uploaded / required', () => {
+  it('shows the count per record, in the list', () => {
+    fleet.value = {
+      loading: false, incomplete: null, sites: ['Alpha'], siteInventory: [],
+      extinguishers: [], aeds: [], fas: [], firstAid: [], stretchers: [], mockDrills: [],
+      signages: [
+        rec({ id: 'e', type: 'Fire Extinguisher Sign', location: 'E', quantity: 5, status: 'Deployed', photos: [photo, photo] }),
+        rec({ id: 'n', type: 'No Smoking', location: 'N', status: 'Deployed', photo }),
+      ],
+    }
+    render(<Signages />)
+    fireEvent.click(screen.getByRole('button', { name: /List/ }))
+    const r = (name) => screen.getByRole('button', { name }).closest('tr')
+    expect(within(r(/Edit Fire Extinguisher Sign signage/)).getByTestId('photo-count').textContent).toContain('Photos: 2 / 5')
+    expect(within(r(/Edit No Smoking signage/)).getByTestId('photo-count').textContent).toContain('Photos: 1 / 1')
   })
 })

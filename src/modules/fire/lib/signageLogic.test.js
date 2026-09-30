@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   signageCell, isTypeCovered, signageSummary, siteAttributeMap, extCountBySite, EXT_SIGN_TYPE,
   signageStatus, hasSignagePhoto, deployedRequirementErrors, isSignageCompliant, signagePhotos,
-  signagePhotoCount, requiredSignagePhotos, photoShortfallMessage,
+  signagePhotoCount, requiredSignagePhotos, photoShortfallMessage, signagePhotoProgress, signagePhotoTotals,
 } from './signageLogic'
 
 // Compliance comes from status, so the default record is a Deployed one.
@@ -265,17 +265,58 @@ describe('requiredSignagePhotos', () => {
   })
 })
 
-describe('photoShortfallMessage', () => {
-  it('is empty when there are enough', () => {
-    expect(photoShortfallMessage({ type: EXT_SIGN_TYPE, quantity: 2, photos: [{ path: 'a' }, { path: 'b' }] })).toBe('')
+describe('signagePhotoProgress / photoShortfallMessage (information only)', () => {
+  const ph = (n) => Array.from({ length: n }, (_, i) => ({ path: `orgs/o/signage-photos/${i}.jpg` }))
+  it('reports have / need / missing', () => {
+    expect(signagePhotoProgress({ type: EXT_SIGN_TYPE, quantity: 5, photos: ph(2) })).toEqual({ have: 2, need: 5, missing: 3, per: 'extinguisher' })
+    expect(signagePhotoProgress({ type: 'FERP Signage', allFloors: true, totalFloors: 3, photos: ph(5) })).toEqual({ have: 5, need: 3, missing: 0, per: 'floor' })
+    expect(signagePhotoProgress({ type: 'No Smoking' })).toEqual({ have: 0, need: 1, missing: 1, per: null })
   })
-  it('names the unit for FERP and extinguishers', () => {
-    expect(photoShortfallMessage({ type: 'FERP Signage', allFloors: true, totalFloors: 5 })).toBe('Add 5 photos (one per floor)')
-    expect(photoShortfallMessage({ type: EXT_SIGN_TYPE, quantity: 3, photos: [{ path: 'a' }] })).toBe('Add 2 more photos (one per extinguisher)')
-    expect(photoShortfallMessage({ type: EXT_SIGN_TYPE, quantity: 2, photos: [{ path: 'a' }] })).toBe('Add 1 more photo (one per extinguisher)')
+  it('warns softly when some photos are there but fewer than expected', () => {
+    expect(photoShortfallMessage({ type: EXT_SIGN_TYPE, quantity: 5, photos: ph(2) })).toContain('2 of 5 photos added')
+    expect(photoShortfallMessage({ type: 'FERP Signage', allFloors: true, totalFloors: 4, photos: ph(1) })).toContain('one per floor')
   })
-  it('keeps the plain message for other types', () => {
-    expect(photoShortfallMessage({ type: 'No Smoking' })).toBe('Add a photo before marking as deployed')
+  it('is empty when there are enough, and when there are none (that is the hard error, not the warning)', () => {
+    expect(photoShortfallMessage({ type: EXT_SIGN_TYPE, quantity: 2, photos: ph(2) })).toBe('')
+    expect(photoShortfallMessage({ type: EXT_SIGN_TYPE, quantity: 2 })).toBe('')
+    expect(photoShortfallMessage({ type: 'No Smoking', photos: ph(1) })).toBe('')
+  })
+})
+
+describe('signagePhotoTotals', () => {
+  const ph = (n) => Array.from({ length: n }, (_, i) => ({ path: `p${i}` }))
+  it('totals required vs uploaded over Deployed records only and lists the short ones', () => {
+    const recs = [
+      sign({ type: EXT_SIGN_TYPE, quantity: 5, photos: ph(2) }), // 2/5 short
+      sign({ type: 'FERP Signage', allFloors: true, totalFloors: 3, photos: ph(3) }), // 3/3
+      sign({ type: 'No Smoking', photos: ph(1) }), // 1/1
+      sign({ type: EXT_SIGN_TYPE, quantity: 9, status: 'Planned' }), // not deployed: ignored
+    ]
+    const t = signagePhotoTotals(recs)
+    expect(t).toMatchObject({ required: 9, uploaded: 6, records: 3 })
+    expect(t.short).toHaveLength(1)
+    expect(t.short[0]).toMatchObject({ have: 2, need: 5, per: 'extinguisher' })
+  })
+  it('a surplus on one record does not hide a shortfall on another', () => {
+    const t = signagePhotoTotals([sign({ photos: ph(4) }), sign({ type: EXT_SIGN_TYPE, quantity: 3, photos: ph(1) })])
+    expect(t).toMatchObject({ required: 4, uploaded: 2 })
+  })
+  it('is empty with nothing deployed', () => {
+    expect(signagePhotoTotals([])).toEqual({ required: 0, uploaded: 0, records: 0, short: [] })
+  })
+})
+
+describe('signageSummary photo totals', () => {
+  it('rolls photos up per type, per site and overall', () => {
+    const ph = (n) => Array.from({ length: n }, (_, i) => ({ path: `p${i}` }))
+    const s = signageSummary(['A'], [
+      sign({ type: EXT_SIGN_TYPE, quantity: 4, photos: ph(1) }),
+      sign({ type: 'No Smoking', photos: ph(1) }),
+    ], [], [EXT_SIGN_TYPE, 'No Smoking'])
+    expect(s.photos).toMatchObject({ required: 5, uploaded: 2, records: 2 })
+    expect(s.photos.short).toHaveLength(1)
+    expect(s.bySite[0]).toMatchObject({ photosRequired: 5, photosUploaded: 2 })
+    expect(s.byType.find((t) => t.type === EXT_SIGN_TYPE)).toMatchObject({ photosRequired: 4, photosUploaded: 1 })
   })
 })
 
@@ -318,26 +359,17 @@ describe('deployedRequirementErrors', () => {
     expect(deployedRequirementErrors({ ...ok, photos: [] }, { status: 'Planned' }).photo).toBe('Add a photo before marking as deployed')
   })
 
-  it('FERP needs one photo per floor covered', () => {
-    const ferp = { status: 'Deployed', type: 'FERP Signage', allFloors: true, totalFloors: 3, lastChecked: '2026-09-01' }
+  it('FERP and Fire Extinguisher signs need only ONE photo — the fuller count does not block', () => {
     const p = (n) => Array.from({ length: n }, (_, i) => ({ path: `orgs/o/signage-photos/${i}.jpg` }))
-    expect(deployedRequirementErrors({ ...ferp, photos: p(2) }, null)).toEqual({ photo: 'Add 1 more photo (one per floor)' })
-    expect(deployedRequirementErrors({ ...ferp, photos: p(3) }, null)).toEqual({})
-    // partial coverage lowers the requirement
-    expect(deployedRequirementErrors({ ...ferp, allFloors: false, floorsCovered: 2, photos: p(2) }, null)).toEqual({})
-    // more than needed is fine
-    expect(deployedRequirementErrors({ ...ferp, photos: p(5) }, null)).toEqual({})
-  })
-
-  it('Fire Extinguisher Sign needs one photo per extinguisher (quantity)', () => {
-    const ext = { status: 'Deployed', type: EXT_SIGN_TYPE, quantity: 4, lastChecked: '2026-09-01' }
-    const p = (n) => Array.from({ length: n }, (_, i) => ({ path: `orgs/o/signage-photos/${i}.jpg` }))
-    expect(deployedRequirementErrors({ ...ext, photos: p(1) }, null)).toEqual({ photo: 'Add 3 more photos (one per extinguisher)' })
-    expect(deployedRequirementErrors({ ...ext, photos: p(4) }, null)).toEqual({})
-  })
-
-  it('other types still need only one photo whatever the quantity', () => {
-    expect(deployedRequirementErrors({ ...ok, quantity: 9 }, null)).toEqual({})
+    const ferp = { status: 'Deployed', type: 'FERP Signage', allFloors: true, totalFloors: 8, lastChecked: '2026-09-01' }
+    const ext = { status: 'Deployed', type: EXT_SIGN_TYPE, quantity: 6, lastChecked: '2026-09-01' }
+    expect(deployedRequirementErrors({ ...ferp, photos: p(1) }, null)).toEqual({})
+    expect(deployedRequirementErrors({ ...ext, photos: p(2) }, null)).toEqual({})
+    // ...but none is still refused, with the plain message
+    expect(deployedRequirementErrors({ ...ferp, photos: [] }, null)).toEqual({ photo: 'Add a photo before marking as deployed' })
+    expect(deployedRequirementErrors({ ...ext }, null)).toEqual({ photo: 'Add a photo before marking as deployed' })
+    // and the date is still required
+    expect(deployedRequirementErrors({ ...ext, lastChecked: '', photos: p(6) }, null)).toEqual({ lastChecked: 'Enter the last checked date' })
   })
 
   it('applies to a change from Planned, Removed or unset', () => {
