@@ -199,8 +199,13 @@ export function renderMeetingMail(meeting, { appOrigin = '', sender = '' } = {})
   })
 }
 
-// How many area lines one digest will carry. The rest are counted, not
-// copied: a region with two hundred sites is a spreadsheet, not a mail.
+// How many rows ONE SECTION of the digest will carry (Heat Stress, Rain Risk,
+// Other hazards each get this many). The rest are counted, not copied: a
+// region with two hundred sites is a spreadsheet, not a mail. The cap is per
+// section, not overall, so a wide heat event cannot push the rain section
+// out of the mail. A section's rows are taken High first, so the cap only ever
+// drops Medium rows before High ones. Rows are sites in Heat Stress and Rain
+// Risk, and site-hazard pairs in Other hazards.
 export const DIGEST_AREA_CAP = 40
 
 const SANS = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif"
@@ -214,58 +219,142 @@ const LEVEL_STYLE = {
     bar: '#dc2626',
     wash: '#fef2f2',
     swatch: '#dc2626',
-    label: 'High risk',
+    label: 'High',
   },
   Medium: {
     title: '#92400e',
     bar: '#d97706',
     wash: '#fffbeb',
     swatch: '#eab308',
-    label: 'Medium risk',
+    label: 'Medium',
   },
 }
 
+const LEVEL_RANK = { High: 0, Medium: 1 }
+const OTHER_TITLE = 'Other hazards'
+// Heat and rain, by driver key, are the two hazards with a section of their
+// own (weatherBands.js). Everything else lands in Other hazards.
+const HAZARD_ORDER = ['heat', 'rain']
+// Site-page labels for rows written before drivers carried a key or a level.
+const KEY_BY_LABEL = { 'heat stress': 'heat', rain: 'rain' }
+
 /**
- * High, then medium. Inside a level, regions A–Z, then sites A–Z.
- * Anything that is not High or Medium is left out — a Low row is not a
- * digest row, and an empty level is not a heading.
+ * The hazard readings on one area, each with its own level. A driver that
+ * predates per-hazard levels falls back to the site's level. An area that has
+ * only the `hazards` string (older rows) is split into label-only readings.
  */
-export function groupDigestAreas(areas) {
+function readingsOf(area) {
+  const fallback = area?.level
+  let drivers = Array.isArray(area?.drivers) ? area.drivers : []
+  if (!drivers.length && typeof area?.hazards === 'string') {
+    drivers = area.hazards
+      .split(',')
+      .map((label) => ({ label: label.trim() }))
+      .filter((d) => d.label)
+  }
+  const out = []
+  for (const driver of drivers) {
+    if (!driver) continue
+    const label = plain(driver.label, 40)
+    if (!label) continue
+    const level = driver.level || fallback
+    if (level !== 'High' && level !== 'Medium') continue
+    const key = plain(driver.key, 20) || KEY_BY_LABEL[label.toLowerCase()] || label.toLowerCase()
+    out.push({ key, label, value: plain(driver.value, 80), level })
+  }
+  return out
+}
+
+/**
+ * Sections in mail order: Heat Stress, Rain Risk, then Other hazards. A site
+ * is listed under every hazard it has, at that hazard's own level (High or
+ * Medium only), so heat High + rain Medium is High under Heat Stress and
+ * Medium under Rain Risk. Empty sections are left out. Inside a section:
+ * regions A–Z, and within a region High before Medium, then sites A–Z. At
+ * most `cap` rows per section are kept; `total` and `hidden` say what was cut.
+ *
+ * Shape: [{ key, title, level counts, total, hidden, groups: [{ region, rows }] }]
+ * A row is { area, site, level, hazard, value } — `hazard` is the hazard's
+ * label, which only the Other hazards section prints.
+ */
+export function groupDigestSections(areas, cap = DIGEST_AREA_CAP) {
   const list = Array.isArray(areas) ? areas : []
+  const buckets = new Map()
+  for (const area of list) {
+    if (!area) continue
+    for (const reading of readingsOf(area)) {
+      const section = HAZARD_ORDER.includes(reading.key) ? reading.key : 'other'
+      if (!buckets.has(section)) buckets.set(section, [])
+      buckets.get(section).push({
+        area,
+        level: reading.level,
+        hazard: reading.label,
+        hazardKey: reading.key,
+        value: reading.value,
+        region: plain(area.region, 80) || 'Unassigned',
+        name: String(area.name || ''),
+      })
+    }
+  }
+  const order = [
+    { key: 'heat', title: 'Heat Stress' },
+    { key: 'rain', title: 'Rain Risk' },
+    { key: 'other', title: OTHER_TITLE },
+  ]
   const sections = []
-  for (const level of ['High', 'Medium']) {
-    const rows = list.filter((area) => area && area.level === level)
+  for (const { key, title } of order) {
+    const rows = buckets.get(key)
+    if (!rows || !rows.length) continue
+    const ranked = [...rows].sort(
+      (a, b) =>
+        LEVEL_RANK[a.level] - LEVEL_RANK[b.level] ||
+        a.region.localeCompare(b.region) ||
+        a.name.localeCompare(b.name) ||
+        a.hazard.localeCompare(b.hazard)
+    )
+    const kept = ranked.slice(0, Math.max(0, cap))
     const byRegion = new Map()
-    for (const row of rows) {
-      const region = plain(row.region, 80) || 'Unassigned'
-      if (!byRegion.has(region)) byRegion.set(region, [])
-      byRegion.get(region).push(row)
+    for (const row of kept) {
+      if (!byRegion.has(row.region)) byRegion.set(row.region, [])
+      byRegion.get(row.region).push(row)
     }
     const groups = [...byRegion.entries()]
       .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([region, sites]) => ({
+      .map(([region, regionRows]) => ({
         region,
-        sites: [...sites].sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''))),
+        rows: [...regionRows].sort(
+          (a, b) =>
+            LEVEL_RANK[a.level] - LEVEL_RANK[b.level] ||
+            a.name.localeCompare(b.name) ||
+            a.hazard.localeCompare(b.hazard)
+        ),
       }))
-    if (groups.length) sections.push({ level, groups })
+    const sites = new Set(rows.map((r) => r.area))
+    sections.push({
+      key,
+      title,
+      total: rows.length,
+      hidden: rows.length - kept.length,
+      sites: sites.size,
+      high: rows.filter((r) => r.level === 'High').length,
+      medium: rows.filter((r) => r.level === 'Medium').length,
+      groups,
+    })
   }
   return sections
 }
 
-function driverText(area) {
-  const drivers = Array.isArray(area?.drivers) ? area.drivers : []
-  if (drivers.length) {
-    return drivers
-      .map((driver) => {
-        const label = plain(driver?.label, 40)
-        const value = plain(driver?.value, 80)
-        if (!label) return ''
-        return value ? `${label} · ${value}` : label
-      })
-      .filter(Boolean)
-      .join('; ')
+/**
+ * The distinct areas that made it into at least one section after the
+ * per-section cap. The map pins these, so it never marks a site the tables
+ * dropped.
+ */
+export function shownDigestAreas(areas, cap = DIGEST_AREA_CAP) {
+  const shown = new Set()
+  for (const section of groupDigestSections(areas, cap)) {
+    for (const group of section.groups) for (const row of group.rows) shown.add(row.area)
   }
-  return plain(area?.hazards, 180)
+  return (Array.isArray(areas) ? areas : []).filter((area) => shown.has(area))
 }
 
 function cell(text, { size = '13px', weight = '400', color = '#123632', transform = '' } = {}) {
@@ -273,47 +362,67 @@ function cell(text, { size = '13px', weight = '400', color = '#123632', transfor
   return `<td valign="top" style="padding:6px 8px;font-family:${SANS};font-size:${size};line-height:1.4;font-weight:${weight};color:${color};${casing}">${escapeHtml(text || '—')}</td>`
 }
 
-function sectionHtml(section) {
-  const style = LEVEL_STYLE[section.level]
+function levelCell(level) {
+  const style = LEVEL_STYLE[level]
+  return `<td valign="top" style="padding:6px 8px;font-family:${SANS};font-size:13px;line-height:1.4;font-weight:700;color:${style.title};white-space:nowrap;"><span style="display:inline-block;width:10px;height:10px;margin-right:6px;background:${style.swatch};border-radius:2px;"></span>${style.label}</td>`
+}
+
+function countsText(section) {
+  const parts = []
+  if (section.high) parts.push(`${section.high} high`)
+  if (section.medium) parts.push(`${section.medium} medium`)
+  const noun = section.key === 'other' ? 'reading' : 'site'
+  const n = section.key === 'other' ? section.total : section.sites
+  return `${n} ${noun}${n === 1 ? '' : 's'}: ${parts.join(', ')}`
+}
+
+function sectionHtml(section, when) {
+  const showHazard = section.key === 'other'
   const groups = section.groups
     .map((group) => {
       const headCell = { size: '11px', weight: '700', color: '#246058', transform: 'uppercase' }
       const head = `<tr>
 ${cell('Site', headCell)}
 ${cell('Entity', headCell)}
-${cell('Drivers', headCell)}
+${showHazard ? cell('Hazard', headCell) + '\n' : ''}${cell('Level', headCell)}
+${cell('Reading', headCell)}
 ${cell('When', headCell)}
 </tr>`
-      const body = group.sites
-        .map((site) => {
-          const when = plain(site.observedAt, 40) || plain(site.windowLabel, 40)
-          return `<tr>
-${cell(plain(site.name, 80), { weight: '600' })}
-${cell(plain(site.entity, 80))}
-${cell(driverText(site))}
-${cell(when)}
+      const body = group.rows
+        .map((row) => {
+          const style = LEVEL_STYLE[row.level]
+          const rowWhen = plain(row.area.observedAt, 40) || when
+          return `<tr style="background:${style.wash};">
+${cell(plain(row.area.name, 80), { weight: '600' })}
+${cell(plain(row.area.entity, 80))}
+${showHazard ? cell(row.hazard) + '\n' : ''}${levelCell(row.level)}
+${cell(row.value)}
+${cell(rowWhen)}
 </tr>`
         })
         .join('')
       return `<p style="margin:12px 0 4px;font-family:${SANS};font-size:13px;line-height:1.4;font-weight:700;color:#123632;">${escapeHtml(group.region)}</p>
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 8px;border-left:4px solid ${style.bar};background:${style.wash};">${head}${body}</table>`
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 8px;border-left:4px solid #246058;">${head}${body}</table>`
     })
     .join('')
-  return `<h2 style="margin:18px 0 0;font-family:${SANS};font-size:16px;line-height:1.3;font-weight:700;color:${style.title};"><span style="display:inline-block;width:10px;height:10px;margin-right:6px;background:${style.swatch};border-radius:2px;vertical-align:baseline;"></span>${escapeHtml(style.label)}</h2>${groups}`
+  return `<h2 style="margin:18px 0 0;font-family:${SANS};font-size:16px;line-height:1.3;font-weight:700;color:#123632;">${escapeHtml(section.title)}</h2><p style="margin:2px 0 0;font-family:${SANS};font-size:12px;line-height:1.4;color:#246058;">${escapeHtml(countsText(section))}</p>${groups}`
 }
 
-function sectionText(section) {
-  const style = LEVEL_STYLE[section.level]
-  const lines = [style.label]
+function sectionText(section, when) {
+  const showHazard = section.key === 'other'
+  const lines = [`${section.title.toUpperCase()} (${countsText(section)})`]
   for (const group of section.groups) {
-    lines.push(group.region)
-    for (const site of group.sites) {
-      lines.push(`Site: ${plain(site.name, 80) || '—'}`)
-      lines.push(`Entity: ${plain(site.entity, 80) || '—'}`)
-      lines.push(`Drivers: ${driverText(site) || '—'}`)
-      const when = plain(site.observedAt, 40) || plain(site.windowLabel, 40)
-      lines.push(`When: ${when || '—'}`)
+    lines.push('', group.region)
+    for (const row of group.rows) {
+      const rowWhen = plain(row.area.observedAt, 40) || when
+      lines.push(`Site: ${plain(row.area.name, 80) || '—'}`)
+      lines.push(`Entity: ${plain(row.area.entity, 80) || '—'}`)
+      if (showHazard) lines.push(`Hazard: ${row.hazard}`)
+      lines.push(`Level: ${row.level}`)
+      lines.push(`Reading: ${row.value || '—'}`)
+      lines.push(`When: ${rowWhen || '—'}`, '')
     }
+    if (lines[lines.length - 1] === '') lines.pop()
   }
   return lines.join('\n')
 }
@@ -322,7 +431,7 @@ function mapBlock(cid) {
   if (!cid) return { html: '', text: '' }
   const src = escapeHtml(`cid:${cid}`)
   return {
-    html: `<p style="margin:16px 0 8px;"><img src="${src}" width="560" alt="Sites at high risk, marked with red pins, and medium risk, marked with yellow pins" style="display:block;width:100%;max-width:560px;height:auto;border:1px solid #d0e8e4;border-radius:8px;" /></p>
+    html: `<p style="margin:16px 0 8px;"><img src="${src}" width="560" alt="Sites at high risk, marked with red pins, and medium risk, marked with yellow pins. A site is pinned once, at its worst level." style="display:block;width:100%;max-width:560px;height:auto;border:1px solid #d0e8e4;border-radius:8px;" /></p>
 <p style="margin:0 0 4px;font-family:${SANS};font-size:12px;line-height:1.45;color:#246058;">Red pin: high risk. Yellow pin: medium risk. Map data © OpenStreetMap contributors.</p>`,
     text: 'Map: red pins are high risk, yellow pins are medium risk. Map data © OpenStreetMap contributors.',
   }
@@ -333,15 +442,15 @@ export function renderWeatherDigest(
   { appOrigin = '', sender = '', mapCid = '', windowLabel = '' } = {}
 ) {
   const areas = Array.isArray(digest?.areas) ? digest.areas : []
-  const shown = areas.slice(0, DIGEST_AREA_CAP).map((area) => ({
-    ...area,
-    windowLabel: plain(windowLabel, 40),
-  }))
-  const hidden = areas.length - shown.length
+  // Subject and summary count SITES, each once, at its worst level. A site
+  // that is High for heat and Medium for rain is one High site here, even
+  // though it is listed under both sections below.
   const high = areas.filter((a) => a.level === 'High').length
   const medium = areas.filter((a) => a.level === 'Medium').length
   const subject = `Weather risk: ${high} high, ${medium} medium`
-  const sections = groupDigestAreas(shown)
+  const when = plain(windowLabel, 40)
+  const sections = groupDigestSections(areas)
+  const hidden = sections.filter((section) => section.hidden > 0)
   const map = mapBlock(safeCid(mapCid))
   // The bucket is the run's window. A site's When cell is the provider's
   // clock for that reading when one was sent. Printing the window only as a
@@ -360,13 +469,29 @@ export function renderWeatherDigest(
   const coverageHtml = coverageLine
     ? `<p style="margin:8px 0 0;font-family:${SANS};font-size:13px;line-height:1.4;color:#123632;">${escapeHtml(coverageLine)}</p>`
     : ''
-  const bannerHtml = `${map.html}${windowHtml}${coverageHtml}${sections.map(sectionHtml).join('')}`
-  const bannerText = [map.text, windowText, coverageLine, ...sections.map(sectionText)]
+  const summaryLine = areas.length
+    ? `${high + medium} site${high + medium === 1 ? '' : 's'} at risk: ${high} high, ${medium} medium. A site with more than one hazard is listed under each, and counted once here at its worst level.`
+    : ''
+  const summaryHtml = summaryLine
+    ? `<p style="margin:8px 0 0;font-family:${SANS};font-size:13px;line-height:1.4;color:#123632;">${escapeHtml(summaryLine)}</p>`
+    : ''
+  const bannerHtml = `${map.html}${windowHtml}${coverageHtml}${summaryHtml}${sections.map((s) => sectionHtml(s, when)).join('')}`
+  const bannerText = [
+    map.text,
+    windowText,
+    coverageLine,
+    summaryLine,
+    ...sections.map((s) => sectionText(s, when)),
+  ]
     .filter(Boolean)
     .join('\n\n')
   const rows = []
-  if (hidden > 0) {
-    rows.push({ label: 'More', value: `${hidden} further areas are in the app` })
+  if (hidden.length) {
+    const parts = hidden.map((section) => {
+      const noun = section.key === 'other' ? 'reading' : 'site'
+      return `${section.title}: ${section.hidden} further ${noun}${section.hidden === 1 ? '' : 's'}`
+    })
+    rows.push({ label: 'More', value: `${parts.join('; ')} — in the app` })
   }
   const unreadNames = Array.isArray(digest?.unreadSites)
     ? digest.unreadSites.map((name) => plain(name, 80)).filter(Boolean)
@@ -395,7 +520,7 @@ export function renderWeatherDigest(
   return packaged({
     subject,
     label: 'Weather risk',
-    headline: 'High and medium weather risk, by region.',
+    headline: 'High and medium weather risk, by hazard and region.',
     rows,
     bannerHtml,
     bannerText,
