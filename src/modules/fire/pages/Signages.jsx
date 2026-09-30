@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Signpost, Plus, Pencil, Trash2, MapPin, X, LayoutGrid, List, Download, Check, Search, Filter } from 'lucide-react'
+import { Signpost, Plus, Pencil, Trash2, MapPin, X, LayoutGrid, List, Download, Check, Search, Filter, ImagePlus, Image as ImageIcon } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { toastCaught } from '../../../shared/lib/toastCaught'
 import { PageHeader, EmptyState, Modal, Badge, Spinner, Field } from '../components/ui'
@@ -16,6 +16,10 @@ import ChipRow from '../components/ChipRow'
 import { exportSignage } from '../lib/exporter'
 import SiteScopePicker from '../../../shared/org/SiteScopePicker'
 import IncompleteNotice from '../../../shared/ui/IncompleteNotice'
+import { StoredImage } from '../../../shared/storage/StoredImage'
+import { safeSrc } from '../../../shared/safeUrl'
+import { MAX_UPLOAD_BYTES, formatSize } from '../../../shared/storage'
+import { fileToCompressedDataUrl } from '../../../shared/lib/image'
 import {
   isFerp,
   ferpCovered,
@@ -24,11 +28,18 @@ import {
   siteAttributeMap,
   extCountBySite,
   EXT_SIGN_TYPE,
+  signageStatus,
+  hasSignagePhoto,
+  deployedRequirementErrors,
 } from '../lib/signageLogic'
 import {
   SIGNAGE_TYPES,
   SIGNAGE_CONDITIONS,
   SIGNAGE_CONDITION_COLOR,
+  SIGNAGE_STATUSES,
+  SIGNAGE_STATUS_NOT_SET,
+  SIGNAGE_STATUS_COLOR,
+  SIGNAGE_PHOTO,
   REGIONS,
   ENTITIES,
 } from '../lib/constants'
@@ -43,16 +54,23 @@ const EMPTY = {
   floor: '',
   location: '',
   condition: 'OK',
+  // '' = Not set. Deployed can only be chosen with a photo and a last-checked date.
+  status: '',
   quantity: 1,
   lastChecked: '',
   notes: '',
+  // Stored pointer to the photo, and a freshly picked (compressed) one that is
+  // uploaded on save. See resolveSignagePhoto in lib/firestore.js.
+  photo: null,
+  photoDraft: '',
   // FERP floor coverage
   totalFloors: '',
   allFloors: true,
   floorsCovered: '',
 }
 
-const EMPTY_FILTERS = { search: '', regions: [], entities: [], types: [], conditions: [] }
+const STATUS_FILTER_OPTIONS = [...SIGNAGE_STATUSES, SIGNAGE_STATUS_NOT_SET]
+const EMPTY_FILTERS = { search: '', regions: [], entities: [], types: [], conditions: [], statuses: [] }
 
 export default function Signages() {
   const { orgId, orgName, profile } = useAuth()
@@ -64,12 +82,13 @@ export default function Signages() {
   const [removing, setRemoving] = useState(null)
   const [cellView, setCellView] = useState(null) // { site, type } — matrix cell detail panel
   const [busy, setBusy] = useState(false)
+  const [photoBusy, setPhotoBusy] = useState(false)
   const [linkOpen, setLinkOpen] = useState(false)
   const [linkTab, setLinkTab] = useState('linked')
   const [linkState, setLinkState] = useState(null)
 
   const f = filters
-  const anyActive = f.search || f.regions.length || f.entities.length || f.types.length || f.conditions.length
+  const anyActive = f.search || f.regions.length || f.entities.length || f.types.length || f.conditions.length || f.statuses.length
   const toggle = (field, value) =>
     setFilters((prev) => {
       const cur = prev[field]
@@ -159,12 +178,13 @@ export default function Signages() {
     if (f.entities.length && !f.entities.includes(s.entity || siteEntity[s.centerName])) return false
     if (f.types.length && !f.types.includes(s.type)) return false
     if (f.conditions.length && !f.conditions.includes(s.condition)) return false
+    if (f.statuses.length && !f.statuses.includes(signageStatus(s))) return false
     if (f.search) {
       const q = f.search.trim().toLowerCase()
       if (!`${s.centerName} ${s.type} ${s.location}`.toLowerCase().includes(q)) return false
     }
     return true
-  }), [signages, f.regions, f.entities, f.types, f.conditions, f.search, siteEntity, siteInventory, linkState])
+  }), [signages, f.regions, f.entities, f.types, f.conditions, f.statuses, f.search, siteEntity, siteInventory, linkState])
   const listPager = usePagination(filtered)
 
   // A matrix cell: records for (site, type) that pass the Region + Condition filters.
@@ -173,6 +193,7 @@ export default function Signages() {
     if (f.regions.length) recs = recs.filter((r) => f.regions.includes(r.region))
     if (f.entities.length) recs = recs.filter((r) => f.entities.includes(r.entity || siteEntity[site]))
     if (f.conditions.length) recs = recs.filter((r) => f.conditions.includes(r.condition))
+    if (f.statuses.length) recs = recs.filter((r) => f.statuses.includes(signageStatus(r)))
 
     // Fire-extinguisher signage is scored against the site's extinguisher count;
     // FERP against its floors. Both rules live in lib/signageLogic so the
@@ -209,9 +230,39 @@ export default function Signages() {
     })
   }
 
+  // The stored record the open form started from (null for a new one). The
+  // Deployed requirement applies when status is being SET to Deployed, so it has
+  // to know what the record was.
+  const editingPrev = editing?.id ? signages.find((s) => s.id === editing.id) || null : null
+  const deployedErrors = editing ? deployedRequirementErrors(editing, editingPrev) : {}
+  const hasDeployedErrors = Object.keys(deployedErrors).length > 0
+
+  const onPhoto = async (e) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    if (!file.type.startsWith('image/')) return toast.error('Only image files are allowed')
+    if (file.size > MAX_UPLOAD_BYTES) {
+      return toast.error(`Photo too large (${formatSize(file.size)}). Max ${formatSize(MAX_UPLOAD_BYTES)}.`)
+    }
+    setPhotoBusy(true)
+    try {
+      // Downscaled + re-encoded in the browser, as LOTO photos are, so what is
+      // uploaded is a few hundred KB rather than a full-resolution capture.
+      const photoDraft = await fileToCompressedDataUrl(file, SIGNAGE_PHOTO)
+      setEditing((p) => (p ? { ...p, photoDraft } : p))
+    } catch (err) {
+      toastCaught(err)
+    } finally {
+      setPhotoBusy(false)
+    }
+  }
+  const removePhoto = () => setEditing((p) => ({ ...p, photo: null, photoDraft: '' }))
+
   const save = async (e) => {
     e.preventDefault()
     if (!editing.centerName.trim()) return toast.error('Site is required')
+    if (hasDeployedErrors) return toast.error(Object.values(deployedErrors)[0])
     const payload = { ...editing }
     if (isFerp(payload.type)) {
       const total = Number(payload.totalFloors) || 0
@@ -227,7 +278,7 @@ export default function Signages() {
     try {
       const actor = { uid: profile?.uid, name: profile?.name }
       if (editing.id) {
-        await updateSignage(orgId, editing.id, payload, actor)
+        await updateSignage(orgId, editing.id, payload, actor, editingPrev)
         toast.success('Signage updated')
       } else {
         await addSignage(orgId, payload, actor)
@@ -243,7 +294,7 @@ export default function Signages() {
 
   const confirmDelete = async () => {
     try {
-      await deleteSignage(orgId, removing.id, { uid: profile?.uid, name: profile?.name }, `${removing.type} @ ${removing.centerName}`)
+      await deleteSignage(orgId, removing.id, { uid: profile?.uid, name: profile?.name }, `${removing.type} @ ${removing.centerName}`, removing.photo?.path)
       toast.success('Signage deleted')
     } catch (err) {
       toastCaught(err)
@@ -276,6 +327,8 @@ export default function Signages() {
         Floor: isFerp(s.type) ? (s.totalFloors ? `${ferpCovered(s)}/${s.totalFloors}` : '') : (s.floor || ''),
         Location: s.location || '',
         Condition: s.condition || '',
+        Status: signageStatus(s),
+        Photo: hasSignagePhoto(s) ? 'Yes' : 'No',
         Quantity: s.quantity ?? '',
         'Last Checked': s.lastChecked || '',
         Notes: s.notes || '',
@@ -329,6 +382,7 @@ export default function Signages() {
           <ChipRow label="Entity" options={ENTITIES} selected={f.entities} onToggle={(v) => toggle('entities', v)} />
           <ChipRow label="Type" options={SIGNAGE_TYPES} selected={f.types} onToggle={(v) => toggle('types', v)} />
           <ChipRow label="Condition" options={SIGNAGE_CONDITIONS} selected={f.conditions} onToggle={(v) => toggle('conditions', v)} />
+          <ChipRow label="Status" options={STATUS_FILTER_OPTIONS} selected={f.statuses} onToggle={(v) => toggle('statuses', v)} />
           {linkCounts.linked > 0 && linkCounts.unlinked > 0 && (
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-xs font-bold uppercase tracking-wide text-ink-400">Site link</span>
@@ -453,6 +507,7 @@ export default function Signages() {
                       <th className="px-4 py-2.5">Location</th>
                       <th className="px-4 py-2.5">Qty</th>
                       <th className="px-4 py-2.5">Condition</th>
+                      <th className="px-4 py-2.5">Status</th>
                       <th className="px-4 py-2.5">Last checked</th>
                       <th className="px-4 py-2.5 text-right">Actions</th>
                     </tr>
@@ -460,12 +515,18 @@ export default function Signages() {
                   <tbody className="divide-y divide-surface-200/50">
                     {items.map((s) => (
                       <tr key={s.id} className="hover:bg-surface-50">
-                        <td className="px-4 py-2.5 font-semibold text-ink-800">{s.type}</td>
+                        <td className="px-4 py-2.5 font-semibold text-ink-800">
+                          {s.type}
+                          {hasSignagePhoto(s) && <ImageIcon size={13} className="ml-1.5 inline text-ink-400" aria-label="Photo attached" />}
+                        </td>
                         <td className="px-4 py-2.5 text-ink-500">{isFerp(s.type) ? (s.totalFloors ? `${ferpCovered(s)}/${s.totalFloors} floors` : '—') : (s.floor || '—')}</td>
                         <td className="px-4 py-2.5 text-ink-500">{s.location || '—'}</td>
                         <td className="px-4 py-2.5 text-ink-600">{s.quantity}</td>
                         <td className="px-4 py-2.5">
                           <Badge color={SIGNAGE_CONDITION_COLOR[s.condition] || '#64748b'}>{s.condition}</Badge>
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <Badge color={SIGNAGE_STATUS_COLOR[signageStatus(s)]}>{signageStatus(s)}</Badge>
                         </td>
                         <td className="px-4 py-2.5 text-ink-500">{s.lastChecked || '—'}</td>
                         <td className="px-4 py-2.5">
@@ -521,15 +582,60 @@ export default function Signages() {
                   {SIGNAGE_CONDITIONS.map((c) => <option key={c}>{c}</option>)}
                 </select>
               </Field>
+              <Field label="Status">
+                <select className="input" value={editing.status || ''} onChange={set('status')}>
+                  <option value="">{SIGNAGE_STATUS_NOT_SET}</option>
+                  {SIGNAGE_STATUSES.map((st) => <option key={st}>{st}</option>)}
+                </select>
+              </Field>
               <Field label="Location / placement">
                 <input className="input" placeholder="e.g. Above stairwell C door" value={editing.location} onChange={set('location')} />
               </Field>
               <Field label="Quantity">
                 <input type="number" min={1} className="input" value={editing.quantity} onChange={set('quantity')} />
               </Field>
-              <Field label="Last checked">
+              <Field label="Last checked" error={deployedErrors.lastChecked}>
                 <input type="date" className="input" value={editing.lastChecked} onChange={set('lastChecked')} />
               </Field>
+              <div className="sm:col-span-2" data-testid="signage-photo">
+                <p className="label">Photo</p>
+                <div className="flex items-center gap-3">
+                  {editing.photoDraft || hasSignagePhoto(editing) ? (
+                    <div className="h-20 w-20 shrink-0 overflow-hidden rounded-lg border border-surface-200">
+                      {editing.photoDraft ? (
+                        <img src={safeSrc(editing.photoDraft)} alt="Signage" className="h-full w-full object-cover" />
+                      ) : (
+                        <StoredImage
+                          pointer={editing.photo}
+                          orgId={orgId}
+                          alt="Signage"
+                          className="h-full w-full object-cover"
+                          fallback={<span className="grid h-full w-full place-items-center text-ink-300"><ImageIcon size={20} /></span>}
+                        />
+                      )}
+                    </div>
+                  ) : (
+                    <div className="grid h-20 w-20 shrink-0 place-items-center rounded-lg border border-dashed border-surface-300 text-ink-300">
+                      <ImageIcon size={20} />
+                    </div>
+                  )}
+                  <div className="flex flex-wrap gap-2">
+                    <label className="btn-soft cursor-pointer">
+                      {photoBusy ? <Spinner size={16} /> : <ImagePlus size={16} />}
+                      {editing.photoDraft || hasSignagePhoto(editing) ? 'Replace photo' : 'Add photo'}
+                      <input type="file" accept="image/*" className="hidden" onChange={onPhoto} disabled={photoBusy} />
+                    </label>
+                    {(editing.photoDraft || hasSignagePhoto(editing)) && (
+                      <button type="button" className="btn-ghost !text-red-600" onClick={removePhoto}>
+                        <Trash2 size={15} /> Remove photo
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {deployedErrors.photo && (
+                  <p role="alert" className="mt-1 text-xs font-medium text-red-400">{deployedErrors.photo}</p>
+                )}
+              </div>
             </div>
             {isFerp(editing.type) && (
               <div className="ring-1 ring-ink-200 rounded-xl bg-surface-50/60 p-3 ">
@@ -568,7 +674,7 @@ export default function Signages() {
             </Field>
             <div className="flex justify-end gap-2 pt-1">
               <button type="button" className="btn-ghost" onClick={() => setEditing(null)}>Cancel</button>
-              <button type="submit" className="btn-primary" disabled={busy}>
+              <button type="submit" className="btn-primary" disabled={busy || photoBusy || hasDeployedErrors}>
                 {busy ? <Spinner size={16} /> : (editing.id ? 'Save changes' : 'Add signage')}
               </button>
             </div>
@@ -603,6 +709,8 @@ export default function Signages() {
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <Badge color={SIGNAGE_CONDITION_COLOR[s.condition] || '#64748b'}>{s.condition}</Badge>
+                          <Badge color={SIGNAGE_STATUS_COLOR[signageStatus(s)]}>{signageStatus(s)}</Badge>
+                          {hasSignagePhoto(s) && <ImageIcon size={13} className="text-ink-400" aria-label="Photo attached" />}
                           {isFerp(s.type) && s.totalFloors ? (
                             <span className="text-xs text-ink-500">{ferpCovered(s)}/{s.totalFloors} floors</span>
                           ) : s.floor ? (

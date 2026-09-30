@@ -119,6 +119,37 @@ describe('a token with no orgId claim reaches nothing', () => {
   })
 })
 
+describe('signage photos', () => {
+  const sp = (org) => `orgs/${org}/signage-photos/0a1b2c3d4e5f6071-signage.jpg`
+  const jpeg = { contentType: 'image/jpeg' }
+
+  it('a member uploads a JPEG under their own org', async () => {
+    await assertSucceeds(uploadBytes(ref(memberOfA(), sp(A)), bytes(2048), jpeg))
+  })
+  it('and any member of the org can read it back', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await uploadBytes(ref(ctx.storage(), sp(A)), bytes(), jpeg)
+    })
+    await assertSucceeds(getBytes(ref(memberOfA(), sp(A))))
+    await assertFails(getBytes(ref(memberOfB(), sp(A))))
+  })
+  it('an auditor cannot upload one; nobody can plant one in another tenant', async () => {
+    await assertFails(uploadBytes(ref(asRole('aud', 'auditor'), sp(A)), bytes(2048), jpeg))
+    await assertFails(uploadBytes(ref(memberOfA(), sp(B)), bytes(2048), jpeg))
+  })
+  it('refuses SVG (a script-bearing "image") and other non-image types', async () => {
+    await assertFails(uploadBytes(ref(memberOfA(), sp(A).replace('.jpg', '.svg')), bytes(64), { contentType: 'image/svg+xml' }))
+    await assertFails(uploadBytes(ref(memberOfA(), sp(A).replace('.jpg', '.html')), bytes(64), { contentType: 'text/html' }))
+  })
+  it('cannot be overwritten or deleted by a client', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await uploadBytes(ref(ctx.storage(), sp(A)), bytes(), jpeg)
+    })
+    await assertFails(uploadBytes(ref(memberOfA(), sp(A)), bytes(16), jpeg))
+    await assertFails(deleteObject(ref(asRole('adm', 'admin'), sp(A))))
+  })
+})
+
 describe('the unauthenticated public reaches nothing', () => {
   it('cannot read or write', async () => {
     await assertFails(getBytes(ref(anonymous(), p(A))))

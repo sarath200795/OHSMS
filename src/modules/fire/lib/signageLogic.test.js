@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { signageCell, isTypeCovered, signageSummary, siteAttributeMap, extCountBySite, EXT_SIGN_TYPE } from './signageLogic'
+import {
+  signageCell, isTypeCovered, signageSummary, siteAttributeMap, extCountBySite, EXT_SIGN_TYPE,
+  signageStatus, hasSignagePhoto, deployedRequirementErrors,
+} from './signageLogic'
 
 const sign = (over = {}) => ({ centerName: 'A', type: 'No Smoking', condition: 'OK', quantity: 1, ...over })
 
@@ -167,5 +170,88 @@ describe('signageSummary', () => {
   it('carries region and entity onto each site row', () => {
     const s = signageSummary(['A'], [sign()], [{ centerName: 'A', region: 'North', entity: 'COCO' }], TYPES)
     expect(s.bySite[0]).toMatchObject({ site: 'A', region: 'North', entity: 'COCO' })
+  })
+})
+
+describe('signageStatus', () => {
+  it('shows a record with no status (or a stray value) as "Not set"', () => {
+    expect(signageStatus({})).toBe('Not set')
+    expect(signageStatus({ status: '' })).toBe('Not set')
+    expect(signageStatus({ status: 'Bogus' })).toBe('Not set')
+    expect(signageStatus(null)).toBe('Not set')
+  })
+  it('passes the three real statuses through', () => {
+    for (const s of ['Planned', 'Deployed', 'Removed']) expect(signageStatus({ status: s })).toBe(s)
+  })
+})
+
+describe('hasSignagePhoto', () => {
+  it('is true for a stored pointer and for a freshly picked draft', () => {
+    expect(hasSignagePhoto({ photo: { path: 'orgs/o/signage-photos/x.jpg' } })).toBe(true)
+    expect(hasSignagePhoto({ photo: { dataUrl: 'data:image/jpeg;base64,AA' } })).toBe(true)
+    expect(hasSignagePhoto({ photoDraft: 'data:image/jpeg;base64,AA' })).toBe(true)
+  })
+  it('is false for nothing, null, an empty pointer, or a draft that is not an image data URL', () => {
+    expect(hasSignagePhoto(null)).toBe(false)
+    expect(hasSignagePhoto({})).toBe(false)
+    expect(hasSignagePhoto({ photo: null, photoDraft: '' })).toBe(false)
+    expect(hasSignagePhoto({ photo: {} })).toBe(false)
+    expect(hasSignagePhoto({ photo: 'orgs/x' })).toBe(false)
+    expect(hasSignagePhoto({ photoDraft: 'https://example.com/a.jpg' })).toBe(false)
+  })
+})
+
+describe('deployedRequirementErrors', () => {
+  const photo = { path: 'orgs/o/signage-photos/a.jpg' }
+  const ok = { status: 'Deployed', photo, lastChecked: '2026-09-01' }
+
+  it('has nothing to say unless the status is Deployed', () => {
+    for (const status of ['', 'Planned', 'Removed', undefined]) {
+      expect(deployedRequirementErrors({ status }, null)).toEqual({})
+    }
+    expect(deployedRequirementErrors(null, null)).toEqual({})
+  })
+
+  it('asks for both when a new record is Deployed with neither', () => {
+    expect(deployedRequirementErrors({ status: 'Deployed' }, null)).toEqual({
+      photo: 'Add a photo before marking as deployed',
+      lastChecked: 'Enter the last checked date',
+    })
+  })
+
+  it('asks only for what is missing', () => {
+    expect(deployedRequirementErrors({ status: 'Deployed', photo }, null)).toEqual({ lastChecked: 'Enter the last checked date' })
+    expect(deployedRequirementErrors({ status: 'Deployed', lastChecked: '2026-09-01' }, null)).toEqual({ photo: 'Add a photo before marking as deployed' })
+  })
+
+  it('passes with both, whether the photo is stored or just picked', () => {
+    expect(deployedRequirementErrors(ok, null)).toEqual({})
+    expect(deployedRequirementErrors({ status: 'Deployed', photoDraft: 'data:image/jpeg;base64,AA', lastChecked: '2026-09-01' }, null)).toEqual({})
+  })
+
+  it('treats a blank, whitespace or unparseable date as missing', () => {
+    for (const lastChecked of ['', '   ', 'not-a-date', undefined, null, 20260901]) {
+      expect(deployedRequirementErrors({ ...ok, lastChecked }, null).lastChecked).toBe('Enter the last checked date')
+    }
+  })
+
+  it('a removed photo brings the error back', () => {
+    expect(deployedRequirementErrors({ ...ok, photo: null }, { status: 'Planned' }).photo).toBe('Add a photo before marking as deployed')
+  })
+
+  it('applies to a change from Planned, Removed or unset', () => {
+    for (const prev of [{ status: 'Planned' }, { status: 'Removed' }, { status: '' }, {}]) {
+      expect(Object.keys(deployedRequirementErrors({ status: 'Deployed' }, prev)).sort()).toEqual(['lastChecked', 'photo'])
+    }
+  })
+
+  it('leaves a record that was already Deployed alone, so older ones stay editable', () => {
+    const legacy = { status: 'Deployed' } // no photo, no date
+    expect(deployedRequirementErrors({ ...legacy, location: 'edited' }, legacy)).toEqual({})
+  })
+
+  it('still asks when a Deployed record is moved away and back in one edit chain', () => {
+    // prev is the STORED state, so editing Removed → Deployed is a new arrival.
+    expect(deployedRequirementErrors({ status: 'Deployed' }, { status: 'Removed' })).not.toEqual({})
   })
 })

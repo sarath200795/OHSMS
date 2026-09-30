@@ -1,4 +1,4 @@
-import { FLOOR_SIGNAGE_TYPES, SIGNAGE_TYPES } from './constants'
+import { FLOOR_SIGNAGE_TYPES, SIGNAGE_TYPES, SIGNAGE_STATUSES, SIGNAGE_STATUS_NOT_SET } from './constants'
 
 // Scoring rules for safety signage, shared by the Signage matrix (the register)
 // and the Signage Compliance dashboard so both read a site the same way. Keeping
@@ -12,6 +12,51 @@ export const ISSUE_CONDITIONS = ['Faded', 'Damaged', 'Obstructed']
 // is scored against the number of extinguishers at the site (from the
 // Repository) rather than mere presence.
 export const EXT_SIGN_TYPE = 'Fire Extinguisher Sign'
+
+// ── Status, photo, and the "Deployed" requirement ────────────────────────────
+
+/** The status to DISPLAY for a record: its own, or "Not set" for older records. */
+export const signageStatus = (s) => (SIGNAGE_STATUSES.includes(s?.status) ? s.status : SIGNAGE_STATUS_NOT_SET)
+
+/**
+ * Does this record have a photo — one already stored (`photo` pointer), or one
+ * picked in the form and waiting to be uploaded (`photoDraft`)?
+ */
+export function hasSignagePhoto(rec) {
+  if (!rec) return false
+  if (typeof rec.photoDraft === 'string' && rec.photoDraft.startsWith('data:')) return true
+  const p = rec.photo
+  return Boolean(p && typeof p === 'object' && (p.path || p.url || p.dataUrl))
+}
+
+export const DEPLOYED_PHOTO_ERROR = 'Add a photo before marking as deployed'
+export const DEPLOYED_DATE_ERROR = 'Enter the last checked date'
+
+const hasCheckedDate = (v) => typeof v === 'string' && v.trim() !== '' && !Number.isNaN(Date.parse(v))
+
+/**
+ * What stops this record being saved as Deployed. → `{}` when nothing does,
+ * otherwise `{ photo?: string, lastChecked?: string }` keyed by the field the
+ * message belongs under.
+ *
+ * A sign is only Deployed when there is evidence of it: a photo AND a date it
+ * was last checked. The requirement applies when the status is being SET to
+ * Deployed — a new record, or a change from Planned / Removed / unset. A record
+ * that was already Deployed (`prev.status === 'Deployed'`) is left alone: those
+ * were saved before this rule and must stay loadable and editable for their
+ * other fields. firestore.rules enforces the same "on the way in only" shape.
+ *
+ * @param record the form / payload about to be saved
+ * @param prev   the stored record it replaces, or null/undefined for a new one
+ */
+export function deployedRequirementErrors(record, prev) {
+  if (record?.status !== 'Deployed') return {}
+  if (prev?.status === 'Deployed') return {}
+  const errors = {}
+  if (!hasSignagePhoto(record)) errors.photo = DEPLOYED_PHOTO_ERROR
+  if (!hasCheckedDate(record.lastChecked)) errors.lastChecked = DEPLOYED_DATE_ERROR
+  return errors
+}
 
 export const isFerp = (type) => FLOOR_SIGNAGE_TYPES.includes(type)
 // Floors that have FERP, given a record.

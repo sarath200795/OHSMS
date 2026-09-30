@@ -46,7 +46,8 @@ const writeBatch = (...args) => { assertWritable(); return _writeBatch(...args) 
 const runTransaction = (...args) => { assertWritable(); return _runTransaction(...args) }
 import { generateQrToken, tokenFromQrValue } from './qr'
 import { restoreBlockMessage, EQUIPMENT_KINDS } from './recycle'
-import { STATUS, DEFECT_BY_KEY } from './constants'
+import { STATUS, DEFECT_BY_KEY, SIGNAGE_STATUSES } from './constants'
+import { deployedRequirementErrors } from './signageLogic'
 import { lockId, duplicateDefectMessage } from './defectLock'
 import { putFile, removeFile, MAX_INLINE_BYTES, tooLargeForInline } from '../../../shared/storage'
 import { reserveDocId, reserveSeq } from '../../../shared/docId/reserve'
@@ -1025,6 +1026,19 @@ export function subscribeSignages(orgId, cb) {
   )
 }
 
+// The photo pointer as stored on the signage document: where the bytes are
+// (`path`, resolved through an authenticated fetch — see StoredImage) plus what
+// the reader needs to rebuild them. Only these keys are kept, so a form object
+// carrying anything else cannot smuggle it into the document. `dataUrl` exists
+// only for the inline fallback used when Cloud Storage is unavailable.
+const PHOTO_KEYS = ['url', 'path', 'dataUrl', 'contentType', 'name', 'size']
+export const cleanSignagePhoto = (p) => {
+  if (!p || typeof p !== 'object') return null
+  const out = {}
+  for (const k of PHOTO_KEYS) if (p[k] !== undefined && p[k] !== null && p[k] !== '') out[k] = p[k]
+  return out.path || out.url || out.dataUrl ? out : null
+}
+
 const cleanSignage = (data) => ({
   centerName: (data.centerName || '').trim(),
   // The edit form has carried a SiteScopePicker all along, and this dropped the
@@ -1038,6 +1052,8 @@ const cleanSignage = (data) => ({
   floor: (data.floor || '').trim(),
   location: (data.location || '').trim(),
   condition: data.condition || 'OK',
+  // '' = never set (every record written before this field existed).
+  status: SIGNAGE_STATUSES.includes(data.status) ? data.status : '',
   quantity: Number(data.quantity) || 1,
   lastChecked: data.lastChecked || '',
   notes: (data.notes || '').trim(),
@@ -1047,23 +1063,81 @@ const cleanSignage = (data) => ({
   floorsCovered: Number(data.floorsCovered) || 0,
 })
 
+/**
+ * Upload a picked photo (`data.photoDraft`, a compressed data: URL) and return
+ * the pointer to store, or the record's existing pointer when nothing new was
+ * picked, or null when the photo was removed.
+ *
+ * Same route as every other photo in the app: putFile → Cloud Storage under
+ * `orgs/<orgId>/signage-photos/…` (covered by the generic tenant + type + size
+ * rule in storage.rules). Not sealed: signage photos show a wall sign, not
+ * people, so — like inspection, LOTO and quotation photos — they take no
+ * `collection` and no sealing policy. When the bucket is unavailable putFile
+ * returns null and the image is kept inline, under the 700 KB Firestore ceiling.
+ */
+async function resolveSignagePhoto(orgId, data) {
+  const draft = typeof data.photoDraft === 'string' && data.photoDraft.startsWith('data:') ? data.photoDraft : ''
+  if (!draft) return cleanSignagePhoto(data.photo)
+  const up = await putFile(orgId, 'signage-photos', draft, 'signage.jpg')
+  if (up) return cleanSignagePhoto({ url: up.url, path: up.path, contentType: up.contentType, name: up.name, size: up.size })
+  const bytes = Math.floor(((draft.length - draft.indexOf(',') - 1) * 3) / 4)
+  if (bytes > MAX_INLINE_BYTES) throw new Error(tooLargeForInline('Signage photo'))
+  return { dataUrl: draft, contentType: 'image/jpeg', size: bytes }
+}
+
+// Deployed needs evidence. The form shows this inline and disables Save; it is
+// checked again here because the form is not the only thing that could call.
+function assertDeployable(data, prev) {
+  const errs = deployedRequirementErrors(data, prev)
+  const first = Object.values(errs)[0]
+  if (first) throw new Error(first)
+}
+
 export async function addSignage(orgId, data, actor) {
-  const ref = await addDoc(signageCol(orgId), {
-    ...cleanSignage(data),
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  })
+  assertDeployable(data, null)
+  const photo = await resolveSignagePhoto(orgId, data)
+  let ref
+  try {
+    ref = await addDoc(signageCol(orgId), {
+      ...cleanSignage(data),
+      photo,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    })
+  } catch (e) {
+    if (photo?.path && data.photoDraft) removeFile(photo.path)
+    throw e
+  }
   await logAudit(orgId, actor, 'signage.create', {
     target: 'signage',
     targetId: ref.id,
     targetLabel: `${data.type} @ ${data.centerName}`,
-    summary: `${data.type} (${data.condition}) @ ${data.centerName}`,
+    summary: `${data.type} (${data.condition}${data.status ? `, ${data.status}` : ''}) @ ${data.centerName}`,
   })
   return ref.id
 }
 
-export async function updateSignage(orgId, id, updates, actor) {
-  await updateDoc(signageRef(orgId, id), { ...cleanSignage(updates), updatedAt: serverTimestamp() })
+/**
+ * @param prev the stored record being replaced — needed to know whether status
+ *             is being SET to Deployed, and which photo file it leaves behind.
+ *             Read from Firestore when the caller does not have it.
+ */
+export async function updateSignage(orgId, id, updates, actor, prev) {
+  if (prev === undefined) {
+    const snap = await getDoc(signageRef(orgId, id))
+    prev = snap.exists() ? { id, ...snap.data() } : null
+  }
+  assertDeployable(updates, prev)
+  const photo = await resolveSignagePhoto(orgId, updates)
+  try {
+    await updateDoc(signageRef(orgId, id), { ...cleanSignage(updates), photo, updatedAt: serverTimestamp() })
+  } catch (e) {
+    if (photo?.path && updates.photoDraft) removeFile(photo.path)
+    throw e
+  }
+  // The file the record no longer points at goes with it (replaced or removed).
+  // After the write, so a failed save never leaves a record naming a deleted file.
+  if (prev?.photo?.path && prev.photo.path !== photo?.path) removeFile(prev.photo.path)
   await logAudit(orgId, actor, 'signage.update', {
     target: 'signage',
     targetId: id,
@@ -1072,8 +1146,9 @@ export async function updateSignage(orgId, id, updates, actor) {
   })
 }
 
-export async function deleteSignage(orgId, id, actor, label) {
+export async function deleteSignage(orgId, id, actor, label, photoPath) {
   await deleteDoc(signageRef(orgId, id))
+  if (photoPath) removeFile(photoPath)
   await logAudit(orgId, actor, 'signage.delete', { target: 'signage', targetId: id, targetLabel: label || '' })
 }
 
