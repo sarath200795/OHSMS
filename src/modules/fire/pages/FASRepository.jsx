@@ -19,6 +19,7 @@ import { listLinkedAssets, filterByLinkState, siteIdSet, isLinkedToSite } from '
 import LinkSitesModal from '../components/LinkSitesModal'
 import LinkStateChips from '../components/LinkStateChips'
 import { exportRows } from '../lib/exporter'
+import ExportQrButton from '../components/ExportQrButton'
 import { publicQrUrl } from '../lib/qr'
 import SiteScopePicker from '../../../shared/org/SiteScopePicker'
 import { dueState, dueTextColor, fasColor, fasIncomplete, highestAssetSeq } from '../lib/assetLogic'
@@ -285,6 +286,7 @@ export default function FASRepository() {
         )}
         {isAdmin && <Link to="/equipment/asset-bulk-upload" state={{ kind: 'fas' }} className="btn-soft"><Upload size={16} /> Bulk upload</Link>}
         <button className="btn-soft" onClick={doExport} disabled={!fas.length}><Download size={16} /> Export</button>
+        <ExportQrButton kind="fas" rows={selectedItems.length ? selectedItems : visible} selectedCount={selectedItems.length} />
         <RecentlyDeletedLink kinds={['fas']} noun="fire alarm devices" />
         <button className="btn-primary" onClick={openAdd}><Plus size={16} /> Add device</button>
       </PageHeader>

@@ -18,6 +18,7 @@ import { listLinkedAssets, filterByLinkState, siteIdSet, isLinkedToSite } from '
 import LinkSitesModal from '../components/LinkSitesModal'
 import LinkStateChips from '../components/LinkStateChips'
 import { exportRows } from '../lib/exporter'
+import ExportQrButton from '../components/ExportQrButton'
 import { publicQrUrl } from '../lib/qr'
 import SiteScopePicker from '../../../shared/org/SiteScopePicker'
 import { format } from 'date-fns'
@@ -296,6 +297,7 @@ export default function AEDRepository() {
         )}
         {isAdmin && <Link to="/equipment/asset-bulk-upload" state={{ kind: 'aed' }} className="btn-soft"><Upload size={16} /> Bulk upload</Link>}
         <button className="btn-soft" onClick={doExport} disabled={!aeds.length}><Download size={16} /> Export</button>
+        <ExportQrButton kind="aed" rows={selectedItems.length ? selectedItems : visible} selectedCount={selectedItems.length} />
         <RecentlyDeletedLink kinds={['aed']} noun="AEDs" />
         <button className="btn-primary" onClick={openAdd}><Plus size={16} /> Add AED</button>
       </PageHeader>
