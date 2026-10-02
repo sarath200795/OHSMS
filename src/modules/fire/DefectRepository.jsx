@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import { format } from 'date-fns'
-import { Wrench, CheckCircle2, X, Flame, HeartPulse, BellRing } from 'lucide-react'
+import { Wrench, CheckCircle2, Download, X, Flame, HeartPulse, BellRing } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { toastCaught } from '../../shared/lib/toastCaught'
 import { PageHeader, EmptyState, Badge } from './components/ui'
@@ -11,13 +11,15 @@ import { useFleet } from './context/FleetContext'
 import { useAuth } from './context/AuthContext'
 import { resolveDefects, decideAssetReport } from './lib/firestore'
 import { toDate } from './lib/extinguisherLogic'
+import { exportDefectRepository } from './lib/exporter'
+import { buildDefectRepositoryRows } from './lib/defectRepositoryExport'
 import { DEFECT_BY_KEY, REGION_COLORS } from './lib/constants'
 
 // One place for every reported equipment defect — fire extinguishers (open
 // physical defects) plus AED / fire-alarm QR-scan reports — with the action to
 // close each from here.
 export default function DefectRepository() {
-  const { physicalOpen, pendingReports, extinguishers } = useFleet()
+  const { physicalOpen, pendingReports, extinguishers, aeds, fas } = useFleet()
   const { orgId, orgName, profile, isManager } = useAuth()
   const [busyId, setBusyId] = useState(null)
 
@@ -63,6 +65,21 @@ export default function DefectRepository() {
 
   const { pageItems, page, setPage, pageCount, total, pageSize } = usePagination(rows)
 
+  // Every defect on the list, not just the page on screen — the workbook is the
+  // whole set so a register is never cut off at the page boundary.
+  const doExport = () => {
+    if (!rows.length) return toast.error('No defects to export')
+    try {
+      exportDefectRepository(
+        buildDefectRepositoryRows(rows, { aeds, fas, extinguishers }),
+        `equipment-defects-${format(new Date(), 'yyyy-MM-dd')}.xlsx`,
+      )
+      toast.success(`Exported ${rows.length} defect${rows.length === 1 ? '' : 's'}`)
+    } catch (err) {
+      toastCaught(err, 'Could not export the defects')
+    }
+  }
+
   const resolveExt = async (row) => {
     const e = extinguishers.find((x) => x.id === row.raw.extId)
     if (!e) return toast.error('Unit not found')
@@ -96,7 +113,9 @@ export default function DefectRepository() {
         title="Defect Repository"
         subtitle="Every reported equipment defect — extinguishers, AED and fire-alarm — in one place, ready to close."
         icon={Wrench}
-      />
+      >
+        <button className="btn-ghost" onClick={doExport}><Download size={16} /> Export</button>
+      </PageHeader>
 
       {rows.length === 0 ? (
         <EmptyState
