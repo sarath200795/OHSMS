@@ -52,7 +52,8 @@
     "xlsx": "^0.18.5"
   },
   "overrides": {
-    "undici": "^6.28.0"
+    "undici": "^6.28.0",
+    "@grpc/grpc-js": "^1.13.6"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
