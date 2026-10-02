@@ -8,6 +8,7 @@ import {
 } from './constants'
 import { severityLabel, toDate } from './extinguisherLogic'
 import { tokenFromQrValue } from './qr'
+import { DEFECT_REPOSITORY_COLUMNS } from './defectRepositoryExport'
 import { assertWorkbookSize, assertRowCount } from '../../../shared/lib/workbookGuard'
 import { parseCsvFile } from '../../../shared/lib/parseTable'
 import { downloadBlob } from '../../../shared/lib/download'
@@ -291,6 +292,24 @@ function rowsFor(list, today = new Date()) {
 /** Export a list of extinguishers to .xlsx, including derived condition/status. */
 export function exportExtinguishers(list, filename = 'extinguishers.xlsx', today = new Date()) {
   downloadWorkbook(bookFromRows(rowsFor(list, today)), filename)
+}
+
+/**
+ * Export the Defect Repository's rows. A dedicated sheet because the generic
+ * `exportRows` falls back to the extinguisher bulk-upload headers when empty.
+ */
+export function buildDefectRepositoryBook(rows = []) {
+  const ws = XLSX.utils.json_to_sheet(rows, { header: DEFECT_REPOSITORY_COLUMNS })
+  ws['!cols'] = DEFECT_REPOSITORY_COLUMNS.map((h) => ({
+    wch: h === 'Site' || h === 'Remarks' || h === 'Details' || h === 'Location' ? 28 : 18,
+  }))
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, 'Defects')
+  return wb
+}
+
+export function exportDefectRepository(rows, filename = 'equipment-defects.xlsx') {
+  downloadWorkbook(buildDefectRepositoryBook(rows), filename)
 }
 
 /** Download an arbitrary object as a pretty-printed .json file (full backup snapshot). */
