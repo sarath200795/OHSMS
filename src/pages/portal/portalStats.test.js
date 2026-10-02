@@ -61,10 +61,10 @@ describe('portalStats compliance', () => {
     const s = portalStats({
       sites: SITES,
       signages: [
-        { id: 'g1', siteId: 's1', condition: 'OK' },
-        { id: 'g2', siteId: 's1', condition: 'Faded' },
-        { id: 'g3', siteId: 's1', condition: 'Missing' },
-        { id: 'g4', siteId: 's1', condition: 'ok' }, // case is not a finding
+        { id: 'g1', siteId: 's1', status: 'Deployed' },
+        { id: 'g2', siteId: 's1', status: 'Planned' },
+        { id: 'g3', siteId: 's1', status: 'Removed' },
+        { id: 'g4', siteId: 's1', status: 'deployed', condition: 'Missing' }, // case is not a finding; old condition ignored
       ],
     })
     expect(s.signageCompliance).toBe(50)
