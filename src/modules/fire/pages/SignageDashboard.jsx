@@ -1,12 +1,12 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Signpost, ShieldCheck, AlertTriangle, Ban, CircleSlash, ClipboardList, Filter, X, ArrowRight, Building2, GitCompareArrows, Copy } from 'lucide-react'
+import { Signpost, ShieldCheck, AlertTriangle, Ban, CircleSlash, ClipboardList, Filter, X, ArrowRight, Building2, GitCompareArrows, Copy, Image as ImageIcon } from 'lucide-react'
 import { PageHeader, EmptyState, Spinner } from '../components/ui'
 import ChipRow from '../components/ChipRow'
 import { useFleet } from '../context/FleetContext'
 import { signageSummary, siteAttributeMap } from '../lib/signageLogic'
 import { REGISTERS, registerGapSummary, siteRegisters } from '../lib/siteRegisters'
-import { SIGNAGE_CONDITION_COLOR, REGIONS, ENTITIES } from '../lib/constants'
+import { SIGNAGE_STATUS_COLOR, REGIONS, ENTITIES } from '../lib/constants'
 import { HealthBar } from '../components/AssetHealth'
 import IncompleteNotice from '../../../shared/ui/IncompleteNotice'
 
@@ -97,6 +97,12 @@ function Stat({ icon: Icon, label, value, color }) {
 }
 
 // Coverage as a thin bar — green once a row is whole, amber while it is not.
+/** 'uploaded / required' photos, amber when short. */
+function PhotosCell({ uploaded, required }) {
+  if (!required) return <span className="text-ink-300">—</span>
+  return <span className={`text-xs font-bold ${uploaded < required ? 'text-amber-600' : 'text-ink-600'}`}>{uploaded} / {required}</span>
+}
+
 function Meter({ pct }) {
   return (
     <div className="flex items-center gap-2">
@@ -199,33 +205,34 @@ export default function SignageDashboard() {
               action={<button className="btn-ghost" onClick={clearFilters}><X size={15} /> Clear filters</button>} />
           ) : (
             <>
-              <div className="grid grid-cols-2 gap-4 md:grid-cols-6">
+              <div className="grid grid-cols-2 gap-4 md:grid-cols-7">
                 <Stat icon={Building2} label="Sites in scope" value={s.sites} color="#6366f1" />
                 <Stat icon={ShieldCheck} label="Overall coverage" value={`${s.compliance}%`} color="#16a34a" />
                 <Stat icon={ShieldCheck} label="Fully compliant sites" value={s.fullyCompliant} color="#0ea5e9" />
                 <Stat icon={Ban} label="Sites with gaps" value={s.sitesWithGaps} color="#dc2626" />
-                <Stat icon={AlertTriangle} label="Signs needing attention" value={s.issue} color="#f59e0b" />
+                <Stat icon={AlertTriangle} label="Partly deployed" value={s.issue} color="#f59e0b" />
                 <Stat icon={ClipboardList} label="Signage records" value={s.records} color="#7c3aed" />
+                <Stat icon={ImageIcon} label="Photos: uploaded / required" value={`${s.photos.uploaded} / ${s.photos.required}`} color="#0891b2" />
               </div>
 
               <div className="mt-6 grid gap-6 lg:grid-cols-2">
                 <HealthBar
                   title={`Signage status — ${s.cells} checks (${s.sites} sites × ${s.types} types)`}
                   segments={[
-                    { label: 'In place', value: s.ok, color: '#16a34a' },
-                    { label: 'Needs attention', value: s.issue, color: '#f59e0b' },
-                    { label: 'Recorded missing', value: s.missing, color: '#dc2626' },
+                    { label: 'Deployed', value: s.ok, color: '#16a34a' },
+                    { label: 'Partly deployed', value: s.issue, color: '#f59e0b' },
+                    { label: 'Recorded, none deployed', value: s.missing, color: '#dc2626' },
                     { label: 'Never recorded', value: s.notRecorded, color: '#cbd5e1' },
                   ]}
                 />
                 <div className="card p-4">
-                  <p className="mb-3 text-xs font-bold uppercase tracking-wide text-ink-500">Condition of recorded signage</p>
+                  <p className="mb-3 text-xs font-bold uppercase tracking-wide text-ink-500">Status of recorded signage</p>
                   {s.records === 0 ? (
                     <p className="py-6 text-center text-sm text-ink-400">No signage recorded for these sites yet.</p>
                   ) : (
                     <div className="space-y-2">
-                      {Object.entries(SIGNAGE_CONDITION_COLOR).map(([cond, color]) => {
-                        const n = s.byCondition[cond] || 0
+                      {Object.entries(SIGNAGE_STATUS_COLOR).map(([cond, color]) => {
+                        const n = s.byStatus[cond] || 0
                         const pct = s.records ? Math.round((n / s.records) * 100) : 0
                         return (
                           <div key={cond} className="flex items-center gap-3 text-sm">
@@ -250,7 +257,7 @@ export default function SignageDashboard() {
                   <div className="max-h-[420px] overflow-auto">
                     <table className="w-full text-sm">
                       <thead className="sticky top-0 bg-surface-100/90 text-left text-[11px] uppercase tracking-wide text-ink-500">
-                        <tr><th className="px-4 py-2">Type</th><th className="px-4 py-2 text-center">Sites</th><th className="px-4 py-2 text-center">Gaps</th><th className="px-4 py-2 text-center">Issues</th><th className="px-4 py-2">Coverage</th></tr>
+                        <tr><th className="px-4 py-2">Type</th><th className="px-4 py-2 text-center">Sites</th><th className="px-4 py-2 text-center">Gaps</th><th className="px-4 py-2 text-center">Issues</th><th className="px-4 py-2 text-center">Photos</th><th className="px-4 py-2">Coverage</th></tr>
                       </thead>
                       <tbody className="divide-y divide-surface-200/60">
                         {s.byType.map((r) => (
@@ -259,6 +266,7 @@ export default function SignageDashboard() {
                             <td className="px-4 py-2.5 text-center text-ink-600">{r.covered}/{s.sites}</td>
                             <td className="px-4 py-2.5 text-center">{r.gaps > 0 ? <span className="font-bold text-red-600">{r.gaps}</span> : <span className="text-ink-400">0</span>}</td>
                             <td className="px-4 py-2.5 text-center">{r.issues > 0 ? <span className="font-bold text-amber-600">{r.issues}</span> : <span className="text-ink-400">0</span>}</td>
+                            <td className="px-4 py-2.5 text-center"><PhotosCell uploaded={r.photosUploaded} required={r.photosRequired} /></td>
                             <td className="px-4 py-2.5"><Meter pct={r.compliance} /></td>
                           </tr>
                         ))}
@@ -272,7 +280,7 @@ export default function SignageDashboard() {
                   <div className="max-h-[420px] overflow-auto">
                     <table className="w-full min-w-[420px] text-sm">
                       <thead className="sticky top-0 bg-surface-100/90 text-left text-[11px] uppercase tracking-wide text-ink-500">
-                        <tr><th className="px-4 py-2">Site</th><th className="px-4 py-2">Region / Entity</th><th className="px-4 py-2 text-center">Gaps</th><th className="px-4 py-2 text-center">Issues</th><th className="px-4 py-2">Coverage</th></tr>
+                        <tr><th className="px-4 py-2">Site</th><th className="px-4 py-2">Region / Entity</th><th className="px-4 py-2 text-center">Gaps</th><th className="px-4 py-2 text-center">Issues</th><th className="px-4 py-2 text-center">Photos</th><th className="px-4 py-2">Coverage</th></tr>
                       </thead>
                       <tbody className="divide-y divide-surface-200/60">
                         {s.bySite.map((r) => (
@@ -281,6 +289,7 @@ export default function SignageDashboard() {
                             <td className="px-4 py-2.5 text-xs text-ink-500">{[r.region, r.entity].filter(Boolean).join(' · ') || '—'}</td>
                             <td className="px-4 py-2.5 text-center">{r.gaps > 0 ? <span className="font-bold text-red-600">{r.gaps}</span> : <span className="text-green-600">0</span>}</td>
                             <td className="px-4 py-2.5 text-center">{r.issues > 0 ? <span className="font-bold text-amber-600">{r.issues}</span> : <span className="text-ink-400">0</span>}</td>
+                            <td className="px-4 py-2.5 text-center"><PhotosCell uploaded={r.photosUploaded} required={r.photosRequired} /></td>
                             <td className="px-4 py-2.5"><Meter pct={r.compliance} /></td>
                           </tr>
                         ))}
@@ -290,12 +299,44 @@ export default function SignageDashboard() {
                 </div>
               </div>
 
+              <div className="card mt-6 overflow-hidden" data-testid="photo-shortfall">
+                <p className="border-b border-surface-200/60 px-4 py-3 text-xs font-bold uppercase tracking-wide text-ink-500">
+                  Deployed signage with fewer photos than required{s.photos.short.length ? ` — ${s.photos.short.length}` : ''}
+                </p>
+                {s.photos.short.length === 0 ? (
+                  <p className="px-4 py-6 text-center text-sm text-ink-400">
+                    {s.photos.records === 0 ? 'No deployed signage yet.' : 'Every deployed sign has its full set of photos.'}
+                  </p>
+                ) : (
+                  <div className="max-h-[320px] overflow-auto">
+                    <table className="w-full min-w-[420px] text-sm">
+                      <thead className="sticky top-0 bg-surface-100/90 text-left text-[11px] uppercase tracking-wide text-ink-500">
+                        <tr><th className="px-4 py-2">Site</th><th className="px-4 py-2">Type</th><th className="px-4 py-2">Location</th><th className="px-4 py-2 text-center">Photos</th><th className="px-4 py-2">Expected</th></tr>
+                      </thead>
+                      <tbody className="divide-y divide-surface-200/60">
+                        {s.photos.short
+                          .slice()
+                          .sort((a, b) => (b.need - b.have) - (a.need - a.have) || (a.record.centerName || '').localeCompare(b.record.centerName || ''))
+                          .map(({ record: r, have, need, per }) => (
+                            <tr key={r.id || `${r.centerName}-${r.type}-${r.location}`} className="hover:bg-ink-50/70">
+                              <td className="px-4 py-2.5 font-semibold text-ink-800">{r.centerName}</td>
+                              <td className="px-4 py-2.5 text-ink-600">{r.type}</td>
+                              <td className="px-4 py-2.5 text-xs text-ink-500">{r.location || '—'}</td>
+                              <td className="px-4 py-2.5 text-center"><PhotosCell uploaded={have} required={need} /></td>
+                              <td className="px-4 py-2.5 text-xs text-ink-500">{need - have} more{per ? ` (one per ${per})` : ''}</td>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
               <p className="mt-3 flex items-center gap-1.5 text-xs text-ink-500">
-                <CircleSlash size={13} /> Coverage counts a signage type as covered once the site has a record saying the sign
-                is THERE; the fire-extinguisher sign additionally has to match the site&rsquo;s extinguisher count. Damaged, faded
-                and obstructed signs still count as covered — they are listed under Issues. A sign recorded as Missing does not:
-                that record is a survey saying the sign is absent.
-              </p>
+                <CircleSlash size={13} /> Coverage counts a signage type as covered once the site has a <strong>Deployed</strong> record for it (green tick); the
+                fire-extinguisher sign additionally has to match the site&rsquo;s extinguisher count, and FERP the floors covered.
+                Planned, Removed and Not-set records are non-compliant and do not count. Partly deployed types are listed under Issues.
+                </p>
             </>
           )}
 

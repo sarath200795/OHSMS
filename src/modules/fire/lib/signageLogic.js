@@ -5,32 +5,116 @@ import { FLOOR_SIGNAGE_TYPES, SIGNAGE_TYPES, SIGNAGE_STATUSES, SIGNAGE_STATUS_NO
 // them in one place is the point: a site that shows "covered" on the matrix and
 // "gap" on the dashboard is worse than having no dashboard at all.
 
-// Conditions that mean the signage exists but needs attention.
-export const ISSUE_CONDITIONS = ['Faded', 'Damaged', 'Obstructed']
-
 // Every fire extinguisher should have a "Fire Extinguisher Sign", so this type
 // is scored against the number of extinguishers at the site (from the
 // Repository) rather than mere presence.
 export const EXT_SIGN_TYPE = 'Fire Extinguisher Sign'
 
-// ── Status, photo, and the "Deployed" requirement ────────────────────────────
+// ── Status, compliance, photos, and the "Deployed" requirement ───────────────
 
 /** The status to DISPLAY for a record: its own, or "Not set" for older records. */
 export const signageStatus = (s) => (SIGNAGE_STATUSES.includes(s?.status) ? s.status : SIGNAGE_STATUS_NOT_SET)
 
 /**
- * Does this record have a photo — one already stored (`photo` pointer), or one
- * picked in the form and waiting to be uploaded (`photoDraft`)?
+ * Is this record compliant? Status alone decides: Deployed is compliant; Planned,
+ * Removed and Not set are not. (The old per-record "condition" field no longer
+ * takes part — stored values are simply ignored.)
  */
-export function hasSignagePhoto(rec) {
-  if (!rec) return false
-  if (typeof rec.photoDraft === 'string' && rec.photoDraft.startsWith('data:')) return true
-  const p = rec.photo
-  return Boolean(p && typeof p === 'object' && (p.path || p.url || p.dataUrl))
+export const isSignageCompliant = (s) => s?.status === 'Deployed'
+
+const isPointer = (p) => Boolean(p && typeof p === 'object' && !Array.isArray(p) && (p.path || p.url || p.dataUrl))
+const isDraft = (p) => typeof p === 'string' && p.startsWith('data:')
+
+/**
+ * The photos of a record, as a list. An entry is either a stored pointer
+ * (`{ path | url | dataUrl, … }`) or, in the edit form, a freshly picked image as
+ * a `data:` URL string that is uploaded on save.
+ *
+ * `photos` is the field. Records saved before it existed carry a single `photo`
+ * pointer, which is read as one entry — until the record is next saved, which
+ * writes `photos` and drops `photo`. Once `photos` is an array it is the whole
+ * truth (an emptied array means "no photos", not "fall back to the legacy one").
+ */
+export function signagePhotos(rec) {
+  if (!rec) return []
+  if (Array.isArray(rec.photos)) return rec.photos.filter((p) => isPointer(p) || isDraft(p))
+  return isPointer(rec.photo) ? [rec.photo] : []
+}
+
+export const signagePhotoCount = (rec) => signagePhotos(rec).length
+
+/** Does this record have at least one photo (stored, or picked and waiting to upload)? */
+export const hasSignagePhoto = (rec) => signagePhotoCount(rec) > 0
+
+const positiveInt = (v) => {
+  const n = Math.ceil(Number(v))
+  return Number.isFinite(n) && n > 0 ? n : 0
+}
+
+/**
+ * How many photos a record is expected to have, and what each one stands for.
+ *  - FERP Signage: one per floor covered (all floors → the number of floors);
+ *  - Fire Extinguisher Sign: one per extinguisher, i.e. the `quantity`;
+ *  - anything else: one.
+ * Never less than 1. Informational: it is not enforced on save or in firestore.rules.
+ * → { count, per: 'floor' | 'extinguisher' | null }
+ */
+export function requiredSignagePhotos(rec) {
+  if (rec?.type === EXT_SIGN_TYPE) return { count: Math.max(1, positiveInt(rec.quantity)), per: 'extinguisher' }
+  if (rec && isFerp(rec.type)) {
+    // Same clamp the save applies: covered floors can't exceed the total.
+    const total = positiveInt(rec.totalFloors)
+    const floors = rec.allFloors ? total : total ? Math.min(positiveInt(rec.floorsCovered), total) : positiveInt(rec.floorsCovered)
+    return { count: Math.max(1, positiveInt(floors)), per: 'floor' }
+  }
+  return { count: 1, per: null }
 }
 
 export const DEPLOYED_PHOTO_ERROR = 'Add a photo before marking as deployed'
 export const DEPLOYED_DATE_ERROR = 'Enter the last checked date'
+
+/**
+ * Photos still expected beyond what has been uploaded: `{ have, need, missing, per }`.
+ * INFORMATION ONLY — it never blocks a save. Deployed needs just one photo (see
+ * deployedRequirementErrors); the required count is what the form counter and the
+ * Signage Compliance board compare the uploaded number against.
+ */
+export function signagePhotoProgress(rec) {
+  const { count, per } = requiredSignagePhotos(rec)
+  const have = signagePhotoCount(rec)
+  return { have, need: count, missing: Math.max(0, count - have), per }
+}
+
+/**
+ * The soft warning for a record that has some photos but fewer than expected
+ * ('' otherwise). Zero photos is not a soft case: for a Deployed record that is
+ * the hard "Add a photo" error, and for any other status nothing is asked yet.
+ */
+export function photoShortfallMessage(rec) {
+  const { have, need, missing, per } = signagePhotoProgress(rec)
+  if (have === 0 || missing === 0) return ''
+  return `${have} of ${need} photos added — ${per ? `one per ${per} is expected` : 'more expected'} (you can still save)`
+}
+
+/**
+ * Photo totals for a set of records, over DEPLOYED records only — a Planned or
+ * Removed sign is not expected to have its full set of photos yet.
+ * → { required, uploaded, records, short: [{ record, have, need, per }] }
+ * `uploaded` counts photos up to the required number per record, so a record with
+ * surplus photos cannot hide another record's shortfall in the total.
+ */
+export function signagePhotoTotals(records = []) {
+  const out = { required: 0, uploaded: 0, records: 0, short: [] }
+  for (const r of records) {
+    if (!isSignageCompliant(r)) continue
+    const { have, need, missing, per } = signagePhotoProgress(r)
+    out.records++
+    out.required += need
+    out.uploaded += Math.min(have, need)
+    if (missing > 0) out.short.push({ record: r, have, need, per })
+  }
+  return out
+}
 
 const hasCheckedDate = (v) => typeof v === 'string' && v.trim() !== '' && !Number.isNaN(Date.parse(v))
 
@@ -39,12 +123,14 @@ const hasCheckedDate = (v) => typeof v === 'string' && v.trim() !== '' && !Numbe
  * otherwise `{ photo?: string, lastChecked?: string }` keyed by the field the
  * message belongs under.
  *
- * A sign is only Deployed when there is evidence of it: a photo AND a date it
- * was last checked. The requirement applies when the status is being SET to
- * Deployed — a new record, or a change from Planned / Removed / unset. A record
- * that was already Deployed (`prev.status === 'Deployed'`) is left alone: those
- * were saved before this rule and must stay loadable and editable for their
- * other fields. firestore.rules enforces the same "on the way in only" shape.
+ * A sign is only Deployed when there is evidence of it: at least ONE photo AND a
+ * date it was last checked. How many photos the sign ideally has (requiredSignagePhotos)
+ * is reported, not enforced. The requirement applies
+ * when the status is being SET to Deployed — a new record, or a change from
+ * Planned / Removed / unset. A record that was already Deployed
+ * (`prev.status === 'Deployed'`) is left alone: those were saved before this rule
+ * and must stay loadable and editable for their other fields. firestore.rules
+ * enforces the same "on the way in only" shape.
  *
  * @param record the form / payload about to be saved
  * @param prev   the stored record it replaces, or null/undefined for a new one
@@ -53,6 +139,8 @@ export function deployedRequirementErrors(record, prev) {
   if (record?.status !== 'Deployed') return {}
   if (prev?.status === 'Deployed') return {}
   const errors = {}
+  // One photo is the hard requirement; the fuller count (per floor / per
+  // extinguisher) is shown as a warning and on the board, but does not block.
   if (!hasSignagePhoto(record)) errors.photo = DEPLOYED_PHOTO_ERROR
   if (!hasCheckedDate(record.lastChecked)) errors.lastChecked = DEPLOYED_DATE_ERROR
   return errors
@@ -116,18 +204,28 @@ export function extCountBySite(extinguishers = []) {
  * Status of one (site, type) cell from the records already narrowed to it.
  * → { count, status: 'ok' | 'issue' | 'missing' | 'none', label? }
  * `required` is the site's extinguisher count, used only for EXT_SIGN_TYPE.
+ *
+ * Only Deployed records count as being in place (a Planned, Removed or Not-set
+ * record is non-compliant):
+ *   ok      every record is Deployed (for the extinguisher sign: and the count
+ *           matches the fleet; for FERP: and every floor is covered)
+ *   issue   partly there — some Deployed, some not / short of the fleet or floors
+ *   missing records exist but none is Deployed
+ *   none    nothing recorded
  */
 export function signageCell(recs, type, required = 0) {
+  const deployed = recs.filter(isSignageCompliant)
+  const allDeployed = deployed.length === recs.length
+
   if (type === EXT_SIGN_TYPE) {
-    const present = recs.filter((r) => r.condition !== 'Missing')
-    const recorded = present.reduce((a, r) => a + (Number(r.quantity) || 1), 0)
+    const recorded = deployed.reduce((a, r) => a + (Number(r.quantity) || 1), 0)
     if (recs.length === 0 && required === 0) return { count: 0, status: 'none' }
     let status
     if (required === 0) status = recorded > 0 ? 'ok' : 'none'
     else if (recorded === 0) status = 'missing'
     else if (recorded < required) status = 'issue'
     else status = 'ok'
-    if (status === 'ok' && present.some((r) => ISSUE_CONDITIONS.includes(r.condition))) status = 'issue'
+    if (status === 'ok' && !allDeployed) status = 'issue'
     const label = required > 0 ? `${recorded}/${required}` : (recorded > 0 ? String(recorded) : '—')
     return { count: recs.length, status, label }
   }
@@ -135,17 +233,17 @@ export function signageCell(recs, type, required = 0) {
   if (recs.length === 0) return { count: 0, status: 'none' }
   // FERP shows floor coverage (covered / total) rather than a plain count.
   if (isFerp(type)) {
-    const rec = recs.reduce((a, b) => ((b.totalFloors || 0) > (a.totalFloors || 0) ? b : a), recs[0])
+    const pool = deployed.length ? deployed : recs
+    const rec = pool.reduce((a, b) => ((b.totalFloors || 0) > (a.totalFloors || 0) ? b : a), pool[0])
     const total = rec.totalFloors || 0
-    const covered = ferpCovered(rec)
-    const missing = recs.some((r) => r.condition === 'Missing')
+    const covered = deployed.length ? ferpCovered(rec) : 0
     let status = 'ok'
-    if (missing || covered === 0) status = 'missing'
-    else if (total > 0 && covered < total) status = 'issue'
+    if (deployed.length === 0 || covered === 0) status = 'missing'
+    else if ((total > 0 && covered < total) || !allDeployed) status = 'issue'
     return { count: recs.length, status, label: total > 0 ? `${covered}/${total}` : '✓' }
   }
-  if (recs.some((r) => r.condition === 'Missing')) return { count: recs.length, status: 'missing' }
-  if (recs.some((r) => ISSUE_CONDITIONS.includes(r.condition))) return { count: recs.length, status: 'issue' }
+  if (deployed.length === 0) return { count: recs.length, status: 'missing' }
+  if (!allDeployed) return { count: recs.length, status: 'issue' }
   return { count: recs.length, status: 'ok' }
 }
 
@@ -154,12 +252,11 @@ export function signageCell(recs, type, required = 0) {
  * fire-extinguisher column requires a FULL match to the fleet (status 'ok'),
  * not mere presence.
  *
- * Everywhere else, covered means the sign IS THERE — 'ok', or 'issue' where it
- * is faded or obstructed but present. Deliberately not `count > 0`: a record
- * whose condition is Missing is a surveyor reporting the sign is absent, and
- * counting it as covered made a recorded absence read as compliance. That is
- * the one answer this dashboard exists to give, and it gave the opposite: the
- * matrix drew the cell red while the coverage total counted it green.
+ * Everywhere else, covered means a DEPLOYED sign is there — 'ok', or 'issue'
+ * where some records are Deployed and others are not. Deliberately not
+ * `count > 0`: a Planned or Removed record is not a sign in place, and counting
+ * it as covered would make a recorded absence read as compliance. The matrix
+ * draws such a cell red; the coverage total must agree.
  */
 export const isTypeCovered = (type, cell) =>
   type === EXT_SIGN_TYPE ? cell.status === 'ok' : cell.status === 'ok' || cell.status === 'issue'
@@ -177,7 +274,8 @@ export const isTypeCovered = (type, cell) =>
  *     fullyCompliant, sitesWithGaps,
  *     byType: [{ type, covered, gaps, issues, records, compliance }],
  *     bySite: [{ site, region, entity, covered, total, gaps, issues, records, compliance, missingTypes }],
- *     byCondition: { [condition]: count },
+ *     photos: { required, uploaded, records, short: [{ record, have, need, per }] },
+ *     byStatus: { [status]: count } — Deployed / Planned / Removed / Not set,
  *   }
  */
 /**
@@ -198,16 +296,16 @@ export function signageSummary(sites, signages, extinguishers, types = SIGNAGE_T
   // 2 000-record fleet feel broken.
   const bySiteRecords = new Map(sites.map((s) => [s, []]))
   let records = 0
-  const byCondition = {}
+  const byStatus = {}
   for (const s of signages) {
     if (!bySiteRecords.has(s.centerName)) continue
     bySiteRecords.get(s.centerName).push(s)
     records++
-    const c = s.condition || 'OK'
-    byCondition[c] = (byCondition[c] || 0) + 1
+    const st = signageStatus(s)
+    byStatus[st] = (byStatus[st] || 0) + 1
   }
 
-  const byType = types.map((t) => ({ type: t, covered: 0, gaps: 0, issues: 0, records: 0, compliance: 0 }))
+  const byType = types.map((t) => ({ type: t, covered: 0, gaps: 0, issues: 0, records: 0, compliance: 0, photosRequired: 0, photosUploaded: 0 }))
   const typeIndex = new Map(byType.map((r, i) => [r.type, i]))
 
   const totals = { ok: 0, issue: 0, missing: 0, notRecorded: 0 }
@@ -226,12 +324,19 @@ export function signageSummary(sites, signages, extinguishers, types = SIGNAGE_T
       records: siteRecs.length,
       compliance: 0,
       missingTypes: [],
+      photosRequired: 0,
+      photosUploaded: 0,
     }
     for (const type of types) {
       const recs = siteRecs.filter((r) => r.type === type)
       const cell = signageCell(recs, type, extCounts[site] || 0)
       const t = byType[typeIndex.get(type)]
       t.records += recs.length
+      const pt = signagePhotoTotals(recs)
+      t.photosRequired += pt.required
+      t.photosUploaded += pt.uploaded
+      row.photosRequired += pt.required
+      row.photosUploaded += pt.uploaded
       totals[cell.status === 'none' ? 'notRecorded' : cell.status]++
       if (isTypeCovered(type, cell)) {
         row.covered++
@@ -250,6 +355,7 @@ export function signageSummary(sites, signages, extinguishers, types = SIGNAGE_T
     bySite.push(row)
   }
 
+  const photos = signagePhotoTotals(signages.filter((r) => bySiteRecords.has(r.centerName) && types.includes(r.type)))
   const cells = sites.length * types.length
   const covered = bySite.reduce((n, r) => n + r.covered, 0)
   for (const t of byType) t.compliance = sites.length ? Math.round((t.covered / sites.length) * 100) : 0
@@ -266,6 +372,8 @@ export function signageSummary(sites, signages, extinguishers, types = SIGNAGE_T
     sitesWithGaps: bySite.filter((r) => r.gaps > 0).length,
     byType: byType.sort((a, b) => a.compliance - b.compliance || a.type.localeCompare(b.type)),
     bySite: bySite.sort((a, b) => b.gaps - a.gaps || b.issues - a.issues || a.site.localeCompare(b.site)),
-    byCondition,
+    byStatus,
+    // Deployed records' photos: required vs uploaded, and who is short.
+    photos,
   }
 }

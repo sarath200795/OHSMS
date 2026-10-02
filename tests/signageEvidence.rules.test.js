@@ -1,5 +1,7 @@
-// A signage record may only BECOME Deployed with a photo and a last-checked
-// date (firestore.rules → keepsSignageEvidence). These send the writes the
+// A signage record may only BECOME Deployed with at least one photo (`photos` list,
+// or the legacy single `photo`) and a last-checked date. How many photos a FERP /
+// Fire Extinguisher sign ideally has is NOT enforced
+// (firestore.rules → keepsSignageEvidence). These send the writes the
 // register would send, and the ones an SDK client could send instead.
 //
 // The point of the "already Deployed" cases is the other half of the rule:
@@ -29,7 +31,8 @@ const as = (uid) => testEnv.authenticatedContext(uid).firestore()
 const sign = (uid, id) => doc(as(uid), 'organizations', ORG, 'signages', id)
 
 const PHOTO = { path: `orgs/${ORG}/signage-photos/a-signage.jpg`, contentType: 'image/jpeg' }
-const base = { centerName: 'Alpha', type: 'No Smoking', condition: 'OK', quantity: 1, siteId: 's1' }
+const PHOTOS = (n) => Array.from({ length: n }, (_, i) => ({ path: `orgs/${ORG}/signage-photos/p${i}.jpg`, contentType: 'image/jpeg' }))
+const base = { centerName: 'Alpha', type: 'No Smoking', quantity: 1, siteId: 's1' }
 
 beforeEach(async () => {
   await testEnv.clearFirestore()
@@ -101,6 +104,61 @@ describe('records that are already Deployed stay editable', () => {
     batch.update(doc(db, 'organizations', ORG, 'signages', 'deployed-bare'), { siteId: 's2', centerName: 'Beta' })
     batch.update(doc(db, 'organizations', ORG, 'signages', 'legacy'), { siteId: 's2', centerName: 'Beta' })
     await assertSucceeds(batch.commit())
+  })
+})
+
+describe('the photos list (and the legacy single photo)', () => {
+  const D = { ...base, status: 'Deployed', lastChecked: '2026-09-01' }
+  it('a photos list with one entry satisfies an ordinary type', async () => {
+    await assertSucceeds(setDoc(sign('mem', 'l1'), { ...D, photos: PHOTOS(1) }))
+    await assertSucceeds(setDoc(sign('mem', 'l2'), { ...D, photos: PHOTOS(3) }))
+  })
+  it.each([
+    ['an empty list', { photos: [] }],
+    ['a photos value that is not a list', { photos: 'yes' }],
+    ['a null list', { photos: null }],
+  ])('%s is refused', async (_n, extra) => {
+    await assertFails(setDoc(sign('mem', 'l3'), { ...D, ...extra }))
+  })
+  it('an empty photos list is the truth: it does not fall back to the legacy photo', async () => {
+    await assertFails(setDoc(sign('mem', 'l4'), { ...D, photos: [], photo: PHOTO }))
+  })
+  it('migrating a Planned record: photos list in, legacy photo removed', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'organizations', ORG, 'signages', 'legacy-photo'), { ...base, status: 'Planned', photo: PHOTO })
+    })
+    // The legacy photo alone already counts as one for an ordinary type.
+    await assertSucceeds(updateDoc(sign('mem', 'legacy-photo'), { status: 'Deployed', lastChecked: '2026-09-01' }))
+  })
+})
+
+describe('the photo COUNT per type is not enforced', () => {
+  const D = { ...base, status: 'Deployed', lastChecked: '2026-09-01' }
+  it('Fire Extinguisher Sign: one photo is enough whatever the quantity', async () => {
+    await assertSucceeds(setDoc(sign('mem', 'e1'), { ...D, type: 'Fire Extinguisher Sign', quantity: 5, photos: PHOTOS(1) }))
+    await assertSucceeds(setDoc(sign('mem', 'e2'), { ...D, type: 'Fire Extinguisher Sign', quantity: 5, photo: PHOTO }))
+  })
+  it('FERP: one photo is enough whatever the floors', async () => {
+    await assertSucceeds(setDoc(sign('mem', 'f1'), { ...D, type: 'FERP Signage', allFloors: true, totalFloors: 8, floorsCovered: 8, photos: PHOTOS(1) }))
+    await assertSucceeds(setDoc(sign('mem', 'f2'), { ...D, type: 'FERP Signage', allFloors: false, totalFloors: 8, floorsCovered: 3, photos: PHOTOS(2) }))
+  })
+  it('but zero photos is still refused for them', async () => {
+    await assertFails(setDoc(sign('mem', 'z1'), { ...D, type: 'Fire Extinguisher Sign', quantity: 5, photos: [] }))
+    await assertFails(setDoc(sign('mem', 'z2'), { ...D, type: 'FERP Signage', allFloors: true, totalFloors: 3 }))
+  })
+  it('moving a stored Planned extinguisher sign to Deployed needs one photo and a date', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'organizations', ORG, 'signages', 'ext-planned'), { ...base, type: 'Fire Extinguisher Sign', quantity: 4, status: 'Planned' })
+    })
+    await assertFails(updateDoc(sign('mem', 'ext-planned'), { status: 'Deployed', lastChecked: '2026-09-01' }))
+    await assertFails(updateDoc(sign('mem', 'ext-planned'), { status: 'Deployed', photos: PHOTOS(1) }))
+    await assertSucceeds(updateDoc(sign('mem', 'ext-planned'), { status: 'Deployed', lastChecked: '2026-09-01', photos: PHOTOS(1) }))
+  })
+  it('an already-Deployed extinguisher record stays editable', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'organizations', ORG, 'signages', 'ext-old'), { ...base, type: 'Fire Extinguisher Sign', quantity: 5, status: 'Deployed', photo: PHOTO })
+    })
+    await assertSucceeds(updateDoc(sign('mem', 'ext-old'), { quantity: 8, notes: 'more units' }))
   })
 })
 

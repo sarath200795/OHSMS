@@ -153,8 +153,6 @@ export const SIGNAGE_TYPES = [
 // Signage types where capturing the floor is meaningful (per-floor records).
 export const FLOOR_SIGNAGE_TYPES = ['FERP Signage']
 
-export const SIGNAGE_CONDITIONS = ['OK', 'Faded', 'Damaged', 'Missing', 'Obstructed']
-
 // Where a sign is in its life. Records written before this field existed carry
 // no status and are shown as "Not set" (SIGNAGE_STATUS_NOT_SET) — that is a
 // display label only, never stored, and an unset record stays fully valid.
@@ -172,14 +170,6 @@ export const SIGNAGE_STATUS_COLOR = {
 // capture becomes a few hundred KB. The raw pick is still capped at the shared
 // upload limit (MAX_UPLOAD_BYTES) before any of that runs.
 export const SIGNAGE_PHOTO = { maxDim: 1280, quality: 0.7 }
-
-export const SIGNAGE_CONDITION_COLOR = {
-  OK: '#16a34a',
-  Faded: '#f59e0b',
-  Damaged: '#ea580c',
-  Missing: '#dc2626',
-  Obstructed: '#b45309',
-}
 
 // ── AED (Automated External Defibrillator) inventory ─────────────────────────
 export const AED_STATUS = {

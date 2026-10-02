@@ -62,7 +62,7 @@ export const KPIS = [
     higherIsBetter: true,
     levels: ['org', 'region', 'site'],
     defaultTarget: 95,
-    help: 'Safety signage in OK condition — not faded, damaged, missing or obstructed.',
+    help: 'Safety signage with status Deployed (compliant), as a share of all signage records — Planned, Removed and Not set count as non-compliant.',
     source: 'Emergency Equipment',
   },
   {
@@ -135,10 +135,10 @@ export function fasUptime(devices = [], level = 'org', scope = '', entity = 'all
   return { value: pct(up, mine.length), numerator: up, denominator: mine.length }
 }
 
-/** Signage in OK condition. */
+/** Signage that is Deployed (compliant). */
 export function signageUptime(signs = [], level = 'org', scope = '', entity = 'all') {
   const mine = signs.filter((s) => !s.deletedAt && inScope(s, level, scope, entity))
-  const up = mine.filter((s) => (s.condition || 'OK') === 'OK').length
+  const up = mine.filter((s) => s.status === 'Deployed').length
   return { value: pct(up, mine.length), numerator: up, denominator: mine.length }
 }
 
