@@ -9,14 +9,51 @@ const bandOf = (obs, key) => assessWeather(obs).hazards.find((h) => h.key === ke
 describe('heat stress thresholds', () => {
   // Reporting starts at 40°C. Below that is an ordinary working day here, and a
   // heat row that is always lit tells nobody anything.
+  // Feels-like sets the band, with one limit: High (and severe) also need the
+  // air temperature above 40°C. These rows have a hot air so the limit is met.
   it.each([
     [20, 'none'], [30, 'none'], [35, 'none'], [39.9, 'none'],
     [40, 'low'], [44.9, 'low'],
     [45, 'moderate'], [50.9, 'moderate'],
     [51, 'high'], [55.9, 'high'],
     [56, 'severe'], [62, 'severe'],
-  ])('feels like %s°C is %s', (t, expected) => {
-    expect(bandOf({ apparentTempC: t }, 'heat')).toBe(expected)
+  ])('feels like %s°C (air 41°C) is %s', (t, expected) => {
+    expect(bandOf({ tempC: 41, apparentTempC: t }, 'heat')).toBe(expected)
+  })
+
+  // High needs the AIR above 40°C. Strictly above: 40.0 is not High, 40.1 is.
+  it.each([
+    [38, 'moderate'], [40, 'moderate'], [40.1, 'high'], [45, 'high'],
+  ])('feels like 52°C with air %s°C is %s', (airC, expected) => {
+    expect(bandOf({ tempC: airC, apparentTempC: 52 }, 'heat')).toBe(expected)
+  })
+
+  it('caps severe feels-like at Medium too while the air is 40°C or less', () => {
+    expect(bandOf({ tempC: 39, apparentTempC: 60 }, 'heat')).toBe('moderate')
+    expect(bandOf({ tempC: 40, apparentTempC: 60 }, 'heat')).toBe('moderate')
+    expect(bandOf({ tempC: 40.1, apparentTempC: 60 }, 'heat')).toBe('severe')
+  })
+
+  it('leaves Low and Medium on feels-like alone, whatever the air temperature', () => {
+    expect(bandOf({ tempC: 30, apparentTempC: 39.9 }, 'heat')).toBe('none')
+    expect(bandOf({ tempC: 30, apparentTempC: 40 }, 'heat')).toBe('low')
+    expect(bandOf({ tempC: 30, apparentTempC: 45 }, 'heat')).toBe('moderate')
+    expect(bandOf({ tempC: 38, apparentTempC: 50.9 }, 'heat')).toBe('moderate')
+  })
+
+  it('does not rate High from feels-like alone when the air temperature is missing', () => {
+    expect(bandOf({ apparentTempC: 52 }, 'heat')).toBe('moderate')
+  })
+
+  it('still rates High on dry bulb alone when there is no feels-like', () => {
+    expect(bandOf({ tempC: 52 }, 'heat')).toBe('high')
+  })
+
+  it('does not change the other hazards or the overall band for a capped heat reading', () => {
+    const r = assessWeather({ tempC: 38, apparentTempC: 52, windKph: 55 })
+    expect(r.hazards.map((h) => `${h.key}:${h.band}`)).toEqual(['wind:high', 'heat:moderate'])
+    expect(r.band).toBe('high')
+    expect(assessWeather({ tempC: 38, apparentTempC: 52 }).band).toBe('moderate')
   })
 
   it('says nothing about a warm but unremarkable day', () => {

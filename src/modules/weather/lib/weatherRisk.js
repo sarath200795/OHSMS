@@ -61,6 +61,21 @@ const round = (n) => Math.round(n)
 // and a crew in PPE feels that figure rather than the dry-bulb one.
 const HEAT_CUTS = [40, 45, 51, 56]
 
+// High needs a hot AIR, not just a hot feel. Feels-like still sets Low and
+// Medium, but a feels-like that would be High (or severe) while the air
+// temperature is at or below 40°C is capped at Medium. Strictly above: 40.0 is
+// not High, 40.1 is. A reading with no air temperature cannot show the air is
+// above 40, so it is capped too. Keep in step with functions/lib/weatherBands.js.
+const HEAT_HIGH_MIN_AIR_C = 40
+
+function heatBand(feels, airC) {
+  const b = band(feels, HEAT_CUTS)
+  if (levelOf(b) >= levelOf('high') && !(airC != null && airC > HEAT_HIGH_MIN_AIR_C)) {
+    return 'moderate'
+  }
+  return b
+}
+
 // Wind chill. NWS puts frostbite on exposed skin at 30 minutes around -28°C,
 // which anchors the severe band; the milder ones follow the usual cold-stress
 // work/warm-up guidance.
@@ -126,7 +141,7 @@ export function assessWeather(obs = {}) {
     add({
       key: 'heat',
       label: 'Heat stress',
-      band: band(feels, HEAT_CUTS),
+      band: heatBand(feels, num(tempC)),
       value: `Feels like ${round(feels)}°C`,
       affects: 'Outdoor and PPE-heavy work — schedule rest breaks, water and shade.',
     })

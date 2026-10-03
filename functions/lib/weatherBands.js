@@ -29,6 +29,21 @@ const levelOf = (b) => BANDS.indexOf(b)
 // Heat is only reported from 40°C up. The NWS caution band starts at 27°C,
 // which is an ordinary working day at these sites and lit the heat row forever.
 const HEAT_CUTS = [40, 45, 51, 56]
+
+// Heat is rated High only when the AIR temperature is above this. Feels-like
+// still sets Low and Medium, but a feels-like that would be High (or severe)
+// while the air is at or below 40°C is capped at Medium. Strictly above: 40.0
+// is not High, 40.1 is. A reading with no air temperature cannot show the air
+// is above 40, so it is capped too.
+const HEAT_HIGH_MIN_AIR_C = 40
+
+function heatBand(feels, airC) {
+  const b = band(feels, HEAT_CUTS)
+  if (levelOf(b) >= levelOf('high') && !(airC != null && airC > HEAT_HIGH_MIN_AIR_C)) {
+    return 'moderate'
+  }
+  return b
+}
 const COLD_CUTS = [10, 0, -10, -25]
 const WIND_CUTS = [29, 39, 50, 62]
 const RAIN_CUTS = [0.5, 4, 10, 30]
@@ -72,7 +87,7 @@ export function assessWeather(obs = {}) {
   const feels = num(apparentTempC) ?? num(tempC)
   if (feels != null) {
     const feelsLike = `Feels like ${round(feels)}°C`
-    add({ key: 'heat', label: 'Heat stress', band: band(feels, HEAT_CUTS), value: feelsLike })
+    add({ key: 'heat', label: 'Heat stress', band: heatBand(feels, num(tempC)), value: feelsLike })
     add({
       key: 'cold',
       label: 'Cold stress',

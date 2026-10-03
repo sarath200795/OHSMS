@@ -260,9 +260,9 @@ describe('deliverWeatherDigest', () => {
       'users/admin': user('admin', { role: 'admin' }),
     })
     const byLat = {
-      17.44: { apparentTempC: 52, precipMmHr: 5, observedAt: '2026-09-23T11:00' },
+      17.44: { tempC: 42, apparentTempC: 52, precipMmHr: 5, observedAt: '2026-09-23T11:00' },
       13.08: { apparentTempC: 30, precipMmHr: 12 },
-      28.61: { apparentTempC: 46 },
+      28.61: { tempC: 39, apparentTempC: 46 },
       19.07: { windKph: 55 },
     }
     const pinned = []
@@ -304,6 +304,36 @@ describe('deliverWeatherDigest', () => {
     // The map pins each site once, at its worst level.
     expect(pinned).toHaveLength(4)
     expect(sent[0].attachments).toHaveLength(1)
+  })
+
+  it('files a site whose feels-like is 52 but whose air is 38 under Heat Stress as Medium, not High', async () => {
+    const sent = []
+    const pinned = []
+    const store = memoryDb({
+      'organizations/orgA': { name: 'Acme' },
+      'organizations/orgA/sites/s1': { name: 'Humid', region: 'South', lat: 17.44, lng: 78.39 },
+      'organizations/orgA/sites/s2': { name: 'Scorcher', region: 'East', lat: 28.61, lng: 77.2 },
+      'users/admin': user('admin', { role: 'admin' }),
+    })
+    const byLat = {
+      17.44: { tempC: 38, apparentTempC: 52 },
+      28.61: { tempC: 40.1, apparentTempC: 52 },
+    }
+    await deliverWeatherDigest({
+      db: store,
+      mailer: mailer(sent),
+      logger,
+      scheduleTime: '2026-09-23T06:00:00.000Z',
+      orgIds: ['orgA'],
+      fetchObs: async (lat) => byLat[lat.toFixed(2)] || null,
+      renderMap: async (pins) => {
+        pinned.push(...pins)
+        return { png: PNG }
+      },
+    })
+    expect(sent).toHaveLength(1)
+    expect(sent[0].subject).toBe('Weather risk: 1 high, 1 medium')
+    expect(pinned.map((p) => p.level).sort()).toEqual(['High', 'Medium'])
   })
 
   it('still sends the tables when the map cannot be drawn', async () => {
