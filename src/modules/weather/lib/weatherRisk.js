@@ -101,9 +101,6 @@ export const RAIN_ALERT = {
   severe: 'High',
 }
 
-// WHO global UV index bands: moderate 3, high 6, very high 8, extreme 11.
-const UV_CUTS = [3, 6, 8, 11]
-
 // Metres. Below 1 km site traffic and lifting signalling become unreliable;
 // below 200 m nothing outdoors can be supervised safely.
 const VIS_CUTS = [5000, 2000, 1000, 200]
@@ -130,7 +127,7 @@ const isSnow = (code) => (code >= 71 && code <= 77) || code === 85 || code === 8
 export function assessWeather(obs = {}) {
   const {
     apparentTempC, tempC, windKph, gustKph, precipMmHr,
-    uvIndex, visibilityM, weatherCode,
+    visibilityM, weatherCode,
   } = obs
 
   const hazards = []
@@ -182,16 +179,9 @@ export function assessWeather(obs = {}) {
     })
   }
 
-  const uv = num(uvIndex)
-  if (uv != null) {
-    add({
-      key: 'uv',
-      label: 'UV exposure',
-      band: band(uv, UV_CUTS),
-      value: `UV index ${round(uv)}`,
-      affects: 'Outdoor workers — cover up, sunscreen, shade at midday.',
-    })
-  }
+  // UV is deliberately not assessed: a UV index never produces a hazard, a
+  // band, an alert or a count. `uvIndex` may still ride along on the
+  // observation as plain data.
 
   const vis = num(visibilityM)
   if (vis != null) {

@@ -392,13 +392,15 @@ describe('defect, drill, meeting and weather mail', () => {
         'East|Yard|Adverse Weather – Poor visibility',
         'East|Yard|Adverse Weather – Snow',
         'East|Yard|Adverse Weather – Thunderstorm',
-        'East|Yard|Adverse Weather – UV exposure',
         'South|Plant <script>|Heat Stress',
         'South|Plant <script>|Rain Risk',
         'South|Plant <script>|Adverse Weather – High wind',
         'West|Legacy|Rain Risk',
         'West|Legacy|Adverse Weather – High wind',
       ])
+      // UV is not a hazard. Readings stored before it was dropped never appear.
+      expect(rows.some((r) => /uv/i.test(r.type))).toBe(false)
+      expect(rows.some((r) => /sunscreen/i.test(r.precautions))).toBe(false)
       // Medium and Low readings never appear.
       expect(rows.some((r) => r.name === 'Depot' || r.name === 'Quiet')).toBe(false)
       expect(rows.every((r) => r.precautions.length > 40)).toBe(true)
@@ -534,7 +536,7 @@ describe('defect, drill, meeting and weather mail', () => {
         { appOrigin: ORIGIN, mapCid: 'weather-risk-map', windowLabel: '2026-09-23 06:00-12:00 IST' }
       )
       const { text, html } = message
-      const table = text.indexOf('HIGH-RISK SITES AND PRECAUTIONS (11 alerts at 3 sites)')
+      const table = text.indexOf('HIGH-RISK SITES AND PRECAUTIONS (10 alerts at 3 sites)')
       expect(table).toBeGreaterThan(text.indexOf('Map:'))
       expect(table).toBeGreaterThan(text.indexOf('sites at risk:'))
       expect(table).toBeLessThan(text.indexOf('HEAT STRESS ('))

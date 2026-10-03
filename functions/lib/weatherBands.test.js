@@ -130,3 +130,26 @@ describe('heat High needs the air temperature above 40°C', () => {
     expect(by).toEqual({ heat: 'Medium', rain: 'High', wind: 'High' })
   })
 })
+
+describe('UV is not a weather hazard', () => {
+  it.each([0, 3, 6, 8, 11, 14])('UV index %s produces no hazard, band or digest line', (uvIndex) => {
+    const a = assessWeather({ uvIndex })
+    expect(a.hazards).toEqual([])
+    expect(a.band).toBe('none')
+    expect(digestLevel(a.band)).toBe('')
+    expect(digestHazards(a)).toEqual([])
+    expect(digestDrivers(a)).toEqual([])
+  })
+
+  it('leaves the other hazards and the overall band exactly as they are without it', () => {
+    const base = { tempC: 41, apparentTempC: 45, windKph: 55 }
+    expect(assessWeather({ ...base, uvIndex: 12 })).toEqual(assessWeather(base))
+  })
+
+  it('still carries the UV reading on the observation as plain data', () => {
+    expect(normalizeOpenMeteo({
+      current: { time: '2026-09-23T11:00' },
+      hourly: { time: ['2026-09-23T11:00'], uv_index: [9] },
+    }).uvIndex).toBe(9)
+  })
+})

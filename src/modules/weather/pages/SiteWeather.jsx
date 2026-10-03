@@ -83,7 +83,7 @@ export default function SiteWeather() {
     <div>
       <PageHeader
         title="Weather Risk"
-        subtitle="Current conditions at each site, read as occupational risk — heat, wind, lightning, rain, UV and visibility."
+        subtitle="Current conditions at each site, read as occupational risk — heat, wind, lightning, rain and visibility."
         icon={CloudSun}
         actions={
           <div className="flex items-center gap-3">

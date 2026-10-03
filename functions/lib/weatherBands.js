@@ -3,7 +3,7 @@
 // This is a copy of src/modules/weather/lib/weatherRisk.js. The functions
 // package cannot import the SPA, and the two will disagree the day a cut-off
 // moves in only one of them. The numbers are published thresholds (NWS heat,
-// Beaufort wind, WHO UV); they are not tunable per org. Change them in both
+// Beaufort wind); they are not tunable per org. Change them in both
 // files.
 //
 // The digest only names Medium and High. In this scale that is `moderate`,
@@ -47,7 +47,6 @@ function heatBand(feels, airC) {
 const COLD_CUTS = [10, 0, -10, -25]
 const WIND_CUTS = [29, 39, 50, 62]
 const RAIN_CUTS = [0.5, 4, 10, 30]
-const UV_CUTS = [3, 6, 8, 11]
 const VIS_CUTS = [5000, 2000, 1000, 200]
 
 // The words the rain row already uses on the site page. The digest value
@@ -77,7 +76,7 @@ const round = (n) => Math.round(n)
  * digest prints it. It is not a new threshold.
  */
 export function assessWeather(obs = {}) {
-  const { apparentTempC, tempC, windKph, gustKph, precipMmHr, uvIndex, visibilityM, weatherCode } =
+  const { apparentTempC, tempC, windKph, gustKph, precipMmHr, visibilityM, weatherCode } =
     obs
   const hazards = []
   const add = (h) => {
@@ -122,15 +121,9 @@ export function assessWeather(obs = {}) {
     })
   }
 
-  const uv = num(uvIndex)
-  if (uv != null) {
-    add({
-      key: 'uv',
-      label: 'UV exposure',
-      band: band(uv, UV_CUTS),
-      value: `UV index ${round(uv)}`,
-    })
-  }
+  // UV is deliberately not assessed: a UV index never produces a hazard, a
+  // band, a digest line or a map pin. `uvIndex` may still ride along on the
+  // observation as plain data.
 
   const vis = num(visibilityM)
   if (vis != null) {

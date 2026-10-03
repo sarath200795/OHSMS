@@ -29,7 +29,7 @@ that file disagree, the file is right.
 | Document Library & SDS                  | `documents`   | `documents/`   | Versioned policies, SOPs, forms and Safety Data Sheets                                |
 | Emergency Response (FERP)               | `emergency`   | `emergency/`   | FERP contacts, evacuation plans, scenario rescue plans                                |
 | Objectives & Targets                    | `objectives`  | `objectives/`  | OH&S KPI scorecard against target at org, region and site level                       |
-| Site Weather Risk                       | `weather`     | `weather/`     | Conditions at every site read as occupational risk — heat stress, wind, lightning, UV |
+| Site Weather Risk                       | `weather`     | `weather/`     | Conditions at every site read as occupational risk — heat stress, wind, lightning |
 | CCTV Inventory & Health                 | `cctv`        | `cctv/`        | Cameras, DVRs and network devices as one chain, so a dead switch reads as one fault   |
 | Customer Escalations & Legal            | `stakeholder` | `stakeholder/` | Escalations and the legal matters they turn into                                      |
 | Central Action Tracker                  | `actions`     | `actions/`     | Every CAPA and action item across all modules, updated in place                       |

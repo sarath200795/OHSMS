@@ -336,6 +336,32 @@ describe('deliverWeatherDigest', () => {
     expect(pinned.map((p) => p.level).sort()).toEqual(['High', 'Medium'])
   })
 
+  it('does not mail or pin a site whose only issue is a high UV index', async () => {
+    const sent = []
+    const pinned = []
+    const store = memoryDb({
+      'organizations/orgA': { name: 'Acme' },
+      'organizations/orgA/sites/s1': { name: 'Sunny', region: 'South', lat: 17.44, lng: 78.39 },
+      'users/admin': user('admin', { role: 'admin' }),
+    })
+    await deliverWeatherDigest({
+      db: store,
+      mailer: mailer(sent),
+      logger,
+      scheduleTime: '2026-09-23T06:00:00.000Z',
+      orgIds: ['orgA'],
+      fetchObs: async () => ({ tempC: 30, apparentTempC: 32, uvIndex: 13 }),
+      renderMap: async (pins) => {
+        pinned.push(...pins)
+        return { png: PNG }
+      },
+    })
+    expect(pinned).toEqual([])
+    const blob = JSON.stringify(sent)
+    expect(blob).not.toMatch(/uv|sunscreen/i)
+    expect(blob).not.toContain('Sunny')
+  })
+
   it('still sends the tables when the map cannot be drawn', async () => {
     const sent = []
     const errors = []

@@ -179,8 +179,8 @@ describe('the overall verdict', () => {
   })
 
   it('sorts worst first so a bubble showing one row shows the right one', () => {
-    const r = assessWeather({ apparentTempC: 41, windKph: 55, uvIndex: 4 })
-    expect(r.hazards.map((h) => h.key)).toEqual(['wind', 'heat', 'uv'])
+    const r = assessWeather({ apparentTempC: 41, windKph: 55 })
+    expect(r.hazards.map((h) => h.key)).toEqual(['wind', 'heat'])
     const levels = r.hazards.map((h) => levelOf(h.band))
     expect(levels).toEqual([...levels].sort((a, b) => b - a))
   })
@@ -210,7 +210,7 @@ describe('the overall verdict', () => {
   })
 
   it('gives every hazard a label and the work it affects, so the UI never shows a bare number', () => {
-    const r = assessWeather({ apparentTempC: 45, windKph: 70, precipMmHr: 12, uvIndex: 11, visibilityM: 150, weatherCode: 95 })
+    const r = assessWeather({ apparentTempC: 45, windKph: 70, precipMmHr: 12, visibilityM: 150, weatherCode: 95 })
     expect(r.hazards.length).toBeGreaterThan(4)
     for (const h of r.hazards) {
       expect(h.label).toBeTruthy()
@@ -247,11 +247,11 @@ describe('summariseHazards', () => {
 
   it('puts the worst category first, then the most widespread', () => {
     const out = summariseHazards([
-      site({ uvIndex: 4 }), site({ uvIndex: 4 }), site({ uvIndex: 4 }),
+      site({ windKph: 40 }), site({ windKph: 40 }), site({ windKph: 40 }),
       site({ weatherCode: 95 }),
     ])
     expect(out[0].key).toBe('lightning')
-    expect(out[1]).toMatchObject({ key: 'uv', sites: 3 })
+    expect(out[1]).toMatchObject({ key: 'wind', sites: 3 })
   })
 
   it('does not let one site count twice for the same category', () => {
@@ -274,5 +274,19 @@ describe('summariseHazards', () => {
     const [h] = summariseHazards([site({ weatherCode: 95 })])
     expect(h.label).toBe('Thunderstorm')
     expect(h.level).toBe(levelOf('severe'))
+  })
+})
+
+describe('UV is not a weather hazard', () => {
+  it.each([0, 3, 6, 8, 11, 14])('UV index %s produces no hazard, band or count', (uvIndex) => {
+    const r = assessWeather({ uvIndex })
+    expect(r.hazards).toEqual([])
+    expect(r.band).toBe('none')
+    expect(summariseHazards([r])).toEqual([])
+  })
+
+  it('leaves the other hazards and the overall band exactly as they are without it', () => {
+    const base = { tempC: 41, apparentTempC: 45, windKph: 55 }
+    expect(assessWeather({ ...base, uvIndex: 12 })).toEqual(assessWeather(base))
   })
 })
