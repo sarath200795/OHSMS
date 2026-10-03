@@ -258,6 +258,9 @@ function readingsOf(area) {
     if (!driver) continue
     const label = plain(driver.label, 40)
     if (!label) continue
+    // UV is not a weather hazard here. Rows stored before it was dropped may
+    // still carry it; they never reach the mail.
+    if (driver.key === 'uv' || label.toLowerCase() === 'uv exposure') continue
     const level = driver.level || fallback
     if (level !== 'High' && level !== 'Medium') continue
     const key = plain(driver.key, 20) || KEY_BY_LABEL[label.toLowerCase()] || label.toLowerCase()
@@ -359,7 +362,6 @@ const PRECAUTIONS = {
   wind: 'Secure scaffolding, sheeting and loose items. Stop crane, lifting and work-at-height operations. Keep people clear of overhead and edge areas.',
   visibility:
     'Slow vehicles and plant, and keep lights and high-visibility clothing on. Use spotters and marked routes. Pause lifting and reversing where the operator cannot see.',
-  uv: 'Limit work in direct sun at midday. Use sunscreen, hats, long sleeves and eye protection. Provide shade and water, and rotate people on exposed tasks.',
   cold: 'Provide warm clothing, gloves and warm rest breaks. Limit time on exposed tasks and watch for numbness or shivering. Check for ice on walkways and equipment.',
   lightning:
     'Stop outdoor work and move people indoors or into a vehicle. Keep clear of tall structures, cranes, scaffolding and open ground. Resume only when the storm has passed.',
@@ -372,7 +374,6 @@ const PRECAUTIONS = {
 const PRECAUTION_KEY_BY_LABEL = {
   'high wind': 'wind',
   'poor visibility': 'visibility',
-  'uv exposure': 'uv',
   'cold stress': 'cold',
   thunderstorm: 'lightning',
   'freezing rain': 'ice',
