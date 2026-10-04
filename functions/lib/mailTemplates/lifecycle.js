@@ -88,6 +88,73 @@ export function renderPermitMail(permit, event, { appOrigin = '', sender = '' } 
   })
 }
 
+// LOTO permit mail (organizations/{orgId}/lotoPermits). Same rule as every other
+// body here: only fields that are readable at rest go in. The job description,
+// every name on the permit and the emergency reason are sealed, so the mail says
+// the record exists and points at the app — the people it names are the people
+// it is sent to, and they open the permit to read the detail.
+//
+// The window is printed in the plant's zone (Asia/Kolkata, the same zone the
+// schedulers run in) with the zone named, because a mail has no browser to
+// localise it: a time with no zone on a shift permit is a misread shift.
+const LOTO_WORK = {
+  machine_maintenance: 'Machine maintenance',
+  electrical_work: 'Electrical work',
+  other: 'Other',
+}
+const LOTO_ZONE = 'Asia/Kolkata'
+
+function windowText(value) {
+  const ms =
+    typeof value === 'number'
+      ? value
+      : typeof value?.toMillis === 'function'
+        ? value.toMillis()
+        : Number.NaN
+  if (!Number.isFinite(ms)) return ''
+  const when = new Date(ms).toLocaleString('en-GB', {
+    timeZone: LOTO_ZONE,
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  })
+  return `${when} IST`
+}
+
+export function renderLotoPermitMail(permit, event, { appOrigin = '', sender = '' } = {}) {
+  const ref = plain(permit?.permitNo, 40)
+  const lead = event?.subjectLead || 'LOTO permit'
+  const subject = ref ? `${lead}: ${ref}` : lead
+  const start = windowText(permit?.windowStart)
+  const end = windowText(permit?.windowEnd)
+  const rows = [
+    row('Permit', ref),
+    row('Work', LOTO_WORK[permit?.workType] || ''),
+    row('Equipment', plain(permit?.equipment, 80)),
+    row('Site', plain(permit?.site, 80)),
+    row('Region', plain(event?.region, 80)),
+    row('Entity', plain(event?.entity, 80)),
+    row('Window', start && end ? `${start} to ${end}` : ''),
+    row('Status', plain(event?.status, 80)),
+    row('By', plain(event?.actorName, 80)),
+    row('Standard', 'OSHA 29 CFR 1910.147 — control of hazardous energy'),
+    row('Detail', event?.detailNote ? plain(event.detailNote, 160) : ''),
+  ].filter(Boolean)
+  return packaged({
+    subject,
+    label: 'LOTO permit',
+    headline: event?.headline || 'A lockout/tagout permit changed.',
+    rows,
+    actionLabel: 'Open the permit',
+    path: event?.path || '/loto/permits',
+    appOrigin,
+    sender,
+  })
+}
+
 const ASSET_LABEL = {
   extinguisher: 'Fire extinguisher',
   aed: 'AED',

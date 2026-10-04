@@ -74,10 +74,41 @@ Subject-access export / erasure: `functions/lib/subjectData.js` lists permits (b
 locks. `exportSubjectData` constrains the root collections by their `orgId`
 field.
 
+## Mail (PR C)
+
+`notifyLotoPermitLifecycle` (Firestore trigger on `lotoPermits/{docId}`) mails on:
+requested, approved, rejected, extended, returned, emergency removal, due,
+overdue (repeats every 30 min; worded as an escalation from the 3rd notice).
+Withdrawn and the start of isolation are not mailed.
+
+Recipients on every event: the requester, the approver / remover / returner,
+internal personnel (by uid), and the scoped audience from `audience.js`
+(org admins + members whose site / region / entity grant reaches the permit).
+Contractors are text only and have no mailbox. Delivery reuses `circulate`
+(ledger key `lotoPermit/<org>/<permit>/<event token>/<uid>`, Brevo pacing, cap,
+retry-safe) and the shared mail layout, with the organisation's name as sender.
+Nothing sealed is read: the mail carries permit number, work type, equipment,
+site, window (printed in IST) and status, and the actor's name from their
+profile; the job description, names on the permit and the emergency reason stay
+in the app.
+
+## Due / overdue (PR C)
+
+`sweepLotoPermits` runs every 5 minutes on the **server** clock and writes
+`flags` (`windowEnd`, `dueAt`, `overdueCount`, `overdueSince`, `lastOverdueAt`)
+onto **active** permits only. Flags are keyed to the window end they were
+computed for, so an extension restarts the count. A window is two absolute
+instants, so a shift crossing midnight needs no special case. The app's badge
+uses the browser clock and defers to the server flags in the escalating
+direction. `flags` is server-only: rules refuse any client write to it.
+
 ## Retention
 
-Closed permits are kept **1 year** from closure and then purged with their events
-and attachments (`purgeClosedLotoPermits`, PR C). Open permits are never purged.
+Closed permits (returned, rejected, withdrawn, emergency removal) are kept
+**1 year** from `closedAt` and then purged with their events, attachments and
+stored files (`purgeClosedLotoPermits`, nightly 03:45 IST, at most 500 per run,
+org-prefix check on every file path, fails the invocation after finishing if
+anything could not be removed). Open permits are never purged.
 
 ## Working a permit (PR B)
 

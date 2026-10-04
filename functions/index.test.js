@@ -7,6 +7,7 @@ import {
   notifyIncidentReported,
   notifyPermitLifecycle, notifyDefectReported, notifyExtinguisherDefect, notifyAedDefect, notifyFasDefect,
   notifyDrillReport, notifyCommitteeMeeting, sendWeatherRiskDigest, retryWeatherRiskDigest,
+  notifyLotoPermitLifecycle, sweepLotoPermits, purgeClosedLotoPermits,
 } from './index.js'
 import { ASSIGNMENT_COLLECTIONS } from './lib/assignmentNotify.js'
 import { PURGEABLE } from './lib/retention.js'
@@ -597,6 +598,9 @@ describe('lifecycle mail triggers', () => {
   // Cloud Function never runs. Weather is a schedule, not a document trigger.
   const triggers = [
     notifyPermitLifecycle,
+    notifyLotoPermitLifecycle,
+    sweepLotoPermits,
+    purgeClosedLotoPermits,
     notifyDefectReported,
     notifyExtinguisherDefect,
     notifyAedDefect,
@@ -609,6 +613,20 @@ describe('lifecycle mail triggers', () => {
 
   it('exports a function for each lifecycle mail', () => {
     for (const trigger of triggers) expect(typeof trigger).toBe('function')
+  })
+
+  it('sweeps LOTO permit due/overdue flags every five minutes and purges closed ones nightly, in the plant zone', () => {
+    expect(sweepLotoPermits.__endpoint.scheduleTrigger).toMatchObject({
+      schedule: '*/5 * * * *',
+      timeZone: 'Asia/Kolkata',
+    })
+    expect(purgeClosedLotoPermits.__endpoint.scheduleTrigger).toMatchObject({
+      schedule: '45 3 * * *',
+      timeZone: 'Asia/Kolkata',
+    })
+    // Neither retries: both finish every org first and fail at the end.
+    expect(sweepLotoPermits.__endpoint.scheduleTrigger.retryConfig?.retryCount ?? 0).toBe(0)
+    expect(purgeClosedLotoPermits.__endpoint.scheduleTrigger.retryConfig?.retryCount ?? 0).toBe(0)
   })
 
   it('runs the weather digest at 00:00, 06:00, 12:00 and 18:00 Asia/Kolkata', () => {

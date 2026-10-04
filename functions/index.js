@@ -23,6 +23,8 @@ import { logger } from 'firebase-functions'
 import { claimsFor, claimsChanged, mergeClaims, revokesAccess } from './lib/claims.js'
 import { planBackfill } from './lib/docVisibility.js'
 import { classifyLocks } from './lib/defectLocks.js'
+import { deliverLotoPermitMails } from './lib/lotoPermitNotify.js'
+import { purgeClosedLotoPermits as runLotoPermitPurge, sweepLotoPermits as runLotoPermitSweep } from './lib/lotoPermitSweep.js'
 import { PURGEABLE, PURGE_AFTER_DAYS, MAX_PURGES_PER_RUN, planPurge, summarizeFailures } from './lib/retention.js'
 import { mayDeleteFile } from './lib/fileDelete.js'
 import { planExport, planScan, scanFeasibility, classifyErasure } from './lib/subjectData.js'
@@ -2589,6 +2591,56 @@ export const notifyPermitLifecycle = lifecycleTrigger(
   'permit',
   'organizations/{orgId}/permits/{docId}',
   (args) => deliverPermitMails({ ...args, readObject: readStorageObject }),
+)
+
+// Every LOTO permit write. The planner decides whether it is news; most writes
+// (a client touching updatedAt, the sweep re-writing identical flags) are not.
+export const notifyLotoPermitLifecycle = lifecycleTrigger(
+  'loto permit',
+  'organizations/{orgId}/lotoPermits/{docId}',
+  deliverLotoPermitMails,
+)
+
+// Every five minutes: flag active permits that are due or overdue against their
+// window end, on the server clock. Short enough that "due in 30 minutes" is
+// mailed near the mark; the flags are idempotent, so a missed run costs delay,
+// never a duplicate mail. retryCount 0 because it never throws except at the
+// very end, after every org has been swept.
+export const sweepLotoPermits = onSchedule(
+  { schedule: '*/5 * * * *', timeZone: SCHEDULE_TZ, region: REGION, retryCount: 0, timeoutSeconds: 300 },
+  async () => {
+    const { failures } = await runLotoPermitSweep({ db: getFirestore(), nowMs: Date.now(), logger })
+    const summary = summarizeFailures(failures)
+    if (summary) {
+      logger.error('loto permits: sweep had failures', {
+        failures: failures.slice(0, 50), byKind: summary.byKind, total: summary.total,
+      })
+      throw new Error(summary.message)
+    }
+  },
+)
+
+// 03:45, after the Recycle Bin sweep. Closed permits older than one year go,
+// with their events, attachments and stored files. Open permits are never
+// touched. Like every retention job: do all the work, THEN fail, so a sweep that
+// has been failing is a failed invocation and not a silent success.
+export const purgeClosedLotoPermits = onSchedule(
+  { schedule: '45 3 * * *', timeZone: SCHEDULE_TZ, region: REGION, retryCount: 0, timeoutSeconds: 540 },
+  async () => {
+    const { failures } = await runLotoPermitPurge({
+      db: getFirestore(),
+      store: getBucket(),
+      nowMs: Date.now(),
+      logger,
+    })
+    const summary = summarizeFailures(failures)
+    if (summary) {
+      logger.error('loto permits: purge had failures', {
+        failures: failures.slice(0, 50), byKind: summary.byKind, total: summary.total,
+      })
+      throw new Error(summary.message)
+    }
+  },
 )
 
 export const notifyDefectReported = lifecycleTrigger(
