@@ -21,6 +21,7 @@ vi.mock('firebase/firestore', () => ({
   updateDoc: async (ref, data) => { store.writes.push({ ref, data }) },
   query: (c) => c,
   limit: () => ({}),
+  where: (...a) => ({ where: a }),
 }))
 
 vi.stubEnv('VITE_ENCRYPTION', 'on')
@@ -80,6 +81,46 @@ describe('TARGETS and the policy stay in step', () => {
       expect(order.indexOf(t.parent)).toBeLessThan(order.indexOf(t.collection))
       expect(POLICY[t.parent], `${t.collection} names a parent with no policy`).toBeTruthy()
     }
+  })
+})
+
+describe('the LOTO targets', () => {
+  it('visits the permit before its events and attachments', () => {
+    const order = TARGETS.map((t) => t.collection)
+    expect(order.indexOf('lotoPermits')).toBeLessThan(order.indexOf('lotoPermits/events'))
+    expect(order.indexOf('lotoPermits')).toBeLessThan(order.indexOf('lotoPermits/attachments'))
+  })
+
+  it('reads the technician register as a ROOT collection by its tenant field', () => {
+    // Without `root`, readTarget would look under organizations/{orgId}/technicians,
+    // find nothing, and report the register as sealed.
+    expect(TARGETS.find((t) => t.collection === 'technicians')).toMatchObject({ root: true, parent: null })
+  })
+
+  it('seals a permit’s people and free text, and leaves its join keys and lock numbers readable', async () => {
+    const sealed = await sealDoc(ORG, 'lotoPermits', {
+      status: 'active', requestedBy: 'u1', personnelUids: ['u2'],
+      reason: 'Replace bearing', requestedByName: 'A. Requester',
+      internalPersonnel: [{ uid: 'u2', name: 'B. Crew' }],
+      vendorWorkers: [{ name: 'C. Vendor', company: 'ACME', contact: '555' }],
+      locks: [{ pointKey: 'k1', lockNo: 'D-1', techName: 'D. Tech' }],
+    })
+    expect(sealed.reason).toMatch(/^enc:/)
+    expect(sealed.vendorWorkers[0].name).toMatch(/^enc:/)
+    expect(sealed.vendorWorkers[0].contact).toMatch(/^enc:/)
+    expect(sealed.internalPersonnel[0].name).toMatch(/^enc:/)
+    expect(sealed.locks[0].techName).toMatch(/^enc:/)
+    expect(sealed.internalPersonnel[0].uid).toBe('u2')
+    expect(sealed.locks[0].lockNo).toBe('D-1')
+    expect(sealed.status).toBe('active')
+    expect(sealed.personnelUids).toEqual(['u2'])
+  })
+
+  it('seals a technician’s name and contact', async () => {
+    const sealed = await sealDoc(ORG, 'technicians', { orgId: ORG, name: 'A. Tech', contact: '555', lockNo: 'P-1' })
+    expect(sealed.name).toMatch(/^enc:/)
+    expect(sealed.contact).toMatch(/^enc:/)
+    expect(sealed.lockNo).toBe('P-1')
   })
 })
 

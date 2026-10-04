@@ -12,24 +12,23 @@ import {
 } from 'firebase/firestore'
 import { db } from '../../../shared/firebase'
 import { COLLECTION_READ_CAP } from '../../../shared/org/orgData'
+import { openSnapshots, sealDoc } from '../../../shared/crypto'
 
 const COL = 'technicians'
 
 export function subscribeTechnicians(orgId, cb, onError) {
   const q = query(collection(db, COL), where('orgId', '==', orgId), limit(COLLECTION_READ_CAP))
-  return onSnapshot(
-    q,
-    (snap) => {
-      const items = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
-      items.sort((a, b) => (a.name || '').localeCompare(b.name || ''))
-      cb(items)
-    },
-    onError,
-  )
+  // name and contact are sealed at rest, so the list is opened before it is
+  // sorted: sorting the ciphertext would order people by random bytes.
+  const opened = openSnapshots(orgId, COL, (items) => {
+    items.sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+    cb(items)
+  })
+  return onSnapshot(q, (snap) => opened(snap.docs.map((d) => ({ id: d.id, ...d.data() }))), onError)
 }
 
 export async function addTechnician({ orgId, name, lockNo, contact }, user) {
-  return addDoc(collection(db, COL), {
+  const body = await sealDoc(orgId, COL, {
     orgId,
     name: name.trim(),
     lockNo: (lockNo || '').trim(),
@@ -38,10 +37,16 @@ export async function addTechnician({ orgId, name, lockNo, contact }, user) {
     createdBy: user.id,
     createdAt: serverTimestamp(),
   })
+  return addDoc(collection(db, COL), body)
 }
 
-export async function updateTechnician(id, patch) {
-  return updateDoc(doc(db, COL, id), patch)
+export async function updateTechnician(id, patch, orgId) {
+  // Only the active flag is edited today. A patch that carries a sealed field
+  // must name its org, or it would be written as plaintext into a sealed column.
+  if (('name' in patch || 'contact' in patch) && !orgId) {
+    throw new Error('updateTechnician needs orgId to seal name or contact')
+  }
+  return updateDoc(doc(db, COL, id), orgId ? await sealDoc(orgId, COL, patch) : patch)
 }
 
 export async function deleteTechnician(id) {

@@ -63,7 +63,7 @@
 // attempted with sealing off would report every document as "nothing to do" and
 // look like a success, which is why that is checked first and refused loudly.
 // ─────────────────────────────────────────────────────────────────────────────
-import { collection, getDocs, updateDoc } from 'firebase/firestore'
+import { collection, getDocs, query, updateDoc, where } from 'firebase/firestore'
 import { db } from '../firebase'
 import { POLICY, policyFor, leafRefs, MEDICAL } from './policy'
 import { sealDoc, openDoc } from './index'
@@ -105,6 +105,11 @@ export const TARGETS = [
   { collection: 'consultations', parent: null },
   { collection: 'mockDrills', parent: null },
   { collection: 'mockDrills/photos', parent: 'mockDrills', sub: 'photos' },
+  { collection: 'lotoPermits', parent: null },
+  { collection: 'lotoPermits/events', parent: 'lotoPermits', sub: 'events' },
+  { collection: 'lotoPermits/attachments', parent: 'lotoPermits', sub: 'attachments' },
+  // Top-level, tenanted by an orgId field rather than by path.
+  { collection: 'technicians', parent: null, root: true },
 ]
 
 const topName = (spec) => String(spec).split('.')[0].replace('[]', '')
@@ -230,6 +235,14 @@ const subRef = (orgId, parent, id, sub) =>
 /** Every document of one target, as `{ ref, data }`. */
 async function readTarget(orgId, target) {
   const rows = []
+  if (target.root) {
+    // A root collection is shared by every tenant; the query is what keeps this
+    // run inside one organization (and the rules refuse a read that is not
+    // constrained to it).
+    const snap = await getDocs(query(collection(db, target.collection), where('orgId', '==', orgId)))
+    for (const d of snap.docs) rows.push({ ref: d.ref, data: { id: d.id, ...d.data() } })
+    return rows
+  }
   if (!target.parent) {
     const snap = await getDocs(colRef(orgId, target.collection))
     for (const d of snap.docs) rows.push({ ref: d.ref, data: { id: d.id, ...d.data() } })

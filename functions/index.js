@@ -1831,17 +1831,23 @@ export const exportSubjectData = onCall({ region: REGION, timeoutSeconds: 540 },
       // rules that normally prevent that do not apply to the Admin SDK.
       //
       // A top-level source is NOT org-scoped, so a field query against one
-      // reads every tenant's rows. Only `users` is top-level today and it joins
-      // on `docId`, which never reaches this line — so this guard is currently
-      // unreachable, and that is exactly why it is here: the next top-level
-      // source added with a field join would otherwise cross tenants silently.
-      if (q.topLevel) {
+      // reads every tenant's rows — unless the source says which FIELD carries
+      // the tenant (`orgField`: the root LOTO collections `technicians` and
+      // `locks`), in which case that field is ANDed in below. A top-level source
+      // with neither is refused: the next one added without a tenant field
+      // would otherwise cross tenants silently.
+      if (q.topLevel && !q.orgField) {
         throw new Error(
           `source ${q.path} is top-level and cannot be reached by a field query without crossing tenants`,
         )
       }
-      const col = db.collection(`organizations/${orgId}/${q.path}`)
-      const snap = await col.where(q.field, '==', q.value).limit(2000).get()
+      // arrayContains: the person is one element of a list of uids
+      // (lotoPermits.personnelUids), not the value of a field.
+      const op = q.kind === 'arrayContains' ? 'array-contains' : '=='
+      const col = q.topLevel
+        ? db.collection(q.path).where(q.orgField, '==', orgId)
+        : db.collection(`organizations/${orgId}/${q.path}`)
+      const snap = await col.where(q.field, op, q.value).limit(2000).get()
       records[q.path] = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
     } catch (e) {
       // One unreachable collection must not lose the rest of the response, but

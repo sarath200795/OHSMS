@@ -6,6 +6,7 @@ import {
   PlayCircle,
   HardHat,
   Lock,
+  FileSignature,
 } from 'lucide-react'
 import { TutorialProvider } from './context/TutorialContext'
 import Home from './pages/Home'
@@ -15,6 +16,9 @@ import CreateProcedure from './pages/procedures/CreateProcedure'
 import ProcedureDetail from './pages/procedures/ProcedureDetail'
 import Operations from './pages/operations/Operations'
 import OperateProcedure from './pages/operations/OperateProcedure'
+import Permits from './pages/permits/Permits'
+import NewPermit from './pages/permits/NewPermit'
+import PermitDetail from './pages/permits/PermitDetail'
 import Technicians from './pages/admin/Technicians'
 import LockInventory from './pages/admin/LockInventory'
 import ModuleTabs from '../../shared/layout/ModuleTabs'
@@ -24,6 +28,7 @@ const TABS = [
   { to: '/loto/inventory', label: 'Procedures', icon: ListChecks },
   { to: '/loto/register', label: 'Register', icon: ClipboardList },
   { to: '/loto/operations', label: 'Operations', icon: PlayCircle },
+  { to: '/loto/permits', label: 'Permits', icon: FileSignature },
   { to: '/loto/technicians', label: 'Technicians', icon: HardHat },
   { to: '/loto/locks', label: 'Locks', icon: Lock },
 ]
@@ -51,10 +56,13 @@ export default function LotoModule() {
           <Route path="inventory" element={<Inventory />} />
           <Route path="register" element={<Register />} />
           <Route path="operations" element={<Operations />} />
+          <Route path="permits" element={<Permits />} />
           <Route path="technicians" element={<Technicians />} />
           <Route path="locks" element={<LockInventory />} />
         </Route>
         <Route path="operations/:id" element={<OperateProcedure />} />
+        <Route path="permits/new" element={<NewPermit />} />
+        <Route path="permits/:id" element={<PermitDetail />} />
         <Route path="procedures/new" element={<CreateProcedure />} />
         <Route path="procedures/:id/revise" element={<CreateProcedure />} />
         <Route path="procedures/:id" element={<ProcedureDetail />} />

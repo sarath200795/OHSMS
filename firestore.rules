@@ -207,7 +207,7 @@ service cloud.firestore {
         : col in ['inspectionTemplates', 'inspectionRecords'] ? 'inspections'
         : col in ['audits', 'auditPlans', 'auditFindings', 'capas', 'findings'] ? 'audit'
         : col in ['permits', 'observations'] ? 'ptw'
-        : col in ['procedures', 'procedurePhotos', 'locks', 'technicians'] ? 'loto'
+        : col in ['procedures', 'procedurePhotos', 'locks', 'technicians', 'lotoPermits'] ? 'loto'
         : col in ['extinguishers', 'aeds', 'fas', 'signages', 'stretchers',
                   'firstAid', 'reports'] ? 'equipment'
         : col == 'mockDrills' ? 'drills'
@@ -932,6 +932,40 @@ service cloud.firestore {
     // server's, and nothing can be edited or removed afterwards. setPointLock,
     // addGroupMember and removeGroupMember already write `by` from the signed-in
     // user and `at` from serverTimestamp(), so no legitimate write changes.
+    // ── A procedure held by a permit ──────────────────────────────────────────
+    // While a LOTO permit is active the procedure's locks belong to it: the
+    // permit and the procedure are written in ONE transaction (services/
+    // permitActions.js), and these two conjuncts make that the only way either
+    // can change.
+    //
+    //   · `activePermit` may be SET only in the commit that makes the permit
+    //     active for THIS procedure, and CLEARED only in the commit that closes
+    //     it as returned or emergency-removed (getAfter on the permit). Without
+    //     this a writer could stamp or clear the marker by hand and the two
+    //     documents would disagree about whether the machine is isolated.
+    //   · While it is set and unchanged, the locked-point count cannot fall.
+    //     The client refuses to unlock a held procedure; this is the part that
+    //     does not depend on the client. (lockSummary is client-computed, so it
+    //     is the same trust as everywhere else it is used; the permit side is
+    //     checked in lotoPermitStart/Return/Emergency.)
+    //
+    // .get(…, null) throughout: every procedure written before this field has
+    // none, and a raising rule denies — which would refuse every edit to them.
+    function keepsActivePermit(orgId, procId, before, after) {
+      let was = before.get('activePermit', null);
+      let now = after.get('activePermit', null);
+      return (was == null && now == null)
+        || (was != null && now != null && was == now
+            && after.get('lockSummary', {}).get('lockedCount', 0)
+               >= before.get('lockSummary', {}).get('lockedCount', 0))
+        || (was == null && now != null
+            && getAfter(/databases/$(database)/documents/organizations/$(orgId)/lotoPermits/$(now.id)).data.status == 'active'
+            && getAfter(/databases/$(database)/documents/organizations/$(orgId)/lotoPermits/$(now.id)).data.procedureId == procId)
+        || (was != null && now == null
+            && getAfter(/databases/$(database)/documents/organizations/$(orgId)/lotoPermits/$(was.id)).data.status
+               in ['returned', 'emergency_removed']);
+    }
+
     // ── LOTO padlock claims ───────────────────────────────────────────────────
     // One document per padlock currently applied, keyed `${orgId}__${lockNo}`.
     // The document ID carries the value, which is what makes the uniqueness
@@ -1024,7 +1058,9 @@ service cloud.firestore {
         && isWriterOf(request.resource.data.orgId)
         && moduleAllowed(request.resource.data.orgId, legacyCol)
         && (isManagerOf(request.resource.data.orgId)
-            || keepsDecision(legacyCol, {}, request.resource.data));
+            || keepsDecision(legacyCol, {}, request.resource.data))
+        && (legacyCol != 'procedures'
+            || keepsActivePermit(request.resource.data.orgId, docId, {}, request.resource.data));
       // Pinned the same way as /qr above: the post-state branch let one org
       // capture another's document by rewriting orgId to its own in a single
       // update, which for LOTO means taking over a live isolation procedure.
@@ -1034,7 +1070,9 @@ service cloud.firestore {
         && moduleAllowed(resource.data.orgId, legacyCol)
         && request.resource.data.orgId == resource.data.orgId
         && (isManagerOf(resource.data.orgId)
-            || keepsDecision(legacyCol, resource.data, request.resource.data));
+            || keepsDecision(legacyCol, resource.data, request.resource.data))
+        && (legacyCol != 'procedures'
+            || keepsActivePermit(resource.data.orgId, docId, resource.data, request.resource.data));
       allow delete: if isLegacyOrgCollection(legacyCol)
         && resource != null && isManagerOf(resource.data.orgId);
     }
@@ -1461,6 +1499,284 @@ service cloud.firestore {
           );
       }
 
+      // ── LOTO permits (per-job layer over the isolation procedures) ──────────
+      //
+      // organizations/{orgId}/lotoPermits/{permitNo}. PATH-tenanted, unlike the
+      // root `procedures`/`locks` collections (tenanted by an orgId FIELD, see
+      // docs/LOTO-COLLECTIONS.md): the org comes from the path, so the one thing
+      // the legacy rules had to pin — the orgId in the payload — cannot be lied
+      // about here.
+      //
+      // The generic `match /{col}/{docId}` below grants any approved writer read
+      // and write on every collection it does not exclude. Rules are a permissive
+      // union, so a narrow block here restricts nothing unless that rule steps
+      // aside: `lotoPermits` is excluded in structuralOnly(), which both generic
+      // matches (and the recursive {sub=**} twin that would otherwise cover
+      // /events and /attachments) share.
+      //
+      // WHO MAY APPROVE, EXTEND AND EMERGENCY-REMOVE is lotoPermitAdmin(): an org
+      // admin. The access model (resolveAccessibleSites, audience.reachesScope)
+      // has no site- or entity-admin role — `admin` reaches every site in the
+      // org and everyone else reaches a site only through a grant, which makes
+      // them a reader of it, not an approver. If scoped admins are ever
+      // introduced, this is the one function to change on the rules side.
+      //
+      // THE STATUS MACHINE is a whitelist of moves, each with the exact set of
+      // keys it may change (`diff().affectedKeys().hasOnly(...)`). Anything not
+      // named — core fields, the server-owned `flags`, a second decision — is
+      // refused, and a permit in a closed state matches no move at all, which is
+      // what makes it immutable. The post-state is never trusted to authorise
+      // itself: every branch is judged on the document BEFORE (`resource`), and
+      // the actor and time are pinned to request.auth / request.time.
+      function lotoPermitAdmin() {
+        return isAdminOf(orgId);
+      }
+      function lotoPermitClosed(s) {
+        return s in ['returned', 'rejected', 'withdrawn', 'emergency_removed'];
+      }
+      // Requester, a named internal person, or an admin: the people the permit
+      // is about. A bystander member may read it and may not move it.
+      function lotoPermitParty(b) {
+        return b.requestedBy == request.auth.uid
+          || b.get('personnelUids', []).hasAny([request.auth.uid])
+          || lotoPermitAdmin();
+      }
+      function lotoPermitProc(id) {
+        return /databases/$(database)/documents/procedures/$(id);
+      }
+      // Fields a permit may be CREATED with. A key outside this list is refused,
+      // so approval, isolation, flags and the rest cannot be pre-seeded.
+      function lotoPermitCreateKeys() {
+        return ['orgId', 'permitNo', 'permitSeq', 'status', 'workType', 'reason', 'workOrder',
+                'shift', 'windowStart', 'windowEnd', 'requestedBy', 'requestedByName',
+                'requestedAt', 'internalPersonnel', 'personnelUids', 'vendorWorkers',
+                'procedureId', 'procedureCode', 'procedureRevision', 'equipment', 'site',
+                'siteId', 'region', 'entity', 'isolationPoints', 'pointKeys', 'pointCount',
+                'devices', 'locks', 'updatedAt'];
+      }
+      function lotoPermitCreate(permitId) {
+        let d = request.resource.data;
+        let year = string(request.time.year());
+        let seqDoc = /databases/$(database)/documents/organizations/$(orgId)/docSeq/$('lotoPermit-' + year);
+        return isWriterOf(orgId) && moduleOn(orgId, 'loto')
+          && d.keys().hasOnly(lotoPermitCreateKeys())
+          && d.keys().hasAll(['orgId', 'permitNo', 'permitSeq', 'status', 'workType', 'reason',
+                              'windowStart', 'windowEnd', 'requestedBy', 'requestedAt',
+                              'internalPersonnel', 'personnelUids', 'vendorWorkers', 'pointKeys',
+                              'pointCount', 'locks', 'procedureId', 'updatedAt'])
+          && d.orgId == orgId
+          && d.status == 'requested'
+          && d.requestedBy == request.auth.uid
+          && d.requestedAt == request.time
+          && d.updatedAt == request.time
+          // The number is the document id, and it is the counter's value: the
+          // counter transaction and this create are one commit (getAfter), so
+          // no client can choose a number or reuse one.
+          && d.permitNo == permitId
+          && permitId.matches('^LP-' + year + '-[0-9]{4,}$')
+          && d.permitSeq is int
+          && int(permitId.split('-')[2]) == d.permitSeq
+          && getAfter(seqDoc).data.n == d.permitSeq
+          && d.workType in ['machine_maintenance', 'electrical_work', 'other']
+          && d.reason is string && d.reason.size() > 0 && d.reason.size() <= 8000
+          && shortText(d.get('workOrder', ''), 200) && shortText(d.get('shift', ''), 60)
+          && shortText(d.get('requestedByName', ''), 600)
+          && d.windowStart is timestamp && d.windowEnd is timestamp
+          && d.windowEnd > d.windowStart && d.windowEnd > request.time
+          && d.windowEnd <= d.windowStart + duration.value(24, 'h')
+          && d.internalPersonnel is list && d.internalPersonnel.size() <= 50
+          && d.personnelUids is list && d.personnelUids.size() <= 50
+          && d.vendorWorkers is list && d.vendorWorkers.size() <= 50
+          && d.internalPersonnel.size() + d.vendorWorkers.size() >= 1
+          && d.pointKeys is list && d.pointKeys.size() <= 100
+          && d.locks is list && d.locks.size() == d.pointKeys.size()
+          && d.pointCount == d.pointKeys.size()
+          && d.get('isolationPoints', []).size() == d.pointCount
+          && ((d.workType == 'other' && d.pointCount == 0 && d.procedureId == '')
+              || lotoPermitProcOk(d));
+      }
+      // A permit that isolates equipment names an APPROVED procedure of THIS org,
+      // at the revision it was raised against, and takes its site, region and
+      // entity from it. Reading them from the procedure is what stops a
+      // requester filing against one plant under another's scope — the scope
+      // decides who is mailed.
+      function lotoPermitProcOk(d) {
+        let pr = get(lotoPermitProc(d.procedureId)).data;
+        return d.procedureId is string && d.procedureId != ''
+          && pr.orgId == orgId
+          && pr.status == 'approved'
+          && pr.get('revision', 0) == d.procedureRevision
+          && pr.isolationPoints.size() == d.pointCount
+          && d.pointCount >= 1
+          && d.siteId == pr.get('siteId', '')
+          && d.region == pr.get('region', '')
+          && d.entity == pr.get('entity', '')
+          && d.equipment == pr.equipment;
+      }
+      // Approve / reject. Admin only, never on a document that is not waiting,
+      // and not the requester's own request unless the approver says why there
+      // was nobody else (the UI offers it only when no other admin exists).
+      function lotoPermitDecision(b, a, changed) {
+        return lotoPermitAdmin()
+          && b.status == 'requested'
+          && a.status in ['approved', 'rejected']
+          && changed.hasOnly(['status', 'approval', 'closedAt', 'updatedAt'])
+          && a.approval.by == request.auth.uid
+          && a.approval.at == request.time
+          && (a.status == 'approved' ? a.windowEnd > request.time : a.closedAt == request.time)
+          && (a.approval.by != b.requestedBy
+              || (a.approval.get('selfApproved', false) == true
+                  && a.approval.get('selfApprovalReason', '') is string
+                  && a.approval.get('selfApprovalReason', '').size() > 0));
+      }
+      function lotoPermitWithdraw(b, a, changed) {
+        return b.status in ['requested', 'approved']
+          && a.status == 'withdrawn'
+          && (b.requestedBy == request.auth.uid || lotoPermitAdmin())
+          && changed.hasOnly(['status', 'closure', 'closedAt', 'updatedAt'])
+          && a.closure.by == request.auth.uid
+          && a.closedAt == request.time;
+      }
+      // approved -> active. The permit may start only with a scan recorded for
+      // EVERY isolation point, inside its window, and only in the same commit
+      // that stamps the procedure with this permit and locks all its points
+      // (getAfter on the procedure). The procedure side is judged by
+      // keepsActivePermit below, so neither document can be written without the
+      // other agreeing.
+      function lotoPermitStart(permitId, b, a, changed) {
+        return lotoPermitParty(b)
+          && b.status == 'approved'
+          && a.status == 'active'
+          && request.time < b.windowEnd
+          && changed.hasOnly(['status', 'isolation', 'startedAt', 'updatedAt'])
+          && a.startedAt == request.time
+          && a.isolation.by == request.auth.uid
+          && a.isolation.at == request.time
+          && a.isolation.scans.keys().hasAll(b.pointKeys)
+          && (b.pointCount == 0
+              || (get(lotoPermitProc(b.procedureId)).data.get('activePermit', null) == null
+                  && getAfter(lotoPermitProc(b.procedureId)).data.get('activePermit', null) != null
+                  && getAfter(lotoPermitProc(b.procedureId)).data.activePermit.id == permitId
+                  && getAfter(lotoPermitProc(b.procedureId)).data.lockSummary.lockedCount == b.pointCount));
+      }
+      // active -> active with a later end. Admin only; the extension is capped at
+      // a day past the old end and appends exactly one record.
+      function lotoPermitExtend(b, a, changed) {
+        return lotoPermitAdmin()
+          && b.status == 'active'
+          && a.status == 'active'
+          && changed.hasOnly(['windowEnd', 'extensions', 'updatedAt'])
+          && a.windowEnd is timestamp
+          && a.windowEnd > b.windowEnd
+          && a.windowEnd <= b.windowEnd + duration.value(24, 'h')
+          && a.extensions is list
+          && a.extensions.size() == b.get('extensions', []).size() + 1;
+      }
+      // Both ways out of active release every lock in the commit that closes the
+      // permit, and say so on the procedure (activePermit cleared, nothing
+      // locked). A permit cannot be closed while the equipment is still locked
+      // to it, nor the equipment freed while the permit stays active.
+      function lotoPermitReleased(b) {
+        return b.pointCount == 0
+          || (getAfter(lotoPermitProc(b.procedureId)).data.get('activePermit', null) == null
+              && getAfter(lotoPermitProc(b.procedureId)).data.lockSummary.lockedCount == 0);
+      }
+      function lotoPermitReturn(b, a, changed) {
+        return lotoPermitParty(b)
+          && b.status == 'active'
+          && a.status == 'returned'
+          && changed.hasOnly(['status', 'closure', 'closedAt', 'returnChecks', 'returns', 'updatedAt'])
+          && a.closedAt == request.time
+          && a.closure.by == request.auth.uid
+          && a.returnChecks.toolsRemoved == true
+          && a.returnChecks.guardsReplaced == true
+          && a.returnChecks.personnelClear == true
+          && a.returnChecks.affectedNotified == true
+          && a.returns.keys().hasAll(b.pointKeys)
+          && lotoPermitReleased(b);
+      }
+      function lotoPermitEmergency(b, a, changed) {
+        return lotoPermitAdmin()
+          && b.status == 'active'
+          && a.status == 'emergency_removed'
+          && changed.hasOnly(['status', 'emergency', 'closedAt', 'updatedAt'])
+          && a.closedAt == request.time
+          && a.emergency.by == request.auth.uid
+          && a.emergency.reason is string && a.emergency.reason.size() > 0
+          && a.emergency.attest.ownerUnavailable == true
+          && a.emergency.attest.equipmentInspected == true
+          && a.emergency.attest.ownerWillBeTold == true
+          && lotoPermitReleased(b);
+      }
+      // Dispatch on the status being LEFT, so a request is judged by the one or
+      // two moves that can start from it. Trying every move in turn spent the
+      // whole 1000-expression budget on a denied write (each isAdminOf is a
+      // profile read plus four comparisons), which made the denial real for the
+      // wrong reason and left no headroom for a legitimate write.
+      function lotoPermitUpdate(permitId) {
+        let b = resource.data;
+        let a = request.resource.data;
+        let changed = a.diff(b).affectedKeys();
+        return isWriterOf(orgId) && moduleOn(orgId, 'loto')
+          && a.orgId == orgId
+          && a.updatedAt == request.time
+          && (b.status == 'requested'
+                ? (a.status == 'withdrawn'
+                    ? lotoPermitWithdraw(b, a, changed)
+                    : lotoPermitDecision(b, a, changed))
+            : b.status == 'approved'
+                ? (a.status == 'withdrawn'
+                    ? lotoPermitWithdraw(b, a, changed)
+                    : lotoPermitStart(permitId, b, a, changed))
+            : b.status == 'active'
+                ? (a.status == 'active'
+                    ? lotoPermitExtend(b, a, changed)
+                    : a.status == 'returned'
+                        ? lotoPermitReturn(b, a, changed)
+                        : lotoPermitEmergency(b, a, changed))
+            // returned / rejected / withdrawn / emergency_removed: no move.
+            : false);
+      }
+
+      match /lotoPermits/{permitId} {
+        allow read: if isApprovedMemberOf(orgId) && moduleOn(orgId, 'loto');
+        allow create: if lotoPermitCreate(permitId);
+        allow update: if lotoPermitUpdate(permitId);
+        // Never from a client. The one-year purge (functions) is the only
+        // deletion, and the Admin SDK does not consult these rules.
+        allow delete: if false;
+
+        // The permit's own timeline. Append-only: who did what, stamped by the
+        // server. Written in the same commit as the move it records, so `get`
+        // sees the permit BEFORE that move — an event can be added to a permit
+        // that is still open and never to one that has already closed.
+        match /events/{eventId} {
+          allow read: if isApprovedMemberOf(orgId) && moduleOn(orgId, 'loto');
+          allow create: if isWriterOf(orgId) && moduleOn(orgId, 'loto')
+            && request.resource.data.keys().hasOnly(['type', 'by', 'byName', 'at', 'note', 'meta'])
+            && request.resource.data.keys().hasAll(['type', 'by', 'at'])
+            && request.resource.data.by == request.auth.uid
+            && request.resource.data.at == request.time
+            && request.resource.data.type in ['requested', 'approved', 'rejected', 'withdrawn',
+                                              'started', 'extended', 'returned',
+                                              'emergency_removed']
+            && !lotoPermitClosed(get(/databases/$(database)/documents/organizations/$(orgId)/lotoPermits/$(permitId)).data.status);
+          allow update, delete: if false;
+        }
+
+        // Files attached to a permit. The pointer only; the bytes sit under the
+        // org's storage prefix. Create-only while the permit is open.
+        match /attachments/{attachmentId} {
+          allow read: if isApprovedMemberOf(orgId) && moduleOn(orgId, 'loto');
+          allow create: if isWriterOf(orgId) && moduleOn(orgId, 'loto')
+            && request.resource.data.keys().hasOnly(['name', 'path', 'size', 'contentType', 'by', 'byName', 'at'])
+            && request.resource.data.by == request.auth.uid
+            && request.resource.data.at == request.time
+            && !lotoPermitClosed(get(/databases/$(database)/documents/organizations/$(orgId)/lotoPermits/$(permitId)).data.status);
+          allow update, delete: if false;
+        }
+      }
+
       // Document-id counters, one document per kind, holding a single integer.
       //
       // Every member must be able to increment these — reserving an id is what
@@ -1800,6 +2116,11 @@ service cloud.firestore {
         // same reason as notifications: a narrow `if false` below restricts
         // nothing while this generic grant still matches the collection.
         && col != 'weatherDigestRuns'
+        // 'lotoPermits' has its own status machine and its own subcollections
+        // (events, attachments), written above. The generic grant would let any
+        // writer approve, edit or delete a permit in one setDoc, and its
+        // recursive twin would reopen /events, which is append-only.
+        && col != 'lotoPermits'
         && notKeyset(col, docId);
     }
     function genericReadable(col, docId) {
