@@ -157,6 +157,40 @@ export const RECORD_CLASSES = [
     counselMustSign: 'Whether leftover contact rows may be deleted when the person leaves.',
   },
   {
+    path: 'technicians',
+    class: ERASABLE,
+    proposedPeriod: NEEDS_LEGAL_SIGN_OFF,
+    proposedPeriodNote: 'The list of people authorised to apply a lock. Name and contact only.',
+    livePurge: false,
+    recycleBin: false,
+    counselMustSign: 'Whether a removed technician’s register entry may be deleted, and after how long.',
+  },
+  {
+    path: 'locks',
+    class: 'operational',
+    proposedPeriod: 'kept while in the register',
+    proposedPeriodNote: 'Padlock register: a lock number and a type. Holds no name.',
+    livePurge: false,
+    recycleBin: false,
+    counselMustSign: null,
+  },
+  // Owner decision: a closed LOTO permit lives one year, then goes — with its
+  // events and attachments. 'operational' (like the equipment registers) because
+  // this is a signed period, not a proposal awaiting counsel, and it runs in its
+  // OWN sweep (purgeClosedLotoPermits), not through planLiveAgePurge, whose flag
+  // stays off for every personal-data class.
+  {
+    path: 'lotoPermits',
+    class: 'operational',
+    proposedPeriod: '1 year after closure',
+    proposedPeriodNote:
+      'Closed permits only (returned, rejected, withdrawn, emergency removal). An open permit is never purged. ' +
+      'Own sweep: purgeClosedLotoPermits; constant LOTO_PERMIT_RETENTION_DAYS.',
+    livePurge: false,
+    recycleBin: false,
+    counselMustSign: null,
+  },
+  {
     path: 'extinguishers',
     class: 'operational',
     proposedPeriod: `${RECYCLE_BIN_DAYS} days after Recycle Bin`,

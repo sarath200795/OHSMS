@@ -145,6 +145,61 @@ export const SUBJECT_SOURCES = [
   { path: 'trainingAssignments', joins: [{ kind: 'field', field: 'employeeUid', key: 'uid' }], retention: ERASABLE, why: 'An assignment is scheduling, not a safety record.' },
   { path: 'trainingRequests', joins: [{ kind: 'field', field: 'employeeUid', key: 'uid' }], retention: ERASABLE, why: 'A request to attend; carries no safety evidence once resolved.' },
 
+  // ── LOTO ───────────────────────────────────────────────────────────────────
+  // A per-job lockout permit names the requester, approver, internal crew (by
+  // uid AND name) and contractors (name only — they have no account). Reached by
+  // uid for the first three; contractors can only be found by a scan.
+  //
+  // ERASABLE with a one-year sweep (purgeClosedLotoPermits), not STATUTORY: the
+  // owner decided a closed permit is kept for a year and then destroyed, and
+  // 29 CFR 1910.147 asks for a periodic-inspection certification, not a record of
+  // every job. If counsel later wants permits kept for an injury investigation,
+  // the retention window is LOTO_PERMIT_RETENTION_DAYS in lotoPermitSweep.js.
+  {
+    path: 'lotoPermits',
+    joins: [
+      { kind: 'field', field: 'requestedBy', key: 'uid' },
+      { kind: 'arrayContains', field: 'personnelUids', key: 'uid' },
+    ],
+    mentions: [
+      'requestedByName',
+      'internalPersonnel[].name',
+      'vendorWorkers[].name',
+      'vendorWorkers[].company',
+      'vendorWorkers[].contact',
+      'locks[].techName',
+      'approval.byName',
+      'closure.byName',
+      'emergency.byName',
+    ],
+    retention: ERASABLE,
+    why: 'A per-job lockout permit. Kept one year after it closes, then purged; nothing here is a statutory record of its own.',
+  },
+  { path: 'lotoPermits/events', parent: 'lotoPermits', mentions: ['byName', 'note'], retention: ERASABLE, why: 'The permit’s timeline; goes with it.' },
+  { path: 'lotoPermits/attachments', parent: 'lotoPermits', mentions: ['name', 'byName'], files: true, retention: ERASABLE, why: 'Files attached to a permit; goes with it.' },
+  // The register of authorised technicians. A ROOT collection tenanted by an
+  // `orgId` field (not under organizations/{orgId}), hence `topLevel` +
+  // `orgField`: any query against it MUST also constrain that field or it reads
+  // every tenant (see exportSubjectData).
+  {
+    path: 'technicians',
+    topLevel: true,
+    orgField: 'orgId',
+    mentions: ['name', 'contact'],
+    retention: ERASABLE,
+    why: 'The list of people authorised to apply a lock. Remove the person and the entry has no subject.',
+  },
+  // Padlock register: a lock number and a type. No name or contact is stored; the
+  // only personal link is the uid of whoever created the row.
+  {
+    path: 'locks',
+    topLevel: true,
+    orgField: 'orgId',
+    joins: [{ kind: 'field', field: 'createdBy', key: 'uid' }],
+    retention: ERASABLE,
+    why: 'The padlock register. Holds no name; the creator uid is the only link to a person.',
+  },
+
   // ── Emergency response ─────────────────────────────────────────────────────
   { path: 'erpContacts', joins: [{ kind: 'field', field: 'employeeUid', key: 'uid' }], retention: ERASABLE, why: 'A contact list entry. Remove the person and the entry has no subject.' },
   {
@@ -182,6 +237,8 @@ export const EXPECTED_SEALED = [
   'illnesses', 'illnesses/files',
   'consultations',
   'mockDrills', 'mockDrills/photos',
+  'lotoPermits', 'lotoPermits/events', 'lotoPermits/attachments',
+  'technicians',
 ]
 
 /**
@@ -201,6 +258,9 @@ export function planExport(subject = {}) {
       queries.push({
         path: src.path,
         topLevel: Boolean(src.topLevel),
+        // Set on a root collection that is tenanted by a FIELD. The executor
+        // must add `where(orgField, '==', orgId)` or it reads every tenant.
+        orgField: src.orgField || null,
         parent: src.parent || null,
         kind: join.kind,
         field: join.field || null,

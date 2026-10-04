@@ -271,6 +271,64 @@ export const POLICY = {
     ],
   },
 
+  // ── LOTO ───────────────────────────────────────────────────────────────────
+  //
+  // Per-job permits (modules/loto — organizations/{orgId}/lotoPermits). The
+  // names of who asked, who approved, who did the work and whose lock is on
+  // which point are personal data; so are the contractors, who are held ONLY as
+  // text on the permit and have no account to hang a uid on. Free-text
+  // justifications are sealed with them — they name people ("Ravi's lock",
+  // "called X on the radio") the way incident narratives do.
+  //
+  // Left readable on purpose: the permit number, status, window, work type, the
+  // site/region/entity (the mail scope and every filter), the procedure ids and
+  // the lock NUMBERS. A padlock number identifies a padlock, not a person, and
+  // the server needs it to explain a refused lock. Uids are join keys, as
+  // everywhere else (requestedBy, personnelUids, approval.by).
+  //
+  // The scan and return maps are keyed by isolation-point key and hold only
+  // times and uids, so there is nothing in them to seal — which is also why they
+  // are maps: a path with a dynamic key cannot be written in this table.
+  lotoPermits: {
+    keyClass: GENERAL,
+    fields: [
+      'reason',
+      'requestedByName',
+      'internalPersonnel[].name',
+      'vendorWorkers[].name',
+      'vendorWorkers[].company',
+      'vendorWorkers[].contact',
+      'locks[].techName',
+      'approval.byName',
+      'approval.note',
+      'approval.selfApprovalReason',
+      'extensions[].reason',
+      'extensions[].byName',
+      'closure.byName',
+      'closure.note',
+      'emergency.byName',
+      'emergency.reason',
+    ],
+  },
+  'lotoPermits/events': {
+    keyClass: GENERAL,
+    fields: ['byName', 'note'],
+  },
+  'lotoPermits/attachments': {
+    keyClass: GENERAL,
+    fields: ['name', 'byName'],
+  },
+  // The authorised-technician register. Root collection tenanted by an orgId
+  // FIELD (docs/LOTO-COLLECTIONS.md), not under organizations/{orgId}, so the
+  // backfill reads it by that field (`root: true` on its TARGETS entry). This
+  // was the known gap: a technician's name and phone/email sat in the clear
+  // while the permit that now refers to them is sealed. The name copied onto a
+  // procedure's lockState at lock time is a separate, still-open copy.
+  technicians: {
+    keyClass: GENERAL,
+    fields: ['name', 'contact'],
+  },
+
   // ── Mock drills / emergency response records ───────────────────────────────
   // `score`, `outcome`, `eventType`, `scenario` and the timing numbers stay
   // readable: the scorecard, the KPI roll-ups and the site filters group by

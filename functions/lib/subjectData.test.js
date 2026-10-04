@@ -142,3 +142,40 @@ describe('classifying an erasure request', () => {
     expect(total).toBe(SUBJECT_SOURCES.length)
   })
 })
+
+describe('the LOTO permit sources', () => {
+  it('finds a person’s permits by the uid that raised them and by the crew list', () => {
+    const q = planExport({ uid: 'u1' }).filter((x) => x.path === 'lotoPermits')
+    expect(q.map((x) => [x.kind, x.field]).sort()).toEqual([
+      ['arrayContains', 'personnelUids'],
+      ['field', 'requestedBy'],
+    ])
+  })
+
+  it('names contractors and the people on a permit as scan-only mentions', () => {
+    const scan = Object.fromEntries(planScan().map((s) => [s.path, s]))
+    expect(scan.lotoPermits.fields).toEqual(
+      expect.arrayContaining(['vendorWorkers[].name', 'internalPersonnel[].name', 'locks[].techName']),
+    )
+    expect(scan.technicians.fields).toEqual(['name', 'contact'])
+  })
+
+  // The guard in exportSubjectData refuses a top-level field query that is not
+  // tenant-constrained. This is the other half: a source that is top-level AND
+  // joined by field must say which field carries the tenant, or the export
+  // would refuse it every time — and "refused" reads as "nothing found".
+  it('gives every top-level field-joined source its tenant field', () => {
+    for (const s of SUBJECT_SOURCES) {
+      if (!s.topLevel) continue
+      const byField = (s.joins || []).some((j) => j.kind !== 'docId')
+      if (byField) expect(s.orgField, s.path).toBeTruthy()
+    }
+    const locks = planExport({ uid: 'u1' }).find((x) => x.path === 'locks')
+    expect(locks).toMatchObject({ topLevel: true, orgField: 'orgId', field: 'createdBy' })
+  })
+
+  it('keeps permits erasable and out of the Recycle Bin sweep', () => {
+    const permits = SUBJECT_SOURCES.find((s) => s.path === 'lotoPermits')
+    expect(permits.retention).toBe(ERASABLE)
+  })
+})

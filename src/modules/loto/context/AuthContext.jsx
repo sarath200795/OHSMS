@@ -28,6 +28,10 @@ export const useAuth = createModuleAuth(ROLE_MAP, ROLES.TECHNICIAN, (a, role, pr
         }
       : profile,
     can: (permission) => a.isAdmin || perms.includes(permission),
+    // The platform role, before this module's mapping. An auditor maps onto
+    // `technician` here but cannot write at all (isWriterOf), so a screen that
+    // offers a write must ask this, not `can()`.
+    platformRole: a.role,
     firebaseUser: a.user,
     profileStatus: a.profile?.status || (a.loading ? 'loading' : 'none'),
     org: { id: a.orgId, name: a.orgName },
