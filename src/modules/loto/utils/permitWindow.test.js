@@ -1,6 +1,12 @@
 import { describe, it, expect } from 'vitest'
 import {
-  toMs, permitClock, windowFromShift, windowProblem, windowState, formatSpan, localDateInput,
+  toMs,
+  permitClock,
+  windowFromShift,
+  windowProblem,
+  windowState,
+  formatSpan,
+  localDateInput,
 } from './permitWindow'
 
 const at = (y, mo, d, h, mi = 0) => new Date(y, mo - 1, d, h, mi).getTime()
@@ -81,7 +87,10 @@ describe('windowState — against the window end, across midnight', () => {
   })
   it('reads Firestore Timestamp-like values', () => {
     const ts = (ms) => ({ seconds: Math.floor(ms / 1000), nanoseconds: 0 })
-    expect(windowState({ windowStart: ts(night.startMs), windowEnd: ts(night.endMs) }, night.endMs + 1).state).toBe('overdue')
+    expect(
+      windowState({ windowStart: ts(night.startMs), windowEnd: ts(night.endMs) }, night.endMs + 1)
+        .state
+    ).toBe('overdue')
   })
   it('is unknown, never overdue, when there is no end', () => {
     expect(windowState({}, Date.now()).state).toBe('unknown')
@@ -125,15 +134,37 @@ describe('permitClock', () => {
   })
 
   it('reads a night shift correctly after midnight', () => {
-    const night = { status: 'active', windowStart: at(2026, 10, 5, 22), windowEnd: at(2026, 10, 6, 6) }
+    const night = {
+      status: 'active',
+      windowStart: at(2026, 10, 5, 22),
+      windowEnd: at(2026, 10, 6, 6),
+    }
     // 01:00 the next day is INSIDE the window, not "before 22:00".
     expect(permitClock(night, at(2026, 10, 6, 1)).state).toBe('running')
     expect(permitClock(night, at(2026, 10, 6, 6, 5)).state).toBe('overdue')
   })
 
   it('lets the server flag escalate a slow browser clock, never soften it', () => {
-    expect(permitClock({ ...win, status: 'active', flags: { overdue: true } }, noon).state).toBe('overdue')
-    expect(permitClock({ ...win, status: 'active', flags: { due: true } }, noon).state).toBe('due')
-    expect(permitClock({ ...win, status: 'active', flags: { due: true } }, at(2026, 10, 5, 15)).state).toBe('overdue')
+    const end = win.windowEnd
+    const active = { ...win, status: 'active' }
+    expect(
+      permitClock(
+        { ...active, flags: { windowEnd: end, overdueCount: 1, overdueSince: end } },
+        noon
+      ).state
+    ).toBe('overdue')
+    expect(permitClock({ ...active, flags: { windowEnd: end, dueAt: 1 } }, noon).state).toBe('due')
+    expect(
+      permitClock({ ...active, flags: { windowEnd: end, dueAt: 1 } }, at(2026, 10, 5, 15)).state
+    ).toBe('overdue')
+  })
+
+  it('ignores flags that were computed for a window since extended', () => {
+    const stale = {
+      ...win,
+      status: 'active',
+      flags: { windowEnd: win.windowEnd - 3600_000, overdueCount: 4, dueAt: 1 },
+    }
+    expect(permitClock(stale, noon).state).toBe('running')
   })
 })

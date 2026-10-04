@@ -23,7 +23,8 @@ export function toMs(value) {
   if (typeof value === 'number') return value
   if (value instanceof Date) return value.getTime()
   if (typeof value.toMillis === 'function') return value.toMillis()
-  if (typeof value.seconds === 'number') return value.seconds * 1000 + Math.floor((value.nanoseconds || 0) / 1e6)
+  if (typeof value.seconds === 'number')
+    return value.seconds * 1000 + Math.floor((value.nanoseconds || 0) / 1e6)
   const t = Date.parse(value)
   return Number.isNaN(t) ? NaN : t
 }
@@ -49,7 +50,11 @@ export function windowFromShift({ date, start, end }) {
   if (!d || !s || !e) return null
   const [y, m, day] = [Number(d[1]), Number(d[2]), Number(d[3])]
   const startDate = new Date(y, m - 1, day, Number(s[1]), Number(s[2]), 0, 0)
-  if (startDate.getFullYear() !== y || startDate.getMonth() !== m - 1 || startDate.getDate() !== day) {
+  if (
+    startDate.getFullYear() !== y ||
+    startDate.getMonth() !== m - 1 ||
+    startDate.getDate() !== day
+  ) {
     return null // 2026-02-31 and friends
   }
   let endDate = new Date(y, m - 1, day, Number(e[1]), Number(e[2]), 0, 0)
@@ -60,7 +65,8 @@ export function windowFromShift({ date, start, end }) {
 
 /** Why a window is not acceptable, or '' when it is. */
 export function windowProblem(startMs, endMs, { nowMs = Date.now() } = {}) {
-  if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return 'Enter a valid start and end for the shift window.'
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs))
+    return 'Enter a valid start and end for the shift window.'
   if (endMs <= startMs) return 'The window must end after it starts.'
   if (endMs - startMs > MAX_WINDOW_HOURS * HOUR) {
     return `A permit window cannot be longer than ${MAX_WINDOW_HOURS} hours.`
@@ -87,7 +93,8 @@ export function windowState(permit, nowMs = Date.now(), dueMinutes = DUE_SOON_MI
   const msToEnd = endMs - nowMs
   if (msToEnd <= 0) return { state: 'overdue', msToEnd, overdueMs: -msToEnd }
   if (msToEnd <= dueMinutes * MIN) return { state: 'due', msToEnd, overdueMs: 0 }
-  if (Number.isFinite(startMs) && nowMs < startMs) return { state: 'upcoming', msToEnd, overdueMs: 0 }
+  if (Number.isFinite(startMs) && nowMs < startMs)
+    return { state: 'upcoming', msToEnd, overdueMs: 0 }
   return { state: 'running', msToEnd, overdueMs: 0 }
 }
 
@@ -114,19 +121,30 @@ export function localDateInput(ms = Date.now()) {
  * matters. Only a permit that is still OPEN has one: a closed permit is never
  * "overdue", it is history.
  *
- * `flags.overdue` / `flags.due` are written by the server scheduler, against the
- * SERVER clock. They win over this browser's clock in the escalating direction:
- * a laptop whose clock is an hour slow must not show "running" for a permit the
- * server has already flagged overdue. They never make a permit LESS late.
+ * `flags` are written by the server scheduler against the SERVER clock
+ * (functions/lib/lotoPermitSweep.js: `dueAt`, `overdueCount`, keyed to the
+ * `windowEnd` they were computed for). They win over this browser's clock in the
+ * escalating direction: a laptop whose clock is an hour slow must not show
+ * "running" for a permit the server has already flagged overdue. They never make
+ * a permit LESS late, and flags for an older window (before an extension) are
+ * ignored.
  */
 export function permitClock(permit, nowMs = Date.now()) {
   if (!permit || !OPEN_STATUSES.includes(permit.status)) return null
   const local = windowState(permit, nowMs)
-  if (permit.flags?.overdue && local.state !== 'overdue') {
-    return { ...local, state: 'overdue', overdueMs: Math.max(local.overdueMs, 0) }
-  }
-  if (permit.flags?.due && (local.state === 'running' || local.state === 'upcoming')) {
-    return { ...local, state: 'due' }
+  const flags = permit.flags
+  if (flags && flags.windowEnd === toMs(permit.windowEnd)) {
+    if (flags.overdueCount > 0 && local.state !== 'overdue') {
+      const since = Number(flags.overdueSince)
+      return {
+        ...local,
+        state: 'overdue',
+        overdueMs: Math.max(local.overdueMs, Number.isFinite(since) ? nowMs - since : 0, 0),
+      }
+    }
+    if (flags.dueAt && (local.state === 'running' || local.state === 'upcoming')) {
+      return { ...local, state: 'due' }
+    }
   }
   return local
 }
