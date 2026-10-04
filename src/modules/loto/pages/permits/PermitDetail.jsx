@@ -1,5 +1,9 @@
+import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { usePermit, useNow } from '../../hooks/usePermits'
+import { subscribeOrgUsers } from '../../../../shared/org/orgData'
+import { useAuth } from '../../context/AuthContext'
+import { PERMISSIONS } from '../../constants/roles'
+import { usePermit, usePermitEvents, useNow } from '../../hooks/usePermits'
 import { workTypeLabel } from '../../constants/permits'
 import { deviceLabel, energySourceByKey } from '../../constants/energySources'
 import { permitClock, toMs } from '../../utils/permitWindow'
@@ -9,6 +13,8 @@ import Button from '../../components/ui/Button'
 import Spinner from '../../components/ui/Spinner'
 import { PermitClockBadge, PermitStatusBadge } from '../../components/permits/PermitBadges'
 import PermitStandard from '../../components/permits/PermitStandard'
+import PermitActions from '../../components/permits/PermitActions'
+import PermitTimeline from '../../components/permits/PermitTimeline'
 
 const fmt = (value) => {
   const ms = toMs(value)
@@ -27,8 +33,15 @@ function Row({ label, children }) {
 export default function PermitDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const { profile, can, platformRole } = useAuth()
   const { permit, loading } = usePermit(id)
+  const events = usePermitEvents(id)
   const now = useNow()
+  const [users, setUsers] = useState([])
+  useEffect(() => {
+    if (!profile?.orgId) return undefined
+    return subscribeOrgUsers(profile.orgId, setUsers)
+  }, [profile?.orgId])
 
   if (loading) {
     return (
@@ -50,6 +63,13 @@ export default function PermitDetail() {
     )
   }
 
+  const isAdmin = can(PERMISSIONS.PERMIT_APPROVE)
+  const isParty =
+    isAdmin || permit.requestedBy === profile.id || (permit.personnelUids || []).includes(profile.id)
+  // Self-approval is only ever offered when nobody else could approve.
+  const otherAdmin = users.some(
+    (u) => u.role === 'admin' && u.status === 'approved' && u.uid && u.uid !== permit.requestedBy,
+  )
   const lockFor = (key) => (permit.locks || []).find((l) => l.pointKey === key)
 
   return (
@@ -130,6 +150,17 @@ export default function PermitDetail() {
           </ul>
         </Card>
       )}
+
+      <PermitActions
+        orgId={profile.orgId}
+        permit={permit}
+        user={profile}
+        isAdmin={isAdmin}
+        isParty={isParty}
+        otherAdmin={otherAdmin}
+        canWrite={platformRole !== 'auditor'}
+      />
+      <PermitTimeline permit={permit} events={events} />
     </div>
   )
 }

@@ -25,6 +25,7 @@ import { COLLECTION_READ_CAP } from '../../../shared/org/orgData'
 import { openDoc, openSnapshots, sealDoc } from '../../../shared/crypto'
 import { PERMIT_COLLECTION, PERMIT_STATUS } from '../constants/permits'
 import { formatPermitNo, permitSeqKind, permitYearNow } from '../utils/permitNumber'
+import { toMs } from '../utils/permitWindow'
 import { assertClaimsFree, readClaims } from './lockClaims'
 
 const permitsCol = (orgId) => collection(db, 'organizations', orgId, PERMIT_COLLECTION)
@@ -123,4 +124,18 @@ export async function createPermit({ orgId, user, permit, inlineLocks = [] }) {
     return number
   })
   return permitNo
+}
+
+/** The permit's timeline, oldest first. Opened: it carries names and notes. */
+export function subscribePermitEvents(orgId, permitNo, cb, onError) {
+  if (!orgId || !permitNo) return () => {}
+  const col = collection(db, 'organizations', orgId, PERMIT_COLLECTION, permitNo, 'events')
+  const opened = openSnapshots(orgId, `${PERMIT_COLLECTION}/events`, (rows) =>
+    cb(rows.sort((a, b) => (toMs(a.at) || 0) - (toMs(b.at) || 0))),
+  )
+  return onSnapshot(
+    query(col, limit(COLLECTION_READ_CAP)),
+    (snap) => opened(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    onError,
+  )
 }

@@ -139,6 +139,9 @@ export const MAX_WINDOW_HOURS = 24
 /** "Due" begins this long before the window end. */
 export const DUE_SOON_MINUTES = 30
 
+/** One extension can add at most this long (the rules cap it too). */
+export const MAX_EXTENSION_HOURS = 24
+
 /** Minimum length of a free-text justification (reason, emergency, extension). */
 export const MIN_REASON_LENGTH = 10
 

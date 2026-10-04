@@ -36,8 +36,29 @@ const PHOTOS = 'procedurePhotos'
  * stale one tells someone standing at a machine that it is isolated when the
  * lock has already come off. Atomic or it is worse than nothing.
  */
-const publicRef = (id) => doc(db, PUBLIC_COL, id)
-const publicBody = (procedure) => ({ ...publicProcedure(procedure), updatedAt: serverTimestamp() })
+export const publicRef = (id) => doc(db, PUBLIC_COL, id)
+export const publicBody = (procedure) => ({ ...publicProcedure(procedure), updatedAt: serverTimestamp() })
+
+/**
+ * Refuse to touch a procedure a live LOTO permit has locked.
+ *
+ * While a permit is active the locks on its equipment are the permit's: they
+ * come off through the permit's return (or the Admin's emergency removal),
+ * which also clears this marker, releases the padlock claims and records the
+ * checklist. An unlock from the Operations screen would leave the permit
+ * "active" over a machine whose locks are gone — the disagreement the permit
+ * and the procedure are written in one transaction to prevent. firestore.rules
+ * enforce the part that does not depend on this check (lockedCount cannot fall,
+ * revision and status cannot change, the procedure cannot be deleted).
+ */
+export function assertNotHeldByPermit(procedure) {
+  const held = procedure?.activePermit
+  if (held) {
+    throw new Error(
+      `This equipment is isolated under permit ${held.permitNo || held.id}. Return or remove that permit first.`,
+    )
+  }
+}
 
 /**
  * Move fresh captures (data: URLs) to cloud storage; stored values become
@@ -125,6 +146,7 @@ export async function reviseProcedure(id, data, user, photos = {}) {
   const resolvedPhotos = await resolvePhotoMap(data.orgId, photos, await rawPhotoMap(id))
   const snap = await getDoc(doc(db, COL, id))
   const current = snap.data() || {}
+  assertNotHeldByPermit(current)
 
   // A revision replaces the point set with what the form submitted, and those
   // points carry no lockState. Carrying the live one across is what stops a
@@ -169,6 +191,7 @@ export async function reviseProcedure(id, data, user, photos = {}) {
 }
 
 export async function deleteProcedure(procedure) {
+  assertNotHeldByPermit(procedure)
   const batch = writeBatch(db)
   batch.delete(doc(db, COL, procedure.id))
   // The mirror goes with it, in the same batch. A mirror outliving its
@@ -238,6 +261,7 @@ export async function getProcedurePhotos(id) {
  */
 async function setProcedureStatus(id, status, extra = {}) {
   const snap = await getDoc(doc(db, COL, id))
+  if (snap.exists()) assertNotHeldByPermit(snap.data())
   const batch = writeBatch(db)
   batch.update(doc(db, COL, id), { status, ...extra, updatedAt: serverTimestamp() })
   if (snap.exists()) batch.set(publicRef(id), publicBody({ ...snap.data(), status }))
@@ -272,6 +296,7 @@ export async function setPointLock(procedureId, pointKey, locked, user, tech = n
     const snap = await tx.get(ref)
     if (!snap.exists()) throw new Error('Procedure not found')
     const data = snap.data()
+    assertNotHeldByPermit(data)
     // Approval gates APPLYING a lock, never removing one.
     //
     // It used to gate both, and revising a procedure resets it to draft — so a
@@ -443,6 +468,7 @@ export async function addGroupMember(procedureId, member, method, user, swaps = 
     const snap = await tx.get(ref)
     if (!snap.exists()) throw new Error('Procedure not found')
     const data = snap.data()
+    assertNotHeldByPermit(data)
     if (data.lockSummary?.status !== 'locked') {
       throw new Error('Equipment must be fully locked before adding group locks')
     }
@@ -607,6 +633,7 @@ export async function removeGroupMember(procedureId, techId, user) {
     const snap = await tx.get(ref)
     if (!snap.exists()) throw new Error('Procedure not found')
     const data = snap.data()
+    assertNotHeldByPermit(data)
     const group = data.groupLock || { active: false, method: null, members: [] }
     const removed = group.members?.find((m) => m.techId === techId)
     const members = (group.members || []).filter((m) => m.techId !== techId)

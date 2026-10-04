@@ -505,6 +505,26 @@ describe('an active permit — extend, return, emergency removal', () => {
     return b.commit()
   }
 
+  describe('a procedure a permit holds', () => {
+    it('cannot be revised or re-decided while the permit holds it', async () => {
+      await assertFails(updateDoc(procRef(as('mgr')), { revision: 2 }))
+      await assertFails(updateDoc(procRef(as('mgr')), { status: 'draft' }))
+    })
+    it('still takes edits that leave the revision and status alone', async () => {
+      await assertSucceeds(updateDoc(procRef(as('mgr')), { notes: 'checked' }))
+    })
+    it('cannot be deleted while the permit holds it', async () => {
+      await assertFails(deleteDoc(procRef(as('mgr'))))
+      await assertFails(deleteDoc(procRef(as('adm'))))
+    })
+    it('can be deleted once the marker is gone', async () => {
+      await testEnv.withSecurityRulesDisabled(async (ctx) => {
+        await updateDoc(procRef(ctx.firestore()), { activePermit: null })
+      })
+      await assertSucceeds(deleteDoc(procRef(as('mgr'))))
+    })
+  })
+
   describe('extend', () => {
     const extend = (db, uid, endOffset, extra = {}) => updateDoc(permitRef(db), {
       windowEnd: ts(endOffset), updatedAt: serverTimestamp(),
@@ -565,8 +585,8 @@ describe('an active permit — extend, return, emergency removal', () => {
         lockSummary: { total: 2, lockedCount: 1, status: 'partial' },
       }))
     })
-    it('still lets a revision that keeps the locks and the marker through', async () => {
-      await assertSucceeds(updateDoc(procRef(as('mgr')), { title: 'revised wording', revision: 2 }))
+    it('still lets an edit that keeps the locks, the marker, the revision and the status through', async () => {
+      await assertSucceeds(updateDoc(procRef(as('mgr')), { title: 'reworded title' }))
     })
   })
 
