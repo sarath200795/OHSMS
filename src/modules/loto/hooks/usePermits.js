@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { subscribePermit, subscribePermits } from '../services/permits'
+import { subscribePermit, subscribePermitEvents, subscribePermits } from '../services/permits'
 
 /** Real-time list of the current org's LOTO permits, newest first. */
 export function usePermits() {
@@ -49,4 +49,15 @@ export function useNow(intervalMs = 60_000) {
     return () => clearInterval(t)
   }, [intervalMs])
   return now
+}
+
+/** The timeline of one permit, oldest first. */
+export function usePermitEvents(permitNo) {
+  const { profile } = useAuth()
+  const [events, setEvents] = useState([])
+  useEffect(() => {
+    if (!profile?.orgId || !permitNo) return undefined
+    return subscribePermitEvents(profile.orgId, permitNo, setEvents, () => setEvents([]))
+  }, [profile?.orgId, permitNo])
+  return events
 }

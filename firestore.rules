@@ -957,7 +957,13 @@ service cloud.firestore {
       return (was == null && now == null)
         || (was != null && now != null && was == now
             && after.get('lockSummary', {}).get('lockedCount', 0)
-               >= before.get('lockSummary', {}).get('lockedCount', 0))
+               >= before.get('lockSummary', {}).get('lockedCount', 0)
+            // The permit copied this procedure's points at a revision. Revising
+            // (which resets it to draft) or re-deciding it while a permit holds
+            // it would leave the permit pointing at isolation steps nobody has
+            // approved, and a return that cannot find its points.
+            && after.get('revision', 0) == before.get('revision', 0)
+            && after.get('status', '') == before.get('status', ''))
         || (was == null && now != null
             && getAfter(/databases/$(database)/documents/organizations/$(orgId)/lotoPermits/$(now.id)).data.status == 'active'
             && getAfter(/databases/$(database)/documents/organizations/$(orgId)/lotoPermits/$(now.id)).data.procedureId == procId)
@@ -1073,8 +1079,12 @@ service cloud.firestore {
             || keepsDecision(legacyCol, resource.data, request.resource.data))
         && (legacyCol != 'procedures'
             || keepsActivePermit(resource.data.orgId, docId, resource.data, request.resource.data));
+      // A procedure a live permit has locked is not deletable: the permit would
+      // be left active against a document that no longer exists, with its
+      // padlock claims stranded.
       allow delete: if isLegacyOrgCollection(legacyCol)
-        && resource != null && isManagerOf(resource.data.orgId);
+        && resource != null && isManagerOf(resource.data.orgId)
+        && (legacyCol != 'procedures' || resource.data.get('activePermit', null) == null);
     }
 
     // ── Platform ownership ────────────────────────────────────────────────────

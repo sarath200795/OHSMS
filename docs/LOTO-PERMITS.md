@@ -78,3 +78,27 @@ field.
 
 Closed permits are kept **1 year** from closure and then purged with their events
 and attachments (`purgeClosedLotoPermits`, PR C). Open permits are never purged.
+
+## Working a permit (PR B)
+
+1. **Approve / reject** — Admin. Rejecting needs a reason. An administrator's own
+   request goes to another administrator; self-approval is offered only when no
+   other approved administrator exists, and stores its reason.
+2. **Isolate** — the crew applies the lock at each point and scans the tag QR
+   there (`/t/<procedureId>/<pointKey>`). Camera scanning uses the browser's
+   `BarcodeDetector` (no library); a typed link / point key / point number
+   (`E-1`) is the fallback. A tag from other equipment never counts. **Start**
+   is possible only when every point has been scanned.
+3. **Start = one transaction** (`services/permitActions.js` `startIsolation`):
+   permit → `active`, every point locked, procedure stamped `activePermit`,
+   `procedureQr` mirror rewritten, `lockClaims` taken (global padlock
+   uniqueness), `lotoEvents` appended, permit timeline entry. All or nothing;
+   the rules refuse a half-write (`getAfter`).
+4. **Return = one transaction** — pre-energise checklist (4 items) and each lock
+   confirmed individually; all points unlocked, marker cleared, claims released,
+   permit `returned`.
+5. **Emergency removal** — Admin; reason + 3 attestations; same release, permit
+   `emergency_removed`.
+6. **Extend** — Admin; later end only, ≤ 24 h per extension, reason recorded.
+7. While a permit is active the procedure's own Lock/Unlock, group-lock,
+   revise, re-approve and delete are refused (client guard + rules).
