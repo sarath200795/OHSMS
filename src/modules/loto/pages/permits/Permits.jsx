@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import toast from 'react-hot-toast'
+import { toastCaught } from '../../../../shared/lib/toastCaught'
 import { useAuth } from '../../context/AuthContext'
 import { PERMISSIONS } from '../../constants/roles'
 import { usePermits, useNow } from '../../hooks/usePermits'
@@ -12,9 +14,14 @@ import Spinner from '../../components/ui/Spinner'
 import Button from '../../components/ui/Button'
 import { PermitClockBadge, PermitStatusBadge } from '../../components/permits/PermitBadges'
 import PermitStandard from '../../components/permits/PermitStandard'
+import PermitDashboard from '../../components/permits/PermitDashboard'
 
+// `match` gets the clock so "Overdue" and "Due soon" agree with the row badges
+// and the dashboard tiles (server flags first, then this browser's clock).
 const FILTERS = [
   { key: 'open', label: 'Open', match: (p) => OPEN_STATUSES.includes(p.status) },
+  { key: 'overdue', label: 'Overdue', match: (p, now) => permitClock(p, now)?.state === 'overdue' },
+  { key: 'due', label: 'Due soon', match: (p, now) => permitClock(p, now)?.state === 'due' },
   { key: 'requested', label: 'Awaiting approval', match: (p) => p.status === PERMIT_STATUS.REQUESTED },
   { key: 'active', label: 'Active', match: (p) => p.status === PERMIT_STATUS.ACTIVE },
   { key: 'closed', label: 'Closed', match: (p) => CLOSED_STATUSES.includes(p.status) },
@@ -36,8 +43,20 @@ export default function Permits() {
 
   const shown = useMemo(() => {
     const f = FILTERS.find((x) => x.key === filter) || FILTERS[0]
-    return permits.filter(f.match)
-  }, [permits, filter])
+    return permits.filter((p) => f.match(p, now))
+  }, [permits, filter, now])
+
+  const onExport = async () => {
+    if (!shown.length) return toast.error('Nothing to export')
+    try {
+      const { exportPermitsXlsx } = await import('../../utils/permitExcel')
+      const day = new Date().toISOString().slice(0, 10)
+      const { permits: n, points } = exportPermitsXlsx(shown, `LOTO_Permits_${day}.xlsx`)
+      toast.success(`Exported ${n} permit${n === 1 ? '' : 's'} and ${points} isolation point${points === 1 ? '' : 's'}`)
+    } catch (err) {
+      toastCaught(err, 'Export failed')
+    }
+  }
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
@@ -46,12 +65,16 @@ export default function Permits() {
         title="LOTO Permits"
         subtitle="One permit per job: who, what equipment, which approved procedure, and the shift window."
         actions={
-          canRaise && (
-            <Button onClick={() => navigate('/loto/permits/new')}>Raise a permit</Button>
-          )
+          <div className="flex flex-wrap gap-2">
+            <Button variant="steel" onClick={onExport}>
+              Export Excel
+            </Button>
+            {canRaise && <Button onClick={() => navigate('/loto/permits/new')}>Raise a permit</Button>}
+          </div>
         }
       />
       <PermitStandard />
+      {!loading && <PermitDashboard permits={permits} now={now} onPick={setFilter} />}
 
       <div className="mt-5 flex flex-wrap gap-2" role="group" aria-label="Filter permits">
         {FILTERS.map((f) => (

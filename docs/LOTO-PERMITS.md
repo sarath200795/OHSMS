@@ -133,3 +133,26 @@ anything could not be removed). Open permits are never purged.
 6. **Extend** — Admin; later end only, ≤ 24 h per extension, reason recorded.
 7. While a permit is active the procedure's own Lock/Unlock, group-lock,
    revise, re-approve and delete are refused (client guard + rules).
+
+## Printout, Excel and dashboard (PR D)
+
+- **Permit PDF** (`utils/permitPdf.js`, "Download PDF" on a permit): job, window,
+  who requested / approved (self-approval is marked with its reason), personnel
+  and contractors, each isolation point with its lock, who owns it and when and
+  how its tag was scanned, extensions, the pre-energise checklist and return, or
+  the emergency removal with its reason and attestations. The header and the
+  declaration cite OSHA 29 CFR 1910.147. The QR encodes the link to the permit
+  (`/loto/permits/<no>`), never its contents, so an old printout shows live status.
+- **Excel** (`utils/permitExcel.js`, "Export Excel" on the list): the permits in
+  the current filter as a workbook with **Permits** (one row each) and
+  **Isolation points** (one row per point: lock, scan time and method, lock
+  removed). Text typed by people is prefixed against formula injection exactly as
+  the CSV exports do. The export contains names; it is a read the viewer is
+  already entitled to make, loaded only when clicked (the `xlsx` chunk is lazy).
+- **Dashboard** (`components/permits/PermitDashboard.jsx`): Open, Overdue, Due
+  soon and Closed counts above the list; each tile applies the matching filter.
+  Overdue / due use the same clock as the row badges (server flags first), and a
+  closed permit is never overdue.
+- `utils/permitExport.js` holds the one flattened `permitSummary` all three read,
+  so what is printed, exported and counted cannot drift apart.
+
