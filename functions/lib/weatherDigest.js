@@ -1,7 +1,7 @@
 // Every six hours, mail each org's admins the High and Medium weather risk
 // across that org's sites, with a static map of the pins. The mail is split by
 // hazard: Heat Stress, then Rain Risk, then Other hazards (wind, visibility,
-// UV, cold, thunderstorm, ice, snow). Each section has its own region → sites
+// cold, thunderstorm, ice, snow). Each section has its own region → sites
 // tables. A site with several hazards is listed under each, at that hazard's
 // own level; the subject and summary count each site once, at its worst level.
 // Above those sections, after the summary and map, sits one table of EVERY

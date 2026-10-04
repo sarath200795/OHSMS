@@ -61,6 +61,21 @@ const round = (n) => Math.round(n)
 // and a crew in PPE feels that figure rather than the dry-bulb one.
 const HEAT_CUTS = [40, 45, 51, 56]
 
+// High needs a hot AIR, not just a hot feel. Feels-like still sets Low and
+// Medium, but a feels-like that would be High (or severe) while the air
+// temperature is at or below 40°C is capped at Medium. Strictly above: 40.0 is
+// not High, 40.1 is. A reading with no air temperature cannot show the air is
+// above 40, so it is capped too. Keep in step with functions/lib/weatherBands.js.
+const HEAT_HIGH_MIN_AIR_C = 40
+
+function heatBand(feels, airC) {
+  const b = band(feels, HEAT_CUTS)
+  if (levelOf(b) >= levelOf('high') && !(airC != null && airC > HEAT_HIGH_MIN_AIR_C)) {
+    return 'moderate'
+  }
+  return b
+}
+
 // Wind chill. NWS puts frostbite on exposed skin at 30 minutes around -28°C,
 // which anchors the severe band; the milder ones follow the usual cold-stress
 // work/warm-up guidance.
@@ -85,9 +100,6 @@ export const RAIN_ALERT = {
   high: 'High',
   severe: 'High',
 }
-
-// WHO global UV index bands: moderate 3, high 6, very high 8, extreme 11.
-const UV_CUTS = [3, 6, 8, 11]
 
 // Metres. Below 1 km site traffic and lifting signalling become unreliable;
 // below 200 m nothing outdoors can be supervised safely.
@@ -115,7 +127,7 @@ const isSnow = (code) => (code >= 71 && code <= 77) || code === 85 || code === 8
 export function assessWeather(obs = {}) {
   const {
     apparentTempC, tempC, windKph, gustKph, precipMmHr,
-    uvIndex, visibilityM, weatherCode,
+    visibilityM, weatherCode,
   } = obs
 
   const hazards = []
@@ -126,7 +138,7 @@ export function assessWeather(obs = {}) {
     add({
       key: 'heat',
       label: 'Heat stress',
-      band: band(feels, HEAT_CUTS),
+      band: heatBand(feels, num(tempC)),
       value: `Feels like ${round(feels)}°C`,
       affects: 'Outdoor and PPE-heavy work — schedule rest breaks, water and shade.',
     })
@@ -167,16 +179,9 @@ export function assessWeather(obs = {}) {
     })
   }
 
-  const uv = num(uvIndex)
-  if (uv != null) {
-    add({
-      key: 'uv',
-      label: 'UV exposure',
-      band: band(uv, UV_CUTS),
-      value: `UV index ${round(uv)}`,
-      affects: 'Outdoor workers — cover up, sunscreen, shade at midday.',
-    })
-  }
+  // UV is deliberately not assessed: a UV index never produces a hazard, a
+  // band, an alert or a count. `uvIndex` may still ride along on the
+  // observation as plain data.
 
   const vis = num(visibilityM)
   if (vis != null) {

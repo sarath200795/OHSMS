@@ -3,7 +3,7 @@
 // This is a copy of src/modules/weather/lib/weatherRisk.js. The functions
 // package cannot import the SPA, and the two will disagree the day a cut-off
 // moves in only one of them. The numbers are published thresholds (NWS heat,
-// Beaufort wind, WHO UV); they are not tunable per org. Change them in both
+// Beaufort wind); they are not tunable per org. Change them in both
 // files.
 //
 // The digest only names Medium and High. In this scale that is `moderate`,
@@ -29,10 +29,24 @@ const levelOf = (b) => BANDS.indexOf(b)
 // Heat is only reported from 40°C up. The NWS caution band starts at 27°C,
 // which is an ordinary working day at these sites and lit the heat row forever.
 const HEAT_CUTS = [40, 45, 51, 56]
+
+// Heat is rated High only when the AIR temperature is above this. Feels-like
+// still sets Low and Medium, but a feels-like that would be High (or severe)
+// while the air is at or below 40°C is capped at Medium. Strictly above: 40.0
+// is not High, 40.1 is. A reading with no air temperature cannot show the air
+// is above 40, so it is capped too.
+const HEAT_HIGH_MIN_AIR_C = 40
+
+function heatBand(feels, airC) {
+  const b = band(feels, HEAT_CUTS)
+  if (levelOf(b) >= levelOf('high') && !(airC != null && airC > HEAT_HIGH_MIN_AIR_C)) {
+    return 'moderate'
+  }
+  return b
+}
 const COLD_CUTS = [10, 0, -10, -25]
 const WIND_CUTS = [29, 39, 50, 62]
 const RAIN_CUTS = [0.5, 4, 10, 30]
-const UV_CUTS = [3, 6, 8, 11]
 const VIS_CUTS = [5000, 2000, 1000, 200]
 
 // The words the rain row already uses on the site page. The digest value
@@ -62,7 +76,7 @@ const round = (n) => Math.round(n)
  * digest prints it. It is not a new threshold.
  */
 export function assessWeather(obs = {}) {
-  const { apparentTempC, tempC, windKph, gustKph, precipMmHr, uvIndex, visibilityM, weatherCode } =
+  const { apparentTempC, tempC, windKph, gustKph, precipMmHr, visibilityM, weatherCode } =
     obs
   const hazards = []
   const add = (h) => {
@@ -72,7 +86,7 @@ export function assessWeather(obs = {}) {
   const feels = num(apparentTempC) ?? num(tempC)
   if (feels != null) {
     const feelsLike = `Feels like ${round(feels)}°C`
-    add({ key: 'heat', label: 'Heat stress', band: band(feels, HEAT_CUTS), value: feelsLike })
+    add({ key: 'heat', label: 'Heat stress', band: heatBand(feels, num(tempC)), value: feelsLike })
     add({
       key: 'cold',
       label: 'Cold stress',
@@ -107,15 +121,9 @@ export function assessWeather(obs = {}) {
     })
   }
 
-  const uv = num(uvIndex)
-  if (uv != null) {
-    add({
-      key: 'uv',
-      label: 'UV exposure',
-      band: band(uv, UV_CUTS),
-      value: `UV index ${round(uv)}`,
-    })
-  }
+  // UV is deliberately not assessed: a UV index never produces a hazard, a
+  // band, a digest line or a map pin. `uvIndex` may still ride along on the
+  // observation as plain data.
 
   const vis = num(visibilityM)
   if (vis != null) {
