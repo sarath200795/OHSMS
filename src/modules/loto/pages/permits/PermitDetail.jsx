@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import toast from 'react-hot-toast'
 import { subscribeOrgUsers } from '../../../../shared/org/orgData'
 import { useAuth } from '../../context/AuthContext'
 import { PERMISSIONS } from '../../constants/roles'
@@ -33,7 +34,7 @@ function Row({ label, children }) {
 export default function PermitDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { profile, can, platformRole } = useAuth()
+  const { profile, org, can, platformRole } = useAuth()
   const { permit, loading } = usePermit(id)
   const events = usePermitEvents(id)
   const now = useNow()
@@ -70,6 +71,13 @@ export default function PermitDetail() {
   const otherAdmin = users.some(
     (u) => u.role === 'admin' && u.status === 'approved' && u.uid && u.uid !== permit.requestedBy,
   )
+  const onPdf = () =>
+    toast.promise(
+      import('../../utils/permitPdf').then((m) =>
+        m.generatePermitPdf(permit, { events, orgName: org?.name || '' }),
+      ),
+      { loading: 'Building permit PDF…', success: 'PDF downloaded', error: 'Could not generate PDF' },
+    )
   const lockFor = (key) => (permit.locks || []).find((l) => l.pointKey === key)
 
   return (
@@ -78,7 +86,16 @@ export default function PermitDetail() {
         icon={<HdrIcon d={<><path d="M9 4h6l1 2h3v14H5V6h3l1-2Z" /><path d="M9 12h6M9 16h4" /></>} />}
         title={`Permit ${permit.permitNo || permit.id}`}
         subtitle={`${workTypeLabel(permit.workType)}${permit.equipment ? ` · ${permit.equipment}` : ''}`}
-        actions={<Button variant="steel" onClick={() => navigate('/loto/permits')}>All permits</Button>}
+        actions={
+          <div className="flex flex-wrap gap-2">
+            <Button variant="steel" onClick={onPdf}>
+              Download PDF
+            </Button>
+            <Button variant="steel" onClick={() => navigate('/loto/permits')}>
+              All permits
+            </Button>
+          </div>
+        }
       />
       <div className="-mt-3 mb-4 flex flex-wrap items-center gap-2">
         <PermitStatusBadge status={permit.status} />
