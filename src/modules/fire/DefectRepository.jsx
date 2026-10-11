@@ -13,6 +13,8 @@ import { resolveDefects, decideAssetReport } from './lib/firestore'
 import { toDate } from './lib/extinguisherLogic'
 import { exportDefectRepository } from './lib/exporter'
 import { buildDefectRepositoryRows } from './lib/defectRepositoryExport'
+import { Link } from 'react-router-dom'
+import { deriveExtinguisherDefects } from './lib/derivedExtDefects'
 import { DEFECT_BY_KEY, REGION_COLORS } from './lib/constants'
 
 // One place for every reported equipment defect — fire extinguishers (open
@@ -41,6 +43,24 @@ export default function DefectRepository() {
       source: 'ext',
       raw: r,
     }))
+    // HPT-due and Empty units straight from the register (see derivedExtDefects).
+    const seen = new Set((physicalOpen || []).map((r) => `${r.extId}:${r.defectType}`))
+    const derived = deriveExtinguisherDefects(extinguishers || [], seen).map((r) => ({
+      key: `derived:${r.id}`,
+      kind: 'Extinguisher',
+      icon: Flame,
+      color: '#dc2626',
+      label: r.serialNo || '—',
+      sub: [r.type, r.capacity, r.location].filter(Boolean).join(' · '),
+      site: r.centerName || '',
+      region: r.region || '',
+      defect: r.defectLabel,
+      defectColor: r.defectColor,
+      reportedAt: null,
+      dueDate: r.dueDate || null,
+      source: 'derived',
+      raw: r,
+    }))
     const asset = (pendingReports || [])
       .filter((r) => r.kind === 'asset_defect')
       .map((r) => ({
@@ -58,10 +78,10 @@ export default function DefectRepository() {
         source: 'asset',
         raw: r,
       }))
-    return [...ext, ...asset].sort(
+    return [...ext, ...derived, ...asset].sort(
       (a, b) => (toDate(b.reportedAt)?.getTime() || 0) - (toDate(a.reportedAt)?.getTime() || 0),
     )
-  }, [physicalOpen, pendingReports])
+  }, [physicalOpen, pendingReports, extinguishers])
 
   const { pageItems, page, setPage, pageCount, total, pageSize } = usePagination(rows)
 
@@ -165,9 +185,21 @@ export default function DefectRepository() {
                         )}
                       </td>
                       <td className="px-4 py-3"><Badge color={row.defectColor}>{row.defect}</Badge></td>
-                      <td className="px-4 py-3 text-ink-600">{fmt(row.reportedAt)}</td>
+                      <td className="px-4 py-3 text-ink-600">
+                        {row.source === 'derived'
+                          ? (row.dueDate ? <span>Due {fmt(row.dueDate)}</span> : <span className="text-xs text-ink-400">From register</span>)
+                          : fmt(row.reportedAt)}
+                      </td>
                       <td className="px-4 py-3 text-right">
-                        {!isManager ? (
+                        {row.source === 'derived' ? (
+                          <Link
+                            to="/equipment/refill-due"
+                            className="btn-ghost px-2.5 py-1.5 text-xs font-semibold"
+                            title="Cleared by recording the HPT / refill on the extinguisher"
+                          >
+                            Open extinguisher
+                          </Link>
+                        ) : !isManager ? (
                           <span className="text-xs text-ink-400">Manager only</span>
                         ) : row.source === 'ext' ? (
                           <button
