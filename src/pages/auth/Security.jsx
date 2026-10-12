@@ -10,6 +10,7 @@ import {
   isEmailVerified, sendVerification,
 } from '../../shared/auth/mfa'
 import { PageHeader, Button, Field, Input, Badge } from '../../shared/ui'
+import WhatsAppLink from './WhatsAppLink'
 
 /**
  * Two-factor authentication, self-service.
@@ -321,6 +322,8 @@ export default function Security() {
           </form>
         )}
       </section>
+
+      <WhatsAppLink />
     </div>
   )
 }

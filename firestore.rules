@@ -1087,6 +1087,42 @@ service cloud.firestore {
         && (legacyCol != 'procedures' || resource.data.get('activePermit', null) == null);
     }
 
+    // ── WhatsApp site lookup (server-only) ──────────────────────────────────
+    //
+    // waLinks binds a WhatsApp number to a uid: whoever can write it can have
+    // any site's data sent to any phone, and whoever can read it has a list of
+    // staff mobile numbers. waLinkCodes are live one-time codes; reading one is
+    // linking as somebody else. waInbound, waRate and waQueryLog are the
+    // dedupe ledger, the abuse counters and the query log, and a client who
+    // could edit them could unblock themselves, replay a message or erase the
+    // record of a lookup. waSiteSnapshots holds every site's counts, beyond the
+    // reach of most members.
+    //
+    // The Cloud Functions write all of them with the Admin SDK, which does not
+    // consult these rules. Nothing else may touch them — not even an org admin:
+    // the app reaches its own link status only through the whatsAppLinkStatus
+    // callable, which returns the caller's own masked row. No other match
+    // block above grants these paths (isLegacyOrgCollection does not name
+    // them), so these denials are not undercut by a permissive union.
+    match /waLinks/{docId} {
+      allow read, write: if false;
+    }
+    match /waLinkCodes/{docId} {
+      allow read, write: if false;
+    }
+    match /waInbound/{docId} {
+      allow read, write: if false;
+    }
+    match /waRate/{docId} {
+      allow read, write: if false;
+    }
+    match /waQueryLog/{docId} {
+      allow read, write: if false;
+    }
+    match /waSiteSnapshots/{docId} {
+      allow read, write: if false;
+    }
+
     // ── Platform ownership ────────────────────────────────────────────────────
     // One document per person who operates the platform. Existence IS the
     // grant; the body is only there so a human reading the console can tell

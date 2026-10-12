@@ -13,11 +13,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { initializeApp } from 'firebase-admin/app'
 import { getAuth } from 'firebase-admin/auth'
-import { getFirestore, FieldValue } from 'firebase-admin/firestore'
+import { getFirestore, FieldValue, Timestamp } from 'firebase-admin/firestore'
 import { getStorage } from 'firebase-admin/storage'
 import { onDocumentWritten } from 'firebase-functions/v2/firestore'
 import { onSchedule } from 'firebase-functions/v2/scheduler'
-import { onCall, HttpsError } from 'firebase-functions/v2/https'
+import { onCall, onRequest, HttpsError } from 'firebase-functions/v2/https'
 import { defineSecret, defineString } from 'firebase-functions/params'
 import { logger } from 'firebase-functions'
 import { claimsFor, claimsChanged, mergeClaims, revokesAccess } from './lib/claims.js'
@@ -51,6 +51,16 @@ import { deliverDrillReport } from './lib/drillReportNotify.js'
 import { deliverMeetingMail } from './lib/meetingNotify.js'
 import { deliverWeatherDigest } from './lib/weatherDigest.js'
 import { createMailer, DEFAULT_MAIL } from './lib/mailer.js'
+import { createHmac } from 'node:crypto'
+import { verifySignature, handshakeChallenge, isRealSecret } from './lib/whatsapp/signature.js'
+import { extractMessages } from './lib/whatsapp/parse.js'
+import { handleMessage } from './lib/whatsapp/handler.js'
+import { createStore, buildSnapshot } from './lib/whatsapp/store.js'
+import { sendMessage, textPayload, listPayload, graphVersion } from './lib/whatsapp/graph.js'
+import { countOutbound } from './lib/whatsapp/rateLimit.js'
+import { isActiveMember } from './lib/whatsapp/access.js'
+import { generateLinkCode, hashLinkCode, maskPhone, LINK_CODE_TTL_MS } from './lib/whatsapp/link.js'
+import { WA_RETENTION, WA_PURGE_BATCH, WA_PURGE_MAX_BATCHES, cutoffFor } from './lib/whatsapp/retention.js'
 
 initializeApp()
 
@@ -2714,4 +2724,277 @@ export const retryWeatherRiskDigest = onSchedule(
     timeZone: SCHEDULE_TZ,
   },
   weatherDigestTask,
+)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WhatsApp site lookup (Meta WhatsApp Cloud API, direct).
+//
+// A linked, approved app user sends a site code or name to the business number
+// and gets one message back: extinguishers (HPT overdue), open defects, first
+// aid boxes, pending actions, incidents and the site's emergency contacts.
+// Design, data definitions and the privacy argument: docs/WHATSAPP.md. The
+// decisions live in lib/whatsapp/*.js and lib/siteSummary.js; this file only
+// wires them to Firestore, Secret Manager and the Graph API.
+//
+// OFF BY DEFAULT. Nothing answers until all of these are set:
+//
+//   firebase functions:secrets:set WA_APP_SECRET     Meta app → App settings → Basic → App secret
+//   firebase functions:secrets:set WA_ACCESS_TOKEN   System User token, whatsapp_business_messaging
+//   firebase functions:secrets:set WA_VERIFY_TOKEN   any long random string; typed into the
+//                                                    Meta webhook "Verify token" field
+//   WA_PHONE_NUMBER_ID   the Cloud API phone number id (not the phone number)
+//   WA_ENABLED=true      the kill switch; anything else and the webhook ignores
+//                        every message (still answering Meta 200 so it stops retrying)
+//
+// Secrets, not params, for the same LOW-13 reason as DATA_KEY_MASTER: the
+// token sends messages as the business and the app secret is what makes a
+// forged webhook distinguishable from a real one. The deploy step creates
+// non-working placeholders when they are missing, and a placeholder never
+// authenticates (signature.js isRealSecret).
+// ─────────────────────────────────────────────────────────────────────────────
+const WA_APP_SECRET = defineSecret('WA_APP_SECRET')
+const WA_ACCESS_TOKEN = defineSecret('WA_ACCESS_TOKEN')
+const WA_VERIFY_TOKEN = defineSecret('WA_VERIFY_TOKEN')
+const WA_ENABLED = defineString('WA_ENABLED', { default: 'false' })
+const WA_PHONE_NUMBER_ID = defineString('WA_PHONE_NUMBER_ID', { default: '' })
+const WA_GRAPH_VERSION = defineString('WA_GRAPH_VERSION', { default: 'v25.0' })
+// The number people send to, as shown on the Security page. Display only.
+const WA_DISPLAY_NUMBER = defineString('WA_DISPLAY_NUMBER', { default: '' })
+// Global circuit breaker: outbound replies per IST day across all users.
+const WA_DAILY_CAP = defineString('WA_DAILY_CAP', { default: '2000' })
+
+/** The kill switch plus the non-secret config the feature cannot run without. */
+function waSwitchedOn() {
+  return WA_ENABLED.value() === 'true' && /^\d{5,20}$/.test(WA_PHONE_NUMBER_ID.value()) && Boolean(graphVersion(WA_GRAPH_VERSION.value()))
+}
+
+/** Everything, secrets included. Only callable where the secrets are bound. */
+function waFullyConfigured() {
+  return (
+    waSwitchedOn() &&
+    isRealSecret(WA_APP_SECRET.value()) &&
+    isRealSecret(WA_ACCESS_TOKEN.value()) &&
+    isRealSecret(WA_VERIFY_TOKEN.value())
+  )
+}
+
+// Keyed digest material for phone numbers in logs and counters, derived from a
+// secret this function already holds rather than one more secret to manage.
+// Rotating the app secret only breaks correlation of old log rows, which is a
+// feature for data that is deleted at 90 days anyway.
+const waPepper = () => createHmac('sha256', WA_APP_SECRET.value()).update('wa-phone-pepper-v1').digest('hex')
+
+/**
+ * The Meta webhook. Public by necessity: Meta's servers are the caller and
+ * carry no Google identity. Authentication is the X-Hub-Signature-256 HMAC,
+ * checked on the raw bytes before the body is believed at all.
+ *
+ * maxInstances bounds what a flood can cost; a forged request costs one HMAC
+ * and a 401. The reply is sent inline (a few reads and one Graph call) before
+ * answering 200 — Meta waits for it, and at this volume that is well inside
+ * its timeout.
+ */
+export const waWebhook = onRequest(
+  {
+    region: REGION,
+    secrets: [WA_APP_SECRET, WA_ACCESS_TOKEN, WA_VERIFY_TOKEN],
+    invoker: 'public',
+    maxInstances: 5,
+    concurrency: 20,
+    timeoutSeconds: 60,
+    memory: '512MiB',
+  },
+  async (req, res) => {
+    if (req.method === 'GET') {
+      const challenge = handshakeChallenge(req.query || {}, WA_VERIFY_TOKEN.value())
+      if (challenge === null) {
+        res.status(403).send('Forbidden')
+        return
+      }
+      res.status(200).type('text/plain').send(challenge)
+      return
+    }
+    if (req.method !== 'POST') {
+      res.status(405).send('Method Not Allowed')
+      return
+    }
+    if (!verifySignature(req.rawBody, req.get('x-hub-signature-256'), WA_APP_SECRET.value())) {
+      logger.warn('waWebhook: bad signature')
+      res.status(401).send('Unauthorized')
+      return
+    }
+    // Signed but switched off: acknowledge, so Meta stops retrying, and do nothing.
+    if (!waFullyConfigured()) {
+      res.status(200).send('disabled')
+      return
+    }
+
+    let payload = null
+    try {
+      payload = JSON.parse(Buffer.isBuffer(req.rawBody) ? req.rawBody.toString('utf8') : String(req.rawBody))
+    } catch {
+      res.status(400).send('Bad Request')
+      return
+    }
+
+    const { messages, statuses } = extractMessages(payload, WA_PHONE_NUMBER_ID.value())
+    if (statuses) logger.info('waWebhook: statuses', { count: statuses })
+
+    const db = getFirestore()
+    const store = createStore(db, { pepper: waPepper() })
+    const cap = Math.max(1, Number(WA_DAILY_CAP.value()) || 2000)
+
+    const reply = async (to, { text, rows }) => {
+      const gate = await db.runTransaction(async (tx) => {
+        const ref = db.doc('waRate/outbound-global')
+        const snap = await tx.get(ref)
+        const out = countOutbound(snap.exists ? snap.data() : {}, new Date(), cap)
+        tx.set(ref, out.state)
+        return out
+      })
+      if (!gate.allowed) {
+        logger.error('waWebhook: daily outbound cap reached, not replying', { cap })
+        return false
+      }
+      const send = (payloadOut) =>
+        sendMessage({
+          version: WA_GRAPH_VERSION.value(),
+          phoneNumberId: WA_PHONE_NUMBER_ID.value(),
+          token: WA_ACCESS_TOKEN.value(),
+          payload: payloadOut,
+        })
+      let result = await send(rows?.length ? listPayload(to, text, rows) : textPayload(to, text))
+      // A list the client cannot take still has its choices in the text.
+      if (!result.ok && rows?.length) result = await send(textPayload(to, text))
+      if (!result.ok) logger.error('waWebhook: send failed', { status: result.status, error: result.error })
+      return result.ok
+    }
+
+    // A single delivery carries at most a handful; ten bounds a crafted one.
+    for (const msg of messages.slice(0, 10)) {
+      try {
+        const row = await handleMessage(msg, { store, reply, now: new Date() })
+        logger.info('waWebhook: handled', { uid: row.uid, orgId: row.orgId, intent: row.intent, outcome: row.outcome })
+      } catch (err) {
+        logger.error('waWebhook: message failed', { error: err?.message || String(err) })
+      }
+    }
+    res.status(200).send('ok')
+  },
+)
+
+/** The caller's live profile, or an HttpsError. */
+async function waCaller(request) {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in first.')
+  const snap = await getFirestore().doc(`users/${uid}`).get()
+  const user = snap.exists ? snap.data() : null
+  if (!isActiveMember(user, user?.orgId)) {
+    throw new HttpsError('permission-denied', 'Only approved members can link WhatsApp.')
+  }
+  return { uid, user }
+}
+
+/**
+ * Settings → Security → Link WhatsApp. Issues a one-time code the user sends
+ * from their phone as "LINK 123456". Any older unredeemed code of theirs is
+ * withdrawn, so at most one is live per person.
+ */
+export const startWhatsAppLink = onCall({ region: REGION }, async (request) => {
+  const { uid, user } = await waCaller(request)
+  if (!waSwitchedOn()) throw new HttpsError('failed-precondition', 'WhatsApp lookup is not switched on yet.')
+  const db = getFirestore()
+  const old = await db.collection('waLinkCodes').where('uid', '==', uid).get()
+  await Promise.all(old.docs.map((d) => d.ref.delete()))
+
+  const expiresAtMs = Date.now() + LINK_CODE_TTL_MS
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const code = generateLinkCode()
+    try {
+      await db.doc(`waLinkCodes/${hashLinkCode(code)}`).create({
+        uid,
+        orgId: user.orgId,
+        expiresAtMs,
+        createdAt: FieldValue.serverTimestamp(),
+      })
+      logger.info('startWhatsAppLink: issued', { uid, orgId: user.orgId })
+      return { code, expiresAtMs, number: WA_DISPLAY_NUMBER.value() || null }
+    } catch (err) {
+      // Someone else's live code collided; draw again.
+      if (err?.code !== 6 && err?.code !== 'already-exists') throw err
+    }
+  }
+  throw new HttpsError('unavailable', 'Could not issue a code. Try again.')
+})
+
+/** Whether the caller has a linked number, masked to its last four digits. */
+export const whatsAppLinkStatus = onCall({ region: REGION }, async (request) => {
+  const { uid } = await waCaller(request)
+  const snap = await getFirestore().collection('waLinks').where('uid', '==', uid).limit(1).get()
+  const link = snap.docs[0]
+  const linkedAt = link?.data()?.linkedAt
+  return {
+    available: waSwitchedOn(),
+    number: WA_DISPLAY_NUMBER.value() || null,
+    linked: Boolean(link),
+    masked: link ? maskPhone(link.id) : null,
+    linkedAt: linkedAt?.toMillis ? linkedAt.toMillis() : null,
+  }
+})
+
+/** Withdraw consent from the app: removes every link for the caller at once. */
+export const unlinkWhatsApp = onCall({ region: REGION }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in first.')
+  // No status check: a suspended person may still withdraw their own number.
+  const snap = await getFirestore().collection('waLinks').where('uid', '==', uid).get()
+  await Promise.all(snap.docs.map((d) => d.ref.delete()))
+  logger.info('unlinkWhatsApp: removed', { uid, count: snap.size })
+  return { removed: snap.size }
+})
+
+/**
+ * Every 30 minutes: one counts document per org that has at least one linked
+ * number, so a reply reads one document instead of nine collections. Orgs
+ * nobody can query are not built. Off with the kill switch.
+ */
+export const buildWhatsAppSnapshots = onSchedule(
+  { schedule: 'every 30 minutes', timeZone: SCHEDULE_TZ, region: REGION, timeoutSeconds: 540, memory: '1GiB' },
+  async () => {
+    if (!waSwitchedOn()) return
+    const db = getFirestore()
+    const links = await db.collection('waLinks').select('orgId').get()
+    const orgIds = [...new Set(links.docs.map((d) => d.data()?.orgId).filter((v) => typeof v === 'string' && v && !v.includes('/')))]
+    for (const orgId of orgIds) {
+      try {
+        const snap = await buildSnapshot(db, orgId, new Date())
+        logger.info('buildWhatsAppSnapshots: built', { orgId, sites: Object.keys(snap.sites).length })
+      } catch (err) {
+        logger.error('buildWhatsAppSnapshots: org failed', { orgId, error: err?.message || String(err) })
+      }
+    }
+  },
+)
+
+/** Daily: the retention table in lib/whatsapp/retention.js. Runs even when switched off. */
+export const purgeWhatsAppLedgers = onSchedule(
+  { schedule: '50 3 * * *', timeZone: SCHEDULE_TZ, region: REGION, timeoutSeconds: 540 },
+  async () => {
+    const db = getFirestore()
+    for (const entry of WA_RETENTION) {
+      const cutoff = cutoffFor(entry, new Date())
+      const bound = entry.kind === 'millis' ? cutoff.getTime() : Timestamp.fromDate(cutoff)
+      let removed = 0
+      for (let i = 0; i < WA_PURGE_MAX_BATCHES; i += 1) {
+        const snap = await db.collection(entry.collection).where(entry.field, '<', bound).limit(WA_PURGE_BATCH).get()
+        if (snap.empty) break
+        const batch = db.batch()
+        snap.docs.forEach((d) => batch.delete(d.ref))
+        await batch.commit()
+        removed += snap.size
+        if (snap.size < WA_PURGE_BATCH) break
+      }
+      logger.info('purgeWhatsAppLedgers: swept', { collection: entry.collection, removed })
+    }
+  },
 )

@@ -218,6 +218,28 @@ export const SUBJECT_SOURCES = [
     why: 'Minutes of statutory safety consultation. Who attended is the point of the record.',
   },
 
+  // ── WhatsApp site lookup ───────────────────────────────────────────────────
+  // ROOT collections tenanted by an `orgId` field, server-only in the rules.
+  // waLinks' document id IS the person's WhatsApp number, so an export of it
+  // is the number itself — which is the point of a subject access request.
+  {
+    path: 'waLinks',
+    topLevel: true,
+    orgField: 'orgId',
+    joins: [{ kind: 'field', field: 'uid', key: 'uid' }],
+    retention: ERASABLE,
+    why: 'Consent to receive site summaries on WhatsApp, and the number it was given for. Withdrawing consent deletes it.',
+  },
+  // phoneHash is a keyed digest, not the number. No message text is stored.
+  {
+    path: 'waQueryLog',
+    topLevel: true,
+    orgField: 'orgId',
+    joins: [{ kind: 'field', field: 'uid', key: 'uid' }],
+    retention: ERASABLE,
+    why: 'Which site a person looked up on WhatsApp, and when. Kept 90 days for abuse review, then purged.',
+  },
+
   // ── The audit trail ────────────────────────────────────────────────────────
   {
     path: 'auditLogs',

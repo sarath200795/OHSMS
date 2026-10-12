@@ -190,6 +190,31 @@ export const RECORD_CLASSES = [
     recycleBin: false,
     counselMustSign: null,
   },
+  // WhatsApp site lookup. Owner decisions, recorded the same way as
+  // lotoPermits: a signed period with its own sweep (purgeWhatsAppLedgers,
+  // table in whatsapp/retention.js), not a proposal for planLiveAgePurge.
+  {
+    path: 'waLinks',
+    class: 'operational',
+    proposedPeriod: 'until the user unlinks',
+    proposedPeriodNote:
+      'Consent record: the WhatsApp number and the uid it was proven for. Deleted on UNLINK / STOP, ' +
+      'on the Security page, or by an erasure request. No age purge — consent does not expire.',
+    livePurge: false,
+    recycleBin: false,
+    counselMustSign: null,
+  },
+  {
+    path: 'waQueryLog',
+    class: 'operational',
+    proposedPeriod: '90 days',
+    proposedPeriodNote:
+      'Which site a linked user looked up, and the outcome. No message text. Own sweep: ' +
+      'purgeWhatsAppLedgers; constant WA_RETENTION in whatsapp/retention.js.',
+    livePurge: false,
+    recycleBin: false,
+    counselMustSign: null,
+  },
   {
     path: 'extinguishers',
     class: 'operational',
