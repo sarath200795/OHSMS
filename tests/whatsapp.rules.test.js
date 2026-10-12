@@ -49,6 +49,10 @@ const SEED = {
   waRate: ['b'.repeat(32), { hourCount: 30, linkBlockedUntilMs: Date.now() + 86400000 }],
   waQueryLog: ['log1', { orgId: ORG, uid: 'member1', siteId: 's1', outcome: 'ok' }],
   waSiteSnapshots: [ORG, { orgId: ORG, v: 1, sites: { s1: [1, 2, 3] } }],
+  waSessions: [
+    'd'.repeat(32),
+    { uid: 'member1', orgId: ORG, choices: ['s1'], expiresAtMs: Date.now() + 900000 },
+  ],
 }
 const COLLECTIONS = Object.keys(SEED)
 const CALLERS = ['admin1', 'manager1', 'member1']
@@ -124,6 +128,17 @@ describe('the attacks the denial exists for', () => {
   it('a blocked number cannot be unblocked from the client', async () => {
     await assertFails(
       updateDoc(doc(as('member1'), 'waRate', SEED.waRate[0]), { linkBlockedUntilMs: 0 })
+    )
+  })
+
+  it('a member cannot plant a pick-list pointing at a site outside their reach', async () => {
+    await assertFails(
+      setDoc(doc(as('member1'), 'waSessions', 'd'.repeat(32)), {
+        uid: 'member1',
+        orgId: ORG,
+        choices: ['s9'],
+        expiresAtMs: Date.now() + 900000,
+      })
     )
   })
 

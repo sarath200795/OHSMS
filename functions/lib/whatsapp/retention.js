@@ -7,6 +7,8 @@
 //   waInbound     7 days past its own expiresAt stamp. Meta retries for at most
 //                a few days; a dedupe ledger older than that dedupes nothing.
 //   waLinkCodes  as soon as the code has expired (ten minutes).
+//   waSessions   as soon as the 15-minute pick-list window has passed. Holds
+//                the site ids last offered, never a location.
 //   waRate        3 days without activity. The counters are hour and day
 //                windows; a dormant row holds nothing a limit still needs.
 //
@@ -20,6 +22,7 @@ export const WA_RETENTION = [
   { collection: 'waQueryLog', field: 'at', keepMs: 90 * DAY_MS, kind: 'timestamp' },
   { collection: 'waInbound', field: 'expiresAt', keepMs: 0, kind: 'timestamp' },
   { collection: 'waLinkCodes', field: 'expiresAtMs', keepMs: 0, kind: 'millis' },
+  { collection: 'waSessions', field: 'expiresAtMs', keepMs: 0, kind: 'millis' },
   { collection: 'waRate', field: 'updatedAt', keepMs: 3 * DAY_MS, kind: 'timestamp' },
 ]
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { handleMessage } from './handler.js'
+import { handleMessage, SESSION_TTL_MS } from './handler.js'
 import { MESSAGES } from './format.js'
 
 // A fake store with the same contract as store.js, backed by plain maps.
@@ -10,6 +10,7 @@ function fakeStore(seed = {}) {
     users: new Map(Object.entries(seed.users || {})),
     codes: new Map(Object.entries(seed.codes || {})),
     rate: new Map(),
+    sessions: new Map(),
     sites: seed.sites || {},
     logs: [],
   }
@@ -52,6 +53,15 @@ function fakeStore(seed = {}) {
     },
     async siteContext() {
       return { contacts: [], modules: {} }
+    },
+    async getSession(waId) {
+      return s.sessions.get(waId) || null
+    },
+    async setSession(waId, v) {
+      s.sessions.set(waId, v)
+    },
+    async clearSession(waId) {
+      s.sessions.delete(waId)
     },
     async log(row, waId) {
       s.logs.push({ ...row, waId })
@@ -219,5 +229,78 @@ describe('unlink, dedupe, staleness and limits', () => {
   it('never logs the message text', async () => {
     await handleMessage(msg('DEMO001 secret words'), ctx())
     expect(JSON.stringify(store.s.logs)).not.toContain('secret words')
+  })
+})
+
+describe('location fallback and numbered picks', () => {
+  const GEO = [
+    { ...SITES[0], lat: 12.0, lng: 77.0 },
+    { ...SITES[1], lat: 12.2, lng: 77.0 },
+    { ...SITES[2], lat: 12.01, lng: 77.0 },
+    { id: 's4', name: 'Demo South Depot', code: 'DEMO004', region: 'South', entity: 'Demo' },
+  ]
+  const loc = (latitude, longitude) =>
+    msg('', { type: 'location', location: { latitude, longitude } })
+  beforeEach(() => {
+    store.s.sites.o1 = GEO
+    store.s.users.set('u1', member({ siteId: 's9', access: { regions: ['South'] } }))
+  })
+
+  it('asks for a location when nothing matches', async () => {
+    const row = await handleMessage(msg('zzz'), ctx())
+    expect(row.outcome).toBe('nomatch')
+    expect(sent[0]).toMatchObject({ locationRequest: true })
+    expect(sent[0].text).toContain('Tap 📎 → Location')
+  })
+
+  it('lists only reachable sites with coordinates, nearest first, and logs no coordinates', async () => {
+    const row = await handleMessage(loc(12.0, 77.0), ctx())
+    expect(row.outcome).toBe('nearby')
+    // s1 is nearest of all but outside reach; s4 has no coordinates.
+    expect(sent[0].rows.map((r) => r.id)).toEqual(['site:s3', 'site:s2'])
+    expect(sent[0].text).toMatch(/1\. Demo South Annex \(DEMO003\) — 1\.1 km/)
+    expect(JSON.stringify(store.s.logs)).not.toMatch(/77|latitude/)
+    expect(store.s.sessions.get(PHONE).choices).toEqual(['s3', 's2'])
+  })
+
+  it("answers a number from the list with that site's summary", async () => {
+    await handleMessage(loc(12.0, 77.0), ctx())
+    const row = await handleMessage(msg('2'), ctx())
+    expect(row).toMatchObject({ outcome: 'ok', siteId: 's2' })
+    expect(sent[1].text).toContain('Demo South Hub (DEMO002)')
+  })
+
+  it('a list-row tap returns the summary', async () => {
+    await handleMessage(loc(12.0, 77.0), ctx())
+    const row = await handleMessage(msg('x', { choiceId: 'site:s3' }), ctx())
+    expect(row).toMatchObject({ outcome: 'ok', siteId: 's3' })
+  })
+
+  it('an expired list no longer answers numbers', async () => {
+    await handleMessage(loc(12.0, 77.0), ctx())
+    store.s.sessions.get(PHONE).expiresAtMs = NOW.getTime() - 1
+    const row = await handleMessage(msg('1'), ctx())
+    expect(row.outcome).toBe('nomatch')
+    expect(SESSION_TTL_MS).toBe(15 * 60 * 1000)
+  })
+
+  it("refuses a pick whose site has left the user's reach since the list", async () => {
+    await handleMessage(loc(12.0, 77.0), ctx())
+    store.s.users.set('u1', member())
+    const row = await handleMessage(msg('1'), ctx())
+    expect(row.outcome).toBe('denied')
+  })
+
+  it('makes ambiguous-name lists answerable by number', async () => {
+    await handleMessage(msg('demo south'), ctx())
+    const first = store.s.sessions.get(PHONE).choices[0]
+    const row = await handleMessage(msg('1'), ctx())
+    expect(row.siteId).toBe(first)
+  })
+
+  it('says so when no reachable site has coordinates', async () => {
+    store.s.sites.o1 = SITES
+    await handleMessage(loc(12.0, 77.0), ctx())
+    expect(sent[0].text).toBe(MESSAGES.noLocatedSites)
   })
 })

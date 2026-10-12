@@ -43,6 +43,7 @@ both at the database root, tenanted by an `orgId` field and **server-only** in
 |---|---|---|---|
 | `waLinks` | The person's WhatsApp number (the document id) and the uid it was proven for | `uid` | Until they unlink (UNLINK / STOP on WhatsApp, or Security → Unlink), or erasure |
 | `waQueryLog` | Which site they looked up, when, and the outcome. The number only as a keyed digest; **no message text** | `uid` | 90 days (`purgeWhatsAppLedgers`) |
+| `waSessions` | Site ids from the last WhatsApp pick-list (never a location) | `uid` | 15 minutes (`purgeWhatsAppLedgers`), or erasure |
 
 Both are in `SUBJECT_SOURCES` as `topLevel` + `orgField`, so the export finds
 them by uid without crossing tenants, and both are ERASABLE. Withdrawing consent

@@ -163,7 +163,8 @@ export const RECORD_CLASSES = [
     proposedPeriodNote: 'The list of people authorised to apply a lock. Name and contact only.',
     livePurge: false,
     recycleBin: false,
-    counselMustSign: 'Whether a removed technician’s register entry may be deleted, and after how long.',
+    counselMustSign:
+      'Whether a removed technician’s register entry may be deleted, and after how long.',
   },
   {
     path: 'locks',
@@ -211,6 +212,17 @@ export const RECORD_CLASSES = [
     proposedPeriodNote:
       'Which site a linked user looked up, and the outcome. No message text. Own sweep: ' +
       'purgeWhatsAppLedgers; constant WA_RETENTION in whatsapp/retention.js.',
+    livePurge: false,
+    recycleBin: false,
+    counselMustSign: null,
+  },
+  {
+    path: 'waSessions',
+    class: 'operational',
+    proposedPeriod: '15 minutes',
+    proposedPeriodNote:
+      'The site ids of the last WhatsApp pick-list, so a numbered reply can answer it. Never a location. ' +
+      'Own sweep: purgeWhatsAppLedgers.',
     livePurge: false,
     recycleBin: false,
     counselMustSign: null,

@@ -198,34 +198,60 @@ export function formatSiteReply(site, counts = {}, opts = {}) {
 const cut = (s, max) => (s.length > max ? `${s.slice(0, max - 1)}…` : s)
 
 /**
- * A pick-list for an ambiguous query: an interactive list message (≤10 rows,
- * title ≤24, description ≤72), plus the same choices as text for clients that
- * cannot render lists.
+ * A pick-list: an interactive list message (≤10 rows, title ≤24, description
+ * ≤72) plus the same choices NUMBERED in the text, so a client that cannot
+ * render lists — or a user who would rather type — replies "2" or the code.
+ * `extra` per site is a short suffix (e.g. a distance) shown in both.
  */
-export function formatChoices(sites = [], query = '') {
+export function formatPickList(sites = [], intro, extra = () => '') {
   const shown = sites.slice(0, 10)
-  const lines = shown.map((s) => `• ${siteTitle(s)}`)
+  const lines = shown.map((s, i) => {
+    const e = extra(s)
+    return `${i + 1}. ${siteTitle(s)}${e ? ` — ${e}` : ''}`
+  })
   const text = cut(
-    [
-      `Several sites match "${clean(query, 40)}". Tap one below, or reply with its code:`,
-      '',
-      ...lines,
-    ].join('\n'),
+    [intro, '', ...lines, '', 'Tap a site below, or reply with its number or code.'].join('\n'),
     1024
   )
   const rows = shown.map((s) => {
     const code = clean(s.code, 12)
     const name = clean(s.name, 60) || 'Site'
+    const e = extra(s)
+    const where = [clean(s.region, 40), clean(s.entity, 40)].filter(Boolean).join(' · ')
     return {
       id: `site:${s.id}`,
       title: cut(code ? `${code} · ${name}` : name, ROW_TITLE_MAX),
-      description: cut(
-        [clean(s.region, 40), clean(s.entity, 40)].filter(Boolean).join(' · ') || name,
-        ROW_DESC_MAX
-      ),
+      description: cut([e, where].filter(Boolean).join(' · ') || name, ROW_DESC_MAX),
     }
   })
   return { text, rows }
+}
+
+/** Several names match. */
+export function formatChoices(sites = [], query = '') {
+  return formatPickList(sites, `Several sites match "${clean(query, 40)}":`)
+}
+
+/** Sites near a shared location; `near` is geo.js nearestSites().sites. */
+export function formatNearby(near = [], within = true, kmLabel = (km) => `${km} km`) {
+  const km = new Map(near.map((x) => [x.site.id, x.km]))
+  const intro = within
+    ? 'Your nearest sites:'
+    : 'None of your sites is within 25 km. The nearest are:'
+  return formatPickList(
+    near.map((x) => x.site),
+    intro,
+    (s) => kmLabel(km.get(s.id))
+  )
+}
+
+/** Body of the location request (interactive or plain). */
+export function locationRequestText(query) {
+  const head = query ? `No site you can access matches "${clean(query, 40)}". ` : ''
+  return (
+    `${head}Share your current location and I'll list your nearest sites.\n\n` +
+    'Tap 📎 → Location → Send your current location. Or reply with a site code.'
+  )
 }
 
 export const MESSAGES = {
@@ -248,6 +274,10 @@ export const MESSAGES = {
   unlinkedOk:
     'Unlinked. This number will no longer receive site details. You can link again from the app at any time.',
   error: 'Sorry, something went wrong looking that up. Please try again in a few minutes.',
+  noLocatedSites:
+    "None of your sites has a location recorded, so I can't find the nearest. Please send the site code or name.",
+  badLocation: "I couldn't read that location. Please try again, or send the site code.",
+  pickExpired: 'That list has expired. Send the site code or name again.',
 }
 
 export function noMatch(query) {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { extractMessages, parseCommand, cleanQuery, normaliseWaId } from './parse.js'
+import { extractMessages, parseCommand, readLocation, cleanQuery, normaliseWaId } from './parse.js'
 
 const PNID = '100000000000001'
 const payload = (value) => ({
@@ -49,6 +49,7 @@ describe('extractMessages', () => {
         type: 'text',
         text: 'BLR0123',
         choiceId: '',
+        location: null,
       },
       {
         wamid: 'wamid.B',
@@ -57,6 +58,7 @@ describe('extractMessages', () => {
         type: 'interactive',
         text: 'X',
         choiceId: 'site:s1',
+        location: null,
       },
     ])
     expect(JSON.stringify(messages)).not.toContain('Test Person')
@@ -128,5 +130,47 @@ describe('parseCommand', () => {
   it('bounds and cleans the query', () => {
     expect(cleanQuery('a'.repeat(500)).length).toBe(120)
     expect(cleanQuery('x\u0000y')).toBe('x y')
+  })
+})
+
+describe('location messages', () => {
+  const payload = (location) => ({
+    object: 'whatsapp_business_account',
+    entry: [
+      {
+        changes: [
+          {
+            field: 'messages',
+            value: {
+              metadata: { phone_number_id: 'PNID' },
+              messages: [
+                {
+                  id: 'wamid.L',
+                  from: '919000000001',
+                  timestamp: '1760000000',
+                  type: 'location',
+                  location,
+                },
+              ],
+            },
+          },
+        ],
+      },
+    ],
+  })
+  it('keeps only the two numbers from a shared location', () => {
+    const [m] = extractMessages(
+      payload({ latitude: 12.5, longitude: 77.25, name: 'Home', address: '1 Fake St' }),
+      'PNID'
+    ).messages
+    expect(m.location).toEqual({ latitude: 12.5, longitude: 77.25 })
+    expect(JSON.stringify(m)).not.toContain('Fake St')
+    expect(parseCommand(m)).toEqual({ kind: 'location', latitude: 12.5, longitude: 77.25 })
+  })
+  it('rejects junk, out-of-range and 0,0', () => {
+    expect(readLocation({ latitude: 'x', longitude: 1 })).toBeNull()
+    expect(readLocation({ latitude: 91, longitude: 1 })).toBeNull()
+    expect(readLocation({ latitude: 0, longitude: 0 })).toBeNull()
+    expect(parseCommand({ type: 'location', location: null })).toEqual({ kind: 'badLocation' })
   })
 })

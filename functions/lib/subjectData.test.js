@@ -185,7 +185,7 @@ describe('the LOTO permit sources', () => {
 // without the entries at all, a person's linked number is missing from their
 // own export.
 describe('WhatsApp collections', () => {
-  it.each(['waLinks', 'waQueryLog'])('%s is reachable by uid within the org', (path) => {
+  it.each(['waLinks', 'waQueryLog', 'waSessions'])('%s is reachable by uid within the org', (path) => {
     const src = SUBJECT_SOURCES.find((s) => s.path === path)
     expect(src).toBeTruthy()
     expect(src).toMatchObject({ topLevel: true, orgField: 'orgId', retention: ERASABLE })

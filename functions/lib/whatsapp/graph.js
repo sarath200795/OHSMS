@@ -33,6 +33,25 @@ export function listPayload(to, body, rows) {
   }
 }
 
+/**
+ * Cloud API "location request" interactive message: the client shows a
+ * "Send location" button. Clients that cannot render it make the send fail,
+ * and the caller falls back to the same body as plain text.
+ */
+export function locationRequestPayload(to, body) {
+  return {
+    messaging_product: 'whatsapp',
+    recipient_type: 'individual',
+    to,
+    type: 'interactive',
+    interactive: {
+      type: 'location_request_message',
+      body: { text: body },
+      action: { name: 'send_location' },
+    },
+  }
+}
+
 /** A version segment like v25.0; anything else is refused rather than put in a URL. */
 export function graphVersion(value) {
   const v = String(value ?? '').trim()

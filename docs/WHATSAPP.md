@@ -29,14 +29,14 @@ Updated 12 Oct, 07:30 IST
 Reply with another site code or name.
 ```
 
-| Line | Definition (and the app helper it must equal) |
-|---|---|
-| Fire extinguishers | Admin → Sites (`siteStats().extinguishers`); HPT overdue = `deriveStatus().flags.HPT_DUE` on a unit not closed |
-| Open defects | The Defect Repository: approved physical-defect reports still on the unit, derived **HPT due** and **Empty** rows, and pending AED / fire-alarm QR reports |
-| First aid boxes | `sites/{id}.firstAidBoxes` |
-| Pending actions | The Central Action Tracker **minus** the equipment source (already counted as defects) and **minus** illness actions; incidents, drills, inspections and internal audit only; overdue = due date before today (IST); "none" when zero |
-| Incidents | `siteStats` matching; open = lifecycle not closed / verified; last 90 days by incident date |
-| Emergency contacts | `erpContacts` for the site plus org-wide ones, external services first; the org helpline; 112 |
+| Line               | Definition (and the app helper it must equal)                                                                                                                                                                                         |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Fire extinguishers | Admin → Sites (`siteStats().extinguishers`); HPT overdue = `deriveStatus().flags.HPT_DUE` on a unit not closed                                                                                                                        |
+| Open defects       | The Defect Repository: approved physical-defect reports still on the unit, derived **HPT due** and **Empty** rows, and pending AED / fire-alarm QR reports                                                                            |
+| First aid boxes    | `sites/{id}.firstAidBoxes`                                                                                                                                                                                                            |
+| Pending actions    | The Central Action Tracker **minus** the equipment source (already counted as defects) and **minus** illness actions; incidents, drills, inspections and internal audit only; overdue = due date before today (IST); "none" when zero |
+| Incidents          | `siteStats` matching; open = lifecycle not closed / verified; last 90 days by incident date                                                                                                                                           |
+| Emergency contacts | `erpContacts` for the site plus org-wide ones, external services first; the org helpline; 112                                                                                                                                         |
 
 `functions/` cannot import `src/`, so the definitions are ported to
 `functions/lib/siteSummary.js` and pinned by
@@ -85,16 +85,16 @@ a new link replaces the old one.
 
 Off by default. It answers only when **all** of these are real:
 
-| Name | Kind | Value |
-|---|---|---|
-| `WA_APP_SECRET` | Secret Manager | Meta app's App Secret (verifies webhook signatures) |
-| `WA_ACCESS_TOKEN` | Secret Manager | System User token with `whatsapp_business_messaging` |
-| `WA_VERIFY_TOKEN` | Secret Manager | Random string, also typed into Meta's webhook "Verify token" |
-| `WA_PHONE_NUMBER_ID` | param | Cloud API phone number id |
-| `WA_ENABLED` | param | `true` to switch on — the kill switch |
-| `WA_GRAPH_VERSION` | param | default `v25.0` |
-| `WA_DISPLAY_NUMBER` | param | the number shown on the Security page |
-| `WA_DAILY_CAP` | param | global outbound replies per day, default 2000 |
+| Name                 | Kind           | Value                                                        |
+| -------------------- | -------------- | ------------------------------------------------------------ |
+| `WA_APP_SECRET`      | Secret Manager | Meta app's App Secret (verifies webhook signatures)          |
+| `WA_ACCESS_TOKEN`    | Secret Manager | System User token with `whatsapp_business_messaging`         |
+| `WA_VERIFY_TOKEN`    | Secret Manager | Random string, also typed into Meta's webhook "Verify token" |
+| `WA_PHONE_NUMBER_ID` | param          | Cloud API phone number id                                    |
+| `WA_ENABLED`         | param          | `true` to switch on — the kill switch                        |
+| `WA_GRAPH_VERSION`   | param          | default `v25.0`                                              |
+| `WA_DISPLAY_NUMBER`  | param          | the number shown on the Security page                        |
+| `WA_DAILY_CAP`       | param          | global outbound replies per day, default 2000                |
 
 The deploy step creates the three secrets as `UNSET-PLACEHOLDER` when missing so
 the functions deploy; a placeholder never authenticates anything. Subscribe the
@@ -107,3 +107,11 @@ See `docs/DATA-RIGHTS.md` ("WhatsApp site lookup"). In short: `waLinks` and
 server-only in the rules (tested in `tests/whatsapp.rules.test.js`), phone
 numbers appear outside `waLinks` only as a keyed digest, message text is never
 stored, and the profile name in the webhook payload is dropped.
+
+## Location fallback and numbered lists
+
+- If the text matches no site the user can access, the bot asks for their location. It sends Cloud API's interactive `location_request_message`. If the client can't show that, it sends the same body as plain text: "Tap 📎 → Location → Send your current location".
+- When a location arrives, the bot measures the haversine distance to the user's **accessible** sites that have `lat`/`lng`. It lists up to 5 sites within 25 km. If none is that close, it lists the nearest 3. The list is an interactive list with the same entries numbered in the text.
+- The user picks a site by tapping a row, or by replying with its number or code. A tap or a number re-checks access before any data is sent.
+- `waSessions/{phoneHash}` holds `{ uid, orgId, choices: [siteId…], expiresAtMs }` for 15 minutes. The rules deny all client access to it, and `purgeWhatsAppLedgers` sweeps it. Ambiguous-name lists use the same session.
+- **Coordinates are never stored.** They are used for one distance calculation in memory. They do not go into `waQueryLog` (intent `location`, outcome `nearby`), `waSessions`, or logs. The name and address Meta attaches are dropped when the message is parsed.

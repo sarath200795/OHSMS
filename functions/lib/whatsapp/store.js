@@ -11,6 +11,9 @@
 //   waRate/{phoneHash}         counters, see rateLimit.js
 //   waQueryLog/{auto}          { orgId, uid, phoneHash, siteId, intent, outcome, at }
 //   waSiteSnapshots/{orgId}    { asOf, v, sites: { [siteId]: [counts…] } }
+//   waSessions/{phoneHash}     { uid, orgId, choices: [siteId…], expiresAtMs }  15 min;
+//                              the last list offered, so "2" can answer it.
+//                              Site ids only — never the shared coordinates.
 //
 // waId (the sender's number, digits) is the waLinks document id because it is
 // the lookup key on every message. It is personal data, which is why the
@@ -230,7 +233,7 @@ export function createStore(db, { pepper, now = () => new Date() } = {}) {
     async listSites(orgId) {
       const snap = await db
         .collection(`organizations/${orgId}/sites`)
-        .select('name', 'code', 'region', 'entity')
+        .select('name', 'code', 'region', 'entity', 'lat', 'lng')
         .limit(READ_CAP)
         .get()
       return docs(snap).filter((s) => typeof s.name === 'string' && s.name)
@@ -268,6 +271,24 @@ export function createStore(db, { pepper, now = () => new Date() } = {}) {
         roleLabels: o.erpRoleLabels || {},
         modules,
       }
+    },
+
+    async getSession(waId) {
+      const snap = await db.doc(`waSessions/${hash(waId)}`).get()
+      return snap.exists ? snap.data() || null : null
+    },
+
+    async setSession(waId, { uid, orgId, choices, expiresAtMs }) {
+      await db.doc(`waSessions/${hash(waId)}`).set({
+        uid,
+        orgId,
+        choices: (choices || []).filter((id) => typeof id === 'string').slice(0, 10),
+        expiresAtMs,
+      })
+    },
+
+    async clearSession(waId) {
+      await db.doc(`waSessions/${hash(waId)}`).delete()
     },
 
     async log(row, waId) {

@@ -29,19 +29,45 @@
 //     listSites(orgId) → sites[]
 //     siteCounts(orgId) → { asOf: Date, sites: { [siteId]: counts } }
 //     siteContext(orgId, site) → { contacts, helplinePrimary, helplineSecondary, roleLabels, modules }
+//     getSession(waId) / setSession(waId, { uid, orgId, choices, expiresAtMs }) / clearSession(waId)
 //     log(row, waId)                              waId is hashed, never stored
 //   },
-//   reply(to, { text } | { text, rows }) → bool   false when the breaker or Graph refused
+//   reply(to, { text } | { text, rows } | { text, locationRequest }) → bool   false when the breaker or Graph refused
 // }
 // ─────────────────────────────────────────────────────────────────────────────
 import { parseCommand } from './parse.js'
 import { isActiveMember, reachableSites } from './access.js'
 import { resolveSiteQuery } from './resolve.js'
 import { countQuery, allowUnlinkedReply, linkBlocked, countBadLink } from './rateLimit.js'
-import { formatSiteReply, formatChoices, MESSAGES, noMatch, tooMany, helpText } from './format.js'
+import {
+  formatSiteReply,
+  formatChoices,
+  formatNearby,
+  locationRequestText,
+  MESSAGES,
+  tooMany,
+  helpText,
+} from './format.js'
+import { nearestSites, formatKm } from './geo.js'
 
 /** Messages older than this are not answered: the reply would be stale and the window may have closed. */
 export const MAX_MESSAGE_AGE_MS = 60 * 60 * 1000
+
+/** How long a numbered list stays answerable by its numbers. */
+export const SESSION_TTL_MS = 15 * 60 * 1000
+
+/**
+ * The site a numbered reply picks from the user's last list, or undefined
+ * when there is no live list (so the text is treated as a code instead).
+ * Returns null when the list exists but the pick is no longer in reach.
+ */
+export function pickFromSession(session, uid, n, reach, now) {
+  if (!session || session.uid !== uid) return undefined
+  if (!(Number(session.expiresAtMs) > now.getTime())) return undefined
+  const ids = Array.isArray(session.choices) ? session.choices : []
+  if (!Number.isInteger(n) || n < 1 || n > ids.length) return undefined
+  return reach.find((s) => s.id === ids[n - 1]) || null
+}
 
 export async function handleMessage(msg, ctx) {
   const { store, now = new Date() } = ctx
@@ -86,6 +112,14 @@ export async function handleMessage(msg, ctx) {
     return done(link ? 'denied' : 'unknown', link ? { orgId: link.orgId, uid: link.uid } : {})
   }
   Object.assign(row, { orgId: link.orgId, uid: link.uid })
+  // Remember a list so "2" can answer it. Site ids only, 15 minutes.
+  const offer = (sites) =>
+    store.setSession(from, {
+      uid: link.uid,
+      orgId: link.orgId,
+      choices: sites.slice(0, 10).map((s) => s.id),
+      expiresAtMs: now.getTime() + SESSION_TTL_MS,
+    })
 
   if (cmd.kind === 'unlink') {
     await store.unlink(from)
@@ -117,22 +151,57 @@ export async function handleMessage(msg, ctx) {
       await ctx.reply(from, { text: MESSAGES.noAccess })
       return done('denied')
     }
+  } else if (cmd.kind === 'badLocation') {
+    await ctx.reply(from, { text: MESSAGES.badLocation })
+    return done('badlocation')
+  } else if (cmd.kind === 'location') {
+    // The coordinates are used here and nowhere else: not logged, not stored,
+    // not put in the session (which keeps only the site ids it offered).
+    const near = nearestSites(reach, cmd.latitude, cmd.longitude)
+    if (!near.sites.length) {
+      await ctx.reply(from, { text: MESSAGES.noLocatedSites })
+      return done('nolocated')
+    }
+    await offer(near.sites.map((x) => x.site))
+    const { text, rows } = formatNearby(near.sites, near.within, formatKm)
+    await ctx.reply(from, { text, rows })
+    return done('nearby')
   } else {
-    const hit = resolveSiteQuery(cmd.query, reach)
-    if (hit.status === 'none') {
-      await ctx.reply(from, { text: noMatch(cmd.query) })
-      return done('nomatch')
+    // A bare number answers the last list, if one is live; otherwise it is a code.
+    if (/^\d{1,2}$/.test(cmd.query)) {
+      const picked = pickFromSession(
+        await store.getSession(from),
+        link.uid,
+        Number(cmd.query),
+        reach,
+        now
+      )
+      if (picked === null) {
+        await ctx.reply(from, { text: MESSAGES.noAccess })
+        return done('denied')
+      }
+      if (picked) site = picked
     }
-    if (hit.status === 'tooMany') {
-      await ctx.reply(from, { text: tooMany(hit.count) })
-      return done('ambiguous')
+    if (!site) {
+      const hit = resolveSiteQuery(cmd.query, reach)
+      if (hit.status === 'none') {
+        // Cannot name it? Then show where they are. Interactive location
+        // request where the client supports it, plain instructions otherwise.
+        await ctx.reply(from, { text: locationRequestText(cmd.query), locationRequest: true })
+        return done('nomatch')
+      }
+      if (hit.status === 'tooMany') {
+        await ctx.reply(from, { text: tooMany(hit.count) })
+        return done('ambiguous')
+      }
+      if (hit.status === 'many') {
+        await offer(hit.sites)
+        const { text, rows } = formatChoices(hit.sites, cmd.query)
+        await ctx.reply(from, { text, rows })
+        return done('ambiguous')
+      }
+      site = hit.site
     }
-    if (hit.status === 'many') {
-      const { text, rows } = formatChoices(hit.sites, cmd.query)
-      await ctx.reply(from, { text, rows })
-      return done('ambiguous')
-    }
-    site = hit.site
   }
 
   try {

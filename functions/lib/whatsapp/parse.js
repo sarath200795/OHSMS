@@ -40,7 +40,9 @@ export function extractMessages(payload, phoneNumberId) {
         if (!from || !wamid) continue
         let text = ''
         let choiceId = ''
-        if (m.type === 'text') text = String(m.text?.body ?? '')
+        let location = null
+        if (m.type === 'location') location = readLocation(m.location)
+        else if (m.type === 'text') text = String(m.text?.body ?? '')
         else if (m.type === 'interactive') {
           const reply = m.interactive?.list_reply || m.interactive?.button_reply || {}
           choiceId = String(reply.id ?? '')
@@ -53,11 +55,27 @@ export function extractMessages(payload, phoneNumberId) {
           type: m.type || '',
           text,
           choiceId,
+          location,
         })
       }
     }
   }
   return { messages, statuses }
+}
+
+/**
+ * A shared location as { latitude, longitude }, or null. Only the two numbers
+ * are kept: the name and address Meta may attach are dropped, and the
+ * coordinates themselves are used for one distance calculation and never
+ * stored or logged (handler.js).
+ */
+export function readLocation(loc) {
+  const lat = Number(loc?.latitude)
+  const lng = Number(loc?.longitude)
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null
+  if (lat === 0 && lng === 0) return null
+  return { latitude: lat, longitude: lng }
 }
 
 const GREETINGS = new Set([
@@ -94,12 +112,17 @@ export function cleanQuery(text) {
  *   { kind: 'unlink' }        UNLINK or STOP
  *   { kind: 'help' }          HELP / MENU / ?
  *   { kind: 'choice', siteId} a tap on a list row this bot sent
+ *   { kind: 'location', latitude, longitude }  a shared location
  *   { kind: 'greeting' }      nothing left after the greeting
  *   { kind: 'site', query }   anything else
  */
 export function parseCommand(message = {}) {
   const choice = /^site:([A-Za-z0-9_-]{1,128})$/.exec(String(message.choiceId ?? ''))
   if (choice) return { kind: 'choice', siteId: choice[1] }
+  if (message.type === 'location') {
+    const loc = message.location || readLocation(message)
+    return loc ? { kind: 'location', ...loc } : { kind: 'badLocation' }
+  }
 
   const raw = String(message.text ?? '').trim()
   const link = /^link\b\s*(.*)$/i.exec(raw)

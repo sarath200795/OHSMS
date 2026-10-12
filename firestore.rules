@@ -1122,6 +1122,12 @@ service cloud.firestore {
     match /waSiteSnapshots/{docId} {
       allow read, write: if false;
     }
+    // The last pick-list offered to a number. Writable, it would let a client
+    // put a site it cannot reach behind "1" — the handler re-checks reach, but
+    // the list is still the server's to write.
+    match /waSessions/{docId} {
+      allow read, write: if false;
+    }
 
     // ── Platform ownership ────────────────────────────────────────────────────
     // One document per person who operates the platform. Existence IS the
