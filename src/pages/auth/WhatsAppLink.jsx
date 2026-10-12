@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import toast from 'react-hot-toast'
 import { MessageCircle, Link2Off } from 'lucide-react'
 import { useAuth } from '../../shared/auth/AuthContext'
@@ -16,6 +16,11 @@ import { Button, Badge } from '../../shared/ui'
  *
  * The notice below is the DPDP notice for this processing: what is kept, for
  * how long, who processes it (Meta), and how to withdraw.
+ *
+ * Status is fetched when asked for, not on mount. Most visits to this page are
+ * about two-factor, and a callable on every render is a request per visit to
+ * a function most people never use — and, where no functions backend is
+ * running (the e2e emulator suite), a console error on a page that has none.
  */
 export default function WhatsAppLink() {
   const { user, profile } = useAuth()
@@ -32,10 +37,6 @@ export default function WhatsAppLink() {
       setFailed(true)
     }
   }
-
-  useEffect(() => {
-    refresh()
-  }, [])
 
   const actor = { uid: user?.uid, name: profile?.name }
 
@@ -90,7 +91,30 @@ export default function WhatsAppLink() {
       </section>
     )
   }
-  if (!status) return null
+  if (!status) {
+    return (
+      <section className="card mt-4 max-w-2xl space-y-3 p-5">
+        <h2 className="flex items-center gap-2 text-sm font-bold text-ink-800">
+          <MessageCircle size={14} /> WhatsApp site lookup
+        </h2>
+        <p className="max-w-[56ch] text-xs leading-relaxed text-ink-500">
+          Get a site&apos;s safety summary on WhatsApp by sending its code, for sites you can
+          already open in the app.
+        </p>
+        <Button
+          variant="ghost"
+          loading={busy}
+          onClick={async () => {
+            setBusy(true)
+            await refresh()
+            setBusy(false)
+          }}
+        >
+          Set up or check WhatsApp
+        </Button>
+      </section>
+    )
+  }
 
   const minutes = issued ? Math.max(1, Math.round((issued.expiresAtMs - Date.now()) / 60000)) : 0
 
