@@ -33,6 +33,27 @@ a response that silently omitted the committee minutes naming someone is a
 *failed* subject access response, not a partial one, and the only way to avoid
 claiming completeness it does not have is to say where it stopped.
 
+### WhatsApp site lookup
+
+The WhatsApp lookup (`docs/WHATSAPP.md`) adds two personal-data collections,
+both at the database root, tenanted by an `orgId` field and **server-only** in
+`firestore.rules`:
+
+| Collection | What | Reached by | Kept |
+|---|---|---|---|
+| `waLinks` | The person's WhatsApp number (the document id) and the uid it was proven for | `uid` | Until they unlink (UNLINK / STOP on WhatsApp, or Security → Unlink), or erasure |
+| `waQueryLog` | Which site they looked up, when, and the outcome. The number only as a keyed digest; **no message text** | `uid` | 90 days (`purgeWhatsAppLedgers`) |
+| `waSessions` | Site ids from the last WhatsApp pick-list (never a location) | `uid` | 15 minutes (`purgeWhatsAppLedgers`), or erasure |
+
+Both are in `SUBJECT_SOURCES` as `topLevel` + `orgField`, so the export finds
+them by uid without crossing tenants, and both are ERASABLE. Withdrawing consent
+deletes the link immediately. The sender's WhatsApp profile name arrives in
+every webhook and is dropped on receipt. Replies carry counts only — never an
+incident narrative, a name from an action, or anything medical; illness actions
+are excluded from the action count altogether, because at a small site a count
+can point at one person's health. Messages pass through Meta (WhatsApp Cloud
+API) as a processor; record it in the ROPA and the DPA.
+
 ## 2. Subject access (implemented)
 
 **Admin → Maintenance → Subject access request.** Enter the person's uid,

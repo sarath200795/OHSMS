@@ -351,3 +351,32 @@ export async function metabaseQuery(dataset, { from, to } = {}) {
   const fn = await callable('metabaseQuery', { timeout: 300_000 })
   return (await fn({ dataset, from, to })).data
 }
+
+/**
+ * WhatsApp site lookup: the caller's own link status.
+ *
+ * `{ available, number, linked, masked, linkedAt }`. The waLinks collection is
+ * server-only (firestore.rules), so this callable — which answers only about
+ * the caller, with the number masked to its last four digits — is the one way
+ * the app can see it.
+ */
+export async function whatsAppLinkStatus() {
+  const fn = await callable('whatsAppLinkStatus')
+  return (await fn()).data
+}
+
+/**
+ * Issue a one-time code to send from the phone as "LINK 123456".
+ * `{ code, expiresAtMs, number }`. Sending it from WhatsApp is the proof that
+ * the number belongs to the signed-in person.
+ */
+export async function startWhatsAppLink() {
+  const fn = await callable('startWhatsAppLink')
+  return (await fn()).data
+}
+
+/** Withdraw consent: remove the caller's linked number. `{ removed }`. */
+export async function unlinkWhatsApp() {
+  const fn = await callable('unlinkWhatsApp')
+  return (await fn()).data
+}

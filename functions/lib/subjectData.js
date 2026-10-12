@@ -109,7 +109,13 @@ export const SUBJECT_SOURCES = [
     retention: STATUTORY,
     why: 'The accident record. Retention is required by occupational-safety law and it is the employer’s evidence of the event.',
   },
-  { path: 'incidents/photos', parent: 'incidents', mentions: ['caption', 'name'], retention: STATUTORY, why: 'Evidence attached to a retained accident record.' },
+  {
+    path: 'incidents/photos',
+    parent: 'incidents',
+    mentions: ['caption', 'name'],
+    retention: STATUTORY,
+    why: 'Evidence attached to a retained accident record.',
+  },
 
   // ── Injuries: the clinical record, keyed to the person ─────────────────────
   // Doc id is `${incidentId}__${personId}`, and personId is also a field.
@@ -132,18 +138,45 @@ export const SUBJECT_SOURCES = [
   // ── Illnesses ──────────────────────────────────────────────────────────────
   {
     path: 'illnesses',
-    mentions: ['createdByName', 'affectedPersonnel[].name', 'actions[].owner', 'actions[].ownerName'],
+    mentions: [
+      'createdByName',
+      'affectedPersonnel[].name',
+      'actions[].owner',
+      'actions[].ownerName',
+    ],
     retention: STATUTORY,
     why: 'Occupational illness record. Exposure records carry the longest statutory retention of anything here.',
   },
-  { path: 'illnesses/files', parent: 'illnesses', mentions: ['name', 'caption'], files: true, retention: STATUTORY, why: 'Medical documents attached to a retained illness record.' },
+  {
+    path: 'illnesses/files',
+    parent: 'illnesses',
+    mentions: ['name', 'caption'],
+    files: true,
+    retention: STATUTORY,
+    why: 'Medical documents attached to a retained illness record.',
+  },
 
   // ── Training ───────────────────────────────────────────────────────────────
   // Joined cleanly by uid, and the one class where a competence record is
   // itself often a statutory requirement (proof the worker was trained).
-  { path: 'trainingRecords', joins: [{ kind: 'field', field: 'employeeUid', key: 'uid' }], retention: STATUTORY, why: 'Proof of competence and induction; required to be held for the worker’s employment and beyond.' },
-  { path: 'trainingAssignments', joins: [{ kind: 'field', field: 'employeeUid', key: 'uid' }], retention: ERASABLE, why: 'An assignment is scheduling, not a safety record.' },
-  { path: 'trainingRequests', joins: [{ kind: 'field', field: 'employeeUid', key: 'uid' }], retention: ERASABLE, why: 'A request to attend; carries no safety evidence once resolved.' },
+  {
+    path: 'trainingRecords',
+    joins: [{ kind: 'field', field: 'employeeUid', key: 'uid' }],
+    retention: STATUTORY,
+    why: 'Proof of competence and induction; required to be held for the worker’s employment and beyond.',
+  },
+  {
+    path: 'trainingAssignments',
+    joins: [{ kind: 'field', field: 'employeeUid', key: 'uid' }],
+    retention: ERASABLE,
+    why: 'An assignment is scheduling, not a safety record.',
+  },
+  {
+    path: 'trainingRequests',
+    joins: [{ kind: 'field', field: 'employeeUid', key: 'uid' }],
+    retention: ERASABLE,
+    why: 'A request to attend; carries no safety evidence once resolved.',
+  },
 
   // ── LOTO ───────────────────────────────────────────────────────────────────
   // A per-job lockout permit names the requester, approver, internal crew (by
@@ -175,8 +208,21 @@ export const SUBJECT_SOURCES = [
     retention: ERASABLE,
     why: 'A per-job lockout permit. Kept one year after it closes, then purged; nothing here is a statutory record of its own.',
   },
-  { path: 'lotoPermits/events', parent: 'lotoPermits', mentions: ['byName', 'note'], retention: ERASABLE, why: 'The permit’s timeline; goes with it.' },
-  { path: 'lotoPermits/attachments', parent: 'lotoPermits', mentions: ['name', 'byName'], files: true, retention: ERASABLE, why: 'Files attached to a permit; goes with it.' },
+  {
+    path: 'lotoPermits/events',
+    parent: 'lotoPermits',
+    mentions: ['byName', 'note'],
+    retention: ERASABLE,
+    why: 'The permit’s timeline; goes with it.',
+  },
+  {
+    path: 'lotoPermits/attachments',
+    parent: 'lotoPermits',
+    mentions: ['name', 'byName'],
+    files: true,
+    retention: ERASABLE,
+    why: 'Files attached to a permit; goes with it.',
+  },
   // The register of authorised technicians. A ROOT collection tenanted by an
   // `orgId` field (not under organizations/{orgId}), hence `topLevel` +
   // `orgField`: any query against it MUST also constrain that field or it reads
@@ -201,14 +247,26 @@ export const SUBJECT_SOURCES = [
   },
 
   // ── Emergency response ─────────────────────────────────────────────────────
-  { path: 'erpContacts', joins: [{ kind: 'field', field: 'employeeUid', key: 'uid' }], retention: ERASABLE, why: 'A contact list entry. Remove the person and the entry has no subject.' },
+  {
+    path: 'erpContacts',
+    joins: [{ kind: 'field', field: 'employeeUid', key: 'uid' }],
+    retention: ERASABLE,
+    why: 'A contact list entry. Remove the person and the entry has no subject.',
+  },
   {
     path: 'mockDrills',
     mentions: ['commander', 'commanders[]', 'loggedBy', 'capa[].owner', 'capa[].assignees[].name'],
     retention: ANONYMISE,
     why: 'Drill performance must survive for safety reporting; it does not need to name the warden once closed.',
   },
-  { path: 'mockDrills/photos', parent: 'mockDrills', mentions: ['dataUrl'], files: true, retention: ANONYMISE, why: 'Attached to a drill record that is kept in anonymised form.' },
+  {
+    path: 'mockDrills/photos',
+    parent: 'mockDrills',
+    mentions: ['dataUrl'],
+    files: true,
+    retention: ANONYMISE,
+    why: 'Attached to a drill record that is kept in anonymised form.',
+  },
 
   // ── Committee ──────────────────────────────────────────────────────────────
   {
@@ -216,6 +274,38 @@ export const SUBJECT_SOURCES = [
     mentions: ['createdBy', 'attendees[].name', 'actions[].owner'],
     retention: STATUTORY,
     why: 'Minutes of statutory safety consultation. Who attended is the point of the record.',
+  },
+
+  // ── WhatsApp site lookup ───────────────────────────────────────────────────
+  // ROOT collections tenanted by an `orgId` field, server-only in the rules.
+  // waLinks' document id IS the person's WhatsApp number, so an export of it
+  // is the number itself — which is the point of a subject access request.
+  {
+    path: 'waLinks',
+    topLevel: true,
+    orgField: 'orgId',
+    joins: [{ kind: 'field', field: 'uid', key: 'uid' }],
+    retention: ERASABLE,
+    why: 'Consent to receive site summaries on WhatsApp, and the number it was given for. Withdrawing consent deletes it.',
+  },
+  // phoneHash is a keyed digest, not the number. No message text is stored.
+  {
+    path: 'waQueryLog',
+    topLevel: true,
+    orgField: 'orgId',
+    joins: [{ kind: 'field', field: 'uid', key: 'uid' }],
+    retention: ERASABLE,
+    why: 'Which site a person looked up on WhatsApp, and when. Kept 90 days for abuse review, then purged.',
+  },
+
+  // The last pick-list offered (site ids), 15 minutes. No coordinates.
+  {
+    path: 'waSessions',
+    topLevel: true,
+    orgField: 'orgId',
+    joins: [{ kind: 'field', field: 'uid', key: 'uid' }],
+    retention: ERASABLE,
+    why: 'Which sites were last offered to a person on WhatsApp, so a numbered reply can pick one. Expires after 15 minutes.',
   },
 
   // ── The audit trail ────────────────────────────────────────────────────────
@@ -232,12 +322,18 @@ export const SUBJECT_SOURCES = [
  * the two tables drift apart. Update BOTH or neither.
  */
 export const EXPECTED_SEALED = [
-  'incidents', 'incidents/photos',
-  'injuries', 'injuries/records',
-  'illnesses', 'illnesses/files',
+  'incidents',
+  'incidents/photos',
+  'injuries',
+  'injuries/records',
+  'illnesses',
+  'illnesses/files',
   'consultations',
-  'mockDrills', 'mockDrills/photos',
-  'lotoPermits', 'lotoPermits/events', 'lotoPermits/attachments',
+  'mockDrills',
+  'mockDrills/photos',
+  'lotoPermits',
+  'lotoPermits/events',
+  'lotoPermits/attachments',
   'technicians',
 ]
 
@@ -281,9 +377,12 @@ export function planExport(subject = {}) {
  * human or a scan has to look at.
  */
 export function planScan() {
-  return SUBJECT_SOURCES
-    .filter((s) => (s.mentions || []).length)
-    .map((s) => ({ path: s.path, parent: s.parent || null, fields: s.mentions, retention: s.retention }))
+  return SUBJECT_SOURCES.filter((s) => (s.mentions || []).length).map((s) => ({
+    path: s.path,
+    parent: s.parent || null,
+    fields: s.mentions,
+    retention: s.retention,
+  }))
 }
 
 /**
@@ -325,8 +424,8 @@ export function scanFeasibility({ encryptionOn = false } = {}) {
  * subject.
  */
 export function classifyErasure() {
-  const bucket = (r) => SUBJECT_SOURCES.filter((s) => s.retention === r)
-    .map((s) => ({ path: s.path, why: s.why }))
+  const bucket = (r) =>
+    SUBJECT_SOURCES.filter((s) => s.retention === r).map((s) => ({ path: s.path, why: s.why }))
   return {
     erasable: bucket(ERASABLE),
     anonymise: bucket(ANONYMISE),

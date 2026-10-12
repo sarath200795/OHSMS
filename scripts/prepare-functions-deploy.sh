@@ -13,9 +13,11 @@
 # Manager, which is the LOW-13 finding this project already recorded against
 # a mail credential.
 #
-#   write-env        functions/.env.<PROJECT_ID> with the non-secret mail params
-#   ensure-secrets   leave existing secrets alone; create SMTP_PASS only when
-#                    it is missing; fail if DATA_KEY_MASTER is missing
+#   write-env        functions/.env.<PROJECT_ID> with the non-secret mail and
+#                    WhatsApp params
+#   ensure-secrets   leave existing secrets alone; create SMTP_PASS and the
+#                    three WA_* secrets only when missing (as non-working
+#                    placeholders); fail if DATA_KEY_MASTER is missing
 #
 # DATA_KEY_MASTER is never created here. Encrypted records can only be opened
 # with the key that wrapped them. Inventing a new one would let the deploy
@@ -100,6 +102,19 @@ write_env() {
   reject_param_value MAIL_FROM "$from"
   reject_param_value APP_ORIGIN "$origin"
 
+  # WhatsApp site lookup. Off unless WA_ENABLED is exactly "true" AND the
+  # phone number id and the three WA_* secrets are real (functions/index.js).
+  local wa_enabled="${WA_ENABLED:-false}"
+  local wa_pnid="${WA_PHONE_NUMBER_ID:-}"
+  local wa_ver="${WA_GRAPH_VERSION:-v25.0}"
+  local wa_display="${WA_DISPLAY_NUMBER:-}"
+  local wa_cap="${WA_DAILY_CAP:-2000}"
+  reject_param_value WA_ENABLED "$wa_enabled"
+  reject_param_value WA_PHONE_NUMBER_ID "$wa_pnid"
+  reject_param_value WA_GRAPH_VERSION "$wa_ver"
+  reject_param_value WA_DISPLAY_NUMBER "$wa_display"
+  reject_param_value WA_DAILY_CAP "$wa_cap"
+
   mkdir -p "$dir"
   umask 077
   {
@@ -108,14 +123,50 @@ write_env() {
     printf 'SMTP_USER=%s\n' "$user"
     printf 'MAIL_FROM=%s\n' "$from"
     printf 'APP_ORIGIN=%s\n' "$origin"
+    printf 'WA_ENABLED=%s\n' "$wa_enabled"
+    printf 'WA_PHONE_NUMBER_ID=%s\n' "$wa_pnid"
+    printf 'WA_GRAPH_VERSION=%s\n' "$wa_ver"
+    printf 'WA_DISPLAY_NUMBER=%s\n' "$wa_display"
+    printf 'WA_DAILY_CAP=%s\n' "$wa_cap"
   } >"$env_file"
 
-  if grep -Eq '^(DATA_KEY_MASTER|SMTP_PASS)=' "$env_file"; then
+  if grep -Eq '^(DATA_KEY_MASTER|SMTP_PASS|WA_APP_SECRET|WA_ACCESS_TOKEN|WA_VERIFY_TOKEN)=' "$env_file"; then
     rm -f "$env_file"
-    echo "::error::Refusing to leave DATA_KEY_MASTER or SMTP_PASS in ${env_file}." >&2
+    echo "::error::Refusing to leave a secret (DATA_KEY_MASTER, SMTP_PASS, WA_*) in ${env_file}." >&2
     exit 1
   fi
-  echo "Wrote ${env_file} with non-secret params only (SMTP_HOST SMTP_PORT SMTP_USER MAIL_FROM APP_ORIGIN)."
+  echo "Wrote ${env_file} with non-secret params only (SMTP_HOST SMTP_PORT SMTP_USER MAIL_FROM APP_ORIGIN WA_ENABLED WA_PHONE_NUMBER_ID WA_GRAPH_VERSION WA_DISPLAY_NUMBER WA_DAILY_CAP)."
+}
+
+# A WhatsApp secret that does not exist yet is created as UNSET-PLACEHOLDER so
+# the functions that bind it can deploy. The placeholder authenticates nothing:
+# lib/whatsapp/signature.js isRealSecret refuses it, so the webhook stays off
+# until the real value is set with `firebase functions:secrets:set <NAME>`.
+# Never overwritten here, and no --force (see SMTP_PASS below).
+ensure_placeholder_secret() {
+  local name="$1"
+  local state
+  state="$(secret_state "$name")"
+  case "$state" in
+    present)
+      echo "${name} already exists in Secret Manager; leaving it unchanged."
+      ;;
+    missing)
+      local f
+      f="$(mktemp)"
+      chmod 600 "$f"
+      printf '%s' 'UNSET-PLACEHOLDER' >"$f"
+      echo "${name} is missing; creating non-working placeholder UNSET-PLACEHOLDER."
+      firebase_cli functions:secrets:set "$name" \
+        --project "$PROJECT_ID" \
+        --data-file "$f" \
+        --non-interactive
+      rm -f "$f"
+      ;;
+    *)
+      exit 1
+      ;;
+  esac
 }
 
 ensure_secrets() {
@@ -176,6 +227,10 @@ ensure_secrets() {
       exit 1
       ;;
   esac
+
+  ensure_placeholder_secret WA_APP_SECRET
+  ensure_placeholder_secret WA_ACCESS_TOKEN
+  ensure_placeholder_secret WA_VERIFY_TOKEN
 }
 
 case "${1:-}" in

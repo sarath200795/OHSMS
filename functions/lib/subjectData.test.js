@@ -179,3 +179,17 @@ describe('the LOTO permit sources', () => {
     expect(permits.retention).toBe(ERASABLE)
   })
 })
+
+// The WhatsApp lookup adds two personal-data collections at the ROOT, tenanted
+// by an orgId field. Without orgField the export executor refuses them — and
+// without the entries at all, a person's linked number is missing from their
+// own export.
+describe('WhatsApp collections', () => {
+  it.each(['waLinks', 'waQueryLog', 'waSessions'])('%s is reachable by uid within the org', (path) => {
+    const src = SUBJECT_SOURCES.find((s) => s.path === path)
+    expect(src).toBeTruthy()
+    expect(src).toMatchObject({ topLevel: true, orgField: 'orgId', retention: ERASABLE })
+    const q = planExport({ uid: 'u1' }).filter((x) => x.path === path)
+    expect(q).toEqual([expect.objectContaining({ field: 'uid', value: 'u1', orgField: 'orgId', topLevel: true })])
+  })
+})

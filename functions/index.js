@@ -13,19 +13,28 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { initializeApp } from 'firebase-admin/app'
 import { getAuth } from 'firebase-admin/auth'
-import { getFirestore, FieldValue } from 'firebase-admin/firestore'
+import { getFirestore, FieldValue, Timestamp } from 'firebase-admin/firestore'
 import { getStorage } from 'firebase-admin/storage'
 import { onDocumentWritten } from 'firebase-functions/v2/firestore'
 import { onSchedule } from 'firebase-functions/v2/scheduler'
-import { onCall, HttpsError } from 'firebase-functions/v2/https'
+import { onCall, onRequest, HttpsError } from 'firebase-functions/v2/https'
 import { defineSecret, defineString } from 'firebase-functions/params'
 import { logger } from 'firebase-functions'
 import { claimsFor, claimsChanged, mergeClaims, revokesAccess } from './lib/claims.js'
 import { planBackfill } from './lib/docVisibility.js'
 import { classifyLocks } from './lib/defectLocks.js'
 import { deliverLotoPermitMails } from './lib/lotoPermitNotify.js'
-import { purgeClosedLotoPermits as runLotoPermitPurge, sweepLotoPermits as runLotoPermitSweep } from './lib/lotoPermitSweep.js'
-import { PURGEABLE, PURGE_AFTER_DAYS, MAX_PURGES_PER_RUN, planPurge, summarizeFailures } from './lib/retention.js'
+import {
+  purgeClosedLotoPermits as runLotoPermitPurge,
+  sweepLotoPermits as runLotoPermitSweep,
+} from './lib/lotoPermitSweep.js'
+import {
+  PURGEABLE,
+  PURGE_AFTER_DAYS,
+  MAX_PURGES_PER_RUN,
+  planPurge,
+  summarizeFailures,
+} from './lib/retention.js'
 import { mayDeleteFile } from './lib/fileDelete.js'
 import { planExport, planScan, scanFeasibility, classifyErasure } from './lib/subjectData.js'
 import { planWithdrawals, withdrawnFields, MAX_WITHDRAWALS_PER_RUN } from './lib/permitMirror.js'
@@ -33,15 +42,38 @@ import { planQrBackfill, QR_SOURCES } from './lib/qrMirrors.js'
 import { planMedicalStrip, planInjurySeed } from './lib/incidentMedical.js'
 import { planSiteLinks, LINKABLE_COLLECTIONS } from './lib/siteLinks.js'
 import { planMedicalRecordMove, landedIntact, MEDICAL_RECORD_KIND } from './lib/medicalRecords.js'
-import { KEY_DOC_PATH, generateKeyset, releaseKeyset, grantsFor, unwrapKey, fromB64u } from './lib/dataKeys.js'
 import {
-  configPath, normalizeConfig, redactConfig, readiness, checkBaseUrl, sourcesFor,
-  cardQueryUrl, cardUrl, currentUserUrl, normalizeRows, capRows,
-  buildDateParams, safeRange,
+  KEY_DOC_PATH,
+  generateKeyset,
+  releaseKeyset,
+  grantsFor,
+  unwrapKey,
+  fromB64u,
+} from './lib/dataKeys.js'
+import {
+  configPath,
+  normalizeConfig,
+  redactConfig,
+  readiness,
+  checkBaseUrl,
+  sourcesFor,
+  cardQueryUrl,
+  cardUrl,
+  currentUserUrl,
+  normalizeRows,
+  capRows,
+  buildDateParams,
+  safeRange,
 } from './lib/metabase.js'
 import {
-  FILE_TARGETS, MAX_OBJECTS_PER_RUN, needsObjectSealing, sealedPath,
-  sealObjectBytes, openObjectBytes, sameBytes, pointerUpdate,
+  FILE_TARGETS,
+  MAX_OBJECTS_PER_RUN,
+  needsObjectSealing,
+  sealedPath,
+  sealObjectBytes,
+  openObjectBytes,
+  sameBytes,
+  pointerUpdate,
 } from './lib/objectSeal.js'
 import { deliverAssignments, writtenData } from './lib/assignmentNotify.js'
 import { deliverIncidentReport } from './lib/incidentReportNotify.js'
@@ -51,6 +83,27 @@ import { deliverDrillReport } from './lib/drillReportNotify.js'
 import { deliverMeetingMail } from './lib/meetingNotify.js'
 import { deliverWeatherDigest } from './lib/weatherDigest.js'
 import { createMailer, DEFAULT_MAIL } from './lib/mailer.js'
+import { createHmac } from 'node:crypto'
+import { verifySignature, handshakeChallenge, isRealSecret } from './lib/whatsapp/signature.js'
+import { extractMessages } from './lib/whatsapp/parse.js'
+import { handleMessage } from './lib/whatsapp/handler.js'
+import { createStore, buildSnapshot } from './lib/whatsapp/store.js'
+import {
+  sendMessage,
+  textPayload,
+  listPayload,
+  locationRequestPayload,
+  graphVersion,
+} from './lib/whatsapp/graph.js'
+import { countOutbound } from './lib/whatsapp/rateLimit.js'
+import { isActiveMember } from './lib/whatsapp/access.js'
+import { generateLinkCode, hashLinkCode, maskPhone, LINK_CODE_TTL_MS } from './lib/whatsapp/link.js'
+import {
+  WA_RETENTION,
+  WA_PURGE_BATCH,
+  WA_PURGE_MAX_BATCHES,
+  cutoffFor,
+} from './lib/whatsapp/retention.js'
 
 initializeApp()
 
@@ -215,7 +268,11 @@ export const syncUserClaims = onDocumentWritten(
     if (revokesAccess(existing, next)) {
       try {
         await getAuth().revokeRefreshTokens(uid)
-        logger.info('claims: sessions revoked', { uid, from: existing?.orgId || null, to: next.orgId })
+        logger.info('claims: sessions revoked', {
+          uid,
+          from: existing?.orgId || null,
+          to: next.orgId,
+        })
       } catch (e) {
         // The claim change is the control; this narrows the window it leaves.
         // Failing here must not undo the claim write that already succeeded.
@@ -297,7 +354,12 @@ export const backfillClaims = onCall({ region: REGION }, async (request) => {
   }
 
   const stamped = updated + skipped.alreadyCorrect
-  logger.info('claims: backfill complete', { orgId: caller.orgId, updated, ...skipped, failed: failed.length })
+  logger.info('claims: backfill complete', {
+    orgId: caller.orgId,
+    updated,
+    ...skipped,
+    failed: failed.length,
+  })
   return {
     orgId: caller.orgId,
     total: members.size,
@@ -337,54 +399,57 @@ export const backfillClaims = onCall({ region: REGION }, async (request) => {
  * role or a key class — all three are read from their own /users profile, so
  * there is nothing to tamper with in the request.
  */
-export const getDataKeys = onCall({ region: REGION, secrets: [DATA_KEY_MASTER] }, async (request) => {
-  const callerUid = request.auth?.uid
-  if (!callerUid) throw new HttpsError('unauthenticated', 'Sign in first.')
+export const getDataKeys = onCall(
+  { region: REGION, secrets: [DATA_KEY_MASTER] },
+  async (request) => {
+    const callerUid = request.auth?.uid
+    if (!callerUid) throw new HttpsError('unauthenticated', 'Sign in first.')
 
-  const db = getFirestore()
-  const caller = (await db.doc(`users/${callerUid}`).get()).data()
-  const grants = grantsFor(caller)
-  if (!grants.general) {
-    // Covers unapproved, suspended, and anyone still on a temporary password.
-    // Deliberately says nothing about which: a probe should not learn its own
-    // status from the error text.
-    throw new HttpsError('permission-denied', 'Approved members only.')
-  }
+    const db = getFirestore()
+    const caller = (await db.doc(`users/${callerUid}`).get()).data()
+    const grants = grantsFor(caller)
+    if (!grants.general) {
+      // Covers unapproved, suspended, and anyone still on a temporary password.
+      // Deliberately says nothing about which: a probe should not learn its own
+      // status from the error text.
+      throw new HttpsError('permission-denied', 'Approved members only.')
+    }
 
-  const orgId = caller.orgId
-  if (!orgId) throw new HttpsError('failed-precondition', 'Your profile names no organization.')
+    const orgId = caller.orgId
+    if (!orgId) throw new HttpsError('failed-precondition', 'Your profile names no organization.')
 
-  const master = DATA_KEY_MASTER.value()
-  const ref = db.doc(KEY_DOC_PATH(orgId))
+    const master = DATA_KEY_MASTER.value()
+    const ref = db.doc(KEY_DOC_PATH(orgId))
 
-  // The common path: the keyset exists, and this is one read outside any
-  // transaction. Only the first caller in an organization's life pays for the
-  // transaction below.
-  let keyset = (await ref.get()).data()
-  if (!keyset) {
-    keyset = await db.runTransaction(async (tx) => {
-      const snap = await tx.get(ref)
-      if (snap.exists) return snap.data()
-      const fresh = await generateKeyset(master, orgId, 1)
-      tx.set(ref, { ...fresh, createdAt: FieldValue.serverTimestamp() })
-      return fresh
+    // The common path: the keyset exists, and this is one read outside any
+    // transaction. Only the first caller in an organization's life pays for the
+    // transaction below.
+    let keyset = (await ref.get()).data()
+    if (!keyset) {
+      keyset = await db.runTransaction(async (tx) => {
+        const snap = await tx.get(ref)
+        if (snap.exists) return snap.data()
+        const fresh = await generateKeyset(master, orgId, 1)
+        tx.set(ref, { ...fresh, createdAt: FieldValue.serverTimestamp() })
+        return fresh
+      })
+      logger.info('crypto: keyset created', { orgId })
+    }
+
+    // Cloud Logging, not the app's audit log. This runs on every session start,
+    // so an /auditLogs entry per call would bury the actions people actually
+    // review under one row per page load — and the audit log is read in the app
+    // by the very roles this is recording.
+    logger.info('crypto: keys released', {
+      orgId,
+      uid: callerUid,
+      role: caller.role || null,
+      medicalPrivate: grants.medicalPrivate,
     })
-    logger.info('crypto: keyset created', { orgId })
+
+    return releaseKeyset(master, orgId, keyset, caller)
   }
-
-  // Cloud Logging, not the app's audit log. This runs on every session start,
-  // so an /auditLogs entry per call would bury the actions people actually
-  // review under one row per page load — and the audit log is read in the app
-  // by the very roles this is recording.
-  logger.info('crypto: keys released', {
-    orgId,
-    uid: callerUid,
-    role: caller.role || null,
-    medicalPrivate: grants.medicalPrivate,
-  })
-
-  return releaseKeyset(master, orgId, keyset, caller)
-})
+)
 
 /**
  * Encrypt the objects already sitting in the bucket.
@@ -437,7 +502,7 @@ export const sealStoredObjects = onCall(
       // minted by a migration is one nobody knows exists.
       throw new HttpsError(
         'failed-precondition',
-        'This organization has no encryption keys yet. Sign in with encryption switched on first.',
+        'This organization has no encryption keys yet. Sign in with encryption switched on first.'
       )
     }
     const keys = {
@@ -448,7 +513,12 @@ export const sealStoredObjects = onCall(
       medical: {
         keyId: keyset.medical.keyId,
         publicKey: fromB64u(keyset.medical.publicKey),
-        privateKey: await unwrapKey(master, orgId, keyset.medical.keyId, keyset.medical.wrappedPrivateKey),
+        privateKey: await unwrapKey(
+          master,
+          orgId,
+          keyset.medical.keyId,
+          keyset.medical.wrappedPrivateKey
+        ),
       },
     }
 
@@ -468,7 +538,9 @@ export const sealStoredObjects = onCall(
 
       const parents = await db.collection(`${base}/${target.parent}`).get()
       for (const parent of parents.docs) {
-        const pointers = await db.collection(`${base}/${target.parent}/${parent.id}/${target.sub}`).get()
+        const pointers = await db
+          .collection(`${base}/${target.parent}/${parent.id}/${target.sub}`)
+          .get()
         for (const p of pointers.docs) {
           scanned += 1
           const data = p.data()
@@ -478,9 +550,18 @@ export const sealStoredObjects = onCall(
           // seal, and reporting it as "already encrypted" told an operator the
           // opposite of the truth. It is the FIELD policy that covers those, and
           // whether it does is worth being able to see from this report.
-          if (!String(data.path ?? '').trim()) { inline += 1; continue }
-          if (!needsObjectSealing(data)) { already += 1; continue }
-          if (budget <= 0) { remaining += 1; continue }
+          if (!String(data.path ?? '').trim()) {
+            inline += 1
+            continue
+          }
+          if (!needsObjectSealing(data)) {
+            already += 1
+            continue
+          }
+          if (budget <= 0) {
+            remaining += 1
+            continue
+          }
 
           // NEVER the filename, here or in any report below. "MRI-left-knee —
           // A Kumar.pdf" is the record; a migration log must not become one more
@@ -489,8 +570,15 @@ export const sealStoredObjects = onCall(
           const row = { collection: target.collection, id: p.id }
 
           const toPath = sealedPath(data.path, orgId)
-          if (!toPath) { blocked.push({ ...row, reason: 'foreign-path' }); continue }
-          if (dryRun) { sealed += 1; budget -= 1; continue }
+          if (!toPath) {
+            blocked.push({ ...row, reason: 'foreign-path' })
+            continue
+          }
+          if (dryRun) {
+            sealed += 1
+            budget -= 1
+            continue
+          }
 
           try {
             const [plain] = await bucket.file(data.path).download()
@@ -506,7 +594,13 @@ export const sealStoredObjects = onCall(
             //    a truncated upload or a wrong key fails here, with the original
             //    still exactly where it was.
             const [written] = await bucket.file(toPath).download()
-            const reopened = await openObjectBytes(keys, orgId, target.keyClass, out, new Uint8Array(written))
+            const reopened = await openObjectBytes(
+              keys,
+              orgId,
+              target.keyClass,
+              out,
+              new Uint8Array(written)
+            )
             if (!sameBytes(new Uint8Array(plain), reopened)) {
               failed.push({ ...row, reason: 'failed-verify' })
               await bucket.file(toPath).delete({ ignoreNotFound: true })
@@ -525,7 +619,10 @@ export const sealStoredObjects = onCall(
             } catch (e) {
               failed.push({ ...row, reason: 'original-left-behind' })
               logger.error('objects: sealed but could not delete the plaintext', {
-                orgId, collection: target.collection, id: p.id, error: e?.message || String(e),
+                orgId,
+                collection: target.collection,
+                id: p.id,
+                error: e?.message || String(e),
               })
             }
 
@@ -534,18 +631,30 @@ export const sealStoredObjects = onCall(
           } catch (e) {
             failed.push({ ...row, reason: 'failed' })
             logger.error('objects: could not seal', {
-              orgId, collection: target.collection, id: p.id, error: e?.message || String(e),
+              orgId,
+              collection: target.collection,
+              id: p.id,
+              error: e?.message || String(e),
             })
           }
         }
       }
-      results.push({ collection: target.collection, scanned, sealed, alreadySealed: already, inline })
+      results.push({
+        collection: target.collection,
+        scanned,
+        sealed,
+        alreadySealed: already,
+        inline,
+      })
     }
 
     logger.info('objects: seal run complete', {
-      orgId, dryRun,
+      orgId,
+      dryRun,
       sealed: results.reduce((n, r) => n + r.sealed, 0),
-      blocked: blocked.length, failed: failed.length, remaining,
+      blocked: blocked.length,
+      failed: failed.length,
+      remaining,
     })
 
     return {
@@ -564,7 +673,7 @@ export const sealStoredObjects = onCall(
       failed,
       failedTotal: failed.length,
     }
-  },
+  }
 )
 
 /**
@@ -596,7 +705,10 @@ export const backfillDocumentVisibility = onCall({ region: REGION }, async (requ
     db.collection(`organizations/${orgId}/documents`).get(),
   ])
   const sites = new Map(sitesSnap.docs.map((d) => [d.id, d.data()]))
-  const plan = planBackfill(docsSnap.docs.map((d) => ({ id: d.id, data: d.data() })), sites)
+  const plan = planBackfill(
+    docsSnap.docs.map((d) => ({ id: d.id, data: d.data() })),
+    sites
+  )
 
   // dryRun is the default. Reporting first and writing only when asked is what
   // the script does, and this is the same operation with the same stakes.
@@ -613,7 +725,10 @@ export const backfillDocumentVisibility = onCall({ region: REGION }, async (requ
   }
 
   logger.info('documents: visibility backfill', {
-    orgId, dryRun, total: docsSnap.size, toWrite: plan.writes.length,
+    orgId,
+    dryRun,
+    total: docsSnap.size,
+    toWrite: plan.writes.length,
   })
 
   return {
@@ -651,73 +766,80 @@ export const backfillDocumentVisibility = onCall({ region: REGION }, async (requ
  *
  * dryRun defaults to TRUE. Report first, write when asked.
  */
-export const backfillQrMirrors = onCall({ region: REGION, timeoutSeconds: 540 }, async (request) => {
-  const callerUid = request.auth?.uid
-  if (!callerUid) throw new HttpsError('unauthenticated', 'Sign in first.')
+export const backfillQrMirrors = onCall(
+  { region: REGION, timeoutSeconds: 540 },
+  async (request) => {
+    const callerUid = request.auth?.uid
+    if (!callerUid) throw new HttpsError('unauthenticated', 'Sign in first.')
 
-  const db = getFirestore()
-  const caller = (await db.doc(`users/${callerUid}`).get()).data()
-  if (!caller || caller.status !== 'approved' || caller.role !== 'admin') {
-    throw new HttpsError('permission-denied', 'Administrators only.')
-  }
-  const orgId = caller.orgId
+    const db = getFirestore()
+    const caller = (await db.doc(`users/${callerUid}`).get()).data()
+    if (!caller || caller.status !== 'approved' || caller.role !== 'admin') {
+      throw new HttpsError('permission-denied', 'Administrators only.')
+    }
+    const orgId = caller.orgId
 
-  // Every asset in this org that names a token, across all three collections
-  // that share /qr.
-  const snaps = await Promise.all(
-    QR_SOURCES.map((c) => db.collection(`organizations/${orgId}/${c}`).get()),
-  )
-  const assets = []
-  snaps.forEach((snap, i) => {
-    snap.docs.forEach((d) => {
-      const qrToken = d.data()?.qrToken
-      if (qrToken) assets.push({ collection: QR_SOURCES[i], id: d.id, qrToken })
-    })
-  })
-
-  // Read the mirrors by id. getAll takes 300 refs at a time; a mirror that is
-  // absent comes back with exists === false, which the plan reports rather than
-  // inventing a payload for.
-  const mirrors = new Map()
-  const tokens = [...new Set(assets.map((a) => a.qrToken))]
-  for (let i = 0; i < tokens.length; i += 300) {
-    const refs = tokens.slice(i, i + 300).map((t) => db.doc(`qr/${t}`))
-    const docs = await db.getAll(...refs)
-    docs.forEach((d, j) => mirrors.set(tokens[i + j], d.exists ? d.data() : null))
-  }
-
-  const plan = planQrBackfill(assets, mirrors, orgId)
-
-  const dryRun = request.data?.dryRun !== false
-  if (!dryRun) {
-    for (let i = 0; i < plan.writes.length; i += 400) {
-      const batch = db.batch()
-      plan.writes.slice(i, i + 400).forEach((w) => {
-        batch.update(db.doc(`qr/${w.token}`), w.patch)
+    // Every asset in this org that names a token, across all three collections
+    // that share /qr.
+    const snaps = await Promise.all(
+      QR_SOURCES.map((c) => db.collection(`organizations/${orgId}/${c}`).get())
+    )
+    const assets = []
+    snaps.forEach((snap, i) => {
+      snap.docs.forEach((d) => {
+        const qrToken = d.data()?.qrToken
+        if (qrToken) assets.push({ collection: QR_SOURCES[i], id: d.id, qrToken })
       })
-      await batch.commit()
+    })
+
+    // Read the mirrors by id. getAll takes 300 refs at a time; a mirror that is
+    // absent comes back with exists === false, which the plan reports rather than
+    // inventing a payload for.
+    const mirrors = new Map()
+    const tokens = [...new Set(assets.map((a) => a.qrToken))]
+    for (let i = 0; i < tokens.length; i += 300) {
+      const refs = tokens.slice(i, i + 300).map((t) => db.doc(`qr/${t}`))
+      const docs = await db.getAll(...refs)
+      docs.forEach((d, j) => mirrors.set(tokens[i + j], d.exists ? d.data() : null))
+    }
+
+    const plan = planQrBackfill(assets, mirrors, orgId)
+
+    const dryRun = request.data?.dryRun !== false
+    if (!dryRun) {
+      for (let i = 0; i < plan.writes.length; i += 400) {
+        const batch = db.batch()
+        plan.writes.slice(i, i + 400).forEach((w) => {
+          batch.update(db.doc(`qr/${w.token}`), w.patch)
+        })
+        await batch.commit()
+      }
+    }
+
+    logger.info('qr: mirror orgId backfill', {
+      orgId,
+      dryRun,
+      assets: assets.length,
+      toWrite: plan.writes.length,
+      foreign: plan.foreign.length,
+      missingMirror: plan.missingMirror.length,
+    })
+
+    return {
+      orgId,
+      dryRun,
+      assets: assets.length,
+      alreadyStamped: plan.alreadyStamped,
+      written: dryRun ? 0 : plan.writes.length,
+      wouldWrite: plan.writes.length,
+      // Both are reported, never guessed at: a mirror naming another tenant, and
+      // an asset whose mirror is gone. Each needs a human, not a default.
+      foreign: plan.foreign,
+      missingMirror: plan.missingMirror.slice(0, 50),
+      missingMirrorTotal: plan.missingMirror.length,
     }
   }
-
-  logger.info('qr: mirror orgId backfill', {
-    orgId, dryRun, assets: assets.length, toWrite: plan.writes.length,
-    foreign: plan.foreign.length, missingMirror: plan.missingMirror.length,
-  })
-
-  return {
-    orgId,
-    dryRun,
-    assets: assets.length,
-    alreadyStamped: plan.alreadyStamped,
-    written: dryRun ? 0 : plan.writes.length,
-    wouldWrite: plan.writes.length,
-    // Both are reported, never guessed at: a mirror naming another tenant, and
-    // an asset whose mirror is gone. Each needs a human, not a default.
-    foreign: plan.foreign,
-    missingMirror: plan.missingMirror.slice(0, 50),
-    missingMirrorTotal: plan.missingMirror.length,
-  }
-})
+)
 
 /**
  * Give equipment the siteId it was created without.
@@ -747,111 +869,121 @@ export const backfillQrMirrors = onCall({ region: REGION, timeoutSeconds: 540 },
  *
  * dryRun defaults to TRUE. Report first, write when asked.
  */
-export const linkEquipmentSites = onCall({ region: REGION, timeoutSeconds: 540 }, async (request) => {
-  const callerUid = request.auth?.uid
-  if (!callerUid) throw new HttpsError('unauthenticated', 'Sign in first.')
+export const linkEquipmentSites = onCall(
+  { region: REGION, timeoutSeconds: 540 },
+  async (request) => {
+    const callerUid = request.auth?.uid
+    if (!callerUid) throw new HttpsError('unauthenticated', 'Sign in first.')
 
-  const db = getFirestore()
-  const caller = (await db.doc(`users/${callerUid}`).get()).data()
-  if (!caller || caller.status !== 'approved' || caller.role !== 'admin') {
-    throw new HttpsError('permission-denied', 'Administrators only.')
-  }
-  const orgId = caller.orgId
-  const base = `organizations/${orgId}`
+    const db = getFirestore()
+    const caller = (await db.doc(`users/${callerUid}`).get()).data()
+    if (!caller || caller.status !== 'approved' || caller.role !== 'admin') {
+      throw new HttpsError('permission-denied', 'Administrators only.')
+    }
+    const orgId = caller.orgId
+    const base = `organizations/${orgId}`
 
-  // The site registry read straight from the collection, NOT the way the app
-  // reads it: subscribeSites orders by name (src/shared/org/orgData.js:258) and
-  // Firestore drops documents missing the ordered field, so a site saved without
-  // a name is invisible to every reader in the browser. Sourcing the registry
-  // through that listener would make a nameless site silently absent here too,
-  // and every piece of equipment naming it would be reported as unmatched with
-  // no hint why. indexSites skips nameless sites explicitly instead.
-  const [sitesSnap, ...equipSnaps] = await Promise.all([
-    db.collection(`${base}/sites`).get(),
-    ...LINKABLE_COLLECTIONS.map((c) => db.collection(`${base}/${c}`).get()),
-  ])
+    // The site registry read straight from the collection, NOT the way the app
+    // reads it: subscribeSites orders by name (src/shared/org/orgData.js:258) and
+    // Firestore drops documents missing the ordered field, so a site saved without
+    // a name is invisible to every reader in the browser. Sourcing the registry
+    // through that listener would make a nameless site silently absent here too,
+    // and every piece of equipment naming it would be reported as unmatched with
+    // no hint why. indexSites skips nameless sites explicitly instead.
+    const [sitesSnap, ...equipSnaps] = await Promise.all([
+      db.collection(`${base}/sites`).get(),
+      ...LINKABLE_COLLECTIONS.map((c) => db.collection(`${base}/${c}`).get()),
+    ])
 
-  const sites = sitesSnap.docs.map((d) => ({ id: d.id, name: d.data()?.name }))
-  const equipment = []
-  equipSnaps.forEach((snap, i) => {
-    snap.docs.forEach((d) => {
-      const data = d.data()
-      equipment.push({
-        collection: LINKABLE_COLLECTIONS[i],
-        id: d.id,
-        centerName: data?.centerName,
-        siteId: data?.siteId,
-        deletedAt: data?.deletedAt,
+    const sites = sitesSnap.docs.map((d) => ({ id: d.id, name: d.data()?.name }))
+    const equipment = []
+    equipSnaps.forEach((snap, i) => {
+      snap.docs.forEach((d) => {
+        const data = d.data()
+        equipment.push({
+          collection: LINKABLE_COLLECTIONS[i],
+          id: d.id,
+          centerName: data?.centerName,
+          siteId: data?.siteId,
+          deletedAt: data?.deletedAt,
+        })
       })
     })
-  })
 
-  const plan = planSiteLinks(equipment, sites)
+    const plan = planSiteLinks(equipment, sites)
 
-  const dryRun = request.data?.dryRun !== false
-  if (!dryRun) {
-    // Chunked: a batch takes 500 writes, and three equipment collections across
-    // an estate this size exceed that comfortably.
-    for (let i = 0; i < plan.writes.length; i += 400) {
-      const batch = db.batch()
-      plan.writes.slice(i, i + 400).forEach((w) => {
-        // The patch is spelled out rather than spread from the row. A row also
-        // carries matchedName, for the report, and spreading it would write the
-        // registry's wording onto equipment as a new field — the one thing this
-        // job promised not to do. updatedAt is left alone for the same reason as
-        // the medical strip: nobody edited these, and stamping every asset in
-        // the tenant would bury whatever a person actually touched that day.
-        batch.update(db.doc(`${base}/${w.collection}/${w.id}`), { siteId: w.siteId })
-      })
-      await batch.commit()
+    const dryRun = request.data?.dryRun !== false
+    if (!dryRun) {
+      // Chunked: a batch takes 500 writes, and three equipment collections across
+      // an estate this size exceed that comfortably.
+      for (let i = 0; i < plan.writes.length; i += 400) {
+        const batch = db.batch()
+        plan.writes.slice(i, i + 400).forEach((w) => {
+          // The patch is spelled out rather than spread from the row. A row also
+          // carries matchedName, for the report, and spreading it would write the
+          // registry's wording onto equipment as a new field — the one thing this
+          // job promised not to do. updatedAt is left alone for the same reason as
+          // the medical strip: nobody edited these, and stamping every asset in
+          // the tenant would bury whatever a person actually touched that day.
+          batch.update(db.doc(`${base}/${w.collection}/${w.id}`), { siteId: w.siteId })
+        })
+        await batch.commit()
+      }
+    }
+
+    // Not refused server-side when ambiguous or conflicting rows exist, and that
+    // is deliberate: they are never in plan.writes, so writing is already safe,
+    // and one permanently ambiguous pair of site names would otherwise block every
+    // sound link in the org forever. The Maintenance card disables the write
+    // button on those counts — the point is that a person sees them, not that the
+    // run is impossible.
+    logger.info('equipment: site link backfill', {
+      orgId,
+      dryRun,
+      sites: sitesSnap.size,
+      equipment: equipment.length,
+      toWrite: plan.writes.length,
+      ambiguous: plan.ambiguous.length,
+      conflicting: plan.conflicting.length,
+      unmatched: plan.unmatched.length,
+    })
+
+    return {
+      orgId,
+      dryRun,
+      // Reported because 0 sites explains a page of "unmatched" far better than
+      // the page of unmatched names does.
+      sites: sitesSnap.size,
+      equipment: equipment.length,
+      alreadyLinked: plan.alreadyLinked,
+      deleted: plan.deleted,
+      written: dryRun ? 0 : plan.writes.length,
+      wouldWrite: plan.writes.length,
+      // The two that need a human, each with its own total so the card can gate on
+      // a count without paging through the samples. A name resolving to two sites
+      // is a coin flip; a record already linked elsewhere may have been linked by
+      // hand, correctly, with the free text being the stale half. Neither is
+      // guessed at.
+      ambiguous: plan.ambiguous.slice(0, 50),
+      ambiguousTotal: plan.ambiguous.length,
+      conflicting: plan.conflicting.slice(0, 50),
+      conflictingTotal: plan.conflicting.length,
+      // Names rather than rows: a few hundred unmatched records collapse to a
+      // couple of dozen centre names, and a name is what somebody can go and fix.
+      unmatchedNames: plan.unmatchedNames.slice(0, 50),
+      unmatchedNameTotal: plan.unmatchedNames.length,
+      unmatchedTotal: plan.unmatched.length,
+      // No centre name at all, so unmatchable by name however the rules are
+      // loosened. These need another route entirely.
+      noName: plan.noName.length,
+      sample: plan.writes.slice(0, 25).map((w) => ({
+        collection: w.collection,
+        id: w.id,
+        matchedName: w.matchedName,
+      })),
     }
   }
-
-  // Not refused server-side when ambiguous or conflicting rows exist, and that
-  // is deliberate: they are never in plan.writes, so writing is already safe,
-  // and one permanently ambiguous pair of site names would otherwise block every
-  // sound link in the org forever. The Maintenance card disables the write
-  // button on those counts — the point is that a person sees them, not that the
-  // run is impossible.
-  logger.info('equipment: site link backfill', {
-    orgId, dryRun, sites: sitesSnap.size, equipment: equipment.length,
-    toWrite: plan.writes.length, ambiguous: plan.ambiguous.length,
-    conflicting: plan.conflicting.length, unmatched: plan.unmatched.length,
-  })
-
-  return {
-    orgId,
-    dryRun,
-    // Reported because 0 sites explains a page of "unmatched" far better than
-    // the page of unmatched names does.
-    sites: sitesSnap.size,
-    equipment: equipment.length,
-    alreadyLinked: plan.alreadyLinked,
-    deleted: plan.deleted,
-    written: dryRun ? 0 : plan.writes.length,
-    wouldWrite: plan.writes.length,
-    // The two that need a human, each with its own total so the card can gate on
-    // a count without paging through the samples. A name resolving to two sites
-    // is a coin flip; a record already linked elsewhere may have been linked by
-    // hand, correctly, with the free text being the stale half. Neither is
-    // guessed at.
-    ambiguous: plan.ambiguous.slice(0, 50),
-    ambiguousTotal: plan.ambiguous.length,
-    conflicting: plan.conflicting.slice(0, 50),
-    conflictingTotal: plan.conflicting.length,
-    // Names rather than rows: a few hundred unmatched records collapse to a
-    // couple of dozen centre names, and a name is what somebody can go and fix.
-    unmatchedNames: plan.unmatchedNames.slice(0, 50),
-    unmatchedNameTotal: plan.unmatchedNames.length,
-    unmatchedTotal: plan.unmatched.length,
-    // No centre name at all, so unmatchable by name however the rules are
-    // loosened. These need another route entirely.
-    noName: plan.noName.length,
-    sample: plan.writes.slice(0, 25).map((w) => ({
-      collection: w.collection, id: w.id, matchedName: w.matchedName,
-    })),
-  }
-})
+)
 
 /**
  * Put the medical detail INTO /injuries, so the strip below has a copy to prove
@@ -884,112 +1016,124 @@ export const linkEquipmentSites = onCall({ region: REGION, timeoutSeconds: 540 }
  *
  * dryRun defaults to TRUE. Report first, write when asked.
  */
-export const seedInjuryRecords = onCall({ region: REGION, timeoutSeconds: 540 }, async (request) => {
-  const callerUid = request.auth?.uid
-  if (!callerUid) throw new HttpsError('unauthenticated', 'Sign in first.')
+export const seedInjuryRecords = onCall(
+  { region: REGION, timeoutSeconds: 540 },
+  async (request) => {
+    const callerUid = request.auth?.uid
+    if (!callerUid) throw new HttpsError('unauthenticated', 'Sign in first.')
 
-  const db = getFirestore()
-  const caller = (await db.doc(`users/${callerUid}`).get()).data()
-  if (!caller || caller.status !== 'approved' || caller.role !== 'admin') {
-    throw new HttpsError('permission-denied', 'Administrators only.')
-  }
-  const orgId = caller.orgId
-  const base = `organizations/${orgId}`
+    const db = getFirestore()
+    const caller = (await db.doc(`users/${callerUid}`).get()).data()
+    if (!caller || caller.status !== 'approved' || caller.role !== 'admin') {
+      throw new HttpsError('permission-denied', 'Administrators only.')
+    }
+    const orgId = caller.orgId
+    const base = `organizations/${orgId}`
 
-  const [incSnap, injSnap] = await Promise.all([
-    db.collection(`${base}/incidents`).get(),
-    db.collection(`${base}/injuries`).get(),
-  ])
+    const [incSnap, injSnap] = await Promise.all([
+      db.collection(`${base}/incidents`).get(),
+      db.collection(`${base}/injuries`).get(),
+    ])
 
-  // More of the incident than the strip reads, and that is the point: a new
-  // injury record needs the date, type, severity and location to render as
-  // anything but a blank row on the Injuries page. A medical record nobody can
-  // place is not a record.
-  const incidents = incSnap.docs.map((d) => {
-    const data = d.data() || {}
+    // More of the incident than the strip reads, and that is the point: a new
+    // injury record needs the date, type, severity and location to render as
+    // anything but a blank row on the Injuries page. A medical record nobody can
+    // place is not a record.
+    const incidents = incSnap.docs.map((d) => {
+      const data = d.data() || {}
+      return {
+        id: d.id,
+        refNo: data.refNo,
+        incidentDate: data.incidentDate,
+        type: data.type,
+        severity: data.severity,
+        location: data.location,
+        injuryReports: data.injuryReports,
+      }
+    })
+    const injuries = new Map(injSnap.docs.map((d) => [d.id, d.data()]))
+
+    const plan = planInjurySeed(incidents, injuries)
+
+    const dryRun = request.data?.dryRun !== false
+    if (!dryRun) {
+      for (let i = 0; i < plan.writes.length; i += 400) {
+        const batch = db.batch()
+        plan.writes.slice(i, i + 400).forEach((w) => {
+          // merge, always. On a create there is nothing to merge with; on a
+          // completion the patch holds only the fields /injuries had no answer
+          // for, and set() without merge would replace the whole document —
+          // deleting the verification, the incident context and every answer this
+          // job promised not to touch.
+          //
+          // updatedAt is stamped here rather than in the plan because a pure
+          // function cannot mint a server timestamp, and it is NOT optional:
+          // subscribeInjuries orders by updatedAt and Firestore drops documents
+          // missing the ordered field, so a seeded record without one would be a
+          // medical record that shows on no screen. Unlike the strip below, this
+          // genuinely changes what the record says, so moving it to the top of
+          // "recently changed" is honest.
+          batch.set(
+            db.doc(`${base}/injuries/${w.id}`),
+            { ...w.patch, updatedAt: FieldValue.serverTimestamp() },
+            { merge: true }
+          )
+        })
+        await batch.commit()
+      }
+    }
+
+    // Counts and reasons. No field names and certainly no values: a migration log
+    // must not become one more copy of the thing being confined.
+    logger.info('incidents: injury record seed', {
+      orgId,
+      dryRun,
+      incidents: incSnap.size,
+      injuries: injSnap.size,
+      toWrite: plan.writes.length,
+      created: plan.created,
+      completed: plan.completed,
+      blocked: plan.blocked.length,
+      orphans: plan.orphanInjuries.length,
+    })
+
     return {
-      id: d.id,
-      refNo: data.refNo,
-      incidentDate: data.incidentDate,
-      type: data.type,
-      severity: data.severity,
-      location: data.location,
-      injuryReports: data.injuryReports,
-    }
-  })
-  const injuries = new Map(injSnap.docs.map((d) => [d.id, d.data()]))
-
-  const plan = planInjurySeed(incidents, injuries)
-
-  const dryRun = request.data?.dryRun !== false
-  if (!dryRun) {
-    for (let i = 0; i < plan.writes.length; i += 400) {
-      const batch = db.batch()
-      plan.writes.slice(i, i + 400).forEach((w) => {
-        // merge, always. On a create there is nothing to merge with; on a
-        // completion the patch holds only the fields /injuries had no answer
-        // for, and set() without merge would replace the whole document —
-        // deleting the verification, the incident context and every answer this
-        // job promised not to touch.
-        //
-        // updatedAt is stamped here rather than in the plan because a pure
-        // function cannot mint a server timestamp, and it is NOT optional:
-        // subscribeInjuries orders by updatedAt and Firestore drops documents
-        // missing the ordered field, so a seeded record without one would be a
-        // medical record that shows on no screen. Unlike the strip below, this
-        // genuinely changes what the record says, so moving it to the top of
-        // "recently changed" is honest.
-        batch.set(
-          db.doc(`${base}/injuries/${w.id}`),
-          { ...w.patch, updatedAt: FieldValue.serverTimestamp() },
-          { merge: true },
-        )
-      })
-      await batch.commit()
+      orgId,
+      dryRun,
+      incidents: incSnap.size,
+      injuries: injSnap.size,
+      written: dryRun ? 0 : plan.writes.length,
+      wouldWrite: plan.writes.length,
+      // The gate the strip is sequenced behind: while this is above zero, medical
+      // detail is on incidents that /injuries cannot yet account for.
+      created: plan.created,
+      completed: plan.completed,
+      // Kept apart from the strip's `confined` on purpose. `confined` claims the
+      // detail was already in /injuries and merely removed from the incident;
+      // `seeded` is detail this migration COPIED there, proved by nothing but the
+      // incident it came from.
+      seeded: plan.seeded,
+      alreadyHeld: plan.alreadyHeld,
+      alreadyComplete: plan.alreadyComplete,
+      // The rows a human has to resolve, by reason. Field names only.
+      blocked: plan.blocked.slice(0, 50),
+      blockedTotal: plan.blocked.length,
+      blockedFields: plan.blockedFields,
+      // Injury records for an incident that has rows, which no row names —
+      // usually one person holding a record under one id and a row under another.
+      // Reported, never reconciled: merging them writes one colleague's clinical
+      // detail into another's record.
+      orphanInjuries: plan.orphanInjuries.slice(0, 50),
+      orphanInjuryTotal: plan.orphanInjuries.length,
+      sample: plan.writes.slice(0, 25).map((w) => ({
+        id: w.id,
+        refNo: w.refNo,
+        create: w.create,
+        fields: w.fields.length,
+      })),
     }
   }
-
-  // Counts and reasons. No field names and certainly no values: a migration log
-  // must not become one more copy of the thing being confined.
-  logger.info('incidents: injury record seed', {
-    orgId, dryRun, incidents: incSnap.size, injuries: injSnap.size,
-    toWrite: plan.writes.length, created: plan.created, completed: plan.completed,
-    blocked: plan.blocked.length, orphans: plan.orphanInjuries.length,
-  })
-
-  return {
-    orgId,
-    dryRun,
-    incidents: incSnap.size,
-    injuries: injSnap.size,
-    written: dryRun ? 0 : plan.writes.length,
-    wouldWrite: plan.writes.length,
-    // The gate the strip is sequenced behind: while this is above zero, medical
-    // detail is on incidents that /injuries cannot yet account for.
-    created: plan.created,
-    completed: plan.completed,
-    // Kept apart from the strip's `confined` on purpose. `confined` claims the
-    // detail was already in /injuries and merely removed from the incident;
-    // `seeded` is detail this migration COPIED there, proved by nothing but the
-    // incident it came from.
-    seeded: plan.seeded,
-    alreadyHeld: plan.alreadyHeld,
-    alreadyComplete: plan.alreadyComplete,
-    // The rows a human has to resolve, by reason. Field names only.
-    blocked: plan.blocked.slice(0, 50),
-    blockedTotal: plan.blocked.length,
-    blockedFields: plan.blockedFields,
-    // Injury records for an incident that has rows, which no row names —
-    // usually one person holding a record under one id and a row under another.
-    // Reported, never reconciled: merging them writes one colleague's clinical
-    // detail into another's record.
-    orphanInjuries: plan.orphanInjuries.slice(0, 50),
-    orphanInjuryTotal: plan.orphanInjuries.length,
-    sample: plan.writes.slice(0, 25).map((w) => ({
-      id: w.id, refNo: w.refNo, create: w.create, fields: w.fields.length,
-    })),
-  }
-})
+)
 
 /**
  * Take the medical detail off incident documents that already carry a copy.
@@ -1024,88 +1168,98 @@ export const seedInjuryRecords = onCall({ region: REGION, timeoutSeconds: 540 },
  *
  * dryRun defaults to TRUE. Report first, write when asked.
  */
-export const stripIncidentMedicalDetail = onCall({ region: REGION, timeoutSeconds: 540 }, async (request) => {
-  const callerUid = request.auth?.uid
-  if (!callerUid) throw new HttpsError('unauthenticated', 'Sign in first.')
+export const stripIncidentMedicalDetail = onCall(
+  { region: REGION, timeoutSeconds: 540 },
+  async (request) => {
+    const callerUid = request.auth?.uid
+    if (!callerUid) throw new HttpsError('unauthenticated', 'Sign in first.')
 
-  const db = getFirestore()
-  const caller = (await db.doc(`users/${callerUid}`).get()).data()
-  if (!caller || caller.status !== 'approved' || caller.role !== 'admin') {
-    throw new HttpsError('permission-denied', 'Administrators only.')
-  }
-  const orgId = caller.orgId
-  const base = `organizations/${orgId}`
+    const db = getFirestore()
+    const caller = (await db.doc(`users/${callerUid}`).get()).data()
+    if (!caller || caller.status !== 'approved' || caller.role !== 'admin') {
+      throw new HttpsError('permission-denied', 'Administrators only.')
+    }
+    const orgId = caller.orgId
+    const base = `organizations/${orgId}`
 
-  // Both sides of the join, whole. Soft-deleted incidents are included
-  // deliberately — the generic read rule does not filter on deletedAt, so a
-  // record in the Recycle Bin is exposed exactly like a live one.
-  const [incSnap, injSnap] = await Promise.all([
-    db.collection(`${base}/incidents`).get(),
-    db.collection(`${base}/injuries`).get(),
-  ])
+    // Both sides of the join, whole. Soft-deleted incidents are included
+    // deliberately — the generic read rule does not filter on deletedAt, so a
+    // record in the Recycle Bin is exposed exactly like a live one.
+    const [incSnap, injSnap] = await Promise.all([
+      db.collection(`${base}/incidents`).get(),
+      db.collection(`${base}/injuries`).get(),
+    ])
 
-  const incidents = incSnap.docs.map((d) => ({
-    id: d.id,
-    refNo: d.data()?.refNo,
-    injuryReports: d.data()?.injuryReports,
-  }))
-  const injuries = new Map(injSnap.docs.map((d) => [d.id, d.data()]))
+    const incidents = incSnap.docs.map((d) => ({
+      id: d.id,
+      refNo: d.data()?.refNo,
+      injuryReports: d.data()?.injuryReports,
+    }))
+    const injuries = new Map(injSnap.docs.map((d) => [d.id, d.data()]))
 
-  const plan = planMedicalStrip(incidents, injuries)
+    const plan = planMedicalStrip(incidents, injuries)
 
-  const dryRun = request.data?.dryRun !== false
-  if (!dryRun) {
-    // Chunked: a batch takes 500 writes and an org's incident register exceeds
-    // that long before anyone runs this.
-    for (let i = 0; i < plan.writes.length; i += 400) {
-      const batch = db.batch()
-      plan.writes.slice(i, i + 400).forEach((w) => {
-        // The patch replaces injuryReports and nothing else. updatedAt is
-        // deliberately NOT stamped: this is not an edit anybody made, and
-        // moving every incident in the tenant to the top of "recently changed"
-        // would bury whatever a human actually touched that day.
-        batch.update(db.doc(`${base}/incidents/${w.id}`), w.patch)
-      })
-      await batch.commit()
+    const dryRun = request.data?.dryRun !== false
+    if (!dryRun) {
+      // Chunked: a batch takes 500 writes and an org's incident register exceeds
+      // that long before anyone runs this.
+      for (let i = 0; i < plan.writes.length; i += 400) {
+        const batch = db.batch()
+        plan.writes.slice(i, i + 400).forEach((w) => {
+          // The patch replaces injuryReports and nothing else. updatedAt is
+          // deliberately NOT stamped: this is not an edit anybody made, and
+          // moving every incident in the tenant to the top of "recently changed"
+          // would bury whatever a human actually touched that day.
+          batch.update(db.doc(`${base}/incidents/${w.id}`), w.patch)
+        })
+        await batch.commit()
+      }
+    }
+
+    // Counts only. The blocked rows name fields, never values, and this log line
+    // does not even name the fields — a migration report must not become one more
+    // copy of the thing it is confining.
+    logger.info('incidents: medical detail strip', {
+      orgId,
+      dryRun,
+      incidents: incSnap.size,
+      injuries: injSnap.size,
+      toWrite: plan.writes.length,
+      confined: plan.confined,
+      blocked: plan.blocked.length,
+      stillExposed: plan.stillExposed,
+    })
+
+    return {
+      orgId,
+      dryRun,
+      incidents: incSnap.size,
+      injuries: injSnap.size,
+      alreadyClean: plan.alreadyClean,
+      // The number this whole run is for: incidents that will STILL carry medical
+      // detail afterwards. Until it is 0 the exposure is open, and the rules and
+      // UI change must not ship on the strength of a big `confined` count.
+      stillExposed: plan.stillExposed,
+      written: dryRun ? 0 : plan.writes.length,
+      wouldWrite: plan.writes.length,
+      // Split on purpose: `confined` is real medical values proved present in
+      // /injuries and then removed here, `emptied` is blank keys that never held
+      // anything. "600 fields removed" reads like a much bigger migration than it
+      // is when most of them were empty strings.
+      confined: plan.confined,
+      emptied: plan.emptied,
+      // The part that needs a person. Each row is an injury whose detail could
+      // NOT be proved to exist anywhere else, so it was left where it is —
+      // exposed, but not destroyed. Field names only, never values.
+      blocked: plan.blocked.slice(0, 50),
+      blockedTotal: plan.blocked.length,
+      blockedFields: plan.blockedFields,
+      sample: plan.writes
+        .slice(0, 25)
+        .map((w) => ({ id: w.id, refNo: w.refNo, confined: w.confined })),
     }
   }
-
-  // Counts only. The blocked rows name fields, never values, and this log line
-  // does not even name the fields — a migration report must not become one more
-  // copy of the thing it is confining.
-  logger.info('incidents: medical detail strip', {
-    orgId, dryRun, incidents: incSnap.size, injuries: injSnap.size,
-    toWrite: plan.writes.length, confined: plan.confined,
-    blocked: plan.blocked.length, stillExposed: plan.stillExposed,
-  })
-
-  return {
-    orgId,
-    dryRun,
-    incidents: incSnap.size,
-    injuries: injSnap.size,
-    alreadyClean: plan.alreadyClean,
-    // The number this whole run is for: incidents that will STILL carry medical
-    // detail afterwards. Until it is 0 the exposure is open, and the rules and
-    // UI change must not ship on the strength of a big `confined` count.
-    stillExposed: plan.stillExposed,
-    written: dryRun ? 0 : plan.writes.length,
-    wouldWrite: plan.writes.length,
-    // Split on purpose: `confined` is real medical values proved present in
-    // /injuries and then removed here, `emptied` is blank keys that never held
-    // anything. "600 fields removed" reads like a much bigger migration than it
-    // is when most of them were empty strings.
-    confined: plan.confined,
-    emptied: plan.emptied,
-    // The part that needs a person. Each row is an injury whose detail could
-    // NOT be proved to exist anywhere else, so it was left where it is —
-    // exposed, but not destroyed. Field names only, never values.
-    blocked: plan.blocked.slice(0, 50),
-    blockedTotal: plan.blocked.length,
-    blockedFields: plan.blockedFields,
-    sample: plan.writes.slice(0, 25).map((w) => ({ id: w.id, refNo: w.refNo, confined: w.confined })),
-  }
-})
+)
 
 /**
  * Copy the bytes of one medical record to the manager-only prefix.
@@ -1214,7 +1368,8 @@ export async function moveMedicalRecords(db, store, orgId, moves) {
           if (!there) throw e
           tokensLeft += 1
           logger.error('medical records: could not remove the download token from a moved file', {
-            ...ctx, error: e?.message || String(e),
+            ...ctx,
+            error: e?.message || String(e),
           })
         }
         filesMoved += 1
@@ -1248,7 +1403,9 @@ export async function moveMedicalRecords(db, store, orgId, moves) {
       // Named by id, never by filename: a failure report must not become one
       // more copy of the thing being confined.
       failed.push({
-        incidentId: m.incidentId, refNo: m.refNo, photoId: m.photoId,
+        incidentId: m.incidentId,
+        refNo: m.refNo,
+        photoId: m.photoId,
         error: e?.message || String(e),
       })
       logger.error('medical records: left where it was', { ...ctx, error: e?.message || String(e) })
@@ -1263,12 +1420,16 @@ export async function moveMedicalRecords(db, store, orgId, moves) {
   // actually touched that day.
   for (const [incidentId, n] of perIncident) {
     try {
-      await db.doc(`${base}/incidents/${incidentId}`).update({ photoCount: FieldValue.increment(-n) })
+      await db
+        .doc(`${base}/incidents/${incidentId}`)
+        .update({ photoCount: FieldValue.increment(-n) })
     } catch (e) {
       // The records have already moved. A stale count is not worth reporting the
       // run as failed over.
       logger.error('medical records: photo count left stale', {
-        orgId, incidentId, error: e?.message || String(e),
+        orgId,
+        incidentId,
+        error: e?.message || String(e),
       })
     }
   }
@@ -1314,113 +1475,126 @@ export async function moveMedicalRecords(db, store, orgId, moves) {
  *
  * dryRun defaults to TRUE. Report first, write when asked.
  */
-export const confineMedicalRecords = onCall({ region: REGION, timeoutSeconds: 540 }, async (request) => {
-  const callerUid = request.auth?.uid
-  if (!callerUid) throw new HttpsError('unauthenticated', 'Sign in first.')
+export const confineMedicalRecords = onCall(
+  { region: REGION, timeoutSeconds: 540 },
+  async (request) => {
+    const callerUid = request.auth?.uid
+    if (!callerUid) throw new HttpsError('unauthenticated', 'Sign in first.')
 
-  const db = getFirestore()
-  const caller = (await db.doc(`users/${callerUid}`).get()).data()
-  if (!caller || caller.status !== 'approved' || caller.role !== 'admin') {
-    throw new HttpsError('permission-denied', 'Administrators only.')
-  }
-  const orgId = caller.orgId
-  const base = `organizations/${orgId}`
+    const db = getFirestore()
+    const caller = (await db.doc(`users/${callerUid}`).get()).data()
+    if (!caller || caller.status !== 'approved' || caller.role !== 'admin') {
+      throw new HttpsError('permission-denied', 'Administrators only.')
+    }
+    const orgId = caller.orgId
+    const base = `organizations/${orgId}`
 
-  // Existence and deletedAt, and not one clinical field. This job decides where
-  // a file goes, never what is wrong with anybody, so select() keeps the answer
-  // to that question out of its memory and out of anything that might log it.
-  const [incSnap, injSnap] = await Promise.all([
-    db.collection(`${base}/incidents`).get(),
-    db.collection(`${base}/injuries`).select('deletedAt').get(),
-  ])
-  const injuries = new Map(injSnap.docs.map((d) => [d.id, d.data() || {}]))
+    // Existence and deletedAt, and not one clinical field. This job decides where
+    // a file goes, never what is wrong with anybody, so select() keeps the answer
+    // to that question out of its memory and out of anything that might log it.
+    const [incSnap, injSnap] = await Promise.all([
+      db.collection(`${base}/incidents`).get(),
+      db.collection(`${base}/injuries`).select('deletedAt').get(),
+    ])
+    const injuries = new Map(injSnap.docs.map((d) => [d.id, d.data() || {}]))
 
-  // One photos query per incident rather than one collectionGroup query for the
-  // lot. A collectionGroup('photos') spans EVERY tenant, and this runs with
-  // Admin SDK privileges that never consult firestore.rules — the same trap the
-  // retention sweep's ownedByOrg() guards. Twenty at a time so a large register
-  // does not open a query per incident all at once.
-  const incidents = []
-  for (let i = 0; i < incSnap.docs.length; i += 20) {
-    const wave = incSnap.docs.slice(i, i + 20)
-    const photoSnaps = await Promise.all(wave.map((d) => d.ref.collection('photos').get()))
-    wave.forEach((d, j) => {
-      const data = d.data() || {}
-      incidents.push({
-        id: d.id,
-        refNo: data.refNo,
-        injuryReports: data.injuryReports,
-        photos: photoSnaps[j].docs.map((p) => ({ id: p.id, ...p.data() })),
+    // One photos query per incident rather than one collectionGroup query for the
+    // lot. A collectionGroup('photos') spans EVERY tenant, and this runs with
+    // Admin SDK privileges that never consult firestore.rules — the same trap the
+    // retention sweep's ownedByOrg() guards. Twenty at a time so a large register
+    // does not open a query per incident all at once.
+    const incidents = []
+    for (let i = 0; i < incSnap.docs.length; i += 20) {
+      const wave = incSnap.docs.slice(i, i + 20)
+      const photoSnaps = await Promise.all(wave.map((d) => d.ref.collection('photos').get()))
+      wave.forEach((d, j) => {
+        const data = d.data() || {}
+        incidents.push({
+          id: d.id,
+          refNo: data.refNo,
+          injuryReports: data.injuryReports,
+          photos: photoSnaps[j].docs.map((p) => ({ id: p.id, ...p.data() })),
+        })
       })
+    }
+
+    const plan = planMedicalRecordMove(incidents, injuries, orgId)
+
+    const dryRun = request.data?.dryRun !== false
+    const run = dryRun
+      ? { moved: 0, filesMoved: 0, tokensLeft: 0, failed: [] }
+      : await moveMedicalRecords(db, getBucket(), orgId, plan.moves)
+
+    // Counts, ids and reasons. No filenames, here or in the response: "MRI-left-
+    // knee — A Kumar.pdf" is the record, and a migration log must not become one
+    // more copy of the thing it is confining.
+    logger.info('incidents: medical record confinement', {
+      orgId,
+      dryRun,
+      incidents: incSnap.size,
+      records: plan.records,
+      toMove: plan.moves.length,
+      moved: run.moved,
+      filesMoved: run.filesMoved,
+      blocked: plan.blocked.length,
+      failed: run.failed.length,
+      remaining: plan.remaining,
     })
+
+    return {
+      orgId,
+      dryRun,
+      incidents: incSnap.size,
+      // Every medical record still filed in the shared photo subcollection —
+      // readable, by get and by list, by every member and the auditor.
+      records: plan.records,
+      photos: plan.photos,
+      moved: run.moved,
+      wouldMove: plan.moves.length,
+      // Bytes still under the prefix storage.rules hands to the whole tenant. The
+      // pointer move alone would leave the storage rule decorative for history.
+      filesToMove: plan.filesToMove,
+      filesMoved: run.filesMoved,
+      // Base64 on the pointer itself, with nothing in the bucket — for these the
+      // document IS the medical record, and Firestore rules are the only control.
+      inlineRecords: plan.inlineRecords,
+      // Permanent bearer links this run removes from the database. It does NOT
+      // mean they are recalled: see the note above the function and the card text.
+      urlsDropped: plan.urlsDropped,
+      // Records whose injury document is in the Recycle Bin. Moved anyway — the
+      // file is not destroyed by moving it, and leaving it in the photo album is
+      // the exposure — but counted, because nothing purges /injuries yet.
+      underDeletedInjury: plan.underDeletedInjury,
+      // Above the cap, so a second run finishes the job.
+      remaining: plan.remaining,
+      // The rows that need a person, by reason, and never by filename:
+      //   several-people    the incident injured more than one, and the pointer
+      //                     says nothing about whose record this is
+      //   no-person-id      no injury row names a person to file it against
+      //   no-injury-record  run seedInjuryRecords first
+      //   foreign-path      the file path is not inside this org's own prefix
+      blocked: plan.blocked.slice(0, 50),
+      blockedTotal: plan.blocked.length,
+      blockedReasons: plan.blockedReasons,
+      // Attempted and refused mid-flight. Each one still has its pointer and its
+      // file exactly where they were — nothing is deleted until the copy has been
+      // read back intact.
+      failed: run.failed.slice(0, 50),
+      failedTotal: run.failed.length,
+      // Files that arrived confined but kept an unused download token. Nobody has
+      // ever been given a URL for the new path, so this is a door in a room nobody
+      // has been shown — but it is worth knowing about.
+      tokensLeft: run.tokensLeft,
+      prefix: MEDICAL_RECORD_KIND,
+      sample: plan.moves.slice(0, 25).map((m) => ({
+        incidentId: m.incidentId,
+        refNo: m.refNo,
+        personId: m.personId,
+        recordId: m.photoId,
+      })),
+    }
   }
-
-  const plan = planMedicalRecordMove(incidents, injuries, orgId)
-
-  const dryRun = request.data?.dryRun !== false
-  const run = dryRun
-    ? { moved: 0, filesMoved: 0, tokensLeft: 0, failed: [] }
-    : await moveMedicalRecords(db, getBucket(), orgId, plan.moves)
-
-  // Counts, ids and reasons. No filenames, here or in the response: "MRI-left-
-  // knee — A Kumar.pdf" is the record, and a migration log must not become one
-  // more copy of the thing it is confining.
-  logger.info('incidents: medical record confinement', {
-    orgId, dryRun, incidents: incSnap.size, records: plan.records,
-    toMove: plan.moves.length, moved: run.moved, filesMoved: run.filesMoved,
-    blocked: plan.blocked.length, failed: run.failed.length, remaining: plan.remaining,
-  })
-
-  return {
-    orgId,
-    dryRun,
-    incidents: incSnap.size,
-    // Every medical record still filed in the shared photo subcollection —
-    // readable, by get and by list, by every member and the auditor.
-    records: plan.records,
-    photos: plan.photos,
-    moved: run.moved,
-    wouldMove: plan.moves.length,
-    // Bytes still under the prefix storage.rules hands to the whole tenant. The
-    // pointer move alone would leave the storage rule decorative for history.
-    filesToMove: plan.filesToMove,
-    filesMoved: run.filesMoved,
-    // Base64 on the pointer itself, with nothing in the bucket — for these the
-    // document IS the medical record, and Firestore rules are the only control.
-    inlineRecords: plan.inlineRecords,
-    // Permanent bearer links this run removes from the database. It does NOT
-    // mean they are recalled: see the note above the function and the card text.
-    urlsDropped: plan.urlsDropped,
-    // Records whose injury document is in the Recycle Bin. Moved anyway — the
-    // file is not destroyed by moving it, and leaving it in the photo album is
-    // the exposure — but counted, because nothing purges /injuries yet.
-    underDeletedInjury: plan.underDeletedInjury,
-    // Above the cap, so a second run finishes the job.
-    remaining: plan.remaining,
-    // The rows that need a person, by reason, and never by filename:
-    //   several-people    the incident injured more than one, and the pointer
-    //                     says nothing about whose record this is
-    //   no-person-id      no injury row names a person to file it against
-    //   no-injury-record  run seedInjuryRecords first
-    //   foreign-path      the file path is not inside this org's own prefix
-    blocked: plan.blocked.slice(0, 50),
-    blockedTotal: plan.blocked.length,
-    blockedReasons: plan.blockedReasons,
-    // Attempted and refused mid-flight. Each one still has its pointer and its
-    // file exactly where they were — nothing is deleted until the copy has been
-    // read back intact.
-    failed: run.failed.slice(0, 50),
-    failedTotal: run.failed.length,
-    // Files that arrived confined but kept an unused download token. Nobody has
-    // ever been given a URL for the new path, so this is a door in a room nobody
-    // has been shown — but it is worth knowing about.
-    tokensLeft: run.tokensLeft,
-    prefix: MEDICAL_RECORD_KIND,
-    sample: plan.moves.slice(0, 25).map((m) => ({
-      incidentId: m.incidentId, refNo: m.refNo, personId: m.personId, recordId: m.photoId,
-    })),
-  }
-})
+)
 
 /**
  * Delete defect locks that no longer describe a live fault.
@@ -1471,7 +1645,10 @@ export const clearOrphanedDefectLocks = onCall({ region: REGION }, async (reques
   }
 
   logger.info('defectLocks: orphan sweep', {
-    orgId, dryRun, total: lockSnap.size, orphaned: orphaned.length,
+    orgId,
+    dryRun,
+    total: lockSnap.size,
+    orphaned: orphaned.length,
   })
 
   return {
@@ -1520,7 +1697,11 @@ async function purgeStoredFile(store, path, ctx) {
     await store.file(path).delete({ ignoreNotFound: true })
     return true
   } catch (e) {
-    logger.error('retention: file left behind in storage', { ...ctx, path, error: e?.message || String(e) })
+    logger.error('retention: file left behind in storage', {
+      ...ctx,
+      path,
+      error: e?.message || String(e),
+    })
     return false
   }
 }
@@ -1553,13 +1734,20 @@ export async function purgeOrgCollection(db, orgId, spec, now, store = null) {
   // Query by the field AND re-check in the plan. The query is a filter; the
   // plan is the guarantee, and only one of them is tested.
   const cutoff = new Date(now - PURGE_AFTER_DAYS * 24 * 60 * 60 * 1000)
-  const snap = await col.where('deletedAt', '<=', cutoff).limit(MAX_PURGES_PER_RUN * 2).get()
+  const snap = await col
+    .where('deletedAt', '<=', cutoff)
+    .limit(MAX_PURGES_PER_RUN * 2)
+    .get()
   if (snap.empty) return { purged: 0, kept: 0, files: 0 }
 
   const docs = snap.docs.map((d) => ({ id: d.id, deletedAt: d.data().deletedAt, data: d.data() }))
   const { purge, keep, capped } = planPurge(docs, { now })
   if (capped) {
-    logger.info('retention: capped', { orgId, collection: spec.collection, cap: MAX_PURGES_PER_RUN })
+    logger.info('retention: capped', {
+      orgId,
+      collection: spec.collection,
+      cap: MAX_PURGES_PER_RUN,
+    })
   }
 
   let files = 0
@@ -1602,7 +1790,10 @@ export async function purgeOrgCollection(db, orgId, spec, now, store = null) {
           else problems.push({ kind: 'file-left-behind', docId: id, path })
         } else if (path) {
           logger.error('retention: refused a file path outside the org', {
-            orgId, collection: spec.collection, docId: id, path,
+            orgId,
+            collection: spec.collection,
+            docId: id,
+            path,
           })
           problems.push({ kind: 'foreign-file-path', docId: id, path })
         }
@@ -1628,12 +1819,18 @@ export async function purgeOrgCollection(db, orgId, spec, now, store = null) {
           await mirrorRef.delete()
         } else {
           logger.error('retention: refused a QR mirror belonging to another org', {
-            orgId, token, mirrorOrgId: mirror.data()?.orgId ?? null,
+            orgId,
+            token,
+            mirrorOrgId: mirror.data()?.orgId ?? null,
           })
           problems.push({ kind: 'foreign-qr-mirror', docId: id, token })
         }
       } catch (e) {
-        logger.error('retention: could not check a QR mirror', { orgId, token, error: e?.message || String(e) })
+        logger.error('retention: could not check a QR mirror', {
+          orgId,
+          token,
+          error: e?.message || String(e),
+        })
         problems.push({ kind: 'qr-mirror-error', docId: id, token })
       }
     }
@@ -1645,7 +1842,13 @@ export async function purgeOrgCollection(db, orgId, spec, now, store = null) {
 }
 
 export const purgeSoftDeleted = onSchedule(
-  { schedule: '30 3 * * *', timeZone: SCHEDULE_TZ, region: REGION, retryCount: 0, timeoutSeconds: 540 },
+  {
+    schedule: '30 3 * * *',
+    timeZone: SCHEDULE_TZ,
+    region: REGION,
+    retryCount: 0,
+    timeoutSeconds: 540,
+  },
   async () => {
     const db = getFirestore()
     const now = Date.now()
@@ -1662,7 +1865,13 @@ export const purgeSoftDeleted = onSchedule(
           total += purged
           totalFiles += files
           if (purged > 0) {
-            logger.info('retention: purged', { orgId: org.id, collection: spec.collection, purged, kept, files })
+            logger.info('retention: purged', {
+              orgId: org.id,
+              collection: spec.collection,
+              purged,
+              kept,
+              files,
+            })
           }
           for (const p of problems || []) {
             failures.push({ orgId: org.id, collection: spec.collection, ...p })
@@ -1671,7 +1880,9 @@ export const purgeSoftDeleted = onSchedule(
           // One bad collection must not stop the rest, and must not retry the
           // whole sweep — the next run covers it.
           logger.error('retention: skipped', {
-            orgId: org.id, collection: spec.collection, error: e?.message || String(e),
+            orgId: org.id,
+            collection: spec.collection,
+            error: e?.message || String(e),
           })
           failures.push({
             kind: 'collection-failed',
@@ -1684,7 +1895,10 @@ export const purgeSoftDeleted = onSchedule(
     }
 
     logger.info('retention: run complete', {
-      organizations: orgs.size, purged: total, files: totalFiles, failures: failures.length,
+      organizations: orgs.size,
+      purged: total,
+      files: totalFiles,
+      failures: failures.length,
     })
 
     // Do all the work, THEN fail. Both halves matter.
@@ -1708,7 +1922,9 @@ export const purgeSoftDeleted = onSchedule(
     const summary = summarizeFailures(failures)
     if (summary) {
       logger.error('retention: run had failures', {
-        failures: failures.slice(0, 50), byKind: summary.byKind, total: summary.total,
+        failures: failures.slice(0, 50),
+        byKind: summary.byKind,
+        total: summary.total,
       })
       throw new Error(summary.message)
     }
@@ -1747,7 +1963,11 @@ export const deleteOrgFile = onCall({ region: REGION }, async (request) => {
     // somebody probing — but the difference is exactly what an operator needs
     // when a legitimate manager reports that deleting stopped working.
     logger.warn('deleteOrgFile: refused', {
-      uid, path, reason: decision.reason, orgId: profile?.orgId ?? null, role: profile?.role ?? null,
+      uid,
+      path,
+      reason: decision.reason,
+      orgId: profile?.orgId ?? null,
+      role: profile?.role ?? null,
     })
     throw new HttpsError('permission-denied', 'You cannot delete this file.')
   }
@@ -1781,102 +2001,112 @@ export const deleteOrgFile = onCall({ region: REGION }, async (request) => {
  * That honesty is the feature. A subject access response that quietly omitted
  * the committee minutes naming someone is a failed response, not a partial one.
  */
-export const exportSubjectData = onCall({ region: REGION, timeoutSeconds: 540 }, async (request) => {
-  const callerUid = request.auth?.uid
-  if (!callerUid) throw new HttpsError('unauthenticated', 'Sign in first.')
+export const exportSubjectData = onCall(
+  { region: REGION, timeoutSeconds: 540 },
+  async (request) => {
+    const callerUid = request.auth?.uid
+    if (!callerUid) throw new HttpsError('unauthenticated', 'Sign in first.')
 
-  const db = getFirestore()
-  const caller = (await db.doc(`users/${callerUid}`).get()).data()
-  if (!caller || caller.status !== 'approved' || !['admin', 'manager'].includes(caller.role)) {
-    throw new HttpsError('permission-denied', 'Administrators and managers only.')
-  }
-  const orgId = caller.orgId
-  if (!orgId) throw new HttpsError('failed-precondition', 'Your profile names no organization.')
+    const db = getFirestore()
+    const caller = (await db.doc(`users/${callerUid}`).get()).data()
+    if (!caller || caller.status !== 'approved' || !['admin', 'manager'].includes(caller.role)) {
+      throw new HttpsError('permission-denied', 'Administrators and managers only.')
+    }
+    const orgId = caller.orgId
+    if (!orgId) throw new HttpsError('failed-precondition', 'Your profile names no organization.')
 
-  const uid = String(request.data?.uid || '').trim()
-  const personId = String(request.data?.personId || '').trim()
-  if (!uid && !personId) {
-    throw new HttpsError('invalid-argument', 'Give a uid, a personId, or both.')
-  }
-  // Both become path segments below — uid in the tenancy check immediately
-  // after, and either of them as the document id in a `docId` source. Validate
-  // BEFORE the tenancy check, so the value that check is made about is the same
-  // value the queries then use.
-  if (uid) assertPathSegment(uid, 'uid')
-  if (personId) assertPathSegment(personId, 'personId')
+    const uid = String(request.data?.uid || '').trim()
+    const personId = String(request.data?.personId || '').trim()
+    if (!uid && !personId) {
+      throw new HttpsError('invalid-argument', 'Give a uid, a personId, or both.')
+    }
+    // Both become path segments below — uid in the tenancy check immediately
+    // after, and either of them as the document id in a `docId` source. Validate
+    // BEFORE the tenancy check, so the value that check is made about is the same
+    // value the queries then use.
+    if (uid) assertPathSegment(uid, 'uid')
+    if (personId) assertPathSegment(personId, 'personId')
 
-  // Tenancy: the subject must belong to the CALLER's org. Without this, a
-  // manager of any tenant could export any uid in the system — the export is
-  // by uid, and a uid is not secret.
-  if (uid) {
-    const subject = (await db.doc(`users/${uid}`).get()).data()
-    if (!subject || subject.orgId !== orgId) {
-      throw new HttpsError('permission-denied', 'That person is not in your organization.')
+    // Tenancy: the subject must belong to the CALLER's org. Without this, a
+    // manager of any tenant could export any uid in the system — the export is
+    // by uid, and a uid is not secret.
+    if (uid) {
+      const subject = (await db.doc(`users/${uid}`).get()).data()
+      if (!subject || subject.orgId !== orgId) {
+        throw new HttpsError('permission-denied', 'That person is not in your organization.')
+      }
+    }
+
+    const plan = planExport({ uid, personId })
+    const records = {}
+    const problems = []
+
+    for (const q of plan) {
+      try {
+        if (q.kind === 'docId') {
+          const snap = await db.doc(`${q.path}/${q.value}`).get()
+          records[q.path] = snap.exists ? [{ id: snap.id, ...snap.data() }] : []
+          continue
+        }
+
+        // Subcollections are reached through their parent, so a source with a
+        // `parent` is gathered by the parent's own query rather than a
+        // collectionGroup scan — a collectionGroup would cross tenants, and the
+        // rules that normally prevent that do not apply to the Admin SDK.
+        //
+        // A top-level source is NOT org-scoped, so a field query against one
+        // reads every tenant's rows — unless the source says which FIELD carries
+        // the tenant (`orgField`: the root LOTO collections `technicians` and
+        // `locks`), in which case that field is ANDed in below. A top-level source
+        // with neither is refused: the next one added without a tenant field
+        // would otherwise cross tenants silently.
+        if (q.topLevel && !q.orgField) {
+          throw new Error(
+            `source ${q.path} is top-level and cannot be reached by a field query without crossing tenants`
+          )
+        }
+        // arrayContains: the person is one element of a list of uids
+        // (lotoPermits.personnelUids), not the value of a field.
+        const op = q.kind === 'arrayContains' ? 'array-contains' : '=='
+        const col = q.topLevel
+          ? db.collection(q.path).where(q.orgField, '==', orgId)
+          : db.collection(`organizations/${orgId}/${q.path}`)
+        const snap = await col.where(q.field, op, q.value).limit(2000).get()
+        records[q.path] = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+      } catch (e) {
+        // One unreachable collection must not lose the rest of the response, but
+        // it must be visible in it — an export with a silent hole is the failure
+        // this whole function exists to avoid.
+        logger.error('exportSubjectData: source failed', {
+          orgId,
+          path: q.path,
+          error: e?.message || String(e),
+        })
+        problems.push({ path: q.path, error: e?.message || String(e) })
+      }
+    }
+
+    const encryptionOn = Boolean(request.data?.encryptionOn)
+    logger.info('exportSubjectData: ran', {
+      orgId,
+      callerUid,
+      subjectUid: uid || null,
+      personId: personId || null,
+      collections: Object.keys(records).length,
+    })
+
+    return {
+      subject: { uid: uid || null, personId: personId || null },
+      generatedFor: orgId,
+      records,
+      // Named, not searched. See the note above.
+      mentions: planScan(),
+      scan: scanFeasibility({ encryptionOn }),
+      erasure: classifyErasure(),
+      problems,
     }
   }
-
-  const plan = planExport({ uid, personId })
-  const records = {}
-  const problems = []
-
-  for (const q of plan) {
-    try {
-      if (q.kind === 'docId') {
-        const snap = await db.doc(`${q.path}/${q.value}`).get()
-        records[q.path] = snap.exists ? [{ id: snap.id, ...snap.data() }] : []
-        continue
-      }
-
-      // Subcollections are reached through their parent, so a source with a
-      // `parent` is gathered by the parent's own query rather than a
-      // collectionGroup scan — a collectionGroup would cross tenants, and the
-      // rules that normally prevent that do not apply to the Admin SDK.
-      //
-      // A top-level source is NOT org-scoped, so a field query against one
-      // reads every tenant's rows — unless the source says which FIELD carries
-      // the tenant (`orgField`: the root LOTO collections `technicians` and
-      // `locks`), in which case that field is ANDed in below. A top-level source
-      // with neither is refused: the next one added without a tenant field
-      // would otherwise cross tenants silently.
-      if (q.topLevel && !q.orgField) {
-        throw new Error(
-          `source ${q.path} is top-level and cannot be reached by a field query without crossing tenants`,
-        )
-      }
-      // arrayContains: the person is one element of a list of uids
-      // (lotoPermits.personnelUids), not the value of a field.
-      const op = q.kind === 'arrayContains' ? 'array-contains' : '=='
-      const col = q.topLevel
-        ? db.collection(q.path).where(q.orgField, '==', orgId)
-        : db.collection(`organizations/${orgId}/${q.path}`)
-      const snap = await col.where(q.field, op, q.value).limit(2000).get()
-      records[q.path] = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
-    } catch (e) {
-      // One unreachable collection must not lose the rest of the response, but
-      // it must be visible in it — an export with a silent hole is the failure
-      // this whole function exists to avoid.
-      logger.error('exportSubjectData: source failed', { orgId, path: q.path, error: e?.message || String(e) })
-      problems.push({ path: q.path, error: e?.message || String(e) })
-    }
-  }
-
-  const encryptionOn = Boolean(request.data?.encryptionOn)
-  logger.info('exportSubjectData: ran', {
-    orgId, callerUid, subjectUid: uid || null, personId: personId || null,
-    collections: Object.keys(records).length,
-  })
-
-  return {
-    subject: { uid: uid || null, personId: personId || null },
-    generatedFor: orgId,
-    records,
-    // Named, not searched. See the note above.
-    mentions: planScan(),
-    scan: scanFeasibility({ encryptionOn }),
-    erasure: classifyErasure(),
-    problems,
-  }
-})
+)
 
 /**
  * Withdraw the public detail of permits nobody came back to close.
@@ -1903,7 +2133,13 @@ export const exportSubjectData = onCall({ region: REGION, timeoutSeconds: 540 },
  * stops working must not look identical to one with nothing to do.
  */
 export const withdrawStalePermitMirrors = onSchedule(
-  { schedule: '15 4 * * *', timeZone: SCHEDULE_TZ, region: REGION, retryCount: 0, timeoutSeconds: 540 },
+  {
+    schedule: '15 4 * * *',
+    timeZone: SCHEDULE_TZ,
+    region: REGION,
+    retryCount: 0,
+    timeoutSeconds: 540,
+  },
   async () => {
     const db = getFirestore()
     const now = Date.now()
@@ -1914,7 +2150,10 @@ export const withdrawStalePermitMirrors = onSchedule(
     // existed, so the filter is applied in planWithdrawals rather than here —
     // a `where('withdrawn','==',false)` would silently skip every legacy
     // mirror, which is precisely the population this exists for.
-    const snap = await db.collection('permitQr').limit(MAX_WITHDRAWALS_PER_RUN * 4).get()
+    const snap = await db
+      .collection('permitQr')
+      .limit(MAX_WITHDRAWALS_PER_RUN * 4)
+      .get()
     const mirrors = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
     const { withdraw, capped } = planWithdrawals(mirrors, { now })
 
@@ -1935,7 +2174,9 @@ export const withdrawStalePermitMirrors = onSchedule(
     }
 
     logger.info('permitQr: run complete', {
-      scanned: mirrors.length, withdrawn: withdraw.length - failures.length, failures: failures.length,
+      scanned: mirrors.length,
+      withdrawn: withdraw.length - failures.length,
+      failures: failures.length,
     })
 
     const summary = summarizeFailures(failures)
@@ -2017,7 +2258,10 @@ async function metabaseCaller(request, { adminOnly = false } = {}) {
   const db = getFirestore()
   const profile = (await db.doc(`users/${uid}`).get()).data() || null
   if (!profile || profile.status !== 'approved' || !profile.orgId) {
-    throw new HttpsError('permission-denied', 'Your account is not an approved member of an organization.')
+    throw new HttpsError(
+      'permission-denied',
+      'Your account is not an approved member of an organization.'
+    )
   }
   if (adminOnly && profile.role !== 'admin') {
     throw new HttpsError('permission-denied', 'Administrators only.')
@@ -2122,12 +2366,16 @@ export const metabaseTest = onCall({ region: REGION }, async (request) => {
       message: `Connected as ${me?.common_name || me?.email || 'an API user'}.`,
     }
   } catch (e) {
-    logger.warn('metabaseTest: unreachable', { orgId: profile.orgId, error: e?.message || String(e) })
+    logger.warn('metabaseTest: unreachable', {
+      orgId: profile.orgId,
+      error: e?.message || String(e),
+    })
     return {
       ok: false,
-      message: e?.name === 'AbortError'
-        ? `Metabase did not answer within ${Math.round(METABASE_TIMEOUT_MS / 1000)} seconds.`
-        : 'Could not reach that address. Check the URL, and that the instance resolves publicly.',
+      message:
+        e?.name === 'AbortError'
+          ? `Metabase did not answer within ${Math.round(METABASE_TIMEOUT_MS / 1000)} seconds.`
+          : 'Could not reach that address. Check the URL, and that the instance resolves publicly.',
     }
   }
 })
@@ -2152,7 +2400,11 @@ export const metabaseQuery = onCall({ region: REGION, timeoutSeconds: 300 }, asy
   // saved question declares. Clamped rather than refused — this is a dashboard
   // filter, and a date picker that errors is worse than one that quietly
   // returns the last year. See safeRange and buildDateParams.
-  const range = safeRange({ from: request.data?.from, to: request.data?.to }, Date.now(), DEFAULT_RANGE_DAYS)
+  const range = safeRange(
+    { from: request.data?.from, to: request.data?.to },
+    Date.now(),
+    DEFAULT_RANGE_DAYS
+  )
   const config = normalizeConfig((await db.doc(configPath(profile.orgId)).get()).data())
   const ready = readiness(config, dataset)
   if (!ready.ok) {
@@ -2172,16 +2424,25 @@ export const metabaseQuery = onCall({ region: REGION, timeoutSeconds: 300 }, asy
   // the question's SQL, which is a warehouse's schema and not something an
   // ordinary member reading a safety dashboard should be shown.
   const detailed = profile.role === 'admin'
-  const results = await Promise.all(targets.map((s) => querySource(s, dataset, profile.orgId, detailed, range)))
+  const results = await Promise.all(
+    targets.map((s) => querySource(s, dataset, profile.orgId, detailed, range))
+  )
 
   const answered = results.filter((r) => r.ok)
   if (answered.length === 0) {
     // Everything failed. The first failure's reason is returned so the tab can
     // still show a specific screen, with every source's own outcome beside it.
     const first = results[0] || { reason: 'unreachable' }
-    logger.warn('metabaseQuery: every source failed', { orgId: profile.orgId, dataset, sources: results.length })
+    logger.warn('metabaseQuery: every source failed', {
+      orgId: profile.orgId,
+      dataset,
+      sources: results.length,
+    })
     return {
-      ok: false, reason: first.reason, message: first.message, dataset,
+      ok: false,
+      reason: first.reason,
+      message: first.message,
+      dataset,
       ...(first.detail ? { detail: first.detail } : {}),
       sources: outcomes(results),
     }
@@ -2199,7 +2460,11 @@ export const metabaseQuery = onCall({ region: REGION, timeoutSeconds: 300 }, asy
   const shadowed = [...new Set(answered.flatMap((r) => r.shadowed || []))]
 
   logger.info('metabaseQuery: ok', {
-    uid, orgId: profile.orgId, dataset, rows: rows.length, capped,
+    uid,
+    orgId: profile.orgId,
+    dataset,
+    rows: rows.length,
+    capped,
     sources: `${answered.length}/${results.length}`,
   })
   return {
@@ -2225,11 +2490,17 @@ export const metabaseQuery = onCall({ region: REGION, timeoutSeconds: 300 }, asy
 })
 
 /** What the client is told about each instance. Never a URL it did not configure. */
-const outcomes = (results) => results.map((r) => ({
-  id: r.id, label: r.label, ok: r.ok, rows: r.rows?.length ?? 0, reason: r.reason, message: r.message,
-  // Present only for an admin — querySource decides, this just carries it.
-  ...(r.detail ? { detail: r.detail } : {}),
-}))
+const outcomes = (results) =>
+  results.map((r) => ({
+    id: r.id,
+    label: r.label,
+    ok: r.ok,
+    rows: r.rows?.length ?? 0,
+    reason: r.reason,
+    message: r.message,
+    // Present only for an admin — querySource decides, this just carries it.
+    ...(r.detail ? { detail: r.detail } : {}),
+  }))
 
 /**
  * One instance, one question.
@@ -2254,7 +2525,9 @@ async function querySource(source, dataset, orgId, detailed = false, range = nul
       try {
         const j = JSON.parse(body)
         text = j?.message || j?.error || j?.error_message || body
-      } catch { /* not JSON — the raw body is what there is */ }
+      } catch {
+        /* not JSON — the raw body is what there is */
+      }
       const detail = String(text).replace(/\s+/g, ' ').trim().slice(0, 500)
       return detail ? { ...base, detail } : base
     } catch {
@@ -2288,7 +2561,12 @@ async function querySource(source, dataset, orgId, detailed = false, range = nul
       else undescribed = true
     } catch (e) {
       undescribed = true
-      logger.warn('metabaseQuery: could not describe card', { orgId, dataset, source: source.id, error: e?.message || String(e) })
+      logger.warn('metabaseQuery: could not describe card', {
+        orgId,
+        dataset,
+        source: source.id,
+        error: e?.message || String(e),
+      })
     }
   }
 
@@ -2301,14 +2579,20 @@ async function querySource(source, dataset, orgId, detailed = false, range = nul
   // reason for that is an expired API key. So say THAT instead, and say it
   // before spending a warehouse query on a certain failure.
   if (undescribed) {
-    logger.warn('metabaseQuery: shape unknown, refusing to run unbound', { orgId, dataset, source: source.id, cardId })
+    logger.warn('metabaseQuery: shape unknown, refusing to run unbound', {
+      orgId,
+      dataset,
+      source: source.id,
+      cardId,
+    })
     return {
       ...tag,
       ok: false,
       reason: 'refused',
-      message: 'Could not read the question’s parameters from Metabase, so its date variables '
-        + 'cannot be filled in — the usual cause is an expired API key. Update the key in the '
-        + 'Connection settings and run this again.',
+      message:
+        'Could not read the question’s parameters from Metabase, so its date variables ' +
+        'cannot be filled in — the usual cause is an expired API key. Update the key in the ' +
+        'Connection settings and run this again.',
     }
   }
 
@@ -2323,22 +2607,33 @@ async function querySource(source, dataset, orgId, detailed = false, range = nul
   // Only 5xx is retried. A 401 is an expired key and a 404 is a deleted
   // question: both fail the same way twice, and retrying them doubles the wait
   // before the reader is told something they need to act on.
-  const post = () => metabaseFetch(cardQueryUrl(url.origin, cardId), source.apiKey, {
-    method: 'POST',
-    // Only when there is something to send. An empty body is what this always
-    // sent, and a question with no parameters must keep behaving identically.
-    ...(parameters.length ? { body: { parameters } } : {}),
-  })
+  const post = () =>
+    metabaseFetch(cardQueryUrl(url.origin, cardId), source.apiKey, {
+      method: 'POST',
+      // Only when there is something to send. An empty body is what this always
+      // sent, and a question with no parameters must keep behaving identically.
+      ...(parameters.length ? { body: { parameters } } : {}),
+    })
 
   let res
   try {
     res = await post()
     if (res.status >= 500) {
-      logger.info('metabaseQuery: retrying after a server error', { orgId, dataset, source: source.id, status: res.status })
+      logger.info('metabaseQuery: retrying after a server error', {
+        orgId,
+        dataset,
+        source: source.id,
+        status: res.status,
+      })
       res = await post()
     }
   } catch (e) {
-    logger.warn('metabaseQuery: unreachable', { orgId, dataset, source: source.id, error: e?.message || String(e) })
+    logger.warn('metabaseQuery: unreachable', {
+      orgId,
+      dataset,
+      source: source.id,
+      error: e?.message || String(e),
+    })
     return {
       ...tag,
       ok: false,
@@ -2346,14 +2641,18 @@ async function querySource(source, dataset, orgId, detailed = false, range = nul
       // Naming the window matters: the usual cause is a range too wide for the
       // question, and "did not answer in time" alone sends people to look at
       // the network instead of at the date pickers.
-      message: e?.name === 'AbortError'
-        ? `Metabase did not answer within ${Math.round(METABASE_TIMEOUT_MS / 1000)} seconds${range ? ` for ${range.from} to ${range.to}` : ''}. Try a shorter date range.`
-        : 'Could not reach Metabase.',
+      message:
+        e?.name === 'AbortError'
+          ? `Metabase did not answer within ${Math.round(METABASE_TIMEOUT_MS / 1000)} seconds${range ? ` for ${range.from} to ${range.to}` : ''}. Try a shorter date range.`
+          : 'Could not reach Metabase.',
     }
   }
   if (!res.ok) {
     logger.warn('metabaseQuery: refused', { orgId, dataset, source: source.id, status: res.status })
-    return withDetail({ ...tag, ok: false, reason: 'refused', message: metabaseFailure(res.status) }, res)
+    return withDetail(
+      { ...tag, ok: false, reason: 'refused', message: metabaseFailure(res.status) },
+      res
+    )
   }
 
   let payload
@@ -2369,8 +2668,16 @@ async function querySource(source, dataset, orgId, detailed = false, range = nul
     // The generic line for everyone; Metabase's own words only for an admin.
     // This used to hand that text to every caller, which is the schema leak the
     // rest of this function is careful about.
-    const base = { ...tag, ok: false, reason: 'query-failed', message: 'Metabase could not run that question.' }
-    const detail = String(payload?.error || payload?.message || '').replace(/\s+/g, ' ').trim().slice(0, 500)
+    const base = {
+      ...tag,
+      ok: false,
+      reason: 'query-failed',
+      message: 'Metabase could not run that question.',
+    }
+    const detail = String(payload?.error || payload?.message || '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 500)
     return detailed && detail ? { ...base, detail } : base
   }
 
@@ -2431,7 +2738,9 @@ async function describeCard(origin, cardId, apiKey) {
       // A 5xx here is the same flaky warehouse the query itself retries past.
       // A 401 or 404 will fail identically twice, so it is not retried.
       if (res.status < 500) break
-    } catch { /* retried, then reported by returning null */ }
+    } catch {
+      /* retried, then reported by returning null */
+    }
   }
   if (card) cardShapeCache.set(key, card)
   return card
@@ -2502,7 +2811,7 @@ function assignmentTrigger(collection) {
       region: REGION,
       secrets: [SMTP_PASS],
     },
-    (event) => onAssignmentWritten(collection, event),
+    (event) => onAssignmentWritten(collection, event)
   )
 }
 
@@ -2546,7 +2855,7 @@ export const notifyIncidentReported = onDocumentWritten(
       logger,
       readObject: readStorageObject,
     })
-  },
+  }
 )
 
 // Lifecycle mail shares the assignment mailbox. A missing SMTP_PASS is logged
@@ -2581,16 +2890,15 @@ function writtenArgs(event, mailer) {
 }
 
 function lifecycleTrigger(label, document, run) {
-  return onDocumentWritten(
-    { document, region: REGION, secrets: [SMTP_PASS] },
-    (event) => withMailer(label, (mailer) => run(writtenArgs(event, mailer))),
+  return onDocumentWritten({ document, region: REGION, secrets: [SMTP_PASS] }, (event) =>
+    withMailer(label, (mailer) => run(writtenArgs(event, mailer)))
   )
 }
 
 export const notifyPermitLifecycle = lifecycleTrigger(
   'permit',
   'organizations/{orgId}/permits/{docId}',
-  (args) => deliverPermitMails({ ...args, readObject: readStorageObject }),
+  (args) => deliverPermitMails({ ...args, readObject: readStorageObject })
 )
 
 // Every LOTO permit write. The planner decides whether it is news; most writes
@@ -2598,7 +2906,7 @@ export const notifyPermitLifecycle = lifecycleTrigger(
 export const notifyLotoPermitLifecycle = lifecycleTrigger(
   'loto permit',
   'organizations/{orgId}/lotoPermits/{docId}',
-  deliverLotoPermitMails,
+  deliverLotoPermitMails
 )
 
 // Every five minutes: flag active permits that are due or overdue against their
@@ -2607,17 +2915,25 @@ export const notifyLotoPermitLifecycle = lifecycleTrigger(
 // never a duplicate mail. retryCount 0 because it never throws except at the
 // very end, after every org has been swept.
 export const sweepLotoPermits = onSchedule(
-  { schedule: '*/5 * * * *', timeZone: SCHEDULE_TZ, region: REGION, retryCount: 0, timeoutSeconds: 300 },
+  {
+    schedule: '*/5 * * * *',
+    timeZone: SCHEDULE_TZ,
+    region: REGION,
+    retryCount: 0,
+    timeoutSeconds: 300,
+  },
   async () => {
     const { failures } = await runLotoPermitSweep({ db: getFirestore(), nowMs: Date.now(), logger })
     const summary = summarizeFailures(failures)
     if (summary) {
       logger.error('loto permits: sweep had failures', {
-        failures: failures.slice(0, 50), byKind: summary.byKind, total: summary.total,
+        failures: failures.slice(0, 50),
+        byKind: summary.byKind,
+        total: summary.total,
       })
       throw new Error(summary.message)
     }
-  },
+  }
 )
 
 // 03:45, after the Recycle Bin sweep. Closed permits older than one year go,
@@ -2625,7 +2941,13 @@ export const sweepLotoPermits = onSchedule(
 // touched. Like every retention job: do all the work, THEN fail, so a sweep that
 // has been failing is a failed invocation and not a silent success.
 export const purgeClosedLotoPermits = onSchedule(
-  { schedule: '45 3 * * *', timeZone: SCHEDULE_TZ, region: REGION, retryCount: 0, timeoutSeconds: 540 },
+  {
+    schedule: '45 3 * * *',
+    timeZone: SCHEDULE_TZ,
+    region: REGION,
+    retryCount: 0,
+    timeoutSeconds: 540,
+  },
   async () => {
     const { failures } = await runLotoPermitPurge({
       db: getFirestore(),
@@ -2636,22 +2958,24 @@ export const purgeClosedLotoPermits = onSchedule(
     const summary = summarizeFailures(failures)
     if (summary) {
       logger.error('loto permits: purge had failures', {
-        failures: failures.slice(0, 50), byKind: summary.byKind, total: summary.total,
+        failures: failures.slice(0, 50),
+        byKind: summary.byKind,
+        total: summary.total,
       })
       throw new Error(summary.message)
     }
-  },
+  }
 )
 
 export const notifyDefectReported = lifecycleTrigger(
   'defect',
   'organizations/{orgId}/reports/{docId}',
-  deliverDefectReport,
+  deliverDefectReport
 )
 
 function assetDefectTrigger(collection) {
   return lifecycleTrigger('defect', `organizations/{orgId}/${collection}/{docId}`, (args) =>
-    deliverAssetDefects({ ...args, collection }),
+    deliverAssetDefects({ ...args, collection })
   )
 }
 
@@ -2664,13 +2988,13 @@ export const notifyFasDefect = assetDefectTrigger('fas')
 export const notifyDrillReport = lifecycleTrigger(
   'drill report',
   'organizations/{orgId}/mockDrills/{docId}',
-  (args) => deliverDrillReport({ ...args, readObject: readStorageObject }),
+  (args) => deliverDrillReport({ ...args, readObject: readStorageObject })
 )
 
 export const notifyCommitteeMeeting = lifecycleTrigger(
   'meeting',
   'organizations/{orgId}/consultations/{docId}',
-  (args) => deliverMeetingMail({ ...args, readObject: readStorageObject }),
+  (args) => deliverMeetingMail({ ...args, readObject: readStorageObject })
 )
 
 // 512MiB: the run holds every grid's reading and then composites the map.
@@ -2691,7 +3015,7 @@ const weatherDigestTask = (event) =>
       mailer,
       logger,
       scheduleTime: event?.scheduleTime,
-    }),
+    })
   )
 
 // 00:00, 06:00, 12:00 and 18:00 Asia/Kolkata. The hours are listed so this is
@@ -2700,7 +3024,7 @@ const weatherDigestTask = (event) =>
 // the next slot; bucketFromSchedule ignores one that is still in the future.
 export const sendWeatherRiskDigest = onSchedule(
   { ...weatherDigestRun, schedule: '0 0,6,12,18 * * *', timeZone: SCHEDULE_TZ },
-  weatherDigestTask,
+  weatherDigestTask
 )
 
 // Ten, twenty, thirty, forty and fifty minutes after each slot. The :00 run
@@ -2713,5 +3037,320 @@ export const retryWeatherRiskDigest = onSchedule(
     schedule: '10,20,30,40,50 0,6,12,18 * * *',
     timeZone: SCHEDULE_TZ,
   },
-  weatherDigestTask,
+  weatherDigestTask
+)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WhatsApp site lookup (Meta WhatsApp Cloud API, direct).
+//
+// A linked, approved app user sends a site code or name to the business number
+// and gets one message back: extinguishers (HPT overdue), open defects, first
+// aid boxes, pending actions, incidents and the site's emergency contacts.
+// Design, data definitions and the privacy argument: docs/WHATSAPP.md. The
+// decisions live in lib/whatsapp/*.js and lib/siteSummary.js; this file only
+// wires them to Firestore, Secret Manager and the Graph API.
+//
+// OFF BY DEFAULT. Nothing answers until all of these are set:
+//
+//   firebase functions:secrets:set WA_APP_SECRET     Meta app → App settings → Basic → App secret
+//   firebase functions:secrets:set WA_ACCESS_TOKEN   System User token, whatsapp_business_messaging
+//   firebase functions:secrets:set WA_VERIFY_TOKEN   any long random string; typed into the
+//                                                    Meta webhook "Verify token" field
+//   WA_PHONE_NUMBER_ID   the Cloud API phone number id (not the phone number)
+//   WA_ENABLED=true      the kill switch; anything else and the webhook ignores
+//                        every message (still answering Meta 200 so it stops retrying)
+//
+// Secrets, not params, for the same LOW-13 reason as DATA_KEY_MASTER: the
+// token sends messages as the business and the app secret is what makes a
+// forged webhook distinguishable from a real one. The deploy step creates
+// non-working placeholders when they are missing, and a placeholder never
+// authenticates (signature.js isRealSecret).
+// ─────────────────────────────────────────────────────────────────────────────
+const WA_APP_SECRET = defineSecret('WA_APP_SECRET')
+const WA_ACCESS_TOKEN = defineSecret('WA_ACCESS_TOKEN')
+const WA_VERIFY_TOKEN = defineSecret('WA_VERIFY_TOKEN')
+const WA_ENABLED = defineString('WA_ENABLED', { default: 'false' })
+const WA_PHONE_NUMBER_ID = defineString('WA_PHONE_NUMBER_ID', { default: '' })
+const WA_GRAPH_VERSION = defineString('WA_GRAPH_VERSION', { default: 'v25.0' })
+// The number people send to, as shown on the Security page. Display only.
+const WA_DISPLAY_NUMBER = defineString('WA_DISPLAY_NUMBER', { default: '' })
+// Global circuit breaker: outbound replies per IST day across all users.
+const WA_DAILY_CAP = defineString('WA_DAILY_CAP', { default: '2000' })
+
+/** The kill switch plus the non-secret config the feature cannot run without. */
+function waSwitchedOn() {
+  return (
+    WA_ENABLED.value() === 'true' &&
+    /^\d{5,20}$/.test(WA_PHONE_NUMBER_ID.value()) &&
+    Boolean(graphVersion(WA_GRAPH_VERSION.value()))
+  )
+}
+
+/** Everything, secrets included. Only callable where the secrets are bound. */
+function waFullyConfigured() {
+  return (
+    waSwitchedOn() &&
+    isRealSecret(WA_APP_SECRET.value()) &&
+    isRealSecret(WA_ACCESS_TOKEN.value()) &&
+    isRealSecret(WA_VERIFY_TOKEN.value())
+  )
+}
+
+// Keyed digest material for phone numbers in logs and counters, derived from a
+// secret this function already holds rather than one more secret to manage.
+// Rotating the app secret only breaks correlation of old log rows, which is a
+// feature for data that is deleted at 90 days anyway.
+const waPepper = () =>
+  createHmac('sha256', WA_APP_SECRET.value()).update('wa-phone-pepper-v1').digest('hex')
+
+/**
+ * The Meta webhook. Public by necessity: Meta's servers are the caller and
+ * carry no Google identity. Authentication is the X-Hub-Signature-256 HMAC,
+ * checked on the raw bytes before the body is believed at all.
+ *
+ * maxInstances bounds what a flood can cost; a forged request costs one HMAC
+ * and a 401. The reply is sent inline (a few reads and one Graph call) before
+ * answering 200 — Meta waits for it, and at this volume that is well inside
+ * its timeout.
+ */
+export const waWebhook = onRequest(
+  {
+    region: REGION,
+    secrets: [WA_APP_SECRET, WA_ACCESS_TOKEN, WA_VERIFY_TOKEN],
+    invoker: 'public',
+    maxInstances: 5,
+    concurrency: 20,
+    timeoutSeconds: 60,
+    memory: '512MiB',
+  },
+  async (req, res) => {
+    if (req.method === 'GET') {
+      const challenge = handshakeChallenge(req.query || {}, WA_VERIFY_TOKEN.value())
+      if (challenge === null) {
+        res.status(403).send('Forbidden')
+        return
+      }
+      res.status(200).type('text/plain').send(challenge)
+      return
+    }
+    if (req.method !== 'POST') {
+      res.status(405).send('Method Not Allowed')
+      return
+    }
+    if (!verifySignature(req.rawBody, req.get('x-hub-signature-256'), WA_APP_SECRET.value())) {
+      logger.warn('waWebhook: bad signature')
+      res.status(401).send('Unauthorized')
+      return
+    }
+    // Signed but switched off: acknowledge, so Meta stops retrying, and do nothing.
+    if (!waFullyConfigured()) {
+      res.status(200).send('disabled')
+      return
+    }
+
+    let payload = null
+    try {
+      payload = JSON.parse(
+        Buffer.isBuffer(req.rawBody) ? req.rawBody.toString('utf8') : String(req.rawBody)
+      )
+    } catch {
+      res.status(400).send('Bad Request')
+      return
+    }
+
+    const { messages, statuses } = extractMessages(payload, WA_PHONE_NUMBER_ID.value())
+    if (statuses) logger.info('waWebhook: statuses', { count: statuses })
+
+    const db = getFirestore()
+    const store = createStore(db, { pepper: waPepper() })
+    const cap = Math.max(1, Number(WA_DAILY_CAP.value()) || 2000)
+
+    const reply = async (to, { text, rows, locationRequest }) => {
+      const gate = await db.runTransaction(async (tx) => {
+        const ref = db.doc('waRate/outbound-global')
+        const snap = await tx.get(ref)
+        const out = countOutbound(snap.exists ? snap.data() : {}, new Date(), cap)
+        tx.set(ref, out.state)
+        return out
+      })
+      if (!gate.allowed) {
+        logger.error('waWebhook: daily outbound cap reached, not replying', { cap })
+        return false
+      }
+      const send = (payloadOut) =>
+        sendMessage({
+          version: WA_GRAPH_VERSION.value(),
+          phoneNumberId: WA_PHONE_NUMBER_ID.value(),
+          token: WA_ACCESS_TOKEN.value(),
+          payload: payloadOut,
+        })
+      const rich = rows?.length
+        ? listPayload(to, text, rows)
+        : locationRequest
+          ? locationRequestPayload(to, text)
+          : null
+      let result = await send(rich || textPayload(to, text))
+      // A list or location button the client cannot take still has its
+      // choices / instructions in the text, so the plain text is the fallback.
+      if (!result.ok && rich) result = await send(textPayload(to, text))
+      if (!result.ok)
+        logger.error('waWebhook: send failed', { status: result.status, error: result.error })
+      return result.ok
+    }
+
+    // A single delivery carries at most a handful; ten bounds a crafted one.
+    for (const msg of messages.slice(0, 10)) {
+      try {
+        const row = await handleMessage(msg, { store, reply, now: new Date() })
+        logger.info('waWebhook: handled', {
+          uid: row.uid,
+          orgId: row.orgId,
+          intent: row.intent,
+          outcome: row.outcome,
+        })
+      } catch (err) {
+        logger.error('waWebhook: message failed', { error: err?.message || String(err) })
+      }
+    }
+    res.status(200).send('ok')
+  }
+)
+
+/** The caller's live profile, or an HttpsError. */
+async function waCaller(request) {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in first.')
+  const snap = await getFirestore().doc(`users/${uid}`).get()
+  const user = snap.exists ? snap.data() : null
+  if (!isActiveMember(user, user?.orgId)) {
+    throw new HttpsError('permission-denied', 'Only approved members can link WhatsApp.')
+  }
+  return { uid, user }
+}
+
+/**
+ * Settings → Security → Link WhatsApp. Issues a one-time code the user sends
+ * from their phone as "LINK 123456". Any older unredeemed code of theirs is
+ * withdrawn, so at most one is live per person.
+ */
+export const startWhatsAppLink = onCall({ region: REGION }, async (request) => {
+  const { uid, user } = await waCaller(request)
+  if (!waSwitchedOn())
+    throw new HttpsError('failed-precondition', 'WhatsApp lookup is not switched on yet.')
+  const db = getFirestore()
+  const old = await db.collection('waLinkCodes').where('uid', '==', uid).get()
+  await Promise.all(old.docs.map((d) => d.ref.delete()))
+
+  const expiresAtMs = Date.now() + LINK_CODE_TTL_MS
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const code = generateLinkCode()
+    try {
+      await db.doc(`waLinkCodes/${hashLinkCode(code)}`).create({
+        uid,
+        orgId: user.orgId,
+        expiresAtMs,
+        createdAt: FieldValue.serverTimestamp(),
+      })
+      logger.info('startWhatsAppLink: issued', { uid, orgId: user.orgId })
+      return { code, expiresAtMs, number: WA_DISPLAY_NUMBER.value() || null }
+    } catch (err) {
+      // Someone else's live code collided; draw again.
+      if (err?.code !== 6 && err?.code !== 'already-exists') throw err
+    }
+  }
+  throw new HttpsError('unavailable', 'Could not issue a code. Try again.')
+})
+
+/** Whether the caller has a linked number, masked to its last four digits. */
+export const whatsAppLinkStatus = onCall({ region: REGION }, async (request) => {
+  const { uid } = await waCaller(request)
+  const snap = await getFirestore().collection('waLinks').where('uid', '==', uid).limit(1).get()
+  const link = snap.docs[0]
+  const linkedAt = link?.data()?.linkedAt
+  return {
+    available: waSwitchedOn(),
+    number: WA_DISPLAY_NUMBER.value() || null,
+    linked: Boolean(link),
+    masked: link ? maskPhone(link.id) : null,
+    linkedAt: linkedAt?.toMillis ? linkedAt.toMillis() : null,
+  }
+})
+
+/** Withdraw consent from the app: removes every link for the caller at once. */
+export const unlinkWhatsApp = onCall({ region: REGION }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in first.')
+  // No status check: a suspended person may still withdraw their own number.
+  const snap = await getFirestore().collection('waLinks').where('uid', '==', uid).get()
+  await Promise.all(snap.docs.map((d) => d.ref.delete()))
+  logger.info('unlinkWhatsApp: removed', { uid, count: snap.size })
+  return { removed: snap.size }
+})
+
+/**
+ * Every 30 minutes: one counts document per org that has at least one linked
+ * number, so a reply reads one document instead of nine collections. Orgs
+ * nobody can query are not built. Off with the kill switch.
+ */
+export const buildWhatsAppSnapshots = onSchedule(
+  {
+    schedule: 'every 30 minutes',
+    timeZone: SCHEDULE_TZ,
+    region: REGION,
+    timeoutSeconds: 540,
+    memory: '1GiB',
+  },
+  async () => {
+    if (!waSwitchedOn()) return
+    const db = getFirestore()
+    const links = await db.collection('waLinks').select('orgId').get()
+    const orgIds = [
+      ...new Set(
+        links.docs
+          .map((d) => d.data()?.orgId)
+          .filter((v) => typeof v === 'string' && v && !v.includes('/'))
+      ),
+    ]
+    for (const orgId of orgIds) {
+      try {
+        const snap = await buildSnapshot(db, orgId, new Date())
+        logger.info('buildWhatsAppSnapshots: built', {
+          orgId,
+          sites: Object.keys(snap.sites).length,
+        })
+      } catch (err) {
+        logger.error('buildWhatsAppSnapshots: org failed', {
+          orgId,
+          error: err?.message || String(err),
+        })
+      }
+    }
+  }
+)
+
+/** Daily: the retention table in lib/whatsapp/retention.js. Runs even when switched off. */
+export const purgeWhatsAppLedgers = onSchedule(
+  { schedule: '50 3 * * *', timeZone: SCHEDULE_TZ, region: REGION, timeoutSeconds: 540 },
+  async () => {
+    const db = getFirestore()
+    for (const entry of WA_RETENTION) {
+      const cutoff = cutoffFor(entry, new Date())
+      const bound = entry.kind === 'millis' ? cutoff.getTime() : Timestamp.fromDate(cutoff)
+      let removed = 0
+      for (let i = 0; i < WA_PURGE_MAX_BATCHES; i += 1) {
+        const snap = await db
+          .collection(entry.collection)
+          .where(entry.field, '<', bound)
+          .limit(WA_PURGE_BATCH)
+          .get()
+        if (snap.empty) break
+        const batch = db.batch()
+        snap.docs.forEach((d) => batch.delete(d.ref))
+        await batch.commit()
+        removed += snap.size
+        if (snap.size < WA_PURGE_BATCH) break
+      }
+      logger.info('purgeWhatsAppLedgers: swept', { collection: entry.collection, removed })
+    }
+  }
 )
