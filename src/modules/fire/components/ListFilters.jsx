@@ -37,6 +37,8 @@ const FIELD_DEFS = {
  *  - fields: attribute fields to show (default type/capacity/entity/region)
  *  - showStatus / showDefect: append those fields
  *  - searchPlaceholder
+ *  - fieldDefs: extra/overriding { key: { label, options } } definitions
+ *  - isActive(filters) / onClear(): override "Clear" visibility and reset
  *  - children: extra controls (e.g. Repository's condition chips)
  */
 export default function ListFilters({
@@ -46,8 +48,14 @@ export default function ListFilters({
   showStatus = false,
   showDefect = false,
   searchPlaceholder = 'Search serial, center or type…',
+  fieldDefs,
+  isActive = hasActiveFilters,
+  onClear,
   children,
 }) {
+  // Pages with their own row shape (e.g. the Defect Repository) pass extra or
+  // overriding field definitions; the chip/OR-AND behaviour stays the same.
+  const defs = fieldDefs ? { ...FIELD_DEFS, ...fieldDefs } : FIELD_DEFS
   const activeFields = [
     ...(showDefect ? ['defect'] : []),
     ...fields,
@@ -59,7 +67,7 @@ export default function ListFilters({
     const next = cur.includes(value) ? cur.filter((v) => v !== value) : [...cur, value]
     onChange({ ...filters, [key]: next })
   }
-  const clear = () => onChange(emptyFilters())
+  const clear = () => (onClear ? onClear() : onChange(emptyFilters()))
 
   return (
     <div className="card mb-4 space-y-3 p-4">
@@ -79,7 +87,7 @@ export default function ListFilters({
             onChange={(e) => onChange({ ...filters, search: e.target.value })}
           />
         </div>
-        {hasActiveFilters(filters) && (
+        {isActive(filters) && (
           <button className="btn-ghost" onClick={clear}>
             <X size={15} /> Clear
           </button>
@@ -87,7 +95,8 @@ export default function ListFilters({
       </div>
 
       {activeFields.map((key) => {
-        const def = FIELD_DEFS[key]
+        const def = defs[key]
+        if (!def || !def.options?.length) return null
         const selected = Array.isArray(filters[key]) ? filters[key] : []
         return (
           <div key={key} className="flex flex-wrap items-center gap-2 border-t border-ink-100 pt-3">

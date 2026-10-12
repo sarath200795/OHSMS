@@ -16,6 +16,10 @@ import { buildDefectRepositoryRows } from './lib/defectRepositoryExport'
 import { Link } from 'react-router-dom'
 import { deriveExtinguisherDefects } from './lib/derivedExtDefects'
 import { DEFECT_BY_KEY, REGION_COLORS } from './lib/constants'
+import ListFilters from './components/ListFilters'
+import {
+  emptyDefectFilters, applyDefectFilters, hasActiveDefectFilters, defectFieldDefs, defectExportFilename,
+} from './lib/defectFilters'
 
 // One place for every reported equipment defect — fire extinguishers (open
 // physical defects) plus AED / fire-alarm QR-scan reports — with the action to
@@ -24,10 +28,14 @@ export default function DefectRepository() {
   const { physicalOpen, pendingReports, extinguishers, aeds, fas } = useFleet()
   const { orgId, orgName, profile, isManager } = useAuth()
   const [busyId, setBusyId] = useState(null)
+  const [filters, setFilters] = useState(emptyDefectFilters)
 
   const fmt = (v) => { const d = toDate(v); return d ? format(d, 'dd MMM yyyy') : '—' }
 
   const rows = useMemo(() => {
+    const extById = new Map((extinguishers || []).map((e) => [e.id, e]))
+    const aedById = new Map((aeds || []).map((a) => [a.id, a]))
+    const fasById = new Map((fas || []).map((a) => [a.id, a]))
     const ext = (physicalOpen || []).map((r) => ({
       key: `ext:${r.id}`,
       kind: 'Extinguisher',
@@ -37,6 +45,8 @@ export default function DefectRepository() {
       sub: [r.type, r.capacity].filter(Boolean).join(' · '),
       site: r.centerName || '',
       region: r.region || '',
+      entity: r.entity || extById.get(r.extId)?.entity || '',
+      location: extById.get(r.extId)?.location || r.location || '',
       defect: r.defectLabel,
       defectColor: DEFECT_BY_KEY[r.defectType]?.color || '#64748b',
       reportedAt: r.reportedAt,
@@ -54,6 +64,8 @@ export default function DefectRepository() {
       sub: [r.type, r.capacity, r.location].filter(Boolean).join(' · '),
       site: r.centerName || '',
       region: r.region || '',
+      entity: r.entity || '',
+      location: r.location || '',
       defect: r.defectLabel,
       defectColor: r.defectColor,
       reportedAt: null,
@@ -63,38 +75,50 @@ export default function DefectRepository() {
     }))
     const asset = (pendingReports || [])
       .filter((r) => r.kind === 'asset_defect')
-      .map((r) => ({
+      .map((r) => {
+        // A QR report carries only the asset id/label; site, region and entity
+        // come from the (already access-scoped) AED / FAS register.
+        const a = (r.assetKind === 'fas' ? fasById : aedById).get(r.assetRefId) || {}
+        return {
         key: `asset:${r.id}`,
         kind: r.assetKind === 'fas' ? 'Fire Alarm' : 'AED',
         icon: r.assetKind === 'fas' ? BellRing : HeartPulse,
         color: r.assetKind === 'fas' ? '#f59e0b' : '#0ea5e9',
         label: r.assetLabel || '—',
         sub: 'Reported via QR scan',
-        site: '',
-        region: '',
+        site: a.centerName || '',
+        region: a.region || '',
+        entity: a.entity || '',
+        location: a.location || '',
+        assetId: (r.assetKind === 'fas' ? a.deviceId : a.assetId) || '',
         defect: r.defect,
         defectColor: '#dc2626',
         reportedAt: r.reportedAt,
         source: 'asset',
         raw: r,
-      }))
+      }
+      })
     return [...ext, ...derived, ...asset].sort(
       (a, b) => (toDate(b.reportedAt)?.getTime() || 0) - (toDate(a.reportedAt)?.getTime() || 0),
     )
-  }, [physicalOpen, pendingReports, extinguishers])
+  }, [physicalOpen, pendingReports, extinguishers, aeds, fas])
 
-  const { pageItems, page, setPage, pageCount, total, pageSize } = usePagination(rows)
+  const fieldDefs = useMemo(() => defectFieldDefs(rows), [rows])
+  const visible = useMemo(() => applyDefectFilters(rows, filters), [rows, filters])
+  const filtered = hasActiveDefectFilters(filters)
 
-  // Every defect on the list, not just the page on screen — the workbook is the
-  // whole set so a register is never cut off at the page boundary.
+  const { pageItems, page, setPage, pageCount, total, pageSize } = usePagination(visible)
+
+  // Every defect matching the filters, not just the page on screen — the
+  // workbook is the whole filtered set so it is never cut off at a page boundary.
   const doExport = () => {
-    if (!rows.length) return toast.error('No defects to export')
+    if (!visible.length) return toast.error(filtered ? 'No defects match the filters' : 'No defects to export')
     try {
       exportDefectRepository(
-        buildDefectRepositoryRows(rows, { aeds, fas, extinguishers }),
-        `equipment-defects-${format(new Date(), 'yyyy-MM-dd')}.xlsx`,
+        buildDefectRepositoryRows(visible, { aeds, fas, extinguishers }),
+        defectExportFilename(filters),
       )
-      toast.success(`Exported ${rows.length} defect${rows.length === 1 ? '' : 's'}`)
+      toast.success(`Exported ${visible.length} defect${visible.length === 1 ? '' : 's'}`)
     } catch (err) {
       toastCaught(err, 'Could not export the defects')
     }
@@ -137,7 +161,53 @@ export default function DefectRepository() {
         <button className="btn-ghost" onClick={doExport}><Download size={16} /> Export</button>
       </PageHeader>
 
-      {rows.length === 0 ? (
+      {rows.length > 0 && (
+        <ListFilters
+          filters={filters}
+          onChange={setFilters}
+          fields={['kind', 'defect', 'source', 'status', 'region', 'entity', 'site']}
+          fieldDefs={fieldDefs}
+          isActive={hasActiveDefectFilters}
+          onClear={() => setFilters(emptyDefectFilters())}
+          searchPlaceholder="Search serial, asset ID, site, location or defect…"
+        >
+          <div className="flex flex-wrap items-center gap-2 border-t border-ink-100 pt-3">
+            <span className="w-16 shrink-0 text-xs font-bold uppercase tracking-wide text-ink-400">Date</span>
+            <label className="flex items-center gap-1.5 text-xs text-ink-500">
+              From
+              <input
+                type="date"
+                aria-label="From date"
+                className="input w-auto py-1.5"
+                value={filters.from}
+                onChange={(e) => setFilters({ ...filters, from: e.target.value })}
+              />
+            </label>
+            <label className="flex items-center gap-1.5 text-xs text-ink-500">
+              To
+              <input
+                type="date"
+                aria-label="To date"
+                className="input w-auto py-1.5"
+                value={filters.to}
+                onChange={(e) => setFilters({ ...filters, to: e.target.value })}
+              />
+            </label>
+            <span className="text-xs text-ink-400">Reported date (due date for HPT-due rows)</span>
+            <span className="ml-auto text-xs font-semibold text-ink-600" data-testid="defect-count">
+              {filtered ? `${visible.length} of ${rows.length} defects` : `${rows.length} defect${rows.length === 1 ? '' : 's'}`}
+            </span>
+          </div>
+        </ListFilters>
+      )}
+
+      {rows.length > 0 && visible.length === 0 ? (
+        <EmptyState
+          icon={Wrench}
+          title="No defects match the filters"
+          hint="Clear or loosen the filters to see more."
+        />
+      ) : rows.length === 0 ? (
         <EmptyState
           icon={CheckCircle2}
           title="No open defects"
