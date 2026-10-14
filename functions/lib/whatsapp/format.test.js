@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
+  aedLine,
+  defectLines,
   formatSiteReply,
   formatChoices,
   contactLines,
@@ -54,7 +56,10 @@ describe('formatSiteReply', () => {
     expect(text).toContain('*Demo Fitness Central (DEMO001)*')
     expect(text).toContain('South · Demo Co')
     expect(text).toContain('Fire extinguishers: 6 (1 HPT overdue)')
-    expect(text).toContain('Open defects: 3 (2 extinguisher, 1 AED)')
+    expect(text).toContain('Open defects: 3')
+    expect(text).toContain('Fire Extinguishers (2):')
+    expect(text).toContain('Fire Alarm System (FAS): No open defects')
+    expect(text).toContain('AED (1):')
     expect(text).toContain('First aid boxes: 2')
     expect(text).toContain('Pending actions: 4 (1 overdue)')
     expect(text).toContain('Incidents: 7 total · 1 open · 2 in last 90 days')
@@ -140,5 +145,39 @@ describe('helpers', () => {
   it('drops sealed values', () => {
     expect(clean('enc:1:abcdef')).toBe('')
     expect(clean({ v: 1 })).toBe('')
+  })
+})
+
+describe('AED and per-type defects', () => {
+  it('AED availability line', () => {
+    expect(aedLine({ aeds: 2 })).toBe('❤️ AED: Available (2)')
+    expect(aedLine({ aeds: 0 })).toBe('❤️ AED: Not available')
+    expect(aedLine({ aeds: 1, aedsOutOfService: 1 })).toBe(
+      '❤️ AED: Not available (1 out of service)'
+    )
+    expect(aedLine({ aeds: 3, aedsOutOfService: 1 })).toBe(
+      '❤️ AED: Available (2) · 1 out of service'
+    )
+  })
+  it('lists items per type, capped at 5 with +N more', () => {
+    const items = Array.from({ length: 5 }, (_, i) => ({
+      label: `SN${i}`,
+      where: 'Ground floor',
+      defect: 'HPT Due',
+    }))
+    const lines = defectLines({
+      openDefects: 9,
+      defectsByKind: { extinguisher: 7, aed: 2, fas: 0 },
+      defectItems: {
+        extinguisher: items,
+        aed: [{ label: 'AED-1', where: '', defect: 'Pads Expired' }],
+      },
+    })
+    expect(lines).toContain('Fire Extinguishers (7):')
+    expect(lines).toContain('  • SN0 · Ground floor — HPT Due')
+    expect(lines).toContain('  +2 more in the app')
+    expect(lines).toContain('Fire Alarm System (FAS): No open defects')
+    expect(lines).toContain('  • AED-1 — Pads Expired')
+    expect(lines).toContain('  +1 more in the app')
   })
 })

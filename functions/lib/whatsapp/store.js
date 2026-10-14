@@ -44,12 +44,42 @@ export const SNAPSHOT_FIELDS = [
   'incidentsTotal',
   'incidentsOpen',
   'incidents90d',
+  'aeds',
+  'aedsOutOfService',
 ]
+export const SNAPSHOT_VERSION = 2
 
 export function packCounts(c = {}) {
   const k = c.defectsByKind || {}
   const flat = { ...c, defExt: k.extinguisher, defAed: k.aed, defFas: k.fas }
   return SNAPSHOT_FIELDS.map((f) => Number(flat[f]) || 0)
+}
+
+const ITEM_KEYS = { extinguisher: 'e', aed: 'a', fas: 'f' }
+
+/** defectItems as Firestore can hold them (no nested arrays): { e: [{ l, w, d }], a, f }. */
+export function packItems(items = {}) {
+  const out = {}
+  for (const [kind, k] of Object.entries(ITEM_KEYS)) {
+    out[k] = (items[kind] || []).map((i) => ({
+      l: i.label || '',
+      w: i.where || '',
+      d: i.defect || '',
+    }))
+  }
+  return out
+}
+
+export function unpackItems(packed = {}) {
+  const out = {}
+  for (const [kind, k] of Object.entries(ITEM_KEYS)) {
+    out[kind] = (Array.isArray(packed?.[k]) ? packed[k] : []).map((i) => ({
+      label: String(i?.l ?? ''),
+      where: String(i?.w ?? ''),
+      defect: String(i?.d ?? ''),
+    }))
+  }
+  return out
 }
 
 export function unpackCounts(arr = []) {
@@ -89,10 +119,28 @@ export async function loadOrgData(db, orgId) {
       'status',
       'physicalDefects',
       'dateOfNextHPT',
+      'serialNo',
       'deletedAt',
     ]),
-    read('aeds', ['siteId', 'centerName', 'sitesCovered', 'site', 'location', 'deletedAt']),
-    read('fas', ['siteId', 'centerName', 'sitesCovered', 'site', 'location', 'deletedAt']),
+    read('aeds', [
+      'siteId',
+      'centerName',
+      'sitesCovered',
+      'site',
+      'location',
+      'assetId',
+      'status',
+      'deletedAt',
+    ]),
+    read('fas', [
+      'siteId',
+      'centerName',
+      'sitesCovered',
+      'site',
+      'location',
+      'deviceId',
+      'deletedAt',
+    ]),
     read('reports', [
       'kind',
       'approvalStatus',
@@ -100,6 +148,8 @@ export async function loadOrgData(db, orgId) {
       'extId',
       'assetKind',
       'assetRefId',
+      'assetLabel',
+      'defect',
       'deletedAt',
     ]),
     // Never the narrative: capa is read for status / dueDate / id only, and
@@ -139,14 +189,18 @@ export async function loadModules(db, orgId) {
 /** Build and store one org's snapshot. Returns { asOf, sites } with unpacked counts. */
 export async function buildSnapshot(db, orgId, now = new Date()) {
   const [data, modules] = await Promise.all([loadOrgData(db, orgId), loadModules(db, orgId)])
-  const counts = summariseSites(data, { now, modules })
+  const counts = summariseSites(data, { now, modules, withItems: true })
   const packed = Object.fromEntries(Object.entries(counts).map(([id, c]) => [id, packCounts(c)]))
+  const items = Object.fromEntries(
+    Object.entries(counts).map(([id, c]) => [id, packItems(c.defectItems)])
+  )
   await db.doc(`waSiteSnapshots/${orgId}`).set({
     orgId,
     asOf: Timestamp.fromDate(now),
-    v: 1,
+    v: SNAPSHOT_VERSION,
     fields: SNAPSHOT_FIELDS,
     sites: packed,
+    items,
   })
   return { asOf: now, sites: counts }
 }
@@ -243,9 +297,17 @@ export function createStore(db, { pepper, now = () => new Date() } = {}) {
       const snap = await db.doc(`waSiteSnapshots/${orgId}`).get()
       const d = snap.exists ? snap.data() : null
       const asOf = d?.asOf?.toDate ? d.asOf.toDate() : null
-      if (d && d.v === 1 && asOf && now().getTime() - asOf.getTime() < SNAPSHOT_MAX_AGE_MS) {
+      if (
+        d &&
+        d.v === SNAPSHOT_VERSION &&
+        asOf &&
+        now().getTime() - asOf.getTime() < SNAPSHOT_MAX_AGE_MS
+      ) {
         const sites = Object.fromEntries(
-          Object.entries(d.sites || {}).map(([id, a]) => [id, unpackCounts(a)])
+          Object.entries(d.sites || {}).map(([id, a]) => [
+            id,
+            { ...unpackCounts(a), defectItems: unpackItems(d.items?.[id]) },
+          ])
         )
         return { asOf, sites }
       }

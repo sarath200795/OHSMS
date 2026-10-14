@@ -248,6 +248,11 @@ function appNumbers(site) {
       fas: assetRows.filter(({ r }) => r.assetKind === 'fas').length,
     },
     firstAidBoxes: stats.firstAidBoxes,
+    aeds: stats.aeds,
+    aedsOutOfService: siteStats(site, {
+      aeds: aeds.filter((a) => a.status === 'out_of_service'),
+      links,
+    }).aeds,
     pendingActions: items.length,
     overdueActions: items.filter((a) => isOverdue(a.due, a.norm, todayISO(TODAY))).length,
     incidentsTotal: stats.incidentsTotal,
