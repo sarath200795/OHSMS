@@ -196,7 +196,7 @@ export function defectRows({ extinguishers = [], aeds = [], fas = [], reports = 
     const ext = byId.get(r.extId)
     if (!ext) continue
     if (!Array.isArray(ext.physicalDefects) || !ext.physicalDefects.includes(r.defectType)) continue
-    rows.push({ kind: 'extinguisher', asset: ext, defectType: r.defectType })
+    rows.push({ kind: 'extinguisher', asset: ext, defectType: r.defectType, report: r })
     seen.add(`${ext.id}:${r.defectType}`)
   }
 
@@ -226,9 +226,47 @@ export function defectRows({ extinguishers = [], aeds = [], fas = [], reports = 
     if (isFas && deletedFas.has(r.assetRefId)) continue
     const asset = (isFas ? fasById : aedById).get(r.assetRefId)
     if (!asset) continue // no register row: the repository shows it with no site
-    rows.push({ kind: isFas ? 'fas' : 'aed', asset, defectType: 'asset' })
+    rows.push({ kind: isFas ? 'fas' : 'aed', asset, defectType: 'asset', report: r })
   }
   return rows
+}
+
+// Mirrors DEFECTS labels in src/modules/fire/lib/constants.js, plus the two
+// derived rows the Defect Repository adds (HPT due, Empty).
+export const EXT_DEFECT_LABELS = {
+  pin: 'PIN',
+  stand: 'Stand',
+  hose_pipe: 'Hose Pipe Damage',
+  handle: 'Handle Damage',
+  empty: 'Empty',
+  over_pressurized: 'Over Pressurized',
+  hpt_due: 'HPT Due',
+}
+
+/** How many items per equipment type a reply lists; the rest are "+N more". */
+export const DEFECT_ITEMS_MAX = 5
+
+/**
+ * One defect row as the Defect Repository labels it: `label` is the unit
+ * (serial no. for an extinguisher, asset / device id or the QR label for an
+ * AED or panel) and `where` its location; `defect` the defect text.
+ */
+export function defectItem(row) {
+  const a = row.asset || {}
+  const str = (v) => (typeof v === 'string' ? v.trim() : '')
+  if (row.kind === 'extinguisher') {
+    return {
+      label: str(a.serialNo),
+      where: str(a.location),
+      defect: EXT_DEFECT_LABELS[row.defectType] || str(row.defectType),
+    }
+  }
+  const r = row.report || {}
+  return {
+    label: str(row.kind === 'fas' ? a.deviceId : a.assetId) || str(r.assetLabel),
+    where: str(a.location),
+    defect: str(r.defect) || 'Reported defect',
+  }
 }
 
 // ── Actions (Action Tracker, site-attributable sources only) ─────────────────
@@ -336,7 +374,10 @@ const OPEN_LIFECYCLE_EXCLUDED = new Set(['closed', 'verified'])
  * @param opts  { now: Date, modules: moduleEntitlements map }
  * @returns { [siteId]: counts }
  */
-export function summariseSites(data = {}, { now = new Date(), modules = {} } = {}) {
+export function summariseSites(
+  data = {},
+  { now = new Date(), modules = {}, withItems = false } = {}
+) {
   const sites = (data.sites || []).filter((s) => s && s.id)
   const today = istDay(now)
   const idx = appIndexSites(sites)
@@ -357,8 +398,12 @@ export function summariseSites(data = {}, { now = new Date(), modules = {} } = {
       (a) => actionSiteMatches(a, site, sites, idx) && a.norm !== 'done'
     )
     const inc = incidents.filter((i) => matchIncident(i, site))
+    const siteAeds = aeds.filter((x) => alive(x) && matchEquip(x, site, links))
     out[site.id] = {
       extinguishers: exts.length,
+      // siteStats().aeds — the Admin → Sites number; out of service counted apart.
+      aeds: siteAeds.length,
+      aedsOutOfService: siteAeds.filter((x) => x.status === 'out_of_service').length,
       hptOverdue: exts.filter((x) => x.status !== CLOSED && isHptDue(x, today)).length,
       openDefects: siteDefects.length,
       defectsByKind: {
@@ -375,6 +420,18 @@ export function summariseSites(data = {}, { now = new Date(), modules = {} } = {
         const day = dayOf(i.incidentDate)
         return day !== null && day >= since && day <= today
       }).length,
+    }
+    if (withItems) {
+      const pick = (kind) =>
+        siteDefects
+          .filter((r) => r.kind === kind)
+          .slice(0, DEFECT_ITEMS_MAX)
+          .map(defectItem)
+      out[site.id].defectItems = {
+        extinguisher: pick('extinguisher'),
+        aed: pick('aed'),
+        fas: pick('fas'),
+      }
     }
   }
   return out

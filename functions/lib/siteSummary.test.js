@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { istDay, dayOf, summariseSites, appResolveSite } from './siteSummary.js'
-import { packCounts, unpackCounts } from './whatsapp/store.js'
+import { packCounts, unpackCounts, packItems, unpackItems } from './whatsapp/store.js'
 
 // The cross-package parity test lives at src/pages/admin/siteSummary.parity.test.js;
 // these cover what only the server has: the IST calendar and the packed snapshot.
@@ -27,6 +27,46 @@ describe('IST calendar days', () => {
 })
 
 describe('summariseSites', () => {
+  it('counts AEDs and lists defect items per type', () => {
+    const data = {
+      sites: [{ id: 's1', name: 'A' }],
+      extinguishers: [
+        { id: 'e1', siteId: 's1', serialNo: 'FE-9', location: 'Lobby', physicalDefects: ['empty'] },
+      ],
+      aeds: [
+        { id: 'a1', siteId: 's1', assetId: 'AED-1', location: 'Gym floor' },
+        { id: 'a2', siteId: 's1', status: 'out_of_service' },
+        { id: 'a3', siteId: 's1', deletedAt: 'x' },
+      ],
+      fas: [{ id: 'f1', siteId: 's1', deviceId: 'FAP-1' }],
+      reports: [
+        {
+          kind: 'asset_defect',
+          approvalStatus: 'pending',
+          assetKind: 'aed',
+          assetRefId: 'a1',
+          defect: 'Pads Expired',
+        },
+        {
+          kind: 'asset_defect',
+          approvalStatus: 'pending',
+          assetKind: 'fas',
+          assetRefId: 'f1',
+          defect: 'Panel fault',
+        },
+      ],
+    }
+    const c = summariseSites(data, { now: new Date('2026-10-12T00:00:00Z'), withItems: true }).s1
+    expect(c.aeds).toBe(2)
+    expect(c.aedsOutOfService).toBe(1)
+    expect(c.defectItems.extinguisher).toEqual([{ label: 'FE-9', where: 'Lobby', defect: 'Empty' }])
+    expect(c.defectItems.aed).toEqual([
+      { label: 'AED-1', where: 'Gym floor', defect: 'Pads Expired' },
+    ])
+    expect(c.defectItems.fas).toEqual([{ label: 'FAP-1', where: '', defect: 'Panel fault' }])
+    expect(summariseSites(data).s1.defectItems).toBeUndefined()
+  })
+
   it('counts HPT due on the IST day, so 00:30 IST is already the next day', () => {
     const data = {
       sites: [{ id: 's1', name: 'A' }],
@@ -61,7 +101,22 @@ describe('packed snapshot rows', () => {
       incidentsTotal: 7,
       incidentsOpen: 1,
       incidents90d: 2,
+      aeds: 3,
+      aedsOutOfService: 1,
     }
     expect(unpackCounts(packCounts(c))).toEqual(c)
+  })
+})
+
+describe('snapshot items', () => {
+  it('round-trips defect items without nested arrays', () => {
+    const items = {
+      extinguisher: [{ label: 'FE-1', where: 'Lobby', defect: 'HPT Due' }],
+      aed: [],
+      fas: [],
+    }
+    const packed = packItems(items)
+    expect(Object.values(packed).every((v) => v.every((x) => !Array.isArray(x)))).toBe(true)
+    expect(unpackItems(packed)).toEqual(items)
   })
 })

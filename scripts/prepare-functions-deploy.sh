@@ -104,10 +104,19 @@ write_env() {
 
   # WhatsApp site lookup. Off unless WA_ENABLED is exactly "true" AND the
   # phone number id and the three WA_* secrets are real (functions/index.js).
-  local wa_enabled="${WA_ENABLED:-false}"
-  local wa_pnid="${WA_PHONE_NUMBER_ID:-}"
+  # Production's site lookup bots are live: its defaults are the live values,
+  # so a CI deploy that names none of them does not switch WhatsApp off. Any
+  # other project (staging, a fork) keeps the off-by-default behaviour.
+  local wa_default_enabled=false wa_default_pnid='' wa_default_display=''
+  if [[ "$PROJECT_ID" == "weehs-4eb28" ]]; then
+    wa_default_enabled=true
+    wa_default_pnid=1418439508016031
+    wa_default_display='+91 77939 66625'
+  fi
+  local wa_enabled="${WA_ENABLED:-$wa_default_enabled}"
+  local wa_pnid="${WA_PHONE_NUMBER_ID:-$wa_default_pnid}"
   local wa_ver="${WA_GRAPH_VERSION:-v25.0}"
-  local wa_display="${WA_DISPLAY_NUMBER:-}"
+  local wa_display="${WA_DISPLAY_NUMBER:-$wa_default_display}"
   local wa_cap="${WA_DAILY_CAP:-2000}"
   reject_param_value WA_ENABLED "$wa_enabled"
   reject_param_value WA_PHONE_NUMBER_ID "$wa_pnid"

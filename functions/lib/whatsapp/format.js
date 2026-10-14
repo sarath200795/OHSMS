@@ -123,6 +123,43 @@ export function contactLines(contacts = [], site, labels = {}) {
  * @param opts      { contacts, helplinePrimary, helplineSecondary, roleLabels,
  *                    modules, asOf: Date, appOrigin }
  */
+/** 'AED: Available (N)' or 'AED: Not available', from the site's AED register. */
+export function aedLine(counts = {}) {
+  const total = Number(counts.aeds) || 0
+  const oos = Math.min(total, Number(counts.aedsOutOfService) || 0)
+  const ready = total - oos
+  if (!ready) return oos ? `❤️ AED: Not available (${oos} out of service)` : '❤️ AED: Not available'
+  return `❤️ AED: Available (${ready})${oos ? ` · ${oos} out of service` : ''}`
+}
+
+const DEFECT_SECTIONS = [
+  ['extinguisher', 'Fire Extinguishers'],
+  ['fas', 'Fire Alarm System (FAS)'],
+  ['aed', 'AED'],
+]
+
+/** Open defects, per equipment type, each item "unit · location — defect". */
+export function defectLines(counts = {}) {
+  const k = counts.defectsByKind || {}
+  const items = counts.defectItems || {}
+  const out = [`⚠️ Open defects: ${Number(counts.openDefects) || 0}`]
+  for (const [kind, title] of DEFECT_SECTIONS) {
+    const total = Number(k[kind]) || 0
+    if (!total) {
+      out.push(`${title}: No open defects`)
+      continue
+    }
+    out.push(`${title} (${total}):`)
+    const shown = (items[kind] || []).slice(0, 5)
+    for (const i of shown) {
+      const unit = [clean(i.label, 30), clean(i.where, 40)].filter(Boolean).join(' · ') || 'Unit'
+      out.push(`  • ${unit} — ${clean(i.defect, 50) || 'Defect'}`)
+    }
+    if (total > shown.length) out.push(`  +${total - shown.length} more in the app`)
+  }
+  return out
+}
+
 export function formatSiteReply(site, counts = {}, opts = {}) {
   const on = (key) => (opts.modules || {})[key] !== false
   const n = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0)
@@ -135,15 +172,8 @@ export function formatSiteReply(site, counts = {}, opts = {}) {
     head.push(
       `🧯 Fire extinguishers: ${n(counts.extinguishers)} (${n(counts.hptOverdue)} HPT overdue)`
     )
-    const k = counts.defectsByKind || {}
-    const parts = [
-      n(k.extinguisher) && `${n(k.extinguisher)} extinguisher`,
-      n(k.aed) && `${n(k.aed)} AED`,
-      n(k.fas) && `${n(k.fas)} fire alarm`,
-    ].filter(Boolean)
-    head.push(
-      `⚠️ Open defects: ${n(counts.openDefects)}${parts.length ? ` (${parts.join(', ')})` : ''}`
-    )
+    head.push(aedLine(counts))
+    head.push(...defectLines(counts))
   }
   head.push(`🩹 First aid boxes: ${n(counts.firstAidBoxes)}`)
   if (on('actions')) {
