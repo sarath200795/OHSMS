@@ -115,3 +115,23 @@ stored, and the profile name in the webhook payload is dropped.
 - The user picks a site by tapping a row, or by replying with its number or code. A tap or a number re-checks access before any data is sent.
 - `waSessions/{phoneHash}` holds `{ uid, orgId, choices: [siteId…], expiresAtMs }` for 15 minutes. The rules deny all client access to it, and `purgeWhatsAppLedgers` sweeps it. Ambiguous-name lists use the same session.
 - **Coordinates are never stored.** They are used for one distance calculation in memory. They do not go into `waQueryLog` (intent `location`, outcome `nearby`), `waSessions`, or logs. The name and address Meta attaches are dropped when the message is parsed.
+
+## Telegram (tgWebhook)
+
+The same lookup also answers on Telegram (@WEEHS_Site_Lookup_bot) through the
+`tgWebhook` function (asia-south1). The shared logic is
+`functions/lib/whatsapp/handler.js` `answerQuery`; Telegram glue is
+`functions/lib/telegram/handler.js`.
+
+- Auth: Telegram's `X-Telegram-Bot-Api-Secret-Token` header must equal the
+  `TG_WEBHOOK_SECRET` secret (set as `secret_token` in `setWebhook`).
+- Secrets: `TELEGRAM_BOT_TOKEN`, `TG_WEBHOOK_SECRET`. Params: `TG_ENABLED`
+  (default `true`; kill switch), `TG_ORG_ID` (default: the only organisation),
+  `TG_DAILY_CAP` (default 2000 replies/day).
+- **Access differs from WhatsApp.** Telegram gives the bot no phone number to
+  match against linked users, so the bot is open: anyone can look up any site
+  of the configured org and gets the same reply an admin would get on WhatsApp
+  (counts + emergency contacts). Per-chat rate limits (30/h, 150/day), the
+  daily cap and `waQueryLog` (chat id hashed, no message text) still apply.
+  Private chats only. Turn off with `TG_ENABLED=false`.
+- Register: `setWebhook?url=<function URL>&secret_token=<TG_WEBHOOK_SECRET>&allowed_updates=["message"]`.
