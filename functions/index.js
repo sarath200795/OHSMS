@@ -97,6 +97,13 @@ import {
 } from './lib/whatsapp/graph.js'
 import { countOutbound } from './lib/whatsapp/rateLimit.js'
 import { isActiveMember } from './lib/whatsapp/access.js'
+import {
+  verifySecretToken,
+  extractUpdate,
+  handleUpdate,
+  sendPayloads,
+  tgSend,
+} from './lib/telegram/handler.js'
 import { generateLinkCode, hashLinkCode, maskPhone, LINK_CODE_TTL_MS } from './lib/whatsapp/link.js'
 import {
   WA_RETENTION,
@@ -3211,6 +3218,116 @@ export const waWebhook = onRequest(
       } catch (err) {
         logger.error('waWebhook: message failed', { error: err?.message || String(err) })
       }
+    }
+    res.status(200).send('ok')
+  }
+)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Telegram site lookup (@WEEHS_Site_Lookup_bot). Same lookup and reply as
+// waWebhook (lib/whatsapp/handler.js answerQuery); channel glue in
+// lib/telegram/handler.js, which also explains the access rule: Telegram has
+// no phone number to match to /users, so the bot is open to anyone and
+// answers about ONE org (TG_ORG_ID, or the only org when there is one).
+//
+//   firebase functions:secrets:set TELEGRAM_BOT_TOKEN   from @BotFather
+//   firebase functions:secrets:set TG_WEBHOOK_SECRET    random; passed to setWebhook
+//                                                       as secret_token
+//   TG_ENABLED   kill switch, default true; anything but "true" ignores updates
+//   TG_ORG_ID    optional; empty means "the only organisation"
+// ─────────────────────────────────────────────────────────────────────────────
+const TELEGRAM_BOT_TOKEN = defineSecret('TELEGRAM_BOT_TOKEN')
+const TG_WEBHOOK_SECRET = defineSecret('TG_WEBHOOK_SECRET')
+const TG_ENABLED = defineString('TG_ENABLED', { default: 'true' })
+const TG_ORG_ID = defineString('TG_ORG_ID', { default: '' })
+const TG_DAILY_CAP = defineString('TG_DAILY_CAP', { default: '2000' })
+
+let tgOrgCache = null
+async function tgOrgId(db) {
+  const configured = TG_ORG_ID.value().trim()
+  if (configured) return configured.includes('/') ? null : configured
+  if (tgOrgCache) return tgOrgCache
+  const snap = await db.collection('organizations').select().limit(2).get()
+  if (snap.size !== 1) return null
+  tgOrgCache = snap.docs[0].id
+  return tgOrgCache
+}
+
+export const tgWebhook = onRequest(
+  {
+    region: REGION,
+    secrets: [TELEGRAM_BOT_TOKEN, TG_WEBHOOK_SECRET],
+    invoker: 'public',
+    maxInstances: 5,
+    concurrency: 20,
+    timeoutSeconds: 60,
+    memory: '512MiB',
+  },
+  async (req, res) => {
+    if (req.method !== 'POST') {
+      res.status(405).send('Method Not Allowed')
+      return
+    }
+    if (!verifySecretToken(req.get('x-telegram-bot-api-secret-token'), TG_WEBHOOK_SECRET.value())) {
+      logger.warn('tgWebhook: bad secret token')
+      res.status(401).send('Unauthorized')
+      return
+    }
+    // Authenticated but off: acknowledge so Telegram stops retrying.
+    if (TG_ENABLED.value() !== 'true' || !isRealSecret(TELEGRAM_BOT_TOKEN.value())) {
+      res.status(200).send('disabled')
+      return
+    }
+    const msg = extractUpdate(req.body)
+    if (!msg) {
+      res.status(200).send('ignored')
+      return
+    }
+    const db = getFirestore()
+    try {
+      const orgId = await tgOrgId(db)
+      if (!orgId) {
+        logger.error('tgWebhook: no organisation configured (set TG_ORG_ID)')
+        res.status(200).send('unconfigured')
+        return
+      }
+      const pepper = createHmac('sha256', TG_WEBHOOK_SECRET.value())
+        .update('tg-chat-pepper-v1')
+        .digest('hex')
+      const store = createStore(db, { pepper })
+      const cap = Math.max(1, Number(TG_DAILY_CAP.value()) || 2000)
+      const reply = async (chatId, out) => {
+        const gate = await db.runTransaction(async (tx) => {
+          const ref = db.doc('waRate/outbound-telegram')
+          const snap = await tx.get(ref)
+          const o = countOutbound(snap.exists ? snap.data() : {}, new Date(), cap)
+          tx.set(ref, o.state)
+          return o
+        })
+        if (!gate.allowed) {
+          logger.error('tgWebhook: daily outbound cap reached, not replying', { cap })
+          return false
+        }
+        let ok = true
+        for (const body of sendPayloads(chatId, out)) {
+          const r = await tgSend(TELEGRAM_BOT_TOKEN.value(), body)
+          if (!r.ok) {
+            ok = false
+            logger.error('tgWebhook: send failed', { status: r.status, error: r.error })
+            break
+          }
+        }
+        return ok
+      }
+      const row = await handleUpdate(msg, { store, reply, now: new Date(), orgId })
+      logger.info('tgWebhook: handled', {
+        orgId: row.orgId,
+        intent: row.intent,
+        outcome: row.outcome,
+        siteId: row.siteId,
+      })
+    } catch (err) {
+      logger.error('tgWebhook: update failed', { error: err?.message || String(err) })
     }
     res.status(200).send('ok')
   }

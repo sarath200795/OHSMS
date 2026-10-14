@@ -112,14 +112,6 @@ export async function handleMessage(msg, ctx) {
     return done(link ? 'denied' : 'unknown', link ? { orgId: link.orgId, uid: link.uid } : {})
   }
   Object.assign(row, { orgId: link.orgId, uid: link.uid })
-  // Remember a list so "2" can answer it. Site ids only, 15 minutes.
-  const offer = (sites) =>
-    store.setSession(from, {
-      uid: link.uid,
-      orgId: link.orgId,
-      choices: sites.slice(0, 10).map((s) => s.id),
-      expiresAtMs: now.getTime() + SESSION_TTL_MS,
-    })
 
   if (cmd.kind === 'unlink') {
     await store.unlink(from)
@@ -133,52 +125,79 @@ export async function handleMessage(msg, ctx) {
     return done('ratelimited')
   }
 
-  const reach = reachableSites(user, await store.listSites(link.orgId))
+  const out = await answerQuery(cmd, {
+    store,
+    reply: ctx.reply,
+    now,
+    from,
+    user,
+    orgId: link.orgId,
+    uid: link.uid,
+  })
+  return done(out.outcome, out.extra || {})
+}
+
+/**
+ * The lookup itself, shared by every channel (WhatsApp here, Telegram in
+ * ../telegram/handler.js): once the caller is known to be allowed, resolve the
+ * command ONLY among the sites `user` reaches and send one reply.
+ * Returns { outcome, extra? } for the query log. `from` keys the pick-list session.
+ */
+export async function answerQuery(cmd, { store, reply, now = new Date(), from, user, orgId, uid }) {
+  // Remember a list so "2" can answer it. Site ids only, 15 minutes.
+  const offer = (sites) =>
+    store.setSession(from, {
+      uid: uid,
+      orgId: orgId,
+      choices: sites.slice(0, 10).map((s) => s.id),
+      expiresAtMs: now.getTime() + SESSION_TTL_MS,
+    })
+  const reach = reachableSites(user, await store.listSites(orgId))
   if (!reach.length) {
-    await ctx.reply(from, { text: MESSAGES.noSites })
-    return done('nosites')
+    await reply(from, { text: MESSAGES.noSites })
+    return { outcome: 'nosites' }
   }
 
   let site = null
   if (cmd.kind === 'help' || (cmd.kind === 'greeting' && reach.length !== 1)) {
-    await ctx.reply(from, { text: helpText(reach) })
-    return done('help')
+    await reply(from, { text: helpText(reach) })
+    return { outcome: 'help' }
   }
   if (cmd.kind === 'greeting') site = reach[0]
   else if (cmd.kind === 'choice') {
     site = reach.find((s) => s.id === cmd.siteId) || null
     if (!site) {
-      await ctx.reply(from, { text: MESSAGES.noAccess })
-      return done('denied')
+      await reply(from, { text: MESSAGES.noAccess })
+      return { outcome: 'denied' }
     }
   } else if (cmd.kind === 'badLocation') {
-    await ctx.reply(from, { text: MESSAGES.badLocation })
-    return done('badlocation')
+    await reply(from, { text: MESSAGES.badLocation })
+    return { outcome: 'badlocation' }
   } else if (cmd.kind === 'location') {
     // The coordinates are used here and nowhere else: not logged, not stored,
     // not put in the session (which keeps only the site ids it offered).
     const near = nearestSites(reach, cmd.latitude, cmd.longitude)
     if (!near.sites.length) {
-      await ctx.reply(from, { text: MESSAGES.noLocatedSites })
-      return done('nolocated')
+      await reply(from, { text: MESSAGES.noLocatedSites })
+      return { outcome: 'nolocated' }
     }
     await offer(near.sites.map((x) => x.site))
     const { text, rows } = formatNearby(near.sites, near.within, formatKm)
-    await ctx.reply(from, { text, rows })
-    return done('nearby')
+    await reply(from, { text, rows })
+    return { outcome: 'nearby' }
   } else {
     // A bare number answers the last list, if one is live; otherwise it is a code.
     if (/^\d{1,2}$/.test(cmd.query)) {
       const picked = pickFromSession(
         await store.getSession(from),
-        link.uid,
+        uid,
         Number(cmd.query),
         reach,
         now
       )
       if (picked === null) {
-        await ctx.reply(from, { text: MESSAGES.noAccess })
-        return done('denied')
+        await reply(from, { text: MESSAGES.noAccess })
+        return { outcome: 'denied' }
       }
       if (picked) site = picked
     }
@@ -187,18 +206,18 @@ export async function handleMessage(msg, ctx) {
       if (hit.status === 'none') {
         // Cannot name it? Then show where they are. Interactive location
         // request where the client supports it, plain instructions otherwise.
-        await ctx.reply(from, { text: locationRequestText(cmd.query), locationRequest: true })
-        return done('nomatch')
+        await reply(from, { text: locationRequestText(cmd.query), locationRequest: true })
+        return { outcome: 'nomatch' }
       }
       if (hit.status === 'tooMany') {
-        await ctx.reply(from, { text: tooMany(hit.count) })
-        return done('ambiguous')
+        await reply(from, { text: tooMany(hit.count) })
+        return { outcome: 'ambiguous' }
       }
       if (hit.status === 'many') {
         await offer(hit.sites)
         const { text, rows } = formatChoices(hit.sites, cmd.query)
-        await ctx.reply(from, { text, rows })
-        return done('ambiguous')
+        await reply(from, { text, rows })
+        return { outcome: 'ambiguous' }
       }
       site = hit.site
     }
@@ -206,14 +225,17 @@ export async function handleMessage(msg, ctx) {
 
   try {
     const [snap, extra] = await Promise.all([
-      store.siteCounts(link.orgId),
-      store.siteContext(link.orgId, site),
+      store.siteCounts(orgId),
+      store.siteContext(orgId, site),
     ])
     const text = formatSiteReply(site, snap.sites?.[site.id] || {}, { ...extra, asOf: snap.asOf })
-    await ctx.reply(from, { text })
-    return done('ok', { siteId: site.id })
+    await reply(from, { text })
+    return { outcome: 'ok', extra: { siteId: site.id } }
   } catch (err) {
-    await ctx.reply(from, { text: MESSAGES.error })
-    return done('error', { siteId: site.id, error: String(err?.message || err).slice(0, 200) })
+    await reply(from, { text: MESSAGES.error })
+    return {
+      outcome: 'error',
+      extra: { siteId: site.id, error: String(err?.message || err).slice(0, 200) },
+    }
   }
 }

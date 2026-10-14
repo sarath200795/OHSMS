@@ -130,7 +130,7 @@ write_env() {
     printf 'WA_DAILY_CAP=%s\n' "$wa_cap"
   } >"$env_file"
 
-  if grep -Eq '^(DATA_KEY_MASTER|SMTP_PASS|WA_APP_SECRET|WA_ACCESS_TOKEN|WA_VERIFY_TOKEN)=' "$env_file"; then
+  if grep -Eq '^(DATA_KEY_MASTER|SMTP_PASS|WA_APP_SECRET|WA_ACCESS_TOKEN|WA_VERIFY_TOKEN|TELEGRAM_BOT_TOKEN|TG_WEBHOOK_SECRET)=' "$env_file"; then
     rm -f "$env_file"
     echo "::error::Refusing to leave a secret (DATA_KEY_MASTER, SMTP_PASS, WA_*) in ${env_file}." >&2
     exit 1
@@ -231,6 +231,10 @@ ensure_secrets() {
   ensure_placeholder_secret WA_APP_SECRET
   ensure_placeholder_secret WA_ACCESS_TOKEN
   ensure_placeholder_secret WA_VERIFY_TOKEN
+  # Telegram lookup: placeholders authenticate nothing (isRealSecret), so a
+  # missing real value just leaves tgWebhook answering 401 / 'disabled'.
+  ensure_placeholder_secret TELEGRAM_BOT_TOKEN
+  ensure_placeholder_secret TG_WEBHOOK_SECRET
 }
 
 case "${1:-}" in
