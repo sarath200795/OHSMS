@@ -85,6 +85,13 @@ const extinguishers = [
     dateOfNextHPT: '2026-10-13',
     physicalDefects: ['stand', 'over_pressurized'],
   }),
+  // Closed against the date it still carries: the overdue count stays, the
+  // defect row does not. A later date would put the row back.
+  ext('e9', {
+    siteId: 's4',
+    dateOfNextHPT: '2020-01-01',
+    hptClosedFor: '2020-01-01',
+  }),
 ]
 const aeds = [
   { id: 'a1', centerName: 'Cult Gym Ameerpet' },
@@ -281,6 +288,10 @@ describe('WhatsApp site summary matches the app, site by site', () => {
 
   it.each(sites.map((s) => [s.id, s]))('%s', (_id, site) => {
     expect(server[site.id]).toEqual(appNumbers(site))
+  })
+
+  it('keeps a closed HPT in the overdue count and out of the open defects', () => {
+    expect(server.s4).toMatchObject({ extinguishers: 1, hptOverdue: 1, openDefects: 0 })
   })
 
   // Guard against a fixture that tests nothing: the cases above must exercise

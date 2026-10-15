@@ -13,6 +13,7 @@ import {
   subscribeFas,
   subscribeFirstAid,
   subscribeStretchers,
+  subscribeDefectClosures,
   backfillDeletedAt,
   ensureOrgIndex,
 } from '../lib/firestore'
@@ -54,6 +55,7 @@ export function FleetProvider({ children }) {
   const [fas, setFas] = useState([])
   const [firstAid, setFirstAid] = useState([])
   const [stretchers, setStretchers] = useState([])
+  const [defectClosures, setDefectClosures] = useState([])
   const [loading, setLoading] = useState(true)
   // Run the deletedAt backfill at most once per org per session.
   const backfilledRef = useRef(null)
@@ -105,6 +107,7 @@ export function FleetProvider({ children }) {
     const u11 = subscribeSites(orgId, setAllSites)
     const u12 = subscribeFirstAid(orgId, setFirstAid)
     const u13 = subscribeStretchers(orgId, setStretchers)
+    const u14 = subscribeDefectClosures(orgId, setDefectClosures)
     return () => {
       u1()
       u2()
@@ -119,6 +122,7 @@ export function FleetProvider({ children }) {
       u11()
       u12()
       u13()
+      u14()
     }
   }, [orgId])
 
@@ -212,7 +216,9 @@ export function FleetProvider({ children }) {
         stretchers: stretchers.length >= EXT_LOAD_CAP ? 'capped' : 'ok',
         mockDrills: mockDrills.length >= EXT_LOAD_CAP ? 'capped' : 'ok',
         reports: reports.length >= EXT_LOAD_CAP ? 'capped' : 'ok',
+        defectClosures: defectClosures.length >= EXT_LOAD_CAP ? 'capped' : 'ok',
       }, EXT_LOAD_CAP),
+      defectClosures,
       reports,
       users,
       summary,
@@ -234,7 +240,7 @@ export function FleetProvider({ children }) {
       physicalOpen: defectLog.open,
       physicalClosed: defectLog.closed,
     }
-  }, [extinguishers, reports, users, org, stats, auditLogs, signages, mockDrills, aeds, fas, firstAid, stretchers, allSites, siteInventory, loading, todayKey])
+  }, [extinguishers, reports, users, org, stats, auditLogs, signages, mockDrills, aeds, fas, firstAid, stretchers, defectClosures, allSites, siteInventory, loading, todayKey])
 
   return <FleetContext.Provider value={value}>{children}</FleetContext.Provider>
 }

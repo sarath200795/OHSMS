@@ -24,6 +24,7 @@ beforeEach(() => {
   toast.error.mockClear()
   fleet.physicalOpen = []
   fleet.pendingReports = []
+  fleet.defectClosures = []
 })
 
 describe('DefectRepository export', () => {
@@ -78,6 +79,40 @@ describe('DefectRepository filters', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Clear/ }))
     expect(screen.getByTestId('defect-count').textContent).toMatch(/3 defects/)
+  })
+
+  it('keeps a closed defect out of the open count until Closed is selected', () => {
+    fleet.defectClosures = [{
+      id: 'c1',
+      kind: 'extinguisher',
+      defectType: 'empty',
+      defectLabel: 'Empty',
+      serialNo: 'FE-9',
+      centerName: 'Gamma',
+      region: 'West',
+      closedOn: '2026-10-01',
+      closedBy: 'Ada',
+      remarks: 'Recharged',
+      photo: { name: 'proof.jpg' },
+    }]
+    render(<DefectRepository />)
+    expect(screen.getByTestId('defect-count').textContent).toMatch(/3 defects/)
+    expect(screen.queryByText('FE-9')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Closed' }))
+    expect(screen.getByText('FE-9')).toBeTruthy()
+    expect(screen.queryByText('FE-1')).toBeNull()
+    expect(screen.getByTestId('defect-count').textContent).toMatch(/1 of 4/)
+    fireEvent.click(screen.getByRole('button', { name: /Export/ }))
+    const [rows, filename] = exportDefectRepository.mock.calls[0]
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({
+      Status: 'Closed',
+      'Closure Remarks': 'Recharged',
+      'Closed Date': '2026-10-01',
+      'Closed By': 'Ada',
+      Evidence: 'proof.jpg',
+    })
+    expect(filename).toMatch(/filtered-closed/)
   })
 
   it('searches and says when nothing matches', () => {

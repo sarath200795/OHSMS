@@ -208,8 +208,11 @@ service cloud.firestore {
         : col in ['audits', 'auditPlans', 'auditFindings', 'capas', 'findings'] ? 'audit'
         : col in ['permits', 'observations'] ? 'ptw'
         : col in ['procedures', 'procedurePhotos', 'locks', 'technicians', 'lotoPermits'] ? 'loto'
+        // defectClosures is the Defect Repository's close. A collection missing
+        // from this list maps to '' and moduleOn allows it, so switching
+        // equipment off would hide the register and leave the closure log writable.
         : col in ['extinguishers', 'aeds', 'fas', 'signages', 'stretchers',
-                  'firstAid', 'reports'] ? 'equipment'
+                  'firstAid', 'reports', 'defectClosures'] ? 'equipment'
         : col == 'mockDrills' ? 'drills'
         : col == 'consultations' ? 'committee'
         : col in ['trainingCourses', 'trainingRecords', 'trainingAssignments',

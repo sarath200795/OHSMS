@@ -16,6 +16,7 @@ import {
   Plus,
   Upload,
   Gauge,
+  PackageCheck,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { toastCaught } from '../../../shared/lib/toastCaught'
@@ -27,6 +28,7 @@ import EditExtinguisherModal from '../components/EditExtinguisherModal'
 import LinkSitesModal from '../components/LinkSitesModal'
 import SubmitQuotationModal from '../components/SubmitQuotationModal'
 import SubmitHptModal from '../components/SubmitHptModal'
+import ReceiveFromVendorModal from '../components/ReceiveFromVendorModal'
 import ListFilters from '../components/ListFilters'
 import { useAuth } from '../context/AuthContext'
 import { canManageAsset } from '../lib/recycle'
@@ -70,6 +72,7 @@ export default function Repository() {
   const [reportFor, setReportFor] = useState(null)
   const [quoteFor, setQuoteFor] = useState(null)
   const [hptFor, setHptFor] = useState(null)
+  const [receiveFor, setReceiveFor] = useState(null)
   const [editFor, setEditFor] = useState(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -420,6 +423,9 @@ export default function Repository() {
               const d = deriveStatus(ext, today)
               const canResolve = d.hasPhysicalDefect && !d.isClosed
               const canSendToVendor = isToBeRefilled(ext, today) && !d.inProcess && !d.isClosed
+              // Already with the vendor. Receiving it back is the return half of
+              // that trip; the hydrostatic test, when one is due, stays due.
+              const canReceive = d.inProcess && !d.isClosed
               const quoted = hasQuotation(ext)
               // A unit whose hydrostatic test is due is asked for the TEST, not
               // for a quotation — the same branch RefillDue and PhysicalDefects
@@ -458,6 +464,15 @@ export default function Repository() {
                       title="Resolve physical defects"
                     >
                       <CheckCircle2 size={14} /> Resolve
+                    </button>
+                  )}
+                  {canReceive && (
+                    <button
+                      className="btn bg-green-600 px-2.5 py-1.5 text-xs text-white hover:brightness-110"
+                      onClick={() => setReceiveFor(ext)}
+                      title="Mark received back from the vendor"
+                    >
+                      <PackageCheck size={14} /> Received
                     </button>
                   )}
                   {canSendToVendor && quoted && (
@@ -564,6 +579,15 @@ export default function Repository() {
         orgId={orgId}
         orgName={org?.name || orgName}
         actor={{ uid: profile?.uid, name: profile?.name }}
+      />
+
+      <ReceiveFromVendorModal
+        open={!!receiveFor}
+        onClose={() => setReceiveFor(null)}
+        ext={receiveFor}
+        orgId={orgId}
+        orgName={org?.name || orgName}
+        actorName={profile?.name}
       />
 
       <Modal

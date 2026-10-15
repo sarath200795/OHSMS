@@ -19,6 +19,16 @@ describe('deriveExtinguisherDefects', () => {
     const rows = deriveExtinguisherDefects([{ ...base, id: 'a', physicalDefects: ['empty', 'pin'], dateOfNextHPT: '2020-01-01' }], new Set(), today)
     expect(rows.map((r) => r.defectLabel)).toEqual(['HPT due', 'Empty'])
   })
+  it('skips an HPT closed against the due date the unit still carries', () => {
+    const rows = deriveExtinguisherDefects([
+      { ...base, id: 'a', dateOfNextHPT: '2020-01-01', hptClosedFor: '2020-01-01' },
+    ], new Set(), today)
+    expect(rows).toEqual([])
+    const moved = deriveExtinguisherDefects([
+      { ...base, id: 'a', dateOfNextHPT: '2026-01-01', hptClosedFor: '2020-01-01' },
+    ], new Set(), today)
+    expect(moved.map((r) => r.id)).toEqual(['a:hpt_due'])
+  })
   it('skips deleted, closed and duplicates', () => {
     const rows = deriveExtinguisherDefects([
       { ...base, id: 'd', deletedAt: 1, physicalDefects: ['empty'] },

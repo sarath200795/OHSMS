@@ -67,6 +67,33 @@ describe('summariseSites', () => {
     expect(summariseSites(data).s1.defectItems).toBeUndefined()
   })
 
+  it('omits a closed HPT-due row from open defects and still counts the overdue date', () => {
+    const data = {
+      sites: [{ id: 's1', name: 'A' }],
+      extinguishers: [
+        {
+          id: 'e',
+          siteId: 's1',
+          status: 'active',
+          serialNo: 'FE-1',
+          dateOfNextHPT: '2020-01-01',
+          hptClosedFor: '2020-01-01',
+          physicalDefects: [],
+        },
+      ],
+    }
+    const c = summariseSites(data, { now: new Date('2026-10-12T06:30:00Z') }).s1
+    expect(c.hptOverdue).toBe(1)
+    expect(c.openDefects).toBe(0)
+    const reopened = {
+      ...data,
+      extinguishers: [{ ...data.extinguishers[0], dateOfNextHPT: '2026-01-01' }],
+    }
+    expect(summariseSites(reopened, { now: new Date('2026-10-12T06:30:00Z') }).s1.openDefects).toBe(
+      1
+    )
+  })
+
   it('counts HPT due on the IST day, so 00:30 IST is already the next day', () => {
     const data = {
       sites: [{ id: 's1', name: 'A' }],

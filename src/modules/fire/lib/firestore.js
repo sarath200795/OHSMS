@@ -57,7 +57,18 @@ import { discardMailedReport } from '../../../shared/print/mailedReport'
 import { AUDIT, diffSummary } from './audit'
 import { logAudit as logOrgAudit, auditCol, orgIndexRef, COLLECTION_READ_CAP } from '../../../shared/org/orgData'
 import { onReadError } from '../../../shared/org/readError'
-import { hptUpdate, hptSummary } from './hpt'
+import { hptUpdate, hptSummary, isHptOverdue } from './hpt'
+import {
+  CLOSURE_SOURCE,
+  assetClosureDoc,
+  closureFields,
+  extinguisherCloseUpdate,
+  extinguisherClosureDoc,
+  receiveClosures,
+  validateClosure,
+  cleanClosurePhoto,
+} from './defectClosure'
+import { receiveFromVendorUpdate } from './receive'
 import { formatAssetId } from './assetLogic'
 import { statsDeltaFor, accumulate } from './stats'
 import { reportEffect } from './reportEffect'
@@ -77,6 +88,7 @@ const orgRef = (orgId) => doc(db, 'organizations', orgId)
 const extCol = (orgId) => collection(db, 'organizations', orgId, 'extinguishers')
 const extRef = (orgId, id) => doc(db, 'organizations', orgId, 'extinguishers', id)
 const reportCol = (orgId) => collection(db, 'organizations', orgId, 'reports')
+const closureCol = (orgId) => collection(db, 'organizations', orgId, 'defectClosures')
 const reportRef = (orgId, id) => doc(db, 'organizations', orgId, 'reports', id)
 const defectLockRef = (orgId, extId, defectType) =>
   doc(db, 'organizations', orgId, 'defectLocks', lockId(extId, defectType))
@@ -475,6 +487,11 @@ export async function updateExtinguisher(orgId, orgName, id, updates, opts = {})
   if (merged.qrToken) {
     batch.set(qrRef(merged.qrToken), mirrorPayload(orgId, orgName, id, merged))
   }
+  // Closures ride in this commit. A status that lands without the closure
+  // document would take the defect off the open list and leave the Closed
+  // filter with nothing to show, and the reverse would show a close the unit
+  // had not actually had.
+  if (opts.withBatch) opts.withBatch(batch)
   await batch.commit()
   await bumpStats(orgId, statsDeltaFor(before, merged))
   if (!opts.silent) {
@@ -880,6 +897,47 @@ export async function rejectReport(orgId, report, reviewerName, actor) {
   })
 }
 
+function queueClosures(batch, orgId, docs) {
+  for (const data of docs) {
+    batch.set(doc(closureCol(orgId)), { ...data, createdAt: serverTimestamp() })
+  }
+}
+
+export function subscribeDefectClosures(orgId, cb) {
+  const q = query(closureCol(orgId), orderBy('closedOn', 'desc'), limit(COLLECTION_READ_CAP))
+  return onSnapshot(
+    q,
+    (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    onReadError('defect closures', cb),
+  )
+}
+
+// Evidence for a close. Same route as a quotation: cloud file when the bucket
+// is there, inline under the Firestore ceiling when it is not. Not sealed —
+// the picture is the repair, not a person.
+async function evidencePhoto(orgId, file) {
+  if (!file?.data) return null
+  const name = file.name || 'evidence.jpg'
+  const up = await putFile(orgId, 'defect-evidence', file.data, name)
+  if (up) {
+    return cleanClosurePhoto({
+      url: up.url,
+      path: up.path,
+      contentType: up.contentType,
+      name: up.name,
+      size: up.size,
+    })
+  }
+  const inlineBytes = Math.floor((String(file.data).split(',')[1] || '').length * 0.75)
+  if (inlineBytes > MAX_INLINE_BYTES) throw new Error(tooLargeForInline(name))
+  return cleanClosurePhoto({
+    dataUrl: file.data,
+    contentType: file.type || '',
+    name,
+    size: inlineBytes,
+  })
+}
+
 // ── Workflow transitions (direct, used by portal action buttons) ───────────────
 // Each stamps who performed the action (lastActionBy/lastAction/lastActionAt).
 
@@ -965,11 +1023,35 @@ export async function submitHpt(orgId, orgName, id, { testedOn, result, nextDueO
   }
 
   const summary = hptSummary({ testedOn, result, vendor })
+  // A pass is what takes the HPT-due row off the Defect Repository, because
+  // the date moves. Record the close against the date it was due, so the
+  // Closed filter still has the row. A failure leaves the date, and the defect.
+  const hptClosure =
+    result === 'pass' && prev && isHptOverdue(prev)
+      ? [
+          extinguisherClosureDoc(
+            prev,
+            'hpt_due',
+            closureFields({
+              remarks: summary,
+              closedOn: testedOn,
+              closedBy: actorName,
+              source: CLOSURE_SOURCE.HPT,
+            }),
+            { forDate: prev.dateOfNextHPT || '' },
+          ),
+        ]
+      : []
   await updateExtinguisher(orgId, orgName, id, {
     hpt,
     ...hptUpdate({ testedOn, result, nextDueOn }),
     ...actionStamp(actorName, summary),
-  }, { actor: { name: actorName }, action: AUDIT.WF_HPT_SUBMITTED, summary })
+  }, {
+    actor: { name: actorName },
+    action: AUDIT.WF_HPT_SUBMITTED,
+    summary,
+    withBatch: (batch) => queueClosures(batch, orgId, hptClosure),
+  })
   return hpt
 }
 
@@ -981,18 +1063,65 @@ export async function markReceivedByVendor(orgId, orgName, id, actorName) {
   }, { actor: { name: actorName }, action: AUDIT.WF_SENT_TO_VENDOR, summary: 'Marked received by vendor (In Process)' })
 }
 
+/**
+ * The unit is back from the vendor. Status returns to Active, the day it was
+ * received is stored, and the next refill date moves with it. Empty and
+ * over-pressure defects from this trip are closed in the same commit — they
+ * are what the Defect Repository was showing, and a return that only flipped
+ * the status would leave them open.
+ */
+export async function markReceivedFromVendor(orgId, orgName, id, { receivedOn, dateOfNextRefill }, actorName) {
+  const before = await getExtinguisher(orgId, id)
+  const result = receiveFromVendorUpdate(before, { receivedOn, dateOfNextRefill })
+  if (result.error) throw new Error(result.error)
+  const closures = receiveClosures(before, { receivedOn, closedBy: actorName })
+  const closedLabels = closures.map((c) => c.defectLabel).join(', ')
+  const summary = `Received back from vendor on ${receivedOn} (next refill ${dateOfNextRefill})${closedLabels ? `; closed ${closedLabels}` : ''}`
+  await updateExtinguisher(orgId, orgName, id, {
+    ...result.updates,
+    ...actionStamp(actorName, 'Received'),
+  }, {
+    actor: { name: actorName },
+    action: AUDIT.WF_RECEIVED,
+    summary,
+    withBatch: (batch) => queueClosures(batch, orgId, closures),
+  })
+  await releaseDefectLocks(orgId, id, result.clearedDefects)
+  if (before?.quotation?.filePath) removeFile(before.quotation.filePath)
+}
+
 /** Extinguisher refilled & returned: close it, set new due dates, clear defects. */
 export async function markRefilledAndClosed(orgId, orgName, id, { dateOfNextRefill, dateOfNextHPT }, actorName) {
   const before = await getExtinguisher(orgId, id)
+  const closedOn = todayISO()
+  const closure = closureFields({
+    remarks: 'Refilled and returned to service',
+    closedOn,
+    closedBy: actorName,
+    source: CLOSURE_SOURCE.REFILLED,
+  })
+  const closures = (before?.physicalDefects || []).map((defectType) =>
+    extinguisherClosureDoc(before, defectType, closure),
+  )
+  if (before && isHptOverdue(before)) {
+    closures.push(
+      extinguisherClosureDoc(before, 'hpt_due', closure, { forDate: before.dateOfNextHPT || '' }),
+    )
+  }
   await updateExtinguisher(orgId, orgName, id, {
     status: STATUS.ACTIVE,
     dateOfNextRefill,
     dateOfNextHPT,
     physicalDefects: [],
     quotation: null,
-    lastRefilledAt: todayISO(),
+    lastRefilledAt: closedOn,
     ...actionStamp(actorName, 'Refilled & Closed'),
-  }, { actor: { name: actorName }, action: AUDIT.WF_REFILLED_CLOSED, summary: `Refilled & closed (next refill ${dateOfNextRefill}, next HPT ${dateOfNextHPT})` })
+  }, {
+    actor: { name: actorName },
+    action: AUDIT.WF_REFILLED_CLOSED,
+    summary: `Refilled & closed (next refill ${dateOfNextRefill}, next HPT ${dateOfNextHPT})`,
+    withBatch: (batch) => queueClosures(batch, orgId, closures),
+  })
   // A refill clears every defect, so every one of them becomes reportable again.
   await releaseDefectLocks(orgId, id, before?.physicalDefects || [])
   // The cleared quotation's cloud file goes with it.
@@ -1002,15 +1131,99 @@ export async function markRefilledAndClosed(orgId, orgName, id, { dateOfNextRefi
 /** Resolve (clear) physical defects without a refill. */
 export async function resolveDefects(orgId, orgName, id, remainingDefects = [], actorName) {
   const before = await getExtinguisher(orgId, id)
+  const kept = new Set(remainingDefects)
+  const removed = (before?.physicalDefects || []).filter((k) => !kept.has(k))
+  const closure = closureFields({
+    remarks: 'Resolved on the unit',
+    closedOn: todayISO(),
+    closedBy: actorName,
+    source: CLOSURE_SOURCE.RESOLVE,
+  })
+  const closures = removed.map((defectType) => extinguisherClosureDoc(before, defectType, closure))
   await updateExtinguisher(orgId, orgName, id, {
     physicalDefects: remainingDefects,
     quotation: null,
     ...actionStamp(actorName, 'Resolved defects'),
-  }, { actor: { name: actorName }, action: AUDIT.WF_RESOLVED_DEFECTS, summary: 'Physical defects resolved' })
+  }, {
+    actor: { name: actorName },
+    action: AUDIT.WF_RESOLVED_DEFECTS,
+    summary: 'Physical defects resolved',
+    withBatch: (batch) => queueClosures(batch, orgId, closures),
+  })
   // Only the ones actually cleared — a defect left on the unit stays locked.
-  const kept = new Set(remainingDefects)
-  await releaseDefectLocks(orgId, id, (before?.physicalDefects || []).filter((k) => !kept.has(k)))
+  await releaseDefectLocks(orgId, id, removed)
   if (before?.quotation?.filePath) removeFile(before.quotation.filePath)
+}
+
+/**
+ * Close one open defect from the Defect Repository.
+ *
+ * `descriptor` names which row: an extinguisher defect (including HPT due and
+ * Empty) or an AED / fire-alarm report. The closure document is what the
+ * Closed filter and the export read. The unit or the report is updated in the
+ * same commit so the open list loses the row.
+ *
+ * Manual closes are offered to managers in the UI, the same gate as Resolve
+ * and Confirm. The write itself is a writer's write — Received, which any
+ * writer can do, closes the refill defects through the same collection, and a
+ * rule that reserved it for managers would refuse that return.
+ */
+export async function closeDefect(orgId, orgName, descriptor, input, actor) {
+  const error = validateClosure(input)
+  if (error) throw new Error(error)
+  const photo = await evidencePhoto(orgId, input.file)
+  const closure = closureFields({
+    remarks: input.remarks,
+    closedOn: input.closedOn,
+    closedBy: actor?.name,
+    closedByUid: actor?.uid,
+    photo,
+    source: CLOSURE_SOURCE.MANUAL,
+  })
+  const label = descriptor.defectLabel || descriptor.defectType || 'defect'
+  const summary = `Closed ${label}: ${closure.remarks}`
+
+  if (descriptor.kind === 'extinguisher') {
+    const ext = await getExtinguisher(orgId, descriptor.extId)
+    if (!ext) throw new Error('Extinguisher not found')
+    const updates = {
+      ...extinguisherCloseUpdate(ext, descriptor.defectType),
+      ...actionStamp(actor?.name, 'Defect closed'),
+    }
+    const removed = descriptor.defectType !== 'hpt_due'
+    if (removed && updates.physicalDefects.length === 0) updates.quotation = null
+    const docFields = extinguisherClosureDoc(ext, descriptor.defectType, closure, {
+      forDate: descriptor.defectType === 'hpt_due' ? ext.dateOfNextHPT || '' : '',
+    })
+    await updateExtinguisher(orgId, orgName, descriptor.extId, updates, {
+      actor,
+      action: AUDIT.DEFECT_CLOSE,
+      summary,
+      withBatch: (batch) => queueClosures(batch, orgId, [docFields]),
+    })
+    if (removed) {
+      await releaseDefectLocks(orgId, descriptor.extId, [descriptor.defectType])
+      if (updates.quotation === null && ext.quotation?.filePath) removeFile(ext.quotation.filePath)
+    }
+    return
+  }
+
+  if (!descriptor.reportId) throw new Error('That defect report no longer exists.')
+  const batch = writeBatch(db)
+  batch.update(reportRef(orgId, descriptor.reportId), {
+    approvalStatus: 'closed',
+    closure,
+    reviewedBy: actor?.name || '',
+    reviewedAt: serverTimestamp(),
+  })
+  queueClosures(batch, orgId, [assetClosureDoc(descriptor, closure)])
+  await batch.commit()
+  await logAudit(orgId, actor, AUDIT.DEFECT_CLOSE, {
+    target: descriptor.assetKind || 'report',
+    targetId: descriptor.assetRefId || descriptor.reportId,
+    targetLabel: descriptor.assetLabel || descriptor.serialNo || label,
+    summary,
+  })
 }
 
 // ── Safety signage inventory (org-scoped, site-wise) ──────────────────────────

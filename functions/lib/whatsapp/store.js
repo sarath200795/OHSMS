@@ -119,6 +119,7 @@ export async function loadOrgData(db, orgId) {
       'status',
       'physicalDefects',
       'dateOfNextHPT',
+      'hptClosedFor',
       'serialNo',
       'deletedAt',
     ]),
