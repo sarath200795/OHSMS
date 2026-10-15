@@ -186,7 +186,7 @@ describe('a module that is switched off stops its collections being used', () =>
   // ALLOWED, so a register added without its entry does not fail loudly — it
   // arrives exempt from the entitlement it belongs to, and stays that way until
   // somebody thinks to check. This list is the check.
-  const EQUIPMENT = ['extinguishers', 'aeds', 'fas', 'signages', 'stretchers', 'firstAid']
+  const EQUIPMENT = ['extinguishers', 'aeds', 'fas', 'signages', 'stretchers', 'firstAid', 'defectClosures']
 
   const setModules = (modules) => testEnv.withSecurityRulesDisabled(async (ctx) => {
     await setDoc(doc(ctx.firestore(), 'moduleEntitlements', ORG), payload('ops', modules))

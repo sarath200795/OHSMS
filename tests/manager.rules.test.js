@@ -295,6 +295,27 @@ describe('a member still runs the day job', () => {
     await assertSucceeds(updateDoc(rec('mem', 'extinguishers', 'e-1'), { status: 'closed' }))
   })
 
+  // Receiving a unit back, and writing the closure that takes its defect off
+  // the open list, is the same day job. A manager-only rule on defectClosures
+  // would refuse the return, because the closure is written in that commit.
+  it('records an extinguisher received back, and the defect closure', async () => {
+    await assertSucceeds(updateDoc(rec('mem', 'extinguishers', 'e-1'), {
+      status: 'active',
+      receivedAt: '2026-10-15',
+      lastRefilledAt: '2026-10-15',
+      dateOfNextRefill: '2027-10-15',
+      physicalDefects: [],
+      hptClosedFor: '2026-01-01',
+    }))
+    await assertSucceeds(setDoc(rec('mem', 'defectClosures', 'c-1'), {
+      kind: 'extinguisher',
+      defectType: 'empty',
+      remarks: 'Received back from vendor',
+      closedOn: '2026-10-15',
+      closedBy: 'mem',
+    }))
+  })
+
   it('writes subcollections under a gated record', async () => {
     await assertSucceeds(addDoc(collection(as('mem'), 'organizations', ORG, 'permits', 'p-live', 'documents'), {
       label: 'Method statement', fileName: 'ms.pdf',
@@ -319,6 +340,12 @@ describe('a manager and an admin can still do everything', () => {
 // collections LOTO tenants by field — where the adapter maps auditor onto
 // `technician`, a role that carries loto.perform, so the buttons were there too.
 describe('an auditor cannot write at all', () => {
+  it('refuses an auditor closing a defect', async () => {
+    await assertFails(setDoc(rec('aud', 'defectClosures', 'c-1'), {
+      kind: 'extinguisher', defectType: 'empty', remarks: 'Closed', closedOn: '2026-10-15',
+    }))
+  })
+
   it('refuses an auditor writing an org record', async () => {
     await assertFails(updateDoc(rec('aud', 'incidents', 'i-1'), { refNo: 'edited' }))
     await assertFails(addDoc(collection(as('aud'), 'organizations', ORG, 'incidents'), { refNo: 'invented' }))

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Truck, CheckCircle2, QrCode, Download } from 'lucide-react'
+import { Truck, CheckCircle2, QrCode, Download, PackageCheck } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { toastCaught } from '../../../shared/lib/toastCaught'
 import { PageHeader, EmptyState, Modal, Spinner, Field } from '../components/ui'
@@ -9,6 +9,7 @@ import { TableSkeleton } from '../components/Skeleton'
 import { useFleet } from '../context/FleetContext'
 import { useAuth } from '../context/AuthContext'
 import { markRefilledAndClosed } from '../lib/firestore'
+import ReceiveFromVendorModal from '../components/ReceiveFromVendorModal'
 import { emptyFilters, applyListFilters } from '../lib/listFilter'
 import { exportExtinguishers } from '../lib/exporter'
 
@@ -17,6 +18,7 @@ export default function InProcess() {
   const { orgId, orgName, profile } = useAuth()
   const today = useMemo(() => new Date(), [])
   const [closing, setClosing] = useState(null) // ext being closed
+  const [receiving, setReceiving] = useState(null)
   const [dates, setDates] = useState({ dateOfNextRefill: '', dateOfNextHPT: '' })
   const [busy, setBusy] = useState(false)
   const [filters, setFilters] = useState(emptyFilters())
@@ -54,7 +56,7 @@ export default function InProcess() {
     <div>
       <PageHeader
         title="In Process of Refilling"
-        subtitle="Units currently with the vendor. Mark refilled & closed when returned."
+        subtitle="Units currently with the vendor. Mark received when one comes back. Refilled & closed also records a new hydrostatic-test date."
         icon={Truck}
       >
         <button className="btn-ghost" onClick={doExport}><Download size={16} /> Export</button>
@@ -75,6 +77,9 @@ export default function InProcess() {
           showActionBy
           renderActions={(ext) => (
             <>
+              <button className="btn bg-green-600 px-2.5 py-1.5 text-xs text-white hover:brightness-110" onClick={() => setReceiving(ext)}>
+                <PackageCheck size={14} /> Received
+              </button>
               <button className="btn bg-green-600 px-2.5 py-1.5 text-xs text-white hover:brightness-110" onClick={() => openClose(ext)}>
                 <CheckCircle2 size={14} /> Refilled & closed
               </button>
@@ -85,6 +90,15 @@ export default function InProcess() {
           )}
         />
       )}
+
+      <ReceiveFromVendorModal
+        open={!!receiving}
+        onClose={() => setReceiving(null)}
+        ext={receiving}
+        orgId={orgId}
+        orgName={orgName}
+        actorName={profile?.name}
+      />
 
       <Modal open={!!closing} onClose={() => setClosing(null)} title="Refilled & Closed">
         <p className="mb-4 text-sm text-ink-600">

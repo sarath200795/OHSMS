@@ -272,7 +272,7 @@ export async function parseUpload(file) {
 }
 
 // Build the row objects used by both export + email attachment.
-function rowsFor(list, today = new Date()) {
+export function buildExtinguisherExportRows(list, today = new Date()) {
   return list.map((e) => ({
     'Serial No': e.serialNo || '',
     Type: e.type,
@@ -291,7 +291,7 @@ function rowsFor(list, today = new Date()) {
 
 /** Export a list of extinguishers to .xlsx, including derived condition/status. */
 export function exportExtinguishers(list, filename = 'extinguishers.xlsx', today = new Date()) {
-  downloadWorkbook(bookFromRows(rowsFor(list, today)), filename)
+  downloadWorkbook(bookFromRows(buildExtinguisherExportRows(list, today)), filename)
 }
 
 /**

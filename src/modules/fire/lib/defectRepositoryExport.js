@@ -14,6 +14,7 @@ export const DEFECT_REPOSITORY_COLUMNS = [
   'Defect ID', 'Equipment Type', 'Asset ID / Serial No', 'Details', 'Site', 'Region', 'Entity',
   'Location', 'Defect', 'Status', 'Raised By', 'Reporter Role', 'Raised Date', 'Source',
   'Remarks', 'Next Refill Due', 'Next HPT Due',
+  'Closure Remarks', 'Closed Date', 'Closed By', 'Evidence',
 ]
 
 const day = (v) => {
@@ -22,6 +23,19 @@ const day = (v) => {
 }
 
 const text = (v) => (v == null ? '' : String(v).trim())
+
+function closureCells(row) {
+  const c = row.closure
+  if (!c) return { 'Closure Remarks': '', 'Closed Date': '', 'Closed By': '', Evidence: '' }
+  const photo = c.photo
+  const evidence = photo?.name || (photo?.url || photo?.path || photo?.dataUrl ? 'Yes' : '')
+  return {
+    'Closure Remarks': text(c.remarks),
+    'Closed Date': day(c.closedOn),
+    'Closed By': text(c.closedBy),
+    Evidence: text(evidence),
+  }
+}
 
 /**
  * @param rows  the Defect Repository rows (as built by the page: kind, label,
@@ -50,7 +64,7 @@ export function buildDefectRepositoryRows(rows = [], { aeds = [], fas = [], exti
         Entity: text(asset.entity),
         Location: text(asset.location),
         Defect: text(row.defect),
-        Status: 'Pending confirmation',
+        Status: row.closure ? 'Closed' : 'Pending confirmation',
         'Raised By': text(r.reportedByName),
         'Reporter Role': text(r.reporterRole),
         'Raised Date': day(row.reportedAt),
@@ -58,6 +72,7 @@ export function buildDefectRepositoryRows(rows = [], { aeds = [], fas = [], exti
         Remarks: text(r.note),
         'Next Refill Due': '',
         'Next HPT Due': '',
+        ...closureCells(row),
       }
     }
     const ext = extById.get(r.extId) || {}
@@ -71,7 +86,7 @@ export function buildDefectRepositoryRows(rows = [], { aeds = [], fas = [], exti
       Entity: text(r.entity || ext.entity),
       Location: text(ext.location || r.location),
       Defect: text(row.defect),
-      Status: 'Open',
+      Status: row.closure ? 'Closed' : 'Open',
       'Raised By': text(r.reportedByName),
       'Reporter Role': '',
       'Raised Date': day(row.reportedAt),
@@ -79,6 +94,7 @@ export function buildDefectRepositoryRows(rows = [], { aeds = [], fas = [], exti
       Remarks: '',
       'Next Refill Due': day(r.dateOfNextRefill),
       'Next HPT Due': day(r.dateOfNextHPT),
+      ...closureCells(row),
     }
   })
 }

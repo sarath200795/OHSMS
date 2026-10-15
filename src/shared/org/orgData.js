@@ -586,6 +586,7 @@ const COLLECTION_LABEL = {
   mockDrills: 'mock drills',
   consultations: 'committee meetings',
   extinguishers: 'fire extinguishers',
+  defectClosures: 'defect closures',
   aeds: 'AEDs',
   fas: 'fire alarm devices',
   signages: 'safety signage',

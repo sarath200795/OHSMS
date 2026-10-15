@@ -27,9 +27,13 @@ export function hasActiveDefectFilters(f = {}) {
 
 /** 'recorded' for filed defects / QR reports, 'derived' for register-derived rows. */
 export const sourceOf = (row) => (row.source === 'derived' ? 'derived' : 'recorded')
-export const statusOf = (row) => (row.source === 'asset' ? 'Pending confirmation' : 'Open')
-/** The date a row is filtered on: reported date, else its due date. */
-export const dateOf = (row) => toDate(row.reportedAt) || toDate(row.dueDate) || null
+// A closure wins over Pending confirmation: an AED report that has been closed
+// is no longer waiting on a manager to confirm it.
+export const statusOf = (row) =>
+  row.closure ? 'Closed' : row.source === 'asset' ? 'Pending confirmation' : 'Open'
+/** The date a row is filtered on: closed date, else reported date, else due date. */
+export const dateOf = (row) =>
+  toDate(row.closure?.closedOn) || toDate(row.reportedAt) || toDate(row.dueDate) || null
 
 function match(selected, value) {
   const a = arr(selected)

@@ -54,6 +54,21 @@ describe('buildDefectRepositoryRows', () => {
     expect(out[2]).toMatchObject({ 'Asset ID / Serial No': 'FAS-1', Site: '', Entity: '', 'Raised Date': '' })
   })
 
+  it('writes the closure columns and marks the row Closed', () => {
+    const closed = {
+      ...extRow,
+      closure: { remarks: 'Pin replaced', closedOn: '2026-10-03', closedBy: 'Ada', photo: { name: 'pin.jpg' } },
+    }
+    const [row] = buildDefectRepositoryRows([closed], regs)
+    expect(row).toMatchObject({
+      Status: 'Closed',
+      'Closure Remarks': 'Pin replaced',
+      'Closed Date': '2026-10-03',
+      'Closed By': 'Ada',
+      Evidence: 'pin.jpg',
+    })
+  })
+
   it('handles an empty list', () => {
     expect(buildDefectRepositoryRows([])).toEqual([])
     expect(buildDefectRepositoryRows(undefined)).toEqual([])

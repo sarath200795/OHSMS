@@ -11,11 +11,15 @@
 //   extinguishers     siteStats().extinguishers (src/pages/admin/siteStats.js),
 //                     attribution through linkAssets + matchEquip
 //   hptOverdue        deriveStatus().flags.HPT_DUE on a unit that is not closed
-//                     (src/modules/fire/lib/extinguisherLogic.js) — the same rule
-//                     as the derived "HPT due" row on the Defect Repository
+//                     (src/modules/fire/lib/extinguisherLogic.js). This count is
+//                     the date. Closing the defect row does not move the date,
+//                     so a closed HPT stays overdue here until a test is recorded.
 //   openDefects       the Defect Repository (src/modules/fire/DefectRepository.jsx):
 //                     physicalOpen + derived HPT due / Empty + pending AED and
-//                     fire-alarm QR reports
+//                     fire-alarm QR reports. A closed HPT-due row (hptClosedFor
+//                     equal to dateOfNextHPT) is omitted, matching
+//                     hptSuppressed() in src/modules/fire/lib/defectClosure.js.
+//                     The Telegram lookup reads the snapshot this builds.
 //   firstAidBoxes     the declared number on the site document
 //   actions           the Central Action Tracker (src/modules/actions/lib/sources.js)
 //                     WITHOUT the equipment source (those are the defects above,
@@ -172,6 +176,16 @@ export function matchIncident(inc, site) {
   return norm(inc.location).includes(n) || norm(inc.site).includes(n)
 }
 
+/**
+ * The Defect Repository suppresses an HPT-due row that was closed against the
+ * due date the unit still carries. Copy of hptSuppressed() — functions/ cannot
+ * import src/, and the parity test is what keeps the two copies the same.
+ */
+export function hptClosed(ext) {
+  const forDate = ext?.hptClosedFor
+  return typeof forDate === 'string' && forDate !== '' && forDate === (ext?.dateOfNextHPT || '')
+}
+
 /** deriveStatus().flags.HPT_DUE: the HPT date is today or past. */
 export function isHptDue(ext, today) {
   const day = dayOf(ext?.dateOfNextHPT)
@@ -209,7 +223,7 @@ export function defectRows({ extinguishers = [], aeds = [], fas = [], reports = 
       seen.add(id)
       rows.push({ kind: 'extinguisher', asset: ext, defectType: key })
     }
-    if (isHptDue(ext, today)) push('hpt_due')
+    if (isHptDue(ext, today) && !hptClosed(ext)) push('hpt_due')
     const defects = Array.isArray(ext.physicalDefects) ? ext.physicalDefects : []
     if (defects.filter((k) => REFILL_DEFECT_KEYS.includes(k)).includes('empty')) push('empty')
   }

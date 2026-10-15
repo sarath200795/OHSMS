@@ -29,6 +29,18 @@ describe('defect filters', () => {
     expect(keys({ entity: ['fofo'] })).toEqual(['b', 'c'])
     expect(keys({ site: ['Alpha'] })).toEqual(['a', 'd'])
   })
+  it('a closure is Closed, and the range uses the closed date', () => {
+    const closed = {
+      key: 'z', kind: 'Extinguisher', label: 'FE-9', site: 'Gamma', defect: 'Empty', source: 'derived',
+      reportedAt: null, dueDate: '2020-01-01',
+      closure: { closedOn: '2026-10-02', remarks: 'Back', closedBy: 'Ada' },
+    }
+    const only = (o) => applyDefectFilters([closed], f(o)).map((r) => r.key)
+    expect(only({ status: ['Closed'] })).toEqual(['z'])
+    expect(only({ status: ['Open'] })).toEqual([])
+    expect(only({ from: '2026-10-01', to: '2026-10-02' })).toEqual(['z'])
+    expect(defectFieldDefs([closed]).status.options.map((o) => o.value)).toEqual(['Closed'])
+  })
   it('source and status', () => {
     expect(keys({ source: ['derived'] })).toEqual(['b', 'c'])
     expect(keys({ source: ['recorded'] })).toEqual(['a', 'd'])

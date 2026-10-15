@@ -14,6 +14,7 @@
 // recording the HPT / refill on the extinguisher itself.
 // ─────────────────────────────────────────────────────────────────────────────
 import { deriveStatus, isDeleted } from './extinguisherLogic'
+import { hptSuppressed } from './defectClosure'
 
 export const DERIVED_DEFECT = {
   HPT_DUE: { key: 'hpt_due', label: 'HPT due', color: '#b45309' },
@@ -54,7 +55,9 @@ export function deriveExtinguisherDefects(extinguishers = [], existingKeys = new
         ...extra,
       })
     }
-    if (d.flags.HPT_DUE) push(DERIVED_DEFECT.HPT_DUE, { dueDate: ext.dateOfNextHPT })
+    // Closed against this exact due date. A later date — a real test, or an
+    // edit — does not match hptClosedFor, so the row comes back on its own.
+    if (d.flags.HPT_DUE && !hptSuppressed(ext)) push(DERIVED_DEFECT.HPT_DUE, { dueDate: ext.dateOfNextHPT })
     if (d.refillDefects.includes('empty')) push(DERIVED_DEFECT.EMPTY)
   }
   return out
