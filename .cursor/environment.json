@@ -1,0 +1,16 @@
+{
+  "name": "OHS MS (Vite + React + Firebase emulators)",
+  "user": "ubuntu",
+  "install": "cp -n .env.example .env; printf '{\\n  \"projects\": {\\n    \"default\": \"ohsms-demo\"\\n  }\\n}\\n' > .firebaserc; npm ci && (cd functions && npm ci)",
+  "terminals": [
+    {
+      "name": "emulators",
+      "command": "npm run emulators"
+    },
+    {
+      "name": "web",
+      "command": "until curl -sf http://127.0.0.1:4000 >/dev/null 2>&1; do echo 'waiting for Firebase emulators…'; sleep 3; done; npm run seed || true; npm run dev"
+    }
+  ],
+  "ports": [5173, 4000, 8080, 9099, 9199, 5001]
+}
