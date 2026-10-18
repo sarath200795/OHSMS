@@ -368,7 +368,19 @@ export default function SiteDetail() {
             {siteContacts.external.map((c) => (
               <tr key={c.id}>
                 <td className="lbl">{c.role}</td>
-                <td>{c.name}</td>
+                <td>
+                  {c.name}
+                  {(c.address || (c.distanceKm != null && c.distanceKm !== '')) && (
+                    <div className="text-[10px] font-normal text-ink-500">
+                      {[
+                        c.distanceKm != null && c.distanceKm !== '' ? `~${c.distanceKm} km` : '',
+                        c.address,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </div>
+                  )}
+                </td>
                 <td className="font-mono font-semibold">{c.phone}{c.altPhone ? ` / ${c.altPhone}` : ''}</td>
               </tr>
             ))}

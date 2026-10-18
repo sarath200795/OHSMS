@@ -114,8 +114,30 @@ describe('formatSiteReply', () => {
     expect(t.split('\n')[0]).toBe('🏢 *Boldx Injected (DEMO001)*')
   })
 
-  it('drops contacts without a usable number', () => {
-    expect(contactLines([{ role: 'Police', name: 'X', phone: '' }], site)).toEqual([])
+  it('names an external service that has no published number, and keeps the distance', () => {
+    // A blank phone used to drop the row, so the nearest hospital disappeared
+    // from the lookup whenever OpenStreetMap had no number for it.
+    expect(
+      contactLines(
+        [
+          {
+            kind: 'external',
+            role: 'Hospital',
+            name: 'Near Hospital',
+            phone: '',
+            distanceKm: 0.7,
+            address: 'Hebbal Road',
+          },
+        ],
+        site
+      )
+    ).toEqual(['• Hospital: Near Hospital · ~0.7 km · Hebbal Road — no number published'])
+  })
+
+  it('still drops an internal contact with no number', () => {
+    expect(
+      contactLines([{ kind: 'internal', role: 'CM', name: 'Asha Example', phone: '' }], site)
+    ).toEqual([])
   })
 })
 

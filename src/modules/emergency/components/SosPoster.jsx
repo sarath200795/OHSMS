@@ -124,6 +124,11 @@ export default function SosPoster({ site, contacts, accent = 'pink', onAccent, o
                       {r.contact ? (
                         <>
                           <div className="text-[clamp(9px,2.3vw,17px)] font-bold">{r.contact.name}</div>
+                          {r.contact.distanceKm != null && r.contact.distanceKm !== '' && (
+                            <div className="text-[clamp(7px,1.6vw,12px)] text-white/70">
+                              ~{r.contact.distanceKm} km
+                            </div>
+                          )}
                           {r.contact.phone ? (
                             <div className="text-[clamp(9px,2.4vw,18px)] font-bold">{r.contact.phone}</div>
                           ) : (
