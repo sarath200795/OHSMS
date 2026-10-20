@@ -11,9 +11,18 @@
 //   waRate/{phoneHash}         counters, see rateLimit.js
 //   waQueryLog/{auto}          { orgId, uid, phoneHash, siteId, intent, outcome, at }
 //   waSiteSnapshots/{orgId}    { asOf, v, sites: { [siteId]: [counts…] } }
-//   waSessions/{phoneHash}     { uid, orgId, choices: [siteId…], expiresAtMs }  15 min;
-//                              the last list offered, so "2" can answer it.
-//                              Site ids only — never the shared coordinates.
+//   waSessions/{phoneHash}     the chat's conversation, keyed by a digest of the
+//                              number or `tg:<chatId>`. Holds the chosen
+//                              organisation and the last numbered list (site ids
+//                              or organisation ids), never a location and never
+//                              the message text.
+//                                step: 'org' | 'site'
+//                                choiceKind: 'org' | 'site' | null
+//                                choices: ids of the last list
+//                                choicesExpireAtMs   the list, 15 min
+//                                expiresAtMs         the conversation, 24 h idle
+//                              Purge reads expiresAtMs, so a remembered
+//                              organisation outlives the numbered list.
 //
 // waId (the sender's number, digits) is the waLinks document id because it is
 // the lookup key on every message. It is personal data, which is why the
@@ -24,6 +33,7 @@ import { FieldValue, Timestamp } from 'firebase-admin/firestore'
 import { hashLinkCode, inboundId, phoneHash, redeemable } from './link.js'
 import { isActiveMember } from './access.js'
 import { summariseSites } from '../siteSummary.js'
+import { namedOrganisations, snapshotOrgIds } from './orgs.js'
 
 export const SNAPSHOT_MAX_AGE_MS = 60 * 60 * 1000
 export const INBOUND_KEEP_MS = 7 * 24 * 60 * 60 * 1000
@@ -187,6 +197,12 @@ export async function loadModules(db, orgId) {
   return modules && typeof modules === 'object' ? modules : {}
 }
 
+/** Every organisation id a snapshot should be built for. Not only those with a linked number. */
+export async function listSnapshotOrgIds(db) {
+  const snap = await db.collection('organizations').select('name').limit(READ_CAP).get()
+  return snapshotOrgIds(snap.docs.map((d) => ({ id: d.id })))
+}
+
 /** Build and store one org's snapshot. Returns { asOf, sites } with unpacked counts. */
 export async function buildSnapshot(db, orgId, now = new Date()) {
   const [data, modules] = await Promise.all([loadOrgData(db, orgId), loadModules(db, orgId)])
@@ -285,6 +301,18 @@ export function createStore(db, { pepper, now = () => new Date() } = {}) {
       })
     },
 
+    async listOrganizations() {
+      const snap = await db.collection('organizations').select('name').limit(READ_CAP).get()
+      return namedOrganisations(snap.docs.map((d) => ({ id: d.id, name: d.data()?.name })))
+    },
+
+    async getOrganization(orgId) {
+      if (typeof orgId !== 'string' || !orgId || orgId.includes('/')) return null
+      const snap = await db.doc(`organizations/${orgId}`).get()
+      if (!snap.exists) return null
+      return { id: orgId, name: String(snap.data()?.name || '').trim() }
+    },
+
     async listSites(orgId) {
       const snap = await db
         .collection(`organizations/${orgId}/sites`)
@@ -341,12 +369,25 @@ export function createStore(db, { pepper, now = () => new Date() } = {}) {
       return snap.exists ? snap.data() || null : null
     },
 
-    async setSession(waId, { uid, orgId, choices, expiresAtMs }) {
+    async setSession(waId, session = {}) {
+      const choiceKind =
+        session.choiceKind === 'org' || session.choiceKind === 'site' ? session.choiceKind : null
+      const step = session.step === 'org' || session.step === 'site' ? session.step : null
       await db.doc(`waSessions/${hash(waId)}`).set({
-        uid,
-        orgId,
-        choices: (choices || []).filter((id) => typeof id === 'string').slice(0, 10),
-        expiresAtMs,
+        uid: session.uid ?? null,
+        orgId: session.orgId ?? null,
+        lastOrgId: session.lastOrgId || session.orgId || null,
+        step,
+        choiceKind,
+        choices: (session.choices || []).filter((id) => typeof id === 'string').slice(0, 10),
+        // Older writers set only expiresAtMs and meant the list. Keep that as
+        // the list clock when the conversation clock was not split out. An
+        // explicit 0 means "no list", and must not be replaced by the 24 h clock.
+        choicesExpireAtMs:
+          session.choicesExpireAtMs != null
+            ? Number(session.choicesExpireAtMs) || 0
+            : Number(session.expiresAtMs) || 0,
+        expiresAtMs: Number(session.expiresAtMs) || 0,
       })
     },
 

@@ -298,14 +298,16 @@ export const SUBJECT_SOURCES = [
     why: 'Which site a person looked up on WhatsApp, and when. Kept 90 days for abuse review, then purged.',
   },
 
-  // The last pick-list offered (site ids), 15 minutes. No coordinates.
+  // The conversation: chosen organisation and the last pick-list (site or
+  // organisation ids). 24 hours idle. No coordinates, no message text.
+  // Telegram rows have no uid, so a subject export does not include them.
   {
     path: 'waSessions',
     topLevel: true,
     orgField: 'orgId',
     joins: [{ kind: 'field', field: 'uid', key: 'uid' }],
     retention: ERASABLE,
-    why: 'Which sites were last offered to a person on WhatsApp, so a numbered reply can pick one. Expires after 15 minutes.',
+    why: 'Which organisation a chat had chosen and which sites or organisations were last offered, so a numbered reply can pick one. Expires after 24 hours idle. Numbered choices stop working after 15 minutes.',
   },
 
   // ── The audit trail ────────────────────────────────────────────────────────

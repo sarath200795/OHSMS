@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { handleMessage, SESSION_TTL_MS } from './handler.js'
+import { handleMessage, guideConversation, SESSION_TTL_MS } from './handler.js'
+import { CONV_TTL_MS } from './orgs.js'
 import { MESSAGES } from './format.js'
 
 // A fake store with the same contract as store.js, backed by plain maps.
@@ -104,6 +105,20 @@ const member = (extra = {}) => ({
   ...extra,
 })
 
+function remember(orgId = 'o1', extra = {}) {
+  store.s.sessions.set(PHONE, {
+    uid: 'u1',
+    orgId,
+    lastOrgId: orgId,
+    step: 'site',
+    choiceKind: null,
+    choices: [],
+    choicesExpireAtMs: 0,
+    expiresAtMs: NOW.getTime() + CONV_TTL_MS,
+    ...extra,
+  })
+}
+
 beforeEach(() => {
   sent = []
   store = fakeStore({
@@ -111,6 +126,9 @@ beforeEach(() => {
     users: { u1: member() },
     sites: { o1: SITES },
   })
+  // The site-step tests start after the organisation has been chosen. The
+  // organisation conversation is covered on its own, with the session cleared.
+  remember()
 })
 
 describe('authorised lookups', () => {
@@ -278,10 +296,12 @@ describe('location fallback and numbered picks', () => {
 
   it('an expired list no longer answers numbers', async () => {
     await handleMessage(loc(12.0, 77.0), ctx())
-    store.s.sessions.get(PHONE).expiresAtMs = NOW.getTime() - 1
+    // The conversation (which organisation) outlives the numbered list.
+    store.s.sessions.get(PHONE).choicesExpireAtMs = NOW.getTime() - 1
     const row = await handleMessage(msg('1'), ctx())
     expect(row.outcome).toBe('nomatch')
     expect(SESSION_TTL_MS).toBe(15 * 60 * 1000)
+    expect(store.s.sessions.get(PHONE).expiresAtMs).toBeGreaterThan(NOW.getTime())
   })
 
   it("refuses a pick whose site has left the user's reach since the list", async () => {
@@ -302,5 +322,147 @@ describe('location fallback and numbered picks', () => {
     store.s.sites.o1 = SITES
     await handleMessage(loc(12.0, 77.0), ctx())
     expect(sent[0].text).toBe(MESSAGES.noLocatedSites)
+  })
+})
+
+describe('which organisation', () => {
+  const TWO = [
+    { id: 'o1', name: 'Acme Fitness' },
+    { id: 'o2', name: 'Beta Safety' },
+  ]
+  const sites = {
+    o1: [{ id: 's1', name: 'Demo North Hub', code: 'DEMO001', region: 'North' }],
+    o2: [{ id: 's9', name: 'Beta Central', code: 'BETA001', region: 'West' }],
+  }
+
+  beforeEach(() => store.s.sessions.clear())
+
+  it('asks a linked user for their organisation before any site data', async () => {
+    store.getOrganization = async (id) => ({ id, name: 'Acme Fitness' })
+    const row = await handleMessage(msg('DEMO001'), ctx())
+    expect(row.outcome).toBe('nomatch')
+    expect(sent[0].text).toMatch(/No organisation matches "demo001"/)
+    expect(sent[0].text).toMatch(/1\. Acme Fitness/)
+    expect(sent[0].text).not.toMatch(/Fire extinguishers|Beta/)
+    expect(sent[0].rows?.[0]?.id).toBe('org:o1')
+  })
+
+  it('does not offer an organisation the linked user does not belong to', async () => {
+    store.getOrganization = async (id) =>
+      id === 'o1' ? { id, name: 'Acme Fitness' } : { id, name: 'Secret Other Co' }
+    await handleMessage(msg('hi'), ctx())
+    expect(JSON.stringify(sent)).not.toContain('Secret Other Co')
+    expect(sent[0].text).toMatch(/Acme Fitness/)
+  })
+
+  it('a deleted organisation is not a way in', async () => {
+    store.getOrganization = async () => null
+    const row = await handleMessage(msg('DEMO001'), ctx())
+    expect(row.outcome).toBe('noorgs')
+    expect(sent[0].text).not.toMatch(/Fire extinguishers|DEMO001/)
+  })
+
+  it('remembers the organisation, then answers a site, until CHANGE ORG', async () => {
+    store.s.sites = sites
+    const guideCtx = () => ({
+      store,
+      now: NOW,
+      from: PHONE,
+      user: { uid: null, channelAdmin: true, role: 'admin', status: 'approved' },
+      uid: null,
+      orgs: TWO,
+      listOrgs: true,
+      reply: async (to, m) => {
+        sent.push({ to, ...m })
+        return true
+      },
+    })
+    await guideConversation({ kind: 'greeting' }, guideCtx())
+    expect(sent[0].text).toMatch(/1\. Acme Fitness/)
+    expect(sent[0].text).toMatch(/2\. Beta Safety/)
+    expect(sent[0].text).not.toMatch(/Fire extinguishers/)
+
+    await guideConversation({ kind: 'site', query: 'beta' }, guideCtx())
+    expect(sent[1].text).toMatch(/Beta Safety/)
+    expect(sent[1].text).toMatch(/Site ID or Centre ID/)
+
+    const row = await guideConversation({ kind: 'site', query: 'beta001' }, guideCtx())
+    expect(row).toMatchObject({ outcome: 'ok', extra: { siteId: 's9', orgId: 'o2' } })
+    expect(sent[2].text).toMatch(/Beta Central/)
+    expect(sent[2].text).not.toMatch(/Demo North/)
+
+    await guideConversation({ kind: 'changeOrg' }, guideCtx())
+    expect(sent[3].text).toMatch(/Which organisation/)
+    const again = await guideConversation({ kind: 'site', query: 'beta001' }, guideCtx())
+    expect(again.outcome).not.toBe('ok')
+    expect(sent[4].text).not.toMatch(/Beta Central \(BETA001\)/)
+  })
+
+  it('a closed list does not name organisations until the typed name narrows them', async () => {
+    const three = [...TWO, { id: 'o3', name: 'Acme Logistics' }]
+    store.s.sites = sites
+    const guideCtx = () => ({
+      store,
+      now: NOW,
+      from: PHONE,
+      user: { uid: null, channelAdmin: true, role: 'admin', status: 'approved' },
+      uid: null,
+      orgs: three,
+      listOrgs: false,
+      reply: async (to, m) => {
+        sent.push({ to, ...m })
+        return true
+      },
+    })
+    await guideConversation({ kind: 'greeting' }, guideCtx())
+    expect(sent[0].text).not.toMatch(/Acme|Beta/)
+    expect(sent[0].rows).toEqual([])
+
+    await guideConversation({ kind: 'site', query: 'acme' }, guideCtx())
+    expect(sent[1].text).toMatch(/Acme Fitness/)
+    expect(sent[1].text).toMatch(/Acme Logistics/)
+    expect(sent[1].text).not.toMatch(/Beta Safety/)
+
+    await guideConversation({ kind: 'site', query: '1' }, guideCtx())
+    expect(sent[2].text).toMatch(/Site ID or Centre ID/)
+    expect(store.s.sessions.get(PHONE)).toMatchObject({ step: 'site', orgId: 'o1', uid: null })
+  })
+
+  it('a session for some other organisation is not a site lookup', async () => {
+    remember('o2')
+    store.s.sites = sites
+    store.getOrganization = async () => ({ id: 'o1', name: 'Acme Fitness' })
+    const row = await handleMessage(msg('BETA001'), ctx())
+    expect(row.outcome).not.toBe('ok')
+    expect(JSON.stringify(sent)).not.toMatch(/Beta Central/)
+  })
+
+  it('MENU after the timeout asks again, and a crafted org id outside the list is refused', async () => {
+    remember('o1', { expiresAtMs: NOW.getTime() - 1 })
+    store.getOrganization = async () => ({ id: 'o1', name: 'Acme Fitness' })
+    const row = await handleMessage(msg('MENU'), ctx())
+    expect(row.outcome).toBe('orgprompt')
+    expect(row.intent).toBe('org')
+    expect(sent[0].text).toMatch(/1\. Acme Fitness/)
+
+    store.s.sessions.clear()
+    const denied = await guideConversation(
+      { kind: 'choice', choiceKind: 'org', orgId: 'o2' },
+      {
+        store,
+        now: NOW,
+        from: PHONE,
+        user: member(),
+        uid: 'u1',
+        orgs: [{ id: 'o1', name: 'Acme Fitness' }],
+        listOrgs: true,
+        reply: async (to, m) => {
+          sent.push({ to, ...m })
+          return true
+        },
+      }
+    )
+    expect(denied.outcome).toBe('denied')
+    expect(sent.at(-1).text).not.toMatch(/Beta|Fire extinguishers/)
   })
 })

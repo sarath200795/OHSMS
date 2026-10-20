@@ -19,7 +19,12 @@ export function textPayload(to, body) {
   }
 }
 
-export function listPayload(to, body, rows) {
+const clip = (value, fallback, max) => {
+  const text = String(value || fallback).slice(0, max)
+  return text || String(fallback).slice(0, max)
+}
+
+export function listPayload(to, body, rows, labels = {}) {
   return {
     messaging_product: 'whatsapp',
     recipient_type: 'individual',
@@ -28,7 +33,10 @@ export function listPayload(to, body, rows) {
     interactive: {
       type: 'list',
       body: { text: body },
-      action: { button: 'Choose site', sections: [{ title: 'Matching sites', rows }] },
+      action: {
+        button: clip(labels.button, 'Choose site', 20),
+        sections: [{ title: clip(labels.section, 'Matching sites', 24), rows }],
+      },
     },
   }
 }

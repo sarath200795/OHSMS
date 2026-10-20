@@ -58,9 +58,10 @@ Meta ──POST (X-Hub-Signature-256)──► waWebhook
    4 waLinks/{waId} → users/{uid}, re-read live: approved, same org, own password
    5 UNLINK / STOP honoured before the rate limit
    6 30/hour, 150/day per number (IST windows); one notice, then silence
-   7 resolve code → name → contains → fuzzy, ONLY among sites the user reaches
-   8 waSiteSnapshots/{orgId} (one read) + erpContacts → one reply via Graph API
-   9 waQueryLog row (no message text)
+   7 which organisation — only the one this profile belongs to; a number or the name
+   8 resolve code → name → contains → fuzzy, ONLY among sites the user reaches
+   9 waSiteSnapshots/{orgId} (one read) + erpContacts → one reply via Graph API
+  10 waQueryLog row (no message text)
 ```
 
 **Searching only within reach** is the privacy property. A site outside the
@@ -69,7 +70,7 @@ the same reply and the bot cannot be used to enumerate the site master.
 Unknown or inactive senders get one polite reply per 24 hours and nothing else.
 
 Counts come from a snapshot rebuilt every 30 minutes (`buildWhatsAppSnapshots`,
-only for orgs with a linked number) and on demand when it is older than an hour.
+for every organisation) and on demand when it is older than an hour.
 
 ## Linking
 
@@ -113,7 +114,7 @@ stored, and the profile name in the webhook payload is dropped.
 - If the text matches no site the user can access, the bot asks for their location. It sends Cloud API's interactive `location_request_message`. If the client can't show that, it sends the same body as plain text: "Tap 📎 → Location → Send your current location".
 - When a location arrives, the bot measures the haversine distance to the user's **accessible** sites that have `lat`/`lng`. It lists up to 5 sites within 25 km. If none is that close, it lists the nearest 3. The list is an interactive list with the same entries numbered in the text.
 - The user picks a site by tapping a row, or by replying with its number or code. A tap or a number re-checks access before any data is sent.
-- `waSessions/{phoneHash}` holds `{ uid, orgId, choices: [siteId…], expiresAtMs }` for 15 minutes. The rules deny all client access to it, and `purgeWhatsAppLedgers` sweeps it. Ambiguous-name lists use the same session.
+- `waSessions/{phoneHash}` holds the conversation: the chosen organisation and the last numbered list (site ids or organisation ids). The list answers to its numbers for 15 minutes (`choicesExpireAtMs`). The document itself lasts 24 hours of idle time (`expiresAtMs`, refreshed on each message), which is how the chat remembers the organisation. The rules deny all client access to it, and `purgeWhatsAppLedgers` sweeps it when `expiresAtMs` has passed. MENU and CHANGE ORG start the organisation question again.
 - **Coordinates are never stored.** They are used for one distance calculation in memory. They do not go into `waQueryLog` (intent `location`, outcome `nearby`), `waSessions`, or logs. The name and address Meta attaches are dropped when the message is parsed.
 
 ## Telegram (tgWebhook)
@@ -126,12 +127,62 @@ The same lookup also answers on Telegram (@WEEHS_Site_Lookup_bot) through the
 - Auth: Telegram's `X-Telegram-Bot-Api-Secret-Token` header must equal the
   `TG_WEBHOOK_SECRET` secret (set as `secret_token` in `setWebhook`).
 - Secrets: `TELEGRAM_BOT_TOKEN`, `TG_WEBHOOK_SECRET`. Params: `TG_ENABLED`
-  (default `true`; kill switch), `TG_ORG_ID` (default: the only organisation),
+  (default `true`; kill switch), `TG_ORG_ID` (optional pin to one organisation;
+  empty means every named organisation), `TG_LIST_ORGS` (default `false`),
   `TG_DAILY_CAP` (default 2000 replies/day).
 - **Access differs from WhatsApp.** Telegram gives the bot no phone number to
   match against linked users, so the bot is open: anyone can look up any site
-  of the configured org and gets the same reply an admin would get on WhatsApp
-  (counts + emergency contacts). Per-chat rate limits (30/h, 150/day), the
-  daily cap and `waQueryLog` (chat id hashed, no message text) still apply.
-  Private chats only. Turn off with `TG_ENABLED=false`.
-- Register: `setWebhook?url=<function URL>&secret_token=<TG_WEBHOOK_SECRET>&allowed_updates=["message"]`.
+  of an organisation the bot is allowed to name, and gets the same reply an
+  admin of that organisation would get on WhatsApp (counts + emergency
+  contacts). Per-chat rate limits (30/h, 150/day), the daily cap and
+  `waQueryLog` (chat id hashed, no message text) still apply. Private chats
+  only. Turn off with `TG_ENABLED=false`.
+- **Names are not a directory.** `TG_LIST_ORGS` defaults to `false`. The bot
+  asks for the organisation name and only lists the ones that match what was
+  typed (at most ten). `true` volunteers every name when there are ten or
+  fewer; more than ten is still "reply with the name", because a WhatsApp
+  list cannot hold them and a longer list is the customer directory. One
+  allowed organisation is always named: hiding the only choice protects
+  nothing. `TG_ORG_ID` remains the way to keep the open bot on a single
+  organisation.
+- Register: `setWebhook?url=<function URL>&secret_token=<TG_WEBHOOK_SECRET>&allowed_updates=["message","callback_query"]`.
+  Inline buttons (the organisation list, and a site list that already has
+  rows) do not arrive unless `callback_query` is included.
+
+## Choosing an organisation
+
+Both channels ask which organisation before any site is searched, and remember
+the answer on `waSessions` for 24 hours of idle time. MENU (or `/start` on
+Telegram) and CHANGE ORG ask again. A linked WhatsApp user is offered only
+the organisation on their live profile (`users/{uid}.orgId`, re-checked every
+message). There is no membership list to consult: a person who works for two
+companies has two accounts, and the number is linked to one of them.
+
+A chat with no chosen organisation does not resolve a site. "Not an
+organisation" and "no such site" are not distinguished until the organisation
+is chosen, and a site outside the user's reach is still not searched at all.
+
+```
+User: hi
+Bot:  Which organisation?
+      1. Acme Fitness
+      Reply with the number or the name.
+      In an emergency call 112.
+
+User: 1
+Bot:  Acme Fitness.
+      Send a Site ID or Centre ID, or part of the site name.
+
+User: DEMO001
+Bot:  🏢 Acme North (DEMO001)
+      …emergency contacts, AED line, open defects…
+      Reply with another site code or name.
+
+User: change org
+Bot:  Which organisation?
+      1. Acme Fitness
+```
+
+On Telegram with `TG_LIST_ORGS` left at its default, the first prompt does not
+contain those names. The user types one; several matches become a numbered
+list and inline buttons of those matches only.

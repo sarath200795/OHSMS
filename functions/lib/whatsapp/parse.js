@@ -7,8 +7,8 @@
 // profile name rides in the same payload and is dropped here, on purpose: it is
 // personal data the feature has no use for.
 //
-// parseCommand turns message text into one intent. The bot is a lookup, not a
-// conversation: LINK <code>, UNLINK / STOP, HELP, or a site to look up.
+// parseCommand turns message text into one intent. LINK <code>, UNLINK / STOP,
+// HELP, MENU / CHANGE ORG (the guided conversation), or a site to look up.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Digits only, as Meta's wa_id is. Not a validity check, just a shape. */
@@ -107,18 +107,21 @@ export function cleanQuery(text) {
 
 /**
  * One intent:
- *   { kind: 'link', code }    LINK 123456
- *   { kind: 'badLink' }       LINK followed by something that is not 6 digits
- *   { kind: 'unlink' }        UNLINK or STOP
- *   { kind: 'help' }          HELP / MENU / ?
- *   { kind: 'choice', siteId} a tap on a list row this bot sent
+ *   { kind: 'link', code }     LINK 123456
+ *   { kind: 'badLink' }        LINK followed by something that is not 6 digits
+ *   { kind: 'unlink' }         UNLINK or STOP
+ *   { kind: 'help' }           HELP / ?
+ *   { kind: 'menu' }           MENU / RESTART — ask which organisation again
+ *   { kind: 'changeOrg' }      CHANGE ORG
+ *   { kind: 'choice', choiceKind, siteId? | orgId? }  a tap on a row this bot sent
  *   { kind: 'location', latitude, longitude }  a shared location
- *   { kind: 'greeting' }      nothing left after the greeting
- *   { kind: 'site', query }   anything else
+ *   { kind: 'greeting' }       nothing left after the greeting
+ *   { kind: 'site', query }    anything else (a site, or an organisation name)
  */
 export function parseCommand(message = {}) {
-  const choice = /^site:([A-Za-z0-9_-]{1,128})$/.exec(String(message.choiceId ?? ''))
-  if (choice) return { kind: 'choice', siteId: choice[1] }
+  const choice = /^(site|org):([A-Za-z0-9_-]{1,128})$/.exec(String(message.choiceId ?? ''))
+  if (choice && choice[1] === 'org') return { kind: 'choice', choiceKind: 'org', orgId: choice[2] }
+  if (choice) return { kind: 'choice', choiceKind: 'site', siteId: choice[2] }
   if (message.type === 'location') {
     const loc = message.location || readLocation(message)
     return loc ? { kind: 'location', ...loc } : { kind: 'badLocation' }
@@ -132,7 +135,18 @@ export function parseCommand(message = {}) {
   }
   const q = cleanQuery(raw)
   if (q === 'unlink' || q === 'stop' || q === 'unsubscribe') return { kind: 'unlink' }
-  if (q === 'help' || q === 'menu' || raw === '?') return { kind: 'help' }
+  if (q === 'help' || raw === '?') return { kind: 'help' }
+  if (q === 'menu' || q === 'restart') return { kind: 'menu' }
+  if (
+    q === 'change org' ||
+    q === 'change organisation' ||
+    q === 'change organization' ||
+    q === 'switch org' ||
+    q === 'switch organisation' ||
+    q === 'switch organization'
+  ) {
+    return { kind: 'changeOrg' }
+  }
   if (!q) return { kind: 'greeting' }
   return { kind: 'site', query: q }
 }

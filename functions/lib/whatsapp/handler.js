@@ -13,9 +13,11 @@
 //   4  UNLINK        honoured before the rate limit: withdrawing consent must
 //                    always work
 //   5  rate limit    30/h, 150/day
-//   6  resolve       ONLY among the sites the user reaches (resolve.js)
-//   7  reply         snapshot counts + contacts, one message
-//   8  log           waQueryLog: outcome and site id, never the message text
+//   6  organisation  only the live profile's org. No site is searched until
+//                    the chat has chosen one (remembered for 24 h idle)
+//   7  resolve       ONLY among the sites the user reaches in that org
+//   8  reply         snapshot counts + contacts, one message
+//   9  log           waQueryLog: outcome and site id, never the message text
 //
 // ctx = {
 //   now: Date,
@@ -29,7 +31,9 @@
 //     listSites(orgId) → sites[]
 //     siteCounts(orgId) → { asOf: Date, sites: { [siteId]: counts } }
 //     siteContext(orgId, site) → { contacts, helplinePrimary, helplineSecondary, roleLabels, modules }
-//     getSession(waId) / setSession(waId, { uid, orgId, choices, expiresAtMs }) / clearSession(waId)
+//     getOrganization(orgId) → { id, name } | null
+//     getSession(waId) / setSession(waId, session) / clearSession(waId)
+//       session: { uid, orgId, step, choiceKind, choices, choicesExpireAtMs, expiresAtMs }
 //     log(row, waId)                              waId is hashed, never stored
 //   },
 //   reply(to, { text } | { text, rows } | { text, locationRequest }) → bool   false when the breaker or Graph refused
@@ -49,6 +53,20 @@ import {
   helpText,
 } from './format.js'
 import { nearestSites, formatKm } from './geo.js'
+import {
+  CONV_TTL_MS,
+  ORG_NONE,
+  ORG_NOT_ALLOWED,
+  ORG_TOO_MANY,
+  callerForOrg,
+  formatOrgPrompt,
+  onSiteStep,
+  orgsForLinkedUser,
+  pickListedOrg,
+  resolveOrgQuery,
+  shouldListOrgs,
+  sitePrompt,
+} from './orgs.js'
 
 /** Messages older than this are not answered: the reply would be stale and the window may have closed. */
 export const MAX_MESSAGE_AGE_MS = 60 * 60 * 1000
@@ -63,7 +81,17 @@ export const SESSION_TTL_MS = 15 * 60 * 1000
  */
 export function pickFromSession(session, uid, n, reach, now) {
   if (!session || session.uid !== uid) return undefined
-  if (!(Number(session.expiresAtMs) > now.getTime())) return undefined
+  // An organisation list is not a site list. A number there is answered by
+  // guideConversation, and falling through would treat "1" as a site code.
+  if (session.choiceKind === 'org' || session.step === 'org') return undefined
+  const nowMs = now.getTime()
+  const choiceExpiry =
+    session.choicesExpireAtMs != null
+      ? Number(session.choicesExpireAtMs)
+      : Number(session.expiresAtMs)
+  if (!(choiceExpiry > nowMs)) return undefined
+  // expiresAtMs is the conversation. Once it has passed, the list goes with it.
+  if (session.choicesExpireAtMs != null && !(Number(session.expiresAtMs) > nowMs)) return undefined
   const ids = Array.isArray(session.choices) ? session.choices : []
   if (!Number.isInteger(n) || n < 1 || n > ids.length) return undefined
   return reach.find((s) => s.id === ids[n - 1]) || null
@@ -106,7 +134,10 @@ export async function handleMessage(msg, ctx) {
   const link = await store.getLink(from)
   const user = link ? await store.getUser(link.uid) : null
   if (!link || !isActiveMember(user, link.orgId)) {
-    if (cmd.kind === 'unlink' && link) await store.unlink(from)
+    if (cmd.kind === 'unlink' && link) {
+      await store.unlink(from)
+      if (store.clearSession) await store.clearSession(from)
+    }
     const gate = await store.rate(from, (s) => allowUnlinkedReply(s, now))
     if (gate.reply) await ctx.reply(from, { text: MESSAGES.unlinked })
     return done(link ? 'denied' : 'unknown', link ? { orgId: link.orgId, uid: link.uid } : {})
@@ -115,6 +146,7 @@ export async function handleMessage(msg, ctx) {
 
   if (cmd.kind === 'unlink') {
     await store.unlink(from)
+    if (store.clearSession) await store.clearSession(from)
     await ctx.reply(from, { text: MESSAGES.unlinkedOk })
     return done('unlinked')
   }
@@ -125,16 +157,28 @@ export async function handleMessage(msg, ctx) {
     return done('ratelimited')
   }
 
-  const out = await answerQuery(cmd, {
+  // The live organisation document, not the name copied onto the profile at
+  // signup. A deleted organisation is not offered. Tests that stub no
+  // getOrganization still resolve the one org on the profile.
+  let orgs = []
+  if (typeof store.getOrganization === 'function') {
+    const record = await store.getOrganization(user.orgId)
+    orgs = record ? orgsForLinkedUser(user, record) : []
+  } else {
+    orgs = orgsForLinkedUser(user, { id: user.orgId, name: user.orgName || '' })
+  }
+  const out = await guideConversation(cmd, {
     store,
     reply: ctx.reply,
     now,
     from,
     user,
-    orgId: link.orgId,
     uid: link.uid,
+    orgs,
+    // These names are the caller's own organisations, not the customer list.
+    listOrgs: true,
   })
-  return done(out.outcome, out.extra || {})
+  return done(out.outcome, { ...(out.extra || {}), orgId: out.extra?.orgId || link.orgId })
 }
 
 /**
@@ -144,13 +188,19 @@ export async function handleMessage(msg, ctx) {
  * Returns { outcome, extra? } for the query log. `from` keys the pick-list session.
  */
 export async function answerQuery(cmd, { store, reply, now = new Date(), from, user, orgId, uid }) {
-  // Remember a list so "2" can answer it. Site ids only, 15 minutes.
+  // Remember a list so "2" can answer it. Site ids only. The number works for
+  // 15 minutes; the document itself keeps the chosen organisation until the
+  // conversation times out (CONV_TTL_MS), so the two clocks are not one field.
   const offer = (sites) =>
     store.setSession(from, {
       uid: uid,
       orgId: orgId,
+      lastOrgId: orgId,
+      step: 'site',
+      choiceKind: 'site',
       choices: sites.slice(0, 10).map((s) => s.id),
-      expiresAtMs: now.getTime() + SESSION_TTL_MS,
+      choicesExpireAtMs: now.getTime() + SESSION_TTL_MS,
+      expiresAtMs: now.getTime() + CONV_TTL_MS,
     })
   const reach = reachableSites(user, await store.listSites(orgId))
   if (!reach.length) {
@@ -238,4 +288,134 @@ export async function answerQuery(cmd, { store, reply, now = new Date(), from, u
       extra: { siteId: site.id, error: String(err?.message || err).slice(0, 200) },
     }
   }
+}
+
+/**
+ * Ask which organisation, then which site. Shared by WhatsApp and Telegram.
+ *
+ * Nothing about a site is read until the chat is on the site step for an
+ * organisation this caller may use. `listOrgs` is the only switch that
+ * volunteers more than one name; a single allowed organisation is named
+ * because hiding the only choice does not protect a directory.
+ *
+ * The last organisation is the session's `step: 'site'` until `expiresAtMs`
+ * (CONV_TTL_MS, refreshed on each site message). MENU and CHANGE ORG clear
+ * that step. A numbered organisation list dies at choicesExpireAtMs, which
+ * is the same 15 minutes as a site list, and is not the conversation clock.
+ */
+export async function guideConversation(cmd, ctx) {
+  const { store, reply, now = new Date(), from, user, uid, orgs, listOrgs = false } = ctx
+  const allowed = (orgs || []).filter((o) => o && o.id && String(o.name || '').trim())
+  const finish = (outcome, extra = {}) => ({ outcome, extra: { intent: 'org', ...extra } })
+
+  const ask = async (choices, { list, query = '', missed = false, ambiguous = false } = {}) => {
+    const prompt = formatOrgPrompt(choices, { list, query, missed })
+    const shown = list ? choices.slice(0, 10) : []
+    await store.setSession(from, {
+      uid: uid ?? null,
+      orgId: null,
+      lastOrgId: null,
+      step: 'org',
+      choiceKind: shown.length ? 'org' : null,
+      choices: shown.map((o) => o.id),
+      choicesExpireAtMs: now.getTime() + SESSION_TTL_MS,
+      expiresAtMs: now.getTime() + CONV_TTL_MS,
+    })
+    await reply(from, { text: prompt.text, rows: prompt.rows, list: prompt.list })
+    return finish(ambiguous ? 'ambiguous' : missed ? 'nomatch' : 'orgprompt')
+  }
+
+  const commit = async (org) => {
+    await store.setSession(from, {
+      uid: uid ?? null,
+      orgId: org.id,
+      lastOrgId: org.id,
+      step: 'site',
+      choiceKind: null,
+      choices: [],
+      choicesExpireAtMs: 0,
+      expiresAtMs: now.getTime() + CONV_TTL_MS,
+    })
+    await reply(from, { text: sitePrompt(org) })
+    return finish('orgselected', { orgId: org.id })
+  }
+
+  if (!allowed.length) {
+    await reply(from, { text: ORG_NONE })
+    return finish('noorgs')
+  }
+
+  if (cmd.kind === 'menu' || cmd.kind === 'changeOrg') {
+    return ask(allowed, { list: shouldListOrgs(allowed, listOrgs) })
+  }
+
+  const session = typeof store.getSession === 'function' ? await store.getSession(from) : null
+  const current = onSiteStep(session, uid ?? null, allowed, now)
+
+  if (cmd.kind === 'choice' && cmd.choiceKind === 'org') {
+    const picked = allowed.find((o) => o.id === cmd.orgId)
+    if (!picked) {
+      await reply(from, { text: ORG_NOT_ALLOWED })
+      return finish('denied')
+    }
+    return commit(picked)
+  }
+
+  if (current) {
+    const siteList = session.choiceKind === 'site'
+    await store.setSession(from, {
+      uid: uid ?? null,
+      orgId: current.id,
+      lastOrgId: current.id,
+      step: 'site',
+      choiceKind: siteList ? 'site' : null,
+      choices: siteList ? session.choices || [] : [],
+      choicesExpireAtMs: siteList ? Number(session.choicesExpireAtMs) || 0 : 0,
+      expiresAtMs: now.getTime() + CONV_TTL_MS,
+    })
+    const caller = callerForOrg(user, current.id)
+    if (!caller) {
+      await reply(from, { text: ORG_NOT_ALLOWED })
+      return finish('denied', { orgId: current.id })
+    }
+    const out = await answerQuery(cmd, {
+      store,
+      reply,
+      now,
+      from,
+      user: caller,
+      orgId: current.id,
+      uid,
+    })
+    return { outcome: out.outcome, extra: { ...(out.extra || {}), orgId: current.id } }
+  }
+
+  // No organisation chosen yet. A site id, a location or a site-row tap is
+  // not searched: answering it would confirm which sites exist in which org.
+  if (cmd.kind === 'site' && /^\d{1,2}$/.test(cmd.query || '')) {
+    const picked = pickListedOrg(session, uid ?? null, Number(cmd.query), allowed, now)
+    if (picked === null) {
+      await reply(from, { text: ORG_NOT_ALLOWED })
+      return finish('denied')
+    }
+    if (picked) return commit(picked)
+  }
+
+  if (cmd.kind === 'site') {
+    const hit = resolveOrgQuery(cmd.query, allowed)
+    if (hit.status === 'one') return commit(hit.org)
+    if (hit.status === 'many')
+      return ask(hit.orgs, { list: true, query: cmd.query, ambiguous: true })
+    if (hit.status === 'tooMany') {
+      await reply(from, { text: ORG_TOO_MANY })
+      return finish('ambiguous')
+    }
+    return ask(allowed, {
+      list: shouldListOrgs(allowed, listOrgs),
+      query: cmd.query,
+      missed: true,
+    })
+  }
+
+  return ask(allowed, { list: shouldListOrgs(allowed, listOrgs) })
 }
