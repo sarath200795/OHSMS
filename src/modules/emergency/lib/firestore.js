@@ -48,7 +48,22 @@ const clean = (data) => ({
   siteId: data.siteId || '',
   site: data.site || '',
   notes: (data.notes || '').trim(),
+  // Where the nearest-facility lookup puts the address and straight-line
+  // distance. `origin` is 'map' for a row this lookup wrote and 'manual' for
+  // one a person saved, so a recompute can tell them apart. Old rows have
+  // neither; the lookup note is what identifies those.
+  address: (data.address || '').trim(),
+  distanceKm: distanceOrNull(data.distanceKm),
+  origin: data.origin === 'manual' ? 'manual' : data.origin === 'map' ? 'map' : '',
 })
+
+// '' is what an untouched form field holds. Number('') is 0, which would
+// store "the facility is at the site" for a contact that was never measured.
+function distanceOrNull(v) {
+  if (v == null || v === '') return null
+  const n = Number(v)
+  return Number.isFinite(n) ? Math.round(n * 10) / 10 : null
+}
 
 export async function addContact(orgId, data, actor) {
   const r = await addDoc(col(orgId), { ...clean(data), createdAt: serverTimestamp(), createdBy: actor?.uid || null })

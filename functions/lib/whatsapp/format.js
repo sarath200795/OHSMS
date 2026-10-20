@@ -93,6 +93,37 @@ export function siteTitle(site) {
 }
 
 /**
+ * One contact line. External services are listed even when the map published
+ * no phone: the nearest hospital is still the one to go to, and dropping the
+ * row is how a blank number used to make the lookup look like there was no
+ * hospital. The phone stays at the end of the line so a truncated body never
+ * cuts a number in half. Distance is the straight-line kilometres stored on
+ * the contact. Internal escalation contacts still need a number to be worth
+ * sending.
+ *
+ * These rows are read live from erpContacts when a WhatsApp or Telegram lookup
+ * is answered. buildWhatsAppSnapshots stores equipment and incident counts
+ * only, so a corrected contact is what the next reply says — the snapshot
+ * schedule does not have to catch up.
+ */
+function contactLine(c, labels) {
+  const phone = phoneText(c.phone)
+  const external = c.kind !== 'internal'
+  if (!phone && !external) return ''
+  const role = roleLabel(c.role, labels)
+  const name = clean(c.name, 48)
+  const extra = []
+  const km = Number(c.distanceKm)
+  if (c.distanceKm != null && c.distanceKm !== '' && Number.isFinite(km)) extra.push(`~${km} km`)
+  const addr = clean(c.address, 60)
+  if (addr) extra.push(addr)
+  const head = `• ${role}${name ? `: ${name}` : ''}`
+  const mid = extra.length ? ` · ${extra.join(' · ')}` : ''
+  const tail = phone ? ` — ${phone}` : ' — no number published'
+  return `${head}${mid}${tail}`
+}
+
+/**
  * Contacts for a site as the emergency module shows them: the site's own plus
  * org-wide ones (no siteId). External services first — they are what someone
  * reaches for in an emergency — then internal roles.
@@ -101,18 +132,14 @@ export function contactLines(contacts = [], site, labels = {}) {
   const mine = (contacts || []).filter((c) => c && (!c.siteId || c.siteId === site?.id))
   const rank = (c) => (c.kind === 'internal' ? 1 : 0)
   return mine
-    .map((c) => ({ c, phone: phoneText(c.phone) }))
-    .filter((x) => x.phone)
+    .map((c) => ({ c, line: contactLine(c, labels) }))
+    .filter((x) => x.line)
     .sort(
       (a, b) =>
         rank(a.c) - rank(b.c) ||
         roleLabel(a.c.role, labels).localeCompare(roleLabel(b.c.role, labels))
     )
-    .map(({ c, phone }) => {
-      const role = roleLabel(c.role, labels)
-      const name = clean(c.name, 48)
-      return `• ${role}${name ? `: ${name}` : ''} — ${phone}`
-    })
+    .map((x) => x.line)
 }
 
 /**

@@ -61,10 +61,13 @@ export function mapGooglePlace(place, amenity, lat, lng) {
   return {
     amenity,
     name,
+    names: [name],
     // Prefer the national format — that is what somebody dials locally.
     phone: (place.nationalPhoneNumber || place.internationalPhoneNumber || '').trim(),
     address: place.formattedAddress || '',
-    emergency: amenity === 'hospital' && place.primaryType === 'hospital',
+    // Only a matching primary type counts as "the map says this is a hospital".
+    // A therapy practice that merely appears in a hospital search does not.
+    tagged: place.primaryType === GOOGLE_TYPE[amenity],
     distanceKm: Math.round(distanceKm(lat, lng, pos.latitude, pos.longitude) * 10) / 10,
     source: 'google',
   }
