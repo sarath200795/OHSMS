@@ -70,6 +70,10 @@ Unknown or inactive senders get one polite reply per 24 hours and nothing else.
 
 Counts come from a snapshot rebuilt every 30 minutes (`buildWhatsAppSnapshots`,
 only for orgs with a linked number) and on demand when it is older than an hour.
+Emergency contacts are not in that snapshot: the reply reads `erpContacts` at
+send time, so a corrected nearest hospital, police station or fire station is
+what the next lookup says. A mapped service with no published number is still
+named, with its distance when the directory has one.
 
 ## Linking
 

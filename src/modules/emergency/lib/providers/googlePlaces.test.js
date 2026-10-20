@@ -30,6 +30,8 @@ describe('mapGooglePlace', () => {
     expect(r.phone).toBe('040 2360 7777')
     expect(r.source).toBe('google')
     expect(r.amenity).toBe('hospital')
+    expect(r.tagged).toBe(true)
+    expect(r.address).toBe('Jubilee Hills, Hyderabad')
     expect(r.distanceKm).toBeGreaterThan(0)
     expect(r.distanceKm).toBeLessThan(2)
   })
@@ -47,21 +49,35 @@ describe('mapGooglePlace', () => {
   it('leaves the phone blank rather than inventing one', () => {
     const r = mapGooglePlace(
       place({ nationalPhoneNumber: undefined, internationalPhoneNumber: undefined }),
-      'police', LAT, LNG
+      'police',
+      LAT,
+      LNG
     )
     expect(r.phone).toBe('')
   })
 
   it('rejects a permanently closed station', () => {
-    expect(mapGooglePlace(place({ businessStatus: 'CLOSED_PERMANENTLY' }), 'hospital', LAT, LNG)).toBeNull()
+    expect(
+      mapGooglePlace(place({ businessStatus: 'CLOSED_PERMANENTLY' }), 'hospital', LAT, LNG)
+    ).toBeNull()
   })
 
   it('rejects a temporarily closed station', () => {
-    expect(mapGooglePlace(place({ businessStatus: 'CLOSED_TEMPORARILY' }), 'hospital', LAT, LNG)).toBeNull()
+    expect(
+      mapGooglePlace(place({ businessStatus: 'CLOSED_TEMPORARILY' }), 'hospital', LAT, LNG)
+    ).toBeNull()
   })
 
   it('accepts a record with no businessStatus field', () => {
-    expect(mapGooglePlace(place({ businessStatus: undefined }), 'hospital', LAT, LNG)).not.toBeNull()
+    expect(
+      mapGooglePlace(place({ businessStatus: undefined }), 'hospital', LAT, LNG)
+    ).not.toBeNull()
+  })
+
+  it('does not treat a mismatched primary type as a tagged hospital', () => {
+    expect(mapGooglePlace(place({ primaryType: 'doctor' }), 'hospital', LAT, LNG).tagged).toBe(
+      false
+    )
   })
 
   it('rejects a record with no name', () => {
