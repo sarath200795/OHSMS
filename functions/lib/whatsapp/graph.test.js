@@ -88,6 +88,17 @@ describe('Graph sends', () => {
   it('builds an interactive list', () => {
     const p = listPayload('9190', 'Pick', [{ id: 'site:s1', title: 'A', description: 'B' }])
     expect(p.interactive.action.sections[0].rows).toHaveLength(1)
+    expect(p.interactive.action.button).toBe('Choose site')
     expect(p.interactive.action.button.length).toBeLessThanOrEqual(20)
+  })
+
+  it('names the organisation list without exceeding the button length', () => {
+    const p = listPayload('9190', 'Which organisation?', [], {
+      button: 'Choose organisation',
+      section: 'Organisations',
+    })
+    expect(p.interactive.action.button).toBe('Choose organisation')
+    expect(p.interactive.action.button.length).toBeLessThanOrEqual(20)
+    expect(p.interactive.action.sections[0].title).toBe('Organisations')
   })
 })

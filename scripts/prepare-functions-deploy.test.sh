@@ -34,6 +34,9 @@ assert_eq "$(grep '^SMTP_PORT=' "$env_file")" "SMTP_PORT=587" "default port"
 assert_eq "$(grep '^SMTP_USER=' "$env_file")" "SMTP_USER=" "default user is unset"
 assert_eq "$(grep '^MAIL_FROM=' "$env_file")" "MAIL_FROM=EHS notifications <info@weehs.org>" "default from"
 assert_eq "$(grep '^APP_ORIGIN=' "$env_file")" "APP_ORIGIN=https://suite.weehs.org" "default origin"
+assert_eq "$(grep '^TG_ENABLED=' "$env_file")" "TG_ENABLED=true" "telegram stays on"
+assert_eq "$(grep '^TG_LIST_ORGS=' "$env_file")" "TG_LIST_ORGS=false" "org names are not listed"
+assert_eq "$(grep '^TG_ORG_ID=' "$env_file")" "TG_ORG_ID=" "telegram is not pinned"
 if grep -Eq '^(DATA_KEY_MASTER|SMTP_PASS)=' "$env_file"; then
   fail "secret key written into dotenv"
 fi

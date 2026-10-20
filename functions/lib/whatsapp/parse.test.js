@@ -109,11 +109,14 @@ describe('parseCommand', () => {
     expect(p('LINK abcdef')).toEqual({ kind: 'badLink' })
   })
 
-  it('reads UNLINK, STOP and HELP', () => {
+  it('reads UNLINK, STOP, HELP, MENU and CHANGE ORG', () => {
     expect(p('UNLINK').kind).toBe('unlink')
     expect(p('stop').kind).toBe('unlink')
     expect(p('Help').kind).toBe('help')
-    expect(p('MENU').kind).toBe('help')
+    expect(p('?').kind).toBe('help')
+    expect(p('MENU').kind).toBe('menu')
+    expect(p('change org').kind).toBe('changeOrg')
+    expect(p('Switch organisation').kind).toBe('changeOrg')
   })
 
   it('strips greetings and treats the rest as a site query', () => {
@@ -123,8 +126,14 @@ describe('parseCommand', () => {
   })
 
   it('accepts only the list-row ids this bot sends', () => {
-    expect(p('X', 'site:abc_123')).toEqual({ kind: 'choice', siteId: 'abc_123' })
+    expect(p('X', 'site:abc_123')).toEqual({
+      kind: 'choice',
+      choiceKind: 'site',
+      siteId: 'abc_123',
+    })
+    expect(p('X', 'org:acme_1')).toEqual({ kind: 'choice', choiceKind: 'org', orgId: 'acme_1' })
     expect(p('X', 'site:../users').kind).toBe('site')
+    expect(p('X', 'org:../users').kind).toBe('site')
   })
 
   it('bounds and cleans the query', () => {

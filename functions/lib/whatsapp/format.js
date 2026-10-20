@@ -315,7 +315,7 @@ export const MESSAGES = {
   help:
     'Send a site code (e.g. BLR0123) or part of a site name to get its safety summary: ' +
     'extinguishers, open defects, first aid boxes, pending actions, incidents and emergency contacts.\n\n' +
-    'Send UNLINK to disconnect this number.',
+    'Send MENU to start over, or CHANGE ORG to switch organisation. Send UNLINK to disconnect this number.',
   unlinked:
     'This number serves registered WeEHS users. To use it, link your WhatsApp from ' +
     'Settings → Security in the app.\n\nIn an emergency call 112.',
@@ -323,7 +323,7 @@ export const MESSAGES = {
   noSites: "Your account doesn't have access to any sites yet. Ask your admin for access.",
   slowDown: "You've sent a lot of lookups. Please wait a while and try again.",
   linked:
-    'Linked ✅ This number can now look up your sites. Send a site code or name to start. Send UNLINK to disconnect.',
+    'Linked ✅ This number can now look up your sites. I will ask which organisation, then a Site ID or Centre ID. Send UNLINK to disconnect.',
   linkFailed:
     "That code didn't work. Codes are single-use and expire after 10 minutes — generate a new one in the app.",
   linkBlocked: 'Too many wrong codes. Linking from this number is paused for 24 hours.',

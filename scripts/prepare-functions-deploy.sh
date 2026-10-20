@@ -125,11 +125,14 @@ write_env() {
   reject_param_value WA_DAILY_CAP "$wa_cap"
 
   # Telegram site lookup (tgWebhook). On unless TG_ENABLED is not "true".
+  # TG_LIST_ORGS defaults false: an open bot does not recite organisation names.
   local tg_enabled="${TG_ENABLED:-true}"
   local tg_org="${TG_ORG_ID:-}"
+  local tg_list="${TG_LIST_ORGS:-false}"
   local tg_cap="${TG_DAILY_CAP:-2000}"
   reject_param_value TG_ENABLED "$tg_enabled"
   reject_param_value TG_ORG_ID "$tg_org"
+  reject_param_value TG_LIST_ORGS "$tg_list"
   reject_param_value TG_DAILY_CAP "$tg_cap"
 
   mkdir -p "$dir"
@@ -147,6 +150,7 @@ write_env() {
     printf 'WA_DAILY_CAP=%s\n' "$wa_cap"
     printf 'TG_ENABLED=%s\n' "$tg_enabled"
     printf 'TG_ORG_ID=%s\n' "$tg_org"
+    printf 'TG_LIST_ORGS=%s\n' "$tg_list"
     printf 'TG_DAILY_CAP=%s\n' "$tg_cap"
   } >"$env_file"
 
@@ -155,7 +159,7 @@ write_env() {
     echo "::error::Refusing to leave a secret (DATA_KEY_MASTER, SMTP_PASS, WA_*) in ${env_file}." >&2
     exit 1
   fi
-  echo "Wrote ${env_file} with non-secret params only (SMTP_HOST SMTP_PORT SMTP_USER MAIL_FROM APP_ORIGIN WA_ENABLED WA_PHONE_NUMBER_ID WA_GRAPH_VERSION WA_DISPLAY_NUMBER WA_DAILY_CAP TG_ENABLED TG_ORG_ID TG_DAILY_CAP)."
+  echo "Wrote ${env_file} with non-secret params only (SMTP_HOST SMTP_PORT SMTP_USER MAIL_FROM APP_ORIGIN WA_ENABLED WA_PHONE_NUMBER_ID WA_GRAPH_VERSION WA_DISPLAY_NUMBER WA_DAILY_CAP TG_ENABLED TG_ORG_ID TG_LIST_ORGS TG_DAILY_CAP)."
 }
 
 # A WhatsApp secret that does not exist yet is created as UNSET-PLACEHOLDER so

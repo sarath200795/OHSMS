@@ -87,7 +87,7 @@ import { createHmac } from 'node:crypto'
 import { verifySignature, handshakeChallenge, isRealSecret } from './lib/whatsapp/signature.js'
 import { extractMessages } from './lib/whatsapp/parse.js'
 import { handleMessage } from './lib/whatsapp/handler.js'
-import { createStore, buildSnapshot } from './lib/whatsapp/store.js'
+import { createStore, buildSnapshot, listSnapshotOrgIds } from './lib/whatsapp/store.js'
 import {
   sendMessage,
   textPayload,
@@ -103,6 +103,7 @@ import {
   handleUpdate,
   sendPayloads,
   tgSend,
+  tgAnswerCallback,
 } from './lib/telegram/handler.js'
 import { generateLinkCode, hashLinkCode, maskPhone, LINK_CODE_TTL_MS } from './lib/whatsapp/link.js'
 import {
@@ -3172,7 +3173,7 @@ export const waWebhook = onRequest(
     const store = createStore(db, { pepper: waPepper() })
     const cap = Math.max(1, Number(WA_DAILY_CAP.value()) || 2000)
 
-    const reply = async (to, { text, rows, locationRequest }) => {
+    const reply = async (to, { text, rows, locationRequest, list }) => {
       const gate = await db.runTransaction(async (tx) => {
         const ref = db.doc('waRate/outbound-global')
         const snap = await tx.get(ref)
@@ -3192,7 +3193,7 @@ export const waWebhook = onRequest(
           payload: payloadOut,
         })
       const rich = rows?.length
-        ? listPayload(to, text, rows)
+        ? listPayload(to, text, rows, list)
         : locationRequest
           ? locationRequestPayload(to, text)
           : null
@@ -3225,32 +3226,41 @@ export const waWebhook = onRequest(
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Telegram site lookup (@WEEHS_Site_Lookup_bot). Same lookup and reply as
-// waWebhook (lib/whatsapp/handler.js answerQuery); channel glue in
-// lib/telegram/handler.js, which also explains the access rule: Telegram has
-// no phone number to match to /users, so the bot is open to anyone and
-// answers about ONE org (TG_ORG_ID, or the only org when there is one).
+// waWebhook; the conversation (which organisation, then which site) is
+// guideConversation in lib/whatsapp/handler.js. Channel glue and the access
+// rule: lib/telegram/handler.js. Telegram has no phone number to match to
+// /users, so the bot is open. TG_ORG_ID pins it to one organisation. Empty
+// means every named organisation, and TG_LIST_ORGS decides whether those
+// names are volunteered. The default is not to: orgIndex is the customer
+// list, and this bot is how that list would walk out the door.
 //
 //   firebase functions:secrets:set TELEGRAM_BOT_TOKEN   from @BotFather
 //   firebase functions:secrets:set TG_WEBHOOK_SECRET    random; passed to setWebhook
 //                                                       as secret_token
-//   TG_ENABLED   kill switch, default true; anything but "true" ignores updates
-//   TG_ORG_ID    optional; empty means "the only organisation"
+//   TG_ENABLED      kill switch, default true; anything but "true" ignores updates
+//   TG_ORG_ID       optional pin; empty means every organisation
+//   TG_LIST_ORGS    "true" volunteers names when there are at most ten.
+//                   Anything else asks for the name. Default false.
+//
+// setWebhook allowed_updates must include "callback_query" as well as
+// "message", or the inline buttons never arrive.
 // ─────────────────────────────────────────────────────────────────────────────
 const TELEGRAM_BOT_TOKEN = defineSecret('TELEGRAM_BOT_TOKEN')
 const TG_WEBHOOK_SECRET = defineSecret('TG_WEBHOOK_SECRET')
 const TG_ENABLED = defineString('TG_ENABLED', { default: 'true' })
 const TG_ORG_ID = defineString('TG_ORG_ID', { default: '' })
+const TG_LIST_ORGS = defineString('TG_LIST_ORGS', { default: 'false' })
 const TG_DAILY_CAP = defineString('TG_DAILY_CAP', { default: '2000' })
 
-let tgOrgCache = null
-async function tgOrgId(db) {
-  const configured = TG_ORG_ID.value().trim()
-  if (configured) return configured.includes('/') ? null : configured
-  if (tgOrgCache) return tgOrgCache
-  const snap = await db.collection('organizations').select().limit(2).get()
-  if (snap.size !== 1) return null
-  tgOrgCache = snap.docs[0].id
-  return tgOrgCache
+/** Organisations this bot may name. A pin that is not a real id is none. */
+async function tgOrganisations(store) {
+  const named = await store.listOrganizations()
+  const pinned = TG_ORG_ID.value().trim()
+  if (!pinned) return named
+  if (pinned.includes('/')) return []
+  const one = named.find((o) => o.id === pinned) || (await store.getOrganization(pinned))
+  if (!one || one.id !== pinned) return []
+  return [{ id: pinned, name: String(one.name || '').trim() || 'Your organisation' }]
 }
 
 export const tgWebhook = onRequest(
@@ -3285,16 +3295,16 @@ export const tgWebhook = onRequest(
     }
     const db = getFirestore()
     try {
-      const orgId = await tgOrgId(db)
-      if (!orgId) {
-        logger.error('tgWebhook: no organisation configured (set TG_ORG_ID)')
-        res.status(200).send('unconfigured')
-        return
-      }
       const pepper = createHmac('sha256', TG_WEBHOOK_SECRET.value())
         .update('tg-chat-pepper-v1')
         .digest('hex')
       const store = createStore(db, { pepper })
+      const orgs = await tgOrganisations(store)
+      if (!orgs.length) {
+        logger.error('tgWebhook: no organisation available')
+        res.status(200).send('unconfigured')
+        return
+      }
       const cap = Math.max(1, Number(TG_DAILY_CAP.value()) || 2000)
       const reply = async (chatId, out) => {
         const gate = await db.runTransaction(async (tx) => {
@@ -3319,7 +3329,14 @@ export const tgWebhook = onRequest(
         }
         return ok
       }
-      const row = await handleUpdate(msg, { store, reply, now: new Date(), orgId })
+      const row = await handleUpdate(msg, {
+        store,
+        reply,
+        answerCallback: (id) => tgAnswerCallback(TELEGRAM_BOT_TOKEN.value(), id),
+        now: new Date(),
+        orgs,
+        listOrgs: TG_LIST_ORGS.value() === 'true',
+      })
       logger.info('tgWebhook: handled', {
         orgId: row.orgId,
         intent: row.intent,
@@ -3405,9 +3422,11 @@ export const unlinkWhatsApp = onCall({ region: REGION }, async (request) => {
 })
 
 /**
- * Every 30 minutes: one counts document per org that has at least one linked
- * number, so a reply reads one document instead of nine collections. Orgs
- * nobody can query are not built. Off with the kill switch.
+ * Every 30 minutes: one counts document per organisation, so a reply reads
+ * one document instead of nine collections. Telegram can ask about any
+ * organisation, not only those with a linked WhatsApp number, and building
+ * on the first message of a chat would do this heavy read inside the
+ * webhook's 60 second timeout. Runs when either channel is switched on.
  */
 export const buildWhatsAppSnapshots = onSchedule(
   {
@@ -3418,16 +3437,9 @@ export const buildWhatsAppSnapshots = onSchedule(
     memory: '1GiB',
   },
   async () => {
-    if (!waSwitchedOn()) return
+    if (!waSwitchedOn() && TG_ENABLED.value() !== 'true') return
     const db = getFirestore()
-    const links = await db.collection('waLinks').select('orgId').get()
-    const orgIds = [
-      ...new Set(
-        links.docs
-          .map((d) => d.data()?.orgId)
-          .filter((v) => typeof v === 'string' && v && !v.includes('/'))
-      ),
-    ]
+    const orgIds = await listSnapshotOrgIds(db)
     for (const orgId of orgIds) {
       try {
         const snap = await buildSnapshot(db, orgId, new Date())

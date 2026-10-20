@@ -7,8 +7,13 @@
 //   waInbound     7 days past its own expiresAt stamp. Meta retries for at most
 //                a few days; a dedupe ledger older than that dedupes nothing.
 //   waLinkCodes  as soon as the code has expired (ten minutes).
-//   waSessions   as soon as the 15-minute pick-list window has passed. Holds
-//                the site ids last offered, never a location.
+//   waSessions   as soon as expiresAtMs has passed. That clock is the
+//                conversation (24 hours idle, refreshed on each message), not
+//                the 15-minute numbered list. The list's own clock is
+//                choicesExpireAtMs and is enforced by the handler; deleting
+//                the document at 15 minutes would forget the organisation.
+//                Holds organisation and site ids, never a location or the
+//                message text.
 //   waRate        3 days without activity. The counters are hour and day
 //                windows; a dormant row holds nothing a limit still needs.
 //
