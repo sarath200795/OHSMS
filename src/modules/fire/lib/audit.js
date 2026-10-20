@@ -72,6 +72,8 @@ export const AUDIT_META = {
   'aed.defect_rejected': { label: 'AED defect dismissed', color: '#64748b' },
   // FAS
   'fas.create': { label: 'Added FAS device', color: '#16a34a' },
+  'fas.qr_generate': { label: 'Generated FAS QR code', color: '#0891b2' },
+  'fas.qr_backfill': { label: 'Generated missing FAS QR codes', color: '#0891b2' },
   'fas.update': { label: 'Edited FAS device', color: '#6366f1' },
   'fas.service': { label: 'FAS serviced', color: '#0ea5e9' },
   'fas.delete': { label: 'Deleted FAS device', color: '#dc2626' },

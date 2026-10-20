@@ -11,6 +11,7 @@ import LinkedSites from './pages/LinkedSites'
 import AEDRepository from './pages/AEDRepository'
 import AEDDashboard from './pages/AEDDashboard'
 import FASRepository from './pages/FASRepository'
+import FASPanel from './pages/FASPanel'
 import FASDashboard from './pages/FASDashboard'
 import SignageDashboard from './pages/SignageDashboard'
 import Stretchers from './pages/Stretchers'
@@ -102,6 +103,7 @@ export default function EquipmentModule() {
           <Route path="aed" element={<AEDRepository />} />
           <Route path="aed-dashboard" element={<AEDDashboard />} />
           <Route path="fas" element={<FASRepository />} />
+          <Route path="fas/:id" element={<FASPanel />} />
           <Route path="fas-dashboard" element={<FASDashboard />} />
           <Route path="stretchers" element={<Stretchers />} />
           <Route path="stretcher-dashboard" element={<StretcherDashboard />} />

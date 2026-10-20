@@ -116,7 +116,17 @@ async function main() {
   await add('aeds', { assetId: 'AED-0001', brand: 'Zoll', centerName: 'North Plant', region: 'North', entity: '1P', status: 'ready', batteryExpiry: nextYear, padExpiry: nextYear, nextInspection: nextYear })
   await add('aeds', { assetId: 'AED-0002', brand: 'Philips', centerName: 'South Warehouse', region: 'South', entity: '1P', status: 'ready', batteryExpiry: nextYear, padExpiry: nextYear, nextInspection: nextYear })
 
-  await add('fas', { deviceId: 'FAS-0001', deviceType: 'Control Panel', zone: 'Zone 1', centerName: 'North Plant', region: 'North', entity: '1P', status: 'operational', nextService: nextYear })
+  // The control panel carries a QR, the same way addFas writes one. The detector
+  // does not: the panel's code covers the system. Fixed token so a scan of the
+  // demo sticker resolves; the mirror is the public page that scan opens.
+  const panel = await add('fas', { deviceId: 'FAS-0001', deviceType: 'Control Panel', zone: 'Zone 1', centerName: 'North Plant', region: 'North', entity: '1P', location: 'Reception', status: 'operational', nextService: nextYear, qrToken: 'e2e-fas-panel' })
+  await setDoc(doc(db, 'qr', 'e2e-fas-panel'), {
+    assetKind: 'fas', orgId, orgName: ORG, assetRefId: panel.id, token: 'e2e-fas-panel',
+    label: 'FAS-0001', deviceType: 'Control Panel', zone: 'Zone 1',
+    centerName: 'North Plant', region: 'North', entity: '1P', location: 'Reception',
+    status: 'operational', lastService: '', nextService: nextYear, amcVendor: '',
+    deletedAt: null, updatedAt: serverTimestamp(),
+  })
   await add('fas', { deviceId: 'FAS-0002', deviceType: 'Smoke Detector', zone: 'Zone 2', centerName: 'South Warehouse', region: 'South', entity: '1P', status: 'operational', nextService: nextYear })
 
   await add('signages', { centerName: 'North Plant', region: 'North', entity: '1P', type: 'Fire Extinguisher Sign', location: 'Bay 3', condition: 'OK', quantity: 2 })

@@ -46,6 +46,12 @@ const writeBatch = (...args) => { assertWritable(); return _writeBatch(...args) 
 // the size of every transactional path added from here on.
 const runTransaction = (...args) => { assertWritable(); return _runTransaction(...args) }
 import { generateQrToken, tokenFromQrValue } from './qr'
+import {
+  fasQrTokenForCreate,
+  fasQrTokenForUpdate,
+  isFasControlPanel,
+  planFasPanelQrBackfill,
+} from './fasQr'
 import { restoreBlockMessage, EQUIPMENT_KINDS } from './recycle'
 import { STATUS, DEFECT_BY_KEY, SIGNAGE_STATUSES } from './constants'
 import { deployedRequirementErrors, signagePhotos } from './signageLogic'
@@ -2065,36 +2071,118 @@ function fasMirror(orgId, orgName, id, a) {
 }
 
 export async function addFas(orgId, orgName, data, actor) {
-  // Records are created WITHOUT a QR — generating one is an admin-only action.
+  // A control panel is created WITH its QR. The single-add form used to store
+  // the panel and leave the code for an admin to mint later, so a panel added
+  // here had nothing for "Export QR codes" to print and a scan had no page.
+  // Detectors still get none: the panel's code covers the system. A token
+  // already on the row is kept.
   const ref = doc(fasCol(orgId))
-  const a = { ...cleanFas(data), createdAt: serverTimestamp(), updatedAt: serverTimestamp() }
+  const clean = cleanFas(data)
+  const qrToken = fasQrTokenForCreate(
+    { ...clean, qrToken: data.qrToken, qrLink: data.qrLink },
+    generateQrToken,
+  )
+  const a = {
+    ...clean,
+    ...(qrToken ? { qrToken } : {}),
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  }
   const batch = writeBatch(db)
   batch.set(ref, a)
+  if (qrToken) batch.set(qrRef(qrToken), fasMirror(orgId, orgName, ref.id, a))
   await batch.commit()
   await logAudit(orgId, actor, 'fas.create', { target: 'fas', targetId: ref.id, targetLabel: `${data.deviceId || data.deviceType} @ ${data.centerName}`, summary: `FAS ${data.deviceType} added @ ${data.centerName}` })
-  return { id: ref.id }
+  return { id: ref.id, qrToken: qrToken || null }
 }
 
 export async function updateFas(orgId, orgName, id, updates, actor) {
-  // Never mints a QR here — only keeps an existing mirror in sync (see generateFasQr).
-  const a = { ...cleanFas(updates), updatedAt: serverTimestamp() }
+  // An edit never replaces a QR code. It mints one only when this save turns
+  // the row into a control panel that still has none — changing a detector
+  // into a panel is a create path the add form is not the only door to.
+  const clean = cleanFas(updates)
+  const { qrToken, minted } = fasQrTokenForUpdate(updates.qrToken, clean, generateQrToken)
+  const a = { ...clean, ...(minted ? { qrToken } : {}), updatedAt: serverTimestamp() }
   const batch = writeBatch(db)
   batch.update(fasRef(orgId, id), a)
-  if (updates.qrToken) batch.set(qrRef(updates.qrToken), fasMirror(orgId, orgName, id, { ...updates, ...a, qrToken: updates.qrToken }))
+  if (qrToken) batch.set(qrRef(qrToken), fasMirror(orgId, orgName, id, { ...updates, ...a, qrToken }))
   await batch.commit()
-  await logAudit(orgId, actor, 'fas.update', { target: 'fas', targetId: id, targetLabel: `${updates.deviceId || updates.deviceType} @ ${updates.centerName}`, summary: 'FAS device updated' })
-  return updates.qrToken || null
+  await logAudit(orgId, actor, 'fas.update', { target: 'fas', targetId: id, targetLabel: `${updates.deviceId || updates.deviceType} @ ${updates.centerName}`, summary: minted ? 'FAS device updated — QR code generated' : 'FAS device updated' })
+  return qrToken || null
 }
 
-/** Admin-only: mint (or re-use) a QR token for a FAS device and write its public mirror. */
+/** Mint a QR token for one FAS control panel, or reuse the token it already has. */
 export async function generateFasQr(orgId, orgName, asset, actor) {
-  const qrToken = asset.qrToken || generateQrToken()
+  // Reuse first. generateQrToken() on the right of || only runs when the
+  // panel has no code, so a second click cannot change the sticker.
+  const qrToken = String(asset.qrToken || '').trim() || generateQrToken()
   const batch = writeBatch(db)
   batch.update(fasRef(orgId, asset.id), { qrToken, updatedAt: serverTimestamp() })
   batch.set(qrRef(qrToken), fasMirror(orgId, orgName, asset.id, { ...asset, qrToken }))
   await batch.commit()
   await logAudit(orgId, actor, 'fas.qr_generate', { target: 'fas', targetId: asset.id, targetLabel: `${asset.deviceId || asset.deviceType} @ ${asset.centerName}`, summary: 'QR code generated' })
   return qrToken
+}
+
+/**
+ * Give every live control panel that has no QR code one, and publish its mirror.
+ *
+ * Reads the org's own `fas` collection — the register on screen is capped, and
+ * the panels missing a code are the ones added before this existed, which are
+ * the oldest and the first a cap would drop. A panel that already has a token
+ * is not written. The read is repeated inside the transaction, so a code that
+ * landed between the list and the write is left as it is rather than replaced.
+ *
+ * Returns how many panels were given a code.
+ */
+export async function backfillFasPanelQr(orgId, orgName, actor) {
+  const snap = await getDocs(fasCol(orgId))
+  const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+  const { assign, kept } = planFasPanelQrBackfill(rows)
+  if (!assign.length) return { assigned: 0, kept: kept.length, scanned: rows.length }
+
+  let assigned = 0
+  for (let i = 0; i < assign.length; i += 20) {
+    const wrote = await Promise.all(
+      assign.slice(i, i + 20).map((row) => assignMissingFasPanelQr(orgId, orgName, row.id)),
+    )
+    assigned += wrote.filter(Boolean).length
+  }
+  if (assigned) {
+    await logAudit(orgId, actor, 'fas.qr_backfill', {
+      target: 'fas',
+      summary: `Generated QR codes for ${assigned} control panel(s) that had none`,
+    })
+  }
+  return { assigned, kept: kept.length, scanned: rows.length }
+}
+
+async function assignMissingFasPanelQr(orgId, orgName, id) {
+  let written = null
+  await runTransaction(db, async (tx) => {
+    written = null
+    const ref = fasRef(orgId, id)
+    const snap = await tx.get(ref)
+    if (!snap.exists()) return
+    const data = snap.data() || {}
+    // The list can be stale. A token that appeared since is the sticker; this
+    // transaction's job is to notice that and write nothing.
+    if (String(data.qrToken || '').trim()) return
+    if (data.deletedAt) return
+    if (!isFasControlPanel(data)) return
+    const qrToken = generateQrToken()
+    tx.update(ref, { qrToken, updatedAt: serverTimestamp() })
+    tx.set(qrRef(qrToken), fasMirror(orgId, orgName, id, { ...data, qrToken }))
+    written = qrToken
+  })
+  return written
+}
+
+/** One FAS device, including a row the capped register listing did not load. */
+export async function getFas(orgId, id) {
+  if (!orgId || !id) return null
+  const snap = await getDoc(fasRef(orgId, id))
+  return snap.exists() ? { id: snap.id, ...snap.data() } : null
 }
 
 /** Log a service: stamps last service today, sets the next due, marks Operational. */
@@ -2251,22 +2339,28 @@ export async function bulkAddAeds(orgId, orgName, rows, actor) {
 }
 
 export async function bulkAddFas(orgId, orgName, rows, actor) {
-  // A QR is only minted for Control Panels — detectors, MCPs and hooters are
-  // created without one (the panel's QR represents the whole system).
+  // Same rule as addFas: a control panel is created with a QR, and a token
+  // the row already carries is the one that gets stored. Detectors, MCPs and
+  // hooters are created without one — the panel's code covers the system.
+  // This is the Excel import and the "generate a panel per site" action.
   let created = 0
   for (let i = 0; i < rows.length; i += BULK_CHUNK) {
     const batch = writeBatch(db)
     for (const row of rows.slice(i, i + BULK_CHUNK)) {
       const ref = doc(fasCol(orgId))
       const clean = cleanFas(row)
-      if (clean.deviceType === 'Control Panel') {
-        const qrToken = generateQrToken()
-        const a = { ...clean, qrToken, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }
-        batch.set(ref, a)
-        batch.set(qrRef(qrToken), fasMirror(orgId, orgName, ref.id, a))
-      } else {
-        batch.set(ref, { ...clean, createdAt: serverTimestamp(), updatedAt: serverTimestamp() })
+      const qrToken = fasQrTokenForCreate(
+        { ...clean, qrToken: row.qrToken, qrLink: row.qrLink },
+        generateQrToken,
+      )
+      const a = {
+        ...clean,
+        ...(qrToken ? { qrToken } : {}),
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
       }
+      batch.set(ref, a)
+      if (qrToken) batch.set(qrRef(qrToken), fasMirror(orgId, orgName, ref.id, a))
       created++
     }
     await batch.commit()

@@ -1,7 +1,6 @@
 import { useMemo, useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { BellRing, Plus, Pencil, Trash2, Search, Filter, X, Download, QrCode, Wrench, Upload, AlertTriangle, MapPin } from 'lucide-react'
-import { QRCodeSVG } from 'qrcode.react'
 import toast from 'react-hot-toast'
 import { toastCaught } from '../../../shared/lib/toastCaught'
 import { format } from 'date-fns'
@@ -12,7 +11,9 @@ import { useAuth } from '../context/AuthContext'
 import { useFleet } from '../context/FleetContext'
 import { canManageAsset } from '../lib/recycle'
 import RecentlyDeletedLink from '../components/RecentlyDeletedLink'
-import { addFas, updateFas, deleteFas, serviceFas, bulkAddFas, generateFasQr, bulkDeleteFas, linkFasToSites, reserveAssetIds } from '../lib/firestore'
+import { addFas, updateFas, deleteFas, serviceFas, bulkAddFas, generateFasQr, bulkDeleteFas, linkFasToSites, reserveAssetIds, backfillFasPanelQr } from '../lib/firestore'
+import { isFasControlPanel, planFasPanelQrBackfill } from '../lib/fasQr'
+import FasQrCard from '../components/FasQrCard'
 import { planSiteLinks } from '../lib/siteLink'
 import { useAccessibleSites } from '../../../shared/org/useAccessibleSites'
 import { listLinkedAssets, filterByLinkState, siteIdSet, isLinkedToSite } from '../lib/linkedSites'
@@ -20,7 +21,6 @@ import LinkSitesModal from '../components/LinkSitesModal'
 import LinkStateChips from '../components/LinkStateChips'
 import { exportRows } from '../lib/exporter'
 import ExportQrButton from '../components/ExportQrButton'
-import { publicQrUrl } from '../lib/qr'
 import SiteScopePicker from '../../../shared/org/SiteScopePicker'
 import { dueState, dueTextColor, fasColor, fasIncomplete, highestAssetSeq } from '../lib/assetLogic'
 import { toDate } from '../lib/extinguisherLogic'
@@ -69,7 +69,8 @@ function DateCell({ value }) {
 
 export default function FASRepository() {
   const { orgId, orgName, profile, isAdmin, isManager } = useAuth()
-  const { fas, sites, siteInventory, loading } = useFleet()
+  const { fas, sites, siteInventory, loading, incomplete } = useFleet()
+  const navigate = useNavigate()
   const siteMeta = useSiteMeta()
   const today = useMemo(() => new Date(), [])
 
@@ -182,6 +183,12 @@ export default function FASRepository() {
   useEffect(() => { setSelected(new Set()) }, [f])
   const { pageItems, page, setPage, pageCount, total, pageSize } = usePagination(visible)
 
+  // Panels added before a QR was assigned on create. The count is what this
+  // screen can see; the action itself reads the whole collection, because a
+  // capped list drops the oldest rows and those are the ones missing a code.
+  const missingPanelQr = useMemo(() => planFasPanelQrBackfill(fas).assign.length, [fas])
+  const fasCapped = Boolean(incomplete?.capped?.includes('fas'))
+
   // ── Row selection + bulk delete ──
   const toggleSel = (id) => setSelected((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
   const pageIds = pageItems.map((a) => a.id)
@@ -220,8 +227,17 @@ export default function FASRepository() {
     setBusy(true)
     try {
       const actor = { uid: profile?.uid, name: profile?.name }
-      if (editing.id) { await updateFas(orgId, orgName, editing.id, editing, actor); toast.success('FAS device updated') }
-      else { await addFas(orgId, orgName, editing, actor); toast.success('FAS device added') }
+      if (editing.id) {
+        const hadQr = Boolean(String(editing.qrToken || '').trim())
+        const token = await updateFas(orgId, orgName, editing.id, editing, actor)
+        toast.success(!hadQr && token ? 'FAS device updated — QR code generated' : 'FAS device updated')
+      } else {
+        const created = await addFas(orgId, orgName, editing, actor)
+        toast.success(created.qrToken ? 'FAS panel added — QR code ready' : 'FAS device added')
+        setEditing(null)
+        if (created.qrToken) navigate(`/equipment/fas/${created.id}`)
+        return
+      }
       setEditing(null)
     } catch (err) { toastCaught(err) } finally { setBusy(false) }
   }
@@ -236,7 +252,7 @@ export default function FASRepository() {
   // whole system); detectors, MCPs and hooters don't get their own QR.
   const showQr = async (a) => {
     if (a.qrToken) { setQrFor(a); return }
-    if (a.deviceType !== 'Control Panel') { toast.error('QR codes are only generated for Control Panels'); return }
+    if (!isFasControlPanel(a)) { toast.error('QR codes are only generated for Control Panels'); return }
     if (!isAdmin) { toast.error('Only an admin can generate QR codes'); return }
     setBusy(true)
     try {
@@ -265,6 +281,20 @@ export default function FASRepository() {
   }
   const set = (k) => (e) => setEditing({ ...editing, [k]: e.target.value })
 
+  const doBackfillQr = async () => {
+    setBusy(true)
+    try {
+      const r = await backfillFasPanelQr(orgId, orgName, { uid: profile?.uid, name: profile?.name })
+      toast.success(
+        r.assigned
+          ? `QR codes generated for ${r.assigned} control panel${r.assigned === 1 ? '' : 's'}`
+          : 'Every control panel already has a QR code',
+      )
+    } catch (e) {
+      toastCaught(e, 'Could not generate QR codes')
+    } finally { setBusy(false) }
+  }
+
   return (
     <div>
       <PageHeader title="FAS Repository" subtitle={`${visible.length}${anyActive ? ` of ${fas.length}` : ''} fire-alarm device${visible.length === 1 ? '' : 's'}`} icon={BellRing}>
@@ -282,6 +312,16 @@ export default function FASRepository() {
           >
             <MapPin size={16} />
             {linkPlan?.linked.length ? `Link ${linkPlan.linked.length} to sites` : `Site links (${linkedRows.length})`}
+          </button>
+        )}
+        {isAdmin && (missingPanelQr > 0 || fasCapped) && (
+          <button
+            className="btn-soft !bg-amber-100 !text-amber-900"
+            onClick={doBackfillQr}
+            disabled={busy}
+            title="Control panels with no QR code cannot be printed or scanned. Codes already on a panel are left as they are."
+          >
+            <QrCode size={16} /> {missingPanelQr > 0 ? `Generate ${missingPanelQr}${fasCapped ? '+' : ''} missing panel QR` : 'Generate missing panel QR codes'}
           </button>
         )}
         {isAdmin && <Link to="/equipment/asset-bulk-upload" state={{ kind: 'fas' }} className="btn-soft"><Upload size={16} /> Bulk upload</Link>}
@@ -354,7 +394,9 @@ export default function FASRepository() {
                     <td className="px-4 py-3"><input type="checkbox" className="h-4 w-4 cursor-pointer accent-brand-500" checked={selected.has(a.id)} onChange={() => toggleSel(a.id)} aria-label={`Select ${a.deviceId || a.deviceType || 'this device'}`} /></td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1.5 font-bold text-ink-900">
-                        {a.deviceId || a.deviceType}
+                        <Link to={`/equipment/fas/${a.id}`} className="hover:underline">
+                          {a.deviceId || a.deviceType}
+                        </Link>
                         {fasIncomplete(a) && (
                           <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700" title="Data not available — details still need entering">
                             <AlertTriangle size={11} /> Data N/A
@@ -375,7 +417,7 @@ export default function FASRepository() {
                           panel is about to be removed. */}
                       <div className="flex justify-end gap-1">
                         <IconButton icon={Wrench} iconSize={14} label={`Log service for ${a.deviceId || a.deviceType || 'this device'}`} className="!bg-green-600 !text-white hover:!brightness-110" onClick={() => openService(a)} />
-                        <IconButton icon={QrCode} iconSize={15} variant="soft" label={a.qrToken ? `View QR code for ${a.deviceId || a.deviceType || 'this device'}` : a.deviceType !== 'Control Panel' ? 'QR codes are only for Control Panels' : isAdmin ? `Generate QR code for ${a.deviceId || 'this device'}` : 'Only an admin can generate QR codes'} onClick={() => showQr(a)} disabled={busy || (!a.qrToken && (!isAdmin || a.deviceType !== 'Control Panel'))} />
+                        <IconButton icon={QrCode} iconSize={15} variant="soft" label={a.qrToken ? `View QR code for ${a.deviceId || a.deviceType || 'this device'}` : !isFasControlPanel(a) ? 'QR codes are only for Control Panels' : isAdmin ? `Generate QR code for ${a.deviceId || 'this device'}` : 'Only an admin can generate QR codes'} onClick={() => showQr(a)} disabled={busy || (!a.qrToken && (!isAdmin || !isFasControlPanel(a)))} />
                         <IconButton icon={Pencil} iconSize={15} variant="soft" label={`Edit ${a.deviceId || a.deviceType || 'this device'}`} onClick={() => setEditing(a)} />
                         {isManager && canManageAsset(profile, a, { isAdmin, isManager }) && (
                           <IconButton icon={Trash2} iconSize={15} variant="soft" label={`Delete ${a.deviceId || a.deviceType || 'this device'}`} className="!text-red-600" onClick={() => setRemoving(a)} />
@@ -451,14 +493,7 @@ export default function FASRepository() {
       </Modal>
 
       <Modal open={!!qrFor} onClose={() => setQrFor(null)} title={`QR — ${qrFor?.deviceId || qrFor?.deviceType || 'FAS'}`}>
-        {qrFor && (
-          <div className="flex flex-col items-center gap-3 text-center">
-            <div className="rounded-2xl bg-white p-4 shadow-elev"><QRCodeSVG value={publicQrUrl(qrFor.qrToken)} size={200} level="H" includeMargin /></div>
-            <p className="text-sm font-bold text-ink-900">{qrFor.deviceId || qrFor.deviceType} · {qrFor.centerName}</p>
-            <p className="break-all text-xs text-ink-400">{publicQrUrl(qrFor.qrToken)}</p>
-            <p className="text-xs text-ink-500">Scanning opens a public status page where anyone can report a defect.</p>
-          </div>
-        )}
+        {qrFor?.qrToken && <FasQrCard panel={qrFor} />}
       </Modal>
 
       <Modal open={!!serviceFor} onClose={() => setServiceFor(null)} title="Log service">
