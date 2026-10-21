@@ -2304,6 +2304,26 @@ service cloud.firestore {
                   && equipmentPlaceUnchanged()));
     }
 
+    // A fire-alarm panel's QR token is the code printed on the sticker. Once
+    // it is stored, nobody — including an admin — may replace it or clear it.
+    // A backfill that "regenerated" an existing code would make every label
+    // already on a panel scan to nothing, and the client that promised not to
+    // is not the thing that has to keep that promise.
+    //
+    // Minting onto a panel that has none is still allowed: absent and '' are
+    // the same here, via .get's default, because panels written before the
+    // field existed do not carry it and reading it directly raises.
+    //
+    // It has to sit on BOTH create/update grants below. Rules OR together; a
+    // conjunct on one match restricts nothing while the recursive wildcard
+    // still grants the write.
+    function keepsFasQr(col) {
+      return col != 'fas'
+        || resource == null
+        || request.resource.data.get('qrToken', '') == resource.data.get('qrToken', '')
+        || resource.data.get('qrToken', '') == '';
+    }
+
     // A document's classification is enforced on READ and was unprotected on
     // WRITE, so any member who could legitimately reach a restricted document —
     // via their own site access — could publish it org-wide, and any member who
@@ -2375,7 +2395,8 @@ service cloud.firestore {
               || (col != 'sites' && keepsDecision(col, beforeData(), request.resource.data)
                   && keepsInjuryDeletion(col)))
           && keepsEquipmentDeletion(col)
-          && keepsSignageEvidence(col);
+          && keepsSignageEvidence(col)
+          && keepsFasQr(col);
         // Delete is deliberately NOT gated on the entitlement. Turning a module
         // off should stop it being used, not trap the data already in it — an
         // operator who disables a module must not leave a tenant unable to
@@ -2411,7 +2432,8 @@ service cloud.firestore {
                 || (col != 'sites' && keepsDecision(col, beforeData(), request.resource.data)
                     && keepsInjuryDeletion(col)))
             && keepsEquipmentDeletion(col)
-            && keepsSignageEvidence(col);
+            && keepsSignageEvidence(col)
+            && keepsFasQr(col);
           allow delete: if structuralOnly(col, docId) && isManagerOf(orgId)
             && !(col in ['extinguishers', 'aeds', 'fas']);
           allow delete: if structuralOnly(col, docId) && isAdminOf(orgId)

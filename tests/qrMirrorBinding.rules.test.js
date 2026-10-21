@@ -56,7 +56,10 @@ beforeEach(async () => {
     // Equipment that already carries its printed token.
     await setDoc(doc(db, 'organizations', ORG, 'extinguishers', 'ext-1'), { qrToken: 'tok-ext', serialNo: 'FE-0001' })
     await setDoc(doc(db, 'organizations', ORG, 'aeds', 'aed-1'), { qrToken: 'tok-aed', assetId: 'AED-0001' })
-    await setDoc(doc(db, 'organizations', ORG, 'fas', 'fas-1'), { qrToken: 'tok-fas', deviceId: 'FAS-0001' })
+    await setDoc(doc(db, 'organizations', ORG, 'fas', 'fas-1'), { qrToken: 'tok-fas', deviceId: 'FAS-0001', deviceType: 'Control Panel' })
+    // A panel that predates QR-on-create. The backfill may mint a token onto
+    // it; nothing may invent one for a panel that already has a code.
+    await setDoc(doc(db, 'organizations', ORG, 'fas', 'fas-none'), { deviceId: 'FAS-0009', deviceType: 'Control Panel' })
     await setDoc(doc(db, 'organizations', ORG, 'stretchers', 'str-1'), { qrToken: 'tok-str', assetId: 'STR-0001' })
     await setDoc(doc(db, 'organizations', ORG, 'permits', 'permit-1'), { qrToken: 'tok-permit', permitNo: 'PTW-1' })
     // One unit with no token at all — nothing may be published for it.
@@ -230,5 +233,54 @@ describe('maintaining a published mirror still works', () => {
   it('still lets anyone scan one', async () => {
     await assertSucceeds(getDoc(qr(anon(), 'tok-ext')))
     await assertSucceeds(getDoc(pqr(anon(), 'tok-permit')))
+  })
+})
+
+// A control panel's QR is assigned on create and backfilled onto panels that
+// never got one. The token, once stored, is the sticker. Replacing it is the
+// failure the backfill exists to avoid, so the rule refuses the write rather
+// than trusting the client that promised not to.
+describe('a FAS control panel QR code', () => {
+  const fasMirror = (id, token, over = {}) => assetMirror('fas', id, token, {
+    deviceType: 'Control Panel', label: 'FAS', deletedAt: null, ...over,
+  })
+
+  it('publishes a new panel and its mirror in one batch, and a scan can read it', async () => {
+    const db = as('mem')
+    const batch = writeBatch(db)
+    batch.set(doc(db, 'organizations', ORG, 'fas', 'fas-new'), {
+      deviceId: 'FAS-0042', deviceType: 'Control Panel', qrToken: 'tok-panel-new', deletedAt: null,
+    })
+    batch.set(qr(db, 'tok-panel-new'), fasMirror('fas-new', 'tok-panel-new', { label: 'FAS-0042' }))
+    await assertSucceeds(batch.commit())
+    await assertSucceeds(getDoc(qr(anon(), 'tok-panel-new')))
+  })
+
+  it('lets a member mint a code onto a panel that has none, together with its mirror', async () => {
+    const db = as('mem')
+    const batch = writeBatch(db)
+    batch.update(doc(db, 'organizations', ORG, 'fas', 'fas-none'), { qrToken: 'tok-fas-new' })
+    batch.set(qr(db, 'tok-fas-new'), fasMirror('fas-none', 'tok-fas-new', { label: 'FAS-0009' }))
+    await assertSucceeds(batch.commit())
+  })
+
+  it('still allows an ordinary edit that leaves the code alone', async () => {
+    await assertSucceeds(updateDoc(doc(as('mem'), 'organizations', ORG, 'fas', 'fas-1'), { zone: 'Zone 9' }))
+  })
+
+  it('REFUSES replacing a code that is already on the panel', async () => {
+    await assertFails(updateDoc(doc(as('mem'), 'organizations', ORG, 'fas', 'fas-1'), { qrToken: 'tok-replaced' }))
+  })
+
+  it('REFUSES an admin replacing one too', async () => {
+    await assertFails(updateDoc(doc(as('vic'), 'organizations', ORG, 'fas', 'fas-1'), { qrToken: 'tok-replaced' }))
+  })
+
+  it('REFUSES clearing a code', async () => {
+    await assertFails(updateDoc(doc(as('mem'), 'organizations', ORG, 'fas', 'fas-1'), { qrToken: '' }))
+  })
+
+  it('REFUSES another organisation minting a code onto this panel', async () => {
+    await assertFails(updateDoc(doc(as('mal'), 'organizations', ORG, 'fas', 'fas-none'), { qrToken: 'tok-stolen' }))
   })
 })

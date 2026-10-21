@@ -69,6 +69,29 @@ describe('scanning a QR', () => {
     expect(screen.queryByRole('button', { name: /^restore$/i })).toBeNull()
   })
 
+  it('opens a fire-alarm control panel on its own page', async () => {
+    docs.value['qr/tok-1'] = {
+      assetKind: 'fas',
+      orgId: 'org-1',
+      orgName: 'Acme',
+      assetRefId: 'p1',
+      token: 'tok-1',
+      label: 'FAS-0007',
+      deviceType: 'Control Panel',
+      zone: 'Zone 1',
+      centerName: 'North Plant',
+      location: 'Reception',
+      status: 'operational',
+      deletedAt: null,
+    }
+    render(<QrLanding />)
+    expect(await screen.findByRole('heading', { name: 'Control Panel' })).toBeTruthy()
+    expect(screen.getByText(/Fire alarm system/i)).toBeTruthy()
+    expect(screen.getByText(/Device FAS-0007/)).toBeTruthy()
+    expect(screen.getByText(/North Plant/)).toBeTruthy()
+    expect(screen.getByRole('button', { name: /report a defect/i })).toBeTruthy()
+  })
+
   it('still offers a defect report for a unit that is in service', async () => {
     docs.value['qr/tok-1'] = {
       orgId: 'org-1',
