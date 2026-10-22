@@ -515,6 +515,33 @@ export async function bulkUpsertSites(orgId, { creates = [], updates = [] }, act
   return { created, updated: updates.length }
 }
 
+/**
+ * Write a site type onto sites that still have none. The caller has already
+ * chosen the documents and the label (planSiteTypeBackfill). This sets
+ * `facility` and no other field, so a site's entity and name cannot change
+ * on the way through. One audit entry for the batch: a few hundred sites
+ * would otherwise bury the trail. Chunked at 400, the same size as a CSV
+ * import. A second call with an empty list writes nothing.
+ */
+export async function backfillEmptySiteTypes(orgId, updates, actor) {
+  const rows = (updates || []).filter((u) => u?.id && String(u.facility || '').trim())
+  for (let i = 0; i < rows.length; i += 400) {
+    const batch = writeBatch(db)
+    for (const u of rows.slice(i, i + 400)) {
+      batch.update(moduleDoc(orgId, 'sites', u.id), { facility: u.facility })
+    }
+    await batch.commit()
+  }
+  if (rows.length) {
+    const names = rows.map((u) => u.name || u.id)
+    await logAudit(orgId, actor, AUDIT.SITE_UPDATE, {
+      target: 'site',
+      summary: `Filled site type on ${names.length} site(s) that had none: ${names.slice(0, 6).join(', ')}${names.length > 6 ? '…' : ''}`,
+    })
+  }
+  return rows.length
+}
+
 // ── Site-scoped access / permissions ────────────────────────────────────────
 const cleanScope = (scope = {}) => ({
   sites: Array.isArray(scope.sites) ? scope.sites : [],

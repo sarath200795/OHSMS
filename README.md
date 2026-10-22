@@ -44,7 +44,11 @@ activity can carry its own heat, rain and adverse-weather sentences on that
 same screen. A site that already exists may still have no type: the mail
 then uses the organisation’s activities, and the general paragraph when
 those are empty. Other does the same unless an admin has written a sentence
-for it.
+for it. An admin can also map an entity name to a site type and fill that
+type on the sites that still have none. The match ignores case, spaces and
+punctuation in the whole entity name. The list is per organisation; a
+supplied default covers the ownership names FOFO, FOCO, COCO, Marketplace,
+EBO and D2C.
 
 Two registry keys — `equipment` and `drills` — are both served by
 `src/modules/fire/`. That is the one place the registry and the filesystem do

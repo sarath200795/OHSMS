@@ -18,19 +18,35 @@ import {
   siteTypeOptions,
   siteTypeRows,
 } from '../../../functions/lib/weatherPrecautions.js'
+import {
+  CULT_OWNERSHIP_SITE_TYPES,
+  LEGACY_ENTITY_LABELS,
+  REGISTERED_ENTITY_NAMES,
+  entityMatchKey,
+  packSiteTypeByEntity,
+  planSiteTypeBackfill,
+  rowsFromSiteTypeByEntity,
+} from '../../../functions/lib/siteTypeBackfill.js'
 
 export {
   ALERTS,
   CATALOG,
+  CULT_OWNERSHIP_SITE_TYPES,
   FACILITY_LABELS,
+  LEGACY_ENTITY_LABELS,
+  REGISTERED_ENTITY_NAMES,
   SITE_TYPES,
   builtInPrecaution,
   canonicalFacility,
   chooseActivities,
   editorRows,
+  entityMatchKey,
   normalizeOverrides,
   packOverrides,
+  packSiteTypeByEntity,
+  planSiteTypeBackfill,
   precautionText,
+  rowsFromSiteTypeByEntity,
   siteTypeOptions,
   siteTypeRows,
 }

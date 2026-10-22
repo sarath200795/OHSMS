@@ -21,9 +21,12 @@
 //    SITE_TYPES. An organisation's own activities, including a custom label
 //    with precautions written in Org Settings, are types too. An existing site
 //    may still have none: the mail then uses the organisation's activities,
-//    and the general paragraph when those are empty. A custom attribute whose
-//    key is a type, category, facility or activity field is still read when
-//    the site has no type. site.activityTypes is honoured in that same case.
+//    and the general paragraph when those are empty. An admin can fill those
+//    blanks from the site's entity with the org's entity → site type map
+//    (siteTypeBackfill.js). That write sets facility only, and only while it
+//    is still blank. A custom attribute whose key is a type, category,
+//    facility or activity field is still read when the site has no type.
+//    site.activityTypes is honoured in that same case.
 // 4. HIRA, organisations/{orgId}/assessments. Site-scoped rows (siteId,
 //    siteName; baselines are skipped). Activity titles, hazard types and hazard
 //    categories are matched. Free text that does not match the catalog is
