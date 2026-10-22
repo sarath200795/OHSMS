@@ -1103,10 +1103,17 @@ service cloud.firestore {
     //
     // The Cloud Functions write all of them with the Admin SDK, which does not
     // consult these rules. Nothing else may touch them — not even an org admin:
-    // the app reaches its own link status only through the whatsAppLinkStatus
-    // callable, which returns the caller's own masked row. No other match
-    // block above grants these paths (isLegacyOrgCollection does not name
+    // a member's own link status comes back masked from whatsAppLinkStatus, and
+    // the organisation's numbers come back only from whatsAppOrgStatus, which
+    // checks the caller is an approved admin of that organisation. No other
+    // match block above grants these paths (isLegacyOrgCollection does not name
     // them), so these denials are not undercut by a permissive union.
+    //
+    // waOrgSettings is the per-organisation on/off switch. It holds no phone
+    // number and no token. A client who could write it could turn lookup off
+    // for a tenant, or turn it on for one that had refused; a client who could
+    // read a document someone had mistakenly put a secret in would have it.
+    // The switch is set by setWhatsAppOrgEnabled.
     match /waLinks/{docId} {
       allow read, write: if false;
     }
@@ -1129,6 +1136,9 @@ service cloud.firestore {
     // put a site it cannot reach behind "1" — the handler re-checks reach, but
     // the list is still the server's to write.
     match /waSessions/{docId} {
+      allow read, write: if false;
+    }
+    match /waOrgSettings/{docId} {
       allow read, write: if false;
     }
 

@@ -466,3 +466,31 @@ describe('which organisation', () => {
     expect(sent.at(-1).text).not.toMatch(/Beta|Fire extinguishers/)
   })
 })
+
+describe('organisation switch', () => {
+  it('does not search sites when the organisation has turned lookup off', async () => {
+    store.orgLookupEnabled = async () => false
+    const row = await handleMessage(msg('DEMO001'), ctx())
+    expect(row.outcome).toBe('org-off')
+    expect(sent).toHaveLength(1)
+    expect(sent[0].text).toContain('switched off')
+    expect(sent[0].text).not.toContain('DEMO001')
+    expect(sent[0].text).not.toContain('Demo North Hub')
+    expect(sent[0].text).not.toContain('Fire extinguishers')
+  })
+
+  it('still unlinks when lookup is switched off', async () => {
+    store.orgLookupEnabled = async () => false
+    const row = await handleMessage(msg('UNLINK'), ctx())
+    expect(row.outcome).toBe('unlinked')
+    expect(store.s.links.has(PHONE)).toBe(false)
+    expect(sent[0].text).toContain('Unlinked')
+  })
+
+  it('answers when the organisation has left lookup on', async () => {
+    store.orgLookupEnabled = async () => true
+    const row = await handleMessage(msg('DEMO001'), ctx())
+    expect(row.outcome).toBe('ok')
+    expect(sent[0].text).toContain('Demo North Hub (DEMO001)')
+  })
+})

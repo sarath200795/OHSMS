@@ -56,12 +56,13 @@ Meta ──POST (X-Hub-Signature-256)──► waWebhook
    2 waInbound/{sha256(wamid)} create-if-absent  (Meta retries ≠ second reply)
    3 LINK <code>  → waLinkCodes → waLinks/{waId}
    4 waLinks/{waId} → users/{uid}, re-read live: approved, same org, own password
-   5 UNLINK / STOP honoured before the rate limit
-   6 30/hour, 150/day per number (IST windows); one notice, then silence
-   7 which organisation — only the one this profile belongs to; a number or the name
-   8 resolve code → name → contains → fuzzy, ONLY among sites the user reaches
-   9 waSiteSnapshots/{orgId} (one read) + erpContacts → one reply via Graph API
-  10 waQueryLog row (no message text)
+   5 UNLINK / STOP honoured before the rate limit, including when lookup is off
+   6 waOrgSettings enabled === false → one reply, no site data (absent = on)
+   7 30/hour, 150/day per number (IST windows); one notice, then silence
+   8 which organisation — only the one this profile belongs to; a number or the name
+   9 resolve code → name → contains → fuzzy, ONLY among sites the user reaches
+  10 waSiteSnapshots/{orgId} (one read) + erpContacts → one reply via Graph API
+  11 waQueryLog row (no message text)
 ```
 
 **Searching only within reach** is the privacy property. A site outside the
@@ -82,9 +83,28 @@ Security → WhatsApp site lookup → **Link WhatsApp** calls `startWhatsAppLink
 which issues a six-digit, single-use code valid for ten minutes (stored as a
 digest). The user sends `LINK 123456` from their phone. The server now knows
 both the signed-in uid that asked and the number Meta says sent it — proof of
-possession. There is no admin form for typing numbers in. Five wrong codes from
-one number in a day block linking from it for 24 hours. One number per person;
-a new link replaces the old one.
+possession. Five wrong codes from one number in a day block linking from it
+for 24 hours. One number per person; a new link replaces the old one.
+
+Org Settings → Integrations → **Connect with WhatsApp** is the administrator
+path for the same binding. An approved admin of the organisation can turn
+lookup on or off for that organisation, add or remove a number, and send one
+test message to a number already on the list. Adding a number binds it to an
+approved member of that organisation (chosen, or the single profile that
+already stores the number). A number already linked to another organisation,
+or to a different member of this one, is refused. The handset then has that
+member's site reach, re-checked on every message, and the member can still
+send UNLINK. The callables are `whatsAppOrgStatus`, `setWhatsAppOrgEnabled`,
+`addWhatsAppOrgNumber`, `removeWhatsAppOrgNumber` and `sendWhatsAppOrgTest`.
+None of them accepts an organisation id, a token, or an app secret. The
+switch is `waOrgSettings/{orgId}`: `enabled: false` turns lookup off for that
+organisation only. A missing document leaves it on, which is how the bot
+behaved before the switch existed.
+
+The same screen shows the public Telegram bot link
+(`https://t.me/WEEHS_Site_Lookup_bot`, `@WEEHS_Site_Lookup_bot`) and a QR
+code for it. Telegram is not turned on or off there, and no Telegram user is
+added or removed.
 
 ## Configuration
 

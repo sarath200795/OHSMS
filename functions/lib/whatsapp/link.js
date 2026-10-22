@@ -3,9 +3,16 @@
 //
 // The user asks the app for a code (startWhatsAppLink), and sends "LINK <code>"
 // FROM the phone. The webhook then knows both halves: the signed-in uid that
-// asked for the code, and the wa_id Meta says sent it. An admin typing numbers
-// into a form would be an unverified mapping — a typo would hand one person's
-// site data to another's phone — so there is no such form.
+// asked for the code, and the wa_id Meta says sent it. That is the proof of
+// possession, and it is still the path on Settings → Security.
+//
+// Org Settings is the other path: an organisation administrator may attach a
+// number to an approved member of their own organisation (addOrgNumber). A
+// typo there still delivers that member's sites to the wrong handset — not
+// every site, unless the member is already an admin — so the callable refuses
+// a number another organisation already holds, refuses a number held by a
+// different member, and the member can send UNLINK. The audit line records
+// who attached it. There is still no client write to waLinks.
 //
 // Codes are six digits, single-use, valid for ten minutes, and stored only as a
 // SHA-256 digest. Five wrong codes from one number in a day block that number

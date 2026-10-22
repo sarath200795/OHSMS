@@ -9,10 +9,10 @@ import { Button, Badge } from '../../shared/ui'
 /**
  * Settings → Security → WhatsApp site lookup.
  *
- * The code is the proof of possession: the app knows who asked for it, and
- * Meta tells the server which number sent it back. There is deliberately no
- * field to type a number into — a number someone typed is a number nobody has
- * proven, and a typo would send one person's site data to another's phone.
+ * The code is the proof of possession for the signed-in person: the app knows
+ * who asked for it, and Meta tells the server which number sent it back.
+ * Attaching a number to someone else is an administrator action and lives in
+ * Org Settings → Integrations, not on this page.
  *
  * The notice below is the DPDP notice for this processing: what is kept, for
  * how long, who processes it (Meta), and how to withdraw.

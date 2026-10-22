@@ -107,6 +107,13 @@ import {
 } from './lib/telegram/handler.js'
 import { generateLinkCode, hashLinkCode, maskPhone, LINK_CODE_TTL_MS } from './lib/whatsapp/link.js'
 import {
+  readOrgConnect,
+  setOrgEnabled,
+  addOrgNumber,
+  removeOrgNumber,
+  prepareOrgTest,
+} from './lib/whatsapp/orgAdmin.js'
+import {
   WA_RETENTION,
   WA_PURGE_BATCH,
   WA_PURGE_MAX_BATCHES,
@@ -3420,6 +3427,123 @@ export const unlinkWhatsApp = onCall({ region: REGION }, async (request) => {
   logger.info('unlinkWhatsApp: removed', { uid, count: snap.size })
   return { removed: snap.size }
 })
+
+/**
+ * The caller's live profile for the Org Settings callables. uid is the auth
+ * uid, written last so a profile field of the same name cannot replace it.
+ * There is no organisation argument: every decision below uses this profile.
+ */
+async function waOrgCaller(request) {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in first.')
+  const snap = await getFirestore().doc(`users/${uid}`).get()
+  const user = snap.exists ? { ...(snap.data() || {}), uid } : { uid }
+  return { user }
+}
+
+function rejectWa(result) {
+  if (!result?.ok) {
+    throw new HttpsError(result?.code || 'internal', result?.message || 'Request failed.')
+  }
+  return result
+}
+
+/** Org Settings → Connect with WhatsApp. Status only: no secret is bound here. */
+export const whatsAppOrgStatus = onCall({ region: REGION }, async (request) => {
+  const { user } = await waOrgCaller(request)
+  const result = rejectWa(
+    await readOrgConnect(getFirestore(), {
+      user,
+      platformReady: waSwitchedOn(),
+      displayNumber: WA_DISPLAY_NUMBER.value(),
+    })
+  )
+  const { ok: _ok, ...status } = result
+  return status
+})
+
+/** Turn the shared number's lookup on or off for the caller's organisation. */
+export const setWhatsAppOrgEnabled = onCall({ region: REGION }, async (request) => {
+  const { user } = await waOrgCaller(request)
+  const result = rejectWa(
+    await setOrgEnabled(getFirestore(), { user, enabled: request.data?.enabled, now: new Date() })
+  )
+  logger.info('setWhatsAppOrgEnabled', {
+    orgId: user.orgId,
+    uid: user.uid,
+    enabled: result.enabled,
+  })
+  return { enabled: result.enabled }
+})
+
+/**
+ * Attach a handset to an approved member of the caller's organisation.
+ * The number is the document id in waLinks; the callable returns it to the
+ * admin who just typed it, and to nobody else.
+ */
+export const addWhatsAppOrgNumber = onCall({ region: REGION }, async (request) => {
+  const { user } = await waOrgCaller(request)
+  const result = rejectWa(
+    await addOrgNumber(getFirestore(), {
+      user,
+      phone: request.data?.phone,
+      memberUid: request.data?.uid,
+      now: new Date(),
+      stamp: (d) => Timestamp.fromDate(d),
+    })
+  )
+  logger.info('addWhatsAppOrgNumber', { orgId: user.orgId, uid: user.uid, member: result.uid })
+  return { phone: result.phone, masked: result.masked, uid: result.uid, mapped: result.mapped }
+})
+
+/** Remove a handset linked to the caller's organisation. */
+export const removeWhatsAppOrgNumber = onCall({ region: REGION }, async (request) => {
+  const { user } = await waOrgCaller(request)
+  const result = rejectWa(
+    await removeOrgNumber(getFirestore(), { user, phone: request.data?.phone })
+  )
+  logger.info('removeWhatsAppOrgNumber', { orgId: user.orgId, uid: user.uid })
+  return { masked: result.masked }
+})
+
+/**
+ * Send one test message to a number already linked to the caller's organisation.
+ * The access token is bound here and passed straight to sendMessage. It is not
+ * logged, not returned, and not read from the request.
+ */
+export const sendWhatsAppOrgTest = onCall(
+  { region: REGION, secrets: [WA_ACCESS_TOKEN] },
+  async (request) => {
+    const { user } = await waOrgCaller(request)
+    if (!waSwitchedOn() || !isRealSecret(WA_ACCESS_TOKEN.value())) {
+      throw new HttpsError('failed-precondition', 'WhatsApp lookup is not switched on yet.')
+    }
+    const prepared = rejectWa(
+      await prepareOrgTest(getFirestore(), {
+        user,
+        phone: request.data?.phone,
+        now: new Date(),
+        dailyCap: Math.max(1, Number(WA_DAILY_CAP.value()) || 2000),
+      })
+    )
+    const result = await sendMessage({
+      version: WA_GRAPH_VERSION.value(),
+      phoneNumberId: WA_PHONE_NUMBER_ID.value(),
+      token: WA_ACCESS_TOKEN.value(),
+      payload: textPayload(prepared.waId, prepared.text),
+    })
+    if (!result.ok) {
+      logger.error('sendWhatsAppOrgTest: send failed', {
+        orgId: user.orgId,
+        status: result.status,
+        error: result.error,
+      })
+      throw new HttpsError('unavailable', 'The test message could not be sent.')
+    }
+    logger.info('sendWhatsAppOrgTest: sent', { orgId: user.orgId, uid: user.uid })
+    return { sent: true, masked: prepared.masked }
+  }
+)
 
 /**
  * Every 30 minutes: one counts document per organisation, so a reply reads
