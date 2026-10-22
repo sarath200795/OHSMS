@@ -48,7 +48,11 @@ for it. An admin can also map an entity name to a site type and fill that
 type on the sites that still have none. The match ignores case, spaces and
 punctuation in the whole entity name. The list is per organisation; a
 supplied default covers the ownership names FOFO, FOCO, COCO, Marketplace,
-EBO and D2C.
+EBO and D2C. The same list is edited from Sites: the register has a Site
+type column, each site’s edit form sets its own, and selecting several
+sites sets one type on all of them. The entity mapping sits on that page
+for an admin as well as under Org Settings. A manager can edit site types;
+saving the mapping is an organisation setting, so it stays with the admin.
 
 Two registry keys — `equipment` and `drills` — are both served by
 `src/modules/fire/`. That is the one place the registry and the filesystem do

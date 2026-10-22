@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { Plus, Tags, X } from 'lucide-react'
 import { Button, Card, Field, IconButton, Input, Select } from '../../shared/ui'
 import {
@@ -16,7 +16,16 @@ function samePlan(a, b) {
  * how many empty site types that map would fill. Apply is the parent's
  * write. Loading the ownership-model default only fills this list.
  */
-export default function SiteTypeBackfill({ rows, onChange, activityTypes, sites, busy, onApply }) {
+export default function SiteTypeBackfill({
+  rows,
+  onChange,
+  activityTypes,
+  sites,
+  busy,
+  onApply,
+  note = 'Saving the page stores this list. Preview counts the sites; Apply writes them.',
+}) {
+  const uid = useId()
   const [preview, setPreview] = useState(null)
   const options = siteTypeOptions(activityTypes)
   const known = new Set([...options.general, ...options.extra])
@@ -67,8 +76,7 @@ export default function SiteTypeBackfill({ rows, onChange, activityTypes, sites,
         Match the entity name to a site type, and write that type only where the site does not have
         one yet. The match ignores case, spaces and punctuation, so Market Place and Marketplace are
         the same name. It compares the whole name, so a company name that happens to contain a code
-        stays unmatched. A second apply updates nothing. Saving the page stores this list. Preview
-        counts the sites; Apply writes them.
+        stays unmatched. A second apply updates nothing. {note}
       </p>
       <div className="mb-3 flex flex-wrap gap-2">
         <Button type="button" variant="soft" onClick={loadDefault} disabled={busy}>
@@ -90,17 +98,17 @@ export default function SiteTypeBackfill({ rows, onChange, activityTypes, sites,
       <div className="space-y-3">
         {list.map((row, index) => (
           <div key={index} className="grid grid-cols-1 items-end gap-2 sm:grid-cols-[1fr_1fr_auto]">
-            <Field label="Entity" htmlFor={`entity-map-${index}`}>
+            <Field label="Entity" htmlFor={`${uid}-entity-${index}`}>
               <Input
-                id={`entity-map-${index}`}
+                id={`${uid}-entity-${index}`}
                 value={row.entity}
                 placeholder="e.g. COCO"
                 onChange={(e) => edit(index, { entity: e.target.value })}
               />
             </Field>
-            <Field label="Site type" htmlFor={`type-map-${index}`}>
+            <Field label="Site type" htmlFor={`${uid}-type-${index}`}>
               <Select
-                id={`type-map-${index}`}
+                id={`${uid}-type-${index}`}
                 value={row.siteType}
                 onChange={(e) => edit(index, { siteType: e.target.value })}
               >
