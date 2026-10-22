@@ -25,6 +25,7 @@ import IncompleteNotice from '../../shared/ui/IncompleteNotice'
 import { initials } from '../../shared/lib/format'
 import { regionsOf, entitiesOf } from '../../shared/auth/access'
 import { normalizeScopeConfig } from '../../shared/org/scopeConfig'
+import { FACILITY_LABELS } from '../../shared/weather/activityPrecautions'
 import { siteStats, linkAssets } from './siteStats'
 import { AUDIT } from '../../shared/audit/audit'
 import {
@@ -34,7 +35,7 @@ import { downloadText } from '../../shared/lib/download'
 
 const SitesMap = lazy(() => import('./SitesMap'))
 
-const EMPTY = { name: '', code: '', region: '', entity: '', address: '', lat: '', lng: '', firstAidBoxes: '', attributes: {} }
+const EMPTY = { name: '', code: '', region: '', entity: '', address: '', lat: '', lng: '', firstAidBoxes: '', facility: '', attributes: {} }
 
 // The asset registers behind every per-site rollup on this page.
 const COLLECTIONS = ['extinguishers', 'aeds', 'fas', 'incidents']
@@ -83,6 +84,7 @@ export default function Sites() {
     setForm({
       name: s.name || '', code: s.code || '', region: s.region || '', entity: s.entity || '', address: s.address || '',
       lat: s.lat ?? '', lng: s.lng ?? '', firstAidBoxes: s.firstAidBoxes ?? '',
+      facility: s.facility || '',
       attributes: s.attributes || {},
     })
     setEditing(s)
@@ -112,6 +114,7 @@ export default function Sites() {
           lat: form.lat === '' ? null : Number(form.lat),
           lng: form.lng === '' ? null : Number(form.lng),
           firstAidBoxes: Number(form.firstAidBoxes) || 0,
+          facility: form.facility || '',
           attributes: cleanAttributes(form.attributes),
         }, actor)
         toast.success('Site updated')
@@ -534,6 +537,14 @@ export default function Sites() {
           </Field>
           <Field label="First aid boxes" htmlFor="fab" hint="Count at this site">
             <Input id="fab" type="number" min="0" value={form.firstAidBoxes} onChange={set('firstAidBoxes')} placeholder="0" />
+          </Field>
+          <Field label="Facility" htmlFor="facility" hint="Weather-digest precautions for this building. Blank uses the organisation's activities.">
+            <Select id="facility" value={form.facility || ''} onChange={set('facility')}>
+              <option value="">Not set</option>
+              {FACILITY_LABELS.map((label) => (
+                <option key={label} value={label}>{label}</option>
+              ))}
+            </Select>
           </Field>
           {customFields.map((f) => (
             <Field key={f.key} label={f.label} htmlFor={`attr-${f.key}`} hint="Custom scope field">

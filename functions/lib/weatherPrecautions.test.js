@@ -7,6 +7,8 @@ import {
   GENERIC_PRECAUTIONS,
   activitiesForArea,
   chooseActivities,
+  FACILITY_LABELS,
+  canonicalFacility,
   classifySignal,
   indexSiteSignals,
   loadPrecautionFor,
@@ -58,7 +60,9 @@ describe('catalog', () => {
     )
     expect(construction).toMatch(/at-height/)
     expect(construction).toMatch(/hot work/i)
-    expect(fitness).toMatch(/outdoor classes/i)
+    expect(fitness).toMatch(/ventilation/i)
+    expect(fitness).toMatch(/hydration/i)
+    expect(fitness).not.toMatch(/outdoor class|outdoor session|pitch/i)
     expect(fitness).not.toMatch(/scaffolding/)
     expect(construction).not.toBe(fitness)
     const constructionRain = precautionText(
@@ -70,7 +74,8 @@ describe('catalog', () => {
       chooseActivities({ orgActivityTypes: ['Fitness & Recreation'] })
     )
     expect(constructionRain).toMatch(/scaffolding/)
-    expect(fitnessRain).toMatch(/pool deck/)
+    expect(fitnessRain).toMatch(/mats/)
+    expect(fitnessRain).not.toMatch(/outdoor session|pitch/i)
     expect(constructionRain).not.toBe(fitnessRain)
   })
 })
@@ -115,8 +120,11 @@ describe('chooseActivities', () => {
     expect(classifySignal('Inspect the site office')).toEqual({ profiles: [], tasks: [] })
     expect(classifySignal('Working at height').tasks).toEqual(['height'])
     expect(classifySignal('Hot Work').tasks).toEqual(['hotwork'])
-    expect(classifySignal('outdoor sessions').profiles).toEqual(['gym'])
+    expect(classifySignal('outdoor sessions').profiles).toEqual(['outdoorGym'])
     expect(classifySignal('outdoor sessions').tasks).toEqual([])
+    expect(classifySignal('gym').profiles).toEqual(['indoorGym'])
+    expect(classifySignal('Warehouse').profiles).toEqual(['facilityWarehouse'])
+    expect(classifySignal('Warehousing & Logistics').profiles).toEqual(['warehousing'])
     expect(classifySignal('Fitness centre').profiles).toEqual(['fitness'])
   })
 
@@ -196,7 +204,7 @@ describe('site records', () => {
       siteId: 'pitch',
       name: 'Harbour Pitch',
     })
-    expect(pitch).toEqual(['gym'])
+    expect(pitch).toEqual(['outdoorGym'])
     const yardHeat = precautionText(
       'heat',
       activitiesForArea(org, index, { siteId: 'yard', name: 'River Yard' })
@@ -209,6 +217,40 @@ describe('site records', () => {
     expect(yardHeat).toMatch(/Construction:/)
     expect(officeHeat).toMatch(/cooled rooms/)
     expect(officeHeat).not.toMatch(/scaffolding/)
+  })
+
+  it('uses the facility tag on a fitness estate, and does not mention outdoor classes', () => {
+    const org = { activityTypes: ['Fitness & Recreation'] }
+    const sites = [
+      { id: 'gym', name: 'North Studio', facility: 'Indoor gym' },
+      { id: 'pool', name: 'Lane Pool', facility: 'Indoor pool' },
+      { id: 'court', name: 'Court Hall', facility: 'Indoor court' },
+      { id: 'wh', name: 'Dock Store', facility: 'Warehouse' },
+      { id: 'bare', name: 'Reception' },
+    ]
+    const index = indexSiteSignals({ sites })
+    const text = (alert, id, name) =>
+      precautionText(alert, activitiesForArea(org, index, { siteId: id, name }))
+    expect(text('heat', 'gym', 'North Studio')).toMatch(/high-intensity/i)
+    expect(text('heat', 'gym', 'North Studio')).toMatch(/hydration/i)
+    expect(text('heat', 'pool', 'Lane Pool')).toMatch(/chlorine/i)
+    expect(text('heat', 'pool', 'Lane Pool')).toMatch(/plant-room/i)
+    expect(text('heat', 'court', 'Court Hall')).toMatch(/courts/i)
+    expect(text('heat', 'wh', 'Dock Store')).toMatch(/forklift/i)
+    expect(text('heat', 'wh', 'Dock Store')).toMatch(/loading bay/i)
+    expect(text('heat', 'bare', 'Reception')).toMatch(/ventilation/i)
+    expect(text('rain', 'pool', 'Lane Pool')).toMatch(/pool deck/i)
+    expect(text('rain', 'wh', 'Dock Store')).toMatch(/stock/)
+    expect(text('rain', 'wh', 'Dock Store')).toMatch(/forklift/i)
+    expect(text('lightning', 'pool', 'Lane Pool')).toMatch(/evacuate the pool/i)
+    expect(text('lightning', 'pool', 'Lane Pool')).toMatch(/skylight/i)
+    for (const site of sites) {
+      expect(text('heat', site.id, site.name)).not.toMatch(/outdoor class|outdoor session|pitch/i)
+      expect(text('rain', site.id, site.name)).not.toMatch(/outdoor class|outdoor session|pitch/i)
+    }
+    expect(FACILITY_LABELS).toEqual(['Indoor gym', 'Indoor pool', 'Indoor court', 'Warehouse'])
+    expect(canonicalFacility('gym')).toBe('Indoor gym')
+    expect(canonicalFacility('Construction')).toBe('')
   })
 })
 
@@ -262,7 +304,8 @@ describe('loadPrecautionFor', () => {
       error: (...args) => logged.push(args),
       info() {},
     })
-    expect(fallback('heat', { name: 'Clubhouse' })).toMatch(/outdoor classes/i)
+    expect(fallback('heat', { name: 'Clubhouse' })).toMatch(/hydration/i)
+    expect(fallback('heat', { name: 'Clubhouse' })).not.toMatch(/outdoor class/i)
     expect(logged.length).toBe(1)
   })
 })

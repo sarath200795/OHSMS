@@ -103,10 +103,11 @@ export default function WeatherPrecautions({ activityTypes, value, onChange }) {
       <p className="mb-3 mt-1 text-sm text-ink-500">
         The six-hour weather mail fills the precautions cell from the activities selected above.
         Heat stress, rain and each adverse-weather alert can say something different for outdoor
-        work, work at height, hot work, kitchens, gyms, deliveries and electrical work. A site with
-        its own record — a site type, a HIRA activity or a permit type — uses that work for its
-        rows. Leave a box blank to keep the built-in sentence. With no activity selected, and
-        nothing recorded at the site, the mail keeps the general precautions.
+        work, work at height, hot work, kitchens, an indoor gym, pool or court, a warehouse,
+        deliveries and electrical work. A site tagged with a facility, or with its own record — a
+        site type, a HIRA activity or a permit type — uses that for its rows. Leave a box blank to
+        keep the built-in sentence. With no activity selected, and nothing recorded at the site, the
+        mail keeps the general precautions.
       </p>
       {selected.length === 0 && (
         <p className="mb-3 text-sm text-ink-600">

@@ -6,7 +6,9 @@ import { ACTIVITY_TYPES } from '../org/orgConstants'
 import {
   ALERTS,
   CATALOG,
+  FACILITY_LABELS,
   builtInPrecaution,
+  canonicalFacility,
   chooseActivities,
   editorRows,
   normalizeOverrides,
@@ -17,7 +19,9 @@ import {
 export {
   ALERTS,
   CATALOG,
+  FACILITY_LABELS,
   builtInPrecaution,
+  canonicalFacility,
   chooseActivities,
   editorRows,
   normalizeOverrides,

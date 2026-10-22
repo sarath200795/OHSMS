@@ -28,6 +28,7 @@ import { isPermissionDenied } from '../lib/permissionDenied'
 import { AUDIT } from '../audit/audit'
 import { createSharedSubscription } from './sharedSubscription'
 import { notifySiteCreated } from './siteHooks'
+import { canonicalFacility } from '../weather/activityPrecautions'
 
 // ── Path helpers ──────────────────────────────────────────────────────────────
 export const orgRef = (orgId) => doc(db, 'organizations', orgId)
@@ -417,6 +418,10 @@ function siteFields(data) {
     lat: num(data.lat),
     lng: num(data.lng),
     firstAidBoxes: num(data.firstAidBoxes) || 0,
+    // The weather digest reads this as the building. Blank keeps the
+    // organisation's activities. Anything that is not a known facility label
+    // is dropped, so a free-text note cannot reclassify the site.
+    facility: canonicalFacility(data.facility),
     attributes: cleanAttributes(data.attributes),
   }
 }

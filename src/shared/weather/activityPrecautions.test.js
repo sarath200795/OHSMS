@@ -21,7 +21,16 @@ describe('activity precautions', () => {
   it('offers the task-level work as well as the industry list', () => {
     const options = activityPickerOptions(['Night deliveries'])
     expect(options).toEqual(
-      expect.arrayContaining(['Construction', 'Hot work', 'Kitchens', 'Night deliveries'])
+      expect.arrayContaining([
+        'Construction',
+        'Hot work',
+        'Kitchens',
+        'Indoor gym',
+        'Indoor pool',
+        'Indoor court',
+        'Warehouse',
+        'Night deliveries',
+      ])
     )
     expect(new Set(options).size).toBe(options.length)
   })
@@ -36,7 +45,8 @@ describe('activity precautions', () => {
       chooseActivities({ orgActivityTypes: ['Fitness & Recreation'] })
     )
     expect(construction).toMatch(/at-height/)
-    expect(fitness).toMatch(/outdoor classes/i)
+    expect(fitness).toMatch(/hydration/i)
+    expect(fitness).not.toMatch(/outdoor class/i)
     expect(construction).not.toBe(fitness)
   })
 })

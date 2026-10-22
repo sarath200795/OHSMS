@@ -16,11 +16,12 @@
 // 2. organisations/{orgId}.weatherPrecautions — the same screen. An override
 //    of the built-in sentence for one activity and one alert. Blank means the
 //    built-in sentence.
-// 3. The site document. There is no site-type enum (fitness centre, warehouse,
-//    office, kitchen are not a stored list). A custom attribute whose key is a
-//    type, category, facility or activity field is read as one, and so is an
-//    attribute value that is exactly a catalog label. site.activityTypes is
-//    honoured when a site document carries it; the site form does not edit it.
+// 3. The site document. There is no general site-type enum. site.facility is
+//    the building the weather mail should talk about: Indoor gym, Indoor pool,
+//    Indoor court or Warehouse, set on the site form. A custom attribute whose
+//    key is a type, category, facility or activity field is read as one too,
+//    and so is an attribute value that is exactly a catalog label.
+//    site.activityTypes is honoured when a site document carries it.
 // 4. HIRA, organisations/{orgId}/assessments. Site-scoped rows (siteId,
 //    siteName; baselines are skipped). Activity titles, hazard types and hazard
 //    categories are matched. Free text that does not match the catalog is
@@ -108,7 +109,14 @@ const TYPE_KEYS = new Set([
 // A task that is the specific form of a profile. Present together, the
 // profile sentence would repeat the task, so the profile is left out.
 const PARENT = {
-  gym: 'fitness',
+  // The building is the specific form of a fitness estate. Present together,
+  // the organisation sentence would repeat it, or contradict it: an indoor
+  // pool is not told to cancel an outdoor class.
+  indoorGym: 'fitness',
+  indoorPool: 'fitness',
+  indoorCourt: 'fitness',
+  facilityWarehouse: 'fitness',
+  outdoorGym: 'fitness',
   kitchen: 'food',
   driving: 'transportation',
   electrical: 'utilities',
@@ -126,8 +134,12 @@ const TASK_ORDER = [
 ]
 
 const PROFILE_ORDER = [
+  'indoorPool',
+  'indoorGym',
+  'indoorCourt',
+  'facilityWarehouse',
+  'outdoorGym',
   'kitchen',
-  'gym',
   'healthcare',
   'education',
   'office',
@@ -196,7 +208,7 @@ export const CATALOG = [
     'Warehousing & Logistics',
     'profile',
     false,
-    ['warehouse', 'warehouses', 'distribution centre', 'distribution center', 'logistics depot'],
+    ['distribution centre', 'distribution center', 'logistics depot'],
     px(
       'Limit time in uncooled warehouses, trailers and the yard. Water and shade for pickers and loaders, and move heavy loading to the cooler hours.',
       'Keep dock levellers, ramps and pedestrian routes dry. Pause yard moves if water is standing, and do not use electrical pallet equipment on a wet dock.',
@@ -460,14 +472,14 @@ export const CATALOG = [
       'leisure center',
     ],
     px(
-      'Move outdoor classes and coaching to the cooler hours or indoors. Provide water at the session, shorten high-intensity work, and watch members and staff for dizziness or confusion. Check that air-conditioned studios are actually cooling.',
-      'Cancel or move outdoor sessions, poolside classes and pitch work indoors. Keep entrance mats dry, and cordon slippery changing rooms and the pool deck.',
-      'Cancel outdoor sessions. Secure goals, shade sails, signage and loose equipment, and keep people away from trees and temporary structures.',
-      'Postpone outdoor sessions and running or cycling groups. Keep entrance lighting on, and high-visibility clothing on anyone still outside.',
-      'Shorten outdoor sessions, provide shelter and warm layers, and watch for shivering. Check outdoor equipment and pitches for ice before use.',
-      'Stop outdoor and pool activity at the first thunder. Move everyone indoors, and wait until the storm has passed before resuming.',
-      'Close icy paths, steps and outdoor courts, and move sessions indoors. Grit the entrance and the car park before members arrive.',
-      'Clear and grit entrances, steps and the car park. Cancel outdoor sessions, and check roofs, shade structures and temporary covers for snow load.'
+      'Check air conditioning and ventilation are cooling studios and circulation spaces, and that temperature and humidity stay within the site limit. Keep hydration stations stocked, ease high-intensity classes, and watch staff and members for dizziness or confusion, including people who commuted in the heat.',
+      'Check roofs, skylights and plant rooms for water ingress. Dry entrances, lay mats and put out wet-floor signs, and keep electrical equipment away from leaks. Check drains and basements so water is not pooling under the building.',
+      'Keep members and staff inside. Secure external signage, doors and loose items at the entrance, and do not send anyone onto the roof or a plant deck while the wind holds.',
+      'Light entrances and the car park. Slow vehicles at the entrance, and allow extra time for staff and members commuting in poor visibility.',
+      'Check entrances, steps and the car park for ice before people arrive, and keep a warm space available. Confirm heating and ventilation are holding, and watch staff who have commuted in the cold.',
+      'If the building has a roof or skylights, move people away from the glazed roof while lightning is close. On a power cut, switch to emergency lighting and follow the evacuation procedure. Do not restart electrical equipment until it has been checked.',
+      'Grit or close icy entrances, steps and the car park before people arrive. Dry water tracked in at the door, and keep mats and wet-floor signs in place.',
+      'Clear and grit entrances, steps and the car park. Check roofs and skylights for snow load before anyone goes up, and allow extra time for staff and members commuting.'
     )
   ),
   entry(
@@ -488,20 +500,84 @@ export const CATALOG = [
     )
   ),
   entry(
-    'gym',
+    'indoorGym',
+    'Indoor gym',
+    'profile',
+    true,
+    ['indoor gym', 'indoor gyms', 'gym', 'gyms'],
+    px(
+      'Check HVAC, air conditioning and ventilation in the gym and studios, and that temperature and humidity stay within the site limit. Keep hydration stations stocked, reduce the intensity of high-intensity classes, and watch staff and members, including anyone who commuted in the heat, for dizziness or confusion.',
+      'Check the gym roof and skylights for leaks onto the floor. Dry the entrance, lay mats and put out wet-floor signs, and keep treadmills and other electrical kit away from water.',
+      'Stay inside the gym. Secure entrance doors and external signage, and cancel roof or plant access until the wind drops.',
+      'Light the entrance and the car park. Allow extra time for staff and members commuting, and slow any vehicle at the entrance.',
+      'Grit the entrance and steps before opening. Confirm the heating is holding the gym, and watch staff and members who have commuted in the cold.',
+      'If the gym has a roof or skylights, stop the class and move people clear of the glazed roof when lightning is close. On a power cut, use emergency lighting, and do not restart electrical equipment until it is checked.',
+      'Grit the entrance, steps and car park. Dry water tracked into the gym, and keep mats and wet-floor signs at the door.',
+      'Clear and grit the way in. Check the gym roof and skylights for snow load, and allow extra time for staff and members commuting.'
+    )
+  ),
+  entry(
+    'indoorPool',
+    'Indoor pool',
+    'profile',
+    true,
+    ['indoor pool', 'indoor pools', 'swimming pool', 'swimming pools', 'pool hall'],
+    px(
+      'Check pool-hall ventilation so humidity stays within the site limit and chlorine is not off-gassing into the hall. Check plant-room and chemical-storage temperatures, keep water available for lifeguards and teachers, and shorten sessions if the hall will not cool.',
+      'Pool decks and changing rooms are a slip risk when rain is tracked in or the roof leaks. Dry them, lay mats and put out signs. Keep electrical equipment and pool plant away from leaks, and check drainage so basements are not flooding.',
+      'Secure doors, signage and roof plant. Do not send anyone onto the pool roof or a plant deck while the wind holds, and keep the hall closed to the weather.',
+      'Light the entrance, the car park and the route from the changing room. Slow vehicles at the entrance, and allow extra time for staff commuting.',
+      'Grit entrances and the route from the car park. Watch lifeguards and teachers after a cold commute, and confirm plant-room heating so chemicals and pipework are not left at an unsafe temperature.',
+      'If the pool hall has a roof or skylights, evacuate the pool when lightning is close or an electrical fault is suspected. Use emergency lighting if the power fails, keep people out of the water until the supply is confirmed safe, and do not restart pool plant until it has been checked.',
+      'Grit entrances, steps and the car park. Dry the changing-room floor and the pool surround where water is tracked in, and keep mats and signs down.',
+      'Clear and grit the entrance and car park. Check the pool roof and skylights for snow load before anyone goes up, and confirm plant rooms are free of melt water.'
+    )
+  ),
+  entry(
+    'indoorCourt',
+    'Indoor court',
+    'profile',
+    true,
+    ['indoor court', 'indoor courts', 'sports hall', 'sports court'],
+    px(
+      'Check air conditioning and ventilation over the courts, and that temperature and humidity stay within the site limit. Keep hydration stations stocked, reduce the intensity of long sessions, and watch players and staff who have commuted in the heat.',
+      'Check the court roof and skylights for leaks onto the playing surface. Dry entrances and changing rooms, lay mats and put out wet-floor signs, and keep electrical equipment away from water.',
+      'Keep play indoors. Secure doors and external signage, and do not open roof access while the wind holds.',
+      'Light entrances and the car park. Allow extra time for players and staff commuting, and slow vehicles at the entrance.',
+      'Grit entrances and steps before sessions. Confirm the court heating is holding, and watch people who have commuted in the cold.',
+      'If the court has a roof or skylights, or the power fails, stop play and move people off the court. Use emergency lighting, and do not restart court equipment until the supply is checked.',
+      'Grit the entrance, steps and car park. Dry water tracked onto the court surround, and keep mats and signs at the door.',
+      'Clear and grit the way in. Check the court roof and skylights for snow load, and allow extra time for players and staff commuting.'
+    )
+  ),
+  // Not the Warehousing & Logistics industry. A fitness estate's warehouse is
+  // a building with no air conditioning, a dock and forklifts. The industry
+  // label still matches an organisation whose work is logistics. The bare word
+  // "warehouse" used to do that too, and a site tagged Warehouse then received
+  // the wrong paragraph.
+  entry(
+    'facilityWarehouse',
+    'Warehouse',
+    'profile',
+    true,
+    ['warehouses'],
+    px(
+      'These buildings often have no air conditioning. Check ventilation, limit time on loading bays and in the yard, and enforce rest breaks and water for manual handling and forklift operators. Watch for heat illness, including staff who commuted in the heat.',
+      'Check the dock and the yard for flooding, and move stock off the floor and away from roof leaks. Do not run a forklift on a wet floor. Slow delivery vehicles, and stop reversing on a flooded dock unless a spotter can see.',
+      'Close the dock doors. Secure loose pallets and yard items, and stop work on the loading bay and any roof access while the wind holds.',
+      'Slow forklifts and delivery vehicles. Light the dock and the yard, and use a spotter for reversing when the driver cannot see.',
+      'Limit time on the open dock. Warm breaks for forklift operators and anyone manual handling, and check the dock and yard for ice before vehicles move.',
+      'Close the dock and stop yard and roof work. If the power fails, use emergency lighting, leave forklifts parked, and do not restart charging or plant until it is checked.',
+      'Grit the dock approach and the yard. Do not run a forklift on ice, and slow delivery vehicles on the way in.',
+      'Clear the dock approach and protect stock from melt water. Check the roof for snow load before anyone goes up, and slow delivery vehicles.'
+    )
+  ),
+  entry(
+    'outdoorGym',
     'Gyms with outdoor sessions',
     'profile',
     true,
-    [
-      'gym',
-      'gyms',
-      'outdoor session',
-      'outdoor sessions',
-      'outdoor class',
-      'outdoor classes',
-      'fitness class',
-      'fitness classes',
-    ],
+    ['outdoor session', 'outdoor sessions', 'outdoor class', 'outdoor classes'],
     px(
       'Shorten or move the outdoor session indoors, and schedule it for the cooler hours. Water at the session, a lower intensity, and stop the class if anyone is dizzy, cramping or confused.',
       'Do not continue an outdoor session, pitch class or poolside class in the rain. Move it indoors, and keep the entrance and changing-room floor dry for people coming in.',
@@ -666,7 +742,14 @@ export const CATALOG = [
   ),
 ]
 
+// Buildings a site form can tag. The label is what is stored on site.facility.
+// "Warehouse" is this list, not the Warehousing & Logistics industry.
+export const FACILITY_LABELS = ['Indoor gym', 'Indoor pool', 'Indoor court', 'Warehouse']
+
 const byId = new Map(CATALOG.map((item) => [item.id, item]))
+const FACILITY_IDS = new Set(
+  FACILITY_LABELS.map((label) => CATALOG.find((item) => item.label === label)?.id).filter(Boolean)
+)
 const TASKS = new Set(CATALOG.filter((item) => item.kind === 'task').map((item) => item.id))
 const PROFILES = new Set(CATALOG.filter((item) => item.kind === 'profile').map((item) => item.id))
 
@@ -713,8 +796,9 @@ function matchKind(text, kind, loose) {
 }
 
 /**
- * Whole-string profile matches win alone. "Outdoor sessions" is a gym, not
- * also generic outdoor work, and "inspect the site office" is not an office.
+ * Whole-string profile matches win alone. "Outdoor sessions" is the outdoor
+ * session profile, not an indoor gym and not generic outdoor work, and
+ * "inspect the site office" is not an office.
  * Loose matching is only for a field the org has already called a site type.
  */
 export function classifySignal(text, { looseProfile = false } = {}) {
@@ -820,6 +904,13 @@ export function normalizeOverrides(raw) {
     if (Object.keys(row).length) out[label] = row
   }
   return out
+}
+
+/** Catalog label for a site facility tag, or '' when the value is not one. */
+export function canonicalFacility(value) {
+  const entry = entryForLabel(value)
+  if (!entry || !FACILITY_IDS.has(entry.id)) return ''
+  return entry.label
 }
 
 export function entryForLabel(raw) {
@@ -966,6 +1057,15 @@ export function indexSiteSignals({ sites = [], assessments = [], permits = [] } 
     for (const activity of site.activityTypes || []) {
       const text = typeof activity === 'string' ? activity.trim() : ''
       if (text) addId(bySiteId, byName, id, name, 'siteActivityTypes', text)
+    }
+    // The site form stores this. Exact catalog match only: a note in the
+    // field must not be read as a building.
+    const facility = typeof site.facility === 'string' ? site.facility.trim() : ''
+    if (facility) {
+      const found = classifySignal(facility, { looseProfile: false })
+      for (const profileId of found.profiles)
+        addId(bySiteId, byName, id, name, 'profile', profileId)
+      for (const taskId of found.tasks) addId(bySiteId, byName, id, name, 'task', taskId)
     }
     const attributes = site.attributes && typeof site.attributes === 'object' ? site.attributes : {}
     for (const [key, value] of Object.entries(attributes)) {
