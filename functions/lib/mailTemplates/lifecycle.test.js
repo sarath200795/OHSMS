@@ -413,6 +413,30 @@ describe('defect, drill, meeting and weather mail', () => {
       expect(new Set(byType.values()).size).toBe(byType.size)
     })
 
+    it('uses a per-site sentence when one is supplied, and escapes it', () => {
+      const message = renderWeatherDigest(
+        {
+          areas: [
+            {
+              region: 'South',
+              name: 'Yard',
+              level: 'High',
+              drivers: [
+                { key: 'heat', label: 'Heat stress', value: 'Feels like 42°C', level: 'High' },
+              ],
+            },
+          ],
+        },
+        {
+          precautionFor: (key, area) =>
+            key === 'heat' && area.name === 'Yard' ? 'Shade the <yard>.' : '',
+        }
+      )
+      expect(message.text).toContain('Shade the <yard>.')
+      expect(message.html).toContain('Shade the &lt;yard&gt;.')
+      expect(message.html).not.toContain('Shade the <yard>.')
+    })
+
     const heatRain = (region, name, both = false) => ({
       region,
       name,

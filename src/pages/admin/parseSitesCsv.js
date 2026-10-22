@@ -1,16 +1,30 @@
 import Papa from 'papaparse'
+import { canonicalFacility, SITE_TYPES } from '../../shared/weather/activityPrecautions'
 
 // Flexible header matching so common column names all work.
 const HEADER_ALIASES = {
   name: ['site name', 'name', 'site'],
+  facility: ['site type', 'type', 'facility', 'facility type', 'building type', 'type of site'],
   // The site's id in the system that owns it. Deliberately generous, because
   // this column arrives named after whatever produced it — a warehouse export
   // says `center_service_id`, a property list says `Store Code`, and asking an
   // admin to rename a column before importing is a step they will skip.
   code: [
-    'centre id', 'center id', 'centre code', 'center code', 'site code', 'code',
-    'centre_service_id', 'center_service_id', 'centerserviceid', 'centreserviceid',
-    'external id', 'externalid', 'store code', 'store id', 'site id',
+    'centre id',
+    'center id',
+    'centre code',
+    'center code',
+    'site code',
+    'code',
+    'centre_service_id',
+    'center_service_id',
+    'centerserviceid',
+    'centreserviceid',
+    'external id',
+    'externalid',
+    'store code',
+    'store id',
+    'site id',
   ],
   region: ['region'],
   entity: ['entity', 'company'],
@@ -102,6 +116,7 @@ export function parseSitesCsv(file, customFields = []) {
             __errors: errors,
             name,
             code,
+            facility: (km.facility ? r[km.facility] : '')?.toString().trim() || '',
             region: (km.region ? r[km.region] : '')?.toString().trim() || '',
             entity: (km.entity ? r[km.entity] : '')?.toString().trim() || '',
             address: (km.address ? r[km.address] : '')?.toString().trim() || '',
@@ -121,8 +136,11 @@ export function parseSitesCsv(file, customFields = []) {
           // update: a file with no Region column must LEAVE the region alone,
           // not overwrite it with the empty string this parser filled in.
           present: {
-            name: true, lat: true, lng: true,      // headerOk already required these
+            name: true,
+            lat: true,
+            lng: true, // headerOk already required these
             code: Boolean(km.code),
+            facility: Boolean(km.facility),
             region: Boolean(km.region),
             entity: Boolean(km.entity),
             address: Boolean(km.address),
@@ -139,7 +157,11 @@ export function parseSitesCsv(file, customFields = []) {
   })
 }
 
-const normName = (s) => String(s || '').trim().toLowerCase().replace(/\s+/g, ' ')
+const normName = (s) =>
+  String(s || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
 
 /**
  * Decide, for each parsed row, whether it is a NEW site or an edit to one that
@@ -170,7 +192,7 @@ const normName = (s) => String(s || '').trim().toLowerCase().replace(/\s+/g, ' '
  * and `present` is what stops it. Custom attributes are merged over the
  * existing ones for the same reason.
  */
-export function planImport(parsed, sites = []) {
+export function planImport(parsed, sites = [], { activityTypes = [] } = {}) {
   const present = parsed?.present || { name: true, lat: true, lng: true, custom: [] }
   const byCode = new Map()
   const byName = new Map()
@@ -188,7 +210,27 @@ export function planImport(parsed, sites = []) {
   const rows = (parsed?.rows || []).map((r) => {
     if (r.__errors.length) return { ...r, __match: null }
     const target = (r.code && byCode.get(r.code)) || byName.get(normName(r.name)) || null
-    if (!target) return { ...r, __match: null }
+    const facility = canonicalFacility(r.facility, activityTypes)
+    const known =
+      !r.facility ||
+      SITE_TYPES.some((type) => type.label === facility) ||
+      (activityTypes || []).some((label) => canonicalFacility(label, activityTypes) === facility)
+    // New sites must name a type. An existing site may still say nothing: a
+    // blank cell leaves it unset, and a file from before this column existed
+    // does not touch it. A type the organisation has not configured is refused
+    // either way, so a typo does not land on the register as a silent fallback.
+    const typeErrors = []
+    if (r.facility && !known) {
+      typeErrors.push(
+        `Site type “${r.facility}” is not in the list. Use a general type, or add it under Org Settings → Activities.`
+      )
+    } else if (!target && !facility) {
+      typeErrors.push('Site type is required for a new site')
+    }
+    if (typeErrors.length) {
+      return { ...r, facility, __match: null, __errors: [...r.__errors, ...typeErrors] }
+    }
+    if (!target) return { ...r, facility, __match: null }
 
     const earlier = claimedBy.get(target.id)
     if (earlier) {
@@ -201,6 +243,7 @@ export function planImport(parsed, sites = []) {
     claimedBy.set(target.id, r.__row)
     return {
       ...r,
+      facility,
       __match: {
         id: target.id,
         name: target.name,
@@ -236,6 +279,8 @@ function changedFields(row, site, present) {
   // change, so the preview must not advertise one.
   if (present.name && normName(row.name) !== normName(site.name)) put('name', row.name, site.name)
   if (present.code) put('code', row.code, site.code)
+  if (present.facility && (row.facility || site.facility))
+    put('facility', row.facility, site.facility)
   if (present.region) put('region', row.region, site.region)
   if (present.entity) put('entity', row.entity, site.entity)
   if (present.address) put('address', row.address, site.address)
@@ -265,6 +310,9 @@ export function updatePayload(row, site, present) {
   // A real rename (normally arriving on a centre-ID match) still goes through.
   if (present.name && normName(row.name) !== normName(site.name)) out.name = row.name
   if (present.code) out.code = row.code
+  // A blank site type on an existing site leaves it unset. Writing '' over a
+  // site that already has one is how a spreadsheet clears it.
+  if (present.facility && (row.facility || site.facility)) out.facility = row.facility || ''
   if (present.region) out.region = row.region
   if (present.entity) out.entity = row.entity
   if (present.address) out.address = row.address
@@ -317,9 +365,9 @@ export function sitesCsvTemplate(customFields = []) {
   const extraVals = customFields.map(() => '').join(',')
   const extra = extraVals ? `,${extraVals}` : ''
   return (
-    `Site Name,Centre ID,Region,Entity,Address,Latitude,Longitude,First Aid Boxes${extraHead}\n` +
-    `North Plant,NP-001,North,Acme Mfg,"Gelderd Rd, Leeds, UK",53.7833,-1.5766,4${extra}\n` +
-    `South Warehouse,SW-002,South,Acme Logistics,"Avonmouth, Bristol, UK",51.5045,-2.6997,2${extra}\n`
+    `Site Name,Site Type,Centre ID,Region,Entity,Address,Latitude,Longitude,First Aid Boxes${extraHead}\n` +
+    `North Plant,Manufacturing/Plant,NP-001,North,Acme Mfg,"Gelderd Rd, Leeds, UK",53.7833,-1.5766,4${extra}\n` +
+    `South Warehouse,Warehouse,SW-002,South,Acme Logistics,"Avonmouth, Bristol, UK",51.5045,-2.6997,2${extra}\n`
   )
 }
 
@@ -336,34 +384,49 @@ export function sitesCsvTemplate(customFields = []) {
  * apostrophes, and a naive join produces a file that opens misaligned in Excel
  * and imports as garbage.
  */
-export const SITE_CSV_HEADERS = ['Site Name', 'Centre ID', 'Region', 'Entity', 'Address', 'Latitude', 'Longitude', 'First Aid Boxes']
+export const SITE_CSV_HEADERS = [
+  'Site Name',
+  'Site Type',
+  'Centre ID',
+  'Region',
+  'Entity',
+  'Address',
+  'Latitude',
+  'Longitude',
+  'First Aid Boxes',
+]
 
 export function sitesToCsv(sites = [], customFields = []) {
   const fields = [...SITE_CSV_HEADERS, ...customFields.map((f) => f.label)]
-  const data = (sites || [])
-    .filter(Boolean)
-    .map((s) => [
-      s.name ?? '',
-      // Second column on purpose: exporting the register, pasting the ids in
-      // beside the names and importing it back is the fastest way to fill this
-      // in for an estate that already exists here.
-      s.code ?? '',
-      s.region ?? '',
-      s.entity ?? '',
-      s.address ?? '',
-      // Blank, not 0 and not "null": a site whose coordinates were never set
-      // must read as missing, because a zero here is a real place in the Gulf
-      // of Guinea and would be plotted as one.
-      s.lat == null || s.lat === '' ? '' : s.lat,
-      s.lng == null || s.lng === '' ? '' : s.lng,
-      s.firstAidBoxes == null || s.firstAidBoxes === '' ? '' : s.firstAidBoxes,
-      ...customFields.map((f) => s.attributes?.[f.key] ?? ''),
-    ])
+  const data = (sites || []).filter(Boolean).map((s) => [
+    s.name ?? '',
+    s.facility ?? '',
+    // Third column on purpose: exporting the register, pasting the ids in
+    // beside the names and importing it back is the fastest way to fill this
+    // in for an estate that already exists here.
+    s.code ?? '',
+    s.region ?? '',
+    s.entity ?? '',
+    s.address ?? '',
+    // Blank, not 0 and not "null": a site whose coordinates were never set
+    // must read as missing, because a zero here is a real place in the Gulf
+    // of Guinea and would be plotted as one.
+    s.lat == null || s.lat === '' ? '' : s.lat,
+    s.lng == null || s.lng === '' ? '' : s.lng,
+    s.firstAidBoxes == null || s.firstAidBoxes === '' ? '' : s.firstAidBoxes,
+    ...customFields.map((f) => s.attributes?.[f.key] ?? ''),
+  ])
   return Papa.unparse({ fields, data })
 }
 
 /** True when a site can actually be put on a map. */
 export function hasCoordinates(site) {
-  return Number.isFinite(Number(site?.lat)) && site?.lat !== '' && site?.lat != null
-    && Number.isFinite(Number(site?.lng)) && site?.lng !== '' && site?.lng != null
+  return (
+    Number.isFinite(Number(site?.lat)) &&
+    site?.lat !== '' &&
+    site?.lat != null &&
+    Number.isFinite(Number(site?.lng)) &&
+    site?.lng !== '' &&
+    site?.lng != null
+  )
 }

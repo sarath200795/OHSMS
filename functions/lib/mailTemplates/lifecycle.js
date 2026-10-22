@@ -6,6 +6,9 @@
 // sentence so the mail still says the record exists.
 import { safeOrigin } from '../mailer.js'
 import { safeCid } from '../mailAttachments.js'
+import { GENERIC_PRECAUTIONS as PRECAUTIONS } from '../weatherPrecautions.js'
+
+export { PRECAUTIONS }
 import { renderLayout, footerLine } from './layout.js'
 import {
   classifyMailText,
@@ -415,28 +418,15 @@ export function groupDigestSections(areas, cap = DIGEST_AREA_CAP) {
   return sections
 }
 
-// Static, hazard-specific OHS precautions for the all-High table. They are
-// general guidance, written once here; they do not read the forecast and are
-// not tunable per org. Keyed by the driver key (weatherBands.js).
+// General precautions, used when the org has recorded no activity and the
+// caller does not pass a per-site sentence. The activity-specific wording
+// lives in weatherPrecautions.js; the keys stay the driver keys
+// (weatherBands.js). UV is not one of them.
 const ALERT_TYPE = {
   heat: 'Heat Stress',
   rain: 'Rain Risk',
 }
 const ADVERSE = 'Adverse Weather'
-const PRECAUTIONS = {
-  heat: 'Provide cool drinking water and enforce shade and rest breaks. Move heavy outdoor work to the cooler hours. Watch for heat-illness signs (dizziness, cramps, confusion) and act at once.',
-  rain: 'Watch for slips, trips and wet electrical equipment; keep tools and cables off wet ground. Secure loose materials and check drainage. Stop work at height and hot work if conditions are unsafe.',
-  wind: 'Secure scaffolding, sheeting and loose items. Stop crane, lifting and work-at-height operations. Keep people clear of overhead and edge areas.',
-  visibility:
-    'Slow vehicles and plant, and keep lights and high-visibility clothing on. Use spotters and marked routes. Pause lifting and reversing where the operator cannot see.',
-  cold: 'Provide warm clothing, gloves and warm rest breaks. Limit time on exposed tasks and watch for numbness or shivering. Check for ice on walkways and equipment.',
-  lightning:
-    'Stop outdoor work and move people indoors or into a vehicle. Keep clear of tall structures, cranes, scaffolding and open ground. Resume only when the storm has passed.',
-  ice: 'Grit or close icy walkways, ramps and stairs. Slow vehicles and plant. Stop work at height and lifting where surfaces are slippery.',
-  snow: 'Clear and grit access routes. Take extra care with vehicles and plant. Check roofs, scaffolding and temporary structures for snow load before use.',
-  other:
-    'Review the task risk assessment. Stop work that cannot be done safely, and follow site emergency procedures.',
-}
 // Labels for rows written before drivers carried a key.
 const PRECAUTION_KEY_BY_LABEL = {
   'high wind': 'wind',
@@ -458,8 +448,11 @@ const TYPE_RANK = { 'Heat Stress': 0, 'Rain Risk': 1 }
  * One row per site-hazard pair at High level: { region, name, type, precautions }.
  * `type` is Heat Stress, Rain Risk, or 'Adverse Weather – <hazard>' for every
  * other hazard. Sorted by region, then site, then heat, rain, other. Not capped.
+ * `precautionFor(key, area)` supplies the activity-specific sentence. A missing
+ * or blank result keeps the general paragraph, so a mapping failure cannot
+ * empty the cell.
  */
-export function highAlertRows(areas) {
+export function highAlertRows(areas, { precautionFor } = {}) {
   const rows = []
   for (const area of Array.isArray(areas) ? areas : []) {
     if (!area) continue
@@ -471,7 +464,7 @@ export function highAlertRows(areas) {
         region: plain(area.region, 80) || 'Unassigned',
         name: plain(area.name, 80) || '—',
         type,
-        precautions: PRECAUTIONS[key] || PRECAUTIONS.other,
+        precautions: precautionLine(key, area, precautionFor),
         area,
       })
     }
@@ -497,9 +490,17 @@ export const HIGH_SITES_PER_REGION = 5
  * Shape: [{ region, sites, hiddenSites, alerts, rows }] — `rows` are the shown
  * sites' hazard rows, `alerts` counts every High row in the region.
  */
-export function highAlertRegions(areas, limit = HIGH_SITES_PER_REGION) {
+function precautionLine(key, area, precautionFor) {
+  if (typeof precautionFor === 'function') {
+    const text = precautionFor(key, area)
+    if (typeof text === 'string' && text.trim()) return text.trim()
+  }
+  return PRECAUTIONS[key] || PRECAUTIONS.other
+}
+
+export function highAlertRegions(areas, limit = HIGH_SITES_PER_REGION, options) {
   const byRegion = new Map()
-  for (const row of highAlertRows(areas)) {
+  for (const row of highAlertRows(areas, options)) {
     if (!byRegion.has(row.region)) byRegion.set(row.region, new Map())
     const sites = byRegion.get(row.region)
     if (!sites.has(row.area)) sites.set(row.area, [])
@@ -612,7 +613,7 @@ function sectionText(section, when) {
 
 const ALERT_COLUMNS = ['Site Name', 'Type of Alert', 'Precautions']
 const ALERT_NOTE =
-  'One row per site and hazard at High level. Precautions are general guidance: follow your site risk assessment, permits and emergency procedures.'
+  'One row per site and hazard at High level. Precautions follow the activities recorded for your organisation or that site. Where none are recorded, the guidance is general. Follow your site risk assessment, permits and emergency procedures.'
 
 function alertCounts(regions) {
   const alerts = regions.reduce((n, r) => n + r.alerts, 0)
@@ -685,7 +686,7 @@ function mapBlock(cid) {
 
 export function renderWeatherDigest(
   digest,
-  { appOrigin = '', sender = '', mapCid = '', windowLabel = '' } = {}
+  { appOrigin = '', sender = '', mapCid = '', windowLabel = '', precautionFor } = {}
 ) {
   const areas = Array.isArray(digest?.areas) ? digest.areas : []
   // Subject and summary count SITES, each once, at its worst level. A site
@@ -696,7 +697,7 @@ export function renderWeatherDigest(
   const subject = `Weather risk: ${high} high, ${medium} medium`
   const when = plain(windowLabel, 40)
   const sections = groupDigestSections(areas)
-  const alerts = highAlertRegions(areas)
+  const alerts = highAlertRegions(areas, HIGH_SITES_PER_REGION, { precautionFor })
   const origin = safeOrigin(appOrigin)
   const alertLink = origin ? `${origin}/weather` : ''
   const hidden = sections.filter((section) => section.hidden > 0)

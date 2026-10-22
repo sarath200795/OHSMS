@@ -4,17 +4,18 @@ import { toastCaught } from '../../shared/lib/toastCaught'
 import {
   Building2, Plus, Trash2, MapPin, Map as MapIcon, List, Pencil, Upload, Download, Search, X,
   CheckCircle2, AlertCircle, FireExtinguisher, HeartPulse, BriefcaseMedical, AlertTriangle,
-  ListChecks, Users2, CheckSquare, Square, BellRing,
+  ListChecks, Users2, CheckSquare, BellRing, Tags,
 } from 'lucide-react'
 import { useAuth } from '../../shared/auth/AuthContext'
 import {
   subscribeSites, createSite, updateSite, deleteSite, deleteSites, bulkUpsertSites,
   subscribeOrgUsers, subscribeCollections, emptyCollections, cleanAttributes, logAudit,
+  updateOrgSettings, backfillEmptySiteTypes, assignSiteType,
 } from '../../shared/org/orgData'
 import { can, roleLabel } from '../../shared/auth/permissions'
 import {
   PageHeader, Button, Modal, Field, Input, Select, SkeletonTable, EmptyState, Badge, StatCard,
-  ModuleMark,
+  TableWrap,
 } from '../../shared/ui'
 // This page used to declare its own IncompleteNotice — same amber panel, same
 // role="status", a different prop name (`notice` rather than `incomplete`) and
@@ -25,6 +26,10 @@ import IncompleteNotice from '../../shared/ui/IncompleteNotice'
 import { initials } from '../../shared/lib/format'
 import { regionsOf, entitiesOf } from '../../shared/auth/access'
 import { normalizeScopeConfig } from '../../shared/org/scopeConfig'
+import {
+  siteTypeOptions, canonicalFacility, rowsFromSiteTypeByEntity, packSiteTypeByEntity,
+} from '../../shared/weather/activityPrecautions'
+import SiteTypeBackfill from './SiteTypeBackfill'
 import { siteStats, linkAssets } from './siteStats'
 import { AUDIT } from '../../shared/audit/audit'
 import {
@@ -34,7 +39,7 @@ import { downloadText } from '../../shared/lib/download'
 
 const SitesMap = lazy(() => import('./SitesMap'))
 
-const EMPTY = { name: '', code: '', region: '', entity: '', address: '', lat: '', lng: '', firstAidBoxes: '', attributes: {} }
+const EMPTY = { name: '', code: '', region: '', entity: '', address: '', lat: '', lng: '', firstAidBoxes: '', facility: '', attributes: {} }
 
 // The asset registers behind every per-site rollup on this page.
 const COLLECTIONS = ['extinguishers', 'aeds', 'fas', 'incidents']
@@ -42,6 +47,7 @@ const COLLECTIONS = ['extinguishers', 'aeds', 'fas', 'incidents']
 export default function Sites() {
   const { orgId, actor, role, org } = useAuth()
   const customFields = useMemo(() => normalizeScopeConfig(org?.scopeConfig).customFields, [org])
+  const siteTypes = useMemo(() => siteTypeOptions(org?.activityTypes), [org])
   const [sites, setSites] = useState(null)
   const [users, setUsers] = useState([])
   const [store, setStore] = useState(() => emptyCollections(COLLECTIONS))
@@ -61,7 +67,31 @@ export default function Sites() {
   const [picked, setPicked] = useState([]) // site ids
   const [confirmBulk, setConfirmBulk] = useState(false)
   const [confirmText, setConfirmText] = useState('')
+  const [typeOpen, setTypeOpen] = useState(false)
+  const [bulkType, setBulkType] = useState('')
+  const [typeRows, setTypeRows] = useState([])
+  const [typeBusy, setTypeBusy] = useState(false)
   const canManage = can(role, 'site.manage')
+  // The entity → site type list is stored on the organisation. Org update is
+  // admin-only in the rules, so a manager who can edit sites still cannot
+  // save that list. Setting a type on a site stays site.manage.
+  const canMapTypes = can(role, 'org.settings')
+  const viewTabs = useMemo(() => {
+    const tabs = [
+      { key: 'list', label: 'Sites', icon: List },
+      { key: 'map', label: 'Map', icon: MapIcon },
+    ]
+    if (canMapTypes) tabs.push({ key: 'types', label: 'Site types', icon: Tags })
+    return tabs
+  }, [canMapTypes])
+  const storedMapKey = JSON.stringify(org?.siteTypeByEntity || {})
+  const activityKey = JSON.stringify(org?.activityTypes || [])
+  // Keys, not `org`. A snapshot that changes neither the map nor the activity
+  // list must not discard a row the admin is typing.
+  useEffect(() => {
+    setTypeRows(rowsFromSiteTypeByEntity(org?.siteTypeByEntity, org?.activityTypes))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storedMapKey, activityKey])
 
   useEffect(() => {
     if (!orgId) return
@@ -83,6 +113,7 @@ export default function Sites() {
     setForm({
       name: s.name || '', code: s.code || '', region: s.region || '', entity: s.entity || '', address: s.address || '',
       lat: s.lat ?? '', lng: s.lng ?? '', firstAidBoxes: s.firstAidBoxes ?? '',
+      facility: s.facility || '',
       attributes: s.attributes || {},
     })
     setEditing(s)
@@ -101,6 +132,10 @@ export default function Sites() {
       toast.error(`Centre ID ${code} already belongs to “${clash.name}”.`)
       return
     }
+    if (editing === 'new' && !form.facility) {
+      toast.error('Choose a site type. The weather digest uses it for this site’s precautions.')
+      return
+    }
     setBusy(true)
     try {
       if (editing === 'new') {
@@ -112,6 +147,7 @@ export default function Sites() {
           lat: form.lat === '' ? null : Number(form.lat),
           lng: form.lng === '' ? null : Number(form.lng),
           firstAidBoxes: Number(form.firstAidBoxes) || 0,
+          facility: form.facility || '',
           attributes: cleanAttributes(form.attributes),
         }, actor)
         toast.success('Site updated')
@@ -142,7 +178,9 @@ export default function Sites() {
     e.target.value = '' // allow re-selecting the same file
     if (!file) return
     try {
-      const res = planImport(await parseSitesCsv(file, customFields), sites || [])
+      const res = planImport(await parseSitesCsv(file, customFields), sites || [], {
+        activityTypes: org?.activityTypes || [],
+      })
       setBulkResult({ ...res, fileName: file.name })
     } catch {
       toast.error('Could not read that CSV file')
@@ -249,7 +287,8 @@ export default function Sites() {
     return (sites || []).filter((s) => {
       if (regionFilter && s.region !== regionFilter) return false
       if (entityFilter && s.entity !== entityFilter) return false
-      if (q && !`${s.name} ${s.address || ''} ${s.region || ''} ${s.entity || ''}`.toLowerCase().includes(q))
+      const typeText = s.facility || 'not set'
+      if (q && !`${s.name} ${s.address || ''} ${s.region || ''} ${s.entity || ''} ${typeText}`.toLowerCase().includes(q))
         return false
       return true
     })
@@ -277,6 +316,42 @@ export default function Sites() {
     }
     return sum
   }, [pickedSites, statsBySite])
+
+  const runBulkType = async () => {
+    const facility = canonicalFacility(bulkType, org?.activityTypes || [])
+    if (!facility) return toast.error('Choose a site type')
+    setBusy(true)
+    try {
+      const n = await assignSiteType(
+        orgId,
+        pickedSites.map((s) => ({ id: s.id, name: s.name, facility })),
+        actor,
+      )
+      toast.success(`Set the site type on ${n} site${n === 1 ? '' : 's'}`)
+      setTypeOpen(false)
+      exitSelect()
+    } catch (err) {
+      toastCaught(err, 'Could not set the site type')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // Same write as Org Settings. Either screen stores the list the other reads
+  // back, and Apply still fills only a site whose type is empty.
+  const applyEntityMap = async (plan) => {
+    setTypeBusy(true)
+    try {
+      const packed = packSiteTypeByEntity(typeRows, org?.activityTypes || [])
+      await updateOrgSettings(orgId, { siteTypeByEntity: packed.map }, actor)
+      const n = await backfillEmptySiteTypes(orgId, plan.updates, actor)
+      toast.success(n ? `Filled the site type on ${n} site${n === 1 ? '' : 's'}` : 'No sites needed a type')
+    } catch (err) {
+      toastCaught(err, 'Could not fill site types')
+    } finally {
+      setTypeBusy(false)
+    }
+  }
 
   const runBulkDelete = async () => {
     if (confirmText.trim().toUpperCase() !== 'DELETE') return toast.error('Type DELETE to confirm')
@@ -328,10 +403,7 @@ export default function Sites() {
 
       {/* Tabs */}
       <div className="tab-strip mb-5" role="tablist" aria-label="Sites views">
-        {[
-          { key: 'list', label: 'Sites', icon: List },
-          { key: 'map', label: 'Map', icon: MapIcon },
-        ].map((t) => (
+        {viewTabs.map((t) => (
           <button
             key={t.key}
             type="button"
@@ -344,6 +416,18 @@ export default function Sites() {
           </button>
         ))}
       </div>
+
+      {tab === 'types' && canMapTypes && (
+        <SiteTypeBackfill
+          rows={typeRows}
+          onChange={setTypeRows}
+          activityTypes={org?.activityTypes || []}
+          sites={sites || []}
+          busy={typeBusy}
+          onApply={applyEntityMap}
+          note="Apply stores this list on the organisation and fills sites that still have no type. Preview counts them first."
+        />
+      )}
 
       {/* Bulk-select toolbar — appears above the filters while selecting */}
       {canManage && tab === 'list' && sites && sites.length > 0 && (
@@ -360,6 +444,16 @@ export default function Sites() {
               </Button>
               <span className="text-sm font-semibold text-ink-700">{picked.length} selected</span>
               <Button
+                type="button"
+                icon={Tags}
+                variant="soft"
+                className="!py-2"
+                disabled={picked.length === 0}
+                onClick={() => { setBulkType(''); setTypeOpen(true) }}
+              >
+                Set site type
+              </Button>
+              <Button
                 icon={Trash2}
                 variant="danger"
                 className="!py-2"
@@ -375,7 +469,7 @@ export default function Sites() {
       )}
 
       {/* Search + Region / Entity filters (apply to list and map) */}
-      {sites && sites.length > 0 && (
+      {tab !== 'types' && sites && sites.length > 0 && (
         <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center">
           <div className="relative sm:max-w-xs sm:flex-1">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-400" />
@@ -410,7 +504,7 @@ export default function Sites() {
       )}
 
       {/* List / Map */}
-      {sites === null ? (
+      {tab === 'types' ? null : sites === null ? (
         <SkeletonTable rows={4} cols={3} />
       ) : sites.length === 0 ? (
         <EmptyState
@@ -438,56 +532,71 @@ export default function Sites() {
           action={<Button variant="ghost" onClick={clearFilters}>Clear filters</Button>}
         />
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {filteredSites.map((s) => (
-            <button
-              key={s.id}
-              onClick={() => (selectMode ? togglePick(s.id) : setSelected(s))}
-              aria-pressed={selectMode ? picked.includes(s.id) : undefined}
-              className={[
-                'card group flex flex-col gap-3 p-5 text-left transition-transform duration-200 ease-emil hover:-translate-y-0.5 active:scale-[0.99]',
-                selectMode && picked.includes(s.id) ? 'is-on ring-2 ring-red-500' : '',
-              ].join(' ')}
-            >
-              <div className="flex items-start justify-between gap-3">
-                {selectMode ? (
-                  picked.includes(s.id) ? (
-                    <ModuleMark tone="red" size="md">
-                      <CheckSquare size={20} />
-                    </ModuleMark>
-                  ) : (
-                    <ModuleMark tone="slate" size="md">
-                      <Square size={20} />
-                    </ModuleMark>
-                  )
-                ) : (
-                  <ModuleMark tone="brand" size="md">
-                    <Building2 size={20} />
-                  </ModuleMark>
+        <TableWrap>
+          <table className="w-full min-w-[720px] text-left text-sm">
+            <thead>
+              <tr className="text-xs uppercase tracking-wide text-ink-400">
+                {selectMode && (
+                  <th className="w-12 px-4 py-3 font-semibold">
+                    <span className="sr-only">Select</span>
+                  </th>
                 )}
-                {(s.region || s.entity) && (
-                  <Badge tone="gray">{[s.region, s.entity].filter(Boolean).join(' · ')}</Badge>
+                <th className="px-5 py-3 font-semibold">Site</th>
+                <th className="px-5 py-3 font-semibold">Site type</th>
+                <th className="px-5 py-3 font-semibold">Region</th>
+                <th className="px-5 py-3 font-semibold">Entity</th>
+                <th className="px-5 py-3 font-semibold">Address</th>
+                {canManage && (
+                  <th className="px-5 py-3">
+                    <span className="sr-only">Actions</span>
+                  </th>
                 )}
-              </div>
-              <div>
-                <p className="font-semibold text-ink-900">{s.name}</p>
-                {/* The centre id, shown because the work of filling this column
-                    in is done by scanning for the sites that lack one. */}
-                {s.code && (
-                  <p className="mt-0.5 font-mono text-[11.5px] tracking-wide text-ink-400">ID {s.code}</p>
-                )}
-                {s.address && (
-                  <p className="mt-0.5 flex items-center gap-1 text-sm text-ink-500">
-                    <MapPin size={13} /> {s.address}
-                  </p>
-                )}
-              </div>
-              <span className="text-xs font-medium text-brand-700 opacity-0 transition group-hover:opacity-100">
-                {selectMode ? (picked.includes(s.id) ? 'Selected — click to remove' : 'Click to select') : 'View summary →'}
-              </span>
-            </button>
-          ))}
-        </div>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredSites.map((s) => (
+                <tr key={s.id} className={selectMode && picked.includes(s.id) ? 'bg-red-50' : 'hover:bg-surface-100'}>
+                  {selectMode && (
+                    <td className="px-4 py-3.5">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4"
+                        aria-label={`Select ${s.name}`}
+                        checked={picked.includes(s.id)}
+                        onChange={() => togglePick(s.id)}
+                      />
+                    </td>
+                  )}
+                  <td className="px-5 py-3.5">
+                    <button type="button" className="text-left font-semibold text-ink-900 underline-offset-2 hover:text-brand-700 hover:underline" onClick={() => setSelected(s)}>
+                      {s.name}
+                    </button>
+                    {s.code && (
+                      <p className="mt-0.5 font-mono text-[11.5px] tracking-wide text-ink-400">ID {s.code}</p>
+                    )}
+                  </td>
+                  <td className={`px-5 py-3.5 ${s.facility ? 'text-ink-700' : 'font-medium text-amber-700'}`}>
+                    {s.facility || 'Not set'}
+                  </td>
+                  <td className="px-5 py-3.5 text-ink-600">{s.region || '—'}</td>
+                  <td className="px-5 py-3.5 text-ink-600">{s.entity || '—'}</td>
+                  <td className="px-5 py-3.5 text-ink-500">
+                    {s.address ? (
+                      <span className="inline-flex items-center gap-1"><MapPin size={13} /> {s.address}</span>
+                    ) : '—'}
+                  </td>
+                  {canManage && (
+                    <td className="px-5 py-3.5 text-right">
+                      <Button type="button" variant="ghost" className="!py-1.5" icon={Pencil} onClick={() => openEdit(s)}>
+                        Edit <span className="sr-only">{s.name}</span>
+                      </Button>
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </TableWrap>
       )}
 
       {/* Create / edit modal */}
@@ -521,6 +630,37 @@ export default function Sites() {
           <Field label="Entity" htmlFor="entity">
             <Input id="entity" value={form.entity} onChange={set('entity')} placeholder="e.g. Acme Mfg Pvt Ltd" />
           </Field>
+          <Field
+            label={editing === 'new' ? 'Site type *' : 'Site type'}
+            htmlFor="facility"
+            hint={
+              editing === 'new'
+                ? 'Required. The weather digest takes this site’s precautions from the type.'
+                : form.facility
+                  ? 'The weather digest takes this site’s precautions from the type.'
+                  : 'Not set. Choose a type so the weather digest can use it. You can still save other changes.'
+            }
+          >
+            <Select id="facility" required={editing === 'new'} value={form.facility || ''} onChange={set('facility')}>
+              {editing === 'new' ? (
+                <option value="" disabled>Select a site type</option>
+              ) : (
+                <option value="">Not set</option>
+              )}
+              <optgroup label="General">
+                {siteTypes.general.map((label) => (
+                  <option key={label} value={label}>{label}</option>
+                ))}
+              </optgroup>
+              {siteTypes.extra.length > 0 && (
+                <optgroup label="This organisation">
+                  {siteTypes.extra.map((label) => (
+                    <option key={label} value={label}>{label}</option>
+                  ))}
+                </optgroup>
+              )}
+            </Select>
+          </Field>
           <div className="sm:col-span-2">
             <Field label="Address" htmlFor="address">
               <Input id="address" value={form.address} onChange={set('address')} placeholder="Street, City, Country" />
@@ -553,9 +693,11 @@ export default function Sites() {
             <span className="flex flex-col">
               <span className="text-lg font-bold text-ink-900">{selected.name}</span>
               <span className="text-xs font-normal text-ink-500">
-                {[selected.region && `Region: ${selected.region}`, selected.entity && `Entity: ${selected.entity}`]
-                  .filter(Boolean)
-                  .join('  ·  ') || '—'}
+                {[
+                  selected.facility ? `Site type: ${selected.facility}` : 'Site type: Not set',
+                  selected.region && `Region: ${selected.region}`,
+                  selected.entity && `Entity: ${selected.entity}`,
+                ].filter(Boolean).join('  ·  ')}
                 {selected.address ? `  ·  ${selected.address}` : ''}
               </span>
             </span>
@@ -661,7 +803,8 @@ export default function Sites() {
         <div className="space-y-4">
           <p className="text-sm text-ink-500">
             Upload a CSV with columns{' '}
-            <b>Site Name, Centre ID, Region, Entity, Address, Latitude, Longitude, First Aid Boxes{customFields.map((f) => `, ${f.label}`).join('')}</b>. Rows without
+            <b>Site Name, Site Type, Centre ID, Region, Entity, Address, Latitude, Longitude, First Aid Boxes{customFields.map((f) => `, ${f.label}`).join('')}</b>.
+            From Excel, save the sheet as CSV. A <b>new</b> site needs a site type. Rows without
             a valid <b>latitude and longitude</b> are rejected and will not be imported.
           </p>
           <p className="text-sm text-ink-500">
@@ -701,7 +844,7 @@ export default function Sites() {
                 )}
                 {bulkResult.invalid.length > 0 && (
                   <Badge tone="red">
-                    <AlertCircle size={13} /> {bulkResult.invalid.length} rejected (no coordinates)
+                    <AlertCircle size={13} /> {bulkResult.invalid.length} rejected
                   </Badge>
                 )}
               </div>
@@ -761,6 +904,44 @@ export default function Sites() {
               </div>
             </>
           )}
+        </div>
+      </Modal>
+
+      <Modal
+        open={typeOpen}
+        onClose={() => setTypeOpen(false)}
+        title={`Set site type on ${pickedSites.length} site${pickedSites.length === 1 ? '' : 's'}`}
+        footer={
+          <>
+            <Button variant="ghost" type="button" onClick={() => setTypeOpen(false)}>Cancel</Button>
+            <Button type="button" loading={busy} disabled={!bulkType} onClick={runBulkType}>
+              Apply site type
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-ink-600">
+            This replaces the site type on every selected site, including one that already has a type.
+            The weather digest takes each site’s precautions from the type you set.
+          </p>
+          <Field label="Site type" htmlFor="bulk-facility">
+            <Select id="bulk-facility" value={bulkType} onChange={(e) => setBulkType(e.target.value)}>
+              <option value="">Select a site type</option>
+              <optgroup label="General">
+                {siteTypes.general.map((label) => (
+                  <option key={label} value={label}>{label}</option>
+                ))}
+              </optgroup>
+              {siteTypes.extra.length > 0 && (
+                <optgroup label="This organisation">
+                  {siteTypes.extra.map((label) => (
+                    <option key={label} value={label}>{label}</option>
+                  ))}
+                </optgroup>
+              )}
+            </Select>
+          </Field>
         </div>
       </Modal>
 

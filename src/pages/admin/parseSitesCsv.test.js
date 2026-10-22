@@ -1,7 +1,13 @@
 // @vitest-environment jsdom
 import { describe, it, expect } from 'vitest'
 import {
-  parseSitesCsv, planImport, updatePayload, sitesToCsv, hasCoordinates, codeIndex, duplicateCodes,
+  parseSitesCsv,
+  planImport,
+  updatePayload,
+  sitesToCsv,
+  hasCoordinates,
+  codeIndex,
+  duplicateCodes,
 } from './parseSitesCsv'
 
 const csvFile = (text) => new File([text], 'sites.csv', { type: 'text/csv' })
@@ -22,7 +28,9 @@ describe('parseSitesCsv — coordinates are mandatory', () => {
     expect(res.valid[0].name).toBe('North Plant')
     expect(res.invalid).toHaveLength(3)
     // every rejected row cites a coordinate problem
-    expect(res.invalid.every((r) => r.__errors.some((e) => /latitude|longitude/i.test(e)))).toBe(true)
+    expect(res.invalid.every((r) => r.__errors.some((e) => /latitude|longitude/i.test(e)))).toBe(
+      true
+    )
   })
 
   it('flags a bad header (no lat/lng columns)', async () => {
@@ -40,13 +48,31 @@ describe('parseSitesCsv — coordinates are mandatory', () => {
 
 describe('exporting the site register', () => {
   const sites = [
-    { name: 'North Plant', region: 'North', entity: 'Acme Mfg', address: 'Gelderd Rd, Leeds, UK', lat: 53.7833, lng: -1.5766, firstAidBoxes: 4 },
-    { name: 'South Warehouse', region: 'South', entity: 'Acme Logistics', address: 'Avonmouth, Bristol', lat: 51.5045, lng: -2.6997, firstAidBoxes: 2 },
+    {
+      name: 'North Plant',
+      region: 'North',
+      entity: 'Acme Mfg',
+      address: 'Gelderd Rd, Leeds, UK',
+      lat: 53.7833,
+      lng: -1.5766,
+      firstAidBoxes: 4,
+    },
+    {
+      name: 'South Warehouse',
+      region: 'South',
+      entity: 'Acme Logistics',
+      address: 'Avonmouth, Bristol',
+      lat: 51.5045,
+      lng: -2.6997,
+      firstAidBoxes: 2,
+    },
   ]
 
   it('writes the coordinates the register holds', () => {
     const csv = sitesToCsv(sites)
-    expect(csv.split(/\r?\n/)[0]).toBe('Site Name,Centre ID,Region,Entity,Address,Latitude,Longitude,First Aid Boxes')
+    expect(csv.split(/\r?\n/)[0]).toBe(
+      'Site Name,Site Type,Centre ID,Region,Entity,Address,Latitude,Longitude,First Aid Boxes'
+    )
     expect(csv).toContain('53.7833,-1.5766')
     expect(csv).toContain('51.5045,-2.6997')
   })
@@ -62,7 +88,7 @@ describe('exporting the site register', () => {
   it('leaves a missing coordinate blank rather than zero', () => {
     const csv = sitesToCsv([{ name: 'No coords', lat: null, lng: undefined }])
     const row = csv.split(/\r?\n/)[1]
-    expect(row).toBe('No coords,,,,,,,')
+    expect(row).toBe('No coords,,,,,,,,')
     expect(row).not.toContain('0')
     expect(row).not.toContain('null')
     expect(row).not.toContain('undefined')
@@ -76,7 +102,9 @@ describe('exporting the site register', () => {
   })
 
   it('produces a header-only file for an empty register', () => {
-    expect(sitesToCsv([]).trim()).toBe('Site Name,Centre ID,Region,Entity,Address,Latitude,Longitude,First Aid Boxes')
+    expect(sitesToCsv([]).trim()).toBe(
+      'Site Name,Site Type,Centre ID,Region,Entity,Address,Latitude,Longitude,First Aid Boxes'
+    )
     expect(() => sitesToCsv(null)).not.toThrow()
     expect(() => sitesToCsv([null])).not.toThrow()
   })
@@ -104,16 +132,13 @@ describe('knowing whether a site can be mapped', () => {
   })
 })
 
-
 // ── The centre id ────────────────────────────────────────────────────────────
 //
 // The column that lets an external dataset join to this register on a KEY
 // rather than on a site's name. Its whole value is being unambiguous, so most
 // of what is tested here is the refusal to let it stop being one.
 
-const withCode = (rows) => csvFile(
-  ['Site Name,Centre ID,Latitude,Longitude', ...rows].join('\n')
-)
+const withCode = (rows) => csvFile(['Site Name,Centre ID,Latitude,Longitude', ...rows].join('\n'))
 
 describe('centre ids in the importer', () => {
   it('reads the column and says the file had one', async () => {
@@ -186,18 +211,24 @@ describe('codeIndex and duplicateCodes', () => {
     // Only reachable through data written before the import gained its check,
     // or two admins saving at once — but wrong enough to be worth surfacing.
     const dupes = duplicateCodes([
-      { code: '201', name: 'A' }, { code: '201', name: 'B' }, { code: '9', name: 'C' },
+      { code: '201', name: 'A' },
+      { code: '201', name: 'B' },
+      { code: '9', name: 'C' },
     ])
     expect(dupes).toEqual([['201', ['A', 'B']]])
   })
 
   it('is quiet about a clean register', () => {
-    expect(duplicateCodes([{ code: '1', name: 'A' }, { code: '2', name: 'B' }])).toEqual([])
+    expect(
+      duplicateCodes([
+        { code: '1', name: 'A' },
+        { code: '2', name: 'B' },
+      ])
+    ).toEqual([])
     expect(duplicateCodes([])).toEqual([])
     expect(duplicateCodes()).toEqual([])
   })
 })
-
 
 // ── Re-importing a spreadsheet ───────────────────────────────────────────────
 //
@@ -207,8 +238,28 @@ describe('codeIndex and duplicateCodes', () => {
 // columns the spreadsheet did not carry.
 
 const REGISTER = [
-  { id: 's1', name: 'North Plant', code: '50', region: 'North', entity: 'Acme', address: 'Leeds', lat: 53.78, lng: -1.57, firstAidBoxes: 4 },
-  { id: 's2', name: 'South Warehouse', code: '', region: 'South', entity: 'Acme Logistics', address: 'Bristol', lat: 51.5, lng: -2.69, firstAidBoxes: 2 },
+  {
+    id: 's1',
+    name: 'North Plant',
+    code: '50',
+    region: 'North',
+    entity: 'Acme',
+    address: 'Leeds',
+    lat: 53.78,
+    lng: -1.57,
+    firstAidBoxes: 4,
+  },
+  {
+    id: 's2',
+    name: 'South Warehouse',
+    code: '',
+    region: 'South',
+    entity: 'Acme Logistics',
+    address: 'Bristol',
+    lat: 51.5,
+    lng: -2.69,
+    firstAidBoxes: 2,
+  },
 ]
 
 const plan = async (header, ...rows) =>
@@ -233,9 +284,41 @@ describe('planImport — same site updates instead of duplicating', () => {
   })
 
   it('still creates a site nothing matches', async () => {
-    const r = await plan('Site Name,Latitude,Longitude', 'Brand New Depot,1,2')
+    const r = await plan('Site Name,Site Type,Latitude,Longitude', 'Brand New Depot,Office,1,2')
     expect(r.updates).toHaveLength(0)
     expect(r.creates).toHaveLength(1)
+    expect(r.creates[0].facility).toBe('Office')
+  })
+
+  it('refuses a new site with no site type, and keeps an existing site that has none', async () => {
+    const created = await plan('Site Name,Latitude,Longitude', 'Brand New Depot,1,2')
+    expect(created.creates).toHaveLength(0)
+    expect(created.invalid[0].__errors.join(' ')).toMatch(/site type is required/i)
+    const existing = await plan('Site Name,Latitude,Longitude', 'North Plant,1,2')
+    expect(existing.updates).toHaveLength(1)
+    expect(existing.invalid).toHaveLength(0)
+  })
+
+  it('accepts a general type and an organisation activity, and refuses a type nobody configured', async () => {
+    const general = await plan(
+      'Site Name,Site Type,Latitude,Longitude',
+      'Brand New Depot,warehouse,1,2'
+    )
+    expect(general.creates[0].facility).toBe('Warehouse')
+    const custom = await planImport(
+      await parseSitesCsv(
+        csvFile('Site Name,Site Type,Latitude,Longitude\nCold Store,Cold store,1,2')
+      ),
+      [],
+      { activityTypes: ['Cold store'] }
+    )
+    expect(custom.creates[0].facility).toBe('Cold store')
+    const unknown = await plan(
+      'Site Name,Site Type,Latitude,Longitude',
+      'Brand New Depot,Balloon shed,1,2'
+    )
+    expect(unknown.creates).toHaveLength(0)
+    expect(unknown.invalid[0].__errors.join(' ')).toMatch(/not in the list/i)
   })
 
   it('lets the centre ID win over the name, and reports the rename', async () => {
@@ -288,10 +371,14 @@ describe('updatePayload — an import must not blank what it did not carry', () 
     const custom = [{ key: 'zone', label: 'Zone' }]
     const parsed = await parseSitesCsv(
       csvFile(['Site Name,Zone,Latitude,Longitude', 'North Plant,Z9,1,2'].join('\n')),
-      custom,
+      custom
     )
     const r = planImport(parsed, [{ ...REGISTER[0], attributes: { zone: 'Z1', shift: 'Nights' } }])
-    const payload = updatePayload(r.updates[0], { attributes: { zone: 'Z1', shift: 'Nights' } }, r.present)
+    const payload = updatePayload(
+      r.updates[0],
+      { attributes: { zone: 'Z1', shift: 'Nights' } },
+      r.present
+    )
     expect(payload.attributes).toEqual({ zone: 'Z9', shift: 'Nights' })
   })
 

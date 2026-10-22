@@ -28,6 +28,7 @@ import { isPermissionDenied } from '../lib/permissionDenied'
 import { AUDIT } from '../audit/audit'
 import { createSharedSubscription } from './sharedSubscription'
 import { notifySiteCreated } from './siteHooks'
+import { canonicalFacility } from '../weather/activityPrecautions'
 
 // ── Path helpers ──────────────────────────────────────────────────────────────
 export const orgRef = (orgId) => doc(db, 'organizations', orgId)
@@ -417,6 +418,10 @@ function siteFields(data) {
     lat: num(data.lat),
     lng: num(data.lng),
     firstAidBoxes: num(data.firstAidBoxes) || 0,
+    // Site type for the weather digest. Blank is only for a site that already
+    // existed before the field was required. A general type is stored under
+    // its list label; a custom activity keeps the label the organisation added.
+    facility: canonicalFacility(data.facility),
     attributes: cleanAttributes(data.attributes),
   }
 }
@@ -508,6 +513,69 @@ export async function bulkUpsertSites(orgId, { creates = [], updates = [] }, act
   // entry and the same per-site hooks a manually added one does.
   const created = creates.length ? await bulkCreateSites(orgId, creates, actor) : 0
   return { created, updated: updates.length }
+}
+
+/**
+ * Set `facility` and no other field. A site's entity and name cannot change
+ * on the way through. One audit entry for the batch: a few hundred sites
+ * would otherwise bury the trail. Chunked at 400, the same size as a CSV
+ * import. An empty list writes nothing.
+ */
+async function commitFacilityUpdates(orgId, rows, actor, summary) {
+  for (let i = 0; i < rows.length; i += 400) {
+    const batch = writeBatch(db)
+    for (const u of rows.slice(i, i + 400)) {
+      batch.update(moduleDoc(orgId, 'sites', u.id), { facility: u.facility })
+    }
+    await batch.commit()
+  }
+  if (rows.length) {
+    await logAudit(orgId, actor, AUDIT.SITE_UPDATE, {
+      target: 'site',
+      summary,
+    })
+  }
+  return rows.length
+}
+
+function facilityRows(updates) {
+  return (updates || []).filter((u) => u?.id && String(u.facility || '').trim())
+}
+
+function facilitySummary(rows, lead) {
+  const names = rows.map((u) => u.name || u.id)
+  return `${lead}: ${names.slice(0, 6).join(', ')}${names.length > 6 ? '…' : ''}`
+}
+
+/**
+ * Write a site type onto sites that still have none. The caller has already
+ * chosen the documents and the label (planSiteTypeBackfill). A second call
+ * with an empty list writes nothing.
+ */
+export async function backfillEmptySiteTypes(orgId, updates, actor) {
+  const rows = facilityRows(updates)
+  return commitFacilityUpdates(
+    orgId,
+    rows,
+    actor,
+    facilitySummary(rows, `Filled site type on ${rows.length} site(s) that had none`)
+  )
+}
+
+/**
+ * Replace the site type on the sites the caller named, including one that
+ * already has a type. This is the bulk edit on the Sites page. The backfill
+ * above is the other write: it refuses a site that already has one.
+ */
+export async function assignSiteType(orgId, updates, actor) {
+  const rows = facilityRows(updates)
+  const label = rows[0]?.facility || ''
+  return commitFacilityUpdates(
+    orgId,
+    rows,
+    actor,
+    facilitySummary(rows, `Set site type to “${label}” on ${rows.length} site(s)`)
+  )
 }
 
 // ── Site-scoped access / permissions ────────────────────────────────────────

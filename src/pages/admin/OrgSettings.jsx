@@ -22,8 +22,21 @@ import {
 import { ERP_ROLES, normalizeErpRoleLabels } from '../../shared/org/erpRoles'
 import { DEPARTMENTS } from '../../shared/auth/access'
 import { useAuth } from '../../shared/auth/AuthContext'
-import { subscribeOrg, updateOrgSettings, subscribeSites } from '../../shared/org/orgData'
-import { ACTIVITY_TYPES } from '../../shared/org/orgConstants'
+import {
+  subscribeOrg,
+  updateOrgSettings,
+  subscribeSites,
+  backfillEmptySiteTypes,
+} from '../../shared/org/orgData'
+import {
+  normalizeOverrides,
+  packOverrides,
+  packSiteTypeByEntity,
+  rowsFromSiteTypeByEntity,
+  activityPickerOptions,
+} from '../../shared/weather/activityPrecautions'
+import WeatherPrecautions from './WeatherPrecautions'
+import SiteTypeBackfill from './SiteTypeBackfill'
 import { MODULES } from '../../shared/modules/registry'
 import {
   BUILTIN_FIELDS,
@@ -104,6 +117,8 @@ export default function OrgSettings() {
     address: '',
     notificationEmail: '',
     activityTypes: [],
+    weatherPrecautions: {},
+    siteTypeByEntityRows: [],
     departments: [],
     safetyHelplinePrimary: '',
     safetyHelplineSecondary: '',
@@ -142,6 +157,8 @@ export default function OrgSettings() {
           safetyHelplinePrimary: o.safetyHelplinePrimary || '',
           safetyHelplineSecondary: o.safetyHelplineSecondary || '',
           activityTypes: o.activityTypes || [],
+          weatherPrecautions: normalizeOverrides(o.weatherPrecautions),
+          siteTypeByEntityRows: rowsFromSiteTypeByEntity(o.siteTypeByEntity, o.activityTypes),
           departments:
             Array.isArray(o.departments) && o.departments.length ? o.departments : DEPARTMENTS,
           erpRoleLabels: normalizeErpRoleLabels(o.erpRoleLabels),
@@ -184,7 +201,7 @@ export default function OrgSettings() {
   }, [orgId, actor, org?.logoPath, org?.logoUrl, logoSrc, logoLoading])
 
   const activityOptions = useMemo(
-    () => [...new Set([...ACTIVITY_TYPES, ...form.activityTypes])],
+    () => activityPickerOptions(form.activityTypes),
     [form.activityTypes]
   )
 
@@ -357,6 +374,8 @@ export default function OrgSettings() {
           safetyHelplinePrimary: form.safetyHelplinePrimary,
           safetyHelplineSecondary: form.safetyHelplineSecondary,
           activityTypes: form.activityTypes,
+          weatherPrecautions: packOverrides(form.weatherPrecautions),
+          siteTypeByEntity: packSiteTypeByEntity(form.siteTypeByEntityRows, form.activityTypes).map,
           departments: form.departments,
           erpRoleLabels: form.erpRoleLabels,
         },
@@ -365,6 +384,25 @@ export default function OrgSettings() {
       toast.success('Settings saved')
     } catch (err) {
       toastCaught(err, 'Failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // Apply writes the plan the admin just previewed. The button rebuilds that
+  // plan from the live site list first; if a site gained a type in between,
+  // the counts change and the write waits for another preview.
+  const applySiteTypes = async (plan) => {
+    setBusy(true)
+    try {
+      const packed = packSiteTypeByEntity(form.siteTypeByEntityRows, form.activityTypes)
+      await updateOrgSettings(orgId, { siteTypeByEntity: packed.map }, actor)
+      const n = await backfillEmptySiteTypes(orgId, plan.updates, actor)
+      toast.success(
+        n ? `Filled the site type on ${n} site${n === 1 ? '' : 's'}` : 'No sites needed a type'
+      )
+    } catch (err) {
+      toastCaught(err, 'Could not fill site types')
     } finally {
       setBusy(false)
     }
@@ -765,7 +803,8 @@ export default function OrgSettings() {
             </h3>
             <p className="mb-3 mt-1 text-sm text-ink-500">
               Select the types of activity your organization performs. Add your own if it&apos;s not
-              listed.
+              listed. Anything you add here is also a site type, and you can write its heat, rain
+              and adverse-weather precautions below.
             </p>
             <MultiSelect
               options={activityOptions}
@@ -790,6 +829,21 @@ export default function OrgSettings() {
               </Button>
             </div>
           </Card>
+
+          <WeatherPrecautions
+            activityTypes={form.activityTypes}
+            value={form.weatherPrecautions}
+            onChange={(weatherPrecautions) => setForm({ ...form, weatherPrecautions })}
+          />
+
+          <SiteTypeBackfill
+            rows={form.siteTypeByEntityRows}
+            onChange={(siteTypeByEntityRows) => setForm({ ...form, siteTypeByEntityRows })}
+            activityTypes={form.activityTypes}
+            sites={sites}
+            busy={busy}
+            onApply={applySiteTypes}
+          />
 
           {/* Departments — populate every department dropdown across all modules */}
           <Card>
