@@ -321,6 +321,21 @@ describe('planImport — same site updates instead of duplicating', () => {
     expect(unknown.invalid[0].__errors.join(' ')).toMatch(/not in the list/i)
   })
 
+  it('previews the site type that will be stored, not the alias that was typed', async () => {
+    const typed = await plan('Site Name,Site Type,Latitude,Longitude', 'North Plant,factory,1,2')
+    expect(typed.updates[0].facility).toBe('Manufacturing/Plant')
+    expect(typed.updates[0].__changes.facility).toEqual({ from: '', to: 'Manufacturing/Plant' })
+    expect(updatePayload(typed.updates[0], REGISTER[0], typed.present).facility).toBe(
+      'Manufacturing/Plant'
+    )
+
+    const same = planImport(
+      await parseSitesCsv(csvFile('Site Name,Site Type,Latitude,Longitude\nWorks,factory,1,2')),
+      [{ id: 's9', name: 'Works', lat: 1, lng: 2, facility: 'Manufacturing/Plant' }]
+    )
+    expect(same.updates[0].__changes).not.toHaveProperty('facility')
+  })
+
   it('lets the centre ID win over the name, and reports the rename', async () => {
     // The ID is a key and a name is not: a renamed site must still match.
     const r = await plan('Site Name,Centre ID,Latitude,Longitude', 'South Warehouse,50,1,2')

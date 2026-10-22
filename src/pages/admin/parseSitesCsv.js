@@ -241,9 +241,13 @@ export function planImport(parsed, sites = [], { activityTypes = [] } = {}) {
       }
     }
     claimedBy.set(target.id, r.__row)
+    // The preview has to name the type that will be stored. "factory" is
+    // saved as "Manufacturing/Plant"; comparing the typed alias to the
+    // register made every re-import look like a type change that the write
+    // then did not make.
+    const planned = { ...r, facility }
     return {
-      ...r,
-      facility,
+      ...planned,
       __match: {
         id: target.id,
         name: target.name,
@@ -252,7 +256,7 @@ export function planImport(parsed, sites = [], { activityTypes = [] } = {}) {
         // different name silently retitles a site otherwise.
         renameTo: normName(target.name) === normName(r.name) ? '' : r.name,
       },
-      __changes: changedFields(r, target, present),
+      __changes: changedFields(planned, target, present),
     }
   })
 

@@ -11,6 +11,7 @@ import ListFilters from '../components/ListFilters'
 import { useFleet } from '../context/FleetContext'
 import { useAuth } from '../context/AuthContext'
 import { resolveDefects } from '../lib/firestore'
+import { isHptOverdue, HPT_BLOCKS_RESOLVE } from '../lib/hpt'
 import { exportSiteDefects } from '../lib/exporter'
 import { summariseDefectsBySite } from '../lib/siteDefectSummary'
 import { toDate } from '../lib/extinguisherLogic'
@@ -41,6 +42,7 @@ export default function PhysicalDefectLog({ mode = 'open' }) {
   const resolveOne = async (r) => {
     const ext = fleet.extinguishers.find((e) => e.id === r.extId)
     if (!ext) return toast.error('Unit not found')
+    if (isHptOverdue(ext)) return toast.error(HPT_BLOCKS_RESOLVE)
     setBusyId(r.id)
     try {
       const remaining = (ext.physicalDefects || []).filter((d) => d !== r.defectType)
@@ -120,6 +122,7 @@ export default function PhysicalDefectLog({ mode = 'open' }) {
               <tbody className="divide-y divide-surface-200/60">
                 {pageItems.map((r, i) => {
                   const color = DEFECT_BY_KEY[r.defectType]?.color || '#64748b'
+                  const hptDue = isHptOverdue(fleet.extinguishers.find((e) => e.id === r.extId))
                   return (
                     <motion.tr
                       key={r.id}
@@ -160,6 +163,10 @@ export default function PhysicalDefectLog({ mode = 'open' }) {
                         <td className="px-4 py-3 text-right">
                           {r.deleted ? (
                             <span className="text-ink-300">—</span>
+                          ) : hptDue ? (
+                            <span className="text-xs font-semibold text-violet-700" title={HPT_BLOCKS_RESOLVE}>
+                              HPT due
+                            </span>
                           ) : (
                             <button
                               className="btn-ghost px-2.5 py-1.5 text-xs font-semibold text-green-600 hover:bg-green-50"

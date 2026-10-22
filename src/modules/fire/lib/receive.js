@@ -19,6 +19,25 @@ import { toDate } from './extinguisherLogic'
 import { isFutureDate } from '../../../shared/lib/dates'
 import { refillDefectsOf } from './defectClosure'
 
+/**
+ * Dates for "Refilled & closed".
+ *
+ * Both have to fall after today. A next-refill date of today or earlier puts
+ * an Active unit straight back on To Be Refilled — the list it just left —
+ * and a next-HPT date that is not in the future leaves the hydrostatic defect
+ * open while the success toast says the dates were updated. The form used to
+ * accept any non-empty string.
+ */
+export function validateRefilledClosed({ dateOfNextRefill, dateOfNextHPT } = {}, today) {
+  const refill = typeof dateOfNextRefill === 'string' ? dateOfNextRefill : ''
+  const hpt = typeof dateOfNextHPT === 'string' ? dateOfNextHPT : ''
+  if (!toDate(refill) || !toDate(hpt)) return 'Enter both new due dates'
+  if (!isFutureDate(refill, today) || !isFutureDate(hpt, today)) {
+    return 'The new due dates must be after today'
+  }
+  return ''
+}
+
 export function validateReceive({ receivedOn, dateOfNextRefill } = {}) {
   if (!toDate(receivedOn)) return 'Enter the date the extinguisher was received back'
   if (isFutureDate(receivedOn)) return 'The received date is in the future'

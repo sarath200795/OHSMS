@@ -245,10 +245,11 @@ export function mapOsmElement(el, originLat, originLng, source = 'overpass') {
   const eLng = el?.lon ?? el?.center?.lon
   const name = displayName(tags)
   if (!amenity || !name || eLat == null || eLng == null) return null
+  const names = candidateNames(tags)
   return {
     amenity,
     name,
-    names: candidateNames(tags).length ? candidateNames(tags) : [name],
+    names: names.length ? names : [name],
     phone: phoneOf(tags),
     address: addressFromTags(tags),
     distanceKm: Math.round(distanceKm(originLat, originLng, Number(eLat), Number(eLng)) * 10) / 10,

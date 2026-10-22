@@ -9,6 +9,7 @@ import { TableSkeleton } from '../components/Skeleton'
 import { useFleet } from '../context/FleetContext'
 import { useAuth } from '../context/AuthContext'
 import { markRefilledAndClosed } from '../lib/firestore'
+import { validateRefilledClosed } from '../lib/receive'
 import ReceiveFromVendorModal from '../components/ReceiveFromVendorModal'
 import { emptyFilters, applyListFilters } from '../lib/listFilter'
 import { exportExtinguishers } from '../lib/exporter'
@@ -37,9 +38,8 @@ export default function InProcess() {
   }
 
   const confirmClose = async () => {
-    if (!dates.dateOfNextRefill || !dates.dateOfNextHPT) {
-      return toast.error('Enter both new due dates')
-    }
+    const dateError = validateRefilledClosed(dates)
+    if (dateError) return toast.error(dateError)
     setBusy(true)
     try {
       await markRefilledAndClosed(orgId, orgName, closing.id, dates, profile?.name)

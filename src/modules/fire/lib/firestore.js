@@ -63,7 +63,7 @@ import { discardMailedReport } from '../../../shared/print/mailedReport'
 import { AUDIT, diffSummary } from './audit'
 import { logAudit as logOrgAudit, auditCol, orgIndexRef, COLLECTION_READ_CAP } from '../../../shared/org/orgData'
 import { onReadError } from '../../../shared/org/readError'
-import { hptUpdate, hptSummary, isHptOverdue } from './hpt'
+import { hptUpdate, hptSummary, isHptOverdue, HPT_BLOCKS_RESOLVE, HPT_BLOCKS_VENDOR } from './hpt'
 import {
   CLOSURE_SOURCE,
   assetClosureDoc,
@@ -74,7 +74,7 @@ import {
   validateClosure,
   cleanClosurePhoto,
 } from './defectClosure'
-import { receiveFromVendorUpdate } from './receive'
+import { receiveFromVendorUpdate, validateRefilledClosed } from './receive'
 import { formatAssetId } from './assetLogic'
 import { statsDeltaFor, accumulate } from './stats'
 import { reportEffect } from './reportEffect'
@@ -1063,6 +1063,12 @@ export async function submitHpt(orgId, orgName, id, { testedOn, result, nextDueO
 
 /** Vendor received the extinguisher for refilling. */
 export async function markReceivedByVendor(orgId, orgName, id, actorName) {
+  // The repository used to offer this beside Submit HPT. Refill Due does not,
+  // and a cylinder that has not passed its test cannot be sent out for a
+  // refill that would bring it back looking compliant.
+  const before = await getExtinguisher(orgId, id)
+  if (!before) throw new Error('Extinguisher not found')
+  if (isHptOverdue(before)) throw new Error(HPT_BLOCKS_VENDOR)
   await updateExtinguisher(orgId, orgName, id, {
     status: STATUS.IN_PROCESS_REFILLING,
     ...actionStamp(actorName, 'Sent to vendor'),
@@ -1098,6 +1104,8 @@ export async function markReceivedFromVendor(orgId, orgName, id, { receivedOn, d
 
 /** Extinguisher refilled & returned: close it, set new due dates, clear defects. */
 export async function markRefilledAndClosed(orgId, orgName, id, { dateOfNextRefill, dateOfNextHPT }, actorName) {
+  const dateError = validateRefilledClosed({ dateOfNextRefill, dateOfNextHPT })
+  if (dateError) throw new Error(dateError)
   const before = await getExtinguisher(orgId, id)
   const closedOn = todayISO()
   const closure = closureFields({
@@ -1137,6 +1145,11 @@ export async function markRefilledAndClosed(orgId, orgName, id, { dateOfNextRefi
 /** Resolve (clear) physical defects without a refill. */
 export async function resolveDefects(orgId, orgName, id, remainingDefects = [], actorName) {
   const before = await getExtinguisher(orgId, id)
+  if (!before) throw new Error('Extinguisher not found')
+  // The open-defect log resolves in one click and never asked whether the
+  // hydrostatic test was still outstanding. Clearing the defect while the
+  // test is due is the same "this unit is fine" outcome the other lists refuse.
+  if (isHptOverdue(before)) throw new Error(HPT_BLOCKS_RESOLVE)
   const kept = new Set(remainingDefects)
   const removed = (before?.physicalDefects || []).filter((k) => !kept.has(k))
   const closure = closureFields({

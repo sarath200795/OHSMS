@@ -1,10 +1,12 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent, cleanup } from '@testing-library/react'
+import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react'
 import PointScanner from './PointScanner'
 
 beforeEach(() => cleanup())
-afterEach(() => { delete window.BarcodeDetector })
+afterEach(() => {
+  delete window.BarcodeDetector
+})
 
 describe('PointScanner', () => {
   it('falls back to a typed code when the browser has no barcode detector', () => {
@@ -33,11 +35,37 @@ describe('PointScanner', () => {
     window.BarcodeDetector = class {}
     Object.defineProperty(navigator, 'mediaDevices', {
       configurable: true,
-      value: { getUserMedia: vi.fn(async () => { throw new Error('denied') }) },
+      value: {
+        getUserMedia: vi.fn(async () => {
+          throw new Error('denied')
+        }),
+      },
     })
     render(<PointScanner onCode={() => {}} />)
     fireEvent.click(screen.getByRole('button', { name: /Scan a tag with the camera/ }))
     expect(await screen.findByRole('alert')).toBeTruthy()
     expect(screen.getByRole('alert').textContent).toMatch(/camera could not be opened/)
+  })
+
+  it('stops the camera if it is closed before the permission prompt returns', async () => {
+    window.BarcodeDetector = class {}
+    const stop = vi.fn()
+    let open
+    const getUserMedia = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          open = () => resolve({ getTracks: () => [{ stop }] })
+        })
+    )
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia },
+    })
+    const { unmount } = render(<PointScanner onCode={() => {}} />)
+    fireEvent.click(screen.getByRole('button', { name: /Scan a tag with the camera/ }))
+    await waitFor(() => expect(getUserMedia).toHaveBeenCalled())
+    unmount()
+    open()
+    await waitFor(() => expect(stop).toHaveBeenCalled())
   })
 })

@@ -34,8 +34,8 @@ import { useAuth } from '../context/AuthContext'
 import { canManageAsset } from '../lib/recycle'
 import RecentlyDeletedLink from '../components/RecentlyDeletedLink'
 import { useFleet } from '../context/FleetContext'
-import { deriveStatus, isToBeRefilled, hasQuotation, hasDateIssue } from '../lib/extinguisherLogic'
-import { requiredStep, WORKFLOW_STEP } from '../lib/hpt'
+import { deriveStatus, hasDateIssue } from '../lib/extinguisherLogic'
+import { repositoryNextActions } from '../lib/hpt'
 import { exportExtinguishers } from '../lib/exporter'
 import {
   bulkDeleteExtinguishers,
@@ -241,7 +241,7 @@ export default function Repository() {
       toast.success(
         skipped
           ? `Moved ${items.length} to Recently deleted. ${skipped} ${skipped === 1 ? 'is' : 'are'} outside your sites.`
-          : `Moved ${items.length} to Recently deleted`,
+          : `Moved ${items.length} to Recently deleted`
       )
       setSelected(new Set())
       setConfirmDelete(false)
@@ -420,25 +420,14 @@ export default function Repository() {
             onToggleAll={toggleAll}
             showActionBy
             renderActions={(ext) => {
-              const d = deriveStatus(ext, today)
-              const canResolve = d.hasPhysicalDefect && !d.isClosed
-              const canSendToVendor = isToBeRefilled(ext, today) && !d.inProcess && !d.isClosed
-              // Already with the vendor. Receiving it back is the return half of
-              // that trip; the hydrostatic test, when one is due, stays due.
-              const canReceive = d.inProcess && !d.isClosed
-              const quoted = hasQuotation(ext)
-              // A unit whose hydrostatic test is due is asked for the TEST, not
-              // for a quotation — the same branch RefillDue and PhysicalDefects
-              // make. An HPT can condemn the cylinder, so it settles whether
-              // there is anything worth quoting for; and it outranks BOTH the
-              // paths here, because a cylinder that has not passed can neither
-              // be refilled nor returned to service with its defect repaired.
-              const step = requiredStep(ext, today)
-              const hptDue = step === WORKFLOW_STEP.HPT
-              const needsQuote = (canResolve || canSendToVendor) && !quoted && !hptDue
+              // Submit HPT replaces Resolve and Send to vendor while the test
+              // is due. A quotation already on the unit used to leave both of
+              // those buttons up, which is how a condemned cylinder could be
+              // marked handled from this list and not from the other two.
+              const next = repositoryNextActions(ext, today)
               return (
                 <>
-                  {(canResolve || canSendToVendor) && hptDue && (
+                  {next.hpt && (
                     <button
                       className="btn bg-violet-600 px-2.5 py-1.5 text-xs text-white hover:brightness-110"
                       onClick={() => setHptFor(ext)}
@@ -447,7 +436,7 @@ export default function Repository() {
                       <Gauge size={14} /> Submit HPT
                     </button>
                   )}
-                  {needsQuote && (
+                  {next.quote && (
                     <button
                       className="btn bg-brand-600 px-2.5 py-1.5 text-xs text-white hover:brightness-110"
                       onClick={() => setQuoteFor(ext)}
@@ -456,7 +445,7 @@ export default function Repository() {
                       <FileText size={14} /> Submit quotation
                     </button>
                   )}
-                  {canResolve && quoted && (
+                  {next.resolve && (
                     <button
                       className="btn bg-green-600 px-2.5 py-1.5 text-xs text-white hover:brightness-110"
                       disabled={busyId === ext.id}
@@ -466,7 +455,7 @@ export default function Repository() {
                       <CheckCircle2 size={14} /> Resolve
                     </button>
                   )}
-                  {canReceive && (
+                  {next.receive && (
                     <button
                       className="btn bg-green-600 px-2.5 py-1.5 text-xs text-white hover:brightness-110"
                       onClick={() => setReceiveFor(ext)}
@@ -475,7 +464,7 @@ export default function Repository() {
                       <PackageCheck size={14} /> Received
                     </button>
                   )}
-                  {canSendToVendor && quoted && (
+                  {next.send && (
                     <button
                       className="btn-soft px-2.5 py-1.5 text-xs"
                       disabled={busyId === ext.id}
@@ -485,8 +474,8 @@ export default function Repository() {
                       <Truck size={14} /> Send to vendor
                     </button>
                   )}
-                  {(canResolve || canSendToVendor) &&
-                    quoted &&
+                  {(next.resolve || next.send || next.hpt) &&
+                    next.quoted &&
                     (ext.quotation?.fileData || ext.quotation?.fileUrl ? (
                       <a
                         href={safeHref(ext.quotation.fileData || ext.quotation.fileUrl)}
@@ -600,7 +589,12 @@ export default function Repository() {
           drop out of lists, counts and QR inspections for 30 days. Restoring brings back the same
           unit and the same QR code, so a sticker already on the cylinder works again.
           {selected.size !== deletable.length && (
-            <> {selected.size - deletable.length} of the selection {selected.size - deletable.length === 1 ? 'is' : 'are'} outside your sites and will be left in place.</>
+            <>
+              {' '}
+              {selected.size - deletable.length} of the selection{' '}
+              {selected.size - deletable.length === 1 ? 'is' : 'are'} outside your sites and will be
+              left in place.
+            </>
           )}
         </p>
         <div className="mt-5 flex justify-end gap-2">
