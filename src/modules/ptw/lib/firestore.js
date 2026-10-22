@@ -226,6 +226,11 @@ export async function createPermit(orgId, data, actor) {
     time: data.time || '',
     typeOfWork: data.typeOfWork || '',
     site: data.site || '',
+    // The weather digest matches a permit to a site on this id. The name alone
+    // collides: two "Depot" sites would share each other's work types. The
+    // form already collected it; older permits simply do not have it, and the
+    // digest falls back to the name for those.
+    siteId: typeof data.siteId === 'string' ? data.siteId.trim().slice(0, 128) : '',
     jobLocation: data.jobLocation || '',
     jobDescription: data.jobDescription || '',
     issuingDepartment: data.issuingDepartment || '',

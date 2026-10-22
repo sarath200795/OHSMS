@@ -46,21 +46,35 @@ export function memoryDb(seed = {}) {
       }))
   }
 
-  const collection = (name) => ({
-    doc: (id) => docRef(`${name}/${id}`),
-    async get() {
-      const docs = rowsUnder(name)
-      return { docs, empty: docs.length === 0, size: docs.length }
-    },
-    where(field, _op, value) {
-      return {
-        async get() {
-          const docs = rowsUnder(name).filter((d) => (d.data() || {})[field] === value)
-          return { docs, empty: docs.length === 0, size: docs.length }
-        },
-      }
-    },
-  })
+  const collection = (name) => {
+    // select() is a no-op: the tests store the whole document, and production
+    // uses it only to avoid shipping fields the digest does not read.
+    const query = {
+      doc: (id) => docRef(`${name}/${id}`),
+      select() {
+        return query
+      },
+      limit(n) {
+        query._limit = Number(n) || 0
+        return query
+      },
+      async get() {
+        const docs = rowsUnder(name).slice(0, query._limit ?? Infinity)
+        return { docs, empty: docs.length === 0, size: docs.length }
+      },
+      where(field, _op, value) {
+        return {
+          async get() {
+            const docs = rowsUnder(name)
+              .filter((d) => (d.data() || {})[field] === value)
+              .slice(0, query._limit ?? Infinity)
+            return { docs, empty: docs.length === 0, size: docs.length }
+          },
+        }
+      },
+    }
+    return query
+  }
 
   let tail = Promise.resolve()
   return {

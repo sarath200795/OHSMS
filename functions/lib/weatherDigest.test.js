@@ -561,4 +561,28 @@ describe('deliverWeatherDigest', () => {
     expect(sent[0].text).toContain('This is not an all-clear for them')
     expect(sent[0].text).not.toContain('High risk')
   })
+
+  it('writes the organisation activity into the precaution cell and still mails only admins', async () => {
+    const sent = []
+    const store = memoryDb({
+      'organizations/orgA': { name: 'Harbour Fitness', activityTypes: ['Fitness & Recreation'] },
+      'organizations/orgA/sites/s1': { name: 'Clubhouse', region: 'West', lat: 17.44, lng: 78.39 },
+      'users/admin': user('admin', { role: 'admin' }),
+      'users/member': user('member', { role: 'member' }),
+    })
+    await deliverWeatherDigest({
+      db: store,
+      mailer: mailer(sent),
+      logger,
+      scheduleTime: '2026-09-23T06:00:00.000Z',
+      orgIds: ['orgA'],
+      fetchObs: async () => ({ tempC: 42, apparentTempC: 52, observedAt: '2026-09-23T11:00' }),
+      renderMap: async () => ({ png: PNG }),
+    })
+    expect(sent).toHaveLength(1)
+    expect(sent[0].to).toBe('admin@example.com')
+    expect(sent[0].text).toMatch(/outdoor classes/i)
+    expect(sent[0].text).not.toMatch(/scaffolding/)
+    expect(sent[0].subject).toBe('Weather risk: 1 high, 0 medium')
+  })
 })

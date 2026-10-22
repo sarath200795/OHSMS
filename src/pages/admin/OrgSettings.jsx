@@ -23,7 +23,12 @@ import { ERP_ROLES, normalizeErpRoleLabels } from '../../shared/org/erpRoles'
 import { DEPARTMENTS } from '../../shared/auth/access'
 import { useAuth } from '../../shared/auth/AuthContext'
 import { subscribeOrg, updateOrgSettings, subscribeSites } from '../../shared/org/orgData'
-import { ACTIVITY_TYPES } from '../../shared/org/orgConstants'
+import {
+  normalizeOverrides,
+  packOverrides,
+  activityPickerOptions,
+} from '../../shared/weather/activityPrecautions'
+import WeatherPrecautions from './WeatherPrecautions'
 import { MODULES } from '../../shared/modules/registry'
 import {
   BUILTIN_FIELDS,
@@ -104,6 +109,7 @@ export default function OrgSettings() {
     address: '',
     notificationEmail: '',
     activityTypes: [],
+    weatherPrecautions: {},
     departments: [],
     safetyHelplinePrimary: '',
     safetyHelplineSecondary: '',
@@ -142,6 +148,7 @@ export default function OrgSettings() {
           safetyHelplinePrimary: o.safetyHelplinePrimary || '',
           safetyHelplineSecondary: o.safetyHelplineSecondary || '',
           activityTypes: o.activityTypes || [],
+          weatherPrecautions: normalizeOverrides(o.weatherPrecautions),
           departments:
             Array.isArray(o.departments) && o.departments.length ? o.departments : DEPARTMENTS,
           erpRoleLabels: normalizeErpRoleLabels(o.erpRoleLabels),
@@ -184,7 +191,7 @@ export default function OrgSettings() {
   }, [orgId, actor, org?.logoPath, org?.logoUrl, logoSrc, logoLoading])
 
   const activityOptions = useMemo(
-    () => [...new Set([...ACTIVITY_TYPES, ...form.activityTypes])],
+    () => activityPickerOptions(form.activityTypes),
     [form.activityTypes]
   )
 
@@ -357,6 +364,7 @@ export default function OrgSettings() {
           safetyHelplinePrimary: form.safetyHelplinePrimary,
           safetyHelplineSecondary: form.safetyHelplineSecondary,
           activityTypes: form.activityTypes,
+          weatherPrecautions: packOverrides(form.weatherPrecautions),
           departments: form.departments,
           erpRoleLabels: form.erpRoleLabels,
         },
@@ -790,6 +798,12 @@ export default function OrgSettings() {
               </Button>
             </div>
           </Card>
+
+          <WeatherPrecautions
+            activityTypes={form.activityTypes}
+            value={form.weatherPrecautions}
+            onChange={(weatherPrecautions) => setForm({ ...form, weatherPrecautions })}
+          />
 
           {/* Departments — populate every department dropdown across all modules */}
           <Card>

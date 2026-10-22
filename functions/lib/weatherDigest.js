@@ -5,8 +5,10 @@
 // tables. A site with several hazards is listed under each, at that hazard's
 // own level; the subject and summary count each site once, at its worst level.
 // Above those sections, after the summary and map, sits one table of EVERY
-// High site-hazard pair (Region, Site Name, Type of Alert, Precautions), with
-// static precautions per hazard. It has no row cap. The row cap
+// High site-hazard pair (Region, Site Name, Type of Alert, Precautions). The
+// precaution follows the organisation's activities and, where a site has its
+// own record, that site's work (weatherPrecautions.js). With nothing recorded
+// the wording stays the general paragraph. The table has no row cap. The row cap
 // (DIGEST_AREA_CAP) applies per section, and the map pins only the sites that
 // made it into at least one section or into the High table. The digest data stays one row
 // per site (`areas`); the sectioning lives in the mail template.
@@ -58,6 +60,7 @@ import { gridKey, fetchGrids } from './openMeteo.js'
 import { loadOrgDisplayName, mailSenderName } from './mailBrand.js'
 import { readableText } from './mailTemplates/safe.js'
 import { renderWeatherDigest, shownDigestAreas } from './mailTemplates/lifecycle.js'
+import { loadPrecautionFor } from './weatherPrecautions.js'
 import { renderRiskMap, pinsFromAreas, MAP_CID } from './weatherMap.js'
 
 // Fifty minutes is inside the 45–60 minute window a partial picture is allowed
@@ -211,6 +214,7 @@ export function assembleDigest(plan, observations) {
         // for. The request stays rounded; the picture does not have to.
         lat: coord(site.lat),
         lng: coord(site.lng),
+        siteId: site.id || '',
       })
     }
   }
@@ -494,11 +498,15 @@ async function deliverOrg({
       })
     }
   }
+  // Recipients stay the admin audience. The activity read can fail open: the
+  // mail still goes, with the org-level sentence or the general paragraph.
+  const precautionFor = await loadPrecautionFor(db, orgId, sites, log)
   const message = renderWeatherDigest(digest, {
     appOrigin: origin,
     sender,
     mapCid,
     windowLabel: bucketWindowLabel(bucket),
+    precautionFor,
   })
   const result = await circulate({
     db,
