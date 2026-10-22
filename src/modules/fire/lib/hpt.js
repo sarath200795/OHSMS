@@ -1,4 +1,4 @@
-import { daysUntil, deriveStatus, hasQuotation, isToBeRefilled, toDate } from './extinguisherLogic'
+import { deriveStatus, hasQuotation, hptDaysUntil, isToBeRefilled, toDate } from './extinguisherLogic'
 
 /**
  * Hydrostatic pressure testing.
@@ -38,7 +38,7 @@ export const HPT_RESULT = { PASS: 'pass', FAIL: 'fail' }
  * expired: a compliance date is satisfied before it arrives, not on the day.
  */
 export function isHptOverdue(ext, today = new Date()) {
-  const days = daysUntil(ext?.dateOfNextHPT, today)
+  const days = hptDaysUntil(ext?.dateOfNextHPT, today)
   return days !== null && days <= 0
 }
 
@@ -166,3 +166,21 @@ export const HPT_BLOCKS_RESOLVE =
   'Record the hydrostatic test before resolving defects on this unit.'
 export const HPT_BLOCKS_VENDOR =
   'Record the hydrostatic test before sending this unit to the vendor.'
+export const QUOTATION_BLOCKS_RESOLVE =
+  'Submit a vendor quotation before resolving defects on this unit.'
+
+/**
+ * Why Resolve must not run, or '' when it may.
+ *
+ * The open-defect log used to clear a defect in one click. The repository and
+ * the physical-defect list already refuse that until the test is recorded and
+ * a quotation is in; the log did not, so the same cylinder was resolvable
+ * from the one screen that had not heard the rule. The test outranks the
+ * quotation, for the same reason requiredStep gives.
+ */
+export function resolveBlockReason(ext, today = new Date()) {
+  if (!ext) return 'Extinguisher not found'
+  if (isHptOverdue(ext, today)) return HPT_BLOCKS_RESOLVE
+  if (!hasQuotation(ext)) return QUOTATION_BLOCKS_RESOLVE
+  return ''
+}

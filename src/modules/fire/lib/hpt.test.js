@@ -9,6 +9,9 @@ import {
   requiredStep,
   WORKFLOW_STEP,
   repositoryNextActions,
+  resolveBlockReason,
+  HPT_BLOCKS_RESOLVE,
+  QUOTATION_BLOCKS_RESOLVE,
   HPT_RESULT,
   HPT_INTERVAL_YEARS,
 } from './hpt'
@@ -43,6 +46,14 @@ describe('knowing the hydrostatic test date has been crossed', () => {
     expect(isHptOverdue({}, TODAY)).toBe(false)
     expect(isHptOverdue({ dateOfNextHPT: '' }, TODAY)).toBe(false)
     expect(isHptOverdue(null, TODAY)).toBe(false)
+  })
+
+  // 18:30 UTC is midnight in Asia/Kolkata. The WhatsApp summary already counts
+  // that boundary; a browser left on UTC must not call the test due a day late.
+  it('counts the Asia/Kolkata day, the same day WhatsApp uses', () => {
+    const ext = { dateOfNextHPT: '2026-10-12' }
+    expect(isHptOverdue(ext, new Date('2026-10-11T18:29:00Z'))).toBe(false)
+    expect(isHptOverdue(ext, new Date('2026-10-11T18:31:00Z'))).toBe(true)
   })
 })
 
@@ -229,6 +240,13 @@ describe('what the workflow asks a unit for next', () => {
   it('does not ask for the test while the date is still ahead', () => {
     expect(requiredStep({ dateOfNextHPT: inDays(1) }, TODAY)).toBe(WORKFLOW_STEP.QUOTATION)
     expect(requiredStep({ dateOfNextHPT: inDays(30) }, TODAY)).toBe(WORKFLOW_STEP.QUOTATION)
+  })
+
+  it('refuses resolve without a quotation, and the test still outranks that', () => {
+    const quoted = { quotation: { submittedAt: '2026-06-01' } }
+    expect(resolveBlockReason({ dateOfNextHPT: inDays(400) }, TODAY)).toBe(QUOTATION_BLOCKS_RESOLVE)
+    expect(resolveBlockReason({ dateOfNextHPT: inDays(400), ...quoted }, TODAY)).toBe('')
+    expect(resolveBlockReason({ dateOfNextHPT: inDays(-1), ...quoted }, TODAY)).toBe(HPT_BLOCKS_RESOLVE)
   })
 
   it('a unit with no HPT date recorded is not treated as due', () => {

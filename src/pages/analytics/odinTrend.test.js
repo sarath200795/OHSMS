@@ -190,6 +190,22 @@ describe('the centre-id join', () => {
     expect(resolveOdinRows([row({ siteId: '50', site: '' })], CODED)[0].matchedBy).toBe('id')
   })
 
+  it('matches a centre id that differs only by case, and does not guess between two', () => {
+    const sites = [{ id: 's1', name: 'North', code: 'NP-001', region: 'North' }]
+    const [hit] = resolveOdinRows([row({ siteId: 'np-001', site: '', region: '' })], sites)
+    expect(hit.matchedBy).toBe('id')
+    expect(hit.region).toBe('North')
+    const both = [
+      { id: 'a', name: 'One', code: 'NP-001', region: 'North' },
+      { id: 'b', name: 'Two', code: 'np-001', region: 'South' },
+    ]
+    // The exact stored spelling still finds its own site.
+    expect(resolveOdinRows([row({ siteId: 'np-001', site: '' })], both)[0].region).toBe('South')
+    // A third casing matches neither document exactly, and both fold to it.
+    const [miss] = resolveOdinRows([row({ siteId: 'Np-001', site: 'Nowhere' })], both)
+    expect(miss.matchedBy).toBe('')
+  })
+
   it('still falls back to the name when there is no code to match', () => {
     const [r] = resolveOdinRows([row({ siteId: '', site: 'Fast Fit Gym', entity: '' })], CODED)
     expect(r.matchedBy).toBe('name')

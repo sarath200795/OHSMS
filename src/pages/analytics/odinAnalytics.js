@@ -131,6 +131,7 @@ export function resolveOdinRows(rows = [], sites = [], { keepUnplaced = true } =
   // wrong centre — silently, and in a register the reader trusts — which is
   // worse than leaving it unplaced and saying so.
   const byLoose = new Map()
+  const byFold = new Map()
   for (const s of sites || []) {
     if (s?.id) byId.set(String(s.id), s)
     if (s?.name) {
@@ -150,14 +151,32 @@ export function resolveOdinRows(rows = [], sites = [], { keepUnplaced = true } =
     // admin can put the centre id in a site's attributes without a migration.
     for (const key of SITE_CODE_FIELDS) {
       const v = s?.[key] ?? s?.attributes?.[key]
-      if (v !== undefined && v !== null && String(v).trim()) byId.set(String(v).trim(), s)
+      if (v !== undefined && v !== null && String(v).trim()) noteCentreId(String(v).trim(), s)
     }
+  }
+
+  // Exact stored spelling first, so a record that saved "NP-001" still finds
+  // the site that holds "NP-001" even when another site is "np-001". A query
+  // that matches no exact code falls through to a case-insensitive match, and
+  // only when one site folds to it. Two sites that differ only by case are
+  // not a guess.
+  function noteCentreId(trimmed, site) {
+    byId.set(trimmed, site)
+    const folded = trimmed.toLowerCase()
+    const prev = byFold.get(folded)
+    if (prev === undefined) byFold.set(folded, site)
+    else if (prev && prev.id !== site.id) byFold.set(folded, null)
   }
 
   return (rows || []).filter(Boolean).map((r) => {
     // Centre id first — an exact key beats a name every time — then the name
     // exactly, then the name ignoring punctuation and spacing.
-    const byCode = r.siteId ? byId.get(String(r.siteId).trim()) : null
+    const rawId = r.siteId ? String(r.siteId).trim() : ''
+    const exactId = rawId ? byId.get(rawId) : null
+    // A case-only miss is not on byId. byFold is that site when exactly one
+    // code folds to the query, and null when two sites do.
+    const foldedId = rawId && !exactId ? byFold.get(rawId.toLowerCase()) || null : null
+    const byCode = exactId || foldedId
     const exact = !byCode && r.site ? byName.get(norm(r.site)) || null : null
     const loose = !byCode && !exact && r.site ? byLoose.get(looseKey(r.site)) || null : null
     const site = byCode || exact || loose

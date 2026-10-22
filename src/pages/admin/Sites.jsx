@@ -36,6 +36,7 @@ import {
   parseSitesCsv, planImport, updatePayload, sitesCsvTemplate, sitesToCsv, hasCoordinates, duplicateCodes,
 } from './parseSitesCsv'
 import { downloadText } from '../../shared/lib/download'
+import { sameCentreId } from '../../shared/org/centreId'
 
 const SitesMap = lazy(() => import('./SitesMap'))
 
@@ -127,7 +128,7 @@ export default function Sites() {
     // claiming one makes every join on it ambiguous. The dashboard that results
     // is wrong without saying so, which is the worst way for this to fail.
     const code = String(form.code || '').trim()
-    const clash = code && (sites || []).find((x) => String(x.code || '').trim() === code && x.id !== editing?.id)
+    const clash = code && (sites || []).find((x) => sameCentreId(x.code, code) && x.id !== editing?.id)
     if (clash) {
       toast.error(`Centre ID ${code} already belongs to “${clash.name}”.`)
       return
@@ -1131,7 +1132,7 @@ function CentreIdNotice({ sites, canManage, onExport, onImport }) {
 function codeHint(code, editing, sites) {
   const value = String(code || '').trim()
   const clash = value && (sites || []).find(
-    (s) => String(s.code || '').trim() === value && s.id !== editing?.id
+    (s) => sameCentreId(s.code, value) && s.id !== editing?.id
   )
   if (clash) return `“${clash.name}” already uses this ID — two sites cannot share one.`
   return 'This site’s ID in the system that owns it — a centre service ID, a store code. Analytics → ODIN matches warehouse rows to this site on it.'

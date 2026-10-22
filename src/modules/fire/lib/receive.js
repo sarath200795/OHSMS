@@ -18,6 +18,7 @@ import { STATUS } from './constants'
 import { toDate } from './extinguisherLogic'
 import { isFutureDate } from '../../../shared/lib/dates'
 import { refillDefectsOf } from './defectClosure'
+import { HPT_RESULT, validateHpt } from './hpt'
 
 /**
  * Dates for "Refilled & closed".
@@ -36,6 +37,36 @@ export function validateRefilledClosed({ dateOfNextRefill, dateOfNextHPT } = {},
     return 'The new due dates must be after today'
   }
   return ''
+}
+
+/** True when the close is not claiming a different hydrostatic due date. */
+export function hptDateUnchanged(stored, next) {
+  return String(stored || '').trim() === String(next || '').trim()
+}
+
+/**
+ * A new hydrostatic date on Refilled & closed is a passed test.
+ *
+ * The button's job is to bring a refilled unit back. Recording a later
+ * hydrostatic date in the same step is a claim that the cylinder was tested,
+ * and that claim is what Submit HPT exists to evidence. Leaving the stored
+ * date where it is needs nothing extra. Changing it needs the certificate,
+ * the agency, and a test date — the same facts a passed test records — and
+ * the certificate's next-due date is the date being written.
+ */
+export function validateRefilledHpt(storedDate, { dateOfNextHPT, certificate } = {}) {
+  if (hptDateUnchanged(storedDate, dateOfNextHPT)) return ''
+  const fileName = String(certificate?.fileName || '').trim()
+  const hasFile = Boolean(certificate?.fileData || certificate?.fileUrl || certificate?.filePath)
+  if (!fileName || !hasFile) {
+    return 'Attach the hydrostatic-test certificate for the new due date'
+  }
+  return validateHpt({
+    testedOn: certificate?.testedOn,
+    result: HPT_RESULT.PASS,
+    nextDueOn: dateOfNextHPT,
+    vendor: certificate?.vendor,
+  })
 }
 
 export function validateReceive({ receivedOn, dateOfNextRefill } = {}) {

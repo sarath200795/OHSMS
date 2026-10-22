@@ -40,10 +40,14 @@ const fuzzyKey = (s) =>
     .filter((w) => !NOISE.has(w))
     .sort()
     .join(' ')
-const codeKey = (s) =>
-  String(s ?? '')
+/** Centre id comparison. Trim and case only — the stored spelling stays put. */
+export function centreIdKey(value) {
+  return String(value ?? '')
     .trim()
     .toLowerCase()
+}
+
+const codeKey = centreIdKey
 
 function bigrams(s) {
   const m = new Map()
