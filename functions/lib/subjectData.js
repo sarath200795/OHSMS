@@ -286,7 +286,7 @@ export const SUBJECT_SOURCES = [
     orgField: 'orgId',
     joins: [{ kind: 'field', field: 'uid', key: 'uid' }],
     retention: ERASABLE,
-    why: 'Consent to receive site summaries on WhatsApp, and the number it was given for. Withdrawing consent deletes it.',
+    why: 'Consent to receive site summaries on WhatsApp, and the number it was given for. An organisation administrator can also attach the number. Withdrawing consent — UNLINK, the Security page, or the administrator removing it — deletes it.',
   },
   // phoneHash is a keyed digest, not the number. No message text is stored.
   {

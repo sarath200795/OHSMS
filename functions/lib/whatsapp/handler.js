@@ -11,13 +11,16 @@
 //                    password). Unknown or inactive: one polite reply per 24 h,
 //                    no data, and never a hint whether a site exists
 //   4  UNLINK        honoured before the rate limit: withdrawing consent must
-//                    always work
-//   5  rate limit    30/h, 150/day
-//   6  organisation  only the live profile's org. No site is searched until
+//                    always work, including when the organisation has switched
+//                    lookup off
+//   5  org switch    waOrgSettings enabled === false stops the reply before
+//                    any site is read. A missing document leaves lookup on
+//   6  rate limit    30/h, 150/day
+//   7  organisation  only the live profile's org. No site is searched until
 //                    the chat has chosen one (remembered for 24 h idle)
-//   7  resolve       ONLY among the sites the user reaches in that org
-//   8  reply         snapshot counts + contacts, one message
-//   9  log           waQueryLog: outcome and site id, never the message text
+//   8  resolve       ONLY among the sites the user reaches in that org
+//   9  reply         snapshot counts + contacts, one message
+//  10  log           waQueryLog: outcome and site id, never the message text
 //
 // ctx = {
 //   now: Date,
@@ -149,6 +152,16 @@ export async function handleMessage(msg, ctx) {
     if (store.clearSession) await store.clearSession(from)
     await ctx.reply(from, { text: MESSAGES.unlinkedOk })
     return done('unlinked')
+  }
+
+  // Explicit false only. Stores that predate the switch have no method, and
+  // a missing settings document is reported as on — see orgLookupEnabled.
+  if (
+    typeof store.orgLookupEnabled === 'function' &&
+    (await store.orgLookupEnabled(link.orgId)) === false
+  ) {
+    await ctx.reply(from, { text: MESSAGES.orgOff })
+    return done('org-off')
   }
 
   const limit = await store.rate(from, (s) => countQuery(s, now))

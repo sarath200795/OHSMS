@@ -5,12 +5,17 @@
 // Collections, all TOP-LEVEL and server-only (firestore.rules: read, write: if
 // false — the Admin SDK does not consult rules; nothing else may touch them):
 //
-//   waLinks/{waId}             { uid, orgId, last4, linkedAt }        the binding
+//   waLinks/{waId}             { uid, orgId, last4, linkedAt, source, linkedBy }
+//                              source is 'self' (link code) or 'admin' (Org Settings)
 //   waLinkCodes/{sha256(code)} { uid, orgId, expiresAtMs, createdAt } 10-min code
 //   waInbound/{sha256(wamid)}  { at, expiresAt }                      dedupe, 7 days
 //   waRate/{phoneHash}         counters, see rateLimit.js
 //   waQueryLog/{auto}          { orgId, uid, phoneHash, siteId, intent, outcome, at }
 //   waSiteSnapshots/{orgId}    { asOf, v, sites: { [siteId]: [counts…] } }
+//   waOrgSettings/{orgId}     { enabled, updatedBy, updatedAtMs, test window }
+//                              Org Settings switch. Server-only. Absent means
+//                              lookup stays on; enabled: false turns it off
+//                              for that organisation only. No tokens.
 //   waSessions/{phoneHash}     the chat's conversation, keyed by a digest of the
 //                              number or `tg:<chatId>`. Holds the chosen
 //                              organisation and the last numbered list (site ids
@@ -34,6 +39,7 @@ import { hashLinkCode, inboundId, phoneHash, redeemable } from './link.js'
 import { isActiveMember } from './access.js'
 import { summariseSites } from '../siteSummary.js'
 import { namedOrganisations, snapshotOrgIds } from './orgs.js'
+import { orgLookupEnabled as isOrgLookupEnabled } from './orgConnect.js'
 
 export const SNAPSHOT_MAX_AGE_MS = 60 * 60 * 1000
 export const INBOUND_KEEP_MS = 7 * 24 * 60 * 60 * 1000
@@ -276,6 +282,7 @@ export function createStore(db, { pepper, now = () => new Date() } = {}) {
           orgId: rec.orgId,
           last4: String(waId).slice(-4),
           linkedAt: FieldValue.serverTimestamp(),
+          source: 'self',
         })
         return { ok: true, uid: rec.uid, orgId: rec.orgId }
       })
@@ -304,6 +311,14 @@ export function createStore(db, { pepper, now = () => new Date() } = {}) {
     async listOrganizations() {
       const snap = await db.collection('organizations').select('name').limit(READ_CAP).get()
       return namedOrganisations(snap.docs.map((d) => ({ id: d.id, name: d.data()?.name })))
+    },
+
+    async orgLookupEnabled(orgId) {
+      // A bad id is not "on". A missing document is on: lookup predated the switch.
+      if (typeof orgId !== 'string' || !orgId || orgId.includes('/')) return false
+      const snap = await db.doc(`waOrgSettings/${orgId}`).get()
+      if (!snap.exists) return true
+      return isOrgLookupEnabled(snap.data() || {})
     },
 
     async getOrganization(orgId) {

@@ -199,8 +199,9 @@ export const RECORD_CLASSES = [
     class: 'operational',
     proposedPeriod: 'until the user unlinks',
     proposedPeriodNote:
-      'Consent record: the WhatsApp number and the uid it was proven for. Deleted on UNLINK / STOP, ' +
-      'on the Security page, or by an erasure request. No age purge — consent does not expire.',
+      'Consent record: the WhatsApp number and the uid it was proven for, or attached to by an ' +
+      'organisation administrator. Deleted on UNLINK / STOP, on the Security page, by that ' +
+      'administrator in Org Settings, or by an erasure request. No age purge — consent does not expire.',
     livePurge: false,
     recycleBin: false,
     counselMustSign: null,

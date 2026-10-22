@@ -380,3 +380,43 @@ export async function unlinkWhatsApp() {
   const fn = await callable('unlinkWhatsApp')
   return (await fn()).data
 }
+
+/**
+ * Org Settings → Connect with WhatsApp. The caller's organisation is read
+ * server-side; nothing here names a token, a secret, or an organisation id.
+ *
+ * `{ platformReady, number, chatLink, enabled, links, truncated }`. `links`
+ * are the handsets allowed to query this organisation. `chatLink` is the
+ * shared number's wa.me URL, or null when that number is not published.
+ */
+export async function whatsAppOrgStatus() {
+  const fn = await callable('whatsAppOrgStatus')
+  return (await fn()).data
+}
+
+/** `{ enabled }` — turn lookup on or off for the caller's organisation. */
+export async function setWhatsAppOrgEnabled(enabled) {
+  const fn = await callable('setWhatsAppOrgEnabled')
+  return (await fn({ enabled: enabled === true })).data
+}
+
+/**
+ * Attach a handset to an employee. `uid` may be omitted to match a profile
+ * that already stores this number. `{ phone, masked, uid, mapped }`.
+ */
+export async function addWhatsAppOrgNumber({ phone, uid } = {}) {
+  const fn = await callable('addWhatsAppOrgNumber')
+  return (await fn({ phone, uid: uid || null })).data
+}
+
+/** Remove a handset linked to the caller's organisation. `{ masked }`. */
+export async function removeWhatsAppOrgNumber(phone) {
+  const fn = await callable('removeWhatsAppOrgNumber')
+  return (await fn({ phone })).data
+}
+
+/** Send one test to a number already linked to the caller's organisation. `{ sent, masked }`. */
+export async function sendWhatsAppOrgTest(phone) {
+  const fn = await callable('sendWhatsAppOrgTest')
+  return (await fn({ phone })).data
+}

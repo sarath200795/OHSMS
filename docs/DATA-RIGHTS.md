@@ -35,19 +35,21 @@ claiming completeness it does not have is to say where it stopped.
 
 ### WhatsApp site lookup
 
-The WhatsApp lookup (`docs/WHATSAPP.md`) adds two personal-data collections,
-both at the database root, tenanted by an `orgId` field and **server-only** in
+The WhatsApp lookup (`docs/WHATSAPP.md`) adds personal-data collections
+at the database root, tenanted by an `orgId` field and **server-only** in
 `firestore.rules`:
 
 | Collection | What | Reached by | Kept |
 |---|---|---|---|
-| `waLinks` | The person's WhatsApp number (the document id) and the uid it was proven for | `uid` | Until they unlink (UNLINK / STOP on WhatsApp, or Security → Unlink), or erasure |
+| `waLinks` | The person's WhatsApp number (the document id) and the uid it was proven for, or attached by an organisation administrator | `uid` | Until they unlink (UNLINK / STOP on WhatsApp, Security → Unlink, or an administrator removes it in Org Settings), or erasure |
 | `waQueryLog` | Which site they looked up, when, and the outcome. The number only as a keyed digest; **no message text** | `uid` | 90 days (`purgeWhatsAppLedgers`) |
 | `waSessions` | Chosen organisation and the last pick-list of site or organisation ids (never a location, never the message text). Telegram rows have no uid. | `uid` | 24 hours idle (`purgeWhatsAppLedgers`), or erasure. Numbered choices stop working after 15 minutes. |
 
-Both are in `SUBJECT_SOURCES` as `topLevel` + `orgField`, so the export finds
-them by uid without crossing tenants, and both are ERASABLE. Withdrawing consent
-deletes the link immediately. The sender's WhatsApp profile name arrives in
+All three are in `SUBJECT_SOURCES` as `topLevel` + `orgField`, so the export finds
+them by uid without crossing tenants, and all three are ERASABLE. Withdrawing consent
+deletes the link immediately. Organisation administrators of that tenant can also see
+the numbers linked to their own organisation, through the `whatsAppOrgStatus`
+callable — not by reading the collection. The sender's WhatsApp profile name arrives in
 every webhook and is dropped on receipt. Replies carry counts only — never an
 incident narrative, a name from an action, or anything medical; illness actions
 are excluded from the action count altogether, because at a small site a count

@@ -53,6 +53,9 @@ const SEED = {
     'd'.repeat(32),
     { uid: 'member1', orgId: ORG, choices: ['s1'], expiresAtMs: Date.now() + 900000 },
   ],
+  // The on/off switch. A client write here would turn lookup off (or on) for
+  // a tenant without the callable's admin check.
+  waOrgSettings: [ORG, { enabled: false, updatedBy: 'admin1' }],
 }
 const COLLECTIONS = Object.keys(SEED)
 const CALLERS = ['admin1', 'manager1', 'member1']
@@ -144,5 +147,11 @@ describe('the attacks the denial exists for', () => {
 
   it('the subject of a log row cannot erase it', async () => {
     await assertFails(deleteDoc(doc(as('member1'), 'waQueryLog', 'log1')))
+  })
+
+  it('an admin cannot read or flip the WhatsApp switch from the client', async () => {
+    await assertFails(getDoc(doc(as('admin1'), 'waOrgSettings', ORG)))
+    await assertFails(updateDoc(doc(as('admin1'), 'waOrgSettings', ORG), { enabled: true }))
+    await assertFails(setDoc(doc(as('admin1'), 'waOrgSettings', 'orgB'), { enabled: true }))
   })
 })

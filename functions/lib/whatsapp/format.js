@@ -330,6 +330,9 @@ export const MESSAGES = {
   badLink: 'Send LINK followed by the 6-digit code shown in the app, e.g. LINK 123456.',
   unlinkedOk:
     'Unlinked. This number will no longer receive site details. You can link again from the app at any time.',
+  orgOff:
+    'WhatsApp site lookup is switched off for your organisation. An administrator can turn it on in Org Settings.\n\n' +
+    'Send UNLINK to disconnect this number.\n\nIn an emergency call 112.',
   error: 'Sorry, something went wrong looking that up. Please try again in a few minutes.',
   noLocatedSites:
     "None of your sites has a location recorded, so I can't find the nearest. Please send the site code or name.",

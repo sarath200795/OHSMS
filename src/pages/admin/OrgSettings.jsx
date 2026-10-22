@@ -84,6 +84,7 @@ import {
   SkeletonCard,
 } from '../../shared/ui'
 import MetabaseSettings from './MetabaseSettings'
+import WhatsAppConnect from './WhatsAppConnect'
 
 const TABS = [
   { key: 'general', label: 'General', icon: Settings },
@@ -1101,7 +1102,12 @@ export default function OrgSettings() {
         </div>
       )}
 
-      {tab === 'integrations' && <MetabaseSettings orgId={orgId} actor={actor} />}
+      {tab === 'integrations' && (
+        <div className="space-y-8">
+          <WhatsAppConnect orgId={orgId} actor={actor} />
+          <MetabaseSettings orgId={orgId} actor={actor} />
+        </div>
+      )}
     </>
   )
 }
