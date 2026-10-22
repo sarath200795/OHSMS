@@ -7,6 +7,7 @@ import {
   ALERTS,
   CATALOG,
   FACILITY_LABELS,
+  SITE_TYPES,
   builtInPrecaution,
   canonicalFacility,
   chooseActivities,
@@ -14,12 +15,15 @@ import {
   normalizeOverrides,
   packOverrides,
   precautionText,
+  siteTypeOptions,
+  siteTypeRows,
 } from '../../../functions/lib/weatherPrecautions.js'
 
 export {
   ALERTS,
   CATALOG,
   FACILITY_LABELS,
+  SITE_TYPES,
   builtInPrecaution,
   canonicalFacility,
   chooseActivities,
@@ -27,6 +31,8 @@ export {
   normalizeOverrides,
   packOverrides,
   precautionText,
+  siteTypeOptions,
+  siteTypeRows,
 }
 
 /** Industry list first, then the work a permit or a HIRA title can name. */

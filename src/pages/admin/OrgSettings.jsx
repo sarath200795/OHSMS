@@ -773,7 +773,8 @@ export default function OrgSettings() {
             </h3>
             <p className="mb-3 mt-1 text-sm text-ink-500">
               Select the types of activity your organization performs. Add your own if it&apos;s not
-              listed.
+              listed. Anything you add here is also a site type, and you can write its heat, rain
+              and adverse-weather precautions below.
             </p>
             <MultiSelect
               options={activityOptions}

@@ -9,6 +9,7 @@ import {
   chooseActivities,
   FACILITY_LABELS,
   canonicalFacility,
+  resolvePrecaution,
   classifySignal,
   indexSiteSignals,
   loadPrecautionFor,
@@ -248,9 +249,39 @@ describe('site records', () => {
       expect(text('heat', site.id, site.name)).not.toMatch(/outdoor class|outdoor session|pitch/i)
       expect(text('rain', site.id, site.name)).not.toMatch(/outdoor class|outdoor session|pitch/i)
     }
-    expect(FACILITY_LABELS).toEqual(['Indoor gym', 'Indoor pool', 'Indoor court', 'Warehouse'])
+    expect(FACILITY_LABELS).toEqual(
+      expect.arrayContaining(['Office', 'Indoor gym', 'Kitchen/Cafeteria', 'Other'])
+    )
     expect(canonicalFacility('gym')).toBe('Indoor gym')
-    expect(canonicalFacility('Construction')).toBe('')
+    expect(canonicalFacility('office')).toBe('Office')
+    expect(canonicalFacility('Kitchen/Cafeteria')).toBe('Kitchen/Cafeteria')
+    expect(canonicalFacility('Cold store', ['Cold store'])).toBe('Cold store')
+  })
+
+  it('frames the mail from the site type, then the organisation, then the general paragraph', () => {
+    const org = { activityTypes: ['Fitness & Recreation'] }
+    const sites = [
+      { id: 'office', name: 'Head Office', facility: 'Office' },
+      { id: 'yard', name: 'River Yard', facility: 'Outdoor site/Construction' },
+      { id: 'other', name: 'Reception', facility: 'Other' },
+      { id: 'cold', name: 'Cold Store', facility: 'Cold store' },
+      { id: 'bare', name: 'Unset' },
+    ]
+    const index = indexSiteSignals({ sites })
+    const text = (id, name, overrides) =>
+      resolvePrecaution('heat', org, index, { siteId: id, name }, overrides)
+    expect(text('office', 'Head Office')).toMatch(/cooled rooms/)
+    expect(text('office', 'Head Office')).not.toMatch(/outdoor class|hydration stations/i)
+    expect(text('yard', 'River Yard')).toMatch(/at-height/)
+    expect(text('other', 'Reception')).toMatch(/hydration/i)
+    expect(text('bare', 'Unset')).toMatch(/hydration/i)
+    expect(text('cold', 'Cold Store')).toMatch(/hydration/i)
+    expect(
+      text('cold', 'Cold Store', { 'Cold store': { heat: 'Limit time in the chiller.' } })
+    ).toBe('Limit time in the chiller.')
+    expect(text('other', 'Reception', { Other: { heat: 'Follow the duty manager’s note.' } })).toBe(
+      'Follow the duty manager’s note.'
+    )
   })
 })
 

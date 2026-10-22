@@ -1,6 +1,11 @@
 import { CloudRain } from 'lucide-react'
 import { Button, Card, Field, Textarea } from '../../shared/ui'
-import { ALERTS, builtInPrecaution, editorRows } from '../../shared/weather/activityPrecautions'
+import {
+  ALERTS,
+  builtInPrecaution,
+  editorRows,
+  siteTypeRows,
+} from '../../shared/weather/activityPrecautions'
 
 const PRIMARY = ALERTS.filter((alert) => alert.key === 'heat' || alert.key === 'rain')
 const ADVERSE = ALERTS.filter((alert) => alert.key !== 'heat' && alert.key !== 'rain')
@@ -39,7 +44,7 @@ function AlertFields({ row, alerts, value, onChange }) {
             hint={
               builtIn
                 ? 'Blank uses the built-in wording.'
-                : 'Blank skips this activity for this alert.'
+                : 'Blank uses the organisation’s activities, then the general precautions.'
             }
           >
             <Textarea
@@ -101,13 +106,12 @@ export default function WeatherPrecautions({ activityTypes, value, onChange }) {
         <CloudRain size={17} className="text-brand-600" /> Weather digest precautions
       </h3>
       <p className="mb-3 mt-1 text-sm text-ink-500">
-        The six-hour weather mail fills the precautions cell from the activities selected above.
-        Heat stress, rain and each adverse-weather alert can say something different for outdoor
-        work, work at height, hot work, kitchens, an indoor gym, pool or court, a warehouse,
-        deliveries and electrical work. A site tagged with a facility, or with its own record — a
-        site type, a HIRA activity or a permit type — uses that for its rows. Leave a box blank to
-        keep the built-in sentence. With no activity selected, and nothing recorded at the site, the
-        mail keeps the general precautions.
+        The six-hour weather mail fills each site’s precautions from its site type. Heat, rain and
+        each adverse-weather alert can differ for an office, an indoor gym, pool or court, a
+        warehouse, a kitchen, a shop, a plant or a construction site. A permit or a hazard
+        assessment can still add the work happening there. Leave a box blank to keep the built-in
+        sentence. A site with no type, and the type Other, use the activities selected above and
+        then the general precautions.
       </p>
       {selected.length === 0 && (
         <p className="mb-3 text-sm text-ink-600">
@@ -116,6 +120,21 @@ export default function WeatherPrecautions({ activityTypes, value, onChange }) {
         </p>
       )}
       <div className="space-y-2">
+        <details className="rounded-xl border border-surface-200 px-3 py-2">
+          <summary className="cursor-pointer py-1 text-sm font-semibold text-ink-800">
+            Site types
+          </summary>
+          <p className="mb-2 mt-2 text-sm text-ink-500">
+            Every new site asks for one of these. Edit a sentence to change what that type says in
+            the mail. Add a type this list does not have under Activities performed, then write its
+            precautions with the activities below.
+          </p>
+          <div className="space-y-2">
+            {siteTypeRows().map((row) => (
+              <ActivityBlock key={row.label} row={row} value={value} onChange={onChange} />
+            ))}
+          </div>
+        </details>
         {selected.map((row) => (
           <ActivityBlock key={row.label} row={row} value={value} onChange={onChange} />
         ))}

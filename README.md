@@ -14,25 +14,37 @@ motion and **skeleton loaders** throughout.
 sidebar, the dashboard grid and route mounting in `App.jsx`. If this table and
 that file disagree, the file is right.
 
-| Module                                  | Key           | Directory      | What it does                                                                          |
-| --------------------------------------- | ------------- | -------------- | ------------------------------------------------------------------------------------- |
-| Incidents & Investigation               | `incidents`   | `incidents/`   | Report incidents & near-misses, run 5-Why / Fishbone investigations, track CAPA       |
-| Hazard Identification & Risk Assessment | `hira`        | `hira/`        | Hazard register with a likelihood × severity risk matrix and controls                 |
-| Inspections                             | `inspections` | `inspections/` | Scheduled inspections and checklist walkthroughs with findings                        |
-| Internal Audit                          | `audit`       | `audit/`       | ISO 45001 audit plans, findings and corrective actions                                |
-| Permit to Work                          | `ptw`         | `ptw/`         | Raise, approve and close work permits with QR verification                            |
-| Lockout / Tagout                        | `loto`        | `loto/`        | Hazardous energy control procedures and lock/tag records                              |
-| Emergency Equipment Inventory           | `equipment`   | `fire/`        | Extinguishers, AEDs, fire-alarm systems and signages with full inspection lifecycle   |
-| Mock Drills                             | `drills`      | `fire/`        | Fire drills and emergency scenarios with scored checklist reports                     |
-| HSE Committee Meetings                  | `committee`   | `committee/`   | Schedule meetings, capture minutes, track actions                                     |
-| Training & Certifications               | `training`    | `training/`    | Courses, certifications and expiry alerts                                             |
-| Document Library & SDS                  | `documents`   | `documents/`   | Versioned policies, SOPs, forms and Safety Data Sheets                                |
-| Emergency Response (FERP)               | `emergency`   | `emergency/`   | FERP contacts, evacuation plans, scenario rescue plans                                |
-| Objectives & Targets                    | `objectives`  | `objectives/`  | OH&S KPI scorecard against target at org, region and site level                       |
-| Site Weather Risk                       | `weather`     | `weather/`     | Conditions at every site read as occupational risk — heat stress, wind, lightning |
-| CCTV Inventory & Health                 | `cctv`        | `cctv/`        | Cameras, DVRs and network devices as one chain, so a dead switch reads as one fault   |
-| Customer Escalations & Legal            | `stakeholder` | `stakeholder/` | Escalations and the legal matters they turn into                                      |
-| Central Action Tracker                  | `actions`     | `actions/`     | Every CAPA and action item across all modules, updated in place                       |
+| Module                                  | Key           | Directory      | What it does                                                                        |
+| --------------------------------------- | ------------- | -------------- | ----------------------------------------------------------------------------------- |
+| Incidents & Investigation               | `incidents`   | `incidents/`   | Report incidents & near-misses, run 5-Why / Fishbone investigations, track CAPA     |
+| Hazard Identification & Risk Assessment | `hira`        | `hira/`        | Hazard register with a likelihood × severity risk matrix and controls               |
+| Inspections                             | `inspections` | `inspections/` | Scheduled inspections and checklist walkthroughs with findings                      |
+| Internal Audit                          | `audit`       | `audit/`       | ISO 45001 audit plans, findings and corrective actions                              |
+| Permit to Work                          | `ptw`         | `ptw/`         | Raise, approve and close work permits with QR verification                          |
+| Lockout / Tagout                        | `loto`        | `loto/`        | Hazardous energy control procedures and lock/tag records                            |
+| Emergency Equipment Inventory           | `equipment`   | `fire/`        | Extinguishers, AEDs, fire-alarm systems and signages with full inspection lifecycle |
+| Mock Drills                             | `drills`      | `fire/`        | Fire drills and emergency scenarios with scored checklist reports                   |
+| HSE Committee Meetings                  | `committee`   | `committee/`   | Schedule meetings, capture minutes, track actions                                   |
+| Training & Certifications               | `training`    | `training/`    | Courses, certifications and expiry alerts                                           |
+| Document Library & SDS                  | `documents`   | `documents/`   | Versioned policies, SOPs, forms and Safety Data Sheets                              |
+| Emergency Response (FERP)               | `emergency`   | `emergency/`   | FERP contacts, evacuation plans, scenario rescue plans                              |
+| Objectives & Targets                    | `objectives`  | `objectives/`  | OH&S KPI scorecard against target at org, region and site level                     |
+| Site Weather Risk                       | `weather`     | `weather/`     | Conditions at every site read as occupational risk — heat stress, wind, lightning   |
+| CCTV Inventory & Health                 | `cctv`        | `cctv/`        | Cameras, DVRs and network devices as one chain, so a dead switch reads as one fault |
+| Customer Escalations & Legal            | `stakeholder` | `stakeholder/` | Escalations and the legal matters they turn into                                    |
+| Central Action Tracker                  | `actions`     | `actions/`     | Every CAPA and action item across all modules, updated in place                     |
+
+The weather-risk digest takes each site’s precautions from its **site type**.
+Adding a site — the form, or a CSV import, including a sheet saved from
+Excel — asks for one. The list offered to every organisation is Office,
+Indoor gym, Indoor pool, Indoor court, Warehouse, Kitchen/Cafeteria, Retail
+store, Outdoor site/Construction, Manufacturing/Plant and Other, plus any
+activity that organisation has configured under Org Settings. A custom
+activity can carry its own heat, rain and adverse-weather sentences on that
+same screen. A site that already exists may still have no type: the mail
+then uses the organisation’s activities, and the general paragraph when
+those are empty. Other does the same unless an admin has written a sentence
+for it.
 
 Two registry keys — `equipment` and `drills` — are both served by
 `src/modules/fire/`. That is the one place the registry and the filesystem do

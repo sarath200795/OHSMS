@@ -25,7 +25,7 @@ import IncompleteNotice from '../../shared/ui/IncompleteNotice'
 import { initials } from '../../shared/lib/format'
 import { regionsOf, entitiesOf } from '../../shared/auth/access'
 import { normalizeScopeConfig } from '../../shared/org/scopeConfig'
-import { FACILITY_LABELS } from '../../shared/weather/activityPrecautions'
+import { siteTypeOptions } from '../../shared/weather/activityPrecautions'
 import { siteStats, linkAssets } from './siteStats'
 import { AUDIT } from '../../shared/audit/audit'
 import {
@@ -43,6 +43,7 @@ const COLLECTIONS = ['extinguishers', 'aeds', 'fas', 'incidents']
 export default function Sites() {
   const { orgId, actor, role, org } = useAuth()
   const customFields = useMemo(() => normalizeScopeConfig(org?.scopeConfig).customFields, [org])
+  const siteTypes = useMemo(() => siteTypeOptions(org?.activityTypes), [org])
   const [sites, setSites] = useState(null)
   const [users, setUsers] = useState([])
   const [store, setStore] = useState(() => emptyCollections(COLLECTIONS))
@@ -103,6 +104,10 @@ export default function Sites() {
       toast.error(`Centre ID ${code} already belongs to “${clash.name}”.`)
       return
     }
+    if (editing === 'new' && !form.facility) {
+      toast.error('Choose a site type. The weather digest uses it for this site’s precautions.')
+      return
+    }
     setBusy(true)
     try {
       if (editing === 'new') {
@@ -145,7 +150,9 @@ export default function Sites() {
     e.target.value = '' // allow re-selecting the same file
     if (!file) return
     try {
-      const res = planImport(await parseSitesCsv(file, customFields), sites || [])
+      const res = planImport(await parseSitesCsv(file, customFields), sites || [], {
+        activityTypes: org?.activityTypes || [],
+      })
       setBulkResult({ ...res, fileName: file.name })
     } catch {
       toast.error('Could not read that CSV file')
@@ -484,6 +491,9 @@ export default function Sites() {
                     <MapPin size={13} /> {s.address}
                   </p>
                 )}
+                <p className={`mt-0.5 text-sm ${s.facility ? 'text-ink-500' : 'text-amber-700'}`}>
+                  {s.facility || 'Site type not set'}
+                </p>
               </div>
               <span className="text-xs font-medium text-brand-700 opacity-0 transition group-hover:opacity-100">
                 {selectMode ? (picked.includes(s.id) ? 'Selected — click to remove' : 'Click to select') : 'View summary →'}
@@ -538,12 +548,35 @@ export default function Sites() {
           <Field label="First aid boxes" htmlFor="fab" hint="Count at this site">
             <Input id="fab" type="number" min="0" value={form.firstAidBoxes} onChange={set('firstAidBoxes')} placeholder="0" />
           </Field>
-          <Field label="Facility" htmlFor="facility" hint="Weather-digest precautions for this building. Blank uses the organisation's activities.">
-            <Select id="facility" value={form.facility || ''} onChange={set('facility')}>
-              <option value="">Not set</option>
-              {FACILITY_LABELS.map((label) => (
-                <option key={label} value={label}>{label}</option>
-              ))}
+          <Field
+            label={editing === 'new' ? 'Site type *' : 'Site type'}
+            htmlFor="facility"
+            hint={
+              editing === 'new'
+                ? 'Required. The weather digest takes this site’s precautions from the type.'
+                : form.facility
+                  ? 'The weather digest takes this site’s precautions from the type.'
+                  : 'Not set. Choose a type so the weather digest can use it. You can still save other changes.'
+            }
+          >
+            <Select id="facility" required={editing === 'new'} value={form.facility || ''} onChange={set('facility')}>
+              {editing === 'new' ? (
+                <option value="" disabled>Select a site type</option>
+              ) : (
+                <option value="">Not set</option>
+              )}
+              <optgroup label="General">
+                {siteTypes.general.map((label) => (
+                  <option key={label} value={label}>{label}</option>
+                ))}
+              </optgroup>
+              {siteTypes.extra.length > 0 && (
+                <optgroup label="This organisation">
+                  {siteTypes.extra.map((label) => (
+                    <option key={label} value={label}>{label}</option>
+                  ))}
+                </optgroup>
+              )}
             </Select>
           </Field>
           {customFields.map((f) => (
@@ -672,7 +705,8 @@ export default function Sites() {
         <div className="space-y-4">
           <p className="text-sm text-ink-500">
             Upload a CSV with columns{' '}
-            <b>Site Name, Centre ID, Region, Entity, Address, Latitude, Longitude, First Aid Boxes{customFields.map((f) => `, ${f.label}`).join('')}</b>. Rows without
+            <b>Site Name, Site Type, Centre ID, Region, Entity, Address, Latitude, Longitude, First Aid Boxes{customFields.map((f) => `, ${f.label}`).join('')}</b>.
+            From Excel, save the sheet as CSV. A <b>new</b> site needs a site type. Rows without
             a valid <b>latitude and longitude</b> are rejected and will not be imported.
           </p>
           <p className="text-sm text-ink-500">
@@ -712,7 +746,7 @@ export default function Sites() {
                 )}
                 {bulkResult.invalid.length > 0 && (
                   <Badge tone="red">
-                    <AlertCircle size={13} /> {bulkResult.invalid.length} rejected (no coordinates)
+                    <AlertCircle size={13} /> {bulkResult.invalid.length} rejected
                   </Badge>
                 )}
               </div>

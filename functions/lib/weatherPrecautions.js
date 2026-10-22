@@ -16,12 +16,14 @@
 // 2. organisations/{orgId}.weatherPrecautions — the same screen. An override
 //    of the built-in sentence for one activity and one alert. Blank means the
 //    built-in sentence.
-// 3. The site document. There is no general site-type enum. site.facility is
-//    the building the weather mail should talk about: Indoor gym, Indoor pool,
-//    Indoor court or Warehouse, set on the site form. A custom attribute whose
-//    key is a type, category, facility or activity field is read as one too,
-//    and so is an attribute value that is exactly a catalog label.
-//    site.activityTypes is honoured when a site document carries it.
+// 3. The site document. site.facility is the site type, asked for when a site
+//    is added (the form and the spreadsheet import). The general list is
+//    SITE_TYPES. An organisation's own activities, including a custom label
+//    with precautions written in Org Settings, are types too. An existing site
+//    may still have none: the mail then uses the organisation's activities,
+//    and the general paragraph when those are empty. A custom attribute whose
+//    key is a type, category, facility or activity field is still read when
+//    the site has no type. site.activityTypes is honoured in that same case.
 // 4. HIRA, organisations/{orgId}/assessments. Site-scoped rows (siteId,
 //    siteName; baselines are skipped). Activity titles, hazard types and hazard
 //    categories are matched. Free text that does not match the catalog is
@@ -174,7 +176,7 @@ export const CATALOG = [
     'Manufacturing',
     'profile',
     false,
-    ['factory', 'production line'],
+    ['factory', 'production line', 'manufacturing/plant', 'plant'],
     px(
       'Hot processes plus hot weather. Rotate people off furnaces, ovens and uncooled lines, provide water and cool breaks, and stop non-essential hot work in the hottest hours.',
       'Keep yards, loading docks and outdoor plant dry underfoot. Stop outdoor hot work and work at height, and keep electrical panels and leads out of standing water.',
@@ -191,7 +193,7 @@ export const CATALOG = [
     'Construction',
     'profile',
     false,
-    ['civil works', 'civil work'],
+    ['civil works', 'civil work', 'outdoor site/construction', 'outdoor site'],
     px(
       'Schedule heavy outdoor and at-height work for the cooler hours. Provide shade, cool water and enforced rest, and stop hot work or roof work if anyone shows heat-illness signs (dizziness, cramps, confusion).',
       'Stop work at height, scaffolding and hot work when surfaces are wet. Keep cables and welding leads off wet ground, and check excavation drainage before anyone goes in.',
@@ -225,7 +227,7 @@ export const CATALOG = [
     'Retail',
     'profile',
     false,
-    ['shop', 'store floor'],
+    ['shop', 'store floor', 'retail store'],
     px(
       'Cool the shop floor if you can, provide water for staff, and schedule outdoor queues, deliveries and car-park work for the cooler hours.',
       'Keep entrances and the sales floor dry. Pause outdoor queues and deliveries if the yard is flooding, and keep electrical displays away from wet doors.',
@@ -487,7 +489,7 @@ export const CATALOG = [
     'Kitchens',
     'profile',
     true,
-    ['kitchen', 'kitchens', 'commercial kitchen'],
+    ['kitchen', 'kitchens', 'commercial kitchen', 'kitchen/cafeteria', 'cafeteria', 'canteen'],
     px(
       'The kitchen adds radiant heat to the weather. Limit time at ovens, grills and dishwashers, provide cool water and cool breaks, and pause non-essential hot service if anyone shows heat-illness signs.',
       'Wet kitchen floors and the delivery door are a slip risk. Keep entrances, mats and the back of house dry, and pause outdoor deliveries if the yard is flooding.',
@@ -742,14 +744,26 @@ export const CATALOG = [
   ),
 ]
 
-// Buildings a site form can tag. The label is what is stored on site.facility.
-// "Warehouse" is this list, not the Warehousing & Logistics industry.
-export const FACILITY_LABELS = ['Indoor gym', 'Indoor pool', 'Indoor court', 'Warehouse']
+// The site type asked for on every new site, for every organisation. "Other"
+// has no built-in sentence: the mail uses the organisation's activities, then
+// the general paragraph, unless an admin has written one. "Warehouse" is this
+// list, not the Warehousing & Logistics industry.
+export const SITE_TYPES = [
+  { label: 'Office', id: 'office' },
+  { label: 'Indoor gym', id: 'indoorGym' },
+  { label: 'Indoor pool', id: 'indoorPool' },
+  { label: 'Indoor court', id: 'indoorCourt' },
+  { label: 'Warehouse', id: 'facilityWarehouse' },
+  { label: 'Kitchen/Cafeteria', id: 'kitchen' },
+  { label: 'Retail store', id: 'retail' },
+  { label: 'Outdoor site/Construction', id: 'construction' },
+  { label: 'Manufacturing/Plant', id: 'manufacturing' },
+  { label: 'Other', id: '' },
+]
+
+export const FACILITY_LABELS = SITE_TYPES.map((type) => type.label)
 
 const byId = new Map(CATALOG.map((item) => [item.id, item]))
-const FACILITY_IDS = new Set(
-  FACILITY_LABELS.map((label) => CATALOG.find((item) => item.label === label)?.id).filter(Boolean)
-)
 const TASKS = new Set(CATALOG.filter((item) => item.kind === 'task').map((item) => item.id))
 const PROFILES = new Set(CATALOG.filter((item) => item.kind === 'profile').map((item) => item.id))
 
@@ -906,11 +920,49 @@ export function normalizeOverrides(raw) {
   return out
 }
 
-/** Catalog label for a site facility tag, or '' when the value is not one. */
-export function canonicalFacility(value) {
-  const entry = entryForLabel(value)
-  if (!entry || !FACILITY_IDS.has(entry.id)) return ''
-  return entry.label
+function cleanLabel(value) {
+  return String(value || '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .slice(0, MAX_LABEL)
+}
+
+/**
+ * The label stored on site.facility. A general site type wins, then a label
+ * the organisation has configured, then a catalog entry's own site-type name.
+ * An unknown custom label is kept so a type added in Org Settings still
+ * round-trips; the import refuses one the organisation has not configured.
+ */
+export function canonicalFacility(value, extraLabels = []) {
+  const text = cleanLabel(value)
+  if (!text) return ''
+  const general = SITE_TYPES.find((type) => normActivity(type.label) === normActivity(text))
+  if (general) return general.label
+  const extra = (extraLabels || []).find((label) => normActivity(label) === normActivity(text))
+  if (extra) return cleanLabel(extra)
+  const entry = entryForLabel(text)
+  if (entry) {
+    const mapped = SITE_TYPES.find((type) => type.id && type.id === entry.id)
+    if (mapped) return mapped.label
+    return entry.label
+  }
+  return text
+}
+
+/** General site types, then this organisation's activities that are not already one of them. */
+export function siteTypeOptions(activityTypes = []) {
+  const general = SITE_TYPES.map((type) => type.label)
+  const seen = new Set(general.map((label) => normActivity(label)))
+  const extra = []
+  for (const raw of activityTypes || []) {
+    const text = cleanLabel(raw)
+    if (!text || seen.has(normActivity(text))) continue
+    const canonical = canonicalFacility(text)
+    if (general.some((label) => normActivity(label) === normActivity(canonical))) continue
+    seen.add(normActivity(text))
+    extra.push(text)
+  }
+  return { general, extra }
 }
 
 export function entryForLabel(raw) {
@@ -950,8 +1002,17 @@ export function packOverrides(raw) {
 function lineFor(id, alertKey, overrides) {
   const entry = byId.get(id)
   const label = entry?.label || id
-  const override = overrides?.[label]?.[alertKey] || (!entry ? overrides?.[id]?.[alertKey] : '')
-  if (override) return { label, text: override }
+  // The site-type editor stores "Office", the catalog row is "Office /
+  // Administration". Either key is the same sentence.
+  const keys = []
+  if (entry) {
+    for (const type of SITE_TYPES) if (type.id === entry.id) keys.push(type.label)
+    keys.push(entry.label)
+  } else keys.push(id)
+  for (const key of keys) {
+    const text = overrides?.[key]?.[alertKey]
+    if (text) return { label: entry?.label || key, text }
+  }
   const builtIn = entry?.precautions?.[alertKey]
   if (builtIn) return { label, text: builtIn }
   return null
@@ -1021,8 +1082,17 @@ export function editorRows(activityTypes = []) {
   return { selected, extra }
 }
 
+/** One editor row per general site type. "Other" has no built-in sentence. */
+export function siteTypeRows() {
+  return SITE_TYPES.map((type) => ({
+    label: type.label,
+    entry: type.id ? byId.get(type.id) || null : null,
+    selected: true,
+  }))
+}
+
 function emptyBag() {
-  return { profile: [], task: [], siteActivityTypes: [] }
+  return { profile: [], task: [], siteActivityTypes: [], facility: '' }
 }
 
 function slot(map, key) {
@@ -1058,14 +1128,13 @@ export function indexSiteSignals({ sites = [], assessments = [], permits = [] } 
       const text = typeof activity === 'string' ? activity.trim() : ''
       if (text) addId(bySiteId, byName, id, name, 'siteActivityTypes', text)
     }
-    // The site form stores this. Exact catalog match only: a note in the
-    // field must not be read as a building.
-    const facility = typeof site.facility === 'string' ? site.facility.trim() : ''
+    // The site type frames the mail. Stored as a label; "Other" is recorded
+    // too so the reader can tell "not chosen" from "chosen, use the fallback".
+    const facility = canonicalFacility(site.facility)
     if (facility) {
-      const found = classifySignal(facility, { looseProfile: false })
-      for (const profileId of found.profiles)
-        addId(bySiteId, byName, id, name, 'profile', profileId)
-      for (const taskId of found.tasks) addId(bySiteId, byName, id, name, 'task', taskId)
+      for (const bag of [slot(bySiteId, id), slot(byName, normActivity(name))]) {
+        if (bag && !bag.facility) bag.facility = facility
+      }
     }
     const attributes = site.attributes && typeof site.attributes === 'object' ? site.attributes : {}
     for (const [key, value] of Object.entries(attributes)) {
@@ -1130,17 +1199,59 @@ export function signalsForArea(index, area) {
       ...(byId?.siteActivityTypes || []),
       ...(byName?.siteActivityTypes || []),
     ]),
+    facility: byId?.facility || byName?.facility || '',
   }
 }
 
-export function activitiesForArea(org, index, area) {
-  const signals = signalsForArea(index, area)
+function orgActivities(org, signals) {
   return chooseActivities({
     orgActivityTypes: org?.activityTypes,
     siteActivityTypes: signals.siteActivityTypes,
     siteProfileIds: signals.profile,
     siteTaskIds: signals.task,
   })
+}
+
+export function activitiesForArea(org, index, area) {
+  const signals = signalsForArea(index, area)
+  const facility = signals.facility
+  // A chosen site type replaces the organisation profile. "Other", and a
+  // custom label with no catalog entry, leave that choice to resolvePrecaution
+  // so a missing sentence can still fall back.
+  if (facility && normActivity(facility) !== 'other' && entryForLabel(facility)) {
+    return chooseActivities({
+      orgActivityTypes: [facility],
+      siteTaskIds: signals.task,
+    })
+  }
+  return orgActivities(org, signals)
+}
+
+/**
+ * Site type, then the organisation's activities, then the general paragraph
+ * (the last of those is what precautionText returns when the id list is empty
+ * or the custom label has no sentence).
+ */
+export function resolvePrecaution(alertKey, org, index, area, overrides = {}) {
+  const signals = signalsForArea(index, area)
+  const facility = signals.facility
+  if (facility && normActivity(facility) === 'other') {
+    const written = overrides?.Other?.[alertKey]
+    if (written) return written
+    return precautionText(alertKey, orgActivities(org, signals), overrides)
+  }
+  if (facility && !entryForLabel(facility)) {
+    const written = overrides?.[facility]?.[alertKey]
+    if (written) {
+      const ids = chooseActivities({
+        orgActivityTypes: [facility],
+        siteTaskIds: signals.task,
+      })
+      return precautionText(alertKey, ids, overrides)
+    }
+    return precautionText(alertKey, orgActivities(org, signals), overrides)
+  }
+  return precautionText(alertKey, activitiesForArea(org, index, area), overrides)
 }
 
 async function readCapped(db, path, fields, cap) {
@@ -1202,6 +1313,5 @@ export async function loadPrecautionFor(db, orgId, sites, log) {
       error: err?.message || 'activity-read-failed',
     })
   }
-  return (alertKey, area) =>
-    precautionText(alertKey, activitiesForArea(org, index, area), overrides)
+  return (alertKey, area) => resolvePrecaution(alertKey, org, index, area, overrides)
 }

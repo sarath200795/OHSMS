@@ -418,9 +418,9 @@ function siteFields(data) {
     lat: num(data.lat),
     lng: num(data.lng),
     firstAidBoxes: num(data.firstAidBoxes) || 0,
-    // The weather digest reads this as the building. Blank keeps the
-    // organisation's activities. Anything that is not a known facility label
-    // is dropped, so a free-text note cannot reclassify the site.
+    // Site type for the weather digest. Blank is only for a site that already
+    // existed before the field was required. A general type is stored under
+    // its list label; a custom activity keeps the label the organisation added.
     facility: canonicalFacility(data.facility),
     attributes: cleanAttributes(data.attributes),
   }
