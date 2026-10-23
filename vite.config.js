@@ -18,13 +18,28 @@ export default defineConfig({
     // Heavy libs (three.js, react-flow, xlsx, pdf) are lazy-loaded per module
     // route. Split the always-loaded vendors so the initial bundle stays lean.
     chunkSizeWarningLimit: 900,
-    rollupOptions: {
+    // Vite 8 builds with Rolldown, which accepts manualChunks only as a
+    // function. Same split as the object form: the always-loaded vendors
+    // leave the entry chunk.
+    rolldownOptions: {
       output: {
-        manualChunks: {
-          firebase: ['firebase/app', 'firebase/auth', 'firebase/firestore'],
-          react: ['react', 'react-dom', 'react-router-dom'],
-          charts: ['recharts'],
-          motion: ['framer-motion'],
+        manualChunks(id) {
+          const pkg = (name) => id.includes(`/node_modules/${name}/`)
+          if (pkg('react') || pkg('react-dom') || pkg('react-router') || pkg('react-router-dom')) {
+            return 'react'
+          }
+          if (
+            pkg('firebase/app') ||
+            pkg('firebase/auth') ||
+            pkg('firebase/firestore') ||
+            pkg('@firebase/app') ||
+            pkg('@firebase/auth') ||
+            pkg('@firebase/firestore')
+          ) {
+            return 'firebase'
+          }
+          if (pkg('recharts')) return 'charts'
+          if (pkg('framer-motion')) return 'motion'
         },
       },
     },

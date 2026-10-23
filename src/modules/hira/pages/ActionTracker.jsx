@@ -176,7 +176,7 @@ export default function ActionTracker() {
                         <select
                           value={r.control.status || 'Open'}
                           onChange={(e) => patchControl(r, { status: e.target.value })}
-                          className="rounded-lg border-0 px-2 py-1 text-xs font-bold text-white shadow-elev-sm outline-none"
+                          className="rounded-lg border-0 px-2 py-1 text-xs font-bold text-white shadow-elev-sm outline-hidden"
                           style={{ backgroundColor: statusColor(r.control.status || 'Open') }}
                         >
                           {CONTROL_STATUS.map((s) => <option key={s.key} value={s.key} className="bg-white text-ink-900">{s.label}</option>)}
@@ -205,7 +205,7 @@ export default function ActionTracker() {
                           type="date"
                           value={r.control.dueDate || ''}
                           onChange={(e) => patchControl(r, { dueDate: e.target.value })}
-                          className={`rounded-lg bg-surface px-2 py-1 text-xs  outline-none ${overdue ? 'text-red-600 font-bold' : 'text-ink-700'}`}
+                          className={`rounded-lg bg-surface px-2 py-1 text-xs  outline-hidden ${overdue ? 'text-red-600 font-bold' : 'text-ink-700'}`}
                         />
                         {overdue && <div className="text-[10px] font-bold uppercase text-red-600">Overdue</div>}
                       </td>

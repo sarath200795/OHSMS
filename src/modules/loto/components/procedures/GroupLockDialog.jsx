@@ -5,9 +5,9 @@ import Button from '../ui/Button'
 
 const EMPTY_LOCK_SET = new Set()
 const fieldCls =
-  'w-full rounded-xl bg-surface px-3.5 py-2.5 font-mono text-steel-100  outline-none ring-2 ring-transparent focus:ring-hazard/50'
+  'w-full rounded-xl bg-surface px-3.5 py-2.5 font-mono text-steel-100  outline-hidden ring-2 ring-transparent focus:ring-hazard/50'
 const plainCls =
-  'w-full rounded-xl bg-surface px-3.5 py-2.5 text-steel-100  outline-none ring-2 ring-transparent focus:ring-hazard/50'
+  'w-full rounded-xl bg-surface px-3.5 py-2.5 text-steel-100  outline-hidden ring-2 ring-transparent focus:ring-hazard/50'
 
 /**
  * Add a technician to a group lockout. Two methods:

@@ -72,7 +72,7 @@ export default function MyActions() {
             key={f.key}
             type="button"
             onClick={() => setFilter(f.key)}
-            className={`inline-flex items-center gap-2 rounded-2xl px-3.5 py-2 text-[12.5px] font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 ${
+            className={`inline-flex items-center gap-2 rounded-2xl px-3.5 py-2 text-[12.5px] font-semibold transition focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-400 ${
               filter === f.key ? 'bg-surface text-ink-900 shadow-elev-sm' : 'text-ink-500'
             }`}
           >
@@ -122,7 +122,7 @@ export default function MyActions() {
                   value={a.norm}
                   disabled={savingKey === a.key}
                   onChange={(e) => setStatus(a, e.target.value)}
-                  className="w-full appearance-none rounded-2xl border border-transparent bg-surface px-3 py-2 text-[12.5px] font-semibold text-ink-900  outline-none disabled:opacity-50"
+                  className="w-full appearance-none rounded-2xl border border-transparent bg-surface px-3 py-2 text-[12.5px] font-semibold text-ink-900  outline-hidden disabled:opacity-50"
                 >
                   {NORM_STATUS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
                 </select>

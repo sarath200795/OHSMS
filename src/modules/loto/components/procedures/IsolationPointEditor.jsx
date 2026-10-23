@@ -23,7 +23,7 @@ function Field({ label, children }) {
 }
 
 const textareaCls =
-  'w-full rounded-lg border border-steel-700 bg-steel-900/70 px-3 py-2 text-sm text-steel-50 outline-none transition-all focus:border-hazard focus:ring-2 focus:ring-hazard/30'
+  'w-full rounded-lg border border-steel-700 bg-steel-900/70 px-3 py-2 text-sm text-steel-50 outline-hidden transition-all focus:border-hazard focus:ring-2 focus:ring-hazard/30'
 
 export default function IsolationPointEditor({
   point,

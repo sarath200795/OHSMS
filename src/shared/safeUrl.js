@@ -104,11 +104,10 @@ export function isExternal(value) {
  * where the browser was pointed, so it is attacker-influenceable, and it is
  * followed at the exact moment the user has just proved who they are.
  *
- * react-router 6.30.4 carries an advisory for precisely this class
+ * react-router >= 7.18.0 closes the same class in the library
  * (GHSA-wrjc-x8rr-h8h6 — open redirect via a backslash in `<Link>` and
- * `useNavigate`). Its fix is react-router >= 7.18.0, a major-version migration
- * across 29 routes. This closes the app's only reachable sink without one, and
- * keeps it closed regardless of what the router does with odd input later.
+ * `useNavigate`). This still refuses the post-login sink, so a later router
+ * change does not reopen it.
  *
  * Refused, and why each:
  *   `//evil.com`  protocol-relative — another origin wearing a path's clothes

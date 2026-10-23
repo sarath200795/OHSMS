@@ -1,19 +1,102 @@
-@import '@fontsource/roboto/400.css';
-@import '@fontsource/roboto/500.css';
-@import '@fontsource/roboto/700.css';
-@import '@fontsource/roboto/900.css';
-@import '@fontsource/open-sans/400.css';
-@import '@fontsource/open-sans/500.css';
-@import '@fontsource/open-sans/600.css';
-@import '@fontsource/open-sans/700.css';
-@import '@fontsource/open-sans/800.css';
-/* Leaflet map (Sites map tab). */
-@import 'leaflet/dist/leaflet.css';
-@import 'leaflet.markercluster/dist/MarkerCluster.css';
+@import 'tailwindcss' source(none);
+@config '../tailwind.config.js';
+@source '../index.html';
+@source './**/*.{js,jsx}';
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* v4 changed pixels the class names still imply. These put back the v3
+   preflight this stylesheet was written against: gray-200 borders, the
+   gray-400 placeholder, a 3px blue ring, and the old shadow scale. Without
+   them every bare `border`, `ring` and `shadow-*` shifts. */
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentcolor);
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: #9ca3af;
+    opacity: 1;
+  }
+
+  /* v3.4 preflight. v4 dropped it, so every button fell back to the arrow. */
+  button,
+  [role='button'] {
+    cursor: pointer;
+  }
+}
+
+@theme {
+  --default-ring-width: 3px;
+  --default-ring-color: rgb(59 130 246 / 0.5);
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+  --shadow-2xl: 0 25px 50px -12px rgb(0 0 0 / 0.25);
+  --shadow-inner: inset 0 2px 4px 0 rgb(0 0 0 / 0.05);
+  /* v4 redraws the default palette in oklch. These are the v3 sRGB stops
+     this build actually emits, so a red-500 chip stays the colour it was. */
+  --color-amber-300: rgb(252 211 77);
+  --color-amber-400: rgb(251 191 36);
+  --color-amber-500: rgb(245 158 11);
+  --color-amber-600: rgb(217 119 6);
+  --color-amber-950: rgb(69 26 3);
+  --color-blue-500: rgb(59 130 246);
+  --color-blue-600: rgb(37 99 235);
+  --color-cyan-500: rgb(6 182 212);
+  --color-cyan-600: rgb(8 145 178);
+  --color-emerald-300: rgb(110 231 183);
+  --color-emerald-400: rgb(52 211 153);
+  --color-emerald-500: rgb(16 185 129);
+  --color-emerald-600: rgb(5 150 105);
+  --color-gray-200: rgb(229 231 235);
+  --color-green-300: rgb(134 239 172);
+  --color-green-400: rgb(74 222 128);
+  --color-green-500: rgb(34 197 94);
+  --color-green-600: rgb(22 163 74);
+  --color-indigo-500: rgb(99 102 241);
+  --color-indigo-600: rgb(79 70 229);
+  --color-orange-300: rgb(253 186 116);
+  --color-orange-400: rgb(251 146 60);
+  --color-orange-500: rgb(249 115 22);
+  --color-orange-600: rgb(234 88 12);
+  --color-pink-500: rgb(236 72 153);
+  --color-pink-600: rgb(219 39 119);
+  --color-purple-500: rgb(168 85 247);
+  --color-purple-600: rgb(147 51 234);
+  --color-red-300: rgb(252 165 165);
+  --color-red-400: rgb(248 113 113);
+  --color-red-500: rgb(239 68 68);
+  --color-red-600: rgb(220 38 38);
+  --color-rose-300: rgb(253 164 175);
+  --color-rose-400: rgb(251 113 133);
+  --color-rose-500: rgb(244 63 94);
+  --color-rose-600: rgb(225 29 72);
+  --color-sky-300: rgb(125 211 252);
+  --color-sky-400: rgb(56 189 248);
+  --color-sky-500: rgb(14 165 233);
+  --color-sky-600: rgb(2 132 199);
+  --color-slate-300: rgb(203 213 225);
+  --color-slate-400: rgb(148 163 184);
+  --color-slate-500: rgb(100 116 139);
+  --color-slate-600: rgb(71 85 105);
+  --color-slate-700: rgb(51 65 85);
+  --color-slate-800: rgb(30 41 59);
+  --color-slate-900: rgb(15 23 42);
+  --color-teal-300: rgb(94 234 212);
+  --color-teal-500: rgb(20 184 166);
+  --color-violet-400: rgb(167 139 250);
+  --color-violet-500: rgb(139 92 246);
+  --color-violet-600: rgb(124 58 237);
+  --color-yellow-400: rgb(250 204 21);
+  --color-yellow-500: rgb(234 179 8);
+  --color-yellow-600: rgb(202 138 4);
+}
 
 :root {
   color-scheme: light;
@@ -149,43 +232,50 @@ thead {
      The focus-visible ring is not decoration. A 1px hairline against amber
      is easy to miss. Teal ring + canvas offset matches .input. focus-visible
      rather than focus, so a mouse click does not leave a ring behind. */
-  .btn {
+  /* v4 @apply only accepts utilities, so the shared button styles are one
+     rule instead of `@apply btn` on each variant. v3 inlined this rule,
+     including the canvas ring offset, onto .btn-primary and the others. */
+  .btn,
+  .btn-primary,
+  .btn-ghost,
+  .btn-soft,
+  .btn-danger {
     @apply inline-flex items-center justify-center gap-2 rounded-full px-4 py-2.5 text-sm font-semibold
       transition-all duration-200 ease-emil
       disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none disabled:pointer-events-none
       active:scale-[0.98]
-      focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400
+      focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-400
       focus-visible:ring-offset-2;
     --tw-ring-offset-color: var(--canvas);
   }
   .btn-primary {
-    @apply btn text-white;
+    @apply text-white;
     /* Solid AA fill. Soft kraft umbra, not a neon halo. Brand-600 is
        contrast-checked in theme.js whenever the accent comes from a logo. */
     background-color: var(--brand-600);
     background-image: linear-gradient(180deg, var(--brand-500) 0%, var(--brand-600) 100%);
-    box-shadow: theme('boxShadow.elev-brand');
+    box-shadow: var(--shadow-elev-brand);
   }
   .btn-primary:hover {
     background-color: var(--brand-700);
     background-image: linear-gradient(180deg, var(--brand-600) 0%, var(--brand-700) 100%);
   }
   .btn-ghost {
-    @apply btn text-ink-800 shadow-none ring-1 ring-ink-200;
+    @apply text-ink-800 shadow-none ring-1 ring-ink-200;
     background-color: rgba(255, 255, 255, 0.62);
   }
   .btn-ghost:hover {
     background-color: rgba(255, 255, 255, 0.88);
   }
   .btn-soft {
-    @apply btn text-brand-700 ring-1 ring-brand-400/40;
+    @apply text-brand-700 ring-1 ring-brand-400/40;
     background-color: rgba(var(--brand-rgb), 0.14);
   }
   .btn-soft:hover {
     background-color: rgba(var(--brand-rgb), 0.22);
   }
   .btn-danger {
-    @apply btn text-white;
+    @apply text-white;
     background-color: #c43d32;
   }
   .btn-danger:hover {
@@ -194,7 +284,7 @@ thead {
 
   .input {
     @apply w-full rounded-2xl border px-3.5 py-2.5 text-sm
-      text-ink-900 outline-none transition;
+      text-ink-900 outline-hidden transition;
     border-color: rgba(255, 255, 255, 0.82);
     background-color: rgba(255, 255, 255, 0.58);
     background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.42), transparent 42%);
@@ -258,7 +348,7 @@ thead {
     background-color: rgba(255, 255, 255, 0.72);
     backdrop-filter: blur(22px) saturate(1.2);
     -webkit-backdrop-filter: blur(22px) saturate(1.2);
-    box-shadow: theme('boxShadow.elev');
+    box-shadow: var(--shadow-elev);
   }
   .well {
     @apply rounded-2xl ring-1 ring-white/70;
@@ -281,7 +371,7 @@ thead {
   .nav-tab {
     @apply relative inline-flex shrink-0 items-center gap-2 rounded-full px-3 py-2 text-sm font-medium
       transition-colors duration-200 ease-emil
-      focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400
+      focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-400
       focus-visible:ring-offset-2;
     --tw-ring-offset-color: var(--canvas);
   }

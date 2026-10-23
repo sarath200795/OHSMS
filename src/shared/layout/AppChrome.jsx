@@ -115,7 +115,7 @@ export default function AppChrome({ children }) {
         <NavLink
           to="/portal"
           aria-label={`${branded && orgName ? orgName : 'WEHS'} home`}
-          className="flex min-w-0 flex-none items-center gap-2.5 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
+          className="flex min-w-0 flex-none items-center gap-2.5 rounded-xl focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
         >
           <OrgMark className="h-8 w-8 rounded-xl ring-1 ring-ink-200" />
           <span className="hidden min-w-0 leading-tight sm:block">
@@ -144,7 +144,7 @@ export default function AppChrome({ children }) {
             aria-expanded={menuOpen}
             aria-haspopup="menu"
             aria-controls="account-menu"
-            className="flex items-center gap-2.5 rounded-2xl bg-white/80 px-1.5 py-1 ring-1 ring-ink-200 transition-all duration-200 ease-emil hover:ring-ink-300 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas sm:px-2 sm:py-1.5"
+            className="flex items-center gap-2.5 rounded-2xl bg-white/80 px-1.5 py-1 ring-1 ring-ink-200 transition-all duration-200 ease-emil hover:ring-ink-300 active:scale-[0.98] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas sm:px-2 sm:py-1.5"
           >
             <span className="grid h-[28px] w-[28px] place-items-center rounded-2xl bg-brand-600 text-[11px] font-bold text-white shadow-elev-sm">
               {initials(name)}
@@ -240,7 +240,7 @@ function MenuItem({ icon: Icon, children, onClick, danger }) {
       type="button"
       role="menuitem"
       onClick={onClick}
-      className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 ${
+      className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[13px] font-semibold transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-400 ${
         danger ? 'text-red-700 hover:bg-red-50' : 'text-ink-700 hover:bg-surface-100'
       }`}
     >

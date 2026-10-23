@@ -100,7 +100,7 @@ jobs:
       - uses: actions/setup-node@v7
         if: steps.creds.outputs.configured == 'true'
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - name: Install

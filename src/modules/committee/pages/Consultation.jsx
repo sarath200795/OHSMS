@@ -141,7 +141,7 @@ const MeetingDetailModal = ({ meeting, siteLabel, onClose, onUpdateStatus, onPri
                                                         value={row.status || 'Open'}
                                                         onChange={e => onUpdateStatus(meeting.firebaseKey, idx, e.target.value)}
                                                         disabled={!canEditStatus(row)}
-                                                        className={`text-xs px-3 py-1.5 rounded-lg font-bold outline-none border ${canEditStatus(row) ? 'cursor-pointer' : 'cursor-not-allowed opacity-80'} ${row.status === 'Closed' ? 'bg-emerald-100 text-emerald-600 border-emerald-500/30' : row.status === 'In Progress' ? 'bg-yellow-100 text-yellow-600 border-yellow-500/30' : 'bg-red-100 text-red-600 border-red-500/30'}`}
+                                                        className={`text-xs px-3 py-1.5 rounded-lg font-bold outline-hidden border ${canEditStatus(row) ? 'cursor-pointer' : 'cursor-not-allowed opacity-80'} ${row.status === 'Closed' ? 'bg-emerald-100 text-emerald-600 border-emerald-500/30' : row.status === 'In Progress' ? 'bg-yellow-100 text-yellow-600 border-yellow-500/30' : 'bg-red-100 text-red-600 border-red-500/30'}`}
                                                     >
                                                         <option value="Open">Open</option>
                                                         <option value="In Progress">In Progress</option>
@@ -586,11 +586,11 @@ export default function Consultation() {
                             </div>
                             <div className="flex items-center gap-3">
                                 <div className="bg-surface border border-surface-200 p-1.5 rounded-xl flex gap-2">
-                                    <select className="bg-surface text-ink-900 text-xs font-bold px-3 py-2 rounded-lg outline-none border border-surface-200/70 focus:border-green-500" value={filterSite} onChange={handleSiteFilterChange}>
+                                    <select className="bg-surface text-ink-900 text-xs font-bold px-3 py-2 rounded-lg outline-hidden border border-surface-200/70 focus:border-green-500" value={filterSite} onChange={handleSiteFilterChange}>
                                         {(isGlobalUser || visibleSites.length > 1) && <option value="All">All Authorized Sites</option>}
                                         {visibleSites.map((s, idx) => <option key={s.id || idx} value={s.code || s.id}>{s.name}</option>)}
                                     </select>
-                                    <select className="bg-surface text-ink-900 text-xs font-bold px-3 py-2 rounded-lg outline-none border border-surface-200/70 focus:border-green-500" value={filterCategory} onChange={e => setFilterCategory(e.target.value)}>
+                                    <select className="bg-surface text-ink-900 text-xs font-bold px-3 py-2 rounded-lg outline-hidden border border-surface-200/70 focus:border-green-500" value={filterCategory} onChange={e => setFilterCategory(e.target.value)}>
                                         <option value="All">All Categories</option>
                                         {MEETING_TYPES.map(t => <option key={t}>{t}</option>)}
                                     </select>
@@ -792,7 +792,7 @@ export default function Consultation() {
                         <div className="flex justify-between items-center bg-surface p-6 rounded-3xl border border-surface-200 shadow-xl">
                             <div className="flex items-center gap-4">
                                 <label htmlFor="consult-compliance-site" className="text-xs uppercase font-bold text-ink-500 tracking-widest">Compliance Site</label>
-                                <select id="consult-compliance-site" className="bg-surface p-3 rounded-xl w-64 border border-surface-200/70 text-sm font-bold text-green-700 outline-none focus:border-green-500 transition-colors" value={calSiteFilter} onChange={handleCalSiteFilterChange}>
+                                <select id="consult-compliance-site" className="bg-surface p-3 rounded-xl w-64 border border-surface-200/70 text-sm font-bold text-green-700 outline-hidden focus:border-green-500 transition-colors" value={calSiteFilter} onChange={handleCalSiteFilterChange}>
                                     {(isGlobalUser || visibleSites.length > 1) && <option value="All">All Authorized Sites</option>}
                                     {visibleSites.map((s, idx) => <option key={s.id || idx} value={s.code || s.id}>{s.name}</option>)}
                                 </select>
@@ -896,29 +896,29 @@ export default function Consultation() {
                                 </div>
                                 <div>
                                     <label htmlFor="consult-category" className="text-[10px] uppercase font-bold text-ink-400 block mb-2 tracking-widest ml-1">Meeting Category</label>
-                                    <select id="consult-category" className="w-full bg-surface border border-surface-200 p-3.5 rounded-xl text-sm font-bold text-green-700 focus:border-green-500 outline-none transition-colors" value={formData.type} onChange={e => setFormData({ ...formData, type: e.target.value })} disabled={!canEditForm}>
+                                    <select id="consult-category" className="w-full bg-surface border border-surface-200 p-3.5 rounded-xl text-sm font-bold text-green-700 focus:border-green-500 outline-hidden transition-colors" value={formData.type} onChange={e => setFormData({ ...formData, type: e.target.value })} disabled={!canEditForm}>
                                         {MEETING_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                                     </select>
                                 </div>
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
                                         <label htmlFor="consult-date" className="text-[10px] uppercase font-bold text-ink-400 block mb-2 tracking-widest ml-1">Date</label>
-                                        <input id="consult-date" type="date" max={todayISO()} value={formData.date} onChange={e => setFormData({ ...formData, date: e.target.value })} disabled={!canEditForm} className="w-full bg-surface border border-surface-200 p-3.5 rounded-xl text-sm text-ink-900 outline-none font-mono transition-colors focus:border-green-500" />
+                                        <input id="consult-date" type="date" max={todayISO()} value={formData.date} onChange={e => setFormData({ ...formData, date: e.target.value })} disabled={!canEditForm} className="w-full bg-surface border border-surface-200 p-3.5 rounded-xl text-sm text-ink-900 outline-hidden font-mono transition-colors focus:border-green-500" />
                                     </div>
                                     <div>
                                         <label htmlFor="consult-time" className="text-[10px] uppercase font-bold text-ink-400 block mb-2 tracking-widest ml-1">Time</label>
-                                        <input id="consult-time" type="time" value={formData.time} onChange={e => setFormData({ ...formData, time: e.target.value })} disabled={!canEditForm} className="w-full bg-surface border border-surface-200 p-3.5 rounded-xl text-sm text-ink-900 outline-none font-mono transition-colors focus:border-green-500" />
+                                        <input id="consult-time" type="time" value={formData.time} onChange={e => setFormData({ ...formData, time: e.target.value })} disabled={!canEditForm} className="w-full bg-surface border border-surface-200 p-3.5 rounded-xl text-sm text-ink-900 outline-hidden font-mono transition-colors focus:border-green-500" />
                                     </div>
                                 </div>
                                 <div className="md:col-span-3">
                                     <label htmlFor="consult-subject" className="text-[10px] uppercase font-bold text-ink-400 block mb-2 tracking-widest ml-1">Subject / Primary Agenda</label>
-                                    <input id="consult-subject" value={formData.subject} onChange={e => setFormData({ ...formData, subject: e.target.value })} placeholder="Main topic of discussion..." disabled={!canEditForm} maxLength={200} className="w-full bg-surface border border-surface-200 p-4 rounded-xl text-base font-bold text-ink-900 focus:border-green-500 outline-none transition-colors" />
+                                    <input id="consult-subject" value={formData.subject} onChange={e => setFormData({ ...formData, subject: e.target.value })} placeholder="Main topic of discussion..." disabled={!canEditForm} maxLength={200} className="w-full bg-surface border border-surface-200 p-4 rounded-xl text-base font-bold text-ink-900 focus:border-green-500 outline-hidden transition-colors" />
                                 </div>
                             </div>
 
                             <div className="mb-10 bg-surface p-8 rounded-2xl border border-surface-200/70">
                                 <label htmlFor="consult-prereqs" className="text-xs uppercase font-bold text-green-700 tracking-widest mb-3 block flex items-center gap-2"><ClipboardList size={14} /> Pre-Requisites / Inputs</label>
-                                <textarea id="consult-prereqs" value={formData.preRequisites} onChange={e => setFormData({ ...formData, preRequisites: e.target.value })} className="w-full bg-surface border border-surface-200 p-5 rounded-xl text-sm font-medium text-ink-600 focus:border-green-500 resize-none custom-scroll outline-none transition-colors leading-relaxed" placeholder="Record reference materials, incident IDs, or data inputs required for this meeting..." disabled={!canEditForm} rows="3" maxLength={5000}></textarea>
+                                <textarea id="consult-prereqs" value={formData.preRequisites} onChange={e => setFormData({ ...formData, preRequisites: e.target.value })} className="w-full bg-surface border border-surface-200 p-5 rounded-xl text-sm font-medium text-ink-600 focus:border-green-500 resize-none custom-scroll outline-hidden transition-colors leading-relaxed" placeholder="Record reference materials, incident IDs, or data inputs required for this meeting..." disabled={!canEditForm} rows="3" maxLength={5000}></textarea>
                             </div>
 
                             <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 mb-10">
@@ -941,7 +941,7 @@ export default function Consultation() {
                                                             getValue={(u) => u.name || u.email}
                                                             renderPerson={(u) => `${u.name || u.email} (${u.role})`}
                                                             personPlaceholder="Select Internal Employee..."
-                                                            selectClass="w-full text-sm font-bold bg-surface border border-surface-200 rounded-xl p-3 focus:border-purple-500 text-ink-900 outline-none transition-colors"
+                                                            selectClass="w-full text-sm font-bold bg-surface border border-surface-200 rounded-xl p-3 focus:border-purple-500 text-ink-900 outline-hidden transition-colors"
                                                         />
                                                     </div>
                                                     <button type="button" onClick={() => handleAddAttendee('internal')} className="bg-purple-600 hover:bg-purple-500 text-white px-5 rounded-xl font-bold shadow-lg shadow-purple-600/20 transition-transform active:scale-95 whitespace-nowrap"><Plus size={16} className="inline" /></button>
@@ -950,7 +950,7 @@ export default function Consultation() {
                                             <div>
                                                 <span className="text-[10px] font-bold text-ink-400 uppercase tracking-widest block mb-2 ml-1">External Contractor</span>
                                                 <div className="flex gap-2">
-                                                    <input value={externalName} onChange={e => setExternalName(e.target.value)} placeholder="Type Contractor Name..." maxLength={200} className="w-full text-sm font-bold bg-surface border border-surface-200 rounded-xl p-3 focus:border-pink-500 text-ink-900 outline-none transition-colors" />
+                                                    <input value={externalName} onChange={e => setExternalName(e.target.value)} placeholder="Type Contractor Name..." maxLength={200} className="w-full text-sm font-bold bg-surface border border-surface-200 rounded-xl p-3 focus:border-pink-500 text-ink-900 outline-hidden transition-colors" />
                                                     <button type="button" onClick={() => handleAddAttendee('external')} className="bg-pink-600 hover:bg-pink-500 text-white px-5 rounded-xl font-bold shadow-lg shadow-pink-600/20 transition-transform active:scale-95 whitespace-nowrap"><Plus size={16} className="inline" /></button>
                                                 </div>
                                             </div>
@@ -984,7 +984,7 @@ export default function Consultation() {
                                 {/* Minutes */}
                                 <div className="bg-surface p-8 rounded-2xl border border-surface-200/70 flex flex-col h-[500px]">
                                     <label htmlFor="consult-minutes" className="text-xs uppercase font-bold text-green-700 tracking-widest mb-4 block border-b border-surface-200/70 pb-3 flex items-center gap-2"><MessagesSquare size={14} /> Official Discussion Minutes</label>
-                                    <textarea id="consult-minutes" value={formData.minutes} onChange={e => setFormData({ ...formData, minutes: e.target.value })} className="w-full flex-1 bg-surface border border-surface-200 p-5 rounded-xl text-sm font-medium text-ink-900 focus:border-green-500 resize-none custom-scroll outline-none transition-colors leading-relaxed" placeholder="Record the general discussion points, topics covered, and any feedback received from participants here..." maxLength={5000} disabled={!canEditForm}></textarea>
+                                    <textarea id="consult-minutes" value={formData.minutes} onChange={e => setFormData({ ...formData, minutes: e.target.value })} className="w-full flex-1 bg-surface border border-surface-200 p-5 rounded-xl text-sm font-medium text-ink-900 focus:border-green-500 resize-none custom-scroll outline-hidden transition-colors leading-relaxed" placeholder="Record the general discussion points, topics covered, and any feedback received from participants here..." maxLength={5000} disabled={!canEditForm}></textarea>
                                 </div>
                             </div>
 
@@ -1000,7 +1000,7 @@ export default function Consultation() {
                                     <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-8 bg-surface p-5 rounded-xl border border-surface-200 relative z-10">
                                         <div className="md:col-span-2">
                                             <label htmlFor="consult-action-desc" className="text-[10px] uppercase font-bold text-ink-400 tracking-widest block mb-2 ml-1">Corrective Action Description</label>
-                                            <input id="consult-action-desc" value={newActionLine.action} onChange={e => setNewActionLine({ ...newActionLine, action: e.target.value })} placeholder="What needs to be done?..." maxLength={500} className="w-full bg-surface border border-surface-200 p-3 rounded-xl text-sm text-ink-900 focus:border-blue-500 outline-none transition-colors" />
+                                            <input id="consult-action-desc" value={newActionLine.action} onChange={e => setNewActionLine({ ...newActionLine, action: e.target.value })} placeholder="What needs to be done?..." maxLength={500} className="w-full bg-surface border border-surface-200 p-3 rounded-xl text-sm text-ink-900 focus:border-blue-500 outline-hidden transition-colors" />
                                         </div>
                                         <div className="md:col-span-1">
                                             <span className="text-[10px] uppercase font-bold text-ink-400 tracking-widest block mb-2 ml-1">Owner / Assignee — Department · Person</span>
@@ -1010,13 +1010,13 @@ export default function Consultation() {
                                                 onChange={(v) => setNewActionLine({ ...newActionLine, owner: v })}
                                                 getValue={(u) => u.name || u.email}
                                                 personPlaceholder="Select..."
-                                                selectClass="w-full bg-surface border border-surface-200 p-3 rounded-xl text-sm font-bold text-blue-600 focus:border-blue-500 outline-none transition-colors"
+                                                selectClass="w-full bg-surface border border-surface-200 p-3 rounded-xl text-sm font-bold text-blue-600 focus:border-blue-500 outline-hidden transition-colors"
                                             />
                                         </div>
                                         <div className="md:col-span-2 flex items-end gap-3">
                                             <div className="flex-1">
                                                 <label htmlFor="consult-action-due" className="text-[10px] uppercase font-bold text-ink-400 tracking-widest block mb-2 ml-1">Target Date</label>
-                                                <input id="consult-action-due" type="date" value={newActionLine.due} onChange={e => setNewActionLine({ ...newActionLine, due: e.target.value })} className="w-full bg-surface border border-surface-200 p-3 rounded-xl text-sm font-mono text-ink-900 focus:border-blue-500 outline-none transition-colors" />
+                                                <input id="consult-action-due" type="date" value={newActionLine.due} onChange={e => setNewActionLine({ ...newActionLine, due: e.target.value })} className="w-full bg-surface border border-surface-200 p-3 rounded-xl text-sm font-mono text-ink-900 focus:border-blue-500 outline-hidden transition-colors" />
                                             </div>
                                             <button type="button" onClick={addAction} className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-3 rounded-xl shadow-lg transition-transform active:scale-95 font-bold uppercase tracking-widest text-xs h-[46px] flex items-center justify-center gap-2"><Plus size={14} /> Add</button>
                                         </div>
@@ -1034,19 +1034,19 @@ export default function Consultation() {
                                                 return (
                                                     <tr key={i} className="hover:bg-surface-100 transition-colors">
                                                         <td className="p-3 pl-6">
-                                                            <input aria-label={`Action ${i + 1} description`} value={c.action} onChange={e => updateAction(i, 'action', e.target.value)} placeholder="Task details..." maxLength={500} className="w-full bg-transparent border-b border-transparent hover:border-surface-200 focus:border-blue-500 text-sm font-medium px-2 py-1.5 outline-none text-ink-900 transition-colors" disabled={!canEditForm} />
+                                                            <input aria-label={`Action ${i + 1} description`} value={c.action} onChange={e => updateAction(i, 'action', e.target.value)} placeholder="Task details..." maxLength={500} className="w-full bg-transparent border-b border-transparent hover:border-surface-200 focus:border-blue-500 text-sm font-medium px-2 py-1.5 outline-hidden text-ink-900 transition-colors" disabled={!canEditForm} />
                                                         </td>
                                                         <td className="p-3">
-                                                            <select aria-label={`Owner of action ${i + 1}`} value={c.owner} onChange={e => updateAction(i, 'owner', e.target.value)} className="w-full bg-surface border border-surface-200 rounded-lg p-2 text-xs font-bold text-blue-600 outline-none focus:border-blue-500 transition-colors" disabled={!canEditForm}>
+                                                            <select aria-label={`Owner of action ${i + 1}`} value={c.owner} onChange={e => updateAction(i, 'owner', e.target.value)} className="w-full bg-surface border border-surface-200 rounded-lg p-2 text-xs font-bold text-blue-600 outline-hidden focus:border-blue-500 transition-colors" disabled={!canEditForm}>
                                                                 <option value="">Select...</option>
                                                                 {siteUsers.map(u => <option key={u.id} value={u.name || u.email}>{u.name || u.email}</option>)}
                                                             </select>
                                                         </td>
                                                         <td className="p-3">
-                                                            <input type="date" aria-label={`Due date for action ${i + 1}`} value={c.due} onChange={e => updateAction(i, 'due', e.target.value)} className="w-full bg-surface border border-surface-200 rounded-lg p-2 text-xs font-mono text-ink-900 outline-none focus:border-blue-500 transition-colors" disabled={!canEditForm} />
+                                                            <input type="date" aria-label={`Due date for action ${i + 1}`} value={c.due} onChange={e => updateAction(i, 'due', e.target.value)} className="w-full bg-surface border border-surface-200 rounded-lg p-2 text-xs font-mono text-ink-900 outline-hidden focus:border-blue-500 transition-colors" disabled={!canEditForm} />
                                                         </td>
                                                         <td className="p-3 text-center">
-                                                            <select aria-label={`Status of action ${i + 1}`} value={c.status} onChange={e => updateAction(i, 'status', e.target.value)} disabled={!canEditRowStatus} className={`w-full text-xs font-bold tracking-widest uppercase rounded-lg p-2 outline-none border transition-colors ${canEditRowStatus ? 'cursor-pointer' : 'cursor-not-allowed opacity-80'} ${c.status === 'Closed' ? 'bg-emerald-100 text-emerald-600 border-emerald-500/30 focus:border-emerald-500' : c.status === 'In Progress' ? 'bg-yellow-100 text-yellow-600 border-yellow-500/30 focus:border-yellow-500' : 'bg-surface text-ink-600 border-surface-200 focus:border-surface-300'}`}>
+                                                            <select aria-label={`Status of action ${i + 1}`} value={c.status} onChange={e => updateAction(i, 'status', e.target.value)} disabled={!canEditRowStatus} className={`w-full text-xs font-bold tracking-widest uppercase rounded-lg p-2 outline-hidden border transition-colors ${canEditRowStatus ? 'cursor-pointer' : 'cursor-not-allowed opacity-80'} ${c.status === 'Closed' ? 'bg-emerald-100 text-emerald-600 border-emerald-500/30 focus:border-emerald-500' : c.status === 'In Progress' ? 'bg-yellow-100 text-yellow-600 border-yellow-500/30 focus:border-yellow-500' : 'bg-surface text-ink-600 border-surface-200 focus:border-surface-300'}`}>
                                                                 <option>Open</option><option>In Progress</option><option>Closed</option>
                                                             </select>
                                                         </td>
