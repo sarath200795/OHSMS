@@ -4,6 +4,7 @@ import {
   cardQueryUrl, currentUserUrl, fieldForColumn, columnKey, normalizeStatus, sourcesFor,
   normalizeRow, normalizeRows, isoDate, capRows, MAX_ROWS, MAX_BYTES, STATUSES,
   keyAge, asMillis, isTerminal, TERMINAL_STATUSES, asDay, dateParameters, buildDateParams, defaultRange, safeRange, cardUrl, MAX_RANGE_DAYS,
+  connectMetabase, resolvePublicHost, isBlockedAddress,
 } from './metabase.js'
 
 describe('checkBaseUrl', () => {
@@ -81,6 +82,194 @@ describe('checkBaseUrl', () => {
   it('says what is wrong rather than just refusing — this is a settings form', () => {
     expect(checkBaseUrl('').reason).toMatch(/Enter/)
     expect(checkBaseUrl('not a url at all').ok).toBe(false)
+  })
+})
+
+// The literal check is not the dial. These stand in for DNS so the suite never
+// resolves a name, and for https.request so it never opens a socket.
+const miss = (code) => Object.assign(new Error(code), { code })
+
+function dns(spec = {}) {
+  const calls = []
+  const soft = spec.soft || {}
+  const read = async (name, value, fallback) => {
+    calls.push(name)
+    if (spec.hard === name) throw miss(spec.hardCode || 'ESERVFAIL')
+    const code = Object.prototype.hasOwnProperty.call(soft, name) ? soft[name] : fallback
+    if (code) throw miss(code)
+    return value
+  }
+  return {
+    calls,
+    lookup: async () => read('lookup', (spec.lookup || []).map((address) => ({
+      address,
+      family: String(address).includes(':') ? 6 : 4,
+    }))),
+    resolve4: async () => read('resolve4', spec.resolve4 ?? spec.lookup ?? []),
+    // No AAAA is the ordinary case. A caller that supplies resolve6 wants those records.
+    resolve6: async () => read('resolve6', spec.resolve6 || [], spec.resolve6 ? null : 'ENODATA'),
+  }
+}
+
+function fakeRequest(capture = {}) {
+  return (options, onResponse) => {
+    capture.options = options
+    capture.calls = (capture.calls || 0) + 1
+    const handlers = {}
+    const res = {
+      statusCode: capture.statusCode ?? 200,
+      headers: capture.headers || { 'content-type': 'application/json' },
+      on(ev, fn) {
+        handlers[ev] = fn
+        return res
+      },
+    }
+    return {
+      on() { return this },
+      write(body) { capture.body = body; return true },
+      destroy() { return this },
+      end() {
+        onResponse(res)
+        handlers.data?.(Buffer.from(capture.bodyText ?? '{"ok":true}'))
+        handlers.end?.()
+        return this
+      },
+    }
+  }
+}
+
+describe('resolvePublicHost', () => {
+  it('refuses an address that is not a public unicast, including mapped forms', () => {
+    for (const bad of [
+      '0.0.0.0', '10.1.2.3', '127.0.0.1', '169.254.169.254', '172.16.0.1', '172.31.255.255',
+      '192.168.1.1', '100.64.0.1', '100.127.255.255', '224.0.0.1', '255.255.255.255',
+      '::', '::1', 'fc00::1', 'fd12:3456::1', 'fe80::1', 'fe80::1%eth0', 'ff02::1',
+      '::ffff:127.0.0.1', '::ffff:169.254.169.254', '::ffff:a9fe:a9fe', '::ffff:7f00:1',
+      '2002:a9fe:a9fe::', '2002:7f00:1::',
+      '64:ff9b::169.254.169.254', '64:ff9b::a9fe:a9fe', '64:ff9b:1::169.254.169.254',
+      'not-an-ip',
+    ]) {
+      expect(isBlockedAddress(bad), bad).toBe(true)
+    }
+  })
+
+  it('accepts a public address, including one written inside an IPv6 form', () => {
+    for (const ok of [
+      '8.8.8.8', '172.15.0.1', '172.32.0.1', '100.63.255.255', '100.128.0.1', '223.255.255.255',
+      '2001:4860:4860::8888', '::ffff:8.8.8.8', '::ffff:0808:0808', '2002:0808:0808::',
+      '64:ff9b::8.8.8.8',
+    ]) {
+      expect(isBlockedAddress(ok), ok).toBe(false)
+    }
+  })
+
+  it('accepts a hostname whose records are all public', async () => {
+    const resolvers = dns({ lookup: ['8.8.8.8', '1.1.1.1'] })
+    const out = await resolvePublicHost('metabase.example.com', resolvers)
+    expect(out).toEqual({ ok: true, addresses: ['8.8.8.8', '1.1.1.1'] })
+  })
+
+  it('refuses the host when any one record is private', async () => {
+    const resolvers = dns({ lookup: ['8.8.8.8'], resolve4: ['8.8.8.8', '10.1.2.3'] })
+    const out = await resolvePublicHost('metabase.example.com', resolvers)
+    expect(out.ok).toBe(false)
+    expect(out.reason).toMatch(/private network/)
+  })
+
+  it('refuses loopback, link-local, metadata and mapped answers from DNS', async () => {
+    for (const bad of [
+      '127.0.0.1', '10.0.0.1', '192.168.0.5', '172.16.4.4', '169.254.169.254', '0.0.0.0',
+      '::1', 'fd00::1', 'fe80::1', '::ffff:127.0.0.1', '::ffff:169.254.169.254',
+    ]) {
+      const out = await resolvePublicHost('metabase.example.com', dns({
+        lookup: [bad],
+        resolve4: [],
+        soft: { resolve4: 'ENODATA', resolve6: 'ENODATA' },
+      }))
+      expect(out.ok, bad).toBe(false)
+    }
+  })
+
+  it('fails closed when nothing resolved, or a resolver failed outright', async () => {
+    const empty = await resolvePublicHost('metabase.example.com', dns({
+      lookup: [],
+      resolve4: [],
+      soft: { lookup: 'ENOTFOUND', resolve4: 'ENOTFOUND', resolve6: 'ENODATA' },
+    }))
+    expect(empty.ok).toBe(false)
+    expect(empty.reason).toMatch(/did not resolve/)
+
+    const hard = await resolvePublicHost('metabase.example.com', dns({
+      lookup: ['8.8.8.8'],
+      hard: 'resolve4',
+    }))
+    expect(hard.ok).toBe(false)
+  })
+
+  it('does not ask DNS about a literal, and still refuses one that is not public', async () => {
+    const resolvers = dns({ lookup: ['8.8.8.8'] })
+    expect(await resolvePublicHost('8.8.8.8', resolvers)).toEqual({ ok: true, addresses: ['8.8.8.8'] })
+    expect(resolvers.calls).toEqual([])
+    const blocked = await resolvePublicHost('100.64.1.1', resolvers)
+    expect(blocked.ok).toBe(false)
+    expect(resolvers.calls).toEqual([])
+  })
+
+  it('pins the socket lookup to the vetted addresses and does not resolve again', async () => {
+    const resolvers = dns({ lookup: ['8.8.8.8'], resolve6: ['2001:4860:4860::8888'] })
+    const capture = {}
+    const res = await connectMetabase(
+      'https://metabase.example.com./api/card/7/query/json',
+      metabaseRequestInit('mb_secret', { method: 'POST', body: { parameters: [] } }),
+      { resolvers, request: fakeRequest(capture) },
+    )
+    expect(res.ok).toBe(true)
+    expect(await res.json()).toEqual({ ok: true })
+    expect(resolvers.calls).toEqual(['lookup', 'resolve4', 'resolve6'])
+
+    const looked = await new Promise((resolve, reject) => {
+      capture.options.lookup('rebind.example', { all: true, hints: 32 }, (err, addrs) => {
+        if (err) reject(err)
+        else resolve(addrs)
+      })
+    })
+    expect(looked).toEqual([
+      { address: '8.8.8.8', family: 4 },
+      { address: '2001:4860:4860::8888', family: 6 },
+    ])
+    // The pin is a closed list. Invoking it must not ask the resolver again,
+    // whatever name is presented at connect time.
+    expect(resolvers.calls).toEqual(['lookup', 'resolve4', 'resolve6'])
+    expect(capture.options.hostname).toBe('metabase.example.com')
+    expect(capture.options.servername).toBe('metabase.example.com')
+    expect(capture.options.headers.host).toBe('metabase.example.com')
+    expect(capture.options.headers['x-api-key']).toBe('mb_secret')
+    expect(capture.options.path).toBe('/api/card/7/query/json')
+    expect(capture.options.path).not.toContain('mb_secret')
+    expect(JSON.stringify(capture.options.headers)).not.toMatch(/[?&]apiKey=/)
+    expect(capture.body).toBe('{"parameters":[]}')
+    expect(capture.calls).toBe(1)
+  })
+
+  it('does not follow a redirect or repeat where it pointed', async () => {
+    const capture = {
+      statusCode: 302,
+      headers: { location: 'http://169.254.169.254/computeMetadata/v1/', 'content-type': 'text/plain' },
+    }
+    let thrown = null
+    try {
+      await connectMetabase(
+        'https://metabase.example.com/api/user/current',
+        metabaseRequestInit('mb_secret'),
+        { resolvers: dns({ lookup: ['8.8.8.8'] }), request: fakeRequest(capture) },
+      )
+    } catch (e) {
+      thrown = e
+    }
+    expect(thrown?.name).toBe('MetabaseRedirectError')
+    expect(thrown?.message).toMatch(/redirect/i)
+    expect(thrown?.message).not.toContain('169.254')
+    expect(capture.calls).toBe(1)
   })
 })
 

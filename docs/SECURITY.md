@@ -75,11 +75,15 @@ forms the URL parser accepts were not in either list:
 and a 302 is a different host, carrying the API key in `x-api-key`.
 
 The host check now strips a trailing dot and refuses every IPv6 literal —
-Metabase is configured by hostname, and no instance URL is one. The request
-sets `redirect: 'error'`, so a redirect is a failure the admin sees rather
-than a second dial. A public hostname whose A record is private is still the
-residual the function's own comment names: that needs the DNS lookup the
-fetch itself performs, and this change does not claim to add it.
+Metabase is configured by hostname, and no instance URL is one. Before the
+request, the hostname is resolved (the OS lookup and the A and AAAA records)
+and any private, loopback, link-local, metadata, or non-global address
+refuses the whole host, including an IPv4 carried inside an IPv6 form. The
+socket lookup returns only the addresses that passed, so a later answer for
+the same name is not what gets dialled. A 3xx fails the request and is not
+followed, and the API key stays in the `x-api-key` header.
+`functions/lib/metabase.test.js` covers the literal forms, the resolved
+addresses, the pinned lookup, and the refused redirect.
 
 ### S-27 · A LOTO procedure mirror could carry the names it exists to hide — CLOSED
 
@@ -96,7 +100,11 @@ and the client whitelist is not a control. `/qr` and `/permitQr` already pin
 Create now requires `procedureMirrorFields()`, the same list the builder
 writes, including `updatedAt`. Update uses `keepsMirrorShape`, so a mirror
 that already holds a retired key can still be corrected and a new key is
-refused. `tests/publicProcedure.rules.test.js` sends the name fields.
+refused. Nested fields are pinned too: each point may only carry the keys
+`publicPoint()` writes, string fields are length-capped, `devices` is a short
+list of strings, and the counts are integers bounded by that list.
+`tests/publicProcedure.rules.test.js` sends the name fields at the top level
+and inside a point, and the shape the public page is built from.
 
 ### S-26 · Uploads minted a permanent download URL — CLOSED
 

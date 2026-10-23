@@ -15,8 +15,18 @@
 // origin, which is an operator's problem inside somebody else's infrastructure.
 // Through a function it is one server talking to another.
 //
-// Pure, so every branch runs under vitest without the Admin SDK or a network.
+// The decisions stay testable without the Admin SDK. The DNS step takes its
+// resolvers as arguments, so the suite never dials; production passes none
+// and the defaults below are the real ones.
 // ─────────────────────────────────────────────────────────────────────────────
+
+import {
+  lookup as dnsLookup,
+  resolve4 as dnsResolve4,
+  resolve6 as dnsResolve6,
+} from 'node:dns/promises'
+import https from 'node:https'
+import net from 'node:net'
 
 /**
  * The datasets ODIN knows how to ask for, and what each is for.
@@ -39,11 +49,14 @@ export const configPath = (orgId) => `organizations/${orgId}/integrations/metaba
 // metadata server at 169.254.169.254, which hands out service-account tokens to
 // anything that asks for them.
 //
-// So: https only, and no host that names somewhere only we can reach. This
-// cannot catch a public hostname carrying a private A record — that needs the
-// DNS resolution the fetch itself performs — and no claim is made that it does.
-// It closes the literal cases, which is what an accident or a careless paste
-// actually looks like.
+// So: https only, and no host that names somewhere only we can reach. The
+// literal check is what a paste looks like. It is not the whole of it: a
+// public name can resolve to a private address, and the name can change
+// between the check and the dial. connectMetabase resolves first — the OS
+// lookup plus the A and AAAA records — and refuses the host if any address
+// is private, loopback, link-local, metadata, or an IPv6 form that carries
+// one of those. The socket's lookup then returns only the addresses that
+// passed, so a later answer is not what gets dialled.
 //
 // Two literal forms the dotted-decimal patterns do not see, both of which the
 // URL parser accepts and a fetch will dial:
@@ -112,6 +125,357 @@ export function metabaseRequestInit(apiKey, { method = 'GET', body, signal } = {
     body: body ? JSON.stringify(body) : undefined,
     signal,
   }
+}
+
+// ── Resolve, then pin ────────────────────────────────────────────────────────
+//
+// checkBaseUrl sees the string the admin typed. The address the socket dials
+// is whatever that name resolves to at connect time, which is a second lookup
+// and can be a different answer — a public name with a private record, or a
+// name that changes between the two (rebinding). Both are refused here.
+//
+// The union is the OS lookup (what getaddrinfo would dial, including the
+// hosts file) AND the A and AAAA records. Either source alone can hide the
+// private one: a hosts entry can disagree with DNS, and a single A answer
+// can omit the AAAA. An empty union is a refusal, not permission. A hard
+// resolver error is too — a failure is not proof the record was public.
+//
+// An IPv4 written inside an IPv6 address is still that IPv4. Mapped
+// (::ffff:0:0/96), compatible (::/96), 6to4 (2002::/16) and the well-known
+// NAT64 prefixes (64:ff9b::/96 and 64:ff9b:1::/48) all carry one, and the
+// metadata address is still the metadata address spelled that way. Shared
+// address space (100.64/10), multicast and the reserved block are refused
+// with the private ranges: none of them is a public instance this function
+// is allowed to dial.
+
+const PRIVATE_REASON =
+  'That address is on a private network the server cannot — and must not — reach.'
+const RESOLVE_REASON =
+  'That address did not resolve. Check the URL, and that the instance resolves publicly.'
+
+const defaultResolvers = {
+  lookup: (host) => dnsLookup(host, { all: true, verbatim: true }),
+  resolve4: (host) => dnsResolve4(host),
+  resolve6: (host) => dnsResolve6(host),
+}
+
+function ipv4Bytes(ip) {
+  const parts = ip.split('.')
+  if (parts.length !== 4) return null
+  const bytes = []
+  for (const part of parts) {
+    if (!/^\d{1,3}$/.test(part)) return null
+    const n = Number(part)
+    if (n > 255) return null
+    bytes.push(n)
+  }
+  return bytes
+}
+
+function ipv4Blocked(bytes) {
+  const a = bytes[0]
+  const b = bytes[1]
+  if (a === 0 || a === 10 || a === 127) return true
+  if (a === 169 && b === 254) return true
+  if (a === 172 && b >= 16 && b <= 31) return true
+  if (a === 192 && b === 168) return true
+  // 100.64.0.0/10 — shared address space, not a global unicast.
+  if (a === 100 && b >= 64 && b <= 127) return true
+  // Multicast and the reserved range, including the broadcast address.
+  if (a >= 224) return true
+  return false
+}
+
+function ipv6Bytes(ip) {
+  let text = ip
+  const dotted = text.match(/^(.*:)(\d+\.\d+\.\d+\.\d+)$/)
+  if (dotted) {
+    const v4 = ipv4Bytes(dotted[2])
+    if (!v4) return null
+    const hi = ((v4[0] << 8) | v4[1]).toString(16)
+    const lo = ((v4[2] << 8) | v4[3]).toString(16)
+    text = `${dotted[1]}${hi}:${lo}`
+  }
+  const halves = text.split('::')
+  if (halves.length > 2) return null
+  const groupsOf = (s) => (s ? s.split(':') : [])
+  const left = groupsOf(halves[0])
+  const right = halves.length === 2 ? groupsOf(halves[1]) : []
+  if (halves.length === 1 && left.length !== 8) return null
+  const missing = 8 - left.length - right.length
+  if (missing < 0) return null
+  const groups = halves.length === 2 ? [...left, ...Array(missing).fill('0'), ...right] : left
+  if (groups.length !== 8) return null
+  const bytes = []
+  for (const group of groups) {
+    if (!/^[0-9a-f]{1,4}$/.test(group)) return null
+    const n = Number.parseInt(group, 16)
+    bytes.push((n >> 8) & 0xff, n & 0xff)
+  }
+  return bytes
+}
+
+/** The IPv4 carried inside a mapped, compatible, 6to4 or NAT64 address. */
+function embeddedIpv4(bytes) {
+  const zero = (from, to) => bytes.slice(from, to).every((b) => b === 0)
+  if (zero(0, 10) && bytes[10] === 0xff && bytes[11] === 0xff) return bytes.slice(12)
+  if (zero(0, 12)) return bytes.slice(12)
+  if (bytes[0] === 0x20 && bytes[1] === 0x02) return bytes.slice(2, 6)
+  const nat64 =
+    bytes[0] === 0x00 && bytes[1] === 0x64 && bytes[2] === 0xff && bytes[3] === 0x9b
+  if (nat64 && zero(4, 12)) return bytes.slice(12)
+  if (nat64 && bytes[4] === 0x00 && bytes[5] === 0x01) return bytes.slice(12)
+  return null
+}
+
+function parseAddress(raw) {
+  if (typeof raw !== 'string') return null
+  let ip = raw.trim().toLowerCase().replace(/^\[|\]$/g, '')
+  const zone = ip.indexOf('%')
+  if (zone !== -1) ip = ip.slice(0, zone)
+  if (!ip) return null
+  if (!ip.includes(':')) {
+    const v4 = ipv4Bytes(ip)
+    return v4 ? { bytes: v4, v4: true } : null
+  }
+  const bytes = ipv6Bytes(ip)
+  return bytes ? { bytes, v4: false } : null
+}
+
+/**
+ * True when this address must not be dialled.
+ *
+ * Unparseable input is refused. A resolver that handed back something that
+ * is not an address is not evidence the host is public.
+ */
+export function isBlockedAddress(raw) {
+  const parsed = parseAddress(raw)
+  if (!parsed) return true
+  if (parsed.v4) return ipv4Blocked(parsed.bytes)
+  const bytes = parsed.bytes
+  if (bytes.every((b) => b === 0)) return true
+  if (bytes.slice(0, 15).every((b) => b === 0) && bytes[15] === 1) return true
+  if ((bytes[0] & 0xfe) === 0xfc) return true
+  if (bytes[0] === 0xfe && (bytes[1] & 0xc0) === 0x80) return true
+  if (bytes[0] === 0xff) return true
+  const embedded = embeddedIpv4(bytes)
+  return Boolean(embedded && ipv4Blocked(embedded))
+}
+
+function dialable(raw) {
+  let ip = String(raw).trim().toLowerCase().replace(/^\[|\]$/g, '')
+  const zone = ip.indexOf('%')
+  if (zone !== -1) ip = ip.slice(0, zone)
+  return ip
+}
+
+async function readDns(fn) {
+  try {
+    const rows = await fn()
+    return { rows: Array.isArray(rows) ? rows : [] }
+  } catch (err) {
+    const code = err && err.code
+    // No record of this type is a normal half of a dual-stack answer.
+    if (code === 'ENOTFOUND' || code === 'ENODATA' || code === 'ENOENT') return { rows: [] }
+    return { hard: true }
+  }
+}
+
+/**
+ * The addresses a later socket is allowed to dial for this host.
+ *
+ * @returns `{ ok: true, addresses }` or `{ ok: false, reason }`. Any blocked
+ *          address refuses the whole host — a public sibling is not a reason
+ *          to connect when one answer is private.
+ */
+export async function resolvePublicHost(hostname, resolvers = defaultResolvers) {
+  const host = String(hostname || '').trim().toLowerCase().replace(/\.+$/, '')
+  if (!host) return { ok: false, reason: RESOLVE_REASON }
+  // A literal never goes back to DNS. checkBaseUrl already refuses the
+  // forms a person can paste; this is the same verdict for one a record
+  // returned, and for the shared/multicast ranges the literal patterns
+  // do not list.
+  if (net.isIP(host)) {
+    if (isBlockedAddress(host)) return { ok: false, reason: PRIVATE_REASON }
+    return { ok: true, addresses: [host] }
+  }
+
+  const looked = await readDns(() => resolvers.lookup(host))
+  if (looked.hard) return { ok: false, reason: RESOLVE_REASON }
+  const v4 = await readDns(() => resolvers.resolve4(host))
+  if (v4.hard) return { ok: false, reason: RESOLVE_REASON }
+  const v6 = await readDns(() => resolvers.resolve6(host))
+  if (v6.hard) return { ok: false, reason: RESOLVE_REASON }
+
+  const gathered = []
+  for (const row of looked.rows) gathered.push(typeof row === 'string' ? row : row?.address)
+  gathered.push(...v4.rows, ...v6.rows)
+
+  const addresses = []
+  const seen = new Set()
+  for (const raw of gathered) {
+    if (!raw) continue
+    if (isBlockedAddress(raw)) return { ok: false, reason: PRIVATE_REASON }
+    const parsed = parseAddress(raw)
+    if (!parsed) return { ok: false, reason: PRIVATE_REASON }
+    const key = Buffer.from(parsed.bytes).toString('hex')
+    if (seen.has(key)) continue
+    seen.add(key)
+    addresses.push(dialable(raw))
+  }
+  if (!addresses.length) return { ok: false, reason: RESOLVE_REASON }
+  return { ok: true, addresses }
+}
+
+/**
+ * A `lookup` for https.request that never calls DNS.
+ *
+ * Node dials with `{ all: true }`. Returning the vetted list in that shape
+ * is the pin: every address it tries was already classified, and the
+ * hostname argument is ignored so a rebound name changes nothing.
+ */
+export function pinnedLookup(addresses) {
+  const records = addresses.map((address) => ({
+    address,
+    family: net.isIP(address) === 6 ? 6 : 4,
+  }))
+  return function lookup(_hostname, options, callback) {
+    if (typeof options === 'function') {
+      callback = options
+      options = {}
+    }
+    const family = options?.family
+    const usable = family ? records.filter((r) => r.family === family) : records
+    if (!usable.length) {
+      const err = new Error('No vetted address for that family')
+      err.code = 'ENOTFOUND'
+      callback(err)
+      return
+    }
+    if (options?.all) callback(null, usable.map((r) => ({ address: r.address, family: r.family })))
+    else callback(null, usable[0].address, usable[0].family)
+  }
+}
+
+/** The request options, with the name kept for SNI and Host and the lookup pinned. */
+export function pinnedRequestOptions(urlString, init, lookup) {
+  const url = new URL(urlString)
+  const hostname = url.hostname.toLowerCase().replace(/\.+$/, '')
+  const port = url.port || '443'
+  const headers = { ...(init?.headers || {}) }
+  headers.host = port === '443' ? hostname : `${hostname}:${port}`
+  // https.request does not decompress. Identity keeps res.json() on the bytes
+  // Metabase sent rather than a gzip body this client would not unwrap.
+  headers['accept-encoding'] = 'identity'
+  if (init?.body != null) headers['content-length'] = String(Buffer.byteLength(init.body))
+  return {
+    protocol: 'https:',
+    hostname,
+    servername: hostname,
+    port,
+    method: init?.method || 'GET',
+    path: `${url.pathname}${url.search}`,
+    headers,
+    lookup,
+    signal: init?.signal,
+  }
+}
+
+function namedError(name, message) {
+  const err = new Error(message)
+  err.name = name
+  return err
+}
+
+function abortError() {
+  return namedError('AbortError', 'The operation was aborted')
+}
+
+/**
+ * One request to a vetted host. Redirects are not followed: a 3xx is a
+ * different dial, and the API key would go with it. The status is consumed
+ * and the Location is not repeated — it is the next URL, and it is not ours
+ * to fetch or to log.
+ */
+export function pinnedRequest(urlString, init, lookup, requestFn = https.request) {
+  const options = pinnedRequestOptions(urlString, init, lookup)
+  const body = init?.body
+  return new Promise((resolve, reject) => {
+    let settled = false
+    const fail = (err) => {
+      if (settled) return
+      settled = true
+      reject(err)
+    }
+    const req = requestFn(options, (res) => {
+      const chunks = []
+      res.on('data', (chunk) => {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+      })
+      res.on('end', () => {
+        if (settled) return
+        const status = res.statusCode || 0
+        if (status >= 300 && status < 400) {
+          fail(namedError(
+            'MetabaseRedirectError',
+            'Metabase redirected the request, which this connector refuses.',
+          ))
+          return
+        }
+        settled = true
+        const contentType = typeof res.headers?.['content-type'] === 'string'
+          ? res.headers['content-type']
+          : 'application/json'
+        resolve(new Response(Buffer.concat(chunks), {
+          status,
+          headers: { 'content-type': contentType },
+        }))
+      })
+      res.on('error', fail)
+    })
+    req.on('error', fail)
+    if (init?.signal) {
+      const onAbort = () => {
+        const err = abortError()
+        req.destroy(err)
+        fail(err)
+      }
+      if (init.signal.aborted) {
+        onAbort()
+        return
+      }
+      init.signal.addEventListener('abort', onAbort, { once: true })
+    }
+    if (body != null) req.write(body)
+    req.end()
+  })
+}
+
+/**
+ * Resolve, refuse, pin, then request.
+ *
+ * `deps.resolvers` and `deps.request` exist so a test can supply both. The
+ * callables pass neither.
+ */
+export async function connectMetabase(urlString, init, deps = {}) {
+  let url
+  try {
+    url = new URL(urlString)
+  } catch {
+    throw namedError('MetabaseAddressError', 'That is not a URL.')
+  }
+  const literal = checkBaseUrl(url.origin)
+  if (!literal.ok) throw namedError('MetabaseAddressError', literal.reason)
+  const host = url.hostname.toLowerCase().replace(/\.+$/, '')
+  const resolved = await resolvePublicHost(host, deps.resolvers)
+  if (!resolved.ok) throw namedError('MetabaseAddressError', resolved.reason)
+  return pinnedRequest(urlString, init, pinnedLookup(resolved.addresses), deps.request)
+}
+
+/** The admin-facing sentence for a refusal, or null when the caller should use its own. */
+export function publicMetabaseError(e) {
+  if (e?.name === 'MetabaseAddressError' || e?.name === 'MetabaseRedirectError') return e.message || ''
+  return null
 }
 
 /** A saved-question id: a positive integer, however it was typed. */
