@@ -825,6 +825,25 @@ service cloud.firestore {
     //
     // Writes are pinned to the owning tenant and ride in the same batch or
     // transaction as the procedure write, so the two cannot disagree.
+    //
+    // The field list is the same whitelist publicProcedure() builds. Rules
+    // cannot hide fields on a read, which is why this mirror exists — and a
+    // whitelist that lives only in the client is not one. setDoc of the
+    // procedure document itself onto this path used to succeed for any
+    // writer of the owning org, and that document carries primaryTech,
+    // createdByName and the lock holder's name. The id is printed on the
+    // machine, and get is public, so those names would be unauthenticated.
+    //
+    // Same grandfathering as the equipment mirror: a document that already
+    // holds a retired key can still be corrected, and a new key is refused.
+    function procedureMirrorFields() {
+      return [
+        'orgId', 'procedureCode', 'title', 'equipment', 'site', 'status',
+        'revision', 'lockStatus', 'lockedCount', 'pointCount', 'points',
+        'updatedAt'
+      ];
+    }
+
     match /procedureQr/{procedureId} {
       allow get: if true;
       allow list: if false;
@@ -842,11 +861,13 @@ service cloud.firestore {
       // backfill path has it committed already and getAfter reads the same.
       allow create: if isWriterOf(request.resource.data.orgId)
         && getAfter(/databases/$(database)/documents/procedures/$(procedureId)).data.orgId
-             == request.resource.data.orgId;
+             == request.resource.data.orgId
+        && request.resource.data.keys().hasOnly(procedureMirrorFields());
 
       allow update: if resource != null
         && isWriterOf(resource.data.orgId)
-        && request.resource.data.orgId == resource.data.orgId;
+        && request.resource.data.orgId == resource.data.orgId
+        && keepsMirrorShape(procedureMirrorFields());
       // Pinned to the mirror's own org rather than the procedure's: delete runs
       // in the same batch that deletes the procedure, so nothing would be left
       // for getAfter to read.

@@ -45,14 +45,17 @@
     "react-hot-toast": "^2.4.1",
     "react-leaflet": "^4.2.1",
     "react-leaflet-cluster": "^2.1.0",
-    "react-router-dom": "^6.26.0",
+    "react-router-dom": "^6.30.6",
     "react-to-print": "^2.15.1",
     "recharts": "^2.12.7",
     "three": "^0.185.1",
-    "xlsx": "^0.18.5"
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "overrides": {
     "undici": "^6.28.0",
+    "node-gyp": {
+      "undici": "^8.12.3"
+    },
     "@grpc/grpc-js": "^1.13.6"
   },
   "devDependencies": {

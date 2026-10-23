@@ -38,15 +38,11 @@ import { execFileSync } from 'node:child_process'
 
 // Each entry must say why it is tolerable and what closes it. An allowlist
 // without those becomes permanent.
-const ROOT_ALLOWED = {
-  xlsx: {
-    why: 'Prototype pollution, no fixed version on npm (SheetJS stopped publishing there). '
-       + 'Reachable only by PARSING an untrusted file, and no import does that any more — '
-       + 'every upload goes through shared/lib/parseTable (papaparse). This package is now '
-       + 'used only to WRITE exports from data we already hold, which is not a parsing surface.',
-    closes: 'Remove xlsx entirely, or migrate exports to the maintained SheetJS build.',
-  },
-}
+// Empty on purpose. The one entry this used to hold was xlsx, removed when
+// exports moved to the maintained SheetJS build (docs/SECURITY.md S-18).
+// A new high or critical in the runtime tree fails the gate until it is
+// fixed or named here with a reason and what closes it.
+const ROOT_ALLOWED = {}
 
 /**
  * The trees, and whether each one can stop a merge.

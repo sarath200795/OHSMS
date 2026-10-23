@@ -56,6 +56,7 @@ import {
   redactConfig,
   readiness,
   checkBaseUrl,
+  metabaseRequestInit,
   sourcesFor,
   cardQueryUrl,
   cardUrl,
@@ -2302,16 +2303,10 @@ async function metabaseFetch(url, apiKey, { method = 'GET', body } = {}) {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), METABASE_TIMEOUT_MS)
   try {
-    return await fetch(url, {
-      method,
-      headers: {
-        'x-api-key': apiKey,
-        accept: 'application/json',
-        ...(body ? { 'content-type': 'application/json' } : {}),
-      },
-      body: body ? JSON.stringify(body) : undefined,
-      signal: controller.signal,
-    })
+    return await fetch(
+      url,
+      metabaseRequestInit(apiKey, { method, body, signal: controller.signal })
+    )
   } finally {
     clearTimeout(timer)
   }

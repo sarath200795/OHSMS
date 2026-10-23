@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  checkBaseUrl, parseCardId, normalizeConfig, redactConfig, readiness,
+  checkBaseUrl, metabaseRequestInit, parseCardId, normalizeConfig, redactConfig, readiness,
   cardQueryUrl, currentUserUrl, fieldForColumn, columnKey, normalizeStatus, sourcesFor,
   normalizeRow, normalizeRows, isoDate, capRows, MAX_ROWS, MAX_BYTES, STATUSES,
   keyAge, asMillis, isTerminal, TERMINAL_STATUSES, asDay, dateParameters, buildDateParams, defaultRange, safeRange, cardUrl, MAX_RANGE_DAYS,
@@ -45,6 +45,37 @@ describe('checkBaseUrl', () => {
     expect(checkBaseUrl('https://172.15.0.1').ok).toBe(true)   // just below the private block
     expect(checkBaseUrl('https://172.32.0.1').ok).toBe(true)   // just above it
     expect(checkBaseUrl('https://internal-metabase.example.com').ok).toBe(true)
+  })
+
+  // The dotted-decimal list is not the whole of "a literal we must not dial".
+  // Node canonicalises the metadata address to an IPv4-mapped IPv6 literal,
+  // and a trailing dot is the same DNS name the set already refuses.
+  it('refuses IPv6 literals and a trailing dot on a blocked name', () => {
+    for (const bad of [
+      'https://[::]',
+      'https://[::1]',
+      'https://[::ffff:127.0.0.1]',
+      'https://[::ffff:169.254.169.254]',
+      'https://[fd00::1]',
+      'https://[fe80::1]',
+      'https://metadata.google.internal.',
+      'https://localhost.',
+    ]) {
+      expect(checkBaseUrl(bad).ok, bad).toBe(false)
+    }
+  })
+
+  it('still accepts a public hostname written with a trailing dot', () => {
+    expect(checkBaseUrl('https://metabase.example.com.').ok).toBe(true)
+  })
+
+  it('does not follow a redirect, and sends the key as a header', () => {
+    const init = metabaseRequestInit('mb_secret', { method: 'POST', body: { parameters: [] } })
+    expect(init.redirect).toBe('error')
+    expect(init.headers['x-api-key']).toBe('mb_secret')
+    expect(init.headers.accept).toBe('application/json')
+    expect(init.body).toBe('{"parameters":[]}')
+    expect(JSON.stringify(init)).not.toMatch(/[?&]apiKey=/)
   })
 
   it('says what is wrong rather than just refusing — this is a settings form', () => {

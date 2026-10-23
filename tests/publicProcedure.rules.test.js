@@ -175,4 +175,29 @@ describe('a mirror belongs to the procedure it speaks for', () => {
   it('leaves the owner able to overwrite its own mirror', async () => {
     await assertSucceeds(setDoc(doc(as('own'), 'procedureQr', 'proc-1'), mirror(OWNER)))
   })
+
+  // The mirror exists because the procedure document carries names. Copying
+  // that document onto the public path is the write the client whitelist
+  // cannot stop: get is unauthenticated and the id is printed on the machine.
+  it('refuses a mirror that carries a name the procedure keeps private', async () => {
+    await assertFails(setDoc(doc(as('own'), 'procedureQr', 'proc-1'), {
+      ...mirror(OWNER),
+      primaryTech: { name: 'R. Osei' },
+    }))
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'procedures', 'proc-4'), { orgId: OWNER, equipment: 'Press' })
+    })
+    await assertFails(setDoc(doc(as('own'), 'procedureQr', 'proc-4'), {
+      ...mirror(OWNER),
+      createdByName: 'R. Osei',
+    }))
+  })
+
+  it('still accepts the fields the public page is built from', async () => {
+    await assertSucceeds(setDoc(doc(as('own'), 'procedureQr', 'proc-1'), {
+      ...mirror(OWNER),
+      title: 'Hydraulic press isolation',
+      updatedAt: new Date(),
+    }))
+  })
 })

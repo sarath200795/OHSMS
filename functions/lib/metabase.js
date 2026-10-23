@@ -44,7 +44,15 @@ export const configPath = (orgId) => `organizations/${orgId}/integrations/metaba
 // DNS resolution the fetch itself performs — and no claim is made that it does.
 // It closes the literal cases, which is what an accident or a careless paste
 // actually looks like.
-const BLOCKED_HOSTS = new Set(['localhost', 'metadata', 'metadata.google.internal', '[::1]'])
+//
+// Two literal forms the dotted-decimal patterns do not see, both of which the
+// URL parser accepts and a fetch will dial:
+//   a trailing dot (`metadata.google.internal.`) is the same DNS name
+//   an IPv6 literal, including the IPv4-mapped form Node canonicalises the
+//   metadata address to (`[::ffff:a9fe:a9fe]`)
+// Metabase is configured by hostname. Refusing every IPv6 literal is the
+// check; there is no instance URL that is one.
+const BLOCKED_HOSTS = new Set(['localhost', 'metadata', 'metadata.google.internal'])
 const BLOCKED_PATTERNS = [
   /^127\./, /^10\./, /^192\.168\./, /^169\.254\./,
   /^172\.(1[6-9]|2\d|3[01])\./,
@@ -71,14 +79,39 @@ export function checkBaseUrl(value) {
   if (url.protocol !== 'https:') {
     return { ok: false, reason: 'Metabase must be reached over https — an API key sent over http is readable in transit.' }
   }
-  const host = url.hostname.toLowerCase()
-  if (BLOCKED_HOSTS.has(host) || BLOCKED_PATTERNS.some((p) => p.test(host))) {
+  // A trailing dot is the same DNS name. `metadata.google.internal.` used to
+  // miss the set. A colon means an IPv6 literal: url.hostname keeps the
+  // brackets, and no Metabase URL is one of those.
+  const host = url.hostname.toLowerCase().replace(/\.+$/, '')
+  if (host.includes(':') || BLOCKED_HOSTS.has(host) || BLOCKED_PATTERNS.some((p) => p.test(host))) {
     return { ok: false, reason: 'That address is on a private network the server cannot — and must not — reach.' }
   }
   // Origin only. A path, query or fragment on the base URL would be silently
   // dropped when the API path is appended, and a setting that is accepted and
   // then ignored is worse than one that is refused.
   return { ok: true, origin: url.origin }
+}
+
+/**
+ * Options for a request to an instance that has already passed checkBaseUrl.
+ *
+ * `redirect: 'error'` is the other half of that check. fetch follows a 302
+ * by default, and the host we vetted is not the host a redirect dials — the
+ * API key would go with it, in the header below. A Metabase that needs a
+ * redirect is reached by saving the URL it redirects to.
+ */
+export function metabaseRequestInit(apiKey, { method = 'GET', body, signal } = {}) {
+  return {
+    method,
+    redirect: 'error',
+    headers: {
+      'x-api-key': apiKey,
+      accept: 'application/json',
+      ...(body ? { 'content-type': 'application/json' } : {}),
+    },
+    body: body ? JSON.stringify(body) : undefined,
+    signal,
+  }
 }
 
 /** A saved-question id: a positive integer, however it was typed. */
