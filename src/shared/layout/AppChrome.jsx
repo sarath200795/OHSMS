@@ -23,8 +23,10 @@ import { initials } from '../lib/format'
 import RequestAccessModal from './RequestAccessModal'
 import Sam from '../sam/Sam'
 import HomeBar from './HomeBar'
+import FieldNav from './FieldNav'
 import { OrgMark, hasOrgLogo } from '../branding/OrgMark'
 import IdleGuard from '../auth/IdleGuard'
+import { useNarrow } from '../mobile/useNarrow'
 
 const ROLE_LABEL = {
   admin: 'Administrator',
@@ -86,6 +88,7 @@ export default function AppChrome({ children }) {
     }
   }
 
+  const narrow = useNarrow()
   const name = profile?.name || 'There'
   // The wordmark beside the mark names the ORGANIZATION once it has a logo of
   // its own. Leaving "WEHS / Workplace Environment, Health & Safety" standing
@@ -113,7 +116,7 @@ export default function AppChrome({ children }) {
             is hidden below sm, and without this the only way home on a phone
             was a link announced as the single letter "W". */}
         <NavLink
-          to="/portal"
+          to={narrow ? '/field' : '/portal'}
           aria-label={`${branded && orgName ? orgName : 'WEHS'} home`}
           className="flex min-w-0 flex-none items-center gap-2.5 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
         >
@@ -213,7 +216,11 @@ export default function AppChrome({ children }) {
         </div>
       </header>
 
-      <main id="main" tabIndex={-1} className="mx-auto max-w-[1180px] px-4 pb-24 pt-6 sm:px-7">
+      <main
+        id="main"
+        tabIndex={-1}
+        className="mx-auto max-w-[1180px] px-4 pb-[calc(6.5rem+env(safe-area-inset-bottom))] pt-6 sm:px-7 md:pb-24"
+      >
         <HomeBar />
         <motion.div
           key={location.pathname}
@@ -224,6 +231,8 @@ export default function AppChrome({ children }) {
           {children}
         </motion.div>
       </main>
+
+      {narrow && <FieldNav />}
 
       <RequestAccessModal open={reqOpen} onClose={() => setReqOpen(false)} />
       {/* Sam the Buddy — the ISO 45001 assistant, available on every screen. */}

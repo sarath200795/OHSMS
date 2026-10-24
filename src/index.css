@@ -1084,3 +1084,17 @@ option {
     page-break-inside: avoid;
   }
 }
+
+/* Phones zoom the page when a focused field is under 16px, and a 40px control
+   is a miss with a gloved hand. Desktop sizes stay as they are. */
+@media (max-width: 767px) {
+  .input,
+  select.input,
+  textarea.input {
+    min-height: 44px;
+    font-size: 16px;
+  }
+  .btn {
+    min-height: 44px;
+  }
+}

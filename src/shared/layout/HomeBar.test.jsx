@@ -32,6 +32,15 @@ describe('HomeBar', () => {
     expect(screen.getByText('My actions')).toBeTruthy()
   })
 
+  it('names a field page without repeating a scan token', () => {
+    renderAt('/field/scan')
+    expect(screen.getByText('Scan QR')).toBeTruthy()
+    cleanup()
+    renderAt('/field/asset/SECRETTOKEN')
+    expect(screen.getByText('Equipment')).toBeTruthy()
+    expect(screen.queryByText('SECRETTOKEN')).toBeNull()
+  })
+
   it('links the module home when inside a module', () => {
     renderAt('/permits/approvals')
     expect(screen.getByRole('link', { name: 'Permit to Work' }).getAttribute('href')).toBe(

@@ -31,9 +31,10 @@ let loading = null
 // ── Keeping tokens out of a third party's logs ───────────────────────────────
 //
 // The public scan routes carry their authorisation IN THE PATH:
-//   /qr/<token>       a fire-equipment defect report
-//   /permit/<token>   a permit-to-work at a barrier
-//   /p/<id>           a LOTO isolation procedure
+//   /qr/<token>              a fire-equipment defect report
+//   /permit/<token>          a permit-to-work at a barrier
+//   /p/<id>                  a LOTO isolation procedure
+//   /field/asset/<token>     the same equipment token, opened by the in-app scanner
 // Anyone holding one of those strings can act on that surface, so a URL from one
 // of these pages is a credential and must not leave the origin. Everything else
 // about the path is useful and is kept — "an error on /qr" is the half that
@@ -53,6 +54,12 @@ export function sanitizeUrl(value) {
       // Nothing legitimate follows the token on these routes; anything that
       // does is not worth the risk of guessing at.
       parts.length = 2
+    }
+    // The in-app scanner lands on /field/asset/<token>. Same credential as
+    // /qr/<token>, one path segment deeper, so the rule above does not see it.
+    if (parts[0] === 'field' && parts[1] === 'asset' && parts.length >= 3) {
+      parts[2] = ':token'
+      parts.length = 3
     }
     const path = `/${parts.join('/')}`
     // Absolute in, absolute out — the origin is not sensitive and a bare path

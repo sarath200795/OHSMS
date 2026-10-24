@@ -691,7 +691,7 @@ export default function Signages() {
                         <div className="flex gap-1">
                           <label className="btn-soft flex-1 cursor-pointer justify-center !px-2 !py-1 text-xs" aria-label={`Replace photo ${i + 1}`}>
                             <ImagePlus size={13} /> Replace
-                            <input type="file" accept="image/*" className="hidden" onChange={onReplacePhoto(i)} disabled={photoBusy} />
+                            <input type="file" accept="image/*" capture="environment" className="hidden" onChange={onReplacePhoto(i)} disabled={photoBusy} />
                           </label>
                           <button type="button" className="btn-ghost !px-2 !py-1 text-xs !text-red-600" aria-label={`Remove photo ${i + 1}`} onClick={() => removePhoto(i)}>
                             <Trash2 size={13} /> Remove
@@ -704,7 +704,7 @@ export default function Signages() {
                 <label className="btn-soft cursor-pointer">
                   {photoBusy ? <Spinner size={16} /> : <ImagePlus size={16} />}
                   {formPhotos.length ? 'Add more photos' : 'Add photos'}
-                  <input type="file" accept="image/*" multiple className="hidden" onChange={onAddPhotos} disabled={photoBusy} />
+                  <input type="file" accept="image/*" capture="environment" multiple className="hidden" onChange={onAddPhotos} disabled={photoBusy} />
                 </label>
                 {deployedErrors.photo && (
                   <p role="alert" className="mt-1 text-xs font-medium text-red-400">{deployedErrors.photo}</p>
@@ -746,9 +746,9 @@ export default function Signages() {
             <Field label="Notes">
               <textarea className="input" rows={2} value={editing.notes} onChange={set('notes')} />
             </Field>
-            <div className="flex justify-end gap-2 pt-1">
-              <button type="button" className="btn-ghost" onClick={() => setEditing(null)}>Cancel</button>
-              <button type="submit" className="btn-primary" disabled={busy || photoBusy || hasDeployedErrors}>
+            <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
+              <button type="button" className="btn-ghost min-h-12" onClick={() => setEditing(null)}>Cancel</button>
+              <button type="submit" className="btn-primary min-h-12" disabled={busy || photoBusy || hasDeployedErrors}>
                 {busy ? <Spinner size={16} /> : (editing.id ? 'Save changes' : 'Add signage')}
               </button>
             </div>

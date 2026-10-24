@@ -408,8 +408,8 @@ export default function Execute() {
         ))}
       </div>
 
-      <div className="sticky bottom-4 mt-6 flex justify-end">
-        <button className="btn-primary shadow-glow" onClick={submit} disabled={busy}>
+      <div className="sticky bottom-24 mt-6 flex justify-end md:bottom-4">
+        <button className="btn-primary min-h-12 w-full shadow-glow sm:w-auto" onClick={submit} disabled={busy}>
           {busy ? <Spinner size={16} /> : <><Send size={16} /> Submit inspection</>}
         </button>
       </div>

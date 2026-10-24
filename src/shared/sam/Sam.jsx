@@ -19,10 +19,15 @@ const MARGIN = 16
 // a character that changes height mid-journey, or that eases in and out like a
 // spring, reads as floating no matter how well the legs are animated.
 const GROUND_GAP = 76           // clear of the bottom edge and the "Sam" badge
+const FIELD_NAV = 72            // the phone bar he would otherwise walk through
 const SPEED = 90                // px per second — an unhurried stroll
 const MIN_STROLL = 160          // don't bother shuffling a few pixels
 
-const groundY = () => Math.max(MARGIN, window.innerHeight - AVATAR - GROUND_GAP)
+const groundGap = () => {
+  const narrow = typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 767px)').matches
+  return GROUND_GAP + (narrow ? FIELD_NAV : 0)
+}
+const groundY = () => Math.max(MARGIN, window.innerHeight - AVATAR - groundGap())
 const maxX = () => Math.max(MARGIN, window.innerWidth - AVATAR - MARGIN)
 
 /**
@@ -262,7 +267,7 @@ export default function Sam() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={reduce ? { opacity: 0 } : { opacity: 0, y: 12, scale: 0.97 }}
             transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}
-            className="card pointer-events-auto absolute bottom-4 right-4 flex h-[28rem] w-[24rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden !rounded-2xl p-0 shadow-elev-lg"
+            className="card pointer-events-auto absolute bottom-24 right-4 flex h-[min(28rem,70vh)] w-[24rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden !rounded-2xl p-0 shadow-elev-lg md:bottom-4"
           >
             <div className="flex items-center justify-between border-b border-surface-200/70 bg-brand-600 px-4 py-3 text-white">
               <p className="text-sm font-bold">🦺 {greeting}</p>

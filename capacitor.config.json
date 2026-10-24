@@ -1,0 +1,9 @@
+{
+  "appId": "org.weehs.ohsms",
+  "appName": "WEEHS OHSMS",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https",
+    "hostname": "localhost"
+  }
+}

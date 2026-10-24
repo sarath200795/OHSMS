@@ -10,6 +10,7 @@ import { Button, Field, Input } from '../../shared/ui'
 import { safeInternalPath } from '../../shared/safeUrl'
 import AuthLayout from './AuthLayout'
 import LoginModules from './LoginModules'
+import { isNativePlatform } from '../../shared/mobile/native'
 
 export default function Login() {
   const {
@@ -203,6 +204,12 @@ export default function Login() {
       {/* SSO first, because someone whose company uses it should not fill in a
           password form before noticing the button. Absent entirely when no
           provider is configured, so nothing changes for deployments without it. */}
+      {isNativePlatform() && (
+        <p className="mb-4 rounded-2xl bg-surface px-3 py-3 text-sm text-ink-600">
+          In the app, sign in with email and password. Organisation single sign-on needs a one-time
+          authorised-domain setup before it can return here.
+        </p>
+      )}
       {hasSso && (
         <div className="mb-5 space-y-2">
           {SSO_PROVIDERS.map((p) => (

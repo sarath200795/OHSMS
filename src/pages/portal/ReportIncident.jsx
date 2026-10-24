@@ -9,13 +9,15 @@
 // The two deliberate omissions are the point: no field asks who was at fault,
 // and nothing is required beyond what makes the report actionable.
 // ─────────────────────────────────────────────────────────────────────────────
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { AlertTriangle, ArrowRight, Check, Info, LifeBuoy } from 'lucide-react'
+import { AlertTriangle, ArrowRight, Camera, Check, Info, LifeBuoy } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { toastCaught } from '../../shared/lib/toastCaught'
 import { useAuth } from '../../shared/auth/AuthContext'
-import { createIncident, getIncident } from '../../modules/incidents/lib/incidents'
+import { addIncidentPhoto, createIncident, getIncident } from '../../modules/incidents/lib/incidents'
+import { readFileAsDataUrl } from '../../shared/lib/files'
+import { safeSrc } from '../../shared/safeUrl'
 import { syncIncidentInjuries } from '../../modules/incidents/lib/injuries'
 import {
   INCIDENT_TYPES, SEVERITY, INJURY_TYPES, typeRequiresInjury,
@@ -56,6 +58,8 @@ export default function ReportIncident() {
   const [step, setStep] = useState(0)
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState(null) // { refNo }
+  const [photo, setPhoto] = useState(null)
+  const photoRef = useRef(null)
 
   const [form, setForm] = useState(() => ({
     // Deep-linked from the home screen's "Log a near miss" card.
@@ -132,8 +136,22 @@ export default function ReportIncident() {
       // A report that says someone was hurt and stores nothing about the injury
       // is worse than one that refuses, so this failure is not swallowed.
       if (injury) await syncIncidentInjuries(orgId, { id, ...(saved || {}) }, [injury], actor)
-      setDone({ id, refNo: saved?.refNo || '' })
-      toast.success('Reported — the HSE team has it')
+      let photoNote = ''
+      if (photo) {
+        try {
+          await addIncidentPhoto(orgId, id, {
+            ...photo,
+            uploadedBy: personName,
+            kind: 'photo',
+          })
+        } catch {
+          // The report itself is already in the queue. Losing the picture is
+          // worth saying; throwing it away with the report is not.
+          photoNote = 'The report was sent, but the photo could not be attached. Add it from the incident.'
+        }
+      }
+      setDone({ id, refNo: saved?.refNo || '', photoNote })
+      toast.success(photoNote || 'Reported — the HSE team has it')
     } catch (e) {
       toastCaught(e, 'Could not send the report')
     } finally {
@@ -153,6 +171,9 @@ export default function ReportIncident() {
             Your HSE lead has been notified. You&rsquo;ll get an update when the investigation team is formed —
             and you may be asked what you saw.
           </p>
+          {done.photoNote && (
+            <p className="mx-auto mt-4 max-w-[42ch] text-sm text-amber-800">{done.photoNote}</p>
+          )}
           <Inset className="mx-auto mt-6 flex max-w-xs items-center justify-between px-4 py-3">
             <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-ink-400">Reference</span>
             <span className="font-mono text-[13px] font-bold text-ink-900">
@@ -169,7 +190,7 @@ export default function ReportIncident() {
             </button>
             <button
               type="button"
-              onClick={() => { setDone(null); setStep(0); set({ type: '', severity: '', narrative: '', hurt: null, bodyParts: [], injuryType: '', confirmed: false }) }}
+              onClick={() => { setDone(null); setPhoto(null); setStep(0); set({ type: '', severity: '', narrative: '', hurt: null, bodyParts: [], injuryType: '', confirmed: false }) }}
               className="rounded-2xl bg-surface px-5 py-2.5 text-[13px] font-semibold text-ink-700 shadow-elev-sm transition-transform duration-200 ease-emil active:scale-[0.97]"
             >
               Report another
@@ -372,6 +393,39 @@ export default function ReportIncident() {
           {step === 2 && (
             <div className="animate-fade-in-up">
               <SectionLabel className="mb-3 tracking-[0.14em]">Check before you send</SectionLabel>
+              <div className="mb-4">
+                <p className="label">Photo (optional)</p>
+                <input
+                  ref={photoRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  onChange={async (event) => {
+                    const file = event.target.files?.[0]
+                    event.target.value = ''
+                    if (!file) return
+                    try {
+                      const dataUrl = await readFileAsDataUrl(file)
+                      setPhoto({ name: file.name, type: file.type, size: file.size, dataUrl })
+                    } catch (err) {
+                      toast.error(err?.message || 'Could not read that photo')
+                    }
+                  }}
+                />
+                {photo ? (
+                  <div className="flex items-center gap-3">
+                    <img src={safeSrc(photo.dataUrl)} alt="Attached to this report" className="h-16 w-16 rounded-xl object-cover" />
+                    <button type="button" className="btn-ghost min-h-12" onClick={() => setPhoto(null)}>
+                      Remove photo
+                    </button>
+                  </div>
+                ) : (
+                  <button type="button" className="btn-ghost min-h-12 w-full" onClick={() => photoRef.current?.click()}>
+                    <Camera size={16} aria-hidden="true" /> Take or attach a photo
+                  </button>
+                )}
+              </div>
               <Inset className="divide-y divide-ink-100/70 px-4">
                 {review.map(([k, v]) => (
                   <div key={k} className="flex gap-4 py-2.5">
@@ -463,7 +517,7 @@ function Choice({ on, onClick, dot, children }) {
     <button
       type="button"
       onClick={onClick}
-      className={`flex items-center gap-2.5 rounded-2xl px-4 py-3 text-[13px] font-semibold transition ${
+      className={`flex min-h-12 items-center gap-2.5 rounded-2xl px-4 py-3 text-[13px] font-semibold transition ${
         on ? 'bg-surface-50 text-ink-900 ' : 'bg-surface-50 text-ink-700 shadow-elev-sm'
       }`}
     >

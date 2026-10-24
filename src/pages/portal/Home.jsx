@@ -43,6 +43,7 @@ import { dashboardBuckets } from '../../modules/ptw/lib/permitStatus'
 import { openUnsafeByPermit } from '../../modules/ptw/lib/observations'
 import ModuleLogo3D, { has3DLogo } from './ModuleLogo3D'
 import { Button, Skeleton, Spinner } from '../../shared/ui'
+import FieldLaunchpad from '../../shared/layout/FieldLaunchpad'
 
 // Admin tools. These configure the organization rather than record work in it,
 // so the whole section is admin-only — a manager or auditor who can read the
@@ -352,6 +353,9 @@ export default function PortalHome() {
 
   return (
     <div className="animate-fade-in-up">
+      <div className="mb-5 md:hidden">
+        <FieldLaunchpad titleAs="h2" />
+      </div>
       <div className="mb-5 grid gap-4 lg:grid-cols-[1.55fr_1fr]">
         <Raised className="relative overflow-hidden px-6 py-6 sm:px-7">
           <div
