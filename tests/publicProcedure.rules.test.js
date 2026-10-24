@@ -175,4 +175,121 @@ describe('a mirror belongs to the procedure it speaks for', () => {
   it('leaves the owner able to overwrite its own mirror', async () => {
     await assertSucceeds(setDoc(doc(as('own'), 'procedureQr', 'proc-1'), mirror(OWNER)))
   })
+
+  // The mirror exists because the procedure document carries names. Copying
+  // that document onto the public path is the write the client whitelist
+  // cannot stop: get is unauthenticated and the id is printed on the machine.
+  it('refuses a mirror that carries a name the procedure keeps private', async () => {
+    await assertFails(setDoc(doc(as('own'), 'procedureQr', 'proc-1'), {
+      ...mirror(OWNER),
+      primaryTech: { name: 'R. Osei' },
+    }))
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'procedures', 'proc-4'), { orgId: OWNER, equipment: 'Press' })
+    })
+    await assertFails(setDoc(doc(as('own'), 'procedureQr', 'proc-4'), {
+      ...mirror(OWNER),
+      createdByName: 'R. Osei',
+    }))
+  })
+
+  it('still accepts the fields the public page is built from', async () => {
+    await assertSucceeds(setDoc(doc(as('own'), 'procedureQr', 'proc-1'), {
+      ...mirror(OWNER),
+      title: 'Hydraulic press isolation',
+      updatedAt: new Date(),
+    }))
+  })
+})
+
+// The top-level allow-list does not look inside `points`. The public page
+// renders every field of every point, so a name one level down is the same
+// publication the mirror exists to prevent. These send the shape the builder
+// writes, and the shapes it never does.
+describe('a point only carries what the public page renders', () => {
+  const as = (uid) => testEnv.authenticatedContext(uid).firestore()
+
+  const withDevices = (extra = {}) => ({
+    ...mirror(OWNER),
+    title: 'Hydraulic press isolation',
+    updatedAt: new Date(),
+    lockedCount: 0,
+    points: [{
+      ...mirror(OWNER).points[0],
+      locked: false,
+      devices: ['valve_lockout', 'hasp'],
+      ...extra,
+    }],
+  })
+
+  it('accepts the point the builder writes, including its device list', async () => {
+    await assertSucceeds(setDoc(doc(as('own'), 'procedureQr', 'proc-1'), withDevices()))
+  })
+
+  it('accepts an empty point list when the counts say so', async () => {
+    await assertSucceeds(setDoc(doc(as('own'), 'procedureQr', 'proc-1'), {
+      ...mirror(OWNER),
+      lockStatus: 'unlocked',
+      lockedCount: 0,
+      pointCount: 0,
+      points: [],
+      title: '',
+      equipment: '',
+    }))
+  })
+
+  it('refuses a name or any other key inside a point', async () => {
+    await assertFails(setDoc(doc(as('own'), 'procedureQr', 'proc-1'), withDevices({ techName: 'R. Osei' })))
+    await assertFails(setDoc(doc(as('own'), 'procedureQr', 'proc-1'), withDevices({
+      lockState: { locked: true, techName: 'R. Osei' },
+    })))
+    await assertFails(setDoc(doc(as('own'), 'procedureQr', 'proc-1'), withDevices({ note: 'extra' })))
+  })
+
+  it('refuses a point that is not the map the page reads', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'procedures', 'proc-5'), { orgId: OWNER, equipment: 'Press' })
+    })
+    await assertFails(setDoc(doc(as('own'), 'procedureQr', 'proc-5'), {
+      ...mirror(OWNER),
+      points: ['not-a-point'],
+    }))
+    await assertFails(setDoc(doc(as('own'), 'procedureQr', 'proc-1'), {
+      ...mirror(OWNER),
+      points: { key: 'p1' },
+    }))
+  })
+
+  it('refuses a device list that is not short strings', async () => {
+    await assertFails(setDoc(doc(as('own'), 'procedureQr', 'proc-1'), withDevices({
+      devices: [{ name: 'R. Osei' }],
+    })))
+    await assertFails(setDoc(doc(as('own'), 'procedureQr', 'proc-1'), withDevices({
+      devices: ['x'.repeat(81)],
+    })))
+  })
+
+  it('refuses a string past the cap, a huge point list, and a count that is not the list', async () => {
+    await assertFails(setDoc(doc(as('own'), 'procedureQr', 'proc-1'), {
+      ...mirror(OWNER),
+      title: 'x'.repeat(501),
+    }))
+    await assertFails(setDoc(doc(as('own'), 'procedureQr', 'proc-1'), withDevices({
+      isolationDetails: 'x'.repeat(8001),
+    })))
+    await assertFails(setDoc(doc(as('own'), 'procedureQr', 'proc-1'), {
+      ...mirror(OWNER),
+      pointCount: 101,
+      lockedCount: 0,
+      points: Array.from({ length: 101 }, (_, i) => ({ ...mirror(OWNER).points[0], key: `p${i}` })),
+    }))
+    await assertFails(setDoc(doc(as('own'), 'procedureQr', 'proc-1'), {
+      ...mirror(OWNER),
+      pointCount: 0,
+    }))
+    await assertFails(setDoc(doc(as('own'), 'procedureQr', 'proc-1'), {
+      ...mirror(OWNER),
+      revision: 1.5,
+    }))
+  })
 })

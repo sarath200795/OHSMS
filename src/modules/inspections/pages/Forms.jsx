@@ -154,7 +154,7 @@ export default function Forms() {
                   <Pencil size={14} /> Edit
                 </button>
                 <select
-                  className="rounded-xl bg-surface px-2 py-1.5 text-xs font-semibold text-ink-600  outline-none"
+                  className="rounded-xl bg-surface px-2 py-1.5 text-xs font-semibold text-ink-600  outline-hidden"
                   value={t.status}
                   onChange={(e) => handleStatus(t, e.target.value)}
                   title="Change status"

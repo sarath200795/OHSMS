@@ -23,7 +23,7 @@ import { deleteProcedure, getProcedurePhotos } from '../../services/procedures'
 const loadPdf = () => import('../../utils/pdf')
 
 const inputCls =
-  'rounded-xl bg-surface px-3 py-2 text-sm text-steel-100  outline-none ring-2 ring-transparent focus:ring-hazard/50'
+  'rounded-xl bg-surface px-3 py-2 text-sm text-steel-100  outline-hidden ring-2 ring-transparent focus:ring-hazard/50'
 
 export default function Inventory() {
   const { can } = useAuth()

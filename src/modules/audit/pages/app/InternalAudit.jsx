@@ -1267,7 +1267,7 @@ export default function InternalAudit() {
             data-tour={key}
             onClick={() => setView(key)}
             style={{ animationDelay: `${i * 55}ms` }}
-            className="card flex items-center gap-4 p-4 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400/50"
+            className="card flex items-center gap-4 p-4 text-left focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-400/50"
           >
             <span className={`icon-chip grid h-14 w-14 shrink-0 place-items-center rounded-2xl ${chipBg} ${color}`}>
               <Icon size={24} />

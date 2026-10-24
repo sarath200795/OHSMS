@@ -254,7 +254,7 @@ function ObservationForm({ permit, token }) {
           <div>
             <label htmlFor="public-permit-role" className="text-[10px] font-bold uppercase tracking-widest text-ink-400">You are</label>
             <select id="public-permit-role"
-              className="mt-1 w-full rounded-xl bg-surface px-3 py-2.5 text-sm  outline-none"
+              className="mt-1 w-full rounded-xl bg-surface px-3 py-2.5 text-sm  outline-hidden"
               value={role}
               onChange={(e) => setRole(e.target.value)}
             >
@@ -264,7 +264,7 @@ function ObservationForm({ permit, token }) {
           </div>
 
           <textarea
-            className="min-h-[72px] w-full rounded-xl bg-surface px-3 py-2.5 text-sm  outline-none"
+            className="min-h-[72px] w-full rounded-xl bg-surface px-3 py-2.5 text-sm  outline-hidden"
             placeholder={type === 'unsafe' ? 'What is unsafe about it?' : 'Anything worth noting (optional)'}
             maxLength={500}
             value={note}

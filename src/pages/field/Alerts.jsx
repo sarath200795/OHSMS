@@ -30,7 +30,7 @@ export default function Alerts() {
           type="button"
           onClick={markAllRead}
           disabled={!unread}
-          className="min-h-12 flex-none rounded-2xl px-3 text-[13px] font-semibold text-brand-700 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 disabled:text-ink-300 disabled:no-underline"
+          className="min-h-12 flex-none rounded-2xl px-3 text-[13px] font-semibold text-brand-700 underline-offset-2 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-400 disabled:text-ink-300 disabled:no-underline"
         >
           Mark all read
         </button>
@@ -59,7 +59,7 @@ export default function Alerts() {
               onClick={() => {
                 if (row.unread) markRead(row.id)
               }}
-              className="flex min-h-14 min-w-0 flex-1 flex-col justify-center px-4 py-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-400"
+              className="flex min-h-14 min-w-0 flex-1 flex-col justify-center px-4 py-3 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-400"
             >
               <span className="flex items-center gap-2">
                 <span className="text-[11px] font-bold uppercase tracking-wide text-ink-400">
@@ -82,7 +82,7 @@ export default function Alerts() {
               <button
                 type="button"
                 onClick={() => markRead(row.id)}
-                className="min-h-12 flex-none self-center px-3 text-[12px] font-semibold text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+                className="min-h-12 flex-none self-center px-3 text-[12px] font-semibold text-brand-700 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-400"
               >
                 Mark read
               </button>

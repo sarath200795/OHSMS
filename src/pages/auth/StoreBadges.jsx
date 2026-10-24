@@ -134,7 +134,7 @@ export default function StoreBadges({
                 href={resolved[badge.key]}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2"
+                className="inline-flex rounded-md focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2"
               >
                 <img
                   src={badge.src}

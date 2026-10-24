@@ -49,7 +49,7 @@ export default function FieldTasks() {
           <li key={item.to}>
             <Link
               to={item.to}
-              className="flex min-h-[4.5rem] items-center gap-3 rounded-3xl bg-white px-4 py-3 shadow-elev-sm ring-1 ring-ink-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+              className="flex min-h-[4.5rem] items-center gap-3 rounded-3xl bg-white px-4 py-3 shadow-elev-sm ring-1 ring-ink-200 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-400"
             >
               <span className="grid h-12 w-12 flex-none place-items-center rounded-2xl bg-brand-50 text-brand-700">
                 <item.icon size={22} aria-hidden="true" />

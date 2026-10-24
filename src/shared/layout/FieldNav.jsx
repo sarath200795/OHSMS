@@ -34,7 +34,7 @@ export default function FieldNav() {
                 end
                 aria-label={name}
                 className={({ isActive }) =>
-                  `relative flex min-h-14 w-full flex-col items-center justify-center gap-0.5 px-1 text-[11px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-400 ${
+                  `relative flex min-h-14 w-full flex-col items-center justify-center gap-0.5 px-1 text-[11px] font-semibold focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-400 ${
                     isActive ? 'text-brand-700' : 'text-ink-500'
                   }`
                 }

@@ -32,8 +32,10 @@ services:
       - '9199:9199' # storage
       - '4000:4000' # emulator UI
 
+  # Vite 8 runs on Node 20.19+. This image also has the test script, and
+  # Vitest 5 does not start below 22.12.
   web:
-    image: node:20-bookworm
+    image: node:22-bookworm
     working_dir: /app
     command: sh -c "npm ci && npm run dev -- --host 0.0.0.0"
     environment:

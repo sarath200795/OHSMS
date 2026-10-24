@@ -45,7 +45,7 @@ export default function FieldAppGrid() {
                 >
                   <Link
                     to={app.to}
-                    className="field-tile-press flex flex-col items-center gap-1.5 rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas active:scale-[0.92] motion-reduce:active:scale-100"
+                    className="field-tile-press flex flex-col items-center gap-1.5 rounded-2xl focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas active:scale-[0.92] motion-reduce:active:scale-100"
                   >
                     <span
                       className={`field-idle field-idle-${idle.motion} grid h-[60px] w-[60px] origin-center place-items-center rounded-[18px] text-white shadow-elev-sm ${app.fill}`}

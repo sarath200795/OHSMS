@@ -93,10 +93,27 @@ describe('Cloud Functions tests run on the runtime they deploy to', () => {
   })
 })
 
+describe('emulator jobs use a JDK firebase-tools 15 will start', () => {
+  it('pins Java 21 everywhere the emulators boot', () => {
+    for (const file of [
+      '.github/workflows/ci.yml',
+      '.github/workflows/deploy.yml',
+      '.github/workflows/deploy-staging.yml',
+    ]) {
+      const yml = read(file)
+      expect(yml, file).toMatch(/java-version:\s*21/)
+      expect(yml, file).not.toMatch(/java-version:\s*17/)
+    }
+  })
+})
+
 describe('staging deploys rules only after the rules suite', () => {
   it('installs a JDK and runs npm run test:rules', () => {
     const yml = read('.github/workflows/deploy-staging.yml')
     expect(yml).toMatch(/actions\/setup-java@v5/)
+    // firebase-tools 15 exits before the emulator starts on a JDK before 21.
+    // Java 17 took the rules job and the smoke job red with that message.
+    expect(yml).toMatch(/java-version:\s*21/)
     expect(yml).toMatch(/npm run test:rules/)
   })
 })
@@ -106,7 +123,7 @@ describe('docker compose can actually boot the emulators', () => {
     const compose = read('docker-compose.yml')
     const dockerfile = read('Dockerfile.emulators')
     expect(compose).toMatch(/dockerfile:\s*Dockerfile\.emulators/)
-    expect(dockerfile).toMatch(/openjdk-17-jre-headless/)
+    expect(dockerfile).toMatch(/openjdk-21-jre-headless/)
   })
 
   it('binds the emulators on 0.0.0.0 so the web container can reach them', () => {

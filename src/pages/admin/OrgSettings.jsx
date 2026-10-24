@@ -696,7 +696,7 @@ export default function OrgSettings() {
                             s.id === 'logo' ? 'logo' : s.id === 'amber' ? 'default' : 'custom'
                           )
                         }
-                        className={`h-9 w-9 rounded-full ring-1 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas ${
+                        className={`h-9 w-9 rounded-full ring-1 transition focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas ${
                           selected ? 'ring-2 ring-brand-600' : 'ring-ink-200 hover:ring-ink-400'
                         }`}
                         style={{ backgroundColor: s.hex }}

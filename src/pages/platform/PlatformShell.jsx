@@ -45,7 +45,7 @@ export default function PlatformShell({ children }) {
         <button
           type="button"
           onClick={() => signOut?.()}
-          className="flex items-center gap-2 rounded-2xl px-3 py-2 text-[12.5px] font-semibold text-ink-700 transition-colors hover:bg-white/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+          className="flex items-center gap-2 rounded-2xl px-3 py-2 text-[12.5px] font-semibold text-ink-700 transition-colors hover:bg-white/70 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-400"
         >
           <LogOut size={15} />
           Sign out

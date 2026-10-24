@@ -37,7 +37,7 @@ export default function EditableNode({ id, data, selected }) {
     editing ? (
       <textarea
         ref={inputRef}
-        className="w-full resize-none rounded bg-white/90 p-1 text-center text-xs text-ink-900 outline-none"
+        className="w-full resize-none rounded bg-white/90 p-1 text-center text-xs text-ink-900 outline-hidden"
         rows={2}
         value={text}
         onChange={(e) => setText(e.target.value)}

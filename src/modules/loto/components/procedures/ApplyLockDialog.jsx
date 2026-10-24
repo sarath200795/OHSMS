@@ -4,7 +4,7 @@ import Modal from '../ui/Modal'
 import Button from '../ui/Button'
 
 const fieldCls =
-  'w-full rounded-xl bg-surface px-3.5 py-2.5 text-steel-100  outline-none ring-2 ring-transparent focus:ring-hazard/50'
+  'w-full rounded-xl bg-surface px-3.5 py-2.5 text-steel-100  outline-hidden ring-2 ring-transparent focus:ring-hazard/50'
 
 /**
  * Apply-lock dialog. Two modes:

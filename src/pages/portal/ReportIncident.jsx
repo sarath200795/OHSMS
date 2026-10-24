@@ -289,7 +289,7 @@ export default function ReportIncident() {
                   <input
                     id="when" type="datetime-local" value={form.when}
                     onChange={(e) => set({ when: e.target.value })}
-                    className="w-full rounded-2xl border border-transparent bg-surface px-3.5 py-3 text-[13.5px] text-ink-900  outline-none"
+                    className="w-full rounded-2xl border border-transparent bg-surface px-3.5 py-3 text-[13.5px] text-ink-900  outline-hidden"
                   />
                 </div>
                 <div>
@@ -297,7 +297,7 @@ export default function ReportIncident() {
                   <select
                     id="where" value={form.location}
                     onChange={(e) => set({ location: e.target.value })}
-                    className="w-full appearance-none rounded-2xl border border-transparent bg-surface px-3.5 py-3 text-[13.5px] text-ink-900  outline-none"
+                    className="w-full appearance-none rounded-2xl border border-transparent bg-surface px-3.5 py-3 text-[13.5px] text-ink-900  outline-hidden"
                   >
                     {LOCATIONS.map((l) => <option key={l}>{l}</option>)}
                   </select>
@@ -310,7 +310,7 @@ export default function ReportIncident() {
                   id="narrative" rows={4} value={form.narrative}
                   onChange={(e) => set({ narrative: e.target.value })}
                   placeholder="A pallet was stacked above the line marking and shifted when the forklift reversed…"
-                  className="w-full resize-y rounded-[18px] border border-transparent bg-surface p-3.5 text-[13.5px] leading-relaxed text-ink-900  outline-none"
+                  className="w-full resize-y rounded-[18px] border border-transparent bg-surface p-3.5 text-[13.5px] leading-relaxed text-ink-900  outline-hidden"
                 />
                 <p className="mt-2 text-[11.5px] text-ink-400">
                   No names needed. Describe what you saw, not who to blame.
