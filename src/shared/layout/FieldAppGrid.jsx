@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { fieldApps, groupFieldApps } from '../mobile/appGrid'
+import { fieldIdle } from '../mobile/fieldIdle'
 import { ViewModeSwitch } from '../mobile/viewModeContext'
 
 /**
@@ -12,8 +13,10 @@ import { ViewModeSwitch } from '../mobile/viewModeContext'
  * while mobile view is on. The switch above the groups is the same control
  * the desktop home renders.
  *
- * Tiles stagger in and shrink under a finger. Both are cancelled when the
- * OS asks for reduced motion, so a tile never starts invisible.
+ * Tiles stagger in, then each mark keeps its own small loop (a float, a
+ * sway, a pulse or a fade) so the row is not still and not in step. A press
+ * scales the link. All three stop when the OS asks for reduced motion, and
+ * the entrance is cancelled outright so a tile never starts invisible.
  */
 export default function FieldAppGrid() {
   const { moduleMap, role } = useAuth()
@@ -32,27 +35,34 @@ export default function FieldAppGrid() {
             {section.label}
           </h2>
           <ul className="grid grid-cols-4 gap-x-3 gap-y-5">
-            {section.apps.map((app, i) => (
-              <li
-                key={app.key}
-                className="field-tile-in"
-                style={{ animationDelay: `${Math.min(i, 12) * 35}ms` }}
-              >
-                <Link
-                  to={app.to}
-                  className="field-tile-press flex flex-col items-center gap-1.5 rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas active:scale-[0.92] motion-reduce:active:scale-100"
+            {section.apps.map((app, i) => {
+              const idle = fieldIdle(app.key, i)
+              return (
+                <li
+                  key={app.key}
+                  className="field-tile-in"
+                  style={{ animationDelay: `${Math.min(i, 12) * 35}ms` }}
                 >
-                  <span
-                    className={`grid h-[60px] w-[60px] place-items-center rounded-[18px] text-white shadow-elev-sm ${app.fill}`}
+                  <Link
+                    to={app.to}
+                    className="field-tile-press flex flex-col items-center gap-1.5 rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas active:scale-[0.92] motion-reduce:active:scale-100"
                   >
-                    <app.icon size={28} strokeWidth={2.25} aria-hidden="true" />
-                  </span>
-                  <span className="line-clamp-2 w-full text-center text-[11px] font-semibold leading-tight text-ink-800">
-                    {app.label}
-                  </span>
-                </Link>
-              </li>
-            ))}
+                    <span
+                      className={`field-idle field-idle-${idle.motion} grid h-[60px] w-[60px] origin-center place-items-center rounded-[18px] text-white shadow-elev-sm ${app.fill}`}
+                      style={{
+                        animationDelay: `${idle.delayMs}ms`,
+                        animationDuration: `${idle.durationMs}ms`,
+                      }}
+                    >
+                      <app.icon size={28} strokeWidth={2.25} aria-hidden="true" />
+                    </span>
+                    <span className="line-clamp-2 w-full text-center text-[11px] font-semibold leading-tight text-ink-800">
+                      {app.label}
+                    </span>
+                  </Link>
+                </li>
+              )
+            })}
           </ul>
         </section>
       ))}

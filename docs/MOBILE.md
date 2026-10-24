@@ -130,8 +130,12 @@ weather page does. A weather row is a site at Medium or worse, and its id
 includes the digest's six-hour slot, so the next window is unread again.
 
 Web push (FCM) is not part of this. Nothing buzzes when the app is closed.
-The badge is the unread count while it is open. It pulses. That pulse, and
-the home tiles' staggered entrance, stop when the OS asks for reduced motion.
+The badge is the unread count while it is open. It pulses. The home icons
+keep a small loop after they arrive — a float, a sway, a pulse or a fade,
+each on its own beat. The desktop module logos play their own motion the
+whole time, shifted so a row is not in step, instead of waiting for a
+hover. The entrance, the press, those loops and the badge all stop when
+the OS asks for reduced motion. The loops are transform and opacity only.
 
 ## Signing in, inside the WebView
 

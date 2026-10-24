@@ -29,9 +29,15 @@ describe('FieldAppGrid', () => {
     expect(screen.getByRole('button', { name: /Switch to (desktop|mobile) view/ })).toBeTruthy()
     expect(screen.getByRole('heading', { name: 'Technical' })).toBeTruthy()
     expect(screen.queryByRole('heading', { name: 'Admin' })).toBeNull()
-    expect(screen.getByRole('link', { name: 'Extinguishers' }).getAttribute('href')).toBe(
-      '/equipment/extinguishers'
-    )
+    const extinguishers = screen.getByRole('link', { name: 'Extinguishers' })
+    const aed = screen.getByRole('link', { name: 'AED' })
+    expect(extinguishers.getAttribute('href')).toBe('/equipment/extinguishers')
+    const extIdle = extinguishers.querySelector('.field-idle')
+    const aedIdle = aed.querySelector('.field-idle')
+    expect(extIdle.className).toContain('field-idle-sway')
+    expect(aedIdle.className).toContain('field-idle-pulse')
+    expect(extIdle.style.animationDelay).not.toBe(aedIdle.style.animationDelay)
+    expect(extIdle.style.animationDuration).not.toBe('')
     expect(screen.queryByRole('link', { name: 'Settings' })).toBeNull()
   })
 

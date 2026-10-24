@@ -18,6 +18,12 @@ describe('ModuleLogo3D', () => {
     expect(container.querySelector('.left-1\\/2.top-1\\/2.h-0')).toBeNull()
   })
 
+  it('keeps each moving part on a custom offset so a tile can phase the whole logo', () => {
+    const { container } = render(<ModuleLogo3D moduleKey="equipment" />)
+    expect(container.innerHTML).toContain('--part-delay')
+    expect(container.innerHTML).not.toContain('animation-delay')
+  })
+
   it('renders nothing for modules without a built object', () => {
     const { container } = render(<ModuleLogo3D moduleKey="not-a-module" />)
     expect(container.firstChild).toBeNull()

@@ -1132,9 +1132,85 @@ option {
 .field-badge-pulse {
   animation: field-badge-pulse 2.4s ease-in-out infinite;
 }
+
+/* Idle, after the entrance. Transform and opacity only, so a full grid stays
+   on the compositor. 0% and 100% are the resting pose: if a loop is cut
+   short it does not stop mid-bob. The delay and the duration are set per
+   tile, which is what keeps neighbours off one beat. */
+@keyframes field-idle-float {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(0, -4px, 0);
+  }
+}
+@keyframes field-idle-sway {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  50% {
+    transform: rotate(-6deg);
+  }
+}
+@keyframes field-idle-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.06);
+  }
+}
+@keyframes field-idle-glow {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.82;
+  }
+}
+.field-idle {
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+  animation-duration: 3.8s;
+}
+.field-idle-float {
+  animation-name: field-idle-float;
+}
+.field-idle-sway {
+  animation-name: field-idle-sway;
+}
+.field-idle-pulse {
+  animation-name: field-idle-pulse;
+}
+.field-idle-glow {
+  animation-name: field-idle-glow;
+}
+
+/* A 3D logo's own loop is the idle. `--part-delay` is that part's offset;
+   `--idle-delay` (inherited from the tile) shifts the whole logo so the
+   row is not in step. The group-variant animation shorthand is three
+   classes and resets delay to 0, so this longhand has to outrank it or
+   every logo starts on the same frame. */
+[style*='--part-delay'] {
+  animation-delay: calc(var(--part-delay) + var(--idle-delay, 0s)) !important;
+}
+.logo-phase [class*='animate-'] {
+  animation-delay: var(--idle-delay, 0s) !important;
+}
+.logo-phase [style*='--part-delay'] {
+  animation-delay: calc(var(--part-delay) + var(--idle-delay, 0s)) !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .field-tile-in,
-  .field-badge-pulse {
+  .field-badge-pulse,
+  .field-idle,
+  .logo-phase [class*='animate-'] {
     animation: none !important;
   }
   .field-tile-press {
