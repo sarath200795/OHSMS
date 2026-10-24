@@ -181,6 +181,12 @@ describe('centre ids in the importer', () => {
     expect(r.invalid[0].__errors[0]).toContain('row 2')
   })
 
+  it('treats two casings of one centre id in the file as the same id', async () => {
+    const r = await parseSitesCsv(withCode(['A,NP-001,1,1', 'B,np-001,2,2']))
+    expect(r.valid.map((x) => x.name)).toEqual(['A'])
+    expect(r.invalid[0].__errors[0]).toContain('row 2')
+  })
+
   it('does not refuse a row whose id a site in the register already holds', async () => {
     // That is not a clash — it is how a spreadsheet says "this row IS that
     // site". planImport turns it into an edit; see the upsert tests below.
@@ -227,6 +233,16 @@ describe('codeIndex and duplicateCodes', () => {
     ).toEqual([])
     expect(duplicateCodes([])).toEqual([])
     expect(duplicateCodes()).toEqual([])
+  })
+
+  it('treats ids that differ only by case as the same id', () => {
+    expect(
+      duplicateCodes([
+        { code: 'NP-001', name: 'A' },
+        { code: 'np-001', name: 'B' },
+      ])
+    ).toEqual([['NP-001 / np-001', ['A', 'B']]])
+    expect([...codeIndex([{ code: 'NP-001', name: 'A' }]).keys()]).toEqual(['np-001'])
   })
 })
 
@@ -321,6 +337,21 @@ describe('planImport — same site updates instead of duplicating', () => {
     expect(unknown.invalid[0].__errors.join(' ')).toMatch(/not in the list/i)
   })
 
+  it('previews the site type that will be stored, not the alias that was typed', async () => {
+    const typed = await plan('Site Name,Site Type,Latitude,Longitude', 'North Plant,factory,1,2')
+    expect(typed.updates[0].facility).toBe('Manufacturing/Plant')
+    expect(typed.updates[0].__changes.facility).toEqual({ from: '', to: 'Manufacturing/Plant' })
+    expect(updatePayload(typed.updates[0], REGISTER[0], typed.present).facility).toBe(
+      'Manufacturing/Plant'
+    )
+
+    const same = planImport(
+      await parseSitesCsv(csvFile('Site Name,Site Type,Latitude,Longitude\nWorks,factory,1,2')),
+      [{ id: 's9', name: 'Works', lat: 1, lng: 2, facility: 'Manufacturing/Plant' }]
+    )
+    expect(same.updates[0].__changes).not.toHaveProperty('facility')
+  })
+
   it('lets the centre ID win over the name, and reports the rename', async () => {
     // The ID is a key and a name is not: a renamed site must still match.
     const r = await plan('Site Name,Centre ID,Latitude,Longitude', 'South Warehouse,50,1,2')
@@ -354,7 +385,9 @@ describe('updatePayload — an import must not blank what it did not carry', () 
     const r = await plan('Site Name,Centre ID,Latitude,Longitude', 'North Plant,50,1,2')
     const payload = updatePayload(r.updates[0], REGISTER[0], r.present)
     // No `name` either — it is unchanged, and an unchanged field is not a write.
-    expect(payload).toEqual({ code: '50', lat: 1, lng: 2 })
+    // An unchanged centre id is not a write, same as an unchanged name. Writing
+    // it back is how a sheet's capitalisation would restyle the register.
+    expect(payload).toEqual({ lat: 1, lng: 2 })
     expect(payload).not.toHaveProperty('address')
     expect(payload).not.toHaveProperty('region')
     expect(payload).not.toHaveProperty('firstAidBoxes')
@@ -380,6 +413,30 @@ describe('updatePayload — an import must not blank what it did not carry', () 
       r.present
     )
     expect(payload.attributes).toEqual({ zone: 'Z9', shift: 'Nights' })
+  })
+
+  it('matches a centre id whatever its case, and does not restyle the stored one', async () => {
+    const folded = planImport(
+      await parseSitesCsv(csvFile('Site Name,Centre ID,Latitude,Longitude\nRenamed,np-001,1,2')),
+      [{ id: 's9', name: 'Old', code: 'NP-001', lat: 1, lng: 2 }]
+    )
+    expect(folded.updates[0].__match).toMatchObject({ id: 's9', by: 'id', renameTo: 'Renamed' })
+    const stored = { code: 'NP-001', name: 'Old' }
+    expect(updatePayload(folded.updates[0], stored, folded.present)).not.toHaveProperty('code')
+    expect(folded.updates[0].__changes).not.toHaveProperty('code')
+    expect(updatePayload(folded.updates[0], stored, folded.present).name).toBe('Renamed')
+  })
+
+  it('refuses a centre id that two stored sites share once case is ignored', async () => {
+    const r = planImport(
+      await parseSitesCsv(csvFile('Site Name,Centre ID,Latitude,Longitude\nSomewhere,Np-001,1,2')),
+      [
+        { id: 'a', name: 'One', code: 'NP-001', lat: 1, lng: 2 },
+        { id: 'b', name: 'Two', code: 'np-001', lat: 3, lng: 4 },
+      ]
+    )
+    expect(r.updates).toHaveLength(0)
+    expect(r.invalid[0].__errors.join(' ')).toMatch(/more than one site/)
   })
 
   it('does not restyle a name that differs only in case or spacing', async () => {

@@ -53,7 +53,7 @@ import {
   planFasPanelQrBackfill,
 } from './fasQr'
 import { restoreBlockMessage, EQUIPMENT_KINDS } from './recycle'
-import { STATUS, DEFECT_BY_KEY, SIGNAGE_STATUSES } from './constants'
+import { STATUS, DEFECT_BY_KEY, PHYSICAL_DEFECT_KEYS, SIGNAGE_STATUSES } from './constants'
 import { deployedRequirementErrors, signagePhotos } from './signageLogic'
 import { lockId, duplicateDefectMessage } from './defectLock'
 import { putFile, removeFile, MAX_INLINE_BYTES, tooLargeForInline } from '../../../shared/storage'
@@ -63,7 +63,14 @@ import { discardMailedReport } from '../../../shared/print/mailedReport'
 import { AUDIT, diffSummary } from './audit'
 import { logAudit as logOrgAudit, auditCol, orgIndexRef, COLLECTION_READ_CAP } from '../../../shared/org/orgData'
 import { onReadError } from '../../../shared/org/readError'
-import { hptUpdate, hptSummary, isHptOverdue } from './hpt'
+import {
+  hptUpdate,
+  hptSummary,
+  isHptOverdue,
+  HPT_BLOCKS_RESOLVE,
+  HPT_BLOCKS_VENDOR,
+  resolveBlockReason,
+} from './hpt'
 import {
   CLOSURE_SOURCE,
   assetClosureDoc,
@@ -74,7 +81,12 @@ import {
   validateClosure,
   cleanClosurePhoto,
 } from './defectClosure'
-import { receiveFromVendorUpdate } from './receive'
+import {
+  hptDateUnchanged,
+  receiveFromVendorUpdate,
+  validateRefilledClosed,
+  validateRefilledHpt,
+} from './receive'
 import { formatAssetId } from './assetLogic'
 import { statsDeltaFor, accumulate } from './stats'
 import { reportEffect } from './reportEffect'
@@ -1063,6 +1075,12 @@ export async function submitHpt(orgId, orgName, id, { testedOn, result, nextDueO
 
 /** Vendor received the extinguisher for refilling. */
 export async function markReceivedByVendor(orgId, orgName, id, actorName) {
+  // The repository used to offer this beside Submit HPT. Refill Due does not,
+  // and a cylinder that has not passed its test cannot be sent out for a
+  // refill that would bring it back looking compliant.
+  const before = await getExtinguisher(orgId, id)
+  if (!before) throw new Error('Extinguisher not found')
+  if (isHptOverdue(before)) throw new Error(HPT_BLOCKS_VENDOR)
   await updateExtinguisher(orgId, orgName, id, {
     status: STATUS.IN_PROCESS_REFILLING,
     ...actionStamp(actorName, 'Sent to vendor'),
@@ -1097,8 +1115,49 @@ export async function markReceivedFromVendor(orgId, orgName, id, { receivedOn, d
 }
 
 /** Extinguisher refilled & returned: close it, set new due dates, clear defects. */
-export async function markRefilledAndClosed(orgId, orgName, id, { dateOfNextRefill, dateOfNextHPT }, actorName) {
+export async function markRefilledAndClosed(
+  orgId,
+  orgName,
+  id,
+  { dateOfNextRefill, dateOfNextHPT, certificate },
+  actorName,
+) {
+  const dateError = validateRefilledClosed({ dateOfNextRefill, dateOfNextHPT })
+  if (dateError) throw new Error(dateError)
   const before = await getExtinguisher(orgId, id)
+  const hptMoved = !hptDateUnchanged(before?.dateOfNextHPT, dateOfNextHPT)
+  // A later hydrostatic date is a passed test. The register edit and the CSV
+  // import may still correct a stored date — that is data entry. This button
+  // is the one that records the date as the outcome of a refill, so the
+  // certificate has to be in the same write.
+  const certError = validateRefilledHpt(before?.dateOfNextHPT, { dateOfNextHPT, certificate })
+  if (certError) throw new Error(certError)
+  let hptFields = {}
+  if (hptMoved) {
+    if (before?.hpt?.filePath) removeFile(before.hpt.filePath)
+    const fileData = certificate?.fileData || null
+    const fileName = certificate?.fileName || ''
+    const up = fileData ? await putFile(orgId, 'hpt-certificates', fileData, fileName) : null
+    const inlineBytes = fileData ? Math.floor((String(fileData).split(',')[1] || '').length * 0.75) : 0
+    if (!up && fileData && inlineBytes > MAX_INLINE_BYTES) throw new Error(tooLargeForInline(fileName))
+    hptFields = {
+      hpt: {
+        testedOn: certificate?.testedOn || '',
+        result: 'pass',
+        nextDueOn: dateOfNextHPT,
+        vendor: certificate?.vendor || '',
+        ref: certificate?.ref || '',
+        notes: certificate?.notes || '',
+        fileName,
+        fileType: certificate?.fileType || '',
+        fileData: up ? null : fileData,
+        fileUrl: up?.url || certificate?.fileUrl || null,
+        filePath: up?.path || certificate?.filePath || null,
+        submittedAt: todayISO(),
+        submittedBy: actorName || '',
+      },
+    }
+  }
   const closedOn = todayISO()
   const closure = closureFields({
     remarks: 'Refilled and returned to service',
@@ -1121,6 +1180,7 @@ export async function markRefilledAndClosed(orgId, orgName, id, { dateOfNextRefi
     physicalDefects: [],
     quotation: null,
     lastRefilledAt: closedOn,
+    ...hptFields,
     ...actionStamp(actorName, 'Refilled & Closed'),
   }, {
     actor: { name: actorName },
@@ -1137,8 +1197,17 @@ export async function markRefilledAndClosed(orgId, orgName, id, { dateOfNextRefi
 /** Resolve (clear) physical defects without a refill. */
 export async function resolveDefects(orgId, orgName, id, remainingDefects = [], actorName) {
   const before = await getExtinguisher(orgId, id)
+  if (!before) throw new Error('Extinguisher not found')
   const kept = new Set(remainingDefects)
   const removed = (before?.physicalDefects || []).filter((k) => !kept.has(k))
+  // The open-defect log resolved in one click. The other lists already refuse
+  // that until the test is recorded and a quotation is in. Checked here, on
+  // the write, so a second screen cannot skip the step the first one shows.
+  const removedPhysical = removed.filter((k) => PHYSICAL_DEFECT_KEYS.includes(k))
+  if (removedPhysical.length) {
+    const block = resolveBlockReason(before)
+    if (block) throw new Error(block)
+  }
   const closure = closureFields({
     remarks: 'Resolved on the unit',
     closedOn: todayISO(),
@@ -1192,6 +1261,12 @@ export async function closeDefect(orgId, orgName, descriptor, input, actor) {
   if (descriptor.kind === 'extinguisher') {
     const ext = await getExtinguisher(orgId, descriptor.extId)
     if (!ext) throw new Error('Extinguisher not found')
+    // Clearing a physical defect while the test is overdue is the same
+    // "this unit is fine" outcome Resolve refuses. An HPT-due row and an
+    // Empty row do not remove those keys, so they stay closeable.
+    if (PHYSICAL_DEFECT_KEYS.includes(descriptor.defectType) && isHptOverdue(ext)) {
+      throw new Error(HPT_BLOCKS_RESOLVE)
+    }
     const updates = {
       ...extinguisherCloseUpdate(ext, descriptor.defectType),
       ...actionStamp(actor?.name, 'Defect closed'),
@@ -2100,26 +2175,49 @@ export async function updateFas(orgId, orgName, id, updates, actor) {
   // An edit never replaces a QR code. It mints one only when this save turns
   // the row into a control panel that still has none — changing a detector
   // into a panel is a create path the add form is not the only door to.
+  //
+  // The token is read inside the transaction, not taken from the form. The
+  // form holds whatever the screen loaded; a panel edited from a stale row
+  // would mint a second code and orphan the sticker already on the wall. The
+  // backfill learned this the same way. Rules refuse the replacement too —
+  // this is what lets the rest of the edit succeed while keeping the code.
   const clean = cleanFas(updates)
-  const { qrToken, minted } = fasQrTokenForUpdate(updates.qrToken, clean, generateQrToken)
-  const a = { ...clean, ...(minted ? { qrToken } : {}), updatedAt: serverTimestamp() }
-  const batch = writeBatch(db)
-  batch.update(fasRef(orgId, id), a)
-  if (qrToken) batch.set(qrRef(qrToken), fasMirror(orgId, orgName, id, { ...updates, ...a, qrToken }))
-  await batch.commit()
+  let qrToken = ''
+  let minted = false
+  await runTransaction(db, async (tx) => {
+    const ref = fasRef(orgId, id)
+    const snap = await tx.get(ref)
+    if (!snap.exists()) throw new Error('Fire-alarm device not found')
+    const stored = snap.data() || {}
+    const decided = fasQrTokenForUpdate(stored.qrToken, clean, generateQrToken)
+    qrToken = decided.qrToken
+    minted = decided.minted
+    const a = { ...clean, ...(qrToken ? { qrToken } : {}), updatedAt: serverTimestamp() }
+    tx.update(ref, a)
+    if (qrToken) {
+      tx.set(qrRef(qrToken), fasMirror(orgId, orgName, id, { ...stored, ...clean, qrToken }))
+    }
+  })
   await logAudit(orgId, actor, 'fas.update', { target: 'fas', targetId: id, targetLabel: `${updates.deviceId || updates.deviceType} @ ${updates.centerName}`, summary: minted ? 'FAS device updated — QR code generated' : 'FAS device updated' })
   return qrToken || null
 }
 
 /** Mint a QR token for one FAS control panel, or reuse the token it already has. */
 export async function generateFasQr(orgId, orgName, asset, actor) {
-  // Reuse first. generateQrToken() on the right of || only runs when the
-  // panel has no code, so a second click cannot change the sticker.
-  const qrToken = String(asset.qrToken || '').trim() || generateQrToken()
-  const batch = writeBatch(db)
-  batch.update(fasRef(orgId, asset.id), { qrToken, updatedAt: serverTimestamp() })
-  batch.set(qrRef(qrToken), fasMirror(orgId, orgName, asset.id, { ...asset, qrToken }))
-  await batch.commit()
+  // Reuse first, and re-read first. The asset on screen can be missing a
+  // token that was saved after it loaded; minting from that copy replaces
+  // the sticker. A token already on the document is the one that is printed.
+  let qrToken = ''
+  await runTransaction(db, async (tx) => {
+    const ref = fasRef(orgId, asset.id)
+    const snap = await tx.get(ref)
+    if (!snap.exists()) throw new Error('Fire-alarm device not found')
+    const stored = snap.data() || {}
+    const existing = String(stored.qrToken || '').trim()
+    qrToken = existing || generateQrToken()
+    if (!existing) tx.update(ref, { qrToken, updatedAt: serverTimestamp() })
+    tx.set(qrRef(qrToken), fasMirror(orgId, orgName, asset.id, { ...stored, ...asset, qrToken }))
+  })
   await logAudit(orgId, actor, 'fas.qr_generate', { target: 'fas', targetId: asset.id, targetLabel: `${asset.deviceId || asset.deviceType} @ ${asset.centerName}`, summary: 'QR code generated' })
   return qrToken
 }

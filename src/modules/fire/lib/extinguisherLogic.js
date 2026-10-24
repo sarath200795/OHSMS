@@ -3,6 +3,7 @@
 // Dashboard, repository, and every list import from here so nothing drifts.
 // ─────────────────────────────────────────────────────────────────────────────
 import { differenceInCalendarDays, parseISO, isValid } from 'date-fns'
+import { istDay } from '../../../shared/lib/dates'
 import {
   STATUS,
   DUE_SOON_DAYS,
@@ -38,6 +39,46 @@ export function daysUntil(value, today = new Date()) {
   return differenceInCalendarDays(d, today)
 }
 
+/** A stored HPT date as the calendar day it names, or null. */
+function hptCalendarDay(value) {
+  if (!value) return null
+  if (typeof value === 'string') {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(value.trim())
+    if (m) return `${m[1]}-${m[2]}-${m[3]}`
+  }
+  const d = toDate(value)
+  return d ? istDay(d) : null
+}
+
+/**
+ * The day `today` is, for an HPT comparison.
+ *
+ * A YYYY-MM-DD string is that day. A Date is the Asia/Kolkata day of that
+ * instant — the same conversion the WhatsApp summary uses — so "due today"
+ * does not depend on the browser's timezone.
+ */
+function hptReferenceDay(today) {
+  if (typeof today === 'string') {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(today.trim())
+    if (m) return `${m[1]}-${m[2]}-${m[3]}`
+  }
+  if (today instanceof Date && !Number.isNaN(today.getTime())) return istDay(today)
+  return istDay(new Date())
+}
+
+/**
+ * Days from the Kolkata calendar day of `today` until the HPT date.
+ *
+ * Refill dates stay on `daysUntil` (the browser's calendar). Only the
+ * hydrostatic date is shared with the WhatsApp count, and that count is IST.
+ */
+export function hptDaysUntil(value, today = new Date()) {
+  const day = hptCalendarDay(value)
+  const ref = hptReferenceDay(today)
+  if (!day || !ref) return null
+  return Math.round((Date.parse(`${day}T00:00:00Z`) - Date.parse(`${ref}T00:00:00Z`)) / 86400000)
+}
+
 // ── Data-quality: classify a date field ──────────────────────────────────────
 // 'ok'      — a valid, parseable date
 // 'missing' — no value recorded at all
@@ -61,7 +102,7 @@ export function hasDateIssue(ext) {
  */
 export function deriveStatus(ext, today = new Date()) {
   const refillDays = daysUntil(ext.dateOfNextRefill, today)
-  const hptDays = daysUntil(ext.dateOfNextHPT, today)
+  const hptDays = hptDaysUntil(ext.dateOfNextHPT, today)
 
   const activeDefects = Array.isArray(ext.physicalDefects) ? ext.physicalDefects : []
   const refillDefects = activeDefects.filter((k) => REFILL_DEFECT_KEYS.includes(k))

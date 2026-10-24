@@ -2334,6 +2334,88 @@ service cloud.firestore {
         || resource.data.get('qrToken', '') == '';
     }
 
+    // Extinguisher transitions the screens refuse, enforced where a console
+    // write cannot skip them.
+    //
+    // The overdue check reads the document BEFORE the write. request.resource
+    // is the state after, so a writer who also set dateOfNextHPT to next year
+    // would otherwise authorise the send or the resolve they were refused.
+    // A missing or blank date is not overdue: units written before the field
+    // existed, and the receive-back test that never stored one, must stay
+    // editable. Reading the field directly raises, and a raising rule denies.
+    //
+    // "Refilled & closed" is the one write that may clear a physical defect
+    // on an overdue unit, and only when both new dates are after today in
+    // Asia/Kolkata and the new hydrostatic date arrives with a certificate.
+    // Receiving a unit back does not move dateOfNextHPT, so it is not that
+    // write. An edit of the register, and a CSV import, correct a stored date
+    // without lastRefilledAt; those are data entry, not a recorded test, and
+    // demanding a certificate there would refuse the form that fixes a typo.
+    //
+    // IST is request.time plus 5h30m. Rules timestamps are UTC; the app and
+    // the WhatsApp summary both count the Kolkata calendar day.
+    function istToday() {
+      let t = request.time + duration.value(5, 'h') + duration.value(30, 'm');
+      return string(t.year())
+        + '-' + (t.month() < 10 ? '0' + string(t.month()) : string(t.month()))
+        + '-' + (t.day() < 10 ? '0' + string(t.day()) : string(t.day()));
+    }
+    function isYmd(v) {
+      return v is string && v.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$');
+    }
+    function hptOverdue(before) {
+      let v = before.get('dateOfNextHPT', '');
+      return isYmd(v) && v <= istToday();
+    }
+    function hadDefect(data, key) {
+      let list = data.get('physicalDefects', []);
+      return list is list && list.hasAny([key]);
+    }
+    function droppedPhysical(before, after) {
+      return (hadDefect(before, 'pin') && !hadDefect(after, 'pin'))
+        || (hadDefect(before, 'stand') && !hadDefect(after, 'stand'))
+        || (hadDefect(before, 'hose_pipe') && !hadDefect(after, 'hose_pipe'))
+        || (hadDefect(before, 'handle') && !hadDefect(after, 'handle'));
+    }
+    function hptFile(h) {
+      return (h.get('fileName', '') is string && h.get('fileName', '').size() > 0)
+        || (h.get('filePath', '') is string && h.get('filePath', '').size() > 0)
+        || (h.get('fileUrl', '') is string && h.get('fileUrl', '').size() > 0)
+        || (h.get('fileData', '') is string && h.get('fileData', '').size() > 0);
+    }
+    function touchesRefilledClosed(before, after) {
+      return after.get('dateOfNextRefill', '') != before.get('dateOfNextRefill', '')
+        && after.get('dateOfNextHPT', '') != before.get('dateOfNextHPT', '')
+        && after.get('lastRefilledAt', '') != before.get('lastRefilledAt', '');
+    }
+    function validRefilledClosed(before, after) {
+      let refill = after.get('dateOfNextRefill', '');
+      let hpt = after.get('dateOfNextHPT', '');
+      let cert = after.get('hpt', {});
+      return touchesRefilledClosed(before, after)
+        && isYmd(refill) && isYmd(hpt)
+        && refill > istToday() && hpt > istToday()
+        && cert is map
+        && cert.get('result', '') == 'pass'
+        && cert.get('nextDueOn', '') == hpt
+        && hptFile(cert);
+    }
+    function keepsExtinguisherWorkflow(col) {
+      return col != 'extinguishers'
+        || resource == null
+        || extinguisherWriteOk();
+    }
+    function extinguisherWriteOk() {
+      let before = resource.data;
+      let after = request.resource.data;
+      let closed = validRefilledClosed(before, after);
+      let enteringVendor = after.get('status', '') == 'in_process_refilling'
+        && before.get('status', '') != 'in_process_refilling';
+      return !(enteringVendor && hptOverdue(before))
+        && !(droppedPhysical(before, after) && hptOverdue(before) && !closed)
+        && (!touchesRefilledClosed(before, after) || closed);
+    }
+
     // A document's classification is enforced on READ and was unprotected on
     // WRITE, so any member who could legitimately reach a restricted document —
     // via their own site access — could publish it org-wide, and any member who
@@ -2406,7 +2488,8 @@ service cloud.firestore {
                   && keepsInjuryDeletion(col)))
           && keepsEquipmentDeletion(col)
           && keepsSignageEvidence(col)
-          && keepsFasQr(col);
+          && keepsFasQr(col)
+          && keepsExtinguisherWorkflow(col);
         // Delete is deliberately NOT gated on the entitlement. Turning a module
         // off should stop it being used, not trap the data already in it — an
         // operator who disables a module must not leave a tenant unable to
@@ -2443,7 +2526,8 @@ service cloud.firestore {
                     && keepsInjuryDeletion(col)))
             && keepsEquipmentDeletion(col)
             && keepsSignageEvidence(col)
-            && keepsFasQr(col);
+            && keepsFasQr(col)
+            && keepsExtinguisherWorkflow(col);
           allow delete: if structuralOnly(col, docId) && isManagerOf(orgId)
             && !(col in ['extinguishers', 'aeds', 'fas']);
           allow delete: if structuralOnly(col, docId) && isAdminOf(orgId)
