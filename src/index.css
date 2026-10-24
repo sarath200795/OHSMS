@@ -1175,6 +1175,45 @@ option {
   }
 }
 
+/* Phone QR preview.
+   html5-qrcode writes an inline pixel width on its <video> and never a height,
+   then reads clientHeight on `playing` to decide there is something to show.
+   Tailwind preflight sets `video { height: auto }`, so on a phone that used
+   height is 0 until the stream's own aspect ratio arrives — which is after
+   the measurement — and the picture and the scan frame never paint. The
+   library also sets `position: relative` inline on the container, which pulls
+   an absolutely positioned box back into flow and makes `height: 100%`
+   circular. object-fit is fill because the decoder maps the frame linearly
+   across the element box; cover would crop a code the person can see. */
+.qr-scan-portal:not(.hidden) {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+}
+.qr-scan-portal video {
+  position: absolute !important;
+  inset: 0 !important;
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  object-fit: fill;
+}
+
+@keyframes qr-scan-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+.qr-scan-frame {
+  animation: qr-scan-pulse 1.6s ease-in-out infinite;
+}
+
 /* Phones zoom the page when a focused field is under 16px, and a 40px control
    is a miss with a gloved hand. Desktop sizes stay as they are. */
 @media (max-width: 767px) {
@@ -1300,6 +1339,7 @@ option {
   .field-tile-in,
   .field-badge-pulse,
   .field-idle,
+  .qr-scan-frame,
   .logo-phase [class*='animate-'] {
     animation: none !important;
   }

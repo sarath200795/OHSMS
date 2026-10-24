@@ -1,36 +1,39 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Camera, QrCode } from 'lucide-react'
+import QrPreview from '../../shared/mobile/QrPreview'
 import { parseQrPayload, routeForScan } from '../../shared/mobile/qrPayload'
 import { isNativePlatform } from '../../shared/mobile/native'
-import { canUseBarcodeDetector, startBarcodeDetector, startHtml5Scanner } from './webScan'
+import {
+  cameraErrorMessage,
+  cameraUnavailableReason,
+  openScanner,
+} from '../../shared/mobile/webScan'
 
 const UNKNOWN =
   'This QR code is not a WEEHS OHSMS label. Nothing was opened. Equipment labels start with /qr/, permits with /permit/.'
 
+const STARTING = 'Starting the camera…'
+const SCANNING = 'Scanning. Point the camera at the code.'
+
 export default function Scan() {
   const navigate = useNavigate()
   const videoRef = useRef(null)
-  const stopRef = useRef(() => {})
+  const acceptRef = useRef(() => {})
   const handled = useRef(false)
   const [error, setError] = useState('')
   const [status, setStatus] = useState('')
   const [live, setLive] = useState(false)
   const [pasted, setPasted] = useState('')
+  // 0 is off. Each Start increments it so a second tap restarts the stream
+  // after the previous effect has released the camera.
+  const [session, setSession] = useState(0)
 
   const stop = useCallback(() => {
-    const done = stopRef.current
-    stopRef.current = () => {}
-    try {
-      const result = done?.()
-      if (result && typeof result.then === 'function') result.catch(() => {})
-    } catch {
-      // The camera is already gone. The page still has to be usable.
-    }
     setLive(false)
+    setStatus('')
+    setSession(0)
   }, [])
-
-  useEffect(() => stop, [stop])
 
   const accept = useCallback(
     (raw) => {
@@ -38,7 +41,7 @@ export default function Scan() {
       const to = routeForScan(parseQrPayload(raw))
       if (!to) {
         setError(UNKNOWN)
-        setStatus('')
+        setStatus(SCANNING)
         return
       }
       handled.current = true
@@ -48,43 +51,79 @@ export default function Scan() {
     [navigate, stop]
   )
 
-  const start = async () => {
-    setError('')
-    setStatus('')
-    handled.current = false
-    stop()
-    if (isNativePlatform()) {
+  useEffect(() => {
+    acceptRef.current = accept
+  })
+
+  useEffect(() => {
+    if (!session) return undefined
+    const ac = new AbortController()
+    let halt = () => {}
+    const mine = session
+    ;(async () => {
       try {
-        const { scanWithNativeCamera } = await import('../../shared/mobile/nativeScan')
-        const raw = await scanWithNativeCamera({ onStatus: setStatus })
-        setStatus('')
-        if (!raw) return
-        accept(raw)
+        const stopScan = await openScanner({
+          video: videoRef.current,
+          elementId: 'field-qr-reader',
+          onCode: (raw) => acceptRef.current(raw),
+          signal: ac.signal,
+        })
+        if (ac.signal.aborted) {
+          await stopScan()
+          return
+        }
+        halt = stopScan
+        setLive(true)
+        setStatus(SCANNING)
       } catch (err) {
+        if (ac.signal.aborted || err?.name === 'AbortError') return
+        setError(cameraErrorMessage(err))
         setStatus('')
-        setError(err?.message || 'The camera scanner could not start. Paste the code instead.')
+        setLive(false)
+        setSession((current) => (current === mine ? 0 : current))
       }
+    })()
+    return () => {
+      ac.abort()
+      setLive(false)
+      try {
+        const result = halt()
+        if (result && typeof result.then === 'function') result.catch(() => {})
+      } catch {
+        // The camera is already gone. The page still has to be usable.
+      }
+    }
+  }, [session])
+
+  const start = () => {
+    setError('')
+    handled.current = false
+    if (isNativePlatform()) {
+      setStatus(STARTING)
+      ;(async () => {
+        try {
+          const { scanWithNativeCamera } = await import('../../shared/mobile/nativeScan')
+          const raw = await scanWithNativeCamera({ onStatus: setStatus })
+          setStatus('')
+          if (!raw) return
+          accept(raw)
+        } catch (err) {
+          setStatus('')
+          setError(err?.message || 'The camera scanner could not start. Paste the code instead.')
+        }
+      })()
       return
     }
-    if (!navigator.mediaDevices?.getUserMedia) {
-      setError('This browser has no camera access. Paste the code, or use the Android or iOS app.')
+    const blocked = cameraUnavailableReason()
+    if (blocked) {
+      setStatus('')
+      setError(blocked)
       return
     }
-    try {
-      if (canUseBarcodeDetector() && videoRef.current) {
-        stopRef.current = await startBarcodeDetector(videoRef.current, accept)
-      } else {
-        stopRef.current = await startHtml5Scanner('field-qr-reader', accept)
-      }
-      setLive(true)
-      setStatus('Point the camera at the code')
-    } catch (err) {
-      setError(
-        err?.name === 'NotAllowedError'
-          ? 'Camera permission was denied. Allow it in the browser settings, or paste the code.'
-          : 'The camera could not start. Paste the code instead.'
-      )
-    }
+    // Paint the preview first. openScanner runs in the effect above, after
+    // this commit, when the video or the html5-qrcode box has a width.
+    setStatus(STARTING)
+    setSession((n) => n + 1)
   }
 
   const submitPasted = (event) => {
@@ -101,37 +140,36 @@ export default function Scan() {
         left alone.
       </p>
 
-      <div className="mt-4 overflow-hidden rounded-3xl bg-ink-900 ring-1 ring-ink-200">
-        <video
-          ref={videoRef}
-          aria-label="Camera preview"
-          className={`aspect-square w-full object-cover ${live && canUseBarcodeDetector() ? 'block' : 'hidden'}`}
-          muted
-          playsInline
-        />
-        <div
-          id="field-qr-reader"
-          className={live && !canUseBarcodeDetector() ? 'block' : 'hidden'}
-        />
-        {!live && (
-          <div className="grid aspect-square place-items-center text-white/80">
+      <QrPreview
+        active={session > 0}
+        videoRef={videoRef}
+        readerId="field-qr-reader"
+        status={session > 0 ? status : ''}
+        className="mt-4 rounded-3xl"
+        idle={
+          <div className="absolute inset-0 grid place-items-center text-white/80">
             <QrCode size={48} aria-hidden="true" />
           </div>
-        )}
-      </div>
+        }
+      />
 
       <div className="mt-4 flex flex-col gap-2">
-        <button type="button" className="btn-primary min-h-12 w-full" onClick={start}>
+        <button
+          type="button"
+          className="btn-primary min-h-12 w-full"
+          onClick={start}
+          disabled={session > 0 && !live}
+        >
           <Camera size={18} aria-hidden="true" /> {live ? 'Scan again' : 'Start camera'}
         </button>
-        {live && (
+        {session > 0 && (
           <button type="button" className="btn-ghost min-h-12 w-full" onClick={stop}>
             Stop camera
           </button>
         )}
       </div>
 
-      {status && (
+      {status && session === 0 && (
         <p role="status" className="mt-3 text-sm font-medium text-ink-700">
           {status}
         </p>
