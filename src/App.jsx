@@ -66,6 +66,7 @@ import './modules/cctv/registerHooks'
 
 // Employee portal — brings its own shell, so it is not wrapped in AppChrome.
 const Portal = lazy(() => import('./pages/portal'))
+const Field = lazy(() => import('./pages/field'))
 const Analytics = lazy(() => import('./pages/analytics'))
 
 // The public read-only view of a scanned LOTO procedure. Lazy like the other
@@ -183,6 +184,7 @@ export default function App() {
       {/* App. /hub was the old home; the portal replaced it and carries the same
           module grid plus the workspace tiles, so old links land there. */}
       <Route path="/hub" element={<Navigate to="/portal" replace />} />
+      <Route path="/field/*" element={<Protected><Field /></Protected>} />
       <Route path="/dashboard" element={<Protected><Dashboard /></Protected>} />
       <Route path="/security" element={<Protected><Security /></Protected>} />
       <Route path="/incidents/*" element={<Protected moduleKey="incidents"><Incidents /></Protected>} />

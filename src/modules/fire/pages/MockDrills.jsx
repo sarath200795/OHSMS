@@ -591,7 +591,7 @@ export default function MockDrills() {
                 {photos.length < MAX_DRILL_PHOTOS && (
                   <label className="grid h-20 w-20 cursor-pointer place-items-center rounded-lg border border-dashed border-surface-300 text-ink-400 hover:bg-surface-50">
                     {uploadingPhoto ? <Spinner size={18} /> : <ImagePlus size={18} />}
-                    <input type="file" accept="image/*" multiple className="hidden" onChange={onDrillPhoto} disabled={uploadingPhoto} />
+                    <input type="file" accept="image/*" capture="environment" multiple className="hidden" onChange={onDrillPhoto} disabled={uploadingPhoto} />
                   </label>
                 )}
               </div>

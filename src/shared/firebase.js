@@ -3,9 +3,11 @@ import {
   getAuth,
   connectAuthEmulator,
   setPersistence,
+  browserLocalPersistence,
   browserSessionPersistence,
   inMemoryPersistence,
 } from 'firebase/auth'
+import { isNativePlatform, nativePlatform, persistenceForPlatform } from './mobile/native'
 import {
   initializeFirestore,
   connectFirestoreEmulator,
@@ -268,9 +270,15 @@ if (app && USE_EMULATORS) {
 }
 
 if (auth && !USE_EMULATORS) {
-  // Session persistence (login drops when tab/browser closes); fall back to
-  // in-memory if the browser blocks site storage.
-  setPersistence(auth, browserSessionPersistence).catch(() =>
+  // Session persistence in a browser (the sign-in drops when the tab closes).
+  // The installed app uses local persistence: there is no tab to close, and a
+  // locked phone would otherwise dump a field worker back at the login screen.
+  // See persistenceForPlatform. Fall back to memory if the WebView blocks storage.
+  const persistence =
+    persistenceForPlatform(isNativePlatform() ? nativePlatform() : 'web') === 'local'
+      ? browserLocalPersistence
+      : browserSessionPersistence
+  setPersistence(auth, persistence).catch(() =>
     setPersistence(auth, inMemoryPersistence).catch(() => {})
   )
 }

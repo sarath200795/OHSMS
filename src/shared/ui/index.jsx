@@ -370,7 +370,13 @@ export function PageHeader({ title, subtitle, icon: Icon, actions, children, tou
       data-tour={tourId ?? tour}
       className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"
     >
-      <div className="flex min-w-0 items-start gap-3">
+      {/* The title is not the item that yields. `min-w-0` here, against an
+          action row that refuses to shrink, collapses the h1 to a 0-wide box
+          once the toolbar is wider than the page — the extinguisher register
+          (add, upload, export, QR, bin, link) does that at the desktop
+          viewport. The heading stays in the accessibility tree and is not
+          visible. The actions wrap instead. */}
+      <div className="flex shrink-0 items-start gap-3">
         {Icon && (
           <ModuleMark tone="brand" size="sm">
             <Icon size={20} />
@@ -381,7 +387,11 @@ export function PageHeader({ title, subtitle, icon: Icon, actions, children, tou
           {subtitle && <p className="mt-0.5 text-sm text-ink-500">{subtitle}</p>}
         </div>
       </div>
-      {trailing && <div className="flex flex-wrap items-center gap-2 sm:shrink-0">{trailing}</div>}
+      {trailing && (
+        <div className="flex min-w-0 flex-wrap items-center gap-2 sm:flex-1 sm:justify-end">
+          {trailing}
+        </div>
+      )}
     </div>
   )
 }

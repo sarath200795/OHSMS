@@ -1174,3 +1174,136 @@ option {
     page-break-inside: avoid;
   }
 }
+
+/* Phones zoom the page when a focused field is under 16px, and a 40px control
+   is a miss with a gloved hand. Desktop sizes stay as they are. */
+@media (max-width: 767px) {
+  .input,
+  select.input,
+  textarea.input {
+    min-height: 44px;
+    font-size: 16px;
+  }
+  .btn {
+    min-height: 44px;
+  }
+}
+
+/* Phone home. Tiles stagger in and the alerts badge breathes. A person who
+   asked the OS to stop motion must not get a bouncing grid: the rule below
+   cancels these outright, so a tile never begins at opacity 0. The global
+   reduced-motion block already shortens every animation; this is the one
+   that keeps the first frame painted. */
+@keyframes field-tile-in {
+  from {
+    opacity: 0;
+    transform: scale(0.86);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.field-tile-in {
+  animation: field-tile-in 420ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.field-tile-press {
+  transition: transform 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes field-badge-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.14);
+  }
+}
+.field-badge-pulse {
+  animation: field-badge-pulse 2.4s ease-in-out infinite;
+}
+
+/* Idle, after the entrance. Transform and opacity only, so a full grid stays
+   on the compositor. 0% and 100% are the resting pose: if a loop is cut
+   short it does not stop mid-bob. The delay and the duration are set per
+   tile, which is what keeps neighbours off one beat. */
+@keyframes field-idle-float {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(0, -4px, 0);
+  }
+}
+@keyframes field-idle-sway {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  50% {
+    transform: rotate(-6deg);
+  }
+}
+@keyframes field-idle-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.06);
+  }
+}
+@keyframes field-idle-glow {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.82;
+  }
+}
+.field-idle {
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+  animation-duration: 3.8s;
+}
+.field-idle-float {
+  animation-name: field-idle-float;
+}
+.field-idle-sway {
+  animation-name: field-idle-sway;
+}
+.field-idle-pulse {
+  animation-name: field-idle-pulse;
+}
+.field-idle-glow {
+  animation-name: field-idle-glow;
+}
+
+/* A 3D logo's own loop is the idle. `--part-delay` is that part's offset;
+   `--idle-delay` (inherited from the tile) shifts the whole logo so the
+   row is not in step. The group-variant animation shorthand is three
+   classes and resets delay to 0, so this longhand has to outrank it or
+   every logo starts on the same frame. */
+[style*='--part-delay'] {
+  animation-delay: calc(var(--part-delay) + var(--idle-delay, 0s)) !important;
+}
+.logo-phase [class*='animate-'] {
+  animation-delay: var(--idle-delay, 0s) !important;
+}
+.logo-phase [style*='--part-delay'] {
+  animation-delay: calc(var(--part-delay) + var(--idle-delay, 0s)) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .field-tile-in,
+  .field-badge-pulse,
+  .field-idle,
+  .logo-phase [class*='animate-'] {
+    animation: none !important;
+  }
+  .field-tile-press {
+    transition: none !important;
+  }
+}

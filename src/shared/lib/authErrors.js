@@ -36,6 +36,7 @@ const MESSAGES = {
   'auth/invalid-provider-id': 'That single sign-on provider is not configured for this project.',
   'auth/operation-not-supported-in-this-environment': 'This browser cannot complete single sign-on here.',
   'auth/popup-blocked': 'Your browser blocked the sign-in window. Allow pop-ups, or try again to be redirected.',
+  'auth/native-sso-unsupported': 'Single sign-on cannot return to the iOS app. Sign in with email and password.',
   'auth/unauthorized-domain': 'This address is not authorised for single sign-on. Ask an administrator to add it.',
   'auth/account-exists-with-different-credential':
     'An account with that email already exists using a different sign-in method. Sign in that way instead.',

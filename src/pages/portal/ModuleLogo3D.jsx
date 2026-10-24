@@ -10,10 +10,14 @@
 // existing perspective, so turning the tile genuinely parts them. Not WebGL:
 // there are fourteen of these on one screen and a GL context each would exhaust
 // the browser's limit before it troubled the machine. Everything is transform
-// and opacity, so it composites on the GPU and costs nothing standing still.
+// and opacity, so a grid of them stays on the compositor.
 //
-// Every animation is group-hover only, so nothing here moves until the cursor
-// is on the tile, and none of it costs a React render.
+// The home keeps them playing (`playing` on the tile). A logo that only
+// moves under the cursor sits still on the screen someone is looking at.
+// Hover and the loading screen use the same classes. Each part's offset
+// is `--part-delay`; the tile adds `--idle-delay` in CSS. An inline
+// animation-delay would discard that phase, and the row would move as one.
+// Reduced motion removes the animations. None of it costs a React render.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** An absolutely-positioned slab. `z` is its depth in the little scene. */
@@ -42,7 +46,7 @@ function InspectionPad() {
         >
           <span
             className="absolute inset-0 border-b-[2.5px] border-r-[2.5px] border-emerald-400 opacity-0 group-hover:animate-pop-in group-[.playing]:animate-pop-in motion-reduce:group-hover:animate-none motion-reduce:group-[.playing]:animate-none"
-            style={{ animationDelay: `${0.25 + i * 0.36}s` }}
+            style={{ '--part-delay': `${0.25 + i * 0.36}s` }}
           />
         </span>
       ))}
@@ -70,7 +74,7 @@ function Extinguisher() {
         <span
           key={i}
           className={`absolute h-[7px] w-[7px] rounded-full bg-white/80 opacity-0 group-hover:animate-spray group-[.playing]:animate-spray motion-reduce:group-hover:animate-none motion-reduce:group-[.playing]:animate-none`}
-          style={{ transform: 'translateZ(18px) translate(10px,-12px)', animationDelay: `${i * 0.28}s` }}
+          style={{ transform: 'translateZ(18px) translate(10px,-12px)', '--part-delay': `${i * 0.28}s` }}
         />
       ))}
     </>
@@ -95,7 +99,7 @@ function Hooter() {
           style={{
             height: 14 + i * 10, width: 14 + i * 10,
             transform: `translateZ(${10 + i * 3}px) translateX(${12 + i * 3}px)`,
-            animationDelay: `${i * 0.16}s`,
+            '--part-delay': `${i * 0.16}s`,
             clipPath: 'polygon(50% 0, 100% 0, 100% 100%, 50% 100%)',
           }}
         />
@@ -129,7 +133,7 @@ function CommitteeGroup() {
     <span
       key={x}
       className={`absolute group-hover:animate-chatter group-[.playing]:animate-chatter motion-reduce:group-hover:animate-none motion-reduce:group-[.playing]:animate-none`}
-      style={{ transform: `translateZ(${z}px) translateX(${x}px)`, animationDelay: `${delay}s` }}
+      style={{ transform: `translateZ(${z}px) translateX(${x}px)`, '--part-delay': `${delay}s` }}
     >
       <span className={`absolute -top-[13px] left-[-4px] h-[8px] w-[8px] rounded-full ${tone}`} />
       <span className={`absolute -top-[4px] left-[-6px] w-[12px] rounded-t-[6px] ${tone}`} style={{ height: h }} />
@@ -148,7 +152,7 @@ function CommitteeGroup() {
       >
         <span
           className="absolute inset-0 grid place-items-center rounded-[5px] bg-white opacity-0 group-hover:animate-pop-in group-[.playing]:animate-pop-in motion-reduce:group-hover:animate-none motion-reduce:group-[.playing]:animate-none"
-          style={{ animationDelay: '0.3s' }}
+          style={{ '--part-delay': '0.3s' }}
         >
           <span className="flex gap-[2px]">
             {[0, 1, 2].map((i) => <span key={i} className="h-[2px] w-[2px] rounded-full bg-slate-500" />)}
@@ -177,7 +181,7 @@ function Telephone() {
           style={{
             height: 18 + i * 10, width: 18 + i * 10,
             transform: `translateZ(${8 + i * 3}px) translate(-16px,-10px)`,
-            animationDelay: `${i * 0.2}s`,
+            '--part-delay': `${i * 0.2}s`,
             clipPath: 'polygon(0 0, 50% 0, 50% 100%, 0 100%)',
           }}
         />
@@ -208,7 +212,7 @@ function BarGraph() {
         >
           <span
             className="absolute inset-0 rounded-t-[3px] bg-white/95 group-hover:animate-bar-grow group-[.playing]:animate-bar-grow motion-reduce:group-hover:animate-none motion-reduce:group-[.playing]:animate-none"
-            style={{ transformOrigin: 'bottom', animationDelay: `${b.d}s` }}
+            style={{ transformOrigin: 'bottom', '--part-delay': `${b.d}s` }}
           />
         </span>
       ))}
@@ -297,7 +301,7 @@ function WeatherCloud() {
         >
           <span
             className="absolute inset-0 rounded-full bg-sky-400 opacity-0 group-hover:animate-rain-fall group-[.playing]:animate-rain-fall motion-reduce:group-hover:animate-none motion-reduce:group-[.playing]:animate-none"
-            style={{ animationDelay: `${i * 0.18}s` }}
+            style={{ '--part-delay': `${i * 0.18}s` }}
           />
         </span>
       ))}
@@ -358,14 +362,14 @@ function StakeholderOrg() {
           <span className="absolute -top-[1px] -left-[1px] h-[4px] w-[4px]">
             <span
               className="absolute inset-0 rounded-full bg-white opacity-0 shadow-[0_0_5px_rgba(255,255,255,0.9)] group-hover:animate-flow-down group-[.playing]:animate-flow-down motion-reduce:group-hover:animate-none motion-reduce:group-[.playing]:animate-none"
-              style={{ animationDelay: p.delay }}
+              style={{ '--part-delay': p.delay }}
             />
           </span>
 
           {/* Head + shoulders, lifting as the signal arrives. */}
           <span
             className="absolute left-0 top-[10px] block group-hover:animate-stake-nod group-[.playing]:animate-stake-nod motion-reduce:group-hover:animate-none motion-reduce:group-[.playing]:animate-none"
-            style={{ animationDelay: p.delay }}
+            style={{ '--part-delay': p.delay }}
           >
             <span className={`absolute -left-[4px] top-0 h-[8px] w-[8px] rounded-full ${p.tone}`} />
             <span className={`absolute -left-[6px] top-[7px] h-[7px] w-[12px] rounded-t-[6px] ${p.tone} shadow-[0_2px_3px_rgba(0,0,0,0.2)]`} />
@@ -447,7 +451,7 @@ function IncidentCone() {
       />
       <span
         className="absolute h-[13px] w-[13px] rounded-full bg-red-400/40 blur-[3px] group-hover:animate-beacon group-[.playing]:animate-beacon motion-reduce:group-hover:animate-none motion-reduce:group-[.playing]:animate-none"
-        style={{ transform: 'translateZ(20px) translateY(-17px)', animationDelay: '0.1s' }}
+        style={{ transform: 'translateZ(20px) translateY(-17px)', '--part-delay': '0.1s' }}
       />
     </>
   )
@@ -492,7 +496,7 @@ function PermitStamp() {
       >
         <span
           className="absolute inset-0 rounded-full border-[2.5px] border-emerald-500/80 opacity-0 group-hover:animate-pop-in group-[.playing]:animate-pop-in motion-reduce:group-hover:animate-none motion-reduce:group-[.playing]:animate-none"
-          style={{ animationDelay: '0.62s' }}
+          style={{ '--part-delay': '0.62s' }}
         />
       </span>
       <span
@@ -545,7 +549,7 @@ function ActionList() {
               placement, dropping every row to the same spot with no depth. */}
           <span
             className="absolute group-hover:animate-list-advance group-[.playing]:animate-list-advance motion-reduce:group-hover:animate-none motion-reduce:group-[.playing]:animate-none"
-            style={{ animationDelay: `${i * 0.1}s` }}
+            style={{ '--part-delay': `${i * 0.1}s` }}
           >
             <span className={`absolute -left-[11px] h-[7px] w-[7px] rounded-[2px] ${i === 0 ? 'bg-emerald-400' : 'border-[1.5px] border-slate-400'}`} />
             <span className="absolute -left-[1px] top-[2px] h-[2.5px] w-[13px] rounded-full bg-slate-400/80" />

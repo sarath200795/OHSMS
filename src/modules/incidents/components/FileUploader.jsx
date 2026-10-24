@@ -55,7 +55,8 @@ export default function FileUploader({ files = [], onAdd, onRemove, accept = 'im
                 <button
                   type="button"
                   onClick={() => onRemove(f.id)}
-                  className="absolute -right-2 -top-2 grid h-6 w-6 place-items-center rounded-full bg-red-500 text-white opacity-0 shadow transition group-hover:opacity-100"
+                  aria-label={`Remove ${f.name || 'file'}`}
+                  className="absolute -right-1 -top-1 grid h-11 w-11 place-items-center rounded-full bg-red-500 text-white shadow"
                 >
                   <X size={13} />
                 </button>
@@ -74,6 +75,7 @@ export default function FileUploader({ files = [], onAdd, onRemove, accept = 'im
           type="file"
           multiple
           accept={accept === 'image' ? 'image/*' : 'image/*,application/pdf'}
+          capture={accept === 'image' ? 'environment' : undefined}
           className="hidden"
           onChange={onPick}
         />

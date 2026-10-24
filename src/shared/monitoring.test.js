@@ -14,12 +14,18 @@ import { sanitizeUrl, sanitizeEvent } from './monitoring'
 
 describe('scan tokens never leave the origin', () => {
   it('replaces the token on every public scan route', () => {
-    expect(sanitizeUrl('https://suite.weehs.org/qr/8f3ka92mz01xqp'))
-      .toBe('https://suite.weehs.org/qr/:token')
-    expect(sanitizeUrl('https://suite.weehs.org/permit/aa11bb22cc33dd'))
-      .toBe('https://suite.weehs.org/permit/:token')
-    expect(sanitizeUrl('https://suite.weehs.org/p/PROC-9931'))
-      .toBe('https://suite.weehs.org/p/:token')
+    expect(sanitizeUrl('https://suite.weehs.org/qr/8f3ka92mz01xqp')).toBe(
+      'https://suite.weehs.org/qr/:token'
+    )
+    expect(sanitizeUrl('https://suite.weehs.org/permit/aa11bb22cc33dd')).toBe(
+      'https://suite.weehs.org/permit/:token'
+    )
+    expect(sanitizeUrl('https://suite.weehs.org/p/PROC-9931')).toBe(
+      'https://suite.weehs.org/p/:token'
+    )
+    expect(sanitizeUrl('https://suite.weehs.org/field/asset/8f3ka92mz01xqp')).toBe(
+      'https://suite.weehs.org/field/asset/:token'
+    )
   })
 
   it('keeps the route, which is the half worth reporting', () => {
@@ -30,23 +36,30 @@ describe('scan tokens never leave the origin', () => {
   })
 
   it('drops anything trailing the token rather than guessing at it', () => {
-    expect(sanitizeUrl('https://suite.weehs.org/qr/tok/extra/parts'))
-      .toBe('https://suite.weehs.org/qr/:token')
+    expect(sanitizeUrl('https://suite.weehs.org/qr/tok/extra/parts')).toBe(
+      'https://suite.weehs.org/qr/:token'
+    )
   })
 
   it('leaves ordinary in-app routes alone', () => {
-    expect(sanitizeUrl('https://suite.weehs.org/incidents/inc1'))
-      .toBe('https://suite.weehs.org/incidents/inc1')
+    expect(sanitizeUrl('https://suite.weehs.org/incidents/inc1')).toBe(
+      'https://suite.weehs.org/incidents/inc1'
+    )
     expect(sanitizeUrl('/portal/dashboard')).toBe('/portal/dashboard')
+    expect(sanitizeUrl('/field/scan')).toBe('/field/scan')
+    expect(sanitizeUrl('/field/asset/SECRETTOKEN')).toBe('/field/asset/:token')
+    expect(sanitizeUrl('/field/asset/SECRETTOKEN')).not.toContain('SECRETTOKEN')
   })
 
   it('strips the query string and the fragment everywhere', () => {
     // Not a token route, but a query string is where an id or a filter with a
     // name in it ends up, and none of it is needed to diagnose a crash.
-    expect(sanitizeUrl('https://suite.weehs.org/injuries?person=R.%20Osei&q=laceration'))
-      .toBe('https://suite.weehs.org/injuries')
-    expect(sanitizeUrl('https://suite.weehs.org/qr/tok?debug=1#frag'))
-      .toBe('https://suite.weehs.org/qr/:token')
+    expect(sanitizeUrl('https://suite.weehs.org/injuries?person=R.%20Osei&q=laceration')).toBe(
+      'https://suite.weehs.org/injuries'
+    )
+    expect(sanitizeUrl('https://suite.weehs.org/qr/tok?debug=1#frag')).toBe(
+      'https://suite.weehs.org/qr/:token'
+    )
   })
 
   it('returns a relative path for a relative input', () => {
