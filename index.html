@@ -31,9 +31,11 @@
     <title>WEHS — Workplace Environment, Health &amp; Safety</title>
     <!-- First paint, before the bundle. Same cream as the native splash so
          the Capacitor screen can dissolve into this one. A desktop browser
-         (768px and up, and not the native shell) never sees it. The timer
-         removes it if the bundle never runs — a splash only the bundle can
-         dismiss is a blank phone when the script fails. -->
+         (768px and up, and not the native shell) never sees it, and neither
+         does a phone that has chosen the desktop portal (html.desktop-view,
+         the same ohsms.viewMode key as src/shared/mobile/viewMode.js). The
+         timer removes it if the bundle never runs — a splash only the bundle
+         can dismiss is a blank phone when the script fails. -->
     <style>
       #boot-splash {
         position: fixed;
@@ -73,6 +75,9 @@
           display: none;
         }
       }
+      html.desktop-view:not(.native-shell) #boot-splash {
+        display: none;
+      }
       @media (prefers-reduced-motion: reduce) {
         #boot-splash img,
         #boot-splash.boot-splash-out {
@@ -96,6 +101,13 @@
         }
       } catch (e) {
         /* no bridge in a browser; the HTML splash still runs */
+      }
+      try {
+        if (window.localStorage && localStorage.getItem('ohsms.viewMode') === 'desktop') {
+          document.documentElement.classList.add('desktop-view')
+        }
+      } catch (e) {
+        /* private mode: the bundle still removes the splash once it knows */
       }
       window.setTimeout(function () {
         var el = document.getElementById('boot-splash')

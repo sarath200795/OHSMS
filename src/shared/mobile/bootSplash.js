@@ -1,6 +1,9 @@
+import { readViewChoice } from './viewMode'
+
 // The first paint is a cream screen and the mark, in the HTML, before this
-// bundle. Desktop browsers skip it (the CSS already hides it at 768px). A
-// phone and the native shells hold it long enough to read, then fade it.
+// bundle. Desktop browsers skip it (the CSS already hides it at 768px), and
+// so does a phone that has chosen the desktop portal. A phone still on the
+// automatic choice, and the native shells, hold it long enough to read.
 // Reduced motion drops the scale and keeps a short hold: the splash is how
 // you know the app started, and the movement is what was asked to stop.
 //
@@ -13,8 +16,10 @@
 export const BOOT_HOLD_MS = 720
 export const BOOT_FADE_MS = 280
 
-export function bootSplashPlan({ wide, native, reduce }) {
-  if (wide && !native) return { show: false, holdMs: 0, fadeMs: 0 }
+export function bootSplashPlan({ wide, native, reduce, desktopChoice }) {
+  // A phone that asked for the desktop portal should not sit on the phone
+  // splash. The native shell still holds its own splash for the handoff.
+  if ((wide || desktopChoice) && !native) return { show: false, holdMs: 0, fadeMs: 0 }
   if (reduce) return { show: true, holdMs: 400, fadeMs: 200 }
   return { show: true, holdMs: BOOT_HOLD_MS, fadeMs: BOOT_FADE_MS }
 }
@@ -36,7 +41,8 @@ export function dismissBootSplash(doc = document, win = window) {
   const wide = win.matchMedia?.('(min-width: 768px)')?.matches === true
   const reduce = win.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true
   const native = doc.documentElement.classList.contains('native-shell')
-  const plan = bootSplashPlan({ wide, native, reduce })
+  const desktopChoice = readViewChoice() === 'desktop'
+  const plan = bootSplashPlan({ wide, native, reduce, desktopChoice })
   if (!plan.show) {
     el.remove()
     return

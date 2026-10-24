@@ -1,14 +1,16 @@
 import { Link } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { fieldApps, groupFieldApps } from '../mobile/appGrid'
+import { ViewModeSwitch } from '../mobile/viewModeContext'
 
 /**
  * iPhone-style home. One rounded tile per place this person can open,
  * under Technical and — only when they have one — Admin.
  *
- * The page heading is for the accessibility tree. On the portal the desktop
- * h1 is `display: none` below `md`, so this is the phone's only heading; on
- * desktop this whole grid is the one that is hidden.
+ * The page heading is for the accessibility tree. Portal home renders this
+ * grid or the desktop dashboard, never both, so this is the only heading
+ * while mobile view is on. The switch above the groups is the same control
+ * the desktop home renders.
  *
  * Tiles stagger in and shrink under a finger. Both are cancelled when the
  * OS asks for reduced motion, so a tile never starts invisible.
@@ -20,6 +22,7 @@ export default function FieldAppGrid() {
   return (
     <div className="space-y-7">
       <h1 className="sr-only">Home</h1>
+      <ViewModeSwitch />
       {sections.map((section) => (
         <section key={section.key} aria-labelledby={`field-section-${section.key}`}>
           <h2

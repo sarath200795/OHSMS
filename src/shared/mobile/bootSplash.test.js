@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { BOOT_FADE_MS, BOOT_HOLD_MS, bootSplashPlan, dismissBootSplash } from './bootSplash'
+import { VIEW_MODE_KEY } from './viewMode'
 
 describe('bootSplashPlan', () => {
   it('skips a wide browser and keeps a phone, a native shell, and reduced motion', () => {
@@ -17,6 +18,12 @@ describe('bootSplashPlan', () => {
     const still = bootSplashPlan({ wide: false, native: false, reduce: true })
     expect(still.show).toBe(true)
     expect(still.holdMs).toBeLessThan(phone.holdMs)
+    expect(
+      bootSplashPlan({ wide: false, native: false, reduce: false, desktopChoice: true }).show
+    ).toBe(false)
+    expect(
+      bootSplashPlan({ wide: false, native: true, reduce: false, desktopChoice: true }).show
+    ).toBe(true)
   })
 })
 
@@ -24,6 +31,7 @@ describe('dismissBootSplash', () => {
   afterEach(() => {
     document.getElementById('boot-splash')?.remove()
     document.documentElement.classList.remove('native-shell')
+    localStorage.removeItem(VIEW_MODE_KEY)
     vi.useRealTimers()
   })
 
@@ -45,6 +53,14 @@ describe('dismissBootSplash', () => {
   it('removes the splash immediately on a desktop browser', () => {
     const el = mount()
     media((q) => q.includes('768px'))
+    dismissBootSplash()
+    expect(el.isConnected).toBe(false)
+  })
+
+  it('removes the splash immediately when this device has chosen the desktop portal', () => {
+    const el = mount()
+    media(() => false)
+    localStorage.setItem(VIEW_MODE_KEY, 'desktop')
     dismissBootSplash()
     expect(el.isConnected).toBe(false)
   })

@@ -3,6 +3,7 @@ import { cleanup, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import FieldAppGrid from './FieldAppGrid'
+import { ViewModeProvider } from '../mobile/viewModeContext'
 
 const auth = vi.hoisted(() => ({ moduleMap: {}, role: 'member' }))
 
@@ -20,9 +21,12 @@ describe('FieldAppGrid', () => {
   it('shows Technical only for a member', () => {
     render(
       <MemoryRouter>
-        <FieldAppGrid />
+        <ViewModeProvider>
+          <FieldAppGrid />
+        </ViewModeProvider>
       </MemoryRouter>
     )
+    expect(screen.getByRole('button', { name: /Switch to (desktop|mobile) view/ })).toBeTruthy()
     expect(screen.getByRole('heading', { name: 'Technical' })).toBeTruthy()
     expect(screen.queryByRole('heading', { name: 'Admin' })).toBeNull()
     expect(screen.getByRole('link', { name: 'Extinguishers' }).getAttribute('href')).toBe(
@@ -35,7 +39,9 @@ describe('FieldAppGrid', () => {
     auth.role = 'admin'
     render(
       <MemoryRouter>
-        <FieldAppGrid />
+        <ViewModeProvider>
+          <FieldAppGrid />
+        </ViewModeProvider>
       </MemoryRouter>
     )
     expect(screen.getByRole('heading', { name: 'Technical' })).toBeTruthy()

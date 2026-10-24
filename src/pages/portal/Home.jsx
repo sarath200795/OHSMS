@@ -44,6 +44,7 @@ import { openUnsafeByPermit } from '../../modules/ptw/lib/observations'
 import ModuleLogo3D, { has3DLogo } from './ModuleLogo3D'
 import { Button, Skeleton, Spinner } from '../../shared/ui'
 import FieldAppGrid from '../../shared/layout/FieldAppGrid'
+import { useViewMode, ViewModeSwitch } from '../../shared/mobile/viewModeContext'
 
 // Admin tools. These configure the organization rather than record work in it,
 // so the whole section is admin-only — a manager or auditor who can read the
@@ -199,6 +200,7 @@ export default function PortalHome() {
   // route that refuses to open is worse than no tile at all.
   const modules = useMemo(() => enabledModules(moduleMap), [moduleMap])
   const navigate = useNavigate()
+  const { mode } = useViewMode()
   const { sites, status: sitesStatus } = useAccessibleSitesRead()
   const { keys: widgetKeys, save: saveWidgets } = useWidgetPrefs()
 
@@ -353,12 +355,17 @@ export default function PortalHome() {
 
   return (
     <div className="animate-fade-in-up">
-      {/* Phone home is the app grid. The dashboard below is the desktop home;
-          hiding it under md keeps a phone from stacking both. */}
-      <div className="md:hidden">
-        <FieldAppGrid />
-      </div>
-      <div className="hidden md:block">
+      {/* The grid and the dashboard are two homes, chosen by view mode. A
+          phone that asked for the desktop portal gets this dashboard and
+          scrolls it; a desktop that asked for the phone home gets the grid,
+          centred. */}
+      {mode === 'mobile' ? (
+        <div className="mx-auto max-w-md">
+          <FieldAppGrid />
+        </div>
+      ) : (
+      <div>
+      <ViewModeSwitch />
       <div className="mb-5 grid gap-4 lg:grid-cols-[1.55fr_1fr]">
         <Raised className="relative overflow-hidden px-6 py-6 sm:px-7">
           <div
@@ -652,6 +659,7 @@ export default function PortalHome() {
         </>
       )}
       </div>
+      )}
     </div>
   )
 }

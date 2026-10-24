@@ -27,7 +27,8 @@ import FieldNav from './FieldNav'
 import { AlertProvider } from '../mobile/useAlertFeed'
 import { OrgMark, hasOrgLogo } from '../branding/OrgMark'
 import IdleGuard from '../auth/IdleGuard'
-import { useNarrow } from '../mobile/useNarrow'
+import { shellForMode } from '../mobile/viewMode'
+import { useViewMode, ViewModeProvider } from '../mobile/viewModeContext'
 
 const ROLE_LABEL = {
   admin: 'Administrator',
@@ -37,6 +38,14 @@ const ROLE_LABEL = {
 }
 
 export default function AppChrome({ children }) {
+  return (
+    <ViewModeProvider>
+      <AppChromeInner>{children}</AppChromeInner>
+    </ViewModeProvider>
+  )
+}
+
+function AppChromeInner({ children }) {
   const { profile, org, orgName, role, signOut } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
@@ -89,10 +98,13 @@ export default function AppChrome({ children }) {
     }
   }
 
-  const narrow = useNarrow()
-  // The feed's listeners stay off on a desktop page. The alerts route itself
-  // still needs them when someone opens it from a wide window.
-  const alertsOn = narrow || location.pathname.startsWith('/field/alerts')
+  // The phone chrome follows the view mode, not the viewport. A phone that
+  // asked for the desktop portal must not keep the field bar, and a desktop
+  // window that asked for the phone home must not lose it. The alerts route
+  // still needs the feed when it is opened from desktop view.
+  const { mode } = useViewMode()
+  const shell = shellForMode(mode)
+  const alertsOn = shell.listenForAlerts || location.pathname.startsWith('/field/alerts')
   const name = profile?.name || 'There'
   // The wordmark beside the mark names the ORGANIZATION once it has a logo of
   // its own. Leaving "WEHS / Workplace Environment, Health & Safety" standing
@@ -104,7 +116,7 @@ export default function AppChrome({ children }) {
 
   return (
     <AlertProvider enabled={alertsOn}>
-      <div className="min-h-screen bg-canvas">
+      <div className="min-h-screen bg-canvas" data-view-mode={mode}>
         {/* Skip link. The header carries the wordmark, the module switcher, the
           notification bell and the account menu, and it is sticky — so on every
           single route a keyboard user tabbed through all of it before reaching
@@ -122,7 +134,7 @@ export default function AppChrome({ children }) {
             a separate line, and without this label the home link was announced
             as the single letter "W". */}
           <NavLink
-            to={narrow ? '/field' : '/portal'}
+            to={shell.homePath}
             aria-label={`${branded && orgName ? orgName : 'WEHS'} home`}
             className="flex min-w-0 flex-1 items-center gap-2.5 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas sm:flex-none"
           >
@@ -238,7 +250,7 @@ export default function AppChrome({ children }) {
         <main
           id="main"
           tabIndex={-1}
-          className="mx-auto max-w-[1180px] px-4 pb-[calc(6.5rem+env(safe-area-inset-bottom))] pt-6 sm:px-7 md:pb-24"
+          className={shell.mainClassName}
         >
           <HomeBar />
           <motion.div
@@ -251,7 +263,7 @@ export default function AppChrome({ children }) {
           </motion.div>
         </main>
 
-        {narrow && <FieldNav />}
+        {shell.showFieldNav && <FieldNav />}
 
         <RequestAccessModal open={reqOpen} onClose={() => setReqOpen(false)} />
         {/* Sam the Buddy — the ISO 45001 assistant, available on every screen. */}

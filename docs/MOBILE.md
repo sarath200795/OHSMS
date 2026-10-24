@@ -11,9 +11,10 @@ usual filenames; it cannot refuse one that was renamed.
 ## Two ways it runs
 
 **Installed site (PWA).** Chrome and Safari offer "Add to Home Screen" once
-hosting is serving `manifest.webmanifest`. The installed icon opens `/field`,
-the phone home. That home is two labelled groups: Technical (the field
-registers) and Admin (settings, employees, maintenance, the audit log).
+hosting is serving `manifest.webmanifest`. The installed icon opens `/field`.
+A device that has chosen the desktop portal is sent on to `/portal`;
+otherwise this is the phone home. That home is two labelled groups: Technical
+(the field registers) and Admin (settings, employees, maintenance, the audit log).
 Admin is omitted when this role cannot open any of those. The service
 worker caches the app shell — HTML, the hashed
 scripts and styles, the icons — so a page that has loaded once can paint in a
@@ -100,7 +101,24 @@ clock, which is how the native screen disappears before the HTML has
 painted and the handoff flashes white. The cost is the one named above: if
 the bundle never runs, the native splash has nothing to dismiss it. The
 HTML splash removes itself after eight seconds so a failed script is not a
-permanent cream screen.
+permanent cream screen. A stored desktop choice hides the splash on a phone
+the same way a wide browser does (`html.desktop-view`).
+
+## View mode
+
+The phone home and the desktop portal are two modes. The first visit picks
+one and stores nothing: the native app is the phone home; a viewport of
+1024px or wider is the desktop portal, including a large tablet; a phone
+user agent, a coarse pointer under that width, or a window under 768px is
+the phone home. A laptop window between 768 and 1023 stays the desktop
+portal, which is what that width already was.
+
+Both homes show a switch, "Switch to desktop view" or "Switch to mobile
+view". The choice is stored on this device (`ohsms.viewMode` in
+localStorage), so the phone and the office PC can differ. "Use automatic"
+clears it and the next paint follows the device again. Desktop view on a
+phone is the existing portal, scrolled, without the field bar. Mobile view
+on a desktop is the phone home, centred, with the field bar centred under it.
 
 ## Alerts
 

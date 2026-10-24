@@ -2,8 +2,9 @@ import { NavLink } from 'react-router-dom'
 import { AlertTriangle, Bell, ClipboardCheck, QrCode, Wrench } from 'lucide-react'
 import { useAlertUnread } from '../mobile/alertContext'
 
-// The phone's primary navigation. Desktop keeps the portal: this bar is
-// rendered only below the `md` breakpoint, from AppChrome.
+// The phone's primary navigation. Rendered only in mobile view, from
+// AppChrome. On a wide window that mode is a centred column, so the bar
+// centres with it; on a phone it stays full width.
 //
 // The five labels are the product's phone navigation. Sites and the module
 // registers live on the home grid; this bar is the jobs that are not a module.
@@ -20,7 +21,7 @@ export default function FieldNav() {
   return (
     <nav
       aria-label="Field"
-      className="fixed inset-x-0 bottom-0 z-30 border-t border-ink-200 bg-white/95 pb-[max(0.25rem,env(safe-area-inset-bottom))] backdrop-blur-xl print:hidden"
+      className="fixed inset-x-0 bottom-0 z-30 border-t border-ink-200 bg-white/95 pb-[max(0.25rem,env(safe-area-inset-bottom))] backdrop-blur-xl print:hidden md:left-1/2 md:right-auto md:w-full md:max-w-md md:-translate-x-1/2 md:rounded-t-3xl md:border-x md:border-ink-200"
     >
       <ul className="mx-auto flex max-w-lg items-stretch">
         {ITEMS.map((item) => {
