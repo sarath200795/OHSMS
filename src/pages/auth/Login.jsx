@@ -11,6 +11,7 @@ import { safeInternalPath } from '../../shared/safeUrl'
 import AuthLayout from './AuthLayout'
 import LoginModules from './LoginModules'
 import { isNativePlatform } from '../../shared/mobile/native'
+import StoreBadges from './StoreBadges'
 
 export default function Login() {
   const {
@@ -198,6 +199,7 @@ export default function Login() {
           >
             Join an existing one
           </Link>
+          <StoreBadges />
         </>
       }
     >

@@ -26,9 +26,10 @@ describe('shellCacheDecision', () => {
     )
   })
 
-  it('does not cache the auth handler or the health probe', () => {
+  it('does not cache the auth handler, the health probe, or the store listings', () => {
     expect(shellCacheDecision(`${ORIGIN}/__/auth/handler`, { origin: ORIGIN })).toBe('pass')
     expect(shellCacheDecision(`${ORIGIN}/health.json`, { origin: ORIGIN })).toBe('pass')
+    expect(shellCacheDecision(`${ORIGIN}/store.json`, { origin: ORIGIN })).toBe('pass')
   })
 
   it('keeps hashed assets and the manifest', () => {

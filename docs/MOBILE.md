@@ -62,6 +62,11 @@ matter, beyond the usual `dist/`:
   - `/sw.js` is `no-cache`. It is a `.js` file, so without this later rule
     the immutable `*.js` header would pin the worker for a year and a
     deploy would not replace the shell.
+- `public/badges/` and `public/store.json`. The login page shows the
+  official Play and App Store badges. `store.json` is `no-cache`, and the
+  shell worker does not cache it, so filling in the listing URLs is a
+  hosting update of that file. Until the URLs are set the badges say
+  "Coming soon" and are not links. They are hidden inside the Capacitor shell.
 
 Deploy hosting from a checkout of this commit after `npm run build`, and
 deploy the Firestore rules in the same release. The rules gained
