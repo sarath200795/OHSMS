@@ -31,10 +31,12 @@ const { deriveStatus, isDeleted } = await import('../../modules/fire/lib/extingu
 const { derivePhysicalDefectLog } = await import('../../modules/fire/lib/defectReports')
 const { deriveExtinguisherDefects } = await import('../../modules/fire/lib/derivedExtDefects')
 const { SOURCES, isOverdue, todayISO } = await import('../../modules/actions/lib/sources')
-const { summariseSites } = await import('../../../functions/lib/siteSummary.js')
+const { summariseSites, istDay: serverIstDay } = await import('../../../functions/lib/siteSummary.js')
+const { istDay: appIstDay } = await import('../../shared/lib/dates')
 
-// 12 Oct 2026. The app reads "today" from the local calendar; the server from
-// IST. Noon IST is the same calendar day in every timezone CI could run in.
+// 12 Oct 2026, noon in Asia/Kolkata. Hydrostatic due dates use that calendar
+// on both sides. Action overdue still uses the local calendar day of TODAY,
+// which this instant also is in every timezone CI runs.
 const NOW = new Date('2026-10-12T06:30:00Z')
 const TODAY = new Date(2026, 9, 12)
 
@@ -191,7 +193,7 @@ function appNumbers(site) {
   const byId = new Map(active.map((e) => [e.id, e]))
   const physicalOpen = derivePhysicalDefectLog(reports, active).open
   const seen = new Set(physicalOpen.map((r) => `${r.extId}:${r.defectType}`))
-  const derived = deriveExtinguisherDefects(active, seen, TODAY)
+  const derived = deriveExtinguisherDefects(active, seen, NOW)
   const deletedAed = new Set(aeds.filter(isDeleted).map((a) => a.id))
   const deletedFas = new Set(fas.filter(isDeleted).map((a) => a.id))
   const pending = reports.filter((r) => {
@@ -245,7 +247,7 @@ function appNumbers(site) {
   return {
     extinguishers: stats.extinguishers,
     hptOverdue: exts.filter((x) => {
-      const d = deriveStatus(x, TODAY)
+      const d = deriveStatus(x, NOW)
       return !d.isClosed && d.flags.HPT_DUE
     }).length,
     openDefects: extRows.length + assetRows.length,
@@ -269,6 +271,17 @@ function appNumbers(site) {
     ).length,
   }
 }
+
+describe('the hydrostatic calendar is Asia/Kolkata on both sides', () => {
+  it('agrees on the instant Kolkata changes day', () => {
+    const before = new Date('2026-10-11T18:29:00Z')
+    const after = new Date('2026-10-11T18:31:00Z')
+    expect(appIstDay(before)).toBe('2026-10-11')
+    expect(serverIstDay(before)).toBe(appIstDay(before))
+    expect(appIstDay(after)).toBe('2026-10-12')
+    expect(serverIstDay(after)).toBe(appIstDay(after))
+  })
+})
 
 describe('WhatsApp site summary matches the app, site by site', () => {
   const server = summariseSites(

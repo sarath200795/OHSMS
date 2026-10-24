@@ -16,7 +16,8 @@ import { exportDefectRepository } from './lib/exporter'
 import { buildDefectRepositoryRows } from './lib/defectRepositoryExport'
 import { Link } from 'react-router-dom'
 import { deriveExtinguisherDefects, DERIVED_DEFECT } from './lib/derivedExtDefects'
-import { DEFECT_BY_KEY, REGION_COLORS } from './lib/constants'
+import { isHptOverdue, HPT_BLOCKS_RESOLVE } from './lib/hpt'
+import { DEFECT_BY_KEY, PHYSICAL_DEFECT_KEYS, REGION_COLORS } from './lib/constants'
 import ListFilters from './components/ListFilters'
 import {
   emptyDefectFilters,
@@ -87,6 +88,10 @@ export default function DefectRepository() {
       defectColor: DEFECT_BY_KEY[r.defectType]?.color || '#64748b',
       reportedAt: r.reportedAt,
       source: 'ext',
+      // Closing the reported defect removes that key. The rules refuse the
+      // removal while the hydrostatic test is overdue, so the button must not
+      // offer a write that will be rejected.
+      hptDue: PHYSICAL_DEFECT_KEYS.includes(r.defectType) && isHptOverdue(extById.get(r.extId)),
       raw: r,
     }))
     // HPT-due and Empty units straight from the register (see derivedExtDefects).
@@ -348,14 +353,20 @@ export default function DefectRepository() {
                               )
                             ) : (
                               <>
-                                <button
-                                  className="btn-ghost px-2.5 py-1.5 text-xs font-semibold text-green-600 hover:bg-green-50"
-                                  disabled={busyId === row.key}
-                                  onClick={() => setCloseFor(row)}
-                                  title="Close this defect"
-                                >
-                                  <CheckCircle2 size={14} /> Close
-                                </button>
+                                {row.hptDue ? (
+                                  <span className="text-xs font-semibold text-violet-700" title={HPT_BLOCKS_RESOLVE}>
+                                    HPT due
+                                  </span>
+                                ) : (
+                                  <button
+                                    className="btn-ghost px-2.5 py-1.5 text-xs font-semibold text-green-600 hover:bg-green-50"
+                                    disabled={busyId === row.key}
+                                    onClick={() => setCloseFor(row)}
+                                    title="Close this defect"
+                                  >
+                                    <CheckCircle2 size={14} /> Close
+                                  </button>
+                                )}
                                 {row.source === 'asset' && (
                                   <>
                                     <button

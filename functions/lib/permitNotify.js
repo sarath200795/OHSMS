@@ -51,6 +51,7 @@ import { loadReportAttachments } from './mailAttachments.js'
 import { permitMailAttachments } from './reportAttachments.js'
 import { renderPermitMail } from './mailTemplates/lifecycle.js'
 import { readableText } from './mailTemplates/safe.js'
+import { centreIdKey } from './whatsapp/resolve.js'
 
 const TEAMS = ['engineering', 'operations']
 
@@ -312,7 +313,8 @@ export function matchPermitSite(permit, sites) {
   if (!name) return null
   const hits = list.filter((site) => {
     if (!site) return false
-    return readableText(site.name) === name || readableText(site.code) === name
+    const folded = centreIdKey(name)
+    return readableText(site.name) === name || (folded !== '' && centreIdKey(site.code) === folded)
   })
   return hits.length === 1 ? hits[0] : null
 }

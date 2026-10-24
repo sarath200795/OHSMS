@@ -84,7 +84,7 @@ import {
   SkeletonCard,
 } from '../../shared/ui'
 import MetabaseSettings from './MetabaseSettings'
-import WhatsAppConnect from './WhatsAppConnect'
+import WhatsAppConnect from './WhatsAppConnect.jsx'
 
 const TABS = [
   { key: 'general', label: 'General', icon: Settings },

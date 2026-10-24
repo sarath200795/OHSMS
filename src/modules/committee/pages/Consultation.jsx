@@ -26,6 +26,7 @@ import MeetingMinutesDoc from '../components/MeetingMinutesDoc';
 import LogoLoader from '../components/LogoLoader';
 import { ModuleMark } from '../../../shared/ui';
 import { isFutureDate, todayISO, isOverdueDate, toISODate } from '../../../shared/lib/dates';
+import { sameCentreId } from '../../../shared/org/centreId';
 import {
     subscribeSites,
     subscribeOrgUsers,
@@ -276,7 +277,7 @@ export default function Consultation() {
     // display name for the UI; fall back to the stored value if not found.
     const siteName = useCallback((id) => {
         if (!id) return '—';
-        const s = sites.find((x) => x.id === id || x.code === id);
+        const s = sites.find((x) => x.id === id || sameCentreId(x.code, id));
         return s?.name || id;
     }, [sites]);
 

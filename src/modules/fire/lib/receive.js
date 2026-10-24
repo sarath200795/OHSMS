@@ -18,6 +18,56 @@ import { STATUS } from './constants'
 import { toDate } from './extinguisherLogic'
 import { isFutureDate } from '../../../shared/lib/dates'
 import { refillDefectsOf } from './defectClosure'
+import { HPT_RESULT, validateHpt } from './hpt'
+
+/**
+ * Dates for "Refilled & closed".
+ *
+ * Both have to fall after today. A next-refill date of today or earlier puts
+ * an Active unit straight back on To Be Refilled — the list it just left —
+ * and a next-HPT date that is not in the future leaves the hydrostatic defect
+ * open while the success toast says the dates were updated. The form used to
+ * accept any non-empty string.
+ */
+export function validateRefilledClosed({ dateOfNextRefill, dateOfNextHPT } = {}, today) {
+  const refill = typeof dateOfNextRefill === 'string' ? dateOfNextRefill : ''
+  const hpt = typeof dateOfNextHPT === 'string' ? dateOfNextHPT : ''
+  if (!toDate(refill) || !toDate(hpt)) return 'Enter both new due dates'
+  if (!isFutureDate(refill, today) || !isFutureDate(hpt, today)) {
+    return 'The new due dates must be after today'
+  }
+  return ''
+}
+
+/** True when the close is not claiming a different hydrostatic due date. */
+export function hptDateUnchanged(stored, next) {
+  return String(stored || '').trim() === String(next || '').trim()
+}
+
+/**
+ * A new hydrostatic date on Refilled & closed is a passed test.
+ *
+ * The button's job is to bring a refilled unit back. Recording a later
+ * hydrostatic date in the same step is a claim that the cylinder was tested,
+ * and that claim is what Submit HPT exists to evidence. Leaving the stored
+ * date where it is needs nothing extra. Changing it needs the certificate,
+ * the agency, and a test date — the same facts a passed test records — and
+ * the certificate's next-due date is the date being written.
+ */
+export function validateRefilledHpt(storedDate, { dateOfNextHPT, certificate } = {}) {
+  if (hptDateUnchanged(storedDate, dateOfNextHPT)) return ''
+  const fileName = String(certificate?.fileName || '').trim()
+  const hasFile = Boolean(certificate?.fileData || certificate?.fileUrl || certificate?.filePath)
+  if (!fileName || !hasFile) {
+    return 'Attach the hydrostatic-test certificate for the new due date'
+  }
+  return validateHpt({
+    testedOn: certificate?.testedOn,
+    result: HPT_RESULT.PASS,
+    nextDueOn: dateOfNextHPT,
+    vendor: certificate?.vendor,
+  })
+}
 
 export function validateReceive({ receivedOn, dateOfNextRefill } = {}) {
   if (!toDate(receivedOn)) return 'Enter the date the extinguisher was received back'

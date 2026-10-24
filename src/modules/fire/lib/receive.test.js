@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { receiveFromVendorUpdate } from './receive'
+import { receiveFromVendorUpdate, validateRefilledClosed, validateRefilledHpt } from './receive'
 import { receiveClosures, hptSuppressed } from './defectClosure'
 import { applyListFilters } from './listFilter'
 import { deriveExtinguisherDefects } from './derivedExtDefects'
@@ -27,6 +27,61 @@ const out = {
 }
 
 const input = { receivedOn: '2026-10-15', dateOfNextRefill: '2027-10-15' }
+
+describe('validateRefilledClosed', () => {
+  it('accepts both dates only when they fall after today', () => {
+    expect(
+      validateRefilledClosed(
+        { dateOfNextRefill: '2027-01-01', dateOfNextHPT: '2031-01-01' },
+        '2026-10-15'
+      )
+    ).toBe('')
+  })
+
+  it('rejects a missing date, today, and a date already past', () => {
+    expect(
+      validateRefilledClosed({ dateOfNextRefill: '', dateOfNextHPT: '2031-01-01' }, '2026-10-15')
+    ).toMatch(/both new due dates/)
+    expect(
+      validateRefilledClosed(
+        { dateOfNextRefill: '2026-10-15', dateOfNextHPT: '2031-01-01' },
+        '2026-10-15'
+      )
+    ).toMatch(/after today/)
+    expect(
+      validateRefilledClosed(
+        { dateOfNextRefill: '2027-01-01', dateOfNextHPT: '2020-01-01' },
+        '2026-10-15'
+      )
+    ).toMatch(/after today/)
+  })
+})
+
+describe('validateRefilledHpt', () => {
+  const cert = {
+    testedOn: '2026-10-01',
+    vendor: 'Acme Test',
+    fileName: 'cert.pdf',
+    fileData: 'data:application/pdf;base64,QQ==',
+  }
+
+  it('asks for nothing when the hydrostatic date is the one already stored', () => {
+    expect(validateRefilledHpt('2031-01-01', { dateOfNextHPT: '2031-01-01' })).toBe('')
+  })
+
+  it('requires the certificate when the date moves', () => {
+    expect(validateRefilledHpt('2020-01-01', { dateOfNextHPT: '2031-01-01' })).toMatch(/certificate/)
+    expect(
+      validateRefilledHpt('2020-01-01', {
+        dateOfNextHPT: '2031-01-01',
+        certificate: { ...cert, vendor: '' },
+      })
+    ).toMatch(/agency/)
+    expect(
+      validateRefilledHpt('2020-01-01', { dateOfNextHPT: '2031-01-01', certificate: cert })
+    ).toBe('')
+  })
+})
 
 describe('receiveFromVendorUpdate', () => {
   it('returns the unit to Active, records the received date, and moves the refill date', () => {

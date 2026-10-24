@@ -57,4 +57,34 @@ describe('In Process — received back from the vendor', () => {
       'Ada'
     )
   })
+
+  it('does not close a refill on a due date that is today or earlier', async () => {
+    const { markRefilledAndClosed } = await import('../lib/firestore')
+    render(<InProcess />)
+    fireEvent.click(screen.getByRole('button', { name: 'Refilled & closed' }))
+    fireEvent.change(screen.getByLabelText('New Next Refill date'), {
+      target: { value: '2020-01-01' },
+    })
+    fireEvent.change(screen.getByLabelText('New Next HPT date'), {
+      target: { value: '2031-01-01' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm & close' }))
+    expect(toast.error).toHaveBeenCalled()
+    expect(markRefilledAndClosed).not.toHaveBeenCalled()
+  })
+
+  it('does not record a new hydrostatic date without its certificate', async () => {
+    const { markRefilledAndClosed } = await import('../lib/firestore')
+    render(<InProcess />)
+    fireEvent.click(screen.getByRole('button', { name: 'Refilled & closed' }))
+    fireEvent.change(screen.getByLabelText('New Next Refill date'), {
+      target: { value: '2027-01-01' },
+    })
+    fireEvent.change(screen.getByLabelText('New Next HPT date'), {
+      target: { value: '2031-01-01' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm & close' }))
+    expect(toast.error).toHaveBeenCalled()
+    expect(markRefilledAndClosed).not.toHaveBeenCalled()
+  })
 })

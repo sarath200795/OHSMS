@@ -21,6 +21,7 @@ import {
   createAuditFinding,
   updateAuditFinding,
 } from '../../services/auditModule'
+import { sameCentreId } from '../../../../shared/org/centreId'
 
 /*
  * Internal Audit module — adapted from the original OHSMS portal's Audit.jsx
@@ -31,7 +32,8 @@ import {
 
 // ---- shared helpers ---------------------------------------------------------
 /** Resolve a site id or code to its name; falls back to the raw value. */
-const siteNameOf = (sites = [], id) => sites.find((s) => s.id === id || s.code === id)?.name || id
+const siteNameOf = (sites = [], id) =>
+  sites.find((s) => s.id === id || sameCentreId(s.code, id))?.name || id
 
 const fileToBase64 = (file) =>
   new Promise((resolve, reject) => {

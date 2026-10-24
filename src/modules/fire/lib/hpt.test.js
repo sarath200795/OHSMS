@@ -1,7 +1,19 @@
 import { describe, it, expect } from 'vitest'
 import {
-  isHptOverdue, nextHptDate, hasHpt, validateHpt, hptUpdate, hptSummary, requiredStep, WORKFLOW_STEP,
-  HPT_RESULT, HPT_INTERVAL_YEARS,
+  isHptOverdue,
+  nextHptDate,
+  hasHpt,
+  validateHpt,
+  hptUpdate,
+  hptSummary,
+  requiredStep,
+  WORKFLOW_STEP,
+  repositoryNextActions,
+  resolveBlockReason,
+  HPT_BLOCKS_RESOLVE,
+  QUOTATION_BLOCKS_RESOLVE,
+  HPT_RESULT,
+  HPT_INTERVAL_YEARS,
 } from './hpt'
 
 const TODAY = new Date('2026-06-15T00:00:00Z')
@@ -34,6 +46,14 @@ describe('knowing the hydrostatic test date has been crossed', () => {
     expect(isHptOverdue({}, TODAY)).toBe(false)
     expect(isHptOverdue({ dateOfNextHPT: '' }, TODAY)).toBe(false)
     expect(isHptOverdue(null, TODAY)).toBe(false)
+  })
+
+  // 18:30 UTC is midnight in Asia/Kolkata. The WhatsApp summary already counts
+  // that boundary; a browser left on UTC must not call the test due a day late.
+  it('counts the Asia/Kolkata day, the same day WhatsApp uses', () => {
+    const ext = { dateOfNextHPT: '2026-10-12' }
+    expect(isHptOverdue(ext, new Date('2026-10-11T18:29:00Z'))).toBe(false)
+    expect(isHptOverdue(ext, new Date('2026-10-11T18:31:00Z'))).toBe(true)
   })
 })
 
@@ -97,23 +117,27 @@ describe('validating a submission', () => {
 // The reason this module exists rather than a couple of lines in the modal.
 describe('what a submission changes on the cylinder', () => {
   it('moves the next-due date on a pass', () => {
-    expect(hptUpdate({ testedOn: '2026-06-01', result: HPT_RESULT.PASS, nextDueOn: '2031-06-01' }))
-      .toEqual({ dateOfNextHPT: '2031-06-01' })
+    expect(
+      hptUpdate({ testedOn: '2026-06-01', result: HPT_RESULT.PASS, nextDueOn: '2031-06-01' })
+    ).toEqual({ dateOfNextHPT: '2031-06-01' })
   })
 
   // A failed hydrostatic test condemns the cylinder. Advancing the date would
   // drop a condemned unit off the due list and let it read as compliant for
   // another five years — the single worst thing this feature could do.
   it('leaves the date alone on a failure, so the unit stays on the list', () => {
-    expect(hptUpdate({ testedOn: '2026-06-01', result: HPT_RESULT.FAIL, nextDueOn: '2031-06-01' }))
-      .toEqual({})
+    expect(
+      hptUpdate({ testedOn: '2026-06-01', result: HPT_RESULT.FAIL, nextDueOn: '2031-06-01' })
+    ).toEqual({})
   })
 
   it('says plainly in the trail which of the two happened', () => {
-    expect(hptSummary({ testedOn: '2026-06-01', result: HPT_RESULT.PASS, vendor: 'Acme' }))
-      .toBe('HPT passed on 2026-06-01 · Acme')
-    expect(hptSummary({ testedOn: '2026-06-01', result: HPT_RESULT.FAIL, vendor: 'Acme' }))
-      .toContain('FAILED')
+    expect(hptSummary({ testedOn: '2026-06-01', result: HPT_RESULT.PASS, vendor: 'Acme' })).toBe(
+      'HPT passed on 2026-06-01 · Acme'
+    )
+    expect(
+      hptSummary({ testedOn: '2026-06-01', result: HPT_RESULT.FAIL, vendor: 'Acme' })
+    ).toContain('FAILED')
   })
 })
 
@@ -152,12 +176,77 @@ describe('what the workflow asks a unit for next', () => {
     expect(requiredStep({ dateOfNextHPT: inDays(-1), ...quoted }, TODAY)).toBe(WORKFLOW_STEP.HPT)
   })
 
+  it('does not offer resolve or send-to-vendor while the test is due, even with a quotation', () => {
+    const ext = {
+      status: 'active',
+      dateOfNextHPT: inDays(-1),
+      dateOfNextRefill: inDays(400),
+      physicalDefects: ['pin'],
+      quotation: { submittedAt: '2026-06-01' },
+    }
+    expect(repositoryNextActions(ext, TODAY)).toMatchObject({
+      hpt: true,
+      quote: false,
+      resolve: false,
+      send: false,
+      receive: false,
+    })
+  })
+
+  it('offers resolve once the test is ahead and a quotation is in', () => {
+    const ext = {
+      status: 'active',
+      dateOfNextHPT: inDays(400),
+      dateOfNextRefill: inDays(400),
+      physicalDefects: ['pin'],
+      quotation: { submittedAt: '2026-06-01' },
+    }
+    expect(repositoryNextActions(ext, TODAY)).toMatchObject({
+      hpt: false,
+      resolve: true,
+      send: false,
+    })
+  })
+
+  it('offers send-to-vendor for a quoted refill that is not waiting on a test', () => {
+    const ext = {
+      status: 'to_be_refilled',
+      dateOfNextHPT: inDays(400),
+      dateOfNextRefill: inDays(-1),
+      physicalDefects: [],
+      quotation: { submittedAt: '2026-06-01' },
+    }
+    expect(repositoryNextActions(ext, TODAY)).toMatchObject({
+      hpt: false,
+      send: true,
+      resolve: false,
+    })
+  })
+
+  it('still offers receive-back while a unit is with the vendor and its test is due', () => {
+    const ext = {
+      status: 'in_process_refilling',
+      dateOfNextHPT: inDays(-10),
+      dateOfNextRefill: inDays(-1),
+      physicalDefects: ['empty'],
+    }
+    expect(repositoryNextActions(ext, TODAY).receive).toBe(true)
+    expect(repositoryNextActions(ext, TODAY).send).toBe(false)
+  })
+
   // STRICTLY overdue. A unit whose test falls due within the month is on the To
   // Be Refilled list for that reason, and is still asked for the quotation —
   // deliberately, because the test cannot be recorded before it has happened.
   it('does not ask for the test while the date is still ahead', () => {
     expect(requiredStep({ dateOfNextHPT: inDays(1) }, TODAY)).toBe(WORKFLOW_STEP.QUOTATION)
     expect(requiredStep({ dateOfNextHPT: inDays(30) }, TODAY)).toBe(WORKFLOW_STEP.QUOTATION)
+  })
+
+  it('refuses resolve without a quotation, and the test still outranks that', () => {
+    const quoted = { quotation: { submittedAt: '2026-06-01' } }
+    expect(resolveBlockReason({ dateOfNextHPT: inDays(400) }, TODAY)).toBe(QUOTATION_BLOCKS_RESOLVE)
+    expect(resolveBlockReason({ dateOfNextHPT: inDays(400), ...quoted }, TODAY)).toBe('')
+    expect(resolveBlockReason({ dateOfNextHPT: inDays(-1), ...quoted }, TODAY)).toBe(HPT_BLOCKS_RESOLVE)
   })
 
   it('a unit with no HPT date recorded is not treated as due', () => {

@@ -1,5 +1,6 @@
 import Papa from 'papaparse'
 import { canonicalFacility, SITE_TYPES } from '../../shared/weather/activityPrecautions'
+import { lookupCentreId, normCentreId } from '../../shared/org/centreId'
 
 // Flexible header matching so common column names all work.
 const HEADER_ALIASES = {
@@ -102,9 +103,10 @@ export function parseSitesCsv(file, customFields = []) {
             // Only a collision INSIDE the file is an error. A code that matches
             // a site already in the register is not a clash — it is how you say
             // "this row is that site", and planImport turns it into an edit.
-            const earlier = seen.get(code)
+            // Case is not a different id: "NP-001" and "np-001" are one key.
+            const earlier = seen.get(normCentreId(code))
             if (earlier) errors.push(`Centre ID ${code} is already used on row ${earlier}`)
-            else seen.set(code, rowNo)
+            else seen.set(normCentreId(code), rowNo)
           }
           const attributes = {}
           for (const f of customFields) {
@@ -194,11 +196,8 @@ const normName = (s) =>
  */
 export function planImport(parsed, sites = [], { activityTypes = [] } = {}) {
   const present = parsed?.present || { name: true, lat: true, lng: true, custom: [] }
-  const byCode = new Map()
   const byName = new Map()
   for (const s of sites || []) {
-    const code = String(s?.code ?? '').trim()
-    if (code && !byCode.has(code)) byCode.set(code, s)
     const n = normName(s?.name)
     if (n && !byName.has(n)) byName.set(n, s)
   }
@@ -209,7 +208,18 @@ export function planImport(parsed, sites = [], { activityTypes = [] } = {}) {
 
   const rows = (parsed?.rows || []).map((r) => {
     if (r.__errors.length) return { ...r, __match: null }
-    const target = (r.code && byCode.get(r.code)) || byName.get(normName(r.name)) || null
+    const codeHit = r.code ? lookupCentreId(sites, r.code) : { site: null, ambiguous: false }
+    if (codeHit.ambiguous) {
+      return {
+        ...r,
+        __match: null,
+        __errors: [
+          ...r.__errors,
+          `Centre ID ${r.code} matches more than one site. Give each its own before importing.`,
+        ],
+      }
+    }
+    const target = codeHit.site || byName.get(normName(r.name)) || null
     const facility = canonicalFacility(r.facility, activityTypes)
     const known =
       !r.facility ||
@@ -241,18 +251,22 @@ export function planImport(parsed, sites = [], { activityTypes = [] } = {}) {
       }
     }
     claimedBy.set(target.id, r.__row)
+    // The preview has to name the type that will be stored. "factory" is
+    // saved as "Manufacturing/Plant"; comparing the typed alias to the
+    // register made every re-import look like a type change that the write
+    // then did not make.
+    const planned = { ...r, facility }
     return {
-      ...r,
-      facility,
+      ...planned,
       __match: {
         id: target.id,
         name: target.name,
-        by: r.code && byCode.get(r.code) === target ? 'id' : 'name',
+        by: codeHit.site && codeHit.site.id === target.id ? 'id' : 'name',
         // The rename is worth showing: a centre-id match on a row with a
         // different name silently retitles a site otherwise.
         renameTo: normName(target.name) === normName(r.name) ? '' : r.name,
       },
-      __changes: changedFields(r, target, present),
+      __changes: changedFields(planned, target, present),
     }
   })
 
@@ -278,7 +292,9 @@ function changedFields(row, site, present) {
   // Mirrors updatePayload: a difference in case or spacing alone is not a
   // change, so the preview must not advertise one.
   if (present.name && normName(row.name) !== normName(site.name)) put('name', row.name, site.name)
-  if (present.code) put('code', row.code, site.code)
+  // Case or surrounding space alone is not a new id. Writing the sheet's
+  // spelling back would restyle a stored code on every re-import.
+  if (present.code && normCentreId(row.code) !== normCentreId(site.code)) put('code', row.code, site.code)
   if (present.facility && (row.facility || site.facility))
     put('facility', row.facility, site.facility)
   if (present.region) put('region', row.region, site.region)
@@ -309,7 +325,7 @@ export function updatePayload(row, site, present) {
   // restyle the register every time somebody imported a hastily typed file.
   // A real rename (normally arriving on a centre-ID match) still goes through.
   if (present.name && normName(row.name) !== normName(site.name)) out.name = row.name
-  if (present.code) out.code = row.code
+  if (present.code && normCentreId(row.code) !== normCentreId(site.code)) out.code = row.code
   // A blank site type on an existing site leaves it unset. Writing '' over a
   // site that already has one is how a spreadsheet clears it.
   if (present.facility && (row.facility || site.facility)) out.facility = row.facility || ''
@@ -330,11 +346,16 @@ export function updatePayload(row, site, present) {
   return out
 }
 
-/** code → site name, for the collision check above. Blank codes are not keys. */
+/**
+ * Normalised centre id → site name. Blank codes are not keys.
+ *
+ * The key is folded, so a lookup of either case finds the first site that
+ * holds it. The stored spelling is not in the key.
+ */
 export function codeIndex(sites = []) {
   const out = new Map()
   for (const s of sites || []) {
-    const code = String(s?.code ?? '').trim()
+    const code = normCentreId(s?.code)
     if (code && !out.has(code)) out.set(code, s.name || '')
   }
   return out
@@ -350,12 +371,17 @@ export function codeIndex(sites = []) {
 export function duplicateCodes(sites = []) {
   const byCode = new Map()
   for (const s of sites || []) {
-    const code = String(s?.code ?? '').trim()
-    if (!code) continue
-    if (!byCode.has(code)) byCode.set(code, [])
-    byCode.get(code).push(s.name || '(unnamed)')
+    const stored = String(s?.code ?? '').trim()
+    const key = normCentreId(stored)
+    if (!key) continue
+    if (!byCode.has(key)) byCode.set(key, { labels: [], names: [] })
+    const group = byCode.get(key)
+    if (!group.labels.includes(stored)) group.labels.push(stored)
+    group.names.push(s.name || '(unnamed)')
   }
-  return [...byCode.entries()].filter(([, names]) => names.length > 1)
+  return [...byCode.values()]
+    .filter((g) => g.names.length > 1)
+    .map((g) => [g.labels.join(' / '), g.names])
 }
 
 // CSV template — appends a column per configured custom scope field.

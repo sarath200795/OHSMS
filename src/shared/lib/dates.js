@@ -19,6 +19,22 @@ export function todayISO(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
+// Hydrostatic due dates are counted on the Asia/Kolkata calendar, the same day
+// functions/lib/siteSummary.js uses for the WhatsApp site summary. The rest of
+// this file stays on the browser's calendar: a refill date and an incident
+// date are the day the user picked, and moving those would change every list.
+// 18:30 UTC is midnight in Kolkata, so a browser left on UTC calls a test due
+// tomorrow while the message the site manager just received already calls it
+// due today.
+const IST_OFFSET_MS = 330 * 60 * 1000
+
+/** 'YYYY-MM-DD' for an instant, on the Asia/Kolkata calendar. */
+export function istDay(date = new Date()) {
+  const d = date instanceof Date ? date : new Date(date)
+  if (Number.isNaN(d.getTime())) return ''
+  return new Date(d.getTime() + IST_OFFSET_MS).toISOString().slice(0, 10)
+}
+
 /**
  * Is this YYYY-MM-DD after today?
  *

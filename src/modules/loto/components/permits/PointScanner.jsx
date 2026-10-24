@@ -39,9 +39,19 @@ export default function PointScanner({ onCode, disabled = false }) {
     ;(async () => {
       try {
         stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
-        if (!live || !video.current) return
+        // The permission prompt can outlive the effect. Cleanup runs while
+        // this await is pending, and at that moment `stream` is still null,
+        // so the tracks opened here would stay on with no preview.
+        if (!live || !video.current) {
+          stream.getTracks().forEach((t) => t.stop())
+          return
+        }
         video.current.srcObject = stream
         await video.current.play()
+        if (!live) {
+          stream.getTracks().forEach((t) => t.stop())
+          return
+        }
         const detector = new window.BarcodeDetector({ formats: ['qr_code'] })
         timer = setInterval(async () => {
           try {

@@ -1,4 +1,4 @@
-import { daysUntil, toDate, hasQuotation } from './extinguisherLogic'
+import { deriveStatus, hasQuotation, hptDaysUntil, isToBeRefilled, toDate } from './extinguisherLogic'
 
 /**
  * Hydrostatic pressure testing.
@@ -38,7 +38,7 @@ export const HPT_RESULT = { PASS: 'pass', FAIL: 'fail' }
  * expired: a compliance date is satisfied before it arrives, not on the day.
  */
 export function isHptOverdue(ext, today = new Date()) {
-  const days = daysUntil(ext?.dateOfNextHPT, today)
+  const days = hptDaysUntil(ext?.dateOfNextHPT, today)
   return days !== null && days <= 0
 }
 
@@ -76,7 +76,8 @@ export function validateHpt({ testedOn, result, nextDueOn, vendor } = {}) {
   if (!toDate(testedOn)) return 'Enter the date the test was carried out'
   if (toDate(testedOn) > new Date()) return 'The test date is in the future'
   if (!String(vendor || '').trim()) return 'Name the agency that carried out the test'
-  if (result !== HPT_RESULT.PASS && result !== HPT_RESULT.FAIL) return 'Record whether the cylinder passed or failed'
+  if (result !== HPT_RESULT.PASS && result !== HPT_RESULT.FAIL)
+    return 'Record whether the cylinder passed or failed'
   if (result === HPT_RESULT.PASS && !toDate(nextDueOn)) return 'Enter when the next test falls due'
   if (result === HPT_RESULT.PASS && toDate(nextDueOn) <= toDate(testedOn)) {
     return 'The next test must fall due after the test date'
@@ -128,4 +129,58 @@ export function requiredStep(ext, today = new Date()) {
   if (isHptOverdue(ext, today)) return WORKFLOW_STEP.HPT
   if (!hasQuotation(ext)) return WORKFLOW_STEP.QUOTATION
   return WORKFLOW_STEP.NONE
+}
+
+/**
+ * Which workflow buttons the extinguisher repository may show.
+ *
+ * Refill Due and Physical Defects already ask for the test and nothing else
+ * once the hydrostatic date has been crossed. The repository grew the same
+ * comment and then still rendered Resolve and Send to vendor beside Submit
+ * HPT whenever a quotation was already on the unit — so the page that said
+ * the test outranks both paths was the one that let a quoted cylinder past.
+ * A failed test condemns the cylinder; clearing the defect or sending it
+ * out for a refill before the certificate is recorded makes it look handled.
+ *
+ * Receiving a unit back from the vendor is not one of those paths. That
+ * return leaves dateOfNextHPT where it is, so an overdue test stays overdue.
+ */
+export function repositoryNextActions(ext, today = new Date()) {
+  const d = deriveStatus(ext, today)
+  const canResolve = Boolean(d.hasPhysicalDefect && !d.isClosed)
+  const canSendToVendor = Boolean(isToBeRefilled(ext, today) && !d.inProcess && !d.isClosed)
+  const quoted = hasQuotation(ext)
+  const hptDue = requiredStep(ext, today) === WORKFLOW_STEP.HPT
+  const inWorkflow = canResolve || canSendToVendor
+  return {
+    hpt: inWorkflow && hptDue,
+    quote: inWorkflow && !quoted && !hptDue,
+    resolve: canResolve && quoted && !hptDue,
+    send: canSendToVendor && quoted && !hptDue,
+    receive: Boolean(d.inProcess && !d.isClosed),
+    quoted,
+  }
+}
+
+export const HPT_BLOCKS_RESOLVE =
+  'Record the hydrostatic test before resolving defects on this unit.'
+export const HPT_BLOCKS_VENDOR =
+  'Record the hydrostatic test before sending this unit to the vendor.'
+export const QUOTATION_BLOCKS_RESOLVE =
+  'Submit a vendor quotation before resolving defects on this unit.'
+
+/**
+ * Why Resolve must not run, or '' when it may.
+ *
+ * The open-defect log used to clear a defect in one click. The repository and
+ * the physical-defect list already refuse that until the test is recorded and
+ * a quotation is in; the log did not, so the same cylinder was resolvable
+ * from the one screen that had not heard the rule. The test outranks the
+ * quotation, for the same reason requiredStep gives.
+ */
+export function resolveBlockReason(ext, today = new Date()) {
+  if (!ext) return 'Extinguisher not found'
+  if (isHptOverdue(ext, today)) return HPT_BLOCKS_RESOLVE
+  if (!hasQuotation(ext)) return QUOTATION_BLOCKS_RESOLVE
+  return ''
 }
