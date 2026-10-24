@@ -17,6 +17,7 @@ import { clearKeyring } from '../crypto'
 import { clearSharedSubscriptions } from '../org/sharedSubscription'
 import { reportError } from '../monitoring'
 import { isMfaRequired, resolverFor, completeTotpSignIn } from './mfa'
+import { nativePlatform } from '../mobile/native'
 import { subscribePlatformAdmin } from './platformAdmin'
 import { startSession, endSession } from './sessionConstants'
 import { normalizeEntitlement, subscribeEntitlement, isModuleEnabled } from '../modules/entitlements'
@@ -312,6 +313,16 @@ export function AuthProvider({ children }) {
     } catch (err) {
       if (isMfaRequired(err)) return { status: 'mfa', resolver: resolverFor(err) }
       if (err?.code === 'auth/popup-blocked' || err?.code === 'auth/operation-not-supported-in-this-environment') {
+        // The iOS shell's origin is capacitor://localhost. Firebase will not
+        // accept that as an authorised domain, so a redirect leaves the person
+        // on a page the WebView cannot come back from. Android is
+        // https://localhost, which can be authorised. Email and password never
+        // takes this branch. docs/MOBILE.md.
+        if (nativePlatform() === 'ios') {
+          const denied = new Error('Single sign-on cannot return to the iOS app. Sign in with email and password.')
+          denied.code = 'auth/native-sso-unsupported'
+          throw denied
+        }
         await signInWithRedirect(auth, provider)
         return { status: 'redirecting' }
       }
