@@ -34,7 +34,7 @@ describe('HomeBar', () => {
 
   it('names a field page without repeating a scan token', () => {
     renderAt('/field/scan')
-    expect(screen.getByText('Scan QR')).toBeTruthy()
+    expect(screen.getByText('QR Scan')).toBeTruthy()
     cleanup()
     renderAt('/field/asset/SECRETTOKEN')
     expect(screen.getByText('Equipment')).toBeTruthy()

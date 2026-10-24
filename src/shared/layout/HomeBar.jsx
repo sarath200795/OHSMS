@@ -98,8 +98,9 @@ const PORTAL_PAGES = {
 // Named field pages only. /field/asset/<token> is labelled "Equipment": the
 // token is a credential and the trail is visible text, not a place to repeat it.
 const FIELD_PAGES = {
-  '/field/scan': 'Scan QR',
-  '/field/tasks': 'My tasks',
+  '/field/scan': 'QR Scan',
+  '/field/tasks': 'Tasks',
+  '/field/alerts': 'Alerts',
 }
 
 const ADMIN_LABELS = {

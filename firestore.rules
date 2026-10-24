@@ -2181,6 +2181,14 @@ service cloud.firestore {
         // same reason as notifications: a narrow `if false` below restricts
         // nothing while this generic grant still matches the collection.
         && col != 'weatherDigestRuns'
+        // 'alertReads' is one document per person: the ids of alert rows they
+        // have already opened. The generic grant would let any approved member
+        // read a colleague's cursor and, worse, overwrite it — or park an
+        // unbounded document in a collection the screen treats as private.
+        // Rules are a permissive union, so the narrow match below restricts
+        // nothing while this one still grants the same write. Excluded from
+        // every operation; the owner's own read and write live on that match.
+        && col != 'alertReads'
         // 'lotoPermits' has its own status machine and its own subcollections
         // (events, attachments), written above. The generic grant would let any
         // writer approve, edit or delete a permit in one setDoc, and its
@@ -2457,6 +2465,23 @@ service cloud.firestore {
         && request.resource.data.get('siteRegion', '') == resource.data.get('siteRegion', '')
         && request.resource.data.get('siteEntity', '') == resource.data.get('siteEntity', '');
     }
+
+      // Per-user alert cursor. The feed itself is the existing collections;
+      // this document is only which of those rows this person has opened.
+      // uid is the document id so a member cannot write anyone else's, and
+      // the payload is one bounded string — a map of free values was how a
+      // cursor document becomes a megabyte on someone else's bill.
+      match /alertReads/{uid} {
+        allow read: if isApprovedMemberOf(orgId) && request.auth.uid == uid;
+        allow create, update: if isApprovedMemberOf(orgId)
+          && request.auth.uid == uid
+          && request.resource.data.keys().hasOnly(['ids', 'updatedAt'])
+          && request.resource.data.get('ids', '') is string
+          && request.resource.data.get('ids', '').size() <= 4000
+          && request.resource.data.get('ids', '').matches('^[A-Za-z0-9:_+,-]*$')
+          && request.resource.data.updatedAt == request.time;
+        allow delete: if false;
+      }
 
       match /{col}/{docId} {
         // defectLocks joins auditLogs in being excluded: its whole purpose is

@@ -15,16 +15,12 @@ describe('FieldNav', () => {
     )
     const bar = screen.getByRole('navigation', { name: 'Field' })
     expect(bar).toBeTruthy()
-    expect(screen.getByRole('link', { name: 'Scan QR' }).getAttribute('href')).toBe('/field/scan')
-    expect(
-      screen.getByRole('link', { name: 'My tasks and inspections' }).getAttribute('href')
-    ).toBe('/field/tasks')
-    expect(screen.getByRole('link', { name: 'Report incident' }).getAttribute('href')).toBe(
-      '/portal/report'
-    )
+    expect(screen.getByRole('link', { name: 'QR Scan' }).getAttribute('href')).toBe('/field/scan')
+    expect(screen.getByRole('link', { name: 'Tasks' }).getAttribute('href')).toBe('/field/tasks')
+    expect(screen.getByRole('link', { name: 'Report' }).getAttribute('href')).toBe('/portal/report')
     expect(screen.getByRole('link', { name: 'Defects' }).getAttribute('href')).toBe(
       '/equipment/defects'
     )
-    expect(screen.getByRole('link', { name: 'Sites' }).getAttribute('href')).toBe('/sites')
+    expect(screen.getByRole('link', { name: 'Alerts' }).getAttribute('href')).toBe('/field/alerts')
   })
 })

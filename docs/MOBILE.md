@@ -60,10 +60,25 @@ matter, beyond the usual `dist/`:
     the immutable `*.js` header would pin the worker for a year and a
     deploy would not replace the shell.
 
-Deploy hosting from a checkout of this commit after `npm run build`. The
-rules and functions are unchanged; a hosting-only deploy is the one that
-carries this. Until it lands, suite.weehs.org is still the previous site:
-no manifest, no scanner, and the camera policy still blocks the page.
+Deploy hosting from a checkout of this commit after `npm run build`, and
+deploy the Firestore rules in the same release. The rules gained
+`organizations/{orgId}/alertReads/{uid}` — the phone's per-user "already
+opened" cursor. Without that deploy, marking an alert read is refused and
+every row stays unread. Functions are unchanged. Until hosting lands,
+suite.weehs.org is still the previous site: no manifest, no scanner, and
+the camera policy still blocks the page.
+
+## Alerts
+
+The Alerts tab reads collections the product already has: defect reports,
+incidents, committee meetings and mock drills, scoped to the sites the
+signed-in person can see. Weather is not one of those collections. The
+digest is a mail, and the screen reads current conditions the same way the
+weather page does. A weather row is a site at Medium or worse, and its id
+includes the digest's six-hour slot, so the next window is unread again.
+
+Web push (FCM) is not part of this. Nothing buzzes when the app is closed.
+The badge is the unread count while it is open.
 
 ## Signing in, inside the WebView
 
