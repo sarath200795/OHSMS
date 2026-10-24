@@ -148,9 +148,9 @@ describe('conversation memory', () => {
     expect(onSiteStep({ ...site, step: 'org' }, 'u1', ORGS, NOW)).toBeNull()
   })
 
-  it('names the organisation when asking for a site', () => {
+  it('names the organisation when asking for a centre', () => {
     expect(sitePrompt(ORGS[0])).toMatch(/Acme Fitness/)
-    expect(sitePrompt(ORGS[0])).toMatch(/Site ID or Centre ID/)
+    expect(sitePrompt(ORGS[0])).toContain('Please enter the Centre ID or Centre Name.')
     expect(sitePrompt(ORGS[0])).toMatch(/CHANGE ORG/)
   })
 })

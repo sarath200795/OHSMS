@@ -26,7 +26,7 @@ South · Demo Co
 🚨 National emergency: 112
 
 Updated 12 Oct, 07:30 IST
-Reply with another site code or name.
+Reply with another Centre ID or Centre Name.
 ```
 
 | Line               | Definition (and the app helper it must equal)                                                                                                                                                                                         |
@@ -45,8 +45,9 @@ ways over one fixture. A module switched off in `moduleEntitlements` drops its
 line. WhatsApp's 4,096-character body limit is enforced by adding contacts until
 the budget runs out and ending with "+N more in the app".
 
-An ambiguous name gets an interactive list (≤10 rows) of matching sites; more
-than ten asks for the code.
+An ambiguous name gets an interactive list (≤8 rows) of matching centres; more
+than eight asks for the Centre ID. A name that matches nothing says the centre
+was not found and, when any are close, lists the closest reachable names.
 
 ## Flow
 
@@ -59,8 +60,12 @@ Meta ──POST (X-Hub-Signature-256)──► waWebhook
    5 UNLINK / STOP honoured before the rate limit, including when lookup is off
    6 waOrgSettings enabled === false → one reply, no site data (absent = on)
    7 30/hour, 150/day per number (IST windows); one notice, then silence
-   8 which organisation — only the one this profile belongs to; a number or the name
-   9 resolve code → name → contains → fuzzy, ONLY among sites the user reaches
+   8 which organisation — only the one this profile belongs to. One organisation
+     is already known, so the bot asks for the centre immediately; several still
+     ask first. MENU and CHANGE ORG ask again
+   9 exact Centre ID, then partial/fuzzy Centre Name, ONLY among sites the user reaches.
+     One match is the summary. Two to eight is a numbered list (interactive where
+     the client supports it). None says not found and suggests the closest names
   10 waSiteSnapshots/{orgId} (one read) + erpContacts → one reply via Graph API
   11 waQueryLog row (no message text)
 ```
@@ -135,7 +140,7 @@ stored, and the profile name in the webhook payload is dropped.
 
 ## Location fallback and numbered lists
 
-- If the text matches no site the user can access, the bot asks for their location. It sends Cloud API's interactive `location_request_message`. If the client can't show that, it sends the same body as plain text: "Tap 📎 → Location → Send your current location".
+- If the text matches no centre the user can reach, the bot says it was not found and suggests the closest names (at most three, and only names that are actually close). The same entries are numbered in the text and, on WhatsApp, sent as an interactive list. Replying with the number returns that centre. A shared location is still accepted; the bot no longer asks for one before saying the centre was not found.
 - When a location arrives, the bot measures the haversine distance to the user's **accessible** sites that have `lat`/`lng`. It lists up to 5 sites within 25 km. If none is that close, it lists the nearest 3. The list is an interactive list with the same entries numbered in the text.
 - The user picks a site by tapping a row, or by replying with its number or code. A tap or a number re-checks access before any data is sent.
 - `waSessions/{phoneHash}` holds the conversation: the chosen organisation and the last numbered list (site ids or organisation ids). The list answers to its numbers for 15 minutes (`choicesExpireAtMs`). The document itself lasts 24 hours of idle time (`expiresAtMs`, refreshed on each message), which is how the chat remembers the organisation. The rules deny all client access to it, and `purgeWhatsAppLedgers` sweeps it when `expiresAtMs` has passed. MENU and CHANGE ORG start the organisation question again.
@@ -166,8 +171,9 @@ The same lookup also answers on Telegram (@WEEHS_Site_Lookup_bot) through the
   typed (at most ten). `true` volunteers every name when there are ten or
   fewer; more than ten is still "reply with the name", because a WhatsApp
   list cannot hold them and a longer list is the customer directory. One
-  allowed organisation is always named: hiding the only choice protects
-  nothing. `TG_ORG_ID` remains the way to keep the open bot on a single
+  allowed organisation is already known: the bot asks for the centre instead
+  of offering a one-line directory, and still names that organisation on the
+  centre prompt. `TG_ORG_ID` remains the way to keep the open bot on a single
   organisation.
 - Register: `setWebhook?url=<function URL>&secret_token=<TG_WEBHOOK_SECRET>&allowed_updates=["message","callback_query"]`.
   Inline buttons (the organisation list, and a site list that already has
@@ -175,32 +181,42 @@ The same lookup also answers on Telegram (@WEEHS_Site_Lookup_bot) through the
 
 ## Choosing an organisation
 
-Both channels ask which organisation before any site is searched, and remember
-the answer on `waSessions` for 24 hours of idle time. MENU (or `/start` on
-Telegram) and CHANGE ORG ask again. A linked WhatsApp user is offered only
-the organisation on their live profile (`users/{uid}.orgId`, re-checked every
-message). There is no membership list to consult: a person who works for two
-companies has two accounts, and the number is linked to one of them.
+Both channels remember the chosen organisation on `waSessions` for 24 hours of
+idle time. MENU (or `/start` on Telegram) and CHANGE ORG ask again. A linked
+WhatsApp user is offered only the organisation on their live profile
+(`users/{uid}.orgId`, re-checked every message). There is no membership list
+to consult: a person who works for two companies has two accounts, and the
+number is linked to one of them.
 
-A chat with no chosen organisation does not resolve a site. "Not an
-organisation" and "no such site" are not distinguished until the organisation
-is chosen, and a site outside the user's reach is still not searched at all.
+When that profile has its one organisation, the organisation is already known.
+A greeting is answered with the centre prompt, and a Centre ID or Centre Name
+is resolved immediately. The same is true of a bot pinned to one organisation.
+When more than one organisation is possible, nothing about a site is read
+until one is chosen: "not an organisation" and "no such centre" are not
+distinguished yet. A site outside the user's reach is still not searched at
+all, and is not offered as a close name.
 
 ```
 User: hi
-Bot:  Which organisation?
-      1. Acme Fitness
-      Reply with the number or the name.
-      In an emergency call 112.
-
-User: 1
 Bot:  Acme Fitness.
-      Send a Site ID or Centre ID, or part of the site name.
+      Please enter the Centre ID or Centre Name.
+      Say MENU to start over, or CHANGE ORG to switch organisation.
+      In an emergency call 112.
 
 User: DEMO001
 Bot:  🏢 Acme North (DEMO001)
       …emergency contacts, AED line, open defects…
-      Reply with another site code or name.
+      Reply with another Centre ID or Centre Name.
+
+User: koramangla
+Bot:  Centre not found for "koramangla".
+      Closest names:
+      1. Koramangala Block (BLR1)
+      Reply with the number.
+
+User: 1
+Bot:  🏢 Koramangala Block (BLR1)
+      …
 
 User: change org
 Bot:  Which organisation?

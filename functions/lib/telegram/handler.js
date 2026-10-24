@@ -16,6 +16,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { parseCommand, readLocation } from '../whatsapp/parse.js'
 import { guideConversation, MAX_MESSAGE_AGE_MS } from '../whatsapp/handler.js'
+import { CENTRE_PROMPT } from '../whatsapp/format.js'
 import { countQuery } from '../whatsapp/rateLimit.js'
 import { safeEqual, isRealSecret } from '../whatsapp/signature.js'
 
@@ -24,11 +25,11 @@ export const TG_API = 'https://api.telegram.org'
 
 export const TG_HELP =
   'WeEHS site lookup.\n\n' +
-  'I ask which organisation, then a Site ID or Centre ID (or part of a site name). ' +
-  "The reply is that site's safety summary: extinguishers, AED availability, open defects, " +
+  `I ask which organisation, then: ${CENTRE_PROMPT} ` +
+  "The reply is that centre's safety summary: extinguishers, AED availability, open defects, " +
   'first aid boxes, pending actions, incidents and emergency contacts.\n\n' +
   'Say MENU to start over, or CHANGE ORG to pick a different organisation.\n\n' +
-  "Can't remember the site? After the organisation is chosen, share your location " +
+  "Can't remember the centre? After the organisation is chosen, share your location " +
   '(📎 → Location) for the nearest sites.\n\n' +
   'In an emergency call 112.'
 
@@ -202,7 +203,7 @@ export async function handleUpdate(msg, ctx) {
   if (msg.type === 'other') {
     row.intent = 'other'
     await reply(from, {
-      text: 'Please send an organisation name or a site code, or share your location.',
+      text: `Send an organisation name, or share your location. ${CENTRE_PROMPT}`,
     })
     return done('unsupported')
   }
@@ -217,7 +218,7 @@ export async function handleUpdate(msg, ctx) {
   row.intent = cmd.kind
   if (cmd.kind === 'link' || cmd.kind === 'badLink' || cmd.kind === 'unlink') {
     await reply(from, {
-      text: 'No linking is needed on Telegram. Send an organisation name, then a site code.',
+      text: `No linking is needed on Telegram. Send an organisation name, then the Centre ID or Centre Name.`,
     })
     return done('nolink')
   }

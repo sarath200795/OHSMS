@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { resolveSiteQuery, MAX_CHOICES } from './resolve.js'
+import { resolveSiteQuery, closestSites, MAX_CHOICES } from './resolve.js'
 
 const sites = [
   { id: 's1', name: 'Cult Koramangala 5th Block', code: 'BLR0123' },
@@ -20,6 +20,18 @@ describe('resolveSiteQuery', () => {
     expect(resolveSiteQuery('71', sites).status).not.toBe('one')
   })
 
+  it('prefers an exact centre id over a name that merely contains it', () => {
+    const mixed = [
+      { id: 'name', name: 'Centre BLR0123 Annex', code: 'OTHER' },
+      { id: 'code', name: 'North Hub', code: 'BLR0123' },
+    ]
+    expect(resolveSiteQuery('blr0123', mixed)).toMatchObject({
+      status: 'one',
+      how: 'code',
+      site: { id: 'code' },
+    })
+  })
+
   it('matches a normalised name, ignoring "gym" and punctuation', () => {
     expect(resolveSiteQuery('cult ameerpet', sites)).toMatchObject({
       status: 'one',
@@ -32,6 +44,20 @@ describe('resolveSiteQuery', () => {
     const out = resolveSiteQuery('koramangala', sites)
     expect(out.status).toBe('many')
     expect(out.sites.map((s) => s.id).sort()).toEqual(['s1', 's2'])
+  })
+
+  it('matches a case-insensitive partial name, including the middle of a word', () => {
+    expect(resolveSiteQuery('ANGALA', sites)).toMatchObject({ status: 'many', how: 'contains' })
+    expect(
+      resolveSiteQuery('ANGALA', sites)
+        .sites.map((s) => s.id)
+        .sort()
+    ).toEqual(['s1', 's2'])
+    expect(resolveSiteQuery('ameer', sites)).toMatchObject({
+      status: 'one',
+      how: 'contains',
+      site: { id: 's3' },
+    })
   })
 
   it('narrows with more words', () => {
@@ -55,12 +81,35 @@ describe('resolveSiteQuery', () => {
     expect(resolveSiteQuery('koramangala', [])).toEqual({ status: 'none' })
   })
 
-  it('asks for the code when too many match', () => {
+  it('lists at most eight matches and asks for the id beyond that', () => {
+    expect(MAX_CHOICES).toBe(8)
+    const eight = Array.from({ length: MAX_CHOICES }, (_, i) => ({
+      id: `m${i}`,
+      name: `Cult Hub ${i}`,
+    }))
+    const listed = resolveSiteQuery('hub', eight)
+    expect(listed.status).toBe('many')
+    expect(listed.sites).toHaveLength(MAX_CHOICES)
     const many = Array.from({ length: MAX_CHOICES + 1 }, (_, i) => ({
       id: `m${i}`,
       name: `Cult Hub ${i}`,
     }))
     expect(resolveSiteQuery('hub', many)).toEqual({ status: 'tooMany', count: MAX_CHOICES + 1 })
+  })
+
+  it('suggests the closest names and never a centre outside the list', () => {
+    const near = closestSites('koramangla', sites)
+    expect(near.map((s) => s.id).sort()).toEqual(['s1', 's2'])
+    expect(
+      closestSites(
+        'koramangla',
+        sites.filter((s) => s.id === 's4')
+      )
+    ).toEqual([])
+    expect(closestSites('zzzz', sites)).toEqual([])
+    expect(
+      closestSites('demo002', [{ id: 's1', name: 'Demo North Hub', code: 'DEMO001' }])
+    ).toEqual([])
   })
 
   // The privacy property is the caller's (it passes only reachable sites), but
