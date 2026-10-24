@@ -56,6 +56,9 @@ import {
   redactConfig,
   readiness,
   checkBaseUrl,
+  connectMetabase,
+  metabaseRequestInit,
+  publicMetabaseError,
   sourcesFor,
   cardQueryUrl,
   cardUrl,
@@ -2296,22 +2299,20 @@ async function metabaseCaller(request, { adminOnly = false } = {}) {
  *
  * The key travels in the `x-api-key` header. A query parameter would land in
  * the instance's access log, in any proxy in front of it, and in the referrer
- * of whatever it redirects to.
+ * of whatever it redirects to. Redirects are refused outright.
+ *
+ * connectMetabase resolves the host and pins the socket to the addresses that
+ * passed. global fetch would look the name up again as it connected, which is
+ * the gap between a check and a dial.
  */
 async function metabaseFetch(url, apiKey, { method = 'GET', body } = {}) {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), METABASE_TIMEOUT_MS)
   try {
-    return await fetch(url, {
-      method,
-      headers: {
-        'x-api-key': apiKey,
-        accept: 'application/json',
-        ...(body ? { 'content-type': 'application/json' } : {}),
-      },
-      body: body ? JSON.stringify(body) : undefined,
-      signal: controller.signal,
-    })
+    return await connectMetabase(
+      url,
+      metabaseRequestInit(apiKey, { method, body, signal: controller.signal }),
+    )
   } finally {
     clearTimeout(timer)
   }
@@ -2390,7 +2391,8 @@ export const metabaseTest = onCall({ region: REGION }, async (request) => {
       message:
         e?.name === 'AbortError'
           ? `Metabase did not answer within ${Math.round(METABASE_TIMEOUT_MS / 1000)} seconds.`
-          : 'Could not reach that address. Check the URL, and that the instance resolves publicly.',
+          : publicMetabaseError(e) ||
+            'Could not reach that address. Check the URL, and that the instance resolves publicly.',
     }
   }
 })
@@ -2575,6 +2577,8 @@ async function querySource(source, dataset, orgId, detailed = false, range = nul
       if (card) ({ parameters, bound } = buildDateParams(card, range))
       else undescribed = true
     } catch (e) {
+      const explained = publicMetabaseError(e)
+      if (explained) return { ...tag, ok: false, reason: 'bad-url', message: explained }
       undescribed = true
       logger.warn('metabaseQuery: could not describe card', {
         orgId,
@@ -2643,6 +2647,8 @@ async function querySource(source, dataset, orgId, detailed = false, range = nul
       res = await post()
     }
   } catch (e) {
+    const explained = publicMetabaseError(e)
+    if (explained) return { ...tag, ok: false, reason: 'bad-url', message: explained }
     logger.warn('metabaseQuery: unreachable', {
       orgId,
       dataset,
@@ -2753,8 +2759,10 @@ async function describeCard(origin, cardId, apiKey) {
       // A 5xx here is the same flaky warehouse the query itself retries past.
       // A 401 or 404 will fail identically twice, so it is not retried.
       if (res.status < 500) break
-    } catch {
-      /* retried, then reported by returning null */
+    } catch (e) {
+      // A private address or a redirect is not a flaky warehouse. Retrying it
+      // would dial again, and swallowing it makes the next step blame the key.
+      if (publicMetabaseError(e)) throw e
     }
   }
   if (card) cardShapeCache.set(key, card)

@@ -571,7 +571,7 @@ export function Modal({
             aria-modal="true"
             aria-labelledby={titleId}
             className={cx(
-              'card relative z-10 flex w-full max-h-[min(92dvh,44rem)] flex-col overflow-hidden p-0 outline-none',
+              'card relative z-10 flex w-full max-h-[min(92dvh,44rem)] flex-col overflow-hidden p-0 outline-hidden',
               maxWidth || maxW || widths[size]
             )}
             initial={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.96 }}
@@ -594,7 +594,7 @@ export function Modal({
                 type="button"
                 onClick={onClose}
                 aria-label="Close"
-                className="grid h-8 w-8 shrink-0 place-items-center rounded-xl text-ink-400 transition hover:bg-surface-100 hover:text-ink-700 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+                className="grid h-8 w-8 shrink-0 place-items-center rounded-xl text-ink-400 transition hover:bg-surface-100 hover:text-ink-700 active:scale-95 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-400"
               >
                 <X size={18} />
               </button>

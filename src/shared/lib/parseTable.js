@@ -3,11 +3,12 @@ import Papa from 'papaparse'
 /**
  * Read an uploaded table without handing an untrusted file to SheetJS.
  *
- * Every import in the app parsed .xlsx, and the npm `xlsx` package carries a
- * prototype-pollution advisory with no fixed version — SheetJS stopped
- * publishing there. Parsing is the whole of that exposure: building a workbook
- * from our own data is not an attack surface, so the exports still write real
- * .xlsx files and only the READ paths moved here.
+ * Every import in the app parsed .xlsx, and the copy of SheetJS then on npm
+ * (0.18.5) carried a prototype-pollution advisory with no fixed release
+ * published there. Parsing is the whole of that exposure: building a workbook
+ * from our own data is not an attack surface. Exports now write with the
+ * maintained SheetJS build, and the READ paths stay here so an upload is
+ * still CSV rather than a workbook parser.
  *
  * papaparse was already in the tree (the site importer uses it), so this adds
  * no dependency and removes the untrusted-parsing surface rather than

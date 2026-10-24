@@ -119,7 +119,7 @@ function Tile({ to, icon: Icon, tone = 'brand', label, title, delay = 0, logoKey
                  transition-[transform,box-shadow] duration-200 ease-emil
                  hover:-translate-y-0.5 hover:shadow-elev-lg
                  active:translate-y-0 active:scale-[0.99]
-                 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas
+                 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas
                  motion-reduce:transition-none motion-reduce:hover:translate-y-0"
     >
       <span aria-hidden="true" className="glass-tile-glow" data-tone={tone} />
@@ -444,7 +444,7 @@ export default function PortalHome() {
                 <Link
                   key={a.key}
                   to="/portal/actions"
-                  className="flex items-center gap-2.5 rounded-xl bg-surface-50 px-3 py-2 ring-1 ring-ink-900/5 transition-colors hover:bg-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+                  className="flex items-center gap-2.5 rounded-xl bg-surface-50 px-3 py-2 ring-1 ring-ink-900/5 transition-colors hover:bg-surface-100 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-400"
                 >
                   <span
                     className="h-6 w-1 flex-none rounded"
@@ -567,7 +567,7 @@ export default function PortalHome() {
             </p>
             <Link
               to="/portal/actions"
-              className="rounded text-xs font-semibold text-brand-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+              className="rounded text-xs font-semibold text-brand-700 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-400"
             >
               My actions
             </Link>
@@ -587,7 +587,7 @@ export default function PortalHome() {
             </p>
             <Link
               to="/portal/training"
-              className="rounded text-xs font-semibold text-brand-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+              className="rounded text-xs font-semibold text-brand-700 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-400"
             >
               My training
             </Link>

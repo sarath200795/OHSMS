@@ -189,7 +189,7 @@ export default function ActionTracker() {
                           value={r.norm}
                           disabled={!isApproved || busyKey === r.key}
                           onChange={(e) => changeStatus(r, e.target.value)}
-                          className="rounded-lg border px-2.5 py-1.5 text-xs font-bold outline-none transition disabled:opacity-60"
+                          className="rounded-lg border px-2.5 py-1.5 text-xs font-bold outline-hidden transition disabled:opacity-60"
                           style={{
                             backgroundColor: `${NORM_BY_KEY[r.norm]?.color}1a`,
                             color: NORM_BY_KEY[r.norm]?.color,

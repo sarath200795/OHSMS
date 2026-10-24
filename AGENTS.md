@@ -123,7 +123,8 @@ factory. Prefer it over hand-rolling `collection(db, 'organizations', orgId, …
   that touches the DOM**; without it the failure is immediate and obvious, which
   is the point.
 - `npm run test:rules` and the Playwright suite need a **JDK** — the emulators
-  are JVM processes. CI uses Java 17.
+  are JVM processes. CI uses Java 21. firebase-tools 15 will not start them
+  on an older JDK.
 - Rules tests send hostile payloads, not well-behaved ones. A new rule needs a
   test that tries to defeat it, not one that confirms it works when used
   correctly.

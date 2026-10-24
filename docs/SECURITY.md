@@ -60,6 +60,52 @@ out are being worked rather than merely hidden.
 
 ## Recently closed
 
+### S-28 · Metabase URL check missed two literal forms, and followed redirects — CLOSED
+
+`checkBaseUrl` is what stops an organisation admin's Metabase setting from
+becoming a URL the Cloud Function dials on a private network. The dotted
+patterns and the hostname set did that for the forms a person pastes. Two
+forms the URL parser accepts were not in either list:
+
+- a trailing dot, which DNS treats as the same name (`metadata.google.internal.`)
+- an IPv6 literal, including the IPv4-mapped spelling Node gives the metadata
+  address
+
+`fetch` also follows redirects. The host check ran on the URL that was saved,
+and a 302 is a different host, carrying the API key in `x-api-key`.
+
+The host check now strips a trailing dot and refuses every IPv6 literal —
+Metabase is configured by hostname, and no instance URL is one. Before the
+request, the hostname is resolved (the OS lookup and the A and AAAA records)
+and any private, loopback, link-local, metadata, or non-global address
+refuses the whole host, including an IPv4 carried inside an IPv6 form. The
+socket lookup returns only the addresses that passed, so a later answer for
+the same name is not what gets dialled. A 3xx fails the request and is not
+followed, and the API key stays in the `x-api-key` header.
+`functions/lib/metabase.test.js` covers the literal forms, the resolved
+addresses, the pinned lookup, and the refused redirect.
+
+### S-27 · A LOTO procedure mirror could carry the names it exists to hide — CLOSED
+
+`/procedureQr/{id}` is world-readable by `get`, and the id is the one printed
+on the machine. The mirror exists because rules cannot hide fields, so the
+procedure document — `primaryTech`, `createdByName`, the lock holder's name —
+must never be that public page.
+
+`publicProcedure()` whitelists the fields. The rule did not. `setDoc` of the
+procedure onto the mirror path succeeded for any writer of the owning org,
+and the client whitelist is not a control. `/qr` and `/permitQr` already pin
+`keys().hasOnly` for the same reason; this match was the one that did not.
+
+Create now requires `procedureMirrorFields()`, the same list the builder
+writes, including `updatedAt`. Update uses `keepsMirrorShape`, so a mirror
+that already holds a retired key can still be corrected and a new key is
+refused. Nested fields are pinned too: each point may only carry the keys
+`publicPoint()` writes, string fields are length-capped, `devices` is a short
+list of strings, and the counts are integers bounded by that list.
+`tests/publicProcedure.rules.test.js` sends the name fields at the top level
+and inside a point, and the shape the public page is built from.
+
 ### S-26 · Uploads minted a permanent download URL — CLOSED
 
 `getDownloadURL()` ran after every upload and the result was persisted on the
@@ -525,5 +571,9 @@ above, allows a NAMED list, and each entry must state why it is tolerable and
 what closes it. Lowering a threshold hides every other advisory at that level;
 an allowlist hides exactly one, by name, and reports itself when stale.
 
-To remove the last of it: drop `xlsx` entirely, or move exports to the
-maintained SheetJS build, then delete the allowlist entry.
+**Update — the allowlist entry is gone.** Exports depend on the maintained
+SheetJS build (0.20.3, the release that contains the prototype-pollution and
+ReDoS fixes). npm does not publish it; the dependency is that build's tarball.
+The `xlsx` entry in `scripts/audit-gate.mjs` was removed with it. One test
+still calls `XLSX.read` on a workbook that same test just wrote, which is not
+an upload. Production reads stay on papaparse.

@@ -44,7 +44,7 @@ export default function HomeBar() {
     >
       <Link
         to="/portal"
-        className="flex items-center gap-2 rounded-xl px-2 py-1 text-ink-800 transition-colors hover:bg-surface-100 hover:text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+        className="flex items-center gap-2 rounded-xl px-2 py-1 text-ink-800 transition-colors hover:bg-surface-100 hover:text-brand-700 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-400"
       >
         {/* Decorative: the word "Home" already names this link, so announcing
             the mark as well would just make the trail read twice.
@@ -62,7 +62,7 @@ export default function HomeBar() {
           {insideModule ? (
             <Link
               to={mod.path}
-              className="rounded-xl px-2 py-1 text-ink-700 transition-colors hover:bg-surface-100 hover:text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+              className="rounded-xl px-2 py-1 text-ink-700 transition-colors hover:bg-surface-100 hover:text-brand-700 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-400"
             >
               {mod.label}
             </Link>

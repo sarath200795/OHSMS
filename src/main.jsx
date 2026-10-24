@@ -7,6 +7,19 @@ import ErrorBoundary from './shared/ErrorBoundary'
 import { installMonitoring } from './shared/monitoring'
 import { AuthProvider } from './shared/auth/AuthContext'
 import OrgTheme from './shared/branding/OrgTheme'
+// Fonts and Leaflet stay JS imports. Tailwind's PostCSS plugin treats a later
+// @import as a statement it will not resolve, and the woff urls never ship.
+import '@fontsource/roboto/400.css'
+import '@fontsource/roboto/500.css'
+import '@fontsource/roboto/700.css'
+import '@fontsource/roboto/900.css'
+import '@fontsource/open-sans/400.css'
+import '@fontsource/open-sans/500.css'
+import '@fontsource/open-sans/600.css'
+import '@fontsource/open-sans/700.css'
+import '@fontsource/open-sans/800.css'
+import 'leaflet/dist/leaflet.css'
+import 'leaflet.markercluster/dist/MarkerCluster.css'
 import './index.css'
 
 installMonitoring()
@@ -16,17 +29,13 @@ createRoot(document.getElementById('root')).render(
     {/* Outermost on purpose: a crash in the router or auth provider must still
         land on the recovery screen, not a blank page. */}
     <ErrorBoundary>
-      {/* Opted in to v7 behaviour now, because until this was set React Router
-          printed two future-flag warnings on EVERY navigation — around 94% of
-          everything in the console, which is how a console stops being read at
-          all and a real error hides in plain sight.
-
-          Safe to turn on here, checked rather than assumed: v7_relativeSplatPath
-          only changes how a RELATIVE path resolves inside a splat route, and
-          this app has no relative <Link to> and no relative navigate() — every
-          module's tabs are absolute ('/loto/inventory'), and the only relative
-          navigation is navigate(-1), which is history and unaffected. */}
-      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      {/* Those two flags are the React Router 7 default, and BrowserRouter
+          no longer accepts them. v7_relativeSplatPath only changes how a
+          RELATIVE path resolves inside a splat route. This app has no relative
+          <Link to> and no relative navigate() — every module's tabs are
+          absolute ('/loto/inventory'), and the only relative navigation is
+          navigate(-1), which is history. */}
+      <BrowserRouter>
         <AuthProvider>
           <OrgTheme />
           <App />

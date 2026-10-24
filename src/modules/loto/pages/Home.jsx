@@ -192,7 +192,7 @@ export default function Home() {
               <select
                 value={siteFilter}
                 onChange={(e) => setSiteFilter(e.target.value)}
-                className="rounded-xl bg-surface px-3 py-1.5 text-sm text-steel-100  outline-none ring-2 ring-transparent focus:ring-hazard/50"
+                className="rounded-xl bg-surface px-3 py-1.5 text-sm text-steel-100  outline-hidden ring-2 ring-transparent focus:ring-hazard/50"
               >
                 <option value="">All sites</option>
                 {siteList.map((s) => (

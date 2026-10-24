@@ -825,6 +825,238 @@ service cloud.firestore {
     //
     // Writes are pinned to the owning tenant and ride in the same batch or
     // transaction as the procedure write, so the two cannot disagree.
+    //
+    // The field list is the same whitelist publicProcedure() builds. Rules
+    // cannot hide fields on a read, which is why this mirror exists — and a
+    // whitelist that lives only in the client is not one. setDoc of the
+    // procedure document itself onto this path used to succeed for any
+    // writer of the owning org, and that document carries primaryTech,
+    // createdByName and the lock holder's name. The id is printed on the
+    // machine, and get is public, so those names would be unauthenticated.
+    //
+    // Same grandfathering as the equipment mirror: a document that already
+    // holds a retired key can still be corrected, and a new key is refused.
+    //
+    // What a point on the public page is allowed to hold.
+    //
+    // keys().hasOnly on the document stops a name at the top level and says
+    // nothing about the inside of `points`. The page renders every field of
+    // every point, so a name — or a map, or a document-sized string — one
+    // level down is the same publication the mirror exists to prevent.
+    //
+    // The rules language has no loop, so each index is named. An unchecked
+    // element would be the whole hole. The builders rewrite the mirror in
+    // full (set, not a patch), which is why the post-state has to be the
+    // whitelist: a point that already carries an extra key is corrected by
+    // the next legitimate save, and an update that tries to keep it is refused.
+    //
+    // Caps sit above what publicProcedure() writes. Point keys are uuids,
+    // device keys are short tokens, and the free-text fields share the 8000
+    // character ceiling the permit reason already uses. boundedText is what
+    // stops a non-string: a megabyte array in a text field is not a string,
+    // and shortText would have waved it past.
+    //
+    // pointCount is points.size() because the builder sets it from that
+    // length. lockedCount is how many of those points are locked, so it
+    // cannot be larger than the list it describes.
+    function procedurePointDevices(list) {
+      return list is list
+        && list.size() <= 20
+        && (list.size() < 1 || (list[0] is string && list[0].size() <= 80))
+        && (list.size() < 2 || (list[1] is string && list[1].size() <= 80))
+        && (list.size() < 3 || (list[2] is string && list[2].size() <= 80))
+        && (list.size() < 4 || (list[3] is string && list[3].size() <= 80))
+        && (list.size() < 5 || (list[4] is string && list[4].size() <= 80))
+        && (list.size() < 6 || (list[5] is string && list[5].size() <= 80))
+        && (list.size() < 7 || (list[6] is string && list[6].size() <= 80))
+        && (list.size() < 8 || (list[7] is string && list[7].size() <= 80))
+        && (list.size() < 9 || (list[8] is string && list[8].size() <= 80))
+        && (list.size() < 10 || (list[9] is string && list[9].size() <= 80))
+        && (list.size() < 11 || (list[10] is string && list[10].size() <= 80))
+        && (list.size() < 12 || (list[11] is string && list[11].size() <= 80))
+        && (list.size() < 13 || (list[12] is string && list[12].size() <= 80))
+        && (list.size() < 14 || (list[13] is string && list[13].size() <= 80))
+        && (list.size() < 15 || (list[14] is string && list[14].size() <= 80))
+        && (list.size() < 16 || (list[15] is string && list[15].size() <= 80))
+        && (list.size() < 17 || (list[16] is string && list[16].size() <= 80))
+        && (list.size() < 18 || (list[17] is string && list[17].size() <= 80))
+        && (list.size() < 19 || (list[18] is string && list[18].size() <= 80))
+        && (list.size() < 20 || (list[19] is string && list[19].size() <= 80));
+    }
+
+    function procedurePoint(p) {
+      return p is map
+        && p.keys().hasOnly([
+          'key', 'energySource', 'rating', 'isolationDetails', 'hazard',
+          'verification', 'device', 'devices', 'locked'
+        ])
+        && boundedText(p.get('key', null), 80)
+        && boundedText(p.get('energySource', null), 40)
+        && boundedText(p.get('rating', null), 500)
+        && boundedText(p.get('isolationDetails', null), 8000)
+        && boundedText(p.get('hazard', null), 8000)
+        && boundedText(p.get('verification', null), 8000)
+        && boundedText(p.get('device', null), 80)
+        && (!('devices' in p) || procedurePointDevices(p.devices))
+        && (!('locked' in p) || p.locked is bool);
+    }
+
+    function procedurePoints0(list) {
+      return true
+        && (list.size() < 1 || procedurePoint(list[0]))
+        && (list.size() < 2 || procedurePoint(list[1]))
+        && (list.size() < 3 || procedurePoint(list[2]))
+        && (list.size() < 4 || procedurePoint(list[3]))
+        && (list.size() < 5 || procedurePoint(list[4]))
+        && (list.size() < 6 || procedurePoint(list[5]))
+        && (list.size() < 7 || procedurePoint(list[6]))
+        && (list.size() < 8 || procedurePoint(list[7]))
+        && (list.size() < 9 || procedurePoint(list[8]))
+        && (list.size() < 10 || procedurePoint(list[9]))
+        && (list.size() < 11 || procedurePoint(list[10]))
+        && (list.size() < 12 || procedurePoint(list[11]))
+        && (list.size() < 13 || procedurePoint(list[12]))
+        && (list.size() < 14 || procedurePoint(list[13]))
+        && (list.size() < 15 || procedurePoint(list[14]))
+        && (list.size() < 16 || procedurePoint(list[15]))
+        && (list.size() < 17 || procedurePoint(list[16]))
+        && (list.size() < 18 || procedurePoint(list[17]))
+        && (list.size() < 19 || procedurePoint(list[18]))
+        && (list.size() < 20 || procedurePoint(list[19]));
+    }
+
+    function procedurePoints20(list) {
+      return true
+        && (list.size() < 21 || procedurePoint(list[20]))
+        && (list.size() < 22 || procedurePoint(list[21]))
+        && (list.size() < 23 || procedurePoint(list[22]))
+        && (list.size() < 24 || procedurePoint(list[23]))
+        && (list.size() < 25 || procedurePoint(list[24]))
+        && (list.size() < 26 || procedurePoint(list[25]))
+        && (list.size() < 27 || procedurePoint(list[26]))
+        && (list.size() < 28 || procedurePoint(list[27]))
+        && (list.size() < 29 || procedurePoint(list[28]))
+        && (list.size() < 30 || procedurePoint(list[29]))
+        && (list.size() < 31 || procedurePoint(list[30]))
+        && (list.size() < 32 || procedurePoint(list[31]))
+        && (list.size() < 33 || procedurePoint(list[32]))
+        && (list.size() < 34 || procedurePoint(list[33]))
+        && (list.size() < 35 || procedurePoint(list[34]))
+        && (list.size() < 36 || procedurePoint(list[35]))
+        && (list.size() < 37 || procedurePoint(list[36]))
+        && (list.size() < 38 || procedurePoint(list[37]))
+        && (list.size() < 39 || procedurePoint(list[38]))
+        && (list.size() < 40 || procedurePoint(list[39]));
+    }
+
+    function procedurePoints40(list) {
+      return true
+        && (list.size() < 41 || procedurePoint(list[40]))
+        && (list.size() < 42 || procedurePoint(list[41]))
+        && (list.size() < 43 || procedurePoint(list[42]))
+        && (list.size() < 44 || procedurePoint(list[43]))
+        && (list.size() < 45 || procedurePoint(list[44]))
+        && (list.size() < 46 || procedurePoint(list[45]))
+        && (list.size() < 47 || procedurePoint(list[46]))
+        && (list.size() < 48 || procedurePoint(list[47]))
+        && (list.size() < 49 || procedurePoint(list[48]))
+        && (list.size() < 50 || procedurePoint(list[49]))
+        && (list.size() < 51 || procedurePoint(list[50]))
+        && (list.size() < 52 || procedurePoint(list[51]))
+        && (list.size() < 53 || procedurePoint(list[52]))
+        && (list.size() < 54 || procedurePoint(list[53]))
+        && (list.size() < 55 || procedurePoint(list[54]))
+        && (list.size() < 56 || procedurePoint(list[55]))
+        && (list.size() < 57 || procedurePoint(list[56]))
+        && (list.size() < 58 || procedurePoint(list[57]))
+        && (list.size() < 59 || procedurePoint(list[58]))
+        && (list.size() < 60 || procedurePoint(list[59]));
+    }
+
+    function procedurePoints60(list) {
+      return true
+        && (list.size() < 61 || procedurePoint(list[60]))
+        && (list.size() < 62 || procedurePoint(list[61]))
+        && (list.size() < 63 || procedurePoint(list[62]))
+        && (list.size() < 64 || procedurePoint(list[63]))
+        && (list.size() < 65 || procedurePoint(list[64]))
+        && (list.size() < 66 || procedurePoint(list[65]))
+        && (list.size() < 67 || procedurePoint(list[66]))
+        && (list.size() < 68 || procedurePoint(list[67]))
+        && (list.size() < 69 || procedurePoint(list[68]))
+        && (list.size() < 70 || procedurePoint(list[69]))
+        && (list.size() < 71 || procedurePoint(list[70]))
+        && (list.size() < 72 || procedurePoint(list[71]))
+        && (list.size() < 73 || procedurePoint(list[72]))
+        && (list.size() < 74 || procedurePoint(list[73]))
+        && (list.size() < 75 || procedurePoint(list[74]))
+        && (list.size() < 76 || procedurePoint(list[75]))
+        && (list.size() < 77 || procedurePoint(list[76]))
+        && (list.size() < 78 || procedurePoint(list[77]))
+        && (list.size() < 79 || procedurePoint(list[78]))
+        && (list.size() < 80 || procedurePoint(list[79]));
+    }
+
+    function procedurePoints80(list) {
+      return true
+        && (list.size() < 81 || procedurePoint(list[80]))
+        && (list.size() < 82 || procedurePoint(list[81]))
+        && (list.size() < 83 || procedurePoint(list[82]))
+        && (list.size() < 84 || procedurePoint(list[83]))
+        && (list.size() < 85 || procedurePoint(list[84]))
+        && (list.size() < 86 || procedurePoint(list[85]))
+        && (list.size() < 87 || procedurePoint(list[86]))
+        && (list.size() < 88 || procedurePoint(list[87]))
+        && (list.size() < 89 || procedurePoint(list[88]))
+        && (list.size() < 90 || procedurePoint(list[89]))
+        && (list.size() < 91 || procedurePoint(list[90]))
+        && (list.size() < 92 || procedurePoint(list[91]))
+        && (list.size() < 93 || procedurePoint(list[92]))
+        && (list.size() < 94 || procedurePoint(list[93]))
+        && (list.size() < 95 || procedurePoint(list[94]))
+        && (list.size() < 96 || procedurePoint(list[95]))
+        && (list.size() < 97 || procedurePoint(list[96]))
+        && (list.size() < 98 || procedurePoint(list[97]))
+        && (list.size() < 99 || procedurePoint(list[98]))
+        && (list.size() < 100 || procedurePoint(list[99]));
+    }
+
+    function procedurePoints(list) {
+      return list is list
+        && list.size() <= 100
+        && procedurePoints0(list)
+        && (list.size() < 20 || procedurePoints20(list))
+        && (list.size() < 40 || procedurePoints40(list))
+        && (list.size() < 60 || procedurePoints60(list))
+        && (list.size() < 80 || procedurePoints80(list));
+    }
+
+    function procedureMirrorContent(d) {
+      return boundedText(d.get('orgId', null), 128)
+        && boundedText(d.get('procedureCode', null), 200)
+        && boundedText(d.get('title', null), 500)
+        && boundedText(d.get('equipment', null), 500)
+        && boundedText(d.get('site', null), 300)
+        && boundedText(d.get('status', null), 40)
+        && boundedText(d.get('lockStatus', null), 40)
+        && (!('revision' in d) || (d.revision is int && d.revision >= 0 && d.revision <= 100000))
+        && (!('updatedAt' in d) || d.updatedAt is timestamp)
+        && procedurePoints(d.points)
+        && d.pointCount is int
+        && d.pointCount == d.points.size()
+        && d.lockedCount is int
+        && d.lockedCount >= 0
+        && d.lockedCount <= d.points.size();
+    }
+
+    function procedureMirrorFields() {
+      return [
+        'orgId', 'procedureCode', 'title', 'equipment', 'site', 'status',
+        'revision', 'lockStatus', 'lockedCount', 'pointCount', 'points',
+        'updatedAt'
+      ];
+    }
+
     match /procedureQr/{procedureId} {
       allow get: if true;
       allow list: if false;
@@ -842,11 +1074,15 @@ service cloud.firestore {
       // backfill path has it committed already and getAfter reads the same.
       allow create: if isWriterOf(request.resource.data.orgId)
         && getAfter(/databases/$(database)/documents/procedures/$(procedureId)).data.orgId
-             == request.resource.data.orgId;
+             == request.resource.data.orgId
+        && request.resource.data.keys().hasOnly(procedureMirrorFields())
+        && procedureMirrorContent(request.resource.data);
 
       allow update: if resource != null
         && isWriterOf(resource.data.orgId)
-        && request.resource.data.orgId == resource.data.orgId;
+        && request.resource.data.orgId == resource.data.orgId
+        && keepsMirrorShape(procedureMirrorFields())
+        && procedureMirrorContent(request.resource.data);
       // Pinned to the mirror's own org rather than the procedure's: delete runs
       // in the same batch that deletes the procedure, so nothing would be left
       // for getAfter to read.
