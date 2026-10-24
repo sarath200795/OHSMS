@@ -11,7 +11,7 @@
 // fits in one pick list.
 // ─────────────────────────────────────────────────────────────────────────────
 import { isActiveMember } from './access.js'
-import { clean } from './format.js'
+import { CENTRE_PROMPT, clean } from './format.js'
 
 /** Idle time after which the chat is asked which organisation again. */
 export const CONV_TTL_MS = 24 * 60 * 60 * 1000
@@ -163,12 +163,12 @@ export function formatOrgPrompt(orgs = [], { list = false, query = '', missed = 
   }
 }
 
-/** After an organisation is chosen: ask for the site, and say which org. */
+/** After an organisation is chosen: ask for the centre, and say which org. */
 export function sitePrompt(org) {
   const name = clean(org?.name, 80) || 'That organisation'
   return (
     `${name}.\n\n` +
-    'Send a Site ID or Centre ID, or part of the site name.\n\n' +
+    `${CENTRE_PROMPT}\n\n` +
     'Say MENU to start over, or CHANGE ORG to switch organisation.\n\n' +
     EMERGENCY
   )

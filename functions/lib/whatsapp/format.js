@@ -14,6 +14,7 @@
 // reach the site.
 // ─────────────────────────────────────────────────────────────────────────────
 import { readableText } from '../mailTemplates/safe.js'
+import { MAX_CHOICES } from './resolve.js'
 
 export const MAX_BODY = 4096
 const ROW_TITLE_MAX = 24
@@ -225,7 +226,7 @@ export function formatSiteReply(site, counts = {}, opts = {}) {
   tail.push('🚨 National emergency: 112')
   tail.push('')
   if (opts.asOf instanceof Date) tail.push(`Updated ${istStamp(opts.asOf)}`)
-  tail.push('Reply with another site code or name.')
+  tail.push('Reply with another Centre ID or Centre Name.')
 
   const lines = on('emergency') ? contactLines(opts.contacts, site, opts.roleLabels) : []
   const fixed =
@@ -255,38 +256,51 @@ export function formatSiteReply(site, counts = {}, opts = {}) {
 const cut = (s, max) => (s.length > max ? `${s.slice(0, max - 1)}…` : s)
 
 /**
- * A pick-list: an interactive list message (≤10 rows, title ≤24, description
+ * A pick-list: an interactive list message (≤8 rows, title ≤24, description
  * ≤72) plus the same choices NUMBERED in the text, so a client that cannot
  * render lists — or a user who would rather type — replies "2" or the code.
  * `extra` per site is a short suffix (e.g. a distance) shown in both.
  */
-export function formatPickList(sites = [], intro, extra = () => '') {
-  const shown = sites.slice(0, 10)
+export function formatPickList(sites = [], intro, extra = () => '', labels = {}) {
+  const shown = sites.slice(0, MAX_CHOICES)
   const lines = shown.map((s, i) => {
     const e = extra(s)
     return `${i + 1}. ${siteTitle(s)}${e ? ` — ${e}` : ''}`
   })
   const text = cut(
-    [intro, '', ...lines, '', 'Tap a site below, or reply with its number or code.'].join('\n'),
+    [intro, '', ...lines, '', 'Tap a centre below, or reply with its number.'].join('\n'),
     1024
   )
-  const rows = shown.map((s) => {
+  const rows = shown.map((s, i) => {
     const code = clean(s.code, 12)
     const name = clean(s.name, 60) || 'Site'
     const e = extra(s)
     const where = [clean(s.region, 40), clean(s.entity, 40)].filter(Boolean).join(' · ')
+    const line = lines[i]
     return {
       id: `site:${s.id}`,
       title: cut(code ? `${code} · ${name}` : name, ROW_TITLE_MAX),
       description: cut([e, where].filter(Boolean).join(' · ') || name, ROW_DESC_MAX),
+      // Telegram inline buttons use label. WhatsApp's list uses title and
+      // description; the same extra field is already sent on organisation rows.
+      label: cut(line, 64),
     }
   })
-  return { text, rows }
+  return {
+    text,
+    rows,
+    list: rows.length
+      ? {
+          button: labels.button || 'Choose centre',
+          section: labels.section || 'Centres',
+        }
+      : undefined,
+  }
 }
 
 /** Several names match. */
 export function formatChoices(sites = [], query = '') {
-  return formatPickList(sites, `Several sites match "${clean(query, 40)}":`)
+  return formatPickList(sites, `Several centres match "${clean(query, 40)}":`)
 }
 
 /** Sites near a shared location; `near` is geo.js nearestSites().sites. */
@@ -302,18 +316,22 @@ export function formatNearby(near = [], within = true, kmLabel = (km) => `${km} 
   )
 }
 
+/** The site-step prompt. Both channels use this sentence verbatim. */
+export const CENTRE_PROMPT = 'Please enter the Centre ID or Centre Name.'
+
 /** Body of the location request (interactive or plain). */
 export function locationRequestText(query) {
-  const head = query ? `No site you can access matches "${clean(query, 40)}". ` : ''
+  const q = clean(query, 40)
+  const head = q ? `Centre not found for "${q}". ` : ''
   return (
     `${head}Share your current location and I'll list your nearest sites.\n\n` +
-    'Tap 📎 → Location → Send your current location. Or reply with a site code.'
+    `Tap 📎 → Location → Send your current location. Or ${CENTRE_PROMPT}`
   )
 }
 
 export const MESSAGES = {
   help:
-    'Send a site code (e.g. BLR0123) or part of a site name to get its safety summary: ' +
+    `${CENTRE_PROMPT} The reply is that centre's safety summary: ` +
     'extinguishers, open defects, first aid boxes, pending actions, incidents and emergency contacts.\n\n' +
     'Send MENU to start over, or CHANGE ORG to switch organisation. Send UNLINK to disconnect this number.',
   unlinked:
@@ -322,8 +340,7 @@ export const MESSAGES = {
   noAccess: "You don't have access to that site. Ask your admin if you need it.",
   noSites: "Your account doesn't have access to any sites yet. Ask your admin for access.",
   slowDown: "You've sent a lot of lookups. Please wait a while and try again.",
-  linked:
-    'Linked ✅ This number can now look up your sites. I will ask which organisation, then a Site ID or Centre ID. Send UNLINK to disconnect.',
+  linked: `Linked ✅ This number can now look up your sites. ${CENTRE_PROMPT} Send CHANGE ORG to switch organisation, or UNLINK to disconnect.`,
   linkFailed:
     "That code didn't work. Codes are single-use and expire after 10 minutes — generate a new one in the app.",
   linkBlocked: 'Too many wrong codes. Linking from this number is paused for 24 hours.',
@@ -335,17 +352,25 @@ export const MESSAGES = {
     'Send UNLINK to disconnect this number.\n\nIn an emergency call 112.',
   error: 'Sorry, something went wrong looking that up. Please try again in a few minutes.',
   noLocatedSites:
-    "None of your sites has a location recorded, so I can't find the nearest. Please send the site code or name.",
-  badLocation: "I couldn't read that location. Please try again, or send the site code.",
-  pickExpired: 'That list has expired. Send the site code or name again.',
+    "None of your sites has a location recorded, so I can't find the nearest. " + CENTRE_PROMPT,
+  badLocation: `I couldn't read that location. Please try again. ${CENTRE_PROMPT}`,
+  pickExpired: `That list has expired. ${CENTRE_PROMPT}`,
 }
 
 export function noMatch(query) {
-  return `No site you can access matches "${clean(query, 40)}". Try the site code, or send HELP.`
+  const q = clean(query, 40)
+  return q ? `Centre not found for "${q}".` : 'Centre not found.'
+}
+
+/** A miss, plus the closest reachable names when any are actually close. */
+export function formatNotFound(query, suggestions = []) {
+  const head = noMatch(query)
+  if (!suggestions.length) return { text: `${head}\n\n${CENTRE_PROMPT}`, rows: [] }
+  return formatPickList(suggestions, `${head}\n\nClosest names:`)
 }
 
 export function tooMany(count) {
-  return `${count} of your sites match. Please send the site code, or more of the name.`
+  return `${count} centres match. Please enter the Centre ID, or more of the Centre Name.`
 }
 
 export function helpText(sites = []) {

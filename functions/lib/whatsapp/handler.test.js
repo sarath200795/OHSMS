@@ -144,8 +144,10 @@ describe('authorised lookups', () => {
   it('answers a site outside reach exactly like a site that does not exist', async () => {
     await handleMessage(msg('DEMO002'), ctx())
     await handleMessage(msg('NOPE999'), ctx())
-    expect(sent[0].text).toMatch(/^No site you can access matches "demo002"/)
-    expect(sent[1].text).toMatch(/^No site you can access matches "nope999"/)
+    expect(sent[0].text).toMatch(/^Centre not found for "demo002"/)
+    expect(sent[1].text).toMatch(/^Centre not found for "nope999"/)
+    expect(sent[0].text).not.toMatch(/South Hub|DEMO002/)
+    expect(sent[1].text).not.toMatch(/South Hub|DEMO002/)
     expect(store.s.logs.map((l) => l.outcome)).toEqual(['nomatch', 'nomatch'])
   })
 
@@ -159,11 +161,86 @@ describe('authorised lookups', () => {
     store.s.users.set('u1', member({ access: { regions: ['South'] } }))
     await handleMessage(msg('demo south'), ctx())
     expect(sent[0].rows.map((r) => r.id)).toEqual(['site:s3', 'site:s2'])
+    expect(sent[0].text).toMatch(/1\. Demo South Annex/)
+    expect(sent[0].list).toMatchObject({ button: 'Choose centre', section: 'Centres' })
   })
 
-  it('answers "hi" with the only site when there is exactly one', async () => {
+  it('matches a centre name ignoring case', async () => {
+    store.s.users.set('u1', member({ role: 'admin' }))
+    const row = await handleMessage(msg('NORTH hub'), ctx())
+    expect(row).toMatchObject({ outcome: 'ok', siteId: 's1' })
+    expect(sent[0].text).toContain('Demo North Hub (DEMO001)')
+  })
+
+  it('lists at most eight centres, and a number returns the one picked', async () => {
+    const hubs = Array.from({ length: 8 }, (_, i) => ({
+      id: `h${i}`,
+      name: `South Hub ${i}`,
+      code: `H${i}`,
+      region: 'South',
+    }))
+    store.s.sites.o1 = hubs
+    store.s.users.set('u1', member({ role: 'admin' }))
+    await handleMessage(msg('south hub'), ctx())
+    expect(sent[0].rows).toHaveLength(8)
+    expect(sent[0].text).toMatch(/1\. South Hub/)
+    expect(sent[0].text).toMatch(/8\. South Hub/)
+    const first = store.s.sessions.get(PHONE).choices[0]
+    const row = await handleMessage(msg('1'), ctx())
+    expect(row).toMatchObject({ outcome: 'ok', siteId: first })
+    expect(sent[1].text).toContain(`(${hubs.find((h) => h.id === first).code})`)
+  })
+
+  it('asks for the centre id when more than eight names match', async () => {
+    store.s.sites.o1 = Array.from({ length: 9 }, (_, i) => ({
+      id: `h${i}`,
+      name: `South Hub ${i}`,
+      code: `H${i}`,
+      region: 'South',
+    }))
+    store.s.users.set('u1', member({ role: 'admin' }))
+    const row = await handleMessage(msg('south hub'), ctx())
+    expect(row.outcome).toBe('ambiguous')
+    expect(sent[0].rows).toBeUndefined()
+    expect(sent[0].text).toContain('9 centres match')
+    expect(sent[0].text).not.toContain('South Hub 0')
+  })
+
+  it('returns the one centre a fuzzy name matches', async () => {
+    store.s.sites.o1 = [
+      { id: 's1', name: 'Koramangala Block', code: 'BLR1', region: 'South' },
+      { id: 's2', name: 'Whitefield Depot', code: 'BLR2', region: 'South' },
+    ]
+    store.s.users.set('u1', member({ role: 'admin' }))
+    const row = await handleMessage(msg('koramangla'), ctx())
+    expect(row).toMatchObject({ outcome: 'ok', siteId: 's1' })
+    expect(sent[0].text).toContain('Koramangala Block (BLR1)')
+    expect(sent[0].text).not.toContain('Whitefield')
+  })
+
+  it('suggests the closest name, and a number returns that centre', async () => {
+    store.s.sites.o1 = [
+      { id: 's3', name: 'Demo South Annex', code: 'DEMO003', region: 'South' },
+      { id: 's2', name: 'Whitefield Depot', code: 'BLR2', region: 'South' },
+    ]
+    store.s.users.set('u1', member({ role: 'admin' }))
+    const row = await handleMessage(msg('anex'), ctx())
+    expect(row.outcome).toBe('nomatch')
+    expect(sent[0].text).toContain('Centre not found for "anex"')
+    expect(sent[0].text).toContain('Closest names:')
+    expect(sent[0].text).toContain('Demo South Annex')
+    expect(sent[0].text).not.toContain('Whitefield')
+    expect(sent[0].rows.map((r) => r.id)).toEqual(['site:s3'])
+    const picked = await handleMessage(msg('1'), ctx())
+    expect(picked).toMatchObject({ outcome: 'ok', siteId: 's3' })
+    expect(sent[1].text).toContain('Demo South Annex (DEMO003)')
+  })
+
+  it('asks for the centre when the organisation is already known', async () => {
     await handleMessage(msg('Hi'), ctx())
-    expect(sent[0].text).toContain('Demo North Hub')
+    expect(sent[0].text).toContain('Please enter the Centre ID or Centre Name.')
+    expect(sent[0].text).not.toContain('Fire extinguishers')
+    expect(sent[0].text).toMatch(/CHANGE ORG/)
   })
 
   it('re-checks the profile live: a suspended user gets no data', async () => {
@@ -264,11 +341,13 @@ describe('location fallback and numbered picks', () => {
     store.s.users.set('u1', member({ siteId: 's9', access: { regions: ['South'] } }))
   })
 
-  it('asks for a location when nothing matches', async () => {
+  it('says the centre was not found when nothing matches', async () => {
     const row = await handleMessage(msg('zzz'), ctx())
     expect(row.outcome).toBe('nomatch')
-    expect(sent[0]).toMatchObject({ locationRequest: true })
-    expect(sent[0].text).toContain('Tap 📎 → Location')
+    expect(sent[0].locationRequest).toBeUndefined()
+    expect(sent[0].text).toMatch(/^Centre not found for "zzz"/)
+    expect(sent[0].text).toContain('Please enter the Centre ID or Centre Name.')
+    expect(sent[0].text).not.toMatch(/Demo South/)
   })
 
   it('lists only reachable sites with coordinates, nearest first, and logs no coordinates', async () => {
@@ -337,14 +416,30 @@ describe('which organisation', () => {
 
   beforeEach(() => store.s.sessions.clear())
 
-  it('asks a linked user for their organisation before any site data', async () => {
+  it('looks up a centre directly when the linked organisation is already known', async () => {
+    store.s.sessions.clear()
     store.getOrganization = async (id) => ({ id, name: 'Acme Fitness' })
+    const hi = await handleMessage(msg('hi'), ctx())
+    expect(hi.outcome).toBe('orgselected')
+    expect(sent[0].text).toContain('Please enter the Centre ID or Centre Name.')
+    expect(sent[0].text).toMatch(/Acme Fitness/)
+    expect(sent[0].text).not.toMatch(/Fire extinguishers/)
+
+    store.s.sessions.clear()
+    sent.length = 0
     const row = await handleMessage(msg('DEMO001'), ctx())
+    expect(row).toMatchObject({ outcome: 'ok', siteId: 's1', orgId: 'o1' })
+    expect(sent[0].text).toContain('Demo North Hub (DEMO001)')
+    expect(sent[0].text).not.toMatch(/Which organisation/)
+  })
+
+  it('does not suggest a centre the linked user cannot reach', async () => {
+    store.s.sessions.clear()
+    store.getOrganization = async () => ({ id: 'o1', name: 'Acme Fitness' })
+    const row = await handleMessage(msg('annex'), ctx())
     expect(row.outcome).toBe('nomatch')
-    expect(sent[0].text).toMatch(/No organisation matches "demo001"/)
-    expect(sent[0].text).toMatch(/1\. Acme Fitness/)
-    expect(sent[0].text).not.toMatch(/Fire extinguishers|Beta/)
-    expect(sent[0].rows?.[0]?.id).toBe('org:o1')
+    expect(sent[0].text).toMatch(/Centre not found/)
+    expect(sent[0].text).not.toMatch(/Annex|DEMO003|South Hub/)
   })
 
   it('does not offer an organisation the linked user does not belong to', async () => {
@@ -353,6 +448,18 @@ describe('which organisation', () => {
     await handleMessage(msg('hi'), ctx())
     expect(JSON.stringify(sent)).not.toContain('Secret Other Co')
     expect(sent[0].text).toMatch(/Acme Fitness/)
+  })
+
+  it('CHANGE ORG asks again, and the next text is not searched as a centre', async () => {
+    store.getOrganization = async () => ({ id: 'o1', name: 'Acme Fitness' })
+    store.s.sessions.clear()
+    await handleMessage(msg('change org'), ctx())
+    expect(sent[0].text).toMatch(/Which organisation/)
+    expect(sent[0].text).toMatch(/1\. Acme Fitness/)
+    const row = await handleMessage(msg('DEMO001'), ctx())
+    expect(row.outcome).not.toBe('ok')
+    expect(sent[1].text).not.toMatch(/Fire extinguishers/)
+    expect(sent[1].text).toMatch(/No organisation matches/)
   })
 
   it('a deleted organisation is not a way in', async () => {
@@ -384,7 +491,7 @@ describe('which organisation', () => {
 
     await guideConversation({ kind: 'site', query: 'beta' }, guideCtx())
     expect(sent[1].text).toMatch(/Beta Safety/)
-    expect(sent[1].text).toMatch(/Site ID or Centre ID/)
+    expect(sent[1].text).toContain('Please enter the Centre ID or Centre Name.')
 
     const row = await guideConversation({ kind: 'site', query: 'beta001' }, guideCtx())
     expect(row).toMatchObject({ outcome: 'ok', extra: { siteId: 's9', orgId: 'o2' } })
@@ -424,7 +531,7 @@ describe('which organisation', () => {
     expect(sent[1].text).not.toMatch(/Beta Safety/)
 
     await guideConversation({ kind: 'site', query: '1' }, guideCtx())
-    expect(sent[2].text).toMatch(/Site ID or Centre ID/)
+    expect(sent[2].text).toContain('Please enter the Centre ID or Centre Name.')
     expect(store.s.sessions.get(PHONE)).toMatchObject({ step: 'site', orgId: 'o1', uid: null })
   })
 
