@@ -24,6 +24,7 @@ import { notificationId, sendOnce } from '../notify.js'
 import { phoneHash } from './link.js'
 import { normaliseWaId } from './parse.js'
 import { clean } from './format.js'
+import { sendMessage, textPayload, locationRequestPayload } from './graph.js'
 
 export const LINK_WELCOME_KIND = 'whatsapp.link'
 
@@ -33,6 +34,13 @@ export const WELCOME_ORG_FALLBACK = 'your organisation'
 const WELCOME_BEFORE = 'Welcome! You are now linked to '
 const WELCOME_AFTER =
   ' Safety through WhatsApp. Send the Center ID, Center Name, or Location to get the details.'
+
+// The button is the Cloud API location request. This text is also the plain
+// fallback: a client that cannot show the button still has to be told how to
+// send the pin, or the welcome asks for a location nobody can attach.
+const LOCATION_ASK =
+  'Share your location pin and I will reply with the nearest sites you can access.\n\n' +
+  'Tap 📎 → Location → Send your current location.'
 
 function snapshotExists(snap) {
   if (!snap) return false
@@ -124,6 +132,36 @@ export function welcomeText(label) {
   return WELCOME_BEFORE + organisationLabel(label) + WELCOME_AFTER
 }
 
+/**
+ * The welcome plus the location prompt, as one outbound message. The
+ * interactive send is a location_request_message; the same body is what a
+ * plain-text fallback says.
+ */
+export function welcomeMessage(label) {
+  return { text: `${welcomeText(label)}\n\n${LOCATION_ASK}`, locationRequest: true }
+}
+
+/**
+ * Send the welcome. A location-request button when the client can show one,
+ * otherwise the same body as text. `error: 'config'` is not a client refusal:
+ * the text send would fail the same way, and a second call would not help.
+ */
+export async function sendLinkWelcome({
+  fetchImpl,
+  version,
+  phoneNumberId,
+  token,
+  to,
+  text,
+  locationRequest = true,
+} = {}) {
+  const once = (payload) => sendMessage({ fetchImpl, version, phoneNumberId, token, payload })
+  if (!locationRequest) return once(textPayload(to, text))
+  const rich = await once(locationRequestPayload(to, text))
+  if (rich?.ok || rich?.error === 'config') return rich
+  return once(textPayload(to, text))
+}
+
 /** Ledger key. The phone number is inside the digest, not beside it. */
 export function linkWelcomeKey(pepper, waId, uid, orgId, stamp) {
   const digest = phoneHash(pepper, [waId, uid, orgId, stamp].join('\u001f'))
@@ -141,7 +179,7 @@ function noopLogger() {
  * actually landed. A failure to claim the ledger still throws — nothing was
  * sent, and the caller decides whether that is retried.
  *
- * @param send (waId, text) => { ok, status?, error? }
+ * @param send (waId, { text, locationRequest }) => { ok, status?, error? }
  * @param reserveOutbound () => boolean   the global daily cap; omitted in tests
  *        that are not about the cap. Called only after this event wins the claim.
  */
@@ -201,7 +239,7 @@ export async function deliverLinkWelcome({
       })
     }
   }
-  const text = welcomeText(organisationLabel(orgName, profileName))
+  const text = welcomeMessage(organisationLabel(orgName, profileName)).text
   const key = linkWelcomeKey(pepper, to, plan.uid, plan.orgId, plan.stamp)
   const ref = db.doc(`organizations/${plan.orgId}/notifications/${notificationId(key)}`)
 
@@ -221,7 +259,7 @@ export async function deliverLinkWelcome({
           throw err
         }
       }
-      const result = await send(to, text)
+      const result = await send(to, { text, locationRequest: true })
       if (!result?.ok) {
         const err = new Error('whatsapp send failed')
         err.code = result?.error || 'wa-send'

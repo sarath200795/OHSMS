@@ -7,6 +7,8 @@ import {
   linkWelcomeKey,
   organisationLabel,
   planLinkWelcome,
+  sendLinkWelcome,
+  welcomeMessage,
   welcomeText,
 } from './linkWelcome.js'
 
@@ -31,8 +33,8 @@ function harness(extra = {}) {
   const db = extra.db || memoryDb({ 'organizations/orgA': { name: 'Acme Fitness' } })
   const send =
     extra.send ||
-    (async (to, text) => {
-      sent.push({ to, text })
+    (async (to, message) => {
+      sent.push({ to, text: message.text, locationRequest: message.locationRequest === true })
       return { ok: true, status: 200 }
     })
   const run = (over = {}) =>
@@ -51,6 +53,8 @@ function harness(extra = {}) {
   return { sent, logs, logger, db, send, run }
 }
 
+const outbound = (label) => ({ to: PHONE, ...welcomeMessage(label) })
+
 describe('welcomeText', () => {
   it('names the organisation in the one sentence', () => {
     expect(welcomeText('Acme Fitness')).toBe(WELCOME)
@@ -68,6 +72,14 @@ describe('welcomeText', () => {
     expect(welcomeText('enc:1:not-a-name')).toBe(fallback)
     expect(organisationLabel('enc:1:not-a-name', 'Beta Safety')).toBe('Beta Safety')
     expect(organisationLabel('', '')).toBe('your organisation')
+  })
+
+  it('asks for a location pin in the same message as the welcome', () => {
+    const message = welcomeMessage('Acme Fitness')
+    expect(message.locationRequest).toBe(true)
+    expect(message.text.startsWith(WELCOME)).toBe(true)
+    expect(message.text).toContain('Tap 📎 → Location → Send your current location')
+    expect(message.text.length).toBeLessThan(1024)
   })
 })
 
@@ -116,7 +128,7 @@ describe('deliverLinkWelcome', () => {
     const second = await h.run()
     expect(first.status).toBe('sent')
     expect(second).toMatchObject({ status: 'skipped', reason: 'already-claimed' })
-    expect(h.sent).toEqual([{ to: PHONE, text: WELCOME }])
+    expect(h.sent).toEqual([outbound('Acme Fitness')])
     expect(JSON.stringify(h.db.store.get(h.db.notifications()[0]))).not.toContain(PHONE)
     expect(JSON.stringify(h.logs)).not.toContain(PHONE)
   })
@@ -138,7 +150,7 @@ describe('deliverLinkWelcome', () => {
     await h.run({ before: link({ linkedAtMs: 1 }), after: null })
     await h.run({ before: null, after: link({ linkedAtMs: 2 }) })
     expect(h.sent).toHaveLength(2)
-    expect(h.sent[1].text).toBe(WELCOME)
+    expect(h.sent[1]).toEqual(outbound('Acme Fitness'))
   })
 
   it('uses the profile name when the organisation document has none', async () => {
@@ -240,5 +252,68 @@ describe('deliverLinkWelcome', () => {
     expect(out.status).toBe('failed')
     expect(calls).toBe(0)
     expect(h.logs.some((l) => l.fields?.error === 'outbound-cap')).toBe(true)
+  })
+})
+
+describe('sendLinkWelcome', () => {
+  const args = {
+    version: 'v25.0',
+    phoneNumberId: '100000000000001',
+    token: 'secret-token',
+    to: PHONE,
+    text: welcomeMessage('Acme Fitness').text,
+  }
+
+  function fetchOf(...responses) {
+    const calls = []
+    const fn = async (_url, init) => {
+      calls.push(JSON.parse(init.body))
+      const next = responses[calls.length - 1] || responses.at(-1)
+      return { ok: next.ok, status: next.status, json: async () => next.body || {} }
+    }
+    fn.calls = calls
+    return fn
+  }
+
+  it('sends a location-request button carrying the welcome', async () => {
+    const fetchImpl = fetchOf({ ok: true, status: 200 })
+    const out = await sendLinkWelcome({ ...args, fetchImpl })
+    expect(out).toEqual({ ok: true, status: 200 })
+    expect(fetchImpl.calls).toHaveLength(1)
+    expect(fetchImpl.calls[0]).toMatchObject({
+      type: 'interactive',
+      to: PHONE,
+      interactive: {
+        type: 'location_request_message',
+        body: { text: args.text },
+        action: { name: 'send_location' },
+      },
+    })
+    expect(args.text.startsWith(WELCOME)).toBe(true)
+  })
+
+  it('falls back to the same text when the button is refused', async () => {
+    const fetchImpl = fetchOf(
+      { ok: false, status: 400, body: { error: { code: 131009 } } },
+      { ok: true, status: 200 }
+    )
+    const out = await sendLinkWelcome({ ...args, fetchImpl })
+    expect(out).toEqual({ ok: true, status: 200 })
+    expect(fetchImpl.calls[1]).toMatchObject({
+      type: 'text',
+      text: { body: args.text, preview_url: false },
+    })
+    expect(JSON.stringify(out)).not.toContain('secret-token')
+  })
+
+  it('does not send a second time when the client was never reached', async () => {
+    const fetchImpl = fetchOf({ ok: false, status: 0 })
+    const out = await sendLinkWelcome({
+      ...args,
+      version: 'not-a-version',
+      fetchImpl,
+    })
+    expect(out).toMatchObject({ ok: false, error: 'config' })
+    expect(fetchImpl.calls).toHaveLength(0)
   })
 })

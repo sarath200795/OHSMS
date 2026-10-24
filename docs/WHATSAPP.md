@@ -91,11 +91,15 @@ binding, or points the number at a different person or organisation, sends
 one welcome through the Cloud API. That covers the code redeeming and an
 administrator attaching the number; both set this document. The organisation
 name is `organizations/{orgId}.name`, or the name stored on the profile when
-the organisation document has none, or "your organisation". A later save of
-the same binding does not send again. A code that fails does not write
-`waLinks`, so it does not send either. If Graph refuses the welcome, the
-failure is logged and the link stays. The webhook itself does not reply on
-success — that reply was a second message.
+the organisation document has none, or "your organisation". The send is a
+Cloud API location request: the body is that sentence plus a request to share
+a location pin, and the client shows Send location. A client that cannot show
+the button gets the same body as plain text, including how to send the pin
+from the attachment menu. A pin that arrives afterwards is the location
+lookup below. A later save of the same binding does not send again. A code
+that fails does not write `waLinks`, so it does not send either. If Graph
+refuses the welcome, the failure is logged and the link stays. The webhook
+itself does not reply on success — that reply was a second message.
 
 Org Settings → Integrations → **Connect with WhatsApp** is the administrator
 path for the same binding. An approved admin of the organisation can turn
@@ -186,32 +190,29 @@ The same lookup also answers on Telegram (@WEEHS_Site_Lookup_bot) through the
 
 ## Choosing an organisation
 
-Both channels ask which organisation before any site is searched, and remember
-the answer on `waSessions` for 24 hours of idle time. MENU (or `/start` on
-Telegram) and CHANGE ORG ask again. A linked WhatsApp user is offered only
-the organisation on their live profile (`users/{uid}.orgId`, re-checked every
-message). There is no membership list to consult: a person who works for two
-companies has two accounts, and the number is linked to one of them.
+A linked WhatsApp user belongs to one organisation (`users/{uid}.orgId`,
+re-checked every message). There is no membership list: a person who works
+for two companies has two accounts, and the number is linked to one of them.
+That one organisation is selected without asking, and a centre id, a centre
+name, or a location pin is answered at once. The search is still only the
+sites that profile can already open. MENU and CHANGE ORG ask again, and a
+numbered reply to that question is the organisation list, not a site code.
 
-A chat with no chosen organisation does not resolve a site. "Not an
-organisation" and "no such site" are not distinguished until the organisation
-is chosen, and a site outside the user's reach is still not searched at all.
+Where the caller may name more than one organisation (Telegram, when it is
+not pinned to one), nothing about a site is read until one is chosen. "Not
+an organisation" and "no such site" are not distinguished until then. The
+choice is remembered on `waSessions` for 24 hours of idle time. A site
+outside the user's reach is still not searched at all.
 
 ```
-User: hi
-Bot:  Which organisation?
-      1. Acme Fitness
-      Reply with the number or the name.
-      In an emergency call 112.
-
-User: 1
-Bot:  Acme Fitness.
-      Send a Site ID or Centre ID, or part of the site name.
-
 User: DEMO001
-Bot:  🏢 Acme North (DEMO001)
-      …emergency contacts, AED line, open defects…
+Bot:  🏢 Demo North Hub (DEMO001)
+      …emergency contacts, open defects…
       Reply with another site code or name.
+
+User: (location pin)
+Bot:  Your nearest sites:
+      1. …
 
 User: change org
 Bot:  Which organisation?

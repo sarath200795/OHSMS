@@ -20,8 +20,11 @@
 //   5  org switch    waOrgSettings enabled === false stops the reply before
 //                    any site is read. A missing document leaves lookup on
 //   6  rate limit    30/h, 150/day
-//   7  organisation  only the live profile's org. No site is searched until
-//                    the chat has chosen one (remembered for 24 h idle)
+//   7  organisation  one allowed org is selected and this message is
+//                    answered as a site lookup, still only among sites the
+//                    caller reaches. More than one: nothing about a site is
+//                    read until the chat chooses (24 h idle). MENU and
+//                    CHANGE ORG ask even when there is only one.
 //   8  resolve       ONLY among the sites the user reaches in that org
 //   9  reply         snapshot counts + contacts, one message
 //  10  log           waQueryLog: outcome and site id, never the message text
@@ -312,10 +315,16 @@ export async function answerQuery(cmd, { store, reply, now = new Date(), from, u
 /**
  * Ask which organisation, then which site. Shared by WhatsApp and Telegram.
  *
- * Nothing about a site is read until the chat is on the site step for an
- * organisation this caller may use. `listOrgs` is the only switch that
- * volunteers more than one name; a single allowed organisation is named
- * because hiding the only choice does not protect a directory.
+ * One allowed organisation is selected without asking: the caller already
+ * has that name, and hiding it protects nothing. The message is then a site
+ * lookup, still only among sites `reachableSites` returns. More than one
+ * organisation is asked first. A site id, a name or a location answered
+ * before that choice would confirm which organisation holds it.
+ *
+ * `listOrgs` is the only switch that volunteers more than one name. MENU and
+ * CHANGE ORG ask again even when there is only one, and a live organisation
+ * list is answered before a single organisation is assumed — "1" after MENU
+ * is the list, not a site code.
  *
  * The last organisation is the session's `step: 'site'` until `expiresAtMs`
  * (CONV_TTL_MS, refreshed on each site message). MENU and CHANGE ORG clear
@@ -380,6 +389,19 @@ export async function guideConversation(cmd, ctx) {
     return commit(picked)
   }
 
+  const answerChosen = async (org, caller) => {
+    const out = await answerQuery(cmd, {
+      store,
+      reply,
+      now,
+      from,
+      user: caller,
+      orgId: org.id,
+      uid,
+    })
+    return { outcome: out.outcome, extra: { ...(out.extra || {}), orgId: org.id } }
+  }
+
   if (current) {
     const siteList = session.choiceKind === 'site'
     await store.setSession(from, {
@@ -397,20 +419,41 @@ export async function guideConversation(cmd, ctx) {
       await reply(from, { text: ORG_NOT_ALLOWED })
       return finish('denied', { orgId: current.id })
     }
-    const out = await answerQuery(cmd, {
-      store,
-      reply,
-      now,
-      from,
-      user: caller,
-      orgId: current.id,
-      uid,
-    })
-    return { outcome: out.outcome, extra: { ...(out.extra || {}), orgId: current.id } }
+    return answerChosen(current, caller)
   }
 
-  // No organisation chosen yet. A site id, a location or a site-row tap is
-  // not searched: answering it would confirm which sites exist in which org.
+  // MENU just asked which organisation. Selecting the only one here would
+  // turn the reply "1" into a site-code search.
+  const who = uid ?? null
+  const askingOrg =
+    session &&
+    session.step === 'org' &&
+    session.uid === who &&
+    Number(session.expiresAtMs) > now.getTime()
+
+  if (!askingOrg && allowed.length === 1) {
+    const org = allowed[0]
+    const caller = callerForOrg(user, org.id)
+    if (!caller) {
+      await reply(from, { text: ORG_NOT_ALLOWED })
+      return finish('denied', { orgId: org.id })
+    }
+    await store.setSession(from, {
+      uid: who,
+      orgId: org.id,
+      lastOrgId: org.id,
+      step: 'site',
+      choiceKind: null,
+      choices: [],
+      choicesExpireAtMs: 0,
+      expiresAtMs: now.getTime() + CONV_TTL_MS,
+    })
+    return answerChosen(org, caller)
+  }
+
+  // Several organisations, and none chosen yet. A site id, a location or a
+  // site-row tap is not searched: answering it would confirm which sites
+  // exist in which org.
   if (cmd.kind === 'site' && /^\d{1,2}$/.test(cmd.query || '')) {
     const picked = pickListedOrg(session, uid ?? null, Number(cmd.query), allowed, now)
     if (picked === null) {

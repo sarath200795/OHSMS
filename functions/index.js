@@ -90,7 +90,7 @@ import { createHmac } from 'node:crypto'
 import { verifySignature, handshakeChallenge, isRealSecret } from './lib/whatsapp/signature.js'
 import { extractMessages } from './lib/whatsapp/parse.js'
 import { handleMessage } from './lib/whatsapp/handler.js'
-import { deliverLinkWelcome } from './lib/whatsapp/linkWelcome.js'
+import { deliverLinkWelcome, sendLinkWelcome } from './lib/whatsapp/linkWelcome.js'
 import { createStore, buildSnapshot, listSnapshotOrgIds } from './lib/whatsapp/store.js'
 import {
   sendMessage,
@@ -3618,12 +3618,17 @@ export const notifyWhatsAppLinked = onDocumentWritten(
           })
           return gate.allowed === true
         },
-        send: (to, text) =>
-          sendMessage({
+        // Location-request button, then the same body as text if the client
+        // cannot show it. One cap reservation either way: the text replaces
+        // the button, it is not a second welcome.
+        send: (to, message) =>
+          sendLinkWelcome({
+            to,
+            text: message.text,
+            locationRequest: message.locationRequest,
             version: WA_GRAPH_VERSION.value(),
             phoneNumberId: WA_PHONE_NUMBER_ID.value(),
             token: WA_ACCESS_TOKEN.value(),
-            payload: textPayload(to, text),
           }),
       })
     } catch (err) {
