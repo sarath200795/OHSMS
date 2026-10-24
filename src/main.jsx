@@ -5,6 +5,8 @@ import { Toaster } from 'react-hot-toast'
 import App from './App'
 import ErrorBoundary from './shared/ErrorBoundary'
 import { installMonitoring } from './shared/monitoring'
+import { registerShellWorker } from './shared/mobile/registerSw'
+import { dismissBootSplash } from './shared/mobile/bootSplash'
 import { AuthProvider } from './shared/auth/AuthContext'
 import OrgTheme from './shared/branding/OrgTheme'
 // Fonts and Leaflet stay JS imports. Tailwind's PostCSS plugin treats a later
@@ -23,6 +25,8 @@ import 'leaflet.markercluster/dist/MarkerCluster.css'
 import './index.css'
 
 installMonitoring()
+registerShellWorker()
+dismissBootSplash()
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

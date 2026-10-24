@@ -185,6 +185,22 @@ jobs:
           "node scripts/seed.mjs && npx playwright test
           e2e/smoke.spec.js e2e/accessibility.spec.js e2e/console-sweep.spec.js"
 
+      # The APK is not in git. Vite copies public/ into dist, so the file has
+      # to be here before the build or hosting will not serve it. The Android
+      # workflow attaches it to this same tag. On the tag push the two
+      # workflows start together and this download usually misses; re-run
+      # Deploy after Android APK is green. A missing asset does not fail the
+      # deploy — the site still ships, and the login button 404s until the
+      # file is in dist/downloads.
+      - name: Place the Android APK into the hosting build
+        if: steps.creds.outputs.configured == 'true' && startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p public/downloads
+          gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --pattern 'weehs-ohsms.apk' --dir public/downloads --clobber || true
+          gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --pattern 'weehs-ohsms.json' --dir public/downloads --clobber || true
+
       - name: Build
         if: steps.creds.outputs.configured == 'true'
         env:

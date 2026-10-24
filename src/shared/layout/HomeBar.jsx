@@ -95,6 +95,14 @@ const PORTAL_PAGES = {
   '/portal/training': 'My training',
 }
 
+// Named field pages only. /field/asset/<token> is labelled "Equipment": the
+// token is a credential and the trail is visible text, not a place to repeat it.
+const FIELD_PAGES = {
+  '/field/scan': 'QR Scan',
+  '/field/tasks': 'Tasks',
+  '/field/alerts': 'Alerts',
+}
+
 const ADMIN_LABELS = {
   dashboard: 'Dashboard',
   security: 'Security',
@@ -116,6 +124,8 @@ const ADMIN_LABELS = {
 function currentLabel(pathname, mod) {
   if (mod) return null
   if (PORTAL_PAGES[pathname]) return PORTAL_PAGES[pathname]
+  if (FIELD_PAGES[pathname]) return FIELD_PAGES[pathname]
+  if (pathname.startsWith('/field/asset/')) return 'Equipment'
   const seg = pathname.split('/').filter(Boolean)[0] || ''
   return ADMIN_LABELS[seg] || seg.charAt(0).toUpperCase() + seg.slice(1).replace(/-/g, ' ')
 }

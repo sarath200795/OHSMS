@@ -43,6 +43,9 @@ import { dashboardBuckets } from '../../modules/ptw/lib/permitStatus'
 import { openUnsafeByPermit } from '../../modules/ptw/lib/observations'
 import ModuleLogo3D, { has3DLogo } from './ModuleLogo3D'
 import { Button, Skeleton, Spinner } from '../../shared/ui'
+import FieldAppGrid from '../../shared/layout/FieldAppGrid'
+import { fieldIdle } from '../../shared/mobile/fieldIdle'
+import { useViewMode, ViewModeSwitch } from '../../shared/mobile/viewModeContext'
 
 // Admin tools. These configure the organization rather than record work in it,
 // so the whole section is admin-only — a manager or auditor who can read the
@@ -110,17 +113,18 @@ const ADMIN_TOOLS = [
  */
 function Tile({ to, icon: Icon, tone = 'brand', label, title, delay = 0, logoKey }) {
   const has3D = has3DLogo(logoKey)
+  const idle = fieldIdle(logoKey || label, Math.round(delay / 40))
   return (
     <Link
       to={to}
       data-tone={tone}
-      style={{ animationDelay: `${delay}ms` }}
-      className="group glass-tile relative flex min-h-[168px] animate-fade-in-up flex-col items-center justify-center gap-3 rounded-3xl p-5 text-center
+      style={{ animationDelay: `${delay}ms`, '--idle-delay': `${idle.phaseMs}ms` }}
+      className={`group ${has3D ? 'playing logo-phase' : ''} glass-tile relative flex min-h-[168px] animate-fade-in-up flex-col items-center justify-center gap-3 rounded-3xl p-5 text-center
                  transition-[transform,box-shadow] duration-200 ease-emil
                  hover:-translate-y-0.5 hover:shadow-elev-lg
                  active:translate-y-0 active:scale-[0.99]
                  focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas
-                 motion-reduce:transition-none motion-reduce:hover:translate-y-0"
+                 motion-reduce:transition-none motion-reduce:hover:translate-y-0`}
     >
       <span aria-hidden="true" className="glass-tile-glow" data-tone={tone} />
       {/* Perspective lives on the mark, not the card, so any depth in a 3D
@@ -131,7 +135,19 @@ function Tile({ to, icon: Icon, tone = 'brand', label, title, delay = 0, logoKey
                    group-hover:scale-110
                    motion-reduce:transition-none motion-reduce:group-hover:transform-none"
       >
-        <span className="grid h-full w-full origin-center place-items-center [transform-style:preserve-3d]">
+        <span
+          className={`grid h-full w-full origin-center place-items-center [transform-style:preserve-3d] ${
+            has3D ? '' : `field-idle field-idle-${idle.motion}`
+          }`}
+          style={
+            has3D
+              ? undefined
+              : {
+                  animationDelay: `${idle.delayMs}ms`,
+                  animationDuration: `${idle.durationMs}ms`,
+                }
+          }
+        >
           {has3D ? (
             <span className="grid h-full w-full origin-center place-items-center scale-[1.28] [transform-style:preserve-3d]">
               <ModuleLogo3D moduleKey={logoKey} />
@@ -198,6 +214,7 @@ export default function PortalHome() {
   // route that refuses to open is worse than no tile at all.
   const modules = useMemo(() => enabledModules(moduleMap), [moduleMap])
   const navigate = useNavigate()
+  const { mode } = useViewMode()
   const { sites, status: sitesStatus } = useAccessibleSitesRead()
   const { keys: widgetKeys, save: saveWidgets } = useWidgetPrefs()
 
@@ -352,6 +369,17 @@ export default function PortalHome() {
 
   return (
     <div className="animate-fade-in-up">
+      {/* The grid and the dashboard are two homes, chosen by view mode. A
+          phone that asked for the desktop portal gets this dashboard and
+          scrolls it; a desktop that asked for the phone home gets the grid,
+          centred. */}
+      {mode === 'mobile' ? (
+        <div className="mx-auto max-w-md">
+          <FieldAppGrid />
+        </div>
+      ) : (
+      <div>
+      <ViewModeSwitch />
       <div className="mb-5 grid gap-4 lg:grid-cols-[1.55fr_1fr]">
         <Raised className="relative overflow-hidden px-6 py-6 sm:px-7">
           <div
@@ -631,7 +659,7 @@ export default function PortalHome() {
         <>
           <SectionLabel className="mb-3 mt-8">Admin tools</SectionLabel>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {ADMIN_TOOLS.map((s) => (
+            {ADMIN_TOOLS.map((s, i) => (
               <Tile
                 key={s.key}
                 to={s.path}
@@ -639,10 +667,13 @@ export default function PortalHome() {
                 tone={s.tone}
                 label={s.label}
                 title={s.title}
+                delay={600 + i * 80}
               />
             ))}
           </div>
         </>
+      )}
+      </div>
       )}
     </div>
   )

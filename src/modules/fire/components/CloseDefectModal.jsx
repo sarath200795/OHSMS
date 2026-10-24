@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { CheckCircle2, Paperclip, X } from 'lucide-react'
+import { Camera, CheckCircle2, Paperclip, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { toastCaught } from '../../../shared/lib/toastCaught'
 import { Modal, Spinner, Field } from './ui'
@@ -20,6 +20,7 @@ export default function CloseDefectModal({ open, onClose, row, orgId, orgName, a
   const [file, setFile] = useState(null)
   const [busy, setBusy] = useState(false)
   const fileInputRef = useRef(null)
+  const cameraRef = useRef(null)
 
   useEffect(() => {
     if (!open) return
@@ -113,6 +114,15 @@ export default function CloseDefectModal({ open, onClose, row, orgId, orgName, a
           className="hidden"
           onChange={(e) => pickFile(e.target.files?.[0])}
         />
+        <input
+          id="defect-camera"
+          ref={cameraRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={(e) => pickFile(e.target.files?.[0])}
+        />
         {file ? (
           <div className="ring-1 ring-ink-200 flex items-center gap-2 rounded-2xl bg-surface-50 px-3 py-2.5 text-sm">
             <Paperclip size={15} className="shrink-0 text-ink-400" />
@@ -134,22 +144,32 @@ export default function CloseDefectModal({ open, onClose, row, orgId, orgName, a
             </button>
           </div>
         ) : (
-          <button
-            type="button"
-            className="btn-ghost w-full justify-center"
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <Paperclip size={15} /> Attach photo or PDF
-          </button>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <button
+              type="button"
+              className="btn-ghost min-h-12 flex-1 justify-center"
+              onClick={() => cameraRef.current?.click()}
+            >
+              <Camera size={16} aria-hidden="true" /> Take photo
+            </button>
+            <button
+              type="button"
+              className="btn-ghost min-h-12 flex-1 justify-center"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <Paperclip size={15} aria-hidden="true" /> Attach file
+            </button>
+          </div>
         )}
         <p className="mt-1 text-xs text-ink-400">Up to {formatSize(MAX_ATTACHMENT_BYTES)}.</p>
       </div>
-      <div className="mt-5 flex justify-end gap-2">
-        <button className="btn-ghost" onClick={onClose}>
+      <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <button type="button" className="btn-ghost min-h-12" onClick={onClose}>
           Cancel
         </button>
         <button
-          className="btn bg-green-600 text-white hover:brightness-110"
+          type="button"
+          className="btn min-h-12 bg-green-600 text-white hover:brightness-110"
           onClick={confirm}
           disabled={busy}
         >

@@ -20,13 +20,16 @@
 //   5  org switch    waOrgSettings enabled === false stops the reply before
 //                    any site is read. A missing document leaves lookup on
 //   6  rate limit    30/h, 150/day
-//   7  organisation  one allowed org is selected and this message is
-//                    answered as a site lookup, still only among sites the
-//                    caller reaches. More than one: nothing about a site is
-//                    read until the chat chooses (24 h idle). MENU and
-//                    CHANGE ORG ask even when there is only one.
-//   8  resolve       ONLY among the sites the user reaches in that org
-//   9  reply         snapshot counts + contacts, one message
+//   7  organisation  one allowed org is already known (the link, or a bot
+//                    pinned to one). A greeting is the centre prompt; a
+//                    centre id, a name or a location is answered immediately,
+//                    still only among sites the caller reaches. Several
+//                    names still ask first (24 h idle). MENU / CHANGE ORG
+//                    ask again, and a numbered reply is that list.
+//   8  resolve       exact Centre ID, then partial/fuzzy name, ONLY among
+//                    the sites the user reaches in that org
+//   9  reply         one match: the snapshot. Several (at most 8): a numbered
+//                    list. None: not found, plus the closest names
 //  10  log           waQueryLog: outcome and site id, never the message text
 //
 // ctx = {
@@ -51,13 +54,13 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { parseCommand } from './parse.js'
 import { isActiveMember, reachableSites } from './access.js'
-import { resolveSiteQuery } from './resolve.js'
+import { closestSites, resolveSiteQuery, MAX_CHOICES } from './resolve.js'
 import { countQuery, allowUnlinkedReply, linkBlocked, countBadLink } from './rateLimit.js'
 import {
   formatSiteReply,
   formatChoices,
   formatNearby,
-  locationRequestText,
+  formatNotFound,
   MESSAGES,
   tooMany,
   helpText,
@@ -220,7 +223,7 @@ export async function answerQuery(cmd, { store, reply, now = new Date(), from, u
       lastOrgId: orgId,
       step: 'site',
       choiceKind: 'site',
-      choices: sites.slice(0, 10).map((s) => s.id),
+      choices: sites.slice(0, MAX_CHOICES).map((s) => s.id),
       choicesExpireAtMs: now.getTime() + SESSION_TTL_MS,
       expiresAtMs: now.getTime() + CONV_TTL_MS,
     })
@@ -231,12 +234,14 @@ export async function answerQuery(cmd, { store, reply, now = new Date(), from, u
   }
 
   let site = null
-  if (cmd.kind === 'help' || (cmd.kind === 'greeting' && reach.length !== 1)) {
+  // Greeting is the centre prompt, sent by guideConversation before this runs.
+  // Help stays a description. Neither one is a lookup: answering "hi" with
+  // the only centre skipped the prompt the caller was just shown.
+  if (cmd.kind === 'help' || cmd.kind === 'greeting') {
     await reply(from, { text: helpText(reach) })
     return { outcome: 'help' }
   }
-  if (cmd.kind === 'greeting') site = reach[0]
-  else if (cmd.kind === 'choice') {
+  if (cmd.kind === 'choice') {
     site = reach.find((s) => s.id === cmd.siteId) || null
     if (!site) {
       await reply(from, { text: MESSAGES.noAccess })
@@ -254,8 +259,8 @@ export async function answerQuery(cmd, { store, reply, now = new Date(), from, u
       return { outcome: 'nolocated' }
     }
     await offer(near.sites.map((x) => x.site))
-    const { text, rows } = formatNearby(near.sites, near.within, formatKm)
-    await reply(from, { text, rows })
+    const { text, rows, list } = formatNearby(near.sites, near.within, formatKm)
+    await reply(from, { text, rows, list })
     return { outcome: 'nearby' }
   } else {
     // A bare number answers the last list, if one is live; otherwise it is a code.
@@ -276,9 +281,13 @@ export async function answerQuery(cmd, { store, reply, now = new Date(), from, u
     if (!site) {
       const hit = resolveSiteQuery(cmd.query, reach)
       if (hit.status === 'none') {
-        // Cannot name it? Then show where they are. Interactive location
-        // request where the client supports it, plain instructions otherwise.
-        await reply(from, { text: locationRequestText(cmd.query), locationRequest: true })
+        // A miss used to ask for a location before saying the centre was not
+        // found. The closest reachable names answer more often, and a shared
+        // location is still accepted when the caller sends one.
+        const suggestions = closestSites(cmd.query, reach)
+        if (suggestions.length) await offer(suggestions)
+        const { text, rows, list } = formatNotFound(cmd.query, suggestions)
+        await reply(from, { text, rows, list })
         return { outcome: 'nomatch' }
       }
       if (hit.status === 'tooMany') {
@@ -287,8 +296,8 @@ export async function answerQuery(cmd, { store, reply, now = new Date(), from, u
       }
       if (hit.status === 'many') {
         await offer(hit.sites)
-        const { text, rows } = formatChoices(hit.sites, cmd.query)
-        await reply(from, { text, rows })
+        const { text, rows, list } = formatChoices(hit.sites, cmd.query)
+        await reply(from, { text, rows, list })
         return { outcome: 'ambiguous' }
       }
       site = hit.site
@@ -315,16 +324,15 @@ export async function answerQuery(cmd, { store, reply, now = new Date(), from, u
 /**
  * Ask which organisation, then which site. Shared by WhatsApp and Telegram.
  *
- * One allowed organisation is selected without asking: the caller already
- * has that name, and hiding it protects nothing. The message is then a site
- * lookup, still only among sites `reachableSites` returns. More than one
- * organisation is asked first. A site id, a name or a location answered
- * before that choice would confirm which organisation holds it.
- *
- * `listOrgs` is the only switch that volunteers more than one name. MENU and
- * CHANGE ORG ask again even when there is only one, and a live organisation
- * list is answered before a single organisation is assumed — "1" after MENU
- * is the list, not a site code.
+ * One allowed organisation is already known — the link, or a bot pinned to
+ * one — so a greeting is the centre prompt, and a centre id, a name or a
+ * location is resolved immediately, still only among sites `reachableSites`
+ * returns. Several organisations still ask first. A site answered before
+ * that choice would confirm which organisation holds it. `listOrgs` is the
+ * only switch that volunteers more than one name. MENU and CHANGE ORG ask
+ * again even when there is only one, and a live organisation list is
+ * answered before a single organisation is assumed — "1" after MENU is the
+ * list, not a centre id.
  *
  * The last organisation is the session's `step: 'site'` until `expiresAtMs`
  * (CONV_TTL_MS, refreshed on each site message). MENU and CHANGE ORG clear
@@ -378,7 +386,7 @@ export async function guideConversation(cmd, ctx) {
   }
 
   const session = typeof store.getSession === 'function' ? await store.getSession(from) : null
-  const current = onSiteStep(session, uid ?? null, allowed, now)
+  let current = onSiteStep(session, uid ?? null, allowed, now)
 
   if (cmd.kind === 'choice' && cmd.choiceKind === 'org') {
     const picked = allowed.find((o) => o.id === cmd.orgId)
@@ -389,21 +397,34 @@ export async function guideConversation(cmd, ctx) {
     return commit(picked)
   }
 
-  const answerChosen = async (org, caller) => {
-    const out = await answerQuery(cmd, {
-      store,
-      reply,
-      now,
-      from,
-      user: caller,
-      orgId: org.id,
-      uid,
-    })
-    return { outcome: out.outcome, extra: { ...(out.extra || {}), orgId: org.id } }
+  // A number answers the organisation list while that list is the question
+  // in front of them. It has to run before the single-org shortcut, or "1"
+  // would be read as a centre id.
+  if (!current && cmd.kind === 'site' && /^\d{1,2}$/.test(cmd.query || '')) {
+    const picked = pickListedOrg(session, uid ?? null, Number(cmd.query), allowed, now)
+    if (picked === null) {
+      await reply(from, { text: ORG_NOT_ALLOWED })
+      return finish('denied')
+    }
+    if (picked) return commit(picked)
   }
 
+  // A linked profile belongs to one organisation, and a pinned bot has one.
+  // That organisation is already known, so the message is a centre — unless
+  // this chat is still answering the organisation list (MENU / CHANGE ORG).
+  // Treating the name they were just asked for as a centre search missed,
+  // and then suggested centres.
+  const orgQuestion =
+    session &&
+    session.uid === (uid ?? null) &&
+    session.step === 'org' &&
+    Number(session.expiresAtMs) > now.getTime()
+  if (!current && !orgQuestion && allowed.length === 1) current = allowed[0]
+
+  if (current && cmd.kind === 'greeting') return commit(current)
+
   if (current) {
-    const siteList = session.choiceKind === 'site'
+    const siteList = session?.choiceKind === 'site' && session.orgId === current.id
     await store.setSession(from, {
       uid: uid ?? null,
       orgId: current.id,
@@ -419,50 +440,20 @@ export async function guideConversation(cmd, ctx) {
       await reply(from, { text: ORG_NOT_ALLOWED })
       return finish('denied', { orgId: current.id })
     }
-    return answerChosen(current, caller)
-  }
-
-  // MENU just asked which organisation. Selecting the only one here would
-  // turn the reply "1" into a site-code search.
-  const who = uid ?? null
-  const askingOrg =
-    session &&
-    session.step === 'org' &&
-    session.uid === who &&
-    Number(session.expiresAtMs) > now.getTime()
-
-  if (!askingOrg && allowed.length === 1) {
-    const org = allowed[0]
-    const caller = callerForOrg(user, org.id)
-    if (!caller) {
-      await reply(from, { text: ORG_NOT_ALLOWED })
-      return finish('denied', { orgId: org.id })
-    }
-    await store.setSession(from, {
-      uid: who,
-      orgId: org.id,
-      lastOrgId: org.id,
-      step: 'site',
-      choiceKind: null,
-      choices: [],
-      choicesExpireAtMs: 0,
-      expiresAtMs: now.getTime() + CONV_TTL_MS,
+    const out = await answerQuery(cmd, {
+      store,
+      reply,
+      now,
+      from,
+      user: caller,
+      orgId: current.id,
+      uid,
     })
-    return answerChosen(org, caller)
+    return { outcome: out.outcome, extra: { ...(out.extra || {}), orgId: current.id } }
   }
 
-  // Several organisations, and none chosen yet. A site id, a location or a
-  // site-row tap is not searched: answering it would confirm which sites
-  // exist in which org.
-  if (cmd.kind === 'site' && /^\d{1,2}$/.test(cmd.query || '')) {
-    const picked = pickListedOrg(session, uid ?? null, Number(cmd.query), allowed, now)
-    if (picked === null) {
-      await reply(from, { text: ORG_NOT_ALLOWED })
-      return finish('denied')
-    }
-    if (picked) return commit(picked)
-  }
-
+  // No organisation chosen yet, and more than one is possible. A site id is
+  // not searched: answering it would confirm which sites exist in which org.
   if (cmd.kind === 'site') {
     const hit = resolveOrgQuery(cmd.query, allowed)
     if (hit.status === 'one') return commit(hit.org)

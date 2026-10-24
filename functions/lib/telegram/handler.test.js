@@ -161,10 +161,20 @@ describe('handleUpdate', () => {
     expect(store.listSites).toHaveBeenCalledWith('org1')
     expect(reply.mock.calls[0][1].text).toMatch(/Whitefield/)
   })
-  it('asks for a location when nothing matches', async () => {
+  it('says the centre was not found when nothing matches', async () => {
     const { row, reply } = await run('zzzz nowhere')
     expect(row.outcome).toBe('nomatch')
-    expect(reply.mock.calls[0][1].locationRequest).toBe(true)
+    expect(reply.mock.calls[0][1].locationRequest).toBeUndefined()
+    expect(reply.mock.calls[0][1].text).toMatch(/Centre not found/)
+    expect(reply.mock.calls[0][1].text).toContain('Please enter the Centre ID or Centre Name.')
+  })
+  it('with one organisation, asks for the centre and accepts an id directly', async () => {
+    const { row, reply } = await run('hello', {}, { fresh: true })
+    expect(row.outcome).toBe('orgselected')
+    expect(reply.mock.calls[0][1].text).toContain('Please enter the Centre ID or Centre Name.')
+    expect(reply.mock.calls[0][1].text).toMatch(/Acme Fitness/)
+    const looked = await run('BLR0123', {}, { fresh: true })
+    expect(looked.row).toMatchObject({ outcome: 'ok', siteId: 's1', orgId: 'org1' })
   })
   it('a shared location lists nearby sites (none located here)', async () => {
     const { row } = await run(undefined, { location: { latitude: 12.9, longitude: 77.6 } })
@@ -219,6 +229,7 @@ describe('handleUpdate', () => {
     )
     expect(named.outcome).toBe('orgselected')
     expect(reply.mock.calls[1][1].text).toMatch(/Beta Safety/)
+    expect(reply.mock.calls[1][1].text).toContain('Please enter the Centre ID or Centre Name.')
 
     const site = await handleUpdate(
       extractUpdate(update('BETA001', { date: NOW.getTime() / 1000 })),

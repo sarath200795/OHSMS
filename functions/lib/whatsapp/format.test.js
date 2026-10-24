@@ -4,10 +4,12 @@ import {
   defectLines,
   formatSiteReply,
   formatChoices,
+  formatNotFound,
   contactLines,
   clean,
   istStamp,
   MAX_BODY,
+  CENTRE_PROMPT,
 } from './format.js'
 
 // Invented data throughout (AGENTS.md: nothing real in a fixture).
@@ -64,7 +66,7 @@ describe('formatSiteReply', () => {
     expect(text).toContain('Pending actions: 4 (1 overdue)')
     expect(text).toContain('Incidents: 7 total · 1 open · 2 in last 90 days')
     expect(text).toContain('Updated 12 Oct, 07:30 IST')
-    expect(text).toContain('Reply with another site code')
+    expect(text).toContain('Reply with another Centre ID or Centre Name.')
   })
 
   it('lists the site and org-wide contacts, external first, with the org label', () => {
@@ -149,14 +151,41 @@ describe('formatChoices', () => {
       code: `C${i}`,
       region: 'North',
     }))
-    const { text, rows } = formatChoices(sites, 'long')
-    expect(rows).toHaveLength(10)
+    const { text, rows, list } = formatChoices(sites, 'long')
+    expect(rows).toHaveLength(8)
     for (const r of rows) {
       expect(r.title.length).toBeLessThanOrEqual(24)
       expect(r.description.length).toBeLessThanOrEqual(72)
       expect(r.id).toMatch(/^site:s\d+$/)
     }
-    expect(text).toContain('Several sites match "long"')
+    expect(text).toContain('Several centres match "long"')
+    expect(text).toMatch(/1\. /)
+    expect(text).toMatch(/8\. /)
+    expect(text).not.toMatch(/9\. /)
+    expect(list.button.length).toBeLessThanOrEqual(20)
+    expect(list.section.length).toBeLessThanOrEqual(24)
+  })
+})
+
+describe('formatNotFound', () => {
+  const sites = [
+    { id: 's1', name: 'Koramangala Block', code: 'BLR1', region: 'South' },
+    { id: 's2', name: 'Whitefield Hub', code: 'BLR2', region: 'South' },
+  ]
+
+  it('says not found and numbers the closest names', () => {
+    const { text, rows } = formatNotFound('koramangla', sites)
+    expect(text).toContain('Centre not found for "koramangla"')
+    expect(text).toContain('Closest names:')
+    expect(text).toContain('1. Koramangala Block (BLR1)')
+    expect(rows.map((r) => r.id)).toEqual(['site:s1', 'site:s2'])
+  })
+
+  it('repeats the centre prompt when nothing is close', () => {
+    const { text, rows } = formatNotFound('zzzz', [])
+    expect(text).toContain(CENTRE_PROMPT)
+    expect(text).toContain('Centre not found')
+    expect(rows).toEqual([])
   })
 })
 

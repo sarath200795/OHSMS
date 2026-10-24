@@ -25,7 +25,7 @@ export default [
   // the Node globals configured below are matched by path and those paths do
   // not match. CI never saw it — a fresh checkout has no worktrees — so the
   // only casualty was the local run, which is the one a person actually reads.
-  { ignores: ['dist', '.vendor', 'node_modules', 'emulator-data', '.claude'] },
+  { ignores: ['dist', '.vendor', 'node_modules', 'emulator-data', '.claude', 'android', 'ios'] },
   js.configs.recommended,
   {
     files: ['**/*.{js,jsx}'],
@@ -199,5 +199,9 @@ export default [
       sourceType: 'module',
       globals: { ...globals.node, ...globals.es2021 },
     },
+  },
+  {
+    files: ['src/shared/mobile/sw.js'],
+    languageOptions: { globals: { ...globals.serviceworker } },
   },
 ]
