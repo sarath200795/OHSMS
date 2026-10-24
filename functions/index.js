@@ -90,6 +90,7 @@ import { createHmac } from 'node:crypto'
 import { verifySignature, handshakeChallenge, isRealSecret } from './lib/whatsapp/signature.js'
 import { extractMessages } from './lib/whatsapp/parse.js'
 import { handleMessage } from './lib/whatsapp/handler.js'
+import { deliverLinkWelcome, sendLinkWelcome } from './lib/whatsapp/linkWelcome.js'
 import { createStore, buildSnapshot, listSnapshotOrgIds } from './lib/whatsapp/store.js'
 import {
   sendMessage,
@@ -3100,6 +3101,17 @@ const WA_DISPLAY_NUMBER = defineString('WA_DISPLAY_NUMBER', { default: '' })
 // Global circuit breaker: outbound replies per IST day across all users.
 const WA_DAILY_CAP = defineString('WA_DAILY_CAP', { default: '2000' })
 
+/**
+ * Whether a welcome can actually leave. The verify token is not required:
+ * nothing inbound is checked here. A placeholder access token or app secret
+ * must not send, and must not be hashed into the ledger as if it were a key.
+ */
+function waWelcomeReady() {
+  return (
+    waSwitchedOn() && isRealSecret(WA_ACCESS_TOKEN.value()) && isRealSecret(WA_APP_SECRET.value())
+  )
+}
+
 /** The kill switch plus the non-secret config the feature cannot run without. */
 function waSwitchedOn() {
   return (
@@ -3550,6 +3562,80 @@ export const sendWhatsAppOrgTest = onCall(
     }
     logger.info('sendWhatsAppOrgTest: sent', { orgId: user.orgId, uid: user.uid })
     return { sent: true, masked: prepared.masked }
+  }
+)
+
+/**
+ * One welcome when waLinks gains a binding.
+ *
+ * redeemLinkCode and addOrgNumber both set this document, and both set it
+ * again for reasons that are not a new link. deliverLinkWelcome tells those
+ * apart. The write has already committed by the time this runs, so a Graph
+ * refusal must not throw: a throw is a retry, and a retry after a send that
+ * landed is a second welcome. retry is off for the same reason. The ledger
+ * inside deliverLinkWelcome is what still collapses a duplicate delivery.
+ */
+export const notifyWhatsAppLinked = onDocumentWritten(
+  {
+    document: 'waLinks/{waId}',
+    region: REGION,
+    secrets: [WA_APP_SECRET, WA_ACCESS_TOKEN],
+    retry: false,
+  },
+  async (event) => {
+    let configured = false
+    let pepper = ''
+    try {
+      configured = waWelcomeReady()
+      if (configured) pepper = waPepper()
+    } catch (err) {
+      // An unbound secret throws. That is "not configured". Re-raising it
+      // would retry the event for days if retry were turned on.
+      logger.error('whatsapp link welcome is not configured', {
+        error: err?.message || String(err),
+      })
+      return
+    }
+    const cap = Math.max(1, Number(WA_DAILY_CAP.value()) || 2000)
+    try {
+      await deliverLinkWelcome({
+        db: getFirestore(),
+        waId: event.params.waId,
+        before: writtenData(event.data?.before),
+        after: writtenData(event.data?.after),
+        now: new Date(),
+        pepper,
+        configured,
+        logger,
+        reserveOutbound: async () => {
+          const db = getFirestore()
+          const gate = await db.runTransaction(async (tx) => {
+            const ref = db.doc('waRate/outbound-global')
+            const snap = await tx.get(ref)
+            const out = countOutbound(snap.exists ? snap.data() : {}, new Date(), cap)
+            tx.set(ref, out.state)
+            return out
+          })
+          return gate.allowed === true
+        },
+        // Location-request button, then the same body as text if the client
+        // cannot show it. One cap reservation either way: the text replaces
+        // the button, it is not a second welcome.
+        send: (to, message) =>
+          sendLinkWelcome({
+            to,
+            text: message.text,
+            locationRequest: message.locationRequest,
+            version: WA_GRAPH_VERSION.value(),
+            phoneNumberId: WA_PHONE_NUMBER_ID.value(),
+            token: WA_ACCESS_TOKEN.value(),
+          }),
+      })
+    } catch (err) {
+      // Claim failures throw. The link stays either way. The message is not
+      // the phone number: a Firestore error names the notifications path.
+      logger.error('whatsapp link welcome failed', { error: err?.message || String(err) })
+    }
   }
 )
 

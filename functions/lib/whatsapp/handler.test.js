@@ -273,12 +273,14 @@ describe('unknown senders', () => {
 describe('linking', () => {
   beforeEach(() => store.s.links.clear())
 
-  it('binds the number with a valid code', async () => {
+  it('binds the number with a valid code and does not text from the webhook', async () => {
     store.s.codes.set('482913', { uid: 'u1', orgId: 'o1' })
     const row = await handleMessage(msg('LINK 482913'), ctx())
     expect(row.outcome).toBe('linked')
     expect(store.s.links.get(PHONE)).toEqual({ uid: 'u1', orgId: 'o1' })
-    expect(sent[0].text).toBe(MESSAGES.linked)
+    // notifyWhatsAppLinked sends the one welcome off the waLinks write. A
+    // reply here would be a second message. A failed code still replies below.
+    expect(sent).toEqual([])
   })
 
   it('blocks the number after five wrong codes', async () => {
@@ -430,6 +432,16 @@ describe('which organisation', () => {
     const row = await handleMessage(msg('DEMO001'), ctx())
     expect(row).toMatchObject({ outcome: 'ok', siteId: 's1', orgId: 'o1' })
     expect(sent[0].text).toContain('Demo North Hub (DEMO001)')
+    expect(sent[0].text).toContain('Fire extinguishers')
+    expect(sent[0].text).not.toMatch(/Which organisation/)
+    expect(store.s.sessions.get(PHONE)).toMatchObject({ step: 'site', orgId: 'o1', uid: 'u1' })
+  })
+
+  it('answers a centre name the same way', async () => {
+    store.getOrganization = async () => ({ id: 'o1', name: 'Acme Fitness' })
+    const hit = await handleMessage(msg('Demo North Hub'), ctx())
+    expect(hit).toMatchObject({ outcome: 'ok', siteId: 's1' })
+    expect(sent[0].text).toContain('Demo North Hub (DEMO001)')
     expect(sent[0].text).not.toMatch(/Which organisation/)
   })
 
@@ -442,12 +454,56 @@ describe('which organisation', () => {
     expect(sent[0].text).not.toMatch(/Annex|DEMO003|South Hub/)
   })
 
+  it('a location pin uses the existing nearest-site lookup, only within reach', async () => {
+    store.getOrganization = async () => ({ id: 'o1', name: 'Acme Fitness' })
+    store.s.users.set('u1', member({ siteId: '', access: { regions: ['South'] } }))
+    store.s.sites.o1 = [
+      { ...SITES[0], lat: 12.0, lng: 77.0 },
+      { ...SITES[1], lat: 12.2, lng: 77.0 },
+      { ...SITES[2], lat: 12.01, lng: 77.0 },
+    ]
+    const row = await handleMessage(
+      msg('', { type: 'location', location: { latitude: 12.0, longitude: 77.0 } }),
+      ctx()
+    )
+    expect(row.outcome).toBe('nearby')
+    // s1 is nearest of all but North, and this member only reaches South.
+    expect(sent[0].rows.map((r) => r.id)).toEqual(['site:s3', 'site:s2'])
+    expect(sent[0].text).not.toContain('Demo North Hub')
+    expect(JSON.stringify(store.s.logs)).not.toMatch(/77|latitude/)
+  })
+
+  it('still asks when more than one organisation is possible, including for a pin', async () => {
+    const guideCtx = () => ({
+      store,
+      now: NOW,
+      from: PHONE,
+      user: { uid: null, channelAdmin: true, role: 'admin', status: 'approved' },
+      uid: null,
+      orgs: TWO,
+      listOrgs: true,
+      reply: async (to, m) => {
+        sent.push({ to, ...m })
+        return true
+      },
+    })
+    const row = await guideConversation(
+      { kind: 'location', latitude: 12, longitude: 77 },
+      guideCtx()
+    )
+    expect(row.outcome).toBe('orgprompt')
+    expect(sent[0].text).toMatch(/Which organisation/)
+    expect(sent[0].text).toMatch(/Acme Fitness/)
+    expect(sent[0].text).not.toMatch(/nearest|Fire extinguishers/)
+  })
+
   it('does not offer an organisation the linked user does not belong to', async () => {
     store.getOrganization = async (id) =>
       id === 'o1' ? { id, name: 'Acme Fitness' } : { id, name: 'Secret Other Co' }
     await handleMessage(msg('hi'), ctx())
     expect(JSON.stringify(sent)).not.toContain('Secret Other Co')
     expect(sent[0].text).toMatch(/Acme Fitness/)
+    expect(sent[0].text).not.toMatch(/Which organisation|Demo North Hub/)
   })
 
   it('CHANGE ORG asks again, and the next text is not searched as a centre', async () => {
@@ -551,6 +607,11 @@ describe('which organisation', () => {
     expect(row.outcome).toBe('orgprompt')
     expect(row.intent).toBe('org')
     expect(sent[0].text).toMatch(/1\. Acme Fitness/)
+
+    const picked = await handleMessage(msg('1'), ctx())
+    expect(picked.outcome).toBe('orgselected')
+    expect(sent.at(-1).text).toContain('Please enter the Centre ID or Centre Name.')
+    expect(sent.at(-1).text).not.toMatch(/Fire extinguishers/)
 
     store.s.sessions.clear()
     const denied = await guideConversation(

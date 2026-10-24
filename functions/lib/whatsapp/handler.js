@@ -6,7 +6,11 @@
 //
 //   1  dedupe        claim the wamid; a Meta retry must not be a second
 //                    (billable) reply
-//   2  LINK          the only command an unlinked number may use
+//   2  LINK          the only command an unlinked number may use. Success
+//                    writes waLinks and does not reply: notifyWhatsAppLinked
+//                    sends the one welcome. A reply here as well billed a
+//                    second message, and a Graph refusal on that reply was
+//                    easy to mistake for the link having failed.
 //   3  sender        waLinks → /users live re-check (approved, same org, own
 //                    password). Unknown or inactive: one polite reply per 24 h,
 //                    no data, and never a hint whether a site exists
@@ -16,10 +20,12 @@
 //   5  org switch    waOrgSettings enabled === false stops the reply before
 //                    any site is read. A missing document leaves lookup on
 //   6  rate limit    30/h, 150/day
-//   7  organisation  only the live profile's org. A linked profile has one,
-//                    so the centre prompt is immediate; several names still
-//                    ask first (remembered for 24 h idle). MENU / CHANGE ORG
-//                    ask again
+//   7  organisation  one allowed org is already known (the link, or a bot
+//                    pinned to one). A greeting is the centre prompt; a
+//                    centre id, a name or a location is answered immediately,
+//                    still only among sites the caller reaches. Several
+//                    names still ask first (24 h idle). MENU / CHANGE ORG
+//                    ask again, and a numbered reply is that list.
 //   8  resolve       exact Centre ID, then partial/fuzzy name, ONLY among
 //                    the sites the user reaches in that org
 //   9  reply         one match: the snapshot. Several (at most 8): a numbered
@@ -133,7 +139,9 @@ export async function handleMessage(msg, ctx) {
       await ctx.reply(from, { text: after.blocked ? MESSAGES.linkBlocked : MESSAGES.linkFailed })
       return done('linkfailed')
     }
-    await ctx.reply(from, { text: MESSAGES.linked })
+    // The welcome is the waLinks trigger, not this reply. Redeem has already
+    // committed. Replying here sent a second text, and still would on the
+    // re-save of a binding the trigger correctly stays quiet for.
     return done('linked', { orgId: result.orgId, uid: result.uid })
   }
 
@@ -316,12 +324,15 @@ export async function answerQuery(cmd, { store, reply, now = new Date(), from, u
 /**
  * Ask which organisation, then which site. Shared by WhatsApp and Telegram.
  *
- * Nothing about a site is read until the chat is on the site step for an
- * organisation this caller may use. One allowed organisation is already
- * known — the link, or a bot pinned to one — so a greeting is asked the
- * centre prompt and a centre id is resolved immediately. Several
- * organisations still ask first. `listOrgs` is the only switch that
- * volunteers more than one name.
+ * One allowed organisation is already known — the link, or a bot pinned to
+ * one — so a greeting is the centre prompt, and a centre id, a name or a
+ * location is resolved immediately, still only among sites `reachableSites`
+ * returns. Several organisations still ask first. A site answered before
+ * that choice would confirm which organisation holds it. `listOrgs` is the
+ * only switch that volunteers more than one name. MENU and CHANGE ORG ask
+ * again even when there is only one, and a live organisation list is
+ * answered before a single organisation is assumed — "1" after MENU is the
+ * list, not a centre id.
  *
  * The last organisation is the session's `step: 'site'` until `expiresAtMs`
  * (CONV_TTL_MS, refreshed on each site message). MENU and CHANGE ORG clear

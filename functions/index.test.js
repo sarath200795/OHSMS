@@ -8,6 +8,7 @@ import {
   notifyPermitLifecycle, notifyDefectReported, notifyExtinguisherDefect, notifyAedDefect, notifyFasDefect,
   notifyDrillReport, notifyCommitteeMeeting, sendWeatherRiskDigest, retryWeatherRiskDigest,
   notifyLotoPermitLifecycle, sweepLotoPermits, purgeClosedLotoPermits,
+  notifyWhatsAppLinked,
 } from './index.js'
 import { ASSIGNMENT_COLLECTIONS } from './lib/assignmentNotify.js'
 import { PURGEABLE } from './lib/retention.js'
@@ -590,6 +591,21 @@ describe('assignment mail triggers', () => {
   it('exports a separate trigger for the incident-reported circulation', () => {
     expect(typeof notifyIncidentReported).toBe('function')
     expect(notifyIncidentReported).not.toBe(notifyIncidentAssignment)
+  })
+})
+
+describe('whatsapp link welcome trigger', () => {
+  // Both link writers set waLinks/{waId}. A trigger on a different path
+  // would never see them, and a retry would send the welcome twice after a
+  // Graph call that had already landed.
+  it('watches waLinks and does not retry', () => {
+    expect(typeof notifyWhatsAppLinked).toBe('function')
+    expect(notifyWhatsAppLinked.__endpoint.eventTrigger).toMatchObject({
+      eventType: 'google.cloud.firestore.document.v1.written',
+      retry: false,
+      eventFilterPathPatterns: { document: 'waLinks/{waId}' },
+    })
+    expect(notifyWhatsAppLinked.__endpoint.region).toEqual(['asia-south1'])
   })
 })
 
