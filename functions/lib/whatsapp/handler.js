@@ -6,7 +6,11 @@
 //
 //   1  dedupe        claim the wamid; a Meta retry must not be a second
 //                    (billable) reply
-//   2  LINK          the only command an unlinked number may use
+//   2  LINK          the only command an unlinked number may use. Success
+//                    writes waLinks and does not reply: notifyWhatsAppLinked
+//                    sends the one welcome. A reply here as well billed a
+//                    second message, and a Graph refusal on that reply was
+//                    easy to mistake for the link having failed.
 //   3  sender        waLinks → /users live re-check (approved, same org, own
 //                    password). Unknown or inactive: one polite reply per 24 h,
 //                    no data, and never a hint whether a site exists
@@ -129,7 +133,9 @@ export async function handleMessage(msg, ctx) {
       await ctx.reply(from, { text: after.blocked ? MESSAGES.linkBlocked : MESSAGES.linkFailed })
       return done('linkfailed')
     }
-    await ctx.reply(from, { text: MESSAGES.linked })
+    // The welcome is the waLinks trigger, not this reply. Redeem has already
+    // committed. Replying here sent a second text, and still would on the
+    // re-save of a binding the trigger correctly stays quiet for.
     return done('linked', { orgId: result.orgId, uid: result.uid })
   }
 

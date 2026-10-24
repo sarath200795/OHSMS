@@ -322,8 +322,6 @@ export const MESSAGES = {
   noAccess: "You don't have access to that site. Ask your admin if you need it.",
   noSites: "Your account doesn't have access to any sites yet. Ask your admin for access.",
   slowDown: "You've sent a lot of lookups. Please wait a while and try again.",
-  linked:
-    'Linked ✅ This number can now look up your sites. I will ask which organisation, then a Site ID or Centre ID. Send UNLINK to disconnect.',
   linkFailed:
     "That code didn't work. Codes are single-use and expire after 10 minutes — generate a new one in the app.",
   linkBlocked: 'Too many wrong codes. Linking from this number is paused for 24 hours.',

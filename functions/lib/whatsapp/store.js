@@ -277,6 +277,9 @@ export function createStore(db, { pepper, now = () => new Date() } = {}) {
         // Single-use either way: a code that met an inactive account is spent.
         tx.delete(ref)
         if (!isActiveMember(user, rec.orgId)) return { ok: false, reason: 'inactive' }
+        // The welcome is notifyWhatsAppLinked on this document. Sending from
+        // the transaction is how a Graph refusal used to fail a link that
+        // had already been decided, and a second sender is a second message.
         tx.set(db.doc(`waLinks/${waId}`), {
           uid: rec.uid,
           orgId: rec.orgId,

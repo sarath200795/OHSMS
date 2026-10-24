@@ -179,6 +179,9 @@ export async function addOrgNumber(
           'That number is already linked to someone else in your organisation. Remove it first.',
       }
     }
+    // Same welcome as a self-serve redeem: notifyWhatsAppLinked. This set()
+    // also runs when the number is already bound to this member. The trigger
+    // treats that as a re-save and stays quiet. A send here would not.
     tx.set(ref, link)
     return { ok: true }
   })

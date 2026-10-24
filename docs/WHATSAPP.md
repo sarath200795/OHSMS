@@ -54,7 +54,7 @@ than ten asks for the code.
 Meta ──POST (X-Hub-Signature-256)──► waWebhook
    1 HMAC-SHA256 of the raw body with the App Secret, constant-time compare
    2 waInbound/{sha256(wamid)} create-if-absent  (Meta retries ≠ second reply)
-   3 LINK <code>  → waLinkCodes → waLinks/{waId}
+   3 LINK <code>  → waLinkCodes → waLinks/{waId} → one welcome (notifyWhatsAppLinked)
    4 waLinks/{waId} → users/{uid}, re-read live: approved, same org, own password
    5 UNLINK / STOP honoured before the rate limit, including when lookup is off
    6 waOrgSettings enabled === false → one reply, no site data (absent = on)
@@ -85,6 +85,17 @@ digest). The user sends `LINK 123456` from their phone. The server now knows
 both the signed-in uid that asked and the number Meta says sent it — proof of
 possession. Five wrong codes from one number in a day block linking from it
 for 24 hours. One number per person; a new link replaces the old one.
+
+`notifyWhatsAppLinked` watches `waLinks/{waId}`. A write that creates the
+binding, or points the number at a different person or organisation, sends
+one welcome through the Cloud API. That covers the code redeeming and an
+administrator attaching the number; both set this document. The organisation
+name is `organizations/{orgId}.name`, or the name stored on the profile when
+the organisation document has none, or "your organisation". A later save of
+the same binding does not send again. A code that fails does not write
+`waLinks`, so it does not send either. If Graph refuses the welcome, the
+failure is logged and the link stays. The webhook itself does not reply on
+success — that reply was a second message.
 
 Org Settings → Integrations → **Connect with WhatsApp** is the administrator
 path for the same binding. An approved admin of the organisation can turn

@@ -196,12 +196,14 @@ describe('unknown senders', () => {
 describe('linking', () => {
   beforeEach(() => store.s.links.clear())
 
-  it('binds the number with a valid code', async () => {
+  it('binds the number with a valid code and does not text from the webhook', async () => {
     store.s.codes.set('482913', { uid: 'u1', orgId: 'o1' })
     const row = await handleMessage(msg('LINK 482913'), ctx())
     expect(row.outcome).toBe('linked')
     expect(store.s.links.get(PHONE)).toEqual({ uid: 'u1', orgId: 'o1' })
-    expect(sent[0].text).toBe(MESSAGES.linked)
+    // notifyWhatsAppLinked sends the one welcome off the waLinks write. A
+    // reply here would be a second message. A failed code still replies below.
+    expect(sent).toEqual([])
   })
 
   it('blocks the number after five wrong codes', async () => {
