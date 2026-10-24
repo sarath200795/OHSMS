@@ -101,13 +101,15 @@ jobs:
           node-version: 22
           cache: npm
 
-      # The Firestore emulator is a Java process, and the rules suite below
-      # cannot run without it.
+      # The Firestore emulator is a Java process, and the rules suite and
+      # the Playwright smoke step below cannot run without it. firebase-tools
+      # 15 refuses a JDK before 21; Java 17 stopped both jobs in CI before
+      # a single test ran.
       - uses: actions/setup-java@v5
         if: steps.creds.outputs.configured == 'true'
         with:
           distribution: temurin
-          java-version: 17
+          java-version: 21
 
       - name: Install
         if: steps.creds.outputs.configured == 'true'

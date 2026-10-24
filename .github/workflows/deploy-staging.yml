@@ -112,11 +112,13 @@ jobs:
       # — this workflow deploys the same ruleset and previously skipped both.
       # A merge to main is how a rules regression would first meet a real
       # project; catching it here is cheaper than catching it on a tag.
+      # firebase-tools 15 refuses a JDK before 21. Java 17 stopped the
+      # rules job in CI before a test ran; this step deploys the same ruleset.
       - uses: actions/setup-java@v5
         if: steps.creds.outputs.configured == 'true'
         with:
           distribution: temurin
-          java-version: 17
+          java-version: 21
 
       # The same gates production runs. Staging is where a bad change is
       # supposed to be caught, which it cannot be if it was never checked.

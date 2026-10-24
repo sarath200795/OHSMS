@@ -134,8 +134,8 @@ Prefer two terminals? Run `npm run emulators` and `npm run dev` separately.
 
 **A JDK is required** for anything that starts the Firestore, Auth or Storage
 emulator — they are JVM processes. That covers `npm run emulators`,
-`npm run dev:full`, `npm run test:rules` and the Playwright suite. Java 17 is
-what CI uses.
+`npm run dev:full`, `npm run test:rules` and the Playwright suite. Java 21 is
+what CI uses. firebase-tools 15 will not start the emulators on an older JDK.
 
 Seed a demo organization with `npm run seed`.
 
