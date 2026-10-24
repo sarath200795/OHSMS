@@ -16,7 +16,7 @@ import {
   safeWaChatLink,
   TELEGRAM_SITE_LOOKUP_URL,
   TELEGRAM_SITE_LOOKUP_USERNAME,
-} from './whatsappConnect'
+} from './whatsappConnectApi.js'
 
 /**
  * Org Settings → Integrations → Connect with WhatsApp.

@@ -122,8 +122,14 @@ jobs:
       # different from what anyone has installed locally.
       - run: npm ci
 
+      # macOS checks out a case-insensitive tree. `./WhatsAppConnect` then bound
+      # whatsappConnect.js (probed before .jsx) and the production build died
+      # with "default" is not exported. Linux is the only image that can see
+      # both names at once, so the guard lives in this step.
       - name: Lint
-        run: npm run lint
+        run: |
+          npm run lint
+          node scripts/case-collision.mjs
 
       - name: Unit tests
         run: npm test
