@@ -4,7 +4,7 @@ import {
   safeWaChatLink,
   TELEGRAM_SITE_LOOKUP_URL,
   TELEGRAM_SITE_LOOKUP_USERNAME,
-} from './whatsappConnect'
+} from './whatsappConnectApi.js'
 
 describe('safeWaChatLink', () => {
   it('accepts only a wa.me link for a country-coded number', () => {
@@ -36,5 +36,14 @@ describe('the settings screen source', () => {
     expect(src).toContain('TELEGRAM_SITE_LOOKUP_URL')
     expect(src).toContain('TELEGRAM_SITE_LOOKUP_USERNAME')
     expect(src).not.toMatch(/setTelegram|enableTelegram|TG_ENABLED/)
+  })
+
+  // OrgSettings imported './WhatsAppConnect' with no extension. On a
+  // case-insensitive disk Vite probes '.js' first and bound whatsappConnect.js,
+  // which has no default export, so the production build failed only on macOS.
+  it('imports the helper under a name that does not collide with the component', () => {
+    expect(src).toContain("from './whatsappConnectApi.js'")
+    const settings = readFileSync(new URL('./OrgSettings.jsx', import.meta.url), 'utf8')
+    expect(settings).toContain("from './WhatsAppConnect.jsx'")
   })
 })
