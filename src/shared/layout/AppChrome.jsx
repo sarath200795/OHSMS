@@ -117,15 +117,24 @@ export default function AppChrome({ children }) {
           Skip to main content
         </a>
         <header className="sticky top-0 z-30 flex items-center gap-2 border-b border-ink-200/80 bg-white/72 px-4 py-2.5 pt-[max(0.65rem,env(safe-area-inset-top))] backdrop-blur-2xl sm:gap-3.5 sm:px-7">
-          {/* aria-label rather than leaning on the wordmark beside it: that text
-            is hidden below sm, and without this the only way home on a phone
-            was a link announced as the single letter "W". */}
+          {/* aria-label rather than leaning on the wordmark beside it: that
+            text is hidden below sm. The organisation name shown on a phone is
+            a separate line, and without this label the home link was announced
+            as the single letter "W". */}
           <NavLink
             to={narrow ? '/field' : '/portal'}
             aria-label={`${branded && orgName ? orgName : 'WEHS'} home`}
-            className="flex min-w-0 flex-none items-center gap-2.5 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
+            className="flex min-w-0 flex-1 items-center gap-2.5 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas sm:flex-none"
           >
-            <OrgMark className="h-8 w-8 rounded-xl ring-1 ring-ink-200" />
+            <OrgMark className="h-8 w-8 shrink-0 rounded-xl ring-1 ring-ink-200" />
+            {/* Below sm the wordmark and the building row are both hidden, so
+                a phone showed a mark and initials and never who was signed in.
+                This line is only that gap. sm and up keep the wordmark. */}
+            <span className="min-w-0 sm:hidden">
+              <span className="block truncate text-[13px] font-extrabold tracking-[-0.02em] text-ink-900">
+                {orgName || 'Your organization'}
+              </span>
+            </span>
             <span className="hidden min-w-0 leading-tight sm:block">
               <span className="block truncate text-[13px] font-extrabold tracking-[-0.02em] text-ink-900">
                 {branded ? orgName || 'Your organization' : 'WEHS'}
@@ -138,7 +147,7 @@ export default function AppChrome({ children }) {
             </span>
           </NavLink>
 
-          <div className="flex-1" />
+          <div className="hidden flex-1 sm:block" />
 
           <div className="ml-1.5 hidden min-w-0 items-center gap-2 border-l border-ink-200 pl-3.5 lg:flex">
             <Building2 size={15} className="shrink-0 text-ink-400" />
@@ -147,17 +156,20 @@ export default function AppChrome({ children }) {
             </span>
           </div>
 
-          <div className="relative" ref={menuRef}>
+          <div className="relative min-w-0 max-w-[48%] sm:max-w-none" ref={menuRef}>
             <button
               type="button"
               onClick={() => setMenuOpen((o) => !o)}
               aria-expanded={menuOpen}
               aria-haspopup="menu"
               aria-controls="account-menu"
-              className="flex items-center gap-2.5 rounded-2xl bg-white/80 px-1.5 py-1 ring-1 ring-ink-200 transition-all duration-200 ease-emil hover:ring-ink-300 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas sm:px-2 sm:py-1.5"
+              className="flex max-w-full items-center gap-1.5 rounded-2xl bg-white/80 px-1.5 py-1 ring-1 ring-ink-200 transition-all duration-200 ease-emil hover:ring-ink-300 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas sm:gap-2.5 sm:px-2 sm:py-1.5"
             >
-              <span className="grid h-[28px] w-[28px] place-items-center rounded-2xl bg-brand-600 text-[11px] font-bold text-white shadow-elev-sm">
+              <span className="grid h-[28px] w-[28px] shrink-0 place-items-center rounded-2xl bg-brand-600 text-[11px] font-bold text-white shadow-elev-sm">
                 {initials(name)}
+              </span>
+              <span className="min-w-0 truncate text-[12.5px] font-bold text-ink-900 sm:hidden">
+                {name}
               </span>
               <span className="hidden text-left leading-tight sm:block">
                 <span className="block text-[12.5px] font-bold text-ink-900">{name}</span>
@@ -167,7 +179,7 @@ export default function AppChrome({ children }) {
               </span>
               <ChevronDown
                 size={14}
-                className={`text-ink-400 transition-transform duration-200 ${menuOpen ? 'rotate-180' : ''}`}
+                className={`shrink-0 text-ink-400 transition-transform duration-200 ${menuOpen ? 'rotate-180' : ''}`}
               />
             </button>
 

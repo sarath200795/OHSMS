@@ -12,7 +12,10 @@ usual filenames; it cannot refuse one that was renamed.
 
 **Installed site (PWA).** Chrome and Safari offer "Add to Home Screen" once
 hosting is serving `manifest.webmanifest`. The installed icon opens `/field`,
-the phone home. The service worker caches the app shell — HTML, the hashed
+the phone home. That home is two labelled groups: Technical (the field
+registers) and Admin (settings, employees, maintenance, the audit log).
+Admin is omitted when this role cannot open any of those. The service
+worker caches the app shell — HTML, the hashed
 scripts and styles, the icons — so a page that has loaded once can paint in a
 dead spot. It does not cache Firebase Auth, Firestore, Storage or App Check.
 Those requests leave this origin, and the worker's decision function
@@ -68,6 +71,30 @@ every row stays unread. Functions are unchanged. Until hosting lands,
 suite.weehs.org is still the previous site: no manifest, no scanner, and
 the camera policy still blocks the page.
 
+The boot splash is in `index.html`, so the same hosting deploy is what a
+phone browser and an installed PWA show on start. The Capacitor splash is
+not part of hosting. It ships inside the store binary (`@capacitor/splash-screen`,
+`launchAutoHide: false`, background `#f6e3bb`, the existing `splash` drawable).
+A binary built before this commit still shows the old launch screen and
+never calls `SplashScreen.hide()`.
+
+## Splash
+
+A phone (under 768px) and the native shells paint a cream screen and the
+mark before the bundle. The mark scales in once. `prefers-reduced-motion`
+drops that scale. A desktop browser does not see it: the splash is
+`display: none` from the first style block, and the bundle removes the node.
+
+The native splash stays up until the page calls `SplashScreen.hide()` with
+a short fade. It uses the same cream, so the fade reveals the HTML splash
+rather than a white WebView, and the HTML splash then fades into the app.
+`launchAutoHide` is false on purpose. The plugin's own timer hides on a
+clock, which is how the native screen disappears before the HTML has
+painted and the handoff flashes white. The cost is the one named above: if
+the bundle never runs, the native splash has nothing to dismiss it. The
+HTML splash removes itself after eight seconds so a failed script is not a
+permanent cream screen.
+
 ## Alerts
 
 The Alerts tab reads collections the product already has: defect reports,
@@ -78,7 +105,8 @@ weather page does. A weather row is a site at Medium or worse, and its id
 includes the digest's six-hour slot, so the next window is unread again.
 
 Web push (FCM) is not part of this. Nothing buzzes when the app is closed.
-The badge is the unread count while it is open.
+The badge is the unread count while it is open. It pulses. That pulse, and
+the home tiles' staggered entrance, stop when the OS asks for reduced motion.
 
 ## Signing in, inside the WebView
 

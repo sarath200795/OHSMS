@@ -42,7 +42,7 @@ export default function FieldNav() {
                 {badge && (
                   <span
                     aria-hidden="true"
-                    className="absolute right-[18%] top-1 grid min-h-[16px] min-w-[16px] place-items-center rounded-full bg-[#c43d32] px-1 text-[9px] font-bold leading-none text-white"
+                    className="field-badge-pulse absolute right-[18%] top-1 grid min-h-[16px] min-w-[16px] place-items-center rounded-full bg-[#c43d32] px-1 text-[9px] font-bold leading-none text-white"
                   >
                     {unread > 9 ? '9+' : unread}
                   </span>

@@ -5,5 +5,17 @@
   "server": {
     "androidScheme": "https",
     "hostname": "localhost"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchAutoHide": false,
+      "launchFadeOutDuration": 200,
+      "backgroundColor": "#f6e3bb",
+      "androidSplashResourceName": "splash",
+      "androidScaleType": "CENTER",
+      "showSpinner": false,
+      "splashFullScreen": true,
+      "splashImmersive": false
+    }
   }
 }

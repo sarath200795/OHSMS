@@ -90,7 +90,7 @@ const SHORT = {
 }
 
 // The order a field person scans the grid in. Anything not listed follows,
-// still only when that module is on.
+// still only when that module is on. Settings is not here: it is admin.
 const LEADING = [
   'extinguishers',
   'aed',
@@ -107,11 +107,21 @@ const LEADING = [
   'sites',
   'emergency',
   'reports',
-  'settings',
 ]
 
+// Committee meetings and the analytics reports stay technical. Both are how
+// the field work is run and read, and a member would otherwise get an Admin
+// heading for a single Reports tile. Integrations are a tab inside Settings
+// (OrgSettings), not their own route, so they are not a second tile that
+// would open the same page or a path the page does not read.
+const ADMIN_KEYS = ['settings', 'users', 'maintenance', 'auditLog']
+
 function tile(partial) {
-  return { fill: FILL[partial.key] || 'bg-brand-600', ...partial }
+  return {
+    fill: FILL[partial.key] || 'bg-brand-600',
+    ...partial,
+    section: ADMIN_KEYS.includes(partial.key) ? 'admin' : 'technical',
+  }
 }
 
 /**
@@ -174,7 +184,26 @@ export function fieldApps({ moduleMap, role } = {}) {
     if (item) ordered.push(item)
   }
   for (const [key, item] of byKey) {
-    if (!LEADING.includes(key)) ordered.push(item)
+    if (LEADING.includes(key) || ADMIN_KEYS.includes(key)) continue
+    ordered.push(item)
+  }
+  for (const key of ADMIN_KEYS) {
+    const item = byKey.get(key)
+    if (item) ordered.push(item)
   }
   return ordered
+}
+
+/** Technical first, then Admin. A section with no tiles is omitted. */
+export function groupFieldApps(apps) {
+  const technical = []
+  const admin = []
+  for (const app of apps || []) {
+    if (app.section === 'admin') admin.push(app)
+    else technical.push(app)
+  }
+  const sections = []
+  if (technical.length) sections.push({ key: 'technical', label: 'Technical', apps: technical })
+  if (admin.length) sections.push({ key: 'admin', label: 'Admin', apps: admin })
+  return sections
 }

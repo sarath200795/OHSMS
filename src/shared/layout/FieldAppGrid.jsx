@@ -1,40 +1,58 @@
 import { Link } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
-import { fieldApps } from '../mobile/appGrid'
+import { fieldApps, groupFieldApps } from '../mobile/appGrid'
 
 /**
- * iPhone-style home. One rounded tile per place this person can open.
+ * iPhone-style home. One rounded tile per place this person can open,
+ * under Technical and — only when they have one — Admin.
  *
- * The heading is for the accessibility tree. On the portal the desktop h1 is
- * `display: none` below `md`, so this is the phone's only heading; on desktop
- * this whole grid is the one that is hidden.
+ * The page heading is for the accessibility tree. On the portal the desktop
+ * h1 is `display: none` below `md`, so this is the phone's only heading; on
+ * desktop this whole grid is the one that is hidden.
+ *
+ * Tiles stagger in and shrink under a finger. Both are cancelled when the
+ * OS asks for reduced motion, so a tile never starts invisible.
  */
 export default function FieldAppGrid() {
   const { moduleMap, role } = useAuth()
-  const apps = fieldApps({ moduleMap, role })
+  const sections = groupFieldApps(fieldApps({ moduleMap, role }))
 
   return (
-    <div>
+    <div className="space-y-7">
       <h1 className="sr-only">Home</h1>
-      <ul className="grid grid-cols-4 gap-x-3 gap-y-5">
-        {apps.map((app) => (
-          <li key={app.key}>
-            <Link
-              to={app.to}
-              className="flex flex-col items-center gap-1.5 rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
-            >
-              <span
-                className={`grid h-[60px] w-[60px] place-items-center rounded-[18px] text-white shadow-elev-sm ${app.fill}`}
+      {sections.map((section) => (
+        <section key={section.key} aria-labelledby={`field-section-${section.key}`}>
+          <h2
+            id={`field-section-${section.key}`}
+            className="mb-3 text-[13px] font-bold tracking-[-0.01em] text-ink-500"
+          >
+            {section.label}
+          </h2>
+          <ul className="grid grid-cols-4 gap-x-3 gap-y-5">
+            {section.apps.map((app, i) => (
+              <li
+                key={app.key}
+                className="field-tile-in"
+                style={{ animationDelay: `${Math.min(i, 12) * 35}ms` }}
               >
-                <app.icon size={28} strokeWidth={2.25} aria-hidden="true" />
-              </span>
-              <span className="line-clamp-2 w-full text-center text-[11px] font-semibold leading-tight text-ink-800">
-                {app.label}
-              </span>
-            </Link>
-          </li>
-        ))}
-      </ul>
+                <Link
+                  to={app.to}
+                  className="field-tile-press flex flex-col items-center gap-1.5 rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas active:scale-[0.92] motion-reduce:active:scale-100"
+                >
+                  <span
+                    className={`grid h-[60px] w-[60px] place-items-center rounded-[18px] text-white shadow-elev-sm ${app.fill}`}
+                  >
+                    <app.icon size={28} strokeWidth={2.25} aria-hidden="true" />
+                  </span>
+                  <span className="line-clamp-2 w-full text-center text-[11px] font-semibold leading-tight text-ink-800">
+                    {app.label}
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))}
     </div>
   )
 }

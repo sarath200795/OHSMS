@@ -29,8 +29,84 @@
       content="Workplace safety management — incidents, risk assessment, inspections, audits, permits, LOTO, training and documents."
     />
     <title>WEHS — Workplace Environment, Health &amp; Safety</title>
+    <!-- First paint, before the bundle. Same cream as the native splash so
+         the Capacitor screen can dissolve into this one. A desktop browser
+         (768px and up, and not the native shell) never sees it. The timer
+         removes it if the bundle never runs — a splash only the bundle can
+         dismiss is a blank phone when the script fails. -->
+    <style>
+      #boot-splash {
+        position: fixed;
+        inset: 0;
+        z-index: 80;
+        display: grid;
+        place-items: center;
+        background: #f6e3bb;
+      }
+      #boot-splash img {
+        width: 88px;
+        height: 88px;
+        border-radius: 22px;
+        animation: boot-mark 700ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+      }
+      @keyframes boot-mark {
+        from {
+          opacity: 0;
+          transform: scale(0.82);
+        }
+        to {
+          opacity: 1;
+          transform: scale(1);
+        }
+      }
+      #boot-splash.boot-splash-out {
+        animation: boot-splash-out 280ms ease-in forwards;
+      }
+      @keyframes boot-splash-out {
+        to {
+          opacity: 0;
+          visibility: hidden;
+        }
+      }
+      @media (min-width: 768px) {
+        html:not(.native-shell) #boot-splash {
+          display: none;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #boot-splash img,
+        #boot-splash.boot-splash-out {
+          animation: none;
+        }
+      }
+      @media print {
+        #boot-splash {
+          display: none !important;
+        }
+      }
+    </style>
+    <script>
+      try {
+        if (
+          window.Capacitor &&
+          window.Capacitor.isNativePlatform &&
+          window.Capacitor.isNativePlatform()
+        ) {
+          document.documentElement.classList.add('native-shell')
+        }
+      } catch (e) {
+        /* no bridge in a browser; the HTML splash still runs */
+      }
+      window.setTimeout(function () {
+        var el = document.getElementById('boot-splash')
+        if (el) el.remove()
+      }, 8000)
+    </script>
   </head>
   <body>
+    <div id="boot-splash" aria-hidden="true">
+      <img src="/wehs.svg" alt="" width="88" height="88" />
+    </div>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

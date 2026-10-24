@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fieldApps } from './appGrid'
+import { fieldApps, groupFieldApps } from './appGrid'
 
 const labels = (role, moduleMap) => fieldApps({ role, moduleMap }).map((a) => a.label)
 
@@ -37,7 +37,15 @@ describe('fieldApps', () => {
 
   it('drops a module the organisation has switched off, including its equipment tiles', () => {
     const names = labels('admin', { equipment: false, incidents: false, weather: false })
-    for (const gone of ['Extinguishers', 'AED', 'FAS', 'Signage', 'Defects', 'Incidents', 'Weather']) {
+    for (const gone of [
+      'Extinguishers',
+      'AED',
+      'FAS',
+      'Signage',
+      'Defects',
+      'Incidents',
+      'Weather',
+    ]) {
       expect(names).not.toContain(gone)
     }
     expect(names).toContain('Permits')
@@ -56,6 +64,32 @@ describe('fieldApps', () => {
     const manager = labels('manager')
     expect(manager).toContain('Audit log')
     expect(manager).not.toContain('Settings')
+  })
+
+  it('splits technical work from admin tools and hides Admin when the role has none', () => {
+    const admin = fieldApps({ role: 'admin' })
+    const section = Object.fromEntries(admin.map((a) => [a.label, a.section]))
+    expect(section.Meetings).toBe('technical')
+    expect(section.Reports).toBe('technical')
+    expect(section.Extinguishers).toBe('technical')
+    expect(section.Settings).toBe('admin')
+    expect(section.Employees).toBe('admin')
+    expect(section.Maintenance).toBe('admin')
+    expect(section['Audit log']).toBe('admin')
+
+    const labels = admin.map((a) => a.label)
+    const settingsAt = labels.indexOf('Settings')
+    expect(settingsAt).toBeGreaterThan(labels.indexOf('Reports'))
+    expect(labels.slice(settingsAt)).toEqual(['Settings', 'Employees', 'Maintenance', 'Audit log'])
+
+    expect(groupFieldApps(admin).map((s) => s.label)).toEqual(['Technical', 'Admin'])
+    expect(groupFieldApps(fieldApps({ role: 'member' })).map((s) => s.label)).toEqual(['Technical'])
+    expect(
+      groupFieldApps(fieldApps({ role: 'auditor' }))
+        .find((s) => s.key === 'admin')
+        .apps.map((a) => a.label)
+    ).toEqual(['Audit log'])
+    expect(groupFieldApps([]).map((s) => s.label)).toEqual([])
   })
 
   it('points each leading tile at the register it names', () => {

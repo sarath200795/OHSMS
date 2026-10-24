@@ -1098,3 +1098,46 @@ option {
     min-height: 44px;
   }
 }
+
+/* Phone home. Tiles stagger in and the alerts badge breathes. A person who
+   asked the OS to stop motion must not get a bouncing grid: the rule below
+   cancels these outright, so a tile never begins at opacity 0. The global
+   reduced-motion block already shortens every animation; this is the one
+   that keeps the first frame painted. */
+@keyframes field-tile-in {
+  from {
+    opacity: 0;
+    transform: scale(0.86);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.field-tile-in {
+  animation: field-tile-in 420ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.field-tile-press {
+  transition: transform 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes field-badge-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.14);
+  }
+}
+.field-badge-pulse {
+  animation: field-badge-pulse 2.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .field-tile-in,
+  .field-badge-pulse {
+    animation: none !important;
+  }
+  .field-tile-press {
+    transition: none !important;
+  }
+}
