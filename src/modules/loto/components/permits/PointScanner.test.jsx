@@ -3,13 +3,17 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react'
 import PointScanner from './PointScanner'
 
-beforeEach(() => cleanup())
+beforeEach(() => {
+  cleanup()
+  Object.defineProperty(window, 'isSecureContext', { configurable: true, value: true })
+})
 afterEach(() => {
   delete window.BarcodeDetector
 })
 
 describe('PointScanner', () => {
   it('falls back to a typed code when the browser has no barcode detector', () => {
+    Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: undefined })
     render(<PointScanner onCode={() => {}} />)
     expect(screen.getByText(/cannot scan from the camera/)).toBeTruthy()
     expect(screen.queryByRole('button', { name: /camera/ })).toBeNull()
@@ -64,6 +68,12 @@ describe('PointScanner', () => {
     const { unmount } = render(<PointScanner onCode={() => {}} />)
     fireEvent.click(screen.getByRole('button', { name: /Scan a tag with the camera/ }))
     await waitFor(() => expect(getUserMedia).toHaveBeenCalled())
+    const preview = screen.getByLabelText('Camera view for scanning the tag')
+    expect(preview.className).not.toMatch(/\bhidden\b/)
+    expect(preview.getAttribute('playsinline')).toBe('true')
+    expect(preview.muted).toBe(true)
+    expect((await screen.findByRole('status')).textContent).toMatch(/Starting the camera/)
+    expect(document.querySelector('[data-scan-frame]')).toBeTruthy()
     unmount()
     open()
     await waitFor(() => expect(stop).toHaveBeenCalled())
