@@ -59,10 +59,11 @@ export function shellCacheDecision(rawUrl, { method = 'GET', origin = '' } = {})
   if (url.pathname.startsWith('/__/')) return 'pass'
   // The uptime probe. A cached 200 is a lie about a deploy that is down.
   if (url.pathname === '/health.json') return 'pass'
-  // Store listings. The navigate branch serves index.html when the network
-  // fails, and that HTML is not a config. Passing it through means a missing
-  // file stays "Coming soon" instead of a cached page parsed as JSON.
+  // Store listings and the APK. The navigate branch serves index.html when
+  // the network fails. That HTML is not a config, and it is not an installable
+  // package: a phone that saved it would try to open a web page as an APK.
   if (url.pathname === '/store.json') return 'pass'
+  if (url.pathname.startsWith('/downloads/')) return 'pass'
   if (/\.(?:js|css|woff2?|png|svg|webp|ico|webmanifest)$/i.test(url.pathname)) return 'asset'
   if (url.pathname === '/manifest.webmanifest') return 'asset'
   return 'navigate'

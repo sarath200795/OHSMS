@@ -77,6 +77,9 @@ ios/App/build/
 ios/App/App/public/
 ios/DerivedData/
 *.jks
+# The login page links here. The file is produced by the Android workflow and
+# copied in at hosting deploy. A binary APK does not belong in git.
+public/downloads/*.apk
 *.keystore
 !android/app/debug.keystore
 android/keystore.properties

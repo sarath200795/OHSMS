@@ -63,10 +63,12 @@ matter, beyond the usual `dist/`:
     the immutable `*.js` header would pin the worker for a year and a
     deploy would not replace the shell.
 - `public/badges/` and `public/store.json`. The login page shows the
-  official Play and App Store badges. `store.json` is `no-cache`, and the
-  shell worker does not cache it, so filling in the listing URLs is a
-  hosting update of that file. Until the URLs are set the badges say
-  "Coming soon" and are not links. They are hidden inside the Capacitor shell.
+  official Play and App Store badges only when those URLs are set.
+  `store.json` is `no-cache`, and the shell worker does not cache it.
+- `public/downloads/weehs-ohsms.apk` and `weehs-ohsms.json`. The APK is not
+  in git. Hosting serves it as `application/vnd.android.package-archive`
+  with `no-cache`, and the shell worker does not cache `/downloads/`. The
+  badges are hidden inside the Capacitor shell.
 
 Deploy hosting from a checkout of this commit after `npm run build`, and
 deploy the Firestore rules in the same release. The rules gained
@@ -205,6 +207,68 @@ legal to open:
   waits in front of the cylinder.
 - `ios/App/App/Info.plist` — `NSCameraUsageDescription`.
 - `ios/App/Podfile` — `platform :ios, '15.5'`, which is ML Kit's floor.
+
+## Direct install, before the stores
+
+The login page does not show a store badge until that listing URL is set
+(`VITE_PLAY_STORE_URL`, `VITE_APP_STORE_URL`, or the same keys in
+`public/store.json`). What it shows instead:
+
+- **Download APK** links to `/downloads/weehs-ohsms.apk` on this origin. The
+  version next to it is `version` in `public/downloads/weehs-ohsms.json`.
+  A phone will ask for permission to install from the browser. That
+  permission is per browser, in that browser's app settings. There is no
+  separate "unknown sources" switch on current Android.
+- **Install on iPhone** opens the Safari steps: Share, Add to Home Screen.
+  An iPhone cannot install an `.ipa` from the browser, so the page does not
+  offer one. `VITE_TESTFLIGHT_URL` (or `testFlightUrl` in `store.json`) adds
+  a TestFlight link when it is `https://testflight.apple.com/...`.
+- The whole block is hidden inside the Capacitor shell. Someone who already
+  has the app open does not need a second copy.
+
+### Getting the APK onto hosting
+
+The file is produced by the **Android APK** workflow
+(`.github/workflows/android-apk.yml`). It runs on a version tag (`v*`) and
+from the Actions tab. It does not run on pull requests.
+
+1. Set the same repository variables the hosting build uses (`VITE_FIREBASE_*`
+   and the rest named in `.github/workflows/deploy.yml`). Without them the
+   APK still builds, and then cannot sign in.
+2. For a signature that survives the next build, create an upload keystore
+   **outside this repository** (the command is under Building Android) and
+   add four Actions secrets: `ANDROID_KEYSTORE_BASE64` (the keystore file,
+   base64, no line breaks), `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`,
+   `ANDROID_KEY_PASSWORD`. All four must be set. If any is missing the
+   workflow ships a debug-signed APK instead. A debug-signed APK and a later
+   release-signed APK do not install over each other; the phone has to
+   uninstall first. A debug keystore created on the runner is also a new key
+   every run, so two debug APKs from CI may not install over each other either.
+3. Run the workflow. The artifact `weehs-ohsms-apk` holds `weehs-ohsms.apk`
+   and `weehs-ohsms.json`. On a tag, those two files are also attached to
+   that GitHub release.
+4. Hosting only serves what `npm run build` copied out of `public/`. The
+   Deploy workflow, on a version tag, downloads the release assets into
+   `public/downloads/` before the build. The tag push starts both workflows
+   at once, so that download usually misses. Re-run **Deploy** after
+   **Android APK** is green. If the asset is not there yet, Deploy still
+   ships the site and the button 404s.
+5. From a machine, the same placement is:
+
+```bash
+mkdir -p public/downloads
+cp weehs-ohsms.apk public/downloads/weehs-ohsms.apk
+cp weehs-ohsms.json public/downloads/weehs-ohsms.json
+npm run build
+firebase deploy --only hosting
+```
+
+`public/downloads/*.apk` is gitignored. Do not commit the binary. The JSON
+in git is the version the page shows until a deploy replaces it. A Firebase
+Storage URL may be put in that JSON's `url` instead of the hosting path;
+only `firebasestorage.googleapis.com` and `*.firebasestorage.app` are
+accepted, and anything else is ignored in favour of
+`/downloads/weehs-ohsms.apk`.
 
 ## Building Android
 

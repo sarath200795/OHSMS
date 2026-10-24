@@ -30,6 +30,12 @@ describe('shellCacheDecision', () => {
     expect(shellCacheDecision(`${ORIGIN}/__/auth/handler`, { origin: ORIGIN })).toBe('pass')
     expect(shellCacheDecision(`${ORIGIN}/health.json`, { origin: ORIGIN })).toBe('pass')
     expect(shellCacheDecision(`${ORIGIN}/store.json`, { origin: ORIGIN })).toBe('pass')
+    expect(shellCacheDecision(`${ORIGIN}/downloads/weehs-ohsms.apk`, { origin: ORIGIN })).toBe(
+      'pass'
+    )
+    expect(shellCacheDecision(`${ORIGIN}/downloads/weehs-ohsms.json`, { origin: ORIGIN })).toBe(
+      'pass'
+    )
   })
 
   it('keeps hashed assets and the manifest', () => {
