@@ -62,8 +62,16 @@ export function cameraErrorMessage(err, { fallback } = {}) {
   }
   if (name === 'AbortError') return ''
   // Sentences thrown by this file ("the preview has no size") are already
-  // written for the banner. A library string is not, and stays generic.
-  if (err instanceof Error && err.name === 'Error' && err.message) return err.message
+  // written for the banner. A library string, or a bare Error('denied') from
+  // getUserMedia, is not — the LOTO screen used to print that raw word.
+  if (
+    err instanceof Error &&
+    err.name === 'Error' &&
+    typeof err.message === 'string' &&
+    err.message.startsWith('The camera preview')
+  ) {
+    return err.message
+  }
   return fallback || 'The camera could not start. Paste the code instead.'
 }
 

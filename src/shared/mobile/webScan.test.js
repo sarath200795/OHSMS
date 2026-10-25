@@ -85,6 +85,14 @@ describe('camera messages', () => {
       )
     ).toMatch(/https/)
     expect(cameraErrorMessage(new DOMException('closed', 'AbortError'))).toBe('')
+    expect(cameraErrorMessage(new Error('denied'), { fallback: 'type the tag' })).toBe(
+      'type the tag'
+    )
+    expect(
+      cameraErrorMessage(
+        new Error('The camera preview has no size yet. Try again, or paste the code.')
+      )
+    ).toMatch(/no size/)
   })
 
   it('refuses an insecure page and a browser with no camera API', () => {
