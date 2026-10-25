@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // The document the site-lookup bots read for one centre's last audit.
 //
-// organizations/{orgId}/siteAuditCache/{siteId}
+// siteAuditCache/{orgId}/sites/{siteId}
 //
 // Written by the scheduled refresh, read by the webhook through the Admin
 // SDK. `none: true` is a look that succeeded and found no scored audit — the

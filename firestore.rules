@@ -1377,6 +1377,28 @@ service cloud.firestore {
     match /waOrgSettings/{docId} {
       allow read, write: if false;
     }
+    // The last audit the lookup bots read: date, score, open-point labels,
+    // and when the extract was taken. The schedule is the only writer. A
+    // client write could plant a score; a client read would hand warehouse
+    // observation text to every approved account. The bot re-checks site
+    // reach and reads with the Admin SDK.
+    //
+    // This is top-level, not organizations/{orgId}/siteAuditCache. That
+    // shape has to be excluded from structuralOnly(), and that function is
+    // already at the 1000-expression ceiling: one more conjunct, evaluated
+    // twice because the recursive match covers the parent, denied an
+    // extinguisher close that moves both dates and carries the certificate.
+    // The legacy wildcard above does not name this collection, so these
+    // denials are not undercut by a permissive union.
+    match /siteAuditCache/{orgId} {
+      allow read, write: if false;
+      match /sites/{siteId} {
+        allow read, write: if false;
+        match /{sub=**} {
+          allow read, write: if false;
+        }
+      }
+    }
 
     // ── Platform ownership ────────────────────────────────────────────────────
     // One document per person who operates the platform. Existence IS the
@@ -2292,20 +2314,6 @@ service cloud.firestore {
         allow read, write: if false;
       }
 
-      // The last-audit extract the site-lookup bots read. The schedule writes
-      // it with the Admin SDK, which does not consult these rules. A member
-      // write could plant a score. A member read would hand warehouse
-      // observation text to every approved account, including the outside
-      // auditor. The bot re-checks site reach and reads with the Admin SDK.
-      //
-      // `if false` does not hold on its own. Rules are a permissive union, so
-      // this match restricts nothing while the generic grant below still
-      // matches the collection. The exclusion in structuralOnly() is the
-      // load-bearing half; this block is the name a reader finds first.
-      match /siteAuditCache/{siteId} {
-        allow read, write: if false;
-      }
-
       // ── Third-party credentials ─────────────────────────────────────────────
       //
       // integrations/metabase holds the API key ODIN queries the analytics
@@ -2431,14 +2439,6 @@ service cloud.firestore {
         // same reason as notifications: a narrow `if false` below restricts
         // nothing while this generic grant still matches the collection.
         && col != 'weatherDigestRuns'
-        // 'siteAuditCache' is the last audit the lookup bots read: date,
-        // score, open-point labels, and when the extract was taken. The
-        // schedule is the only writer. The generic grant would let any
-        // approved member overwrite a score or read observation text the
-        // bot only sends after a reach check. Rules are a permissive union,
-        // so the narrow `if false` above restricts nothing while this one
-        // still grants the same write. Excluded from every operation.
-        && col != 'siteAuditCache'
         // 'alertReads' is one document per person: the ids of alert rows they
         // have already opened. The generic grant would let any approved member
         // read a colleague's cursor and, worse, overwrite it — or park an

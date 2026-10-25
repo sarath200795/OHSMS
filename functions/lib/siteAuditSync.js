@@ -6,7 +6,7 @@
 // that answer often never came (the connect was aborted). This run is the
 // one caller. It walks organisations that actually have a Metabase key,
 // asks the shared ODIN helper once per organisation over 120 days — not the
-// dashboard's 90 — and writes organizations/{orgId}/siteAuditCache/{siteId}.
+// dashboard's 90 — and writes siteAuditCache/{orgId}/sites/{siteId}.
 //
 // A failed look, a capped extract, or a thrown commit leaves the previous
 // document. Writing `none` is different: the look succeeded and the centre
@@ -61,7 +61,7 @@ async function defaultWrite(db, orgId, rows) {
     for (const row of rows.slice(i, i + WRITE_BATCH)) {
       if (!safeId(row.siteId)) continue
       const data = { ...row.data, syncedAt: Timestamp.fromDate(row.data.syncedAt) }
-      batch.set(db.doc(`organizations/${orgId}/siteAuditCache/${row.siteId}`), data)
+      batch.set(db.doc(`siteAuditCache/${orgId}/sites/${row.siteId}`), data)
     }
     await batch.commit()
   }

@@ -443,7 +443,7 @@ export function createStore(db, { pepper, now = () => new Date() } = {}) {
       if (!orgId || !siteId || String(orgId).includes('/') || String(siteId).includes('/')) {
         return null
       }
-      const snap = await db.doc(`organizations/${orgId}/siteAuditCache/${siteId}`).get()
+      const snap = await db.doc(`siteAuditCache/${orgId}/sites/${siteId}`).get()
       if (!snap.exists) return null
       return readCacheDoc(snap.data() || {})
     },

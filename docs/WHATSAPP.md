@@ -68,7 +68,7 @@ Meta ──POST (X-Hub-Signature-256)──► waWebhook
      the client supports it). None says not found and suggests the closest names
   10 waSiteSnapshots/{orgId} (one read) + erpContacts → one reply via Graph API
   11 the same reply asks "Do you need any additional details? (Yes/No)". Yes
-     reads organizations/{orgId}/siteAuditCache/{siteId} (no Metabase call).
+     reads siteAuditCache/{orgId}/sites/{siteId} (no Metabase call).
      No is a short acknowledgement. No cache entry is "Contact the admin"
   12 waQueryLog row (no message text)
 ```
@@ -206,7 +206,7 @@ The same lookup also answers on Telegram (@WEEHS_Site_Lookup_bot) through the
 After a single centre's summary, both channels ask "Do you need any additional
 details? (Yes/No)" — WhatsApp reply buttons, Telegram an inline keyboard, and
 the same sentence as plain text if the buttons cannot be shown. Yes reads
-`organizations/{orgId}/siteAuditCache/{siteId}`, written every 3 hours by
+`siteAuditCache/{orgId}/sites/{siteId}`, written every 3 hours by
 `refreshSiteAuditCache` (asia-south1, Asia/Kolkata) for organisations that
 have Metabase configured. The window is 120 days. The reply is the audit
 date, the score, open points (at most 10, then "+N more"), and a line

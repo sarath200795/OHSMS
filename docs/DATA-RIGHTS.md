@@ -56,7 +56,7 @@ are excluded from the action count altogether, because at a small site a count
 can point at one person's health. If the caller asks, a second message adds the
 cached last-audit date, score and open-point labels (the same warehouse text
 the ODIN dashboard shows to someone who can already see that site) and when
-that extract was taken. That cache is `organizations/{orgId}/siteAuditCache/{siteId}`:
+that extract was taken. That cache is `siteAuditCache/{orgId}/sites/{siteId}`:
 server-only in the rules, overwritten in place, keyed by the site rather than
 a person, so it is not a subject-access source and it is not sealed. Messages
 pass through Meta (WhatsApp Cloud API) as a processor; record it in the ROPA

@@ -20,7 +20,7 @@ describe('getSiteAuditCache', () => {
 
   it('reads the stored extract and refuses a path that is not one segment', async () => {
     const db = memoryDb({
-      'organizations/orgA/siteAuditCache/s1': {
+      'siteAuditCache/orgA/sites/s1': {
         none: false,
         syncedAt: at,
         date: '2026-03-02',
