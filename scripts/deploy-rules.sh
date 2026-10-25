@@ -16,16 +16,19 @@
 # firebase-tools issue 5590 (503, and 409 "already exists", on large
 # rulesets the compiler has already accepted).
 #
-# The whole firestore:rules,firestore:indexes,storage deploy is what gets
-# retried. The observed failure is the compile check, which is before any
-# release. A later transient error, after a release, is safe to repeat: an
-# identical ruleset is skipped, and index deploy only creates indexes that
-# are not already present.
+# v2.0.4 retried five times over about five minutes. Two attempts 503'd on
+# :test. The other three compiled firestore.rules and then 503'd on
+# POST /rulesets, and the CLI still uploaded. Those files were already the
+# live release. scripts/rules-live.mjs reads the released ruleset and the
+# live indexes from the Firebase API (not from a tag). When they match,
+# this script does not call the Rules API, and hosting may ship. When they
+# differ, only the differing parts are deployed. When the live release
+# cannot be read, that is not a match: everything is deployed.
 #
 # Compilation errors, HTTP 400/401/403, and any other unrecognised failure
 # are not retried. Hosting is a separate workflow step and runs only when
-# this script exits 0 — a site that needs a rules or index release must not
-# ship when that release did not happen.
+# this script exits 0. A skip is exit 0 because production is already
+# enforcing these files. A failed deploy is not.
 set -euo pipefail
 
 require_project_id() {
@@ -96,14 +99,75 @@ for delay in "${backoff[@]}"; do
   fi
 done
 
+# Words after `differ` are firestore, indexes, storage. Anything else,
+# including a live check that could not be read, deploys all three. Deploying
+# more than changed still refuses hosting if it fails. Deploying less would
+# ship a site ahead of a rules release.
+select_targets() {
+  local line="$1"
+  local full="firestore:rules,firestore:indexes,storage"
+  local -a words=()
+  read -r -a words <<< "$line"
+  if [[ "${words[0]:-}" != "differ" || "${#words[@]}" -lt 2 ]]; then
+    echo "$full"
+    return
+  fi
+  local firestore=0 indexes=0 storage=0 word
+  for word in "${words[@]:1}"; do
+    case "$word" in
+      firestore) firestore=1 ;;
+      indexes) indexes=1 ;;
+      storage) storage=1 ;;
+      *)
+        echo "$full"
+        return
+        ;;
+    esac
+  done
+  local targets=""
+  if [[ "$firestore" -eq 1 ]]; then targets="firestore:rules"; fi
+  if [[ "$indexes" -eq 1 ]]; then targets="${targets:+$targets,}firestore:indexes"; fi
+  if [[ "$storage" -eq 1 ]]; then targets="${targets:+$targets,}storage"; fi
+  if [[ -z "$targets" ]]; then
+    echo "$full"
+    return
+  fi
+  echo "$targets"
+}
+
+script_dir="$(cd "$(dirname "$0")" && pwd)"
 log="$(mktemp)"
-trap 'rm -f "$log"' EXIT
+live_out="$(mktemp)"
+trap 'rm -f "$log" "$live_out"' EXIT
+
+set +e
+if [[ -n "${RULES_LIVE_BIN:-}" ]]; then
+  "$RULES_LIVE_BIN" >"$live_out"
+else
+  node "$script_dir/rules-live.mjs" >"$live_out"
+fi
+live_status=$?
+set -e
+live_line="$(tr -d '\r' <"$live_out" | head -n 1)"
+
+if [[ "$live_status" -eq 0 && "$live_line" == "match" ]]; then
+  echo "Live Firestore rules, Storage rules and indexes match this commit. Skipping the Rules API deploy."
+  exit 0
+fi
+
+targets="firestore:rules,firestore:indexes,storage"
+if [[ "$live_status" -eq 10 ]]; then
+  targets="$(select_targets "$live_line")"
+  echo "Live release differs (${live_line}). Deploying ${targets}."
+else
+  echo "::warning::Could not confirm the live rules release (exit ${live_status}). Deploying rules, indexes and storage." >&2
+fi
 
 attempt=1
 while true; do
   set +e
   firebase_cli deploy \
-    --only firestore:rules,firestore:indexes,storage \
+    --only "$targets" \
     --project "$PROJECT_ID" \
     --non-interactive \
     2>&1 | tee "$log"

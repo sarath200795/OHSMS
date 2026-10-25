@@ -122,6 +122,7 @@ jobs:
           npx eslint src
           npx vitest run
           bash scripts/deploy-rules.test.sh
+          node --test scripts/rules-live.test.mjs
           npm --prefix functions ci
           npm --prefix functions test
 
@@ -324,11 +325,17 @@ jobs:
       # issue 5590. scripts/deploy-rules.sh retries this deploy with backoff.
       # A compilation error is not retried.
       #
-      # Hosting stays the next step and runs only when this step's outcome is
-      # success. The client depends on the rules and indexes this step
-      # releases; shipping it after a failed release is PERMISSION_DENIED or
-      # FAILED_PRECONDITION on the customer. The outcome check keeps that
-      # true if someone later marks this step continue-on-error. Leave it off.
+      # v2.0.4 used that retry. All five attempts returned 503, two of them
+      # from :test and three from POST /rulesets after firestore.rules had
+      # compiled. The files in that tag are the release v2.0.2 already
+      # published, so another upload cannot change what is enforced.
+      # scripts/rules-live.mjs reads the released ruleset and the live
+      # indexes from the Firebase API. When firestore.rules, storage.rules
+      # and firestore.indexes.json already match, this step skips the Rules
+      # API and exits 0, and hosting ships. When any of them differs, or the
+      # live release cannot be read, the deploy still runs and hosting still
+      # waits for it. A failed read is not a match. Leave continue-on-error
+      # off this step.
       - name: Deploy rules + indexes
         id: rules
         if: steps.creds.outputs.configured == 'true'

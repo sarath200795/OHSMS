@@ -128,6 +128,7 @@ jobs:
           npx eslint src
           npx vitest run
           bash scripts/deploy-rules.test.sh
+          node --test scripts/rules-live.test.mjs
           npm --prefix functions ci
           npm --prefix functions test
 
@@ -210,10 +211,9 @@ jobs:
             exit 1
           fi
 
-      # Same 503 as production (deploy.yml): the Rules compiler :test call
-      # is not retried by firebase-tools 15. scripts/deploy-rules.sh retries
-      # it. Hosting still waits for a successful rules release — a staging
-      # bundle ahead of its rules fails the same way production would.
+      # Same Rules API 503 as production (deploy.yml). When the live release
+      # already matches, scripts/rules-live.mjs skips the upload. When it
+      # differs or cannot be read, the deploy still runs and hosting waits.
       - name: Deploy rules + indexes
         id: rules
         if: steps.creds.outputs.configured == 'true'
