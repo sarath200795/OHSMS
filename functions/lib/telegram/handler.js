@@ -27,7 +27,7 @@ export const TG_HELP =
   'WeEHS site lookup.\n\n' +
   `I ask which organisation, then: ${CENTRE_PROMPT} ` +
   "The reply is that centre's safety summary: extinguishers, AED availability, open defects, " +
-  'first aid boxes, pending actions, incidents and emergency contacts.\n\n' +
+  'first aid boxes, pending actions, incidents, the last audit score and emergency contacts.\n\n' +
   'Say MENU to start over, or CHANGE ORG to pick a different organisation.\n\n' +
   "Can't remember the centre? After the organisation is chosen, share your location " +
   '(📎 → Location) for the nearest sites.\n\n' +

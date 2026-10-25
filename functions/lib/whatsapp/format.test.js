@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   aedLine,
+  auditLines,
   defectLines,
   formatSiteReply,
   formatChoices,
@@ -196,6 +197,78 @@ describe('helpers', () => {
   it('drops sealed values', () => {
     expect(clean('enc:1:abcdef')).toBe('')
     expect(clean({ v: 1 })).toBe('')
+  })
+})
+
+describe('last audit', () => {
+  const ok = {
+    ok: true,
+    date: '2026-03-02',
+    scoreOnDay: 82.46,
+    scoreAfter7: 91,
+    findingsKnown: true,
+    openTotal: 1,
+    openMore: 0,
+    openPoints: ['Fire: Exit route blocked'],
+  }
+
+  it('prints the date, both scores when they differ, and the open points', () => {
+    const lines = auditLines(ok)
+    expect(lines[0]).toBe('📋 Last audit: 2 Mar 2026 · Score 82.5% · 91% after 7 days')
+    expect(lines).toContain('Open points (1):')
+    expect(lines).toContain('1. Fire: Exit route blocked')
+  })
+
+  it('omits "after 7 days" when the two scores are the same', () => {
+    expect(
+      auditLines({ ...ok, scoreOnDay: 90, scoreAfter7: 90, openPoints: [], openTotal: 0 })[0]
+    ).toBe('📋 Last audit: 2 Mar 2026 · Score 90%')
+  })
+
+  it('says the open points could not be read without dropping the score', () => {
+    const lines = auditLines({ ...ok, findingsKnown: false })
+    expect(lines[0]).toContain('Score 82.5%')
+    expect(lines).toContain('Open points unavailable.')
+    expect(lines.join('\n')).not.toMatch(/Open points \(/)
+  })
+
+  it('caps the list and says how many are left', () => {
+    const points = Array.from({ length: 12 }, (_, i) => `Point ${i + 1}`)
+    const lines = auditLines({ ...ok, openPoints: points, openTotal: 14, openMore: 2 })
+    expect(lines.filter((l) => /^\d+\. /.test(l))).toHaveLength(10)
+    expect(lines).toContain('10. Point 10')
+    expect(lines).not.toContain('11. Point 11')
+    expect(lines).toContain('+4 more')
+  })
+
+  it('flattens formatting and newlines in an observation', () => {
+    const lines = auditLines({ ...ok, openPoints: ['*Bold*\nnext'], openTotal: 1 })
+    expect(lines).toContain('1. Bold next')
+  })
+
+  it('notes a window with no score, and a lookup that could not be answered', () => {
+    expect(auditLines({ ok: false, reason: 'none', windowDays: 90 })).toEqual([
+      '📋 No audit score in the last 90 days.',
+    ])
+    expect(auditLines({ ok: false, reason: 'unreachable' })).toEqual([
+      '📋 Audit score unavailable.',
+    ])
+  })
+
+  it('keeps the section inside the body budget, and leaves it out when not asked', () => {
+    const many = Array.from({ length: 400 }, (_, i) => ({
+      kind: 'external',
+      role: 'Other',
+      name: `Contact ${i} ${'x'.repeat(30)}`,
+      phone: `+91 90000 ${String(i).padStart(5, '0')}`,
+    }))
+    const withAudit = formatSiteReply(site, counts, { contacts: many, asOf, audit: ok })
+    expect(withAudit.length).toBeLessThanOrEqual(MAX_BODY)
+    expect(withAudit).toContain('📋 Last audit: 2 Mar 2026')
+    expect(withAudit).toContain('1. Fire: Exit route blocked')
+    const plain = formatSiteReply(site, counts, { contacts, asOf })
+    expect(plain).not.toContain('Last audit')
+    expect(plain).not.toContain('Audit score')
   })
 })
 

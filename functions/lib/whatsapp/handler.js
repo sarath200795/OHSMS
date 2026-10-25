@@ -44,6 +44,9 @@
 //     listSites(orgId) → sites[]
 //     siteCounts(orgId) → { asOf: Date, sites: { [siteId]: counts } }
 //     siteContext(orgId, site) → { contacts, helplinePrimary, helplineSecondary, roleLabels, modules }
+//     siteAudit?(orgId, site) → last-audit summary, or { ok: false, reason }
+//       Optional. A throw becomes "Audit score unavailable" and the rest of
+//       the summary still goes out. Absent (older fakes) omits the section.
 //     getOrganization(orgId) → { id, name } | null
 //     getSession(waId) / setSession(waId, session) / clearSession(waId)
 //       session: { uid, orgId, step, choiceKind, choices, choicesExpireAtMs, expiresAtMs }
@@ -305,11 +308,25 @@ export async function answerQuery(cmd, { store, reply, now = new Date(), from, u
   }
 
   try {
-    const [snap, extra] = await Promise.all([
+    // The audit read is allowed to fail on its own. Folding it into the catch
+    // below would replace the whole summary with "something went wrong"
+    // whenever Metabase was slow, which is the opposite of what the note is for.
+    const auditPromise =
+      typeof store.siteAudit === 'function'
+        ? Promise.resolve()
+            .then(() => store.siteAudit(orgId, site))
+            .catch(() => ({ ok: false, reason: 'unavailable' }))
+        : Promise.resolve(null)
+    const [snap, extra, audit] = await Promise.all([
       store.siteCounts(orgId),
       store.siteContext(orgId, site),
+      auditPromise,
     ])
-    const text = formatSiteReply(site, snap.sites?.[site.id] || {}, { ...extra, asOf: snap.asOf })
+    const text = formatSiteReply(site, snap.sites?.[site.id] || {}, {
+      ...extra,
+      asOf: snap.asOf,
+      ...(audit ? { audit } : {}),
+    })
     await reply(from, { text })
     return { outcome: 'ok', extra: { siteId: site.id } }
   } catch (err) {

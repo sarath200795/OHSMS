@@ -726,6 +726,25 @@ export function buildDateParams(card, { from = '', to = '' } = {}) {
   return { parameters, bound }
 }
 
+/**
+ * How much history a dashboard load asks for when nobody named dates.
+ *
+ * A quarter. These are quarterly audit programmes, so a quarter is the period
+ * people actually review.
+ *
+ * It is also as much as a callable can physically carry, which is the harder
+ * constraint and the reason this is not simply set to a year. Measured against
+ * the live tickets question: 90 days is 8,529 rows and 6MB of response, and a
+ * year is 31,291 rows and roughly 24MB — well past the 10MB ceiling, so a
+ * 365-day default would not be slow, it would fail, or be truncated by capRows
+ * into a confidently wrong total. Showing a year needs the arithmetic to move
+ * server-side so that summaries cross the wire instead of rows.
+ *
+ * The site lookup asks for this same window. "Last audit" on the phone is the
+ * latest one inside the period the dashboard loads when nobody named dates.
+ */
+export const DEFAULT_RANGE_DAYS = 90
+
 /** [from, to] covering the last `days`, ending today. */
 export function defaultRange(now = Date.now(), days = 365) {
   const to = new Date(now)

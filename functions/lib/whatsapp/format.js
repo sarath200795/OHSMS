@@ -9,9 +9,11 @@
 // rather than letting the send fail or cutting a phone number in half.
 //
 // Nothing here prints a free-text field from an incident, a permit or an
-// action — counts only. Contact names and numbers come from erpContacts, which
-// is the emergency directory and is shown only to linked, approved users who
-// reach the site.
+// action — counts only — except the last audit's open points. Those are the
+// checkpoint lines the ODIN dashboard already shows, length-capped and stripped
+// of formatting characters. Contact names and numbers come from erpContacts,
+// which is the emergency directory and is shown only to linked, approved users
+// who reach the site.
 // ─────────────────────────────────────────────────────────────────────────────
 import { readableText } from '../mailTemplates/safe.js'
 import { MAX_CHOICES } from './resolve.js'
@@ -19,6 +21,8 @@ import { MAX_CHOICES } from './resolve.js'
 export const MAX_BODY = 4096
 const ROW_TITLE_MAX = 24
 const ROW_DESC_MAX = 72
+const OPEN_POINT_LINES = 10
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 // Mirrors ERP_ROLES labels in src/shared/org/erpRoles.js; an org's own labels
 // (organizations/{orgId}.erpRoleLabels) win.
@@ -68,23 +72,81 @@ const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
 /** "12 Oct, 07:30 IST" */
 export function istStamp(date) {
   const d = new Date(date.getTime() + 330 * 60 * 1000)
-  const months = [
-    'Jan',
-    'Feb',
-    'Mar',
-    'Apr',
-    'May',
-    'Jun',
-    'Jul',
-    'Aug',
-    'Sep',
-    'Oct',
-    'Nov',
-    'Dec',
-  ]
   const hh = String(d.getUTCHours()).padStart(2, '0')
   const mm = String(d.getUTCMinutes()).padStart(2, '0')
-  return `${d.getUTCDate()} ${months[d.getUTCMonth()]}, ${hh}:${mm} IST`
+  return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}, ${hh}:${mm} IST`
+}
+
+/** "2 Mar 2026" from a warehouse 'YYYY-MM-DD', or '' when it is not one. */
+export function formatAuditDay(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ''))
+  if (!m) return ''
+  const month = MONTHS[Number(m[2]) - 1]
+  if (!month) return ''
+  return `${Number(m[3])} ${month} ${m[1]}`
+}
+
+function formatScore(value) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return ''
+  const rounded = Math.round(value * 10) / 10
+  const text = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1)
+  return `${text}%`
+}
+
+/**
+ * The last-audit block, or a one-line note when there is nothing to show.
+ *
+ * `audit` is loadSiteAudit's result. Absent means the caller did not ask
+ * (older tests, a store without the method) and the block is left out entirely.
+ * A failure still produces a line, so the rest of the summary is not the only
+ * thing a reader has to infer the omission from.
+ */
+export function auditLines(audit) {
+  if (!audit) return []
+  if (!audit.ok) {
+    if (audit.reason === 'none') {
+      const days = Number(audit.windowDays)
+      return [
+        Number.isFinite(days) && days > 0
+          ? `📋 No audit score in the last ${days} days.`
+          : '📋 No recent audit for this centre.',
+      ]
+    }
+    return ['📋 Audit score unavailable.']
+  }
+  const when = formatAuditDay(audit.date)
+  const onDay = formatScore(audit.scoreOnDay)
+  const after = formatScore(audit.scoreAfter7)
+  let score = ''
+  if (onDay && after && onDay !== after) score = `Score ${onDay} · ${after} after 7 days`
+  else if (onDay) score = `Score ${onDay}`
+  else if (after) score = `Score ${after} after 7 days`
+  // Date and score are peers on one line. Joining the whole head on " · "
+  // would leave a dangling separator when the warehouse date does not parse.
+  const detail = [when, score].filter(Boolean).join(' · ')
+  const head = detail ? `📋 Last audit: ${detail}` : '📋 Last audit'
+  const lines = [head]
+  if (!audit.findingsKnown) {
+    lines.push('Open points unavailable.')
+    return lines
+  }
+  const total = Number(audit.openTotal) || 0
+  if (!total) {
+    lines.push('Open points: none')
+    return lines
+  }
+  lines.push(`Open points (${total}):`)
+  const points = (Array.isArray(audit.openPoints) ? audit.openPoints : []).slice(
+    0,
+    OPEN_POINT_LINES
+  )
+  points.forEach((point, i) => {
+    lines.push(`${i + 1}. ${clean(point, 80) || 'Observation'}`)
+  })
+  const hidden = Math.max(0, (audit.openPoints || []).length - points.length)
+  const more = (Number(audit.openMore) || 0) + hidden
+  if (more > 0) lines.push(`+${more} more`)
+  return lines
 }
 
 export function siteTitle(site) {
@@ -217,6 +279,7 @@ export function formatSiteReply(site, counts = {}, opts = {}) {
       `🚑 Incidents: ${n(counts.incidentsTotal)} total · ${n(counts.incidentsOpen)} open · ${n(counts.incidents90d)} in last 90 days`
     )
   }
+  if (opts.audit) head.push(...auditLines(opts.audit))
 
   const tail = ['']
   const helplines = [phoneText(opts.helplinePrimary), phoneText(opts.helplineSecondary)].filter(
@@ -332,7 +395,7 @@ export function locationRequestText(query) {
 export const MESSAGES = {
   help:
     `${CENTRE_PROMPT} The reply is that centre's safety summary: ` +
-    'extinguishers, open defects, first aid boxes, pending actions, incidents and emergency contacts.\n\n' +
+    'extinguishers, open defects, first aid boxes, pending actions, incidents, the last audit score and emergency contacts.\n\n' +
     'Send MENU to start over, or CHANGE ORG to switch organisation. Send UNLINK to disconnect this number.',
   unlinked:
     'This number serves registered WeEHS users. To use it, link your WhatsApp from ' +
