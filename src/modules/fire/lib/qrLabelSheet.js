@@ -1,9 +1,9 @@
 // QR label sheet (PDF) for Fire Alarm panels and AEDs.
 //
-// Extinguishers print their labels through the Print QR page (three cards per
-// A4 row, framed QR, ID / detail / site underneath). FAS panels and AEDs get the
-// same card as a downloadable PDF, so a register can hand a whole site's labels
-// to a printer without a browser print dialog.
+// Extinguishers print their labels through the Print QR page. FAS panels and
+// AEDs get the same card as a downloadable PDF, so a register can hand a whole
+// site's labels to a printer without a browser print dialog. Both use the
+// 3-by-5 grid in qrSheetLayout.js — fifteen labels to an A4 sheet.
 //
 // Every code encodes publicQrUrl(token) — the same /qr/:token landing route the
 // per-row QR dialog and the extinguisher labels use — so a label printed here
@@ -11,6 +11,15 @@
 import QRCode from 'qrcode'
 import { publicQrUrl } from './qr'
 import { QR_FRAME_RGB, QR_STROKE_MM } from '../../../shared/print/qrFrame'
+import {
+  CARD_H,
+  CARD_W,
+  LABELS_PER_PAGE,
+  labelContentBox,
+  labelOrigin,
+} from './qrSheetLayout'
+
+export { LABELS_PER_PAGE }
 
 /** Per-kind copy: card header, and how an asset is named on its label. */
 const KINDS = {
@@ -68,18 +77,6 @@ export function qrLabelFilename(kind, date = new Date()) {
   return `${cfg.file}-${date.toISOString().slice(0, 10)}.pdf`
 }
 
-// ── Layout (A4 portrait, millimetres) — same 3-across grid as the print page ──
-const PAGE_W = 210
-const PAGE_H = 297
-const MARGIN = 12
-const COLS = 3
-const GAP_X = 8
-const GAP_Y = 6
-const CARD_W = (PAGE_W - MARGIN * 2 - GAP_X * (COLS - 1)) / COLS
-const CARD_H = 62
-const ROWS = Math.floor((PAGE_H - MARGIN * 2 + GAP_Y) / (CARD_H + GAP_Y))
-export const LABELS_PER_PAGE = COLS * ROWS
-const QR_SIZE = 34
 // Labels are rendered in slices, yielding to the event loop between slices, so
 // a few hundred codes do not freeze the tab and the progress count can repaint.
 export const CHUNK_SIZE = 24
@@ -106,6 +103,7 @@ function clampLines(doc, text, width, max) {
 }
 
 function drawLabel(doc, label, png, x, y) {
+  const box = labelContentBox()
   const cx = x + CARD_W / 2
   doc.setDrawColor(...QR_FRAME_RGB)
   doc.setLineWidth(QR_STROKE_MM * 0.75)
@@ -114,34 +112,36 @@ function drawLabel(doc, label, png, x, y) {
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(7)
   doc.setTextColor(180, 90, 20)
-  doc.text(label.header, cx, y + 5.5, { align: 'center' })
+  doc.text(label.header, cx, y + box.headerBaseline, { align: 'center' })
 
   // Frame is shifted out by half its stroke so the ink sits outside the quiet
   // zone the PNG already carries — a rule on the modules stops the code scanning.
-  const qx = cx - QR_SIZE / 2
-  const qy = y + 8
-  doc.addImage(png, 'PNG', qx, qy, QR_SIZE, QR_SIZE)
+  const qx = cx - box.qrSize / 2
+  const qy = y + box.qrTop
+  doc.addImage(png, 'PNG', qx, qy, box.qrSize, box.qrSize)
   doc.setLineWidth(QR_STROKE_MM)
   const half = QR_STROKE_MM / 2
-  doc.rect(qx - half, qy - half, QR_SIZE + QR_STROKE_MM, QR_SIZE + QR_STROKE_MM, 'S')
+  doc.rect(qx - half, qy - half, box.qrSize + QR_STROKE_MM, box.qrSize + QR_STROKE_MM, 'S')
 
-  const textW = CARD_W - 6
-  let ty = qy + QR_SIZE + 6
+  const textW = CARD_W - 4
+  let ty = y + box.textTop
+  const limit = y + box.limit
   doc.setTextColor(38, 33, 26)
-  doc.setFontSize(10)
-  for (const line of clampLines(doc, label.title, textW, 2)) {
+  doc.setFontSize(9)
+  for (const line of clampLines(doc, label.title, textW, box.titleLines)) {
+    if (ty > limit) return
     doc.text(line, cx, ty, { align: 'center' })
-    ty += 4.2
+    ty += box.titleStep
   }
   doc.setFont('helvetica', 'normal')
-  doc.setFontSize(7.5)
+  doc.setFontSize(7)
   doc.setTextColor(90, 85, 78)
   const rest = [label.detail, label.site, label.location].filter(Boolean)
   for (const text of rest) {
     for (const line of clampLines(doc, text, textW, 1)) {
-      if (ty > y + CARD_H - 1.5) return
+      if (ty > limit) return
       doc.text(line, cx, ty, { align: 'center' })
-      ty += 3.4
+      ty += box.metaStep
     }
   }
 }
@@ -162,9 +162,8 @@ export async function buildQrLabelPdf(labels, { onProgress, chunkSize = CHUNK_SI
       const n = start + i
       const slot = n % LABELS_PER_PAGE
       if (n > 0 && slot === 0) doc.addPage()
-      const col = slot % COLS
-      const row = Math.floor(slot / COLS)
-      drawLabel(doc, label, pngs[i], MARGIN + col * (CARD_W + GAP_X), MARGIN + row * (CARD_H + GAP_Y))
+      const origin = labelOrigin(slot)
+      drawLabel(doc, label, pngs[i], origin.x, origin.y)
     })
     done += slice.length
     if (onProgress) onProgress(done, total)

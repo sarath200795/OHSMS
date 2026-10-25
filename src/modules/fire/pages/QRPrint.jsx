@@ -10,7 +10,8 @@ import ListFilters from '../components/ListFilters'
 import { useFleet } from '../context/FleetContext'
 import { publicQrUrl } from '../lib/qr'
 import { emptyFilters, applyListFilters, hasActiveFilters } from '../lib/listFilter'
-import { QR_FRAME_INK, QR_PRINT_CODE_RULE, qrCodeBorderStyle } from '../../../shared/print/qrFrame'
+import { qrCodeBorderStyle } from '../../../shared/print/qrFrame'
+import { LABELS_PER_PAGE, qrSheetCss } from '../lib/qrSheetLayout'
 
 const HEADER = { ext: '🔥 Fire Marshal', aed: '❤️ AED', fas: '🔔 Fire Alarm' }
 
@@ -47,11 +48,10 @@ export default function QRPrint() {
 
   const items = useMemo(() => source.filter((e) => selected.has(e.id)), [source, selected])
 
-  // Paginates the PICKER only. `items` — the print grid below — is deliberately
-  // left whole: it is what react-to-print renders, so paging it would silently
-  // cap a print run at 20 labels. Select-all still works on the full filtered
-  // set rather than the visible page, so choosing 500 and printing them is
-  // unaffected.
+  // Paginates the PICKER only. `items` is everything selected, and `pages`
+  // only groups that full set onto sheets of 15. Using the picker page here
+  // would silently cap a print run at 20 labels. Select-all still works on
+  // the full filtered set rather than the visible page.
   const picker = usePagination(filtered)
 
   const toggle = (id) => setSelected((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
@@ -63,22 +63,19 @@ export default function QRPrint() {
   })
   const switchType = (t) => { setAssetType(t); setSelected(new Set()); setSearch(''); setFilters(emptyFilters()) }
 
+  const pages = useMemo(() => {
+    const out = []
+    for (let i = 0; i < items.length; i += LABELS_PER_PAGE) out.push(items.slice(i, i + LABELS_PER_PAGE))
+    return out
+  }, [items])
+
   const handlePrint = useReactToPrint({
     content: () => printRef.current,
     documentTitle: 'Fire-Marshal-QR-Codes',
-    // box-shadow: none keeps a soft ring off the paper. The label's old frame
-    // WAS that ring, so turning it off printed a bare QR. The card and the
-    // code now use a real border; the code's rule sits outside includeMargin.
-    pageStyle: `
-      @page { size: A4; margin: 12mm; }
-      @media print {
-        body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        .qr-print-grid { display: grid !important; grid-template-columns: repeat(3, 1fr) !important; gap: 8mm !important; }
-        .qr-print-card { break-inside: avoid; page-break-inside: avoid; min-height: 46mm; box-shadow: none !important; border: 0.4mm solid ${QR_FRAME_INK} !important; overflow: hidden; }
-        .qr-print-card p { overflow-wrap: anywhere; word-break: break-word; max-width: 100%; }
-        .qr-print-code { width: 34mm !important; height: 34mm !important; ${QR_PRINT_CODE_RULE} }
-      }
-    `,
+    // Replaces react-to-print's default. The sheet CSS keeps @page margin at 0
+    // (that is what suppresses the browser header/footer) and pads the gutter
+    // inside the page, the same 3-by-5 grid the PDF download uses.
+    pageStyle: qrSheetCss(),
   })
 
   return (
@@ -152,14 +149,22 @@ export default function QRPrint() {
             {items.length === 0 ? (
               <EmptyState icon={Printer} title="Nothing selected" hint={`Pick ${cfg.tab} on the left to print their QR codes.`} />
             ) : (
-              <div ref={printRef} className="qr-print-grid grid grid-cols-2 gap-4 sm:grid-cols-3">
-                {items.map((e) => (
-                  <div key={e.id} className="qr-print-card flex min-w-0 flex-col items-center rounded-xl border border-ink-900 bg-white p-4 text-center">
-                    <div className="mb-1 max-w-full break-words text-[10px] font-semibold uppercase tracking-[0.12em] text-brand-600">{HEADER[assetType]}</div>
-                    <QRCodeSVG className="qr-print-code" style={qrCodeBorderStyle()} value={publicQrUrl(e.qrToken)} size={148} level="H" includeMargin fgColor="#000000" bgColor="#ffffff" />
-                    <p className="mt-2 max-w-full break-words text-sm font-extrabold text-ink-900">{cfg.big(e)}</p>
-                    <p className="max-w-full break-words text-xs text-ink-500">{cfg.sub(e)}</p>
-                    <p className="max-w-full break-words text-xs text-ink-400">{e.centerName}</p>
+              <div ref={printRef} className="qr-sheet-stack">
+                <style>{qrSheetCss()}</style>
+                {pages.map((page) => (
+                  <div key={page[0].id} className="qr-sheet-paper">
+                    <div className="qr-sheet-page">
+                      {page.map((e) => (
+                        <div key={e.id} className="qr-print-card">
+                          <div className="qr-print-header text-brand-600">{HEADER[assetType]}</div>
+                          <QRCodeSVG className="qr-print-code" style={qrCodeBorderStyle()} value={publicQrUrl(e.qrToken)} size={148} level="H" includeMargin fgColor="#000000" bgColor="#ffffff" />
+                          <p className="qr-print-title break-words text-ink-900">{cfg.big(e)}</p>
+                          <p className="qr-print-meta text-ink-500">{cfg.sub(e)}</p>
+                          <p className="qr-print-meta text-ink-400">{e.centerName}</p>
+                          {e.location ? <p className="qr-print-meta text-ink-400">{e.location}</p> : null}
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 ))}
               </div>

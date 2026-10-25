@@ -7,7 +7,11 @@ vi.mock('jspdf', async (importOriginal) => {
   function Recording(...args) {
     const doc = new Real(...args)
     doc.save = (filename) => {
-      saved.push({ filename, bytes: doc.output('arraybuffer').byteLength, pages: doc.getNumberOfPages() })
+      saved.push({
+        filename,
+        bytes: doc.output('arraybuffer').byteLength,
+        pages: doc.getNumberOfPages(),
+      })
       return doc
     }
     return doc
@@ -15,13 +19,8 @@ vi.mock('jspdf', async (importOriginal) => {
   return { ...actual, jsPDF: Recording, default: Recording }
 })
 
-const {
-  buildQrLabels,
-  buildQrLabelPdf,
-  exportQrLabelPdf,
-  qrLabelFilename,
-  LABELS_PER_PAGE,
-} = await import('./qrLabelSheet')
+const { buildQrLabels, buildQrLabelPdf, exportQrLabelPdf, qrLabelFilename, LABELS_PER_PAGE } =
+  await import('./qrLabelSheet')
 
 beforeEach(() => {
   saved.length = 0
@@ -64,12 +63,21 @@ describe('buildQrLabels', () => {
 
   it('labels AEDs by asset id with brand and model', () => {
     const { labels } = buildQrLabels('aed', [aed(7)])
-    expect(labels[0]).toMatchObject({ title: 'AED-0007', detail: 'Philips HS1', site: 'HQ', location: 'Reception' })
+    expect(labels[0]).toMatchObject({
+      title: 'AED-0007',
+      detail: 'Philips HS1',
+      site: 'HQ',
+      location: 'Reception',
+    })
     expect(labels[0].url).toMatch(/\/qr\/tokaed7$/)
   })
 
   it('leaves out rows with no QR token instead of inventing a code', () => {
-    const rows = [panel(1), panel(2, { qrToken: '', deviceType: 'Smoke Detector' }), panel(3, { qrToken: undefined })]
+    const rows = [
+      panel(1),
+      panel(2, { qrToken: '', deviceType: 'Smoke Detector' }),
+      panel(3, { qrToken: undefined }),
+    ]
     const { labels, skipped } = buildQrLabels('fas', rows)
     expect(labels.map((l) => l.id)).toEqual(['f1'])
     expect(skipped.map((s) => s.id)).toEqual(['f2', 'f3'])
@@ -94,11 +102,26 @@ describe('qrLabelFilename', () => {
 })
 
 describe('buildQrLabelPdf', () => {
+  it('puts fifteen labels on one A4 page and the sixteenth on the next', async () => {
+    const oneSheet = Array.from({ length: 15 }, (_, i) => aed(i + 1, { location: `Bay ${i + 1}` }))
+    const doc15 = await buildQrLabelPdf(buildQrLabels('aed', oneSheet).labels)
+    expect(doc15.getNumberOfPages()).toBe(1)
+    expect(doc15.internal.pageSize.getWidth()).toBeCloseTo(210)
+    expect(doc15.internal.pageSize.getHeight()).toBeCloseTo(297)
+
+    const overflow = Array.from({ length: 16 }, (_, i) => aed(i + 1))
+    const doc16 = await buildQrLabelPdf(buildQrLabels('aed', overflow).labels)
+    expect(doc16.getNumberOfPages()).toBe(2)
+  })
+
   it('paginates and reports progress per slice for a large set', async () => {
     const rows = Array.from({ length: LABELS_PER_PAGE * 2 + 3 }, (_, i) => aed(i + 1))
     const { labels } = buildQrLabels('aed', rows)
     const calls = []
-    const doc = await buildQrLabelPdf(labels, { chunkSize: 10, onProgress: (d, t) => calls.push([d, t]) })
+    const doc = await buildQrLabelPdf(labels, {
+      chunkSize: 10,
+      onProgress: (d, t) => calls.push([d, t]),
+    })
     expect(doc.getNumberOfPages()).toBe(3)
     expect(calls.length).toBe(Math.ceil(labels.length / 10))
     expect(calls[calls.length - 1]).toEqual([labels.length, labels.length])
