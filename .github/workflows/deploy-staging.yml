@@ -127,6 +127,7 @@ jobs:
         run: |
           npx eslint src
           npx vitest run
+          bash scripts/deploy-rules.test.sh
           npm --prefix functions ci
           npm --prefix functions test
 
@@ -209,16 +210,21 @@ jobs:
             exit 1
           fi
 
+      # Same 503 as production (deploy.yml): the Rules compiler :test call
+      # is not retried by firebase-tools 15. scripts/deploy-rules.sh retries
+      # it. Hosting still waits for a successful rules release — a staging
+      # bundle ahead of its rules fails the same way production would.
       - name: Deploy rules + indexes
+        id: rules
         if: steps.creds.outputs.configured == 'true'
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa-staging.json
-        run: |
-          npx firebase-tools deploy --only firestore:rules,firestore:indexes,storage \
-            --project "${{ vars.STAGING_FIREBASE_PROJECT_ID }}" --non-interactive
+          PROJECT_ID: ${{ vars.STAGING_FIREBASE_PROJECT_ID }}
+        run: bash scripts/deploy-rules.sh
 
       - name: Deploy hosting
-        if: steps.creds.outputs.configured == 'true'
+        id: hosting
+        if: steps.creds.outputs.configured == 'true' && steps.rules.outcome == 'success'
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa-staging.json
         run: |
@@ -226,7 +232,7 @@ jobs:
             --project "${{ vars.STAGING_FIREBASE_PROJECT_ID }}" --non-interactive
 
       - name: Where it went
-        if: steps.creds.outputs.configured == 'true'
+        if: steps.creds.outputs.configured == 'true' && steps.hosting.outcome == 'success'
         run: |
           echo "::notice::Staging updated: https://${{ vars.STAGING_FIREBASE_PROJECT_ID }}.web.app"
 

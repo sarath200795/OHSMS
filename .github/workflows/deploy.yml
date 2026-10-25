@@ -121,6 +121,7 @@ jobs:
         run: |
           npx eslint src
           npx vitest run
+          bash scripts/deploy-rules.test.sh
           npm --prefix functions ci
           npm --prefix functions test
 
@@ -310,16 +311,34 @@ jobs:
       # once they are ready, so a brand-new index can still be building when
       # hosting goes live. That window is minutes and only affects the query
       # that needs it; shipping the client first would break it for certain.
+      #
+      # The compile check in front of that release returns 503 for a ruleset
+      # it has already accepted. v2.0.1, and v2.0.3 twice, died on
+      # firebaserules.googleapis.com `projects/<id>:test` ("The service is
+      # currently unavailable") while checking firestore.rules. storage.rules
+      # had compiled. v2.0.2 compiled and released the same firestore.rules
+      # v2.0.3 failed on — one blob, 163364 bytes, under the 256 KB source
+      # limit — and that successful compile took about five seconds, the same
+      # window in which the 503 came back. firebase-tools 15 sends :test with
+      # no retryCodes, so one 503 fails the release. That is firebase-tools
+      # issue 5590. scripts/deploy-rules.sh retries this deploy with backoff.
+      # A compilation error is not retried.
+      #
+      # Hosting stays the next step and runs only when this step's outcome is
+      # success. The client depends on the rules and indexes this step
+      # releases; shipping it after a failed release is PERMISSION_DENIED or
+      # FAILED_PRECONDITION on the customer. The outcome check keeps that
+      # true if someone later marks this step continue-on-error. Leave it off.
       - name: Deploy rules + indexes
+        id: rules
         if: steps.creds.outputs.configured == 'true'
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json
-        run: |
-          npx firebase-tools deploy --only firestore:rules,firestore:indexes,storage \
-            --project "${{ vars.VITE_FIREBASE_PROJECT_ID }}" --non-interactive
+          PROJECT_ID: ${{ vars.VITE_FIREBASE_PROJECT_ID }}
+        run: bash scripts/deploy-rules.sh
 
       - name: Deploy hosting
-        if: steps.creds.outputs.configured == 'true'
+        if: steps.creds.outputs.configured == 'true' && steps.rules.outcome == 'success'
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json
         run: |
