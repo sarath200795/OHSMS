@@ -139,6 +139,14 @@ jobs:
       - name: Unit tests
         run: npm test
 
+      # The deploy retry is bash, with a fake CLI, so it does not need a
+      # project or a JDK. It lives in this job because a tag deploys whatever
+      # commit it points at: the assertion that a compilation error is not
+      # retried, and that hosting stays gated on the rules step, has to fail
+      # here before that tag exists.
+      - name: Deploy script tests
+        run: bash scripts/deploy-rules.test.sh
+
       - name: Build
         run: npm run build
 
