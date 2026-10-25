@@ -1,14 +1,23 @@
 import { useEffect, useRef, useState } from 'react'
+import QrPreview from '../../../../shared/mobile/QrPreview'
+import {
+  cameraErrorMessage,
+  cameraUnavailableReason,
+  openScanner,
+} from '../../../../shared/mobile/webScan'
 import Button from '../ui/Button'
 import Input from '../ui/Input'
+
+const STARTING = 'Starting the camera…'
+const SCANNING = 'Scanning. Point the camera at the tag.'
 
 /**
  * Reads the QR on an isolation point's tag.
  *
  * Two ways in, because a tag on a wet valve in a dark plant room is not
  * reliably scannable:
- *   · the camera, through the browser's native BarcodeDetector (Chromium and
- *     Android; nothing is added to the bundle for it), and
+ *   · the camera — BarcodeDetector where the browser has it, otherwise
+ *     html5-qrcode, same as the field QR page, and
  *   · a typed or pasted code — the link on the tag, or the short point number
  *     (E-1) printed beside the QR.
  *
@@ -17,12 +26,12 @@ import Input from '../ui/Input'
  * (utils/tagScan.js), so a tag from the wrong machine is refused in one place.
  */
 export default function PointScanner({ onCode, disabled = false }) {
-  const cameraOk =
-    typeof window !== 'undefined' &&
-    'BarcodeDetector' in window &&
-    Boolean(typeof navigator !== 'undefined' && navigator.mediaDevices?.getUserMedia)
+  const unavailable = cameraUnavailableReason({
+    fallback: 'This browser cannot scan from the camera. Type the code from the tag below.',
+  })
   const [on, setOn] = useState(false)
   const [error, setError] = useState('')
+  const [status, setStatus] = useState('')
   const [manual, setManual] = useState('')
   const video = useRef(null)
   // The latest callback without restarting the camera every time the parent re-renders.
@@ -33,45 +42,56 @@ export default function PointScanner({ onCode, disabled = false }) {
 
   useEffect(() => {
     if (!on) return undefined
-    let stream = null
-    let timer = null
-    let live = true
+    const ac = new AbortController()
+    let halt = () => {}
+    setStatus(STARTING)
     ;(async () => {
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
-        // The permission prompt can outlive the effect. Cleanup runs while
-        // this await is pending, and at that moment `stream` is still null,
-        // so the tracks opened here would stay on with no preview.
-        if (!live || !video.current) {
-          stream.getTracks().forEach((t) => t.stop())
+        const stopScan = await openScanner({
+          video: video.current,
+          elementId: 'loto-point-reader',
+          onCode: (raw) => handler.current(raw, 'camera'),
+          signal: ac.signal,
+        })
+        if (ac.signal.aborted) {
+          await stopScan()
           return
         }
-        video.current.srcObject = stream
-        await video.current.play()
-        if (!live) {
-          stream.getTracks().forEach((t) => t.stop())
-          return
-        }
-        const detector = new window.BarcodeDetector({ formats: ['qr_code'] })
-        timer = setInterval(async () => {
-          try {
-            const found = await detector.detect(video.current)
-            if (found[0]?.rawValue) handler.current(found[0].rawValue, 'camera')
-          } catch {
-            // A frame that cannot be read is just the next frame's problem.
-          }
-        }, 400)
-      } catch {
-        setError('The camera could not be opened. Type the code from the tag instead.')
+        halt = stopScan
+        setError('')
+        setStatus(SCANNING)
+      } catch (err) {
+        if (ac.signal.aborted || err?.name === 'AbortError') return
+        setError(
+          cameraErrorMessage(err, {
+            fallback: 'The camera could not be opened. Type the code from the tag instead.',
+          })
+        )
+        setStatus('')
         setOn(false)
       }
     })()
     return () => {
-      live = false
-      if (timer) clearInterval(timer)
-      stream?.getTracks().forEach((t) => t.stop())
+      ac.abort()
+      try {
+        const result = halt()
+        if (result && typeof result.then === 'function') result.catch(() => {})
+      } catch {
+        // The camera is already gone.
+      }
     }
   }, [on])
+
+  function toggle() {
+    setError('')
+    if (on) {
+      setStatus('')
+      setOn(false)
+      return
+    }
+    setStatus(STARTING)
+    setOn(true)
+  }
 
   function submitManual(e) {
     e.preventDefault()
@@ -82,27 +102,31 @@ export default function PointScanner({ onCode, disabled = false }) {
 
   return (
     <div className="space-y-3">
-      {cameraOk ? (
+      {unavailable ? (
+        <p className="text-xs text-steel-400">{unavailable}</p>
+      ) : (
         <div>
-          <Button type="button" variant="steel" disabled={disabled} onClick={() => setOn((v) => !v)}>
+          <Button type="button" variant="steel" disabled={disabled} onClick={toggle}>
             {on ? 'Stop camera' : 'Scan a tag with the camera'}
           </Button>
           {on && (
-            <video
-              ref={video}
-              muted
-              playsInline
-              aria-label="Camera view for scanning the tag"
-              className="mt-3 aspect-video w-full max-w-sm rounded-xl bg-black object-cover"
+            <QrPreview
+              active
+              videoRef={video}
+              readerId="loto-point-reader"
+              status={status}
+              label="Camera view for scanning the tag"
+              aspectClass="aspect-video"
+              className="mt-3 max-w-sm rounded-xl"
             />
           )}
         </div>
-      ) : (
-        <p className="text-xs text-steel-400">
-          This browser cannot scan from the camera. Type the code from the tag below.
+      )}
+      {error && (
+        <p role="alert" className="text-xs font-medium text-red-400">
+          {error}
         </p>
       )}
-      {error && <p role="alert" className="text-xs font-medium text-red-400">{error}</p>}
       <form onSubmit={submitManual} className="flex flex-wrap items-end gap-2">
         <div className="min-w-[200px] flex-1">
           <Input
