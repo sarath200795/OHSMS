@@ -199,6 +199,21 @@ export default function Login() {
           >
             Join an existing one
           </Link>
+          <span className="mt-2 block">
+            <a
+              href="/privacy"
+              className="font-semibold text-brand-700 underline-offset-2 hover:underline"
+            >
+              Privacy Policy
+            </a>
+            {' · '}
+            <a
+              href="/terms"
+              className="font-semibold text-brand-700 underline-offset-2 hover:underline"
+            >
+              Terms of Use
+            </a>
+          </span>
           <StoreBadges />
         </>
       }

@@ -2,9 +2,40 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { fileURLToPath, URL } from 'node:url'
 
+// /privacy and /terms are static documents in public/. Hosting rewrites those
+// paths to the files (firebase.json) so a crawler gets the text without
+// running the app. The dev and preview servers do the same rewrite, or a
+// click from the sign-in page falls through to the signed-in shell.
+function legalPages() {
+  const pages = new Map([
+    ['/privacy', '/privacy.html'],
+    ['/privacy/', '/privacy.html'],
+    ['/terms', '/terms.html'],
+    ['/terms/', '/terms.html'],
+  ])
+  const rewrite = (req, _res, next) => {
+    const path = String(req.url || '').split('?')[0]
+    const target = pages.get(path)
+    if (target) {
+      const query = String(req.url || '').includes('?') ? `?${req.url.split('?')[1]}` : ''
+      req.url = `${target}${query}`
+    }
+    next()
+  }
+  return {
+    name: 'legal-pages',
+    configureServer(server) {
+      server.middlewares.use(rewrite)
+    },
+    configurePreviewServer(server) {
+      server.middlewares.use(rewrite)
+    },
+  }
+}
+
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), legalPages()],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
