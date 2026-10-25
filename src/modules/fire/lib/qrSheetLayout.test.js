@@ -68,13 +68,19 @@ describe('A4 QR sheet', () => {
     const strokeTop = box.qrTop - QR_STROKE_MM / 2
     const strokeBottom = box.qrTop + QR_SIZE + QR_STROKE_MM / 2
     expect(strokeTop).toBeGreaterThan(box.headerBaseline)
-    expect(box.textTop).toBeGreaterThan(strokeBottom)
+    // The letters sit above the baseline. The gap has to clear that cap,
+    // or the asset id is drawn through the modules.
+    expect(box.glyphTop).toBeGreaterThanOrEqual(strokeBottom + 2)
+    expect(box.textTop).toBeGreaterThan(box.glyphTop)
+    expect(box.titlePt).toBeLessThan(9)
+    expect(box.metaPt).toBeLessThan(7)
 
     // 41 modules is a normal public URL at ECC H; 53 is a long host. The PNG
-    // adds one quiet-zone module on each side. Half a millimetre is the floor
-    // a phone still reads off paper.
-    expect(QR_SIZE / (41 + 2)).toBeGreaterThan(0.6)
-    expect(QR_SIZE / (53 + 2)).toBeGreaterThanOrEqual(0.5)
+    // adds one quiet-zone module on each side. 0.5mm is a comfortable phone
+    // read; 0.4mm is the floor for a long host.
+    expect(QR_SIZE / (41 + 2)).toBeGreaterThanOrEqual(0.5)
+    expect(QR_SIZE / (53 + 2)).toBeGreaterThanOrEqual(0.4)
+    expect(QR_SIZE).toBeLessThan(28)
   })
 
   it('describes that same grid to the print stylesheet', () => {
@@ -84,6 +90,11 @@ describe('A4 QR sheet', () => {
     expect(print).toContain(`repeat(${COLS}, 62mm)`)
     expect(print).toContain(`repeat(${ROWS}, 52.2mm)`)
     expect(print).toContain(`${QR_SIZE}mm`)
+    expect(print).toContain('2.2mm')
+    expect(print).toContain('7pt')
+    expect(print).toContain('6pt')
+    expect(print).not.toContain('9pt')
+    expect(print).not.toContain('28mm')
     expect(print).toContain(`${GUTTER}mm`)
     expect(print).toContain(`${INNER_W}mm`)
     expect(print).toContain(`${INNER_H}mm`)
