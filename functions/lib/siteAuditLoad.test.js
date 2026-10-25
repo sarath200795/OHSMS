@@ -2,11 +2,13 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { buildDateParams, DEFAULT_RANGE_DAYS, safeRange } from './metabase.js'
 import {
   clearSiteAuditCache,
+  dedupeTickets,
   loadSiteAudit,
   SITE_AUDIT_CACHE_MS,
   SITE_AUDIT_FAIL_CACHE_MS,
   SITE_AUDIT_SCORE_CARD,
   SITE_AUDIT_TICKETS_CARD,
+  ticketDateChunks,
 } from './siteAuditLoad.js'
 
 const NOW = Date.parse('2026-06-15T12:00:00Z')
@@ -66,8 +68,14 @@ describe('loadSiteAudit', () => {
               },
             ]
           : [
-              openRow,
-              { ...openRow, siteId: 'OTHER', site: 'Other Hub', checkpoint: 'Not this centre' },
+              { ...openRow, ticketId: 't1' },
+              {
+                ...openRow,
+                ticketId: 't2',
+                siteId: 'OTHER',
+                site: 'Other Hub',
+                checkpoint: 'Not this centre',
+              },
             ],
     }))
     const out = await loadSiteAudit({
@@ -81,10 +89,13 @@ describe('loadSiteAudit', () => {
         cards: { audits: 1, findings: 2 },
       }),
     })
-    expect(calls.map((c) => c.dataset).sort()).toEqual(['audits', 'findings'])
+    const range = safeRange({}, NOW, DEFAULT_RANGE_DAYS)
+    expect(calls.filter((c) => c.dataset === 'audits').map((c) => c.range)).toEqual([range])
+    expect(calls.filter((c) => c.dataset === 'findings').map((c) => c.range)).toEqual(
+      ticketDateChunks(range)
+    )
     expect(calls.every((c) => c.cards.audits === SITE_AUDIT_SCORE_CARD)).toBe(true)
     expect(calls.every((c) => c.cards.findings === SITE_AUDIT_TICKETS_CARD)).toBe(true)
-    expect(calls[0].range).toEqual(safeRange({}, NOW, DEFAULT_RANGE_DAYS))
     expect(out).toMatchObject({
       ok: true,
       date: '2026-03-02',
@@ -111,13 +122,14 @@ describe('loadSiteAudit', () => {
         queryDataset,
         readConfig,
       })
+    const per = 1 + ticketDateChunks(safeRange({}, NOW, DEFAULT_RANGE_DAYS)).length
     await load(NOW)
     await load(NOW + 1000)
-    expect(calls).toHaveLength(2)
+    expect(calls).toHaveLength(per)
     await load(NOW, 'o2')
-    expect(calls).toHaveLength(4)
+    expect(calls).toHaveLength(per * 2)
     await load(NOW + SITE_AUDIT_CACHE_MS + 1)
-    expect(calls).toHaveLength(6)
+    expect(calls).toHaveLength(per * 3)
   })
 
   it('turns a failed read into a note, and does not hammer a dead host', async () => {
@@ -210,9 +222,14 @@ describe('loadSiteAudit', () => {
       readConfig,
       windowDays: 120,
     })
-    expect(calls).toHaveLength(4)
-    expect(calls.slice(2).every((call) => call.range.from === safeRange({}, NOW, 120).from)).toBe(
-      true
+    const narrow = 1 + ticketDateChunks(safeRange({}, NOW, DEFAULT_RANGE_DAYS)).length
+    const wide = safeRange({}, NOW, 120)
+    const second = calls.slice(narrow)
+    expect(second.filter((call) => call.dataset === 'audits').map((call) => call.range)).toEqual([
+      wide,
+    ])
+    expect(second.filter((call) => call.dataset === 'findings').map((call) => call.range)).toEqual(
+      ticketDateChunks(wide)
     )
     expect(wider.windowDays).toBe(120)
   })
@@ -321,9 +338,10 @@ describe('loadSiteAudit', () => {
           scoreCard: SITE_AUDIT_SCORE_CARD,
           ticketCard: SITE_AUDIT_TICKETS_CARD,
           scoreRows: 1,
-          ticketRows: 1,
+          ticketRows: ticketDateChunks(safeRange({}, NOW, DEFAULT_RANGE_DAYS)).length,
           scoreCapped: false,
           ticketCapped: false,
+          ticketChunks: ticketDateChunks(safeRange({}, NOW, DEFAULT_RANGE_DAYS)).length,
           scoreUnmapped: ['Reviewer'],
           ticketUnmapped: ['Reviewer'],
           scoreReason: '',
@@ -332,6 +350,90 @@ describe('loadSiteAudit', () => {
       },
     ])
     expect(JSON.stringify(lines)).not.toContain('mb.example.com')
+  })
+
+  it('covers the window in slices no longer than 30 days, without a gap', () => {
+    const range = safeRange({}, NOW, 120)
+    const chunks = ticketDateChunks(range)
+    expect(chunks.length).toBeGreaterThan(1)
+    expect(chunks[0].from).toBe(range.from)
+    expect(chunks.at(-1).to).toBe(range.to)
+    for (let i = 0; i < chunks.length; i++) {
+      const span =
+        (Date.parse(`${chunks[i].to}T00:00:00Z`) - Date.parse(`${chunks[i].from}T00:00:00Z`)) /
+        86_400_000
+      expect(span).toBeLessThanOrEqual(29)
+      if (i > 0) {
+        const next = new Date(Date.parse(`${chunks[i - 1].to}T00:00:00Z`) + 86_400_000)
+          .toISOString()
+          .slice(0, 10)
+        expect(chunks[i].from).toBe(next)
+      }
+    }
+  })
+
+  it('dedupes a ticket that appears in two slices, and caps only when a slice is capped', async () => {
+    expect(
+      dedupeTickets([
+        { ticketId: 't1', checkpoint: 'First' },
+        { ticketId: 't1', checkpoint: 'Copy' },
+        { ticketId: '', checkpoint: 'No id' },
+        { checkpoint: 'Also no id' },
+      ]).map((row) => row.checkpoint)
+    ).toEqual(['First', 'No id', 'Also no id'])
+
+    const seen = []
+    const firstFrom = ticketDateChunks(safeRange({}, NOW, 120))[0].from
+    const out = await loadSiteAudit({
+      orgId: 'o1',
+      site,
+      now: NOW,
+      windowDays: 120,
+      readConfig: async () => ({
+        apiKey: 'k',
+        baseUrl: 'https://mb.example.com',
+        cards: { audits: 1, findings: 2 },
+      }),
+      queryDataset: async (_config, dataset, opts) => {
+        seen.push(dataset)
+        if (dataset === 'audits') return { ok: true, capped: false, rows: [auditRow] }
+        return {
+          ok: true,
+          capped: opts.range.from === firstFrom,
+          rows: [{ ...openRow, ticketId: 't1', auditDate: '2026-02-11' }],
+        }
+      },
+    })
+    // The score is in the audit rows, so the centre is answered. The ticket
+    // list is not trusted once any slice was cut off.
+    expect(out).toMatchObject({ ok: true, scoreOnDay: 82, findingsKnown: false, openTotal: 0 })
+    expect(seen.filter((dataset) => dataset === 'findings').length).toBeGreaterThan(1)
+  })
+
+  it('keeps every slice when none of them is capped, and does not double a ticket', async () => {
+    const out = await loadSiteAudit({
+      orgId: 'o1',
+      site,
+      now: NOW,
+      windowDays: 120,
+      readConfig: async () => ({
+        apiKey: 'k',
+        baseUrl: 'https://mb.example.com',
+        cards: { audits: 1, findings: 2 },
+      }),
+      queryDataset: async (_config, dataset) => {
+        if (dataset === 'audits') return { ok: true, capped: false, rows: [auditRow] }
+        return {
+          ok: true,
+          capped: false,
+          rows: [
+            { ...openRow, ticketId: 't1', auditDate: '2026-02-11', checkpoint: 'Raised later' },
+          ],
+        }
+      },
+    })
+    expect(out).toMatchObject({ ok: true, findingsKnown: true, openTotal: 1 })
+    expect(out.openPoints).toEqual(['Fire: Raised later — Open'])
   })
 
   it('refuses an organisation id that is not a single path segment', async () => {
