@@ -39,6 +39,7 @@ export default function WhatsAppConnect({ orgId, actor }) {
   const [phone, setPhone] = useState('')
   const [memberUid, setMemberUid] = useState('')
   const [testPhone, setTestPhone] = useState('')
+  const [testError, setTestError] = useState('')
   const [busy, setBusy] = useState(false)
 
   const refresh = async () => {
@@ -146,9 +147,19 @@ export default function WhatsAppConnect({ orgId, actor }) {
 
   const sendTest = () =>
     run(async () => {
-      const out = await sendWhatsAppOrgTest(testPhone)
-      await audit(`Sent a WhatsApp test message to ${out.masked}`)
-      toast.success(`Test sent to ${out.masked}`)
+      setTestError('')
+      try {
+        const out = await sendWhatsAppOrgTest(testPhone)
+        await audit(`Sent a WhatsApp test message to ${out.masked}`)
+        toast.success(`Test sent to ${out.masked}`)
+      } catch (err) {
+        const message = err?.message || 'The test message could not be sent.'
+        // 131047 usually arrives later, on the status webhook, so the note
+        // below is the part an admin can always see. A synchronous refusal
+        // stays on the page as well as in the toast.
+        if (/131047|24 hours/i.test(message)) setTestError(message)
+        throw err
+      }
     })
 
   return (
@@ -338,6 +349,16 @@ export default function WhatsAppConnect({ orgId, actor }) {
                 Sends one short message to a number already on the list above. It does not include
                 site details. It is refused when the shared number is not switched on.
               </p>
+              <p className="text-xs leading-relaxed text-ink-500">
+                A free-form test is delivered only if that handset has messaged the shared number in
+                the last 24 hours. If it has not, WhatsApp rejects it. Ask them to send any message
+                to the number, then try again.
+              </p>
+              {testError ? (
+                <p role="alert" className="text-sm font-medium text-red-400">
+                  {testError}
+                </p>
+              ) : null}
               <div className="flex flex-wrap items-end gap-3">
                 <Field label="Send the test to" className="min-w-[16rem] flex-1">
                   <Select

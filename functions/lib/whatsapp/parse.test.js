@@ -69,7 +69,44 @@ describe('extractMessages', () => {
       payload({ statuses: [{ id: 'wamid.X', status: 'delivered' }] }),
       PNID
     )
-    expect(out).toEqual({ messages: [], statuses: 1 })
+    expect(out.messages).toEqual([])
+    expect(out.statuses).toBe(1)
+    expect(out.statusEvents).toEqual([
+      { id: 'wamid.X', status: 'delivered', recipientLast4: '', errors: [] },
+    ])
+  })
+
+  it('logs a failed status without the full recipient number', () => {
+    const out = extractMessages(
+      payload({
+        statuses: [
+          {
+            id: 'wamid.FAIL',
+            status: 'failed',
+            recipient_id: '917712345678',
+            errors: [
+              {
+                code: 131047,
+                title: 'Re-engagement message',
+                href: 'https://example.invalid/secret',
+              },
+            ],
+          },
+        ],
+      }),
+      PNID
+    )
+    expect(out.statusEvents).toEqual([
+      {
+        id: 'wamid.FAIL',
+        status: 'failed',
+        recipientLast4: '5678',
+        errors: [{ code: 131047, title: 'Re-engagement message' }],
+      },
+    ])
+    const logged = JSON.stringify(out.statusEvents)
+    expect(logged).not.toContain('917712345678')
+    expect(logged).not.toContain('example.invalid')
   })
 
   it('ignores another business number, other objects and junk', () => {
@@ -134,6 +171,9 @@ describe('parseCommand', () => {
     expect(p('X', 'org:acme_1')).toEqual({ kind: 'choice', choiceKind: 'org', orgId: 'acme_1' })
     expect(p('X', 'site:../users').kind).toBe('site')
     expect(p('X', 'org:../users').kind).toBe('site')
+    expect(p('X', 'audit:yes')).toEqual({ kind: 'audit', answer: 'yes' })
+    expect(p('X', 'audit:no')).toEqual({ kind: 'audit', answer: 'no' })
+    expect(p('yes', 'audit:../yes').kind).toBe('site')
   })
 
   it('bounds and cleans the query', () => {

@@ -168,8 +168,27 @@ describe('Connect with WhatsApp', () => {
         screen.getByRole('button', { name: 'Send test message' }).hasAttribute('disabled')
       ).toBe(false)
     )
+    expect(screen.getByText(/last 24 hours/)).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Send test message' }))
     await waitFor(() => expect(fns.sendWhatsAppOrgTest).toHaveBeenCalledWith('919000000001'))
+  })
+
+  it('keeps a 131047 refusal on the page', async () => {
+    fns.sendWhatsAppOrgTest.mockRejectedValue(
+      new Error(
+        'WhatsApp could not deliver the test (131047). The recipient must have messaged this number within the last 24 hours. Ask them to send any message to the number, then try again.'
+      )
+    )
+    renderSection()
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Send test message' }).hasAttribute('disabled')
+      ).toBe(false)
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Send test message' }))
+    expect(await screen.findByRole('alert')).toBeTruthy()
+    expect(screen.getByRole('alert').textContent).toMatch(/131047/)
+    expect(screen.getByRole('alert').textContent).toMatch(/24 hours/)
   })
 
   it('still shows the Telegram link when WhatsApp settings cannot be loaded', async () => {

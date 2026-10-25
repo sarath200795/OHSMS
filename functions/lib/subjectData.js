@@ -307,7 +307,7 @@ export const SUBJECT_SOURCES = [
     orgField: 'orgId',
     joins: [{ kind: 'field', field: 'uid', key: 'uid' }],
     retention: ERASABLE,
-    why: 'Which organisation a chat had chosen and which sites or organisations were last offered, so a numbered reply can pick one. Expires after 24 hours idle. Numbered choices stop working after 15 minutes.',
+    why: 'Which organisation a chat had chosen, which sites or organisations were last offered, and for 15 minutes which one site the audit question is about. Expires after 24 hours idle. Numbered choices and that question stop working after 15 minutes.',
   },
 
   // ── The audit trail ────────────────────────────────────────────────────────

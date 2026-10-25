@@ -18,22 +18,48 @@ export function normaliseWaId(value) {
 }
 
 /**
+ * What a status callback may say in a log. The recipient is the last four
+ * digits only: the full number is the person's handset. The error href is
+ * dropped; code and title are enough to see a 131047.
+ */
+export function statusLogFields(status) {
+  const recipient = String(status?.recipient_id ?? '').replace(/\D/g, '')
+  const errors = (Array.isArray(status?.errors) ? status.errors : []).map((err) => ({
+    code: err?.code ?? null,
+    title: typeof err?.title === 'string' ? err.title.slice(0, 180) : '',
+  }))
+  return {
+    id: typeof status?.id === 'string' ? status.id.slice(0, 200) : '',
+    status: typeof status?.status === 'string' ? status.status.slice(0, 32) : '',
+    recipientLast4: recipient.slice(-4),
+    errors,
+  }
+}
+
+/**
  * Inbound messages addressed to `phoneNumberId`.
- * Returns { messages: [{ wamid, from, timestamp, type, text, choiceId }], statuses: n }.
+ * Returns { messages, statuses, statusEvents }.
  * A change for another business number is ignored: one Meta app can carry
- * several, and only one of them is this bot.
+ * several, and only one of them is this bot. Statuses are not answered;
+ * statusEvents is what the webhook logs.
  */
 export function extractMessages(payload, phoneNumberId) {
   const messages = []
+  const statusEvents = []
   let statuses = 0
-  if (!payload || payload.object !== 'whatsapp_business_account') return { messages, statuses }
+  if (!payload || payload.object !== 'whatsapp_business_account') {
+    return { messages, statuses, statusEvents }
+  }
   for (const entry of Array.isArray(payload.entry) ? payload.entry : []) {
     for (const change of Array.isArray(entry?.changes) ? entry.changes : []) {
       if (change?.field !== 'messages') continue
       const value = change.value || {}
       const to = String(value.metadata?.phone_number_id ?? '')
       if (!phoneNumberId || to !== String(phoneNumberId)) continue
-      statuses += Array.isArray(value.statuses) ? value.statuses.length : 0
+      for (const status of Array.isArray(value.statuses) ? value.statuses : []) {
+        statuses += 1
+        statusEvents.push(statusLogFields(status))
+      }
       for (const m of Array.isArray(value.messages) ? value.messages : []) {
         const from = normaliseWaId(m?.from)
         const wamid = typeof m?.id === 'string' ? m.id : ''
@@ -60,7 +86,7 @@ export function extractMessages(payload, phoneNumberId) {
       }
     }
   }
-  return { messages, statuses }
+  return { messages, statuses, statusEvents }
 }
 
 /**
@@ -114,11 +140,14 @@ export function cleanQuery(text) {
  *   { kind: 'menu' }           MENU / RESTART — ask which organisation again
  *   { kind: 'changeOrg' }      CHANGE ORG
  *   { kind: 'choice', choiceKind, siteId? | orgId? }  a tap on a row this bot sent
+ *   { kind: 'audit', answer: 'yes' | 'no' }          a tap on the audit question
  *   { kind: 'location', latitude, longitude }  a shared location
  *   { kind: 'greeting' }       nothing left after the greeting
  *   { kind: 'site', query }    anything else (a site, or an organisation name)
  */
 export function parseCommand(message = {}) {
+  const audit = /^audit:(yes|no)$/.exec(String(message.choiceId ?? ''))
+  if (audit) return { kind: 'audit', answer: audit[1] }
   const choice = /^(site|org):([A-Za-z0-9_-]{1,128})$/.exec(String(message.choiceId ?? ''))
   if (choice && choice[1] === 'org') return { kind: 'choice', choiceKind: 'org', orgId: choice[2] }
   if (choice) return { kind: 'choice', choiceKind: 'site', siteId: choice[2] }

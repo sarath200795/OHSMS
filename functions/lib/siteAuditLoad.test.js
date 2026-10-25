@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { DEFAULT_RANGE_DAYS, safeRange } from './metabase.js'
-import { clearSiteAuditCache, loadSiteAudit, SITE_AUDIT_CACHE_MS, SITE_AUDIT_FAIL_CACHE_MS } from './siteAuditLoad.js'
+import {
+  clearSiteAuditCache,
+  loadSiteAudit,
+  SITE_AUDIT_CACHE_MS,
+  SITE_AUDIT_FAIL_CACHE_MS,
+} from './siteAuditLoad.js'
 
 const NOW = Date.parse('2026-06-15T12:00:00Z')
 const site = { id: 's1', name: 'Demo North Hub', code: 'DEMO001' }
@@ -46,16 +51,33 @@ describe('loadSiteAudit', () => {
     const { calls, queryDataset } = harness((dataset) => ({
       ok: true,
       capped: false,
-      rows: dataset === 'audits'
-        ? [auditRow, { ...auditRow, siteId: 'OTHER', site: 'Other Hub', passPct: 5, auditDate: '2026-05-01' }]
-        : [openRow, { ...openRow, siteId: 'OTHER', site: 'Other Hub', checkpoint: 'Not this centre' }],
+      rows:
+        dataset === 'audits'
+          ? [
+              auditRow,
+              {
+                ...auditRow,
+                siteId: 'OTHER',
+                site: 'Other Hub',
+                passPct: 5,
+                auditDate: '2026-05-01',
+              },
+            ]
+          : [
+              openRow,
+              { ...openRow, siteId: 'OTHER', site: 'Other Hub', checkpoint: 'Not this centre' },
+            ],
     }))
     const out = await loadSiteAudit({
       orgId: 'o1',
       site,
       now: NOW,
       queryDataset,
-      readConfig: async () => ({ apiKey: 'k', baseUrl: 'https://mb.example.com', cards: { audits: 1, findings: 2 } }),
+      readConfig: async () => ({
+        apiKey: 'k',
+        baseUrl: 'https://mb.example.com',
+        cards: { audits: 1, findings: 2 },
+      }),
     })
     expect(calls.map((c) => c.dataset).sort()).toEqual(['audits', 'findings'])
     expect(calls[0].range).toEqual(safeRange({}, NOW, DEFAULT_RANGE_DAYS))
@@ -72,7 +94,11 @@ describe('loadSiteAudit', () => {
 
   it('reuses one extract across centres, and asks again after it expires', async () => {
     const { calls, queryDataset } = harness(() => ({ ok: true, capped: false, rows: [auditRow] }))
-    const readConfig = async () => ({ apiKey: 'k', baseUrl: 'https://mb.example.com', cards: { audits: 1, findings: 2 } })
+    const readConfig = async () => ({
+      apiKey: 'k',
+      baseUrl: 'https://mb.example.com',
+      cards: { audits: 1, findings: 2 },
+    })
     const load = (now, id = 'o1') =>
       loadSiteAudit({
         orgId: id,
@@ -100,7 +126,11 @@ describe('loadSiteAudit', () => {
       orgId: 'o1',
       site,
       queryDataset,
-      readConfig: async () => ({ apiKey: 'k', baseUrl: 'https://mb.example.com', cards: { audits: 1, findings: 2 } }),
+      readConfig: async () => ({
+        apiKey: 'k',
+        baseUrl: 'https://mb.example.com',
+        cards: { audits: 1, findings: 2 },
+      }),
     }
     const first = await loadSiteAudit({ ...args, now: NOW })
     const second = await loadSiteAudit({ ...args, now: NOW + 1000 })
@@ -130,7 +160,11 @@ describe('loadSiteAudit', () => {
       orgId: 'o1',
       site,
       now: NOW,
-      readConfig: async () => ({ apiKey: 'k', baseUrl: 'https://mb.example.com', cards: { audits: 1, findings: 2 } }),
+      readConfig: async () => ({
+        apiKey: 'k',
+        baseUrl: 'https://mb.example.com',
+        cards: { audits: 1, findings: 2 },
+      }),
       queryDataset: async (_config, dataset) =>
         dataset === 'audits'
           ? { ok: true, capped: true, rows: [auditRow] }
@@ -146,10 +180,37 @@ describe('loadSiteAudit', () => {
       orgId: 'o1',
       site,
       now: NOW,
-      readConfig: async () => ({ apiKey: 'k', baseUrl: 'https://mb.example.com', cards: { audits: 1, findings: 2 } }),
+      readConfig: async () => ({
+        apiKey: 'k',
+        baseUrl: 'https://mb.example.com',
+        cards: { audits: 1, findings: 2 },
+      }),
       queryDataset: async () => ({ ok: true, capped: false, rows: [] }),
     })
     expect(out).toEqual({ ok: false, reason: 'none', windowDays: DEFAULT_RANGE_DAYS })
+  })
+
+  it('does not reuse a 90-day extract when the caller asks for 120 days', async () => {
+    const { calls, queryDataset } = harness(() => ({ ok: true, capped: false, rows: [auditRow] }))
+    const readConfig = async () => ({
+      apiKey: 'k',
+      baseUrl: 'https://mb.example.com',
+      cards: { audits: 1, findings: 2 },
+    })
+    await loadSiteAudit({ orgId: 'o1', site, now: NOW, queryDataset, readConfig })
+    const wider = await loadSiteAudit({
+      orgId: 'o1',
+      site,
+      now: NOW,
+      queryDataset,
+      readConfig,
+      windowDays: 120,
+    })
+    expect(calls).toHaveLength(4)
+    expect(calls.slice(2).every((call) => call.range.from === safeRange({}, NOW, 120).from)).toBe(
+      true
+    )
+    expect(wider.windowDays).toBe(120)
   })
 
   it('refuses an organisation id that is not a single path segment', async () => {

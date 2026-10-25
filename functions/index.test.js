@@ -2,13 +2,28 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { logger } from 'firebase-functions'
 import { FieldValue } from 'firebase-admin/firestore'
 import {
-  purgeOrgCollection, moveMedicalRecords, assertPathSegment,
-  notifyIncidentAssignment, notifyIllnessAssignment, notifyDrillAssignment, notifyTrainingAssignment,
+  purgeOrgCollection,
+  moveMedicalRecords,
+  assertPathSegment,
+  notifyIncidentAssignment,
+  notifyIllnessAssignment,
+  notifyDrillAssignment,
+  notifyTrainingAssignment,
   notifyIncidentReported,
-  notifyPermitLifecycle, notifyDefectReported, notifyExtinguisherDefect, notifyAedDefect, notifyFasDefect,
-  notifyDrillReport, notifyCommitteeMeeting, sendWeatherRiskDigest, retryWeatherRiskDigest,
-  notifyLotoPermitLifecycle, sweepLotoPermits, purgeClosedLotoPermits,
+  notifyPermitLifecycle,
+  notifyDefectReported,
+  notifyExtinguisherDefect,
+  notifyAedDefect,
+  notifyFasDefect,
+  notifyDrillReport,
+  notifyCommitteeMeeting,
+  sendWeatherRiskDigest,
+  retryWeatherRiskDigest,
+  notifyLotoPermitLifecycle,
+  sweepLotoPermits,
+  purgeClosedLotoPermits,
   notifyWhatsAppLinked,
+  refreshSiteAuditCache,
 } from './index.js'
 import { ASSIGNMENT_COLLECTIONS } from './lib/assignmentNotify.js'
 import { PURGEABLE } from './lib/retention.js'
@@ -23,7 +38,11 @@ function makeDb(seed = {}) {
   const store = new Map(Object.entries(seed))
   const log = []
 
-  const snapOf = (path) => ({ id: path.split('/').pop(), data: () => store.get(path), ref: docRef(path) })
+  const snapOf = (path) => ({
+    id: path.split('/').pop(),
+    data: () => store.get(path),
+    ref: docRef(path),
+  })
 
   // where() and limit() are accepted and ignored. The query is only a filter —
   // planPurge is the guarantee, and it is what decides here as it does in
@@ -81,7 +100,10 @@ const specFor = (collection) => PURGEABLE.find((p) => p.collection === collectio
 
 const illnessWithFile = (over = {}) => ({
   'organizations/orgA/illnesses/i1': { refNo: 'ILL-1', deletedAt: daysAgo(40) },
-  'organizations/orgA/illnesses/i1/files/f1': { name: 'report.pdf', path: 'orgs/orgA/illness-files/f1.pdf' },
+  'organizations/orgA/illnesses/i1/files/f1': {
+    name: 'report.pdf',
+    path: 'orgs/orgA/illness-files/f1.pdf',
+  },
   ...over,
 })
 
@@ -127,7 +149,11 @@ describe('purging a record whose attachments live in Cloud Storage', () => {
   it('leaves Storage alone for an attachment that was inlined', async () => {
     const db = makeDb(
       illnessWithFile({
-        'organizations/orgA/illnesses/i1/files/f1': { name: 'note.txt', path: '', dataUrl: 'data:text/plain;base64,AAA' },
+        'organizations/orgA/illnesses/i1/files/f1': {
+          name: 'note.txt',
+          path: '',
+          dataUrl: 'data:text/plain;base64,AAA',
+        },
       })
     )
     const bucket = fakeBucket(db.log)
@@ -157,7 +183,11 @@ describe('purging a record whose attachments live in Cloud Storage', () => {
     // trace of a file the database no longer knows about.
     expect(logger.error).toHaveBeenCalledWith(
       expect.stringMatching(/storage/),
-      expect.objectContaining({ path: 'orgs/orgA/illness-files/f1.pdf', collection: 'illnesses', orgId: 'orgA' })
+      expect.objectContaining({
+        path: 'orgs/orgA/illness-files/f1.pdf',
+        collection: 'illnesses',
+        orgId: 'orgA',
+      })
     )
     // Naming it in the log is not enough — a log nobody reads is how this ran
     // broken for months. It has to come back to the caller so the invocation
@@ -230,7 +260,11 @@ describe('purging a record whose attachments live in Cloud Storage', () => {
 
   it('still cascades the public QR mirror of an asset that has no files', async () => {
     const db = makeDb({
-      'organizations/orgA/extinguishers/e1': { serialNo: 'FE-1', qrToken: 'tok9', deletedAt: daysAgo(40) },
+      'organizations/orgA/extinguishers/e1': {
+        serialNo: 'FE-1',
+        qrToken: 'tok9',
+        deletedAt: daysAgo(40),
+      },
       'qr/tok9': { orgId: 'orgA' },
     })
     const bucket = fakeBucket(db.log)
@@ -296,7 +330,9 @@ function fakeStore(log, present = [], { failsCopy = () => false, failsMeta = () 
     options,
     file: (name) => ({
       name,
-      async exists() { return [objects.has(name)] },
+      async exists() {
+        return [objects.has(name)]
+      },
       async copy(dest) {
         if (failsCopy(name)) throw Object.assign(new Error('storage unavailable'), { code: 503 })
         log.push(`copy:${name}>${dest.name}`)
@@ -335,7 +371,7 @@ const movesFor = (photos, injuries = new Map([['inc1__u1', {}]])) =>
   planMedicalRecordMove(
     [{ id: 'inc1', refNo: 'INC-001', injuryReports: [{ personId: 'u1' }], photos }],
     injuries,
-    'orgA',
+    'orgA'
   ).moves
 
 describe('moving a medical record out of the photo album', () => {
@@ -350,7 +386,10 @@ describe('moving a medical record out of the photo album', () => {
   // old POINTER, so a crash between them can never strand a medical file in the
   // bucket with nothing left in the database naming it.
   it('copies, writes, verifies, and only then deletes — object before pointer', async () => {
-    const db = makeMoveDb({ [POINTER]: record(), 'organizations/orgA/incidents/inc1': { photoCount: 3 } })
+    const db = makeMoveDb({
+      [POINTER]: record(),
+      'organizations/orgA/incidents/inc1': { photoCount: 3 },
+    })
     const store = fakeStore(db.log, [OLD_PATH])
 
     const res = await moveMedicalRecords(db, store, 'orgA', movesFor([record()]))
@@ -393,7 +432,12 @@ describe('moving a medical record out of the photo album', () => {
 
     expect(res.moved).toBe(0)
     expect(res.failed).toEqual([
-      { incidentId: 'inc1', refNo: 'INC-001', photoId: 'p1', error: 'the moved record did not read back intact' },
+      {
+        incidentId: 'inc1',
+        refNo: 'INC-001',
+        photoId: 'p1',
+        error: 'the moved record did not read back intact',
+      },
     ])
     // Reachable exactly where it always was: pointer and file both untouched.
     expect(db.store.has(POINTER)).toBe(true)
@@ -468,7 +512,7 @@ describe('moving a medical record out of the photo album', () => {
     expect(db.store.has(POINTER)).toBe(false)
     expect(logger.error).toHaveBeenCalledWith(
       expect.stringMatching(/download token/),
-      expect.objectContaining({ orgId: 'orgA', recordId: 'p1' }),
+      expect.objectContaining({ orgId: 'orgA', recordId: 'p1' })
     )
   })
 
@@ -512,10 +556,18 @@ describe('moving a medical record out of the photo album', () => {
       'organizations/orgA/incidents/inc1/photos/p2': two[1],
     })
 
-    await moveMedicalRecords(db, fakeStore(db.log, [OLD_PATH, 'orgs/orgA/incident-photos/beef-note.pdf']), 'orgA', movesFor(two))
+    await moveMedicalRecords(
+      db,
+      fakeStore(db.log, [OLD_PATH, 'orgs/orgA/incident-photos/beef-note.pdf']),
+      'orgA',
+      movesFor(two)
+    )
 
     expect(db.updates).toEqual([
-      { path: 'organizations/orgA/incidents/inc1', patch: { photoCount: FieldValue.increment(-2) } },
+      {
+        path: 'organizations/orgA/incidents/inc1',
+        patch: { photoCount: FieldValue.increment(-2) },
+      },
     ])
     // And it is the last thing that happens, after every record has moved.
     expect(db.log.at(-1)).toBe('update:organizations/orgA/incidents/inc1')
@@ -606,6 +658,18 @@ describe('whatsapp link welcome trigger', () => {
       eventFilterPathPatterns: { document: 'waLinks/{waId}' },
     })
     expect(notifyWhatsAppLinked.__endpoint.region).toEqual(['asia-south1'])
+  })
+})
+
+describe('site audit cache refresh', () => {
+  it('runs every 3 hours in the plant zone, with room for a slow extract', () => {
+    expect(typeof refreshSiteAuditCache).toBe('function')
+    expect(refreshSiteAuditCache.__endpoint.scheduleTrigger).toMatchObject({
+      schedule: 'every 3 hours',
+      timeZone: 'Asia/Kolkata',
+    })
+    expect(refreshSiteAuditCache.__endpoint.region).toEqual(['asia-south1'])
+    expect(refreshSiteAuditCache.__endpoint.timeoutSeconds).toBe(1800)
   })
 })
 

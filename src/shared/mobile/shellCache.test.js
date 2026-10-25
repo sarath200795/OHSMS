@@ -36,6 +36,10 @@ describe('shellCacheDecision', () => {
     expect(shellCacheDecision(`${ORIGIN}/downloads/weehs-ohsms.json`, { origin: ORIGIN })).toBe(
       'pass'
     )
+    expect(shellCacheDecision(`${ORIGIN}/privacy`, { origin: ORIGIN })).toBe('pass')
+    expect(shellCacheDecision(`${ORIGIN}/privacy.html`, { origin: ORIGIN })).toBe('pass')
+    expect(shellCacheDecision(`${ORIGIN}/terms`, { origin: ORIGIN })).toBe('pass')
+    expect(shellCacheDecision(`${ORIGIN}/terms.html`, { origin: ORIGIN })).toBe('pass')
   })
 
   it('keeps hashed assets and the manifest', () => {

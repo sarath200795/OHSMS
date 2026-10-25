@@ -12,8 +12,10 @@
 //                the 15-minute numbered list. The list's own clock is
 //                choicesExpireAtMs and is enforced by the handler; deleting
 //                the document at 15 minutes would forget the organisation.
-//                Holds organisation and site ids, never a location or the
-//                message text.
+//                Holds organisation and site ids, and for 15 minutes the one
+//                site the audit question is about. Never a location or the
+//                message text. The offer expires in the handler; deleting the
+//                document at 15 minutes would forget the organisation.
 //   waRate        3 days without activity. The counters are hour and day
 //                windows; a dormant row holds nothing a limit still needs.
 //

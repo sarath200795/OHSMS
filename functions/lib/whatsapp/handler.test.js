@@ -161,9 +161,11 @@ describe('authorised lookups', () => {
     const row = await handleMessage(msg('DEMO001'), ctx())
     expect(row).toMatchObject({ outcome: 'ok', siteId: 's1' })
     expect(asked).toEqual([])
-    expect(sent).toHaveLength(1)
+    expect(sent).toHaveLength(2)
     expect(sent[0].text).toContain('Fire extinguishers: 6')
     expect(sent[0].text).not.toMatch(/Last audit|Audit score|Open points/)
+    expect(sent[1].text).toBe('Do you need any additional details? (Yes/No)')
+    expect(sent[1].buttons.map((b) => b.id)).toEqual(['audit:yes', 'audit:no'])
   })
 
   it('answers a site outside reach exactly like a site that does not exist', async () => {
@@ -285,13 +287,17 @@ describe('authorised lookups', () => {
 })
 
 describe('unknown senders', () => {
-  it('get one polite reply a day and no data', async () => {
+  it('replies every time with how to get access, and no site data', async () => {
     store.s.links.clear()
     await handleMessage(msg('DEMO001'), ctx())
     await handleMessage(msg('DEMO001'), ctx())
-    expect(sent).toHaveLength(1)
+    expect(sent).toHaveLength(2)
     expect(sent[0].text).toBe(MESSAGES.unlinked)
+    expect(sent[1].text).toBe(MESSAGES.unlinked)
+    expect(sent[0].text).toMatch(/Settings → Security/)
+    expect(sent[0].text).toMatch(/Connect with WhatsApp/)
     expect(store.s.logs.map((l) => l.outcome)).toEqual(['unknown', 'unknown'])
+    expect(sent.every((m) => !m.text.includes('Fire extinguishers'))).toBe(true)
   })
 })
 
@@ -330,7 +336,7 @@ describe('unlink, dedupe, staleness and limits', () => {
     await handleMessage(m, ctx())
     const again = await handleMessage(m, ctx())
     expect(again.outcome).toBe('duplicate')
-    expect(sent).toHaveLength(1)
+    expect(sent).toHaveLength(2)
   })
 
   it('does not answer a message older than an hour', async () => {
@@ -345,7 +351,8 @@ describe('unlink, dedupe, staleness and limits', () => {
   it('stops after 30 lookups an hour with a single notice', async () => {
     for (let i = 0; i < 33; i += 1) await handleMessage(msg('DEMO001'), ctx())
     expect(sent.filter((m) => m.text === MESSAGES.slowDown)).toHaveLength(1)
-    expect(sent).toHaveLength(31)
+    // Thirty lookups, each a summary and the audit question, then one notice.
+    expect(sent).toHaveLength(61)
   })
 
   it('never logs the message text', async () => {
@@ -578,12 +585,13 @@ describe('which organisation', () => {
     expect(row).toMatchObject({ outcome: 'ok', extra: { siteId: 's9', orgId: 'o2' } })
     expect(sent[2].text).toMatch(/Beta Central/)
     expect(sent[2].text).not.toMatch(/Demo North/)
+    expect(sent[3].text).toBe('Do you need any additional details? (Yes/No)')
 
     await guideConversation({ kind: 'changeOrg' }, guideCtx())
-    expect(sent[3].text).toMatch(/Which organisation/)
+    expect(sent[4].text).toMatch(/Which organisation/)
     const again = await guideConversation({ kind: 'site', query: 'beta001' }, guideCtx())
     expect(again.outcome).not.toBe('ok')
-    expect(sent[4].text).not.toMatch(/Beta Central \(BETA001\)/)
+    expect(sent[5].text).not.toMatch(/Beta Central \(BETA001\)/)
   })
 
   it('a closed list does not name organisations until the typed name narrows them', async () => {
@@ -685,5 +693,107 @@ describe('organisation switch', () => {
     const row = await handleMessage(msg('DEMO001'), ctx())
     expect(row.outcome).toBe('ok')
     expect(sent[0].text).toContain('Demo North Hub (DEMO001)')
+  })
+})
+
+describe('audit question', () => {
+  const syncedAt = new Date('2026-10-25T03:54:00.000Z')
+  const cached = {
+    none: false,
+    syncedAt,
+    date: '2026-03-02',
+    scoreOnDay: 82,
+    scoreAfter7: 91,
+    findingsKnown: true,
+    openPoints: ['Fire: Exit route blocked'],
+    openTotal: 1,
+    openMore: 0,
+  }
+
+  function withCache(record) {
+    const asked = []
+    store.siteAudit = async () => {
+      asked.push('live')
+      return {
+        ok: true,
+        date: '2026-03-02',
+        scoreOnDay: 1,
+        findingsKnown: true,
+        openPoints: [],
+        openTotal: 0,
+        openMore: 0,
+      }
+    }
+    store.getSiteAuditCache = async (orgId, siteId) => {
+      asked.push(['cache', orgId, siteId])
+      return record
+    }
+    return asked
+  }
+
+  it('answers Yes from the cache, including when the extract was taken', async () => {
+    const asked = withCache(cached)
+    await handleMessage(msg('DEMO001'), ctx())
+    const row = await handleMessage(msg('Yes'), ctx())
+    expect(row).toMatchObject({ outcome: 'audit', siteId: 's1' })
+    expect(sent[2].text).toContain('📋 Last audit: 2 Mar 2026 · Score 82% · 91% after 7 days')
+    expect(sent[2].text).toContain('1. Fire: Exit route blocked')
+    expect(sent[2].text).toContain('Data last extracted: 25 Oct 2026, 9:24 AM IST')
+    expect(asked).toEqual([['cache', 'o1', 's1']])
+  })
+
+  it('says Contact the admin when nothing is cached, and when the look found none', async () => {
+    withCache(null)
+    await handleMessage(msg('DEMO001'), ctx())
+    await handleMessage(msg('x', { choiceId: 'audit:yes' }), ctx())
+    expect(sent[2].text).toBe('Contact the admin')
+
+    sent.length = 0
+    withCache({ none: true, syncedAt, windowDays: 120 })
+    await handleMessage(msg('DEMO001'), ctx())
+    await handleMessage(msg('yes'), ctx())
+    expect(sent.at(-1).text).toBe('Contact the admin')
+    expect(sent.at(-1).text).not.toMatch(/Last audit|82%/)
+  })
+
+  it('acknowledges No and does not send a score', async () => {
+    withCache(cached)
+    await handleMessage(msg('DEMO001'), ctx())
+    const row = await handleMessage(msg('no'), ctx())
+    expect(row.outcome).toBe('declined')
+    expect(sent[2].text).toBe('Okay.')
+    expect(sent[2].text).not.toMatch(/Last audit/)
+  })
+
+  it('does not treat a late Yes as the previous centre', async () => {
+    withCache(cached)
+    await handleMessage(msg('DEMO001'), ctx())
+    store.s.sessions.get(PHONE).detailOffer.expireAtMs = NOW.getTime() - 1
+    const typed = await handleMessage(msg('yes'), ctx())
+    expect(typed.outcome).toBe('nomatch')
+    expect(sent.at(-1).text).toMatch(/Centre not found/)
+    const tapped = await handleMessage(msg('x', { choiceId: 'audit:yes' }), ctx())
+    expect(tapped.outcome).toBe('expired')
+    expect(sent.at(-1).text).toMatch(/expired/)
+    expect(sent.at(-1).text).not.toMatch(/Last audit|Contact the admin/)
+  })
+
+  it('re-checks reach before reading the cache', async () => {
+    const asked = withCache(cached)
+    await handleMessage(msg('DEMO001'), ctx())
+    store.s.users.set('u1', member({ siteId: 's2' }))
+    const row = await handleMessage(msg('yes'), ctx())
+    expect(row.outcome).toBe('denied')
+    expect(sent.at(-1).text).toBe(MESSAGES.noAccess)
+    expect(asked).toEqual([])
+  })
+
+  it('MENU drops the question, so Yes cannot leak the previous centre', async () => {
+    withCache(cached)
+    store.getOrganization = async () => ({ id: 'o1', name: 'Acme Fitness' })
+    await handleMessage(msg('DEMO001'), ctx())
+    await handleMessage(msg('MENU'), ctx())
+    await handleMessage(msg('yes'), ctx())
+    expect(sent.map((m) => m.text).join('\n')).not.toMatch(/Last audit|Data last extracted/)
   })
 })

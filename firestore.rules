@@ -1377,6 +1377,28 @@ service cloud.firestore {
     match /waOrgSettings/{docId} {
       allow read, write: if false;
     }
+    // The last audit the lookup bots read: date, score, open-point labels,
+    // and when the extract was taken. The schedule is the only writer. A
+    // client write could plant a score; a client read would hand warehouse
+    // observation text to every approved account. The bot re-checks site
+    // reach and reads with the Admin SDK.
+    //
+    // This is top-level, not organizations/{orgId}/siteAuditCache. That
+    // shape has to be excluded from structuralOnly(), and that function is
+    // already at the 1000-expression ceiling: one more conjunct, evaluated
+    // twice because the recursive match covers the parent, denied an
+    // extinguisher close that moves both dates and carries the certificate.
+    // The legacy wildcard above does not name this collection, so these
+    // denials are not undercut by a permissive union.
+    match /siteAuditCache/{orgId} {
+      allow read, write: if false;
+      match /sites/{siteId} {
+        allow read, write: if false;
+        match /{sub=**} {
+          allow read, write: if false;
+        }
+      }
+    }
 
     // ── Platform ownership ────────────────────────────────────────────────────
     // One document per person who operates the platform. Existence IS the

@@ -1,19 +1,23 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // The last audit for one site, fetched the way the ODIN dashboard fetches it.
 //
-// Same datasets (`audits` and `findings`), same default window, same
-// queryDataset — including the SSRF guard inside it. The phone reply is not
-// a second client of Metabase.
+// Same datasets (`audits` and `findings`), same queryDataset — including the
+// SSRF guard inside it. The default window is the dashboard's. A caller that
+// needs a different window passes it; the bot's scheduled refresh passes 120
+// days and does not change the dashboard default.
 //
-// The webhook has a short life and the warehouse question does not. A deadline
-// aborts the read so the rest of the site summary still goes out; the section
-// is replaced by a one-line note. A result is remembered per organisation for
-// a few minutes because a conversation looks up several centres and each one
-// would otherwise run the same two questions. The cache holds rows, not
-// replies: every caller is filtered to the one site they already reached.
+// The phone webhooks do not call this. A warehouse that never answered used
+// to hold the only site reply for the whole deadline. The schedule is the
+// caller now, and the reply reads what that run stored. A deadline still
+// aborts one extract so a dead host cannot stall the rest of the run.
+//
+// A result is remembered per organisation AND window for a few minutes,
+// because one run asks about every centre and each one would otherwise run
+// the same two questions. The memory holds rows, not replies: every caller
+// is filtered to the one site they already reached.
 // ─────────────────────────────────────────────────────────────────────────────
 import { lastSiteAudit } from './auditScore.js'
-import { DEFAULT_RANGE_DAYS, normalizeConfig, safeRange } from './metabase.js'
+import { DEFAULT_RANGE_DAYS, MAX_RANGE_DAYS, normalizeConfig, safeRange } from './metabase.js'
 import { queryDataset as defaultQueryDataset } from './metabaseRun.js'
 
 /** Give up on the warehouse in time to still send the site summary. */
@@ -27,6 +31,13 @@ export const SITE_AUDIT_FAIL_CACHE_MS = 60 * 1000
 
 const cache = new Map()
 const inflight = new Map()
+
+/** The dashboard window unless the caller named one safeRange will accept. */
+export function auditWindowDays(windowDays) {
+  const n = Math.floor(Number(windowDays))
+  if (!Number.isFinite(n) || n < 1 || n > MAX_RANGE_DAYS) return DEFAULT_RANGE_DAYS
+  return n
+}
 
 export function clearSiteAuditCache() {
   cache.clear()
@@ -66,8 +77,8 @@ function applySite(site, payload) {
   return { ok: true, windowDays: payload.windowDays, ...summary }
 }
 
-async function fetchOrg({ readConfig, orgId, now, queryDataset, deadlineMs, logger }) {
-  const range = safeRange({}, now, DEFAULT_RANGE_DAYS)
+async function fetchOrg({ readConfig, orgId, now, queryDataset, deadlineMs, logger, windowDays }) {
+  const range = safeRange({}, now, windowDays)
   const config = normalizeConfig(await readConfig())
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), deadlineMs)
@@ -85,7 +96,7 @@ async function fetchOrg({ readConfig, orgId, now, queryDataset, deadlineMs, logg
       fetched: true,
       audits,
       findings,
-      windowDays: DEFAULT_RANGE_DAYS,
+      windowDays,
       fresh: usable(audits) || usable(findings),
     }
   } finally {
@@ -98,7 +109,8 @@ async function fetchOrg({ readConfig, orgId, now, queryDataset, deadlineMs, logg
  * `{ ok: false, reason: 'none' }` when the window has no scored audit for it,
  * or `{ ok: false, reason: 'unavailable' }` when Metabase could not be asked.
  *
- * Never throws. The reply is already being composed; this section is optional.
+ * Never throws. A failed extract is `{ ok: false }`, so one organisation
+ * cannot abort the rest of a refresh.
  */
 export async function loadSiteAudit({
   readConfig,
@@ -108,9 +120,13 @@ export async function loadSiteAudit({
   queryDataset = defaultQueryDataset,
   deadlineMs = SITE_AUDIT_DEADLINE_MS,
   logger,
+  windowDays,
 } = {}) {
-  const key = String(orgId || '')
-  if (!key || key.includes('/') || typeof readConfig !== 'function') {
+  const days = auditWindowDays(windowDays)
+  // 90 and 120 must not share an extract. The dashboard and the bot ask
+  // different questions of the same organisation.
+  const key = `${String(orgId || '')}:${days}`
+  if (!orgId || String(orgId).includes('/') || typeof readConfig !== 'function') {
     return { ok: false, reason: 'unavailable' }
   }
   const at = atMillis(now)
@@ -120,7 +136,15 @@ export async function loadSiteAudit({
 
     let job = inflight.get(key)
     if (!job) {
-      job = fetchOrg({ readConfig, orgId: key, now: at, queryDataset, deadlineMs, logger }).finally(() => {
+      job = fetchOrg({
+        readConfig,
+        orgId: String(orgId),
+        now: at,
+        queryDataset,
+        deadlineMs,
+        logger,
+        windowDays: days,
+      }).finally(() => {
         inflight.delete(key)
       })
       inflight.set(key, job)

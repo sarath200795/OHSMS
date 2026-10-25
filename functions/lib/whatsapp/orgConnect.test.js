@@ -37,12 +37,15 @@ describe('normalizeWaId', () => {
     expect(normalizeWaId('919000000001')).toBe('919000000001')
   })
 
-  it('refuses a local number, a leading zero, and prose that contains digits', () => {
-    expect(normalizeWaId('9000000001')).toBeNull()
-    expect(normalizeWaId('00919000000001')).toBeNull()
+  it('stores an Indian mobile the way Meta sends from, and refuses prose', () => {
+    expect(normalizeWaId('9000000001')).toBe('919000000001')
+    expect(normalizeWaId('00919000000001')).toBe('919000000001')
+    expect(normalizeWaId('0919000000001')).toBe('919000000001')
+    expect(normalizeWaId('9109000000001')).toBe('919000000001')
     expect(normalizeWaId('call me on 919000000001')).toBeNull()
     expect(normalizeWaId('')).toBeNull()
     expect(normalizeWaId('+91')).toBeNull()
+    expect(normalizeWaId('1234567890')).toBeNull()
   })
 })
 
@@ -110,6 +113,8 @@ describe('planAddLink', () => {
     expect(memberPhoneMatches(member({ phone: 'ring 919000000001 please' }), '919000000001')).toBe(
       false
     )
+    expect(memberPhoneMatches(member({ phone: '9000000001' }), '919000000001')).toBe(true)
+    expect(memberPhoneMatches(member({ phone: '+91 90000 00001' }), '919000000001')).toBe(true)
     const plan = planAddLink({
       ...base,
       phone: '919000000001',

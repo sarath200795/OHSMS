@@ -11,8 +11,10 @@
 // Nothing here prints a free-text field from an incident, a permit or an
 // action — counts only. Contact names and numbers come from erpContacts,
 // which is the emergency directory and is shown only to linked, approved users
-// who reach the site. The last-audit score is not part of this reply: asking
-// Metabase held the only message until the warehouse gave up.
+// who reach the site. The site summary does not include the last audit:
+// asking Metabase held the only message until the warehouse gave up. The
+// audit is a second message, and only after the caller says yes, formatted
+// from the cache the schedule already stored.
 // ─────────────────────────────────────────────────────────────────────────────
 import { readableText } from '../mailTemplates/safe.js'
 import { MAX_CHOICES } from './resolve.js'
@@ -68,6 +70,29 @@ export function roleLabel(key, labels = {}) {
 
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
 
+/**
+ * "25 Oct 2026, 9:24 AM" in Asia/Kolkata.
+ *
+ * The audit reply prints this and then " IST". Hour is 12-hour without a
+ * leading zero; the day is two digits. The offset is fixed: India does not
+ * observe daylight saving, and the plant clock is this zone.
+ */
+export function extractedStamp(date) {
+  if (date == null || date === '') return ''
+  const d = date instanceof Date ? date : new Date(date)
+  if (Number.isNaN(d.getTime())) return ''
+  const shifted = new Date(d.getTime() + 330 * 60 * 1000)
+  const day = String(shifted.getUTCDate()).padStart(2, '0')
+  const mon = MONTHS[shifted.getUTCMonth()]
+  const year = shifted.getUTCFullYear()
+  let hour = shifted.getUTCHours()
+  const ampm = hour >= 12 ? 'PM' : 'AM'
+  hour %= 12
+  if (hour === 0) hour = 12
+  const mm = String(shifted.getUTCMinutes()).padStart(2, '0')
+  return `${day} ${mon} ${year}, ${hour}:${mm} ${ampm}`
+}
+
 /** "12 Oct, 07:30 IST" */
 export function istStamp(date) {
   const d = new Date(date.getTime() + 330 * 60 * 1000)
@@ -92,13 +117,52 @@ function formatScore(value) {
   return `${text}%`
 }
 
+/** Asked after a single-centre summary. The buttons carry the same words. */
+export const DETAIL_QUESTION = 'Do you need any additional details? (Yes/No)'
+
+export const DETAIL_BUTTONS = [
+  { id: 'audit:yes', title: 'Yes' },
+  { id: 'audit:no', title: 'No' },
+]
+
+export const CONTACT_ADMIN = 'Contact the admin'
+
+export const DETAIL_DECLINED = 'Okay.'
+
+export const DETAIL_EXPIRED = 'That question has expired. Send the Centre ID or Centre Name again.'
+
+/**
+ * The Yes reply, from a cache document, or '' when there is nothing to show.
+ * The caller sends CONTACT_ADMIN for ''.
+ *
+ * The last line is always the extract time. A cache row with no syncedAt,
+ * or a `none` row, is not an audit and must not grow a score.
+ */
+export function formatCachedAudit(record) {
+  if (!record || record.none || typeof record.date !== 'string' || !record.date) return ''
+  const when = extractedStamp(record.syncedAt)
+  if (!when) return ''
+  const lines = auditLines({
+    ok: true,
+    date: record.date,
+    scoreOnDay: record.scoreOnDay,
+    scoreAfter7: record.scoreAfter7,
+    findingsKnown: record.findingsKnown === true,
+    openPoints: record.openPoints,
+    openTotal: record.openTotal,
+    openMore: record.openMore,
+  })
+  if (!lines.length) return ''
+  lines.push(`Data last extracted: ${when} IST`)
+  return lines.join('\n')
+}
+
 /**
  * The last-audit block, or a one-line note when there is nothing to show.
  *
- * The site lookup does not send this. A Metabase call used to run before the
- * only reply, and a warehouse that never answered held that reply for the
- * whole deadline. Kept so a later message can format the same lines without
- * copying them. `audit` is loadSiteAudit's result.
+ * The site summary does not send this. `formatCachedAudit` does, for a
+ * document the schedule already wrote, and it does not use the "none" or
+ * "unavailable" lines — a Yes with nothing stored says CONTACT_ADMIN.
  */
 export function auditLines(audit) {
   if (!audit) return []
@@ -396,8 +460,9 @@ export const MESSAGES = {
     'extinguishers, open defects, first aid boxes, pending actions, incidents and emergency contacts.\n\n' +
     'Send MENU to start over, or CHANGE ORG to switch organisation. Send UNLINK to disconnect this number.',
   unlinked:
-    'This number serves registered WeEHS users. To use it, link your WhatsApp from ' +
-    'Settings → Security in the app.\n\nIn an emergency call 112.',
+    'This number is not linked to a WeEHS account, so I cannot look up a site. ' +
+    'Link WhatsApp from Settings → Security in the app, or ask an administrator to add ' +
+    'this number under Org Settings → Connect with WhatsApp.\n\nIn an emergency call 112.',
   noAccess: "You don't have access to that site. Ask your admin if you need it.",
   noSites: "Your account doesn't have access to any sites yet. Ask your admin for access.",
   slowDown: "You've sent a lot of lookups. Please wait a while and try again.",

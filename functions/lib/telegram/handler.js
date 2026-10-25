@@ -110,7 +110,7 @@ export function splitText(text, max = TG_MAX_TEXT) {
 }
 
 /** sendMessage bodies for one reply. Plain text, no parse_mode: nothing to escape. */
-export function sendPayloads(chatId, { text, locationRequest, rows } = {}) {
+export function sendPayloads(chatId, { text, locationRequest, rows, buttons } = {}) {
   const parts = splitText(text)
   return parts.map((part, i) => {
     const body = { chat_id: chatId, text: part, disable_web_page_preview: true }
@@ -121,6 +121,16 @@ export function sendPayloads(chatId, { text, locationRequest, rows } = {}) {
         keyboard: [[{ text: '📍 Send my location', request_location: true }]],
         one_time_keyboard: true,
         resize_keyboard: true,
+      }
+    } else if (buttons?.length) {
+      // Yes and No on one row. callback_data is audit:yes / audit:no.
+      body.reply_markup = {
+        inline_keyboard: [
+          buttons.slice(0, 3).map((button) => ({
+            text: String(button.title || button.label || button.id).slice(0, 64),
+            callback_data: String(button.id).slice(0, 64),
+          })),
+        ],
       }
     } else if (rows?.length) {
       // One name per row. callback_data is the choice id (org: or site:), already

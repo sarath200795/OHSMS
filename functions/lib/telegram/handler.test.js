@@ -140,6 +140,21 @@ describe('text helpers', () => {
       callback_data: 'org:o1',
     })
   })
+  it('puts Yes and No on one inline row', () => {
+    const [p] = sendPayloads(42, {
+      text: 'Do you need any additional details? (Yes/No)',
+      buttons: [
+        { id: 'audit:yes', title: 'Yes' },
+        { id: 'audit:no', title: 'No' },
+      ],
+    })
+    expect(p.reply_markup.inline_keyboard).toEqual([
+      [
+        { text: 'Yes', callback_data: 'audit:yes' },
+        { text: 'No', callback_data: 'audit:no' },
+      ],
+    ])
+  })
 })
 
 describe('handleUpdate', () => {
@@ -193,7 +208,7 @@ describe('handleUpdate', () => {
     await handleUpdate(u, ctx)
     const again = await handleUpdate(u, ctx)
     expect(again.outcome).toBe('duplicate')
-    expect(reply).toHaveBeenCalledTimes(1)
+    expect(reply).toHaveBeenCalledTimes(2)
   })
   it('rate limited callers get no data', async () => {
     const store = fakeStore()
