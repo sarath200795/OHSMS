@@ -2742,11 +2742,7 @@ export const waWebhook = onRequest(
     invoker: 'public',
     maxInstances: 5,
     concurrency: 20,
-    // 120s, not 60s. The site reply also asks Metabase for the last audit, and
-    // that question can take the better part of a minute. The lookup gives up
-    // sooner than that (SITE_AUDIT_DEADLINE_MS) so the summary still goes out;
-    // this budget is what lets that give-up happen before the function is killed.
-    timeoutSeconds: 120,
+    timeoutSeconds: 60,
     memory: '512MiB',
   },
   async (req, res) => {
@@ -2788,7 +2784,7 @@ export const waWebhook = onRequest(
     if (statuses) logger.info('waWebhook: statuses', { count: statuses })
 
     const db = getFirestore()
-    const store = createStore(db, { pepper: waPepper(), logger })
+    const store = createStore(db, { pepper: waPepper() })
     const cap = Math.max(1, Number(WA_DAILY_CAP.value()) || 2000)
 
     const reply = async (to, { text, rows, locationRequest, list }) => {
@@ -2888,9 +2884,7 @@ export const tgWebhook = onRequest(
     invoker: 'public',
     maxInstances: 5,
     concurrency: 20,
-    // Same budget as waWebhook: the audit read shares the reply, and Telegram
-    // uses the same answerQuery path.
-    timeoutSeconds: 120,
+    timeoutSeconds: 60,
     memory: '512MiB',
   },
   async (req, res) => {
@@ -2918,7 +2912,7 @@ export const tgWebhook = onRequest(
       const pepper = createHmac('sha256', TG_WEBHOOK_SECRET.value())
         .update('tg-chat-pepper-v1')
         .digest('hex')
-      const store = createStore(db, { pepper, logger })
+      const store = createStore(db, { pepper })
       const orgs = await tgOrganisations(store)
       if (!orgs.length) {
         logger.error('tgWebhook: no organisation available')

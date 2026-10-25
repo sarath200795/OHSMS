@@ -40,9 +40,6 @@ import { isActiveMember } from './access.js'
 import { summariseSites } from '../siteSummary.js'
 import { namedOrganisations, snapshotOrgIds } from './orgs.js'
 import { orgLookupEnabled as isOrgLookupEnabled } from './orgConnect.js'
-import { configPath } from '../metabase.js'
-import { loadSiteAudit } from '../siteAuditLoad.js'
-
 export const SNAPSHOT_MAX_AGE_MS = 60 * 60 * 1000
 export const INBOUND_KEEP_MS = 7 * 24 * 60 * 60 * 1000
 export const READ_CAP = 20000
@@ -230,7 +227,7 @@ export async function buildSnapshot(db, orgId, now = new Date()) {
   return { asOf: now, sites: counts }
 }
 
-export function createStore(db, { pepper, now = () => new Date(), logger } = {}) {
+export function createStore(db, { pepper, now = () => new Date() } = {}) {
   const hash = (waId) => phoneHash(pepper, waId)
 
   return {
@@ -382,34 +379,6 @@ export function createStore(db, { pepper, now = () => new Date(), logger } = {})
         roleLabels: o.erpRoleLabels || {},
         modules,
       }
-    },
-
-    async siteAudit(orgId, site) {
-      // The reachable site from listSites carries code and name, which is
-      // enough for most joins. A centre id that was stored only in attributes
-      // is what the dashboard's join also accepts, and listSites does not
-      // select it. Re-read this one document — the caller already reached it —
-      // so the phone and the tab attribute the audit to the same centre.
-      let joined = site
-      if (site?.id && typeof site.id === 'string' && !site.id.includes('/')) {
-        try {
-          const snap = await db.doc(`organizations/${orgId}/sites/${site.id}`).get()
-          if (snap.exists) joined = { ...(snap.data() || {}), ...site, id: site.id }
-        } catch {
-          joined = site
-        }
-      }
-      return loadSiteAudit({
-        orgId,
-        site: joined,
-        now: now().getTime(),
-        logger,
-        readConfig: async () => {
-          if (typeof orgId !== 'string' || !orgId || orgId.includes('/')) return null
-          const snap = await db.doc(configPath(orgId)).get()
-          return snap.exists ? snap.data() : null
-        },
-      })
     },
 
     async getSession(waId) {

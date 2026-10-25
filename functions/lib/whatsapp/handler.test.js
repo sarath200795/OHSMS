@@ -141,7 +141,10 @@ describe('authorised lookups', () => {
 
   // Not "no access": the site exists, but outside reach it is not searched at
   // all, so the reply cannot confirm that it does.
-  it('adds the last audit score for a site inside reach, and does not ask for one outside it', async () => {
+  it('does not call Metabase, even when the store still has a site audit method', async () => {
+    // The score used to be fetched before this reply. A warehouse that never
+    // answered held the summary for the whole deadline, so the lookup stopped
+    // asking. A leftover method must not be able to put that wait back.
     const asked = []
     store.siteAudit = async (_orgId, site) => {
       asked.push(site.id)
@@ -149,39 +152,18 @@ describe('authorised lookups', () => {
         ok: true,
         date: '2026-03-02',
         scoreOnDay: 82,
-        scoreAfter7: 91,
         findingsKnown: true,
         openTotal: 1,
         openMore: 0,
         openPoints: ['Fire: Exit route blocked'],
       }
     }
-    await handleMessage(msg('DEMO002'), ctx())
-    expect(asked).toEqual([])
     const row = await handleMessage(msg('DEMO001'), ctx())
     expect(row).toMatchObject({ outcome: 'ok', siteId: 's1' })
-    expect(asked).toEqual(['s1'])
-    expect(sent[1].text).toContain('Score 82%')
-    expect(sent[1].text).toContain('1. Fire: Exit route blocked')
-    expect(sent[1].text).toContain('Fire extinguishers: 6')
-  })
-
-  it('still sends the summary when the audit read throws', async () => {
-    store.siteAudit = async () => {
-      throw new Error('metabase down')
-    }
-    const row = await handleMessage(msg('DEMO001'), ctx())
-    expect(row.outcome).toBe('ok')
+    expect(asked).toEqual([])
+    expect(sent).toHaveLength(1)
     expect(sent[0].text).toContain('Fire extinguishers: 6')
-    expect(sent[0].text).toContain('Audit score unavailable.')
-    expect(sent[0].text).not.toContain('metabase down')
-  })
-
-  it('says there is no score in the window when the last audit is missing', async () => {
-    store.siteAudit = async () => ({ ok: false, reason: 'none', windowDays: 90 })
-    await handleMessage(msg('DEMO001'), ctx())
-    expect(sent[0].text).toContain('No audit score in the last 90 days.')
-    expect(sent[0].text).toContain('Fire extinguishers: 6')
+    expect(sent[0].text).not.toMatch(/Last audit|Audit score|Open points/)
   })
 
   it('answers a site outside reach exactly like a site that does not exist', async () => {
