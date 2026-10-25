@@ -120,6 +120,13 @@ export async function syncSiteAuditCaches({
         const fields = cacheFields(summary, now)
         if (!fields) {
           skipped += 1
+          // A count alone is not a reason. The last run left 75 sites on the
+          // previous document and the log said only how many.
+          logger.error('syncSiteAuditCache: site kept previous cache', {
+            orgId,
+            siteId: site.id,
+            reason: summary?.ok ? 'unreadable' : summary?.reason || 'unavailable',
+          })
           continue
         }
         rows.push({ siteId: site.id, data: fields })

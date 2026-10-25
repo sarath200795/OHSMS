@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { TERMINAL_STATUSES } from './metabase.js'
+import { TERMINAL_STATUSES, normalizeRow } from './metabase.js'
 import { OPEN_POINT_TERMINAL, auditPopulation, day0Of, lastSiteAudit, n7Of } from './auditScore.js'
 
 // Invented centres. Nothing here is a real site or a real person.
@@ -63,7 +63,10 @@ describe('lastSiteAudit', () => {
       openTotal: 2,
       openMore: 0,
     })
-    expect(out.openPoints).toEqual(['Fire: Exit route blocked', 'Extinguisher: Pressure low'])
+    expect(out.openPoints).toEqual([
+      'Fire: Exit route blocked — Open',
+      'Extinguisher: Pressure low — In Progress',
+    ])
     expect(out.openPoints.join('\n')).not.toMatch(/fixed|defect|Older|Someone/)
   })
 
@@ -84,7 +87,7 @@ describe('lastSiteAudit', () => {
       [audit({ siteId: 'C-9', site: 'Warehouse spelling', passPct: 70, passPctN7: null })]
     )
     expect(out).toMatchObject({ date: '2026-03-02', scoreOnDay: 70, scoreAfter7: null })
-    expect(out.openPoints).toEqual(['Fire: Sign missing'])
+    expect(out.openPoints).toEqual(['Fire: Sign missing — Open'])
   })
 
   it('falls back to findings rows that carry a pass rate, which is the dashboard rule', () => {
@@ -94,7 +97,7 @@ describe('lastSiteAudit', () => {
     )
     const out = lastSiteAudit(site, [finding], [audit({ passPct: null, passPctN7: null })])
     expect(out).toMatchObject({ source: 'findings', scoreOnDay: 64, scoreAfter7: 80 })
-    expect(out.openPoints).toEqual(['Fire: Gap'])
+    expect(out.openPoints).toEqual(['Fire: Gap — Open'])
   })
 
   it('ignores a later row that has a date and no score', () => {
@@ -105,7 +108,9 @@ describe('lastSiteAudit', () => {
     )
     expect(out.date).toBe('2026-03-02')
     expect(out.scoreOnDay).toBe(82)
-    expect(out.openPoints.join('\n')).not.toMatch(/Later/)
+    // Nothing is open on the audit date, and the ticket has no audit id, so
+    // the open ticket in the window is the list. The score stays the audit's.
+    expect(out.openPoints).toEqual(['Fire: Later note — Open'])
   })
 
   it('averages several scored rows on the latest day and keeps a single score raw', () => {
@@ -132,22 +137,119 @@ describe('lastSiteAudit', () => {
       [...rows.slice(0, 11), point({ checkpoint: 'Alarm', count: 4, status: 'open' })],
       [audit()]
     )
-    expect(early.openPoints[0]).toBe('Fire: Alarm (4)')
+    expect(early.openPoints[0]).toBe('Fire: Alarm (4) — Open')
     expect(early.openTotal).toBe(15)
     expect(early.openMore).toBe(2)
   })
 
-  it('drops findings of a different audit type on that day, and keeps one with no type', () => {
+  it('keeps an open ticket whose label is not the audit type', () => {
+    // The ticket dump's label is not the score question's audit type. Hiding
+    // a mismatch is how a centre with open tickets answered "none".
     const out = lastSiteAudit(
       site,
       [
         point({ checkpoint: 'In scope' }),
         point({ checkpoint: 'Other programme', auditType: 'Hygiene' }),
         point({ checkpoint: 'Untyped', auditType: '' }),
+        point({ checkpoint: 'Closed one', status: 'closed' }),
+        point({ checkpoint: 'Not a status', status: 'unknown' }),
       ],
       [audit()]
     )
-    expect(out.openPoints.map((line) => line.replace(/^.*: /, ''))).toEqual(['In scope', 'Untyped'])
+    expect(out.openPoints.map((line) => line.replace(/ — .*$/, '').replace(/^.*: /, ''))).toEqual([
+      'In scope',
+      'Other programme',
+      'Untyped',
+    ])
+  })
+
+  it('uses open tickets in the window when none share the audit date', () => {
+    const out = lastSiteAudit(
+      site,
+      [
+        point({ auditDate: '2026-01-15', checkpoint: 'Raised later', status: 'on_hold' }),
+        point({ auditDate: '2026-01-15', checkpoint: 'Finished', status: 'closed' }),
+        point({ siteId: 'OTHER', site: 'Other Hub', checkpoint: 'Not here', status: 'open' }),
+      ],
+      [audit()]
+    )
+    expect(out.date).toBe('2026-03-02')
+    expect(out.openPoints).toEqual(['Fire: Raised later — On Hold'])
+  })
+
+  it('prefers tickets on the audit date over older open tickets', () => {
+    const out = lastSiteAudit(
+      site,
+      [
+        point({ checkpoint: 'On the day' }),
+        point({ auditDate: '2026-01-15', checkpoint: 'Older open', status: 'in_progress' }),
+      ],
+      [audit()]
+    )
+    expect(out.openPoints).toEqual(['Fire: On the day — Open'])
+  })
+
+  it('reads the score and ticket questions by their column names', () => {
+    // The names the two saved questions actually return. Matching is by
+    // header, not by position, and a ticket raised on a different day is
+    // still this centre's open point.
+    const score = normalizeRow({
+      center_service_id: 'DEMO001',
+      centername: 'Demo North Hub',
+      start_date: '2026-03-02',
+      Oringinal_calcultated_CAS_score: 82.4,
+      cas_seven_day_score: null,
+      TypeOfAudit: 'Quarterly FLS Audit',
+    })
+    const older = normalizeRow({
+      center_service_id: 'DEMO001',
+      centername: 'Demo North Hub',
+      start_date: '2026-01-02',
+      Oringinal_calcultated_CAS_score: 40,
+      cas_seven_day_score: 40,
+    })
+    const ticket = normalizeRow({
+      center_service_id: 'DEMO001',
+      center_name: 'Demo North Hub',
+      ticket_date: '2026-02-11',
+      ticket_status: 'in_progress',
+      L1_tag: 'Facility',
+      L2_Tag: 'FLS - Extinguisher',
+      checkpoint: 'Are all extinguishers placed on metal stands?',
+      labels: '[Quarterly FLS Audit]',
+    })
+    const held = normalizeRow({
+      center_service_id: 'DEMO001',
+      center_name: 'Demo North Hub',
+      ticket_date: '2026-02-12',
+      ticket_status: 'On Hold',
+      checkpoint: 'Sign missing',
+    })
+    const done = normalizeRow({
+      center_service_id: 'DEMO001',
+      center_name: 'Demo North Hub',
+      ticket_date: '2026-02-12',
+      ticket_status: 'done',
+      checkpoint: 'Already fixed',
+    })
+    const spaced = normalizeRow({ ticket_status: 'In Progress' })
+    expect(score).toMatchObject({
+      siteId: 'DEMO001',
+      site: 'Demo North Hub',
+      auditDate: '2026-03-02',
+      passPct: 82.4,
+      passPctN7: null,
+    })
+    expect(ticket.status).toBe('in_progress')
+    expect(held.status).toBe('on_hold')
+    expect(done.status).toBe('closed')
+    expect(spaced.status).toBe('in_progress')
+    const out = lastSiteAudit(site, [ticket, held, done], [older, score])
+    expect(out).toMatchObject({ date: '2026-03-02', scoreOnDay: 82.4, scoreAfter7: null })
+    expect(out.openPoints).toEqual([
+      'FLS - Extinguisher: Are all extinguishers placed on metal stands? — In Progress',
+      'Sign missing — On Hold',
+    ])
   })
 
   it('says when the findings question was not available, and when there is no dated audit', () => {

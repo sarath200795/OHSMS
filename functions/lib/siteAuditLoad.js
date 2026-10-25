@@ -1,10 +1,12 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// The last audit for one site, fetched the way the ODIN dashboard fetches it.
+// The last audit for one site, for the scheduled cache the lookup bots read.
 //
-// Same datasets (`audits` and `findings`), same queryDataset — including the
-// SSRF guard inside it. The default window is the dashboard's. A caller that
-// needs a different window passes it; the bot's scheduled refresh passes 120
-// days and does not change the dashboard default.
+// Two saved questions, not whatever cards the dashboard has configured:
+// the score question (day-0 and N+7) and the ticket dump (open points).
+// They are still run by queryDataset, so the URL check, the pinned DNS
+// lookup and the date-parameter binding stay the one implementation.
+// The default window is the dashboard's. The scheduled refresh passes 120
+// days and does not change that default.
 //
 // The phone webhooks do not call this. A warehouse that never answered used
 // to hold the only site reply for the whole deadline. The schedule is the
@@ -19,6 +21,36 @@
 import { lastSiteAudit } from './auditScore.js'
 import { DEFAULT_RANGE_DAYS, MAX_RANGE_DAYS, normalizeConfig, safeRange } from './metabase.js'
 import { queryDataset as defaultQueryDataset } from './metabaseRun.js'
+
+/**
+ * Dynamic FLS Audit Score v3. One row per completed audit: start date,
+ * day-0 CAS score, N+7 CAS score. Date parameters are Start and End.
+ * ownership_type and city_name are optional filters and are left unset,
+ * so the extract is the whole estate.
+ */
+export const SITE_AUDIT_SCORE_CARD = 68611
+
+/**
+ * QFLS Audit Tickets Dump. One row per remediation ticket. Date parameters
+ * are sd and ed. Tenant, tag, priority and ownership filters are optional
+ * and are left unset.
+ */
+export const SITE_AUDIT_TICKETS_CARD = 80321
+
+/**
+ * The connection, with these two questions in the dataset slots queryDataset
+ * already knows how to run. The saved card ids on the connection are the
+ * dashboard's; the cache must not follow them, and it must not grow a second
+ * HTTP client to avoid them.
+ */
+export function siteAuditQueryConfig(raw) {
+  const config = normalizeConfig(raw)
+  const cards = { audits: SITE_AUDIT_SCORE_CARD, findings: SITE_AUDIT_TICKETS_CARD }
+  const sources = config.sources
+    .filter((source) => source.baseUrl && source.apiKey)
+    .map((source) => ({ ...source, cards }))
+  return { ...config, cards, sources, baseUrl: sources[0]?.baseUrl || '' }
+}
 
 /** Give up on the warehouse in time to still send the site summary. */
 export const SITE_AUDIT_DEADLINE_MS = 40_000
@@ -70,7 +102,9 @@ function applySite(site, payload) {
     // the centre has no scored audit. If the only copy was capped, we did not
     // look at the latest rows — say unavailable rather than "no audit".
     if (payload.audits?.capped || payload.findings?.capped) {
-      return { ok: false, reason: 'unavailable' }
+      // A truncated extract is not "no audit". Keeping the previous document
+      // is the honest outcome, and the skip log has to be able to say why.
+      return { ok: false, reason: 'capped' }
     }
     return { ok: false, reason: 'none', windowDays: payload.windowDays }
   }
@@ -79,7 +113,7 @@ function applySite(site, payload) {
 
 async function fetchOrg({ readConfig, orgId, now, queryDataset, deadlineMs, logger, windowDays }) {
   const range = safeRange({}, now, windowDays)
-  const config = normalizeConfig(await readConfig())
+  const config = siteAuditQueryConfig(await readConfig())
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), deadlineMs)
   const query = (dataset) =>
@@ -92,6 +126,22 @@ async function fetchOrg({ readConfig, orgId, now, queryDataset, deadlineMs, logg
     })
   try {
     const [audits, findings] = await Promise.all([query('audits'), query('findings')])
+    // Column names, not values. A rename that the alias table does not know
+    // is why a centre comes back with a score and no tickets, and the only
+    // place that shows up is this log.
+    logger?.info?.('siteAudit: columns', {
+      orgId,
+      scoreCard: SITE_AUDIT_SCORE_CARD,
+      ticketCard: SITE_AUDIT_TICKETS_CARD,
+      scoreRows: audits?.rows?.length ?? 0,
+      ticketRows: findings?.rows?.length ?? 0,
+      scoreCapped: Boolean(audits?.capped),
+      ticketCapped: Boolean(findings?.capped),
+      scoreUnmapped: audits?.unmapped || [],
+      ticketUnmapped: findings?.unmapped || [],
+      scoreReason: audits?.ok ? '' : audits?.reason || '',
+      ticketReason: findings?.ok ? '' : findings?.reason || '',
+    })
     return {
       fetched: true,
       audits,

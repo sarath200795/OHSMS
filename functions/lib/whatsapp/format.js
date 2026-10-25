@@ -180,10 +180,11 @@ export function auditLines(audit) {
   const when = formatAuditDay(audit.date)
   const onDay = formatScore(audit.scoreOnDay)
   const after = formatScore(audit.scoreAfter7)
-  let score = ''
-  if (onDay && after && onDay !== after) score = `Score ${onDay} · ${after} after 7 days`
-  else if (onDay) score = `Score ${onDay}`
-  else if (after) score = `Score ${after} after 7 days`
+  // Both readings, every time. N+7 is pending until the seven-day re-score
+  // exists, including when it will equal the day-0 score — dropping it
+  // because the two match is how a reader cannot tell "not yet" from "same".
+  const n7 = after ? `N+7 score ${after}` : 'N+7 score: pending'
+  const score = onDay ? `Score ${onDay} · ${n7}` : n7
   // Date and score are peers on one line. Joining the whole head on " · "
   // would leave a dangling separator when the warehouse date does not parse.
   const detail = [when, score].filter(Boolean).join(' · ')

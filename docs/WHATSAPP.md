@@ -208,13 +208,21 @@ details? (Yes/No)" — WhatsApp reply buttons, Telegram an inline keyboard, and
 the same sentence as plain text if the buttons cannot be shown. Yes reads
 `siteAuditCache/{orgId}/sites/{siteId}`, written every 3 hours by
 `refreshSiteAuditCache` (asia-south1, Asia/Kolkata) for organisations that
-have Metabase configured. The window is 120 days. The reply is the audit
-date, the score, open points (at most 10, then "+N more"), and a line
-`Data last extracted: <DD Mon YYYY, h:mm AM/PM> IST` from that document's
-`syncedAt`. No document, or a look that found no scored audit, is exactly
+have Metabase configured. The refresh asks two saved questions through the
+existing card query: 68611 for the day-0 and N+7 scores, 80321 for the
+tickets. Optional filters on those questions are left unset. The window is
+120 days. The reply is the audit date, `Score X% · N+7 score Y%` (or
+`N+7 score: pending` when the re-score is not in yet, including when the
+two scores are equal), open points (at most 10, then "+N more", each with
+its status), and a line `Data last extracted: <DD Mon YYYY, h:mm AM/PM> IST`
+from that document's `syncedAt`. Open means status Open, On Hold or In
+Progress. Tickets that share the audit date are that audit's; otherwise the
+open tickets in the window are used, because the ticket question has no
+audit id. No document, or a look that found no scored audit, is exactly
 "Contact the admin". The webhook does not call Metabase. A failed refresh
-leaves the previous document. No is "Okay." The question expires after 15
-minutes, and Yes checks site reach again before anything is sent.
+leaves the previous document, and each site it skips is logged with the site
+id and the reason. No is "Okay." The question expires after 15 minutes, and
+Yes checks site reach again before anything is sent.
 
 ## Choosing an organisation
 
