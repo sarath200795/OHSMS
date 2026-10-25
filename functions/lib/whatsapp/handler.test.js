@@ -736,7 +736,7 @@ describe('audit question', () => {
     await handleMessage(msg('DEMO001'), ctx())
     const row = await handleMessage(msg('Yes'), ctx())
     expect(row).toMatchObject({ outcome: 'audit', siteId: 's1' })
-    expect(sent[2].text).toContain('📋 Last audit: 2 Mar 2026 · Score 82% · 91% after 7 days')
+    expect(sent[2].text).toContain('📋 Last audit: 2 Mar 2026 · Score 82% · N+7 score 91%')
     expect(sent[2].text).toContain('1. Fire: Exit route blocked')
     expect(sent[2].text).toContain('Data last extracted: 25 Oct 2026, 9:24 AM IST')
     expect(asked).toEqual([['cache', 'o1', 's1']])

@@ -54,9 +54,9 @@ every webhook and is dropped on receipt. The site summary carries counts only â€
 incident narrative, a name from an action, or anything medical; illness actions
 are excluded from the action count altogether, because at a small site a count
 can point at one person's health. If the caller asks, a second message adds the
-cached last-audit date, score and open-point labels (the same warehouse text
-the ODIN dashboard shows to someone who can already see that site) and when
-that extract was taken. That cache is `siteAuditCache/{orgId}/sites/{siteId}`:
+cached last-audit date, day-0 and N+7 scores, and open-point labels with
+their ticket status (the same warehouse text the ODIN dashboard shows to
+someone who can already see that site) and when that extract was taken. That cache is `siteAuditCache/{orgId}/sites/{siteId}`:
 server-only in the rules, overwritten in place, keyed by the site rather than
 a person, so it is not a subject-access source and it is not sealed. Messages
 pass through Meta (WhatsApp Cloud API) as a processor; record it in the ROPA

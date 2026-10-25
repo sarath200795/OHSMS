@@ -100,7 +100,18 @@ describe('syncSiteAuditCaches', () => {
     const out = await run()
     expect(written.map((row) => row.orgId)).toEqual(['o2'])
     expect(out.kept).toBe(1)
-    expect(errors.some((row) => row.extra.orgId === 'o1')).toBe(true)
+    expect(errors).toEqual(
+      expect.arrayContaining([
+        {
+          message: 'syncSiteAuditCache: site kept previous cache',
+          extra: { orgId: 'o1', siteId: 's1', reason: 'unavailable' },
+        },
+        {
+          message: 'syncSiteAuditCache: site kept previous cache',
+          extra: { orgId: 'o1', siteId: 's2', reason: 'unavailable' },
+        },
+      ])
+    )
     expect(JSON.stringify(errors)).not.toContain('mb.example.com')
   })
 

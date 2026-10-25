@@ -111,7 +111,18 @@ export function auditPopulation(findingRows = [], auditRows = []) {
   return { rows: fromFindings, source: fromFindings.length ? 'findings' : 'none' }
 }
 
-const STATUS_RANK = { open: 0, in_progress: 1, on_hold: 2, unknown: 3 }
+/**
+ * Ticket statuses that are still work. The warehouse stores them as
+ * `open`, `in_progress` and `on_hold`; the screen says Open, In Progress
+ * and On Hold. Closed, rejected, done and anything unrecognised are not
+ * open — folding "unknown" into the list is how a status we do not
+ * understand becomes a queue.
+ */
+export const OPEN_POINT_STATUSES = ['open', 'in_progress', 'on_hold']
+
+const STATUS_LABEL = { open: 'Open', in_progress: 'In Progress', on_hold: 'On Hold' }
+
+const STATUS_RANK = { open: 0, in_progress: 1, on_hold: 2 }
 
 function weightOf(row) {
   if (isNum(row?.count)) return row.count > 0 ? row.count : 0
@@ -127,7 +138,8 @@ export function openPointLabel(row) {
   const prefix = checkpoint && (sub || cat) ? `${sub || cat}: ` : ''
   const weight = weightOf(row)
   const suffix = weight > 1 ? ` (${weight})` : ''
-  return `${prefix}${what}${suffix}`
+  const status = STATUS_LABEL[row?.status] || ''
+  return `${prefix}${what}${suffix}${status ? ` — ${status}` : ''}`
 }
 
 function meanReading(rows, read) {
@@ -162,11 +174,15 @@ function meanReading(rows, read) {
  * as a real month, and the phone must not present one as the last audit.
  * Several scored rows on that date (checklist lines, or two audits the same
  * day with no time) share one score: the mean of each reading, rounded the
- * way the dashboard rounds an aggregate. Open points are findings on that
- * date that are not closed and not rejected. When every scored row that day
- * names one audit type, findings of a different type are left out; a finding
- * with no type is kept, because dropping it would hide an observation the
- * warehouse did not know how to file.
+ * way the dashboard rounds an aggregate.
+ *
+ * Open points are tickets still Open, On Hold or In Progress. A ticket that
+ * shares the audit's date is that audit's ticket. The ticket question has no
+ * audit id, and its date is when the ticket was raised, which is often not
+ * the audit's start date — requiring the dates to match is how every centre
+ * answered "Open points: none". When nothing shares the date, the open
+ * tickets in the rows (the caller already limited them to the window) are
+ * the centre's open points.
  *
  * @returns null when this site has no dated, scored audit in the rows.
  */
@@ -187,20 +203,16 @@ export function lastSiteAudit(site, findingRows, auditRows = [], { cap = OPEN_PO
 
   const date = dated.reduce((max, row) => (row.auditDate > max ? row.auditDate : max), '')
   const onDay = dated.filter((row) => row.auditDate === date)
-  const types = new Set(onDay.map((row) => String(row.auditType || '').trim()).filter(Boolean))
-  const onlyType = types.size === 1 ? [...types][0] : ''
 
   let openPoints = []
   let openTotal = 0
   let openMore = 0
   if (findingsKnown) {
-    const open = findings
-      .filter((row) => {
-        if (row.auditDate !== date) return false
-        if (OPEN_POINT_TERMINAL.includes(row.status)) return false
-        if (onlyType && row.auditType && row.auditType !== onlyType) return false
-        return weightOf(row) > 0
-      })
+    const openTickets = findings.filter(
+      (row) => OPEN_POINT_STATUSES.includes(row.status) && weightOf(row) > 0
+    )
+    const linked = openTickets.filter((row) => row.auditDate === date)
+    const open = (linked.length ? linked : openTickets)
       .map((row) => ({ row, label: openPointLabel(row), weight: weightOf(row) }))
       .sort((a, b) => {
         const rankA = STATUS_RANK[a.row.status] ?? 4

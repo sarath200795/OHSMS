@@ -216,15 +216,18 @@ describe('last audit', () => {
 
   it('prints the date, both scores when they differ, and the open points', () => {
     const lines = auditLines(ok)
-    expect(lines[0]).toBe('📋 Last audit: 2 Mar 2026 · Score 82.5% · 91% after 7 days')
+    expect(lines[0]).toBe('📋 Last audit: 2 Mar 2026 · Score 82.5% · N+7 score 91%')
     expect(lines).toContain('Open points (1):')
     expect(lines).toContain('1. Fire: Exit route blocked')
   })
 
-  it('omits "after 7 days" when the two scores are the same', () => {
+  it('prints N+7 even when it equals the day-0 score, and says when it is not in yet', () => {
     expect(
       auditLines({ ...ok, scoreOnDay: 90, scoreAfter7: 90, openPoints: [], openTotal: 0 })[0]
-    ).toBe('📋 Last audit: 2 Mar 2026 · Score 90%')
+    ).toBe('📋 Last audit: 2 Mar 2026 · Score 90% · N+7 score 90%')
+    expect(auditLines({ ...ok, scoreAfter7: null })[0]).toBe(
+      '📋 Last audit: 2 Mar 2026 · Score 82.5% · N+7 score: pending'
+    )
   })
 
   it('says the open points could not be read without dropping the score', () => {
@@ -267,7 +270,7 @@ describe('last audit', () => {
 
   it('adds the extract line to a cached audit and refuses a row with nothing to show', () => {
     const text = formatCachedAudit({ ...ok, syncedAt: new Date('2026-10-25T03:54:00.000Z') })
-    expect(text).toContain('📋 Last audit: 2 Mar 2026 · Score 82.5% · 91% after 7 days')
+    expect(text).toContain('📋 Last audit: 2 Mar 2026 · Score 82.5% · N+7 score 91%')
     expect(text).toContain('1. Fire: Exit route blocked')
     expect(text.endsWith('Data last extracted: 25 Oct 2026, 9:24 AM IST')).toBe(true)
     expect(formatCachedAudit({ none: true, syncedAt: new Date('2026-10-25T03:54:00.000Z') })).toBe(

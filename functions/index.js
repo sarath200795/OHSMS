@@ -3271,10 +3271,12 @@ export const notifyWhatsAppLinked = onDocumentWritten(
 
 /**
  * Every 3 hours: the last audit within 120 days, per site, for organisations
- * that have Metabase configured. The bots read this cache. They do not call
- * Metabase themselves — a warehouse that never answered used to hold the
- * only site reply. A failed look leaves the previous document. asia-south1
- * and Asia/Kolkata match the other schedules. The timeout is the platform
+ * that have Metabase configured. Scores come from saved question 68611 and
+ * open tickets from 80321, through the same card query the dashboard uses.
+ * The bots read this cache. They do not call Metabase themselves — a
+ * warehouse that never answered used to hold the only site reply. A failed
+ * look leaves the previous document. asia-south1 and Asia/Kolkata match the
+ * other schedules. The timeout is the platform
  * maximum because one organisation's extract can take a couple of minutes
  * and the run walks every organisation.
  */
