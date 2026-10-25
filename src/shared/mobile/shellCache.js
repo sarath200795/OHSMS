@@ -59,6 +59,18 @@ export function shellCacheDecision(rawUrl, { method = 'GET', origin = '' } = {})
   if (url.pathname.startsWith('/__/')) return 'pass'
   // The uptime probe. A cached 200 is a lie about a deploy that is down.
   if (url.pathname === '/health.json') return 'pass'
+  // Legal pages are static documents. The navigate fallback would serve the
+  // app shell, and a crawler or a signed-out visitor would not see the policy.
+  if (
+    url.pathname === '/privacy' ||
+    url.pathname === '/privacy/' ||
+    url.pathname === '/privacy.html'
+  ) {
+    return 'pass'
+  }
+  if (url.pathname === '/terms' || url.pathname === '/terms/' || url.pathname === '/terms.html') {
+    return 'pass'
+  }
   // Store listings and the APK. The navigate branch serves index.html when
   // the network fails. That HTML is not a config, and it is not an installable
   // package: a phone that saved it would try to open a web page as an APK.
