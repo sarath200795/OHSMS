@@ -865,6 +865,9 @@ export const COLUMN_ALIASES = {
     'casscore', 'originalcalculatedcasscore', 'oringinalcalcultatedcasscore'],
   passPctN7: ['passpctn7', 'n7passpct', 'passpercentagen7', 'n7passpercentage', 'passraten7', 'retestpasspct', 'day7passpct',
     'cassevendayscore', 'sevendaycasscore', 'updatedcasscore7day', 'casscoren7'],
+  // The ticket dump's own id. Chunks of one question can meet on a boundary,
+  // and without this the id is dropped before anyone can dedupe.
+  ticketId: ['ticketid'],
   // A third reading of the same audit: every remediation credited, right up to
   // now. It is the most flattering of the three and the only one that MOVES on
   // its own between refreshes, which is exactly why it is kept apart from the
@@ -953,8 +956,21 @@ const num = (v) => {
   if (v === null || v === undefined || v === '') return null
   // Percent signs and thousands separators arrive from warehouses that store
   // these as display strings. A NaN here becomes a missing bar, silently.
-  const n = Number(String(v).replace(/[%,\s]/g, ''))
+  // PASS / FAIL / NA do not start as a number, so they stay null rather than
+  // becoming a score.
+  const text = String(v).trim()
+  if (!/^[+-]?\d/.test(text)) return null
+  const n = Number(text.replace(/[%,\s]/g, ''))
   return Number.isFinite(n) ? n : null
+}
+
+/** The first raw column whose name matches one of `keys` (already columnKeys). */
+function rawColumn(row, keys) {
+  const want = new Set(keys)
+  for (const [name, value] of Object.entries(row || {})) {
+    if (want.has(columnKey(name))) return value
+  }
+  return undefined
 }
 
 /** 'YYYY-MM-DD' from whatever the warehouse calls a date, or ''. */
@@ -1022,8 +1038,13 @@ export function normalizeRow(row = {}) {
     // not returns a row per finding. Defaulting to 1 makes both shapes work
     // through the same sum, which is why nothing downstream counts rows.
     count: num(out.count) ?? 1,
+    ticketId: String(out.ticketId ?? '').trim(),
     passPct: num(out.passPct),
-    passPctN7: num(out.passPctN7),
+    // cas_seven_day_score when it is a number. The verdict column beside it
+    // (cas_seven_day_result) is PASS/FAIL/NA, except when the score itself
+    // was written there as text. A numeric score wins; PASS does not become
+    // a percentage, and cas_current_day_result is a different reading.
+    passPctN7: num(out.passPctN7) ?? num(rawColumn(row, ['cassevendayresult'])),
     passPctToDate: num(out.passPctToDate),
     checksPassed: num(out.checksPassed),
     // A pass count on its own says nothing — 8 passed out of what? — so the

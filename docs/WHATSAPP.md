@@ -210,7 +210,10 @@ the same sentence as plain text if the buttons cannot be shown. Yes reads
 `refreshSiteAuditCache` (asia-south1, Asia/Kolkata) for organisations that
 have Metabase configured. The refresh asks two saved questions through the
 existing card query: 68611 for the day-0 and N+7 scores, 80321 for the
-tickets. Optional filters on those questions are left unset. The window is
+tickets. The ticket question is asked in 30-day slices and deduped by
+ticket id, because one 120-day response was cut off by the row cap. N+7 is
+`cas_seven_day_score` when that is a number, otherwise a numeric
+`cas_seven_day_result`. Optional filters on those questions are left unset. The window is
 120 days. The reply is the audit date, `Score X% · N+7 score Y%` (or
 `N+7 score: pending` when the re-score is not in yet, including when the
 two scores are equal), open points (at most 10, then "+N more", each with

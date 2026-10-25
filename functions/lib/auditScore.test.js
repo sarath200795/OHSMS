@@ -240,6 +240,43 @@ describe('lastSiteAudit', () => {
       passPct: 82.4,
       passPctN7: null,
     })
+    // The score column wins when it is a number. PASS/FAIL/NA are verdicts.
+    // A numeric cas_seven_day_result is the score when the score column is
+    // empty. cas_current_day_result is not the N+7 reading.
+    const fromScore = normalizeRow({
+      cas_seven_day_score: 91.25,
+      cas_seven_day_result: 'PASS',
+      cas_current_day_result: 'FAIL',
+    })
+    const fromResult = normalizeRow({
+      cas_seven_day_score: null,
+      cas_seven_day_result: '88.5%',
+      cas_current_day_result: '70',
+    })
+    const pending = normalizeRow({
+      cas_seven_day_score: '',
+      cas_seven_day_result: 'NA',
+      cas_current_day_result: '96.2',
+    })
+    expect(fromScore.passPctN7).toBe(91.25)
+    expect(fromResult.passPctN7).toBe(88.5)
+    expect(pending.passPctN7).toBe(null)
+    const scored = lastSiteAudit(
+      site,
+      [],
+      [
+        normalizeRow({
+          center_service_id: 'DEMO001',
+          centername: 'Demo North Hub',
+          start_date: '2026-03-02',
+          Oringinal_calcultated_CAS_score: 82,
+          cas_seven_day_score: null,
+          cas_seven_day_result: '91.5',
+          cas_current_day_result: 'NA',
+        }),
+      ]
+    )
+    expect(scored).toMatchObject({ scoreOnDay: 82, scoreAfter7: 91.5 })
     expect(ticket.status).toBe('in_progress')
     expect(held.status).toBe('on_hold')
     expect(done.status).toBe('closed')
