@@ -4,6 +4,7 @@ import {
   automaticViewMode,
   destinationForMode,
   isPhoneUserAgent,
+  isShellHome,
   readSignals,
   readViewChoice,
   resolveViewMode,
@@ -161,6 +162,27 @@ describe('shellForMode', () => {
     expect(desktop.listenForAlerts).toBe(false)
     expect(desktop.mainClassName).not.toContain('safe-area-inset-bottom')
     expect(desktop.mainClassName).toContain('pb-24')
+  })
+})
+
+describe('isShellHome', () => {
+  it('treats the phone grid routes as home and leaves the jobs alone', () => {
+    expect(isShellHome('/field', '/field')).toBe(true)
+    expect(isShellHome('/field/', '/field')).toBe(true)
+    expect(isShellHome('/portal', '/field')).toBe(true)
+    expect(isShellHome('/', '/field')).toBe(true)
+    expect(isShellHome('/field/tasks', '/field')).toBe(false)
+    expect(isShellHome('/field/scan', '/field')).toBe(false)
+    expect(isShellHome('/portal/report', '/field')).toBe(false)
+    expect(isShellHome('/dashboard', '/field')).toBe(false)
+  })
+
+  it('follows a desktop shell home without also claiming the phone grid', () => {
+    expect(isShellHome('/portal', '/portal')).toBe(true)
+    expect(isShellHome('/portal/', '/portal')).toBe(true)
+    expect(isShellHome('/portal/actions', '/portal')).toBe(false)
+    expect(isShellHome('/field', '/portal')).toBe(false)
+    expect(isShellHome('', '/field')).toBe(false)
   })
 })
 

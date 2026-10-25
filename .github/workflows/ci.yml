@@ -275,7 +275,7 @@ jobs:
           --project ohsms-demo
           "node scripts/seed.mjs && npx playwright test
           e2e/smoke.spec.js e2e/accessibility.spec.js e2e/console-sweep.spec.js
-          e2e/scan-preview.spec.js"
+          e2e/scan-preview.spec.js e2e/field-home.spec.js"
 
       # e2e/capped-reads.spec.js asserts that screens totalling a capped
       # collection actually RENDER the "these figures are incomplete" notice —

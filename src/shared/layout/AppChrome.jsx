@@ -263,7 +263,7 @@ function AppChromeInner({ children }) {
           </motion.div>
         </main>
 
-        {shell.showFieldNav && <FieldNav />}
+        {shell.showFieldNav && <FieldNav homePath={shell.homePath} />}
 
         <RequestAccessModal open={reqOpen} onClose={() => setReqOpen(false)} />
         {/* Sam the Buddy — the ISO 45001 assistant, available on every screen. */}

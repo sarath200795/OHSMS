@@ -112,6 +112,29 @@ export function shellForMode(mode) {
   }
 }
 
+function stripTrailingSlash(value) {
+  if (typeof value !== 'string' || value.length === 0) return ''
+  return value.length > 1 && value.endsWith('/') ? value.slice(0, -1) : value
+}
+
+/**
+ * Whether the phone bar's Home control is the page on screen.
+ *
+ * The shell home is /field on a phone and /portal on a desktop. Sign-in still
+ * opens /portal, and while this bar is mounted (mobile view only) that index
+ * renders the same grid as /field. Treating only /field as home left the
+ * control looking idle on the screen people actually land on. Nested portal
+ * routes are not home: /portal/report is the Report tab.
+ */
+export function isShellHome(pathname, homePath) {
+  const path = stripTrailingSlash(pathname)
+  const home = stripTrailingSlash(homePath)
+  if (!path || !home) return false
+  if (path === home) return true
+  if (home === '/field' && (path === '/portal' || path === '/')) return true
+  return false
+}
+
 // Desktop mode has no phone home. /field would keep showing the grid, and
 // that path is what the installed icon opens, so a desktop choice leaves it.
 export function destinationForMode(mode, pathname) {
