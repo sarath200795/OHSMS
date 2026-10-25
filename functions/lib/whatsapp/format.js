@@ -9,11 +9,10 @@
 // rather than letting the send fail or cutting a phone number in half.
 //
 // Nothing here prints a free-text field from an incident, a permit or an
-// action — counts only — except the last audit's open points. Those are the
-// checkpoint lines the ODIN dashboard already shows, length-capped and stripped
-// of formatting characters. Contact names and numbers come from erpContacts,
+// action — counts only. Contact names and numbers come from erpContacts,
 // which is the emergency directory and is shown only to linked, approved users
-// who reach the site.
+// who reach the site. The last-audit score is not part of this reply: asking
+// Metabase held the only message until the warehouse gave up.
 // ─────────────────────────────────────────────────────────────────────────────
 import { readableText } from '../mailTemplates/safe.js'
 import { MAX_CHOICES } from './resolve.js'
@@ -96,10 +95,10 @@ function formatScore(value) {
 /**
  * The last-audit block, or a one-line note when there is nothing to show.
  *
- * `audit` is loadSiteAudit's result. Absent means the caller did not ask
- * (older tests, a store without the method) and the block is left out entirely.
- * A failure still produces a line, so the rest of the summary is not the only
- * thing a reader has to infer the omission from.
+ * The site lookup does not send this. A Metabase call used to run before the
+ * only reply, and a warehouse that never answered held that reply for the
+ * whole deadline. Kept so a later message can format the same lines without
+ * copying them. `audit` is loadSiteAudit's result.
  */
 export function auditLines(audit) {
   if (!audit) return []
@@ -279,7 +278,6 @@ export function formatSiteReply(site, counts = {}, opts = {}) {
       `🚑 Incidents: ${n(counts.incidentsTotal)} total · ${n(counts.incidentsOpen)} open · ${n(counts.incidents90d)} in last 90 days`
     )
   }
-  if (opts.audit) head.push(...auditLines(opts.audit))
 
   const tail = ['']
   const helplines = [phoneText(opts.helplinePrimary), phoneText(opts.helplineSecondary)].filter(
@@ -395,7 +393,7 @@ export function locationRequestText(query) {
 export const MESSAGES = {
   help:
     `${CENTRE_PROMPT} The reply is that centre's safety summary: ` +
-    'extinguishers, open defects, first aid boxes, pending actions, incidents, the last audit score and emergency contacts.\n\n' +
+    'extinguishers, open defects, first aid boxes, pending actions, incidents and emergency contacts.\n\n' +
     'Send MENU to start over, or CHANGE ORG to switch organisation. Send UNLINK to disconnect this number.',
   unlinked:
     'This number serves registered WeEHS users. To use it, link your WhatsApp from ' +

@@ -255,20 +255,13 @@ describe('last audit', () => {
     ])
   })
 
-  it('keeps the section inside the body budget, and leaves it out when not asked', () => {
-    const many = Array.from({ length: 400 }, (_, i) => ({
-      kind: 'external',
-      role: 'Other',
-      name: `Contact ${i} ${'x'.repeat(30)}`,
-      phone: `+91 90000 ${String(i).padStart(5, '0')}`,
-    }))
-    const withAudit = formatSiteReply(site, counts, { contacts: many, asOf, audit: ok })
-    expect(withAudit.length).toBeLessThanOrEqual(MAX_BODY)
-    expect(withAudit).toContain('📋 Last audit: 2 Mar 2026')
-    expect(withAudit).toContain('1. Fire: Exit route blocked')
-    const plain = formatSiteReply(site, counts, { contacts, asOf })
-    expect(plain).not.toContain('Last audit')
-    expect(plain).not.toContain('Audit score')
+  it('is not part of the site summary, even when an audit result is passed in', () => {
+    // The lookup stopped sending this block. A caller that still hands the
+    // result in must not put the warehouse text back into the only message.
+    const text = formatSiteReply(site, counts, { contacts, asOf, audit: ok })
+    expect(text).not.toContain('Last audit')
+    expect(text).not.toContain('Exit route blocked')
+    expect(text).toContain('Fire extinguishers: 6')
   })
 })
 

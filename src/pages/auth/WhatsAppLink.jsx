@@ -127,8 +127,8 @@ export default function WhatsAppLink() {
           </h2>
           <p className="mt-0.5 max-w-[56ch] text-xs leading-relaxed text-ink-500">
             Send a site code to the WhatsApp number and get that site&apos;s safety summary back —
-            extinguishers, open defects, first aid boxes, pending actions, incidents, the last audit
-            score and emergency contacts — for sites you can already open in the app.
+            extinguishers, open defects, first aid boxes, pending actions, incidents and emergency
+            contacts — for sites you can already open in the app.
           </p>
         </div>
         {status.linked ? (
