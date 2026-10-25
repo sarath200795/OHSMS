@@ -3,7 +3,10 @@ import {
   resolveOdinRows, odinFacets, filterOdinRows, statusTotals, statusByRegion,
   bySubCategory, sitePins, cityPins, siteIssues, leadStatus, passRates, odinAnalytics,
   STATUS_KEYS, TERMINAL_STATUSES, isTerminal, isOutstanding, paletteColor, day0Of, n7Of, checksTotalOf, passTotals, PASS_MARK,
+  auditPopulation,
 } from './odinAnalytics'
+import { day0Of as sharedDay0, auditPopulation as sharedPop } from '../../../functions/lib/auditScore.js'
+import { resolveOdinRows as sharedJoin } from '../../../functions/lib/odinJoin.js'
 
 // The shape functions/lib/metabase.js hands back, with the fields a test needs.
 const finding = (over = {}) => ({
@@ -21,6 +24,16 @@ const SITES = [
   { id: 's2', name: 'Depot 7', region: 'North', entity: 'Logistics', lat: 28.61, lng: 77.21 },
   { id: 's3', name: 'No Coords Yard', region: 'West', entity: 'Retail' },
 ]
+
+describe('the dashboard and the site lookup share one implementation', () => {
+  it('re-exports the functions the bot scores with', () => {
+    // A second copy is how two screens once disagreed about the same audits.
+    // Identity, not a matching result, is what fails if someone pastes them back.
+    expect(day0Of).toBe(sharedDay0)
+    expect(auditPopulation).toBe(sharedPop)
+    expect(resolveOdinRows).toBe(sharedJoin)
+  })
+})
 
 describe('the statuses are a contract with the server', () => {
   it('is exactly the five the dashboard draws, in escalation order', () => {

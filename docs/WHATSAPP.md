@@ -17,6 +17,10 @@ South · Demo Co
 🩹 First aid boxes: 2
 📋 Pending actions: 4 (1 overdue)
 🚑 Incidents: 7 total · 1 open · 2 in last 90 days
+📋 Last audit: 2 Mar 2026 · Score 82% · 91% after 7 days
+Open points (2):
+1. Fire: Exit route blocked
+2. Extinguisher pressure low
 
 📞 *Emergency contacts*
 • Police: Demo Police Station — 100
@@ -36,6 +40,7 @@ Reply with another Centre ID or Centre Name.
 | First aid boxes    | `sites/{id}.firstAidBoxes`                                                                                                                                                                                                            |
 | Pending actions    | The Central Action Tracker **minus** the equipment source (already counted as defects) and **minus** illness actions; incidents, drills, inspections and internal audit only; overdue = due date before today (IST); "none" when zero |
 | Incidents          | `siteStats` matching; open = lifecycle not closed / verified; last 90 days by incident date                                                                                                                                           |
+| Last audit         | The ODIN dashboard's Metabase questions (`audits`, falling back to `findings` when that question carries the pass rate). Score is the day-of pass rate, with the 7-day re-score when it differs. Open points are that audit's observations that are not closed and not rejected, at most 10, then "+N more" |
 | Emergency contacts | `erpContacts` for the site plus org-wide ones, external services first; the org helpline; 112                                                                                                                                         |
 
 `functions/` cannot import `src/`, so the definitions are ported to
@@ -44,6 +49,16 @@ Reply with another Centre ID or Centre Name.
 ways over one fixture. A module switched off in `moduleEntitlements` drops its
 line. WhatsApp's 4,096-character body limit is enforced by adding contacts until
 the budget runs out and ending with "+N more in the app".
+
+The audit block is the same Metabase read as Analytics → ODIN
+(`queryDataset` in `functions/lib/metabaseRun.js`, the pass-rate readers in
+`functions/lib/auditScore.js`). It uses the dashboard's default 90-day window.
+Rows are joined to the one centre already chosen, with the same site match the
+dashboard uses, so a centre outside the caller's reach is not queried and
+another centre's observations are not listed. If Metabase is not connected,
+does not answer in time, or returns an extract too large to trust as "latest",
+the summary still goes out and that block is the line "Audit score unavailable."
+A window with no scored audit for the centre says so in one line instead.
 
 An ambiguous name gets an interactive list (≤8 rows) of matching centres; more
 than eight asks for the Centre ID. A name that matches nothing says the centre

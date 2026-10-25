@@ -20,6 +20,29 @@
 //   Percentages are weighted where the data allows it. Averaging "100% of 4
 //   checks" with "50% of 400" gives 75%, and the honest answer is 50.5%.
 // ─────────────────────────────────────────────────────────────────────────────
+import { normSiteName, resolveOdinRows, SITE_CODE_FIELDS } from '../../../functions/lib/odinJoin.js'
+import {
+  auditPopulation,
+  checksTotalOf,
+  day0Of,
+  hasPassData,
+  n7Of,
+  toDateOf,
+} from '../../../functions/lib/auditScore.js'
+
+// The join and the pass-rate readers live in functions/ so the site-lookup
+// bot scores an audit with the same functions this tab does. Re-exported so
+// every existing import of this file keeps working.
+export {
+  SITE_CODE_FIELDS,
+  resolveOdinRows,
+  auditPopulation,
+  checksTotalOf,
+  day0Of,
+  hasPassData,
+  n7Of,
+  toDateOf,
+}
 
 // Mirrors STATUSES in functions/lib/metabase.js, which is the authority on the
 // mapping. Duplicated rather than imported because functions/ is a separate
@@ -59,150 +82,11 @@ const PALETTE = [
 export const paletteColor = (i) => PALETTE[i % PALETTE.length]
 
 const isNum = (v) => typeof v === 'number' && Number.isFinite(v)
-/**
- * A site name reduced to what two systems can be expected to agree on.
- *
- * Internal runs of whitespace collapse as well as the ends being trimmed:
- * "Cult  Pitampura" and "Cult Pitampura" are one centre, and a double space
- * pasted from a spreadsheet is an invisible reason for a join to miss. Matches
- * normName in parseSitesCsv.js, which decides the same question for the site
- * importer — the two disagreeing is how a name matches on one screen and not
- * on the other.
- */
-const norm = (s) => String(s || '').trim().toLowerCase().replace(/\s+/g, ' ')
-
-// The same name with punctuation and spacing thrown away, for the last-resort
-// pass of the site join. See resolveOdinRows.
-const looseKey = (s) => norm(s).replace(/[^a-z0-9]/g, '')
+// The same folding the site join uses, so a city chart and an audit that
+// named that city cannot disagree about a double space.
+const norm = normSiteName
 
 const UNPLACED = '(not stated)'
-
-/**
- * Where a site record may carry the warehouse's own id for it.
- *
- * `code` is the real one — Sites has a **Centre ID** box that writes it, the
- * CSV import and export both carry it, and the page refuses to let two sites
- * share one. The rest are read for tenants who put the id somewhere else before
- * that box existed, and are checked on the site document AND inside its
- * `attributes` map, so nothing anybody already recorded stops working.
- */
-export const SITE_CODE_FIELDS = ['code', 'siteCode', 'centerId', 'centreId', 'centerServiceId', 'externalId']
-
-/**
- * Fill in what the warehouse did not say, from the site register this app
- * already holds.
- *
- * A Metabase question almost never carries coordinates, and asking an
- * organization to add latitude and longitude columns to their analytics
- * warehouse in order to see a map is asking them to duplicate a register they
- * are already maintaining here. So the join runs the other way: match on site
- * id first — an exact key beats a name every time — then on the site's name,
- * case- and space-insensitively.
- *
- * Region and entity are filled in the same way and only where the row is
- * SILENT. A row that states its own region wins: the warehouse is the system of
- * record for the finding, and quietly overwriting what it said with what our
- * register believes is how two dashboards start disagreeing.
- *
- * ── keepUnplaced, which is the scoping ──────────────────────────────────────
- *
- * `sites` is the list the viewer may SEE, not the whole register — every
- * analytics tab is handed it that way. So a row matching none of them is either
- * a site outside this viewer's grant or a name our register does not carry, and
- * the two are indistinguishable from here.
- *
- * For someone who can see every site, it is the second: keep it, or a finding
- * whose warehouse spelling differs from ours vanishes from the totals. For
- * anyone else it is most likely the first, and showing them another region's
- * findings because the join happened to fail is the scoping mistake this whole
- * page is most exposed to. Same rule, same parameter name, as resolveIncidents.
- */
-export function resolveOdinRows(rows = [], sites = [], { keepUnplaced = true } = {}) {
-  const byId = new Map()
-  const byName = new Map()
-  // A third index, on the name with every non-alphanumeric character removed,
-  // so "Cult - Pitampura", "Cult Pitampura" and "cult(pitampura)" are one site.
-  // Punctuation and spacing are where a warehouse name and a register name
-  // usually differ, and losing an audit to a hyphen is not a data problem
-  // anybody can be asked to go and fix.
-  //
-  // A loose key claimed by TWO different sites is set to null and matches
-  // nothing thereafter. Guessing between them would attribute an audit to the
-  // wrong centre — silently, and in a register the reader trusts — which is
-  // worse than leaving it unplaced and saying so.
-  const byLoose = new Map()
-  const byFold = new Map()
-  for (const s of sites || []) {
-    if (s?.id) byId.set(String(s.id), s)
-    if (s?.name) {
-      byName.set(norm(s.name), s)
-      const loose = looseKey(s.name)
-      if (loose) {
-        const seen = byLoose.get(loose)
-        byLoose.set(loose, seen === undefined || seen?.id === s.id ? s : null)
-      }
-    }
-    // ── The centre id, wherever the register keeps it ──────────────────────
-    //
-    // A warehouse identifies a site by ITS key — a centre service id, a store
-    // code — and that is never this app's Firestore document id. Matching on
-    // name alone is what makes a 700-centre estate lose a fifth of its rows to
-    // spelling, so any of these fields is accepted as the join key, and an
-    // admin can put the centre id in a site's attributes without a migration.
-    for (const key of SITE_CODE_FIELDS) {
-      const v = s?.[key] ?? s?.attributes?.[key]
-      if (v !== undefined && v !== null && String(v).trim()) noteCentreId(String(v).trim(), s)
-    }
-  }
-
-  // Exact stored spelling first, so a record that saved "NP-001" still finds
-  // the site that holds "NP-001" even when another site is "np-001". A query
-  // that matches no exact code falls through to a case-insensitive match, and
-  // only when one site folds to it. Two sites that differ only by case are
-  // not a guess.
-  function noteCentreId(trimmed, site) {
-    byId.set(trimmed, site)
-    const folded = trimmed.toLowerCase()
-    const prev = byFold.get(folded)
-    if (prev === undefined) byFold.set(folded, site)
-    else if (prev && prev.id !== site.id) byFold.set(folded, null)
-  }
-
-  return (rows || []).filter(Boolean).map((r) => {
-    // Centre id first — an exact key beats a name every time — then the name
-    // exactly, then the name ignoring punctuation and spacing.
-    const rawId = r.siteId ? String(r.siteId).trim() : ''
-    const exactId = rawId ? byId.get(rawId) : null
-    // A case-only miss is not on byId. byFold is that site when exactly one
-    // code folds to the query, and null when two sites do.
-    const foldedId = rawId && !exactId ? byFold.get(rawId.toLowerCase()) || null : null
-    const byCode = exactId || foldedId
-    const exact = !byCode && r.site ? byName.get(norm(r.site)) || null : null
-    const loose = !byCode && !exact && r.site ? byLoose.get(looseKey(r.site)) || null : null
-    const site = byCode || exact || loose
-    return {
-      // How the row found its site, so the tab can report the join rather than
-      // leave "why is half my estate missing from the map" unanswerable.
-      matchedBy: byCode ? 'id' : exact ? 'name' : loose ? 'name~' : '',
-      ...r,
-      site: r.site || site?.name || '',
-      region: r.region || site?.region || '',
-      entity: r.entity || site?.entity || '',
-      lat: isNum(r.lat) ? r.lat : (isNum(site?.lat) ? site.lat : null),
-      lng: isNum(r.lng) ? r.lng : (isNum(site?.lng) ? site.lng : null),
-      // Where the coordinates came from, because "why is this site not on the
-      // map" is the question this panel gets asked, and the answer is either
-      // "your question has no lat/lng" or "that site has none in Sites".
-      placedFrom: isNum(r.lat) && isNum(r.lng) ? 'query' : (isNum(site?.lat) && isNum(site?.lng) ? 'register' : ''),
-      // Whether it matched a site THIS VIEWER may see, which is what the
-      // filter below turns into scoping. Distinct from matchedSiteId, which
-      // keeps whatever id the warehouse supplied so the map can still group by
-      // it — an id we do not recognise is still an id.
-      inScope: Boolean(site),
-      matchedSiteId: site?.id || r.siteId || '',
-    }
-  }).filter((r) => keepUnplaced || r.inScope)
-}
 
 /** Every value present in the data, for the filter bar. Never the filtered set. */
 export function odinFacets(rows = []) {
@@ -590,90 +474,6 @@ export const leadStatus = (byStatus) =>
 // pass rate of this row" and never has to know which shape the question used.
 
 const pct = (n) => Math.round(n * 10) / 10
-
-/**
- * The total a pass rate is out of.
- *
- * A stated total wins over a derived one: an audit can have checks that were
- * neither passed nor failed — not applicable, not reached — and the question is
- * the authority on its own denominator. Half a pair derives nothing, because
- * reading a missing fail count as zero turns "8 passed, failures not recorded"
- * into a perfect audit.
- */
-export function checksTotalOf(row, suffix = '') {
-  const stated = row?.[`checksTotal${suffix}`]
-  if (isNum(stated) && stated > 0) return stated
-  const p = row?.[`checksPassed${suffix}`]
-  const f = row?.[`checksFailed${suffix}`]
-  return isNum(p) && isNum(f) && p + f > 0 ? p + f : null
-}
-
-/** One row's pass rate on the day of the audit, whichever way it was stated. */
-export function day0Of(row) {
-  if (isNum(row?.passPct)) return row.passPct
-  const total = checksTotalOf(row)
-  return total && isNum(row?.checksPassed) ? (row.checksPassed / total) * 100 : null
-}
-
-/** The same at the seven-day re-check. */
-export function n7Of(row) {
-  if (isNum(row?.passPctN7)) return row.passPctN7
-  const total = checksTotalOf(row, 'N7')
-  return total && isNum(row?.checksPassedN7) ? (row.checksPassedN7 / total) * 100 : null
-}
-
-/**
- * The same again with every remediation to date credited, not just seven days.
- *
- * ── Read, but no longer drawn ───────────────────────────────────────────────
- *
- * This is the one reading on the page that is NOT bounded by the dates the
- * reader chose. `passPctToDate` is the centre's score as of today — it credits
- * whatever closed since the audit, so it moves on every refresh while the
- * window stands still. Beside two figures that do answer "what happened between
- * these dates", a third that quietly answers "and where are we now" reads as
- * the same kind of number and is not one.
- *
- * Kept as a mapped column because it costs nothing and a later panel may want
- * it under a heading that says what it is. Nothing charts it today.
- */
-export function toDateOf(row) {
-  if (isNum(row?.passPctToDate)) return row.passPctToDate
-  return null
-}
-
-/** Does this row carry a pass rate at all, in either shape? */
-export const hasPassData = (row) => isNum(day0Of(row)) || isNum(n7Of(row))
-
-/**
- * The rows that ARE the audits — whichever question they arrived on.
- *
- * The audits question when it carries pass data. Otherwise the findings rows
- * that do, because plenty of warehouses hold one row per checklist line with
- * the result on it, and requiring a second saved question to unlock a chart the
- * data already supports is a configuration tax with nothing behind it.
- *
- * ── Why this is shared rather than repeated ─────────────────────────────────
- *
- * Both the N+7 tab and the Auditors tab are answering questions about the same
- * population, and they disagreed. odinAnalytics had this fallback; the Auditors
- * tab asked for the `audits` dataset directly and had none. On a real tenant
- * whose audit question was configured under `findings` — with the audits slot
- * pointing at a card id that did not exist — the N+7 tab drew 832 audits from
- * the fallback while Auditors showed "Metabase has no saved question with that
- * ID". One number on one screen and an error on the next, from one dataset.
- *
- * So the decision lives here and both callers ask it. `source` is returned
- * because the two are subtly different populations — one row per audit against
- * one row per checklist line — and a reader comparing months has to know if the
- * basis moved under them.
- */
-export function auditPopulation(findingRows = [], auditRows = []) {
-  const fromAudits = (auditRows || []).some(hasPassData)
-  if (fromAudits) return { rows: auditRows, source: 'audits' }
-  const fromFindings = (findingRows || []).filter(hasPassData)
-  return { rows: fromFindings, source: fromFindings.length ? 'findings' : 'none' }
-}
 
 // ── Time buckets ─────────────────────────────────────────────────────────────
 //
