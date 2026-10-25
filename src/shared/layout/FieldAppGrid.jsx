@@ -3,6 +3,7 @@ import { useAuth } from '../auth/AuthContext'
 import { fieldApps, groupFieldApps } from '../mobile/appGrid'
 import { fieldIdle } from '../mobile/fieldIdle'
 import { ViewModeSwitch } from '../mobile/viewModeContext'
+import ContactUs from './ContactUs'
 
 /**
  * iPhone-style home. One rounded tile per place this person can open,
@@ -26,6 +27,7 @@ export default function FieldAppGrid() {
     <div className="space-y-7">
       <h1 className="sr-only">Home</h1>
       <ViewModeSwitch />
+      <ContactUs />
       {sections.map((section) => (
         <section key={section.key} aria-labelledby={`field-section-${section.key}`}>
           <h2
