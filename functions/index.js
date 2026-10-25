@@ -90,10 +90,15 @@ import { extractMessages } from './lib/whatsapp/parse.js'
 import { handleMessage } from './lib/whatsapp/handler.js'
 import { deliverLinkWelcome, sendLinkWelcome } from './lib/whatsapp/linkWelcome.js'
 import { createStore, buildSnapshot, listSnapshotOrgIds } from './lib/whatsapp/store.js'
+import { syncSiteAuditCaches } from './lib/siteAuditSync.js'
 import {
   sendMessage,
   textPayload,
+  templatePayload,
+  parseTemplateSpec,
+  testDeliveryError,
   listPayload,
+  buttonPayload,
   locationRequestPayload,
   graphVersion,
 } from './lib/whatsapp/graph.js'
@@ -2687,6 +2692,20 @@ const WA_GRAPH_VERSION = defineString('WA_GRAPH_VERSION', { default: 'v25.0' })
 const WA_DISPLAY_NUMBER = defineString('WA_DISPLAY_NUMBER', { default: '' })
 // Global circuit breaker: outbound replies per IST day across all users.
 const WA_DAILY_CAP = defineString('WA_DAILY_CAP', { default: '2000' })
+// Business-initiated sends (welcome, admin test). `name+lang`, for example
+// `weehs_welcome+en`. Empty means a free-form text, which Meta only delivers
+// inside the 24-hour customer-care window.
+const WA_TEMPLATE_WELCOME = defineString('WA_TEMPLATE_WELCOME', { default: '' })
+const WA_TEMPLATE_TEST = defineString('WA_TEMPLATE_TEST', { default: '' })
+
+/** A configured template, or null to send free-form text. */
+function waTemplate(value, label) {
+  const raw = String(value || '').trim()
+  if (!raw) return null
+  const spec = parseTemplateSpec(raw)
+  if (!spec) logger.error(`${label}: template is not name+lang`)
+  return spec
+}
 
 /**
  * Whether a welcome can actually leave. The verify token is not required:
@@ -2780,14 +2799,14 @@ export const waWebhook = onRequest(
       return
     }
 
-    const { messages, statuses } = extractMessages(payload, WA_PHONE_NUMBER_ID.value())
-    if (statuses) logger.info('waWebhook: statuses', { count: statuses })
+    const { messages, statusEvents = [] } = extractMessages(payload, WA_PHONE_NUMBER_ID.value())
+    for (const event of statusEvents) logger.info('waWebhook: status', event)
 
     const db = getFirestore()
     const store = createStore(db, { pepper: waPepper() })
     const cap = Math.max(1, Number(WA_DAILY_CAP.value()) || 2000)
 
-    const reply = async (to, { text, rows, locationRequest, list }) => {
+    const reply = async (to, { text, rows, locationRequest, list, buttons }) => {
       const gate = await db.runTransaction(async (tx) => {
         const ref = db.doc('waRate/outbound-global')
         const snap = await tx.get(ref)
@@ -2806,14 +2825,16 @@ export const waWebhook = onRequest(
           token: WA_ACCESS_TOKEN.value(),
           payload: payloadOut,
         })
-      const rich = rows?.length
-        ? listPayload(to, text, rows, list)
-        : locationRequest
-          ? locationRequestPayload(to, text)
-          : null
+      const rich = buttons?.length
+        ? buttonPayload(to, text, buttons)
+        : rows?.length
+          ? listPayload(to, text, rows, list)
+          : locationRequest
+            ? locationRequestPayload(to, text)
+            : null
       let result = await send(rich || textPayload(to, text))
-      // A list or location button the client cannot take still has its
-      // choices / instructions in the text, so the plain text is the fallback.
+      // A list, a Yes/No button or a location button the client cannot take
+      // still has its choices in the text, so the plain text is the fallback.
       if (!result.ok && rich) result = await send(textPayload(to, text))
       if (!result.ok)
         logger.error('waWebhook: send failed', { status: result.status, error: result.error })
@@ -3133,21 +3154,30 @@ export const sendWhatsAppOrgTest = onCall(
         dailyCap: Math.max(1, Number(WA_DAILY_CAP.value()) || 2000),
       })
     )
+    const template = waTemplate(WA_TEMPLATE_TEST.value(), 'WA_TEMPLATE_TEST')
     const result = await sendMessage({
       version: WA_GRAPH_VERSION.value(),
       phoneNumberId: WA_PHONE_NUMBER_ID.value(),
       token: WA_ACCESS_TOKEN.value(),
-      payload: textPayload(prepared.waId, prepared.text),
+      payload: template
+        ? templatePayload(prepared.waId, template)
+        : textPayload(prepared.waId, prepared.text),
     })
     if (!result.ok) {
+      const failure = testDeliveryError(result)
       logger.error('sendWhatsAppOrgTest: send failed', {
         orgId: user.orgId,
         status: result.status,
         error: result.error,
       })
-      throw new HttpsError('unavailable', 'The test message could not be sent.')
+      throw new HttpsError(failure.code, failure.message)
     }
-    logger.info('sendWhatsAppOrgTest: sent', { orgId: user.orgId, uid: user.uid })
+    logger.info('sendWhatsAppOrgTest: sent', {
+      orgId: user.orgId,
+      uid: user.uid,
+      wamid: result.wamid || null,
+      template: template ? template.name : null,
+    })
     return { sent: true, masked: prepared.masked }
   }
 )
@@ -3184,8 +3214,9 @@ export const notifyWhatsAppLinked = onDocumentWritten(
       return
     }
     const cap = Math.max(1, Number(WA_DAILY_CAP.value()) || 2000)
+    const welcomeTemplate = waTemplate(WA_TEMPLATE_WELCOME.value(), 'WA_TEMPLATE_WELCOME')
     try {
-      await deliverLinkWelcome({
+      const outcome = await deliverLinkWelcome({
         db: getFirestore(),
         waId: event.params.waId,
         before: writtenData(event.data?.before),
@@ -3205,23 +3236,69 @@ export const notifyWhatsAppLinked = onDocumentWritten(
           })
           return gate.allowed === true
         },
-        // Location-request button, then the same body as text if the client
-        // cannot show it. One cap reservation either way: the text replaces
-        // the button, it is not a second welcome.
+        // A configured template is a business-initiated send and does not
+        // need the 24-hour window. Otherwise the location-request button,
+        // then the same body as text if the client cannot show it. One cap
+        // reservation either way: the text replaces the button, it is not a
+        // second welcome.
         send: (to, message) =>
-          sendLinkWelcome({
-            to,
-            text: message.text,
-            locationRequest: message.locationRequest,
-            version: WA_GRAPH_VERSION.value(),
-            phoneNumberId: WA_PHONE_NUMBER_ID.value(),
-            token: WA_ACCESS_TOKEN.value(),
-          }),
+          welcomeTemplate
+            ? sendMessage({
+                version: WA_GRAPH_VERSION.value(),
+                phoneNumberId: WA_PHONE_NUMBER_ID.value(),
+                token: WA_ACCESS_TOKEN.value(),
+                payload: templatePayload(to, welcomeTemplate),
+              })
+            : sendLinkWelcome({
+                to,
+                text: message.text,
+                locationRequest: message.locationRequest,
+                version: WA_GRAPH_VERSION.value(),
+                phoneNumberId: WA_PHONE_NUMBER_ID.value(),
+                token: WA_ACCESS_TOKEN.value(),
+              }),
       })
+      if (outcome?.status === 'sent') {
+        logger.info('notifyWhatsAppLinked: sent', { wamid: outcome.wamid || null })
+      }
     } catch (err) {
       // Claim failures throw. The link stays either way. The message is not
       // the phone number: a Firestore error names the notifications path.
       logger.error('whatsapp link welcome failed', { error: err?.message || String(err) })
+    }
+  }
+)
+
+/**
+ * Every 3 hours: the last audit within 120 days, per site, for organisations
+ * that have Metabase configured. The bots read this cache. They do not call
+ * Metabase themselves — a warehouse that never answered used to hold the
+ * only site reply. A failed look leaves the previous document. asia-south1
+ * and Asia/Kolkata match the other schedules. The timeout is the platform
+ * maximum because one organisation's extract can take a couple of minutes
+ * and the run walks every organisation.
+ */
+export const refreshSiteAuditCache = onSchedule(
+  {
+    schedule: 'every 3 hours',
+    timeZone: SCHEDULE_TZ,
+    region: REGION,
+    timeoutSeconds: 1800,
+    memory: '1GiB',
+  },
+  async () => {
+    if (!waSwitchedOn() && TG_ENABLED.value() !== 'true') return
+    const db = getFirestore()
+    try {
+      const out = await syncSiteAuditCaches({
+        db,
+        now: new Date(),
+        queryDataset,
+        logger,
+      })
+      logger.info('refreshSiteAuditCache: done', out)
+    } catch (err) {
+      logger.error('refreshSiteAuditCache: failed', { error: err?.message || String(err) })
     }
   }
 )

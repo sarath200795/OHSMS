@@ -17,6 +17,7 @@
 import { isActiveMember } from './access.js'
 import { clean } from './format.js'
 import { maskPhone } from './link.js'
+import { canonicalWaId } from './phones.js'
 
 export const ORG_TEST_LIMIT = 5
 export const ORG_TEST_WINDOW_MS = 60 * 60 * 1000
@@ -31,21 +32,13 @@ function fail(code, message) {
 }
 
 /**
- * WhatsApp's wa_id: country code + subscriber number, digits only, no '+'.
- * Formatting spaces and punctuation are ignored. Anything else is refused
- * rather than guessed. A 10-digit number is a local mobile in the countries
- * this deployment serves, and guessing a country code would bind the wrong
- * handset — the admin has to type the code, the way Meta sends the number.
- * A sentence that merely contains digits is not a handset.
+ * WhatsApp's wa_id, or null. See phones.js: an Indian mobile is stored the
+ * way Meta sends `from` (`9177…`), including when the admin typed a `+`,
+ * a trunk `0`, or the ten digits alone. Anything that is not a handset is
+ * null rather than a guess at some other country.
  */
 export function normalizeWaId(input) {
-  const compact = String(input ?? '')
-    .normalize('NFKC')
-    .trim()
-    .replace(/[\s().-]/g, '')
-  // 11–15 digits. Shorter than that is a local number with the country missing.
-  if (!/^\+?[1-9]\d{10,14}$/.test(compact)) return null
-  return compact.replace(/^\+/, '')
+  return canonicalWaId(input) || null
 }
 
 /** Click-to-chat for the shared number. Null when the display param is not a number. */

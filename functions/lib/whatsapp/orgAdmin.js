@@ -23,6 +23,7 @@ import {
   testMessageText,
   normalizeWaId,
 } from './orgConnect.js'
+import { waIdLookupKeys } from './phones.js'
 
 const MEMBER_SCAN_CAP = 20000
 const LINK_LIST_CAP = 200
@@ -30,6 +31,17 @@ const LINK_LIST_CAP = 200
 function take(snap, cap) {
   const docs = snap?.docs || []
   return { docs: docs.slice(0, cap), truncated: docs.length >= cap || snap?.size >= cap }
+}
+
+/** Every stored spelling of this handset. Canonical is not assumed to be the id. */
+async function linksForPhone(db, phone) {
+  const rows = []
+  for (const key of waIdLookupKeys(phone)) {
+    const snap = await db.doc(`waLinks/${key}`).get()
+    if (!snap.exists) continue
+    rows.push({ id: snap.id || key, ...(snap.data() || {}) })
+  }
+  return rows
 }
 
 async function loadChosen(db, uid) {
@@ -132,20 +144,30 @@ export async function addOrgNumber(
   }
   const chosen = named ? await loadChosen(db, named) : null
   const scanned = named ? { members: [], truncated: false } : await orgMembers(db, gate.orgId)
-  const waId = normalizeWaId(phone)
-  const existingSnap = waId ? await db.doc(`waLinks/${waId}`).get() : null
-  const existingPhone = existingSnap?.exists ? existingSnap.data() || {} : null
+  const rows = await linksForPhone(db, phone)
+  const foreign = rows.find((row) => row.orgId && row.orgId !== gate.orgId)
+  const sameOrg = rows.filter((row) => row.orgId === gate.orgId)
 
   const plan = planAddLink({
     phone,
     memberUid: named,
     members: scanned.members,
     chosen,
-    existingPhone,
+    existingPhone: foreign || sameOrg[0] || null,
     orgId: gate.orgId,
     memberScanTruncated: scanned.truncated,
   })
   if (!plan.ok) return plan
+  // planAddLink sees one existing row. A second spelling can belong to
+  // someone else in this organisation, and that must not be overwritten.
+  if (sameOrg.some((row) => row.uid && row.uid !== plan.uid)) {
+    return {
+      ok: false,
+      code: 'already-exists',
+      message:
+        'That number is already linked to someone else in your organisation. Remove it first.',
+    }
+  }
 
   const link = {
     uid: plan.uid,
@@ -162,21 +184,24 @@ export async function addOrgNumber(
   // between the read above and this write must not be overwritten.
   const claimed = await db.runTransaction(async (tx) => {
     const ref = db.doc(`waLinks/${plan.waId}`)
-    const snap = await tx.get(ref)
-    const current = snap.exists ? snap.data() || {} : null
-    if (current?.orgId && current.orgId !== gate.orgId) {
-      return {
-        ok: false,
-        code: 'already-exists',
-        message: 'That number is already linked elsewhere and cannot be added.',
+    for (const key of waIdLookupKeys(plan.waId)) {
+      const snap = await tx.get(db.doc(`waLinks/${key}`))
+      const current = snap.exists ? snap.data() || {} : null
+      if (!current) continue
+      if (current.orgId && current.orgId !== gate.orgId) {
+        return {
+          ok: false,
+          code: 'already-exists',
+          message: 'That number is already linked elsewhere and cannot be added.',
+        }
       }
-    }
-    if (current?.orgId === gate.orgId && current.uid && current.uid !== plan.uid) {
-      return {
-        ok: false,
-        code: 'already-exists',
-        message:
-          'That number is already linked to someone else in your organisation. Remove it first.',
+      if (current.orgId === gate.orgId && current.uid && current.uid !== plan.uid) {
+        return {
+          ok: false,
+          code: 'already-exists',
+          message:
+            'That number is already linked to someone else in your organisation. Remove it first.',
+        }
       }
     }
     // Same welcome as a self-serve redeem: notifyWhatsAppLinked. This set()
@@ -198,15 +223,16 @@ export async function addOrgNumber(
 export async function removeOrgNumber(db, { user, phone } = {}) {
   const gate = requireOrgAdmin(user)
   if (!gate.ok) return gate
-  const waId = normalizeWaId(phone)
-  const snap = waId ? await db.doc(`waLinks/${waId}`).get() : null
+  const rows = await linksForPhone(db, phone)
+  const mine = rows.filter((row) => row.orgId === gate.orgId)
   const plan = planRemoveLink({
     phone,
-    existing: snap?.exists ? snap.data() || {} : null,
+    existing: mine[0] || null,
     orgId: gate.orgId,
   })
   if (!plan.ok) return plan
-  await db.doc(`waLinks/${plan.waId}`).delete()
+  // Every spelling, or a leftover `+` / national row still answers as this person.
+  await Promise.all(mine.map((row) => db.doc(`waLinks/${row.id}`).delete()))
   return { ok: true, masked: plan.masked }
 }
 
@@ -227,9 +253,11 @@ export async function prepareOrgTest(db, { user, phone, now = new Date(), dailyC
       message: 'Choose a linked number to send the test to.',
     }
   }
-  const linkSnap = await db.doc(`waLinks/${waId}`).get()
-  const link = linkSnap.exists ? linkSnap.data() || {} : null
-  if (!link || link.orgId !== gate.orgId) {
+  // The Graph `to` is the canonical wa_id. The row may still be under an
+  // older spelling; either way the number has to belong to this organisation.
+  const rows = await linksForPhone(db, waId)
+  const link = rows.find((row) => row.orgId === gate.orgId) || null
+  if (!link) {
     return {
       ok: false,
       code: 'not-found',

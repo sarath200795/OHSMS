@@ -26,16 +26,24 @@
 //                                choices: ids of the last list
 //                                choicesExpireAtMs   the list, 15 min
 //                                expiresAtMs         the conversation, 24 h idle
+//                                detailOffer         one site id for the audit
+//                                                    question, 15 min, or null
 //                              Purge reads expiresAtMs, so a remembered
-//                              organisation outlives the numbered list.
+//                              organisation outlives the numbered list. The
+//                              offer is enforced by the handler, the same way
+//                              the numbered list is.
 //
-// waId (the sender's number, digits) is the waLinks document id because it is
-// the lookup key on every message. It is personal data, which is why the
-// collection is server-only and listed in subjectData.js. Everywhere else the
-// number appears only as a keyed digest (phoneHash).
+// waId (the sender's number, digits, as Meta sends `from`) is the waLinks
+// document id because it is the lookup key on every message. Older rows used
+// a `+`, a trunk `0`, or the ten national digits; getLink tries those too.
+// The id is personal data, which is why the collection is server-only and
+// listed in subjectData.js. Everywhere else the number appears only as a
+// keyed digest (phoneHash).
 // ─────────────────────────────────────────────────────────────────────────────
 import { FieldValue, Timestamp } from 'firebase-admin/firestore'
 import { hashLinkCode, inboundId, phoneHash, redeemable } from './link.js'
+import { canonicalWaId, waIdLookupKeys } from './phones.js'
+import { readCacheDoc } from '../siteAuditCacheDoc.js'
 import { isActiveMember } from './access.js'
 import { summariseSites } from '../siteSummary.js'
 import { namedOrganisations, snapshotOrgIds } from './orgs.js'
@@ -228,7 +236,8 @@ export async function buildSnapshot(db, orgId, now = new Date()) {
 }
 
 export function createStore(db, { pepper, now = () => new Date() } = {}) {
-  const hash = (waId) => phoneHash(pepper, waId)
+  // One counter and one session per handset, whichever spelling arrived.
+  const hash = (waId) => phoneHash(pepper, canonicalWaId(waId) || String(waId ?? ''))
 
   return {
     async claimInbound(wamid) {
@@ -247,12 +256,17 @@ export function createStore(db, { pepper, now = () => new Date() } = {}) {
     },
 
     async getLink(waId) {
-      const snap = await db.doc(`waLinks/${waId}`).get()
-      if (!snap.exists) return null
-      const d = snap.data() || {}
-      return typeof d.uid === 'string' && typeof d.orgId === 'string'
-        ? { uid: d.uid, orgId: d.orgId }
-        : null
+      // Canonical id first, then the spellings a row may already have. The
+      // first hit wins, so a re-saved canonical row beats a leftover `+` row.
+      for (const key of waIdLookupKeys(waId)) {
+        const snap = await db.doc(`waLinks/${key}`).get()
+        if (!snap.exists) continue
+        const d = snap.data() || {}
+        if (typeof d.uid === 'string' && typeof d.orgId === 'string') {
+          return { uid: d.uid, orgId: d.orgId }
+        }
+      }
+      return null
     },
 
     async getUser(uid) {
@@ -279,25 +293,28 @@ export function createStore(db, { pepper, now = () => new Date() } = {}) {
         // The welcome is notifyWhatsAppLinked on this document. Sending from
         // the transaction is how a Graph refusal used to fail a link that
         // had already been decided, and a second sender is a second message.
-        tx.set(db.doc(`waLinks/${waId}`), {
+        // Write the wa_id Meta will send next time, not the raw spelling.
+        const storedId = canonicalWaId(waId) || String(waId)
+        tx.set(db.doc(`waLinks/${storedId}`), {
           uid: rec.uid,
           orgId: rec.orgId,
-          last4: String(waId).slice(-4),
+          last4: storedId.replace(/\D/g, '').slice(-4),
           linkedAt: FieldValue.serverTimestamp(),
           source: 'self',
         })
-        return { ok: true, uid: rec.uid, orgId: rec.orgId }
+        return { ok: true, uid: rec.uid, orgId: rec.orgId, waId: storedId }
       })
       if (result.ok) {
-        // One number per person: a new link replaces any older one.
+        // One number per person: a new link replaces any older one, including
+        // the same handset stored under another spelling.
         const older = await db.collection('waLinks').where('uid', '==', result.uid).get()
-        await Promise.all(older.docs.filter((d) => d.id !== waId).map((d) => d.ref.delete()))
+        await Promise.all(older.docs.filter((d) => d.id !== result.waId).map((d) => d.ref.delete()))
       }
       return result
     },
 
     async unlink(waId) {
-      await db.doc(`waLinks/${waId}`).delete()
+      await Promise.all(waIdLookupKeys(waId).map((key) => db.doc(`waLinks/${key}`).delete()))
     },
 
     async rate(waId, fn) {
@@ -390,6 +407,18 @@ export function createStore(db, { pepper, now = () => new Date() } = {}) {
       const choiceKind =
         session.choiceKind === 'org' || session.choiceKind === 'site' ? session.choiceKind : null
       const step = session.step === 'org' || session.step === 'site' ? session.step : null
+      // The audit question lives on this document for 15 minutes. Omitting
+      // it clears it: MENU, a new list and the refresh before a lookup all
+      // replace the document, and a Yes after that must not answer the
+      // previous centre. The handler reads the field before that replace.
+      const offer = session.detailOffer
+      const siteId = typeof offer?.siteId === 'string' ? offer.siteId : ''
+      const offerOrg = typeof offer?.orgId === 'string' ? offer.orgId : ''
+      const expireAtMs = Number(offer?.expireAtMs) || 0
+      const detailOffer =
+        siteId && offerOrg && !siteId.includes('/') && !offerOrg.includes('/') && expireAtMs > 0
+          ? { siteId, orgId: offerOrg, expireAtMs }
+          : null
       await db.doc(`waSessions/${hash(waId)}`).set({
         uid: session.uid ?? null,
         orgId: session.orgId ?? null,
@@ -405,7 +434,18 @@ export function createStore(db, { pepper, now = () => new Date() } = {}) {
             ? Number(session.choicesExpireAtMs) || 0
             : Number(session.expiresAtMs) || 0,
         expiresAtMs: Number(session.expiresAtMs) || 0,
+        detailOffer,
       })
+    },
+
+    async getSiteAuditCache(orgId, siteId) {
+      // The webhook reads the schedule's document. It does not ask Metabase.
+      if (!orgId || !siteId || String(orgId).includes('/') || String(siteId).includes('/')) {
+        return null
+      }
+      const snap = await db.doc(`organizations/${orgId}/siteAuditCache/${siteId}`).get()
+      if (!snap.exists) return null
+      return readCacheDoc(snap.data() || {})
     },
 
     async clearSession(waId) {

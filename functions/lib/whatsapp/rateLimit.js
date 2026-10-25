@@ -5,7 +5,10 @@
 //   linked senders    30 queries an hour, 150 a day (IST windows). Over either,
 //                     ONE "slow down" reply per window, then silence — a reply
 //                     to every flood message would be the flood, billed to us.
-//   unknown senders   one polite reply per 24 hours, then silence.
+//   unknown senders   the webhook replies every time with how to get access.
+//                     allowUnlinkedReply is the old one-per-day gate and is
+//                     not applied there: a number that failed to match was
+//                     then silent, which is how a linked handset looked dead.
 //   LINK attempts     five wrong codes in a day block linking from that number
 //                     for 24 hours.
 //

@@ -278,7 +278,7 @@ describe('sendLinkWelcome', () => {
   it('sends a location-request button carrying the welcome', async () => {
     const fetchImpl = fetchOf({ ok: true, status: 200 })
     const out = await sendLinkWelcome({ ...args, fetchImpl })
-    expect(out).toEqual({ ok: true, status: 200 })
+    expect(out).toEqual({ ok: true, status: 200, wamid: null })
     expect(fetchImpl.calls).toHaveLength(1)
     expect(fetchImpl.calls[0]).toMatchObject({
       type: 'interactive',
@@ -298,7 +298,7 @@ describe('sendLinkWelcome', () => {
       { ok: true, status: 200 }
     )
     const out = await sendLinkWelcome({ ...args, fetchImpl })
-    expect(out).toEqual({ ok: true, status: 200 })
+    expect(out).toEqual({ ok: true, status: 200, wamid: null })
     expect(fetchImpl.calls[1]).toMatchObject({
       type: 'text',
       text: { body: args.text, preview_url: false },

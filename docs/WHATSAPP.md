@@ -67,13 +67,18 @@ Meta ──POST (X-Hub-Signature-256)──► waWebhook
      One match is the summary. Two to eight is a numbered list (interactive where
      the client supports it). None says not found and suggests the closest names
   10 waSiteSnapshots/{orgId} (one read) + erpContacts → one reply via Graph API
-  11 waQueryLog row (no message text)
+  11 the same reply asks "Do you need any additional details? (Yes/No)". Yes
+     reads organizations/{orgId}/siteAuditCache/{siteId} (no Metabase call).
+     No is a short acknowledgement. No cache entry is "Contact the admin"
+  12 waQueryLog row (no message text)
 ```
 
 **Searching only within reach** is the privacy property. A site outside the
 user's grants is not searched at all, so "not yours" and "does not exist" are
 the same reply and the bot cannot be used to enumerate the site master.
-Unknown or inactive senders get one polite reply per 24 hours and nothing else.
+Unknown or inactive senders get a reply every time, saying how to link
+(Settings → Security, or an administrator under Org Settings → Connect with
+WhatsApp). The global daily outbound cap is what still bounds a flood.
 
 Counts come from a snapshot rebuilt every 30 minutes (`buildWhatsAppSnapshots`,
 for every organisation) and on demand when it is older than an hour.
@@ -140,6 +145,8 @@ Off by default. It answers only when **all** of these are real:
 | `WA_GRAPH_VERSION`   | param          | default `v25.0`                                              |
 | `WA_DISPLAY_NUMBER`  | param          | the number shown on the Security page                        |
 | `WA_DAILY_CAP`       | param          | global outbound replies per day, default 2000                |
+| `WA_TEMPLATE_WELCOME`| param          | optional `name+lang` for the welcome; empty sends free-form text |
+| `WA_TEMPLATE_TEST`   | param          | optional `name+lang` for the Org Settings test; empty sends free-form text |
 
 The deploy step creates the three secrets as `UNSET-PLACEHOLDER` when missing so
 the functions deploy; a placeholder never authenticates anything. Subscribe the
@@ -158,7 +165,7 @@ stored, and the profile name in the webhook payload is dropped.
 - If the text matches no centre the user can reach, the bot says it was not found and suggests the closest names (at most three, and only names that are actually close). The same entries are numbered in the text and, on WhatsApp, sent as an interactive list. Replying with the number returns that centre. A shared location is still accepted; the bot no longer asks for one before saying the centre was not found.
 - When a location arrives, the bot measures the haversine distance to the user's **accessible** sites that have `lat`/`lng`. It lists up to 5 sites within 25 km. If none is that close, it lists the nearest 3. The list is an interactive list with the same entries numbered in the text.
 - The user picks a site by tapping a row, or by replying with its number or code. A tap or a number re-checks access before any data is sent.
-- `waSessions/{phoneHash}` holds the conversation: the chosen organisation and the last numbered list (site ids or organisation ids). The list answers to its numbers for 15 minutes (`choicesExpireAtMs`). The document itself lasts 24 hours of idle time (`expiresAtMs`, refreshed on each message), which is how the chat remembers the organisation. The rules deny all client access to it, and `purgeWhatsAppLedgers` sweeps it when `expiresAtMs` has passed. MENU and CHANGE ORG start the organisation question again.
+- `waSessions/{phoneHash}` holds the conversation: the chosen organisation and the last numbered list (site ids or organisation ids). The list answers to its numbers for 15 minutes (`choicesExpireAtMs`). The document itself lasts 24 hours of idle time (`expiresAtMs`, refreshed on each message), which is how the chat remembers the organisation. The same document holds `detailOffer`, one site id for the audit question, also 15 minutes. The rules deny all client access to it, and `purgeWhatsAppLedgers` sweeps it when `expiresAtMs` has passed. MENU and CHANGE ORG start the organisation question again and drop the offer.
 - **Coordinates are never stored.** They are used for one distance calculation in memory. They do not go into `waQueryLog` (intent `location`, outcome `nearby`), `waSessions`, or logs. The name and address Meta attaches are dropped when the message is parsed.
 
 ## Telegram (tgWebhook)
@@ -193,6 +200,21 @@ The same lookup also answers on Telegram (@WEEHS_Site_Lookup_bot) through the
 - Register: `setWebhook?url=<function URL>&secret_token=<TG_WEBHOOK_SECRET>&allowed_updates=["message","callback_query"]`.
   Inline buttons (the organisation list, and a site list that already has
   rows) do not arrive unless `callback_query` is included.
+
+## Additional audit details
+
+After a single centre's summary, both channels ask "Do you need any additional
+details? (Yes/No)" — WhatsApp reply buttons, Telegram an inline keyboard, and
+the same sentence as plain text if the buttons cannot be shown. Yes reads
+`organizations/{orgId}/siteAuditCache/{siteId}`, written every 3 hours by
+`refreshSiteAuditCache` (asia-south1, Asia/Kolkata) for organisations that
+have Metabase configured. The window is 120 days. The reply is the audit
+date, the score, open points (at most 10, then "+N more"), and a line
+`Data last extracted: <DD Mon YYYY, h:mm AM/PM> IST` from that document's
+`syncedAt`. No document, or a look that found no scored audit, is exactly
+"Contact the admin". The webhook does not call Metabase. A failed refresh
+leaves the previous document. No is "Okay." The question expires after 15
+minutes, and Yes checks site reach again before anything is sent.
 
 ## Choosing an organisation
 

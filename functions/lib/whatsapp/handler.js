@@ -12,8 +12,11 @@
 //                    second message, and a Graph refusal on that reply was
 //                    easy to mistake for the link having failed.
 //   3  sender        waLinks → /users live re-check (approved, same org, own
-//                    password). Unknown or inactive: one polite reply per 24 h,
-//                    no data, and never a hint whether a site exists
+//                    password). Unknown or inactive: a reply that says how to
+//                    get access, every time, no data, and never a hint whether
+//                    a site exists. One reply a day then silence was the old
+//                    gate; a linked number that missed the document id then
+//                    looked dead.
 //   4  UNLINK        honoured before the rate limit: withdrawing consent must
 //                    always work, including when the organisation has switched
 //                    lookup off
@@ -55,15 +58,21 @@
 import { parseCommand } from './parse.js'
 import { isActiveMember, reachableSites } from './access.js'
 import { closestSites, resolveSiteQuery, MAX_CHOICES } from './resolve.js'
-import { countQuery, allowUnlinkedReply, linkBlocked, countBadLink } from './rateLimit.js'
+import { countQuery, linkBlocked, countBadLink } from './rateLimit.js'
 import {
   formatSiteReply,
   formatChoices,
   formatNearby,
   formatNotFound,
+  formatCachedAudit,
   MESSAGES,
   tooMany,
   helpText,
+  DETAIL_QUESTION,
+  DETAIL_BUTTONS,
+  DETAIL_DECLINED,
+  DETAIL_EXPIRED,
+  CONTACT_ADMIN,
 } from './format.js'
 import { nearestSites, formatKm } from './geo.js'
 import {
@@ -86,6 +95,58 @@ export const MAX_MESSAGE_AGE_MS = 60 * 60 * 1000
 
 /** How long a numbered list stays answerable by its numbers. */
 export const SESSION_TTL_MS = 15 * 60 * 1000
+
+/**
+ * The live Yes/No offer, or null. A different person, a different
+ * organisation, or a clock that has passed is not an offer: "yes" is then
+ * a centre search, which is how a centre whose name is Yes still resolves
+ * once the question has gone.
+ */
+export function liveDetailOffer(session, { uid, orgId, now }) {
+  const offer = session?.detailOffer
+  if (!offer || typeof offer !== 'object') return null
+  if (session.uid !== uid) return null
+  if (offer.orgId !== orgId) return null
+  if (typeof offer.siteId !== 'string' || !offer.siteId || offer.siteId.includes('/')) return null
+  if (typeof offer.orgId !== 'string' || offer.orgId.includes('/')) return null
+  if (!(Number(offer.expireAtMs) > now.getTime())) return null
+  return { siteId: offer.siteId, orgId: offer.orgId, expireAtMs: Number(offer.expireAtMs) }
+}
+
+/**
+ * 'yes' or 'no' when this message answers the audit question.
+ * A button always does. The words do only while an offer is live, so a
+ * centre named Yes is still a centre when nobody was asked.
+ */
+export function auditReply(cmd, offer) {
+  if (cmd?.kind === 'audit') return cmd.answer === 'no' ? 'no' : 'yes'
+  if (!offer || cmd?.kind !== 'site') return null
+  if (cmd.query === 'yes') return 'yes'
+  if (cmd.query === 'no') return 'no'
+  return null
+}
+
+function siteSession({
+  uid,
+  orgId,
+  now,
+  choiceKind = null,
+  choices = [],
+  choicesExpireAtMs = 0,
+  detailOffer = null,
+}) {
+  return {
+    uid: uid ?? null,
+    orgId,
+    lastOrgId: orgId,
+    step: 'site',
+    choiceKind,
+    choices,
+    choicesExpireAtMs,
+    expiresAtMs: now.getTime() + CONV_TTL_MS,
+    detailOffer,
+  }
+}
 
 /**
  * The site a numbered reply picks from the user's last list, or undefined
@@ -153,8 +214,11 @@ export async function handleMessage(msg, ctx) {
       await store.unlink(from)
       if (store.clearSession) await store.clearSession(from)
     }
-    const gate = await store.rate(from, (s) => allowUnlinkedReply(s, now))
-    if (gate.reply) await ctx.reply(from, { text: MESSAGES.unlinked })
+    // Always answer. The previous one-reply-a-day gate left a handset silent
+    // after a single unknown, including one whose link was stored under a
+    // different spelling of the same number. The daily outbound cap in the
+    // webhook is what still stops a flood.
+    await ctx.reply(from, { text: MESSAGES.unlinked })
     return done(link ? 'denied' : 'unknown', link ? { orgId: link.orgId, uid: link.uid } : {})
   }
   Object.assign(row, { orgId: link.orgId, uid: link.uid })
@@ -308,7 +372,7 @@ export async function answerQuery(cmd, { store, reply, now = new Date(), from, u
     // No Metabase read here. The last-audit block used to be part of this
     // reply, and a warehouse that never answered held the only message for
     // the whole deadline. The summary is the snapshot and the contact
-    // directory; Analytics → ODIN still owns the audit score.
+    // directory. The audit, if they ask, is the cache the schedule wrote.
     const [snap, extra] = await Promise.all([
       store.siteCounts(orgId),
       store.siteContext(orgId, site),
@@ -318,6 +382,24 @@ export async function answerQuery(cmd, { store, reply, now = new Date(), from, u
       asOf: snap.asOf,
     })
     await reply(from, { text })
+    // The question is a second message on purpose. The summary must not wait
+    // on the warehouse, and the audit is opt-in. Fifteen minutes, same clock
+    // as a numbered list. A new lookup replaces this; MENU drops it because
+    // that setSession does not pass detailOffer.
+    await store.setSession(
+      from,
+      siteSession({
+        uid,
+        orgId,
+        now,
+        detailOffer: {
+          siteId: site.id,
+          orgId,
+          expireAtMs: now.getTime() + SESSION_TTL_MS,
+        },
+      })
+    )
+    await reply(from, { text: DETAIL_QUESTION, buttons: DETAIL_BUTTONS })
     return { outcome: 'ok', extra: { siteId: site.id } }
   } catch (err) {
     await reply(from, { text: MESSAGES.error })
@@ -325,6 +407,44 @@ export async function answerQuery(cmd, { store, reply, now = new Date(), from, u
       outcome: 'error',
       extra: { siteId: site.id, error: String(err?.message || err).slice(0, 200) },
     }
+  }
+}
+
+/**
+ * Yes reads the schedule's cache. No is a short acknowledgement. Neither
+ * path imports Metabase: a missing document is CONTACT_ADMIN, not a fetch.
+ * Reach is checked again, against the sites this caller can see now.
+ */
+async function answerDetail({ store, reply, now, from, user, uid, org, offer, answer }) {
+  await store.setSession(from, siteSession({ uid, orgId: org.id, now, detailOffer: null }))
+  if (!offer) {
+    await reply(from, { text: DETAIL_EXPIRED })
+    return { outcome: 'expired', extra: { orgId: org.id } }
+  }
+  if (answer === 'no') {
+    await reply(from, { text: DETAIL_DECLINED })
+    return { outcome: 'declined', extra: { orgId: org.id, siteId: offer.siteId } }
+  }
+  const caller = callerForOrg(user, org.id)
+  const reach = caller ? reachableSites(caller, await store.listSites(org.id)) : []
+  const site = reach.find((s) => s.id === offer.siteId) || null
+  if (!site) {
+    await reply(from, { text: MESSAGES.noAccess })
+    return { outcome: 'denied', extra: { orgId: org.id } }
+  }
+  let record = null
+  try {
+    if (typeof store.getSiteAuditCache === 'function') {
+      record = await store.getSiteAuditCache(org.id, site.id)
+    }
+  } catch {
+    record = null
+  }
+  const text = formatCachedAudit(record)
+  await reply(from, { text: text || CONTACT_ADMIN })
+  return {
+    outcome: text ? 'audit' : 'nocache',
+    extra: { orgId: org.id, siteId: site.id },
   }
 }
 
@@ -431,6 +551,27 @@ export async function guideConversation(cmd, ctx) {
   if (current && cmd.kind === 'greeting') return commit(current)
 
   if (current) {
+    const offer = liveDetailOffer(session, { uid: uid ?? null, orgId: current.id, now })
+    const answer = auditReply(cmd, offer)
+    if (answer) {
+      const caller = callerForOrg(user, current.id)
+      if (!caller) {
+        await reply(from, { text: ORG_NOT_ALLOWED })
+        return finish('denied', { orgId: current.id })
+      }
+      const out = await answerDetail({
+        store,
+        reply,
+        now,
+        from,
+        user: caller,
+        uid,
+        org: current,
+        offer,
+        answer,
+      })
+      return { outcome: out.outcome, extra: { ...(out.extra || {}), orgId: current.id } }
+    }
     const siteList = session?.choiceKind === 'site' && session.orgId === current.id
     await store.setSession(from, {
       uid: uid ?? null,
@@ -475,6 +616,11 @@ export async function guideConversation(cmd, ctx) {
       query: cmd.query,
       missed: true,
     })
+  }
+
+  if (cmd.kind === 'audit') {
+    await reply(from, { text: DETAIL_EXPIRED })
+    return finish('expired')
   }
 
   return ask(allowed, { list: shouldListOrgs(allowed, listOrgs) })

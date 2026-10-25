@@ -9,6 +9,51 @@
 
 export const GRAPH_HOST = 'https://graph.facebook.com'
 
+/**
+ * `WA_TEMPLATE_WELCOME` / `WA_TEMPLATE_TEST`: `name+lang`, also `name:lang`
+ * or `name|lang`. Empty or unparseable means send free-form text instead.
+ * The template itself is approved in Meta; this only names it.
+ */
+export function parseTemplateSpec(value) {
+  const raw = String(value ?? '').trim()
+  if (!raw) return null
+  const match = /^([a-z][a-z0-9_]{0,511})[:|+]([a-z]{2}(?:_[A-Za-z]{2})?)$/i.exec(raw)
+  if (!match) return null
+  const parts = match[2].split('_')
+  const language =
+    parts.length === 2
+      ? `${parts[0].toLowerCase()}_${parts[1].toUpperCase()}`
+      : parts[0].toLowerCase()
+  return { name: match[1].toLowerCase(), language }
+}
+
+export function templatePayload(to, spec) {
+  return {
+    messaging_product: 'whatsapp',
+    recipient_type: 'individual',
+    to,
+    type: 'template',
+    template: { name: spec.name, language: { code: spec.language } },
+  }
+}
+
+/**
+ * The message the test callable should show. 131047 (re-engagement) is Meta
+ * refusing a free-form send outside the 24-hour customer-care window. It
+ * often arrives later as a status webhook, which this return cannot see —
+ * the screen also says that. A synchronous 131047 is still this message.
+ */
+export function testDeliveryError(result) {
+  if (result?.error === 'graph:131047') {
+    return {
+      code: 'failed-precondition',
+      message:
+        'WhatsApp could not deliver the test (131047). The recipient must have messaged this number within the last 24 hours. Ask them to send any message to the number, then try again.',
+    }
+  }
+  return { code: 'unavailable', message: 'The test message could not be sent.' }
+}
+
 export function textPayload(to, body) {
   return {
     messaging_product: 'whatsapp',
@@ -22,6 +67,33 @@ export function textPayload(to, body) {
 const clip = (value, fallback, max) => {
   const text = String(value || fallback).slice(0, max)
   return text || String(fallback).slice(0, max)
+}
+
+/**
+ * Reply buttons, not a list. Yes/No is two replies; a list asks the caller
+ * to open a menu for a question the text already states. Titles are capped
+ * at 20 characters, which is the Cloud API limit, and ids at 256.
+ */
+export function buttonPayload(to, body, buttons) {
+  return {
+    messaging_product: 'whatsapp',
+    recipient_type: 'individual',
+    to,
+    type: 'interactive',
+    interactive: {
+      type: 'button',
+      body: { text: body },
+      action: {
+        buttons: (buttons || []).slice(0, 3).map((button) => ({
+          type: 'reply',
+          reply: {
+            id: String(button.id || '').slice(0, 256),
+            title: clip(button.title, 'Choose', 20),
+          },
+        })),
+      },
+    },
+  }
 }
 
 export function listPayload(to, body, rows, labels = {}) {
@@ -89,7 +161,16 @@ export async function sendMessage({
       body: JSON.stringify(payload),
       signal: AbortSignal.timeout(timeoutMs),
     })
-    if (res.ok) return { ok: true, status: res.status }
+    if (res.ok) {
+      let wamid = null
+      try {
+        const id = (await res.json())?.messages?.[0]?.id
+        wamid = typeof id === 'string' && id ? id : null
+      } catch {
+        wamid = null
+      }
+      return { ok: true, status: res.status, wamid }
+    }
     let code = null
     try {
       code = (await res.json())?.error?.code ?? null

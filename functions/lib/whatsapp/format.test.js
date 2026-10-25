@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest'
 import {
   aedLine,
   auditLines,
+  extractedStamp,
+  formatCachedAudit,
   defectLines,
   formatSiteReply,
   formatChoices,
@@ -253,6 +255,25 @@ describe('last audit', () => {
     expect(auditLines({ ok: false, reason: 'unreachable' })).toEqual([
       '📋 Audit score unavailable.',
     ])
+  })
+
+  it('prints the extract time in IST, 12-hour, with a two-digit day', () => {
+    expect(extractedStamp(new Date('2026-10-25T03:54:00.000Z'))).toBe('25 Oct 2026, 9:24 AM')
+    expect(extractedStamp(new Date('2026-10-25T06:30:00.000Z'))).toBe('25 Oct 2026, 12:00 PM')
+    expect(extractedStamp(new Date('2026-10-24T18:30:00.000Z'))).toBe('25 Oct 2026, 12:00 AM')
+    expect(extractedStamp(new Date('2026-10-05T04:05:00.000Z'))).toBe('05 Oct 2026, 9:35 AM')
+    expect(extractedStamp('not a date')).toBe('')
+  })
+
+  it('adds the extract line to a cached audit and refuses a row with nothing to show', () => {
+    const text = formatCachedAudit({ ...ok, syncedAt: new Date('2026-10-25T03:54:00.000Z') })
+    expect(text).toContain('📋 Last audit: 2 Mar 2026 · Score 82.5% · 91% after 7 days')
+    expect(text).toContain('1. Fire: Exit route blocked')
+    expect(text.endsWith('Data last extracted: 25 Oct 2026, 9:24 AM IST')).toBe(true)
+    expect(formatCachedAudit({ none: true, syncedAt: new Date('2026-10-25T03:54:00.000Z') })).toBe(
+      ''
+    )
+    expect(formatCachedAudit({ ...ok, syncedAt: null })).toBe('')
   })
 
   it('is not part of the site summary, even when an audit result is passed in', () => {

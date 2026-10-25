@@ -242,6 +242,7 @@ export async function deliverLinkWelcome({
   const text = welcomeMessage(organisationLabel(orgName, profileName)).text
   const key = linkWelcomeKey(pepper, to, plan.uid, plan.orgId, plan.stamp)
   const ref = db.doc(`organizations/${plan.orgId}/notifications/${notificationId(key)}`)
+  let wamid = null
 
   const outcome = await sendOnce({
     ref,
@@ -260,6 +261,7 @@ export async function deliverLinkWelcome({
         }
       }
       const result = await send(to, { text, locationRequest: true })
+      if (result?.ok && typeof result.wamid === 'string' && result.wamid) wamid = result.wamid
       if (!result?.ok) {
         const err = new Error('whatsapp send failed')
         err.code = result?.error || 'wa-send'
@@ -270,7 +272,7 @@ export async function deliverLinkWelcome({
   })
 
   if (outcome.status === 'sent') {
-    log.info('whatsapp link welcome sent', { orgId: plan.orgId, uid: plan.uid })
+    log.info('whatsapp link welcome sent', { orgId: plan.orgId, uid: plan.uid, wamid })
   } else if (outcome.status === 'failed') {
     // code and reason only. error.message is where a client would put the
     // request URL, and that URL contains the phone number.
@@ -282,5 +284,5 @@ export async function deliverLinkWelcome({
       status: outcome.error?.status,
     })
   }
-  return outcome
+  return wamid ? { ...outcome, wamid } : outcome
 }
