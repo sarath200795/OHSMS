@@ -57,6 +57,18 @@ printf '%s\n' "$1" >>"$SLEEP_LOG"
 EOF
 chmod +x "$sleepbin"
 
+# Existing retry cases deploy every target. A live release that differs in
+# all three parts is what selects that command. Match / partial deploys
+# override RULES_LIVE_BIN.
+live_all="$tmp/live-all"
+cat >"$live_all" <<'EOF'
+#!/usr/bin/env bash
+echo "differ firestore indexes storage"
+exit 10
+EOF
+chmod +x "$live_all"
+export RULES_LIVE_BIN="$live_all"
+
 reset() {
   rm -f "$log" "$count" "$sleeplog"
   rm -rf "$specs"
@@ -214,6 +226,75 @@ assert_eq "$(calls)" "0" "bad project id does not invoke firebase"
 run '' custom 2 "0"
 assert_eq "$run_status" "1" "empty project id is rejected"
 assert_eq "$(calls)" "0" "empty project id does not invoke firebase"
+
+# ── live release already matches: do not call the Rules API ─────────────────
+reset
+write_spec 1 2 "HTTP Error: 503, The service is currently unavailable."
+matchbin="$tmp/live-match"
+cat >"$matchbin" <<'EOF'
+#!/usr/bin/env bash
+echo match
+exit 0
+EOF
+chmod +x "$matchbin"
+RULES_LIVE_BIN="$matchbin" run ohsms-demo default
+assert_eq "$run_status" "0" "matching live release exits 0"
+assert_eq "$(calls)" "0" "matching live release does not deploy"
+grep -q 'Skipping the Rules API deploy' "$tmp/stdout" || fail "skip was not reported"
+RULES_LIVE_BIN="$live_all"
+
+# ── exit 0 without the match line is not a skip ─────────────────────────────
+reset
+write_spec 1 0 "released rules"
+blankbin="$tmp/live-blank"
+cat >"$blankbin" <<'EOF'
+#!/usr/bin/env bash
+echo "not-a-match"
+exit 0
+EOF
+chmod +x "$blankbin"
+RULES_LIVE_BIN="$blankbin" run ohsms-demo custom 2 "0"
+assert_eq "$(calls)" "1" "exit 0 without match still deploys"
+assert_eq "$(cat "$log")" \
+  "deploy --only firestore:rules,firestore:indexes,storage --project ohsms-demo --non-interactive" \
+  "unconfirmed match deploys every target"
+RULES_LIVE_BIN="$live_all"
+
+# ── only the parts that differ are deployed ─────────────────────────────────
+reset
+write_spec 1 0 "released storage rules"
+storagebin="$tmp/live-storage"
+cat >"$storagebin" <<'EOF'
+#!/usr/bin/env bash
+echo "differ storage"
+exit 10
+EOF
+chmod +x "$storagebin"
+RULES_LIVE_BIN="$storagebin" run ohsms-demo custom 2 "0"
+assert_eq "$run_status" "0" "storage-only difference deploys"
+assert_eq "$(cat "$log")" \
+  "deploy --only storage --project ohsms-demo --non-interactive" \
+  "storage-only target"
+RULES_LIVE_BIN="$live_all"
+
+# ── an unread live release deploys everything and can still block hosting ──
+reset
+write_spec 1 2 "HTTP Error: 503, The service is currently unavailable."
+unknownbin="$tmp/live-unknown"
+cat >"$unknownbin" <<'EOF'
+#!/usr/bin/env bash
+echo unknown
+exit 1
+EOF
+chmod +x "$unknownbin"
+RULES_LIVE_BIN="$unknownbin" run ohsms-demo custom 1 "0"
+assert_eq "$run_status" "2" "unreadable live release keeps the firebase failure"
+assert_eq "$(calls)" "1" "unreadable live release does not retry past the cap"
+assert_eq "$(cat "$log")" \
+  "deploy --only firestore:rules,firestore:indexes,storage --project ohsms-demo --non-interactive" \
+  "unknown live release deploys every target"
+grep -q 'Hosting will not deploy' "$err" || fail "unreadable live release failed open"
+RULES_LIVE_BIN="$live_all"
 
 # ── hosting cannot run unless the rules step succeeded ──────────────────────
 assert_hosting_waits() {
