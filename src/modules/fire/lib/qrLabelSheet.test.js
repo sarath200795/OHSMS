@@ -1,11 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const saved = []
+const drawn = []
 vi.mock('jspdf', async (importOriginal) => {
   const actual = await importOriginal()
   const Real = actual.jsPDF
   function Recording(...args) {
     const doc = new Real(...args)
+    const write = doc.text.bind(doc)
+    doc.text = (text, x, y, opts) => {
+      drawn.push({ text: Array.isArray(text) ? text.join('\n') : String(text), x, y })
+      return write(text, x, y, opts)
+    }
     doc.save = (filename) => {
       saved.push({
         filename,
@@ -21,9 +27,11 @@ vi.mock('jspdf', async (importOriginal) => {
 
 const { buildQrLabels, buildQrLabelPdf, exportQrLabelPdf, qrLabelFilename, LABELS_PER_PAGE } =
   await import('./qrLabelSheet')
+const { CARD_W, labelContentBox, labelOrigin } = await import('./qrSheetLayout')
 
 beforeEach(() => {
   saved.length = 0
+  drawn.length = 0
 })
 
 const panel = (n, over = {}) => ({
@@ -112,6 +120,33 @@ describe('buildQrLabelPdf', () => {
     const overflow = Array.from({ length: 16 }, (_, i) => aed(i + 1))
     const doc16 = await buildQrLabelPdf(buildQrLabels('aed', overflow).labels)
     expect(doc16.getNumberOfPages()).toBe(2)
+  })
+
+  it('keeps a long site and location under the code and inside the card', async () => {
+    const site = 'Northern Regional Warehouse and Distribution Centre Annex, Building C'
+    const location = 'BasementCorridorBesideTheEastStairPastThePlantRoomDoorAndTheRiserCupboard'
+    const row = aed(1, {
+      assetId: 'AED-NORTH-ANNEX-SERIAL-0042-EXTENDED',
+      centerName: site,
+      location,
+    })
+    await buildQrLabelPdf(buildQrLabels('aed', [row]).labels)
+    const box = labelContentBox()
+    const origin = labelOrigin(0)
+    const body = drawn.filter((line) => line.y >= origin.y + box.textTop - 0.05)
+    expect(body.length).toBeGreaterThanOrEqual(4)
+    for (const line of body) {
+      expect(line.y).toBeGreaterThanOrEqual(origin.y + box.glyphTop)
+      expect(line.y).toBeLessThanOrEqual(origin.y + box.limit)
+      expect(line.x).toBeGreaterThanOrEqual(origin.x)
+      expect(line.x).toBeLessThanOrEqual(origin.x + CARD_W)
+    }
+    const painted = body.map((line) => line.text).join('\n')
+    expect(painted).not.toContain(site)
+    expect(painted).not.toContain(location)
+    expect(painted).toMatch(/Northern/)
+    expect(painted).toMatch(/Basement/)
+    expect(painted).toMatch(/…/)
   })
 
   it('paginates and reports progress per slice for a large set', async () => {

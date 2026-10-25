@@ -11,13 +11,7 @@
 import QRCode from 'qrcode'
 import { publicQrUrl } from './qr'
 import { QR_FRAME_RGB, QR_STROKE_MM } from '../../../shared/print/qrFrame'
-import {
-  CARD_H,
-  CARD_W,
-  LABELS_PER_PAGE,
-  labelContentBox,
-  labelOrigin,
-} from './qrSheetLayout'
+import { CARD_H, CARD_W, LABELS_PER_PAGE, labelContentBox, labelOrigin } from './qrSheetLayout'
 
 export { LABELS_PER_PAGE }
 
@@ -92,15 +86,41 @@ async function qrPng(url) {
   })
 }
 
-/** At most `max` wrapped lines of `text`, ellipsised if it had to be cut. */
+/**
+ * At most `max` lines of `text` that each fit `width`.
+ *
+ * splitTextToSize breaks on spaces and leaves a long token on one line.
+ * That line is wider than the card, so a long site name ran sideways into
+ * the next label's QR. Break the token, then ellipsise the last kept line
+ * until the ellipsis itself fits.
+ */
 function clampLines(doc, text, width, max) {
   if (!text) return []
-  const lines = doc.splitTextToSize(String(text), width)
-  if (lines.length <= max) return lines
-  const kept = lines.slice(0, max)
-  kept[max - 1] = `${kept[max - 1].replace(/\s+\S*$/, '').slice(0, 40)}…`
+  const raw = doc.splitTextToSize(String(text), width)
+  const fitted = []
+  for (const line of raw) {
+    if (doc.getTextWidth(line) <= width) {
+      fitted.push(line)
+      continue
+    }
+    let rest = line
+    while (rest) {
+      let cut = rest.length
+      while (cut > 1 && doc.getTextWidth(rest.slice(0, cut)) > width) cut -= 1
+      fitted.push(rest.slice(0, cut))
+      rest = rest.slice(cut)
+    }
+  }
+  if (fitted.length <= max) return fitted
+  const kept = fitted.slice(0, max)
+  let last = kept[max - 1]
+  const mark = '…'
+  while (last.length > 0 && doc.getTextWidth(`${last}${mark}`) > width) last = last.slice(0, -1)
+  kept[max - 1] = `${last.replace(/\s+$/, '')}${mark}`
   return kept
 }
+
+const textWidth = () => CARD_W - 4
 
 function drawLabel(doc, label, png, x, y) {
   const box = labelContentBox()
@@ -110,9 +130,11 @@ function drawLabel(doc, label, png, x, y) {
   doc.roundedRect(x, y, CARD_W, CARD_H, 2, 2, 'S')
 
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(7)
+  doc.setFontSize(box.headerPt)
   doc.setTextColor(180, 90, 20)
-  doc.text(label.header, cx, y + box.headerBaseline, { align: 'center' })
+  doc.text(clampLines(doc, label.header, textWidth(), 1)[0] || '', cx, y + box.headerBaseline, {
+    align: 'center',
+  })
 
   // Frame is shifted out by half its stroke so the ink sits outside the quiet
   // zone the PNG already carries — a rule on the modules stops the code scanning.
@@ -123,18 +145,19 @@ function drawLabel(doc, label, png, x, y) {
   const half = QR_STROKE_MM / 2
   doc.rect(qx - half, qy - half, box.qrSize + QR_STROKE_MM, box.qrSize + QR_STROKE_MM, 'S')
 
-  const textW = CARD_W - 4
+  const textW = textWidth()
   let ty = y + box.textTop
   const limit = y + box.limit
   doc.setTextColor(38, 33, 26)
-  doc.setFontSize(9)
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(box.titlePt)
   for (const line of clampLines(doc, label.title, textW, box.titleLines)) {
     if (ty > limit) return
     doc.text(line, cx, ty, { align: 'center' })
     ty += box.titleStep
   }
   doc.setFont('helvetica', 'normal')
-  doc.setFontSize(7)
+  doc.setFontSize(box.metaPt)
   doc.setTextColor(90, 85, 78)
   const rest = [label.detail, label.site, label.location].filter(Boolean)
   for (const text of rest) {

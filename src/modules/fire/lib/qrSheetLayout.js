@@ -12,7 +12,7 @@
 // border it had on the sheet. The page margin itself is 0: a non-zero @page
 // margin is where the browser prints its own header and footer, and those
 // overlap the outer labels. The 6mm gutter is padding inside the sheet.
-import { QR_FRAME_INK, QR_PRINT_CODE_RULE } from '../../../shared/print/qrFrame'
+import { QR_FRAME_INK, QR_PRINT_CODE_RULE, QR_STROKE_MM } from '../../../shared/print/qrFrame'
 
 export const PAGE_W = 210
 export const PAGE_H = 297
@@ -39,37 +39,52 @@ export const INNER_H = fromTenths(INNER_H_T)
 export const CARD_W = fromTenths(CARD_W_T)
 export const CARD_H = fromTenths(CARD_H_T)
 
-// 28mm keeps the modules above half a millimetre even for a long host (a
-// 53-module matrix plus the quiet zone the PNG already carries). Smaller than
-// the old 34mm, which is what makes the fifth row and the location line fit;
-// still large enough that a phone reads it off the paper.
-export const QR_SIZE = 28
+// 22mm. The previous 28mm code left 1.6mm between the image and the text
+// baseline. jsPDF draws from the baseline, and a 9pt letter is about 2.3mm
+// tall above that line, so the asset id was painted through the modules.
+// 22mm still clears half a millimetre per module on a normal public URL
+// (41 modules plus the quiet zone the PNG already carries) at error
+// correction H, which is the size a phone reads off paper.
+export const QR_SIZE = 22
 
-// Distances from the top of the card, in millimetres. jsPDF's text y is the
-// baseline. Worst case is two title lines plus detail, site and location —
-// that last baseline has to land on or above `limit`, or the location is the
-// line that gets clipped, which is the bug this grid exists to close.
-const HEADER_BASELINE = 3.4
-const QR_TOP = 5.0
-const TEXT_GAP = 1.6
-const TITLE_STEP = 3.3
+export const HEADER_PT = 6.5
+export const TITLE_PT = 7
+export const META_PT = 6
+// White between the QR frame and the top of the first letter. Not the gap
+// to the baseline — that is what put the letters inside the code.
+export const CLEAR_GAP = 2.2
+
+const PT_MM = 25.4 / 72
+const CAP_RATIO = 0.72
+const HEADER_BASELINE = 3.0
+const QR_TOP = 4.6
+const TITLE_STEP = 3.1
 const TITLE_LINES = 2
-const META_STEP = 3.0
+const META_STEP = 2.8
 const META_LINES = 3
-const BOTTOM_PAD = 1.2
+const BOTTOM_PAD = 1.4
+
+const capMm = (pt) => pt * PT_MM * CAP_RATIO
 
 export function labelContentBox() {
-  const textTop = QR_TOP + QR_SIZE + TEXT_GAP
+  const strokeBottom = QR_TOP + QR_SIZE + QR_STROKE_MM / 2
+  const glyphTop = strokeBottom + CLEAR_GAP
+  const textTop = glyphTop + capMm(TITLE_PT)
   const lastBaseline = textTop + TITLE_LINES * TITLE_STEP + (META_LINES - 1) * META_STEP
   return {
     headerBaseline: HEADER_BASELINE,
+    headerPt: HEADER_PT,
     qrTop: QR_TOP,
     qrSize: QR_SIZE,
+    glyphTop,
     textTop,
+    titlePt: TITLE_PT,
     titleStep: TITLE_STEP,
     titleLines: TITLE_LINES,
+    metaPt: META_PT,
     metaStep: META_STEP,
     metaLines: META_LINES,
+    clearGap: CLEAR_GAP,
     lastBaseline,
     limit: CARD_H - BOTTOM_PAD,
   }
@@ -101,10 +116,14 @@ function mm(n) {
  * suppress the browser's header and footer — keep the zero page margin).
  */
 export function qrSheetCss() {
+  const box = labelContentBox()
   const card = mm(CARD_W)
   const cardH = mm(CARD_H)
   const gutter = mm(GUTTER)
   const qr = mm(QR_SIZE)
+  const titleStep = mm(box.titleStep)
+  const metaStep = mm(box.metaStep)
+  const clear = mm(box.clearGap)
   return `
     @page qr-sheet { size: A4 portrait; margin: 0; }
     @page { size: A4 portrait; margin: 0; }
@@ -113,12 +132,28 @@ export function qrSheetCss() {
     .qr-print-header {
       flex: none;
       margin: 0;
+      max-width: 100%;
+      overflow: hidden;
       font-weight: 700;
-      letter-spacing: 0.12em;
+      letter-spacing: 0.08em;
       text-transform: uppercase;
       line-height: 1.15;
+      white-space: nowrap;
+      text-overflow: ellipsis;
     }
-    .qr-print-title, .qr-print-meta { flex: none; width: 100%; margin: 0; overflow: hidden; }
+    .qr-print-title, .qr-print-meta {
+      flex: none;
+      width: 100%;
+      margin: 0;
+      overflow: hidden;
+      max-width: 100%;
+    }
+    .qr-print-title {
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+    }
+    .qr-print-meta { white-space: nowrap; text-overflow: ellipsis; }
     @media screen {
       .qr-sheet-stack { width: 100%; max-width: 100%; }
       .qr-sheet-paper {
@@ -157,10 +192,24 @@ export function qrSheetCss() {
         text-align: center;
         box-shadow: none !important;
       }
-      .qr-print-header { font-size: 9px; }
-      .qr-print-code { flex: none; width: 46% !important; height: auto !important; aspect-ratio: 1; margin-top: 2%; ${QR_PRINT_CODE_RULE} }
-      .qr-print-title { margin-top: 2%; font-size: 11px; font-weight: 800; line-height: 1.15; max-height: 2.3em; }
-      .qr-print-meta { font-size: 10px; line-height: 1.15; max-height: 1.15em; }
+      .qr-print-header { font-size: 8px; }
+      .qr-print-code {
+        flex: none;
+        width: auto !important;
+        height: 40% !important;
+        max-width: 78%;
+        aspect-ratio: 1;
+        margin-top: 1mm;
+        ${QR_PRINT_CODE_RULE}
+      }
+      .qr-print-title {
+        margin-top: ${clear};
+        font-size: 9px;
+        font-weight: 800;
+        line-height: 1.15;
+        max-height: 2.3em;
+      }
+      .qr-print-meta { font-size: 8px; line-height: 1.2; max-height: 1.2em; }
     }
     @media print {
       html, body {
@@ -211,22 +260,28 @@ export function qrSheetCss() {
         break-inside: avoid;
         page-break-inside: avoid;
       }
-      .qr-print-header { font-size: 7pt; }
+      .qr-print-header { font-size: ${box.headerPt}pt; }
       .qr-print-code {
         flex: none;
         width: ${qr} !important;
         height: ${qr} !important;
+        max-width: none;
+        aspect-ratio: auto;
         margin-top: 0.6mm;
         ${QR_PRINT_CODE_RULE}
       }
       .qr-print-title {
-        margin-top: 1.2mm;
-        font-size: 9pt;
+        margin-top: ${clear};
+        font-size: ${box.titlePt}pt;
         font-weight: 800;
-        line-height: 3.3mm;
-        max-height: 6.6mm;
+        line-height: ${titleStep};
+        max-height: ${mm(box.titleStep * box.titleLines)};
       }
-      .qr-print-meta { font-size: 7pt; line-height: 3mm; max-height: 3mm; }
+      .qr-print-meta {
+        font-size: ${box.metaPt}pt;
+        line-height: ${metaStep};
+        max-height: ${metaStep};
+      }
     }
   `
 }
