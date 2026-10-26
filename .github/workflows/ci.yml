@@ -203,7 +203,7 @@ jobs:
       # before the suite starts when JAVA_HOME is older than 21 — both this
       # job and the smoke job died on that message while the rules themselves
       # were green on JDK 21.
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 21
@@ -232,7 +232,7 @@ jobs:
       # Auth and Firestore emulators are JVM processes. firebase-tools 15
       # refuses a JDK before 21, which is the error this job failed with
       # while it was still on 17.
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 21
