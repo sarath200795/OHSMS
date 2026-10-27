@@ -65,6 +65,7 @@ describe('Open-Meteo request', () => {
     const url = forecastUrl(17.43821, 78.3912)
     expect(url).toContain('latitude=17.44')
     expect(url).toContain('longitude=78.39')
+    expect(url).toContain('hourly=precipitation,visibility,uv_index')
     expect(url).not.toContain('17.438')
     expect(url).not.toContain('Plant')
     expect(gridKey(91, 0)).toBe('')
@@ -83,6 +84,57 @@ describe('Open-Meteo request', () => {
     expect(obs.uvIndex).toBe(6)
     expect(obs.tempC).toBe(30)
     expect(obs.observedAt).toBe('2026-09-23T15:10')
+  })
+
+  // 27 Oct 2026, Siripuram: current precipitation was 2.4 with interval 900
+  // while the same hour's precipitation was 11.7. Read as mm/h, 2.4 is under
+  // the 4 mm/h mail line, so Rain Risk dropped the site.
+  it('turns the 15-minute sum into mm/h and keeps the heavier hour total', () => {
+    const scaled = normalizeOpenMeteo({
+      current: { time: '2026-10-27T20:45', interval: 900, precipitation: 2.4, weather_code: 96 },
+    })
+    expect(scaled.precipMmHr).toBeCloseTo(9.6, 5)
+    expect(digestDrivers(assessWeather(scaled))).toContainEqual({
+      key: 'rain',
+      label: 'Rain',
+      value: 'Medium · 9.6 mm/h',
+      level: 'Medium',
+    })
+
+    const hour = normalizeOpenMeteo({
+      current: { time: '2026-10-27T20:45', interval: 900, precipitation: 2.4, weather_code: 96 },
+      hourly: { time: ['2026-10-27T20:00'], precipitation: [11.7] },
+    })
+    expect(hour.precipMmHr).toBeCloseTo(11.7, 5)
+    expect(digestDrivers(assessWeather(hour))).toContainEqual({
+      key: 'rain',
+      label: 'Rain',
+      value: 'High · 11.7 mm/h',
+      level: 'High',
+    })
+  })
+
+  it('does not let a quiet latest step hide an hour that is already heavy', () => {
+    const obs = normalizeOpenMeteo({
+      current: { time: '2026-10-27T19:45', interval: 900, precipitation: 0.2 },
+      hourly: { time: ['2026-10-27T19:00'], precipitation: [15.3] },
+    })
+    expect(obs.precipMmHr).toBeCloseTo(15.3, 5)
+    expect(digestLevel(assessWeather(obs).hazards.find((h) => h.key === 'rain').band)).toBe('High')
+  })
+
+  it('leaves a dry reading, and a sum that is already an hourly rate, alone', () => {
+    const dry = normalizeOpenMeteo({
+      current: { time: '2026-10-27T20:45', interval: 900, precipitation: 0, weather_code: 3 },
+      hourly: { time: ['2026-10-27T20:00'], precipitation: [0] },
+    })
+    expect(dry.precipMmHr).toBe(0)
+    expect(digestDrivers(assessWeather(dry)).some((d) => d.key === 'rain')).toBe(false)
+
+    const hourlyAlready = normalizeOpenMeteo({
+      current: { time: '2026-10-27T20:00', interval: 3600, precipitation: 0.3 },
+    })
+    expect(hourlyAlready.precipMmHr).toBe(0.3)
   })
 })
 

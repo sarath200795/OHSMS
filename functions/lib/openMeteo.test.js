@@ -44,6 +44,7 @@ describe('forecast batches', () => {
     })
     expect(body).toContain('latitude=17.44,13.08')
     expect(body).toContain('longitude=78.39,80.27')
+    expect(body).toContain('hourly=precipitation,visibility,uv_index')
     expect(result.observations.get('17.44,78.39').tempC).toBe(30)
     expect(result.observations.get('13.08,80.27').windKph).toBe(40)
   })

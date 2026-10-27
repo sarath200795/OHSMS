@@ -149,7 +149,11 @@ export function normalizeOpenMeteo(json) {
   return {
     tempC: pick(cur.temperature_2m),
     apparentTempC: pick(cur.apparent_temperature),
-    precipMmHr: pick(cur.precipitation),
+    // Current precipitation is the sum over current.interval seconds (a
+    // 15-minute step), and the rain cuts are mm/h. Left unscaled, a 12 mm
+    // hour reads as ~3 mm and never reaches Rain Risk. The hour's own total
+    // is the other candidate, so a quiet latest step does not hide it.
+    precipMmHr: rainRateMmHr(cur, at(hourly.precipitation)),
     windKph: pick(cur.wind_speed_10m),
     gustKph: pick(cur.wind_gusts_10m),
     weatherCode: pick(cur.weather_code),
@@ -161,6 +165,18 @@ export function normalizeOpenMeteo(json) {
 
 function pick(v) {
   return typeof v === 'number' && Number.isFinite(v) ? v : null
+}
+
+function rainRateMmHr(cur, hourMm) {
+  const rates = []
+  const sum = pick(cur.precipitation)
+  if (sum != null) {
+    const interval = pick(cur.interval)
+    if (interval != null && interval > 0 && interval < 3600) rates.push(sum * (3600 / interval))
+    else rates.push(sum)
+  }
+  if (hourMm != null) rates.push(hourMm)
+  return rates.length ? Math.max(...rates) : null
 }
 
 /**
@@ -191,7 +207,7 @@ export async function fetchWeather(lat, lng) {
   const url =
     `${ENDPOINT}?latitude=${gLat}&longitude=${gLng}` +
     '&current=temperature_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_gusts_10m' +
-    '&hourly=visibility,uv_index' +
+    '&hourly=precipitation,visibility,uv_index' +
     '&wind_speed_unit=kmh&timezone=auto&forecast_days=1'
 
   const req = (async () => {

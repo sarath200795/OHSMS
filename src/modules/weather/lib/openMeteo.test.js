@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { normalizeOpenMeteo, fetchWeather, _clearWeatherCache, _reloadWeatherCache } from './openMeteo'
+import { assessWeather } from './weatherRisk'
 
 // A trimmed real response. `hourly.time` starts at local midnight, which is the
 // detail that makes index-0 the wrong reading to take.
@@ -53,6 +54,40 @@ describe('normalizeOpenMeteo', () => {
     expect(obs.precipMmHr).toBe(0) // a real zero must survive
   })
 
+  // A 15-minute sum compared with the mm/h cuts stays under the mail line:
+  // 2.4 mm in the step is 9.6 mm/h, and the hour's own 11.7 mm is heavier.
+  it('rates rain from the 15-minute step and the current hour, whichever is heavier', () => {
+    const step = normalizeOpenMeteo({
+      current: { time: '2026-10-27T20:45', interval: 900, precipitation: 2.4, weather_code: 96 },
+    })
+    expect(step.precipMmHr).toBeCloseTo(9.6, 5)
+    const stepRain = assessWeather(step).hazards.find((h) => h.key === 'rain')
+    expect(stepRain.alert).toBe('Medium')
+    expect(stepRain.value).toBe('Medium · 9.6 mm/h')
+
+    const hour = normalizeOpenMeteo({
+      current: { time: '2026-10-27T20:45', interval: 900, precipitation: 2.4 },
+      hourly: {
+        time: ['2026-10-27T00:00', '2026-10-27T20:00'],
+        precipitation: [0, 11.7],
+      },
+    })
+    expect(hour.precipMmHr).toBeCloseTo(11.7, 5)
+    expect(assessWeather(hour).hazards.find((h) => h.key === 'rain').alert).toBe('High')
+  })
+
+  it('keeps a real zero and does not scale a sum that is already an hour', () => {
+    const dry = normalizeOpenMeteo({
+      current: { time: '2026-10-27T20:45', interval: 900, precipitation: 0, weather_code: 3 },
+      hourly: { time: ['2026-10-27T20:00'], precipitation: [0] },
+    })
+    expect(dry.precipMmHr).toBe(0)
+    expect(assessWeather(dry).hazards.find((h) => h.key === 'rain')).toBeUndefined()
+    expect(
+      normalizeOpenMeteo({ current: { precipitation: 0.3, interval: 3600 } }).precipMmHr,
+    ).toBe(0.3)
+  })
+
   it('survives an empty or malformed payload', () => {
     for (const input of [undefined, null, {}, { current: null }]) {
       expect(() => normalizeOpenMeteo(input)).not.toThrow()
@@ -89,7 +124,9 @@ describe('fetchWeather', () => {
 
   it('asks for kmh so the wind thresholds do not have to guess a unit', async () => {
     await fetchWeather(17.44, 78.4)
-    expect(fetch.mock.calls[0][0]).toContain('wind_speed_unit=kmh')
+    const url = fetch.mock.calls[0][0]
+    expect(url).toContain('wind_speed_unit=kmh')
+    expect(url).toContain('hourly=precipitation,visibility,uv_index')
   })
 
   it('serves a repeat call for the same place from cache', async () => {
