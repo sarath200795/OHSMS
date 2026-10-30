@@ -86,8 +86,11 @@ const COLD_CUTS = [10, 0, -10, -25]
 // this band), seven is where loose material starts moving on site.
 const WIND_CUTS = [29, 39, 50, 62]
 
-// Rain rate. Above 10 mm/h drainage stops keeping up and yards flood; above 30
-// is a cloudburst.
+// Rain rate, mm/h. Above 10 mm/h drainage stops keeping up and yards flood;
+// above 30 is a cloudburst. Open-Meteo's current precipitation is a 15-minute
+// sum, so the normaliser has to turn it into a rate first: a 3 mm step is
+// 12 mm/h, and comparing the step itself with these cuts left that hour off
+// the rain alert.
 const RAIN_CUTS = [0.5, 4, 10, 30]
 
 // Rain is reported as a named alert rather than only a band, because "medium

@@ -11,6 +11,13 @@
 
 const ENDPOINT = 'https://api.open-meteo.com/v1/forecast'
 const TIMEOUT_MS = 12_000
+// `precipitation` on `current` is the sum over `current.interval` (900s, one
+// 15-minute step), not mm/h. The hour's own total is requested beside
+// visibility so a quiet latest step cannot hide an hour that already cleared
+// the rain line. Both copies of this request must ask for it.
+const CURRENT_VARS =
+  'temperature_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_gusts_10m'
+const HOURLY_VARS = 'precipitation,visibility,uv_index'
 
 export function gridKey(lat, lng) {
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return ''
@@ -25,14 +32,32 @@ export function forecastUrl(lat, lng) {
   const [gLat, gLng] = key.split(',')
   return (
     `${ENDPOINT}?latitude=${gLat}&longitude=${gLng}` +
-    '&current=temperature_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_gusts_10m' +
-    '&hourly=visibility,uv_index' +
+    `&current=${CURRENT_VARS}&hourly=${HOURLY_VARS}` +
     '&wind_speed_unit=kmh&timezone=auto&forecast_days=1'
   )
 }
 
 function pick(v) {
   return typeof v === 'number' && Number.isFinite(v) ? v : null
+}
+
+// The rain cuts are mm/h. A 12 mm hour was arriving as ~3 mm in the latest
+// 15-minute step, which is under the 4 mm/h line, so Rain Risk never named
+// it. Scale that step up to an hour. Also take the provider's total for the
+// same hour — the series already read for visibility — and keep whichever
+// is worse: a burst in the last step, or a heavy hour whose latest step
+// went quiet. No interval means the sum is used as sent; that is what a
+// payload without one already was.
+function rainRateMmHr(cur, hourMm) {
+  const rates = []
+  const sum = pick(cur.precipitation)
+  if (sum != null) {
+    const interval = pick(cur.interval)
+    if (interval != null && interval > 0 && interval < 3600) rates.push(sum * (3600 / interval))
+    else rates.push(sum)
+  }
+  if (hourMm != null) rates.push(hourMm)
+  return rates.length ? Math.max(...rates) : null
 }
 
 /** Shape Open-Meteo's response into the observation assessWeather expects. */
@@ -49,7 +74,7 @@ export function normalizeOpenMeteo(json) {
   return {
     tempC: pick(cur.temperature_2m),
     apparentTempC: pick(cur.apparent_temperature),
-    precipMmHr: pick(cur.precipitation),
+    precipMmHr: rainRateMmHr(cur, at(hourly.precipitation)),
     windKph: pick(cur.wind_speed_10m),
     gustKph: pick(cur.wind_gusts_10m),
     weatherCode: pick(cur.weather_code),
@@ -95,8 +120,8 @@ export function forecastBody(points) {
   const lngs = points.map((p) => Number(p.lng).toFixed(2)).join(',')
   return (
     `latitude=${lats}&longitude=${lngs}` +
-    '&current=temperature_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_gusts_10m' +
-    '&hourly=visibility,uv_index&wind_speed_unit=kmh&timezone=auto&forecast_days=1'
+    `&current=${CURRENT_VARS}&hourly=${HOURLY_VARS}` +
+    '&wind_speed_unit=kmh&timezone=auto&forecast_days=1'
   )
 }
 

@@ -46,6 +46,9 @@ function heatBand(feels, airC) {
 }
 const COLD_CUTS = [10, 0, -10, -25]
 const WIND_CUTS = [29, 39, 50, 62]
+// mm/h. Open-Meteo's current precipitation is a 15-minute sum; the normaliser
+// turns it into a rate before it is compared with these cuts. A 3 mm step is
+// 12 mm/h, not light rain.
 const RAIN_CUTS = [0.5, 4, 10, 30]
 const VIS_CUTS = [5000, 2000, 1000, 200]
 
