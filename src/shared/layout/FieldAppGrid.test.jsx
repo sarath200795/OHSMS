@@ -36,6 +36,8 @@ describe('FieldAppGrid', () => {
     const aedIdle = aed.querySelector('.field-idle')
     expect(extIdle.className).toContain('field-idle-sway')
     expect(aedIdle.className).toContain('field-idle-pulse')
+    expect(extinguishers.className).not.toContain('logo-hover')
+    expect(aed.className).not.toContain('logo-hover')
     expect(extIdle.style.animationDelay).not.toBe(aedIdle.style.animationDelay)
     expect(extIdle.style.animationDuration).not.toBe('')
     expect(screen.queryByRole('link', { name: 'Settings' })).toBeNull()

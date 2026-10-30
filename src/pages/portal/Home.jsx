@@ -42,6 +42,7 @@ import { useWidgetPrefs } from './widgets/useWidgetPrefs'
 import { dashboardBuckets } from '../../modules/ptw/lib/permitStatus'
 import { openUnsafeByPermit } from '../../modules/ptw/lib/observations'
 import ModuleLogo3D, { has3DLogo } from './ModuleLogo3D'
+import { desktopMarkClass } from './markMotion'
 import { Button, Skeleton, Spinner } from '../../shared/ui'
 import FieldAppGrid from '../../shared/layout/FieldAppGrid'
 import { fieldIdle } from '../../shared/mobile/fieldIdle'
@@ -119,7 +120,7 @@ function Tile({ to, icon: Icon, tone = 'brand', label, title, delay = 0, logoKey
       to={to}
       data-tone={tone}
       style={{ animationDelay: `${delay}ms`, '--idle-delay': `${idle.phaseMs}ms` }}
-      className={`group ${has3D ? 'playing logo-phase' : ''} glass-tile relative flex min-h-[168px] animate-fade-in-up flex-col items-center justify-center gap-3 rounded-3xl p-5 text-center
+      className={`group ${desktopMarkClass(has3D)} glass-tile relative flex min-h-[168px] animate-fade-in-up flex-col items-center justify-center gap-3 rounded-3xl p-5 text-center
                  transition-[transform,box-shadow] duration-200 ease-emil
                  hover:-translate-y-0.5 hover:shadow-elev-lg
                  active:translate-y-0 active:scale-[0.99]

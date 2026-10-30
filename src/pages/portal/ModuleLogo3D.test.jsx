@@ -24,6 +24,15 @@ describe('ModuleLogo3D', () => {
     expect(container.innerHTML).not.toContain('animation-delay')
   })
 
+  it('moves on hover, keyboard focus, or the loading screen, and not by itself', () => {
+    const { container } = render(<ModuleLogo3D moduleKey="equipment" />)
+    const html = container.innerHTML
+    expect(html).toContain('group-hover:animate-squeeze')
+    expect(html).toContain('group-focus-visible:animate-squeeze')
+    expect(html).toContain('group-[.playing]:animate-squeeze')
+    expect(html).not.toContain(' animate-squeeze')
+  })
+
   it('renders nothing for modules without a built object', () => {
     const { container } = render(<ModuleLogo3D moduleKey="not-a-module" />)
     expect(container.firstChild).toBeNull()
