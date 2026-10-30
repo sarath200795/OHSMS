@@ -11,8 +11,9 @@ import { ModuleMark, SkeletonDetail } from '../ui'
  * logo — the one that was just clicked, still moving — says which door you came
  * through and confirms the click landed.
  *
- * The logos normally animate on hover; nothing is hovering here, so the wrapper
- * carries `playing`, which every animation in ModuleLogo3D also answers to.
+ * The home grid no longer carries `playing` — a resting logo waits for a
+ * hover. This screen has nothing to hover, so the wrapper still does, and
+ * the same reduced-motion rules stop it.
  *
  * Falls back to the skeleton for modules with no 3D logo rather than inventing
  * a shape that means something else.

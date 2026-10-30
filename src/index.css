@@ -1335,6 +1335,39 @@ option {
   animation-delay: calc(var(--part-delay) + var(--idle-delay, 0s)) !important;
 }
 
+/* Desktop home marks rest. `playing` on every tile looped the 3D logos the
+   moment the grid opened, and the line icons borrowed this same .field-idle
+   loop the phone home runs on purpose. Hover and keyboard focus start them,
+   and only for a mouse: a coarse pointer's sticky :hover after a tap must
+   not. The phone grid is not .logo-hover, so its continuous idle stays. */
+.logo-hover .field-idle {
+  animation-name: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  .logo-hover:hover .field-idle-float,
+  .logo-hover:focus-visible .field-idle-float {
+    animation-name: field-idle-float;
+  }
+  .logo-hover:hover .field-idle-sway,
+  .logo-hover:focus-visible .field-idle-sway {
+    animation-name: field-idle-sway;
+  }
+  .logo-hover:hover .field-idle-pulse,
+  .logo-hover:focus-visible .field-idle-pulse {
+    animation-name: field-idle-pulse;
+  }
+  .logo-hover:hover .field-idle-glow,
+  .logo-hover:focus-visible .field-idle-glow {
+    animation-name: field-idle-glow;
+  }
+}
+@media not ((hover: hover) and (pointer: fine)) {
+  .logo-hover:hover [class*='animate-'],
+  .logo-hover:focus-visible [class*='animate-'] {
+    animation: none !important;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .field-tile-in,
   .field-badge-pulse,
