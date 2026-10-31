@@ -17,6 +17,16 @@ import {
 import { useAuth } from '../context/AuthContext';
 import SiteScopePicker from '../../../shared/org/SiteScopePicker';
 import DeptPersonPicker from '../../../shared/org/DeptPersonPicker';
+import ActionOwnerField from '../components/ActionOwnerField';
+import { orgDepartments } from '../../../shared/auth/access';
+import {
+    actionOwnerDisplay,
+    actionOwnerKind,
+    actionOwnerRecord,
+    actionOwnerText,
+    canUpdateActionStatus,
+    meetingExportSheets,
+} from '../lib/actionOwner';
 import { moduleLevelKeys, SITE_LEVEL_KEY } from '../../../shared/org/scopeConfig';
 import { Pager } from '../../../shared/ui';
 import { reserveDocId } from '../../../shared/docId/reserve';
@@ -54,13 +64,10 @@ const TYPE_COLORS = ['#16a34a', '#22c55e', '#4ade80', '#0ea5e9', '#6366f1', '#f5
 const MeetingDetailModal = ({ meeting, siteLabel, onClose, onUpdateStatus, onPrint, session, permissions }) => {
     if (!meeting) return null;
 
-    const currentUser = session?.name || session?.email || session?.user;
-
-    const canEditStatus = (row) => {
-        if (permissions.canEditCreate) return true; // Admins/Managers/Owners can edit all
-        if (permissions.viewOnly && permissions.canEditOwnedActions) return row.owner === currentUser; // Users can edit their own assigned actions
-        return false;
-    };
+    const canEditStatus = (row) => canUpdateActionStatus(row, session, {
+        elevated: session?.role === 'admin',
+        canEditMeeting: permissions.canEditCreate && actionOwnerKind(row) !== 'department',
+    });
 
     return (
         <div className="fixed inset-0 bg-black/55 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto animate-in fade-in zoom-in-95 duration-300 print:hidden">
@@ -131,7 +138,7 @@ const MeetingDetailModal = ({ meeting, siteLabel, onClose, onUpdateStatus, onPri
                                         return (
                                             <tr key={idx} className="hover:bg-surface-100 transition-colors">
                                                 <td className="p-4 pl-6 font-medium whitespace-normal min-w-[250px]">{row.action}</td>
-                                                <td className="p-4 font-bold text-blue-600">{row.owner}</td>
+                                                <td className="p-4 font-bold text-blue-600">{actionOwnerDisplay(row)}</td>
                                                 <td className="p-4 font-mono text-xs text-ink-600">
                                                     {row.due}
                                                     {isOverdue && <span className="ml-2 px-2 py-0.5 bg-red-100 text-red-600 border border-red-500/30 rounded font-bold uppercase text-[9px] animate-pulse">Overdue</span>}
@@ -183,7 +190,10 @@ export default function Consultation() {
     const [isLoading, setIsLoading] = useState(true);
 
     // Session-like object derived from the auth profile (keeps existing references working).
-    const session = useMemo(() => (profile ? { name: profile.name, email: profile.email, role: profile.role, orgId } : null), [profile, orgId]);
+    const session = useMemo(() => (profile ? {
+        name: profile.name, email: profile.email, role: profile.role, orgId,
+        department: profile.department, dept: profile.dept,
+    } : null), [profile, orgId]);
 
     // RBAC: every approved member can create/edit meetings (and CAPA actions);
     // deleting a whole meeting record stays admin-only.
@@ -217,7 +227,8 @@ export default function Consultation() {
 
     const [selectedUserToAdd, setSelectedUserToAdd] = useState('');
     const [externalName, setExternalName] = useState('');
-    const [newActionLine, setNewActionLine] = useState({ action: '', owner: '', due: '' });
+    const [newActionLine, setNewActionLine] = useState({ action: '', ownerKind: 'person', owner: '', department: '', due: '' });
+    const departments = useMemo(() => orgDepartments(org), [org]);
 
     // Sync the active view from the ?view= query param so the sidebar's
     // Dashboard / Calendar / New Meeting links (and the in-page tabs) stay in sync.
@@ -282,6 +293,10 @@ export default function Consultation() {
     }, [sites]);
 
     const canEditForm = useMemo(() => permissions.canEditCreate, [permissions.canEditCreate]);
+    const canChangeActionStatus = (row) => canUpdateActionStatus(row, session, {
+        elevated: session?.role === 'admin',
+        canEditMeeting: canEditForm && actionOwnerKind(row) !== 'department',
+    });
 
     // Open a blank New Meeting form (the old sidebar link that did this was removed
     // when the app moved to a hub layout, so the page needs its own buttons).
@@ -400,11 +415,12 @@ export default function Consultation() {
 
     const addAction = () => {
         if (!canEditForm) return;
-        if (newActionLine.action && newActionLine.owner) {
-            setFormData({ ...formData, actions: [...(formData.actions || []), { ...newActionLine, status: 'Open' }] });
-            setNewActionLine({ action: '', owner: '', due: '' });
+        const owner = actionOwnerRecord(newActionLine);
+        if (newActionLine.action && actionOwnerText(owner)) {
+            setFormData({ ...formData, actions: [...(formData.actions || []), { ...newActionLine, ...owner, status: 'Open' }] });
+            setNewActionLine({ action: '', ownerKind: 'person', owner: '', department: '', due: '' });
         } else {
-            toast.error("Action Description and Owner are required.");
+            toast.error("Each action needs a description and either a department or a person.");
         }
     };
 
@@ -424,11 +440,19 @@ export default function Consultation() {
         // an unheld meeting as held, with its attendees and its actions.
         if (isFutureDate(formData.date)) return toast.error("The meeting date cannot be in the future.");
         if (scopeHasSite && !formData.siteId) return toast.error("Site is required.");
+        if ((formData.actions || []).some((a) => !actionOwnerText(a))) {
+            return toast.error("Each action needs either a department or a person.");
+        }
 
         setSaving(true);
         // firebaseKey is the Firestore doc id (a local handle), not a stored field.
         const { firebaseKey, ...rest } = formData;
-        const payload = { ...rest, timestamp: new Date().toISOString(), createdBy: session.name || session.email };
+        const payload = {
+            ...rest,
+            actions: (rest.actions || []).map((a) => ({ ...a, ...actionOwnerRecord(a) })),
+            timestamp: new Date().toISOString(),
+            createdBy: session.name || session.email,
+        };
 
         try {
             if (firebaseKey) {
@@ -478,9 +502,13 @@ export default function Consultation() {
         const meeting = meetings.find(m => m.firebaseKey === key);
         const actionRow = meeting.actions[idx];
 
-        // Modal level RLS check
-        if (!permissions.canEditCreate && actionRow.owner !== (session.name || session.email || session.user)) {
-            return toast.error("You can only update actions assigned to you.");
+        if (!canUpdateActionStatus(actionRow, session, {
+            elevated: session?.role === 'admin',
+            canEditMeeting: permissions.canEditCreate && actionOwnerKind(actionRow) !== 'department',
+        })) {
+            return toast.error(actionOwnerKind(actionRow) === 'department'
+                ? "Only someone in that department, or an admin, can close this action."
+                : "You can only update actions assigned to you.");
         }
 
         // The ACTION is replaced, not written into. [...meeting.actions] is a
@@ -597,8 +625,11 @@ export default function Consultation() {
                                     </select>
                                 </div>
                                 <button type="button" onClick={() => {
-                                    const dataToExport = filteredList.map(m => ({ ID: m.docId, Site: siteName(m.siteId), Date: m.date, Type: m.type, Subject: m.subject, Attendees: (m.attendees || []).length, Actions: (m.actions || []).length }));
-                                    const ws = XLSX.utils.json_to_sheet(dataToExport); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Meetings"); XLSX.writeFile(wb, "Meetings_Export.xlsx");
+                                    const sheets = meetingExportSheets(filteredList, siteName);
+                                    const wb = XLSX.utils.book_new();
+                                    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sheets.meetings), "Meetings");
+                                    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sheets.actions), "Actions");
+                                    XLSX.writeFile(wb, "Meetings_Export.xlsx");
                                 }} className="bg-surface-100 hover:bg-surface-200 text-ink-900 px-4 py-2.5 rounded-xl font-bold text-xs shadow flex items-center gap-2 transition-colors border border-surface-300"><FileSpreadsheet size={14} className="text-emerald-600" /> Export</button>
                                 <button type="button" onClick={() => setView('calendar')} className="bg-surface-100 hover:bg-surface-200 text-ink-900 px-4 py-2.5 rounded-xl font-bold text-xs shadow flex items-center gap-2 transition-colors border border-surface-300"><Calendar size={14} className="text-brand-600" /> Calendar</button>
                                 {canEditForm && (
@@ -1003,15 +1034,14 @@ export default function Consultation() {
                                             <label htmlFor="consult-action-desc" className="text-[10px] uppercase font-bold text-ink-400 tracking-widest block mb-2 ml-1">Corrective Action Description</label>
                                             <input id="consult-action-desc" value={newActionLine.action} onChange={e => setNewActionLine({ ...newActionLine, action: e.target.value })} placeholder="What needs to be done?..." maxLength={500} className="w-full bg-surface border border-surface-200 p-3 rounded-xl text-sm text-ink-900 focus:border-blue-500 outline-hidden transition-colors" />
                                         </div>
-                                        <div className="md:col-span-1">
-                                            <span className="text-[10px] uppercase font-bold text-ink-400 tracking-widest block mb-2 ml-1">Owner / Assignee — Department · Person</span>
-                                            <DeptPersonPicker
+                                        <div className="md:col-span-2">
+                                            <span className="text-[10px] uppercase font-bold text-ink-400 tracking-widest block mb-2 ml-1">Responsible — department or person</span>
+                                            <ActionOwnerField
                                                 users={siteUsers}
-                                                value={newActionLine.owner}
-                                                onChange={(v) => setNewActionLine({ ...newActionLine, owner: v })}
-                                                getValue={(u) => u.name || u.email}
-                                                personPlaceholder="Select..."
-                                                selectClass="w-full bg-surface border border-surface-200 p-3 rounded-xl text-sm font-bold text-blue-600 focus:border-blue-500 outline-hidden transition-colors"
+                                                departments={departments}
+                                                value={newActionLine}
+                                                onChange={(owner) => setNewActionLine({ ...newActionLine, ...owner })}
+                                                name="new-action-owner"
                                             />
                                         </div>
                                         <div className="md:col-span-2 flex items-end gap-3">
@@ -1031,17 +1061,24 @@ export default function Consultation() {
                                         </thead>
                                         <tbody className="divide-y divide-surface-200/60 bg-surface-50">
                                             {(formData.actions || []).map((c, i) => {
-                                                const canEditRowStatus = canEditForm || (permissions.canEditOwnedActions && c.owner === (session.name || session.email || session.user));
+                                                const canEditRowStatus = canChangeActionStatus(c);
                                                 return (
                                                     <tr key={i} className="hover:bg-surface-100 transition-colors">
                                                         <td className="p-3 pl-6">
                                                             <input aria-label={`Action ${i + 1} description`} value={c.action} onChange={e => updateAction(i, 'action', e.target.value)} placeholder="Task details..." maxLength={500} className="w-full bg-transparent border-b border-transparent hover:border-surface-200 focus:border-blue-500 text-sm font-medium px-2 py-1.5 outline-hidden text-ink-900 transition-colors" disabled={!canEditForm} />
                                                         </td>
                                                         <td className="p-3">
-                                                            <select aria-label={`Owner of action ${i + 1}`} value={c.owner} onChange={e => updateAction(i, 'owner', e.target.value)} className="w-full bg-surface border border-surface-200 rounded-lg p-2 text-xs font-bold text-blue-600 outline-hidden focus:border-blue-500 transition-colors" disabled={!canEditForm}>
-                                                                <option value="">Select...</option>
-                                                                {siteUsers.map(u => <option key={u.id} value={u.name || u.email}>{u.name || u.email}</option>)}
-                                                            </select>
+                                                            <ActionOwnerField
+                                                                users={siteUsers}
+                                                                departments={departments}
+                                                                value={c}
+                                                                disabled={!canEditForm}
+                                                                name={`action-owner-${i}`}
+                                                                onChange={(owner) => {
+                                                                    const na = formData.actions.map((row, x) => (x === i ? { ...row, ...actionOwnerRecord(owner) } : row));
+                                                                    setFormData({ ...formData, actions: na });
+                                                                }}
+                                                            />
                                                         </td>
                                                         <td className="p-3">
                                                             <input type="date" aria-label={`Due date for action ${i + 1}`} value={c.due} onChange={e => updateAction(i, 'due', e.target.value)} className="w-full bg-surface border border-surface-200 rounded-lg p-2 text-xs font-mono text-ink-900 outline-hidden focus:border-blue-500 transition-colors" disabled={!canEditForm} />
@@ -1082,7 +1119,7 @@ export default function Consultation() {
 
             {/* PRINT OVERLAY */}
             {printData && (
-                <div className="hidden print:block absolute inset-0 z-[9999]">
+                <div className="meeting-minutes-print hidden print:block absolute inset-0 z-[9999]">
                     <MeetingMinutesDoc meeting={printData} siteLabel={siteName(printData.siteId)} />
                 </div>
             )}

@@ -19,6 +19,7 @@ import { releaseDefectLocks } from '../../fire/lib/firestore'
 // value in it passes through untouched — sealDoc is idempotent, and these
 // writes never go through it at all.
 import { openSnapshots } from '../../../shared/crypto'
+import { actionOwnerDisplay } from '../../committee/lib/actionOwner'
 
 const dref = (orgId, name, id) => doc(db, 'organizations', orgId, name, id)
 
@@ -251,7 +252,7 @@ export const SOURCES = [
       (d.actions || []).map((a, i) => ({
         actionId: i,
         title: a.action || a.description || 'Action',
-        owner: a.owner || '',
+        owner: actionOwnerDisplay(a),
         due: a.due || '',
         native: a.status || 'Open',
         context: d.subject || d.docId || 'Meeting',
