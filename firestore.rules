@@ -2381,7 +2381,13 @@ service cloud.firestore {
     // Changing one of these changes both match blocks at once, which is the
     // entire point. tests/firestore.rules.test.js is what proves it.
     function structuralOnly(col, docId) {
-      return col != 'auditLogs' && col != 'defectLocks' && col != 'docSeq'
+      // consultations is in this list so a member cannot close another
+      // department's action through the generic write. Its own create/update
+      // rule is below. Reads are put back in genericReadable: this function
+      // also gates read, and a meeting a member cannot open is not a control.
+      // Folding the first exclusions into one `in` keeps the extinguisher
+      // close, which is already on the 1000-expression ceiling, from growing.
+      return !(col in ['auditLogs', 'defectLocks', 'docSeq', 'consultations'])
         // 'meta' joins them, and for the same reason docSeq did: /meta/{kind}
         // now carries a monotonic rule of its own, and a narrow match cannot
         // restrict anything while this one still grants the same write. The
@@ -2455,7 +2461,7 @@ service cloud.firestore {
         && notKeyset(col, docId);
     }
     function genericReadable(col, docId) {
-      return structuralOnly(col, docId)
+      return (col == 'consultations' || structuralOnly(col, docId))
         && col != 'documents' && col != 'injuries' && col != 'illnesses';
     }
 
@@ -2750,6 +2756,50 @@ service cloud.firestore {
         allow delete: if false;
       }
 
+      // Profile field is `department`. `dept` is the older key, read only
+      // when `department` was never set.
+      function myDepartment() {
+        return myProfile().get('department', '') != ''
+          ? myProfile().get('department', '')
+          : myProfile().get('dept', '');
+      }
+      function committeeActionsSame() {
+        return resource != null
+          && request.resource.data.get('actions', []) == resource.data.get('actions', []);
+      }
+      // A member meeting keeps at most eight actions. A longer list is a
+      // manager edit, and a manager can already close. These slots stay off
+      // the generic write: unrolling them there blew the 1000-expression
+      // budget, which is why consultations are not on that write.
+      function committeeMemberActionsOk() {
+        let dept = myDepartment();
+        let n = request.resource.data.get('actions', []).size();
+        return n <= 8
+          && (resource == null || resource.data.get('actions', []).size() <= 8)
+          && committeeRowCloseOk(0, dept)
+          && committeeRowCloseOk(1, dept)
+          && committeeRowCloseOk(2, dept)
+          && committeeRowCloseOk(3, dept)
+          && committeeRowCloseOk(4, dept)
+          && committeeRowCloseOk(5, dept)
+          && committeeRowCloseOk(6, dept)
+          && committeeRowCloseOk(7, dept);
+      }
+      function committeeRowCloseOk(i, dept) {
+        return i >= request.resource.data.get('actions', []).size()
+          || request.resource.data.actions[i].get('ownerKind', '') != 'department'
+          || request.resource.data.actions[i].get('status', '') != 'Closed'
+          || (resource != null
+              && i < resource.data.get('actions', []).size()
+              && resource.data.actions[i].get('status', '') == 'Closed'
+              && resource.data.actions[i].get('department', '') == request.resource.data.actions[i].get('department', ''))
+          || (request.resource.data.actions[i].get('department', '') == dept
+              && (resource == null
+                  || i >= resource.data.get('actions', []).size()
+                  || resource.data.actions[i].get('ownerKind', '') != 'department'
+                  || resource.data.actions[i].get('department', '') == request.resource.data.actions[i].get('department', '')));
+      }
+
       match /{col}/{docId} {
         // defectLocks joins auditLogs in being excluded: its whole purpose is
         // that a create fails on an existing document, which a generic update
@@ -2782,6 +2832,16 @@ service cloud.firestore {
           && keepsSignageEvidence(col)
           && keepsFasQr(col)
           && keepsExtinguisherWorkflow(col);
+        // A member changing committee actions (including closing one assigned
+        // to their department). The generic update above does not cover that
+        // change — see committeeMemberActionsOk.
+        allow create, update: if col == 'consultations'
+          && isApprovedMemberOf(orgId)
+          && myProfile().role != 'auditor'
+          && (myProfile().role == 'admin'
+              || myProfile().role == 'manager'
+              || committeeActionsSame()
+              || committeeMemberActionsOk());
         // Delete is deliberately NOT gated on the entitlement. Turning a module
         // off should stop it being used, not trap the data already in it — an
         // operator who disables a module must not leave a tenant unable to
@@ -2793,7 +2853,7 @@ service cloud.firestore {
         // below away from a manager — rules OR together — so these three
         // collections are excluded here and granted to isAdminOf on the next
         // line. Signage, stretchers and first aid are unchanged.
-        allow delete: if structuralOnly(col, docId) && isManagerOf(orgId)
+        allow delete: if (col == 'consultations' || structuralOnly(col, docId)) && isManagerOf(orgId)
           && !(col in ['extinguishers', 'aeds', 'fas']);
         allow delete: if structuralOnly(col, docId) && isAdminOf(orgId)
           && col in ['extinguishers', 'aeds', 'fas'];
@@ -2820,7 +2880,14 @@ service cloud.firestore {
             && keepsSignageEvidence(col)
             && keepsFasQr(col)
             && keepsExtinguisherWorkflow(col);
-          allow delete: if structuralOnly(col, docId) && isManagerOf(orgId)
+          allow create, update: if col == 'consultations'
+            && isApprovedMemberOf(orgId)
+            && myProfile().role != 'auditor'
+            && (myProfile().role == 'admin'
+                || myProfile().role == 'manager'
+                || committeeActionsSame()
+                || committeeMemberActionsOk());
+          allow delete: if (col == 'consultations' || structuralOnly(col, docId)) && isManagerOf(orgId)
             && !(col in ['extinguishers', 'aeds', 'fas']);
           allow delete: if structuralOnly(col, docId) && isAdminOf(orgId)
             && col in ['extinguishers', 'aeds', 'fas'];

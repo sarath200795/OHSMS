@@ -160,6 +160,18 @@ describe('subscribeActions', () => {
     expect(incomplete.capped).toContain('incidents')
   })
 
+  it('names a committee department, and keeps a legacy owner as a person', () => {
+    const committee = SOURCES.find((s) => s.key === 'committee')
+    const rows = committee.extract({
+      subject: 'Q3',
+      actions: [
+        { action: 'Fix the gate', owner: 'Ada' },
+        { action: 'Mop the yard', ownerKind: 'department', department: 'Housekeeping', owner: '' },
+      ],
+    })
+    expect(rows.map((r) => r.owner)).toEqual(['Ada', 'Department · Housekeeping'])
+  })
+
   it('unsubscribes every listener it opened', () => {
     const stop = subscribeActions('orgA', vi.fn())
     stop()

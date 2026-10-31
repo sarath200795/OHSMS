@@ -1173,6 +1173,20 @@ option {
     break-inside: avoid;
     page-break-inside: avoid;
   }
+  /* Committee minutes are the only thing on the page. The app header carries
+     the vendor mark, and the signature lines used to sit under the minutes. */
+  body:has(.meeting-minutes-print) * {
+    visibility: hidden !important;
+  }
+  body:has(.meeting-minutes-print) .meeting-minutes-print,
+  body:has(.meeting-minutes-print) .meeting-minutes-print * {
+    visibility: visible !important;
+  }
+  body:has(.meeting-minutes-print) .meeting-minutes-print {
+    position: absolute !important;
+    inset: 0 !important;
+    display: block !important;
+  }
 }
 
 /* Phone QR preview.
