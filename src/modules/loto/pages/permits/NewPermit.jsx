@@ -17,6 +17,7 @@ import {
   buildPermit,
   equipmentOptions,
   lockChoices,
+  equipmentLockWarning,
   snapshotProcedure,
   validateDraft,
 } from '../../utils/permitModel'
@@ -65,6 +66,7 @@ export default function NewPermit() {
   const needsEquipment = requiresEquipment(workType)
   const equipment = useMemo(() => equipmentOptions(procedures), [procedures])
   const approved = useMemo(() => approvedProceduresFor(procedures, eqKey), [procedures, eqKey])
+  const lockWarning = useMemo(() => equipmentLockWarning(procedures, eqKey), [procedures, eqKey])
   const procedure = useMemo(() => approved.find((p) => p.id === procedureId) || null, [approved, procedureId])
   const snapshot = useMemo(() => (procedure && needsEquipment ? snapshotProcedure(procedure) : null), [procedure, needsEquipment])
   const inUse = useMemo(() => collectInUseLockNos(procedures), [procedures])
@@ -256,6 +258,12 @@ export default function NewPermit() {
                     ))}
                   </Select>
                 </Field>
+
+                {lockWarning && (
+                  <p role="status" className="rounded-lg border border-amber-300 bg-amber-100 px-3 py-2 text-sm text-amber-900">
+                    {lockWarning}
+                  </p>
+                )}
 
                 {snapshot && (
                   <div className="rounded-xl border border-steel-700 bg-steel-900/40 p-4 text-sm" aria-live="polite">

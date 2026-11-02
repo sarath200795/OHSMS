@@ -1900,7 +1900,7 @@ service cloud.firestore {
           && d.permitSeq is int
           && int(permitId.split('-')[2]) == d.permitSeq
           && getAfter(seqDoc).data.n == d.permitSeq
-          && d.workType in ['machine_maintenance', 'electrical_work', 'other']
+          && d.workType in ['machine_maintenance', 'electrical_work']
           && d.reason is string && d.reason.size() > 0 && d.reason.size() <= 8000
           && shortText(d.get('workOrder', ''), 200) && shortText(d.get('shift', ''), 60)
           && shortText(d.get('requestedByName', ''), 600)
@@ -1915,8 +1915,10 @@ service cloud.firestore {
           && d.locks is list && d.locks.size() == d.pointKeys.size()
           && d.pointCount == d.pointKeys.size()
           && d.get('isolationPoints', []).size() == d.pointCount
-          && ((d.workType == 'other' && d.pointCount == 0 && d.procedureId == '')
-              || lotoPermitProcOk(d));
+          // Every permit names an approved procedure of its equipment. The old
+          // "other / tag-only" type, which carried no procedure and no points,
+          // is not a work type any more.
+          && lotoPermitProcOk(d);
       }
       // A permit that isolates equipment names an APPROVED procedure of THIS org,
       // at the revision it was raised against, and takes its site, region and

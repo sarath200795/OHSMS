@@ -6,7 +6,7 @@
 import { PROCEDURE_STATUS } from '../constants/procedures'
 import { pointDeviceKeys } from '../constants/energySources'
 import { numberIsolationPoints } from './codes'
-import { LIMITS, MIN_REASON_LENGTH, requiresEquipment, workTypeByKey } from '../constants/permits'
+import { LIMITS, MIN_REASON_LENGTH, workTypeByKey } from '../constants/permits'
 import { windowProblem } from './permitWindow'
 
 const clean = (v) => (typeof v === 'string' ? v.trim() : '')
@@ -124,7 +124,8 @@ export function validateDraft(draft, ctx = {}) {
   if (!type) errors.workType = 'Choose the type of work.'
 
   const snap = ctx.snapshot || null
-  if (type?.requiresEquipment) {
+  // Every permit isolates equipment. There is no tag-only work type.
+  if (type) {
     if (!snap) errors.procedure = 'Choose the equipment and one of its approved procedures.'
     else if (!snap.pointCount) errors.procedure = 'That procedure has no isolation points.'
   }
@@ -212,8 +213,8 @@ export function buildPermit({ orgId, user, draft, snapshot }) {
     // named objects above, but can ask "is this person on the crew" of this.
     personnelUids: [...new Set(internalPersonnel.map((p) => p.uid).filter(Boolean))],
     vendorWorkers,
-    // Procedure-derived. For a work type that needs no equipment these are the
-    // empty values rules expect, not absent keys.
+    // Procedure-derived. Empty when no procedure was chosen; rules refuse that
+    // create, and the form does not offer it.
     procedureId: snapshot?.procedureId || '',
     procedureCode: snapshot?.procedureCode || '',
     procedureRevision: snapshot?.procedureRevision ?? 0,
@@ -230,5 +231,28 @@ export function buildPermit({ orgId, user, draft, snapshot }) {
   }
 }
 
-/** Does this work type need a procedure? Re-exported so the form has one import. */
-export { requiresEquipment }
+/**
+ * Why this equipment should not be isolated again right now, or ''.
+ *
+ * A warning, not a block: the requester can still file the permit, and Start
+ * is what the rules refuse while another permit holds the procedure. Hiding
+ * the fact that the machine is already locked is how two crews end up on it.
+ */
+export function equipmentLockWarning(procedures = [], key) {
+  if (!key) return ''
+  const rows = procedures.filter((p) => equipmentKey(p) === key)
+  const held = rows.find((p) => p?.activePermit)
+  if (held) {
+    const no = held.activePermit.permitNo || held.activePermit.id
+    return `This equipment is already isolated under permit ${no}.`
+  }
+  const locked = rows.find(
+    (p) =>
+      p?.groupLock?.active ||
+      p?.lockSummary?.status === 'locked' ||
+      p?.lockSummary?.status === 'partial',
+  )
+  if (!locked) return ''
+  const how = locked.lockSummary?.status === 'partial' ? 'partially locked' : 'locked out'
+  return `This equipment is already ${how}.`
+}
