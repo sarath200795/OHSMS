@@ -333,14 +333,14 @@ function Emergency({ orgId, permit, user }) {
  * The buttons a permit offers THIS person right now. What they can actually do
  * is decided by firestore.rules; this only decides what to show.
  */
-export default function PermitActions({ orgId, permit, user, isAdmin, isParty, otherAdmin, canWrite }) {
+export default function PermitActions({ orgId, permit, user, isAdmin, isParty, otherAdmin, canWrite, canDecide = isAdmin }) {
   if (!canWrite) return null
   const requester = permit.requestedBy === user.id
   switch (permit.status) {
     case PERMIT_STATUS.REQUESTED:
       return (
         <>
-          {isAdmin && <Decision orgId={orgId} permit={permit} user={user} otherAdmin={otherAdmin} />}
+          {canDecide && <Decision orgId={orgId} permit={permit} user={user} otherAdmin={otherAdmin} />}
           {(requester || isAdmin) && <Withdraw orgId={orgId} permit={permit} user={user} />}
         </>
       )
