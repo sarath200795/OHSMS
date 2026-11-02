@@ -52,7 +52,7 @@ describe('the permit request form', () => {
     fireEvent.change(screen.getByLabelText('Work type'), { target: { value: 'machine_maintenance' } })
     expect(screen.getByLabelText('Equipment')).toBeTruthy()
     fireEvent.change(screen.getByLabelText('Work type'), { target: { value: 'electrical_work' } })
-    expect(screen.getByLabelText('Approved LOTO procedure')).toBeTruthy()
+    expect(screen.getByLabelText('Approved procedure')).toBeTruthy()
   })
 
   it('lists ONLY that equipment’s APPROVED procedures, and disables equipment with none', () => {
@@ -61,7 +61,7 @@ describe('the permit request form', () => {
     const equipment = screen.getByLabelText('Equipment')
     expect(within(equipment).getByText(/Press 4/).closest('option').disabled).toBe(true)
     fireEvent.change(equipment, { target: { value: 's1::pump a' } })
-    const options = [...screen.getByLabelText('Approved LOTO procedure').querySelectorAll('option')].map((o) => o.textContent)
+    const options = [...screen.getByLabelText('Approved procedure').querySelectorAll('option')].map((o) => o.textContent)
     expect(options.some((t) => t.includes('PUMP-1'))).toBe(true)
     expect(options.some((t) => t.includes('DRAFT') || t.includes('PENDING'))).toBe(false)
   })
@@ -70,7 +70,7 @@ describe('the permit request form', () => {
     mount()
     fireEvent.change(screen.getByLabelText('Work type'), { target: { value: 'machine_maintenance' } })
     fireEvent.change(screen.getByLabelText('Equipment'), { target: { value: 's1::pump a' } })
-    fireEvent.change(screen.getByLabelText('Approved LOTO procedure'), { target: { value: 'p1' } })
+    fireEvent.change(screen.getByLabelText('Approved procedure'), { target: { value: 'p1' } })
     expect(screen.getByText('2 isolation points')).toBeTruthy()
     expect(screen.getByText(/Lock-out devices:/).textContent).toMatch(/Padlock/i)
     // One lock chooser per point.

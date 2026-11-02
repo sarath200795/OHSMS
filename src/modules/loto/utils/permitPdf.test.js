@@ -85,7 +85,7 @@ describe('LOTO permit PDF', () => {
   it('produces a named document', async () => {
     await generatePermitPdf(permit, { orgName: 'Acme' })
     expect(saved).toHaveLength(1)
-    expect(saved[0].filename).toBe('LOTO_Permit_LP-2026-0042.pdf')
+    expect(saved[0].filename).toBe('Permit_LP-2026-0042.pdf')
     expect(saved[0].bytes).toBeGreaterThan(2000)
   })
 
@@ -130,6 +130,6 @@ describe('LOTO permit PDF', () => {
   })
 
   it('names the file even without a number', () => {
-    expect(permitPdfName('')).toBe('LOTO_Permit_permit.pdf')
+    expect(permitPdfName('')).toBe('Permit_permit.pdf')
   })
 })

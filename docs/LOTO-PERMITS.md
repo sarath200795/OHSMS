@@ -5,6 +5,23 @@ procedure says *how* to isolate a machine and is approved once; the permit says
 *this crew isolates it, for this job, in this shift window*. Controlling
 standard cited on screens and printouts: **OSHA 29 CFR 1910.147**.
 
+## Terminology
+
+Shared with the standalone [hecp-loto](https://github.com/sarath200795/hecp-loto)
+app, and pinned in `src/modules/loto/constants/terminology.js`:
+
+| Thing | Name used here | Not used |
+| --- | --- | --- |
+| The person who applies a lock | **Technician** | the HYD8 job-title abbreviation |
+| The per-job record | **permit** | calling that record "a LOTO" |
+| The isolation instruction | LOTO procedure | — |
+
+Procedure statuses stay `draft`, `pending_approval`, `approved`, `rejected`.
+Equipment lock state stays `unlocked`, `partial`, `locked`. Isolation points
+are numbered `E-`, `M-`, `H-`, `P-`, `C-`, `G-`. Devices, personal and
+department lock types, the `groupLock` shape and the device-count tally are
+the hecp-loto ones (`group_loto_box` included).
+
 ## Where it lives
 
 `organizations/{orgId}/lotoPermits/{permitNo}` — path-tenanted. (The root

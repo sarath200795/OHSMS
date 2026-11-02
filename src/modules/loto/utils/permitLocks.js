@@ -34,7 +34,7 @@ export function startProblems({ permit, procedure, scans = {}, nowMs = Date.now(
     out.push(`Scan the tag on every isolation point first (${missingScan.length} still to scan).`)
   }
 
-  if (!procedure) return [...out, 'The LOTO procedure no longer exists.']
+  if (!procedure) return [...out, 'The procedure no longer exists.']
   if (procedure.status !== 'approved') out.push('The procedure is no longer approved.')
   if ((procedure.revision ?? 0) !== (permit.procedureRevision ?? 0)) {
     out.push('The procedure was revised after this permit was raised. Raise a new permit.')
@@ -125,7 +125,7 @@ export function returnProblems({ permit, procedure, ticked = {}, confirmed = [] 
 /** The procedure must still be held by THIS permit before it is released. */
 export function heldProblems({ permit, procedure }) {
   if ((permit.pointKeys || []).length === 0) return []
-  if (!procedure) return ['The LOTO procedure no longer exists.']
+  if (!procedure) return ['The procedure no longer exists.']
   if (procedure.activePermit?.id !== permit.id) {
     return ['The equipment is not held by this permit any more. Refresh and check Operations.']
   }

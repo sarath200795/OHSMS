@@ -62,10 +62,12 @@ export const LOTO_DEVICES = [
 ]
 
 // Group-lock hardware key (added to the "devices in use" tally, NOT selectable
-// as a per-point isolation device).
+// as a per-point isolation device). Same key hecp-loto exports.
+export const GROUP_LOTO_BOX = 'group_loto_box'
+
 // Labels for non-selectable + legacy device keys.
 const EXTRA_DEVICE_LABELS = {
-  group_loto_box: 'Group LOTO Box',
+  [GROUP_LOTO_BOX]: 'Group LOTO Box',
   padlock: 'Safety Padlock', // legacy
   electrical: 'Electrical Lockout Device', // legacy
   valve: 'Valve Lockout Device', // legacy

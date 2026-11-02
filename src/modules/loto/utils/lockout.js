@@ -1,5 +1,5 @@
 import { numberIsolationPoints } from './codes'
-import { pointDeviceKeys } from '../constants/energySources'
+import { GROUP_LOTO_BOX, pointDeviceKeys } from '../constants/energySources'
 
 /**
  * Set of lock numbers currently applied across the given procedures — locked
@@ -109,7 +109,7 @@ export function lockoutDeviceTally(procedure) {
       // Box model: the point locks are already counted above. The group adds one
       // personal padlock per technician added to the box, plus the box itself.
       tally.safety_padlock = (tally.safety_padlock || 0) + members.length
-      tally.group_loto_box = (tally.group_loto_box || 0) + 1
+      tally[GROUP_LOTO_BOX] = (tally[GROUP_LOTO_BOX] || 0) + 1
     } else {
       // Hasp model: each member adds a padlock per point; a point holding more
       // than one lock needs a hasp to stack them.

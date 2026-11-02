@@ -125,7 +125,7 @@ export function validateDraft(draft, ctx = {}) {
 
   const snap = ctx.snapshot || null
   if (type?.requiresEquipment) {
-    if (!snap) errors.procedure = 'Choose the equipment and one of its approved LOTO procedures.'
+    if (!snap) errors.procedure = 'Choose the equipment and one of its approved procedures.'
     else if (!snap.pointCount) errors.procedure = 'That procedure has no isolation points.'
   }
   if (ctx.procedureStatus && ctx.procedureStatus !== PROCEDURE_STATUS.APPROVED) {

@@ -141,6 +141,15 @@ describe('raising a permit', () => {
     await assertFails(raise(as('req'), { status: 'active' }))
   })
 
+  // The HYD8 reference names these states "Pending approval" and "Awaiting
+  // photo". Those words are not this status machine; the permit statuses are
+  // the lowercase ones in constants/permits.js.
+  it('refuses the reference app status words in place of the permit statuses', async () => {
+    await assertFails(raise(as('req'), { status: 'Pending approval' }))
+    await assertFails(raise(as('req'), { status: 'Awaiting photo' }))
+    await assertFails(raise(as('req'), { status: 'Active' }))
+  })
+
   it('refuses pre-seeded decision, isolation or server fields', async () => {
     await assertFails(raise(as('req'), { approval: { by: 'adm' } }))
     await assertFails(raise(as('req'), { isolation: { by: 'req' } }))

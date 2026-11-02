@@ -51,7 +51,7 @@ export default function Permits() {
     try {
       const { exportPermitsXlsx } = await import('../../utils/permitExcel')
       const day = new Date().toISOString().slice(0, 10)
-      const { permits: n, points } = exportPermitsXlsx(shown, `LOTO_Permits_${day}.xlsx`)
+      const { permits: n, points } = exportPermitsXlsx(shown, `Permits_${day}.xlsx`)
       toast.success(`Exported ${n} permit${n === 1 ? '' : 's'} and ${points} isolation point${points === 1 ? '' : 's'}`)
     } catch (err) {
       toastCaught(err, 'Export failed')
@@ -62,7 +62,7 @@ export default function Permits() {
     <div className="mx-auto max-w-5xl px-4 py-8">
       <PageHeader
         icon={<HdrIcon d={<><path d="M9 4h6l1 2h3v14H5V6h3l1-2Z" /><path d="M9 12h6M9 16h4" /></>} />}
-        title="LOTO Permits"
+        title="Permits"
         subtitle="One permit per job: who, what equipment, which approved procedure, and the shift window."
         actions={
           <div className="flex flex-wrap gap-2">
