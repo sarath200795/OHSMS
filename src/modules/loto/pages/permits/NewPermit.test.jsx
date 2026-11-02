@@ -38,6 +38,9 @@ vi.mock('../../../../shared/org/orgData', () => ({
   subscribeOrgUsers: (_o, cb) => { cb([{ uid: 'u2', name: 'Asha', status: 'approved' }]); return () => {} },
 }))
 vi.mock('../../services/permits', () => ({ createPermit: h.create }))
+vi.mock('../../services/shiftSettings', () => ({
+  subscribeShiftSettings: (_org, cb) => { cb(null); return () => {} },
+}))
 vi.mock('react-hot-toast', () => ({ default: { error: vi.fn(), success: vi.fn() } }))
 vi.mock('../../../../shared/lib/toastCaught', () => ({ toastCaught: vi.fn() }))
 
@@ -55,13 +58,16 @@ describe('the permit request form', () => {
     expect(screen.getByLabelText('Equipment')).toBeTruthy()
     fireEvent.change(screen.getByLabelText('Work type'), { target: { value: 'electrical_work' } })
     expect(screen.getByLabelText('Approved procedure')).toBeTruthy()
+    expect(screen.queryByLabelText('Start')).toBeNull()
+    expect(screen.queryByLabelText('End')).toBeNull()
+    expect(screen.queryByRole('option', { name: /custom window/i })).toBeNull()
   })
 
   it('warns when the chosen equipment is already locked out', () => {
     mount()
     fireEvent.change(screen.getByLabelText('Work type'), { target: { value: 'electrical_work' } })
     fireEvent.change(screen.getByLabelText('Equipment'), { target: { value: 's1::fan 9' } })
-    expect(screen.getByRole('status').textContent).toMatch(/already locked out/)
+    expect(screen.getByText(/already locked out/)).toBeTruthy()
   })
 
   it('lists ONLY that equipment’s APPROVED procedures, and disables equipment with none', () => {

@@ -145,6 +145,22 @@ describe('validateDraft', () => {
     expect(validateDraft(d, { snapshot, nowMs: NOW })).toEqual({})
   })
 
+  it('refuses a hand-typed window once a shift is chosen', () => {
+    const now = new Date(2026, 9, 5, 7, 0).getTime()
+    const typed = validateDraft(
+      { ...base().draft, shift: 'A', windowStartMs: now, windowEndMs: now + 8 * 3600e3 },
+      { snapshot: base().snapshot, nowMs: now },
+    )
+    expect(typed.window).toMatch(/cannot be typed/)
+    const start = new Date(2026, 9, 5, 6, 0).getTime()
+    const end = new Date(2026, 9, 5, 14, 0).getTime()
+    const open = validateDraft(
+      { ...base().draft, shift: 'A', windowStartMs: start, windowEndMs: end },
+      { snapshot: base().snapshot, nowMs: now },
+    )
+    expect(open.window).toBeUndefined()
+  })
+
   it('requires a described job, a window and somebody doing the work', () => {
     expect(check((b) => { b.draft.reason = 'short' }).reason).toBeTruthy()
     expect(check((b) => { b.draft.windowEndMs = b.draft.windowStartMs }).window).toBeTruthy()

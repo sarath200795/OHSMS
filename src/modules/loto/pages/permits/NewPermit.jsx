@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { toastCaught } from '../../../../shared/lib/toastCaught'
@@ -10,7 +10,7 @@ import { useOrgProcedures } from '../../hooks/useOrgProcedures'
 import { useTechnicians } from '../../hooks/useTechnicians'
 import { useLocks } from '../../hooks/useLocks'
 import { collectInUseLockNos } from '../../utils/lockout'
-import { LIMITS, SHIFT_PRESETS, WORK_TYPES, requiresEquipment } from '../../constants/permits'
+import { LIMITS, WORK_TYPES, requiresEquipment } from '../../constants/permits'
 import { deviceLabel, energySourceByKey } from '../../constants/energySources'
 import {
   approvedProceduresFor,
@@ -21,8 +21,9 @@ import {
   snapshotProcedure,
   validateDraft,
 } from '../../utils/permitModel'
-import { localDateInput, windowFromShift } from '../../utils/permitWindow'
+import { formatWindow, openShiftWindow, shiftKey, shiftsForSite, zoneForSite } from '../../utils/shiftWindow'
 import { createPermit } from '../../services/permits'
+import { subscribeShiftSettings } from '../../services/shiftSettings'
 import PageHeader, { HdrIcon } from '../../components/PageHeader'
 import Card from '../../components/ui/Card'
 import Input from '../../components/ui/Input'
@@ -49,9 +50,7 @@ export default function NewPermit() {
   const [reason, setReason] = useState('')
   const [workOrder, setWorkOrder] = useState('')
   const [shift, setShift] = useState('A')
-  const [date, setDate] = useState(() => localDateInput())
-  const [startTime, setStartTime] = useState(SHIFT_PRESETS[0].start)
-  const [endTime, setEndTime] = useState(SHIFT_PRESETS[0].end)
+  const [shiftSettings, setShiftSettings] = useState(null)
   const [personnel, setPersonnel] = useState([])
   const [vendors, setVendors] = useState([])
   // pointKey → 'tech:<id>' | 'lock:<id>' | 'new'; and the typed number for 'new'.
@@ -61,6 +60,11 @@ export default function NewPermit() {
   useEffect(() => {
     if (!profile?.orgId) return undefined
     return subscribeOrgUsers(profile.orgId, setUsers)
+  }, [profile?.orgId])
+
+  useEffect(() => {
+    if (!profile?.orgId) return undefined
+    return subscribeShiftSettings(profile.orgId, setShiftSettings)
   }, [profile?.orgId])
 
   const needsEquipment = requiresEquipment(workType)
@@ -79,7 +83,23 @@ export default function NewPermit() {
     [users],
   )
 
-  const win = useMemo(() => windowFromShift({ date, start: startTime, end: endTime }), [date, startTime, endTime])
+  const siteShifts = useMemo(
+    () => shiftsForSite(shiftSettings, snapshot?.siteId),
+    [shiftSettings, snapshot?.siteId],
+  )
+  const zone = zoneForSite(shiftSettings, snapshot?.siteId)
+  const chosenShift = siteShifts.find((s) => shiftKey(s) === shift) || siteShifts[0]
+  const win = chosenShift ? openShiftWindow(chosenShift, Date.now(), { zoneOffsetMinutes: zone }) : null
+  // Start on the shift that is open now. Once the person picks one, leave it,
+  // including a shift that is closed — the message under the field says so.
+  const pickedShift = useRef(false)
+  useEffect(() => {
+    if (pickedShift.current) return
+    const open = siteShifts.find((s) => openShiftWindow(s, Date.now(), { zoneOffsetMinutes: zone }))
+    if (!open) return
+    pickedShift.current = true
+    if (shiftKey(open) !== shift) setShift(shiftKey(open))
+  }, [siteShifts, zone, shift])
 
   // Lock numbers already spoken for anywhere an operator could collide with one:
   // applied on a machine, in the register, or dedicated to a technician.
@@ -124,14 +144,14 @@ export default function NewPermit() {
     workType,
     reason,
     workOrder,
-    shift,
+    shift: shiftKey(chosenShift),
     windowStartMs: win?.startMs,
     windowEndMs: win?.endMs,
     internalPersonnel: personnel.map((uid) => ({ uid, name: crew.find((c) => c.value === uid)?.label || '' })),
     vendorWorkers: vendors,
     locks: plan.locks,
   }
-  const errors = validateDraft(draft, { snapshot })
+  const errors = validateDraft(draft, { snapshot, shifts: siteShifts, zoneOffsetMinutes: zone })
   // An inline number that already exists would register a duplicate padlock.
   const dupNew = plan.inline.find((no) => knownNos.has(no.toLowerCase()))
   if (dupNew) errors.locks = `Lock ${dupNew} already exists — pick it from the list instead.`
@@ -156,12 +176,8 @@ export default function NewPermit() {
     setNewNos({})
   }
   function chooseShift(key) {
+    pickedShift.current = true
     setShift(key)
-    const preset = SHIFT_PRESETS.find((s) => s.key === key)
-    if (preset) {
-      setStartTime(preset.start)
-      setEndTime(preset.end)
-    }
   }
 
   async function onSubmit(e) {
@@ -305,40 +321,26 @@ export default function NewPermit() {
 
           <Card animate={false} className="space-y-4 !p-5">
             <h2 className="font-semibold text-steel-100">Shift window</h2>
-            <Field label="Shift" htmlFor="pm-shift">
-              <Select id="pm-shift" value={shift} onChange={(e) => chooseShift(e.target.value)}>
-                {SHIFT_PRESETS.map((s) => (
-                  <option key={s.key} value={s.key}>{s.label}</option>
+            <Field label="Shift" htmlFor="pm-shift" error={show('window')}>
+              <Select id="pm-shift" value={shiftKey(chosenShift)} onChange={(e) => chooseShift(e.target.value)}>
+                {siteShifts.map((s) => (
+                  <option key={shiftKey(s)} value={shiftKey(s)}>{s.label}</option>
                 ))}
-                <option value="custom">Custom window</option>
               </Select>
             </Field>
-            <div className="grid gap-3 sm:grid-cols-3">
-              <Input label="Date the shift starts" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-              <Input
-                label="Start"
-                type="time"
-                value={startTime}
-                onChange={(e) => {
-                  setShift('custom')
-                  setStartTime(e.target.value)
-                }}
-              />
-              <Input
-                label="End"
-                type="time"
-                value={endTime}
-                onChange={(e) => {
-                  setShift('custom')
-                  setEndTime(e.target.value)
-                }}
-              />
-            </div>
-            {win?.crossesMidnight && (
-              <p className="text-xs text-steel-300">This shift crosses midnight and ends the next day.</p>
+            {win ? (
+              <p className="text-sm text-steel-200">
+                {formatWindow(win.startMs)} – {formatWindow(win.endMs)}.
+                {win.crossesMidnight ? ' This shift crosses midnight and ends the next day.' : ''}
+                {' '}Start and end cannot be typed. A request opens 30 minutes before the shift starts.
+              </p>
+            ) : (
+              <p role="status" className="text-sm text-amber-800">
+                This shift is not open. A request can be raised from 30 minutes before it starts until it ends.
+              </p>
             )}
-            {show('window') && <p role="alert" className="text-xs font-medium text-red-400">{errors.window}</p>}
             <p className="text-xs text-steel-400">
+              Only an Admin can extend a permit past the shift end, and the reason is kept with the permit.
               The permit is due when the window ends and overdue after it, judged on the server clock.
             </p>
           </Card>

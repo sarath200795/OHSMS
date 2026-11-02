@@ -120,10 +120,9 @@ export const workTypeLabel = (key) => workTypeByKey(key)?.label || key || '—'
 export const requiresEquipment = (key) => Boolean(workTypeByKey(key)?.requiresEquipment)
 
 /**
- * Shift presets. Times are wall-clock in the browser's zone; a shift whose end
- * is not after its start crosses midnight (see utils/permitWindow.js). The
- * presets are a convenience for the common three-shift pattern — the window can
- * always be entered by hand.
+ * Default shifts, used until an Admin saves times for a site. The window is
+ * one of these (or the site's own list) — start and end are not typed.
+ * A shift whose end is not after its start crosses midnight.
  */
 export const SHIFT_PRESETS = [
   { key: 'A', label: 'Shift A (06:00–14:00)', start: '06:00', end: '14:00' },
@@ -131,6 +130,9 @@ export const SHIFT_PRESETS = [
   { key: 'C', label: 'Shift C (22:00–06:00, next day)', start: '22:00', end: '06:00' },
   { key: 'general', label: 'General (09:00–18:00)', start: '09:00', end: '18:00' },
 ]
+
+/** A request may open this long before the shift starts. Mirrored in the rules. */
+export const REQUEST_LEAD_MINUTES = 30
 
 /** A window longer than this is not a shift. */
 export const MAX_WINDOW_HOURS = 24
