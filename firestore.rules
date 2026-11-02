@@ -1854,6 +1854,27 @@ service cloud.firestore {
       function lotoPermitAdmin() {
         return isAdminOf(orgId);
       }
+      // Approve, extend and emergency-remove are not org-wide. An Admin whose
+      // profile names no site and no grant still reaches every permit — that
+      // is the unrestricted administrator, and the case the self-approval
+      // escape hatch is for when they are the only one. An Admin posted to a
+      // site, or granted sites or entities, reaches a permit only when that
+      // site or that entity is the permit's. A region grant is not enough:
+      // the decision was specified as the permit's site or its entity.
+      function lotoPermitAdminOf(b) {
+        let p = myProfile();
+        let a = p.get('access', {});
+        let site = b.get('siteId', '');
+        let entity = b.get('entity', '');
+        let unrestricted = p.get('siteId', '') == ''
+          && a.get('sites', []).size() == 0
+          && a.get('entities', []).size() == 0
+          && a.get('regions', []).size() == 0;
+        let siteOk = site != ''
+          && (p.get('siteId', '') == site || a.get('sites', []).hasAny([site]));
+        let entityOk = entity != '' && a.get('entities', []).hasAny([entity]);
+        return lotoPermitAdmin() && (unrestricted || siteOk || entityOk);
+      }
       function lotoPermitClosed(s) {
         return s in ['returned', 'rejected', 'withdrawn', 'emergency_removed'];
       }
@@ -1984,22 +2005,27 @@ service cloud.firestore {
       // and not the requester's own request unless the approver says why there
       // was nobody else (the UI offers it only when no other admin exists).
       function lotoPermitDecision(b, a, changed) {
-        return lotoPermitAdmin()
+        let self = a.approval.by == b.requestedBy;
+        let sole = self
+          && a.approval.get('selfApproved', false) == true
+          && a.approval.get('selfApprovalReason', '') is string
+          && a.approval.get('selfApprovalReason', '').size() > 0;
+        let namedCrew = b.get('personnelUids', []).hasAny([request.auth.uid]);
+        return lotoPermitAdminOf(b)
           && b.status == 'requested'
           && a.status in ['approved', 'rejected']
           && changed.hasOnly(['status', 'approval', 'closedAt', 'updatedAt'])
           && a.approval.by == request.auth.uid
           && a.approval.at == request.time
           && (a.status == 'approved' ? a.windowEnd > request.time : a.closedAt == request.time)
-          && (a.approval.by != b.requestedBy
-              || (a.approval.get('selfApproved', false) == true
-                  && a.approval.get('selfApprovalReason', '') is string
-                  && a.approval.get('selfApprovalReason', '').size() > 0));
+          // The requester may approve only by recording that nobody else could.
+          // Anyone else named on the permit may not approve it at all.
+          && (sole || (!self && !namedCrew));
       }
       function lotoPermitWithdraw(b, a, changed) {
         return b.status in ['requested', 'approved']
           && a.status == 'withdrawn'
-          && (b.requestedBy == request.auth.uid || lotoPermitAdmin())
+          && (b.requestedBy == request.auth.uid || lotoPermitAdminOf(b))
           && changed.hasOnly(['status', 'closure', 'closedAt', 'updatedAt'])
           && a.closure.by == request.auth.uid
           && a.closedAt == request.time;
@@ -2034,7 +2060,7 @@ service cloud.firestore {
       // enough to be either a sentence or ciphertext, not the plaintext.
       function lotoPermitExtend(b, a, changed) {
         let n = a.extensions[a.extensions.size() - 1];
-        return lotoPermitAdmin()
+        return lotoPermitAdminOf(b)
           && b.status == 'active'
           && a.status == 'active'
           && changed.hasOnly(['windowEnd', 'extensions', 'updatedAt'])
@@ -2076,7 +2102,7 @@ service cloud.firestore {
           && lotoPermitReleased(b);
       }
       function lotoPermitEmergency(b, a, changed) {
-        return lotoPermitAdmin()
+        return lotoPermitAdminOf(b)
           && b.status == 'active'
           && a.status == 'emergency_removed'
           && changed.hasOnly(['status', 'emergency', 'closedAt', 'updatedAt'])

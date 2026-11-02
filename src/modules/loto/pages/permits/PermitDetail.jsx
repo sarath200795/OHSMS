@@ -8,6 +8,7 @@ import { usePermit, usePermitEvents, useNow } from '../../hooks/usePermits'
 import { workTypeLabel } from '../../constants/permits'
 import { deviceLabel, energySourceByKey } from '../../constants/energySources'
 import { permitClock, toMs } from '../../utils/permitWindow'
+import { otherApproverExists, reachesPermitSite } from '../../utils/permitAccess'
 import PageHeader, { HdrIcon } from '../../components/PageHeader'
 import Card from '../../components/ui/Card'
 import Button from '../../components/ui/Button'
@@ -65,11 +66,17 @@ export default function PermitDetail() {
   }
 
   const isAdmin = can(PERMISSIONS.PERMIT_APPROVE)
+  const scopedAdmin = reachesPermitSite(
+    { role: platformRole, status: profile.status, siteId: profile.siteId, access: profile.access },
+    permit,
+  )
+  const namedCrew = (permit.personnelUids || []).includes(profile.id) && permit.requestedBy !== profile.id
   const isParty =
     isAdmin || permit.requestedBy === profile.id || (permit.personnelUids || []).includes(profile.id)
-  // Self-approval is only ever offered when nobody else could approve.
-  const otherAdmin = users.some(
-    (u) => u.role === 'admin' && u.status === 'approved' && u.uid && u.uid !== permit.requestedBy,
+  // Self-approval is offered only when nobody else who reaches this permit could approve.
+  const otherAdmin = otherApproverExists(
+    users.map((u) => ({ ...u, status: u.status || 'approved' })),
+    permit,
   )
   const onPdf = () =>
     toast.promise(
@@ -172,7 +179,8 @@ export default function PermitDetail() {
         orgId={profile.orgId}
         permit={permit}
         user={profile}
-        isAdmin={isAdmin}
+        isAdmin={scopedAdmin}
+        canDecide={scopedAdmin && !namedCrew}
         isParty={isParty}
         otherAdmin={otherAdmin}
         canWrite={platformRole !== 'auditor'}
