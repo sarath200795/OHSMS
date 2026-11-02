@@ -65,6 +65,16 @@ entity scoping applies to the *mail audience* (`functions/lib/audience.js`), not
 to rules. Self-approval is refused unless the approver records that there was no
 other administrator (`approval.selfApproved` + `selfApprovalReason`).
 
+## Equipment
+
+Every permit names a piece of equipment and an **approved** procedure of that
+equipment. The work type "Other (area / tag-only)" is gone: rules refuse
+`workType == 'other'` and refuse a create whose `procedureId` is empty or whose
+procedure is not approved, not this org's, or not that equipment. The form
+warns, and does not hide the field, when that equipment is already locked or
+held by another permit. Start is still what refuses a second isolation of a
+procedure a permit already holds.
+
 ## Procedure ↔ permit consistency
 
 While a permit is `active`, its procedure carries `activePermit: { id, permitNo }`.

@@ -24,6 +24,9 @@ vi.mock('../../hooks/useOrgProcedures', () => ({
       { id: 'p2', procedureCode: 'PUMP-DRAFT', status: 'draft', revision: 0, equipment: 'Pump A', site: 'S1', siteId: 's1', isolationPoints: [] },
       { id: 'p3', procedureCode: 'PUMP-PENDING', status: 'pending_approval', revision: 0, equipment: 'Pump A', site: 'S1', siteId: 's1', isolationPoints: [] },
       { id: 'p4', procedureCode: 'PRESS-DRAFT', status: 'draft', revision: 0, equipment: 'Press 4', site: 'S1', siteId: 's1', isolationPoints: [] },
+      { id: 'p5', procedureCode: 'FAN-1', status: 'approved', revision: 1, equipment: 'Fan 9', site: 'S1', siteId: 's1',
+        isolationPoints: [{ key: 'k1', energySource: 'electrical', devices: ['safety_padlock'] }],
+        lockSummary: { status: 'locked', lockedCount: 1, total: 1 } },
     ],
   }),
 }))
@@ -44,15 +47,21 @@ const mount = () => render(<MemoryRouter><NewPermit /></MemoryRouter>)
 beforeEach(() => { cleanup(); h.create.mockClear(); h.role = 'member' })
 
 describe('the permit request form', () => {
-  it('asks for equipment and an approved procedure only for maintenance and electrical work', () => {
+  it('asks for equipment and an approved procedure for every work type', () => {
     mount()
     expect(screen.queryByLabelText('Equipment')).toBeNull()
-    fireEvent.change(screen.getByLabelText('Work type'), { target: { value: 'other' } })
-    expect(screen.queryByLabelText('Equipment')).toBeNull()
+    expect(screen.queryByRole('option', { name: /tag-only/i })).toBeNull()
     fireEvent.change(screen.getByLabelText('Work type'), { target: { value: 'machine_maintenance' } })
     expect(screen.getByLabelText('Equipment')).toBeTruthy()
     fireEvent.change(screen.getByLabelText('Work type'), { target: { value: 'electrical_work' } })
     expect(screen.getByLabelText('Approved procedure')).toBeTruthy()
+  })
+
+  it('warns when the chosen equipment is already locked out', () => {
+    mount()
+    fireEvent.change(screen.getByLabelText('Work type'), { target: { value: 'electrical_work' } })
+    fireEvent.change(screen.getByLabelText('Equipment'), { target: { value: 's1::fan 9' } })
+    expect(screen.getByRole('status').textContent).toMatch(/already locked out/)
   })
 
   it('lists ONLY that equipment’s APPROVED procedures, and disables equipment with none', () => {

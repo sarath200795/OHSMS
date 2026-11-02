@@ -151,7 +151,7 @@ export async function generatePermitPdf(permit, { events = [], orgName = '' } = 
           p.scannedAt ? `${p.scannedAt}${p.scanMethod ? ` (${p.scanMethod})` : ''}` : '—',
           p.returnedAt || '—',
         ])
-      : [['No isolation points (area / tag-only permit)', '', '', '', '', '']],
+      : [['No isolation points', '', '', '', '', '']],
     styles: { fontSize: 8, cellPadding: 3, lineColor: BORDER, lineWidth: 0.5 },
     headStyles: { fillColor: STEEL, textColor: [255, 255, 255] },
     columnStyles: { 0: { cellWidth: 44, fontStyle: 'bold' } },

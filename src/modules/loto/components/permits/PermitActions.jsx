@@ -140,7 +140,7 @@ function Isolation({ orgId, permit, user }) {
     })
   }
 
-  // A permit with no isolation points (area / tag-only work) has nothing to scan.
+  // A permit written before every permit had isolation points has nothing to scan.
   return (
     <Panel title="Isolate and start">
       {points.length > 0 && (
