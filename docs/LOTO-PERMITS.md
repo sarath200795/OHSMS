@@ -51,6 +51,26 @@ match no update for them, so a closed permit is immutable. The table lives in
 `constants/permits.js` (drives the buttons) and `firestore.rules`
 (`lotoPermitUpdate`, the one that cannot be bypassed).
 
+## Shift window
+
+The window is a shift. Start and end are not typed. Defaults, until an Admin
+saves clocks for a site at `/loto/shifts` (`organizations/{orgId}/lotoSettings/shifts`):
+
+| Id | Clock |
+| --- | --- |
+| A | 06:00–14:00 |
+| B | 14:00–22:00 |
+| C | 22:00–06:00 (next day) |
+| general | 09:00–18:00 |
+
+A request can be raised from **30 minutes before** the shift starts until it
+ends. The rules (`lotoShiftOk`) check that lead and, for a default shift, the
+length (8 hours, or 9 for general). Once a site is saved, the rules also check
+the hour and minute against that site's clocks in the zone the Admin stored
+(minutes east of UTC). Only an Admin may extend past the shift end. The
+extension appends one record — who, when, the previous end, the new end, and a
+reason — and that list is the extension history.
+
 ## Who may do what
 
 | Action | Who |
