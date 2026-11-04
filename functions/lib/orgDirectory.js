@@ -23,9 +23,10 @@
 //
 // Last activity is the newest auditLogs `at`. Sites are the centre registry
 // (organizations/{orgId}/sites). Recent records are audit events inside the
-// window. A count that could not be read comes back null, never 0: a zero
-// here would read as "this customer has no sites" when the truth is that the
-// read failed.
+// window, and those events are grouped by the module (or action) already
+// stored on them. A count that could not be read comes back null, never 0:
+// a zero here would read as "this customer has no sites" when the truth is
+// that the read failed. An empty type list is a successful read of nothing.
 // ─────────────────────────────────────────────────────────────────────────────
 import { logger } from 'firebase-functions'
 import { HttpsError } from 'firebase-functions/v2/https'
@@ -34,6 +35,70 @@ export const ORG_READ_CAP = 1000
 export const USER_READ_CAP = 20000
 export const RECENT_WINDOW_MS = 30 * 24 * 60 * 60 * 1000
 export const RECENT_WINDOW_DAYS = 30
+// One query per organization. Past this, the type breakdown is the newest
+// events only and the row says so; the record count stays the exact aggregate.
+export const RECENT_EVENT_CAP = 400
+export const RECENT_LIST_LIMIT = 10
+const DESCRIPTION_MAX = 240
+
+// Labels for the module keys the audit log already writes. A key that is not
+// here is still counted — a new module must not vanish from the directory —
+// and titled from the key itself.
+export const ACTIVITY_TYPE_LABEL = {
+  incidents: 'Incidents',
+  inspections: 'Inspections',
+  ptw: 'Permits',
+  loto: 'LOTO',
+  hira: 'Risk assessment',
+  audit: 'Internal audit',
+  equipment: 'Equipment',
+  drills: 'Drills',
+  training: 'Training',
+  committee: 'Committee',
+  documents: 'Documents',
+  actions: 'Actions',
+  emergency: 'Emergency response',
+  objectives: 'Objectives',
+  weather: 'Weather',
+  cctv: 'CCTV',
+  stakeholder: 'Stakeholders',
+  users: 'User changes',
+  sites: 'Sites',
+  observations: 'Observations',
+  organization: 'Organization',
+  other: 'Other',
+}
+
+// When `module` was left as the default `core`, the type lives in the action
+// prefix the module wrote (`incident.create`, `user.status.update`).
+const ACTION_TYPE = [
+  [/^user(\.|$)/, 'users'],
+  [/^(incident|illness|injury)(\.|$)/, 'incidents'],
+  [/^inspection(\.|$)/, 'inspections'],
+  [/^(permit|ptw)(\.|$)/, 'ptw'],
+  [/^loto(\.|$)/, 'loto'],
+  [/^observation(\.|$)/, 'observations'],
+  [/^training(\.|$)/, 'training'],
+  [/^site(\.|$)/, 'sites'],
+  [/^org(\.|$)/, 'organization'],
+  [/^action(\.|$)/, 'actions'],
+  [/^stakeholder(\.|$)/, 'stakeholder'],
+  [/^(mockdrill|drill)(\.|$)/, 'drills'],
+  [/^(extinguisher|aed|fas|signage)(\.|$)/, 'equipment'],
+  [/^(hira|assessment)(\.|$)/, 'hira'],
+]
+
+const TARGET_TYPE = {
+  incident: 'incidents',
+  illness: 'incidents',
+  injury: 'incidents',
+  inspection: 'inspections',
+  permit: 'ptw',
+  loto: 'loto',
+  observation: 'observations',
+  user: 'users',
+  site: 'sites',
+}
 
 const ACTIVITY_CONCURRENCY = 8
 
@@ -92,6 +157,93 @@ export function toIso(value) {
 
 function text(value) {
   return typeof value === 'string' ? value.trim() : ''
+}
+
+function typeKey(value) {
+  const key = text(value).toLowerCase()
+  if (!key || key.length > 40 || /[^a-z0-9_-]/.test(key)) return ''
+  return key
+}
+
+function humanizeKey(value) {
+  const raw = String(value || '')
+    .replace(/[._-]+/g, ' ')
+    .trim()
+  if (!raw) return 'Other'
+  return raw.replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
+export function activityTypeLabel(type) {
+  return ACTIVITY_TYPE_LABEL[type] || humanizeKey(type)
+}
+
+/**
+ * Which product the audit entry belongs to.
+ *
+ * `module` is the field modules write on purpose. `core` is the default when
+ * a writer forgot it, so it is not a type — the action prefix is, and failing
+ * that the target. User changes stay "user changes" even when filed under
+ * core, because that is the question the directory is answering.
+ */
+export function activityTypeOf(entry) {
+  const action = text(entry?.action).toLowerCase()
+  if (/^user(\.|$)/.test(action)) return 'users'
+  const module = typeKey(entry?.module)
+  if (module && module !== 'core') return module
+  for (const [pattern, type] of ACTION_TYPE) {
+    if (pattern.test(action)) return type
+  }
+  const target = typeKey(entry?.target)
+  if (TARGET_TYPE[target]) return TARGET_TYPE[target]
+  return 'other'
+}
+
+function clip(value, max) {
+  const clean = value.replace(/\s+/g, ' ').trim()
+  if (clean.length <= max) return clean
+  return `${clean.slice(0, max - 1)}…`
+}
+
+function activityDescription(entry) {
+  const summary = text(entry?.summary)
+  if (summary) return clip(summary, DESCRIPTION_MAX)
+  const action = humanizeKey(entry?.action)
+  const label = text(entry?.targetLabel)
+  if (label && action && action !== 'Other') return clip(`${action} — ${label}`, DESCRIPTION_MAX)
+  if (label) return clip(label, DESCRIPTION_MAX)
+  if (action && action !== 'Other') return action
+  return 'Activity'
+}
+
+/**
+ * Counts and the newest events, from audit documents already limited to the
+ * window. Sorting is done here so a query that came back unsorted cannot put
+ * an older event in the "recent" list.
+ */
+export function summariseActivity(
+  events,
+  { truncated = false, listLimit = RECENT_LIST_LIMIT } = {}
+) {
+  const sorted = [...(events || [])].sort((a, b) => (toMillis(b?.at) ?? 0) - (toMillis(a?.at) ?? 0))
+  const counts = new Map()
+  for (const event of sorted) {
+    const type = activityTypeOf(event)
+    counts.set(type, (counts.get(type) || 0) + 1)
+  }
+  const activityTypes = [...counts.entries()]
+    .map(([type, count]) => ({ type, label: activityTypeLabel(type), count }))
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
+  const recentActivity = sorted.slice(0, listLimit).map((event) => {
+    const type = activityTypeOf(event)
+    return {
+      type,
+      label: activityTypeLabel(type),
+      description: activityDescription(event),
+      actor: text(event?.actorName) || 'Unknown',
+      at: toIso(event?.at),
+    }
+  })
+  return { activityTypes, recentActivity, activityTruncated: Boolean(truncated) }
 }
 
 /**
@@ -179,6 +331,24 @@ async function countRecentAudits(db, orgId, cutoff) {
   return snap.size
 }
 
+async function readRecentAudits(db, orgId, cutoff, cap) {
+  let q = db
+    .collection(`organizations/${orgId}/auditLogs`)
+    .where('at', '>=', cutoff)
+    .orderBy('at', 'desc')
+  if (typeof q.select === 'function') {
+    q = q.select('action', 'module', 'target', 'targetLabel', 'summary', 'actorName', 'at')
+  }
+  if (typeof q.limit === 'function') q = q.limit(cap + 1)
+  const snap = await q.get()
+  const docs = snap.docs || []
+  const truncated = docs.length > cap
+  return {
+    events: docs.slice(0, cap).map((doc) => ({ id: doc.id, ...(doc.data() || {}) })),
+    truncated,
+  }
+}
+
 async function latestAuditAt(db, orgId) {
   const snap = await db
     .collection(`organizations/${orgId}/auditLogs`)
@@ -217,6 +387,7 @@ export async function loadPlatformDirectory(db, opts = {}) {
   const orgCap = opts.orgCap || ORG_READ_CAP
   const userCap = opts.userCap || USER_READ_CAP
   const recentWindowMs = opts.recentWindowMs || RECENT_WINDOW_MS
+  const eventCap = opts.eventCap || RECENT_EVENT_CAP
   const concurrency = opts.concurrency || ACTIVITY_CONCURRENCY
   const cutoff = new Date(now - recentWindowMs)
 
@@ -269,16 +440,39 @@ export async function loadPlatformDirectory(db, opts = {}) {
   }
 
   const activity = await mapPool(safeOrgs, concurrency, async (org) => {
-    const result = { sites: null, recentRecords: null, lastActivityAt: null }
+    const result = {
+      sites: null,
+      recentRecords: null,
+      lastActivityAt: null,
+      activityTypes: null,
+      recentActivity: null,
+      activityTruncated: false,
+    }
     try {
       result.sites = await countPath(db, `organizations/${org.id}/sites`)
     } catch (err) {
       failures.push({ orgId: org.id, what: 'sites', error: err?.message || String(err) })
     }
+    let readCount = null
+    try {
+      const read = await readRecentAudits(db, org.id, cutoff, eventCap)
+      const summary = summariseActivity(read.events, { truncated: read.truncated })
+      result.activityTypes = summary.activityTypes
+      result.recentActivity = summary.recentActivity
+      result.activityTruncated = summary.activityTruncated
+      // A full page is not a total. Only an under-cap read can stand in for
+      // the aggregate when that aggregate itself failed.
+      readCount = read.truncated ? null : read.events.length
+    } catch (err) {
+      failures.push({ orgId: org.id, what: 'activityTypes', error: err?.message || String(err) })
+    }
     try {
       result.recentRecords = await countRecentAudits(db, org.id, cutoff)
     } catch (err) {
-      failures.push({ orgId: org.id, what: 'recentRecords', error: err?.message || String(err) })
+      result.recentRecords = readCount
+      if (readCount == null) {
+        failures.push({ orgId: org.id, what: 'recentRecords', error: err?.message || String(err) })
+      }
     }
     try {
       result.lastActivityAt = await latestAuditAt(db, org.id)
@@ -291,7 +485,14 @@ export async function loadPlatformDirectory(db, opts = {}) {
   const rows = safeOrgs.map((org, index) => {
     const members = membersByOrg.get(org.id) || []
     const headcount = summariseMembers(members)
-    const act = activity[index] || { sites: null, recentRecords: null, lastActivityAt: null }
+    const act = activity[index] || {
+      sites: null,
+      recentRecords: null,
+      lastActivityAt: null,
+      activityTypes: null,
+      recentActivity: null,
+      activityTruncated: false,
+    }
     return {
       id: org.id,
       name: org.name,
@@ -303,6 +504,9 @@ export async function loadPlatformDirectory(db, opts = {}) {
         sites: act.sites,
         recentRecords: act.recentRecords,
       },
+      activityTypes: act.activityTypes,
+      recentActivity: act.recentActivity,
+      activityTruncated: act.activityTruncated,
       admins: projectAdmins(members),
     }
   })

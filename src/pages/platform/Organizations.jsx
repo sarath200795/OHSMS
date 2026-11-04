@@ -29,12 +29,92 @@ import {
   STATUS_TONE,
   activityFacts,
   activityLine,
+  activityTypeOptions,
   filterOrganizations,
   mailHref,
   organizationTitle,
+  topActivityTypes,
 } from './directoryQuery'
 
-function ActivityDetails({ row, windowDays }) {
+function TypeSummary({ types }) {
+  if (types == null) {
+    return <p className="text-[12.5px] text-ink-400">Activity types unavailable</p>
+  }
+  if (!types.length) {
+    return <p className="text-[12.5px] text-ink-400">No activity in this window</p>
+  }
+  const top = topActivityTypes(types)
+  const rest = types.length - top.length
+  return (
+    <p className="text-[12.5px] leading-snug text-ink-800">
+      {top.map((entry) => `${entry.label} ${entry.count}`).join(' · ')}
+      {rest > 0 ? ` · +${rest}` : ''}
+    </p>
+  )
+}
+
+function ActivityPanel({ row, windowDays, id }) {
+  const types = row.activityTypes
+  const recent = row.recentActivity
+  return (
+    <div id={id} className="grid gap-4 lg:grid-cols-2">
+      <div>
+        <h3 className="text-[11px] font-semibold uppercase tracking-wide text-ink-400">
+          Activity in the last {windowDays} days
+        </h3>
+        {types == null ? (
+          <p className="mt-2 text-[13px] text-ink-500">Activity types could not be read.</p>
+        ) : types.length === 0 ? (
+          <p className="mt-2 text-[13px] text-ink-500">No activity in this window.</p>
+        ) : (
+          <ul className="mt-2 flex flex-wrap gap-2">
+            {types.map((entry) => (
+              <li key={entry.type}>
+                <Badge tone="brand">
+                  {entry.label} {entry.count}
+                </Badge>
+              </li>
+            ))}
+          </ul>
+        )}
+        {row.activityTruncated ? (
+          <p className="mt-2 text-[12px] text-ink-500">
+            These types are the newest events in the window, not every one. The record count is the
+            full total.
+          </p>
+        ) : null}
+      </div>
+      <div>
+        <h3 className="text-[11px] font-semibold uppercase tracking-wide text-ink-400">
+          Recent activity
+        </h3>
+        {recent == null ? (
+          <p className="mt-2 text-[13px] text-ink-500">Recent activity could not be read.</p>
+        ) : recent.length === 0 ? (
+          <p className="mt-2 text-[13px] text-ink-500">Nothing in this window.</p>
+        ) : (
+          <ol className="mt-2 space-y-3">
+            {recent.map((item, index) => (
+              <li key={`${item.at || 'event'}-${index}`} className="min-w-0">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-400">
+                  {item.label}
+                </p>
+                <p className="text-[13px] text-ink-900">{item.description}</p>
+                <p className="text-[12px] text-ink-500">
+                  {item.actor || 'Unknown'}
+                  {' · '}
+                  {item.at ? formatDateTime(item.at) : '—'}
+                </p>
+              </li>
+            ))}
+          </ol>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function ActivityDetails({ row, windowDays, open, onToggle, panelId }) {
   return (
     <div className="space-y-1.5">
       <Badge tone={STATUS_TONE[row.status] || 'gray'}>
@@ -50,6 +130,17 @@ function ActivityDetails({ row, windowDays }) {
       <p className="text-[12.5px] leading-snug text-ink-700">
         {activityLine(row.counts, windowDays)}
       </p>
+      <TypeSummary types={row.activityTypes} />
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={panelId}
+        onClick={onToggle}
+        className="text-[12.5px] font-semibold text-brand-700 underline-offset-2 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-400"
+      >
+        {open ? 'Hide activity' : 'Show activity'}
+        <span className="sr-only"> for {organizationTitle(row)}</span>
+      </button>
     </div>
   )
 }
@@ -140,7 +231,7 @@ function AdminList({ admins }) {
   )
 }
 
-function OrgCard({ row, windowDays }) {
+function OrgCard({ row, windowDays, open, onToggle, panelId }) {
   return (
     <article className="card p-4">
       <div className="flex items-start justify-between gap-3">
@@ -172,12 +263,30 @@ function OrgCard({ row, windowDays }) {
           </div>
         ))}
       </dl>
+      <div className="mt-3">
+        <TypeSummary types={row.activityTypes} />
+      </div>
       <h3 className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-ink-400">
         Admins
       </h3>
       <div className="mt-1.5">
         <AdminList admins={row.admins} />
       </div>
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={panelId}
+        onClick={onToggle}
+        className="mt-3 text-[12.5px] font-semibold text-brand-700 underline-offset-2 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-400"
+      >
+        {open ? 'Hide activity' : 'Show activity'}
+        <span className="sr-only"> for {organizationTitle(row)}</span>
+      </button>
+      {open ? (
+        <div className="mt-3 border-t border-ink-100 pt-3">
+          <ActivityPanel id={panelId} row={row} windowDays={windowDays} />
+        </div>
+      ) : null}
     </article>
   )
 }
@@ -189,6 +298,8 @@ export default function Organizations() {
   const [nameQuery, setNameQuery] = useState('')
   const [emailQuery, setEmailQuery] = useState('')
   const [status, setStatus] = useState('all')
+  const [activityType, setActivityType] = useState('all')
+  const [openIds, setOpenIds] = useState({})
 
   useEffect(() => {
     let live = true
@@ -214,11 +325,21 @@ export default function Organizations() {
   const windowDays = data?.recentWindowDays || 30
   const allRows = data?.rows
   const rows = useMemo(
-    () => filterOrganizations(allRows || [], { name: nameQuery, email: emailQuery, status }),
-    [allRows, nameQuery, emailQuery, status]
+    () =>
+      filterOrganizations(allRows || [], {
+        name: nameQuery,
+        email: emailQuery,
+        status,
+        activityType,
+      }),
+    [allRows, nameQuery, emailQuery, status, activityType]
   )
+  const typeOptions = useMemo(() => activityTypeOptions(allRows), [allRows])
   const total = allRows?.length || 0
-  const filtering = Boolean(nameQuery.trim() || emailQuery.trim() || status !== 'all')
+  const filtering = Boolean(
+    nameQuery.trim() || emailQuery.trim() || status !== 'all' || activityType !== 'all'
+  )
+  const toggle = (id) => setOpenIds((prev) => ({ ...prev, [id]: !prev[id] }))
   const loading = data === null && !error
 
   return (
@@ -268,7 +389,7 @@ export default function Organizations() {
       ) : null}
 
       <Card className="mb-4">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_180px_auto] lg:items-end">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <Field label="Organization name">
             <Input
               value={nameQuery}
@@ -295,23 +416,32 @@ export default function Organizations() {
               ))}
             </Select>
           </Field>
-          {filtering ? (
-            <Button
-              type="button"
-              variant="ghost"
-              className="lg:mb-0.5"
-              onClick={() => {
-                setNameQuery('')
-                setEmailQuery('')
-                setStatus('all')
-              }}
-            >
-              Clear
-            </Button>
-          ) : (
-            <span className="hidden lg:block" />
-          )}
+          <Field label="Activity type">
+            <Select value={activityType} onChange={(e) => setActivityType(e.target.value)}>
+              <option value="all">All types</option>
+              {typeOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </Select>
+          </Field>
         </div>
+        {filtering ? (
+          <Button
+            type="button"
+            variant="ghost"
+            className="mt-3"
+            onClick={() => {
+              setNameQuery('')
+              setEmailQuery('')
+              setStatus('all')
+              setActivityType('all')
+            }}
+          >
+            Clear
+          </Button>
+        ) : null}
         {!error && (
           <p className="mt-3 flex items-center gap-2 text-[12.5px] text-ink-500" aria-live="polite">
             <Search size={14} className="text-ink-400" aria-hidden="true" />
@@ -332,7 +462,7 @@ export default function Organizations() {
           title={filtering ? 'No organizations match' : 'No organizations'}
           description={
             filtering
-              ? 'Nothing matches that name, admin email, or status.'
+              ? 'Nothing matches that name, admin email, status, or activity type.'
               : 'No organization has registered yet.'
           }
         />
@@ -359,34 +489,57 @@ export default function Organizations() {
                   </th>
                 </tr>
               </thead>
-              <tbody>
-                {rows.map((row) => (
-                  <tr key={row.id} className="align-top">
-                    <th scope="row" className="px-4 py-3 text-left font-semibold text-ink-900">
-                      <span className="block">{organizationTitle(row)}</span>
-                      <span className="mt-0.5 block font-mono text-[11px] font-normal text-ink-400">
-                        {row.id}
-                      </span>
-                    </th>
-                    <td className="px-4 py-3">
-                      <ActivityDetails row={row} windowDays={windowDays} />
-                    </td>
-                    <td className="px-4 py-3">
-                      <AdminNames admins={row.admins} />
-                    </td>
-                    <td className="px-4 py-3">
-                      <AdminEmails admins={row.admins} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
+              {rows.map((row, index) => {
+                const panelId = `org-activity-table-${index}`
+                const open = Boolean(openIds[row.id])
+                return (
+                  <tbody key={row.id}>
+                    <tr className="align-top">
+                      <th scope="row" className="px-4 py-3 text-left font-semibold text-ink-900">
+                        <span className="block">{organizationTitle(row)}</span>
+                        <span className="mt-0.5 block font-mono text-[11px] font-normal text-ink-400">
+                          {row.id}
+                        </span>
+                      </th>
+                      <td className="px-4 py-3">
+                        <ActivityDetails
+                          row={row}
+                          windowDays={windowDays}
+                          open={open}
+                          onToggle={() => toggle(row.id)}
+                          panelId={panelId}
+                        />
+                      </td>
+                      <td className="px-4 py-3">
+                        <AdminNames admins={row.admins} />
+                      </td>
+                      <td className="px-4 py-3">
+                        <AdminEmails admins={row.admins} />
+                      </td>
+                    </tr>
+                    {open ? (
+                      <tr>
+                        <td colSpan={4} className="bg-white/50 px-4 py-4">
+                          <ActivityPanel id={panelId} row={row} windowDays={windowDays} />
+                        </td>
+                      </tr>
+                    ) : null}
+                  </tbody>
+                )
+              })}
             </table>
           </TableWrap>
 
           <ul className="space-y-3 md:hidden" aria-label="Organizations">
-            {rows.map((row) => (
+            {rows.map((row, index) => (
               <li key={row.id}>
-                <OrgCard row={row} windowDays={windowDays} />
+                <OrgCard
+                  row={row}
+                  windowDays={windowDays}
+                  open={Boolean(openIds[row.id])}
+                  onToggle={() => toggle(row.id)}
+                  panelId={`org-activity-card-${index}`}
+                />
               </li>
             ))}
           </ul>

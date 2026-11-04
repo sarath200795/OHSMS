@@ -66,6 +66,15 @@ describe('filterOrganizations', () => {
     expect(filterOrganizations(rows, { status: 'all' })).toHaveLength(3)
   })
 
+  it('keeps an organization only when that activity type was recorded', () => {
+    const typed = [
+      { ...rows[0], activityTypes: [{ type: 'incidents', label: 'Incidents', count: 2 }] },
+      { ...rows[1], activityTypes: [{ type: 'loto', label: 'LOTO', count: 1 }] },
+    ]
+    expect(filterOrganizations(typed, { activityType: 'loto' }).map((row) => row.id)).toEqual(['b'])
+    expect(filterOrganizations(typed, { name: 'acme', activityType: 'loto' })).toEqual([])
+  })
+
   it('names a blank organization rather than rendering an empty heading', () => {
     expect(organizationTitle(rows[2])).toBe('Unnamed organization')
   })

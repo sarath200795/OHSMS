@@ -123,6 +123,13 @@ active or suspended. The page reports what is already there:
 - the newest `auditLogs` `at`, which is the last activity
 - counts of users (by that status), sites (the centre registry), and audit
   events in the last 30 days
+- those events grouped by type: the `module` written on the entry
+  (incidents, inspections, permits, LOTO, and whatever else a module
+  records). User-administration actions are their own type even when the
+  module field is `core`. The newest ten in the window come back with a
+  short description, the actor's name and the time. A row shows the top
+  types; opening it shows the full breakdown. The page can be filtered to
+  organizations that recorded a chosen type in that window.
 
 A count that could not be read is shown as unavailable. Zero would mean the
 customer has none, and a failed read is not that.
@@ -135,8 +142,8 @@ the profile. `listPlatformOrganizations` is a callable: it checks
 `platformAdmins/{uid}` with the Admin SDK and returns only the fields above.
 The request carries no organization id.
 
-The page can be filtered by organization name and by admin email. Both apply
-together.
+The page can be filtered by organization name, by admin email, and by
+activity type. Each one that is filled in applies.
 
 ## What this is not
 

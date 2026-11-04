@@ -1,10 +1,12 @@
 import { describe, it, expect } from 'vitest'
 import {
+  activityTypeOf,
   listPlatformOrganizationsFor,
   loadPlatformDirectory,
   membershipStatus,
   projectAdmins,
   safeDocId,
+  summariseActivity,
   summariseMembers,
   toIso,
   toMillis,
@@ -172,6 +174,89 @@ describe('membership', () => {
   })
 })
 
+describe('activity types', () => {
+  it('uses the module the entry was written with, and user changes even under core', () => {
+    expect(activityTypeOf({ module: 'incidents', action: 'record.create' })).toBe('incidents')
+    expect(activityTypeOf({ module: 'ptw', action: 'permit.approve' })).toBe('ptw')
+    expect(activityTypeOf({ module: 'loto', action: 'loto.apply' })).toBe('loto')
+    expect(activityTypeOf({ module: 'inspections', action: 'inspection.create' })).toBe(
+      'inspections'
+    )
+    expect(activityTypeOf({ module: 'core', action: 'user.status.update' })).toBe('users')
+    expect(activityTypeOf({ action: 'incident.create' })).toBe('incidents')
+    expect(activityTypeOf({ module: 'core', action: 'record.create', target: 'permit' })).toBe(
+      'ptw'
+    )
+    expect(activityTypeOf({ module: 'core', action: 'record.create', target: 'observation' })).toBe(
+      'observations'
+    )
+    expect(activityTypeOf({ module: 'not a type!' })).toBe('other')
+  })
+
+  it('counts the window it was given, keeps the newest ten, and drops every other field', () => {
+    const summary = summariseActivity(
+      [
+        {
+          at: new Date('2026-11-01T00:00:00.000Z'),
+          module: 'incidents',
+          action: 'incident.create',
+          summary: 'Filed a near miss',
+          actorName: 'Ada Admin',
+          actorUid: 'ada',
+          narrative: 'left knee, do not return this',
+        },
+        {
+          at: new Date('2026-11-03T00:00:00.000Z'),
+          module: 'core',
+          action: 'user.role.update',
+          summary: 'Set role → manager',
+          actorName: 'Bea',
+        },
+        {
+          at: new Date('2026-11-02T00:00:00.000Z'),
+          module: 'loto',
+          action: 'loto.apply',
+          targetLabel: 'Pump P-2',
+          actorName: 'Sam',
+        },
+        {
+          at: new Date('2026-10-01T00:00:00.000Z'),
+          module: 'ptw',
+          action: 'permit.create',
+          summary: 'Hot work',
+          actorName: 'Ada',
+        },
+      ],
+      { listLimit: 2 }
+    )
+    expect(summary.activityTypes).toEqual([
+      { type: 'incidents', label: 'Incidents', count: 1 },
+      { type: 'loto', label: 'LOTO', count: 1 },
+      { type: 'ptw', label: 'Permits', count: 1 },
+      { type: 'users', label: 'User changes', count: 1 },
+    ])
+    expect(summary.recentActivity).toEqual([
+      {
+        type: 'users',
+        label: 'User changes',
+        description: 'Set role → manager',
+        actor: 'Bea',
+        at: '2026-11-03T00:00:00.000Z',
+      },
+      {
+        type: 'loto',
+        label: 'LOTO',
+        description: 'Loto Apply — Pump P-2',
+        actor: 'Sam',
+        at: '2026-11-02T00:00:00.000Z',
+      },
+    ])
+    expect(JSON.stringify(summary)).not.toContain('left knee')
+    expect(JSON.stringify(summary)).not.toContain('ada')
+    expect(summary.activityTruncated).toBe(false)
+  })
+})
+
 describe('toMillis', () => {
   it('reads a Timestamp-shaped value and refuses a non-date', () => {
     const ms = Date.parse('2024-03-04T05:06:07.000Z')
@@ -311,6 +396,24 @@ describe('listPlatformOrganizationsFor', () => {
         sites: 2,
         recentRecords: 2,
       },
+      activityTypes: [{ type: 'other', label: 'Other', count: 2 }],
+      recentActivity: [
+        {
+          type: 'other',
+          label: 'Other',
+          description: 'New',
+          actor: 'Unknown',
+          at: new Date(NOW - 2 * DAY).toISOString(),
+        },
+        {
+          type: 'other',
+          label: 'Other',
+          description: 'Mid',
+          actor: 'Unknown',
+          at: new Date(NOW - 10 * DAY).toISOString(),
+        },
+      ],
+      activityTruncated: false,
       admins: [
         { uid: 'ada', name: 'Ada Admin', email: 'Ada@acme.test', status: 'approved' },
         { uid: 'bea', name: 'Bea Admin', email: 'bea@acme.test', status: 'suspended' },
@@ -327,6 +430,8 @@ describe('listPlatformOrganizationsFor', () => {
     expect(beacon.counts.approved).toBe(1)
     expect(beacon.counts.sites).toBe(1)
     expect(beacon.counts.recentRecords).toBe(0)
+    expect(beacon.activityTypes).toEqual([])
+    expect(beacon.recentActivity).toEqual([])
     expect(beacon.lastActivityAt).toBe(null)
     expect(beacon.admins).toEqual([
       { uid: 'legacy', name: 'Legacy Admin', email: 'legacy@beacon.test', status: null },
@@ -397,6 +502,8 @@ describe('listPlatformOrganizationsFor', () => {
     expect(out.partial).toBe(true)
     expect(out.rows[0].counts.sites).toBe(null)
     expect(out.rows[0].counts.recentRecords).toBe(null)
+    expect(out.rows[0].activityTypes).toBe(null)
+    expect(out.rows[0].recentActivity).toBe(null)
     expect(out.rows[0].lastActivityAt).toBe(null)
     expect(out.rows[0].counts.users).toBe(1)
     expect(out.failures).toBeUndefined()
@@ -426,5 +533,50 @@ describe('listPlatformOrganizationsFor', () => {
     expect(out.partial).toBe(true)
     expect(out.rows.map((row) => row.id)).toEqual(['ok'])
     expect(db.collections.some((name) => name.includes('a/b'))).toBe(false)
+  })
+
+  it('groups the last 30 days by type and does not let an older event into the breakdown', async () => {
+    const db = granted({
+      'organizations/orgA': { name: 'Acme' },
+      'organizations/orgA/auditLogs/old': {
+        at: new Date(NOW - 40 * DAY),
+        module: 'inspections',
+        action: 'inspection.create',
+        summary: 'Outside the window',
+        actorName: 'Ada',
+      },
+      'organizations/orgA/auditLogs/inc': {
+        at: new Date(NOW - DAY),
+        module: 'incidents',
+        action: 'incident.create',
+        summary: 'Filed a near miss',
+        actorName: 'Ada Admin',
+        narrative: 'do not return this',
+      },
+      'organizations/orgA/auditLogs/user': {
+        at: new Date(NOW - 3 * DAY),
+        module: 'core',
+        action: 'user.status.update',
+        summary: 'Set status → suspended',
+        actorName: 'Bea',
+      },
+      'organizations/orgA/auditLogs/loto': {
+        at: new Date(NOW - 2 * DAY),
+        module: 'loto',
+        action: 'loto.apply',
+        targetLabel: 'Pump P-2',
+        actorName: 'Sam',
+      },
+    })
+    const out = await listPlatformOrganizationsFor(db, OPERATOR, { now: NOW, eventCap: 2 })
+    const row = out.rows[0]
+    expect(row.counts.recentRecords).toBe(3)
+    expect(row.lastActivityAt).toBe(new Date(NOW - DAY).toISOString())
+    expect(row.activityTruncated).toBe(true)
+    expect(row.activityTypes.map((type) => type.type).sort()).toEqual(['incidents', 'loto'])
+    expect(row.recentActivity).toHaveLength(2)
+    expect(row.recentActivity[0].description).toBe('Filed a near miss')
+    expect(JSON.stringify(row)).not.toContain('do not return this')
+    expect(JSON.stringify(row)).not.toContain('Outside the window')
   })
 })

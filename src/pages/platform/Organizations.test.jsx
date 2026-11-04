@@ -33,6 +33,20 @@ const directory = {
         sites: 3,
         recentRecords: 2,
       },
+      activityTypes: [
+        { type: 'incidents', label: 'Incidents', count: 3 },
+        { type: 'ptw', label: 'Permits', count: 1 },
+      ],
+      recentActivity: [
+        {
+          type: 'incidents',
+          label: 'Incidents',
+          description: 'Filed a near miss',
+          actor: 'Alex Admin',
+          at: '2026-11-02T08:30:00.000Z',
+        },
+      ],
+      activityTruncated: false,
       admins: [
         { uid: 'ada', name: 'Ada Admin', email: 'ada@acme.test', status: 'approved' },
         { uid: 'bea', name: 'Bea Admin', email: 'bea@other.test', status: 'suspended' },
@@ -53,6 +67,9 @@ const directory = {
         sites: 0,
         recentRecords: 0,
       },
+      activityTypes: [{ type: 'loto', label: 'LOTO', count: 2 }],
+      recentActivity: [],
+      activityTruncated: false,
       admins: [{ uid: 'sam', name: 'Sam Quiet', email: 'sam@beacon.test', status: 'suspended' }],
     },
   ],
@@ -80,6 +97,8 @@ describe('Organizations', () => {
     )
     expect(within(table).getByRole('link', { name: 'bea@other.test' })).toBeTruthy()
     expect(within(table).getByText(/3 sites/)).toBeTruthy()
+    expect(within(table).getByText(/Incidents 3/)).toBeTruthy()
+    expect(within(table).getByText(/LOTO 2/)).toBeTruthy()
     expect(
       within(table).getByText(`Created ${formatDate('2024-01-15T00:00:00.000Z')}`)
     ).toBeTruthy()
@@ -112,6 +131,21 @@ describe('Organizations', () => {
     fireEvent.change(screen.getByLabelText('Admin email'), { target: { value: 'SAM@beacon' } })
     expect(screen.getByRole('rowheader', { name: /Beacon Health/ })).toBeTruthy()
     expect(screen.queryByRole('rowheader', { name: /Acme Fitness/ })).not.toBeTruthy()
+  })
+
+  it('opens the activity breakdown and filters organizations by type', async () => {
+    render(<Organizations />)
+    const table = await screen.findByRole('table')
+    fireEvent.click(within(table).getByRole('button', { name: 'Show activity for Acme Fitness' }))
+    expect(within(table).getByText('Filed a near miss')).toBeTruthy()
+    expect(
+      within(table).getByRole('button', { name: 'Hide activity for Acme Fitness' })
+    ).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText('Activity type'), { target: { value: 'loto' } })
+    expect(screen.getByRole('rowheader', { name: /Beacon Health/ })).toBeTruthy()
+    expect(screen.queryByRole('rowheader', { name: /Acme Fitness/ })).toBeNull()
+    expect(screen.getByText('1 of 2 organizations')).toBeTruthy()
   })
 
   it('says when the read was short instead of presenting a partial list as complete', async () => {

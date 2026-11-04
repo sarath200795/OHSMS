@@ -35,7 +35,10 @@ export function organizationTitle(row) {
  * Both filters apply together. An empty box does not constrain that side,
  * so typing only an email still searches every organization.
  */
-export function filterOrganizations(rows, { name = '', email = '', status = 'all' } = {}) {
+export function filterOrganizations(
+  rows,
+  { name = '', email = '', status = 'all', activityType = 'all' } = {}
+) {
   const nameQuery = String(name || '')
     .trim()
     .toLowerCase()
@@ -53,8 +56,32 @@ export function filterOrganizations(rows, { name = '', email = '', status = 'all
       )
       if (!hit) return false
     }
+    if (activityType && activityType !== 'all') {
+      const typed = (row?.activityTypes || []).some(
+        (entry) => entry?.type === activityType && entry.count > 0
+      )
+      if (!typed) return false
+    }
     return true
   })
+}
+
+/** Types that actually occurred, so the filter only offers something to find. */
+export function activityTypeOptions(rows) {
+  const labels = new Map()
+  for (const row of rows || []) {
+    for (const entry of row?.activityTypes || []) {
+      if (!entry?.type || !entry.count) continue
+      if (!labels.has(entry.type)) labels.set(entry.type, entry.label || entry.type)
+    }
+  }
+  return [...labels.entries()]
+    .map(([value, label]) => ({ value, label }))
+    .sort((a, b) => a.label.localeCompare(b.label))
+}
+
+export function topActivityTypes(types, limit = 3) {
+  return (types || []).filter((entry) => entry?.count > 0).slice(0, limit)
 }
 
 /** A mailto href, or null when the address would break out of the link. */

@@ -442,7 +442,10 @@ export async function fetchSiteWeather({ lat, lng } = {}) {
  * this was a tenant-scoped read. It is not.
  *
  * `{ rows, recentWindowDays, truncated, orgTruncated, userTruncated, partial }`.
- * A null count means that read failed. It is not a zero.
+ * Each row's `activityTypes` is the last 30 days of audit events grouped by
+ * the module (or, for user administration, by that action). `recentActivity`
+ * is the newest of those. A null count, or a null type list, means that read
+ * failed. It is not a zero.
  */
 export async function listPlatformOrganizations() {
   const fn = await callable('listPlatformOrganizations', { timeout: 120_000 })
