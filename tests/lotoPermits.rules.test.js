@@ -463,6 +463,17 @@ describe('procedure approval stays Admin or Safety', () => {
   })
 })
 
+  it('refuses a member changing a lock’s service status', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'locks', 'lk1'), { orgId: ORG, lockNo: 'D-9', serviceStatus: 'available' })
+    })
+    await assertFails(updateDoc(doc(as('req'), 'locks', 'lk1'), { serviceStatus: 'out_of_service' }))
+    await assertSucceeds(updateDoc(doc(as('adm'), 'locks', 'lk1'), {
+      serviceStatus: 'out_of_service', tagNo: 'T-9', color: 'red',
+      history: [{ at: 1, action: 'out_of_service', by: 'adm' }],
+    }))
+  })
+
 describe('reading', () => {
   it('lets members of the org read, refuses other tenants and the unauthenticated', async () => {
     await seed('requested')

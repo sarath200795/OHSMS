@@ -21,7 +21,7 @@ export default function LockInventory() {
   const { locks, loading } = useLocks()
   const { technicians } = useTechnicians()
   const { procedures } = useOrgProcedures()
-  const [form, setForm] = useState({ lockNo: '', type: 'department' })
+  const [form, setForm] = useState({ lockNo: '', type: 'department', tagNo: '', color: 'red' })
   const [saving, setSaving] = useState(false)
 
   const inUse = useMemo(() => collectInUseLockNos(procedures), [procedures])
@@ -55,8 +55,8 @@ export default function LockInventory() {
     }
     setSaving(true)
     try {
-      await addLock({ orgId: profile.orgId, lockNo: form.lockNo, type: 'department' }, profile)
-      setForm({ lockNo: '', type: 'department' })
+      await addLock({ orgId: profile.orgId, lockNo: form.lockNo, type: 'department', tagNo: form.tagNo, color: form.color }, profile)
+      setForm({ lockNo: '', type: 'department', tagNo: '', color: 'red' })
       toast.success('Department lock added')
     } catch (err) {
       toastCaught(err, 'Could not add lock')
@@ -73,6 +73,18 @@ export default function LockInventory() {
       toast.success('Removed')
     } catch (err) {
       toastCaught(err, 'Could not remove')
+    }
+  }
+
+  async function toggleService(l) {
+    const next = l.serviceStatus === 'out_of_service' ? 'available' : 'out_of_service'
+    try {
+      await updateLock(l.id, {
+        serviceStatus: next,
+        history: [...(l.history || []), { at: Date.now(), action: next, by: profile.id }],
+      })
+    } catch (err) {
+      toastCaught(err, 'Update failed')
     }
   }
 
@@ -100,7 +112,7 @@ export default function LockInventory() {
       />
 
       <Card animate={false} className="mt-6 !p-5">
-        <form onSubmit={onAdd} className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+        <form onSubmit={onAdd} className="grid gap-3 sm:grid-cols-2">
           <Input
             label="Department lock No."
             value={form.lockNo}
@@ -108,9 +120,27 @@ export default function LockInventory() {
             placeholder="DEPT-07"
             className="font-mono tracking-wide"
           />
-          <Button type="submit" loading={saving}>
-            Add department lock
-          </Button>
+          <Input
+            label="Tag number"
+            value={form.tagNo}
+            onChange={(e) => setForm((f) => ({ ...f, tagNo: e.target.value }))}
+            placeholder="RED-07"
+          />
+          <label className="block text-sm text-steel-200">
+            Colour
+            <select
+              className="input mt-1 w-full"
+              value={form.color}
+              onChange={(e) => setForm((f) => ({ ...f, color: e.target.value }))}
+            >
+              {['red', 'blue', 'green', 'yellow', 'orange', 'purple'].map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+          </label>
+          <div className="flex items-end">
+            <Button type="submit" loading={saving}>Add department lock</Button>
+          </div>
         </form>
         <p className="mt-2 text-xs text-steel-400">
           Personal locks are added automatically from each technician’s dedicated lock no. in the{' '}
@@ -154,6 +184,14 @@ export default function LockInventory() {
                         >
                           {l.type === 'department' ? 'Department' : 'Personal'}
                         </Badge>
+                        {l.tagNo && (
+                          <span className="text-xs text-steel-300">tag {l.tagNo}</span>
+                        )}
+                        {l.serviceStatus === 'out_of_service' && (
+                          <span className="rounded bg-steel-800 px-1.5 py-0.5 text-[10px] font-bold text-steel-300">
+                            OUT OF SERVICE
+                          </span>
+                        )}
                         {l.source === 'technician' && (
                           <span className="truncate text-xs font-medium text-steel-400">
                             👤 {l.techName || 'Technician'}
@@ -186,6 +224,13 @@ export default function LockInventory() {
                         </span>
                       ) : (
                         <>
+                          <button
+                            type="button"
+                            onClick={() => toggleService(l)}
+                            className="rounded-lg border border-steel-700 px-2.5 py-1 text-xs font-medium text-steel-300 hover:border-steel-500"
+                          >
+                            {l.serviceStatus === 'out_of_service' ? 'Return to service' : 'Out of service'}
+                          </button>
                           <button
                             onClick={() => toggleActive(l)}
                             className="rounded-lg border border-steel-700 px-2.5 py-1 text-xs font-medium text-steel-300 hover:border-steel-500"

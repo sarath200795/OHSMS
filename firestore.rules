@@ -1327,7 +1327,15 @@ service cloud.firestore {
             || isAdminOf(resource.data.orgId)
             || (request.resource.data.get('licenceExp', null) == resource.data.get('licenceExp', null)
                 && request.resource.data.get('licenceNo', '') == resource.data.get('licenceNo', '')
-                && request.resource.data.get('licencePhotoPath', '') == resource.data.get('licencePhotoPath', '')));
+                && request.resource.data.get('licencePhotoPath', '') == resource.data.get('licencePhotoPath', '')))
+        && (legacyCol != 'locks'
+            || isAdminOf(resource.data.orgId)
+            || (request.resource.data.get('tagNo', '') == resource.data.get('tagNo', '')
+                && request.resource.data.get('color', '') == resource.data.get('color', '')
+                && request.resource.data.get('serviceStatus', 'available') == resource.data.get('serviceStatus', 'available')
+                && request.resource.data.get('useCount', 0) == resource.data.get('useCount', 0)
+                && request.resource.data.get('openPermitId', '') == resource.data.get('openPermitId', '')
+                && request.resource.data.get('history', []) == resource.data.get('history', [])));
       // A procedure a live permit has locked is not deletable: the permit would
       // be left active against a document that no longer exists, with its
       // padlock claims stranded.
