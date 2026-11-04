@@ -6,7 +6,8 @@
 import { PROCEDURE_STATUS } from '../constants/procedures'
 import { pointDeviceKeys } from '../constants/energySources'
 import { numberIsolationPoints } from './codes'
-import { LIMITS, MIN_REASON_LENGTH, workTypeByKey } from '../constants/permits'
+import { LIMITS, MIN_REASON_LENGTH, SHIFT_PRESETS, workTypeByKey } from '../constants/permits'
+import { shiftRequestProblem } from './shiftWindow'
 import { windowProblem } from './permitWindow'
 
 const clean = (v) => (typeof v === 'string' ? v.trim() : '')
@@ -139,8 +140,23 @@ export function validateDraft(draft, ctx = {}) {
     errors.reason = `Keep the description under ${LIMITS.text} characters.`
   }
 
-  const win = windowProblem(draft?.windowStartMs, draft?.windowEndMs, { nowMs: ctx.nowMs })
-  if (win) errors.window = win
+  // A chosen shift fixes the window. A draft that has not chosen one yet is
+  // still checked as a plain span, so older callers keep working.
+  if (draft?.shift) {
+    const shiftErr = shiftRequestProblem({
+      shiftId: draft.shift,
+      shifts: ctx.shifts || SHIFT_PRESETS,
+      nowMs: ctx.nowMs,
+      windowStartMs: draft.windowStartMs,
+      windowEndMs: draft.windowEndMs,
+      leadMinutes: ctx.leadMinutes,
+      zoneOffsetMinutes: ctx.zoneOffsetMinutes ?? null,
+    })
+    if (shiftErr) errors.window = shiftErr
+  } else {
+    const win = windowProblem(draft?.windowStartMs, draft?.windowEndMs, { nowMs: ctx.nowMs })
+    if (win) errors.window = win
+  }
 
   const internal = Array.isArray(draft?.internalPersonnel) ? draft.internalPersonnel : []
   const vendors = Array.isArray(draft?.vendorWorkers) ? draft.vendorWorkers : []

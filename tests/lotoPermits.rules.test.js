@@ -246,6 +246,45 @@ describe('raising a permit', () => {
     await assertFails(raise(as('req'), { windowStart: ts(5 * H), windowEnd: ts(1 * H) }))
   })
 
+  it('refuses a window that is not a default shift or that opens too early', async () => {
+    await assertFails(raise(as('req'), { shift: 'custom' }))
+    // Seven hours is not shift A (eight) or general (nine).
+    await assertFails(raise(as('req'), { windowStart: ts(-1 * H), windowEnd: ts(6 * H) }))
+    // Starts two hours from now: outside the 30-minute lead.
+    await assertFails(raise(as('req'), { windowStart: ts(2 * H), windowEnd: ts(10 * H) }))
+  })
+
+  it('accepts a saved site shift whose clocks match, and refuses a different clock', async () => {
+    const start = new Date()
+    start.setUTCSeconds(0, 0)
+    start.setUTCMinutes(start.getUTCMinutes() - 10)
+    const end = new Date(start.getTime() + 3 * H)
+    const pad = (n) => String(n).padStart(2, '0')
+    const hm = (d) => `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'organizations', ORG, 'lotoSettings', 'shifts'), {
+        sites: {
+          s1: {
+            zoneOffsetMinutes: 0,
+            shifts: { S: { start: hm(start), end: hm(end), label: 'S' } },
+          },
+        },
+      })
+    })
+    await assertSucceeds(raise(as('req'), {
+      shift: 'S',
+      windowStart: Timestamp.fromMillis(start.getTime()),
+      windowEnd: Timestamp.fromMillis(end.getTime()),
+    }))
+    await assertFails(raise(as('req'), {
+      shift: 'S',
+      permitSeq: 2,
+      permitNo: NO(2),
+      windowStart: Timestamp.fromMillis(start.getTime() + H),
+      windowEnd: Timestamp.fromMillis(end.getTime() + H),
+    }))
+  })
+
   it('refuses a permit that names nobody doing the work', async () => {
     await assertFails(raise(as('req'), { internalPersonnel: [], personnelUids: [], vendorWorkers: [] }))
   })
@@ -263,6 +302,30 @@ describe('raising a permit', () => {
 
   it('refuses a backdated request time', async () => {
     await assertFails(raise(as('req'), { requestedAt: ts(-5 * H) }))
+  })
+})
+
+describe('shift settings — Admin writes, members read', () => {
+  const body = (uid) => ({
+    sites: { s1: { zoneOffsetMinutes: 330, shifts: { A: { start: '06:00', end: '14:00', label: 'A' } } } },
+    updatedBy: uid,
+    updatedAt: serverTimestamp(),
+  })
+
+  it('lets an admin save the clocks and a member read them', async () => {
+    const ref = doc(as('adm'), 'organizations', ORG, 'lotoSettings', 'shifts')
+    await assertSucceeds(setDoc(ref, body('adm')))
+    await assertSucceeds(getDoc(doc(as('req'), 'organizations', ORG, 'lotoSettings', 'shifts')))
+  })
+
+  it('refuses a member, an auditor, another tenant and a delete', async () => {
+    await assertFails(setDoc(doc(as('req'), 'organizations', ORG, 'lotoSettings', 'shifts'), body('req')))
+    await assertFails(setDoc(doc(as('aud'), 'organizations', ORG, 'lotoSettings', 'shifts'), body('aud')))
+    await assertFails(setDoc(doc(as('foe'), 'organizations', ORG, 'lotoSettings', 'shifts'), body('foe')))
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'organizations', ORG, 'lotoSettings', 'shifts'), { sites: {} })
+    })
+    await assertFails(deleteDoc(doc(as('adm'), 'organizations', ORG, 'lotoSettings', 'shifts')))
   })
 })
 
@@ -538,11 +601,18 @@ describe('an active permit — extend, return, emergency removal', () => {
   })
 
   describe('extend', () => {
-    const extend = (db, uid, endOffset, extra = {}) => updateDoc(permitRef(db), {
-      windowEnd: ts(endOffset), updatedAt: serverTimestamp(),
-      extensions: [{ by: uid, reason: 'Bearing seized, more time needed', at: new Date().toISOString() }],
-      ...extra,
-    })
+    const extend = async (db, uid, endOffset, extra = {}) => {
+      const snap = await getDoc(permitRef(db))
+      const prev = snap.data().windowEnd.toMillis()
+      const nextMs = Date.now() + endOffset
+      return updateDoc(permitRef(db), {
+        windowEnd: Timestamp.fromMillis(nextMs), updatedAt: serverTimestamp(),
+        extensions: [{
+          by: uid, reason: 'Bearing seized, more time needed', at: Date.now(), from: prev, to: nextMs,
+        }],
+        ...extra,
+      })
+    }
 
     it('lets an admin push the end later', async () => {
       await assertSucceeds(extend(as('adm'), 'adm', 10 * H))
@@ -555,6 +625,15 @@ describe('an active permit — extend, return, emergency removal', () => {
     it('refuses an extension that shortens the window or jumps more than a day', async () => {
       await assertFails(extend(as('adm'), 'adm', 3 * H))
       await assertFails(extend(as('adm'), 'adm', 40 * H))
+    })
+    it('refuses an extension that does not record a reason', async () => {
+      const snap = await getDoc(permitRef(as('adm')))
+      const prev = snap.data().windowEnd.toMillis()
+      const nextMs = Date.now() + 10 * H
+      await assertFails(updateDoc(permitRef(as('adm')), {
+        windowEnd: Timestamp.fromMillis(nextMs), updatedAt: serverTimestamp(),
+        extensions: [{ by: 'adm', reason: 'too short', at: Date.now(), from: prev, to: nextMs }],
+      }))
     })
     it('refuses an extension that edits anything else', async () => {
       await assertFails(extend(as('adm'), 'adm', 10 * H, { reason: 'rewritten job' }))

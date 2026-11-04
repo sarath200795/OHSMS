@@ -1907,6 +1907,7 @@ service cloud.firestore {
           && d.windowStart is timestamp && d.windowEnd is timestamp
           && d.windowEnd > d.windowStart && d.windowEnd > request.time
           && d.windowEnd <= d.windowStart + duration.value(24, 'h')
+          && lotoShiftOk(d)
           && d.internalPersonnel is list && d.internalPersonnel.size() <= 50
           && d.personnelUids is list && d.personnelUids.size() <= 50
           && d.vendorWorkers is list && d.vendorWorkers.size() <= 50
@@ -1925,6 +1926,47 @@ service cloud.firestore {
       // entity from it. Reading them from the procedure is what stops a
       // requester filing against one plant under another's scope — the scope
       // decides who is mailed.
+      // The window is a shift. Until an Admin saves clocks for the site, the
+      // named default shifts are the only ones, and the rules can check their
+      // length and that the request is inside the 30-minute lead — not the
+      // wall-clock hour, because no zone has been stored. Once the site is
+      // saved, the hour and minute have to match that configuration in the
+      // zone the Admin stored (minutes east of UTC).
+      function lotoSettingsPath() {
+        return /databases/$(database)/documents/organizations/$(orgId)/lotoSettings/shifts;
+      }
+      function lotoDefaultShiftOk(d) {
+        return (d.shift == 'general'
+              ? d.windowEnd == d.windowStart + duration.value(9, 'h')
+              : d.shift in ['A', 'B', 'C']
+                && d.windowEnd == d.windowStart + duration.value(8, 'h'))
+          && d.windowStart <= request.time + duration.value(30, 'm')
+          && d.windowEnd > request.time;
+      }
+      function lotoConfiguredShiftOk(d) {
+        let cfg = get(lotoSettingsPath()).data.get('sites', {}).get(d.siteId, {});
+        let shift = cfg.get('shifts', {}).get(d.shift, {});
+        let offset = cfg.get('zoneOffsetMinutes', 0);
+        let localStart = d.windowStart + duration.value(offset, 'm');
+        let localEnd = d.windowEnd + duration.value(offset, 'm');
+        let start = shift.get('start', '');
+        let end = shift.get('end', '');
+        return start is string && end is string
+          && start.matches('^[0-9]{2}:[0-9]{2}$')
+          && end.matches('^[0-9]{2}:[0-9]{2}$')
+          && localStart.hours() == int(start.split(':')[0])
+          && localStart.minutes() == int(start.split(':')[1])
+          && localEnd.hours() == int(end.split(':')[0])
+          && localEnd.minutes() == int(end.split(':')[1])
+          && d.windowStart <= request.time + duration.value(30, 'm')
+          && d.windowEnd > request.time;
+      }
+      function lotoShiftOk(d) {
+        return exists(lotoSettingsPath())
+            && get(lotoSettingsPath()).data.get('sites', {}).keys().hasAny([d.siteId])
+          ? lotoConfiguredShiftOk(d)
+          : lotoDefaultShiftOk(d);
+      }
       function lotoPermitProcOk(d) {
         let pr = get(lotoPermitProc(d.procedureId)).data;
         return d.procedureId is string && d.procedureId != ''
@@ -1986,7 +2028,12 @@ service cloud.firestore {
       }
       // active -> active with a later end. Admin only; the extension is capped at
       // a day past the old end and appends exactly one record.
+      // Only an Admin moves the end past the shift, and the new end is one
+      // record on extensions: who, why, the previous end and the new one.
+      // `reason` is sealed, so the rule checks that a string is there and long
+      // enough to be either a sentence or ciphertext, not the plaintext.
       function lotoPermitExtend(b, a, changed) {
+        let n = a.extensions[a.extensions.size() - 1];
         return lotoPermitAdmin()
           && b.status == 'active'
           && a.status == 'active'
@@ -1995,7 +2042,15 @@ service cloud.firestore {
           && a.windowEnd > b.windowEnd
           && a.windowEnd <= b.windowEnd + duration.value(24, 'h')
           && a.extensions is list
-          && a.extensions.size() == b.get('extensions', []).size() + 1;
+          && a.extensions.size() == b.get('extensions', []).size() + 1
+          && n.keys().hasOnly(['at', 'by', 'byName', 'from', 'to', 'reason'])
+          && n.keys().hasAll(['at', 'by', 'reason', 'from', 'to'])
+          && n.by == request.auth.uid
+          && n.at is int
+          && n.from == b.windowEnd.toMillis()
+          && n.to == a.windowEnd.toMillis()
+          && n.reason is string
+          && n.reason.size() >= 10;
       }
       // Both ways out of active release every lock in the commit that closes the
       // permit, and say so on the procedure (activePermit cleared, nothing
@@ -2100,6 +2155,19 @@ service cloud.firestore {
             && !lotoPermitClosed(get(/databases/$(database)/documents/organizations/$(orgId)/lotoPermits/$(permitId)).data.status);
           allow update, delete: if false;
         }
+      }
+
+      // Shift clocks, one document for the org, keyed by site inside `sites`.
+      // Members read it so the permit form can offer the right shifts. Only an
+      // Admin writes it. The permit create rule reads the same document.
+      match /lotoSettings/{docId} {
+        allow read: if isApprovedMemberOf(orgId) && moduleOn(orgId, 'loto');
+        allow create, update: if isAdminOf(orgId) && moduleOn(orgId, 'loto')
+          && docId == 'shifts'
+          && request.resource.data.keys().hasOnly(['sites', 'updatedAt', 'updatedBy'])
+          && request.resource.data.updatedBy == request.auth.uid
+          && request.resource.data.updatedAt == request.time;
+        allow delete: if false;
       }
 
       // Document-id counters, one document per kind, holding a single integer.
@@ -2460,6 +2528,9 @@ service cloud.firestore {
         // writer approve, edit or delete a permit in one setDoc, and its
         // recursive twin would reopen /events, which is append-only.
         && col != 'lotoPermits'
+        // Shift clocks are Admin-written. The generic grant would let any
+        // member point a site's shift at a window they can already satisfy.
+        && col != 'lotoSettings'
         && notKeyset(col, docId);
     }
     function genericReadable(col, docId) {
