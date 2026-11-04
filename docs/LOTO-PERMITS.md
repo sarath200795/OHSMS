@@ -174,12 +174,27 @@ printed id (`E-1`) does not count.
 the tag: the procedure page says how to isolate the machine; the tag says
 whether this point is isolated now.
 
+## Lock register
+
+Each department lock can carry a tag number, a colour, and a service status
+(`available`, `issued`, `out_of_service`), plus a history list and a use count.
+Only an Admin may change those fields. Trace (`/loto/trace`) accepts a lock
+number, a tag number or equipment and shows who holds it now and every permit
+it has been on. The same page lists integrity problems: an issued lock must be
+on exactly one open permit, and an out-of-service lock must not be on one.
+Use count on that page is the number of permits that named the lock, including
+ones still inside the one-year retention window. Purged permits are gone, so
+they are not in the count.
+
 ## Wireman licence
 
 Every technician has a licence number (sealed), an expiry and an optional photo.
 A permit that names that technician — a lock whose `techId` is set — is refused
-unless `licenceExp` is still in the future. Department locks have no `techId`
-and are not a person. Only an Admin may write the licence fields.
+unless `licenceExp` is still in the future. The rules check this on every
+create that is not also claiming a group number: that create is already at the
+rules expression ceiling, so a group claim is checked in the form instead,
+where a lock that names a technician is refused the same way. Department locks
+have no `techId` and are not a person. Only an Admin may write the licence fields.
 
 A contractor confirms competence (`competent: true`) and may attach a
 certificate photo (`certificatePath`). Their contact must not be an email

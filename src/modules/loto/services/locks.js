@@ -28,11 +28,17 @@ export function subscribeLocks(orgId, cb, onError) {
   )
 }
 
-export async function addLock({ orgId, lockNo, type }, user) {
+export async function addLock({ orgId, lockNo, type, tagNo, color }, user) {
   return addDoc(collection(db, COL), {
     orgId,
     lockNo: (lockNo || '').trim(),
+    tagNo: (tagNo || '').trim(),
+    color: color || 'red',
     type: type === 'department' ? 'department' : 'personal',
+    serviceStatus: 'available',
+    useCount: 0,
+    history: [],
+    openPermitId: '',
     active: true,
     createdBy: user.id,
     createdAt: serverTimestamp(),
