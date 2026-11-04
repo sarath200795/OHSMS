@@ -1,10 +1,11 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { toastCaught } from '../../../../shared/lib/toastCaught'
 import { useAuth } from '../../context/AuthContext'
 import { PERMISSIONS } from '../../constants/roles'
 import { usePermits, useNow } from '../../hooks/usePermits'
+import { useLocks } from '../../hooks/useLocks'
 import { CLOSED_STATUSES, OPEN_STATUSES, PERMIT_STATUS, workTypeLabel } from '../../constants/permits'
 import { permitClock, toMs } from '../../utils/permitWindow'
 import PageHeader, { HdrIcon } from '../../components/PageHeader'
@@ -15,6 +16,8 @@ import Button from '../../components/ui/Button'
 import { PermitClockBadge, PermitStatusBadge } from '../../components/permits/PermitBadges'
 import PermitStandard from '../../components/permits/PermitStandard'
 import PermitDashboard from '../../components/permits/PermitDashboard'
+import { alertCopy, complianceStats, recordsCsv } from '../../utils/permitCompliance'
+import { desktopPermitAlert, playPermitAlert } from '../../utils/permitAlerts'
 
 // `match` gets the clock so "Overdue" and "Due soon" agree with the row badges
 // and the dashboard tiles (server flags first, then this browser's clock).
@@ -37,6 +40,7 @@ export default function Permits() {
   const navigate = useNavigate()
   const { can, platformRole } = useAuth()
   const { permits, loading } = usePermits()
+  const { locks } = useLocks()
   const now = useNow()
   const [filter, setFilter] = useState('open')
   const canRaise = can(PERMISSIONS.PERMIT_REQUEST) && platformRole !== 'auditor'
@@ -45,6 +49,14 @@ export default function Permits() {
     const f = FILTERS.find((x) => x.key === filter) || FILTERS[0]
     return permits.filter((p) => f.match(p, now))
   }, [permits, filter, now])
+
+  const stats = useMemo(() => complianceStats(permits, locks, now), [permits, locks, now])
+  useEffect(() => {
+    if (!alertCopy(stats)) return undefined
+    playPermitAlert()
+    desktopPermitAlert(stats)
+    return undefined
+  }, [stats])
 
   const onExport = async () => {
     if (!shown.length) return toast.error('Nothing to export')
@@ -58,6 +70,16 @@ export default function Permits() {
     }
   }
 
+  const onCsv = () => {
+    if (!shown.length) return toast.error('Nothing to export')
+    const blob = new Blob([recordsCsv(shown)], { type: 'text/csv' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = 'Permit_records.csv'
+    a.click()
+    URL.revokeObjectURL(a.href)
+  }
+
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
       <PageHeader
@@ -69,12 +91,33 @@ export default function Permits() {
             <Button variant="steel" onClick={onExport}>
               Export Excel
             </Button>
+            <Button variant="steel" onClick={onCsv}>
+              Export CSV
+            </Button>
             {canRaise && <Button onClick={() => navigate('/loto/permits/new')}>Raise a permit</Button>}
           </div>
         }
       />
       <PermitStandard />
       {!loading && <PermitDashboard permits={permits} now={now} onPick={setFilter} />}
+      {!loading && (
+        <section aria-label="Compliance" className="mt-4 space-y-2">
+          {stats.overdue > 0 && (
+            <p role="status" className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-900">
+              {stats.overdue} permit{stats.overdue === 1 ? '' : 's'} overdue.
+            </p>
+          )}
+          {stats.waiting > 0 && (
+            <p role="status" className="rounded-lg border border-amber-300 bg-amber-100 px-3 py-2 text-sm text-amber-900">
+              {stats.waiting} waiting for approval.
+            </p>
+          )}
+          <p className="text-sm text-steel-300">
+            Last 7 days: {stats.onTimePct}% closed on time, {stats.latePct}% closed late, {stats.emergencyPct}% emergency removals.
+            Closed today: {stats.closedToday}. Locks issued: {stats.issued} of {stats.totalLocks}.
+          </p>
+        </section>
+      )}
 
       <div className="mt-5 flex flex-wrap gap-2" role="group" aria-label="Filter permits">
         {FILTERS.map((f) => (

@@ -10,6 +10,7 @@ import {
   Clock,
   Boxes,
   Search,
+  ScrollText,
 } from 'lucide-react'
 import { TutorialProvider } from './context/TutorialContext'
 import Home from './pages/Home'
@@ -27,6 +28,7 @@ import LockInventory from './pages/admin/LockInventory'
 import ShiftTimes from './pages/admin/ShiftTimes'
 import GroupNumbers from './pages/admin/GroupNumbers'
 import Trace from './pages/admin/Trace'
+import Activity from './pages/permits/Activity'
 import ModuleTabs from '../../shared/layout/ModuleTabs'
 
 const TABS = [
@@ -40,6 +42,7 @@ const TABS = [
   { to: '/loto/shifts', label: 'Shifts', icon: Clock },
   { to: '/loto/groups', label: 'Group numbers', icon: Boxes },
   { to: '/loto/trace', label: 'Trace', icon: Search },
+  { to: '/loto/activity', label: 'Activity', icon: ScrollText },
 ]
 
 function ModuleNav() {
@@ -71,6 +74,7 @@ export default function LotoModule() {
           <Route path="shifts" element={<ShiftTimes />} />
           <Route path="groups" element={<GroupNumbers />} />
           <Route path="trace" element={<Trace />} />
+          <Route path="activity" element={<Activity />} />
         </Route>
         <Route path="operations/:id" element={<OperateProcedure />} />
         <Route path="permits/new" element={<NewPermit />} />
