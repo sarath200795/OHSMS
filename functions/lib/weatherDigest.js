@@ -57,6 +57,7 @@ import { describeMailGap } from './mailer.js'
 import { circulate } from './circulate.js'
 import { assessWeather, digestLevel, digestHazards, digestDrivers } from './weatherBands.js'
 import { gridKey, fetchGrids } from './windy.js'
+import { cachedObservation } from './weatherCacheDoc.js'
 import { loadOrgDisplayName, mailSenderName } from './mailBrand.js'
 import { readableText } from './mailTemplates/safe.js'
 import { renderWeatherDigest, shownDigestAreas } from './mailTemplates/lifecycle.js'
@@ -300,7 +301,7 @@ function pointsFor(keys) {
   })
 }
 
-async function readGrids(keys, fetchObs, fetchGridsImpl, clock, ref, apiKey) {
+async function readGrids(keys, fetchObs, fetchGridsImpl, clock, ref, apiKey, cache, slot) {
   if (!keys.length) return new Map()
   const until = clock() + RUN_BUDGET_MS
   if (fetchObs) {
@@ -318,6 +319,8 @@ async function readGrids(keys, fetchObs, fetchGridsImpl, clock, ref, apiKey) {
     now: clock,
     until,
     apiKey,
+    cache,
+    slot,
     onProgress: () => ref.set({ updatedAt: clock() }, { merge: true }),
   })
   return observations
@@ -333,6 +336,7 @@ export async function deliverWeatherDigest({
   fetchGrids: fetchGridsImpl = fetchGrids,
   renderMap = renderRiskMap,
   windyKey = '',
+  cache,
   orgIds,
 }) {
   const bucket = bucketFromSchedule(scheduleTime, now())
@@ -386,6 +390,7 @@ export async function deliverWeatherDigest({
         fetchGridsImpl,
         renderMap,
         windyKey,
+        cache,
         tileCache,
         sharedObs,
       })
@@ -422,6 +427,7 @@ async function deliverOrg({
   fetchGridsImpl,
   renderMap,
   windyKey,
+  cache,
   tileCache,
   sharedObs,
 }) {
@@ -436,15 +442,40 @@ async function deliverOrg({
   for (const [key, obs] of sharedObs) {
     if (plan.byGrid.has(key) && !observations.has(key)) observations.set(key, obs)
   }
+  // The slot cache is what fetchSiteWeather returns. It wins over a reading
+  // this run stored earlier, and a reading only the run has is copied in so
+  // the screen shows the same hour the mail will.
+  if (cache) {
+    for (const key of plan.byGrid.keys()) {
+      const hit = cachedObservation(await cache.get(key), bucket)
+      if (hit) {
+        const obs = hit.slot ? hit : { ...hit, slot: bucket }
+        observations.set(key, obs)
+        sharedObs.set(key, obs)
+      } else if (observations.has(key)) {
+        await cache.set(key, bucket, observations.get(key))
+      }
+    }
+  }
   const missing = [...plan.byGrid.keys()].filter((key) => !observations.has(key))
   if (missing.length && !fetchObs && !windyKey) {
     log.error('weather digest has no WINDY_API_KEY', { orgId, bucket })
   }
   if (missing.length) {
-    const fresh = await readGrids(missing, fetchObs, fetchGridsImpl, clock, ref, windyKey)
+    const fresh = await readGrids(
+      missing,
+      fetchObs,
+      fetchGridsImpl,
+      clock,
+      ref,
+      windyKey,
+      cache,
+      bucket
+    )
     for (const [key, obs] of fresh) {
       observations.set(key, obs)
       sharedObs.set(key, obs)
+      if (cache) await cache.set(key, bucket, obs.slot ? obs : { ...obs, slot: bucket })
     }
   }
   const digest = assembleDigest(plan, observations)

@@ -34,6 +34,12 @@
 //
 // A failure is null. The digest must not treat "the provider was down" as
 // "no elevated risk".
+//
+// requestPoint checks the slot cache first (weatherCache.js). A hit is the
+// reading already shown on the screen, not a second ask that can land on
+// another forecast hour.
+
+import { cachedObservation } from './weatherCacheDoc.js'
 
 const ENDPOINT = 'https://api.windy.com/api/point-forecast/v2'
 const TIMEOUT_MS = 12_000
@@ -120,17 +126,63 @@ export function stepIndex(ts, now) {
   return best >= 0 ? best : 0
 }
 
-function valueAt(series, idx) {
-  if (!Array.isArray(series) || idx < 0) return null
-  for (let i = idx; i >= 0; i -= 1) {
-    const v = pick(series[i])
-    if (v != null) return v
+function seriesValue(json, name, idx) {
+  if (!json || idx < 0) return null
+  const series = json[name]
+  if (!Array.isArray(series) || idx >= series.length) return null
+  return pick(series[idx])
+}
+
+// Temperature first, then anything else on that hour. A missing temperature
+// walks back to the latest earlier hour that has one. A later hour is used
+// only when nothing at or before the current step exists, so a forecast hour
+// cannot masquerade as now while an earlier reading is sitting in the series.
+const HOUR_FIELDS = [
+  'temp-surface',
+  'past3hprecip-surface',
+  'cape-surface',
+  'rh-surface',
+  'weatherwarnings-surface',
+]
+
+function hourHas(json, idx) {
+  return HOUR_FIELDS.some((name) => seriesValue(json, name, idx) != null)
+}
+
+export function hourIndex(json, preferred) {
+  if (!json || preferred < 0) return preferred
+  const hasTemp = (idx) => seriesValue(json, 'temp-surface', idx) != null
+  if (hasTemp(preferred)) return preferred
+  for (let i = preferred - 1; i >= 0; i -= 1) if (hasTemp(i)) return i
+  if (hourHas(json, preferred)) return preferred
+  for (let i = preferred - 1; i >= 0; i -= 1) if (hourHas(json, i)) return i
+  const len = Array.isArray(json.ts) ? json.ts.length : 0
+  for (let i = preferred + 1; i < len; i += 1) if (hasTemp(i) || hourHas(json, i)) return i
+  return preferred
+}
+
+/** CAMS step closest to the weather hour, so AQI is not a different clock. */
+export function nearestIndex(ts, targetMs) {
+  if (!Array.isArray(ts) || !ts.length || !Number.isFinite(targetMs)) return -1
+  let best = -1
+  let bestDist = Infinity
+  for (let i = 0; i < ts.length; i += 1) {
+    const ms = msAt(ts, i)
+    if (!Number.isFinite(ms)) continue
+    const dist = Math.abs(ms - targetMs)
+    if (dist < bestDist) {
+      best = i
+      bestDist = dist
+    }
   }
-  for (let i = idx + 1; i < series.length; i += 1) {
-    const v = pick(series[i])
-    if (v != null) return v
-  }
-  return null
+  return best
+}
+
+function msAt(ts, idx) {
+  if (!Array.isArray(ts) || idx < 0) return NaN
+  const raw = Number(ts[idx])
+  if (!Number.isFinite(raw)) return NaN
+  return raw < 1e12 ? raw * 1000 : raw
 }
 
 function unitOf(json, name) {
@@ -230,10 +282,18 @@ function stamp(ts, idx) {
 /** Shape Windy's weather and air-quality payloads into the observation assessWeather expects. */
 export function normalizeWindy(weather, air, now = Date.now()) {
   if (!weather && !air) return null
-  const wIdx = stepIndex(weather?.ts, now)
-  const aIdx = stepIndex(air?.ts, now)
-  const atW = (name) => valueAt(weather?.[name], wIdx)
-  const atA = (name) => valueAt(air?.[name], aIdx)
+  // Every weather field is taken from one hour. Mixing the current step's
+  // rain with an earlier step's temperature is how two screens disagreed
+  // about the same square.
+  const wIdx = weather ? hourIndex(weather, stepIndex(weather.ts, now)) : -1
+  const weatherMs = msAt(weather?.ts, wIdx)
+  const aIdx = air
+    ? Number.isFinite(weatherMs)
+      ? nearestIndex(air.ts, weatherMs)
+      : stepIndex(air.ts, now)
+    : -1
+  const atW = (name) => seriesValue(weather, name, wIdx)
+  const atA = (name) => seriesValue(air, name, aIdx)
 
   const tempC = toCelsius(atW('temp-surface'), unitOf(weather, 'temp-surface'))
   const dewC = toCelsius(atW('dewpoint-surface'), unitOf(weather, 'dewpoint-surface'))
@@ -336,19 +396,32 @@ async function loadWeather(point, apiKey, fetchImpl) {
  * One point. `retry` means the caller should wait and try again. A 429 does
  * not fall through to a second model: that only spends the same budget faster.
  */
+function withSlot(obs, slot) {
+  if (!obs) return obs
+  if (!slot || obs.slot === slot) return obs.slot ? obs : { ...obs, slot }
+  return { ...obs, slot }
+}
+
 export async function requestPoint(point, options = {}) {
   const fetchImpl = options.fetchImpl || globalThis.fetch
   const nowMs = typeof options.now === 'number' ? options.now : Date.now()
   const apiKey = options.apiKey || ''
-  if (!apiKey || !point?.key) return { ok: false, retry: false, retryAfterMs: 0, obs: null }
+  const slot = options.slot || ''
+  if (!point?.key) return { ok: false, retry: false, retryAfterMs: 0, obs: null }
+  if (options.cache && slot) {
+    const doc = await options.cache.get(point.key)
+    const hit = cachedObservation(doc, slot)
+    if (hit) return { ok: true, obs: withSlot(hit, slot), cached: true, retryAfterMs: 0 }
+  }
+  if (!apiKey) return { ok: false, retry: false, retryAfterMs: 0, obs: null }
 
   const weather = await loadWeather(point, apiKey, fetchImpl)
   if (weather.retry && !hasWeather(weather.json)) {
     return { ok: false, retry: true, retryAfterMs: weather.retryAfterMs || 0, obs: null }
   }
   const air = await postModel(point, AIR_MODEL, AIR_PARAMETERS, apiKey, fetchImpl)
-  const obs = normalizeWindy(weather.json, air.json, nowMs)
-  if (!readable(obs)) {
+  const normalized = normalizeWindy(weather.json, air.json, nowMs)
+  if (!readable(normalized)) {
     if (air.retry || weather.retry) {
       return {
         ok: false,
@@ -359,6 +432,8 @@ export async function requestPoint(point, options = {}) {
     }
     return { ok: true, obs: null, retryAfterMs: 0 }
   }
+  const obs = withSlot(normalized, slot)
+  if (options.cache && slot) await options.cache.set(point.key, slot, obs)
   return { ok: true, obs, retryAfterMs: air.retry ? air.retryAfterMs || 1000 : 0 }
 }
 
@@ -386,7 +461,7 @@ export async function fetchGrids(points, options = {}) {
   const observations = new Map()
   const failed = []
   const queue = [...(points || [])]
-  if (!apiKey) {
+  if (!apiKey && !options.cache) {
     for (const point of queue) if (point?.key) failed.push(point.key)
     return { observations, failed }
   }
@@ -405,7 +480,13 @@ export async function fetchGrids(points, options = {}) {
         failed.push(point.key)
         return
       }
-      const result = await requestPoint(point, { apiKey, fetchImpl, now: now() })
+      const result = await requestPoint(point, {
+        apiKey,
+        fetchImpl,
+        now: now(),
+        cache: options.cache,
+        slot: options.slot,
+      })
       await onProgress()
       if (result.retryAfterMs) {
         coolOffUntil = Math.max(coolOffUntil, now() + Math.min(result.retryAfterMs, BACKOFF_CAP_MS))

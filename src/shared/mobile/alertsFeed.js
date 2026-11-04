@@ -15,6 +15,7 @@ import { DEFECT_BY_KEY } from '../../modules/fire/lib/constants'
 import { indexSites, resolveSite } from '../../modules/fire/lib/siteLink'
 import { INCIDENT_TYPE_BY_KEY } from '../../modules/incidents/lib/constants'
 import { BAND_LABEL, levelOf } from '../../modules/weather/lib/weatherRisk'
+import { asOfLabel } from '../../modules/weather/lib/observedAt'
 
 // Same window the digest uses. Kept here because the function package cannot
 // be imported by the SPA, and the slot string is the identity of a weather row.
@@ -177,7 +178,8 @@ export function buildAlertFeed({
       const at = millisOf(incident.createdAt)
       if (!withinWindow(at, now)) continue
       const known = INCIDENT_TYPE_BY_KEY[incident.type]?.label
-      const type = known || (typeof incident.type === 'string' && incident.type ? incident.type : 'Incident')
+      const type =
+        known || (typeof incident.type === 'string' && incident.type ? incident.type : 'Incident')
       const ref = incident.refNo ? ` ${incident.refNo}` : ''
       rows.push({
         id: `incident:${incident.id}`,
@@ -244,13 +246,19 @@ export function buildAlertFeed({
         (band, h) => (levelOf(h.band) > levelOf(band) ? h.band : band),
         'none'
       )
+      const asOf = asOfLabel(risk.observedAt)
+      const observedMs = Date.parse(
+        typeof risk.observedAt === 'string' && !/Z$|[+-]\d{2}:\d{2}$/.test(risk.observedAt)
+          ? `${risk.observedAt}Z`
+          : risk.observedAt
+      )
       rows.push({
-        id: `weather:${site.id}:${bucket}:${keys}`,
+        id: `weather:${site.id}:${risk.slot || bucket}:${keys}`,
         kind: 'Weather',
         title: `${site.name}: ${hazards.map((h) => h.label).join(', ')}`,
-        detail: BAND_LABEL[worst] || '',
+        detail: [BAND_LABEL[worst], asOf].filter(Boolean).join(' · '),
         to: '/weather',
-        at,
+        at: Number.isFinite(observedMs) ? observedMs : at,
       })
     }
   }

@@ -6,6 +6,7 @@ import { useAccessibleSites, useSiteFacets } from '../../../shared/org/useAccess
 import { useAllSiteWeather } from '../lib/useAllSiteWeather'
 import { BANDS, BAND_LABEL, levelOf } from '../lib/weatherRisk'
 import { weatherExportRows, exportWeatherRisk } from '../lib/weatherExport'
+import { asOfLabel } from '../lib/observedAt'
 
 // Same five bands as the map bubble, in the app palette rather than Leaflet's.
 const BAND_STYLE = {
@@ -207,6 +208,9 @@ function SiteCard({ site, result }) {
         {obs.apparentTempC != null ? `Feels like ${Math.round(obs.apparentTempC)}°C` : '—'}
         {obs.aqi != null ? ` · AQI ${Math.round(obs.aqi)}` : ''}
       </p>
+      {asOfLabel(obs.observedAt) ? (
+        <p className="mt-1 text-xs text-ink-400">{asOfLabel(obs.observedAt)}</p>
+      ) : null}
 
       {risk.hazards.length === 0 ? (
         <p className="mt-3 text-sm text-ink-400">Nothing here restricts outdoor work.</p>

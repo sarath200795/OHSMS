@@ -29,7 +29,7 @@ describe('weatherExportRows', () => {
     expect(row.AQI).toBe(420)
     expect(row['Air Quality']).toBe('High')
     expect(row['Location Link']).toContain('query=11.01,76.95')
-    expect(row['Checked At']).toBe('2026-08-04T10:00')
+    expect(row['Checked At']).toBe('4 Aug, 15:30 IST')
   })
 
   it('gives the rain alert its own column so the sheet can be filtered on it', () => {

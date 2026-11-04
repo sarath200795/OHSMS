@@ -7,6 +7,7 @@
 import { safeOrigin } from '../mailer.js'
 import { safeCid } from '../mailAttachments.js'
 import { GENERIC_PRECAUTIONS as PRECAUTIONS } from '../weatherPrecautions.js'
+import { formatObservedAt } from '../observedAt.js'
 
 export { PRECAUTIONS }
 import { renderLayout, footerLine } from './layout.js'
@@ -592,7 +593,8 @@ ${cell('When', headCell)}
       const body = group.rows
         .map((row) => {
           const style = LEVEL_STYLE[row.level]
-          const rowWhen = plain(row.area.observedAt, 40) || when
+          const rowWhen =
+            formatObservedAt(row.area.observedAt) || plain(row.area.observedAt, 40) || when
           return `<tr style="background:${style.wash};">
 ${cell(plain(row.area.name, 80), { weight: '600' })}
 ${cell(plain(row.area.entity, 80))}
@@ -614,7 +616,8 @@ function sectionText(section, when) {
   for (const group of section.groups) {
     lines.push('', group.region)
     for (const row of group.rows) {
-      const rowWhen = plain(row.area.observedAt, 40) || when
+      const rowWhen =
+        formatObservedAt(row.area.observedAt) || plain(row.area.observedAt, 40) || when
       lines.push(`Site: ${plain(row.area.name, 80) || '—'}`)
       lines.push(`Entity: ${plain(row.area.entity, 80) || '—'}`)
       lines.push(`Level: ${row.level}`)

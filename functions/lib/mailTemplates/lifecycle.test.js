@@ -270,7 +270,7 @@ describe('defect, drill, meeting and weather mail', () => {
       expect(text).not.toContain('UV')
       expect(text).toContain('Entity: COCO')
       expect(text).toContain('Reading: Feels like 52°C')
-      expect(text).toContain('When: 2026-09-23T11:00')
+      expect(text).toContain('When: 23 Sep, 16:30 IST')
       expect(text).toContain('When: 2026-09-23 06:00-12:00 IST')
       expect(text).toContain('Window: 2026-09-23 06:00-12:00 IST')
       expect(text).toContain('counted once here at its worst level')
