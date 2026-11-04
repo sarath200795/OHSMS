@@ -148,7 +148,7 @@ const PERMIT_COLUMNS = [
   ['equipment', 'Equipment'],
   ['site', 'Site'],
   ['entity', 'Entity'],
-  ['procedure', 'LOTO procedure'],
+  ['procedure', 'Procedure'],
   ['pointCount', 'Isolation points'],
   ['devices', 'Lock-out devices'],
   ['job', 'Job'],

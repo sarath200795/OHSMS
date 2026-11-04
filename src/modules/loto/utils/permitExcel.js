@@ -22,7 +22,7 @@ function sheet(rows, headers, widths) {
  */
 export function exportPermitsXlsx(
   permits = [],
-  filename = 'LOTO_Permits.xlsx',
+  filename = 'Permits.xlsx',
   nowMs = Date.now()
 ) {
   const permitRows = permitSheetRows(permits, nowMs)

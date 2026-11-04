@@ -31,7 +31,7 @@ export function permitScanUrl(permitNo) {
   return `${origin}/loto/permits/${encodeURIComponent(permitNo)}`
 }
 
-export const permitPdfName = (permitNo) => `LOTO_Permit_${permitNo || 'permit'}.pdf`
+export const permitPdfName = (permitNo) => `Permit_${permitNo || 'permit'}.pdf`
 
 const DECLARATION =
   `Issued under ${LOTO_STANDARD} — ${LOTO_STANDARD_TITLE}. Energy-isolating devices were locked ` +
@@ -100,7 +100,7 @@ export async function generatePermitPdf(permit, { events = [], orgName = '' } = 
   y = line(y, 'Work type', s.workType)
   y = line(y, 'Job', s.job)
   if (s.workOrder) y = line(y, 'Work order', s.workOrder)
-  y = line(y, 'LOTO procedure', s.procedure)
+  y = line(y, 'Procedure', s.procedure)
   y = line(y, 'Devices', s.devices)
   y = line(
     y,

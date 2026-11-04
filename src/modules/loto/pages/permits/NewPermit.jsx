@@ -195,7 +195,7 @@ export default function NewPermit() {
     <form onSubmit={onSubmit} noValidate className="mx-auto max-w-3xl px-4 py-8">
       <PageHeader
         icon={<HdrIcon d={<><path d="M9 4h6l1 2h3v14H5V6h3l1-2Z" /><path d="M12 10v6M9 13h6" /></>} />}
-        title="Raise a LOTO permit"
+        title="Raise a permit"
         subtitle="Request permission to isolate equipment for one job and one shift."
       />
       <PermitStandard className="-mt-3 mb-4" />
@@ -233,7 +233,7 @@ export default function NewPermit() {
                   </Select>
                 </Field>
                 <Field
-                  label="Approved LOTO procedure"
+                  label="Approved procedure"
                   htmlFor="pm-procedure"
                   hint="Only this equipment's approved procedures are listed."
                   error={show('procedure')}

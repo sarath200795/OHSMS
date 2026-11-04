@@ -121,7 +121,7 @@ describe('validateDraft', () => {
   it('requires equipment and a procedure for machine maintenance and electrical work', () => {
     for (const workType of ['machine_maintenance', 'electrical_work']) {
       const e = validateDraft({ ...base().draft, workType }, { snapshot: null, nowMs: NOW })
-      expect(e.procedure, workType).toMatch(/approved LOTO procedures/)
+      expect(e.procedure, workType).toMatch(/approved procedures/)
     }
   })
 
