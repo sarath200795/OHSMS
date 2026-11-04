@@ -174,6 +174,17 @@ printed id (`E-1`) does not count.
 the tag: the procedure page says how to isolate the machine; the tag says
 whether this point is isolated now.
 
+## Dashboard
+
+The permit list shows the last seven days as the share closed on time, closed
+late, and closed by emergency removal, plus how many closed today and how many
+locks are issued out of the register. An overdue banner and an
+approvals-waiting line stay on the page. A tone plays and, if the browser has
+already been allowed, a desktop notification is raised. The activity page
+filters the log. Export CSV writes the permits in the current filter. All of
+these read only what is still stored; the one-year purge has already removed
+the rest, so they cannot show it.
+
 ## Lock register
 
 Each department lock can carry a tag number, a colour, and a service status
