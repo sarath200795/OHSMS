@@ -432,9 +432,3 @@ export async function fetchSiteWeather({ lat, lng } = {}) {
   const fn = await callable('fetchSiteWeather')
   return (await fn({ lat, lng })).data
 }
-
-/** Ask the Cloud Function whether a live lock photo shows a lock, a tag, and the tag on the lock. */
-export async function checkLotoLockPhoto(imageBase64) {
-  const fn = await callable('checkLotoLockPhoto')
-  return (await fn({ imageBase64 })).data
-}

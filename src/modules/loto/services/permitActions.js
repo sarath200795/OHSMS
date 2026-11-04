@@ -245,8 +245,6 @@ export async function startIsolation({ orgId, permit, scans, user, tryout, lockP
         equipment: raw.equipment || '',
         at: serverTimestamp(),
         stamped: true,
-        ai: lockPhoto?.ai || { status: 'unavailable' },
-        overridden: lockPhoto?.overridden === true,
       },
       updatedAt: serverTimestamp(),
     })

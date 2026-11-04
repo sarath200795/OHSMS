@@ -4,7 +4,6 @@
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore'
 import { db } from '../../../shared/firebase'
 import { putFile } from '../../../shared/storage'
-import { checkLotoLockPhoto } from '../../../shared/functions'
 
 export async function storeLockPhoto({ orgId, permit, dataUrl }) {
   const permitNo = permit.permitNo || permit.id
@@ -17,11 +16,5 @@ export async function storeLockPhoto({ orgId, permit, dataUrl }) {
     photos: { lock: { path: up.path, url: up.url || '' } },
     updatedAt: serverTimestamp(),
   })
-  let ai = { status: 'unavailable', reason: 'The photo check is not configured.' }
-  try {
-    ai = await checkLotoLockPhoto(dataUrl)
-  } catch {
-    ai = { status: 'unavailable', reason: 'The photo check did not answer.' }
-  }
-  return { path: up.path, ai, overridden: false, at: Date.now() }
+  return { path: up.path, at: Date.now() }
 }

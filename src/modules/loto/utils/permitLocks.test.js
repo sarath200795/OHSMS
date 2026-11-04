@@ -20,7 +20,7 @@ const proc = (over = {}) => ({
   ...over,
 })
 const scans = { k1: { at: 1 }, k2: { at: 2 } }
-const ready = { tryout: { zeroEnergy: true }, lockPhoto: { path: 'orgs/o/lock.jpg', ai: { status: 'pass' }, at: NOW } }
+const ready = { tryout: { zeroEnergy: true }, lockPhoto: { path: 'orgs/o/lock.jpg', at: NOW } }
 
 describe('startProblems', () => {
   it('has nothing to say about a clean start', () => {
@@ -56,13 +56,13 @@ describe('startProblems', () => {
     expect(startProblems({ permit: personal, procedure: proc(), scans, nowMs: NOW }).join(' ')).toMatch(/Department lock/)
   })
 
-  it('refuses a No on the zero-energy try-out and a photo that was not accepted', () => {
+  it('refuses a No on the zero-energy try-out and a start with no photo', () => {
     expect(startProblems({
       permit: permit(), procedure: proc(), scans, tryout: { zeroEnergy: false }, lockPhoto: ready.lockPhoto, nowMs: NOW,
     }).join(' ')).toMatch(/No blocks Start/)
     expect(startProblems({
-      permit: permit(), procedure: proc(), scans, ...ready, lockPhoto: { path: 'orgs/o/x.jpg', ai: { status: 'fail' }, overridden: false }, nowMs: NOW,
-    }).join(' ')).toMatch(/submit it anyway/)
+      permit: permit(), procedure: proc(), scans, ...ready, lockPhoto: { path: '' }, nowMs: NOW,
+    }).join(' ')).toMatch(/live photo/)
   })
 
   it('lets a permit with nothing to isolate start without a procedure', () => {

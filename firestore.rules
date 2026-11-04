@@ -2093,7 +2093,6 @@ service cloud.firestore {
           && a.lockPhoto.path is string && a.lockPhoto.path.size() > 0
           && a.lockPhoto.by == request.auth.uid
           && a.lockPhoto.permitNo == permitId
-          && (a.lockPhoto.get('ai', {}).get('status', '') == 'pass' || a.lockPhoto.get('overridden', false) == true)
           && (b.get('photoRedo', null) == null || a.lockPhoto.at > b.photoRedo.at)
           && (b.pointCount == 0
               || (get(lotoPermitProc(b.procedureId)).data.get('activePermit', null) == null

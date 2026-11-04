@@ -179,9 +179,7 @@ whether this point is isolated now.
 Two things are required before Start, and the rules refuse the start without them:
 
 1. A zero-energy try-out. **Yes** is required. **No** blocks Start.
-2. A live camera photo of the lock with the tag on it. There is no gallery upload. The picture is stamped with the time, the person, the permit number and the equipment, stored as a `procedurePhotos` document (`permitlock_<permitNo>`, the same collection as procedure photos) and named on the permit as `lockPhoto`. The nightly purge deletes that file with the permit.
-
-A Cloud Function, `checkLotoLockPhoto`, looks for a lock, a tag, and the tag on the lock. Its key is the Firebase secret **`LOTO_LOCK_PHOTO_API_KEY`** (a Gemini API key). The operator sets that secret themselves; this repository does not run `functions:secrets:set`. If the secret is unset the check reports `unavailable`. If the check does not pass, the person can retake the photo or submit it anyway, which sets `lockPhoto.overridden`. An Admin can request a new photo (`photoRedo`); Start is refused until the photo is newer than that request.
+2. A live camera photo of the lock with the tag on it. There is no gallery upload. The picture is stamped with the time, the person, the permit number and the equipment, stored as a `procedurePhotos` document (`permitlock_<permitNo>`, the same collection as procedure photos) and named on the permit as `lockPhoto`. The nightly purge deletes that file with the permit. An Admin can request a new photo (`photoRedo`); Start is refused until the photo is newer than that request.
 
 ## Group lockout
 

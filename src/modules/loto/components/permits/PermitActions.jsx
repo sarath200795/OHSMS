@@ -195,7 +195,7 @@ function Isolation({ orgId, permit, user }) {
   const points = permit.isolationPoints || []
   const left = unscannedPoints(points, scans)
   const lockOf = (key) => (permit.locks || []).find((l) => l.pointKey === key)?.lockNo
-  const photoReady = Boolean(shot?.path) && (shot.ai?.status === 'pass' || shot.overridden === true)
+  const photoReady = Boolean(shot?.path)
 
   function onCode(raw, method) {
     const r = resolveTagCode(raw, { procedureId: permit.procedureId, points })
@@ -253,17 +253,11 @@ function Isolation({ orgId, permit, user }) {
             const { storeLockPhoto } = await import('../../services/lockPhoto')
             const stored = await storeLockPhoto({ orgId, permit, dataUrl: shot.dataUrl })
             setShot(stored)
-            if (stored.ai?.status === 'fail') toast.error('The check did not see a lock with a tag on it. Retake, or submit anyway.')
           } catch (err) {
             toast.error(err?.message || 'Could not store the lock photo.')
           }
         }}
       />
-      {shot && shot.ai?.status === 'fail' && !shot.overridden && (
-        <button type="button" className="text-sm font-semibold text-amber-700" onClick={() => setShot({ ...shot, overridden: true })}>
-          Submit this photo anyway
-        </button>
-      )}
       <Button
         loading={busy}
         disabled={left.length > 0 || tryout !== 'yes' || !photoReady}

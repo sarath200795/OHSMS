@@ -27,9 +27,6 @@ export function startProblems({ permit, procedure, scans = {}, tryout = null, lo
   if (!(toMs(permit.windowEnd) > nowMs)) out.push('The permit window has ended. Raise a new permit.')
   if (tryout?.zeroEnergy !== true) out.push('Confirm zero energy before starting. A No blocks Start.')
   if (!lockPhoto?.path) out.push('Take a live photo of the lock and tag before starting.')
-  else if (lockPhoto.ai?.status !== 'pass' && lockPhoto.overridden !== true) {
-    out.push('The photo check did not pass. Retake it or submit it anyway, which flags the photo.')
-  }
   if (permit.photoRedo && !(toMs(lockPhoto?.at) > toMs(permit.photoRedo.at))) {
     out.push('An administrator asked for a new lock photo.')
   }

@@ -80,7 +80,7 @@ const baseProc = (over = {}) => ({
 const scans = { k1: { at: 1, method: 'camera' }, k2: { at: 2, method: 'manual' } }
 const ready = {
   tryout: { zeroEnergy: true },
-  lockPhoto: { path: 'orgs/o1/loto-photos/lock.jpg', ai: { status: 'pass' }, overridden: false, at: Date.now() },
+  lockPhoto: { path: 'orgs/o1/loto-photos/lock.jpg', at: Date.now() },
 }
 const seed = (permit = basePermit(), proc = baseProc()) => {
   h.docs.set(PERMIT, permit)

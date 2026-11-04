@@ -576,15 +576,14 @@ describe('starting work — every point scanned, locked in the same commit', () 
   const scans = (keys = ['k1', 'k2']) =>
     Object.fromEntries(keys.map((k) => [k, { at: serverTimestamp(), method: 'qr', by: 'req' }]))
 
-  function start(db, { keys, uid = 'req', procPatch, skipProc = false, activeId = NO(1), tryout = true, photo = 'pass', override = false } = {}) {
+  function start(db, { keys, uid = 'req', procPatch, skipProc = false, activeId = NO(1), tryout = true, photoPath = `orgs/${ORG}/loto-photos/lock.jpg`, photoAt = null } = {}) {
     const b = writeBatch(db)
     b.update(permitRef(db), {
       status: 'active', startedAt: serverTimestamp(), updatedAt: serverTimestamp(),
       isolation: { by: uid, at: serverTimestamp(), scans: scans(keys) },
       tryout: { zeroEnergy: tryout, by: uid, at: serverTimestamp() },
       lockPhoto: {
-        path: `orgs/${ORG}/loto-photos/lock.jpg`, by: uid, permitNo: activeId, at: serverTimestamp(),
-        ai: { status: photo }, overridden: override,
+        path: photoPath, by: uid, permitNo: activeId, at: photoAt || serverTimestamp(),
       },
     })
     if (!skipProc) {
@@ -622,13 +621,22 @@ describe('starting work — every point scanned, locked in the same commit', () 
     await assertFails(start(as('req'), { keys: ['E-1', 'H-1'] }))
   })
 
-  it('refuses to start without a zero-energy yes or a checked lock photo', async () => {
+  it('refuses to start without a zero-energy yes or a lock photo', async () => {
     await assertFails(start(as('req'), { tryout: false }))
-    await assertFails(start(as('req'), { photo: 'fail' }))
+    await assertFails(start(as('req'), { photoPath: '' }))
   })
 
-  it('lets a failed photo through only when it is flagged and submitted anyway', async () => {
-    await assertSucceeds(start(as('req'), { photo: 'fail', override: true }))
+  it('lets an admin ask for a new photo, and refuses a start that is not newer', async () => {
+    await assertFails(updateDoc(permitRef(as('req')), {
+      photoRedo: { by: 'req', at: serverTimestamp(), note: 'I want another' },
+      updatedAt: serverTimestamp(),
+    }))
+    await assertSucceeds(updateDoc(permitRef(as('adm')), {
+      photoRedo: { by: 'adm', at: serverTimestamp(), note: 'The tag is not on the lock' },
+      updatedAt: serverTimestamp(),
+    }))
+    await assertFails(start(as('req'), { photoAt: Timestamp.fromMillis(Date.now() - 60 * 1000) }))
+    await assertSucceeds(start(as('req')))
   })
 
   it('refuses a start that does not touch the procedure at all', async () => {
