@@ -106,14 +106,13 @@ export const PERMIT_STATUS_META = {
 }
 
 /**
- * Work types. `requiresEquipment` ones MUST be raised against a piece of
- * equipment and an APPROVED procedure of that equipment; the others may be
- * recorded without one (and then have no isolation points to scan).
+ * Work types. Every one is raised against a piece of equipment and an APPROVED
+ * procedure of that equipment. Area / tag-only work was removed: a permit with
+ * nothing to isolate is not a lockout permit.
  */
 export const WORK_TYPES = [
   { key: 'machine_maintenance', label: 'Machine maintenance', requiresEquipment: true },
   { key: 'electrical_work', label: 'Electrical work', requiresEquipment: true },
-  { key: 'other', label: 'Other (area / tag-only)', requiresEquipment: false },
 ]
 
 export const workTypeByKey = (key) => WORK_TYPES.find((w) => w.key === key) || null

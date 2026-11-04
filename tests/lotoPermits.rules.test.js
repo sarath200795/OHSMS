@@ -225,9 +225,12 @@ describe('raising a permit', () => {
     }
   })
 
-  it('allows other work without a procedure', async () => {
-    await assertSucceeds(raise(as('req'), {
+  it('refuses tag-only work and any permit with no procedure', async () => {
+    await assertFails(raise(as('req'), {
       workType: 'other', procedureId: '', pointKeys: [], pointCount: 0, locks: [], isolationPoints: [],
+    }))
+    await assertFails(raise(as('req'), {
+      workType: 'machine_maintenance', procedureId: '', pointKeys: [], pointCount: 0, locks: [], isolationPoints: [],
     }))
   })
 

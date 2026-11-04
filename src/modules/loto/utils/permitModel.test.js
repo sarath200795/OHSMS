@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   equipmentKey, equipmentOptions, approvedProceduresFor, snapshotProcedure,
-  lockChoices, validateDraft, buildPermit,
+  lockChoices, validateDraft, buildPermit, equipmentLockWarning,
 } from './permitModel'
 
 const proc = (over = {}) => ({
@@ -118,17 +118,11 @@ describe('validateDraft', () => {
     expect(check()).toEqual({})
   })
 
-  it('requires equipment and a procedure for machine maintenance and electrical work', () => {
-    for (const workType of ['machine_maintenance', 'electrical_work']) {
+  it('requires equipment and an approved procedure for every work type', () => {
+    for (const workType of ['machine_maintenance', 'electrical_work', 'other']) {
       const e = validateDraft({ ...base().draft, workType }, { snapshot: null, nowMs: NOW })
-      expect(e.procedure, workType).toMatch(/approved procedures/)
+      expect(e.procedure || e.workType, workType).toBeTruthy()
     }
-  })
-
-  it('does not require one for other work', () => {
-    const e = validateDraft({ ...base().draft, workType: 'other', locks: [] }, { snapshot: null, nowMs: NOW })
-    expect(e.procedure).toBeUndefined()
-    expect(e.locks).toBeUndefined()
   })
 
   it('refuses a procedure that is not approved', () => {
@@ -197,8 +191,22 @@ describe('buildPermit', () => {
     expect(doc.vendorWorkers[0]).toEqual({ name: 'V', company: 'C', contact: '' })
   })
 
-  it('gives a no-equipment permit empty values, not missing keys', () => {
-    const doc = buildPermit({ orgId: 'o', user: { id: 'u' }, snapshot: null, draft: { workType: 'other', reason: 'x'.repeat(12) } })
+  it('gives a permit with no procedure empty values, not missing keys', () => {
+    const doc = buildPermit({ orgId: 'o', user: { id: 'u' }, snapshot: null, draft: { workType: 'machine_maintenance', reason: 'x'.repeat(12) } })
     expect(doc).toMatchObject({ procedureId: '', pointCount: 0, pointKeys: [], locks: [], isolationPoints: [] })
+  })
+})
+
+describe('equipment already locked', () => {
+  const row = (over) => proc(over)
+
+  it('warns when the equipment is held by a permit or already locked', () => {
+    const key = equipmentKey(proc())
+    expect(equipmentLockWarning([row({ activePermit: { id: 'LP-2026-0007', permitNo: 'LP-2026-0007' } })], key))
+      .toMatch(/LP-2026-0007/)
+    expect(equipmentLockWarning([row({ lockSummary: { status: 'partial' } })], key)).toMatch(/partially locked/)
+    expect(equipmentLockWarning([row({ lockSummary: { status: 'locked' } })], key)).toMatch(/locked out/)
+    expect(equipmentLockWarning([row({ groupLock: { active: true, members: [{}] } })], key)).toMatch(/locked out/)
+    expect(equipmentLockWarning([row({ lockSummary: { status: 'unlocked' } })], key)).toBe('')
   })
 })
