@@ -293,9 +293,52 @@ describe('raising a permit', () => {
     await assertFails(raise(as('req'), { internalPersonnel: [], personnelUids: [], vendorWorkers: [] }))
   })
 
-  it('accepts contractors recorded only as text', async () => {
+  it('refuses a named technician whose licence is missing or expired', async () => {
+    const locks = [
+      { pointKey: 'k1', lockNo: 'D-1', techId: 't1' },
+      { pointKey: 'k2', lockNo: 'D-2', techId: '' },
+    ]
+    await assertFails(raise(as('req'), { locks }))
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'technicians', 't1'), {
+        orgId: ORG, licenceExp: Timestamp.fromMillis(Date.now() - 60 * 1000),
+      })
+    })
+    await assertFails(raise(as('req'), { locks }))
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'technicians', 't1'), {
+        orgId: ORG, licenceExp: Timestamp.fromMillis(Date.now() + 365 * 24 * 3600 * 1000),
+      })
+    })
+    await assertSucceeds(raise(as('req'), { locks }))
+  })
+
+  it('refuses a member writing a technician licence', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'technicians', 't1'), { orgId: ORG, name: 'Asha', licenceExp: null })
+    })
+    await assertFails(updateDoc(doc(as('req'), 'technicians', 't1'), {
+      licenceExp: Timestamp.fromMillis(Date.now() + 86400000),
+    }))
+    await assertSucceeds(updateDoc(doc(as('adm'), 'technicians', 't1'), {
+      licenceExp: Timestamp.fromMillis(Date.now() + 86400000),
+    }))
+  })
+
+  it('accepts contractors who confirm competence, and refuses an email address', async () => {
     await assertSucceeds(raise(as('req'), {
-      internalPersonnel: [], personnelUids: [], vendorWorkers: [{ name: 'V', company: 'ACME' }],
+      internalPersonnel: [], personnelUids: [],
+      vendorWorkers: [{ name: 'V', company: 'ACME', competent: true, contact: '0400111222' }],
+    }))
+    await assertFails(raise(as('req'), {
+      permitSeq: 2, permitNo: NO(2),
+      internalPersonnel: [], personnelUids: [],
+      vendorWorkers: [{ name: 'V', company: 'ACME', competent: true, contact: 'v@acme.test' }],
+    }))
+    await assertFails(raise(as('req'), {
+      permitSeq: 3, permitNo: NO(3),
+      internalPersonnel: [], personnelUids: [],
+      vendorWorkers: [{ name: 'V', company: 'ACME', competent: false }],
     }))
   })
 

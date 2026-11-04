@@ -9,9 +9,17 @@ import { numberIsolationPoints } from './codes'
 import { LIMITS, MIN_REASON_LENGTH, SHIFT_PRESETS, workTypeByKey } from '../constants/permits'
 import { groupProblems } from './groupLock'
 import { shiftRequestProblem } from './shiftWindow'
-import { windowProblem } from './permitWindow'
+import { windowProblem, toMs } from './permitWindow'
 
 const clean = (v) => (typeof v === 'string' ? v.trim() : '')
+
+/** '' when the technician can be named on a permit. licenceExp is a timestamp or ISO date. */
+export function technicianLicenceProblem(tech, nowMs = Date.now()) {
+  if (!tech?.licenceNo) return 'missing'
+  const exp = toMs(tech.licenceExp)
+  if (!Number.isFinite(exp) || exp <= nowMs) return 'expired'
+  return ''
+}
 
 /** Stable key for "this piece of equipment at this site". */
 export function equipmentKey(procedure) {
@@ -167,6 +175,10 @@ export function validateDraft(draft, ctx = {}) {
   if (internal.length + vendors.length > LIMITS.workers) errors.personnel = 'Too many people on one permit.'
   if (vendors.some((v) => !clean(v?.name) || !clean(v?.company))) {
     errors.vendorWorkers = 'Each contractor needs a name and a company.'
+  } else if (vendors.some((v) => v?.competent !== true)) {
+    errors.vendorWorkers = 'Each contractor needs a competence confirmation.'
+  } else if (vendors.some((v) => /@/.test(String(v?.contact || '')))) {
+    errors.vendorWorkers = 'Contractors are not emailed. Use a phone number, not an email address.'
   }
 
   const needed = snap?.pointCount || 0
@@ -181,6 +193,14 @@ export function validateDraft(draft, ctx = {}) {
       else if (needed > 1 && snap.pointKeys.some((k) => byPoint.get(k).lockType !== 'department')) {
         // Mirrors setPointLock: one personal lock cannot hold several points.
         errors.locks = 'Several isolation points need a Department lock on each one.'
+      } else {
+        const blocked = snap.pointKeys
+          .map((k) => byPoint.get(k))
+          .filter((l) => l?.techId)
+          .map((l) => technicianLicenceProblem((ctx.technicians || []).find((t) => t.id === l.techId), ctx.nowMs))
+          .find(Boolean)
+        if (blocked === 'missing') errors.locks = 'A named technician needs a wireman licence number and expiry.'
+        if (blocked === 'expired') errors.locks = 'A named technician’s wireman licence has expired.'
       }
     }
   }
@@ -206,6 +226,8 @@ export function buildPermit({ orgId, user, draft, snapshot }) {
     name: clean(v.name),
     company: clean(v.company),
     contact: clean(v.contact),
+    competent: v.competent === true,
+    certificatePath: clean(v.certificatePath),
   }))
   const pointKeys = snapshot?.pointKeys || []
   const locks = snapshot

@@ -328,7 +328,7 @@ export const POLICY = {
   // procedure's lockState at lock time is a separate, still-open copy.
   technicians: {
     keyClass: GENERAL,
-    fields: ['name', 'contact'],
+    fields: ['name', 'contact', 'licenceNo'],
   },
 
   // ── Mock drills / emergency response records ───────────────────────────────

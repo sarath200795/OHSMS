@@ -23,7 +23,7 @@ export default function Technicians() {
   const { technicians, loading } = useTechnicians()
   const { locks } = useLocks()
   const { procedures } = useOrgProcedures()
-  const [form, setForm] = useState({ name: '', lockNo: '', contact: '' })
+  const [form, setForm] = useState({ name: '', lockNo: '', contact: '', licenceNo: '', licenceExp: '' })
   const [saving, setSaving] = useState(false)
 
   const inUse = useMemo(() => collectInUseLockNos(procedures), [procedures])
@@ -42,7 +42,7 @@ export default function Technicians() {
     setSaving(true)
     try {
       await addTechnician({ orgId: profile.orgId, ...form }, profile)
-      setForm({ name: '', lockNo: '', contact: '' })
+      setForm({ name: '', lockNo: '', contact: '', licenceNo: '', licenceExp: '' })
       toast.success('Technician added')
     } catch (err) {
       toastCaught(err, 'Could not add technician')
@@ -82,7 +82,7 @@ export default function Technicians() {
 
       {/* Add form */}
       <Card animate={false} className="mt-6 !p-5">
-        <form onSubmit={onAdd} className="grid gap-3 sm:grid-cols-[1fr_180px_180px_auto] sm:items-end">
+        <form onSubmit={onAdd} className="grid gap-3 sm:grid-cols-2">
           <Input
             label="Technician name"
             value={form.name}
@@ -101,9 +101,20 @@ export default function Technicians() {
             onChange={(e) => setForm((f) => ({ ...f, contact: e.target.value }))}
             placeholder="phone / email"
           />
-          <Button type="submit" loading={saving}>
-            Add
-          </Button>
+          <Input
+            label="Wireman licence number"
+            value={form.licenceNo}
+            onChange={(e) => setForm((f) => ({ ...f, licenceNo: e.target.value }))}
+          />
+          <Input
+            label="Licence expiry"
+            type="date"
+            value={form.licenceExp}
+            onChange={(e) => setForm((f) => ({ ...f, licenceExp: e.target.value }))}
+          />
+          <div className="flex items-end">
+            <Button type="submit" loading={saving}>Add</Button>
+          </div>
         </form>
       </Card>
 

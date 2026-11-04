@@ -233,7 +233,7 @@ export const SUBJECT_SOURCES = [
     path: 'technicians',
     topLevel: true,
     orgField: 'orgId',
-    mentions: ['name', 'contact'],
+    mentions: ['name', 'contact', 'licenceNo'],
     retention: ERASABLE,
     why: 'The list of people authorised to apply a lock. Remove the person and the entry has no subject.',
   },

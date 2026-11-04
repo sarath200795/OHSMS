@@ -1305,7 +1305,12 @@ service cloud.firestore {
         && (isManagerOf(request.resource.data.orgId)
             || keepsDecision(legacyCol, {}, request.resource.data))
         && (legacyCol != 'procedures'
-            || keepsActivePermit(request.resource.data.orgId, docId, {}, request.resource.data));
+            || keepsActivePermit(request.resource.data.orgId, docId, {}, request.resource.data))
+        && (legacyCol != 'technicians'
+            || isAdminOf(request.resource.data.orgId)
+            || (request.resource.data.get('licenceExp', null) == null
+                && request.resource.data.get('licenceNo', '') == ''
+                && request.resource.data.get('licencePhotoPath', '') == ''));
       // Pinned the same way as /qr above: the post-state branch let one org
       // capture another's document by rewriting orgId to its own in a single
       // update, which for LOTO means taking over a live isolation procedure.
@@ -1317,7 +1322,12 @@ service cloud.firestore {
         && (isManagerOf(resource.data.orgId)
             || keepsDecision(legacyCol, resource.data, request.resource.data))
         && (legacyCol != 'procedures'
-            || keepsActivePermit(resource.data.orgId, docId, resource.data, request.resource.data));
+            || keepsActivePermit(resource.data.orgId, docId, resource.data, request.resource.data))
+        && (legacyCol != 'technicians'
+            || isAdminOf(resource.data.orgId)
+            || (request.resource.data.get('licenceExp', null) == resource.data.get('licenceExp', null)
+                && request.resource.data.get('licenceNo', '') == resource.data.get('licenceNo', '')
+                && request.resource.data.get('licencePhotoPath', '') == resource.data.get('licencePhotoPath', '')));
       // A procedure a live permit has locked is not deletable: the permit would
       // be left active against a document that no longer exists, with its
       // padlock claims stranded.
@@ -1941,7 +1951,15 @@ service cloud.firestore {
           // "other / tag-only" type, which carried no procedure and no points,
           // is not a work type any more.
           && lotoPermitProcOk(d)
-          && (d.get('groupLock', null) == null || lotoGroupOk(d, permitId));
+          // A group claim already spends the expression budget on the number
+          // register. Licence and contractor checks run on every other permit;
+          // a group permit's point locks are department locks (no techId) and
+          // its contractors are checked by the form. Naming a technician is
+          // refused on the ordinary path, which is every permit that is not a
+          // group claim.
+          && (d.get('groupLock', null) == null
+              ? (lotoTechsOk(d) && lotoVendorsOk(d))
+              : lotoGroupOk(d, permitId));
       }
       // A permit that isolates equipment names an APPROVED procedure of THIS org,
       // at the revision it was raised against, and takes its site, region and
@@ -2028,6 +2046,37 @@ service cloud.firestore {
       function lotoGroupFreed(b) {
         return b.get('groupLock', null) == null
           || getAfter(lotoGroupRef(b.groupLock.groupNo)).data.openPermitId == '';
+      }
+      // A lock that names a technician is blocked unless that technician's
+      // licence expiry is still in the future. An empty techId is a department
+      // lock and is not a person. licenceExp stays readable so this check does
+      // not depend on the sealed licence number.
+      function lotoTechLicenced(id) {
+        return id == '' || (
+          get(/databases/$(database)/documents/technicians/$(id)).data.orgId == orgId
+          && get(/databases/$(database)/documents/technicians/$(id)).data.licenceExp > request.time
+        );
+      }
+      function lotoTechsOk(d) {
+        return d.locks.size() <= 8
+          && (d.locks.size() < 1 || lotoTechLicenced(d.locks[0].get('techId', '')))
+          && (d.locks.size() < 2 || lotoTechLicenced(d.locks[1].get('techId', '')));
+      }
+      // Contractors are text. They confirm competence and may attach a
+      // certificate. They do not get an email address — mail stays internal.
+      function lotoVendorOk(v) {
+        return v.keys().hasOnly(['name', 'company', 'contact', 'competent', 'certificatePath'])
+          && v.keys().hasAll(['name', 'company', 'competent'])
+          && v.competent == true
+          && v.get('contact', '') is string
+          && !v.get('contact', '').matches('.*@.*')
+          && v.get('certificatePath', '') is string
+          && v.get('certificatePath', '').size() <= 300;
+      }
+      function lotoVendorsOk(d) {
+        return d.vendorWorkers.size() <= 8
+          && (d.vendorWorkers.size() < 1 || lotoVendorOk(d.vendorWorkers[0]))
+          && (d.vendorWorkers.size() < 2 || lotoVendorOk(d.vendorWorkers[1]));
       }
       function lotoPermitProcOk(d) {
         let pr = get(lotoPermitProc(d.procedureId)).data;

@@ -32,7 +32,7 @@ import Spinner from '../../components/ui/Spinner'
 import PermitStandard from '../../components/permits/PermitStandard'
 
 const NEW_LOCK = 'new'
-const blankVendor = () => ({ name: '', company: '', contact: '' })
+const blankVendor = () => ({ name: '', company: '', contact: '', competent: false, certificatePath: '' })
 
 export default function NewPermit() {
   const navigate = useNavigate()
@@ -167,7 +167,7 @@ export default function NewPermit() {
         }
       : null,
   }
-  const errors = validateDraft(draft, { snapshot, shifts: siteShifts, zoneOffsetMinutes: zone })
+  const errors = validateDraft(draft, { snapshot, shifts: siteShifts, zoneOffsetMinutes: zone, technicians })
   // An inline number that already exists would register a duplicate padlock.
   const dupNew = plan.inline.find((no) => knownNos.has(no.toLowerCase()))
   if (dupNew) errors.locks = `Lock ${dupNew} already exists — pick it from the list instead.`
@@ -377,19 +377,51 @@ export default function NewPermit() {
                   + Add contractor
                 </button>
               </div>
-              <p className="mt-1 text-xs text-steel-400">Recorded as text on this permit only — they do not need an account.</p>
+              <p className="mt-1 text-xs text-steel-400">Recorded as text on this permit only — they do not need an account, and they are not emailed.</p>
               {vendors.map((v, i) => (
-                <div key={i} className="mt-2 grid gap-2 sm:grid-cols-[1fr_1fr_1fr_auto] sm:items-end">
-                  <Input label="Name" value={v.name} maxLength={LIMITS.name} onChange={(e) => setVendor(i, { name: e.target.value })} />
-                  <Input label="Company" value={v.company} maxLength={LIMITS.name} onChange={(e) => setVendor(i, { company: e.target.value })} />
-                  <Input label="Contact (optional)" value={v.contact} maxLength={LIMITS.name} onChange={(e) => setVendor(i, { contact: e.target.value })} />
-                  <button
-                    type="button"
-                    onClick={() => setVendors((rows) => rows.filter((_, j) => j !== i))}
-                    className="rounded-lg px-2.5 py-2 text-xs font-medium text-danger hover:bg-danger/10"
-                  >
-                    Remove
-                  </button>
+                <div key={i} className="mt-2 space-y-2 rounded-lg border border-steel-700 p-3">
+                  <div className="grid gap-2 sm:grid-cols-[1fr_1fr_1fr_auto] sm:items-end">
+                    <Input label="Name" value={v.name} maxLength={LIMITS.name} onChange={(e) => setVendor(i, { name: e.target.value })} />
+                    <Input label="Company" value={v.company} maxLength={LIMITS.name} onChange={(e) => setVendor(i, { company: e.target.value })} />
+                    <Input label="Phone (not email)" value={v.contact} maxLength={LIMITS.name} onChange={(e) => setVendor(i, { contact: e.target.value })} />
+                    <button
+                      type="button"
+                      onClick={() => setVendors((rows) => rows.filter((_, j) => j !== i))}
+                      className="rounded-lg px-2.5 py-2 text-xs font-medium text-danger hover:bg-danger/10"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                  <label className="flex items-center gap-2 text-sm text-steel-200">
+                    <input
+                      type="checkbox"
+                      checked={v.competent === true}
+                      onChange={(e) => setVendor(i, { competent: e.target.checked })}
+                    />
+                    Competence in this work is confirmed
+                  </label>
+                    <Input
+                      label="Certificate photo (optional)"
+                      type="file"
+                      accept="image/*"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0]
+                        if (!file) return setVendor(i, { certificatePath: '' })
+                        try {
+                          const dataUrl = await new Promise((resolve, reject) => {
+                            const reader = new FileReader()
+                            reader.onload = () => resolve(reader.result)
+                            reader.onerror = () => reject(reader.error)
+                            reader.readAsDataURL(file)
+                          })
+                          const { putFile } = await import('../../../../shared/storage')
+                          const up = await putFile(profile.orgId, 'loto-certificates', dataUrl, file.name)
+                          setVendor(i, { certificatePath: up?.path || '' })
+                        } catch {
+                          setVendor(i, { certificatePath: '' })
+                        }
+                      }}
+                    />
                 </div>
               ))}
             </div>
