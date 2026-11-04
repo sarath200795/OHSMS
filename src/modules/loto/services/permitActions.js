@@ -114,6 +114,10 @@ const first = (list) => {
  */
 export async function decidePermit({ orgId, permit, user, approve, note = '', selfApprovalReason = '' }) {
   const own = permit.requestedBy === user.id
+  const namedCrew = (permit.personnelUids || []).includes(user.id) && !own
+  if (namedCrew) {
+    throw new Error('Someone named on the permit cannot approve it.')
+  }
   const reason = clean(selfApprovalReason)
   if (own && approve && !reason) {
     throw new Error('Another administrator must approve your own request.')

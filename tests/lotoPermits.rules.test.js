@@ -57,6 +57,10 @@ beforeEach(async () => {
     const users = {
       adm: { orgId: ORG, role: 'admin' },
       adm2: { orgId: ORG, role: 'admin' },
+      admHere: { orgId: ORG, role: 'admin', siteId: 's1' },
+      admAway: { orgId: ORG, role: 'admin', siteId: 's2' },
+      admEnt: { orgId: ORG, role: 'admin', access: { entities: ['Ent'] } },
+      admRegion: { orgId: ORG, role: 'admin', access: { regions: ['South'] } },
       mgr: { orgId: ORG, role: 'manager' },
       req: { orgId: ORG, role: 'member' },
       crew: { orgId: ORG, role: 'member' },
@@ -329,6 +333,14 @@ describe('shift settings — Admin writes, members read', () => {
   })
 })
 
+describe('procedure approval stays Admin or Safety', () => {
+  it('lets a manager approve a procedure and refuses a member', async () => {
+    await assertFails(updateDoc(doc(as('req'), 'procedures', PROC), { status: 'rejected' }))
+    await assertSucceeds(updateDoc(doc(as('mgr'), 'procedures', PROC), { status: 'rejected' }))
+    await assertSucceeds(updateDoc(doc(as('adm'), 'procedures', PROC), { status: 'approved' }))
+  })
+})
+
 describe('reading', () => {
   it('lets members of the org read, refuses other tenants and the unauthenticated', async () => {
     await seed('requested')
@@ -394,6 +406,32 @@ describe('approval — Admin only, and not your own', () => {
       await updateDoc(permitRef(ctx.firestore()), { requestedBy: 'adm' })
     })
     await assertSucceeds(approve(as('adm'), 'adm', { selfApproved: true, selfApprovalReason: 'Only admin on site' }))
+  })
+
+  it('lets an admin of the permit site or entity approve', async () => {
+    await assertSucceeds(approve(as('admHere'), 'admHere'))
+  })
+
+  it('lets an admin granted the permit entity approve', async () => {
+    await assertSucceeds(approve(as('admEnt'), 'admEnt'))
+  })
+
+  it('refuses an admin of another site and a region-only admin', async () => {
+    await assertFails(approve(as('admAway'), 'admAway'))
+    await assertFails(approve(as('admRegion'), 'admRegion'))
+  })
+
+  it('refuses an admin who is named on the crew', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await updateDoc(permitRef(ctx.firestore()), {
+        internalPersonnel: [{ uid: 'admHere', name: 'admHere' }],
+        personnelUids: ['admHere'],
+      })
+    })
+    await assertFails(approve(as('admHere'), 'admHere'))
+    await assertFails(approve(as('admHere'), 'admHere', {
+      selfApproved: true, selfApprovalReason: 'I am on the crew',
+    }))
   })
 
   it('refuses an approval recorded under another admin’s name', async () => {

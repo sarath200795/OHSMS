@@ -77,13 +77,17 @@ reason — and that list is the extension history.
 | --- | --- |
 | Raise | any approved, non-auditor member |
 | Withdraw (before work starts) | the requester, or an Admin |
-| Approve / reject / extend / emergency removal | Admin (`lotoPermitAdmin()` in the rules — one place to narrow to site/entity grants later) |
+| Approve / reject | Admin of the permit's site or entity (`lotoPermitAdminOf`). An Admin with no site and no grant still reaches every permit. Nobody named on the permit, and nobody who raised it, may approve it. The raiser may self-approve only by recording that no other administrator could. |
+| Extend / emergency removal | That same Admin. Emergency removal is not blocked by being named on the permit; the attestations stay. |
+| LOTO procedure approval | Admin or Safety (platform manager). Unchanged. |
 | Start isolation / return | the requester, a named internal person, or an Admin |
 
-The platform has no site-admin role: `isAdminOf(orgId)` is org-wide, and site /
-entity scoping applies to the *mail audience* (`functions/lib/audience.js`), not
-to rules. Self-approval is refused unless the approver records that there was no
-other administrator (`approval.selfApproved` + `selfApprovalReason`).
+An Admin with an empty site and no access grant still reaches every permit.
+An Admin posted to a site, or granted sites or entities, reaches a permit only
+when that site or that entity is the permit's. A region grant is not enough.
+Self-approval is refused unless the approver records that there was no other
+administrator (`approval.selfApproved` + `selfApprovalReason`). Someone named
+on the crew cannot approve, even with that reason.
 
 ## Equipment
 
@@ -159,9 +163,11 @@ anything could not be removed). Open permits are never purged.
 
 ## Working a permit (PR B)
 
-1. **Approve / reject** — Admin. Rejecting needs a reason. An administrator's own
-   request goes to another administrator; self-approval is offered only when no
-   other approved administrator exists, and stores its reason.
+1. **Approve / reject** — Admin of the permit's site or entity. Rejecting needs a
+   reason. An administrator's own request goes to another administrator who
+   reaches that permit; self-approval is offered only when no other such
+   administrator exists, and stores its reason. A person named on the permit
+   cannot approve it.
 2. **Isolate** — the crew applies the lock at each point and scans the tag QR
    there (`/t/<procedureId>/<pointKey>`). Camera scanning uses the browser's
    `BarcodeDetector` (no library); a typed link / point key / point number
