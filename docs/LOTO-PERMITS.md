@@ -174,6 +174,20 @@ printed id (`E-1`) does not count.
 the tag: the procedure page says how to isolate the machine; the tag says
 whether this point is isolated now.
 
+## Group lockout
+
+A permit may carry hecp-loto's `groupLock`: `method` `box` or `hasp`, `members[]`
+with one personal lock each, and `primaryUid` equal to the first member. Device
+count is one safety padlock per member, plus a group lock box, or a hasp when
+more than one lock is stacked.
+
+The number comes from `organizations/{orgId}/lotoGroupNumbers/{no}`, which an
+Admin registers empty. Raising the permit sets `openPermitId` in the same
+commit. Each member removes only their own lock (`removedUids`). The primary
+cannot come off until the others have, and the return that takes the primary
+off closes the permit and frees the number. Withdraw, reject, return and
+emergency removal clear `openPermitId` in that same commit.
+
 ## Working a permit (PR B)
 
 1. **Approve / reject** — Admin of the permit's site or entity. Rejecting needs a

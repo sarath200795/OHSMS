@@ -7,6 +7,7 @@ import { PROCEDURE_STATUS } from '../constants/procedures'
 import { pointDeviceKeys } from '../constants/energySources'
 import { numberIsolationPoints } from './codes'
 import { LIMITS, MIN_REASON_LENGTH, SHIFT_PRESETS, workTypeByKey } from '../constants/permits'
+import { groupProblems } from './groupLock'
 import { shiftRequestProblem } from './shiftWindow'
 import { windowProblem } from './permitWindow'
 
@@ -183,6 +184,12 @@ export function validateDraft(draft, ctx = {}) {
       }
     }
   }
+  if (draft?.group) {
+    const groupErr = groupProblems(draft.group, {
+      personnelUids: internal.map((p) => p.uid).filter(Boolean),
+    })
+    if (groupErr.length) errors.group = groupErr[0]
+  }
   return errors
 }
 
@@ -244,6 +251,21 @@ export function buildPermit({ orgId, user, draft, snapshot }) {
     pointCount: snapshot?.pointCount || 0,
     devices: snapshot?.devices || [],
     locks,
+    ...(draft.group
+      ? {
+          groupLock: {
+            active: true,
+            method: draft.group.method === 'hasp' ? 'hasp' : 'box',
+            groupNo: clean(draft.group.groupNo),
+            primaryUid: draft.group.primaryUid,
+            members: (draft.group.members || []).map((m) => ({
+              uid: clean(m.uid),
+              name: clean(m.name),
+              lockNo: clean(m.lockNo),
+            })),
+          },
+        }
+      : {}),
   }
 }
 

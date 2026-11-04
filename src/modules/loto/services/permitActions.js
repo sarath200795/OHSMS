@@ -36,6 +36,7 @@ import {
   PERMIT_STATUS,
 } from '../constants/permits'
 import { toMs } from '../utils/permitWindow'
+import { canRemoveOwnLock } from '../utils/groupLock'
 import {
   applyPermitLocks,
   checksFrom,
@@ -151,6 +152,24 @@ export async function decidePermit({ orgId, permit, user, approve, note = '', se
   await batch.commit()
 }
 
+/** A group member takes off only their own lock. The primary closes the permit instead. */
+export async function releaseOwnLock({ orgId, permit, user }) {
+  const decision = canRemoveOwnLock(permit.groupLock, permit.removedUids || [], user.id)
+  if (!decision.ok) throw new Error(decision.reason)
+  if (decision.closes) throw new Error('You are the last lock. Return the permit to close it.')
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(permitRef(orgId, permit.id))
+    if (!snap.exists()) throw new Error('The permit no longer exists.')
+    const raw = snap.data()
+    const again = canRemoveOwnLock(raw.groupLock, raw.removedUids || [], user.id)
+    if (!again.ok || again.closes) throw new Error(again.reason || 'Return the permit to close it.')
+    tx.update(permitRef(orgId, permit.id), {
+      removedUids: [...(raw.removedUids || []), user.id],
+      updatedAt: serverTimestamp(),
+    })
+  })
+}
+
 /** Withdraw before work starts. The requester or an Admin. */
 export async function withdrawPermit({ orgId, permit, user, note = '' }) {
   const patch = await sealDoc(orgId, PERMIT_COLLECTION, {
@@ -166,6 +185,11 @@ export async function withdrawPermit({ orgId, permit, user, note = '' }) {
   })
   const batch = writeBatch(db)
   batch.update(permitRef(orgId, permit.id), patch)
+  if (permit.groupLock?.groupNo) {
+    batch.update(doc(db, 'organizations', orgId, 'lotoGroupNumbers', permit.groupLock.groupNo), {
+      openPermitId: '',
+    })
+  }
   batch.set(eventRef(orgId, permit.id), await eventBody(orgId, user, EVENT_TYPES.WITHDRAWN, { note }))
   await batch.commit()
 }
@@ -300,9 +324,13 @@ export async function extendPermit({ orgId, permit, user, newEndMs, reason }) {
 async function releaseAndClose({ orgId, permit, user, problems, closing, eventType, note, emergency }) {
   await runTransaction(db, async (tx) => {
     const { raw, procedure } = await readHeld(tx, permit.id, orgId)
+    const groupNo = raw.groupLock?.groupNo
+    const groupRef = groupNo ? doc(db, 'organizations', orgId, 'lotoGroupNumbers', groupNo) : null
+    const groupSnap = groupRef ? await tx.get(groupRef) : null
     first(problems({ raw, procedure }))
 
     tx.update(permitRef(orgId, raw.id), await closing(raw))
+    if (groupSnap && groupSnap.exists()) tx.update(groupRef, { openPermitId: '' })
 
     if (procedure) {
       const atIso = new Date().toISOString()
@@ -384,6 +412,9 @@ export async function returnPermit({ orgId, permit, user, ticked, confirmed, not
         returns: Object.fromEntries(
           (raw.pointKeys || []).map((k) => [k, { lockNo: lockFor.get(k) || '', by: user.id, at: Date.now() }]),
         ),
+        ...(raw.groupLock
+          ? { removedUids: [...new Set([...(raw.removedUids || []), user.id])] }
+          : {}),
         updatedAt: serverTimestamp(),
       })
     },

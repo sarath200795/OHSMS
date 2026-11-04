@@ -113,11 +113,19 @@ export async function createPermit({ orgId, user, permit, inlineLocks = [] }) {
       orgId,
       permit.locks.map((l) => l.lockNo),
     )
+    const groupNo = permit.groupLock?.groupNo
+    const groupDoc = groupNo
+      ? await tx.get(doc(db, 'organizations', orgId, 'lotoGroupNumbers', groupNo))
+      : null
+    if (groupNo && (!groupDoc.exists() || groupDoc.data()?.openPermitId)) {
+      throw new Error('That group lockout number is not free.')
+    }
     assertClaimsFree(held, permit.procedureId)
     const seq = (counter.exists() ? Number(counter.data().n) || 0 : 0) + 1
     const number = formatPermitNo(year, seq)
     tx.set(seqRef(orgId, year), { n: seq })
     tx.set(permitRef(orgId, number), await sealDoc(orgId, PERMIT_COLLECTION, toStoredPermit(permit, { permitNo: number, permitSeq: seq })))
+    if (groupNo) tx.update(doc(db, 'organizations', orgId, 'lotoGroupNumbers', groupNo), { openPermitId: number })
     for (const lockNo of inlineLocks) {
       tx.set(doc(collection(db, 'locks')), inlineLockDoc({ orgId, lockNo }, user))
     }

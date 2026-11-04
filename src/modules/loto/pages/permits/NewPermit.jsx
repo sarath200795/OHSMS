@@ -51,6 +51,10 @@ export default function NewPermit() {
   const [workOrder, setWorkOrder] = useState('')
   const [shift, setShift] = useState('A')
   const [shiftSettings, setShiftSettings] = useState(null)
+  const [groupOn, setGroupOn] = useState(false)
+  const [groupNo, setGroupNo] = useState('')
+  const [groupMethod, setGroupMethod] = useState('box')
+  const [memberLocks, setMemberLocks] = useState({})
   const [personnel, setPersonnel] = useState([])
   const [vendors, setVendors] = useState([])
   // pointKey → 'tech:<id>' | 'lock:<id>' | 'new'; and the typed number for 'new'.
@@ -150,6 +154,18 @@ export default function NewPermit() {
     internalPersonnel: personnel.map((uid) => ({ uid, name: crew.find((c) => c.value === uid)?.label || '' })),
     vendorWorkers: vendors,
     locks: plan.locks,
+    group: groupOn
+      ? {
+          method: groupMethod,
+          groupNo,
+          primaryUid: personnel[0] || '',
+          members: personnel.map((uid) => ({
+            uid,
+            name: crew.find((c) => c.value === uid)?.label || '',
+            lockNo: memberLocks[uid] || '',
+          })),
+        }
+      : null,
   }
   const errors = validateDraft(draft, { snapshot, shifts: siteShifts, zoneOffsetMinutes: zone })
   // An inline number that already exists would register a duplicate padlock.
@@ -377,8 +393,37 @@ export default function NewPermit() {
                 </div>
               ))}
             </div>
-            {(show('personnel') || show('vendorWorkers')) && (
-              <p role="alert" className="text-xs font-medium text-red-400">{errors.personnel || errors.vendorWorkers}</p>
+            {(show('personnel') || show('vendorWorkers') || show('group')) && (
+              <p role="alert" className="text-xs font-medium text-red-400">{errors.personnel || errors.vendorWorkers || errors.group}</p>
+            )}
+          </Card>
+
+          <Card animate={false} className="space-y-3 !p-5">
+            <label className="flex items-center gap-2 text-sm font-semibold text-steel-100">
+              <input type="checkbox" checked={groupOn} onChange={(e) => setGroupOn(e.target.checked)} />
+              Group lockout
+            </label>
+            {groupOn && (
+              <>
+                <p className="text-xs text-steel-400">
+                  At least two colleagues, each with their own personal lock. The first person listed is the primary and comes off last. The permit closes when that lock comes off.
+                </p>
+                <Input id="pm-group-no" label="Group number" value={groupNo} onChange={(e) => setGroupNo(e.target.value)} placeholder="GL-1" />
+                <Field label="Method" htmlFor="pm-group-method">
+                  <Select id="pm-group-method" value={groupMethod} onChange={(e) => setGroupMethod(e.target.value)}>
+                    <option value="box">Group lock box</option>
+                    <option value="hasp">Hasp</option>
+                  </Select>
+                </Field>
+                {personnel.map((uid) => (
+                  <Input
+                    key={uid}
+                    label={`Personal lock for ${crew.find((c) => c.value === uid)?.label || uid}`}
+                    value={memberLocks[uid] || ''}
+                    onChange={(e) => setMemberLocks((m) => ({ ...m, [uid]: e.target.value }))}
+                  />
+                ))}
+              </>
             )}
           </Card>
 

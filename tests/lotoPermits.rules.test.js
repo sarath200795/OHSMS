@@ -333,6 +333,85 @@ describe('shift settings — Admin writes, members read', () => {
   })
 })
 
+describe('group lockout on a permit', () => {
+  const groupLock = {
+    active: true, method: 'box', groupNo: 'GL-1', primaryUid: 'req',
+    members: [
+      { uid: 'req', name: 'Req', lockNo: 'P-1' },
+      { uid: 'crew', name: 'Crew', lockNo: 'P-2' },
+    ],
+  }
+  const groupRef = (db) => doc(db, 'organizations', ORG, 'lotoGroupNumbers', 'GL-1')
+
+  it('lets an admin register a number and a member claim it with the permit', async () => {
+    await assertSucceeds(setDoc(groupRef(as('adm')), {
+      orgId: ORG, no: 'GL-1', description: 'Yard box', openPermitId: '',
+    }))
+    await assertFails(setDoc(doc(as('req'), 'organizations', ORG, 'lotoGroupNumbers', 'GL-9'), {
+      orgId: ORG, no: 'GL-9', description: 'no', openPermitId: '',
+    }))
+    const db = as('req')
+    const b = writeBatch(db)
+    b.set(seqRef(db), { n: 1 })
+    b.set(permitRef(db), newBody({ groupLock }))
+    b.update(groupRef(db), { openPermitId: NO(1) })
+    await assertSucceeds(b.commit())
+  })
+
+  it('refuses a permit that names a number already in use', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(groupRef(ctx.firestore()), {
+        orgId: ORG, no: 'GL-1', description: 'Yard box', openPermitId: 'LP-other',
+      })
+    })
+    const db = as('req')
+    const b = writeBatch(db)
+    b.set(seqRef(db), { n: 1 })
+    b.set(permitRef(db), newBody({ groupLock }))
+    b.update(groupRef(db), { openPermitId: NO(1) })
+    await assertFails(b.commit())
+  })
+
+  it('lets a member take off only their lock, and the primary only once they have', async () => {
+    await seed('active', { groupLock, removedUids: [] })
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore()
+      await setDoc(groupRef(db), { orgId: ORG, no: 'GL-1', description: 'Yard box', openPermitId: NO(1) })
+      await updateDoc(procRef(db), {
+        activePermit: { id: NO(1), permitNo: NO(1) },
+        isolationPoints: [point('k1', true), point('k2', true)],
+        lockSummary: { total: 2, lockedCount: 2, status: 'locked' },
+      })
+    })
+    await assertFails(updateDoc(permitRef(as('req')), {
+      removedUids: ['req'], updatedAt: serverTimestamp(),
+    }))
+    await assertFails(updateDoc(permitRef(as('by')), {
+      removedUids: ['by'], updatedAt: serverTimestamp(),
+    }))
+    await assertSucceeds(updateDoc(permitRef(as('crew')), {
+      removedUids: ['crew'], updatedAt: serverTimestamp(),
+    }))
+    const checks = { toolsRemoved: true, guardsReplaced: true, personnelClear: true, affectedNotified: true }
+    const returns = { k1: { by: 'req' }, k2: { by: 'req' } }
+    const close = (db) => {
+      const b = writeBatch(db)
+      b.update(permitRef(db), {
+        status: 'returned', closure: { by: 'req' }, closedAt: serverTimestamp(), updatedAt: serverTimestamp(),
+        returnChecks: checks, returns, removedUids: ['crew', 'req'],
+      })
+      b.update(procRef(db), {
+        activePermit: null,
+        isolationPoints: [point('k1', false), point('k2', false)],
+        lockSummary: { total: 2, lockedCount: 0, status: 'unlocked' },
+      })
+      b.update(groupRef(db), { openPermitId: '' })
+      return b.commit()
+    }
+    await assertSucceeds(close(as('req')))
+  })
+})
+
 describe('procedure approval stays Admin or Safety', () => {
   it('lets a manager approve a procedure and refuses a member', async () => {
     await assertFails(updateDoc(doc(as('req'), 'procedures', PROC), { status: 'rejected' }))

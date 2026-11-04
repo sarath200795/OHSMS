@@ -1896,7 +1896,7 @@ service cloud.firestore {
                 'requestedAt', 'internalPersonnel', 'personnelUids', 'vendorWorkers',
                 'procedureId', 'procedureCode', 'procedureRevision', 'equipment', 'site',
                 'siteId', 'region', 'entity', 'isolationPoints', 'pointKeys', 'pointCount',
-                'devices', 'locks', 'updatedAt'];
+                'devices', 'locks', 'groupLock', 'updatedAt'];
       }
       function lotoPermitCreate(permitId) {
         let d = request.resource.data;
@@ -1940,7 +1940,8 @@ service cloud.firestore {
           // Every permit names an approved procedure of its equipment. The old
           // "other / tag-only" type, which carried no procedure and no points,
           // is not a work type any more.
-          && lotoPermitProcOk(d);
+          && lotoPermitProcOk(d)
+          && (d.get('groupLock', null) == null || lotoGroupOk(d, permitId));
       }
       // A permit that isolates equipment names an APPROVED procedure of THIS org,
       // at the revision it was raised against, and takes its site, region and
@@ -1988,6 +1989,46 @@ service cloud.firestore {
           ? lotoConfiguredShiftOk(d)
           : lotoDefaultShiftOk(d);
       }
+      // Group lockout on a permit: hecp-loto's shape (box or hasp, primary
+      // first, one personal lock per member). The group number is a register
+      // row whose openPermitId is claimed in this same commit.
+      function lotoMemberOk(m) {
+        return m.keys().hasOnly(['uid', 'name', 'lockNo'])
+          && m.uid is string && m.uid.size() > 0 && m.uid.size() <= 128
+          && m.lockNo is string && m.lockNo.size() > 0 && m.lockNo.size() <= 40
+          && m.get('name', '') is string && m.get('name', '').size() <= 800;
+      }
+      function lotoGroupShape(g) {
+        return g is map
+          && g.keys().hasOnly(['active', 'method', 'groupNo', 'primaryUid', 'members'])
+          && g.active == true
+          && g.method in ['box', 'hasp']
+          && g.groupNo is string && g.groupNo.matches('^[A-Za-z0-9-]{1,40}$')
+          && g.members is list && g.members.size() >= 2 && g.members.size() <= 8
+          && g.primaryUid == g.members[0].uid
+          && lotoMemberOk(g.members[0]) && lotoMemberOk(g.members[1])
+          && (g.members.size() < 3 || lotoMemberOk(g.members[2]))
+          && (g.members.size() < 4 || lotoMemberOk(g.members[3]))
+          && (g.members.size() < 5 || lotoMemberOk(g.members[4]))
+          && (g.members.size() < 6 || lotoMemberOk(g.members[5]))
+          && (g.members.size() < 7 || lotoMemberOk(g.members[6]))
+          && (g.members.size() < 8 || lotoMemberOk(g.members[7]));
+      }
+      function lotoGroupRef(no) {
+        return /databases/$(database)/documents/organizations/$(orgId)/lotoGroupNumbers/$(no);
+      }
+      function lotoGroupOk(d, permitId) {
+        let g = d.groupLock;
+        return lotoGroupShape(g)
+          && exists(lotoGroupRef(g.groupNo))
+          && get(lotoGroupRef(g.groupNo)).data.openPermitId == ''
+          && get(lotoGroupRef(g.groupNo)).data.no == g.groupNo
+          && getAfter(lotoGroupRef(g.groupNo)).data.openPermitId == permitId;
+      }
+      function lotoGroupFreed(b) {
+        return b.get('groupLock', null) == null
+          || getAfter(lotoGroupRef(b.groupLock.groupNo)).data.openPermitId == '';
+      }
       function lotoPermitProcOk(d) {
         let pr = get(lotoPermitProc(d.procedureId)).data;
         return d.procedureId is string && d.procedureId != ''
@@ -2028,7 +2069,8 @@ service cloud.firestore {
           && (b.requestedBy == request.auth.uid || lotoPermitAdminOf(b))
           && changed.hasOnly(['status', 'closure', 'closedAt', 'updatedAt'])
           && a.closure.by == request.auth.uid
-          && a.closedAt == request.time;
+          && a.closedAt == request.time
+          && lotoGroupFreed(b);
       }
       // approved -> active. The permit may start only with a scan recorded for
       // EVERY isolation point, inside its window, and only in the same commit
@@ -2087,11 +2129,49 @@ service cloud.firestore {
           || (getAfter(lotoPermitProc(b.procedureId)).data.get('activePermit', null) == null
               && getAfter(lotoPermitProc(b.procedureId)).data.lockSummary.lockedCount == 0);
       }
+      // Everyone except the primary may take only their own lock off, and the
+      // permit stays active. The primary is not in this path: they close it.
+      function lotoIsMember(g, uid) {
+        return g.members[0].uid == uid
+          || g.members[1].uid == uid
+          || (g.members.size() >= 3 && g.members[2].uid == uid)
+          || (g.members.size() >= 4 && g.members[3].uid == uid)
+          || (g.members.size() >= 5 && g.members[4].uid == uid)
+          || (g.members.size() >= 6 && g.members[5].uid == uid)
+          || (g.members.size() >= 7 && g.members[6].uid == uid)
+          || (g.members.size() >= 8 && g.members[7].uid == uid);
+      }
+      function lotoNonPrimaryOff(g, removed) {
+        return removed.hasAny([g.members[1].uid])
+          && (g.members.size() < 3 || g.members[2].uid == g.primaryUid || removed.hasAny([g.members[2].uid]))
+          && (g.members.size() < 4 || g.members[3].uid == g.primaryUid || removed.hasAny([g.members[3].uid]))
+          && (g.members.size() < 5 || g.members[4].uid == g.primaryUid || removed.hasAny([g.members[4].uid]))
+          && (g.members.size() < 6 || g.members[5].uid == g.primaryUid || removed.hasAny([g.members[5].uid]))
+          && (g.members.size() < 7 || g.members[6].uid == g.primaryUid || removed.hasAny([g.members[6].uid]))
+          && (g.members.size() < 8 || g.members[7].uid == g.primaryUid || removed.hasAny([g.members[7].uid]));
+      }
+      function lotoPermitReleaseMember(b, a, changed) {
+        let g = b.groupLock;
+        let before = b.get('removedUids', []);
+        return b.get('groupLock', null) != null
+          && a.status == 'active'
+          && changed.hasOnly(['removedUids', 'updatedAt'])
+          && a.removedUids.size() == before.size() + 1
+          && a.removedUids.hasAll(before)
+          && a.removedUids.hasAny([request.auth.uid])
+          && !before.hasAny([request.auth.uid])
+          && request.auth.uid != g.primaryUid
+          && lotoIsMember(g, request.auth.uid)
+          && a.removedUids.size() < g.members.size();
+      }
       function lotoPermitReturn(b, a, changed) {
+        let grouped = b.get('groupLock', null) != null;
         return lotoPermitParty(b)
           && b.status == 'active'
           && a.status == 'returned'
-          && changed.hasOnly(['status', 'closure', 'closedAt', 'returnChecks', 'returns', 'updatedAt'])
+          && (grouped
+              ? changed.hasOnly(['status', 'closure', 'closedAt', 'returnChecks', 'returns', 'removedUids', 'updatedAt'])
+              : changed.hasOnly(['status', 'closure', 'closedAt', 'returnChecks', 'returns', 'updatedAt']))
           && a.closedAt == request.time
           && a.closure.by == request.auth.uid
           && a.returnChecks.toolsRemoved == true
@@ -2099,7 +2179,12 @@ service cloud.firestore {
           && a.returnChecks.personnelClear == true
           && a.returnChecks.affectedNotified == true
           && a.returns.keys().hasAll(b.pointKeys)
-          && lotoPermitReleased(b);
+          && lotoPermitReleased(b)
+          && lotoGroupFreed(b)
+          && (!grouped
+              || (request.auth.uid == b.groupLock.primaryUid
+                  && lotoNonPrimaryOff(b.groupLock, b.get('removedUids', []))
+                  && a.removedUids.hasAny([request.auth.uid])));
       }
       function lotoPermitEmergency(b, a, changed) {
         return lotoPermitAdminOf(b)
@@ -2112,7 +2197,8 @@ service cloud.firestore {
           && a.emergency.attest.ownerUnavailable == true
           && a.emergency.attest.equipmentInspected == true
           && a.emergency.attest.ownerWillBeTold == true
-          && lotoPermitReleased(b);
+          && lotoPermitReleased(b)
+          && lotoGroupFreed(b);
       }
       // Dispatch on the status being LEFT, so a request is judged by the one or
       // two moves that can start from it. Trying every move in turn spent the
@@ -2136,7 +2222,9 @@ service cloud.firestore {
                     : lotoPermitStart(permitId, b, a, changed))
             : b.status == 'active'
                 ? (a.status == 'active'
-                    ? lotoPermitExtend(b, a, changed)
+                    ? (changed.hasAny(['removedUids'])
+                        ? lotoPermitReleaseMember(b, a, changed)
+                        : lotoPermitExtend(b, a, changed))
                     : a.status == 'returned'
                         ? lotoPermitReturn(b, a, changed)
                         : lotoPermitEmergency(b, a, changed))
@@ -2186,6 +2274,39 @@ service cloud.firestore {
       // Shift clocks, one document for the org, keyed by site inside `sites`.
       // Members read it so the permit form can offer the right shifts. Only an
       // Admin writes it. The permit create rule reads the same document.
+      // Group lockout numbers. Admin creates them empty. A permit claims
+      // openPermitId in the same commit that names the number, and clears it
+      // in the commit that closes. Description edits are Admin only.
+      match /lotoGroupNumbers/{no} {
+        allow read: if isApprovedMemberOf(orgId) && moduleOn(orgId, 'loto');
+        allow create: if isAdminOf(orgId) && moduleOn(orgId, 'loto')
+          && request.resource.data.keys().hasOnly(['orgId', 'no', 'description', 'openPermitId'])
+          && request.resource.data.orgId == orgId
+          && request.resource.data.no == no
+          && no.matches('^[A-Za-z0-9-]{1,40}$')
+          && request.resource.data.description is string
+          && request.resource.data.description.size() <= 200
+          && request.resource.data.openPermitId == '';
+        allow update: if isWriterOf(orgId) && moduleOn(orgId, 'loto')
+          && request.resource.data.orgId == resource.data.orgId
+          && request.resource.data.no == resource.data.no
+          && (
+            (isAdminOf(orgId)
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['description'])
+              && request.resource.data.description is string
+              && request.resource.data.description.size() <= 200)
+            || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['openPermitId'])
+              && resource.data.openPermitId == ''
+              && getAfter(/databases/$(database)/documents/organizations/$(orgId)/lotoPermits/$(request.resource.data.openPermitId)).data.groupLock.groupNo == resource.data.no
+              && getAfter(/databases/$(database)/documents/organizations/$(orgId)/lotoPermits/$(request.resource.data.openPermitId)).data.status == 'requested')
+            || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['openPermitId'])
+              && request.resource.data.openPermitId == ''
+              && getAfter(/databases/$(database)/documents/organizations/$(orgId)/lotoPermits/$(resource.data.openPermitId)).data.status
+                  in ['returned', 'withdrawn', 'rejected', 'emergency_removed'])
+          );
+        allow delete: if false;
+      }
+
       match /lotoSettings/{docId} {
         allow read: if isApprovedMemberOf(orgId) && moduleOn(orgId, 'loto');
         allow create, update: if isAdminOf(orgId) && moduleOn(orgId, 'loto')
@@ -2557,6 +2678,10 @@ service cloud.firestore {
         // Shift clocks are Admin-written. The generic grant would let any
         // member point a site's shift at a window they can already satisfy.
         && col != 'lotoSettings'
+        // Group lockout numbers. A member who could invent one, or point an
+        // open number at a permit they do not hold, would put two crews on
+        // one box. The narrow match below is the only writer.
+        && col != 'lotoGroupNumbers'
         && notKeyset(col, docId);
     }
     function genericReadable(col, docId) {
