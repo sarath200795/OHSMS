@@ -41,6 +41,7 @@ const Maintenance = lazy(() => import('./pages/admin/Maintenance'))
 const PlatformLogin = lazy(() => import('./pages/platform/PlatformLogin'))
 const PlatformShell = lazy(() => import('./pages/platform/PlatformShell'))
 const PlatformModuleAccess = lazy(() => import('./pages/platform/ModuleAccess'))
+const PlatformOrganizations = lazy(() => import('./pages/platform/Organizations'))
 
 // Modules (lazy — several pull heavy libs like react-flow / three / xlsx).
 const Incidents = lazy(() => import('./modules/incidents'))
@@ -231,13 +232,28 @@ export default function App() {
         element={
           <Suspense fallback={<SamLoading />}>
             <PlatformRoute>
-              <PlatformShell>
-                <PlatformModuleAccess />
-              </PlatformShell>
+              <PlatformShell />
             </PlatformRoute>
           </Suspense>
         }
-      />
+      >
+        <Route
+          index
+          element={
+            <Suspense fallback={<SamLoading />}>
+              <PlatformModuleAccess />
+            </Suspense>
+          }
+        />
+        <Route
+          path="organizations"
+          element={
+            <Suspense fallback={<SamLoading />}>
+              <PlatformOrganizations />
+            </Suspense>
+          }
+        />
+      </Route>
 
       {/* Fallbacks */}
       {/* The portal is everyone's home. Anyone with a role above plain member

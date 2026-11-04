@@ -7,13 +7,20 @@
 // wrong — it is the operator's own tenant, sitting above a list of everybody
 // else's, which is precisely the confusion this separation removes.
 //
-// Quiet, and it says "Platform console" and nothing else. Whoever is looking at
-// this screen should never have to check which app they are in.
+// Quiet. It says "Platform console" and names the two jobs an operator has —
+// which modules a customer may use, and the directory of every customer — and
+// nothing that would place the operator inside one of them. Whoever is looking
+// at this screen should never have to check which app they are in.
 // ─────────────────────────────────────────────────────────────────────────────
-import { LogOut, SlidersHorizontal } from 'lucide-react'
+import { Building2, LogOut, SlidersHorizontal } from 'lucide-react'
+import { NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '../../shared/auth/AuthContext'
 import ErrorBoundary from '../../shared/ErrorBoundary'
 import IdleGuard from '../../shared/auth/IdleGuard'
+
+function tabClass({ isActive }) {
+  return `nav-tab ${isActive ? 'nav-tab-active' : 'nav-tab-idle'}`
+}
 
 export default function PlatformShell({ children }) {
   const { user, signOut } = useAuth()
@@ -52,8 +59,21 @@ export default function PlatformShell({ children }) {
         </button>
       </header>
 
+      <div className="border-b border-ink-200/80 bg-white/50 px-5 py-2 sm:px-7">
+        <nav aria-label="Platform console" className="tab-strip w-fit max-w-full">
+          <NavLink to="/platform" end className={tabClass}>
+            <SlidersHorizontal size={15} aria-hidden="true" />
+            Module access
+          </NavLink>
+          <NavLink to="/platform/organizations" className={tabClass}>
+            <Building2 size={15} aria-hidden="true" />
+            Organizations
+          </NavLink>
+        </nav>
+      </div>
+
       <main id="main" tabIndex={-1} className="mx-auto max-w-[1180px] px-5 pb-24 pt-6 sm:px-7">
-        <ErrorBoundary>{children}</ErrorBoundary>
+        <ErrorBoundary>{children ?? <Outlet />}</ErrorBoundary>
       </main>
 
       {/* Deliberately NOT AppChrome is what left this screen without an

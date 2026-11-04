@@ -432,3 +432,19 @@ export async function fetchSiteWeather({ lat, lng } = {}) {
   const fn = await callable('fetchSiteWeather')
   return (await fn({ lat, lng })).data
 }
+
+/**
+ * Every organization, for the platform console.
+ *
+ * Takes no argument. The operator's identity is the signed-in user, and the
+ * function decides from platformAdmins/{uid} — not from a role on a tenant
+ * profile the operator does not have. Passing an organization id would imply
+ * this was a tenant-scoped read. It is not.
+ *
+ * `{ rows, recentWindowDays, truncated, orgTruncated, userTruncated, partial }`.
+ * A null count means that read failed. It is not a zero.
+ */
+export async function listPlatformOrganizations() {
+  const fn = await callable('listPlatformOrganizations', { timeout: 120_000 })
+  return (await fn()).data
+}

@@ -8,11 +8,11 @@ tenant can grant itself a module.
 
 Three layers, and only the last one is a real control:
 
-| Layer | What it does | Where |
-| --- | --- | --- |
-| The tile grids | A disabled module is not offered | `pages/portal/Home.jsx`, `pages/Dashboard.jsx` |
-| The route | A bookmark to a disabled module gets a "not enabled" screen instead of the module | `shared/modules/ModuleGate.jsx`, mounted by `Protected moduleKey=…` in `App.jsx` |
-| Firestore rules | Only a platform operator may write an entitlement | `firestore.rules` → `match /moduleEntitlements/{orgId}` |
+| Layer           | What it does                                                                      | Where                                                                            |
+| --------------- | --------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| The tile grids  | A disabled module is not offered                                                  | `pages/portal/Home.jsx`, `pages/Dashboard.jsx`                                   |
+| The route       | A bookmark to a disabled module gets a "not enabled" screen instead of the module | `shared/modules/ModuleGate.jsx`, mounted by `Protected moduleKey=…` in `App.jsx` |
+| Firestore rules | Only a platform operator may write an entitlement                                 | `firestore.rules` → `match /moduleEntitlements/{orgId}`                          |
 
 The first two are presentation and can be defeated in a browser. The third
 cannot, which is why the entitlement lives in a top-level collection rather than
@@ -26,7 +26,7 @@ The console is not a screen inside the customer app. It has its own sign-in at
 `/platform/login`, its own dark shell, and its own guard — and the customer app
 contains no link to it.
 
-That separation is not decoration. Deciding what *other* organizations may use
+That separation is not decoration. Deciding what _other_ organizations may use
 while signed in as an admin of one of them, under a header carrying that
 customer's name, is how the wrong organization gets edited. So:
 
@@ -107,6 +107,36 @@ Only an explicit `false` disables a module. `normalizeEntitlement` in
 
 "Restore default" on the console **deletes** the record rather than writing every
 module `true`, so the org keeps getting new modules automatically.
+
+## Organizations
+
+`/platform/organizations` lists every organization: its name, the activity
+already stored for it, and every admin's name and email.
+
+Activity is not a new field. Nothing on the organization document says
+active or suspended. The page reports what is already there:
+
+- membership, from `/users` `status` — `approved`, and a profile written
+  before that field existed, counts as active; the organization is
+  suspended only when every profile in it is `suspended`
+- `createdAt` on the organization
+- the newest `auditLogs` `at`, which is the last activity
+- counts of users (by that status), sites (the centre registry), and audit
+  events in the last 30 days
+
+A count that could not be read is shown as unavailable. Zero would mean the
+customer has none, and a failed read is not that.
+
+The browser does not query those collections. The operator belongs to no
+organization, and `/users` is readable only by an approved member of the same
+org, so a client list cannot see another tenant's admins. Letting
+`isPlatformAdmin()` list `/users` would also hand over every other field on
+the profile. `listPlatformOrganizations` is a callable: it checks
+`platformAdmins/{uid}` with the Admin SDK and returns only the fields above.
+The request carries no organization id.
+
+The page can be filtered by organization name and by admin email. Both apply
+together.
 
 ## What this is not
 
