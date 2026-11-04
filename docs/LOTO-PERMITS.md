@@ -161,6 +161,19 @@ stored files (`purgeClosedLotoPermits`, nightly 03:45 IST, at most 500 per run,
 org-prefix check on every file path, fails the invocation after finishing if
 anything could not be removed). Open permits are never purged.
 
+## Tags and the public procedure page
+
+Each isolation point prints as a colour-coded energy tag: Electrical red `E-`,
+Mechanical blue `M-`, Hydraulic green `H-`, Pneumatic orange `P-`, Chemical
+yellow `C-`, Gravitational purple `G-`. The band reads DANGER · DO NOT OPERATE.
+The QR on the tag is that point (`/t/<procedureId>/<pointKey>`), and Start is
+refused until every point key has been scanned. A code that only carries the
+printed id (`E-1`) does not count.
+
+`/p/<id>` stays the public read-only procedure page. It is a different QR from
+the tag: the procedure page says how to isolate the machine; the tag says
+whether this point is isolated now.
+
 ## Working a permit (PR B)
 
 1. **Approve / reject** — Admin of the permit's site or entity. Rejecting needs a

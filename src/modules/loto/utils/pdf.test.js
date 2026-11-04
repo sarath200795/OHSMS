@@ -41,6 +41,11 @@ vi.mock('jspdf', async (importOriginal) => {
       draws.push({ op: 'image', args: a })
       return addImage(...a)
     }
+    const setFillColor = doc.setFillColor.bind(doc)
+    doc.setFillColor = (...a) => {
+      draws.push({ op: 'fill', args: a, page: doc.getCurrentPageInfo().pageNumber })
+      return setFillColor(...a)
+    }
     doc.rect = (...a) => {
       draws.push({
         op: 'rect',
@@ -275,6 +280,27 @@ describe('LOTO activity log PDF', () => {
 })
 
 describe('LOTO tag sheet PDF', () => {
+  it('paints each tag in that energy source’s colour', async () => {
+    const coloured = {
+      ...procedure,
+      isolationPoints: [
+        { key: 'e', energySource: 'electrical' },
+        { key: 'm', energySource: 'mechanical' },
+        { key: 'h', energySource: 'hydraulic' },
+        { key: 'p', energySource: 'pneumatic' },
+        { key: 'c', energySource: 'chemical' },
+        { key: 'g', energySource: 'gravitational' },
+      ],
+    }
+    await generateTagsPdf(coloured)
+    const fills = draws.filter((d) => d.op === 'fill').map((d) => d.args.join(','))
+    for (const rgb of ['226,59,46', '47,127,226', '47,170,87', '255,122,0', '245,197,24', '155,81,224']) {
+      expect(fills, rgb).toContain(rgb)
+    }
+    const danger = draws.filter((d) => d.op === 'text' && String(d.text).includes('DANGER'))
+    expect(danger).toHaveLength(6)
+  })
+
   it('lays out one tag per isolation point', async () => {
     await generateTagsPdf(procedure)
     expect(saved).toHaveLength(1)

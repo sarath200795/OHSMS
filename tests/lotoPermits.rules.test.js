@@ -532,6 +532,12 @@ describe('starting work — every point scanned, locked in the same commit', () 
     await assertFails(start(as('req'), { keys: ['k1'] }))
   })
 
+  // The tag QR encodes the point key (/t/<procedure>/<key>). A scan filed under
+  // the printed point id (E-1) is not that key, so it does not count.
+  it('refuses a start scanned under the point id instead of the point key', async () => {
+    await assertFails(start(as('req'), { keys: ['E-1', 'H-1'] }))
+  })
+
   it('refuses a start that does not touch the procedure at all', async () => {
     await assertFails(start(as('req'), { skipProc: true }))
   })
