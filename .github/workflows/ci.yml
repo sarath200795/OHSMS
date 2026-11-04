@@ -143,10 +143,14 @@ jobs:
       # project or a JDK. It lives in this job because a tag deploys whatever
       # commit it points at: the assertion that a compilation error is not
       # retried, and that hosting stays gated on the rules step, has to fail
-      # here before that tag exists.
+      # here before that tag exists. prepare-functions-deploy.test.sh is the
+      # same shape of check for the functions env: v2.0.7 died because two
+      # defineString params were absent from that file, and the code default
+      # is not consulted in --non-interactive.
       - name: Deploy script tests
         run: |
           bash scripts/deploy-rules.test.sh
+          bash scripts/prepare-functions-deploy.test.sh
           node --test scripts/rules-live.test.mjs
 
       - name: Build

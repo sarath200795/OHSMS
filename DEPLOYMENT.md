@@ -159,6 +159,9 @@ is missing, CI creates it from the `SMTP_PASS` GitHub secret when that is
 set, and otherwise as the placeholder `UNSET-PLACEHOLDER`. CI does not create
 or replace `DATA_KEY_MASTER`. Repository variables `SMTP_HOST`, `SMTP_PORT`,
 `SMTP_USER`, `MAIL_FROM` and `APP_ORIGIN` override those CI defaults when set.
+`WA_TEMPLATE_WELCOME` and `WA_TEMPLATE_TEST` are written as well, blank unless
+those repository variables are set. Blank keeps the welcome and the org test
+on free-form text.
 
 Local emulators read the password from `functions/.secret.local` (one line,
 `SMTP_PASS=...`). Without that file the trigger logs the same configuration
