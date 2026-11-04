@@ -128,6 +128,7 @@ import {
   WA_PURGE_MAX_BATCHES,
   cutoffFor,
 } from './lib/whatsapp/retention.js'
+import { listPlatformOrganizationsFor } from './lib/orgDirectory.js'
 
 initializeApp()
 
@@ -3375,6 +3376,20 @@ export const buildWhatsAppSnapshots = onSchedule(
       }
     }
   }
+)
+
+/**
+ * Every organization on the platform, for the operator console.
+ *
+ * The caller is authenticated and then checked against platformAdmins/{uid}.
+ * The request body is ignored: there is no organization id to aim, because
+ * the answer is the whole customer list or it is a refusal. The projection
+ * lives in lib/orgDirectory.js — names, emails, and counts, not the profiles
+ * those were read from.
+ */
+export const listPlatformOrganizations = onCall(
+  { region: REGION, timeoutSeconds: 120, memory: '512MiB' },
+  async (request) => listPlatformOrganizationsFor(getFirestore(), request.auth?.uid)
 )
 
 /** Daily: the retention table in lib/whatsapp/retention.js. Runs even when switched off. */

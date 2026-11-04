@@ -20,6 +20,7 @@ import {
   sendWeatherRiskDigest,
   retryWeatherRiskDigest,
   fetchSiteWeather,
+  listPlatformOrganizations,
   notifyLotoPermitLifecycle,
   sweepLotoPermits,
   purgeClosedLotoPermits,
@@ -730,5 +731,13 @@ describe('lifecycle mail triggers', () => {
       expect.arrayContaining(['SMTP_PASS', 'WINDY_API_KEY'])
     )
     expect(secretNames(fetchSiteWeather)).toContain('WINDY_API_KEY')
+  })
+
+  it('publishes the organization directory as a callable in asia-south1', () => {
+    expect(listPlatformOrganizations.__endpoint.region).toEqual(['asia-south1'])
+    expect(listPlatformOrganizations.__endpoint.timeoutSeconds).toBe(120)
+    expect(listPlatformOrganizations.__endpoint.availableMemoryMb).toBe(512)
+    const secrets = listPlatformOrganizations.__endpoint.secretEnvironmentVariables || []
+    expect(secrets).toEqual([])
   })
 })
