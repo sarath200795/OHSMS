@@ -171,7 +171,7 @@ export const MODULES = [
     path: '/weather',
     icon: CloudSun,
     tone: 'blue',
-    description: 'Current conditions at every site read as occupational risk — heat stress, wind limits for work at height, lightning, rain and visibility.',
+    description: 'Current conditions at every site read as occupational risk — heat stress, cold stress, rain, lightning and air quality.',
     collection: '',
     isNew: true,
   },

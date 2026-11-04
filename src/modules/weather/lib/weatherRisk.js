@@ -3,15 +3,15 @@
 //
 // A site page showing "24°C, light rain" tells a safety officer nothing they
 // could act on. What matters is whether today's conditions put a control at
-// risk: heat stress on outdoor crews, wind that should stop work at height,
-// lightning that should stop hot work, rain that turns a yard into a slip
-// hazard. So this maps raw observations onto the same five-band scale the rest
-// of the app uses for risk, and names the work that each band affects.
+// risk: heat stress, cold stress, rain, lightning and air quality. So this
+// maps raw observations onto the same five-band scale the rest of the app
+// uses for risk, and names the work that each band affects.
 //
-// Every threshold below is a published one, cited where it is set. They are
-// deliberately not tunable per org: an org that quietly lowers its own heat
-// threshold has not become safer, and the numbers here are the ones an auditor
-// will recognise.
+// Wind, visibility, UV, freezing rain and snow are not hazards here. A field
+// for one of them on an observation does not produce a row.
+//
+// The cuts match functions/lib/weatherBands.js. The functions package cannot
+// import the SPA, so a cut-off has to move in both files.
 //
 // Pure — no network, no clock. `assessWeather` takes an already-normalised
 // observation so the thresholds can be tested directly.
@@ -38,7 +38,7 @@ function band(value, cuts) {
   return BANDS[i]
 }
 
-/** Same, for scales that get worse as the number falls (cold, visibility). */
+/** Same, for scales that get worse as the number falls (cold). */
 function bandDescending(value, cuts) {
   let i = 0
   while (i < cuts.length && value <= cuts[i]) i += 1
@@ -76,21 +76,14 @@ function heatBand(feels, airC) {
   return b
 }
 
-// Wind chill. NWS puts frostbite on exposed skin at 30 minutes around -28°C,
-// which anchors the severe band; the milder ones follow the usual cold-stress
-// work/warm-up guidance.
+// Feels-like °C, worse as it falls.
+// ≤ 10°C low, ≤ 0°C Medium, ≤ -10°C High, ≤ -25°C severe. 10°C is the usual
+// cold-stress awareness line; freezing is the mailed Medium line.
 const COLD_CUTS = [10, 0, -10, -25]
 
-// Beaufort 5/6/7/8. Six is where most MEWP and scaffold rules stop work at
-// height (12.5 m/s ≈ 45 km/h is the common suspension limit and sits inside
-// this band), seven is where loose material starts moving on site.
-const WIND_CUTS = [29, 39, 50, 62]
-
 // Rain rate, mm/h. Above 10 mm/h drainage stops keeping up and yards flood;
-// above 30 is a cloudburst. Open-Meteo's current precipitation is a 15-minute
-// sum, so the normaliser has to turn it into a rate first: a 3 mm step is
-// 12 mm/h, and comparing the step itself with these cuts left that hour off
-// the rain alert.
+// above 30 is a cloudburst. Windy's precipitation is a 3-hour column, so the
+// normaliser divides it by three before these cuts see it.
 const RAIN_CUTS = [0.5, 4, 10, 30]
 
 // Rain is reported as a named alert rather than only a band, because "medium
@@ -104,37 +97,56 @@ export const RAIN_ALERT = {
   severe: 'High',
 }
 
-// Metres. Below 1 km site traffic and lifting signalling become unreliable;
-// below 200 m nothing outdoors can be supervised safely.
-const VIS_CUTS = [5000, 2000, 1000, 200]
+// CAPE in J/kg, used when the forecast has no thunderstorm code.
+// Below 1000 is not an alert. 1000–2500 is Medium. 2500 and above is High.
+// A warning code of 95 or 96 is a thunderstorm and is severe on its own.
+const CAPE_MEDIUM = 1000
+const CAPE_HIGH = 2500
 
-/** WMO codes 95/96/99 are thunderstorm, with or without hail. */
-export const isThunderstorm = (code) => code === 95 || code === 96 || code === 99
+// AQI, 0–500. Below 200 is Low. 200 up to 400 is Medium. 400 and above is
+// High — including 500, which is the top of the scale rather than a separate cut.
+const AQI_MEDIUM = 200
+const AQI_HIGH = 400
 
-/** WMO codes for freezing rain and freezing drizzle. */
-const isFreezingRain = (code) => code === 56 || code === 57 || code === 66 || code === 67
+const LEVEL_WORD = { low: 'Low', moderate: 'Medium', high: 'High', severe: 'High' }
 
-/** WMO snow codes. */
-const isSnow = (code) => (code >= 71 && code <= 77) || code === 85 || code === 86
+function lightningBand(code, cape) {
+  if (code === 95 || code === 96) return 'severe'
+  if (cape == null) return 'none'
+  if (cape >= CAPE_HIGH) return 'high'
+  if (cape >= CAPE_MEDIUM) return 'moderate'
+  return 'none'
+}
+
+function lightningValue(code, cape) {
+  const parts = []
+  if (code === 95 || code === 96) parts.push('Thunderstorm forecast')
+  if (cape != null) parts.push(`CAPE ${round(cape)} J/kg`)
+  return parts.join(' · ')
+}
+
+function airBand(aqi) {
+  if (aqi >= AQI_HIGH) return 'high'
+  if (aqi >= AQI_MEDIUM) return 'moderate'
+  return 'low'
+}
 
 /**
  * Assess one observation.
  *
- * `obs` fields are all optional — a provider that cannot supply visibility
- * should simply omit it rather than send a zero, which would read as fog.
+ * `obs` fields are all optional — a provider that cannot supply air quality
+ * should simply omit it rather than send a zero, which would read as Low.
  *
  * Returns the overall band plus every hazard that reached at least `low`,
- * worst first. Hazards sitting at `none` are dropped: a list that always has
- * seven rows is a list nobody reads.
+ * worst first. Hazards sitting at `none` are dropped.
  */
 export function assessWeather(obs = {}) {
-  const {
-    apparentTempC, tempC, windKph, gustKph, precipMmHr,
-    visibilityM, weatherCode,
-  } = obs
+  const { apparentTempC, tempC, precipMmHr, capeJkg, lightningCode, aqi, aqiSource } = obs
 
   const hazards = []
-  const add = (h) => { if (levelOf(h.band) > 0) hazards.push(h) }
+  const add = (h) => {
+    if (levelOf(h.band) > 0) hazards.push(h)
+  }
 
   const feels = num(apparentTempC) ?? num(tempC)
   if (feels != null) {
@@ -154,21 +166,6 @@ export function assessWeather(obs = {}) {
     })
   }
 
-  // Gusts are what actually take a panel out of someone's hands, so the band
-  // reads whichever is worse but the figure shown says which one it was.
-  const steady = num(windKph)
-  const gust = num(gustKph)
-  const worstWind = Math.max(steady ?? -Infinity, gust ?? -Infinity)
-  if (Number.isFinite(worstWind)) {
-    add({
-      key: 'wind',
-      label: 'High wind',
-      band: band(worstWind, WIND_CUTS),
-      value: gust != null && gust > (steady ?? 0) ? `Gusting ${round(gust)} km/h` : `${round(worstWind)} km/h`,
-      affects: 'Work at height, MEWPs, scaffolding, lifting and sheet material.',
-    })
-  }
-
   const rain = num(precipMmHr)
   if (rain != null) {
     const rainBand = band(rain, RAIN_CUTS)
@@ -182,49 +179,30 @@ export function assessWeather(obs = {}) {
     })
   }
 
-  // UV is deliberately not assessed: a UV index never produces a hazard, a
-  // band, an alert or a count. `uvIndex` may still ride along on the
-  // observation as plain data.
-
-  const vis = num(visibilityM)
-  if (vis != null) {
+  const code = num(lightningCode)
+  const cape = num(capeJkg)
+  const storm = lightningBand(code, cape)
+  if (storm !== 'none') {
     add({
-      key: 'visibility',
-      label: 'Poor visibility',
-      band: bandDescending(vis, VIS_CUTS),
-      value: vis >= 1000 ? `${(vis / 1000).toFixed(1)} km` : `${round(vis)} m`,
-      affects: 'Site traffic, banksman signalling and lifting operations.',
+      key: 'lightning',
+      label: 'Lightning',
+      band: storm,
+      value: lightningValue(code, cape),
+      affects: 'Stop work at height, hot work, cranes and open-air electrical work.',
     })
   }
 
-  if (weatherCode != null) {
-    if (isThunderstorm(weatherCode)) {
-      add({
-        key: 'lightning',
-        label: 'Thunderstorm',
-        band: 'severe',
-        value: 'Lightning reported',
-        affects: 'Stop work at height, hot work, cranes and open-air electrical work.',
-      })
-    }
-    if (isFreezingRain(weatherCode)) {
-      add({
-        key: 'ice',
-        label: 'Freezing rain',
-        band: 'high',
-        value: 'Ice forming',
-        affects: 'Walkways, ladders, steps and vehicle movement.',
-      })
-    }
-    if (isSnow(weatherCode)) {
-      add({
-        key: 'snow',
-        label: 'Snow',
-        band: 'moderate',
-        value: 'Snow falling',
-        affects: 'Access routes, roof loading and site vehicle traction.',
-      })
-    }
+  const index = num(aqi)
+  if (index != null && index >= 0) {
+    const bandName = airBand(index)
+    const via = aqiSource === 'pm' ? ' (particles)' : ''
+    add({
+      key: 'air',
+      label: 'Air quality',
+      band: bandName,
+      value: `${LEVEL_WORD[bandName]} · AQI ${round(index)}${via}`,
+      affects: 'Heavy outdoor work — move people indoors and slow strenuous tasks.',
+    })
   }
 
   hazards.sort((a, b) => levelOf(b.band) - levelOf(a.band))
@@ -242,9 +220,9 @@ function num(v) {
  * problem, and how widely.
  *
  * The single worst hazard answers "how bad is it" but not "what is it" — three
- * sites in high wind and one in a thunderstorm is a different morning from four
- * sites baking. So each category present is reported once, at its worst band,
- * with the number of sites showing it.
+ * sites in heavy rain and one under a thunderstorm is a different morning from
+ * four sites baking. So each category present is reported once, at its worst
+ * band, with the number of sites showing it.
  *
  * @param risks assessments (the result of assessWeather), one per site
  * @returns [{ key, label, band, level, sites }] worst first, then most sites

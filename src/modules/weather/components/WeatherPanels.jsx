@@ -114,7 +114,7 @@ export function WeatherRiskPanel({ lat, lng, active }) {
       )}
 
       <p style={{ margin: '6px 0 0', fontSize: 9.5, color: '#cbd5e1' }}>
-        Open-Meteo, nearest ~1 km. Guidance only — it does not replace a site assessment.
+        Windy, nearest ~1 km. Guidance only — it does not replace a site assessment.
       </p>
     </div>
   )

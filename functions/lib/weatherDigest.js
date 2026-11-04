@@ -1,9 +1,9 @@
 // Every six hours, mail each org's admins the High and Medium weather risk
 // across that org's sites, with a static map of the pins. The mail is split by
-// hazard: Heat Stress, then Rain Risk, then Other hazards (wind, visibility,
-// cold, thunderstorm, ice, snow). Each section has its own region → sites
-// tables. A site with several hazards is listed under each, at that hazard's
-// own level; the subject and summary count each site once, at its worst level.
+// hazard: Heat Stress, Cold Stress, Rain Risk, Lightning, then Air Quality.
+// Each section has its own region → sites tables. A site with several hazards
+// is listed under each, at that hazard's own level; the subject and summary
+// count each site once, at its worst level.
 // Above those sections, after the summary and map, sits one table of EVERY
 // High site-hazard pair (Region, Site Name, Type of Alert, Precautions). The
 // precaution follows the organisation's activities and, where a site has its
@@ -13,9 +13,9 @@
 // made it into at least one section or into the High table. The digest data stays one row
 // per site (`areas`); the sectioning lives in the mail template.
 //
-// There is no stored weather collection. The screen reads Open-Meteo in the
-// browser (src/modules/weather). This run does the same request from the
-// function, assesses it with the same bands (weatherBands.js), and sends
+// There is no stored weather collection. The screen calls fetchSiteWeather,
+// which reads Windy with WINDY_API_KEY. This run does the same request from
+// the function, assesses it with the same bands (weatherBands.js), and sends
 // only the elevated areas. Low and none are omitted. A failed read is not
 // reported as "no risk". The mail waits until every located site has a
 // reading. If some are still missing 50 minutes into the slot, one mail goes
@@ -56,7 +56,7 @@ import { selectAdminAudience, loadOrgUsers } from './audience.js'
 import { describeMailGap } from './mailer.js'
 import { circulate } from './circulate.js'
 import { assessWeather, digestLevel, digestHazards, digestDrivers } from './weatherBands.js'
-import { gridKey, fetchGrids } from './openMeteo.js'
+import { gridKey, fetchGrids } from './windy.js'
 import { loadOrgDisplayName, mailSenderName } from './mailBrand.js'
 import { readableText } from './mailTemplates/safe.js'
 import { renderWeatherDigest, shownDigestAreas } from './mailTemplates/lifecycle.js'
@@ -300,7 +300,7 @@ function pointsFor(keys) {
   })
 }
 
-async function readGrids(keys, fetchObs, fetchGridsImpl, clock, ref) {
+async function readGrids(keys, fetchObs, fetchGridsImpl, clock, ref, apiKey) {
   if (!keys.length) return new Map()
   const until = clock() + RUN_BUDGET_MS
   if (fetchObs) {
@@ -317,6 +317,7 @@ async function readGrids(keys, fetchObs, fetchGridsImpl, clock, ref) {
   const { observations } = await fetchGridsImpl(pointsFor(keys), {
     now: clock,
     until,
+    apiKey,
     onProgress: () => ref.set({ updatedAt: clock() }, { merge: true }),
   })
   return observations
@@ -331,6 +332,7 @@ export async function deliverWeatherDigest({
   fetchObs,
   fetchGrids: fetchGridsImpl = fetchGrids,
   renderMap = renderRiskMap,
+  windyKey = '',
   orgIds,
 }) {
   const bucket = bucketFromSchedule(scheduleTime, now())
@@ -383,6 +385,7 @@ export async function deliverWeatherDigest({
         fetchObs,
         fetchGridsImpl,
         renderMap,
+        windyKey,
         tileCache,
         sharedObs,
       })
@@ -418,6 +421,7 @@ async function deliverOrg({
   fetchObs,
   fetchGridsImpl,
   renderMap,
+  windyKey,
   tileCache,
   sharedObs,
 }) {
@@ -433,8 +437,11 @@ async function deliverOrg({
     if (plan.byGrid.has(key) && !observations.has(key)) observations.set(key, obs)
   }
   const missing = [...plan.byGrid.keys()].filter((key) => !observations.has(key))
+  if (missing.length && !fetchObs && !windyKey) {
+    log.error('weather digest has no WINDY_API_KEY', { orgId, bucket })
+  }
   if (missing.length) {
-    const fresh = await readGrids(missing, fetchObs, fetchGridsImpl, clock, ref)
+    const fresh = await readGrids(missing, fetchObs, fetchGridsImpl, clock, ref, windyKey)
     for (const [key, obs] of fresh) {
       observations.set(key, obs)
       sharedObs.set(key, obs)

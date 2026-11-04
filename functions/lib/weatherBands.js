@@ -2,13 +2,16 @@
 //
 // This is a copy of src/modules/weather/lib/weatherRisk.js. The functions
 // package cannot import the SPA, and the two will disagree the day a cut-off
-// moves in only one of them. The numbers are published thresholds (NWS heat,
-// Beaufort wind); they are not tunable per org. Change them in both
-// files.
+// moves in only one of them. The numbers are not tunable per org. Change
+// them in both files.
 //
 // The digest only names Medium and High. In this scale that is `moderate`,
 // and `high` together with `severe` — the same collapse the rain alert uses
 // when it says a cloudburst is "High". Low and none are not a mail.
+//
+// The alerts are Heat Stress, Cold Stress, Rain, Lightning and Air Quality.
+// Wind, visibility, UV, freezing rain and snow are not assessed: a field for
+// one of them on an observation does not produce a row.
 
 export const BANDS = ['none', 'low', 'moderate', 'high', 'severe']
 
@@ -44,13 +47,30 @@ function heatBand(feels, airC) {
   }
   return b
 }
+
+// Feels-like °C, worse as it falls.
+// ≤ 10°C low (awareness only — not mailed), ≤ 0°C Medium, ≤ -10°C High,
+// ≤ -25°C severe, which the digest still calls High. 10°C is the usual
+// cold-stress awareness line for outdoor work; freezing is when the mail starts.
 const COLD_CUTS = [10, 0, -10, -25]
-const WIND_CUTS = [29, 39, 50, 62]
-// mm/h. Open-Meteo's current precipitation is a 15-minute sum; the normaliser
-// turns it into a rate before it is compared with these cuts. A 3 mm step is
-// 12 mm/h, not light rain.
+
+// mm/h. Windy's precipitation is a 3-hour column; the normaliser divides it
+// by three before it is compared with these cuts.
 const RAIN_CUTS = [0.5, 4, 10, 30]
-const VIS_CUTS = [5000, 2000, 1000, 200]
+
+// CAPE (J/kg) when Windy has no thunderstorm code for the point.
+// Below 1000 is ordinary convection and not an alert. 1000–2500 is Medium
+// (storms possible). 2500 and above is High (storms likely). A weatherWarnings
+// code of 95 or 96 is a thunderstorm in the forecast and outranks CAPE.
+const CAPE_MEDIUM = 1000
+const CAPE_HIGH = 2500
+
+// AQI on the 0–500 scale. 0–200 is Low (not mailed). 200–400 is Medium, and
+// 200 itself is Medium. 400 and above is High. The figure sometimes quoted
+// for High is 500, the top of the scale; 400 is already the top band here,
+// so 400 and 500 are both High.
+const AQI_MEDIUM = 200
+const AQI_HIGH = 400
 
 // The words the rain row already uses on the site page. The digest value
 // copies that reading; it is not a second scale.
@@ -61,9 +81,7 @@ const RAIN_ALERT = {
   severe: 'High',
 }
 
-const isThunderstorm = (code) => code === 95 || code === 96 || code === 99
-const isFreezingRain = (code) => code === 56 || code === 57 || code === 66 || code === 67
-const isSnow = (code) => (code >= 71 && code <= 77) || code === 85 || code === 86
+const LEVEL_WORD = { low: 'Low', moderate: 'Medium', high: 'High', severe: 'High' }
 
 function num(v) {
   return typeof v === 'number' && Number.isFinite(v) ? v : null
@@ -71,16 +89,35 @@ function num(v) {
 
 const round = (n) => Math.round(n)
 
+function lightningBand(code, cape) {
+  if (code === 95 || code === 96) return 'severe'
+  if (cape == null) return 'none'
+  if (cape >= CAPE_HIGH) return 'high'
+  if (cape >= CAPE_MEDIUM) return 'moderate'
+  return 'none'
+}
+
+function lightningValue(code, cape) {
+  const parts = []
+  if (code === 95 || code === 96) parts.push('Thunderstorm forecast')
+  if (cape != null) parts.push(`CAPE ${round(cape)} J/kg`)
+  return parts.join(' · ')
+}
+
+function airBand(aqi) {
+  if (aqi >= AQI_HIGH) return 'high'
+  if (aqi >= AQI_MEDIUM) return 'moderate'
+  return 'low'
+}
+
 /**
  * Assess one normalised observation. Hazards at `none` are dropped.
  * Returns `{ band, hazards: [{ key, label, band, value }] }` worst first.
  *
- * `value` is the reading the site page already shows (weatherRisk.js). The
- * digest prints it. It is not a new threshold.
+ * `value` is the reading the digest prints. It is not a new threshold.
  */
 export function assessWeather(obs = {}) {
-  const { apparentTempC, tempC, windKph, gustKph, precipMmHr, visibilityM, weatherCode } =
-    obs
+  const { apparentTempC, tempC, precipMmHr, capeJkg, lightningCode, aqi, aqiSource } = obs
   const hazards = []
   const add = (h) => {
     if (levelOf(h.band) > 0) hazards.push(h)
@@ -98,21 +135,6 @@ export function assessWeather(obs = {}) {
     })
   }
 
-  const steady = num(windKph)
-  const gust = num(gustKph)
-  const worstWind = Math.max(steady ?? -Infinity, gust ?? -Infinity)
-  if (Number.isFinite(worstWind)) {
-    add({
-      key: 'wind',
-      label: 'High wind',
-      band: band(worstWind, WIND_CUTS),
-      value:
-        gust != null && gust > (steady ?? 0)
-          ? `Gusting ${round(gust)} km/h`
-          : `${round(worstWind)} km/h`,
-    })
-  }
-
   const rain = num(precipMmHr)
   if (rain != null) {
     const rainBand = band(rain, RAIN_CUTS)
@@ -124,29 +146,23 @@ export function assessWeather(obs = {}) {
     })
   }
 
-  // UV is deliberately not assessed: a UV index never produces a hazard, a
-  // band, a digest line or a map pin. `uvIndex` may still ride along on the
-  // observation as plain data.
-
-  const vis = num(visibilityM)
-  if (vis != null) {
-    add({
-      key: 'visibility',
-      label: 'Poor visibility',
-      band: bandDescending(vis, VIS_CUTS),
-      value: vis >= 1000 ? `${(vis / 1000).toFixed(1)} km` : `${round(vis)} m`,
-    })
+  const code = num(lightningCode)
+  const cape = num(capeJkg)
+  const storm = lightningBand(code, cape)
+  if (storm !== 'none') {
+    add({ key: 'lightning', label: 'Lightning', band: storm, value: lightningValue(code, cape) })
   }
 
-  if (weatherCode != null) {
-    if (isThunderstorm(weatherCode)) {
-      add({ key: 'lightning', label: 'Thunderstorm', band: 'severe', value: 'Lightning reported' })
-    }
-    if (isFreezingRain(weatherCode)) {
-      add({ key: 'ice', label: 'Freezing rain', band: 'high', value: 'Ice forming' })
-    }
-    if (isSnow(weatherCode))
-      add({ key: 'snow', label: 'Snow', band: 'moderate', value: 'Snow falling' })
+  const index = num(aqi)
+  if (index != null && index >= 0) {
+    const bandName = airBand(index)
+    const via = aqiSource === 'pm' ? ' (particles)' : ''
+    add({
+      key: 'air',
+      label: 'Air quality',
+      band: bandName,
+      value: `${LEVEL_WORD[bandName]} · AQI ${round(index)}${via}`,
+    })
   }
 
   hazards.sort((a, b) => levelOf(b.band) - levelOf(a.band))

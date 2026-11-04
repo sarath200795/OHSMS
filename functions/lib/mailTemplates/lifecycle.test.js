@@ -169,7 +169,7 @@ describe('defect, drill, meeting and weather mail', () => {
         drivers: [
           drv('heat', 'Heat stress', 'Feels like 52°C', 'High'),
           drv('rain', 'Rain', 'Medium · 4.0 mm/h', 'Medium'),
-          drv('wind', 'High wind', '55 km/h', 'High'),
+          drv('air', 'Air quality', 'High · AQI 420', 'High'),
         ],
         observedAt: '2026-09-23T11:00',
       },
@@ -178,7 +178,10 @@ describe('defect, drill, meeting and weather mail', () => {
         name: 'Yard',
         entity: 'COCO',
         level: 'High',
-        drivers: [drv('heat', 'Heat stress', 'Feels like 46°C', 'Medium')],
+        drivers: [
+          drv('heat', 'Heat stress', 'Feels like 46°C', 'Medium'),
+          drv('cold', 'Cold stress', 'Feels like -12°C', 'High'),
+        ],
       },
       {
         region: 'South',
@@ -200,14 +203,18 @@ describe('defect, drill, meeting and weather mail', () => {
       { region: 'North', name: 'Quiet', level: 'Low', hazards: 'Heat stress' },
     ]
 
-    it('makes one section per hazard, Heat Stress and Rain Risk first, with region tables', () => {
+    it('makes one section per hazard, in mail order, with region tables', () => {
       const sections = groupDigestSections(areas)
       expect(sections.map((section) => section.title)).toEqual([
         'Heat Stress',
+        'Cold Stress',
         'Rain Risk',
-        'Other hazards',
+        'Lightning',
+        'Air Quality',
       ])
-      const [heat, rain, other] = sections
+      const heat = sections[0]
+      const rain = sections[2]
+      const lightning = sections[3]
       // Heat: East (Yard, Medium) and South (Plant, High).
       expect(heat.groups.map((group) => group.region)).toEqual(['East', 'South'])
       expect(heat.groups[0].rows.map((row) => `${row.name}:${row.level}`)).toEqual(['Yard:Medium'])
@@ -221,12 +228,10 @@ describe('defect, drill, meeting and weather mail', () => {
         'Annex:High',
         'Plant <script>:Medium',
       ])
-      // Other: one row per site-hazard pair, High before Medium inside a region.
-      expect(other.groups).toHaveLength(1)
-      expect(other.groups[0].rows.map((row) => `${row.name}:${row.hazard}`)).toEqual([
-        'Annex:Thunderstorm',
-        'Plant <script>:High wind',
+      expect(lightning.groups[0].rows.map((row) => `${row.name}:${row.level}`)).toEqual([
+        'Annex:High',
       ])
+      expect(sections[4].groups[0].rows.map((row) => row.name)).toEqual(['Plant <script>'])
       expect(
         sections.flatMap((s) => s.groups.flatMap((g) => g.rows)).some((r) => r.name === 'Quiet')
       ).toBe(false)
@@ -242,21 +247,27 @@ describe('defect, drill, meeting and weather mail', () => {
       expect(message.subject).toBe('Weather risk: 3 high, 1 medium')
       const { text, html } = message
       const heat = text.indexOf('HEAT STRESS')
+      const cold = text.indexOf('COLD STRESS')
       const rain = text.indexOf('RAIN RISK')
-      const other = text.indexOf('OTHER HAZARDS')
+      const lightning = text.indexOf('LIGHTNING')
+      const air = text.indexOf('AIR QUALITY')
       expect(heat).toBeGreaterThan(-1)
-      expect(heat).toBeLessThan(rain)
-      expect(rain).toBeLessThan(other)
+      expect(heat).toBeLessThan(cold)
+      expect(cold).toBeLessThan(rain)
+      expect(rain).toBeLessThan(lightning)
+      expect(lightning).toBeLessThan(air)
       expect(text).toContain('HEAT STRESS (2 sites: 1 high, 1 medium)')
+      expect(text).toContain('COLD STRESS (1 site: 1 high)')
       expect(text).toContain('RAIN RISK (3 sites: 1 high, 2 medium)')
-      expect(text).toContain('OTHER HAZARDS (2 readings: 2 high)')
-      // Plant is under all three sections.
-      expect(text.slice(heat, rain)).toContain('Site: Plant <script>')
-      expect(text.slice(rain, other)).toContain('Site: Plant <script>')
-      expect(text.slice(other)).toContain('Site: Plant <script>')
-      expect(text.slice(rain, other)).toContain('Level: Medium')
-      expect(text.slice(other)).toContain('Hazard: High wind')
-      expect(text.slice(heat, rain)).not.toContain('Hazard:')
+      expect(text).toContain('LIGHTNING (1 site: 1 high)')
+      expect(text).toContain('AIR QUALITY (1 site: 1 high)')
+      expect(text.slice(heat, cold)).toContain('Site: Plant <script>')
+      expect(text.slice(rain, lightning)).toContain('Site: Plant <script>')
+      expect(text.slice(air)).toContain('Site: Plant <script>')
+      expect(text.slice(rain, lightning)).toContain('Level: Medium')
+      expect(text).not.toContain('Hazard:')
+      expect(text).not.toContain('Poor visibility')
+      expect(text).not.toContain('UV')
       expect(text).toContain('Entity: COCO')
       expect(text).toContain('Reading: Feels like 52°C')
       expect(text).toContain('When: 2026-09-23T11:00')
@@ -268,8 +279,10 @@ describe('defect, drill, meeting and weather mail', () => {
       expect(html).toContain('src="cid:weather-risk-map"')
       expect(html).toContain('#dc2626')
       expect(html).toContain('#eab308')
-      expect(html.indexOf('>Heat Stress</h2>')).toBeLessThan(html.indexOf('>Rain Risk</h2>'))
-      expect(html.indexOf('>Rain Risk</h2>')).toBeLessThan(html.indexOf('>Other hazards</h2>'))
+      expect(html.indexOf('>Heat Stress</h2>')).toBeLessThan(html.indexOf('>Cold Stress</h2>'))
+      expect(html.indexOf('>Cold Stress</h2>')).toBeLessThan(html.indexOf('>Rain Risk</h2>'))
+      expect(html.indexOf('>Rain Risk</h2>')).toBeLessThan(html.indexOf('>Lightning</h2>'))
+      expect(html.indexOf('>Lightning</h2>')).toBeLessThan(html.indexOf('>Air Quality</h2>'))
       expect(html).toContain(`${ORIGIN}/weather`)
       expect(html).not.toContain('17.44')
       expect(text).toContain('© OpenStreetMap contributors')
@@ -292,6 +305,9 @@ describe('defect, drill, meeting and weather mail', () => {
       )
       expect(message.text).toContain('RAIN RISK')
       expect(message.text).not.toContain('HEAT STRESS')
+      expect(message.text).not.toContain('COLD STRESS')
+      expect(message.text).not.toContain('LIGHTNING')
+      expect(message.text).not.toContain('AIR QUALITY')
       expect(message.text).not.toContain('OTHER HAZARDS')
       expect(message.subject).toBe('Weather risk: 0 high, 1 medium')
     })
@@ -357,6 +373,7 @@ describe('defect, drill, meeting and weather mail', () => {
         drivers: [
           drv('heat', 'Heat stress', 'Feels like 52°C', 'High'),
           drv('rain', 'Rain', 'High · 12.0 mm/h', 'High'),
+          drv('air', 'Air quality', 'High · AQI 420', 'High'),
           drv('wind', 'High wind', '55 km/h', 'High'),
           drv('uv', 'UV exposure', 'UV index 9', 'Medium'),
         ],
@@ -366,7 +383,7 @@ describe('defect, drill, meeting and weather mail', () => {
         name: 'Yard',
         level: 'High',
         drivers: [
-          drv('lightning', 'Thunderstorm', 'Lightning reported', 'High'),
+          drv('lightning', 'Lightning', 'Thunderstorm forecast', 'High'),
           drv('visibility', 'Poor visibility', '150 m', 'High'),
           drv('cold', 'Cold stress', 'Feels like -12°C', 'High'),
           drv('uv', 'UV exposure', 'UV index 12', 'High'),
@@ -387,19 +404,15 @@ describe('defect, drill, meeting and weather mail', () => {
     it('has one row per High site-hazard pair, sorted by region then site', () => {
       const rows = highAlertRows(areas)
       expect(rows.map((r) => `${r.region}|${r.name}|${r.type}`)).toEqual([
-        'East|Yard|Adverse Weather – Cold stress',
-        'East|Yard|Adverse Weather – Freezing rain',
-        'East|Yard|Adverse Weather – Poor visibility',
-        'East|Yard|Adverse Weather – Snow',
-        'East|Yard|Adverse Weather – Thunderstorm',
+        'East|Yard|Cold Stress',
+        'East|Yard|Lightning',
         'South|Plant <script>|Heat Stress',
         'South|Plant <script>|Rain Risk',
-        'South|Plant <script>|Adverse Weather – High wind',
+        'South|Plant <script>|Air Quality',
         'West|Legacy|Rain Risk',
-        'West|Legacy|Adverse Weather – High wind',
       ])
-      // UV is not a hazard. Readings stored before it was dropped never appear.
-      expect(rows.some((r) => /uv/i.test(r.type))).toBe(false)
+      // UV, visibility, wind, ice and snow are not alerts.
+      expect(rows.some((r) => /uv|visibility|wind|freezing|snow/i.test(r.type))).toBe(false)
       expect(rows.some((r) => /sunscreen/i.test(r.precautions))).toBe(false)
       // Medium and Low readings never appear.
       expect(rows.some((r) => r.name === 'Depot' || r.name === 'Quiet')).toBe(false)
@@ -407,8 +420,9 @@ describe('defect, drill, meeting and weather mail', () => {
       const byType = new Map(rows.map((r) => [r.type, r.precautions]))
       expect(byType.get('Heat Stress')).toMatch(/water/i)
       expect(byType.get('Rain Risk')).toMatch(/electrical/i)
-      expect(byType.get('Adverse Weather – High wind')).toMatch(/scaffolding/i)
-      expect(byType.get('Adverse Weather – Thunderstorm')).toMatch(/indoors/i)
+      expect(byType.get('Cold Stress')).toMatch(/gloves/i)
+      expect(byType.get('Lightning')).toMatch(/indoors/i)
+      expect(byType.get('Air Quality')).toMatch(/air quality/i)
       // Each hazard gets its own advice, not the generic fallback.
       expect(new Set(byType.values()).size).toBe(byType.size)
     })
@@ -560,14 +574,17 @@ describe('defect, drill, meeting and weather mail', () => {
         { appOrigin: ORIGIN, mapCid: 'weather-risk-map', windowLabel: '2026-09-23 06:00-12:00 IST' }
       )
       const { text, html } = message
-      const table = text.indexOf('HIGH-RISK SITES AND PRECAUTIONS (10 alerts at 3 sites)')
+      const table = text.indexOf('HIGH-RISK SITES AND PRECAUTIONS (6 alerts at 3 sites)')
       expect(table).toBeGreaterThan(text.indexOf('Map:'))
       expect(table).toBeGreaterThan(text.indexOf('sites at risk:'))
       expect(table).toBeLessThan(text.indexOf('HEAT STRESS ('))
       expect(text).toContain(
         'SOUTH\n\nSite Name: Plant <script>\nType of Alert: Heat Stress\nPrecautions: '
       )
-      expect(text).toContain('Type of Alert: Adverse Weather – High wind')
+      expect(text).toContain('Type of Alert: Air Quality')
+      expect(text).toContain('Type of Alert: Lightning')
+      expect(text).not.toContain('Poor visibility')
+      expect(text).not.toContain('High wind')
       const th = html.indexOf('High-risk sites and precautions')
       expect(th).toBeGreaterThan(html.indexOf('cid:weather-risk-map'))
       expect(th).toBeGreaterThan(html.indexOf('sites at risk:'))
@@ -579,7 +596,9 @@ describe('defect, drill, meeting and weather mail', () => {
       expect(html).toContain('Plant &lt;script&gt;')
       // Subject and existing sections are unchanged.
       expect(message.subject).toBe('Weather risk: 3 high, 1 medium')
-      expect(text).toContain('OTHER HAZARDS')
+      expect(text).toContain('LIGHTNING')
+      expect(text).toContain('AIR QUALITY')
+      expect(text).not.toContain('OTHER HAZARDS')
       assertClean(message)
     })
 
