@@ -2604,7 +2604,17 @@ service cloud.firestore {
       // also gates read, and a meeting a member cannot open is not a control.
       // Folding the first exclusions into one `in` keeps the extinguisher
       // close, which is already on the 1000-expression ceiling, from growing.
-      return !(col in ['auditLogs', 'defectLocks', 'docSeq', 'consultations'])
+      // lotoPermits, lotoSettings and lotoGroupNumbers sit in this list rather
+      // than as further `col !=` comparisons. Each comparison is another
+      // expression, and the extinguisher close that walks both dates and the
+      // certificate is already on the 1000-expression ceiling. A permit still
+      // has its own status machine, shift clocks stay Admin-written, and a
+      // group number stays on its own match: the generic grant must not cover
+      // any of them.
+      return !(col in [
+        'auditLogs', 'defectLocks', 'docSeq', 'consultations',
+        'lotoPermits', 'lotoSettings', 'lotoGroupNumbers'
+      ])
         // 'meta' joins them, and for the same reason docSeq did: /meta/{kind}
         // now carries a monotonic rule of its own, and a narrow match cannot
         // restrict anything while this one still grants the same write. The
@@ -2674,14 +2684,6 @@ service cloud.firestore {
         // (events, attachments), written above. The generic grant would let any
         // writer approve, edit or delete a permit in one setDoc, and its
         // recursive twin would reopen /events, which is append-only.
-        && col != 'lotoPermits'
-        // Shift clocks are Admin-written. The generic grant would let any
-        // member point a site's shift at a window they can already satisfy.
-        && col != 'lotoSettings'
-        // Group lockout numbers. A member who could invent one, or point an
-        // open number at a permit they do not hold, would put two crews on
-        // one box. The narrow match below is the only writer.
-        && col != 'lotoGroupNumbers'
         && notKeyset(col, docId);
     }
     function genericReadable(col, docId) {
