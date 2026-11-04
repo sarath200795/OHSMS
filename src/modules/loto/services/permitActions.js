@@ -24,6 +24,7 @@ import {
   runTransaction,
   serverTimestamp,
   Timestamp,
+  updateDoc,
   writeBatch,
 } from 'firebase/firestore'
 import { db } from '../../../shared/firebase'
@@ -152,6 +153,16 @@ export async function decidePermit({ orgId, permit, user, approve, note = '', se
   await batch.commit()
 }
 
+/** An Admin asks for another live photo. Start waits until the new one is later. */
+export async function requestNewLockPhoto({ orgId, permit, user, note }) {
+  const why = clean(note)
+  if (!why) throw new Error('Say what is wrong with the photo.')
+  await updateDoc(permitRef(orgId, permit.id), {
+    photoRedo: { by: user.id, at: serverTimestamp(), note: why },
+    updatedAt: serverTimestamp(),
+  })
+}
+
 /** A group member takes off only their own lock. The primary closes the permit instead. */
 export async function releaseOwnLock({ orgId, permit, user }) {
   const decision = canRemoveOwnLock(permit.groupLock, permit.removedUids || [], user.id)
@@ -201,14 +212,14 @@ export async function withdrawPermit({ orgId, permit, user, note = '' }) {
  * entry for EVERY isolation point. The camera/manual distinction is kept so an
  * audit can see how many tags were read by hand.
  */
-export async function startIsolation({ orgId, permit, scans, user }) {
+export async function startIsolation({ orgId, permit, scans, user, tryout, lockPhoto }) {
   await runTransaction(db, async (tx) => {
     const { raw, procedure } = await readHeld(tx, permit.id, orgId)
     const lockNos = permitLockNos(raw)
     // Claims are read before any write, for the same reason setPointLock does.
     const held = procedure ? await readClaims(tx, orgId, lockNos) : []
 
-    first(startProblems({ permit: raw, procedure, scans, nowMs: Date.now() }))
+    first(startProblems({ permit: raw, procedure, scans, tryout, lockPhoto, nowMs: Date.now() }))
     if (procedure) assertClaimsFree(held, procedure.id)
 
     // Names are sealed on the permit; the procedure's lockState holds plain
@@ -224,6 +235,18 @@ export async function startIsolation({ orgId, permit, scans, user }) {
         scans: Object.fromEntries(
           Object.entries(scans).map(([k, s]) => [k, { at: s.at, method: s.method, by: user.id }]),
         ),
+      },
+      tryout: { zeroEnergy: tryout?.zeroEnergy === true, by: user.id, at: serverTimestamp() },
+      lockPhoto: {
+        path: lockPhoto?.path || '',
+        by: user.id,
+        byName: user.displayName || '',
+        permitNo: raw.permitNo || permit.id,
+        equipment: raw.equipment || '',
+        at: serverTimestamp(),
+        stamped: true,
+        ai: lockPhoto?.ai || { status: 'unavailable' },
+        overridden: lockPhoto?.overridden === true,
       },
       updatedAt: serverTimestamp(),
     })

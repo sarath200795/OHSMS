@@ -47,12 +47,10 @@ describe('starting isolation', () => {
     expect(start.disabled).toBe(true)
     expect(screen.getByText(/1 tag still to scan: H-1/)).toBeTruthy()
     scan('h-1')
-    expect(start.disabled).toBe(false)
-    fireEvent.click(start)
-    await waitFor(() => expect(h.start).toHaveBeenCalledTimes(1))
-    const args = h.start.mock.calls[0][0]
-    expect(Object.keys(args.scans).sort()).toEqual(['k1', 'k2'])
-    expect(args.scans.k1.method).toBe('manual')
+    expect(start.disabled).toBe(true)
+    fireEvent.click(screen.getByLabelText('Yes, zero energy'))
+    expect(start.disabled).toBe(true)
+    expect(screen.getByText(/Gallery upload is not accepted/)).toBeTruthy()
   })
 
   it('does not count a tag from other equipment', () => {

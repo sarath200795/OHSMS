@@ -576,11 +576,16 @@ describe('starting work — every point scanned, locked in the same commit', () 
   const scans = (keys = ['k1', 'k2']) =>
     Object.fromEntries(keys.map((k) => [k, { at: serverTimestamp(), method: 'qr', by: 'req' }]))
 
-  function start(db, { keys, uid = 'req', procPatch, skipProc = false, activeId = NO(1) } = {}) {
+  function start(db, { keys, uid = 'req', procPatch, skipProc = false, activeId = NO(1), tryout = true, photo = 'pass', override = false } = {}) {
     const b = writeBatch(db)
     b.update(permitRef(db), {
       status: 'active', startedAt: serverTimestamp(), updatedAt: serverTimestamp(),
       isolation: { by: uid, at: serverTimestamp(), scans: scans(keys) },
+      tryout: { zeroEnergy: tryout, by: uid, at: serverTimestamp() },
+      lockPhoto: {
+        path: `orgs/${ORG}/loto-photos/lock.jpg`, by: uid, permitNo: activeId, at: serverTimestamp(),
+        ai: { status: photo }, overridden: override,
+      },
     })
     if (!skipProc) {
       b.update(procRef(db), {
@@ -615,6 +620,15 @@ describe('starting work — every point scanned, locked in the same commit', () 
   // the printed point id (E-1) is not that key, so it does not count.
   it('refuses a start scanned under the point id instead of the point key', async () => {
     await assertFails(start(as('req'), { keys: ['E-1', 'H-1'] }))
+  })
+
+  it('refuses to start without a zero-energy yes or a checked lock photo', async () => {
+    await assertFails(start(as('req'), { tryout: false }))
+    await assertFails(start(as('req'), { photo: 'fail' }))
+  })
+
+  it('lets a failed photo through only when it is flagged and submitted anyway', async () => {
+    await assertSucceeds(start(as('req'), { photo: 'fail', override: true }))
   })
 
   it('refuses a start that does not touch the procedure at all', async () => {

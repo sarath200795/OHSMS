@@ -78,6 +78,10 @@ const baseProc = (over = {}) => ({
   ...over,
 })
 const scans = { k1: { at: 1, method: 'camera' }, k2: { at: 2, method: 'manual' } }
+const ready = {
+  tryout: { zeroEnergy: true },
+  lockPhoto: { path: 'orgs/o1/loto-photos/lock.jpg', ai: { status: 'pass' }, overridden: false, at: Date.now() },
+}
 const seed = (permit = basePermit(), proc = baseProc()) => {
   h.docs.set(PERMIT, permit)
   if (proc) h.docs.set('procedures/p1', proc)
@@ -91,7 +95,7 @@ beforeEach(() => {
 describe('startIsolation — permit and procedure in ONE transaction', () => {
   it('flips the permit, locks every point, stamps the procedure, takes the claims and logs it, all in one commit', async () => {
     seed()
-    await A.startIsolation({ orgId: 'o1', permit: { id: 'LP-2026-0001' }, scans, user })
+    await A.startIsolation({ orgId: 'o1', permit: { id: 'LP-2026-0001' }, scans, user, ...ready })
     expect(h.txCount).toBe(1)
 
     expect(wrote(PERMIT)[0].data).toMatchObject({ status: 'active', startedAt: '__now' })
@@ -116,7 +120,7 @@ describe('startIsolation — permit and procedure in ONE transaction', () => {
 
   it('writes NOTHING when one tag has not been scanned', async () => {
     seed()
-    await expect(A.startIsolation({ orgId: 'o1', permit: { id: 'LP-2026-0001' }, scans: { k1: scans.k1 }, user }))
+    await expect(A.startIsolation({ orgId: 'o1', permit: { id: 'LP-2026-0001' }, scans: { k1: scans.k1 }, user, ...ready }))
       .rejects.toThrow(/Scan the tag on every isolation point/)
     expect(h.committed).toEqual([])
   })
@@ -124,7 +128,7 @@ describe('startIsolation — permit and procedure in ONE transaction', () => {
   it('writes NOTHING when a padlock is already on other equipment', async () => {
     seed()
     h.docs.set('lockClaims/o1__D-2', { procedureId: 'other', equipment: 'Press 4' })
-    await expect(A.startIsolation({ orgId: 'o1', permit: { id: 'LP-2026-0001' }, scans, user }))
+    await expect(A.startIsolation({ orgId: 'o1', permit: { id: 'LP-2026-0001' }, scans, user, ...ready }))
       .rejects.toThrow(/already applied on Press 4/)
     expect(h.committed).toEqual([])
   })
@@ -137,13 +141,22 @@ describe('startIsolation — permit and procedure in ONE transaction', () => {
     ['a point is already locked', () => seed(basePermit(), baseProc({ isolationPoints: [{ key: 'k1', lockState: { locked: true } }, { key: 'k2' }] })), /already locked/],
   ])('refuses and writes nothing when %s', async (_name, arrange, message) => {
     arrange()
-    await expect(A.startIsolation({ orgId: 'o1', permit: { id: 'LP-2026-0001' }, scans, user })).rejects.toThrow(message)
+    await expect(A.startIsolation({ orgId: 'o1', permit: { id: 'LP-2026-0001' }, scans, user, ...ready })).rejects.toThrow(message)
+    expect(h.committed).toEqual([])
+  })
+
+  it('refuses to start when zero energy was not confirmed', async () => {
+    seed()
+    await expect(A.startIsolation({
+      orgId: 'o1', permit: { id: 'LP-2026-0001' }, scans, user,
+      tryout: { zeroEnergy: false }, lockPhoto: ready.lockPhoto,
+    })).rejects.toThrow(/zero energy/)
     expect(h.committed).toEqual([])
   })
 
   it('starts a permit with nothing to isolate without touching any procedure', async () => {
     seed(basePermit({ pointKeys: [], pointCount: 0, procedureId: '', locks: [], isolationPoints: [] }), null)
-    await A.startIsolation({ orgId: 'o1', permit: { id: 'LP-2026-0001' }, scans: {}, user })
+    await A.startIsolation({ orgId: 'o1', permit: { id: 'LP-2026-0001' }, scans: {}, user, ...ready })
     expect(wrote(PERMIT)[0].data.status).toBe('active')
     expect(h.committed.some((w) => w.path.startsWith('procedures/'))).toBe(false)
   })

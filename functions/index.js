@@ -24,6 +24,7 @@ import { claimsFor, claimsChanged, mergeClaims, revokesAccess } from './lib/clai
 import { planBackfill } from './lib/docVisibility.js'
 import { classifyLocks } from './lib/defectLocks.js'
 import { deliverLotoPermitMails } from './lib/lotoPermitNotify.js'
+import { checkLockPhoto, LOTO_LOCK_PHOTO_SECRET } from './lib/lotoPhotoCheck.js'
 import {
   purgeClosedLotoPermits as runLotoPermitPurge,
   sweepLotoPermits as runLotoPermitSweep,
@@ -2557,6 +2558,30 @@ export const sweepLotoPermits = onSchedule(
       throw new Error(summary.message)
     }
   }
+)
+
+// The operator sets this secret themselves (`firebase functions:secrets:set`
+// is not run from this repository). An empty secret makes the check report
+// unavailable; it does not pass the photo.
+const LOTO_LOCK_PHOTO_API_KEY = defineSecret(LOTO_LOCK_PHOTO_SECRET)
+
+export const checkLotoLockPhoto = onCall(
+  { region: REGION, secrets: [LOTO_LOCK_PHOTO_API_KEY], timeoutSeconds: 30 },
+  async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required.')
+    const raw = String(request.data?.imageBase64 || '')
+    const imageBase64 = raw.replace(/^data:image\/jpeg;base64,/, '')
+    if (!imageBase64 || imageBase64.length > 2_000_000) {
+      throw new HttpsError('invalid-argument', 'The lock photo is missing or too large.')
+    }
+    let apiKey = ''
+    try {
+      apiKey = LOTO_LOCK_PHOTO_API_KEY.value() || ''
+    } catch {
+      apiKey = ''
+    }
+    return checkLockPhoto({ apiKey, imageBase64 })
+  },
 )
 
 // 03:45, after the Recycle Bin sweep. Closed permits older than one year go,
