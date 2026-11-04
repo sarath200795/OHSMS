@@ -118,11 +118,21 @@ write_env() {
   local wa_ver="${WA_GRAPH_VERSION:-v25.0}"
   local wa_display="${WA_DISPLAY_NUMBER:-$wa_default_display}"
   local wa_cap="${WA_DAILY_CAP:-2000}"
+  # Business-initiated template names (`name+lang`). Blank is a value on
+  # purpose. firebase-tools 13 throws in --non-interactive before it applies
+  # the defineString default of '', and the error names every key that is
+  # simply absent. v2.0.7 stopped on these two. An empty value is what
+  # waTemplate treats as free-form text. Repository variables of the same
+  # name override the blank once a template is approved in Meta.
+  local wa_welcome="${WA_TEMPLATE_WELCOME:-}"
+  local wa_test="${WA_TEMPLATE_TEST:-}"
   reject_param_value WA_ENABLED "$wa_enabled"
   reject_param_value WA_PHONE_NUMBER_ID "$wa_pnid"
   reject_param_value WA_GRAPH_VERSION "$wa_ver"
   reject_param_value WA_DISPLAY_NUMBER "$wa_display"
   reject_param_value WA_DAILY_CAP "$wa_cap"
+  reject_param_value WA_TEMPLATE_WELCOME "$wa_welcome"
+  reject_param_value WA_TEMPLATE_TEST "$wa_test"
 
   # Telegram site lookup (tgWebhook). On unless TG_ENABLED is not "true".
   # TG_LIST_ORGS defaults false: an open bot does not recite organisation names.
@@ -148,18 +158,24 @@ write_env() {
     printf 'WA_GRAPH_VERSION=%s\n' "$wa_ver"
     printf 'WA_DISPLAY_NUMBER=%s\n' "$wa_display"
     printf 'WA_DAILY_CAP=%s\n' "$wa_cap"
+    printf 'WA_TEMPLATE_WELCOME=%s\n' "$wa_welcome"
+    printf 'WA_TEMPLATE_TEST=%s\n' "$wa_test"
     printf 'TG_ENABLED=%s\n' "$tg_enabled"
     printf 'TG_ORG_ID=%s\n' "$tg_org"
     printf 'TG_LIST_ORGS=%s\n' "$tg_list"
     printf 'TG_DAILY_CAP=%s\n' "$tg_cap"
   } >"$env_file"
 
-  if grep -Eq '^(DATA_KEY_MASTER|SMTP_PASS|WA_APP_SECRET|WA_ACCESS_TOKEN|WA_VERIFY_TOKEN|TELEGRAM_BOT_TOKEN|TG_WEBHOOK_SECRET)=' "$env_file"; then
+  # WINDY_API_KEY is a secret the operator sets. It was not in the v2.0.7
+  # error, so it is already in Secret Manager. It must not be copied here to
+  # satisfy a future non-interactive deploy: that would ship the key as a
+  # plain env var (LOW-13).
+  if grep -Eq '^(DATA_KEY_MASTER|SMTP_PASS|WINDY_API_KEY|WA_APP_SECRET|WA_ACCESS_TOKEN|WA_VERIFY_TOKEN|TELEGRAM_BOT_TOKEN|TG_WEBHOOK_SECRET)=' "$env_file"; then
     rm -f "$env_file"
-    echo "::error::Refusing to leave a secret (DATA_KEY_MASTER, SMTP_PASS, WA_*) in ${env_file}." >&2
+    echo "::error::Refusing to leave a secret (DATA_KEY_MASTER, SMTP_PASS, WINDY_API_KEY, WA_*, TELEGRAM_BOT_TOKEN, TG_WEBHOOK_SECRET) in ${env_file}." >&2
     exit 1
   fi
-  echo "Wrote ${env_file} with non-secret params only (SMTP_HOST SMTP_PORT SMTP_USER MAIL_FROM APP_ORIGIN WA_ENABLED WA_PHONE_NUMBER_ID WA_GRAPH_VERSION WA_DISPLAY_NUMBER WA_DAILY_CAP TG_ENABLED TG_ORG_ID TG_LIST_ORGS TG_DAILY_CAP)."
+  echo "Wrote ${env_file} with non-secret params only (SMTP_HOST SMTP_PORT SMTP_USER MAIL_FROM APP_ORIGIN WA_ENABLED WA_PHONE_NUMBER_ID WA_GRAPH_VERSION WA_DISPLAY_NUMBER WA_DAILY_CAP WA_TEMPLATE_WELCOME WA_TEMPLATE_TEST TG_ENABLED TG_ORG_ID TG_LIST_ORGS TG_DAILY_CAP)."
 }
 
 # A WhatsApp secret that does not exist yet is created as UNSET-PLACEHOLDER so

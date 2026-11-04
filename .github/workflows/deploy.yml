@@ -122,6 +122,7 @@ jobs:
           npx eslint src
           npx vitest run
           bash scripts/deploy-rules.test.sh
+          bash scripts/prepare-functions-deploy.test.sh
           node --test scripts/rules-live.test.mjs
           npm --prefix functions ci
           npm --prefix functions test
@@ -257,6 +258,10 @@ jobs:
       # and never bound through Secret Manager (LOW-13). Repository variables
       # SMTP_HOST, SMTP_PORT, SMTP_USER, MAIL_FROM and APP_ORIGIN override the
       # Brevo relay defaults when they are set. SMTP_USER has no default.
+      # WA_TEMPLATE_WELCOME and WA_TEMPLATE_TEST are written even when those
+      # repository variables are unset. A missing key is what stopped the
+      # v2.0.7 deploy; a blank value keeps the welcome and the org test on
+      # free-form text.
       - name: Write functions param file
         if: steps.creds.outputs.configured == 'true'
         env:
@@ -266,6 +271,8 @@ jobs:
           SMTP_USER: ${{ vars.SMTP_USER }}
           MAIL_FROM: ${{ vars.MAIL_FROM }}
           APP_ORIGIN: ${{ vars.APP_ORIGIN }}
+          WA_TEMPLATE_WELCOME: ${{ vars.WA_TEMPLATE_WELCOME }}
+          WA_TEMPLATE_TEST: ${{ vars.WA_TEMPLATE_TEST }}
         run: bash scripts/prepare-functions-deploy.sh write-env
 
       # functions:secrets:get returns metadata only. functions:secrets:access
