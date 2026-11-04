@@ -11,6 +11,8 @@ import {
   Boxes,
   Search,
   ScrollText,
+  Upload,
+  BookOpen,
 } from 'lucide-react'
 import { TutorialProvider } from './context/TutorialContext'
 import Home from './pages/Home'
@@ -29,6 +31,8 @@ import ShiftTimes from './pages/admin/ShiftTimes'
 import GroupNumbers from './pages/admin/GroupNumbers'
 import Trace from './pages/admin/Trace'
 import Activity from './pages/permits/Activity'
+import ImportData from './pages/admin/ImportData'
+import Learn from './pages/Learn'
 import ModuleTabs from '../../shared/layout/ModuleTabs'
 
 const TABS = [
@@ -43,6 +47,8 @@ const TABS = [
   { to: '/loto/groups', label: 'Group numbers', icon: Boxes },
   { to: '/loto/trace', label: 'Trace', icon: Search },
   { to: '/loto/activity', label: 'Activity', icon: ScrollText },
+  { to: '/loto/import', label: 'Import', icon: Upload },
+  { to: '/loto/learn', label: 'Learn', icon: BookOpen },
 ]
 
 function ModuleNav() {
@@ -75,6 +81,8 @@ export default function LotoModule() {
           <Route path="groups" element={<GroupNumbers />} />
           <Route path="trace" element={<Trace />} />
           <Route path="activity" element={<Activity />} />
+          <Route path="import" element={<ImportData />} />
+          <Route path="learn" element={<Learn />} />
         </Route>
         <Route path="operations/:id" element={<OperateProcedure />} />
         <Route path="permits/new" element={<NewPermit />} />

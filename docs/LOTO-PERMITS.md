@@ -174,6 +174,14 @@ printed id (`E-1`) does not count.
 the tag: the procedure page says how to isolate the machine; the tag says
 whether this point is isolated now.
 
+## Import and learn
+
+Import (`/loto/import`) takes CSV for equipment, locks, group numbers and
+technicians, and offers a template for each. Examples in the templates are
+invented. Equipment rows become draft procedures, so they still need approval
+before a permit can use them. Group numbers still require an Admin. Learn
+(`/loto/learn`) is a short explanation and a four-question check.
+
 ## Dashboard
 
 The permit list shows the last seven days as the share closed on time, closed

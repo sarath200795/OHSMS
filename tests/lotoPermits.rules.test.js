@@ -463,6 +463,15 @@ describe('procedure approval stays Admin or Safety', () => {
   })
 })
 
+  it('refuses an imported procedure that is born approved', async () => {
+    await assertFails(setDoc(doc(as('req'), 'procedures', 'imp-1'), {
+      orgId: ORG, status: 'approved', equipment: 'Pump Z', isolationPoints: [],
+    }))
+    await assertSucceeds(setDoc(doc(as('req'), 'procedures', 'imp-2'), {
+      orgId: ORG, status: 'draft', equipment: 'Pump Z', isolationPoints: [{ key: 'k1', energySource: 'electrical' }],
+    }))
+  })
+
   it('refuses a member changing a lock’s service status', async () => {
     await testEnv.withSecurityRulesDisabled(async (ctx) => {
       await setDoc(doc(ctx.firestore(), 'locks', 'lk1'), { orgId: ORG, lockNo: 'D-9', serviceStatus: 'available' })
