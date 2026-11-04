@@ -82,8 +82,9 @@ import { deliverPermitMails } from './lib/permitNotify.js'
 import { deliverDefectReport, deliverAssetDefects } from './lib/defectNotify.js'
 import { deliverDrillReport } from './lib/drillReportNotify.js'
 import { deliverMeetingMail } from './lib/meetingNotify.js'
-import { deliverWeatherDigest } from './lib/weatherDigest.js'
+import { deliverWeatherDigest, weatherBucket } from './lib/weatherDigest.js'
 import { gridKey, requestPoint } from './lib/windy.js'
+import { weatherCache } from './lib/weatherCache.js'
 import { createMailer, DEFAULT_MAIL } from './lib/mailer.js'
 import { createHmac } from 'node:crypto'
 import { verifySignature, handshakeChallenge, isRealSecret } from './lib/whatsapp/signature.js'
@@ -2639,6 +2640,7 @@ const weatherDigestTask = (event) =>
       logger,
       scheduleTime: event?.scheduleTime,
       windyKey: WINDY_API_KEY.value(),
+      cache: weatherCache(getFirestore()),
     })
   )
 
@@ -2679,10 +2681,12 @@ export const fetchSiteWeather = onCall(
     }
     const key = gridKey(lat, lng)
     if (!key) throw new HttpsError('invalid-argument', 'A latitude and longitude are required.')
-    const apiKey = WINDY_API_KEY.value()
-    if (!apiKey) return { obs: null }
+    const slot = weatherBucket(new Date())
     const [gLat, gLng] = key.split(',').map(Number)
-    const result = await requestPoint({ key, lat: gLat, lng: gLng }, { apiKey })
+    const result = await requestPoint(
+      { key, lat: gLat, lng: gLng },
+      { apiKey: WINDY_API_KEY.value(), cache: weatherCache(getFirestore()), slot }
+    )
     if (!result.ok && result.retry) return { obs: null, limited: true }
     return { obs: result.obs || null }
   }

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { fetchWeather, _clearWeatherCache, _setWeatherTransport } from './windy'
+import { weatherSlot } from './observedAt'
 
 beforeEach(() => {
   _clearWeatherCache()
@@ -58,6 +59,29 @@ describe('fetchWeather', () => {
     expect(seen).toEqual([3, 4])
     expect(await fetchWeather(3.001, 3.001)).toEqual({ tempC: 18 })
     expect(seen).toEqual([3, 4])
+  })
+
+  it('reuses a reading from the open slot', async () => {
+    const slot = weatherSlot(new Date())
+    let calls = 0
+    _setWeatherTransport(async () => {
+      calls += 1
+      return { tempC: 21, slot }
+    })
+    expect(await fetchWeather(8, 8)).toMatchObject({ tempC: 21, slot })
+    await fetchWeather(8, 8)
+    expect(calls).toBe(1)
+  })
+
+  it('does not keep a reading from the previous slot', async () => {
+    let calls = 0
+    _setWeatherTransport(async () => {
+      calls += 1
+      return { tempC: 19, slot: '2000-01-01T00+0530' }
+    })
+    await fetchWeather(9, 9)
+    await fetchWeather(9, 9)
+    expect(calls).toBe(2)
   })
 
   it('refuses a coordinate that is not one', async () => {

@@ -1395,6 +1395,14 @@ service cloud.firestore {
     match /waOrgSettings/{docId} {
       allow read, write: if false;
     }
+    // The Windy reading for one ~1 km square in the open six-hour slot.
+    // fetchSiteWeather and the digest are the only readers and writers, both
+    // through the Admin SDK. A client write would put a made-up temperature
+    // on the home tile, the site page and the mail. isLegacyOrgCollection
+    // does not name this path, so nothing else grants it.
+    match /weatherCache/{gridId} {
+      allow read, write: if false;
+    }
     // The last audit the lookup bots read: date, score, open-point labels,
     // and when the extract was taken. The schedule is the only writer. A
     // client write could plant a score; a client read would hand warehouse

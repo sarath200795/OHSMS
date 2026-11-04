@@ -8,6 +8,7 @@
 // the collision breaks in a different place than it is written.
 import { useSiteWeather } from '../lib/useSiteWeather'
 import { BAND_LABEL } from '../lib/weatherRisk'
+import { asOfLabel } from '../lib/observedAt'
 
 const BAND_COLOR = {
   none: { bg: '#ecfdf5', fg: '#047857', dot: '#10b981' },
@@ -41,7 +42,8 @@ function BandPill({ band, children }) {
  * of view — the exact problem that measurement exists to solve.
  */
 export function WeatherBubbleRow({ lat, lng, active }) {
-  const { status, risk } = useSiteWeather(lat, lng, active)
+  const { status, risk, obs } = useSiteWeather(lat, lng, active)
+  const asOf = asOfLabel(obs?.observedAt)
 
   return (
     <div style={{
@@ -55,6 +57,7 @@ export function WeatherBubbleRow({ lat, lng, active }) {
             {risk.hazards.length
               ? `${risk.hazards[0].label} · ${risk.hazards[0].value}`
               : 'Conditions are fine for outdoor work'}
+            {asOf ? ` · ${asOf}` : ''}
           </span>
         </>
       ) : (
@@ -72,7 +75,8 @@ export function WeatherBubbleRow({ lat, lng, active }) {
  * the activity rather than only the measurement.
  */
 export function WeatherRiskPanel({ lat, lng, active }) {
-  const { status, risk } = useSiteWeather(lat, lng, active)
+  const { status, risk, obs } = useSiteWeather(lat, lng, active)
+  const asOf = asOfLabel(obs?.observedAt)
 
   if (status !== 'ready') {
     return (
@@ -113,6 +117,9 @@ export function WeatherRiskPanel({ lat, lng, active }) {
         </ul>
       )}
 
+      {asOf ? (
+        <p style={{ margin: '6px 0 0', fontSize: 10.5, color: '#64748b' }}>{asOf}</p>
+      ) : null}
       <p style={{ margin: '6px 0 0', fontSize: 9.5, color: '#cbd5e1' }}>
         Windy, nearest ~1 km. Guidance only — it does not replace a site assessment.
       </p>

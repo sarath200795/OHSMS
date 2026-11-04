@@ -89,7 +89,11 @@ function useAlertState(enabled) {
   const weather = useAllSiteWeather(weatherOn ? sites : [])
   const weatherBySiteId = useMemo(() => {
     const out = {}
-    for (const [id, row] of Object.entries(weather.byId || {})) out[id] = row.risk
+    for (const [id, row] of Object.entries(weather.byId || {})) {
+      out[id] = row?.risk
+        ? { ...row.risk, observedAt: row.obs?.observedAt || '', slot: row.obs?.slot || '' }
+        : row?.risk
+    }
     return out
   }, [weather.byId])
 

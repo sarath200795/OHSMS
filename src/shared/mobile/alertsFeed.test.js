@@ -110,6 +110,22 @@ describe('buildAlertFeed', () => {
     expect(rows.find((r) => r.kind === 'Weather').detail).toBe('Restrict work')
   })
 
+  it('uses the reading time, not the slot start, for a weather row', () => {
+    const rows = feed({
+      weatherBySiteId: {
+        s1: {
+          hazards: [{ key: 'heat', label: 'Heat stress', band: 'high' }],
+          observedAt: '2026-10-24T06:30:00.000Z',
+          slot: '2026-10-24T12+0530',
+        },
+      },
+    })
+    const weather = rows.find((r) => r.kind === 'Weather')
+    expect(weather.detail).toBe('Restrict work · As of 24 Oct, 12:00 IST')
+    expect(weather.at).toBe(Date.parse('2026-10-24T06:30:00.000Z'))
+    expect(weather.id).toContain('2026-10-24T12+0530')
+  })
+
   it('hides a record with no site, and a module that is switched off', () => {
     const rows = feed({
       enabled: { incidents: false, weather: false },

@@ -10,6 +10,7 @@ import {
 } from './weatherDigest.js'
 import { renderWeatherDigest } from './mailTemplates/lifecycle.js'
 import { memoryDb, mailer, user } from '../test-support/memoryDb.js'
+import { weatherCache } from './weatherCache.js'
 
 describe('six-hour bucket', () => {
   it('gives each Asia/Kolkata slot its own key', () => {
@@ -228,7 +229,7 @@ describe('deliverWeatherDigest', () => {
     expect(blob).toContain('Feels like 52°C')
     expect(blob).toContain('East')
     expect(blob).toContain('Depot')
-    expect(blob).toContain('2026-09-23T11:00')
+    expect(blob).toContain('23 Sep, 16:30 IST')
     expect(blob).toContain('2026-09-23 06:00-12:00 IST')
     expect(blob).toContain('Weather checked for 2 of 2 sites')
     expect(blob).toContain('1 site has no usable coordinates and was not checked')
@@ -585,5 +586,52 @@ describe('deliverWeatherDigest', () => {
     expect(sent[0].text).not.toMatch(/outdoor class/i)
     expect(sent[0].text).not.toMatch(/scaffolding/)
     expect(sent[0].subject).toBe('Weather risk: 1 high, 0 medium')
+  })
+
+  it('mails the slot cache the screen already fetched, and does not ask again', async () => {
+    const sent = []
+    const slot = '2026-09-23T06+0530'
+    const store = memoryDb({
+      'organizations/orgA': { name: 'Acme' },
+      'organizations/orgA/sites/s1': { name: 'Plant 2', region: 'South', lat: 17.44, lng: 78.39 },
+      'users/admin': user('admin', { role: 'admin' }),
+      [`weatherCache/17.44_78.39`]: {
+        slot,
+        obs: {
+          tempC: 42,
+          apparentTempC: 52,
+          observedAt: '2026-09-23T05:30:00.000Z',
+          slot,
+        },
+      },
+    })
+    const cache = weatherCache(store)
+    let asked = 0
+    let writes = 0
+    const wrapped = {
+      get: (key) => cache.get(key),
+      set: async (...args) => {
+        writes += 1
+        return cache.set(...args)
+      },
+    }
+    await deliverWeatherDigest({
+      db: store,
+      mailer: mailer(sent),
+      logger,
+      scheduleTime: '2026-09-23T06:00:00.000Z',
+      orgIds: ['orgA'],
+      cache: wrapped,
+      fetchObs: async () => {
+        asked += 1
+        return { tempC: 10, apparentTempC: 10, observedAt: '2026-09-23T08:00:00.000Z' }
+      },
+    })
+    expect(asked).toBe(0)
+    expect(writes).toBe(0)
+    expect(sent).toHaveLength(1)
+    expect(sent[0].text).toContain('Feels like 52°C')
+    expect(sent[0].text).toContain('When: 23 Sep, 11:00 IST')
+    expect(sent[0].text).not.toContain('Feels like 10°C')
   })
 })

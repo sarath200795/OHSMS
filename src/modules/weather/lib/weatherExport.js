@@ -3,6 +3,7 @@
 // over a rain alert of Medium, or every site with high air quality.
 import * as XLSX from 'xlsx'
 import { BAND_LABEL } from './weatherRisk'
+import { formatObservedAt } from './observedAt'
 import { downloadBlob } from '../../../shared/lib/download'
 
 export const WEATHER_COLUMNS = [
@@ -63,7 +64,7 @@ export function weatherExportRows(sites = [], byId = {}) {
       Hazards: risk ? risk.hazards.map((h) => `${h.label} (${h.value})`).join('; ') : '',
       'What It Affects': risk ? [...new Set(risk.hazards.map((h) => h.affects))].join(' ') : '',
       'Location Link': mapsLink(s.lat, s.lng),
-      'Checked At': obs?.observedAt || '',
+      'Checked At': formatObservedAt(obs?.observedAt) || obs?.observedAt || '',
     }
   })
 }

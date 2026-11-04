@@ -5,6 +5,7 @@ import { Raised, SectionLabel } from '../ui'
 import { WIDGET_BY_KEY, DEFAULT_WIDGETS, widgetsByGroup } from './catalog'
 import { useAllSiteWeather } from '../../../modules/weather/lib/useAllSiteWeather'
 import { BAND_LABEL, levelOf, summariseHazards } from '../../../modules/weather/lib/weatherRisk'
+import { asOfLabel } from '../../../modules/weather/lib/observedAt'
 
 /**
  * The stats this person chose, and the control to change them.
@@ -86,8 +87,8 @@ const BAND_TONE = { none: '#16a34a', low: '#eab308', moderate: '#f97316', high: 
  *
  * A count would be meaningless here, so the headline is the worst band and
  * beneath it every category present, each at its own worst band and carrying
- * the number of sites showing it. The same reading the weather module gives, so
- * the tile and the page cannot disagree.
+ * the number of sites showing it. The tile, the site page and the digest read
+ * the same slot cache, and the line under the tile is that reading's time.
  */
 function WeatherWidget({ w, sites }) {
   const loadingSites = sites == null
@@ -109,6 +110,7 @@ function WeatherWidget({ w, sites }) {
 
   const band = worst?.risk.band || 'none'
   const waiting = done < total && !worst
+  const asOf = worst ? asOfLabel(byId[worst.site.id]?.obs?.observedAt) : ''
 
   return (
     <Shell w={w}>
@@ -140,6 +142,7 @@ function WeatherWidget({ w, sites }) {
           {loadingSites ? w.hint : located.length === 0 ? 'Add coordinates to a site' : waiting ? w.hint : 'Nothing restricting outdoor work'}
         </p>
       )}
+      {asOf ? <p className="mt-1 truncate text-[11px] text-ink-400">{asOf}</p> : null}
     </Shell>
   )
 }

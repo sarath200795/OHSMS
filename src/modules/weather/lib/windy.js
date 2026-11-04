@@ -9,12 +9,16 @@
 // session.
 
 import { fetchSiteWeather } from '../../../shared/functions'
+import { weatherSlot } from './observedAt'
 
 const GRID = 2
 const TTL_MS = 15 * 60 * 1000
 const COOLOFF_MS = 60_000
 
-const STORE_KEY = 'wehs:weather'
+// v2 drops readings stored before the slot cache. Those were a different
+// provider, or a different hour, and a widget that kept one while the page
+// fetched another is the mismatch this key exists to end.
+const STORE_KEY = 'wehs:weather:v2'
 const STORE_MAX = 200
 
 const cache = new Map()
@@ -82,6 +86,13 @@ export function _clearWeatherCache() {
   }
 }
 
+function fresh(entry) {
+  if (!entry?.obs) return false
+  const slot = weatherSlot(new Date())
+  if (entry.obs.slot) return entry.obs.slot === slot
+  return Date.now() - entry.at < TTL_MS
+}
+
 function unwrap(data) {
   if (data && (Object.prototype.hasOwnProperty.call(data, 'obs') || data.limited)) return data
   return { obs: data || null }
@@ -107,7 +118,7 @@ export async function fetchWeather(lat, lng) {
   const [gLat, gLng] = key.split(',').map(Number)
 
   const hit = cache.get(key)
-  if (hit && Date.now() - hit.at < TTL_MS) return hit.obs
+  if (hit && fresh(hit)) return hit.obs
   if (Date.now() < coolOffUntil) return hit ? hit.obs : null
   if (inflight.has(key)) return inflight.get(key)
 

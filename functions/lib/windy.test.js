@@ -8,6 +8,7 @@ import {
   apparentTemperatureC,
   aqiFromParticles,
   normalizeWindy,
+  requestPoint,
   fetchGrids,
   WEATHER_PARAMETERS,
   AIR_PARAMETERS,
@@ -275,5 +276,54 @@ describe('fetchGrids', () => {
     expect(called).toBe(false)
     expect(observations.size).toBe(0)
     expect(failed).toEqual(['17.44,78.39', '13.08,80.27'])
+  })
+
+  it('serves the slot cache and does not call Windy', async () => {
+    let called = false
+    const slot = '2026-09-23T06+0530'
+    const result = await requestPoint(points[0], {
+      apiKey: KEY,
+      slot,
+      fetchImpl: async () => {
+        called = true
+        return response({})
+      },
+      cache: {
+        async get() {
+          return {
+            slot,
+            obs: { tempC: 31, observedAt: '2026-09-23T05:30:00.000Z', slot },
+          }
+        },
+        async set() {
+          throw new Error('cached')
+        },
+      },
+    })
+    expect(called).toBe(false)
+    expect(result.obs.tempC).toBe(31)
+    expect(result.obs.observedAt).toBe('2026-09-23T05:30:00.000Z')
+  })
+})
+
+describe('one hour for the whole reading', () => {
+  it('does not take a later hour when the current step has no temperature', () => {
+    const earlier = NOW - 3_600_000
+    const obs = normalizeWindy(
+      weatherJson({
+        ts: [earlier, NOW - 60_000, NOW + 3_600_000],
+        temps: [280.15, null, 320.15],
+        precip: 12,
+      }),
+      {
+        ts: [NOW + 3_600_000],
+        units: { 'aqi_us-surface': null },
+        'aqi_us-surface': [180],
+      },
+      NOW
+    )
+    expect(obs.tempC).toBeCloseTo(7, 0)
+    expect(obs.observedAt).toBe(new Date(earlier).toISOString())
+    expect(obs.aqi).toBe(180)
   })
 })
