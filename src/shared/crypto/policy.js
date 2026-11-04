@@ -299,6 +299,7 @@ export const POLICY = {
       'vendorWorkers[].company',
       'vendorWorkers[].contact',
       'locks[].techName',
+      'groupLock.members[].name',
       'approval.byName',
       'approval.note',
       'approval.selfApprovalReason',

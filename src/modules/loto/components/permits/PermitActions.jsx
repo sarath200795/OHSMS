@@ -13,10 +13,13 @@ import {
   decidePermit,
   emergencyRemovePermit,
   extendPermit,
+  releaseOwnLock,
   returnPermit,
   startIsolation,
   withdrawPermit,
 } from '../../services/permitActions'
+import { canRemoveOwnLock, groupDeviceCount } from '../../utils/groupLock'
+import { deviceLabel } from '../../constants/energySources'
 
 function Panel({ title, children, tone = '' }) {
   return (
@@ -44,6 +47,46 @@ function useRun() {
     }
   }
   return { busy, run }
+}
+
+function GroupPanel({ orgId, permit, user }) {
+  const { busy, run } = useRun()
+  const group = permit.groupLock
+  if (!group?.active) return null
+  const removed = permit.removedUids || []
+  const mine = canRemoveOwnLock(group, removed, user.id)
+  const tally = groupDeviceCount(group)
+  return (
+    <Panel title="Group lockout">
+      <p className="text-sm text-steel-300">
+        {group.method === 'box' ? 'Group lock box' : 'Hasp'} {group.groupNo}. Each person removes only their own lock. The primary comes off last, and that closes the permit.
+      </p>
+      <p className="text-xs text-steel-400">
+        Devices: {Object.entries(tally).map(([k, n]) => `${n} ${deviceLabel(k)}`).join(', ') || '—'}
+      </p>
+      <ul className="space-y-1 text-sm">
+        {group.members.map((m) => (
+          <li key={m.uid} className="flex justify-between gap-2">
+            <span>{m.name || m.uid} · #{m.lockNo}{m.uid === group.primaryUid ? ' · primary' : ''}</span>
+            <span className={removed.includes(m.uid) ? 'text-safe' : 'text-steel-400'}>
+              {removed.includes(m.uid) ? 'Off' : 'On'}
+            </span>
+          </li>
+        ))}
+      </ul>
+      {mine.ok && !mine.closes && (
+        <Button
+          loading={busy}
+          onClick={() => run(() => releaseOwnLock({ orgId, permit, user }), 'Your lock is off', 'Could not remove your lock')}
+        >
+          Remove my lock
+        </Button>
+      )}
+      {mine.ok && mine.closes && (
+        <p className="text-sm text-steel-300">You are the last lock. Use Return to close the permit.</p>
+      )}
+    </Panel>
+  )
 }
 
 function Decision({ orgId, permit, user, otherAdmin }) {
@@ -355,6 +398,7 @@ export default function PermitActions({ orgId, permit, user, isAdmin, isParty, o
       return (
         <>
           {isParty && <Return orgId={orgId} permit={permit} user={user} />}
+          {permit.groupLock && <GroupPanel orgId={orgId} permit={permit} user={user} />}
           {isAdmin && <Extend orgId={orgId} permit={permit} user={user} />}
           {isAdmin && <Emergency orgId={orgId} permit={permit} user={user} />}
         </>

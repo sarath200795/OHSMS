@@ -177,6 +177,16 @@ describe('validateDraft', () => {
   it('requires a work type', () => {
     expect(check((b) => { b.draft.workType = '' }).workType).toBeTruthy()
   })
+
+  it('requires two personal locks on a group lockout', () => {
+    const e = check((b) => {
+      b.draft.group = {
+        method: 'box', groupNo: 'GL-1', primaryUid: 'u1',
+        members: [{ uid: 'u1', name: 'Asha', lockNo: 'P-1' }],
+      }
+    })
+    expect(e.group).toMatch(/at least two/)
+  })
 })
 
 describe('buildPermit', () => {
