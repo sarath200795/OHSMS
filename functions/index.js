@@ -83,6 +83,7 @@ import { deliverDefectReport, deliverAssetDefects } from './lib/defectNotify.js'
 import { deliverDrillReport } from './lib/drillReportNotify.js'
 import { deliverMeetingMail } from './lib/meetingNotify.js'
 import { deliverWeatherDigest } from './lib/weatherDigest.js'
+import { gridKey, requestPoint } from './lib/windy.js'
 import { createMailer, DEFAULT_MAIL } from './lib/mailer.js'
 import { createHmac } from 'node:crypto'
 import { verifySignature, handshakeChallenge, isRealSecret } from './lib/whatsapp/signature.js'
@@ -166,6 +167,12 @@ const DATA_KEY_MASTER = defineSecret('DATA_KEY_MASTER')
 //
 //   firebase functions:secrets:set SMTP_PASS
 const SMTP_PASS = defineSecret('SMTP_PASS')
+
+// Windy Point Forecast API key for the weather digest and the site screen.
+// The operator sets WINDY_API_KEY themselves. It is not written into this
+// repo, and the browser never receives it: fetchSiteWeather reads it here
+// and returns only the normalised observation.
+const WINDY_API_KEY = defineSecret('WINDY_API_KEY')
 const SMTP_HOST = defineString('SMTP_HOST', { default: DEFAULT_MAIL.host })
 const SMTP_PORT = defineString('SMTP_PORT', { default: DEFAULT_MAIL.port })
 const SMTP_USER = defineString('SMTP_USER', { default: DEFAULT_MAIL.user })
@@ -2621,7 +2628,7 @@ const weatherDigestRun = {
   retryCount: 0,
   timeoutSeconds: 540,
   memory: '512MiB',
-  secrets: [SMTP_PASS],
+  secrets: [SMTP_PASS, WINDY_API_KEY],
 }
 
 const weatherDigestTask = (event) =>
@@ -2631,6 +2638,7 @@ const weatherDigestTask = (event) =>
       mailer,
       logger,
       scheduleTime: event?.scheduleTime,
+      windyKey: WINDY_API_KEY.value(),
     })
   )
 
@@ -2654,6 +2662,30 @@ export const retryWeatherRiskDigest = onSchedule(
     timeZone: SCHEDULE_TZ,
   },
   weatherDigestTask
+)
+
+// The site screen used to call the weather provider from the browser. The
+// key cannot live there, so the browser calls this and gets the observation
+// back. Coordinates are rounded again inside the request. A missing key is
+// an empty reading, not an error the page can mistake for a calm site.
+export const fetchSiteWeather = onCall(
+  { region: REGION, secrets: [WINDY_API_KEY], timeoutSeconds: 30 },
+  async (request) => {
+    if (!request.auth?.uid) throw new HttpsError('unauthenticated', 'Sign in first.')
+    const lat = Number(request.data?.lat)
+    const lng = Number(request.data?.lng)
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      throw new HttpsError('invalid-argument', 'A latitude and longitude are required.')
+    }
+    const key = gridKey(lat, lng)
+    if (!key) throw new HttpsError('invalid-argument', 'A latitude and longitude are required.')
+    const apiKey = WINDY_API_KEY.value()
+    if (!apiKey) return { obs: null }
+    const [gLat, gLng] = key.split(',').map(Number)
+    const result = await requestPoint({ key, lat: gLat, lng: gLng }, { apiKey })
+    if (!result.ok && result.retry) return { obs: null, limited: true }
+    return { obs: result.obs || null }
+  }
 )
 
 // ─────────────────────────────────────────────────────────────────────────────

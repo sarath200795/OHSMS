@@ -85,9 +85,9 @@ describe('collectDigest', () => {
       { id: 's5', name: 'No pin', region: 'South', entity: 'COCO' },
     ]
     const byLat = {
-      17.44: { windKph: 50 },
-      13.08: { windKph: 39 },
-      28.61: { windKph: 20 },
+      17.44: { tempC: 42, apparentTempC: 52 },
+      13.08: { tempC: 38, apparentTempC: 46 },
+      28.61: { tempC: 30, apparentTempC: 32 },
     }
     const digest = await collectDigest(sites, async (lat) => byLat[lat.toFixed(2)] || null)
     expect(digest.areas.map((a) => `${a.region}:${a.name}:${a.level}`)).toEqual([
@@ -101,10 +101,10 @@ describe('collectDigest', () => {
       entity: 'COCO',
       lat: 17.44,
       lng: 78.39,
-      drivers: [{ key: 'wind', label: 'High wind', value: '50 km/h', level: 'High' }],
+      drivers: [{ key: 'heat', label: 'Heat stress', value: 'Feels like 52°C', level: 'High' }],
     })
     expect(digest.areas[1].drivers).toEqual([
-      { key: 'wind', label: 'High wind', value: '39 km/h', level: 'Medium' },
+      { key: 'heat', label: 'Heat stress', value: 'Feels like 46°C', level: 'Medium' },
     ])
     expect(digest.unlocated).toBe(1)
     expect(digest.located).toBe(4)
@@ -123,7 +123,7 @@ describe('collectDigest', () => {
     const seen = []
     const digest = await collectDigest(sites, async (lat, lng) => {
       seen.push(`${lat},${lng}`)
-      return { windKph: 55 }
+      return { tempC: 42, apparentTempC: 52 }
     })
     expect(new Set(seen).size).toBe(90)
     expect(digest.located).toBe(90)
@@ -133,10 +133,10 @@ describe('collectDigest', () => {
     const message = renderWeatherDigest(digest)
     expect(message.subject).toBe('Weather risk: 90 high, 0 medium')
     expect(message.text).toContain('Weather checked for 90 of 90 sites')
-    expect(message.text).toContain('Other hazards: 50 further readings — in the app')
+    expect(message.text).toContain('Heat Stress: 50 further sites — in the app')
     // The High-risk table shows 5 sites for the region and counts the other 85.
     expect(message.text).toContain('HIGH-RISK SITES AND PRECAUTIONS (90 alerts at 90 sites)')
-    expect(message.text.match(/^Type of Alert: Adverse Weather – High wind$/gm)).toHaveLength(5)
+    expect(message.text.match(/^Type of Alert: Heat Stress$/gm)).toHaveLength(5)
     expect(message.text).toContain('85 more high-risk sites in South. Log in to see all')
   })
 })
@@ -191,8 +191,8 @@ describe('deliverWeatherDigest', () => {
 
   const mixed = async (lat) =>
     lat > 15
-      ? { windKph: 55, observedAt: '2026-09-23T11:00' }
-      : { windKph: 40, observedAt: '2026-09-23T11:00' }
+      ? { tempC: 42, apparentTempC: 52, observedAt: '2026-09-23T11:00' }
+      : { tempC: 38, apparentTempC: 46, observedAt: '2026-09-23T11:00' }
 
   it('mails each admin once, attaches the map by cid, and a retry in the same window does not', async () => {
     const sent = []
@@ -216,16 +216,16 @@ describe('deliverWeatherDigest', () => {
       'shared@example.com',
     ])
     const blob = sent.map((m) => `${m.subject}\n${m.text}\n${m.html}`).join('\n')
-    expect(blob).toContain('OTHER HAZARDS')
+    expect(blob).toContain('HEAT STRESS')
     expect(blob).toContain('Level: High')
     expect(blob).toContain('Level: Medium')
-    expect(blob).toContain('Hazard: High wind')
-    expect(blob).not.toContain('HEAT STRESS')
+    expect(blob).not.toContain('OTHER HAZARDS')
     expect(blob).not.toContain('RAIN RISK')
+    expect(blob).not.toContain('Poor visibility')
     expect(blob).toContain('South')
     expect(blob).toContain('Plant 2')
     expect(blob).toContain('COCO')
-    expect(blob).toContain('55 km/h')
+    expect(blob).toContain('Feels like 52°C')
     expect(blob).toContain('East')
     expect(blob).toContain('Depot')
     expect(blob).toContain('2026-09-23T11:00')
@@ -256,14 +256,14 @@ describe('deliverWeatherDigest', () => {
       'organizations/orgA/sites/s1': { name: 'Both', region: 'South', lat: 17.44, lng: 78.39 },
       'organizations/orgA/sites/s2': { name: 'Rain only', region: 'East', lat: 13.08, lng: 80.27 },
       'organizations/orgA/sites/s3': { name: 'Heat only', region: 'East', lat: 28.61, lng: 77.2 },
-      'organizations/orgA/sites/s4': { name: 'Windy', region: 'West', lat: 19.07, lng: 72.87 },
+      'organizations/orgA/sites/s4': { name: 'Storm', region: 'West', lat: 19.07, lng: 72.87 },
       'users/admin': user('admin', { role: 'admin' }),
     })
     const byLat = {
       17.44: { tempC: 42, apparentTempC: 52, precipMmHr: 5, observedAt: '2026-09-23T11:00' },
       13.08: { apparentTempC: 30, precipMmHr: 12 },
       28.61: { tempC: 39, apparentTempC: 46 },
-      19.07: { windKph: 55 },
+      19.07: { capeJkg: 2600 },
     }
     const pinned = []
     await deliverWeatherDigest({
@@ -280,17 +280,17 @@ describe('deliverWeatherDigest', () => {
     })
     expect(sent).toHaveLength(1)
     const { subject, text } = sent[0]
-    // Four sites: Both (High heat), Rain only (High), Heat only (Medium), Windy (High).
+    // Four sites: Both (High heat), Rain only (High), Heat only (Medium), Storm (High).
     expect(subject).toBe('Weather risk: 3 high, 1 medium')
     const heat = text.indexOf('HEAT STRESS')
     const rain = text.indexOf('RAIN RISK')
-    const other = text.indexOf('OTHER HAZARDS')
+    const lightning = text.indexOf('LIGHTNING')
     expect(heat).toBeGreaterThan(-1)
     expect(heat).toBeLessThan(rain)
-    expect(rain).toBeLessThan(other)
+    expect(rain).toBeLessThan(lightning)
     const heatText = text.slice(heat, rain)
-    const rainText = text.slice(rain, other)
-    const otherText = text.slice(other)
+    const rainText = text.slice(rain, lightning)
+    const lightningText = text.slice(lightning)
     expect(heatText).toContain('Site: Both')
     expect(heatText).toContain('Site: Heat only')
     expect(heatText).not.toContain('Rain only')
@@ -299,8 +299,8 @@ describe('deliverWeatherDigest', () => {
     expect(rainText).toContain('Site: Rain only')
     expect(rainText).toContain('Level: Medium')
     expect(rainText).toContain('Reading: Medium · 5.0 mm/h')
-    expect(otherText).toContain('Site: Windy')
-    expect(otherText).toContain('Hazard: High wind')
+    expect(lightningText).toContain('Site: Storm')
+    expect(lightningText).toContain('Reading: CAPE 2600 J/kg')
     // The map pins each site once, at its worst level.
     expect(pinned).toHaveLength(4)
     expect(sent[0].attachments).toHaveLength(1)
@@ -413,7 +413,7 @@ describe('deliverWeatherDigest', () => {
       logger,
       scheduleTime: '2026-09-23T00:00:00.000Z',
       orgIds: ['orgA'],
-      fetchObs: async () => ({ windKph: 10, apparentTempC: 30 }),
+      fetchObs: async () => ({ apparentTempC: 30 }),
       renderMap: async () => {
         mapped = true
         return { png: PNG }
@@ -434,7 +434,7 @@ describe('deliverWeatherDigest', () => {
       orgIds: ['orgA'],
       fetchObs: async () => {
         called = true
-        return { windKph: 80 }
+        return { tempC: 45, apparentTempC: 55 }
       },
     })
     expect(result.reason).toBe('not-configured')
@@ -461,8 +461,8 @@ describe('deliverWeatherDigest', () => {
           if (depotTries === 1) return null
         }
         return lat > 15
-          ? { windKph: 55, observedAt: '2026-09-23T01:00' }
-          : { windKph: 40, observedAt: '2026-09-23T01:00' }
+          ? { tempC: 42, apparentTempC: 52, observedAt: '2026-09-23T01:00' }
+          : { tempC: 38, apparentTempC: 46, observedAt: '2026-09-23T01:00' }
       },
       renderMap: async () => ({ png: PNG }),
     }
@@ -498,7 +498,7 @@ describe('deliverWeatherDigest', () => {
       fetchObs: async (lat) => {
         fetches += 1
         if (lat < 15) return null
-        return { windKph: 55, observedAt: '2026-09-23T01:00' }
+        return { tempC: 42, apparentTempC: 52, observedAt: '2026-09-23T01:00' }
       },
     }
     const held = await deliverWeatherDigest({
@@ -532,7 +532,7 @@ describe('deliverWeatherDigest', () => {
       now: () => new Date(late.getTime() + 60 * 1000),
       fetchObs: async () => {
         fetches += 1
-        return { windKph: 80 }
+        return { tempC: 45, apparentTempC: 55 }
       },
     })
     expect(again.sent).toBe(0)

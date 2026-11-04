@@ -7,9 +7,6 @@ import {
   siteTypeRows,
 } from '../../shared/weather/activityPrecautions'
 
-const PRIMARY = ALERTS.filter((alert) => alert.key === 'heat' || alert.key === 'rain')
-const ADVERSE = ALERTS.filter((alert) => alert.key !== 'heat' && alert.key !== 'rain')
-
 function slug(value) {
   const text = String(value || '')
     .toLowerCase()
@@ -71,15 +68,7 @@ function ActivityBlock({ row, value, onChange }) {
         {row.selected ? '' : ' — used when a site records this work'}
       </summary>
       <div className="mt-3 space-y-3 pb-2">
-        <AlertFields row={row} alerts={PRIMARY} value={value} onChange={onChange} />
-        <details className="rounded-lg border border-surface-200 bg-white px-3 py-2">
-          <summary className="cursor-pointer py-1 text-sm font-semibold text-ink-700">
-            {row.label} — adverse weather
-          </summary>
-          <div className="mt-3">
-            <AlertFields row={row} alerts={ADVERSE} value={value} onChange={onChange} />
-          </div>
-        </details>
+        <AlertFields row={row} alerts={ALERTS} value={value} onChange={onChange} />
         {edited && (
           <Button
             type="button"
@@ -106,12 +95,12 @@ export default function WeatherPrecautions({ activityTypes, value, onChange }) {
         <CloudRain size={17} className="text-brand-600" /> Weather digest precautions
       </h3>
       <p className="mb-3 mt-1 text-sm text-ink-500">
-        The six-hour weather mail fills each site’s precautions from its site type. Heat, rain and
-        each adverse-weather alert can differ for an office, an indoor gym, pool or court, a
-        warehouse, a kitchen, a shop, a plant or a construction site. A permit or a hazard
-        assessment can still add the work happening there. Leave a box blank to keep the built-in
-        sentence. A site with no type, and the type Other, use the activities selected above and
-        then the general precautions.
+        The six-hour weather mail fills each site’s precautions from its site type. Heat stress,
+        cold stress, rain, lightning and air quality can differ for an office, an indoor gym, pool
+        or court, a warehouse, a kitchen, a shop, a plant or a construction site. A permit or a
+        hazard assessment can still add the work happening there. Leave a box blank to keep the
+        built-in sentence. A site with no type, and the type Other, use the activities selected
+        above and then the general precautions.
       </p>
       {selected.length === 0 && (
         <p className="mb-3 text-sm text-ink-600">

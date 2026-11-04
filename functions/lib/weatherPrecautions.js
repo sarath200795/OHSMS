@@ -44,37 +44,33 @@
 //
 // This module is pure on purpose. The SPA settings screen imports it, and the
 // functions package cannot import the SPA. Firestore reads stay in
-// loadPrecautionFor, which the digest calls. UV is not an alert here. Heat
-// High remains an air temperature strictly above 40°C, decided in
-// weatherBands.js, not in this file.
+// loadPrecautionFor, which the digest calls. UV, visibility, wind, ice and
+// snow are not alerts here. Heat High remains an air temperature strictly
+// above 40°C, decided in weatherBands.js, not in this file.
 
-export const ALERT_KEYS = ['heat', 'rain', 'wind', 'visibility', 'cold', 'lightning', 'ice', 'snow']
+export const ALERT_KEYS = ['heat', 'cold', 'rain', 'lightning', 'air']
 
 export const ALERTS = [
   { key: 'heat', label: 'Heat Stress' },
+  { key: 'cold', label: 'Cold Stress' },
   { key: 'rain', label: 'Rain Risk' },
-  { key: 'wind', label: 'Adverse Weather – High wind' },
-  { key: 'visibility', label: 'Adverse Weather – Poor visibility' },
-  { key: 'cold', label: 'Adverse Weather – Cold stress' },
-  { key: 'lightning', label: 'Adverse Weather – Thunderstorm' },
-  { key: 'ice', label: 'Adverse Weather – Freezing rain' },
-  { key: 'snow', label: 'Adverse Weather – Snow' },
+  { key: 'lightning', label: 'Lightning' },
+  { key: 'air', label: 'Air Quality' },
 ]
 
 // The sentences the mail used before activities were consulted. Exported so
 // the template and this file cannot each grow a private copy. An org with no
 // activities still receives these, word for word.
+const AIR_PRECAUTION =
+  'Limit heavy outdoor work and move people into cleaner indoor air where you can. Pause hot work and work at height when breathing is hard, and follow the site plan for poor air quality.'
+
 export const GENERIC_PRECAUTIONS = {
   heat: 'Provide cool drinking water and enforce shade and rest breaks. Move heavy outdoor work to the cooler hours. Watch for heat-illness signs (dizziness, cramps, confusion) and act at once.',
-  rain: 'Watch for slips, trips and wet electrical equipment; keep tools and cables off wet ground. Secure loose materials and check drainage. Stop work at height and hot work if conditions are unsafe.',
-  wind: 'Secure scaffolding, sheeting and loose items. Stop crane, lifting and work-at-height operations. Keep people clear of overhead and edge areas.',
-  visibility:
-    'Slow vehicles and plant, and keep lights and high-visibility clothing on. Use spotters and marked routes. Pause lifting and reversing where the operator cannot see.',
   cold: 'Provide warm clothing, gloves and warm rest breaks. Limit time on exposed tasks and watch for numbness or shivering. Check for ice on walkways and equipment.',
+  rain: 'Watch for slips, trips and wet electrical equipment; keep tools and cables off wet ground. Secure loose materials and check drainage. Stop work at height and hot work if conditions are unsafe.',
   lightning:
     'Stop outdoor work and move people indoors or into a vehicle. Keep clear of tall structures, cranes, scaffolding and open ground. Resume only when the storm has passed.',
-  ice: 'Grit or close icy walkways, ramps and stairs. Slow vehicles and plant. Stop work at height and lifting where surfaces are slippery.',
-  snow: 'Clear and grit access routes. Take extra care with vehicles and plant. Check roofs, scaffolding and temporary structures for snow load before use.',
+  air: AIR_PRECAUTION,
   other:
     'Review the task risk assessment. Stop work that cannot be done safely, and follow site emergency procedures.',
 }
@@ -165,8 +161,8 @@ const PROFILE_ORDER = [
   'facilities',
 ]
 
-function px(heat, rain, wind, visibility, cold, lightning, ice, snow) {
-  return { heat, rain, wind, visibility, cold, lightning, ice, snow }
+function px(heat, rain, _wind, _visibility, cold, lightning, _ice, _snow) {
+  return { heat, cold, rain, lightning, air: AIR_PRECAUTION }
 }
 
 function entry(id, label, kind, extra, aliases, precautions) {

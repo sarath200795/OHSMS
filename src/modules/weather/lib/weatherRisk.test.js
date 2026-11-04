@@ -1,29 +1,31 @@
 import { describe, it, expect } from 'vitest'
-import { assessWeather, levelOf, isThunderstorm, BANDS, summariseHazards } from './weatherRisk'
+import { assessWeather, levelOf, BANDS, summariseHazards } from './weatherRisk'
 
 const bandOf = (obs, key) => assessWeather(obs).hazards.find((h) => h.key === key)?.band ?? 'none'
 
-// The cut-offs are the whole point of this module. If one drifts, a site stops
-// warning about conditions its safety officer is expected to act on, and
-// nothing else in the app would notice.
 describe('heat stress thresholds', () => {
-  // Reporting starts at 40°C. Below that is an ordinary working day here, and a
-  // heat row that is always lit tells nobody anything.
-  // Feels-like sets the band, with one limit: High (and severe) also need the
-  // air temperature above 40°C. These rows have a hot air so the limit is met.
   it.each([
-    [20, 'none'], [30, 'none'], [35, 'none'], [39.9, 'none'],
-    [40, 'low'], [44.9, 'low'],
-    [45, 'moderate'], [50.9, 'moderate'],
-    [51, 'high'], [55.9, 'high'],
-    [56, 'severe'], [62, 'severe'],
+    [20, 'none'],
+    [30, 'none'],
+    [35, 'none'],
+    [39.9, 'none'],
+    [40, 'low'],
+    [44.9, 'low'],
+    [45, 'moderate'],
+    [50.9, 'moderate'],
+    [51, 'high'],
+    [55.9, 'high'],
+    [56, 'severe'],
+    [62, 'severe'],
   ])('feels like %s°C (air 41°C) is %s', (t, expected) => {
     expect(bandOf({ tempC: 41, apparentTempC: t }, 'heat')).toBe(expected)
   })
 
-  // High needs the AIR above 40°C. Strictly above: 40.0 is not High, 40.1 is.
   it.each([
-    [38, 'moderate'], [40, 'moderate'], [40.1, 'high'], [45, 'high'],
+    [38, 'moderate'],
+    [40, 'moderate'],
+    [40.1, 'high'],
+    [45, 'high'],
   ])('feels like 52°C with air %s°C is %s', (airC, expected) => {
     expect(bandOf({ tempC: airC, apparentTempC: 52 }, 'heat')).toBe(expected)
   })
@@ -49,35 +51,24 @@ describe('heat stress thresholds', () => {
     expect(bandOf({ tempC: 52 }, 'heat')).toBe('high')
   })
 
-  it('does not change the other hazards or the overall band for a capped heat reading', () => {
-    const r = assessWeather({ tempC: 38, apparentTempC: 52, windKph: 55 })
-    expect(r.hazards.map((h) => `${h.key}:${h.band}`)).toEqual(['wind:high', 'heat:moderate'])
-    expect(r.band).toBe('high')
-    expect(assessWeather({ tempC: 38, apparentTempC: 52 }).band).toBe('moderate')
-  })
-
-  it('says nothing about a warm but unremarkable day', () => {
-    // 34°C used to raise "take precautions" on every site, every summer day.
-    expect(assessWeather({ apparentTempC: 34 }).hazards).toEqual([])
-  })
-
-  it('reads apparent temperature, not dry bulb, because humidity defeats sweating', () => {
-    // 33°C in high humidity feels like 46°C — the raw figure looks unremarkable.
-    expect(bandOf({ tempC: 33, apparentTempC: 46 }, 'heat')).toBe('moderate')
-  })
-
-  it('falls back to dry bulb when the provider gives no apparent temperature', () => {
+  it('falls back to the dry bulb when feels-like is missing, and prefers feels-like when both exist', () => {
     expect(bandOf({ tempC: 41 }, 'heat')).toBe('low')
+    expect(bandOf({ tempC: 30, apparentTempC: 46 }, 'heat')).toBe('moderate')
   })
 })
 
 describe('cold stress thresholds', () => {
   it.each([
-    [15, 'none'], [10.1, 'none'],
-    [10, 'low'], [0.1, 'low'],
-    [0, 'moderate'], [-9.9, 'moderate'],
-    [-10, 'high'], [-24.9, 'high'],
-    [-25, 'severe'], [-40, 'severe'],
+    [15, 'none'],
+    [10.1, 'none'],
+    [10, 'low'],
+    [0.1, 'low'],
+    [0, 'moderate'],
+    [-9.9, 'moderate'],
+    [-10, 'high'],
+    [-24.9, 'high'],
+    [-25, 'severe'],
+    [-40, 'severe'],
   ])('feels like %s°C is %s', (t, expected) => {
     expect(bandOf({ apparentTempC: t }, 'cold')).toBe(expected)
   })
@@ -90,111 +81,111 @@ describe('cold stress thresholds', () => {
   })
 })
 
-describe('wind thresholds', () => {
-  // Beaufort 5/6/7/8.
-  it.each([[20, 'none'], [29, 'low'], [39, 'moderate'], [50, 'high'], [62, 'severe']])(
-    '%s km/h is %s', (w, expected) => {
-      expect(bandOf({ windKph: w }, 'wind')).toBe(expected)
-    }
-  )
-
-  it('bands on the gust when it is worse than the steady wind', () => {
-    // Steady wind alone would read "low"; the gust is what takes a board out of
-    // someone's hands at height.
-    const h = assessWeather({ windKph: 30, gustKph: 65 }).hazards.find((x) => x.key === 'wind')
-    expect(h.band).toBe('severe')
-    expect(h.value).toBe('Gusting 65 km/h')
+describe('rain', () => {
+  it.each([
+    [0.2, 'none'],
+    [0.5, 'low'],
+    [4, 'moderate'],
+    [10, 'high'],
+    [30, 'severe'],
+  ])('%s mm/h rain is %s', (r, expected) => {
+    expect(bandOf({ precipMmHr: r }, 'rain')).toBe(expected)
   })
 
-  it('shows the steady figure when there is no meaningful gust', () => {
-    expect(assessWeather({ windKph: 45, gustKph: 45 }).hazards.find((h) => h.key === 'wind').value)
-      .toBe('45 km/h')
+  it.each([
+    [0.5, 'Low'],
+    [4, 'Medium'],
+    [10, 'High'],
+    [30, 'High'],
+  ])('%s mm/h is a %s rain alert', (r, alert) => {
+    const h = assessWeather({ precipMmHr: r }).hazards.find((x) => x.key === 'rain')
+    expect(h.alert).toBe(alert)
+    expect(h.label).toBe('Rain alert')
+    expect(h.value).toContain(alert)
   })
-})
-
-describe('visibility and rain get worse in opposite directions', () => {
-  it.each([[8000, 'none'], [5000, 'low'], [2000, 'moderate'], [1000, 'high'], [200, 'severe']])(
-    '%s m visibility is %s', (v, expected) => {
-      expect(bandOf({ visibilityM: v }, 'visibility')).toBe(expected)
-    }
-  )
-
-  it.each([[0.2, 'none'], [0.5, 'low'], [4, 'moderate'], [10, 'high'], [30, 'severe']])(
-    '%s mm/h rain is %s', (r, expected) => {
-      expect(bandOf({ precipMmHr: r }, 'rain')).toBe(expected)
-    }
-  )
-
-  it.each([[0.5, 'Low'], [4, 'Medium'], [10, 'High'], [30, 'High']])(
-    '%s mm/h is a %s rain alert', (r, alert) => {
-      const h = assessWeather({ precipMmHr: r }).hazards.find((x) => x.key === 'rain')
-      expect(h.alert).toBe(alert)
-      expect(h.label).toBe('Rain alert')
-      expect(h.value).toContain(alert)
-    }
-  )
 
   it('keeps a cloudburst driving the severe verdict even though it reads High', () => {
-    // Three alert names, five bands — the overall risk must not be flattened.
     const r = assessWeather({ precipMmHr: 40 })
     expect(r.hazards[0].alert).toBe('High')
     expect(r.band).toBe('severe')
   })
-
-  it('renders visibility in km once it is over a kilometre', () => {
-    expect(assessWeather({ visibilityM: 2500 }).hazards.find((h) => h.key === 'visibility').value)
-      .toBe('2.5 km')
-    expect(assessWeather({ visibilityM: 400 }).hazards.find((h) => h.key === 'visibility').value)
-      .toBe('400 m')
-  })
 })
 
-describe('WMO weather codes', () => {
-  it('treats every thunderstorm code as severe', () => {
-    for (const code of [95, 96, 99]) {
-      expect(isThunderstorm(code)).toBe(true)
-      expect(bandOf({ weatherCode: code }, 'lightning')).toBe('severe')
+describe('lightning', () => {
+  it('treats a thunderstorm warning as severe', () => {
+    for (const code of [95, 96]) {
+      expect(bandOf({ lightningCode: code }, 'lightning')).toBe('severe')
     }
   })
 
-  it('does not call ordinary rain a thunderstorm', () => {
-    for (const code of [0, 3, 61, 63, 80]) expect(isThunderstorm(code)).toBe(false)
+  it('does not treat an old rain code, or a quiet CAPE, as lightning', () => {
+    expect(bandOf({ weatherCode: 95 }, 'lightning')).toBe('none')
+    expect(bandOf({ capeJkg: 999 }, 'lightning')).toBe('none')
+    expect(bandOf({ capeJkg: 1000 }, 'lightning')).toBe('moderate')
+    expect(bandOf({ capeJkg: 2500 }, 'lightning')).toBe('high')
   })
 
-  it.each([56, 57, 66, 67])('flags freezing code %s as ice', (code) => {
-    expect(bandOf({ weatherCode: code }, 'ice')).toBe('high')
+  it('names the warning and the CAPE it was read from', () => {
+    const h = assessWeather({ lightningCode: 95, capeJkg: 1800 }).hazards.find(
+      (x) => x.key === 'lightning'
+    )
+    expect(h.value).toBe('Thunderstorm forecast · CAPE 1800 J/kg')
+    expect(h.affects).toMatch(/height/)
+  })
+})
+
+describe('air quality', () => {
+  it.each([
+    [0, 'low'],
+    [199, 'low'],
+    [200, 'moderate'],
+    [399, 'moderate'],
+    [400, 'high'],
+    [500, 'high'],
+  ])('AQI %s is %s', (aqi, expected) => {
+    expect(bandOf({ aqi }, 'air')).toBe(expected)
   })
 
-  it.each([71, 73, 75, 77, 85, 86])('flags snow code %s', (code) => {
-    expect(bandOf({ weatherCode: code }, 'snow')).toBe('moderate')
+  it('shows the particle fallback in the reading', () => {
+    const h = assessWeather({ aqi: 420, aqiSource: 'pm' }).hazards.find((x) => x.key === 'air')
+    expect(h.value).toBe('High · AQI 420 (particles)')
+    expect(h.band).toBe('high')
   })
 })
 
 describe('the overall verdict', () => {
   it('is the worst hazard present, not an average of them', () => {
-    // Pleasant except for the lightning. Averaging would hide it.
-    const r = assessWeather({ apparentTempC: 21, windKph: 8, precipMmHr: 0, weatherCode: 95 })
+    const r = assessWeather({ apparentTempC: 21, precipMmHr: 0, lightningCode: 95 })
     expect(r.band).toBe('severe')
     expect(r.hazards[0].key).toBe('lightning')
   })
 
   it('sorts worst first so a bubble showing one row shows the right one', () => {
-    const r = assessWeather({ apparentTempC: 41, windKph: 55 })
-    expect(r.hazards.map((h) => h.key)).toEqual(['wind', 'heat'])
+    const r = assessWeather({ tempC: 42, apparentTempC: 52, aqi: 250 })
+    expect(r.hazards.map((h) => h.key)).toEqual(['heat', 'air'])
     const levels = r.hazards.map((h) => levelOf(h.band))
     expect(levels).toEqual([...levels].sort((a, b) => b - a))
   })
 
   it('is clear when nothing is wrong, and lists nothing', () => {
-    const r = assessWeather({ apparentTempC: 21, tempC: 21, windKph: 9, precipMmHr: 0, uvIndex: 2, visibilityM: 20000, weatherCode: 1 })
+    const r = assessWeather({
+      apparentTempC: 21,
+      tempC: 21,
+      precipMmHr: 0,
+      uvIndex: 2,
+      visibilityM: 20000,
+      windKph: 40,
+      weatherCode: 1,
+      capeJkg: 100,
+    })
     expect(r.band).toBe('none')
     expect(r.level).toBe(0)
     expect(r.hazards).toEqual([])
   })
 
   it('omits a hazard the provider had no reading for rather than scoring it zero', () => {
-    // A missing visibility field must not read as dense fog.
     const r = assessWeather({ apparentTempC: 21 })
+    expect(r.hazards.find((h) => h.key === 'air')).toBeUndefined()
     expect(r.hazards.find((h) => h.key === 'visibility')).toBeUndefined()
     expect(r.band).toBe('none')
   })
@@ -205,13 +196,25 @@ describe('the overall verdict', () => {
   })
 
   it('ignores nulls and non-numbers the API may send', () => {
-    const r = assessWeather({ apparentTempC: null, windKph: undefined, precipMmHr: NaN, visibilityM: 'n/a' })
+    const r = assessWeather({
+      apparentTempC: null,
+      precipMmHr: NaN,
+      visibilityM: 'n/a',
+      aqi: 'bad',
+      capeJkg: undefined,
+    })
     expect(r.hazards).toEqual([])
   })
 
-  it('gives every hazard a label and the work it affects, so the UI never shows a bare number', () => {
-    const r = assessWeather({ apparentTempC: 45, windKph: 70, precipMmHr: 12, visibilityM: 150, weatherCode: 95 })
-    expect(r.hazards.length).toBeGreaterThan(4)
+  it('gives every hazard a label and the work it affects', () => {
+    const r = assessWeather({
+      tempC: 42,
+      apparentTempC: 52,
+      precipMmHr: 12,
+      lightningCode: 95,
+      aqi: 450,
+    })
+    expect(r.hazards.map((h) => h.key).sort()).toEqual(['air', 'heat', 'lightning', 'rain'])
     for (const h of r.hazards) {
       expect(h.label).toBeTruthy()
       expect(h.affects).toBeTruthy()
@@ -226,67 +229,74 @@ describe('summariseHazards', () => {
 
   it('names each kind of weather that is a problem, once', () => {
     const out = summariseHazards([
-      site({ windKph: 55 }),
-      site({ windKph: 45 }),
+      site({ capeJkg: 2600 }),
+      site({ capeJkg: 1200 }),
       site({ apparentTempC: 46 }),
     ])
-    expect(out.map((h) => h.key)).toEqual(['wind', 'heat'])
+    expect(out.map((h) => h.key)).toEqual(['lightning', 'heat'])
   })
 
   it('counts how many sites show each one', () => {
-    const out = summariseHazards([site({ windKph: 55 }), site({ windKph: 45 }), site({ apparentTempC: 46 })])
-    expect(out.find((h) => h.key === 'wind').sites).toBe(2)
+    const out = summariseHazards([
+      site({ capeJkg: 2600 }),
+      site({ capeJkg: 1200 }),
+      site({ apparentTempC: 46 }),
+    ])
+    expect(out.find((h) => h.key === 'lightning').sites).toBe(2)
     expect(out.find((h) => h.key === 'heat').sites).toBe(1)
   })
 
   it('reports a category at its worst band across the sites', () => {
-    // One site gusting into severe, another merely breezy.
-    const out = summariseHazards([site({ windKph: 30 }), site({ windKph: 70 })])
-    expect(out[0]).toMatchObject({ key: 'wind', band: 'severe', sites: 2 })
+    const out = summariseHazards([site({ capeJkg: 1200 }), site({ lightningCode: 95 })])
+    expect(out[0]).toMatchObject({ key: 'lightning', band: 'severe', sites: 2 })
   })
 
   it('puts the worst category first, then the most widespread', () => {
     const out = summariseHazards([
-      site({ windKph: 40 }), site({ windKph: 40 }), site({ windKph: 40 }),
-      site({ weatherCode: 95 }),
+      site({ aqi: 250 }),
+      site({ aqi: 250 }),
+      site({ aqi: 250 }),
+      site({ lightningCode: 95 }),
     ])
     expect(out[0].key).toBe('lightning')
-    expect(out[1]).toMatchObject({ key: 'wind', sites: 3 })
+    expect(out[1]).toMatchObject({ key: 'air', sites: 3 })
   })
 
   it('does not let one site count twice for the same category', () => {
-    const out = summariseHazards([site({ windKph: 60, gustKph: 80 })])
-    expect(out.filter((h) => h.key === 'wind')).toHaveLength(1)
+    const out = summariseHazards([site({ lightningCode: 95, capeJkg: 3000 })])
+    expect(out.filter((h) => h.key === 'lightning')).toHaveLength(1)
     expect(out[0].sites).toBe(1)
   })
 
   it('is empty when nothing is wrong anywhere', () => {
-    expect(summariseHazards([site({ apparentTempC: 21, windKph: 5 })])).toEqual([])
+    expect(summariseHazards([site({ apparentTempC: 21, capeJkg: 5 })])).toEqual([])
     expect(summariseHazards([])).toEqual([])
     expect(summariseHazards()).toEqual([])
   })
 
   it('ignores sites that have not been assessed', () => {
-    expect(summariseHazards([null, undefined, {}, site({ windKph: 55 })])).toHaveLength(1)
+    expect(summariseHazards([null, undefined, {}, site({ capeJkg: 2600 })])).toHaveLength(1)
   })
 
   it('carries the label and level the UI renders', () => {
-    const [h] = summariseHazards([site({ weatherCode: 95 })])
-    expect(h.label).toBe('Thunderstorm')
+    const [h] = summariseHazards([site({ lightningCode: 95 })])
+    expect(h.label).toBe('Lightning')
     expect(h.level).toBe(levelOf('severe'))
   })
 })
 
-describe('UV is not a weather hazard', () => {
+describe('UV, visibility and wind are not weather hazards', () => {
   it.each([0, 3, 6, 8, 11, 14])('UV index %s produces no hazard, band or count', (uvIndex) => {
-    const r = assessWeather({ uvIndex })
+    const r = assessWeather({ uvIndex, visibilityM: 100, windKph: 80 })
     expect(r.hazards).toEqual([])
     expect(r.band).toBe('none')
     expect(summariseHazards([r])).toEqual([])
   })
 
   it('leaves the other hazards and the overall band exactly as they are without it', () => {
-    const base = { tempC: 41, apparentTempC: 45, windKph: 55 }
-    expect(assessWeather({ ...base, uvIndex: 12 })).toEqual(assessWeather(base))
+    const base = { tempC: 41, apparentTempC: 45, precipMmHr: 6 }
+    expect(assessWeather({ ...base, uvIndex: 12, visibilityM: 80, windKph: 70 })).toEqual(
+      assessWeather(base)
+    )
   })
 })

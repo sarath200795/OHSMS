@@ -1,10 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import { assessWeather, digestLevel, digestHazards, digestDrivers } from './weatherBands.js'
-import { forecastUrl, normalizeOpenMeteo, gridKey } from './openMeteo.js'
 
 const bandOf = (obs, key) => assessWeather(obs).hazards.find((h) => h.key === key)?.band ?? 'none'
 
-describe('digest bands follow the published cut-offs', () => {
+describe('digest bands follow the cut-offs', () => {
   it('treats moderate as Medium and high or severe as High', () => {
     expect(digestLevel('moderate')).toBe('Medium')
     expect(digestLevel('high')).toBe('High')
@@ -13,133 +12,38 @@ describe('digest bands follow the published cut-offs', () => {
     expect(digestLevel('none')).toBe('')
   })
 
-  it.each([
-    [39, 'moderate', 'Medium'],
-    [50, 'high', 'High'],
-    [62, 'severe', 'High'],
-    [29, 'low', ''],
-  ])('%s km/h wind is %s and digests as %s', (windKph, band, level) => {
-    const assessment = assessWeather({ windKph })
-    expect(bandOf({ windKph }, 'wind')).toBe(band)
-    expect(digestLevel(assessment.band)).toBe(level)
-  })
-
-  it('does not flag an ordinary warm day, and does flag a thunderstorm', () => {
+  it('does not flag an ordinary warm day, and does flag a thunderstorm warning', () => {
     expect(digestLevel(assessWeather({ apparentTempC: 34 }).band)).toBe('')
     expect(digestLevel(assessWeather({ apparentTempC: 45 }).band)).toBe('Medium')
     expect(digestLevel(assessWeather({ tempC: 41, apparentTempC: 51 }).band)).toBe('High')
-    const storm = assessWeather({ weatherCode: 95 })
+    const storm = assessWeather({ lightningCode: 95 })
     expect(digestLevel(storm.band)).toBe('High')
-    expect(digestHazards(storm)).toContain('Thunderstorm')
+    expect(digestHazards(storm)).toContain('Lightning')
     expect(digestDrivers(storm)).toContainEqual({
       key: 'lightning',
-      label: 'Thunderstorm',
-      value: 'Lightning reported',
+      label: 'Lightning',
+      value: 'Thunderstorm forecast',
       level: 'High',
     })
   })
 
   it('keeps the reading on a digest driver and drops a low one', () => {
-    expect(digestDrivers(assessWeather({ windKph: 50 }))).toEqual([
-      { key: 'wind', label: 'High wind', value: '50 km/h', level: 'High' },
-    ])
-    expect(digestDrivers(assessWeather({ windKph: 20, gustKph: 65 }))).toEqual([
-      { key: 'wind', label: 'High wind', value: 'Gusting 65 km/h', level: 'High' },
-    ])
     expect(digestDrivers(assessWeather({ precipMmHr: 12 }))).toEqual([
       { key: 'rain', label: 'Rain', value: 'High · 12.0 mm/h', level: 'High' },
     ])
-    expect(digestDrivers(assessWeather({ windKph: 20 }))).toEqual([])
+    expect(digestDrivers(assessWeather({ precipMmHr: 0.5 }))).toEqual([])
+    expect(digestDrivers(assessWeather({ aqi: 80 }))).toEqual([])
   })
 
   it('gives each driver its own level, so one site can be High for heat and Medium for rain', () => {
-    const drivers = digestDrivers(assessWeather({ tempC: 42, apparentTempC: 52, precipMmHr: 4, windKph: 20 }))
+    const drivers = digestDrivers(
+      assessWeather({ tempC: 42, apparentTempC: 52, precipMmHr: 4, capeJkg: 500 })
+    )
     expect(drivers.map((d) => `${d.key}:${d.level}`)).toEqual(['heat:High', 'rain:Medium'])
-    // Wind at 20 km/h is Low, and Low is not a driver at all.
-    expect(drivers.some((d) => d.key === 'wind')).toBe(false)
+    expect(drivers.some((d) => d.key === 'lightning')).toBe(false)
   })
 })
 
-describe('Open-Meteo request', () => {
-  it('rounds coordinates to ~1 km and does not carry a site name', () => {
-    const url = forecastUrl(17.43821, 78.3912)
-    expect(url).toContain('latitude=17.44')
-    expect(url).toContain('longitude=78.39')
-    expect(url).toContain('hourly=precipitation,visibility,uv_index')
-    expect(url).not.toContain('17.438')
-    expect(url).not.toContain('Plant')
-    expect(gridKey(91, 0)).toBe('')
-  })
-
-  it('picks the hourly visibility for the current hour, not midnight', () => {
-    const obs = normalizeOpenMeteo({
-      current: { time: '2026-09-23T15:10', temperature_2m: 30, weather_code: 0 },
-      hourly: {
-        time: ['2026-09-23T00:00', '2026-09-23T15:00'],
-        visibility: [100, 8000],
-        uv_index: [0, 6],
-      },
-    })
-    expect(obs.visibilityM).toBe(8000)
-    expect(obs.uvIndex).toBe(6)
-    expect(obs.tempC).toBe(30)
-    expect(obs.observedAt).toBe('2026-09-23T15:10')
-  })
-
-  // 27 Oct 2026, Siripuram: current precipitation was 2.4 with interval 900
-  // while the same hour's precipitation was 11.7. Read as mm/h, 2.4 is under
-  // the 4 mm/h mail line, so Rain Risk dropped the site.
-  it('turns the 15-minute sum into mm/h and keeps the heavier hour total', () => {
-    const scaled = normalizeOpenMeteo({
-      current: { time: '2026-10-27T20:45', interval: 900, precipitation: 2.4, weather_code: 96 },
-    })
-    expect(scaled.precipMmHr).toBeCloseTo(9.6, 5)
-    expect(digestDrivers(assessWeather(scaled))).toContainEqual({
-      key: 'rain',
-      label: 'Rain',
-      value: 'Medium · 9.6 mm/h',
-      level: 'Medium',
-    })
-
-    const hour = normalizeOpenMeteo({
-      current: { time: '2026-10-27T20:45', interval: 900, precipitation: 2.4, weather_code: 96 },
-      hourly: { time: ['2026-10-27T20:00'], precipitation: [11.7] },
-    })
-    expect(hour.precipMmHr).toBeCloseTo(11.7, 5)
-    expect(digestDrivers(assessWeather(hour))).toContainEqual({
-      key: 'rain',
-      label: 'Rain',
-      value: 'High · 11.7 mm/h',
-      level: 'High',
-    })
-  })
-
-  it('does not let a quiet latest step hide an hour that is already heavy', () => {
-    const obs = normalizeOpenMeteo({
-      current: { time: '2026-10-27T19:45', interval: 900, precipitation: 0.2 },
-      hourly: { time: ['2026-10-27T19:00'], precipitation: [15.3] },
-    })
-    expect(obs.precipMmHr).toBeCloseTo(15.3, 5)
-    expect(digestLevel(assessWeather(obs).hazards.find((h) => h.key === 'rain').band)).toBe('High')
-  })
-
-  it('leaves a dry reading, and a sum that is already an hourly rate, alone', () => {
-    const dry = normalizeOpenMeteo({
-      current: { time: '2026-10-27T20:45', interval: 900, precipitation: 0, weather_code: 3 },
-      hourly: { time: ['2026-10-27T20:00'], precipitation: [0] },
-    })
-    expect(dry.precipMmHr).toBe(0)
-    expect(digestDrivers(assessWeather(dry)).some((d) => d.key === 'rain')).toBe(false)
-
-    const hourlyAlready = normalizeOpenMeteo({
-      current: { time: '2026-10-27T20:00', interval: 3600, precipitation: 0.3 },
-    })
-    expect(hourlyAlready.precipMmHr).toBe(0.3)
-  })
-})
-
-// Heat is High only when the air itself is above 40°C. Feels-like still sets
-// Low and Medium, and would otherwise reach High from 51°C.
 describe('heat High needs the air temperature above 40°C', () => {
   it.each([
     [40, 'moderate', 'Medium'],
@@ -152,7 +56,7 @@ describe('heat High needs the air temperature above 40°C', () => {
     expect(digestLevel(a.band)).toBe(level)
   })
 
-  it('caps severe feels-like (56°C+) at Medium too when the air is 40°C or less', () => {
+  it('caps severe feels-like at Medium too when the air is 40°C or less', () => {
     expect(bandOf({ tempC: 39, apparentTempC: 60 }, 'heat')).toBe('moderate')
     expect(bandOf({ tempC: 40, apparentTempC: 60 }, 'heat')).toBe('moderate')
     expect(bandOf({ tempC: 40.1, apparentTempC: 60 }, 'heat')).toBe('severe')
@@ -162,7 +66,6 @@ describe('heat High needs the air temperature above 40°C', () => {
     expect(bandOf({ tempC: 30, apparentTempC: 39.9 }, 'heat')).toBe('none')
     expect(bandOf({ tempC: 30, apparentTempC: 40 }, 'heat')).toBe('low')
     expect(bandOf({ tempC: 30, apparentTempC: 45 }, 'heat')).toBe('moderate')
-    expect(bandOf({ tempC: 30, apparentTempC: 50.9 }, 'heat')).toBe('moderate')
     expect(bandOf({ tempC: 38, apparentTempC: 50.9 }, 'heat')).toBe('moderate')
   })
 
@@ -174,34 +77,88 @@ describe('heat High needs the air temperature above 40°C', () => {
     expect(bandOf({ tempC: 52 }, 'heat')).toBe('high')
   })
 
-  it('keeps feels-like 52 / air 38 as Medium in the digest drivers, and leaves other hazards alone', () => {
+  it('keeps feels-like 52 / air 38 as Medium, and leaves the other alerts at their own levels', () => {
     const drivers = digestDrivers(
-      assessWeather({ tempC: 38, apparentTempC: 52, precipMmHr: 12, windKph: 55 })
+      assessWeather({ tempC: 38, apparentTempC: 52, precipMmHr: 12, capeJkg: 2600, aqi: 420 })
     )
     const by = Object.fromEntries(drivers.map((d) => [d.key, d.level]))
-    expect(by).toEqual({ heat: 'Medium', rain: 'High', wind: 'High' })
+    expect(by).toEqual({ heat: 'Medium', rain: 'High', lightning: 'High', air: 'High' })
   })
 })
 
-describe('UV is not a weather hazard', () => {
-  it.each([0, 3, 6, 8, 11, 14])('UV index %s produces no hazard, band or digest line', (uvIndex) => {
-    const a = assessWeather({ uvIndex })
+describe('cold stress', () => {
+  it.each([
+    [10.1, 'none', ''],
+    [10, 'low', ''],
+    [0, 'moderate', 'Medium'],
+    [-10, 'high', 'High'],
+    [-25, 'severe', 'High'],
+  ])('feels like %s°C is %s and digests as %s', (apparentTempC, band, level) => {
+    const a = assessWeather({ apparentTempC })
+    expect(bandOf({ apparentTempC }, 'cold')).toBe(band)
+    expect(digestLevel(a.hazards.find((h) => h.key === 'cold')?.band || 'none')).toBe(level)
+  })
+})
+
+describe('lightning', () => {
+  it('uses CAPE when there is no thunderstorm code', () => {
+    expect(bandOf({ capeJkg: 999 }, 'lightning')).toBe('none')
+    expect(bandOf({ capeJkg: 1000 }, 'lightning')).toBe('moderate')
+    expect(digestDrivers(assessWeather({ capeJkg: 1800 }))).toContainEqual({
+      key: 'lightning',
+      label: 'Lightning',
+      value: 'CAPE 1800 J/kg',
+      level: 'Medium',
+    })
+    expect(digestDrivers(assessWeather({ capeJkg: 2500 }))[0]).toMatchObject({
+      key: 'lightning',
+      level: 'High',
+      value: 'CAPE 2500 J/kg',
+    })
+  })
+
+  it('treats a thunderstorm warning as severe even when CAPE is quiet', () => {
+    const a = assessWeather({ lightningCode: 96, capeJkg: 200 })
+    expect(bandOf({ lightningCode: 96, capeJkg: 200 }, 'lightning')).toBe('severe')
+    expect(digestDrivers(a)[0].value).toBe('Thunderstorm forecast · CAPE 200 J/kg')
+    expect(digestLevel(a.band)).toBe('High')
+  })
+})
+
+describe('air quality', () => {
+  it.each([
+    [0, 'low', ''],
+    [199, 'low', ''],
+    [200, 'moderate', 'Medium'],
+    [399, 'moderate', 'Medium'],
+    [400, 'high', 'High'],
+    [500, 'high', 'High'],
+  ])('AQI %s is %s and digests as %s', (aqi, band, level) => {
+    expect(bandOf({ aqi }, 'air')).toBe(band)
+    const drivers = digestDrivers(assessWeather({ aqi }))
+    if (!level) expect(drivers).toEqual([])
+    else expect(drivers[0]).toMatchObject({ key: 'air', level })
+  })
+
+  it('says when the index was built from particles', () => {
+    expect(assessWeather({ aqi: 250, aqiSource: 'pm' }).hazards[0].value).toBe(
+      'Medium · AQI 250 (particles)'
+    )
+  })
+})
+
+describe('retired alerts stay retired', () => {
+  it.each([0, 3, 6, 11])('UV index %s produces no hazard or digest line', (uvIndex) => {
+    const a = assessWeather({ uvIndex, visibilityM: 100, windKph: 80, weatherCode: 95 })
     expect(a.hazards).toEqual([])
     expect(a.band).toBe('none')
-    expect(digestLevel(a.band)).toBe('')
-    expect(digestHazards(a)).toEqual([])
     expect(digestDrivers(a)).toEqual([])
   })
 
-  it('leaves the other hazards and the overall band exactly as they are without it', () => {
-    const base = { tempC: 41, apparentTempC: 45, windKph: 55 }
-    expect(assessWeather({ ...base, uvIndex: 12 })).toEqual(assessWeather(base))
-  })
-
-  it('still carries the UV reading on the observation as plain data', () => {
-    expect(normalizeOpenMeteo({
-      current: { time: '2026-09-23T11:00' },
-      hourly: { time: ['2026-09-23T11:00'], uv_index: [9] },
-    }).uvIndex).toBe(9)
+  it('does not let a stale visibility or wind field change a real alert', () => {
+    const base = { tempC: 41, apparentTempC: 45, precipMmHr: 12 }
+    expect(assessWeather({ ...base, visibilityM: 50, windKph: 90, uvIndex: 12 })).toEqual(
+      assessWeather(base)
+    )
   })
 })

@@ -5,7 +5,7 @@ imports, calls, or is configured to use — not from a marketing architecture
 diagram. A service that is in `package.json` but never reached at runtime is
 still listed if a production build can load it.
 
-Last reviewed against the repository: 2026-09-24.
+Last reviewed against the repository: 2026-11-04.
 
 Counsel must confirm legal names, locations, and DPA links before this is
 shown to a customer. **Do not add live project ids, function names, or
@@ -33,10 +33,15 @@ are not given a dump of the tenant:
 
 | Recipient | What the browser sends | Notes |
 |---|---|---|
-| Open-Meteo | Site coordinates for weather risk | No names, no health records. |
 | OpenStreetMap / Nominatim / Overpass (and listed failover hosts in `firebase.json` CSP) | Coordinates / map tiles | Same. |
 | Google Fonts | Font files | No tenant records. |
 | Google Identity / reCAPTCHA (App Check) | Attestation tokens on public write surfaces | Abuse control, not a copy of `/injuries`. |
+
+Windy's Point Forecast API (`api.windy.com`) is called from Cloud Functions
+only. The call sends coordinates rounded to about a kilometre. It does not
+send a site name, an organisation id, or a health record. The API key is the
+Firebase secret `WINDY_API_KEY`, which the operator sets; it is not in the
+client bundle and the browser does not call Windy.
 
 A future malware-scanning vendor would **become** a subprocessor of medical
 data if sealed or unsealed health documents were sent to it. That is

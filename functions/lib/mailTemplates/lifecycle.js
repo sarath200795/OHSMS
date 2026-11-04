@@ -269,14 +269,14 @@ export function renderMeetingMail(meeting, { appOrigin = '', sender = '' } = {})
   })
 }
 
-// How many rows ONE SECTION of the digest will carry (Heat Stress, Rain Risk,
-// Other hazards each get this many). The rest are counted, not copied: a
-// region with two hundred sites is a spreadsheet, not a mail. The cap is per
-// section, not overall, so a wide heat event cannot push the rain section
-// out of the mail. A section's rows are taken High first, so the cap only ever
-// drops Medium rows before High ones. Rows are sites in Heat Stress and Rain
-// Risk, and site-hazard pairs in Other hazards. The High-risk precautions
-// table has its own, smaller cap: HIGH_SITES_PER_REGION sites per region.
+// How many rows ONE SECTION of the digest will carry. Heat Stress, Cold
+// Stress, Rain Risk, Lightning and Air Quality each get this many. The rest
+// are counted, not copied: a region with two hundred sites is a spreadsheet,
+// not a mail. The cap is per section, not overall, so a wide heat event
+// cannot push the rain section out of the mail. A section's rows are taken
+// High first, so the cap only ever drops Medium rows before High ones. The
+// High-risk precautions table has its own, smaller cap: HIGH_SITES_PER_REGION
+// sites per region.
 export const DIGEST_AREA_CAP = 40
 
 const SANS = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif"
@@ -302,12 +302,20 @@ const LEVEL_STYLE = {
 }
 
 const LEVEL_RANK = { High: 0, Medium: 1 }
-const OTHER_TITLE = 'Other hazards'
-// Heat and rain, by driver key, are the two hazards with a section of their
-// own (weatherBands.js). Everything else lands in Other hazards.
-const HAZARD_ORDER = ['heat', 'rain']
-// Site-page labels for rows written before drivers carried a key or a level.
-const KEY_BY_LABEL = { 'heat stress': 'heat', rain: 'rain' }
+// One section per alert, in mail order. Wind, visibility, UV, ice and snow
+// are not alerts; a stored row that still names one is dropped.
+const HAZARD_ORDER = ['heat', 'cold', 'rain', 'lightning', 'air']
+const SECTION_KEYS = new Set(HAZARD_ORDER)
+const KEY_BY_LABEL = {
+  'heat stress': 'heat',
+  rain: 'rain',
+  'rain risk': 'rain',
+  'rain alert': 'rain',
+  'cold stress': 'cold',
+  lightning: 'lightning',
+  thunderstorm: 'lightning',
+  'air quality': 'air',
+}
 
 /**
  * The hazard readings on one area, each with its own level. A driver that
@@ -328,28 +336,28 @@ function readingsOf(area) {
     if (!driver) continue
     const label = plain(driver.label, 40)
     if (!label) continue
-    // UV is not a weather hazard here. Rows stored before it was dropped may
-    // still carry it; they never reach the mail.
-    if (driver.key === 'uv' || label.toLowerCase() === 'uv exposure') continue
     const level = driver.level || fallback
     if (level !== 'High' && level !== 'Medium') continue
-    const key = plain(driver.key, 20) || KEY_BY_LABEL[label.toLowerCase()] || label.toLowerCase()
-    out.push({ key, label, value: plain(driver.value, 80), level })
+    const named = plain(driver.key, 20) || KEY_BY_LABEL[label.toLowerCase()] || ''
+    // UV, visibility, wind, ice and snow are not alerts. Rows stored before
+    // they were dropped never reach the mail.
+    if (!SECTION_KEYS.has(named)) continue
+    out.push({ key: named, label, value: plain(driver.value, 80), level })
   }
   return out
 }
 
 /**
- * Sections in mail order: Heat Stress, Rain Risk, then Other hazards. A site
- * is listed under every hazard it has, at that hazard's own level (High or
- * Medium only), so heat High + rain Medium is High under Heat Stress and
- * Medium under Rain Risk. Empty sections are left out. Inside a section:
- * regions A–Z, and within a region High before Medium, then sites A–Z. At
- * most `cap` rows per section are kept; `total` and `hidden` say what was cut.
+ * Sections in mail order: Heat Stress, Cold Stress, Rain Risk, Lightning,
+ * Air Quality. A site is listed under every hazard it has, at that hazard's
+ * own level (High or Medium only), so heat High + rain Medium is High under
+ * Heat Stress and Medium under Rain Risk. Empty sections are left out.
+ * Inside a section: regions A–Z, and within a region High before Medium,
+ * then sites A–Z. At most `cap` rows per section are kept; `total` and
+ * `hidden` say what was cut.
  *
  * Shape: [{ key, title, level counts, total, hidden, groups: [{ region, rows }] }]
- * A row is { area, site, level, hazard, value } — `hazard` is the hazard's
- * label, which only the Other hazards section prints.
+ * A row is { area, site, level, hazard, value }.
  */
 export function groupDigestSections(areas, cap = DIGEST_AREA_CAP) {
   const list = Array.isArray(areas) ? areas : []
@@ -357,7 +365,7 @@ export function groupDigestSections(areas, cap = DIGEST_AREA_CAP) {
   for (const area of list) {
     if (!area) continue
     for (const reading of readingsOf(area)) {
-      const section = HAZARD_ORDER.includes(reading.key) ? reading.key : 'other'
+      const section = reading.key
       if (!buckets.has(section)) buckets.set(section, [])
       buckets.get(section).push({
         area,
@@ -372,8 +380,10 @@ export function groupDigestSections(areas, cap = DIGEST_AREA_CAP) {
   }
   const order = [
     { key: 'heat', title: 'Heat Stress' },
+    { key: 'cold', title: 'Cold Stress' },
     { key: 'rain', title: 'Rain Risk' },
-    { key: 'other', title: OTHER_TITLE },
+    { key: 'lightning', title: 'Lightning' },
+    { key: 'air', title: 'Air Quality' },
   ]
   const sections = []
   for (const { key, title } of order) {
@@ -421,20 +431,21 @@ export function groupDigestSections(areas, cap = DIGEST_AREA_CAP) {
 // General precautions, used when the org has recorded no activity and the
 // caller does not pass a per-site sentence. The activity-specific wording
 // lives in weatherPrecautions.js; the keys stay the driver keys
-// (weatherBands.js). UV is not one of them.
+// (weatherBands.js).
 const ALERT_TYPE = {
   heat: 'Heat Stress',
+  cold: 'Cold Stress',
   rain: 'Rain Risk',
+  lightning: 'Lightning',
+  air: 'Air Quality',
 }
-const ADVERSE = 'Adverse Weather'
-// Labels for rows written before drivers carried a key.
 const PRECAUTION_KEY_BY_LABEL = {
-  'high wind': 'wind',
-  'poor visibility': 'visibility',
+  'heat stress': 'heat',
+  rain: 'rain',
   'cold stress': 'cold',
+  lightning: 'lightning',
   thunderstorm: 'lightning',
-  'freezing rain': 'ice',
-  snow: 'snow',
+  'air quality': 'air',
 }
 
 function precautionKey(reading) {
@@ -442,12 +453,18 @@ function precautionKey(reading) {
   return PRECAUTION_KEY_BY_LABEL[String(reading.label || '').toLowerCase()] || 'other'
 }
 
-const TYPE_RANK = { 'Heat Stress': 0, 'Rain Risk': 1 }
+const TYPE_RANK = {
+  'Heat Stress': 0,
+  'Cold Stress': 1,
+  'Rain Risk': 2,
+  Lightning: 3,
+  'Air Quality': 4,
+}
 
 /**
  * One row per site-hazard pair at High level: { region, name, type, precautions }.
- * `type` is Heat Stress, Rain Risk, or 'Adverse Weather – <hazard>' for every
- * other hazard. Sorted by region, then site, then heat, rain, other. Not capped.
+ * `type` is Heat Stress, Cold Stress, Rain Risk, Lightning or Air Quality.
+ * Sorted by region, then site, then that order. Not capped.
  * `precautionFor(key, area)` supplies the activity-specific sentence. A missing
  * or blank result keeps the general paragraph, so a mapping failure cannot
  * empty the cell.
@@ -458,8 +475,9 @@ export function highAlertRows(areas, { precautionFor } = {}) {
     if (!area) continue
     for (const reading of readingsOf(area)) {
       if (reading.level !== 'High') continue
-      const key = HAZARD_ORDER.includes(reading.key) ? reading.key : precautionKey(reading)
-      const type = ALERT_TYPE[key] || `${ADVERSE} – ${reading.label}`
+      const key = ALERT_TYPE[reading.key] ? reading.key : precautionKey(reading)
+      const type = ALERT_TYPE[key]
+      if (!type) continue
       rows.push({
         region: plain(area.region, 80) || 'Unassigned',
         name: plain(area.name, 80) || '—',
@@ -555,20 +573,19 @@ function countsText(section) {
   const parts = []
   if (section.high) parts.push(`${section.high} high`)
   if (section.medium) parts.push(`${section.medium} medium`)
-  const noun = section.key === 'other' ? 'reading' : 'site'
-  const n = section.key === 'other' ? section.total : section.sites
+  const noun = 'site'
+  const n = section.sites
   return `${n} ${noun}${n === 1 ? '' : 's'}: ${parts.join(', ')}`
 }
 
 function sectionHtml(section, when) {
-  const showHazard = section.key === 'other'
   const groups = section.groups
     .map((group) => {
       const headCell = { size: '11px', weight: '700', color: '#246058', transform: 'uppercase' }
       const head = `<tr>
 ${cell('Site', headCell)}
 ${cell('Entity', headCell)}
-${showHazard ? cell('Hazard', headCell) + '\n' : ''}${cell('Level', headCell)}
+${cell('Level', headCell)}
 ${cell('Reading', headCell)}
 ${cell('When', headCell)}
 </tr>`
@@ -579,7 +596,7 @@ ${cell('When', headCell)}
           return `<tr style="background:${style.wash};">
 ${cell(plain(row.area.name, 80), { weight: '600' })}
 ${cell(plain(row.area.entity, 80))}
-${showHazard ? cell(row.hazard) + '\n' : ''}${levelCell(row.level)}
+${levelCell(row.level)}
 ${cell(row.value)}
 ${cell(rowWhen)}
 </tr>`
@@ -593,7 +610,6 @@ ${cell(rowWhen)}
 }
 
 function sectionText(section, when) {
-  const showHazard = section.key === 'other'
   const lines = [`${section.title.toUpperCase()} (${countsText(section)})`]
   for (const group of section.groups) {
     lines.push('', group.region)
@@ -601,7 +617,6 @@ function sectionText(section, when) {
       const rowWhen = plain(row.area.observedAt, 40) || when
       lines.push(`Site: ${plain(row.area.name, 80) || '—'}`)
       lines.push(`Entity: ${plain(row.area.entity, 80) || '—'}`)
-      if (showHazard) lines.push(`Hazard: ${row.hazard}`)
       lines.push(`Level: ${row.level}`)
       lines.push(`Reading: ${row.value || '—'}`)
       lines.push(`When: ${rowWhen || '—'}`, '')
@@ -739,7 +754,7 @@ export function renderWeatherDigest(
   const rows = []
   if (hidden.length) {
     const parts = hidden.map((section) => {
-      const noun = section.key === 'other' ? 'reading' : 'site'
+      const noun = 'site'
       return `${section.title}: ${section.hidden} further ${noun}${section.hidden === 1 ? '' : 's'}`
     })
     rows.push({ label: 'More', value: `${parts.join('; ')} — in the app` })

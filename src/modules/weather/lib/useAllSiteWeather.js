@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { fetchWeather } from './openMeteo'
+import { fetchWeather } from './windy'
 import { assessWeather } from './weatherRisk'
 
 /** Requests in flight at once. Enough to fill a page quickly, few enough to be polite. */
@@ -10,9 +10,8 @@ const CONCURRENCY = 6
  *
  * Results stream in rather than arriving together: an org with sixty sites
  * would otherwise stare at a spinner for the slowest request, and the worst
- * site is usually among the first few back. The queue is bounded because a
- * free, unauthenticated API is a courtesy, not an entitlement — and because
- * sixty parallel requests is how you get rate-limited into showing nothing.
+ * site is usually among the first few back. The queue is bounded so a page of
+ * sites does not open sixty calls at once.
  *
  * The provider's cache buckets by ~1 km, so sites in one city cost one request
  * between them however many pins there are.

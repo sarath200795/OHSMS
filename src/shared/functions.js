@@ -420,3 +420,15 @@ export async function sendWhatsAppOrgTest(phone) {
   const fn = await callable('sendWhatsAppOrgTest')
   return (await fn({ phone })).data
 }
+
+/**
+ * Current conditions near a coordinate, from Windy via Cloud Functions.
+ *
+ * The API key stays in Secret Manager (`WINDY_API_KEY`). This returns the
+ * normalised observation, or `{ obs: null }` when the provider did not answer.
+ * `{ limited: true }` means the provider asked us to wait.
+ */
+export async function fetchSiteWeather({ lat, lng } = {}) {
+  const fn = await callable('fetchSiteWeather')
+  return (await fn({ lat, lng })).data
+}

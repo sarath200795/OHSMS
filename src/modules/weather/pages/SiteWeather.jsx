@@ -83,7 +83,7 @@ export default function SiteWeather() {
     <div>
       <PageHeader
         title="Weather Risk"
-        subtitle="Current conditions at each site, read as occupational risk — heat, wind, lightning, rain and visibility."
+        subtitle="Current conditions at each site, read as occupational risk — heat, cold, rain, lightning and air quality."
         icon={CloudSun}
         actions={
           <div className="flex items-center gap-3">
@@ -167,7 +167,7 @@ export default function SiteWeather() {
       )}
 
       <p className="mt-6 text-xs text-ink-300">
-        Conditions from Open-Meteo at the nearest ~1 km, refreshed every 15 minutes. Guidance only —
+        Conditions from Windy at the nearest ~1 km, refreshed every 15 minutes. Guidance only —
         it does not replace a site assessment.
       </p>
     </div>
@@ -205,7 +205,7 @@ function SiteCard({ site, result }) {
 
       <p className="mt-2 text-sm text-ink-500">
         {obs.apparentTempC != null ? `Feels like ${Math.round(obs.apparentTempC)}°C` : '—'}
-        {obs.windKph != null ? ` · wind ${Math.round(obs.windKph)} km/h` : ''}
+        {obs.aqi != null ? ` · AQI ${Math.round(obs.aqi)}` : ''}
       </p>
 
       {risk.hazards.length === 0 ? (

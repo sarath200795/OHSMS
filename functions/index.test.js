@@ -19,6 +19,7 @@ import {
   notifyCommitteeMeeting,
   sendWeatherRiskDigest,
   retryWeatherRiskDigest,
+  fetchSiteWeather,
   notifyLotoPermitLifecycle,
   sweepLotoPermits,
   purgeClosedLotoPermits,
@@ -720,5 +721,14 @@ describe('lifecycle mail triggers', () => {
     })
     expect(sendWeatherRiskDigest.__endpoint.availableMemoryMb).toBe(512)
     expect(retryWeatherRiskDigest.__endpoint.availableMemoryMb).toBe(512)
+    const secretNames = (fn) =>
+      (fn.__endpoint.secretEnvironmentVariables || []).map((secret) => secret.key)
+    expect(secretNames(sendWeatherRiskDigest)).toEqual(
+      expect.arrayContaining(['SMTP_PASS', 'WINDY_API_KEY'])
+    )
+    expect(secretNames(retryWeatherRiskDigest)).toEqual(
+      expect.arrayContaining(['SMTP_PASS', 'WINDY_API_KEY'])
+    )
+    expect(secretNames(fetchSiteWeather)).toContain('WINDY_API_KEY')
   })
 })
