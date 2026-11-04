@@ -157,7 +157,7 @@ describe('the LOTO permit sources', () => {
     expect(scan.lotoPermits.fields).toEqual(
       expect.arrayContaining(['vendorWorkers[].name', 'internalPersonnel[].name', 'locks[].techName']),
     )
-    expect(scan.technicians.fields).toEqual(['name', 'contact'])
+    expect(scan.technicians.fields).toEqual(['name', 'contact', 'licenceNo'])
   })
 
   // The guard in exportSubjectData refuses a top-level field query that is not

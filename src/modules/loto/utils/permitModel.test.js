@@ -167,11 +167,20 @@ describe('validateDraft', () => {
     expect(check((b) => { b.draft.internalPersonnel = [] }).personnel).toBeTruthy()
   })
 
-  it('accepts contractors recorded only as text, and wants a name and company', () => {
-    const ok = check((b) => { b.draft.internalPersonnel = []; b.draft.vendorWorkers = [{ name: 'A. Vendor', company: 'ACME Ltd' }] })
+  it('accepts a contractor who confirms competence, and refuses an email', () => {
+    const ok = check((b) => {
+      b.draft.internalPersonnel = []
+      b.draft.vendorWorkers = [{ name: 'A. Vendor', company: 'ACME Ltd', competent: true, contact: '0400' }]
+    })
     expect(ok.personnel).toBeUndefined()
     expect(ok.vendorWorkers).toBeUndefined()
-    expect(check((b) => { b.draft.vendorWorkers = [{ name: 'A. Vendor', company: '' }] }).vendorWorkers).toBeTruthy()
+    expect(check((b) => { b.draft.vendorWorkers = [{ name: 'A. Vendor', company: '', competent: true }] }).vendorWorkers).toBeTruthy()
+    expect(check((b) => {
+      b.draft.vendorWorkers = [{ name: 'A. Vendor', company: 'ACME', competent: true, contact: 'a@b.co' }]
+    }).vendorWorkers).toMatch(/email/)
+    expect(check((b) => {
+      b.draft.vendorWorkers = [{ name: 'A. Vendor', company: 'ACME', competent: false }]
+    }).vendorWorkers).toMatch(/competence/)
   })
 
   it('requires a work type', () => {
@@ -214,7 +223,7 @@ describe('buildPermit', () => {
     expect(doc.locks.map((l) => [l.pointKey, l.lockNo])).toEqual([['k1', 'D-1'], ['k2', 'D-2']])
     expect(doc.internalPersonnel).toEqual([{ uid: 'u1', name: 'Asha' }])
     expect(doc.personnelUids).toEqual(['u1'])
-    expect(doc.vendorWorkers[0]).toEqual({ name: 'V', company: 'C', contact: '' })
+    expect(doc.vendorWorkers[0]).toEqual({ name: 'V', company: 'C', contact: '', competent: false, certificatePath: '' })
   })
 
   it('gives a permit with no procedure empty values, not missing keys', () => {

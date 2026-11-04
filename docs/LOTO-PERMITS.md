@@ -174,6 +174,17 @@ printed id (`E-1`) does not count.
 the tag: the procedure page says how to isolate the machine; the tag says
 whether this point is isolated now.
 
+## Wireman licence
+
+Every technician has a licence number (sealed), an expiry and an optional photo.
+A permit that names that technician — a lock whose `techId` is set — is refused
+unless `licenceExp` is still in the future. Department locks have no `techId`
+and are not a person. Only an Admin may write the licence fields.
+
+A contractor confirms competence (`competent: true`) and may attach a
+certificate photo (`certificatePath`). Their contact must not be an email
+address. Mail stays with internal staff.
+
 ## Before Start
 
 Two things are required before Start, and the rules refuse the start without them:
