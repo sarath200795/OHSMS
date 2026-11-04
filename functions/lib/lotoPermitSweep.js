@@ -159,6 +159,27 @@ export async function sweepLotoPermits({ db, nowMs, logger }) {
   return { checked, flagged, failures }
 }
 
+async function deletePermitFile(store, orgId, docId, path, failures) {
+  if (!path) return 0
+  if (!ownedByOrg(path, orgId)) {
+    failures.push({ kind: 'foreign-file-path', orgId, docId, path })
+    return 0
+  }
+  try {
+    await store.file(path).delete({ ignoreNotFound: true })
+    return 1
+  } catch (e) {
+    failures.push({
+      kind: 'file-left-behind',
+      orgId,
+      docId,
+      path,
+      error: e?.message || String(e),
+    })
+    return 0
+  }
+}
+
 /**
  * Delete closed permits older than the retention period, subcollections and
  * stored files first (a pointer must not outlive its file, nor the parent its
@@ -213,6 +234,19 @@ export async function purgeClosedLotoPermits({
             }
           }
           await d.ref.delete()
+          const lockPath = String(d.data()?.lockPhoto?.path || '').trim()
+          if (lockPath) {
+            files += await deletePermitFile(store, org.id, d.id, lockPath, failures)
+          }
+          const photoRef = db.collection('procedurePhotos').doc(`permitlock_${d.id}`)
+          const photoSnap = await photoRef.get()
+          if (photoSnap.exists && photoSnap.data()?.orgId === org.id) {
+            const nested = String(photoSnap.data()?.photos?.lock?.path || '').trim()
+            if (nested && nested !== lockPath) {
+              files += await deletePermitFile(store, org.id, d.id, nested, failures)
+            }
+            await photoRef.delete()
+          }
           purged += 1
         } catch (e) {
           failures.push({

@@ -155,6 +155,10 @@ function fakeDb(seed) {
       deleted.push(path)
       store.delete(path)
     },
+    async get() {
+      const data = store.get(path)
+      return { exists: data !== undefined, data: () => data }
+    },
   })
   const rows = (prefix, filter = () => true) =>
     [...store.entries()]
@@ -276,17 +280,24 @@ describe('purgeClosedLotoPermits', () => {
       'organizations/a/lotoPermits/LP-OLD/attachments/f1': {
         path: 'orgs/a/lotoPermits/LP-OLD/photo.jpg',
       },
+      'procedurePhotos/permitlock_LP-OLD': {
+        orgId: 'a',
+        photos: { lock: { path: 'orgs/a/loto-photos/lock.jpg' } },
+      },
       'organizations/a/lotoPermits/LP-NEW': { status: 'returned', closedAt: now - 10 * DAY },
       'organizations/a/lotoPermits/LP-OPEN': { status: 'active', windowEnd: old },
       'organizations/a/lotoPermits/LP-OPEN/events/e1': { type: 'started' },
     })
     const s = store()
     const r = await purgeClosedLotoPermits({ db, store: s, nowMs: now, logger: log })
-    expect(r).toMatchObject({ purged: 1, files: 1, failures: [] })
-    expect(s.removed).toEqual(['orgs/a/lotoPermits/LP-OLD/photo.jpg'])
+    expect(r).toMatchObject({ purged: 1, files: 2, failures: [] })
+    expect(s.removed).toEqual([
+      'orgs/a/lotoPermits/LP-OLD/photo.jpg',
+      'orgs/a/loto-photos/lock.jpg',
+    ])
     expect(db.store.has('organizations/a/lotoPermits/LP-OLD')).toBe(false)
     expect(db.store.has('organizations/a/lotoPermits/LP-OLD/events/e1')).toBe(false)
-    expect(db.store.has('organizations/a/lotoPermits/LP-OLD/attachments/f1')).toBe(false)
+    expect(db.store.has('procedurePhotos/permitlock_LP-OLD')).toBe(false)
     expect(db.store.has('organizations/a/lotoPermits/LP-NEW')).toBe(true)
     expect(db.store.has('organizations/a/lotoPermits/LP-OPEN')).toBe(true)
     expect(db.store.has('organizations/a/lotoPermits/LP-OPEN/events/e1')).toBe(true)

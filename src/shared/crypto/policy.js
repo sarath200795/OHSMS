@@ -300,6 +300,7 @@ export const POLICY = {
       'vendorWorkers[].contact',
       'locks[].techName',
       'groupLock.members[].name',
+      'lockPhoto.byName',
       'approval.byName',
       'approval.note',
       'approval.selfApprovalReason',

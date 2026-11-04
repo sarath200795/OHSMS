@@ -6,6 +6,7 @@ import Card from '../ui/Card'
 import Button from '../ui/Button'
 import Input from '../ui/Input'
 import PointScanner from './PointScanner'
+import LockPhotoCapture from './LockPhotoCapture'
 import { EMERGENCY_ATTESTATIONS, MAX_EXTENSION_HOURS, PERMIT_STATUS, RETURN_CHECKS } from '../../constants/permits'
 import { resolveTagCode, unscannedPoints } from '../../utils/tagScan'
 import { toMs } from '../../utils/permitWindow'
@@ -14,6 +15,7 @@ import {
   emergencyRemovePermit,
   extendPermit,
   releaseOwnLock,
+  requestNewLockPhoto,
   returnPermit,
   startIsolation,
   withdrawPermit,
@@ -166,12 +168,34 @@ function Withdraw({ orgId, permit, user }) {
   )
 }
 
+function RequestPhoto({ orgId, permit, user }) {
+  const { busy, run } = useRun()
+  const [note, setNote] = useState('')
+  return (
+    <Panel title="Ask for a new lock photo">
+      <Field label="What is wrong with the photo?" htmlFor="pm-photo-redo">
+        <Textarea id="pm-photo-redo" rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
+      </Field>
+      <Button
+        variant="steel"
+        loading={busy}
+        onClick={() => run(() => requestNewLockPhoto({ orgId, permit, user, note }), 'A new photo was requested', 'Could not request a photo')}
+      >
+        Request a new photo
+      </Button>
+    </Panel>
+  )
+}
+
 function Isolation({ orgId, permit, user }) {
   const { busy, run } = useRun()
   const [scans, setScans] = useState({})
+  const [tryout, setTryout] = useState('')
+  const [shot, setShot] = useState(null)
   const points = permit.isolationPoints || []
   const left = unscannedPoints(points, scans)
   const lockOf = (key) => (permit.locks || []).find((l) => l.pointKey === key)?.lockNo
+  const photoReady = Boolean(shot?.path)
 
   function onCode(raw, method) {
     const r = resolveTagCode(raw, { procedureId: permit.procedureId, points })
@@ -208,11 +232,45 @@ function Isolation({ orgId, permit, user }) {
           <PointScanner onCode={onCode} disabled={busy} />
         </>
       )}
+      <fieldset className="space-y-1">
+        <legend className="text-sm font-semibold text-steel-100">Zero-energy try-out</legend>
+        <label className="flex items-center gap-2 text-sm text-steel-200">
+          <input type="radio" name="tryout" value="yes" checked={tryout === 'yes'} onChange={() => setTryout('yes')} />
+          Yes, zero energy
+        </label>
+        <label className="flex items-center gap-2 text-sm text-steel-200">
+          <input type="radio" name="tryout" value="no" checked={tryout === 'no'} onChange={() => setTryout('no')} />
+          No
+        </label>
+        {tryout === 'no' && <p role="alert" className="text-xs font-medium text-red-400">A No blocks Start.</p>}
+      </fieldset>
+      <LockPhotoCapture
+        userName={user.displayName}
+        permitNo={permit.permitNo || permit.id}
+        equipment={permit.equipment}
+        onPhoto={async (shot) => {
+          try {
+            const { storeLockPhoto } = await import('../../services/lockPhoto')
+            const stored = await storeLockPhoto({ orgId, permit, dataUrl: shot.dataUrl })
+            setShot(stored)
+          } catch (err) {
+            toast.error(err?.message || 'Could not store the lock photo.')
+          }
+        }}
+      />
       <Button
         loading={busy}
-        disabled={left.length > 0}
+        disabled={left.length > 0 || tryout !== 'yes' || !photoReady}
         onClick={() =>
-          run(() => startIsolation({ orgId, permit, scans, user }), 'Locked out — permit is active', 'Could not start')
+          run(
+            () => startIsolation({
+              orgId, permit, scans, user,
+              tryout: { zeroEnergy: true },
+              lockPhoto: shot,
+            }),
+            'Locked out — permit is active',
+            'Could not start',
+          )
         }
       >
         {points.length ? `Lock all ${points.length} and start work` : 'Start work'}
@@ -391,6 +449,7 @@ export default function PermitActions({ orgId, permit, user, isAdmin, isParty, o
       return (
         <>
           {isParty && <Isolation orgId={orgId} permit={permit} user={user} />}
+          {isAdmin && <RequestPhoto orgId={orgId} permit={permit} user={user} />}
           {(requester || isAdmin) && <Withdraw orgId={orgId} permit={permit} user={user} />}
         </>
       )

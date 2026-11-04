@@ -18,13 +18,18 @@ const sameSet = (a, b) => a.length === b.length && a.every((x) => b.includes(x))
  * go. `permit` and `procedure` are the documents as just READ INSIDE the
  * transaction — never the copies on screen, which can be minutes old.
  */
-export function startProblems({ permit, procedure, scans = {}, nowMs = Date.now() }) {
+export function startProblems({ permit, procedure, scans = {}, tryout = null, lockPhoto = null, nowMs = Date.now() }) {
   const out = []
   if (!permit) return ['The permit no longer exists.']
   if (permit.status !== PERMIT_STATUS.APPROVED) {
     out.push(`This permit is ${permit.status}, not approved — it cannot be started.`)
   }
   if (!(toMs(permit.windowEnd) > nowMs)) out.push('The permit window has ended. Raise a new permit.')
+  if (tryout?.zeroEnergy !== true) out.push('Confirm zero energy before starting. A No blocks Start.')
+  if (!lockPhoto?.path) out.push('Take a live photo of the lock and tag before starting.')
+  if (permit.photoRedo && !(toMs(lockPhoto?.at) > toMs(permit.photoRedo.at))) {
+    out.push('An administrator asked for a new lock photo.')
+  }
 
   const keys = permit.pointKeys || []
   if (keys.length === 0) return out // a permit with nothing to isolate has nothing more to check

@@ -174,6 +174,13 @@ printed id (`E-1`) does not count.
 the tag: the procedure page says how to isolate the machine; the tag says
 whether this point is isolated now.
 
+## Before Start
+
+Two things are required before Start, and the rules refuse the start without them:
+
+1. A zero-energy try-out. **Yes** is required. **No** blocks Start.
+2. A live camera photo of the lock with the tag on it. There is no gallery upload. The picture is stamped with the time, the person, the permit number and the equipment, stored as a `procedurePhotos` document (`permitlock_<permitNo>`, the same collection as procedure photos) and named on the permit as `lockPhoto`. The nightly purge deletes that file with the permit. An Admin can request a new photo (`photoRedo`); Start is refused until the photo is newer than that request.
+
 ## Group lockout
 
 A permit may carry hecp-loto's `groupLock`: `method` `box` or `hasp`, `members[]`

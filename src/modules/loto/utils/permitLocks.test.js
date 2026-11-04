@@ -20,10 +20,11 @@ const proc = (over = {}) => ({
   ...over,
 })
 const scans = { k1: { at: 1 }, k2: { at: 2 } }
+const ready = { tryout: { zeroEnergy: true }, lockPhoto: { path: 'orgs/o/lock.jpg', at: NOW } }
 
 describe('startProblems', () => {
   it('has nothing to say about a clean start', () => {
-    expect(startProblems({ permit: permit(), procedure: proc(), scans, nowMs: NOW })).toEqual([])
+    expect(startProblems({ permit: permit(), procedure: proc(), scans, ...ready, nowMs: NOW })).toEqual([])
   })
 
   it('refuses until the tag on EVERY point has been scanned', () => {
@@ -55,8 +56,17 @@ describe('startProblems', () => {
     expect(startProblems({ permit: personal, procedure: proc(), scans, nowMs: NOW }).join(' ')).toMatch(/Department lock/)
   })
 
+  it('refuses a No on the zero-energy try-out and a start with no photo', () => {
+    expect(startProblems({
+      permit: permit(), procedure: proc(), scans, tryout: { zeroEnergy: false }, lockPhoto: ready.lockPhoto, nowMs: NOW,
+    }).join(' ')).toMatch(/No blocks Start/)
+    expect(startProblems({
+      permit: permit(), procedure: proc(), scans, ...ready, lockPhoto: { path: '' }, nowMs: NOW,
+    }).join(' ')).toMatch(/live photo/)
+  })
+
   it('lets a permit with nothing to isolate start without a procedure', () => {
-    expect(startProblems({ permit: permit({ pointKeys: [], locks: [] }), procedure: null, scans: {}, nowMs: NOW })).toEqual([])
+    expect(startProblems({ permit: permit({ pointKeys: [], locks: [] }), procedure: null, scans: {}, ...ready, nowMs: NOW })).toEqual([])
   })
 })
 

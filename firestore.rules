@@ -2083,11 +2083,17 @@ service cloud.firestore {
           && b.status == 'approved'
           && a.status == 'active'
           && request.time < b.windowEnd
-          && changed.hasOnly(['status', 'isolation', 'startedAt', 'updatedAt'])
+          && changed.hasOnly(['status', 'isolation', 'startedAt', 'tryout', 'lockPhoto', 'updatedAt'])
           && a.startedAt == request.time
           && a.isolation.by == request.auth.uid
           && a.isolation.at == request.time
           && a.isolation.scans.keys().hasAll(b.pointKeys)
+          && a.tryout.zeroEnergy == true
+          && a.tryout.by == request.auth.uid
+          && a.lockPhoto.path is string && a.lockPhoto.path.size() > 0
+          && a.lockPhoto.by == request.auth.uid
+          && a.lockPhoto.permitNo == permitId
+          && (b.get('photoRedo', null) == null || a.lockPhoto.at > b.photoRedo.at)
           && (b.pointCount == 0
               || (get(lotoPermitProc(b.procedureId)).data.get('activePermit', null) == null
                   && getAfter(lotoPermitProc(b.procedureId)).data.get('activePermit', null) != null
@@ -2200,6 +2206,17 @@ service cloud.firestore {
           && lotoPermitReleased(b)
           && lotoGroupFreed(b);
       }
+      // An Admin can send the crew back for another live photo. Start is refused
+      // until the photo is newer than this request.
+      function lotoPermitPhotoRedo(b, a, changed) {
+        return lotoPermitAdminOf(b)
+          && a.status == 'approved'
+          && changed.hasOnly(['photoRedo', 'updatedAt'])
+          && a.photoRedo.by == request.auth.uid
+          && a.photoRedo.at == request.time
+          && a.photoRedo.note is string
+          && a.photoRedo.note.size() > 0;
+      }
       // Dispatch on the status being LEFT, so a request is judged by the one or
       // two moves that can start from it. Trying every move in turn spent the
       // whole 1000-expression budget on a denied write (each isAdminOf is a
@@ -2219,7 +2236,9 @@ service cloud.firestore {
             : b.status == 'approved'
                 ? (a.status == 'withdrawn'
                     ? lotoPermitWithdraw(b, a, changed)
-                    : lotoPermitStart(permitId, b, a, changed))
+                    : a.status == 'active'
+                      ? lotoPermitStart(permitId, b, a, changed)
+                      : lotoPermitPhotoRedo(b, a, changed))
             : b.status == 'active'
                 ? (a.status == 'active'
                     ? (changed.hasAny(['removedUids'])

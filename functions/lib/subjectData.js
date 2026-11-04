@@ -202,6 +202,7 @@ export const SUBJECT_SOURCES = [
       'vendorWorkers[].contact',
       'locks[].techName',
       'groupLock.members[].name',
+      'lockPhoto.byName',
       'approval.byName',
       'closure.byName',
       'emergency.byName',
