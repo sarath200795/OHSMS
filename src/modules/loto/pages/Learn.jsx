@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { QUIZ, scoreQuiz } from '../../utils/lotoQuiz'
-import PageHeader, { HdrIcon } from '../../components/PageHeader'
-import Card from '../../components/ui/Card'
-import Button from '../../components/ui/Button'
+import { QUIZ, scoreQuiz } from '../utils/lotoQuiz'
+import PageHeader, { HdrIcon } from '../components/PageHeader'
+import Card from '../components/ui/Card'
+import Button from '../components/ui/Button'
 
 export default function Learn() {
   const [answers, setAnswers] = useState({})
