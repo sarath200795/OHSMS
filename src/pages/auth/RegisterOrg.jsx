@@ -5,7 +5,11 @@ import { useAuth } from '../../shared/auth/AuthContext'
 import { authErrorMessage } from '../../shared/lib/authErrors'
 import { Button, Field, Input } from '../../shared/ui'
 import AuthLayout from './AuthLayout'
-import { validatePassword } from '../../shared/auth/passwordPolicy'
+import {
+  validatePassword,
+  passwordLengthHint,
+  MIN_PASSWORD_LENGTH,
+} from '../../shared/auth/passwordPolicy'
 
 export default function RegisterOrg() {
   const { registerOrganization, isAuthed, profile } = useAuth()
@@ -89,11 +93,12 @@ export default function RegisterOrg() {
             autoComplete="email"
           />
         </Field>
-        <Field label="Password" htmlFor="password" hint="At least 6 characters">
+        <Field label="Password" htmlFor="password" hint={passwordLengthHint()}>
           <Input
             id="password"
             type="password"
             required
+            minLength={MIN_PASSWORD_LENGTH}
             value={form.password}
             onChange={set('password')}
             placeholder="••••••••"

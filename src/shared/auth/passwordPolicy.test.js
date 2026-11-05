@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { validatePassword, isAcceptablePassword, MIN_PASSWORD_LENGTH } from './passwordPolicy'
+import {
+  validatePassword,
+  isAcceptablePassword,
+  passwordLengthHint,
+  MIN_PASSWORD_LENGTH,
+} from './passwordPolicy'
 
 const ok = (pw, ctx) => expect(validatePassword(pw, ctx), pw).toBe('')
 const bad = (pw, match, ctx) => expect(validatePassword(pw, ctx), pw).toMatch(match)
@@ -76,6 +81,29 @@ describe('a password must not be the person', () => {
   it('does not throw when it is told nothing about the person', () => {
     ok('correct-horse-battery', {})
     ok('correct-horse-battery')
+  })
+})
+
+describe('the hint and the checker name the same floor', () => {
+  // The screens used to say six or eight while this file refused ten. The hint
+  // is derived, and the boundary below is built from the same constant, so a
+  // later edit cannot move one without the other.
+  it('states MIN_PASSWORD_LENGTH and nothing else', () => {
+    expect(passwordLengthHint()).toBe(`At least ${MIN_PASSWORD_LENGTH} characters`)
+  })
+
+  it('refuses one character under the hint and accepts the hint length', () => {
+    const alphabet = 'Zx9!qwertyuiop'
+    const short = alphabet.slice(0, MIN_PASSWORD_LENGTH - 1)
+    const exact = alphabet.slice(0, MIN_PASSWORD_LENGTH)
+    expect(short).toHaveLength(MIN_PASSWORD_LENGTH - 1)
+    expect(exact).toHaveLength(MIN_PASSWORD_LENGTH)
+    expect(validatePassword(short)).toBe(
+      `Password must be at least ${MIN_PASSWORD_LENGTH} characters`
+    )
+    expect(validatePassword(exact)).toBe('')
+    expect(passwordLengthHint()).toContain(String(MIN_PASSWORD_LENGTH))
+    expect(validatePassword(short)).toContain(String(MIN_PASSWORD_LENGTH))
   })
 })
 
