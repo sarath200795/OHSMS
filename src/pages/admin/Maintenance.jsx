@@ -976,10 +976,14 @@ function MedicalRecordFiles() {
       }
     >
       <p>
-        Documents attached to an injury — a GP letter, a fit note, a discharge summary —
-        were saved alongside the incident photos, where every member and any external
-        auditor can list them by name. This files each one under the injured person&apos;s
-        injury record instead, and moves the file itself to storage only managers can read.
+        New medical attachments are filed on the injury record, in storage only
+        admins and managers can read. Documents attached before that change — a GP
+        letter, a fit note, a discharge summary — are still saved alongside the
+        incident photos, where every member and any external auditor can list them
+        by name. This step is only for those older documents. It files each one
+        under the injured person&apos;s injury record and moves the file itself.
+        Check first. Nothing is written until you choose Move them, and a second
+        run does not copy a file that is already in place.
       </p>
       <p>
         Each document is moved before the old copy is removed, and only after the new one

@@ -3,8 +3,10 @@
 //
 // stripIncidentMedicalDetail confined the injury FIELDS to /injuries. The
 // documents were left where they were: incidents/{id}/photos, carrying
-// kind: 'medical_record' beside a photograph of a damaged guard rail
-// (addIncidentPhoto, src/modules/incidents/lib/incidents.js). The generic
+// kind: 'medical_record' beside a photograph of a damaged guard rail.
+// addIncidentPhoto now refuses that kind; addMedicalRecord writes
+// injuries/{id}/records and the medical-records prefix directly. This planner
+// is for the rows already stored the old way. The generic
 // {sub=**} at the foot of firestore.rules grants read — get AND list — on that
 // subtree to every approved member and to the external auditor, so one getDocs
 // returned the filename, caption, size and download URL of every medical
