@@ -3,12 +3,9 @@
 //
 // A profile belongs to one organisation (users/{uid}.orgId). WhatsApp may
 // offer only that one: the link is proof of possession of a number, not a
-// pass to the customer list. Telegram has no number to match, so it stays
-// open — and an open bot that recites every organisation name is the signup
-// page bug again (orgIndex is not publicly listable because it is the
-// customer list). Names are volunteered only when the caller already has a
-// right to them, or when the operator opts in with TG_LIST_ORGS and the set
-// fits in one pick list.
+// pass to the customer list. Names are volunteered only when the caller
+// already has a right to them and the set fits in one pick list. orgIndex is
+// not publicly listable because it is the customer list.
 // ─────────────────────────────────────────────────────────────────────────────
 import { isActiveMember } from './access.js'
 import { CENTRE_PROMPT, clean } from './format.js'
@@ -56,9 +53,9 @@ export function orgsForLinkedUser(user, org) {
 
 /**
  * The user answerQuery may search as, once an organisation is chosen.
- * A linked member is not rewritten into another org. The open Telegram
- * caller is an admin of the chosen org only — grants from anywhere else
- * do not travel with them.
+ * A linked member is not rewritten into another org. channelAdmin is not set
+ * by WhatsApp. It remains so a caller that is not a member of the chosen org
+ * is not promoted unless server code sets the flag, and no deployed caller does.
  */
 export function callerForOrg(user, orgId) {
   if (!user || !orgId) return null
@@ -109,7 +106,7 @@ export function shouldListOrgs(orgs, listOrgs) {
 
 const cut = (s, max) => (s.length > max ? `${s.slice(0, max - 1)}…` : s)
 
-/** id safe to put in a WhatsApp row id or a Telegram callback_data (≤64 bytes). */
+/** id safe to put in a WhatsApp row id (≤64 bytes). */
 export function orgChoiceId(id) {
   const value = `org:${id}`
   return SAFE_CHOICE.test(value) ? value : ''
@@ -117,7 +114,7 @@ export function orgChoiceId(id) {
 
 /**
  * The "which organisation?" message.
- * `list` false: no names (open Telegram, closed directory).
+ * `list` false: no names. The caller has to type one.
  * `query` set: they typed something. Matches are listed; a miss is not a directory.
  */
 export function formatOrgPrompt(orgs = [], { list = false, query = '', missed = false } = {}) {

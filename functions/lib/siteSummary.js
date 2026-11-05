@@ -19,7 +19,7 @@
 //                     fire-alarm QR reports. A closed HPT-due row (hptClosedFor
 //                     equal to dateOfNextHPT) is omitted, matching
 //                     hptSuppressed() in src/modules/fire/lib/defectClosure.js.
-//                     The Telegram lookup reads the snapshot this builds.
+//                     The WhatsApp lookup reads the snapshot this builds.
 //   firstAidBoxes     the declared number on the site document
 //   actions           the Central Action Tracker (src/modules/actions/lib/sources.js)
 //                     WITHOUT the equipment source (those are the defects above,
