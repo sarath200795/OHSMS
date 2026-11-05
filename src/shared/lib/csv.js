@@ -21,6 +21,65 @@
 // Also \t and \r, because a leading tab or CR reaches the parser ahead of the
 // character we are guarding against and would carry it in unnoticed.
 const FORMULA_LEAD = /^[=+\-@\t\r]/
+const FORMULA_CHAR = /^[=+\-@]/
+
+// Spaces, NBSP, BOM and the C0 controls other than tab, LF and CR. Excel's
+// CSV importer has been known to skip whitespace before it decides a cell is
+// a formula. Tab, LF and CR are not skipped: a leading tab is itself the
+// evasion, and csvCell's existing cases depend on prefixing it again.
+function isLeadingNoise(code) {
+  return (
+    code === 0x20 ||
+    code === 0xa0 ||
+    code === 0xfeff ||
+    code === 0x7f ||
+    code <= 0x08 ||
+    code === 0x0b ||
+    code === 0x0c ||
+    (code >= 0x0e && code <= 0x1f)
+  )
+}
+
+export function needsFormulaPrefix(raw) {
+  if (FORMULA_LEAD.test(raw)) return true
+  let i = 0
+  while (i < raw.length && isLeadingNoise(raw.charCodeAt(i))) i += 1
+  return i > 0 && FORMULA_CHAR.test(raw.slice(i))
+}
+
+/**
+ * A value safe to put in a worksheet cell.
+ *
+ * xlsx 0.20.3 stores a string that starts with "=" as a string (`t="str"`),
+ * not as `<f>`. Opening that file does not run the text. The tab is still
+ * applied because saving the sheet back out as CSV, or an importer that looks
+ * at the text and ignores the cell type, would. Numbers, booleans and Dates
+ * are not strings: prefixing -3 would turn a measurement into text.
+ *
+ * Call this once. A second pass prefixes the tab that the first pass added.
+ */
+export function sheetValue(value) {
+  if (value === null || value === undefined) return ''
+  if (typeof value === 'number' || typeof value === 'boolean') return value
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? '' : value
+  const raw = String(value)
+  return needsFormulaPrefix(raw) ? `\t${raw}` : raw
+}
+
+export function sheetRows(rows) {
+  return (Array.isArray(rows) ? rows : []).map((row) => {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) return row
+    const out = {}
+    for (const [key, value] of Object.entries(row)) out[key] = sheetValue(value)
+    return out
+  })
+}
+
+export function sheetAoa(rows) {
+  return (Array.isArray(rows) ? rows : []).map((row) =>
+    Array.isArray(row) ? row.map((value) => sheetValue(value)) : row
+  )
+}
 
 /**
  * One cell, quoted and de-fanged.
@@ -32,9 +91,8 @@ const FORMULA_LEAD = /^[=+\-@\t\r]/
 export function csvCell(value) {
   if (value === null || value === undefined) return ''
   if (typeof value === 'number' || typeof value === 'boolean') return String(value)
-
-  const raw = String(value)
-  const safe = FORMULA_LEAD.test(raw) ? `\t${raw}` : raw
+  const asText = value instanceof Date ? value.toISOString() : String(value)
+  const safe = needsFormulaPrefix(asText) ? `\t${asText}` : asText
   return /[",\n\r\t]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe
 }
 

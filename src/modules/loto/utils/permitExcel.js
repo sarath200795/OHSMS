@@ -8,7 +8,8 @@ const PERMIT_WIDTHS = [
 const POINT_WIDTHS = [14, 24, 8, 16, 28, 10, 12, 20, 20, 14, 20]
 
 // An empty sheet still gets its header row: a download that opens blank looks
-// like a broken button.
+// like a broken button. Rows are already sheetValue'd in permitSheetRows.
+// jsonToSheet would prefix that tab a second time.
 function sheet(rows, headers, widths) {
   const ws = XLSX.utils.json_to_sheet(rows, { header: headers })
   ws['!cols'] = widths.map((wch) => ({ wch }))
