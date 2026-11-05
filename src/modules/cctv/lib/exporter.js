@@ -11,6 +11,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import * as XLSX from 'xlsx'
+import { jsonToSheet } from '../../../shared/lib/sheet'
 import { CAMERA_DEFECT_BY_KEY, DVR_DEFECT_BY_KEY, MERAKI_DEFECT_BY_KEY, CAUSE, CAUSE_LABEL } from './constants'
 
 const labelFor = (table) => (keys = []) =>
@@ -126,7 +127,7 @@ const stamp = (now) => {
 
 /** A sheet with a single "nothing to report" row beats a blank tab. */
 const sheet = (rows, emptyMessage) =>
-  XLSX.utils.json_to_sheet(rows.length ? rows : [{ Result: emptyMessage }])
+  jsonToSheet(rows.length ? rows : [{ Result: emptyMessage }])
 
 /**
  * The defect extract, three sheets in one workbook.
@@ -203,7 +204,7 @@ export function downloadImportTemplate(kind, { sites = [], dvrs = [] } = {}) {
         }]
 
   const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), kind === 'dvrs' ? 'DVR' : 'Cameras')
+  XLSX.utils.book_append_sheet(wb, jsonToSheet(rows), kind === 'dvrs' ? 'DVR' : 'Cameras')
 
   // A second sheet listing what the name columns must match. Without it the
   // only way to learn the accepted spellings is to fail an import first.
@@ -216,7 +217,7 @@ export function downloadImportTemplate(kind, { sites = [], dvrs = [] } = {}) {
         ]
   XLSX.utils.book_append_sheet(
     wb,
-    XLSX.utils.json_to_sheet(refRows.length ? refRows : [{ Note: 'Add sites first' }]),
+    jsonToSheet(refRows.length ? refRows : [{ Note: 'Add sites first' }]),
     'Reference'
   )
 

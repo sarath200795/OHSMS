@@ -65,13 +65,14 @@ export default function AuditLog() {
     setBusy(true)
     try {
       const XLSX = await import('xlsx')
+      const { jsonToSheet, aoaToSheet } = await import('../../shared/lib/sheet')
       const wb = XLSX.utils.book_new()
-      const summary = XLSX.utils.aoa_to_sheet(
+      const summary = aoaToSheet(
         auditExportSummary({ orgName, from, to, count: rows.length, capped }),
       )
       summary['!cols'] = [{ wch: 26 }, { wch: 60 }]
       XLSX.utils.book_append_sheet(wb, summary, 'About this export')
-      const sheet = XLSX.utils.json_to_sheet(rows)
+      const sheet = jsonToSheet(rows)
       sheet['!cols'] = [{ wch: 24 }, { wch: 28 }, { wch: 22 }, { wch: 16 }, { wch: 22 }, { wch: 24 }, { wch: 28 }, { wch: 22 }, { wch: 60 }, { wch: 22 }]
       XLSX.utils.book_append_sheet(wb, sheet, 'Audit trail')
       XLSX.writeFile(wb, `audit-log-${from || 'start'}-to-${to || 'now'}.xlsx`)
