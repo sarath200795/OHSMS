@@ -7,7 +7,11 @@ import { authErrorMessage } from '../../shared/lib/authErrors'
 import { Button, Field, Input, Select } from '../../shared/ui'
 import { DEPARTMENTS } from '../../shared/auth/access'
 import AuthLayout from './AuthLayout'
-import { validatePassword } from '../../shared/auth/passwordPolicy'
+import {
+  validatePassword,
+  passwordLengthHint,
+  MIN_PASSWORD_LENGTH,
+} from '../../shared/auth/passwordPolicy'
 
 /**
  * Join an existing organization.
@@ -176,11 +180,12 @@ export default function Signup() {
             autoComplete="email"
           />
         </Field>
-        <Field label="Password" htmlFor="password" hint="At least 6 characters">
+        <Field label="Password" htmlFor="password" hint={passwordLengthHint()}>
           <Input
             id="password"
             type="password"
             required
+            minLength={MIN_PASSWORD_LENGTH}
             value={form.password}
             onChange={set('password')}
             autoComplete="new-password"

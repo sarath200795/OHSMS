@@ -5,7 +5,11 @@ import { signInWithEmailAndPassword } from 'firebase/auth'
 import { auth } from '../../shared/firebase'
 import { useAuth } from '../../shared/auth/AuthContext'
 import { Button, Field, Input } from '../../shared/ui'
-import { validatePassword, MIN_PASSWORD_LENGTH } from '../../shared/auth/passwordPolicy'
+import {
+  validatePassword,
+  passwordLengthHint,
+  MIN_PASSWORD_LENGTH,
+} from '../../shared/auth/passwordPolicy'
 import { completePasswordChange } from '../../shared/functions'
 import BrandMark from '../../shared/branding/BrandMark'
 
@@ -110,8 +114,15 @@ export default function ForcePasswordChange() {
               onChange={(e) => setCurrent(e.target.value)}
             />
           </Field>
-          <Field label="New password" htmlFor="npw" hint={`At least ${MIN_PASSWORD_LENGTH} characters`}>
-            <Input id="npw" type="password" value={pw} onChange={(e) => setPw(e.target.value)} />
+          <Field label="New password" htmlFor="npw" hint={passwordLengthHint()}>
+            <Input
+              id="npw"
+              type="password"
+              autoComplete="new-password"
+              minLength={MIN_PASSWORD_LENGTH}
+              value={pw}
+              onChange={(e) => setPw(e.target.value)}
+            />
           </Field>
           <Field label="Confirm new password" htmlFor="npw2">
             <Input id="npw2" type="password" value={pw2} onChange={(e) => setPw2(e.target.value)} />
