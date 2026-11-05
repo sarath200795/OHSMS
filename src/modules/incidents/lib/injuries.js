@@ -105,10 +105,9 @@ export function medicalAttachmentTarget(incidentId, personId) {
  * The clinical fields. These are written to /injuries and to nowhere else — in
  * particular never onto the incident document, which has a far wider audience.
  *
- * `recordFileIds` is on the list although nothing has ever set it (injuryPayload
- * reads report.recordFileIds, which no writer produces, so the Injuries page
- * always shows "—"). It is named here so a dead field cannot quietly be revived
- * on the wrong document.
+ * `recordFileIds` is written by injuryPayload from the report. It is named here
+ * so that list cannot quietly be revived on the incident document, which has a
+ * wider audience than the injury.
  *
  * Kept in step with MEDICAL_FIELDS in functions/lib/incidentMedical.js, which
  * strips the same fields off documents written before this split. functions/
@@ -178,7 +177,7 @@ export function mergeInjuryDetail(stubs = [], injuries = []) {
 }
 
 /** Denormalized injury doc body (incident context carried for the standalone list). */
-function injuryPayload(incident, report) {
+function injuryPayload(incident, report, actor) {
   return {
     incidentId: incident.id,
     incidentRefNo: incident.refNo || '',
@@ -191,6 +190,9 @@ function injuryPayload(incident, report) {
     medication: report.medication || '',
     daysToReturnToWork: report.daysToReturnToWork ?? '',
     recordFileIds: report.recordFileIds || [],
+    // Who may edit this report again. A later save by someone else is not a
+    // merge of the same record; the rules refuse it. Empty is not "anyone".
+    createdBy: actor?.uid || '',
     // incident context (for filtering / display in the standalone page)
     incidentDate: incident.incidentDate || '',
     incidentType: incident.type || '',
@@ -255,7 +257,7 @@ export async function syncIncidentInjuries(orgId, incident, reports = [], actor)
     pending.map(async ({ id, report }) => {
       await setDoc(
         injuryRef(orgId, id),
-        await sealDoc(orgId, SEALED, injuryPayload(incident, report)),
+        await sealDoc(orgId, SEALED, injuryPayload(incident, report, actor)),
         { merge: true }
       )
     })

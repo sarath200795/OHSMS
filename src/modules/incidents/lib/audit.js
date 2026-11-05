@@ -103,15 +103,20 @@ function norm(v) {
  * purpose — someone edited this, here is when and who — without becoming a
  * plaintext mirror of the record it is auditing.
  *
- * A document written before sealing has plaintext on both sides and still
- * reports values, which is the existing behaviour and correct: nothing about it
- * is confined yet.
+ * exposedToAgent is never printed, envelope or not. /auditLogs is readable by
+ * every approved member, and encryption is a deployment flag: with it off the
+ * value is ordinary text, and "old → new" would put the agent a named
+ * colleague was exposed to into a log the health gate does not cover. The
+ * entry still says the field changed. Rows already stored are left as they
+ * are; rewriting them is a separate decision.
  */
+const REDACTED_FIELDS = ['exposedToAgent']
+
 export function diffSummary(before = {}, after = {}) {
   const parts = []
   const keys = TRACKED_FIELDS.filter((k) => k in after)
   for (const k of keys) {
-    const sealed = isEnvelope(before[k]) || isEnvelope(after[k])
+    const sealed = isEnvelope(before[k]) || isEnvelope(after[k]) || REDACTED_FIELDS.includes(k)
     const a = norm(before[k])
     const b = norm(after[k])
     if (a === b) continue

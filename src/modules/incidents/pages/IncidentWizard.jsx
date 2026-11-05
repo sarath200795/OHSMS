@@ -266,7 +266,15 @@ export default function IncidentWizard() {
       // the join key: strip first and a failed sync would have deleted the only
       // copy. A sync that fails has to fail the save, out loud — it used to warn
       // to the console and report success.
-      await syncIncidentInjuries(orgId, incident, injuryReports, actor)
+      // People already on file are hidden from anyone who cannot read /injuries.
+      // Their rows in state are the join-key stubs, and writing those back would
+      // blank the clinical fields. The rules refuse that for anyone but the
+      // author; skipping them here is what lets a second member add a person
+      // without the save dying on the report they are not allowed to replace.
+      // sync deletes injury docs missing from the list it is given, and a member
+      // cannot list /injuries, so the skip must happen before that call.
+      const reportsToSync = injuryReports.filter((r) => !hiddenPersonIds.has(r.personId))
+      if (reportsToSync.length) await syncIncidentInjuries(orgId, incident, reportsToSync, actor)
       await updateIncident(orgId, incident.id, { injuryReports }, { actor, summary: 'Updated injury reports' })
       const fresh = await getIncident(orgId, incident.id)
       if (gen === persistGen.current) setIncident(fresh)
