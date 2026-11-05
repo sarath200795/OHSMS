@@ -163,7 +163,15 @@ export async function listOrganizations() {
     .sort((a, b) => a.name.localeCompare(b.name))
 }
 
-/** Create a pending member joining an existing org (defaults to a standard member). */
+/**
+ * Create a pending member joining an existing org (defaults to a standard member).
+ *
+ * `department` is what they typed on the signup form. It is stored as
+ * departmentRequest and not as the grant. Approval writes { status } only, and
+ * committee close trusts department / dept, so a value written here would
+ * become that privilege when an admin clicked Approve. An admin assigns the
+ * real department afterwards, the same way they assign site access.
+ */
 export async function createPendingMember({ uid, name, email, orgId, orgName, department }) {
   await setDoc(userRef(uid), {
     name,
@@ -173,7 +181,8 @@ export async function createPendingMember({ uid, name, email, orgId, orgName, de
     role: 'member',
     status: 'pending',
     dept: '',
-    department: department || '',
+    department: '',
+    departmentRequest: department || '',
     access: { sites: [], regions: [], entities: [] },
     accessRequest: null,
     createdAt: serverTimestamp(),
@@ -600,11 +609,22 @@ export async function setUserAccess(uid, { department, access }, orgId, actor, u
   })
 }
 
-/** A user submits an access request (department + desired scope) for admin review. */
+/**
+ * A user submits an access request for admin review.
+ *
+ * The department they name travels inside the request. Writing it onto the
+ * profile would be the grant: committee close reads that field, and this
+ * update is the member's own. An admin copies it across from the Users page
+ * if they accept it.
+ */
 export async function requestAccess(uid, { department, scope }, orgId, actor) {
   await updateDoc(userRef(uid), {
-    department: department || '',
-    accessRequest: { ...cleanScope(scope), at: serverTimestamp(), by: actor?.name || '' },
+    accessRequest: {
+      ...cleanScope(scope),
+      department: department || '',
+      at: serverTimestamp(),
+      by: actor?.name || '',
+    },
   })
   await logAudit(orgId, actor, AUDIT.USER_STATUS, {
     target: 'user',

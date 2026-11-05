@@ -69,7 +69,13 @@ export default function Users() {
   const applyFromRequest = () => {
     const r = manage?.accessRequest
     if (!r) return
-    setForm((f) => ({ ...f, sites: r.sites || [], regions: r.regions || [], entities: r.entities || [] }))
+    setForm((f) => ({
+      ...f,
+      department: r.department || f.department,
+      sites: r.sites || [],
+      regions: r.regions || [],
+      entities: r.entities || [],
+    }))
   }
 
   const saveManage = async (e) => {
@@ -190,7 +196,12 @@ export default function Users() {
                         </div>
                       </div>
                     </td>
-                    <td className="px-5 py-3.5 text-ink-600">{u.department || '—'}</td>
+                    <td className="px-5 py-3.5 text-ink-600">
+                      <div>{u.department || u.dept || '—'}</div>
+                      {!u.department && !u.dept && u.departmentRequest ? (
+                        <p className="text-xs text-ink-400">Asked: {u.departmentRequest}</p>
+                      ) : null}
+                    </td>
                     <td className="px-5 py-3.5">
                       <Select
                         className="!w-40 !py-1.5 text-xs"
@@ -258,6 +269,7 @@ export default function Users() {
               <div className="flex items-center justify-between gap-3 rounded-2xl bg-violet-50 px-3 py-2 text-sm">
                 <span className="text-violet-800">
                   Requested: <b>{accessSummary(manage.accessRequest, sites)}</b>
+                  {manage.accessRequest.department ? ` · ${manage.accessRequest.department}` : ''}
                 </span>
                 <button type="button" onClick={applyFromRequest} className="rounded-lg bg-violet-600 px-2.5 py-1 text-xs font-semibold text-white">
                   Use request
