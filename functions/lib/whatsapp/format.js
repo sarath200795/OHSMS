@@ -228,7 +228,7 @@ export function siteTitle(site) {
  * the contact. Internal escalation contacts still need a number to be worth
  * sending.
  *
- * These rows are read live from erpContacts when a WhatsApp or Telegram lookup
+ * These rows are read live from erpContacts when a WhatsApp lookup
  * is answered. buildWhatsAppSnapshots stores equipment and incident counts
  * only, so a corrected contact is what the next reply says — the snapshot
  * schedule does not have to catch up.
@@ -407,8 +407,8 @@ export function formatPickList(sites = [], intro, extra = () => '', labels = {})
       id: `site:${s.id}`,
       title: cut(code ? `${code} · ${name}` : name, ROW_TITLE_MAX),
       description: cut([e, where].filter(Boolean).join(' · ') || name, ROW_DESC_MAX),
-      // Telegram inline buttons use label. WhatsApp's list uses title and
-      // description; the same extra field is already sent on organisation rows.
+      // WhatsApp's list uses title and description; the same extra field is
+      // already sent on organisation rows.
       label: cut(line, 64),
     }
   })

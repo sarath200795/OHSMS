@@ -1,8 +1,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // How a warehouse row finds a site in this app's register.
 //
-// This used to live only in the ODIN dashboard. The WhatsApp and Telegram
-// lookups have to attribute an audit to a centre the same way, or a score
+// This used to live only in the ODIN dashboard. The WhatsApp
+// lookup has to attribute an audit to a centre the same way, or a score
 // the dashboard shows for DEMO001 is the score the phone says belongs to
 // somebody else. functions/ cannot import the SPA, so the join lives here
 // and the dashboard re-exports it.

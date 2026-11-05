@@ -45,6 +45,7 @@ describe('public legal pages', () => {
     expect(privacy).toContain('How long we keep it')
     expect(privacy).toContain('How we protect it')
     expect(privacy).toContain('deletion')
+    expect(privacy).not.toMatch(/Telegram|telegram/)
   })
 
   it('puts the terms in the same kind of document', () => {
@@ -65,6 +66,7 @@ describe('public legal pages', () => {
     expect(terms).toContain('Ending access')
     expect(terms).toContain('laws of India')
     expect(terms).toContain('href="/privacy"')
+    expect(terms).not.toMatch(/Telegram|telegram/)
   })
 
   it('links both documents from the sign-in footer', () => {
