@@ -1403,6 +1403,13 @@ service cloud.firestore {
     match /weatherCache/{gridId} {
       allow read, write: if false;
     }
+    // How often one account has asked Open-Meteo. A client who could clear it
+    // would lift that limit. fetchSiteWeather writes it with the Admin SDK.
+    // Same shape as weatherCache: not named by isLegacyOrgCollection, so this
+    // denial is the only grant.
+    match /weatherRate/{uid} {
+      allow read, write: if false;
+    }
     // The last audit the lookup bots read: date, score, open-point labels,
     // and when the extract was taken. The schedule is the only writer. A
     // client write could plant a score; a client read would hand warehouse
