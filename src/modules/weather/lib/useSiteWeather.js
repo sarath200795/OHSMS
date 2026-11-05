@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { fetchWeather } from './windy'
+import { fetchWeather } from './reading'
 import { assessWeather } from './weatherRisk'
 
 const IDLE = { status: 'idle', obs: null, risk: null }

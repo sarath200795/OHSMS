@@ -14,8 +14,8 @@
 // per site (`areas`); the sectioning lives in the mail template.
 //
 // There is no stored weather collection. The screen calls fetchSiteWeather,
-// which reads Windy with WINDY_API_KEY. This run does the same request from
-// the function, assesses it with the same bands (weatherBands.js), and sends
+// which reads Open-Meteo. This run does the same request from the function,
+// assesses it with the same bands (weatherBands.js), and sends
 // only the elevated areas. Low and none are omitted. A failed read is not
 // reported as "no risk". The mail waits until every located site has a
 // reading. If some are still missing 50 minutes into the slot, one mail goes
@@ -56,7 +56,7 @@ import { selectAdminAudience, loadOrgUsers } from './audience.js'
 import { describeMailGap } from './mailer.js'
 import { circulate } from './circulate.js'
 import { assessWeather, digestLevel, digestHazards, digestDrivers } from './weatherBands.js'
-import { gridKey, fetchGrids } from './windy.js'
+import { gridKey, fetchGrids } from './openMeteo.js'
 import { cachedObservation } from './weatherCacheDoc.js'
 import { loadOrgDisplayName, mailSenderName } from './mailBrand.js'
 import { readableText } from './mailTemplates/safe.js'
@@ -301,7 +301,7 @@ function pointsFor(keys) {
   })
 }
 
-async function readGrids(keys, fetchObs, fetchGridsImpl, clock, ref, apiKey, cache, slot) {
+async function readGrids(keys, fetchObs, fetchGridsImpl, clock, ref, cache, slot) {
   if (!keys.length) return new Map()
   const until = clock() + RUN_BUDGET_MS
   if (fetchObs) {
@@ -318,7 +318,6 @@ async function readGrids(keys, fetchObs, fetchGridsImpl, clock, ref, apiKey, cac
   const { observations } = await fetchGridsImpl(pointsFor(keys), {
     now: clock,
     until,
-    apiKey,
     cache,
     slot,
     onProgress: () => ref.set({ updatedAt: clock() }, { merge: true }),
@@ -335,7 +334,6 @@ export async function deliverWeatherDigest({
   fetchObs,
   fetchGrids: fetchGridsImpl = fetchGrids,
   renderMap = renderRiskMap,
-  windyKey = '',
   cache,
   orgIds,
 }) {
@@ -389,7 +387,6 @@ export async function deliverWeatherDigest({
         fetchObs,
         fetchGridsImpl,
         renderMap,
-        windyKey,
         cache,
         tileCache,
         sharedObs,
@@ -426,7 +423,6 @@ async function deliverOrg({
   fetchObs,
   fetchGridsImpl,
   renderMap,
-  windyKey,
   cache,
   tileCache,
   sharedObs,
@@ -458,20 +454,8 @@ async function deliverOrg({
     }
   }
   const missing = [...plan.byGrid.keys()].filter((key) => !observations.has(key))
-  if (missing.length && !fetchObs && !windyKey) {
-    log.error('weather digest has no WINDY_API_KEY', { orgId, bucket })
-  }
   if (missing.length) {
-    const fresh = await readGrids(
-      missing,
-      fetchObs,
-      fetchGridsImpl,
-      clock,
-      ref,
-      windyKey,
-      cache,
-      bucket
-    )
+    const fresh = await readGrids(missing, fetchObs, fetchGridsImpl, clock, ref, cache, bucket)
     for (const [key, obs] of fresh) {
       observations.set(key, obs)
       sharedObs.set(key, obs)

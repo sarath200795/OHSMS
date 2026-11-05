@@ -168,8 +168,8 @@ export default function SiteWeather() {
       )}
 
       <p className="mt-6 text-xs text-ink-300">
-        Conditions from Windy at the nearest ~1 km, refreshed every 15 minutes. Guidance only —
-        it does not replace a site assessment.
+        Conditions from Open-Meteo.com at the nearest ~1 km, refreshed every 15 minutes. Guidance
+        only — it does not replace a site assessment.
       </p>
     </div>
   )

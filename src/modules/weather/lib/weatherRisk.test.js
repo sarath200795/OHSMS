@@ -113,9 +113,15 @@ describe('rain', () => {
 
 describe('lightning', () => {
   it('treats a thunderstorm warning as severe', () => {
-    for (const code of [95, 96]) {
+    for (const code of [95, 96, 99]) {
       expect(bandOf({ lightningCode: code }, 'lightning')).toBe('severe')
     }
+  })
+
+  it('treats lightning code 99 as severe and names it a thunderstorm forecast', () => {
+    const h = assessWeather({ lightningCode: 99 }).hazards.find((x) => x.key === 'lightning')
+    expect(h.band).toBe('severe')
+    expect(h.value).toBe('Thunderstorm forecast')
   })
 
   it('does not treat an old rain code, or a quiet CAPE, as lightning', () => {

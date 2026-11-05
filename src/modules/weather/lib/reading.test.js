@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { fetchWeather, _clearWeatherCache, _setWeatherTransport } from './windy'
+import { fetchWeather, _clearWeatherCache, _setWeatherTransport } from './reading'
 import { weatherSlot } from './observedAt'
 
 beforeEach(() => {

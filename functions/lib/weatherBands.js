@@ -54,14 +54,14 @@ function heatBand(feels, airC) {
 // cold-stress awareness line for outdoor work; freezing is when the mail starts.
 const COLD_CUTS = [10, 0, -10, -25]
 
-// mm/h. Windy's precipitation is a 3-hour column; the normaliser divides it
-// by three before it is compared with these cuts.
+// mm/h. Open-Meteo hourly precipitation is already the preceding hour in mm,
+// so these cuts see that figure directly.
 const RAIN_CUTS = [0.5, 4, 10, 30]
 
-// CAPE (J/kg) when Windy has no thunderstorm code for the point.
+// CAPE (J/kg) when the forecast has no thunderstorm code for the point.
 // Below 1000 is ordinary convection and not an alert. 1000–2500 is Medium
-// (storms possible). 2500 and above is High (storms likely). A weatherWarnings
-// code of 95 or 96 is a thunderstorm in the forecast and outranks CAPE.
+// (storms possible). 2500 and above is High (storms likely). A weather code
+// of 95, 96 or 99 is a thunderstorm (99 is heavy hail) and outranks CAPE.
 const CAPE_MEDIUM = 1000
 const CAPE_HIGH = 2500
 
@@ -89,8 +89,12 @@ function num(v) {
 
 const round = (n) => Math.round(n)
 
+function thunderstorm(code) {
+  return code === 95 || code === 96 || code === 99
+}
+
 function lightningBand(code, cape) {
-  if (code === 95 || code === 96) return 'severe'
+  if (thunderstorm(code)) return 'severe'
   if (cape == null) return 'none'
   if (cape >= CAPE_HIGH) return 'high'
   if (cape >= CAPE_MEDIUM) return 'moderate'
@@ -99,7 +103,7 @@ function lightningBand(code, cape) {
 
 function lightningValue(code, cape) {
   const parts = []
-  if (code === 95 || code === 96) parts.push('Thunderstorm forecast')
+  if (thunderstorm(code)) parts.push('Thunderstorm forecast')
   if (cape != null) parts.push(`CAPE ${round(cape)} J/kg`)
   return parts.join(' · ')
 }

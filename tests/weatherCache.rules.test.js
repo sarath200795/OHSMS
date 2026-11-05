@@ -44,7 +44,7 @@ beforeEach(async () => {
     await setDoc(doc(db, 'organizations', ORG), { name: ORG, createdBy: 'admin1' })
     await setDoc(doc(db, 'users', 'admin1'), user('admin1', { role: 'admin' }))
     await setDoc(doc(db, 'users', 'member1'), user('member1'))
-    await setDoc(doc(db, 'weatherCache', '17.44_78.39'), {
+    await setDoc(doc(db, 'weatherCache', 'om_17.44_78.39'), {
       slot: '2026-09-23T06+0530',
       obs: { tempC: 42, observedAt: '2026-09-23T05:30:00.000Z' },
     })
@@ -55,7 +55,7 @@ const as = (uid) => testEnv.authenticatedContext(uid).firestore()
 
 describe('clients cannot read or write the shared weather reading', () => {
   it.each(['admin1', 'member1'])('refuses a get, a write and a delete to %s', async (uid) => {
-    const ref = doc(as(uid), 'weatherCache', '17.44_78.39')
+    const ref = doc(as(uid), 'weatherCache', 'om_17.44_78.39')
     await assertFails(getDoc(ref))
     await assertFails(setDoc(ref, { slot: '2026-09-23T06+0530', obs: { tempC: 99 } }))
     await assertFails(deleteDoc(ref))
@@ -66,7 +66,7 @@ describe('clients cannot read or write the shared weather reading', () => {
 
   it('refuses an unauthenticated read', async () => {
     await assertFails(
-      getDoc(doc(testEnv.unauthenticatedContext().firestore(), 'weatherCache', '17.44_78.39'))
+      getDoc(doc(testEnv.unauthenticatedContext().firestore(), 'weatherCache', 'om_17.44_78.39'))
     )
   })
 })

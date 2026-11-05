@@ -1,11 +1,14 @@
-// One Windy reading per ~1 km square per six-hour slot.
+// One Open-Meteo reading per ~1 km square per six-hour slot.
 //
 // The site screen, the home widget, the map, the phone alerts and the digest
-// used to each ask Windy on their own clock. Two of those asks can land on
-// different forecast hours, and the mail then printed a UTC stamp the screen
+// used to each ask the provider on their own clock. Two of those asks can land
+// on different forecast hours, and the mail then printed a UTC stamp the screen
 // never showed. This document is the reading for the open Asia/Kolkata slot.
 // fetchSiteWeather and the digest both go through it, so a square fetched by
 // either is the reading the other returns, with the same observedAt.
+//
+// The id is prefixed `om_` so a document written by the previous provider is
+// not served as this reading for the rest of the slot.
 //
 // The client never reads this collection. The Admin SDK does. A member who
 // could write it would put a temperature on every screen and in the mail.
@@ -33,7 +36,8 @@ export function weatherCache(db) {
 }
 
 export function cacheId(key) {
-  return String(key || '').replace(/[^0-9A-Za-z._-]/g, '_')
+  const safe = String(key || '').replace(/[^0-9A-Za-z._-]/g, '_')
+  return safe ? `om_${safe}` : ''
 }
 
 function plainObs(obs) {

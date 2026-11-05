@@ -1395,7 +1395,7 @@ service cloud.firestore {
     match /waOrgSettings/{docId} {
       allow read, write: if false;
     }
-    // The Windy reading for one ~1 km square in the open six-hour slot.
+    // The Open-Meteo reading for one ~1 km square in the open six-hour slot.
     // fetchSiteWeather and the digest are the only readers and writers, both
     // through the Admin SDK. A client write would put a made-up temperature
     // on the home tile, the site page and the mail. isLegacyOrgCollection

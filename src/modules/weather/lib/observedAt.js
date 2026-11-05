@@ -1,6 +1,6 @@
 // The same label the digest mail prints (functions/lib/observedAt.js). The
 // functions package cannot import the SPA, so the two have to move together.
-// Asia/Kolkata is UTC+05:30 all year. Windy's stamps are UTC.
+// Asia/Kolkata is UTC+05:30 all year. The provider stamps UTC.
 
 const IST_OFFSET_MS = (5 * 60 + 30) * 60 * 1000
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']

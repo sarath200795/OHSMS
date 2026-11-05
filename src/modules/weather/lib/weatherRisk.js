@@ -82,8 +82,8 @@ function heatBand(feels, airC) {
 const COLD_CUTS = [10, 0, -10, -25]
 
 // Rain rate, mm/h. Above 10 mm/h drainage stops keeping up and yards flood;
-// above 30 is a cloudburst. Windy's precipitation is a 3-hour column, so the
-// normaliser divides it by three before these cuts see it.
+// above 30 is a cloudburst. Open-Meteo hourly precipitation is already the
+// preceding hour in mm, so these cuts see that figure directly.
 const RAIN_CUTS = [0.5, 4, 10, 30]
 
 // Rain is reported as a named alert rather than only a band, because "medium
@@ -99,7 +99,8 @@ export const RAIN_ALERT = {
 
 // CAPE in J/kg, used when the forecast has no thunderstorm code.
 // Below 1000 is not an alert. 1000–2500 is Medium. 2500 and above is High.
-// A warning code of 95 or 96 is a thunderstorm and is severe on its own.
+// A code of 95, 96 or 99 is a thunderstorm (99 is heavy hail) and is severe
+// on its own. Keep in step with functions/lib/weatherBands.js.
 const CAPE_MEDIUM = 1000
 const CAPE_HIGH = 2500
 
@@ -110,8 +111,12 @@ const AQI_HIGH = 400
 
 const LEVEL_WORD = { low: 'Low', moderate: 'Medium', high: 'High', severe: 'High' }
 
+function thunderstorm(code) {
+  return code === 95 || code === 96 || code === 99
+}
+
 function lightningBand(code, cape) {
-  if (code === 95 || code === 96) return 'severe'
+  if (thunderstorm(code)) return 'severe'
   if (cape == null) return 'none'
   if (cape >= CAPE_HIGH) return 'high'
   if (cape >= CAPE_MEDIUM) return 'moderate'
@@ -120,7 +125,7 @@ function lightningBand(code, cape) {
 
 function lightningValue(code, cape) {
   const parts = []
-  if (code === 95 || code === 96) parts.push('Thunderstorm forecast')
+  if (thunderstorm(code)) parts.push('Thunderstorm forecast')
   if (cape != null) parts.push(`CAPE ${round(cape)} J/kg`)
   return parts.join(' · ')
 }
