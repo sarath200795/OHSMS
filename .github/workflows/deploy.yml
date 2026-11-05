@@ -257,7 +257,9 @@ jobs:
       # stay out of that file: a key in dotenv is shipped as a plain env var
       # and never bound through Secret Manager (LOW-13). Repository variables
       # SMTP_HOST, SMTP_PORT, SMTP_USER, MAIL_FROM and APP_ORIGIN override the
-      # Brevo relay defaults when they are set. SMTP_USER has no default.
+      # Brevo relay defaults when they are set. SMTP_USER has no default. For
+      # weehs-4eb28 the script refuses an empty SMTP_USER instead of writing
+      # SMTP_USER=, which a deploy would apply as the Brevo login.
       # WA_TEMPLATE_WELCOME and WA_TEMPLATE_TEST are written even when those
       # repository variables are unset. A missing key is what stopped the
       # v2.0.7 deploy; a blank value keeps the welcome and the org test on

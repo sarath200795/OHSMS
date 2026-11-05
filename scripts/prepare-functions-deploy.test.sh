@@ -25,14 +25,47 @@ tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
 # ── write-env: filename is functions/.env.<projectId>, defaults, no secrets ──
+# Production refuses a blank login before it writes. A laptop deploy of
+# SMTP_USER= is what cleared the live Brevo login.
+if env -u SMTP_USER -u WA_TEMPLATE_WELCOME -u WA_TEMPLATE_TEST \
+  PROJECT_ID=weehs-4eb28 FUNCTIONS_DIR="$tmp/fn-blank" bash "$script" write-env >/dev/null 2>"$tmp/blank.err"; then
+  fail "production write-env accepted an empty SMTP_USER"
+fi
+grep -q 'SMTP_USER is empty' "$tmp/blank.err" || fail "blank SMTP_USER error did not name SMTP_USER"
+[[ ! -e "$tmp/fn-blank/.env.weehs-4eb28" ]] || fail "blank SMTP_USER still wrote the dotenv file"
+
+# A file that already says SMTP_USER= is the bug, not a login to keep.
+# Failure must leave that file as it was so the script does not pretend it fixed it.
+mkdir -p "$tmp/fn-oldblank"
+printf 'SMTP_USER=\n' >"$tmp/fn-oldblank/.env.weehs-4eb28"
+if env -u SMTP_USER PROJECT_ID=weehs-4eb28 FUNCTIONS_DIR="$tmp/fn-oldblank" \
+  bash "$script" write-env >/dev/null 2>"$tmp/oldblank.err"; then
+  fail "blank existing SMTP_USER was treated as a login"
+fi
+assert_eq "$(cat "$tmp/fn-oldblank/.env.weehs-4eb28")" "SMTP_USER=" "failed run left the previous file untouched"
+
+# A non-empty login already in the file survives an unset variable, and the
+# script must not print it.
+mkdir -p "$tmp/fn-keep"
+printf 'SMTP_USER=kept@example.com\nSMTP_HOST=old.example\n' >"$tmp/fn-keep/.env.weehs-4eb28"
+env -u SMTP_USER -u WA_TEMPLATE_WELCOME -u WA_TEMPLATE_TEST \
+  PROJECT_ID=weehs-4eb28 FUNCTIONS_DIR="$tmp/fn-keep" bash "$script" write-env >"$tmp/keep.out" 2>"$tmp/keep.err"
+kept="$tmp/fn-keep/.env.weehs-4eb28"
+assert_eq "$(grep '^SMTP_USER=' "$kept")" "SMTP_USER=kept@example.com" "keeps existing login"
+assert_eq "$(grep '^SMTP_HOST=' "$kept")" "SMTP_HOST=smtp-relay.brevo.com" "kept file still refreshes other defaults"
+if grep -q 'kept@example.com' "$tmp/keep.out" "$tmp/keep.err"; then
+  fail "preserved SMTP_USER was printed"
+fi
+
 env -u WA_TEMPLATE_WELCOME -u WA_TEMPLATE_TEST \
+  SMTP_USER=login@example.com \
   PROJECT_ID=weehs-4eb28 FUNCTIONS_DIR="$tmp/fn" bash "$script" write-env >/dev/null
 env_file="$tmp/fn/.env.weehs-4eb28"
 [[ -f "$env_file" ]] || fail "expected $env_file"
 assert_eq "$(basename "$env_file")" ".env.weehs-4eb28" "dotenv filename"
 assert_eq "$(grep '^SMTP_HOST=' "$env_file")" "SMTP_HOST=smtp-relay.brevo.com" "default host"
 assert_eq "$(grep '^SMTP_PORT=' "$env_file")" "SMTP_PORT=587" "default port"
-assert_eq "$(grep '^SMTP_USER=' "$env_file")" "SMTP_USER=" "default user is unset"
+assert_eq "$(grep '^SMTP_USER=' "$env_file")" "SMTP_USER=login@example.com" "production user is the one supplied"
 assert_eq "$(grep '^MAIL_FROM=' "$env_file")" "MAIL_FROM=EHS notifications <info@weehs.org>" "default from"
 assert_eq "$(grep '^APP_ORIGIN=' "$env_file")" "APP_ORIGIN=https://suite.weehs.org" "default origin"
 assert_eq "$(grep '^TG_ENABLED=' "$env_file")" "TG_ENABLED=true" "telegram stays on"
@@ -72,6 +105,7 @@ fi
 # A blank template is free-form text. A value firebase-tools would mis-parse
 # must not be written as a different string.
 if env -u WA_TEMPLATE_TEST PROJECT_ID=weehs-4eb28 FUNCTIONS_DIR="$tmp/badtpl" \
+  SMTP_USER=login@example.com \
   WA_TEMPLATE_WELCOME='weehs#welcome' bash "$script" write-env >/dev/null 2>"$tmp/tpl.err"; then
   fail "template value containing # was accepted"
 fi
@@ -82,9 +116,11 @@ grep -q 'WA_TEMPLATE_WELCOME' "$tmp/tpl.err" || fail "rejected template did not 
 # --non-interactive before it applies the code default, and the error names
 # each absent key. That is the v2.0.7 failure. defineSecret names stay out:
 # a secret in this file is deployed as a plain env var (LOW-13).
-string_params="$(grep -RhoE "defineString\\('[A-Z0-9_]+'" "$root/functions" --include='*.js' \
+# node_modules is present after `npm ci` in functions/ and contains its own
+# defineString examples. Those are not params this deploy writes.
+string_params="$(grep -RhoE "defineString\\('[A-Z0-9_]+'" "$root/functions" --include='*.js' --exclude-dir=node_modules \
   | sed -E "s/defineString\\('//; s/'//" | sort -u)"
-secret_params="$(grep -RhoE "defineSecret\\('[A-Z0-9_]+'" "$root/functions" --include='*.js' \
+secret_params="$(grep -RhoE "defineSecret\\('[A-Z0-9_]+'" "$root/functions" --include='*.js' --exclude-dir=node_modules \
   | sed -E "s/defineSecret\\('//; s/'//" | sort -u)"
 [[ -n "$string_params" ]] || fail "found no defineString params"
 [[ -n "$secret_params" ]] || fail "found no defineSecret params"
@@ -92,7 +128,7 @@ secret_params="$(grep -RhoE "defineSecret\\('[A-Z0-9_]+'" "$root/functions" --in
 # with no default is the one an interactive deploy prompts for.
 while IFS= read -r call; do
   [[ "$call" == *'default:'* ]] || fail "defineString without a default: $call"
-done < <(grep -RhoE "defineString\\('[A-Z0-9_]+'[^)]*\\)" "$root/functions" --include='*.js')
+done < <(grep -RhoE "defineString\\('[A-Z0-9_]+'[^)]*\\)" "$root/functions" --include='*.js' --exclude-dir=node_modules)
 
 unset_args=()
 while IFS= read -r name; do
@@ -101,7 +137,8 @@ done <<<"$string_params"
 
 check_written_params() {
   local project="$1" dir="$2" label="$3"
-  env "${unset_args[@]}" PROJECT_ID="$project" FUNCTIONS_DIR="$dir" bash "$script" write-env >/dev/null
+  shift 3
+  env "${unset_args[@]}" "$@" PROJECT_ID="$project" FUNCTIONS_DIR="$dir" bash "$script" write-env >/dev/null
   local file="$dir/.env.$project"
   local name
   while IFS= read -r name; do
@@ -114,16 +151,45 @@ check_written_params() {
   done <<<"$secret_params"
 }
 
-check_written_params weehs-4eb28 "$tmp/fn-prod" "production"
+check_written_params weehs-4eb28 "$tmp/fn-prod" "production" SMTP_USER=login@example.com
 check_written_params stgtest1 "$tmp/fn-other" "non-production"
+assert_eq "$(grep '^SMTP_USER=' "$tmp/fn-other/.env.stgtest1")" "SMTP_USER=" "non-production user may stay unset"
 assert_eq "$(grep '^WA_TEMPLATE_WELCOME=' "$tmp/fn-other/.env.stgtest1")" "WA_TEMPLATE_WELCOME=" "non-production welcome stays blank"
 assert_eq "$(grep '^WA_ENABLED=' "$tmp/fn-other/.env.stgtest1")" "WA_ENABLED=false" "non-production whatsapp stays off"
+
+# An empty string is not "turn WhatsApp off". `:-` treats it as unset, so the
+# production identity stays. An explicit false still deploys as off.
+env -u WA_TEMPLATE_WELCOME -u WA_TEMPLATE_TEST \
+  PROJECT_ID=weehs-4eb28 FUNCTIONS_DIR="$tmp/fn-wa-unset" SMTP_USER=login@example.com \
+  bash "$script" write-env >/dev/null
+env -u WA_TEMPLATE_WELCOME -u WA_TEMPLATE_TEST \
+  PROJECT_ID=weehs-4eb28 FUNCTIONS_DIR="$tmp/fn-wa-empty" SMTP_USER=login@example.com \
+  WA_ENABLED= WA_PHONE_NUMBER_ID= WA_DISPLAY_NUMBER= WA_DAILY_CAP= \
+  bash "$script" write-env >/dev/null
+for key in WA_ENABLED WA_PHONE_NUMBER_ID WA_DISPLAY_NUMBER WA_DAILY_CAP; do
+  assert_eq "$(grep "^${key}=" "$tmp/fn-wa-empty/.env.weehs-4eb28")" \
+    "$(grep "^${key}=" "$tmp/fn-wa-unset/.env.weehs-4eb28")" \
+    "empty ${key} does not clear the production default"
+done
+env -u WA_TEMPLATE_WELCOME -u WA_TEMPLATE_TEST \
+  PROJECT_ID=weehs-4eb28 FUNCTIONS_DIR="$tmp/fn-wa-off" SMTP_USER=login@example.com \
+  WA_ENABLED=false \
+  bash "$script" write-env >/dev/null
+assert_eq "$(grep '^WA_ENABLED=' "$tmp/fn-wa-off/.env.weehs-4eb28")" "WA_ENABLED=false" "explicit WhatsApp off still deploys"
 
 # The checked-in production file is the same deploy env a laptop uses when
 # it does not re-run write-env. A key present only in the script still fails
 # that deploy. TG_LIST_ORGS was the other one missing from this file.
 committed="$root/functions/.env.weehs-4eb28"
 while IFS= read -r name; do
+  # SMTP_USER is the exception. A blank line is a value firebase deploys, and
+  # that deploy replaced the working login. Absence fails the deploy instead.
+  if [[ "$name" == "SMTP_USER" ]]; then
+    if grep -q '^SMTP_USER=' "$committed"; then
+      fail "functions/.env.weehs-4eb28 must not contain SMTP_USER"
+    fi
+    continue
+  fi
   grep -q "^${name}=" "$committed" || fail "functions/.env.weehs-4eb28 missing $name"
 done <<<"$string_params"
 assert_eq "$(grep '^WA_TEMPLATE_WELCOME=' "$committed")" "WA_TEMPLATE_WELCOME=" "committed welcome stays blank"

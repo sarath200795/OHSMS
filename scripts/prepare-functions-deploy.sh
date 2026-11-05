@@ -91,8 +91,27 @@ write_env() {
   local env_file="${dir}/.env.${PROJECT_ID}"
   local host="${SMTP_HOST:-smtp-relay.brevo.com}"
   local port="${SMTP_PORT:-587}"
-  # The Brevo SMTP login. Empty until it is set; the From address is not it.
+  # The Brevo SMTP login. Not the From address, and not a default the way the
+  # host is. A line `SMTP_USER=` in this file is deployed as the login. The
+  # tracked functions/.env.weehs-4eb28 used to carry that blank line, and a
+  # laptop deploy applied it over the working Cloud Run value, so mail
+  # stopped authenticating. An unset variable therefore keeps a non-empty
+  # login already in the file. For weehs-4eb28, with nothing to keep, the
+  # script stops before writing: a failed deploy leaves the live login
+  # alone, and a blank line would not. The value is never printed.
   local user="${SMTP_USER:-}"
+  if [[ -z "$user" && -f "$env_file" ]]; then
+    local existing
+    existing="$(grep -E '^SMTP_USER=' "$env_file" | head -n1 | cut -d= -f2- || true)"
+    if [[ -n "$(printf '%s' "$existing" | tr -d '[:space:]')" ]]; then
+      user="$existing"
+      echo "SMTP_USER is unset; keeping the non-empty login already in ${env_file}." >&2
+    fi
+  fi
+  if [[ -z "$user" && "$PROJECT_ID" == "weehs-4eb28" ]]; then
+    echo "::error::SMTP_USER is empty. Refusing to write ${env_file}: a blank SMTP_USER is deployed as the Brevo login and replaces the working one. Set SMTP_USER in the environment (CI: the repository variable) and re-run. Do not commit the login." >&2
+    exit 1
+  fi
   local from="${MAIL_FROM:-EHS notifications <info@weehs.org>}"
   local origin="${APP_ORIGIN:-https://suite.weehs.org}"
 
@@ -119,11 +138,12 @@ write_env() {
   local wa_display="${WA_DISPLAY_NUMBER:-$wa_default_display}"
   local wa_cap="${WA_DAILY_CAP:-2000}"
   # Business-initiated template names (`name+lang`). Blank is a value on
-  # purpose. firebase-tools 13 throws in --non-interactive before it applies
-  # the defineString default of '', and the error names every key that is
-  # simply absent. v2.0.7 stopped on these two. An empty value is what
-  # waTemplate treats as free-form text. Repository variables of the same
-  # name override the blank once a template is approved in Meta.
+  # purpose, unlike SMTP_USER. firebase-tools 13 throws in --non-interactive
+  # before it applies the defineString default of '', and the error names
+  # every key that is simply absent. v2.0.7 stopped on these two. An empty
+  # value is what waTemplate treats as free-form text, so this line does
+  # replace a template name that exists only in Cloud Run. Repository
+  # variables of the same name are how an approved Meta template is kept.
   local wa_welcome="${WA_TEMPLATE_WELCOME:-}"
   local wa_test="${WA_TEMPLATE_TEST:-}"
   reject_param_value WA_ENABLED "$wa_enabled"
