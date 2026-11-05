@@ -70,3 +70,17 @@ describe('clients cannot read or write the shared weather reading', () => {
     )
   })
 })
+
+describe('clients cannot read or write the weather rate counter', () => {
+  it.each(['admin1', 'member1'])('refuses a get and a write to %s', async (uid) => {
+    const ref = doc(as(uid), 'weatherRate', uid)
+    await assertFails(getDoc(ref))
+    await assertFails(setDoc(ref, { stamps: [] }))
+  })
+
+  it('refuses an unauthenticated read', async () => {
+    await assertFails(
+      getDoc(doc(testEnv.unauthenticatedContext().firestore(), 'weatherRate', 'member1'))
+    )
+  })
+})
