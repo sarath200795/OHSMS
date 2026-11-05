@@ -17,6 +17,7 @@
 // the key needed to find it.
 // ─────────────────────────────────────────────────────────────────────────────
 import {
+  addDoc,
   collection,
   doc,
   getDoc,
@@ -36,7 +37,9 @@ import { db } from '../../../shared/firebase'
 // purgeInjury destroys the clinical DOCUMENTS as well as the pointers to them.
 // A pointer deleted without its object leaves the GP letter in the bucket with
 // nothing left that names it — unreachable through the app and still there.
-import { removeFile } from '../../../shared/storage'
+import { putFile, removeFile, MAX_INLINE_BYTES, tooLargeForInline } from '../../../shared/storage'
+import { resolveSubscription } from '../../../shared/storage/resolveFiles'
+import { onReadError } from '../../../shared/org/readError'
 import { logAudit } from './firestore'
 import { AUDIT } from './audit'
 // The clinical fields are sealed under the MEDICAL key class — a keypair, not a
@@ -53,13 +56,48 @@ const SEALED = 'injuries'
 
 const injuryCol = (orgId) => collection(db, 'organizations', orgId, 'injuries')
 const injuryRef = (orgId, id) => doc(db, 'organizations', orgId, 'injuries', id)
-// The clinical documents: GP letters, fit notes, discharge summaries. Written
-// only by functions/lib/medicalRecords.js, which moved them out of
-// incidents/{id}/photos — no client path creates one. Read here because a purge
-// that leaves them behind destroys the index and keeps the record.
+// The clinical documents: GP letters, fit notes, discharge summaries.
+//
+// The pointer lives here, not under incidents/{id}/photos, because that
+// subcollection is listable by every approved member and the auditor, and rules
+// cannot filter a list by `kind`. The bytes live under the Storage prefix
+// `medical-records`, the one prefix storage.rules withholds from those same
+// roles. The collection key `injuries/records` is what shared/crypto/policy.js
+// seals with the MEDICAL keypair — the general key would hand the file back to
+// every member who can open an incident photo.
+//
+// MUST stay the same string as MEDICAL_RECORD_KIND in functions/lib/medicalRecords.js
+// and the literal in storage.rules. Three copies, three deployable units, no
+// import between them.
+const SEALED_RECORDS = 'injuries/records'
+export const MEDICAL_RECORD_STORAGE_KIND = 'medical-records'
 const recordCol = (orgId, id) => collection(db, 'organizations', orgId, 'injuries', id, 'records')
+const recordRef = (orgId, injuryId, recordId) =>
+  doc(db, 'organizations', orgId, 'injuries', injuryId, 'records', recordId)
 const incRef = (orgId, incidentId) => doc(db, 'organizations', orgId, 'incidents', incidentId)
 const injuryId = (incidentId, personId) => `${incidentId}__${personId}`
+
+/**
+ * Where a Step 1a medical attachment is allowed to go.
+ *
+ * Null when the ids could not be a Firestore path segment. A slash would let a
+ * caller aim the write at a different document, and this function runs before
+ * any upload so a bad id never reaches Storage.
+ */
+export function medicalAttachmentTarget(incidentId, personId) {
+  const incident = String(incidentId ?? '').trim()
+  const person = String(personId ?? '').trim()
+  if (!incident || !person) return null
+  if ([incident, person].some((s) => s.includes('/') || s.includes('..') || s.startsWith('__')))
+    return null
+  return {
+    injuryId: injuryId(incident, person),
+    storageKind: MEDICAL_RECORD_STORAGE_KIND,
+    collection: SEALED_RECORDS,
+    incidentId: incident,
+    personId: person,
+  }
+}
 
 // ── What lives where ─────────────────────────────────────────────────────────
 
@@ -78,7 +116,12 @@ const injuryId = (incidentId, personId) => `${incidentId}__${personId}`
  * twice on purpose; change one and change the other.
  */
 export const MEDICAL_FIELDS = [
-  'bodyParts', 'injuryType', 'medication', 'firstAidDetail', 'daysToReturnToWork', 'recordFileIds',
+  'bodyParts',
+  'injuryType',
+  'medication',
+  'firstAidDetail',
+  'daysToReturnToWork',
+  'recordFileIds',
 ]
 
 /**
@@ -208,15 +251,21 @@ export async function syncIncidentInjuries(orgId, incident, reports = [], actor)
   // transaction over a variable number of documents, which is a different
   // change; doing them together at least makes the window narrow instead of
   // proportional to the casualty count.
-  await Promise.all(pending.map(async ({ id, report }) => {
-    await setDoc(injuryRef(orgId, id), await sealDoc(orgId, SEALED, injuryPayload(incident, report)), { merge: true })
-  }))
+  await Promise.all(
+    pending.map(async ({ id, report }) => {
+      await setDoc(
+        injuryRef(orgId, id),
+        await sealDoc(orgId, SEALED, injuryPayload(incident, report)),
+        { merge: true }
+      )
+    })
+  )
   // Cleanup: delete injury docs for this incident whose person was removed
   // (but keep verified ones for the record).
   try {
-    await Promise.all(existing
-      .filter((d) => !keep.has(d.id) && !verified.has(d.id))
-      .map((d) => deleteDoc(d.ref)))
+    await Promise.all(
+      existing.filter((d) => !keep.has(d.id) && !verified.has(d.id)).map((d) => deleteDoc(d.ref))
+    )
   } catch (e) {
     // eslint-disable-next-line no-console
     console.warn('[Incident IRA] injury cleanup skipped:', e?.message || e)
@@ -258,7 +307,14 @@ export function subscribeInjuries(orgId, cb) {
 }
 
 // Fields a user may edit on a pending injury report.
-const EDITABLE = ['firstAidDone', 'firstAidDetail', 'bodyParts', 'injuryType', 'medication', 'daysToReturnToWork']
+const EDITABLE = [
+  'firstAidDone',
+  'firstAidDetail',
+  'bodyParts',
+  'injuryType',
+  'medication',
+  'daysToReturnToWork',
+]
 
 /**
  * Edit a pending injury report. Rejects if it's already verified. Writes the
@@ -272,7 +328,8 @@ export async function updateInjury(orgId, id, fields, actor) {
   // two join keys are all in the clear — and opening it here would decrypt a
   // colleague's record for an editor who may hold no key at all.
   const cur = snap.data()
-  if (injuryStatus(cur) === 'verified') throw new Error('This injury report is verified and locked. Unverify it first to make changes.')
+  if (injuryStatus(cur) === 'verified')
+    throw new Error('This injury report is verified and locked. Unverify it first to make changes.')
   const clean = {}
   for (const k of EDITABLE) if (k in fields) clean[k] = fields[k]
   // `joinable` is taken from the PLAINTEXT edit, below, before this seals it:
@@ -292,9 +349,13 @@ export async function updateInjury(orgId, id, fields, actor) {
     try {
       const isnap = await getDoc(incRef(orgId, cur.incidentId))
       if (isnap.exists()) {
-        const reports = incidentInjuryStubs(isnap.data().injuryReports)
-          .map((r) => (r.personId === cur.personId ? { ...r, ...joinable } : r))
-        await updateDoc(incRef(orgId, cur.incidentId), { injuryReports: reports, updatedAt: serverTimestamp() })
+        const reports = incidentInjuryStubs(isnap.data().injuryReports).map((r) =>
+          r.personId === cur.personId ? { ...r, ...joinable } : r
+        )
+        await updateDoc(incRef(orgId, cur.incidentId), {
+          injuryReports: reports,
+          updatedAt: serverTimestamp(),
+        })
       }
     } catch (e) {
       // eslint-disable-next-line no-console
@@ -309,7 +370,10 @@ export async function updateInjury(orgId, id, fields, actor) {
   // fields, publish the second copy" mistake this collection was split to fix.
   // The document id and the incident reference find the record and name nobody.
   await logAudit(orgId, actor, AUDIT.INJURY_UPDATE, {
-    target: 'injury', targetId: id, targetLabel: cur.incidentRefNo || id, summary: 'Injury report edited',
+    target: 'injury',
+    targetId: id,
+    targetLabel: cur.incidentRefNo || id,
+    summary: 'Injury report edited',
   })
 }
 
@@ -332,6 +396,121 @@ export async function setInjuryVerified(orgId, id, verified, actor, label) {
 
 /** Status helper: a doc with no explicit status is treated as pending. */
 export const injuryStatus = (inj) => (inj?.status === 'verified' ? 'verified' : 'pending')
+
+/**
+ * Attach a clinical file to one person's injury report.
+ *
+ * Scene photos stay on the incident. This is the other writer: the pointer is
+ * created under injuries/{injuryId}/records, and the bytes — when the bucket
+ * accepts them — under orgs/{orgId}/medical-records, sealed with the medical
+ * key class because `collection` is `injuries/records`. A download URL is never
+ * stored. getDownloadURL is a bearer link, and copying one onto this pointer
+ * would make the storage rule irrelevant to anyone who had seen the string.
+ *
+ * The parent injury document is created with merge when it is missing, and only
+ * with the join keys. Merge, not a blind set: a verified report or a recycle-bin
+ * timestamp already on that document must survive an attachment. deletedAt is
+ * not written here at all — changing it is what schedules the purge, and a
+ * member is not allowed to.
+ *
+ * The caller may be a member, who can write this and cannot read it back. That
+ * is the same asymmetry as the injury report itself. This function does not
+ * getDoc the result.
+ */
+export async function addMedicalRecord(orgId, incident, personId, file = {}) {
+  const target = medicalAttachmentTarget(incident?.id, personId)
+  if (!target)
+    throw new Error('A medical record has to name the incident and the person it belongs to.')
+
+  await setDoc(
+    injuryRef(orgId, target.injuryId),
+    await sealDoc(orgId, SEALED, {
+      incidentId: target.incidentId,
+      incidentRefNo: incident?.refNo || '',
+      personId: target.personId,
+      updatedAt: serverTimestamp(),
+    }),
+    { merge: true }
+  )
+
+  const up = file.dataUrl
+    ? await putFile(orgId, target.storageKind, file.dataUrl, file.name, {
+        collection: target.collection,
+      })
+    : null
+  if (!up && file.dataUrl && (file.size || 0) > MAX_INLINE_BYTES) {
+    throw new Error(tooLargeForInline(file.name))
+  }
+
+  const pointer = {
+    name: file.name || '',
+    type: file.type || up?.contentType || '',
+    // Inline only when the bucket did not take the bytes. The field is on the
+    // medical seal list, so with encryption on it is ciphertext; with encryption
+    // off the pointer is still manager-only. Either way it is not an incident photo.
+    dataUrl: up ? '' : file.dataUrl || '',
+    path: up?.path || '',
+    size: file.size || up?.size || 0,
+    caption: file.caption || '',
+    incidentId: target.incidentId,
+    personId: target.personId,
+    uploadedBy: file.uploadedBy || '',
+    uploadedAt: serverTimestamp(),
+  }
+  if (up?.encIv) {
+    pointer.encScheme = up.encScheme
+    pointer.encKeyId = up.encKeyId
+    pointer.encIv = up.encIv
+    if (up.encWrapped) pointer.encWrapped = up.encWrapped
+  }
+  const ref = await addDoc(
+    recordCol(orgId, target.injuryId),
+    await sealDoc(orgId, SEALED_RECORDS, pointer)
+  )
+  return ref.id
+}
+
+/**
+ * The manager view of one injury's clinical files.
+ *
+ * Ordered by uploadedAt, which is what a record with no timestamp disappears
+ * from: Firestore omits documents that lack the ordered field. Callers that
+ * are not allowed to read this collection should not subscribe — the error
+ * handler returns an empty list, and an empty list here means "nothing was
+ * uploaded", which is the wrong sentence for a permission denial.
+ */
+export function subscribeInjuryRecords(orgId, id, cb) {
+  if (!orgId || !id) {
+    cb([])
+    return () => {}
+  }
+  const q = query(recordCol(orgId, id), orderBy('uploadedAt', 'asc'))
+  const resolve = resolveSubscription(orgId, SEALED_RECORDS, cb)
+  const opened = openSnapshots(orgId, SEALED_RECORDS, (rows) =>
+    resolve(rows.map((r) => ({ ...r, dataUrl: r.dataUrl || r.url || '' })))
+  )
+  const stop = onSnapshot(
+    q,
+    (snap) => opened(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    onReadError('injury records', cb)
+  )
+  return () => {
+    resolve.stop()
+    stop()
+  }
+}
+
+/** Remove one clinical file. Rules allow this to a manager, not to the member who attached it. */
+export async function deleteMedicalRecord(orgId, id, recordId) {
+  const ref = recordRef(orgId, id, recordId)
+  try {
+    const snap = await getDoc(ref)
+    if (snap.data()?.path) removeFile(snap.data().path)
+  } catch {
+    /* the delete below is what the rules decide */
+  }
+  await deleteDoc(ref)
+}
 
 // ── Lifecycle: delete, restore, purge ────────────────────────────────────────
 //
@@ -415,7 +594,9 @@ export async function restoreInjury(orgId, id, actor) {
  */
 export async function purgeInjury(orgId, id, actor, label) {
   const records = await getDocs(recordCol(orgId, id))
-  records.docs.forEach((d) => { if (d.data().path) removeFile(d.data().path) })
+  records.docs.forEach((d) => {
+    if (d.data().path) removeFile(d.data().path)
+  })
   const batch = writeBatch(db)
   records.docs.forEach((d) => batch.delete(d.ref))
   batch.delete(injuryRef(orgId, id))

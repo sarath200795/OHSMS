@@ -27,7 +27,10 @@ import {
   subscribeIncidentPhotos, addIncidentPhoto, deleteIncidentPhoto,
 } from '../lib/incidents'
 import { sortChronology } from '../lib/chronology'
-import { syncIncidentInjuries, mergeInjuryDetail } from '../lib/injuries'
+import {
+  syncIncidentInjuries, mergeInjuryDetail, addMedicalRecord, deleteMedicalRecord,
+  subscribeInjuryRecords, medicalAttachmentTarget,
+} from '../lib/injuries'
 import { isFutureDate } from '../../../shared/lib/dates'
 import { captureIncidentReport } from '../lib/incidentReportPdf'
 
@@ -56,6 +59,10 @@ export default function IncidentWizard() {
   const [loading, setLoading] = useState(Boolean(id))
   const [saving, setSaving] = useState(false)
   const [photos, setPhotos] = useState([])
+  const [medicalRecords, setMedicalRecords] = useState([])
+  // Members can attach a clinical file and cannot read it back. This count is
+  // the only confirmation the screen can give them without becoming a read.
+  const [filedCounts, setFiledCounts] = useState({})
 
   // Working copy for Step 1 (so we can create the doc on first save).
   const [draft, setDraft] = useState({
@@ -91,6 +98,30 @@ export default function IncidentWizard() {
     const unsub = subscribeIncidentPhotos(orgId, id, setPhotos)
     return () => { live = false; unsub() }
   }, [id, orgId])
+
+  // Clinical files, for the roles who may read them. A member's listener on
+  // injuries/{id}/records is permission-denied, and the error handler would
+  // report an empty list — which this screen would then describe as "nothing
+  // attached". Do not subscribe unless the read is allowed.
+  const medicalPersonKey = (incident?.affectedPersonnel || []).map((p) => p.id).filter(Boolean).join('|')
+  useEffect(() => {
+    if (!canReadHealth || !orgId || !incident?.id || !medicalPersonKey) {
+      setMedicalRecords([])
+      return
+    }
+    const ids = medicalPersonKey.split('|')
+    const buckets = new Map()
+    const publish = () => setMedicalRecords([...buckets.values()].flat())
+    const stops = ids.map((personId) => {
+      const target = medicalAttachmentTarget(incident.id, personId)
+      if (!target) return () => {}
+      return subscribeInjuryRecords(orgId, target.injuryId, (rows) => {
+        buckets.set(personId, (rows || []).map((r) => ({ ...r, personId: r.personId || personId })))
+        publish()
+      })
+    })
+    return () => { for (const stop of stops) stop() }
+  }, [canReadHealth, orgId, incident?.id, medicalPersonKey])
 
   const type = draft.type || incident?.type
   const requiresInjury = typeRequiresInjury(type)
@@ -142,12 +173,28 @@ export default function IncidentWizard() {
   // ── Photo helpers ──
   const addPhoto = async (fileObj) => {
     if (!incident) return
-    await addIncidentPhoto(orgId, incident.id, { ...fileObj, uploadedBy: actor.name })
+    await addIncidentPhoto(orgId, incident.id, { ...fileObj, uploadedBy: actor.name, kind: 'photo' })
   }
   const removePhoto = async (photoId) => {
     if (!incident) return
     await deleteIncidentPhoto(orgId, incident.id, photoId)
   }
+  const addRecord = async (personId, fileObj) => {
+    if (!incident) return
+    await addMedicalRecord(orgId, incident, personId, { ...fileObj, uploadedBy: actor.name })
+    if (!canReadHealth) setFiledCounts((c) => ({ ...c, [personId]: (c[personId] || 0) + 1 }))
+  }
+  const removeRecord = async (personId, recordId) => {
+    if (!incident || !canReadHealth) return
+    const target = medicalAttachmentTarget(incident.id, personId)
+    if (!target) return
+    await deleteMedicalRecord(orgId, target.injuryId, recordId)
+  }
+  const legacyMedicalCount = photos.filter((p) => p.kind === 'medical_record').length
+  // Print, the mailed PDF and the diagram lookup must not receive a clinical
+  // file that is still sitting in the photo album. Evidence rendering also
+  // filters on kind === 'photo'; this is the copy those callers are given.
+  const scenePhotos = photos.filter((p) => p.kind !== 'medical_record')
 
   // ── Step saves ──
   const validInitial = () => {
@@ -190,7 +237,7 @@ export default function IncidentWizard() {
       } else {
         const flipping = incident.stagesDone?.initial !== true
         const reportPdfPath = flipping
-          ? await captureIncidentReport(orgId, { ...incident, ...draft }, { org, photos })
+          ? await captureIncidentReport(orgId, { ...incident, ...draft }, { org, photos: scenePhotos })
           : ''
         await updateIncident(orgId, incident.id, {
           ...draft,
@@ -326,8 +373,8 @@ export default function IncidentWizard() {
     documentTitle: incident ? `${incident.refNo}-full-report` : 'full-report',
   })
   const diagramPhoto = useMemo(
-    () => photos.find((p) => p.id === incident?.investigation?.pngPhotoId) || photos.filter((p) => p.kind === 'diagram').slice(-1)[0],
-    [photos, incident]
+    () => scenePhotos.find((p) => p.id === incident?.investigation?.pngPhotoId) || scenePhotos.filter((p) => p.kind === 'diagram').slice(-1)[0],
+    [scenePhotos, incident]
   )
 
   if (loading) return <div className="grid h-64 place-items-center"><Spinner size={28} className="text-brand-500" /></div>
@@ -404,9 +451,12 @@ export default function IncidentWizard() {
             persons={incident?.affectedPersonnel || []}
             value={injuryReports}
             onChange={setInjuryReports}
-            photos={photos.filter((p) => p.kind === 'medical_record')}
-            onAddPhoto={addPhoto}
-            onRemovePhoto={removePhoto}
+            records={canReadHealth ? medicalRecords : []}
+            onAddRecord={addRecord}
+            onRemoveRecord={canReadHealth ? removeRecord : undefined}
+            canReadRecords={canReadHealth}
+            filedCounts={filedCounts}
+            legacyCount={canReadHealth ? legacyMedicalCount : 0}
             canEdit={Boolean(incident)}
             lockedPersonIds={verifiedPersonIds}
             hiddenPersonIds={hiddenPersonIds}
@@ -472,8 +522,8 @@ export default function IncidentWizard() {
           no longer on the incident, and a report that quietly printed a blank
           medical block would read as "nobody was hurt". */}
       <div className="hidden">
-        <IncidentReportDoc ref={printRef} incident={incident} photos={photos} org={org} full={false} injuries={incidentInjuries} medicalAvailable={canReadHealth} />
-        <IncidentReportDoc ref={fullRef} incident={incident} photos={photos} org={org} full diagramUrl={diagramPhoto?.dataUrl} injuries={incidentInjuries} medicalAvailable={canReadHealth} />
+        <IncidentReportDoc ref={printRef} incident={incident} photos={scenePhotos} org={org} full={false} injuries={incidentInjuries} medicalAvailable={canReadHealth} />
+        <IncidentReportDoc ref={fullRef} incident={incident} photos={scenePhotos} org={org} full diagramUrl={diagramPhoto?.dataUrl} injuries={incidentInjuries} medicalAvailable={canReadHealth} />
       </div>
     </div>
   )

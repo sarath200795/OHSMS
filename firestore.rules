@@ -2514,14 +2514,15 @@ service cloud.firestore {
 
         // The attached FILES, not just the fields.
         //
-        // The split above moved the clinical fields here and left the DOCUMENTS
-        // behind in incidents/{id}/photos, filed as kind:'medical_record' — a
-        // subcollection the generic {sub=**} at the foot of this file hands to
-        // every approved member AND to the external auditor, by get and by
-        // list. A GP letter, a fit note, a discharge summary IS the record; the
-        // fields were confined and the scan of the same information was not, so
-        // one getDocs on an incident's photos returned filename, caption and a
-        // download URL for every medical document in the tenant.
+        // The split above moved the clinical fields here. New medical FILES are
+        // written to /records (addMedicalRecord). Documents filed before that,
+        // as kind:'medical_record' inside incidents/{id}/photos, are still handed
+        // by the generic {sub=**} rule to every approved member AND to the
+        // external auditor, by get and by list. A kind label cannot split that
+        // list, so confineMedicalRecords is what closes the rows already stored.
+        // Until it has been applied, one getDocs on an incident's photos still
+        // returns filename, caption and any stored download URL for every
+        // medical document that has not been moved.
         //
         // A `kind` field could never have fixed that. Rules cannot filter WHICH
         // documents a list returns — a query is allowed or refused whole — so

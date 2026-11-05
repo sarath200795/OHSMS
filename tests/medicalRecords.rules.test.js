@@ -215,6 +215,10 @@ describe('the medical-record pointer is manager-only', () => {
     await assertFails(getDocs(records(out)))
   })
 
+  it('refuses another tenant the write as well as the read', async () => {
+    await assertFails(setDoc(record(as('stranger'), 'planted'), RECORD))
+  })
+
   // Reading an ABSENT field directly RAISES and a raising rule DENIES, which is
   // how a check meant to protect new documents locks every old one out. The
   // rule reads nothing off the pointer on purpose; this pins that, because the
@@ -334,6 +338,11 @@ describe('the medical-record FILE is manager-only', () => {
   it('refuses a manager of another org', async () => {
     await assertFails(getBytes(ref(stAs('bmgr', 'manager', OTHER), MEDICAL(ORG))))
     await assertSucceeds(getBytes(ref(stAs('bmgr', 'manager', OTHER), MEDICAL(OTHER))))
+  })
+
+  it('refuses another tenant the upload', async () => {
+    await assertFails(uploadBytes(ref(stAs('bmem', 'member', OTHER), MEDICAL(ORG, 'theirs.pdf')), bytes()))
+    await assertFails(uploadBytes(ref(stAs('badm', 'admin', OTHER), MEDICAL(ORG, 'theirs.pdf')), bytes()))
   })
 
   // The upload comes from Step 1a, filled in by whoever is on shift. Same

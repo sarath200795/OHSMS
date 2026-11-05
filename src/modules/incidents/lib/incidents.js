@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // All incident data access: org-scoped paths, the resumable 5-step document,
-// the photos/medical-records subcollection, soft-delete, and the dashboard stats
-// counter (maintained with increment() deltas, fire-and-forget).
+// scene photos, soft-delete, and the dashboard stats counter (maintained with
+// increment() deltas, fire-and-forget). Medical files are not in this module.
 // ─────────────────────────────────────────────────────────────────────────────
 import {
   collection,
@@ -363,8 +363,15 @@ export async function purgeIncident(orgId, id, actor, label) {
   await logAudit(orgId, actor, AUDIT.INCIDENT_PURGE, { target: 'incident', targetId: id, targetLabel: label || id })
 }
 
-// ── Photos / medical records subcollection ────────────────────────────────────
+// ── Scene photos and investigation diagrams ───────────────────────────────────
+// Medical records do not belong here. This subcollection is readable by every
+// approved member and by the auditor, and its bytes sit under `incident-photos`,
+// which storage.rules hands to the same people. A GP letter filed beside a
+// guard-rail photo is the letter. addMedicalRecord in injuries.js is the writer.
 export async function addIncidentPhoto(orgId, id, photo) {
+  if (photo?.kind === 'medical_record') {
+    throw new Error('Medical records are filed on the injury report, not with the incident photos.')
+  }
   // Cloud first; the photo document then holds a URL instead of the image.
   // putFile returning null (bucket not enabled, offline) keeps the legacy
   // inline path, so evidence upload never fails harder than it used to.
