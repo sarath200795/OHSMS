@@ -40,6 +40,7 @@ assert_eq "$(grep '^TG_LIST_ORGS=' "$env_file")" "TG_LIST_ORGS=false" "org names
 assert_eq "$(grep '^TG_ORG_ID=' "$env_file")" "TG_ORG_ID=" "telegram is not pinned"
 assert_eq "$(grep '^WA_TEMPLATE_WELCOME=' "$env_file")" "WA_TEMPLATE_WELCOME=" "welcome template stays blank"
 assert_eq "$(grep '^WA_TEMPLATE_TEST=' "$env_file")" "WA_TEMPLATE_TEST=" "test template stays blank"
+assert_eq "$(grep '^AUTH_WEB_API_KEY=' "$env_file")" "AUTH_WEB_API_KEY=" "password check key stays empty"
 if grep -Eq '^(DATA_KEY_MASTER|SMTP_PASS)=' "$env_file"; then
   fail "secret key written into dotenv"
 fi
@@ -82,9 +83,12 @@ grep -q 'WA_TEMPLATE_WELCOME' "$tmp/tpl.err" || fail "rejected template did not 
 # --non-interactive before it applies the code default, and the error names
 # each absent key. That is the v2.0.7 failure. defineSecret names stay out:
 # a secret in this file is deployed as a plain env var (LOW-13).
-string_params="$(grep -RhoE "defineString\\('[A-Z0-9_]+'" "$root/functions" --include='*.js' \
+# node_modules is present in a local functions install and its examples include
+# defineString('TOPIC') with no default. The coverage check is our source.
+param_sources=("$root/functions/index.js" "$root/functions/lib")
+string_params="$(grep -RhoE "defineString\\('[A-Z0-9_]+'" "${param_sources[@]}" --include='*.js' \
   | sed -E "s/defineString\\('//; s/'//" | sort -u)"
-secret_params="$(grep -RhoE "defineSecret\\('[A-Z0-9_]+'" "$root/functions" --include='*.js' \
+secret_params="$(grep -RhoE "defineSecret\\('[A-Z0-9_]+'" "${param_sources[@]}" --include='*.js' \
   | sed -E "s/defineSecret\\('//; s/'//" | sort -u)"
 [[ -n "$string_params" ]] || fail "found no defineString params"
 [[ -n "$secret_params" ]] || fail "found no defineSecret params"
@@ -92,7 +96,7 @@ secret_params="$(grep -RhoE "defineSecret\\('[A-Z0-9_]+'" "$root/functions" --in
 # with no default is the one an interactive deploy prompts for.
 while IFS= read -r call; do
   [[ "$call" == *'default:'* ]] || fail "defineString without a default: $call"
-done < <(grep -RhoE "defineString\\('[A-Z0-9_]+'[^)]*\\)" "$root/functions" --include='*.js')
+done < <(grep -RhoE "defineString\\('[A-Z0-9_]+'[^)]*\\)" "${param_sources[@]}" --include='*.js')
 
 unset_args=()
 while IFS= read -r name; do
@@ -128,6 +132,7 @@ while IFS= read -r name; do
 done <<<"$string_params"
 assert_eq "$(grep '^WA_TEMPLATE_WELCOME=' "$committed")" "WA_TEMPLATE_WELCOME=" "committed welcome stays blank"
 assert_eq "$(grep '^WA_TEMPLATE_TEST=' "$committed")" "WA_TEMPLATE_TEST=" "committed test stays blank"
+assert_eq "$(grep '^AUTH_WEB_API_KEY=' "$committed")" "AUTH_WEB_API_KEY=" "committed password-check key is empty"
 while IFS= read -r name; do
   if grep -q "^${name}=" "$committed"; then
     fail "functions/.env.weehs-4eb28 contains secret $name"
@@ -155,6 +160,8 @@ assert_workflow_templates() {
     || fail "$file does not pass WA_TEMPLATE_WELCOME into write-env"
   grep -q 'WA_TEMPLATE_TEST: ${{ vars.WA_TEMPLATE_TEST }}' <<<"$block" \
     || fail "$file does not pass WA_TEMPLATE_TEST into write-env"
+  grep -q 'AUTH_WEB_API_KEY: ${{ vars.AUTH_WEB_API_KEY }}' <<<"$block" \
+    || fail "$file does not pass AUTH_WEB_API_KEY into write-env"
 }
 assert_workflow_templates "$root/.github/workflows/deploy.yml"
 assert_workflow_templates "$root/.github/workflows/deploy-staging.yml"

@@ -53,11 +53,33 @@ service cloud.firestore {
     // would have locked out every existing user of the app. The same shape that
     // refused every QR defect report for a day.
     //
-    // Reading and updating your OWN profile deliberately do not go through this
-    // (see /users below), or the change-password screen would be locked out of
-    // clearing the flag it exists to clear.
+    // Reading your OWN profile deliberately does not go through this, or the
+    // change-password screen could not load. Updating that profile does not
+    // go through this either — and it cannot clear the flag. Clearing used to
+    // be a self-write, so anyone who knew the temporary password set the flag
+    // to false from the SDK and never replaced the password. passwordGateOn()
+    // below is what stops that. The only clear is completePasswordChange,
+    // which replaces the Auth password first and then writes with the Admin SDK.
     function passwordIsOwn() {
       return myProfile().get('mustChangePassword', false) != true;
+    }
+
+    // .get() with a default, same reason as passwordIsOwn(): a profile that
+    // predates the field has no key, and reading it directly would raise.
+    function passwordGateOn(data) {
+      return data.get('mustChangePassword', false) == true;
+    }
+
+    function passwordGateUnchanged() {
+      return passwordGateOn(request.resource.data) == passwordGateOn(resource.data);
+    }
+
+    // An admin may impose the requirement (false → true). Nobody writing as a
+    // client may lift it (true → false), including the account itself and an
+    // admin editing somebody else. Replacing the whole document, or deleting
+    // it and creating it again without the flag, is the same bypass.
+    function keepsPasswordGate() {
+      return !passwordGateOn(resource.data) || passwordGateOn(request.resource.data);
     }
 
     function isApprovedMemberOf(orgId) {
@@ -1486,6 +1508,12 @@ service cloud.firestore {
       allow delete: if isPlatformAdmin();
     }
 
+    // Server-only lock for an in-flight password replacement: a random nonce,
+    // a phase, and an expiry. Not a password and not a digest of one.
+    match /authGates/{uid} {
+      allow read, write: if false;
+    }
+
     // ── User profiles ─────────────────────────────────────────────────────────
     match /users/{uid} {
       // Read your own profile, or — once you are an APPROVED member — any
@@ -1570,7 +1598,13 @@ service cloud.firestore {
                 || (request.resource.data.status == 'approved'
                     && request.resource.data.role == 'admin'
                     && getAfter(/databases/$(database)/documents/organizations/$(request.resource.data.orgId)).data.createdBy == request.auth.uid)))
-          || (isAdminOf(request.resource.data.orgId) && request.resource.data.role != 'admin')
+          // mustChangePassword has to be true on the way in. Without that, an
+          // admin who cannot clear the flag (keepsPasswordGate) could still
+          // delete the profile and create it again with the flag absent, and
+          // the temporary password would outlive the requirement.
+          || (isAdminOf(request.resource.data.orgId)
+              && request.resource.data.role != 'admin'
+              && request.resource.data.get('mustChangePassword', false) == true)
         );
 
       // Update your own limited fields, or an admin manages members in the same
@@ -1615,8 +1649,9 @@ service cloud.firestore {
             && request.resource.data.get('siteId', '') == resource.data.get('siteId', '')
             && request.resource.data.get('access', {}) == resource.data.get('access', {})
             && request.resource.data.get('department', '') == resource.data.get('department', '')
-            && request.resource.data.get('dept', '') == resource.data.get('dept', ''))
-          || isAdminOf(resource.data.orgId)
+            && request.resource.data.get('dept', '') == resource.data.get('dept', '')
+            && passwordGateUnchanged())
+          || (isAdminOf(resource.data.orgId) && keepsPasswordGate())
         );
 
       allow delete: if isAdminOf(resource.data.orgId);

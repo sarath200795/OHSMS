@@ -273,6 +273,9 @@ jobs:
           APP_ORIGIN: ${{ vars.APP_ORIGIN }}
           WA_TEMPLATE_WELCOME: ${{ vars.WA_TEMPLATE_WELCOME }}
           WA_TEMPLATE_TEST: ${{ vars.WA_TEMPLATE_TEST }}
+          # Empty when the variable is unset. That fail-closes password
+          # completion; it does not copy or loosen the browser API key.
+          AUTH_WEB_API_KEY: ${{ vars.AUTH_WEB_API_KEY }}
         run: bash scripts/prepare-functions-deploy.sh write-env
 
       # functions:secrets:get returns metadata only. functions:secrets:access

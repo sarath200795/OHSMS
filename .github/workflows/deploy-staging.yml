@@ -188,6 +188,8 @@ jobs:
           APP_ORIGIN: ${{ vars.APP_ORIGIN }}
           WA_TEMPLATE_WELCOME: ${{ vars.WA_TEMPLATE_WELCOME }}
           WA_TEMPLATE_TEST: ${{ vars.WA_TEMPLATE_TEST }}
+          # Empty when unset. Does not copy or loosen the browser API key.
+          AUTH_WEB_API_KEY: ${{ vars.AUTH_WEB_API_KEY }}
         run: bash scripts/prepare-functions-deploy.sh write-env
 
       # Same secret rules as production. Leave an existing secret alone.
