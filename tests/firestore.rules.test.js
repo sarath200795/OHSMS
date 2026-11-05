@@ -1368,7 +1368,8 @@ describe('injury and illness records are need-to-know', () => {
     it(`still lets a member WRITE ${col}, which reporting an incident does`, async () => {
       const db = testEnv.authenticatedContext('bobA').firestore()
       await assertSucceeds(setDoc(doc(db, 'organizations', 'orgA', col, 'h2'), {
-        personName: 'New', incidentId: 'i1',
+        personName: 'New', incidentId: 'i1', createdBy: 'bobA', deletedAt: null,
+        ...(col === 'illnesses' ? { exposedToAgent: '', healthIssue: 'rash' } : { injuryType: 'sprain' }),
       }))
     })
   }

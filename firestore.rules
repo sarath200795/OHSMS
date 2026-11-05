@@ -1613,6 +1613,22 @@ service cloud.firestore {
       // what it says; the rest of the payload stays free-form because the trail
       // records many different shapes.
       match /auditLogs/{logId} {
+        // "exposedToAgent: changed" may sit in a longer summary. A value, or
+        // anything after the word changed other than "." or ";", may not.
+        // RE2 has no lookahead, so each wrong letter is its own pattern.
+        function auditSummaryHidesClinical() {
+          let s = request.resource.data.get('summary', '');
+          return !s.matches('.*exposedToAgent:.*')
+            || (s.matches('.*exposedToAgent: changed.*')
+                && !s.matches('.*exposedToAgent: [^c].*')
+                && !s.matches('.*exposedToAgent: c[^h].*')
+                && !s.matches('.*exposedToAgent: ch[^a].*')
+                && !s.matches('.*exposedToAgent: cha[^n].*')
+                && !s.matches('.*exposedToAgent: chan[^g].*')
+                && !s.matches('.*exposedToAgent: chang[^e].*')
+                && !s.matches('.*exposedToAgent: change[^d].*')
+                && !s.matches('.*exposedToAgent: changed[^.;].*'));
+        }
         allow read: if isApprovedMemberOf(orgId);
         // actorUid pins WHO. `at == request.time` pins WHEN, and without it a
         // member could write a real entry under their own uid, dated last
@@ -1650,7 +1666,13 @@ service cloud.firestore {
           // must not have.
           && (request.resource.data.get('actorName', '') == myProfile().get('name', '')
               || request.resource.data.get('actorName', '') == 'Unknown'
-              || request.resource.data.get('actorName', '') == '');
+              || request.resource.data.get('actorName', '') == '')
+          // exposedToAgent is the illness field the health gate exists for.
+          // /auditLogs is readable by every approved member, so a summary of
+          // the form "exposedToAgent: old → new" publishes it. The only legal
+          // mention is "exposedToAgent: changed". Historic rows already stored
+          // are not rewritten here.
+          && auditSummaryHidesClinical();
         allow update, delete: if false;
       }
 
@@ -2485,6 +2507,28 @@ service cloud.firestore {
         allow read: if canReadDocument(orgId, resource.data);
       }
 
+      // Incidents schedule the same purge as the clinical collections, and the
+      // check does not fit on the generic write (that grant is on the
+      // 1000-expression ceiling). Excluding the collection from structuralOnly
+      // is what makes this the only grant. Read stays every approved member:
+      // the incident is the report they filed, and the photos are its evidence.
+      // A nested {sub=**} would also match this document and hand deletedAt
+      // back, so photos are named on their own.
+      match /incidents/{incidentId} {
+        allow read: if isApprovedMemberOf(orgId) && moduleAllowed(orgId, 'incidents');
+        allow create, update: if isWriterOf(orgId)
+          && moduleAllowed(orgId, 'incidents')
+          && keepsSoftDelete('incidents')
+          && (isManagerOf(orgId)
+              || keepsDecision('incidents', beforeData(), request.resource.data));
+        allow delete: if isManagerOf(orgId);
+        match /photos/{photoId} {
+          allow read: if isApprovedMemberOf(orgId) && moduleAllowed(orgId, 'incidents');
+          allow create, update: if isWriterOf(orgId) && moduleAllowed(orgId, 'incidents');
+          allow delete: if isManagerOf(orgId);
+        }
+      }
+
       // ── Health records ──────────────────────────────────────────────────────
       // Injuries and illnesses carry special-category data: a named colleague's
       // body parts, injury type, medication, days off, the agent they were
@@ -2546,14 +2590,27 @@ service cloud.firestore {
         // access here raises on any pointer written before that field existed,
         // and a raising rule denies.
         //
-        // WRITES are intentionally absent. The generic rule below already grants
-        // create/update to isWriterOf under col == 'injuries' (so the member
-        // filling in Step 1a can attach the letter they cannot read back, and
-        // the auditor is refused) and restricts delete to isManagerOf, which
-        // mirrors canDeleteFrom in storage.rules. Adding a write match here
-        // could only widen that — rules are a permissive union.
+        // Writes are this match, not the generic rule. That rule is a
+        // permissive union and is already on the 1000-expression ceiling, so
+        // the clinical checks cannot be added to it — 'injuries' is excluded
+        // from structuralOnly, which is what makes the lines below the only
+        // grant. A member still files the report and the letter they cannot
+        // read back. They do not replace someone else's clinical fields, move
+        // the join keys, or set deletedAt. Delete stays isManagerOf, which
+        // mirrors canDeleteFrom in storage.rules.
+        allow create, update: if isWriterOf(orgId)
+          && moduleAllowed(orgId, 'incidents')
+          && keepsSoftDelete('injuries')
+          && keepsClinicalJoin('injuries')
+          && (isManagerOf(orgId)
+              || (keepsDecision('injuries', beforeData(), request.resource.data)
+                  && keepsClinicalContent('injuries')
+                  && keepsClinicalAuthor('injuries')));
+        allow delete: if isManagerOf(orgId);
         match /records/{recordId} {
           allow read: if isManagerOf(orgId);
+          allow create: if isWriterOf(orgId) && moduleAllowed(orgId, 'incidents');
+          allow update, delete: if isManagerOf(orgId);
         }
       }
 
@@ -2575,12 +2632,23 @@ service cloud.firestore {
         // gives: 'auditor' is an outside party, and confirming illnesses are
         // recorded does not require reading a named colleague's GP letter.
         //
-        // Writes stay absent, exactly as they do under /injuries: the generic
-        // rule already grants create/update to isWriterOf under col ==
-        // 'illnesses' and restricts delete to isManagerOf, and a match here
-        // could only widen that — rules are a permissive union.
+        // Same split as /injuries, and for the same reason: the generic grant
+        // cannot carry the field list, so 'illnesses' is excluded from
+        // structuralOnly and this match is the only write. The author keeps
+        // editing until the illness is closed or verified. Anyone else does
+        // not replace the clinical fields or the bin timestamp.
+        allow create, update: if isWriterOf(orgId)
+          && moduleAllowed(orgId, 'incidents')
+          && keepsSoftDelete('illnesses')
+          && (isManagerOf(orgId)
+              || (keepsDecision('illnesses', beforeData(), request.resource.data)
+                  && keepsClinicalContent('illnesses')
+                  && keepsClinicalAuthor('illnesses')));
+        allow delete: if isManagerOf(orgId);
         match /files/{fileId} {
           allow read: if isManagerOf(orgId);
+          allow create: if isWriterOf(orgId) && moduleAllowed(orgId, 'incidents');
+          allow update, delete: if isManagerOf(orgId);
         }
       }
 
@@ -2668,10 +2736,15 @@ service cloud.firestore {
     //   read         structural, PLUS the four confidential collections —
     //                documents, injuries, illnesses, notifications — each of
     //                which has its own narrower read rule above.
-    //   write        structural only. The confidential four are deliberately NOT
-    //                excluded: a writer must be able to attach a record they are
-    //                not entitled to read back.
-    //   delete       structural only.
+    //   write        structural, and also incidents, injuries and illnesses.
+    //                Their soft-delete and clinical checks do not fit on the
+    //                generic grant — it is already on the 1000-expression
+    //                ceiling — so those collections are in the list below and
+    //                their own matches are the only write. A member still
+    //                attaches a record they cannot read back; that create is
+    //                on the injury and illness matches, not here.
+    //   delete       structural only. The three collections above grant
+    //                delete to isManagerOf on their own matches.
     //
     // delete previously omitted defectLocks from its list. Adding it takes away
     // nothing: the defectLocks block above already grants delete to
@@ -2697,7 +2770,11 @@ service cloud.firestore {
       // any of them.
       return !(col in [
         'auditLogs', 'defectLocks', 'docSeq', 'consultations',
-        'lotoPermits', 'lotoSettings', 'lotoGroupNumbers'
+        'lotoPermits', 'lotoSettings', 'lotoGroupNumbers',
+        // Soft-delete and clinical field checks live on the dedicated matches.
+        // Another `&&` on the generic write pushed the extinguisher close over
+        // the 1000-expression ceiling. One more name in this list does not.
+        'incidents', 'injuries', 'illnesses'
       ])
         // 'meta' joins them, and for the same reason docSeq did: /meta/{kind}
         // now carries a monotonic rule of its own, and a narrow match cannot
@@ -2805,16 +2882,115 @@ service cloud.firestore {
     // rather than protecting a timestamp they never had. Same shape as
     // keepsClassification below.
     //
-    // Scoped to 'injuries' on purpose. Soft delete is manager-only in
-    // permissions.js ('record.delete') for incidents and illnesses too and is
-    // enforced on neither — the delete button on Incidents.jsx is not gated at
-    // all — so widening this predicate would refuse a write the product
-    // currently permits from its own UI. That gap is real and is not this
-    // change; closing it needs the UI gated in the same commit.
-    function keepsInjuryDeletion(col) {
+    // Soft delete schedules purgeSoftDeleted. Thirty days after deletedAt the
+    // incident (and its photos), the illness (and its files) or the injury
+    // (and its clinical documents) is destroyed. That is record.delete, which
+    // permissions.js gives to managers, not to members. The screens are
+    // stricter still (admin only). A member who can set the timestamp, or set
+    // it to a date already past the window, does not need the button.
+    //
+    // Both directions. Restoring is the same act as deleting. A create may
+    // only store null: a document born already deleted, backdated, is how a
+    // writer hands the sweep a live record. On an update the timestamp may
+    // stay, return to null, or become request.time. serverTimestamp() is
+    // request.time. A client Date in the past is not, so it cannot make the
+    // thirty days already elapsed.
+    //
+    // .get(f, null) because records written before the field existed do not
+    // carry it. Absent and null compare equal, so a normal edit of an older
+    // record is not a deletion. Omitting the field on a full replace reads as
+    // null, which is a restore when a timestamp was stored, and that is the
+    // manager's write.
+    //
+    // Called from the incident, illness and injury matches only. Those
+    // collections are excluded from the generic grant; a conjunct here would
+    // not bind them while that grant remained, and adding it there crosses
+    // the expression ceiling. .get, never a direct read: an absent deletedAt
+    // raises, and a raising rule denies the edit.
+    function keepsSoftDelete(col) {
+      return !(col in ['incidents', 'illnesses', 'injuries'])
+        || (resource == null
+            && request.resource.data.get('deletedAt', null) == null)
+        || (resource != null
+            && (request.resource.data.get('deletedAt', null) == resource.data.get('deletedAt', null)
+                || (isManagerOf(orgId)
+                    && (request.resource.data.get('deletedAt', null) == null
+                        || request.resource.data.get('deletedAt', null) == request.time))));
+    }
+
+    // The injury document id is `${incidentId}__${personId}`. Rewriting those
+    // fields points the clinical record at someone else without changing the
+    // path the medical-record upload is filed under. Same values still merge.
+    // A subcollection row that has neither field compares empty to empty.
+    function keepsClinicalJoin(col) {
       return col != 'injuries'
         || resource == null
-        || request.resource.data.get('deletedAt', null) == resource.data.get('deletedAt', null);
+        || (request.resource.data.get('incidentId', '') == resource.data.get('incidentId', '')
+            && request.resource.data.get('personId', '') == resource.data.get('personId', ''));
+    }
+
+    function clinicalFieldSame(field) {
+      return request.resource.data.get(field, null) == resource.data.get(field, null);
+    }
+
+    // Parent injury/illness documents carry these. A medical-record or illness
+    // file create does not, and must stay writable by the member who cannot
+    // read the record back. hasAny is true when the key is present, including
+    // an empty string, which is how createIllness always writes exposedToAgent.
+    function clinicalParentCreate(col) {
+      return (col == 'injuries'
+          && request.resource.data.keys().hasAny(['incidentId', 'medication', 'bodyParts', 'injuryType']))
+        || (col == 'illnesses'
+          && request.resource.data.keys().hasAny(['exposedToAgent', 'healthIssue', 'affectedPersonnel']));
+    }
+
+    function clinicalFieldsSame(col) {
+      return col == 'injuries'
+        ? clinicalFieldSame('bodyParts') && clinicalFieldSame('injuryType')
+          && clinicalFieldSame('medication') && clinicalFieldSame('firstAidDetail')
+          && clinicalFieldSame('daysToReturnToWork') && clinicalFieldSame('recordFileIds')
+          && clinicalFieldSame('personName') && clinicalFieldSame('firstAidDone')
+          && clinicalFieldSame('name') && clinicalFieldSame('caption') && clinicalFieldSame('dataUrl')
+        : col == 'illnesses'
+        ? clinicalFieldSame('healthIssue') && clinicalFieldSame('affectedBodyParts')
+          && clinicalFieldSame('exposedToAgent') && clinicalFieldSame('exposureDuration')
+          && clinicalFieldSame('ppe') && clinicalFieldSame('affectedPersonnel')
+          && clinicalFieldSame('actions') && clinicalFieldSame('createdByName')
+          && clinicalFieldSame('name') && clinicalFieldSame('caption') && clinicalFieldSame('dataUrl')
+        : true;
+    }
+
+    // The author may keep editing the report they filed, until it is verified
+    // or the illness is closed. Someone else's createdBy, or none, is not them:
+    // a member who cannot read the document must not be able to write blanks
+    // over it, and a colleague who merely knows the id must not replace it.
+    // name/caption/dataUrl are the attachment. A create of those has no
+    // createdBy and is not a parent, so the upload still lands. An update of
+    // them does not, unless this member is the author recorded on that row.
+    function reporterMayEditClinical(col) {
+      return resource != null
+        && resource.data.get('createdBy', '') == request.auth.uid
+        && (col == 'injuries'
+            ? resource.data.get('status', '') != 'verified'
+              && request.resource.data.get('status', '') != 'verified'
+            : resource.data.get('lifecycle', '') != 'closed'
+              && resource.data.get('lifecycle', '') != 'verified'
+              && request.resource.data.get('lifecycle', '') != 'closed'
+              && request.resource.data.get('lifecycle', '') != 'verified');
+    }
+
+    function keepsClinicalContent(col) {
+      return (col != 'injuries' && col != 'illnesses')
+        || (resource == null
+            ? !clinicalParentCreate(col)
+              || request.resource.data.get('createdBy', '') == request.auth.uid
+            : clinicalFieldsSame(col) || reporterMayEditClinical(col));
+    }
+
+    function keepsClinicalAuthor(col) {
+      return (col != 'injuries' && col != 'illnesses')
+        || resource == null
+        || request.resource.data.get('createdBy', '') == resource.data.get('createdBy', '');
     }
 
     // Soft-deleting an extinguisher, AED or fire-alarm panel is the first half
@@ -3136,8 +3312,7 @@ service cloud.firestore {
           && moduleAllowed(orgId, col)
           && (isElevatedOf(orgId) || keepsClassification(col))
           && (isManagerOf(orgId)
-              || (col != 'sites' && keepsDecision(col, beforeData(), request.resource.data)
-                  && keepsInjuryDeletion(col)))
+              || (col != 'sites' && keepsDecision(col, beforeData(), request.resource.data)))
           && keepsEquipmentDeletion(col)
           && keepsSignageEvidence(col)
           && keepsFasQr(col)
@@ -3184,8 +3359,7 @@ service cloud.firestore {
             && moduleAllowed(orgId, col)
             && (isElevatedOf(orgId) || keepsClassification(col))
             && (isManagerOf(orgId)
-                || (col != 'sites' && keepsDecision(col, beforeData(), request.resource.data)
-                    && keepsInjuryDeletion(col)))
+                || (col != 'sites' && keepsDecision(col, beforeData(), request.resource.data)))
             && keepsEquipmentDeletion(col)
             && keepsSignageEvidence(col)
             && keepsFasQr(col)
