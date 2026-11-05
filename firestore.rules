@@ -60,14 +60,25 @@ service cloud.firestore {
     // to false from the SDK and never replaced the password. passwordGateOn()
     // below is what stops that. The only clear is completePasswordChange,
     // which replaces the Auth password first and then writes with the Admin SDK.
-    function passwordIsOwn() {
-      return myProfile().get('mustChangePassword', false) != true;
+    // One map read, not another document get. isApprovedMemberOf used to load
+    // the profile twice; a third load, and then a hasAny, pushed the
+    // consultation close — eight unrolled action rows, copied onto the
+    // recursive wildcard — over the 1000-expression ceiling. Absent key means
+    // the account predates the flag, and .get's default covers that.
+    function passwordIsOwn(p) {
+      return p.get('mustChangePassword', false) != true;
     }
 
     // .get() with a default, same reason as passwordIsOwn(): a profile that
     // predates the field has no key, and reading it directly would raise.
+    // hasAny first. .get's default is only for an absent key, and a profile
+    // written before this field existed has no key. Reading it anyway is what
+    // turned an admin's department edit into an evaluation error once this
+    // check shared a rule with the department pin: the self branch is false,
+    // so keepsPasswordGate runs, and a raising check denies the whole update.
     function passwordGateOn(data) {
-      return data.get('mustChangePassword', false) == true;
+      return data.keys().hasAny(['mustChangePassword'])
+        && data.get('mustChangePassword', false) == true;
     }
 
     function passwordGateUnchanged() {
@@ -83,10 +94,11 @@ service cloud.firestore {
     }
 
     function isApprovedMemberOf(orgId) {
+      let p = myProfile();
       return hasProfile()
-        && myProfile().orgId == orgId
-        && myProfile().status == 'approved'
-        && passwordIsOwn();
+        && p.orgId == orgId
+        && p.status == 'approved'
+        && passwordIsOwn(p);
     }
 
     // ── Admin MFA in rules (draft, OFF) ─────────────────────────────────────
@@ -3323,9 +3335,8 @@ service cloud.firestore {
       // Profile field is `department`. `dept` is the older key, read only
       // when `department` was never set.
       function myDepartment() {
-        return myProfile().get('department', '') != ''
-          ? myProfile().get('department', '')
-          : myProfile().get('dept', '');
+        let p = myProfile();
+        return p.get('department', '') != '' ? p.get('department', '') : p.get('dept', '');
       }
       function committeeActionsSame() {
         return resource != null
@@ -3335,33 +3346,38 @@ service cloud.firestore {
       // manager edit, and a manager can already close. These slots stay off
       // the generic write: unrolling them there blew the 1000-expression
       // budget, which is why consultations are not on that write.
+      //
+      // The lists are loaded once and passed in. Reading them again inside
+      // each of the eight rows, and again on the recursive wildcard, crossed
+      // that ceiling once passwordIsOwn shared isApprovedMemberOf.
       function committeeMemberActionsOk() {
         let dept = myDepartment();
-        let n = request.resource.data.get('actions', []).size();
-        return n <= 8
-          && (resource == null || resource.data.get('actions', []).size() <= 8)
-          && committeeRowCloseOk(0, dept)
-          && committeeRowCloseOk(1, dept)
-          && committeeRowCloseOk(2, dept)
-          && committeeRowCloseOk(3, dept)
-          && committeeRowCloseOk(4, dept)
-          && committeeRowCloseOk(5, dept)
-          && committeeRowCloseOk(6, dept)
-          && committeeRowCloseOk(7, dept);
+        let after = request.resource.data.get('actions', []);
+        let before = resource == null ? [] : resource.data.get('actions', []);
+        return after.size() <= 8
+          && before.size() <= 8
+          && committeeRowCloseOk(0, dept, before, after)
+          && committeeRowCloseOk(1, dept, before, after)
+          && committeeRowCloseOk(2, dept, before, after)
+          && committeeRowCloseOk(3, dept, before, after)
+          && committeeRowCloseOk(4, dept, before, after)
+          && committeeRowCloseOk(5, dept, before, after)
+          && committeeRowCloseOk(6, dept, before, after)
+          && committeeRowCloseOk(7, dept, before, after);
       }
-      function committeeRowCloseOk(i, dept) {
-        return i >= request.resource.data.get('actions', []).size()
-          || request.resource.data.actions[i].get('ownerKind', '') != 'department'
-          || request.resource.data.actions[i].get('status', '') != 'Closed'
+      function committeeRowCloseOk(i, dept, before, after) {
+        return i >= after.size()
+          || after[i].get('ownerKind', '') != 'department'
+          || after[i].get('status', '') != 'Closed'
           || (resource != null
-              && i < resource.data.get('actions', []).size()
-              && resource.data.actions[i].get('status', '') == 'Closed'
-              && resource.data.actions[i].get('department', '') == request.resource.data.actions[i].get('department', ''))
-          || (request.resource.data.actions[i].get('department', '') == dept
+              && i < before.size()
+              && before[i].get('status', '') == 'Closed'
+              && before[i].get('department', '') == after[i].get('department', ''))
+          || (after[i].get('department', '') == dept
               && (resource == null
-                  || i >= resource.data.get('actions', []).size()
-                  || resource.data.actions[i].get('ownerKind', '') != 'department'
-                  || resource.data.actions[i].get('department', '') == request.resource.data.actions[i].get('department', '')));
+                  || i >= before.size()
+                  || before[i].get('ownerKind', '') != 'department'
+                  || before[i].get('department', '') == after[i].get('department', '')));
       }
 
       match /{col}/{docId} {
