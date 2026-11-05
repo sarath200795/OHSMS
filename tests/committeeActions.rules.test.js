@@ -154,11 +154,24 @@ describe('department is assigned by an admin, not by the profile owner', () => {
     await assertSucceeds(updateDoc(profile('adm', 'house'), { department: 'Projects' }))
     await assertSucceeds(updateDoc(profile('adm', 'house'), { department: '', dept: '' }))
     await assertSucceeds(updateDoc(profile('adm', 'house'), { department: 'Housekeeping' }))
-    await assertSucceeds(setDoc(profile('adm', 'hired'), {
+    await assertFails(setDoc(profile('adm', 'hired-open'), {
       orgId: ORG, role: 'member', status: 'approved', name: 'hired', email: 'hired@t.co',
       department: 'Housekeeping', dept: '',
       access: { sites: [], regions: [], entities: [] },
     }))
+    await assertSucceeds(setDoc(profile('adm', 'hired'), {
+      orgId: ORG, role: 'member', status: 'approved', name: 'hired', email: 'hired@t.co',
+      department: 'Housekeeping', dept: '', mustChangePassword: true,
+      access: { sites: [], regions: [], entities: [] },
+    }))
+    // Both rules at once: the department is assigned, and the account is still
+    // on the temporary password. The close waits until that flag is cleared.
+    // Neither focused PR contains both checks, so this expectation is the
+    // merge of #163 and #166, not a change to either test on its own branch.
+    await assertFails(updateDoc(meeting('hired', 'm-1'), { actions: closed }))
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await updateDoc(doc(ctx.firestore(), 'users', 'hired'), { mustChangePassword: false })
+    })
     await assertSucceeds(updateDoc(meeting('hired', 'm-1'), { actions: closed }))
   })
 
