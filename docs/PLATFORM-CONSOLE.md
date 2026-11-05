@@ -142,6 +142,11 @@ the profile. `listPlatformOrganizations` is a callable: it checks
 `platformAdmins/{uid}` with the Admin SDK and returns only the fields above.
 The request carries no organization id.
 
+The email is the one stored on the profile. When that field is missing or
+blank, the callable reads the email on the Auth account — the address the
+person signs in with — and uses that. A profile that already has an email
+keeps it. An account with no email in either place stays blank.
+
 The page can be filtered by organization name, by admin email, and by
 activity type. Each one that is filled in applies.
 

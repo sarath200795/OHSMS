@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import {
   activityTypeOf,
+  adminUidsMissingEmail,
+  fillAdminEmailsFromAuth,
   listPlatformOrganizationsFor,
   loadPlatformDirectory,
   membershipStatus,
@@ -171,6 +173,44 @@ describe('membership', () => {
       { uid: 'a', name: 'Ada', email: 'ada@acme.test', status: 'approved' },
       { uid: 'b', name: 'Bea', email: 'bea@acme.test', status: 'suspended' },
     ])
+  })
+
+  it('keeps a profile email and returns an empty one when the profile has none', () => {
+    expect(
+      projectAdmins([
+        { uid: 'a', role: 'admin', name: 'Ada', email: 'ada@acme.test', status: 'approved' },
+        { uid: 'b', role: 'admin', name: 'Bea', status: 'approved' },
+        { uid: 'c', role: 'admin', name: 'Cy', email: '   ', status: 'pending' },
+        { uid: 'm', role: 'member', name: 'Mo', email: 'mo@acme.test', status: 'approved' },
+      ])
+    ).toEqual([
+      { uid: 'a', name: 'Ada', email: 'ada@acme.test', status: 'approved' },
+      { uid: 'b', name: 'Bea', email: '', status: 'approved' },
+      { uid: 'c', name: 'Cy', email: '', status: 'pending' },
+    ])
+  })
+})
+
+describe('admin email fallback', () => {
+  it('names only admins whose profile email is missing, and never a path-shaped id', () => {
+    const members = new Map([
+      [
+        'orgA',
+        [
+          { uid: 'ada', role: 'admin', email: 'ada@acme.test' },
+          { uid: 'bea', role: 'admin', email: '' },
+          { uid: 'mo', role: 'member', email: '' },
+          { uid: 'a/b', role: 'admin', email: '' },
+        ],
+      ],
+    ])
+    expect(adminUidsMissingEmail(members)).toEqual(['bea'])
+  })
+
+  it('leaves the profile untouched when no Auth client is passed', async () => {
+    const members = new Map([['orgA', [{ uid: 'bea', role: 'admin', email: '' }]]])
+    await fillAdminEmailsFromAuth(members, null)
+    expect(members.get('orgA')[0].email).toBe('')
   })
 })
 
@@ -435,6 +475,115 @@ describe('listPlatformOrganizationsFor', () => {
     expect(beacon.lastActivityAt).toBe(null)
     expect(beacon.admins).toEqual([
       { uid: 'legacy', name: 'Legacy Admin', email: 'legacy@beacon.test', status: null },
+    ])
+  })
+
+  it('keeps the profile email and does not ask Auth when every admin already has one', async () => {
+    const seen = []
+    const auth = {
+      async getUsers(ids) {
+        seen.push(ids)
+        return { users: ids.map(({ uid }) => ({ uid, email: 'from-auth@example.com' })) }
+      },
+    }
+    const db = granted({
+      'organizations/orgA': { name: 'Acme' },
+      'users/ada': {
+        orgId: 'orgA',
+        role: 'admin',
+        status: 'approved',
+        name: 'Ada',
+        email: 'ada@acme.test',
+      },
+    })
+    const out = await listPlatformOrganizationsFor(db, OPERATOR, { now: NOW, auth })
+    expect(out.rows[0].admins).toEqual([
+      { uid: 'ada', name: 'Ada', email: 'ada@acme.test', status: 'approved' },
+    ])
+    expect(seen).toEqual([])
+  })
+
+  it('uses the Auth email when the profile has none, and does not look up other roles', async () => {
+    const seen = []
+    const auth = {
+      async getUsers(ids) {
+        seen.push(ids.map((id) => id.uid))
+        return {
+          users: [
+            { uid: 'ada', email: '  ada@acme.test  ', phoneNumber: '+910000000099' },
+            { uid: 'bea', email: '   ' },
+            { uid: 'dee', email: 'dee@acme.test' },
+          ],
+          notFound: [{ uid: 'cy' }],
+        }
+      },
+    }
+    const db = granted({
+      'organizations/orgA': { name: 'Acme' },
+      'users/ada': { orgId: 'orgA', role: 'admin', status: 'approved', name: 'Ada' },
+      'users/bea': { orgId: 'orgA', role: 'admin', status: 'approved', name: 'Bea', email: '' },
+      'users/cy': { orgId: 'orgA', role: 'admin', name: 'Cy', email: '   ' },
+      'users/dee': {
+        orgId: 'orgA',
+        role: 'admin',
+        status: 'suspended',
+        name: 'Dee',
+        email: { address: 'not-a-string@acme.test' },
+      },
+      'users/mo': { orgId: 'orgA', role: 'member', status: 'approved', name: 'Mo' },
+    })
+    const out = await listPlatformOrganizationsFor(db, OPERATOR, {
+      now: NOW,
+      auth,
+      authEmailBatch: 2,
+    })
+    expect(seen).toEqual([
+      ['ada', 'bea'],
+      ['cy', 'dee'],
+    ])
+    expect(out.rows[0].admins).toEqual([
+      { uid: 'ada', name: 'Ada', email: 'ada@acme.test', status: 'approved' },
+      { uid: 'bea', name: 'Bea', email: '', status: 'approved' },
+      { uid: 'cy', name: 'Cy', email: '', status: null },
+      { uid: 'dee', name: 'Dee', email: 'dee@acme.test', status: 'suspended' },
+    ])
+    const body = JSON.stringify(out)
+    expect(body).not.toContain('mo')
+    expect(body).not.toContain('+910000000099')
+    expect(body).not.toContain('not-a-string')
+  })
+
+  it('still returns the directory when an Auth batch fails, and keeps a later batch', async () => {
+    let calls = 0
+    const auth = {
+      async getUsers(ids) {
+        calls += 1
+        if (calls === 1) throw new Error('auth unavailable')
+        return { users: ids.map(({ uid }) => ({ uid, email: `${uid}@acme.test` })) }
+      },
+    }
+    const db = granted({
+      'organizations/orgA': { name: 'Acme' },
+      'users/ada': {
+        orgId: 'orgA',
+        role: 'admin',
+        status: 'approved',
+        name: 'Ada',
+        email: 'ada@acme.test',
+      },
+      'users/bea': { orgId: 'orgA', role: 'admin', status: 'approved', name: 'Bea' },
+      'users/cy': { orgId: 'orgA', role: 'admin', status: 'approved', name: 'Cy' },
+    })
+    const out = await listPlatformOrganizationsFor(db, OPERATOR, {
+      now: NOW,
+      auth,
+      authEmailBatch: 1,
+    })
+    expect(out.rows[0].status).toBe('active')
+    expect(out.rows[0].admins).toEqual([
+      { uid: 'ada', name: 'Ada', email: 'ada@acme.test', status: 'approved' },
+      { uid: 'bea', name: 'Bea', email: '', status: 'approved' },
+      { uid: 'cy', name: 'Cy', email: 'cy@acme.test', status: 'approved' },
     ])
   })
 

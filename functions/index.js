@@ -3385,11 +3385,13 @@ export const buildWhatsAppSnapshots = onSchedule(
  * The request body is ignored: there is no organization id to aim, because
  * the answer is the whole customer list or it is a refusal. The projection
  * lives in lib/orgDirectory.js — names, emails, and counts, not the profiles
- * those were read from.
+ * those were read from. Auth is passed so an admin whose profile has no
+ * email still shows the address they sign in with.
  */
 export const listPlatformOrganizations = onCall(
   { region: REGION, timeoutSeconds: 120, memory: '512MiB' },
-  async (request) => listPlatformOrganizationsFor(getFirestore(), request.auth?.uid)
+  async (request) =>
+    listPlatformOrganizationsFor(getFirestore(), request.auth?.uid, { auth: getAuth() })
 )
 
 /** Daily: the retention table in lib/whatsapp/retention.js. Runs even when switched off. */

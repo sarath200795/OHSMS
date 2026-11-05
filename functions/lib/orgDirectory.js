@@ -14,6 +14,16 @@
 // returns the projection below and nothing else. The request carries no
 // organization id: an operator may see every customer, or none.
 //
+// The email in that projection is the profile's `email` when it is a
+// non-empty string. Signup and provisioning write it. A profile created by
+// hand, or any account whose sign-in address was never copied onto /users,
+// still has a name and a role, so the admin shows and the email column is
+// blank — which is what the console was doing. Auth is where that address
+// lives. The callable asks Auth only for admins whose profile email is
+// empty, and copies only the address. A profile that already has one is
+// left as stored: that is the address the rest of the product mails, and an
+// Auth lookup must not overwrite it or fan out to every member.
+//
 // There is no organization-level active/suspended flag. Membership status is
 // derived from the status already stored on /users (pending | approved |
 // suspended). A profile written before that field existed has no status and
@@ -39,6 +49,10 @@ export const RECENT_WINDOW_DAYS = 30
 // events only and the row says so; the record count stays the exact aggregate.
 export const RECENT_EVENT_CAP = 400
 export const RECENT_LIST_LIMIT = 10
+// Identity Toolkit refuses getUsers above 100 identifiers. Only admins with
+// no profile email are looked up, in batches of this size. A failed batch
+// leaves those addresses blank; it does not fail the directory.
+export const AUTH_EMAIL_BATCH = 100
 const DESCRIPTION_MAX = 240
 
 // Labels for the module keys the audit log already writes. A key that is not
@@ -296,6 +310,73 @@ export function projectAdmins(users) {
     )
 }
 
+/**
+ * Uids of admins whose profile has no email string. Members are not included:
+ * the directory never returns their address, so looking them up would pull
+ * every tenant's sign-in email for a column that does not show it.
+ */
+export function adminUidsMissingEmail(membersByOrg) {
+  const uids = []
+  for (const members of membersByOrg.values()) {
+    for (const user of members) {
+      if (user?.role !== 'admin') continue
+      if (text(user.email)) continue
+      if (!safeDocId(user.uid)) continue
+      uids.push(user.uid)
+    }
+  }
+  return uids
+}
+
+/**
+ * Fill blank admin emails from Auth. `auth` is the Admin Auth client
+ * (`getUsers`). Absent, the profile email stands — unit tests that never
+ * pass one keep exercising the Firestore projection alone.
+ *
+ * A profile email is never replaced. Auth is the fallback for the blank,
+ * not a second source of truth that can disagree with the address mail
+ * already uses.
+ */
+export async function fillAdminEmailsFromAuth(membersByOrg, auth, batchSize) {
+  if (!auth || typeof auth.getUsers !== 'function') return
+  const uids = adminUidsMissingEmail(membersByOrg)
+  if (!uids.length) return
+  const size = Math.min(
+    AUTH_EMAIL_BATCH,
+    Math.max(1, Number.isFinite(batchSize) && batchSize > 0 ? batchSize : AUTH_EMAIL_BATCH)
+  )
+  const found = new Map()
+  for (let i = 0; i < uids.length; i += size) {
+    const batch = uids.slice(i, i + size)
+    let result
+    try {
+      result = await auth.getUsers(batch.map((uid) => ({ uid })))
+    } catch (err) {
+      // One bad batch must not blank the batches that already succeeded,
+      // and must not take the directory down with it. The names and the
+      // activity are still the answer; these addresses stay empty.
+      logger.warn('listPlatformOrganizations: auth email lookup failed', {
+        error: err?.message || String(err),
+      })
+      continue
+    }
+    for (const record of result?.users || []) {
+      const email = text(record?.email)
+      const uid = text(record?.uid)
+      if (!email || !uid) continue
+      found.set(uid, email)
+    }
+  }
+  if (!found.size) return
+  for (const members of membersByOrg.values()) {
+    for (const user of members) {
+      if (text(user.email)) continue
+      const email = found.get(user.uid)
+      if (email) user.email = email
+    }
+  }
+}
+
 function asCount(value) {
   if (typeof value === 'number' && Number.isFinite(value)) return value
   if (value == null) return null
@@ -424,6 +505,18 @@ export async function loadPlatformDirectory(db, opts = {}) {
     else membersByOrg.set(orgId, [row])
   }
 
+  // Overlaps the per-org activity reads. Those do not touch the member
+  // rows, and projectAdmins runs only after both have finished. The catch is
+  // attached immediately so a rejection during those reads is not unhandled,
+  // and so a lookup failure cannot fail the directory.
+  const emailFill = fillAdminEmailsFromAuth(membersByOrg, opts.auth, opts.authEmailBatch).catch(
+    (err) => {
+      logger.warn('listPlatformOrganizations: auth email lookup failed', {
+        error: err?.message || String(err),
+      })
+    }
+  )
+
   const failures = []
   let skipped = false
   const safeOrgs = []
@@ -481,6 +574,7 @@ export async function loadPlatformDirectory(db, opts = {}) {
     }
     return result
   })
+  await emailFill
 
   const rows = safeOrgs.map((org, index) => {
     const members = membersByOrg.get(org.id) || []
