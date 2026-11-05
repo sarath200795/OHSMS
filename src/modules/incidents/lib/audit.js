@@ -29,49 +29,21 @@ export const AUDIT = {
   INJURY_DELETE: 'injury.delete',
   INJURY_RESTORE: 'injury.restore',
   INJURY_PURGE: 'injury.purge',
-  USER_STATUS: 'user.status',
-  USER_ROLE: 'user.role',
-  ORG_SETTINGS: 'org.settings',
-  BACKUP: 'org.backup',
-}
-
-// Human label + color for each action (used by the audit table badge).
-export const AUDIT_META = {
-  [AUDIT.INCIDENT_CREATE]: { label: 'Incident created', color: '#16a34a' },
-  [AUDIT.INCIDENT_UPDATE]: { label: 'Incident updated', color: '#795548' },
-  [AUDIT.INCIDENT_STEP]: { label: 'Step completed', color: '#8b5cf6' },
-  [AUDIT.INCIDENT_CLOSE]: { label: 'Incident closed', color: '#0ea5e9' },
-  [AUDIT.INCIDENT_DELETE]: { label: 'Incident deleted', color: '#dc2626' },
-  [AUDIT.INCIDENT_RESTORE]: { label: 'Incident restored', color: '#16a34a' },
-  [AUDIT.INCIDENT_PURGE]: { label: 'Incident purged', color: '#991b1b' },
-  [AUDIT.ILLNESS_CREATE]: { label: 'Illness created', color: '#16a34a' },
-  [AUDIT.ILLNESS_UPDATE]: { label: 'Illness updated', color: '#795548' },
-  [AUDIT.ILLNESS_CLOSE]: { label: 'Illness closed', color: '#0ea5e9' },
-  [AUDIT.ILLNESS_DELETE]: { label: 'Illness deleted', color: '#dc2626' },
-  [AUDIT.ILLNESS_RESTORE]: { label: 'Illness restored', color: '#16a34a' },
-  [AUDIT.ILLNESS_PURGE]: { label: 'Illness purged', color: '#991b1b' },
-  [AUDIT.ACTION_UPDATE]: { label: 'Action updated', color: '#f59e0b' },
-  [AUDIT.INJURY_SYNC]: { label: 'Injury report saved', color: '#16a34a' },
-  [AUDIT.INJURY_UPDATE]: { label: 'Injury report edited', color: '#795548' },
-  [AUDIT.INJURY_VERIFY]: { label: 'Injury verified', color: '#0ea5e9' },
-  [AUDIT.INJURY_UNVERIFY]: { label: 'Injury unverified', color: '#f59e0b' },
-  [AUDIT.INJURY_DELETE]: { label: 'Injury report deleted', color: '#dc2626' },
-  [AUDIT.INJURY_RESTORE]: { label: 'Injury report restored', color: '#16a34a' },
-  [AUDIT.INJURY_PURGE]: { label: 'Injury report purged', color: '#991b1b' },
-  [AUDIT.USER_STATUS]: { label: 'User status', color: '#f59e0b' },
-  [AUDIT.USER_ROLE]: { label: 'User role', color: '#795548' },
-  [AUDIT.ORG_SETTINGS]: { label: 'Org settings', color: '#64748b' },
-  [AUDIT.BACKUP]: { label: 'Downloaded backup', color: '#0891b2' },
-}
-
-export function auditMeta(action) {
-  return AUDIT_META[action] || { label: action || 'Change', color: '#64748b' }
 }
 
 // Top-level incident/illness fields we report old→new changes for on an edit.
 const TRACKED_FIELDS = [
-  'type', 'severity', 'category', 'location', 'lifecycle',
-  'incidentDate', 'incidentTime', 'exposedToAgent', 'site', 'date', 'time',
+  'type',
+  'severity',
+  'category',
+  'location',
+  'lifecycle',
+  'incidentDate',
+  'incidentTime',
+  'exposedToAgent',
+  'site',
+  'date',
+  'time',
 ]
 
 function norm(v) {

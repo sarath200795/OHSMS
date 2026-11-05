@@ -1,27 +1,19 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Shared data-access base: organizations, users, the public org-name index, and
-// the append-only audit log. Domain data (incidents, illnesses) lives in its own
-// module (incidents.js / illnesses.js) which reuses these helpers.
+// Shared data-access base for the incidents module: the live org document and
+// the append-only audit log. Domain data (incidents, illnesses) lives in its
+// own module (incidents.js / illnesses.js) which reuses these helpers.
+//
+// User administration and the org-wide audit viewer are not here. Those pages
+// were the unrouted IRA copies; the live ones are src/pages/admin and they
+// write through shared/org/orgData.js. A second writer here used different
+// action strings (`user.status` rather than `user.status.update`).
 // ─────────────────────────────────────────────────────────────────────────────
-import {
-  doc,
-  getDoc,
-  setDoc,
-  updateDoc,
-  query,
-  orderBy,
-  onSnapshot,
-  limit,
-} from 'firebase/firestore'
+import { doc, onSnapshot } from 'firebase/firestore'
 import { db } from '../../../shared/firebase'
 import { onReadError } from '../../../shared/org/readError'
-import { AUDIT } from './audit'
-import { logAudit as logOrgAudit, auditCol, orgIndexRef } from '../../../shared/org/orgData'
+import { logAudit as logOrgAudit } from '../../../shared/org/orgData'
 
-// ── Path helpers ─────────────────────────────────────────────────────────────
-export const orgRef = (orgId) => doc(db, 'organizations', orgId)
-export const userRef = (uid) => doc(db, 'users', uid)
-export { auditCol }
+const orgRef = (orgId) => doc(db, 'organizations', orgId)
 
 // ── Audit log ─────────────────────────────────────────────────────────────────
 // One implementation, in shared/org/orgData; this wrapper adds only the module
@@ -32,31 +24,6 @@ export { auditCol }
 export const logAudit = (orgId, actor, action, details = {}) =>
   logOrgAudit(orgId, actor, action, { module: 'incidents', target: 'incident', ...details })
 
-export function subscribeAuditLogs(orgId, cb) {
-  const q = query(auditCol(orgId), orderBy('at', 'desc'), limit(200))
-  return onSnapshot(
-    q,
-    (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
-    onReadError('the incident audit log', cb),
-  )
-}
-
-// ── Organizations & users ─────────────────────────────────────────────────────
-
-/** Backfill the public orgIndex entry if missing (idempotent + non-blocking). */
-export async function ensureOrgIndex(org) {
-  if (!org?.id || !org?.name) return
-  try {
-    const ref = orgIndexRef(org.name)
-    const snap = await getDoc(ref)
-    if (snap.exists()) return
-    await setDoc(ref, { orgId: org.id, name: org.name })
-  } catch (e) {
-    // eslint-disable-next-line no-console
-    console.warn('[Incident IRA] orgIndex backfill skipped:', e?.message || e)
-  }
-}
-
 // Delegated to the shared ref-counted org-users listener (one per org app-wide).
 export { subscribeOrgUsers } from '../../../shared/org/orgData'
 
@@ -65,26 +32,6 @@ export function subscribeOrg(orgId, cb) {
   return onSnapshot(
     orgRef(orgId),
     (snap) => cb(snap.exists() ? { id: snap.id, ...snap.data() } : null),
-    onReadError('the organization', cb, null),
+    onReadError('the organization', cb, null)
   )
-}
-
-export async function setUserStatus(uid, status, orgId, actor, userLabel) {
-  await updateDoc(userRef(uid), { status })
-  await logAudit(orgId, actor, AUDIT.USER_STATUS, {
-    target: 'user',
-    targetId: uid,
-    targetLabel: userLabel || uid,
-    summary: `Set status → ${status}`,
-  })
-}
-
-export async function setUserRole(uid, role, orgId, actor, userLabel) {
-  await updateDoc(userRef(uid), { role })
-  await logAudit(orgId, actor, AUDIT.USER_ROLE, {
-    target: 'user',
-    targetId: uid,
-    targetLabel: userLabel || uid,
-    summary: `Set role → ${role}`,
-  })
 }

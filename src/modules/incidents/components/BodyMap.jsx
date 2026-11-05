@@ -4,8 +4,8 @@ import { BODY_VIEWS, BODY_PARTS, BODY_PART_BY_KEY, bodyPartLabel } from '../lib/
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Interactive human-body SVG. Each region's id is a BODY_PARTS key, so the
-// picker (<BodyMap>), the dropdown, and the dashboard heatmap (<BodyHeatmap>)
-// all share one source of truth. Simplified, stylized geometry (not anatomical).
+// picker (<BodyMap>) and the dropdown share one source of truth. Simplified,
+// stylized geometry (not anatomical).
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Region geometry per view. Each region = { key, el } where el is the JSX shape
@@ -18,7 +18,7 @@ const FRONT = [
   { key: 'shoulder_r', el: <ellipse cx="132" cy="80" rx="13" ry="11" /> },
   { key: 'chest', el: <rect x="72" y="74" width="56" height="40" rx="14" /> },
   { key: 'abdomen', el: <rect x="75" y="116" width="50" height="38" rx="10" /> },
-  { key: 'pelvis', el: <path d="M76 156 H124 L118 192 H82 Z" />, c: [100, 173] },
+  { key: 'pelvis', el: <path d="M76 156 H124 L118 192 H82 Z" /> },
   { key: 'arm_l', el: <rect x="52" y="82" width="14" height="118" rx="7" /> },
   { key: 'arm_r', el: <rect x="134" y="82" width="14" height="118" rx="7" /> },
   { key: 'hand_l', el: <ellipse cx="59" cy="212" rx="10" ry="13" /> },
@@ -74,7 +74,7 @@ const BACK = [
   { key: 'shoulder_r', el: <ellipse cx="132" cy="80" rx="13" ry="11" /> },
   { key: 'back_upper', el: <rect x="72" y="74" width="56" height="44" rx="12" /> },
   { key: 'back_lower', el: <rect x="75" y="120" width="50" height="36" rx="10" /> },
-  { key: 'buttocks', el: <path d="M76 158 H124 L118 196 H82 Z" />, c: [100, 176] },
+  { key: 'buttocks', el: <path d="M76 158 H124 L118 196 H82 Z" /> },
   { key: 'arm_l', el: <rect x="52" y="82" width="14" height="118" rx="7" /> },
   { key: 'arm_r', el: <rect x="134" y="82" width="14" height="118" rx="7" /> },
   { key: 'hand_l', el: <ellipse cx="59" cy="212" rx="10" ry="13" /> },
@@ -96,11 +96,30 @@ const BACK = [
 const INTERNAL = [
   { key: 'brain', el: <ellipse cx="100" cy="30" rx="19" ry="21" /> },
   { key: 'spine', el: <rect x="96" y="58" width="8" height="150" rx="4" /> },
-  { key: 'lung', el: <g><path d="M96 86 q-22 4 -20 44 q14 6 20 -2 Z" /><path d="M104 86 q22 4 20 44 q-14 6 -20 -2 Z" /></g>, c: [100, 112] },
-  { key: 'heart', el: <path d="M104 96 q10 -10 16 0 q4 12 -16 22 q-20 -10 -16 -22 q6 -10 16 0 Z" />, c: [105, 110] },
-  { key: 'liver', el: <path d="M74 132 H112 q4 16 -18 22 q-22 0 -20 -22 Z" />, c: [91, 143] },
+  {
+    key: 'lung',
+    el: (
+      <g>
+        <path d="M96 86 q-22 4 -20 44 q14 6 20 -2 Z" />
+        <path d="M104 86 q22 4 20 44 q-14 6 -20 -2 Z" />
+      </g>
+    ),
+  },
+  {
+    key: 'heart',
+    el: <path d="M104 96 q10 -10 16 0 q4 12 -16 22 q-20 -10 -16 -22 q6 -10 16 0 Z" />,
+  },
+  { key: 'liver', el: <path d="M74 132 H112 q4 16 -18 22 q-22 0 -20 -22 Z" /> },
   { key: 'stomach', el: <ellipse cx="116" cy="140" rx="12" ry="14" /> },
-  { key: 'kidney', el: <g><ellipse cx="84" cy="162" rx="7" ry="11" /><ellipse cx="116" cy="162" rx="7" ry="11" /></g>, c: [100, 162] },
+  {
+    key: 'kidney',
+    el: (
+      <g>
+        <ellipse cx="84" cy="162" rx="7" ry="11" />
+        <ellipse cx="116" cy="162" rx="7" ry="11" />
+      </g>
+    ),
+  },
   { key: 'intestine', el: <rect x="78" y="172" width="44" height="34" rx="14" /> },
 ]
 
@@ -109,7 +128,9 @@ const REGIONS = { front: FRONT, back: BACK, internal: INTERNAL }
 // Faint base silhouette for context (non-interactive).
 function Silhouette({ view }) {
   if (view === 'internal') {
-    return <path d="M70 70 Q70 56 100 56 Q130 56 130 70 L128 200 Q100 214 72 200 Z" fill="#eef2f7" />
+    return (
+      <path d="M70 70 Q70 56 100 56 Q130 56 130 70 L128 200 Q100 214 72 200 Z" fill="#eef2f7" />
+    )
   }
   return (
     <g fill="#eef2f7">
@@ -119,35 +140,14 @@ function Silhouette({ view }) {
   )
 }
 
-// Label position for a region: explicit `c`, else derived from the shape props.
-function centerOf(region) {
-  if (region.c) return region.c
-  const p = region.el?.props || {}
-  if (p.cx != null && p.cy != null) return [Number(p.cx), Number(p.cy)]
-  if (p.x != null && p.width != null) return [Number(p.x) + Number(p.width) / 2, Number(p.y) + Number(p.height) / 2]
-  return null
-}
-
-function Region({ region, mode, selected, count, max, onToggle }) {
-  const heat = mode === 'heat'
-  let fill, opacity
-  if (heat) {
-    const t = max ? count / max : 0
-    fill = count ? '#6d4c41' : '#cbd5e1'
-    opacity = count ? 0.2 + 0.7 * t : 0.18
-  } else {
-    fill = selected ? '#6d4c41' : '#d7ccc8'
-    opacity = selected ? 0.92 : 0.32
-  }
-  // Count number on the heatmap (skip the tiny finger/toe spots to avoid clutter).
-  const center = heat && count > 0 && !region.tiny ? centerOf(region) : null
+function Region({ region, selected, onToggle }) {
   return (
     <g>
       <motion.g
-        fill={fill}
-        fillOpacity={opacity}
+        fill={selected ? '#6d4c41' : '#d7ccc8'}
+        fillOpacity={selected ? 0.92 : 0.32}
         stroke="#795548"
-        strokeOpacity={selected || (heat && count) ? 0.7 : 0.25}
+        strokeOpacity={selected ? 0.7 : 0.25}
         strokeWidth="0.8"
         onClick={onToggle ? () => onToggle(region.key) : undefined}
         className={onToggle ? 'cursor-pointer' : ''}
@@ -157,34 +157,19 @@ function Region({ region, mode, selected, count, max, onToggle }) {
         style={{ transformOrigin: 'center', transformBox: 'fill-box' }}
       >
         {region.el}
-        <title>{bodyPartLabel(region.key)}{heat ? `: ${count || 0}` : ''}</title>
+        <title>{bodyPartLabel(region.key)}</title>
       </motion.g>
-      {center && (
-        <g pointerEvents="none">
-          <circle cx={center[0]} cy={center[1]} r="6" fill="#fff" stroke="#6d4c41" strokeWidth="0.6" />
-          <text x={center[0]} y={center[1]} fontSize="7" fontWeight="800" fill="#4e342e" textAnchor="middle" dominantBaseline="central">{count}</text>
-        </g>
-      )}
     </g>
   )
 }
 
-/** The figure for a given view. `mode`='select'|'heat'. */
-function BodyFigure({ view, mode = 'select', value = [], counts = {}, onToggle, height = 320 }) {
-  const max = mode === 'heat' ? Math.max(1, ...Object.values(counts)) : 0
+/** The figure for a given view. */
+function BodyFigure({ view, value = [], onToggle, height = 320 }) {
   return (
     <svg viewBox="0 0 200 380" height={height} className="mx-auto block">
       <Silhouette view={view} />
       {REGIONS[view].map((r) => (
-        <Region
-          key={r.key}
-          region={r}
-          mode={mode}
-          selected={value.includes(r.key)}
-          count={counts[r.key] || 0}
-          max={max}
-          onToggle={onToggle}
-        />
+        <Region key={r.key} region={r} selected={value.includes(r.key)} onToggle={onToggle} />
       ))}
     </svg>
   )
@@ -199,7 +184,9 @@ function ViewTabs({ view, setView }) {
           type="button"
           onClick={() => setView(v.key)}
           className={`rounded-lg px-3 py-1 text-xs font-bold transition ${
-            view === v.key ? 'bg-brand-500 text-white shadow-elev-sm' : 'text-ink-500 hover:text-ink-800'
+            view === v.key
+              ? 'bg-brand-500 text-white shadow-elev-sm'
+              : 'text-ink-500 hover:text-ink-800'
           }`}
         >
           {v.label}
@@ -223,28 +210,36 @@ export default function BodyMap({ value = [], onChange, height = 320 }) {
     <div className="space-y-3">
       <ViewTabs view={view} setView={setView} />
       <div className="ring-1 ring-ink-200 rounded-2xl bg-surface-50 p-3 ">
-        <BodyFigure view={view} mode="select" value={value} onToggle={toggle} height={height} />
+        <BodyFigure view={view} value={value} onToggle={toggle} height={height} />
       </div>
       {/* Dropdown fallback — reaches every part (fingers, wrists, joints, organs) even if hard to tap on the figure. */}
       <select
         className="input"
         value=""
-        onChange={(e) => { if (e.target.value) toggle(e.target.value) }}
+        onChange={(e) => {
+          if (e.target.value) toggle(e.target.value)
+        }}
       >
         <option value="">Add a body part from the list…</option>
         <optgroup label="External — front">
           {BODY_PARTS.filter((b) => b.group === 'external' && b.view === 'front').map((b) => (
-            <option key={b.key} value={b.key} disabled={value.includes(b.key)}>{b.label}</option>
+            <option key={b.key} value={b.key} disabled={value.includes(b.key)}>
+              {b.label}
+            </option>
           ))}
         </optgroup>
         <optgroup label="External — back">
           {BODY_PARTS.filter((b) => b.group === 'external' && b.view === 'back').map((b) => (
-            <option key={b.key} value={b.key} disabled={value.includes(b.key)}>{b.label}</option>
+            <option key={b.key} value={b.key} disabled={value.includes(b.key)}>
+              {b.label}
+            </option>
           ))}
         </optgroup>
         <optgroup label="Internal organs">
           {BODY_PARTS.filter((b) => b.group === 'internal').map((b) => (
-            <option key={b.key} value={b.key} disabled={value.includes(b.key)}>{b.label}</option>
+            <option key={b.key} value={b.key} disabled={value.includes(b.key)}>
+              {b.label}
+            </option>
           ))}
         </optgroup>
       </select>
@@ -270,44 +265,6 @@ export default function BodyMap({ value = [], onChange, height = 320 }) {
 }
 
 /**
- * Read-only heatmap for the dashboard. `counts`=object of BODY_PARTS key→count.
- * `onSelect(key)` cross-filters (optional).
- */
-export function BodyHeatmap({ counts = {}, onSelect, height = 300 }) {
-  const [view, setView] = useState('front')
-  // Ranked list of every affected part with its injury count (covers tiny
-  // fingers/toes whose number can't legibly sit on the figure).
-  const ranked = Object.entries(counts)
-    .filter(([, n]) => n > 0)
-    .sort((a, b) => b[1] - a[1])
-  return (
-    <div className="space-y-3">
-      <ViewTabs view={view} setView={setView} />
-      <BodyFigure view={view} mode="heat" counts={counts} onToggle={onSelect} height={height} />
-      {ranked.length > 0 && (
-        <div>
-          <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-ink-400">Injuries by body part</p>
-          <div className="flex flex-wrap gap-1.5">
-            {ranked.map(([k, n]) => (
-              <button
-                key={k}
-                type="button"
-                onClick={onSelect ? () => onSelect(k) : undefined}
-                className={`chip bg-surface-100 text-ink-700 ${onSelect ? 'hover:bg-surface-200' : 'cursor-default'}`}
-                title={`${bodyPartLabel(k)}: ${n}`}
-              >
-                {bodyPartLabel(k)}
-                <span className="ml-1 grid h-4 min-w-4 place-items-center rounded-full bg-brand-500 px-1 text-[10px] font-extrabold text-white">{n}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-/**
  * Read-only body diagram for printed/exported reports. Given `parts` (BODY_PARTS
  * keys), renders each relevant view (front / back / internal) with the injured
  * regions highlighted — the same figure the reporting wizard shows, minus the
@@ -325,7 +282,7 @@ export function BodyMapStatic({ parts = [], height = 240 }) {
         {shown.map((v) => (
           <div key={v.key} className="text-center">
             <div className="rounded-2xl bg-surface p-2  print:border print:border-ink-200 print:bg-white print:shadow-none">
-              <BodyFigure view={v.key} mode="select" value={list} height={height} />
+              <BodyFigure view={v.key} value={list} height={height} />
             </div>
             <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-ink-400">
               {v.label} view

@@ -445,16 +445,6 @@ export function formatNearby(near = [], within = true, kmLabel = (km) => `${km} 
 /** The site-step prompt. Both channels use this sentence verbatim. */
 export const CENTRE_PROMPT = 'Please enter the Centre ID or Centre Name.'
 
-/** Body of the location request (interactive or plain). */
-export function locationRequestText(query) {
-  const q = clean(query, 40)
-  const head = q ? `Centre not found for "${q}". ` : ''
-  return (
-    `${head}Share your current location and I'll list your nearest sites.\n\n` +
-    `Tap 📎 → Location → Send your current location. Or ${CENTRE_PROMPT}`
-  )
-}
-
 export const MESSAGES = {
   help:
     `${CENTRE_PROMPT} The reply is that centre's safety summary: ` +
