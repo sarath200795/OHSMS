@@ -207,6 +207,17 @@ export const RECORD_CLASSES = [
     counselMustSign: null,
   },
   {
+    path: 'tgLinks',
+    class: 'operational',
+    proposedPeriod: 'until the user unlinks',
+    proposedPeriodNote:
+      'Consent record: the Telegram chat id and the uid the link code was issued to. Deleted on ' +
+      'UNLINK, or from Settings → Security. No age purge — consent does not expire.',
+    livePurge: false,
+    recycleBin: false,
+    counselMustSign: null,
+  },
+  {
     path: 'waQueryLog',
     class: 'operational',
     proposedPeriod: '90 days',

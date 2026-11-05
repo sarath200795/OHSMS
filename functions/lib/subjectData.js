@@ -290,6 +290,14 @@ export const SUBJECT_SOURCES = [
     retention: ERASABLE,
     why: 'Consent to receive site summaries on WhatsApp, and the number it was given for. An organisation administrator can also attach the number. Withdrawing consent — UNLINK, the Security page, or the administrator removing it — deletes it.',
   },
+  {
+    path: 'tgLinks',
+    topLevel: true,
+    orgField: 'orgId',
+    joins: [{ kind: 'field', field: 'uid', key: 'uid' }],
+    retention: ERASABLE,
+    why: 'Consent to receive site summaries on Telegram, and the chat that asked. The document id is the chat id. Withdrawing consent — UNLINK, or Settings → Security — deletes it.',
+  },
   // phoneHash is a keyed digest, not the number. No message text is stored.
   {
     path: 'waQueryLog',

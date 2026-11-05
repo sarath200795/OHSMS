@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest'
 import {
   generateLinkCode,
   hashLinkCode,
+  hashTelegramLinkCode,
+  telegramChatKey,
   redeemable,
   phoneHash,
   inboundId,
@@ -23,6 +25,22 @@ describe('link codes', () => {
     expect(redeemable({ uid: 'u', orgId: 'o', expiresAtMs: now }, now).reason).toBe('expired')
     expect(redeemable(null, now).reason).toBe('missing')
     expect(redeemable({ uid: '', orgId: 'o', expiresAtMs: now + 1 }, now).reason).toBe('malformed')
+  })
+})
+
+describe('telegram link keys', () => {
+  it('does not share a digest with a WhatsApp code', () => {
+    expect(hashTelegramLinkCode('123456')).toMatch(/^[0-9a-f]{64}$/)
+    expect(hashTelegramLinkCode('123456')).not.toBe(hashLinkCode('123456'))
+    expect(hashTelegramLinkCode('123456')).not.toContain('123456')
+  })
+  it('accepts only the chat id the webhook already shaped', () => {
+    expect(telegramChatKey('tg:42')).toBe('42')
+    expect(telegramChatKey('tg:0')).toBe('0')
+    expect(telegramChatKey('919000000001')).toBeNull()
+    expect(telegramChatKey('tg:../waLinks')).toBeNull()
+    expect(telegramChatKey('tg:-5')).toBeNull()
+    expect(telegramChatKey('tg:')).toBeNull()
   })
 })
 

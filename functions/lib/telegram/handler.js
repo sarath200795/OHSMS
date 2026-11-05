@@ -2,36 +2,62 @@
 // Telegram site lookup: the same lookup as WhatsApp (../whatsapp/handler.js
 // answerQuery), reached through a Telegram bot webhook.
 //
-// ACCESS: WhatsApp answers only numbers linked to an approved app user, and
-// only the organisation that profile belongs to. Telegram gives a bot no
-// phone number, so there is nothing to match against /users. By the owner's
-// decision this channel is OPEN: anyone who messages the bot can look up
-// sites, with exactly the reply WhatsApp would give an admin of the chosen
-// organisation. TG_ORG_ID, when set, pins that to one organisation. When it
-// is empty the bot asks which organisation. It does not recite the customer
-// list unless TG_LIST_ORGS=true and there are at most ten names; the default
-// is to ask for the name. Rate limits, the global daily cap and the query
-// log (no message text, chat id hashed) apply as for WhatsApp.
-// TG_ENABLED=false switches it off.
+// ACCESS: the same rule as WhatsApp. A chat is answered only after it has
+// redeemed a link code issued to a signed-in approved member (Settings →
+// Security). Every later message re-reads that member's live profile: approved,
+// own password, organisation still the one on the link. The reply uses that
+// profile's role and site grants, not an admin the message claims to be.
+// TG_ORG_ID, when set, is a further refusal — this deployment will not answer
+// for any other organisation — and is not itself a login. An unbound chat
+// gets instructions to link and nothing else: no organisation names, no sites,
+// no contacts. Rate limits, the global daily cap and the query log (no message
+// text, chat id hashed) apply as for WhatsApp. TG_ENABLED=false switches it off.
 // ─────────────────────────────────────────────────────────────────────────────
 import { parseCommand, readLocation } from '../whatsapp/parse.js'
 import { guideConversation, MAX_MESSAGE_AGE_MS } from '../whatsapp/handler.js'
 import { CENTRE_PROMPT } from '../whatsapp/format.js'
-import { countQuery } from '../whatsapp/rateLimit.js'
+import { countBadLink, countQuery, linkBlocked } from '../whatsapp/rateLimit.js'
 import { safeEqual, isRealSecret } from '../whatsapp/signature.js'
+import { isActiveMember } from '../whatsapp/access.js'
+import { orgsForLinkedUser } from '../whatsapp/orgs.js'
 
 export const TG_MAX_TEXT = 4096
 export const TG_API = 'https://api.telegram.org'
 
 export const TG_HELP =
-  'WeEHS site lookup.\n\n' +
-  `I ask which organisation, then: ${CENTRE_PROMPT} ` +
-  "The reply is that centre's safety summary: extinguishers, AED availability, open defects, " +
-  'first aid boxes, pending actions, incidents and emergency contacts.\n\n' +
-  'Say MENU to start over, or CHANGE ORG to pick a different organisation.\n\n' +
-  "Can't remember the centre? After the organisation is chosen, share your location " +
-  '(📎 → Location) for the nearest sites.\n\n' +
+  'WeEHS site lookup for a linked account.\n\n' +
+  'Link this chat from Settings → Security in the app, then send the LINK code here. ' +
+  `After that: ${CENTRE_PROMPT} ` +
+  'The reply covers only sites you can already open in the app.\n\n' +
+  'Say MENU to start over. Share your location (📎 → Location) for the nearest of those sites.\n\n' +
+  'Send UNLINK to disconnect this chat.\n\n' +
   'In an emergency call 112.'
+
+export const TG_UNBOUND =
+  'This chat is not linked to an account.\n\n' +
+  'In the app, open Settings → Security, choose Link Telegram, and send the LINK code from this chat.\n\n' +
+  'In an emergency call 112.'
+
+export const TG_DENIED =
+  'Site lookup is not available for this account.\n\nIn an emergency call 112.'
+
+export const TG_LINKED =
+  'Linked. Send a Centre ID or Centre Name for a site you can already open in the app.\n\n' +
+  'In an emergency call 112.'
+
+export const TG_UNLINKED = 'This chat is disconnected.\n\nIn an emergency call 112.'
+
+export const TG_LINK_FAILED =
+  'That code is not valid. Ask for a new one in Settings → Security.\n\nIn an emergency call 112.'
+
+export const TG_BAD_LINK =
+  'Send LINK followed by the six-digit code from Settings → Security.\n\nIn an emergency call 112.'
+
+export const TG_LINK_BLOCKED =
+  'Too many codes from this chat. Try again tomorrow.\n\nIn an emergency call 112.'
+
+export const TG_ORG_OFF =
+  'Site lookup is switched off for this account.\n\nIn an emergency call 112.'
 
 /** The secret_token header Telegram sends, checked in constant time. */
 export function verifySecretToken(header, secret) {
@@ -167,17 +193,14 @@ export async function tgAnswerCallback(token, callbackQueryId, fetchImpl = fetch
 
 /**
  * One update, start to finish. ctx = { store, reply(chatId, {text, rows?}) → bool,
- * answerCallback?(id), now, orgs: [{id, name}], listOrgs?: bool, orgId? }.
- * `orgId` alone is the one-organisation caller (older tests and a pinned bot).
+ * answerCallback?(id), now, pinnedOrgId? }.
+ * `pinnedOrgId`, when set, refuses every account that does not belong to that
+ * organisation. It does not authorise a chat by itself. `orgs` and `orgId` on
+ * ctx are ignored: a caller-supplied directory is not an identity.
  * store as in ../whatsapp/store.js. Returns the log row.
  */
 export async function handleUpdate(msg, ctx) {
   const { store, now = new Date() } = ctx
-  const orgs = Array.isArray(ctx.orgs)
-    ? ctx.orgs
-    : ctx.orgId
-      ? [{ id: ctx.orgId, name: ctx.orgName || ctx.orgId }]
-      : []
   const from = msg.from
   const row = {
     orgId: null,
@@ -210,13 +233,6 @@ export async function handleUpdate(msg, ctx) {
     await reply(from, { text: TG_HELP })
     return done('help')
   }
-  if (msg.type === 'other') {
-    row.intent = 'other'
-    await reply(from, {
-      text: `Send an organisation name, or share your location. ${CENTRE_PROMPT}`,
-    })
-    return done('unsupported')
-  }
 
   const forced =
     command === 'start' || command === 'menu'
@@ -226,15 +242,60 @@ export async function handleUpdate(msg, ctx) {
         : null
   const cmd = forced || parseCommand(msg)
   row.intent = cmd.kind
-  if (cmd.kind === 'link' || cmd.kind === 'badLink' || cmd.kind === 'unlink') {
-    await reply(from, {
-      text: `No linking is needed on Telegram. Send an organisation name, then the Centre ID or Centre Name.`,
-    })
-    return done('nolink')
+
+  if (cmd.kind === 'link' || cmd.kind === 'badLink') {
+    if (typeof store.redeemTelegramCode !== 'function') {
+      await reply(from, { text: TG_UNBOUND })
+      return done('unknown')
+    }
+    const blocked = await store.rate(from, (s) => ({ state: s, blocked: linkBlocked(s, now) }))
+    if (blocked.blocked) return done('blocked')
+    if (cmd.kind === 'badLink') {
+      await reply(from, { text: TG_BAD_LINK })
+      return done('badlink')
+    }
+    const result = await store.redeemTelegramCode(cmd.code, from)
+    if (!result?.ok) {
+      const after = await store.rate(from, (s) => countBadLink(s, now))
+      await reply(from, { text: after.blocked ? TG_LINK_BLOCKED : TG_LINK_FAILED })
+      return done('linkfailed')
+    }
+    if (store.clearSession) await store.clearSession(from)
+    await reply(from, { text: TG_LINKED })
+    return done('linked', { orgId: result.orgId, uid: result.uid })
   }
-  if (cmd.kind === 'help') {
-    await reply(from, { text: TG_HELP })
-    return done('help')
+
+  // The chat id on the verified update is the only identity. Text in the
+  // message, a tapped organisation id, and ctx.orgs are not.
+  const link = typeof store.getTelegramLink === 'function' ? await store.getTelegramLink(from) : null
+  const user = link && typeof store.getUser === 'function' ? await store.getUser(link.uid) : null
+  const pinned = typeof ctx.pinnedOrgId === 'string' ? ctx.pinnedOrgId.trim() : ''
+  const active = Boolean(link) && isActiveMember(user, link.orgId) && (!pinned || user.orgId === pinned)
+
+  if (!active) {
+    if (cmd.kind === 'unlink' && link && typeof store.unlinkTelegram === 'function') {
+      await store.unlinkTelegram(from)
+      if (store.clearSession) await store.clearSession(from)
+      await reply(from, { text: TG_UNLINKED })
+      return done('unlinked', { uid: link.uid })
+    }
+    await reply(from, { text: link ? TG_DENIED : TG_UNBOUND })
+    return done(link ? 'denied' : 'unknown', link ? { uid: link.uid, orgId: link.orgId } : {})
+  }
+
+  if (cmd.kind === 'unlink') {
+    await store.unlinkTelegram(from)
+    if (store.clearSession) await store.clearSession(from)
+    await reply(from, { text: TG_UNLINKED })
+    return done('unlinked', { uid: user.uid, orgId: user.orgId })
+  }
+
+  if (
+    typeof store.orgLookupEnabled === 'function' &&
+    (await store.orgLookupEnabled(link.orgId)) === false
+  ) {
+    await reply(from, { text: TG_ORG_OFF })
+    return done('org-off', { uid: user.uid, orgId: user.orgId })
   }
 
   const limit = await store.rate(from, (s) => countQuery(s, now))
@@ -243,23 +304,29 @@ export async function handleUpdate(msg, ctx) {
       await reply(from, {
         text: "You've sent a lot of lookups. Please wait a while and try again.",
       })
-    return done('ratelimited')
+    return done('ratelimited', { uid: user.uid, orgId: user.orgId })
   }
 
-  // Open channel: admin of whichever organisation they are allowed to name.
-  // Not an admin of every organisation at once — guideConversation picks one.
-  const user = { uid: null, orgId: null, role: 'admin', status: 'approved', channelAdmin: true }
+  let orgs = []
+  if (typeof store.getOrganization === 'function') {
+    const record = await store.getOrganization(user.orgId)
+    orgs = record ? orgsForLinkedUser(user, record) : []
+  } else {
+    orgs = orgsForLinkedUser(user, { id: user.orgId, name: user.orgName || '' })
+  }
   const out = await guideConversation(cmd, {
     store,
     reply,
     now,
     from,
     user,
-    uid: null,
+    uid: user.uid,
     orgs,
-    listOrgs: ctx.listOrgs === true,
+    // Never the customer directory. One organisation is named because it is
+    // this profile's; several would be listed only if listOrgs were true.
+    listOrgs: false,
   })
-  return done(out.outcome, out.extra || {})
+  return done(out.outcome, { ...(out.extra || {}), orgId: out.extra?.orgId || user.orgId, uid: user.uid })
 }
 
 /** POST one sendMessage. Never throws; the token never appears in the result. */

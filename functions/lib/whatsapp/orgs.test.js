@@ -57,9 +57,10 @@ describe('callerForOrg', () => {
     expect(callerForOrg(user, 'o2')).toBeNull()
   })
 
-  it('makes the open channel an admin of the chosen organisation only', () => {
-    const tg = { uid: null, role: 'admin', status: 'approved', channelAdmin: true }
-    expect(callerForOrg(tg, 'o2')).toMatchObject({ orgId: 'o2', role: 'admin', uid: null })
+  it('does not promote a chat that claims to be an admin of a named organisation', () => {
+    const forged = { uid: null, role: 'admin', status: 'approved', channelAdmin: true }
+    expect(callerForOrg(forged, 'o2')).toBeNull()
+    expect(callerForOrg(forged, 'o1')).toBeNull()
   })
 })
 

@@ -56,6 +56,9 @@ const SEED = {
   // The on/off switch. A client write here would turn lookup off (or on) for
   // a tenant without the callable's admin check.
   waOrgSettings: [ORG, { enabled: false, updatedBy: 'admin1' }],
+  // A client write here would point the writer's chat at an admin's account.
+  tgLinks: ['42', { uid: 'member1', orgId: ORG }],
+  tgLinkCodes: ['e'.repeat(64), { uid: 'admin1', orgId: ORG, expiresAtMs: Date.now() + 600000 }],
 }
 const COLLECTIONS = Object.keys(SEED)
 const CALLERS = ['admin1', 'manager1', 'member1']
@@ -115,6 +118,11 @@ describe('the attacks the denial exists for', () => {
     await assertFails(
       setDoc(doc(as('member1'), 'waLinks', '919999999999'), { uid: 'admin1', orgId: ORG })
     )
+  })
+
+  it('a member cannot bind their Telegram chat to an admin', async () => {
+    await assertFails(setDoc(doc(as('member1'), 'tgLinks', '99'), { uid: 'admin1', orgId: ORG }))
+    await assertFails(getDoc(doc(as('member1'), 'tgLinkCodes', 'e'.repeat(64))))
   })
 
   it('the person a link is about cannot read or delete it directly', async () => {

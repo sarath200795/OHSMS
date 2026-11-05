@@ -605,8 +605,18 @@ export async function guideConversation(cmd, ctx) {
   if (cmd.kind === 'site') {
     const hit = resolveOrgQuery(cmd.query, allowed)
     if (hit.status === 'one') return commit(hit.org)
-    if (hit.status === 'many')
+    if (hit.status === 'many') {
+      // list:true here used to ignore listOrgs. A partial name then printed up
+      // to ten organisation names even when the directory was supposed to stay
+      // closed. WhatsApp passes listOrgs true because `orgs` is already only
+      // the caller's own organisation. A caller that passes more, with listing
+      // off, gets the same "narrow it" line as too many matches — no names.
+      if (!shouldListOrgs(hit.orgs, listOrgs)) {
+        await reply(from, { text: ORG_TOO_MANY })
+        return finish('ambiguous')
+      }
       return ask(hit.orgs, { list: true, query: cmd.query, ambiguous: true })
+    }
     if (hit.status === 'tooMany') {
       await reply(from, { text: ORG_TOO_MANY })
       return finish('ambiguous')

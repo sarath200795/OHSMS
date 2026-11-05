@@ -11,6 +11,7 @@ import {
 } from '../../shared/auth/mfa'
 import { PageHeader, Button, Field, Input, Badge } from '../../shared/ui'
 import WhatsAppLink from './WhatsAppLink'
+import TelegramLink from './TelegramLink'
 
 /**
  * Two-factor authentication, self-service.
@@ -324,6 +325,7 @@ export default function Security() {
       </section>
 
       <WhatsAppLink />
+      <TelegramLink />
     </div>
   )
 }

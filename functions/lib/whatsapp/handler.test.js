@@ -510,7 +510,7 @@ describe('which organisation', () => {
       store,
       now: NOW,
       from: PHONE,
-      user: { uid: null, channelAdmin: true, role: 'admin', status: 'approved' },
+      user: { uid: 'u1', orgId: 'o1', role: 'member', status: 'approved' },
       uid: null,
       orgs: TWO,
       listOrgs: true,
@@ -563,7 +563,7 @@ describe('which organisation', () => {
       store,
       now: NOW,
       from: PHONE,
-      user: { uid: null, channelAdmin: true, role: 'admin', status: 'approved' },
+      user: { uid: 'u1', orgId: 'o1', role: 'member', status: 'approved' },
       uid: null,
       orgs: TWO,
       listOrgs: true,
@@ -582,16 +582,14 @@ describe('which organisation', () => {
     expect(sent[1].text).toContain('Please enter the Centre ID or Centre Name.')
 
     const row = await guideConversation({ kind: 'site', query: 'beta001' }, guideCtx())
-    expect(row).toMatchObject({ outcome: 'ok', extra: { siteId: 's9', orgId: 'o2' } })
-    expect(sent[2].text).toMatch(/Beta Central/)
-    expect(sent[2].text).not.toMatch(/Demo North/)
-    expect(sent[3].text).toBe('Do you need any additional details? (Yes/No)')
+    expect(row.outcome).toBe('denied')
+    expect(sent[2].text).not.toMatch(/Beta Central|Fire extinguishers|Demo North/)
 
     await guideConversation({ kind: 'changeOrg' }, guideCtx())
-    expect(sent[4].text).toMatch(/Which organisation/)
+    expect(sent[3].text).toMatch(/Which organisation/)
     const again = await guideConversation({ kind: 'site', query: 'beta001' }, guideCtx())
     expect(again.outcome).not.toBe('ok')
-    expect(sent[5].text).not.toMatch(/Beta Central \(BETA001\)/)
+    expect(sent[4].text).not.toMatch(/Beta Central \(BETA001\)|Fire extinguishers/)
   })
 
   it('a closed list does not name organisations until the typed name narrows them', async () => {
@@ -601,7 +599,7 @@ describe('which organisation', () => {
       store,
       now: NOW,
       from: PHONE,
-      user: { uid: null, channelAdmin: true, role: 'admin', status: 'approved' },
+      user: { uid: 'u1', orgId: 'o1', role: 'member', status: 'approved' },
       uid: null,
       orgs: three,
       listOrgs: false,
@@ -614,14 +612,14 @@ describe('which organisation', () => {
     expect(sent[0].text).not.toMatch(/Acme|Beta/)
     expect(sent[0].rows).toEqual([])
 
-    await guideConversation({ kind: 'site', query: 'acme' }, guideCtx())
-    expect(sent[1].text).toMatch(/Acme Fitness/)
-    expect(sent[1].text).toMatch(/Acme Logistics/)
-    expect(sent[1].text).not.toMatch(/Beta Safety/)
+    const narrowed = await guideConversation({ kind: 'site', query: 'acme' }, guideCtx())
+    expect(narrowed.outcome).toBe('ambiguous')
+    expect(sent[1].text).not.toMatch(/Acme Fitness|Acme Logistics|Beta Safety/)
+    expect(sent[1].rows || []).toEqual([])
 
-    await guideConversation({ kind: 'site', query: '1' }, guideCtx())
-    expect(sent[2].text).toContain('Please enter the Centre ID or Centre Name.')
-    expect(store.s.sessions.get(PHONE)).toMatchObject({ step: 'site', orgId: 'o1', uid: null })
+    const picked = await guideConversation({ kind: 'site', query: '1' }, guideCtx())
+    expect(picked.outcome).not.toBe('ok')
+    expect(sent[2].text).not.toMatch(/Fire extinguishers|Acme Fitness|Acme Logistics/)
   })
 
   it('a session for some other organisation is not a site lookup', async () => {

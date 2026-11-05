@@ -1,14 +1,12 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Which organisation a chat is asking about.
 //
-// A profile belongs to one organisation (users/{uid}.orgId). WhatsApp may
-// offer only that one: the link is proof of possession of a number, not a
-// pass to the customer list. Telegram has no number to match, so it stays
-// open — and an open bot that recites every organisation name is the signup
-// page bug again (orgIndex is not publicly listable because it is the
-// customer list). Names are volunteered only when the caller already has a
-// right to them, or when the operator opts in with TG_LIST_ORGS and the set
-// fits in one pick list.
+// A profile belongs to one organisation (users/{uid}.orgId). Both channels
+// offer only that one: the link is proof of possession of a handset or a
+// Telegram chat, not a pass to the customer list. Names are volunteered only
+// when the caller already has a right to them. A single allowed organisation
+// is named because it is theirs. Several names are named only when the caller
+// passed listOrgs, and only from the list the caller already filtered.
 // ─────────────────────────────────────────────────────────────────────────────
 import { isActiveMember } from './access.js'
 import { CENTRE_PROMPT, clean } from './format.js'
@@ -56,16 +54,15 @@ export function orgsForLinkedUser(user, org) {
 
 /**
  * The user answerQuery may search as, once an organisation is chosen.
- * A linked member is not rewritten into another org. The open Telegram
- * caller is an admin of the chosen org only — grants from anywhere else
- * do not travel with them.
+ * A linked member is not rewritten into another org, and nothing in the
+ * message may promote them. A flag on the caller used to do that for
+ * Telegram — channelAdmin became an approved admin of whichever organisation
+ * they named, with every site and every emergency contact. The profile's own
+ * orgId is the only match.
  */
 export function callerForOrg(user, orgId) {
   if (!user || !orgId) return null
   if (user.orgId === orgId) return user
-  if (user.channelAdmin === true) {
-    return { uid: null, orgId, role: 'admin', status: 'approved', channelAdmin: true }
-  }
   return null
 }
 

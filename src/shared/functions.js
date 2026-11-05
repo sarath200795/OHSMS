@@ -381,6 +381,24 @@ export async function unlinkWhatsApp() {
   return (await fn()).data
 }
 
+/** `{ available, linked, linkedAt }`. The chat id is not in the result. */
+export async function telegramLinkStatus() {
+  const fn = await callable('telegramLinkStatus')
+  return (await fn()).data
+}
+
+/** `{ code, expiresAtMs }`. Sending it from the Telegram chat is the proof. */
+export async function startTelegramLink() {
+  const fn = await callable('startTelegramLink')
+  return (await fn()).data
+}
+
+/** `{ removed }`. */
+export async function unlinkTelegram() {
+  const fn = await callable('unlinkTelegram')
+  return (await fn()).data
+}
+
 /**
  * Org Settings → Connect with WhatsApp. The caller's organisation is read
  * server-side; nothing here names a token, a secret, or an organisation id.

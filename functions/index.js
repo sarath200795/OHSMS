@@ -114,7 +114,13 @@ import {
   tgSend,
   tgAnswerCallback,
 } from './lib/telegram/handler.js'
-import { generateLinkCode, hashLinkCode, maskPhone, LINK_CODE_TTL_MS } from './lib/whatsapp/link.js'
+import {
+  generateLinkCode,
+  hashLinkCode,
+  hashTelegramLinkCode,
+  maskPhone,
+  LINK_CODE_TTL_MS,
+} from './lib/whatsapp/link.js'
 import {
   readOrgConnect,
   setOrgEnabled,
@@ -2888,21 +2894,20 @@ export const waWebhook = onRequest(
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Telegram site lookup (@WEEHS_Site_Lookup_bot). Same lookup and reply as
-// waWebhook; the conversation (which organisation, then which site) is
-// guideConversation in lib/whatsapp/handler.js. Channel glue and the access
-// rule: lib/telegram/handler.js. Telegram has no phone number to match to
-// /users, so the bot is open. TG_ORG_ID pins it to one organisation. Empty
-// means every named organisation, and TG_LIST_ORGS decides whether those
-// names are volunteered. The default is not to: orgIndex is the customer
-// list, and this bot is how that list would walk out the door.
+// waWebhook, for a chat that has linked itself. Channel glue and the access
+// rule: lib/telegram/handler.js. A chat id is not a phone number, so the
+// binding is a link code from Settings → Security, then the live profile on
+// every message. TG_ORG_ID does not log anyone in: when it is set, accounts
+// in any other organisation are refused. TG_LIST_ORGS used to volunteer the
+// customer directory. It is still declared so an existing params file keeps
+// deploying, and it is not consulted.
 //
 //   firebase functions:secrets:set TELEGRAM_BOT_TOKEN   from @BotFather
 //   firebase functions:secrets:set TG_WEBHOOK_SECRET    random; passed to setWebhook
 //                                                       as secret_token
 //   TG_ENABLED      kill switch, default true; anything but "true" ignores updates
-//   TG_ORG_ID       optional pin; empty means every organisation
-//   TG_LIST_ORGS    "true" volunteers names when there are at most ten.
-//                   Anything else asks for the name. Default false.
+//   TG_ORG_ID       optional extra refusal; empty does not mean "everyone"
+//   TG_DAILY_CAP    default 2000 replies a day
 //
 // setWebhook allowed_updates must include "callback_query" as well as
 // "message", or the inline buttons never arrive.
@@ -2914,15 +2919,11 @@ const TG_ORG_ID = defineString('TG_ORG_ID', { default: '' })
 const TG_LIST_ORGS = defineString('TG_LIST_ORGS', { default: 'false' })
 const TG_DAILY_CAP = defineString('TG_DAILY_CAP', { default: '2000' })
 
-/** Organisations this bot may name. A pin that is not a real id is none. */
-async function tgOrganisations(store) {
-  const named = await store.listOrganizations()
+/** A pin that is a real single id, or '' when this deployment is not pinned. A slash is not an id, and it must not become "no pin". */
+function tgPinnedOrgId() {
   const pinned = TG_ORG_ID.value().trim()
-  if (!pinned) return named
-  if (pinned.includes('/')) return []
-  const one = named.find((o) => o.id === pinned) || (await store.getOrganization(pinned))
-  if (!one || one.id !== pinned) return []
-  return [{ id: pinned, name: String(one.name || '').trim() || 'Your organisation' }]
+  if (!pinned || pinned.includes('/')) return pinned ? '/' : ''
+  return pinned
 }
 
 export const tgWebhook = onRequest(
@@ -2961,12 +2962,6 @@ export const tgWebhook = onRequest(
         .update('tg-chat-pepper-v1')
         .digest('hex')
       const store = createStore(db, { pepper })
-      const orgs = await tgOrganisations(store)
-      if (!orgs.length) {
-        logger.error('tgWebhook: no organisation available')
-        res.status(200).send('unconfigured')
-        return
-      }
       const cap = Math.max(1, Number(TG_DAILY_CAP.value()) || 2000)
       const reply = async (chatId, out) => {
         const gate = await db.runTransaction(async (tx) => {
@@ -2996,14 +2991,17 @@ export const tgWebhook = onRequest(
         reply,
         answerCallback: (id) => tgAnswerCallback(TELEGRAM_BOT_TOKEN.value(), id),
         now: new Date(),
-        orgs,
-        listOrgs: TG_LIST_ORGS.value() === 'true',
+        pinnedOrgId: tgPinnedOrgId(),
       })
+      // Read so a params file that still sets it does not look unused. The
+      // value cannot grant a chat or list organisations.
+      const listOrgsIgnored = TG_LIST_ORGS.value() === 'true'
       logger.info('tgWebhook: handled', {
         orgId: row.orgId,
         intent: row.intent,
         outcome: row.outcome,
         siteId: row.siteId,
+        listOrgsIgnored,
       })
     } catch (err) {
       logger.error('tgWebhook: update failed', { error: err?.message || String(err) })
@@ -3070,6 +3068,68 @@ export const whatsAppLinkStatus = onCall({ region: REGION }, async (request) => 
     masked: link ? maskPhone(link.id) : null,
     linkedAt: linkedAt?.toMillis ? linkedAt.toMillis() : null,
   }
+})
+
+function tgSwitchedOn() {
+  return TG_ENABLED.value() === 'true'
+}
+
+/**
+ * Settings → Security → Link Telegram. Same proof as WhatsApp: the signed-in
+ * member asks for a code, and the chat that sends it is the one that gets
+ * the binding. The code is not a Telegram user id and not a secret of the bot.
+ */
+export const startTelegramLink = onCall({ region: REGION }, async (request) => {
+  const { uid, user } = await waCaller(request)
+  if (!tgSwitchedOn())
+    throw new HttpsError('failed-precondition', 'Telegram lookup is not switched on yet.')
+  const pin = tgPinnedOrgId()
+  if (pin && user.orgId !== pin)
+    throw new HttpsError('permission-denied', 'Telegram lookup is not available for this account.')
+  const db = getFirestore()
+  const old = await db.collection('tgLinkCodes').where('uid', '==', uid).get()
+  await Promise.all(old.docs.map((d) => d.ref.delete()))
+
+  const expiresAtMs = Date.now() + LINK_CODE_TTL_MS
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const code = generateLinkCode()
+    try {
+      await db.doc(`tgLinkCodes/${hashTelegramLinkCode(code)}`).create({
+        uid,
+        orgId: user.orgId,
+        expiresAtMs,
+        createdAt: FieldValue.serverTimestamp(),
+      })
+      logger.info('startTelegramLink: issued', { uid, orgId: user.orgId })
+      return { code, expiresAtMs }
+    } catch (err) {
+      if (err?.code !== 6 && err?.code !== 'already-exists') throw err
+    }
+  }
+  throw new HttpsError('unavailable', 'Could not issue a code. Try again.')
+})
+
+/** Whether this account has a linked Telegram chat. The chat id is not returned. */
+export const telegramLinkStatus = onCall({ region: REGION }, async (request) => {
+  const { uid } = await waCaller(request)
+  const snap = await getFirestore().collection('tgLinks').where('uid', '==', uid).limit(1).get()
+  const link = snap.docs[0]
+  const linkedAt = link?.data()?.linkedAt
+  return {
+    available: tgSwitchedOn(),
+    linked: Boolean(link),
+    linkedAt: linkedAt?.toMillis ? linkedAt.toMillis() : null,
+  }
+})
+
+/** Withdraw the caller's Telegram chat. A suspended account may still do this. */
+export const unlinkTelegram = onCall({ region: REGION }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in first.')
+  const snap = await getFirestore().collection('tgLinks').where('uid', '==', uid).get()
+  await Promise.all(snap.docs.map((d) => d.ref.delete()))
+  logger.info('unlinkTelegram: removed', { uid, count: snap.size })
+  return { removed: snap.size }
 })
 
 /** Withdraw consent from the app: removes every link for the caller at once. */

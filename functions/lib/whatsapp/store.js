@@ -41,7 +41,14 @@
 // keyed digest (phoneHash).
 // ─────────────────────────────────────────────────────────────────────────────
 import { FieldValue, Timestamp } from 'firebase-admin/firestore'
-import { hashLinkCode, inboundId, phoneHash, redeemable } from './link.js'
+import {
+  hashLinkCode,
+  hashTelegramLinkCode,
+  inboundId,
+  phoneHash,
+  redeemable,
+  telegramChatKey,
+} from './link.js'
 import { canonicalWaId, waIdLookupKeys } from './phones.js'
 import { readCacheDoc } from '../siteAuditCacheDoc.js'
 import { isActiveMember } from './access.js'
@@ -315,6 +322,57 @@ export function createStore(db, { pepper, now = () => new Date() } = {}) {
 
     async unlink(waId) {
       await Promise.all(waIdLookupKeys(waId).map((key) => db.doc(`waLinks/${key}`).delete()))
+    },
+
+    // Telegram chats are not phone numbers. A separate collection so a chat id
+    // cannot collide with a wa_id, and so a WhatsApp code cannot bind a chat.
+    // The document id is the chat id extractUpdate accepted, not anything the
+    // sender typed. Rules deny every client; the Admin SDK is the only writer.
+    async getTelegramLink(from) {
+      const key = telegramChatKey(from)
+      if (!key) return null
+      const snap = await db.doc(`tgLinks/${key}`).get()
+      if (!snap.exists) return null
+      const d = snap.data() || {}
+      if (typeof d.uid !== 'string' || typeof d.orgId !== 'string') return null
+      return { uid: d.uid, orgId: d.orgId }
+    },
+
+    async redeemTelegramCode(code, from) {
+      const chatKey = telegramChatKey(from)
+      if (!chatKey) return { ok: false, reason: 'malformed' }
+      const ref = db.doc(`tgLinkCodes/${hashTelegramLinkCode(code)}`)
+      const result = await db.runTransaction(async (tx) => {
+        const snap = await tx.get(ref)
+        const rec = snap.exists ? snap.data() : null
+        const ok = redeemable(rec, now().getTime())
+        if (!ok.ok) {
+          if (snap.exists) tx.delete(ref)
+          return ok
+        }
+        const userSnap = await tx.get(db.doc(`users/${rec.uid}`))
+        const user = userSnap.exists ? userSnap.data() : null
+        tx.delete(ref)
+        if (!isActiveMember(user, rec.orgId)) return { ok: false, reason: 'inactive' }
+        tx.set(db.doc(`tgLinks/${chatKey}`), {
+          uid: rec.uid,
+          orgId: rec.orgId,
+          linkedAt: FieldValue.serverTimestamp(),
+          source: 'self',
+        })
+        return { ok: true, uid: rec.uid, orgId: rec.orgId, chatKey }
+      })
+      if (result.ok) {
+        const older = await db.collection('tgLinks').where('uid', '==', result.uid).get()
+        await Promise.all(older.docs.filter((d) => d.id !== result.chatKey).map((d) => d.ref.delete()))
+      }
+      return result
+    },
+
+    async unlinkTelegram(from) {
+      const key = telegramChatKey(from)
+      if (!key) return
+      await db.doc(`tgLinks/${key}`).delete()
     },
 
     async rate(waId, fn) {

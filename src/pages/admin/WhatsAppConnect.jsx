@@ -29,7 +29,8 @@ import {
  * of those callables and are not rendered here.
  *
  * Telegram is a link and a QR code only. The bot is not turned on or off
- * from this screen, and no Telegram user list is kept.
+ * from this screen. Each person links their own chat from Settings →
+ * Security; this page does not keep a list of Telegram users.
  */
 export default function WhatsAppConnect({ orgId, actor }) {
   const [status, setStatus] = useState(null)
@@ -399,8 +400,9 @@ export default function WhatsAppConnect({ orgId, actor }) {
           Telegram site lookup
         </h3>
         <p className="mt-1 max-w-[62ch] text-sm text-ink-500">
-          The shared bot {TELEGRAM_SITE_LOOKUP_USERNAME}. Copy or share the link. Telegram is not
-          turned on or off here, and there is no list of Telegram users to manage.
+          The shared bot {TELEGRAM_SITE_LOOKUP_USERNAME}. Copy or share the link. People link
+          their own chat from Settings → Security. The bot answers only a linked chat, and only
+          for sites that person can already open. Telegram is not turned on or off here.
         </p>
         <div className="mt-4">
           <ChatShare

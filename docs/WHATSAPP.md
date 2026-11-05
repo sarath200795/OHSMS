@@ -178,25 +178,36 @@ The same lookup also answers on Telegram (@WEEHS_Site_Lookup_bot) through the
 - Auth: Telegram's `X-Telegram-Bot-Api-Secret-Token` header must equal the
   `TG_WEBHOOK_SECRET` secret (set as `secret_token` in `setWebhook`).
 - Secrets: `TELEGRAM_BOT_TOKEN`, `TG_WEBHOOK_SECRET`. Params: `TG_ENABLED`
-  (default `true`; kill switch), `TG_ORG_ID` (optional pin to one organisation;
-  empty means every named organisation), `TG_LIST_ORGS` (default `false`),
-  `TG_DAILY_CAP` (default 2000 replies/day).
-- **Access differs from WhatsApp.** Telegram gives the bot no phone number to
-  match against linked users, so the bot is open: anyone can look up any site
-  of an organisation the bot is allowed to name, and gets the same reply an
-  admin of that organisation would get on WhatsApp (counts + emergency
-  contacts). Per-chat rate limits (30/h, 150/day), the daily cap and
-  `waQueryLog` (chat id hashed, no message text) still apply. Private chats
-  only. Turn off with `TG_ENABLED=false`.
-- **Names are not a directory.** `TG_LIST_ORGS` defaults to `false`. The bot
-  asks for the organisation name and only lists the ones that match what was
-  typed (at most ten). `true` volunteers every name when there are ten or
-  fewer; more than ten is still "reply with the name", because a WhatsApp
-  list cannot hold them and a longer list is the customer directory. One
-  allowed organisation is already known: the bot asks for the centre instead
-  of offering a one-line directory, and still names that organisation on the
-  centre prompt. `TG_ORG_ID` remains the way to keep the open bot on a single
-  organisation.
+  (default `true`; kill switch), `TG_ORG_ID` (optional extra refusal of every
+  other organisation; empty does not open the bot), `TG_LIST_ORGS` (kept so an
+  existing params file still deploys; ignored), `TG_DAILY_CAP` (default 2000
+  replies/day).
+- Operator setup: each person opens Settings → Security → Link Telegram and
+  sends `LINK` plus the code from their own private chat with the bot. There
+  is no list of Telegram user ids to paste, and no project pin that stands in
+  for that step. Unlink from the same page or by sending UNLINK. A person who
+  is suspended, still on a temporary password, or outside `TG_ORG_ID` when it
+  is set, is not answered with site data. Their existing chat can still unlink.
+- **Access matches WhatsApp.** A private chat is answered only after it sends
+  `LINK` and the six-digit code from Settings → Security. That code was issued
+  to the signed-in member; the chat that sends it is the one that is bound
+  (`tgLinks/{chatId}`). Every later message re-reads `/users/{uid}`: approved,
+  same organisation as the link, password no longer the temporary one. The
+  reply uses that profile's role and site grants. An unbound chat, a suspended
+  or pending account, a temporary password, or a chat whose organisation is
+  not the deployment pin, gets instructions or a refusal and no site data.
+  Per-chat rate limits (30/h, 150/day), the inbound id claim, the daily cap
+  and `waQueryLog` (chat id hashed, no message text) still apply. Private
+  chats only. Turn off with `TG_ENABLED=false`.
+- **A pin is not a login.** `TG_ORG_ID`, when set, refuses every account that
+  belongs to a different organisation. It does not authorise a chat that has
+  not linked. Empty does not mean the bot is open.
+- **Names are not a directory.** The bot is offered only the linked profile's
+  organisation. `TG_LIST_ORGS` is no longer consulted. A partial name that
+  matches several organisations is not answered with those names when listing
+  is off; the reply asks for more of the name and lists nobody. One allowed
+  organisation is already known, so the bot asks for the centre and names that
+  organisation on the prompt, because it is the sender's.
 - Register: `setWebhook?url=<function URL>&secret_token=<TG_WEBHOOK_SECRET>&allowed_updates=["message","callback_query"]`.
   Inline buttons (the organisation list, and a site list that already has
   rows) do not arrive unless `callback_query` is included.
@@ -277,6 +288,6 @@ Bot:  Which organisation?
       1. Acme Fitness
 ```
 
-On Telegram with `TG_LIST_ORGS` left at its default, the first prompt does not
-contain those names. The user types one; several matches become a numbered
-list and inline buttons of those matches only.
+On Telegram the sender has already linked one account, so the organisation is
+that account's. A chat that has not linked is told how to, and is not offered
+names.

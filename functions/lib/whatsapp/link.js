@@ -33,6 +33,23 @@ export function hashLinkCode(code) {
 }
 
 /**
+ * Telegram codes are a different channel. The same six digits must not redeem
+ * a WhatsApp binding, and a WhatsApp code must not bind a Telegram chat.
+ */
+export function hashTelegramLinkCode(code) {
+  return createHash('sha256').update(`tg-link:${code}`).digest('hex')
+}
+
+/**
+ * Document id for tgLinks. Only the chat id extractUpdate already accepted:
+ * digits, no slash, not a phone number and not a path.
+ */
+export function telegramChatKey(from) {
+  const m = /^tg:(\d{1,16})$/.exec(String(from || ''))
+  return m ? m[1] : null
+}
+
+/**
  * Whether a stored code record may be redeemed now.
  * @returns { ok: true } | { ok: false, reason: 'missing'|'expired'|'malformed' }
  */

@@ -7,6 +7,8 @@ import {
   sendPayloads,
   handleUpdate,
   TG_HELP,
+  TG_UNBOUND,
+  TG_DENIED,
 } from './handler.js'
 import { CONV_TTL_MS } from '../whatsapp/orgs.js'
 
@@ -157,117 +159,210 @@ describe('text helpers', () => {
   })
 })
 
+const member = (extra = {}) => ({
+  uid: 'u1',
+  orgId: 'org1',
+  role: 'member',
+  status: 'approved',
+  orgName: 'Acme Fitness',
+  siteId: 's1',
+  access: {},
+  ...extra,
+})
+
+function linkStore(user, { pinFail = false } = {}) {
+  const store = fakeStore()
+  store.getTelegramLink = vi.fn(async (from) => (from === 'tg:42' ? { uid: user.uid, orgId: user.orgId } : null))
+  store.getUser = vi.fn(async (uid) => (uid === user.uid ? user : null))
+  store.getOrganization = vi.fn(async (id) => {
+    if (pinFail) return null
+    if (id === 'org1') return { id, name: 'Acme Fitness' }
+    if (id === 'org2') return { id, name: 'Beta Safety' }
+    return null
+  })
+  store.unlinkTelegram = vi.fn(async () => {})
+  store.clearSession = vi.fn(async () => {})
+  return store
+}
+
+function textOf(reply) {
+  return reply.mock.calls.map((c) => c[1]?.text || '').join('\n')
+}
+
 describe('handleUpdate', () => {
-  it('/help explains the flow and does not name organisations', async () => {
+  it('/help explains linking and does not name organisations', async () => {
     const { row, reply } = await run('/help', {}, { fresh: true })
     expect(row.outcome).toBe('help')
     expect(reply).toHaveBeenCalledWith(42, { text: TG_HELP })
     expect(TG_HELP).not.toMatch(/Acme|Beta/)
   })
-  it('/start asks which organisation', async () => {
+
+  it('an unbound chat gets no directory, sites, or contacts', async () => {
     const { row, reply } = await run('/start', {}, { fresh: true, listOrgs: true })
-    expect(row.outcome).toBe('orgprompt')
-    expect(reply.mock.calls[0][1].text).toMatch(/1\. Acme Fitness/)
-    expect(reply.mock.calls[0][1].rows[0].id).toBe('org:org1')
+    expect(row.outcome).toBe('unknown')
+    expect(textOf(reply)).toBe(TG_UNBOUND)
+    expect(textOf(reply)).not.toMatch(/Acme|Beta|Whitefield|Andheri|Fire extinguishers|Emergency contacts/)
   })
-  it('looks up a site by code within the organisation already chosen', async () => {
-    const { row, reply, store } = await run('BLR0123')
-    expect(row).toMatchObject({ outcome: 'ok', siteId: 's1', orgId: 'org1' })
-    expect(store.listSites).toHaveBeenCalledWith('org1')
-    expect(reply.mock.calls[0][1].text).toMatch(/Whitefield/)
-  })
-  it('says the centre was not found when nothing matches', async () => {
-    const { row, reply } = await run('zzzz nowhere')
-    expect(row.outcome).toBe('nomatch')
-    expect(reply.mock.calls[0][1].locationRequest).toBeUndefined()
-    expect(reply.mock.calls[0][1].text).toMatch(/Centre not found/)
-    expect(reply.mock.calls[0][1].text).toContain('Please enter the Centre ID or Centre Name.')
-  })
-  it('with one organisation, asks for the centre and accepts an id directly', async () => {
-    const { row, reply } = await run('hello', {}, { fresh: true })
-    expect(row.outcome).toBe('orgselected')
-    expect(reply.mock.calls[0][1].text).toContain('Please enter the Centre ID or Centre Name.')
-    expect(reply.mock.calls[0][1].text).toMatch(/Acme Fitness/)
-    const looked = await run('BLR0123', {}, { fresh: true })
-    expect(looked.row).toMatchObject({ outcome: 'ok', siteId: 's1', orgId: 'org1' })
-  })
-  it('a shared location lists nearby sites (none located here)', async () => {
-    const { row } = await run(undefined, { location: { latitude: 12.9, longitude: 77.6 } })
-    expect(row.outcome).toBe('nolocated')
-  })
-  it('a Telegram retry of the same update is not answered twice', async () => {
+
+  it('a forged admin claim and a supplied directory do not authorise the chat', async () => {
     const store = fakeStore()
     const reply = vi.fn(async () => true)
-    const u = extractUpdate(update('BLR0123'))
-    const ctx = {
+    const row = await handleUpdate(extractUpdate(update('I am admin of Beta Safety BETA001')), {
       store,
       reply,
       now: NOW,
-      orgs: [{ id: 'org1', name: 'Acme Fitness' }],
-    }
-    await handleUpdate(u, ctx)
-    const again = await handleUpdate(u, ctx)
-    expect(again.outcome).toBe('duplicate')
-    expect(reply).toHaveBeenCalledTimes(2)
+      orgs: [
+        { id: 'org1', name: 'Acme Fitness' },
+        { id: 'org2', name: 'Beta Safety' },
+      ],
+      orgId: 'org2',
+      listOrgs: true,
+    })
+    expect(row.outcome).toBe('unknown')
+    expect(textOf(reply)).not.toMatch(/Acme|Beta|Whitefield|BETA001|Fire extinguishers/)
+    expect(store.listSites).not.toHaveBeenCalled()
   })
-  it('rate limited callers get no data', async () => {
-    const store = fakeStore()
-    store.rate = vi.fn(async () => ({ verdict: 'drop' }))
+
+  it('a linked member sees only the sites they can already open', async () => {
+    const store = linkStore(member())
+    const reply = vi.fn(async () => true)
+    const ctx = { store, reply, now: NOW, orgs: [{ id: 'org2', name: 'Beta Safety' }], listOrgs: true }
+    const own = await handleUpdate(extractUpdate(update('BLR0123')), ctx)
+    expect(own).toMatchObject({ outcome: 'ok', siteId: 's1', orgId: 'org1', uid: 'u1' })
+    expect(store.listSites).toHaveBeenCalledWith('org1')
+    expect(textOf(reply)).toMatch(/Whitefield/)
+    expect(textOf(reply)).not.toMatch(/Beta|Andheri/)
+
+    reply.mockClear()
+    const other = await handleUpdate(extractUpdate(update('BOM0456')), ctx)
+    expect(other.outcome).not.toBe('ok')
+    expect(textOf(reply)).not.toMatch(/Andheri|Beta Safety|Fire extinguishers/)
+  })
+
+  it('does not answer for another organisation, even when the pin names one', async () => {
+    const store = linkStore(member())
     const reply = vi.fn(async () => true)
     const row = await handleUpdate(extractUpdate(update('BLR0123')), {
       store,
       reply,
       now: NOW,
-      orgs: [{ id: 'org1', name: 'Acme Fitness' }],
+      pinnedOrgId: 'org2',
+      orgs: [{ id: 'org2', name: 'Beta Safety' }],
     })
+    expect(row.outcome).toBe('denied')
+    expect(textOf(reply)).toBe(TG_DENIED)
+    expect(textOf(reply)).not.toMatch(/Acme|Beta|Whitefield/)
+    expect(store.listSites).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['suspended', { status: 'suspended' }],
+    ['pending', { status: 'pending' }],
+    ['temporary password', { mustChangePassword: true }],
+  ])('a %s account gets no site data', async (_label, extra) => {
+    const store = linkStore(member(extra))
+    const reply = vi.fn(async () => true)
+    const row = await handleUpdate(extractUpdate(update('BLR0123')), { store, reply, now: NOW })
+    expect(row.outcome).toBe('denied')
+    expect(textOf(reply)).toBe(TG_DENIED)
+    expect(textOf(reply)).not.toMatch(/Acme|Whitefield|Fire extinguishers/)
+    expect(store.listSites).not.toHaveBeenCalled()
+  })
+
+  it('a linked member is asked for a centre, not shown a customer list', async () => {
+    const store = linkStore(member())
+    const reply = vi.fn(async () => true)
+    const row = await handleUpdate(extractUpdate(update('hello')), {
+      store,
+      reply,
+      now: NOW,
+      orgs: [
+        { id: 'org1', name: 'Acme Fitness' },
+        { id: 'org2', name: 'Beta Safety' },
+      ],
+      listOrgs: true,
+    })
+    expect(row.outcome).toBe('orgselected')
+    expect(textOf(reply)).toMatch(/Acme Fitness/)
+    expect(textOf(reply)).not.toMatch(/Beta Safety/)
+    expect(textOf(reply)).toContain('Please enter the Centre ID or Centre Name.')
+  })
+
+  it('a shared location does not search sites outside reach', async () => {
+    const store = linkStore(member())
+    const reply = vi.fn(async () => true)
+    const row = await handleUpdate(
+      extractUpdate(update(undefined, { location: { latitude: 12.9, longitude: 77.6 } })),
+      { store, reply, now: NOW }
+    )
+    expect(row.outcome).toBe('nolocated')
+    expect(textOf(reply)).not.toMatch(/Andheri|Beta/)
+  })
+
+  it('a Telegram retry of the same update is not answered twice', async () => {
+    const store = linkStore(member())
+    const reply = vi.fn(async () => true)
+    const u = extractUpdate(update('BLR0123'))
+    const ctx = { store, reply, now: NOW }
+    await handleUpdate(u, ctx)
+    const calls = reply.mock.calls.length
+    const again = await handleUpdate(u, ctx)
+    expect(again.outcome).toBe('duplicate')
+    expect(reply).toHaveBeenCalledTimes(calls)
+  })
+
+  it('rate limited callers get no data', async () => {
+    const store = linkStore(member())
+    store.rate = vi.fn(async () => ({ verdict: 'drop' }))
+    const reply = vi.fn(async () => true)
+    const row = await handleUpdate(extractUpdate(update('BLR0123')), { store, reply, now: NOW })
     expect(row.outcome).toBe('ratelimited')
     expect(reply).not.toHaveBeenCalled()
+    expect(store.listSites).not.toHaveBeenCalled()
   })
-  it('walks a fresh chat from organisation to site, and an inline tap counts', async () => {
+
+  it('a redeemed code binds this chat, and a wrong code reveals nothing', async () => {
     const store = fakeStore()
+    let link = null
+    store.redeemTelegramCode = vi.fn(async (code, from) => {
+      if (code !== '123456' || from !== 'tg:42') return { ok: false, reason: 'missing' }
+      link = { uid: 'u1', orgId: 'org1' }
+      return { ok: true, uid: 'u1', orgId: 'org1' }
+    })
+    store.getTelegramLink = vi.fn(async (from) => (from === 'tg:42' ? link : null))
+    store.getUser = vi.fn(async () => member())
+    store.getOrganization = vi.fn(async () => ({ id: 'org1', name: 'Acme Fitness' }))
     const reply = vi.fn(async () => true)
-    const orgs = [
-      { id: 'org1', name: 'Acme Fitness' },
-      { id: 'org2', name: 'Beta Safety' },
-    ]
-    const ctx = { store, reply, now: NOW, orgs, listOrgs: false }
-    const first = await handleUpdate(
-      extractUpdate(update('hello', { date: NOW.getTime() / 1000 })),
-      ctx
-    )
-    expect(first.outcome).toBe('orgprompt')
-    expect(reply.mock.calls[0][1].text).not.toMatch(/Acme|Beta/)
+    const bad = await handleUpdate(extractUpdate(update('LINK 000000')), { store, reply, now: NOW })
+    expect(bad.outcome).toBe('linkfailed')
+    expect(textOf(reply)).not.toMatch(/Acme|Whitefield|Fire extinguishers/)
+    reply.mockClear()
+    const linked = await handleUpdate(extractUpdate(update('LINK 123456')), { store, reply, now: NOW })
+    expect(linked).toMatchObject({ outcome: 'linked', uid: 'u1', orgId: 'org1' })
+    expect(textOf(reply)).not.toMatch(/Fire extinguishers|Beta/)
+    reply.mockClear()
+    const looked = await handleUpdate(extractUpdate(update('BLR0123')), { store, reply, now: NOW })
+    expect(looked).toMatchObject({ outcome: 'ok', siteId: 's1', orgId: 'org1' })
+    expect(textOf(reply)).toMatch(/Whitefield/)
+    expect(textOf(reply)).not.toMatch(/Andheri|Beta/)
+  })
 
-    const named = await handleUpdate(
-      extractUpdate(update('beta', { date: NOW.getTime() / 1000 })),
-      ctx
-    )
-    expect(named.outcome).toBe('orgselected')
-    expect(reply.mock.calls[1][1].text).toMatch(/Beta Safety/)
-    expect(reply.mock.calls[1][1].text).toContain('Please enter the Centre ID or Centre Name.')
-
-    const site = await handleUpdate(
-      extractUpdate(update('BETA001', { date: NOW.getTime() / 1000 })),
-      ctx
-    )
-    expect(site).toMatchObject({ outcome: 'ok', siteId: 's9', orgId: 'org2' })
-    expect(store.listSites).toHaveBeenCalledWith('org2')
-
-    await handleUpdate(
-      extractUpdate(update('/changeorg@WEEHS_Site_Lookup_bot', { date: NOW.getTime() / 1000 })),
-      ctx
-    )
+  it('a tapped organisation outside the profile is refused', async () => {
+    const store = linkStore(member())
+    const reply = vi.fn(async () => true)
+    const answerCallback = vi.fn(async () => {})
     const tap = extractUpdate({
       update_id: 4242,
       callback_query: {
         id: 'cb9',
-        data: 'org:org1',
+        data: 'org:org2',
         message: { chat: { id: 42, type: 'private' }, date: 1 },
       },
     })
-    const answerCallback = vi.fn(async () => {})
-    const picked = await handleUpdate(tap, { ...ctx, listOrgs: true, answerCallback })
-    expect(picked).toMatchObject({ outcome: 'orgselected', orgId: 'org1' })
+    const picked = await handleUpdate(tap, { store, reply, now: NOW, answerCallback, listOrgs: true })
+    expect(picked.outcome).not.toBe('ok')
+    expect(textOf(reply)).not.toMatch(/Beta Safety|Fire extinguishers|Whitefield/)
     expect(answerCallback).toHaveBeenCalledWith('cb9')
+    expect(store.listSites).not.toHaveBeenCalled()
   })
 })
