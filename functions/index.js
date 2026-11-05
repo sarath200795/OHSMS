@@ -159,6 +159,10 @@ const DATA_KEY_MASTER = defineSecret('DATA_KEY_MASTER')
 // stays info@weehs.org (functions/lib/mailer.js DEFAULT_MAIL). Host and port
 // default to that relay. SMTP_USER does not: it is the Brevo SMTP login, and
 // a default of the From mailbox would authenticate as the wrong account.
+// An empty SMTP_USER in functions/.env.<projectId> is still a value: the
+// deploy writes it onto the service and replaces a login that was already
+// there. prepare-functions-deploy.sh refuses that empty value for
+// weehs-4eb28 so the deploy stops instead of clearing the login.
 // The From display name is the organisation's name when that document has
 // one, and a neutral label otherwise. SMTP_PASS is the Brevo SMTP key, and
 // it is a secret on purpose: a mail credential in the Cloud Run environment,

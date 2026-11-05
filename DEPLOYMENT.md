@@ -159,9 +159,17 @@ is missing, CI creates it from the `SMTP_PASS` GitHub secret when that is
 set, and otherwise as the placeholder `UNSET-PLACEHOLDER`. CI does not create
 or replace `DATA_KEY_MASTER`. Repository variables `SMTP_HOST`, `SMTP_PORT`,
 `SMTP_USER`, `MAIL_FROM` and `APP_ORIGIN` override those CI defaults when set.
+For project `weehs-4eb28`, an empty `SMTP_USER` stops the script before it
+writes the dotenv file. A blank `SMTP_USER=` line is deployed as the Brevo
+login and replaces the working one; the checked-in
+`functions/.env.weehs-4eb28` therefore omits the key. Set the repository
+variable to the current login. Do not commit it. Other projects may still
+write an empty `SMTP_USER`, which leaves mail unconfigured rather than
+clearing a production login.
 `WA_TEMPLATE_WELCOME` and `WA_TEMPLATE_TEST` are written as well, blank unless
 those repository variables are set. Blank keeps the welcome and the org test
-on free-form text.
+on free-form text, and it does replace a template name that was set only in
+Cloud Run. The repository variable is what keeps an approved template.
 
 Local emulators read the password from `functions/.secret.local` (one line,
 `SMTP_PASS=...`). Without that file the trigger logs the same configuration
@@ -169,7 +177,8 @@ error and returns.
 
 `functions/.env` can override the defaults (`SMTP_HOST`, `SMTP_PORT`,
 `SMTP_USER`, `MAIL_FROM`, `APP_ORIGIN`). Leaving the host and port unset
-keeps the Brevo relay. `SMTP_USER` stays empty until it is set. See
+keeps the Brevo relay. `SMTP_USER` has no default login. See
 `functions/.env.example`. `functions/.env.weehs-4eb28`
-supplies non-secret SMTP defaults for CI, while `SMTP_PASS` remains a
-Secret Manager secret.
+supplies the other non-secret params for a laptop deploy that does not
+re-run the script, and it does not contain `SMTP_USER`. `SMTP_PASS` remains
+a Secret Manager secret.
