@@ -89,8 +89,8 @@ import { deliverPermitMails } from './lib/permitNotify.js'
 import { deliverDefectReport, deliverAssetDefects } from './lib/defectNotify.js'
 import { deliverDrillReport } from './lib/drillReportNotify.js'
 import { deliverMeetingMail } from './lib/meetingNotify.js'
-import { deliverWeatherDigest, weatherBucket } from './lib/weatherDigest.js'
-import { gridKey, requestPoint } from './lib/openMeteo.js'
+import { deliverWeatherDigest } from './lib/weatherDigest.js'
+import { serveSiteWeather, countWeatherFetch } from './lib/siteWeatherCall.js'
 import { weatherCache } from './lib/weatherCache.js'
 import { createMailer, DEFAULT_MAIL } from './lib/mailer.js'
 import { createHmac } from 'node:crypto'
@@ -2816,27 +2816,46 @@ export const retryWeatherRiskDigest = onSchedule(
 )
 
 // The site screen calls this and gets the observation. The browser does not
-// call Open-Meteo, and there is no weather API key. Coordinates are rounded
-// again inside the request. A retryable failure is an empty reading with
-// limited set, not an error the page can mistake for a calm site.
+// call Open-Meteo, and there is no weather API key. The answer is a public
+// forecast, not a record from the tenant. The gate is the same live profile
+// the other callables use, and the coordinate has to be a site that profile
+// can already see. The digest does not call this; it is a schedule.
 export const fetchSiteWeather = onCall({ region: REGION, timeoutSeconds: 30 }, async (request) => {
-  if (!request.auth?.uid) throw new HttpsError('unauthenticated', 'Sign in first.')
-  const lat = Number(request.data?.lat)
-  const lng = Number(request.data?.lng)
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-    throw new HttpsError('invalid-argument', 'A latitude and longitude are required.')
-  }
-  const key = gridKey(lat, lng)
-  if (!key) throw new HttpsError('invalid-argument', 'A latitude and longitude are required.')
-  const slot = weatherBucket(new Date())
-  const [gLat, gLng] = key.split(',').map(Number)
-  const result = await requestPoint(
-    { key, lat: gLat, lng: gLng },
-    { cache: weatherCache(getFirestore()), slot }
-  )
-  if (!result.ok && result.retry) return { obs: null, limited: true }
-  return { obs: result.obs || null }
+  const db = getFirestore()
+  const result = await serveSiteWeather({
+    uid: request.auth?.uid || '',
+    data: request.data,
+    loadProfile: async (uid) => {
+      const snap = await db.doc(`users/${uid}`).get()
+      return snap.exists ? snap.data() : null
+    },
+    orgExists: async (orgId) => (await db.doc(`organizations/${orgId}`).get()).exists,
+    loadSites: async (orgId) => {
+      const snap = await db.collection(`organizations/${orgId}/sites`).get()
+      return snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+    },
+    cache: weatherCache(db),
+    fetchImpl: globalThis.fetch,
+    takeRate: (uid, nowMs) => takeWeatherRate(db, uid, nowMs),
+  })
+  if (result.error) throw new HttpsError(result.error, result.message)
+  return result.body
 })
+
+async function takeWeatherRate(db, uid, nowMs) {
+  const ref = db.doc(`weatherRate/${uid}`)
+  try {
+    return await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref)
+      const next = countWeatherFetch(snap.exists ? snap.data() : {}, nowMs)
+      tx.set(ref, { stamps: next.stamps })
+      return next.allowed
+    })
+  } catch (err) {
+    logger.error('fetchSiteWeather: rate check failed', { uid, error: err?.message || String(err) })
+    return false
+  }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // WhatsApp site lookup (Meta WhatsApp Cloud API, direct).
