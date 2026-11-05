@@ -415,15 +415,6 @@ export async function requestPoint(point, options = {}) {
   return { ok: true, obs, retryAfterMs: air.retry ? air.retryAfterMs || 1000 : 0 }
 }
 
-/** One coordinate. Null when the point is invalid or the provider did not answer. */
-export async function fetchObservation(lat, lng, options = {}) {
-  const key = gridKey(lat, lng)
-  if (!key) return null
-  const [la, ln] = key.split(',').map(Number)
-  const result = await requestPoint({ key, lat: la, lng: ln }, options)
-  return result.ok ? result.obs : null
-}
-
 /**
  * Readings for every point that succeeded. Failures are listed so the caller
  * can try them on a later pass instead of describing them as clear.
