@@ -9,6 +9,7 @@ import { initializeApp, getApps } from 'firebase-admin/app'
 import { getAuth } from 'firebase-admin/auth'
 import {
   applyPasswordChange,
+  createSerialLock,
   postPasswordSignIn,
   signInEndpoint,
 } from './passwordGate.js'
@@ -87,6 +88,7 @@ describe.skipIf(!EMULATOR)('password gate against the Auth emulator', () => {
     const flag = { value: true }
     const cleared = []
     const now = Date.now()
+    const lock = createSerialLock(() => now)
     const unchanged = await applyPasswordChange({
       uid,
       authTime: Math.floor(now / 1000),
@@ -96,12 +98,13 @@ describe.skipIf(!EMULATOR)('password gate against the Auth emulator', () => {
       flag: flag.value,
       current: TEMP,
       password: TEMP,
-      marker: null,
+      marker: lock.read(),
       signIn,
       updatePassword: async () => { throw new Error('must not replace') },
-      writeMarker: async () => {},
+      claimLock: (record) => lock.claimLock(record),
+      commitLock: (id, exp) => lock.commitLock(id, exp),
+      releaseLock: (id) => lock.releaseLock(id),
       clearFlag: async () => { flag.value = false; cleared.push('clear') },
-      deleteMarker: async () => {},
     })
     expect(unchanged.reason).toBe('unchanged')
     expect(flag.value).toBe(true)
@@ -111,8 +114,8 @@ describe.skipIf(!EMULATOR)('password gate against the Auth emulator', () => {
 
   it('clears the flag only after Auth accepts a different password, and a failure leaves it set', async () => {
     const flag = { value: true }
-    let marker = null
     const now = Date.now()
+    const lock = createSerialLock(() => now)
     const base = {
       uid,
       authTime: Math.floor(now / 1000),
@@ -121,34 +124,63 @@ describe.skipIf(!EMULATOR)('password gate against the Auth emulator', () => {
       name: 'Ada',
       current: TEMP,
       signIn,
-      writeMarker: async (_id, next) => { marker = next },
-      deleteMarker: async () => { marker = null },
+      claimLock: (record) => lock.claimLock(record),
+      commitLock: (id, exp) => lock.commitLock(id, exp),
+      releaseLock: (id) => lock.releaseLock(id),
     }
 
     const broken = await applyPasswordChange({
       ...base,
       flag: true,
       password: NEXT,
-      marker,
+      marker: lock.read(),
       updatePassword: async () => { throw Object.assign(new Error('no'), { code: 'auth/internal' }) },
       clearFlag: async () => { flag.value = false },
     })
     expect(broken.reason).toBe('not-updated')
     expect(flag.value).toBe(true)
+    expect(lock.read()).toBeNull()
     expect(await signIn(email, TEMP)).toBe('current')
+
+    const stuck = await applyPasswordChange({
+      ...base,
+      flag: true,
+      password: NEXT,
+      marker: lock.read(),
+      updatePassword: (id, password) => auth().updateUser(id, { password }),
+      clearFlag: async () => { throw Object.assign(new Error('no'), { code: 'unavailable' }) },
+    })
+    expect(stuck.reason).toBe('flag-unchanged')
+    expect(flag.value).toBe(true)
+    expect(lock.read()?.phase).toBe('committed')
+    expect(JSON.stringify(lock.read())).not.toMatch(/river|temp-password/)
+    expect(await signIn(email, TEMP)).toBe('not-current')
+    expect(await signIn(email, NEXT)).toBe('current')
+
+    const replay = await applyPasswordChange({
+      ...base,
+      flag: true,
+      current: TEMP,
+      password: NEXT,
+      marker: lock.read(),
+      updatePassword: async () => { throw new Error('replay must not set a password') },
+      clearFlag: async () => { flag.value = false },
+    })
+    expect(replay.reason).toBe('current-rejected')
+    expect(flag.value).toBe(true)
 
     const done = await applyPasswordChange({
       ...base,
       flag: true,
+      current: NEXT,
       password: NEXT,
-      marker: null,
-      updatePassword: (id, password) => auth().updateUser(id, { password }),
+      marker: lock.read(),
+      updatePassword: async () => { throw new Error('finish must not set a password') },
       clearFlag: async () => { flag.value = false },
     })
     expect(done).toEqual({ ok: true, reason: 'replaced' })
     expect(flag.value).toBe(false)
-    expect(marker).toBeNull()
-    expect(await signIn(email, TEMP)).toBe('not-current')
+    expect(lock.read()).toBeNull()
     expect(await signIn(email, NEXT)).toBe('current')
   })
 
@@ -167,9 +199,10 @@ describe.skipIf(!EMULATOR)('password gate against the Auth emulator', () => {
       marker: null,
       signIn,
       updatePassword: async () => { throw new Error('must not replace') },
-      writeMarker: async () => {},
+      claimLock: async () => { throw new Error('must not lock') },
+      commitLock: async () => { throw new Error('must not lock') },
+      releaseLock: async () => {},
       clearFlag: async () => { throw new Error('must not clear') },
-      deleteMarker: async () => {},
     })
     expect(stale.reason).toBe('stale')
     expect(await signIn(email, NEXT)).toBe('current')

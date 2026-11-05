@@ -2,12 +2,17 @@ import { describe, it, expect, vi } from 'vitest'
 import {
   replacementError,
   authIsFresh,
-  commitmentOf,
+  lockState,
+  gateLockShouldDrop,
+  safeAuthCode,
+  authErrorCode,
   signInEndpoint,
   classifySignInResponse,
   postPasswordSignIn,
   applyPasswordChange,
+  createSerialLock,
   PASSWORD_GATE_FRESH_MS,
+  PASSWORD_GATE_LOCK_MS,
 } from './passwordGate.js'
 
 const NOW = 1_700_000_000_000
@@ -16,7 +21,8 @@ const NEXT = 'river-lantern-42'
 
 function harness() {
   const calls = []
-  const state = { flag: true, marker: null }
+  const state = { flag: true, account: TEMP }
+  const lock = createSerialLock(() => NOW)
   const api = {
     uid: 'user-1',
     authTime: NOW / 1000,
@@ -25,19 +31,26 @@ function harness() {
     name: 'Ada',
     current: TEMP,
     password: NEXT,
-    signIn: vi.fn(async (_email, password) => (password === TEMP ? 'current' : 'not-current')),
-    updatePassword: vi.fn(async () => { calls.push('update') }),
-    writeMarker: vi.fn(async (_uid, marker) => { state.marker = marker }),
+    signIn: vi.fn(async (_email, password) => (password === state.account ? 'current' : 'not-current')),
+    updatePassword: vi.fn(async (_id, password) => {
+      state.account = password
+      calls.push('update')
+    }),
+    claimLock: (record) => lock.claimLock(record),
+    commitLock: (id, exp) => lock.commitLock(id, exp),
+    releaseLock: (id) => lock.releaseLock(id),
     clearFlag: vi.fn(async () => { state.flag = false; calls.push('clear') }),
-    deleteMarker: vi.fn(async () => { state.marker = null; calls.push('delete-marker') }),
   }
   return {
     calls,
     state,
+    lock,
     api,
-    // flag and marker are read at call time. The decision must see the marker
-    // the previous attempt wrote, not the empty one from when the harness was built.
-    run: () => applyPasswordChange({ ...api, flag: state.flag, marker: state.marker }),
+    run: () => applyPasswordChange({
+      ...api,
+      flag: state.flag,
+      marker: lock.read(),
+    }),
   }
 }
 
@@ -95,9 +108,11 @@ describe('sign-in classification', () => {
     const bad = {
       ok: false,
       status: 400,
-      json: async () => ({ error: { message: 'INVALID_PASSWORD' } }),
+      json: async () => ({ error: { message: `INVALID_PASSWORD : ${TEMP}` } }),
     }
-    expect(await postPasswordSignIn(async () => bad, 'http://auth/signIn', 'a@b.c', 'nope')).toBe('not-current')
+    const wrong = await postPasswordSignIn(async () => bad, 'http://auth/signIn', 'a@b.c', 'nope')
+    expect(wrong).toBe('not-current')
+    expect(wrong).not.toContain(TEMP)
     expect(await postPasswordSignIn(async () => { throw new Error('down') }, 'http://auth/signIn', 'a@b.c', TEMP))
       .toBe('unavailable')
     expect(await postPasswordSignIn(async () => bad, null, 'a@b.c', TEMP)).toBe('unavailable')
@@ -113,7 +128,7 @@ describe('applyPasswordChange', () => {
     expect(await h.run()).toEqual({ ok: true, reason: 'replaced' })
     expect(order).toEqual(['update', 'clear'])
     expect(h.state.flag).toBe(false)
-    expect(h.state.marker).toBeNull()
+    expect(h.lock.read()).toBeNull()
   })
 
   it('does not clear when the proposed password is the one that just signed in', async () => {
@@ -163,39 +178,137 @@ describe('applyPasswordChange', () => {
     expect(down.state.flag).toBe(true)
   })
 
-  it('leaves the flag set when the password update fails', async () => {
+  it('leaves the flag set and drops the lock when the password update fails', async () => {
     const h = harness()
-    h.api.updatePassword = vi.fn(async () => { throw Object.assign(new Error('no'), { code: 'auth/x' }) })
+    h.api.updatePassword = vi.fn(async () => {
+      throw Object.assign(new Error(`refused ${NEXT}`), { code: 'auth/x' })
+    })
     const out = await h.run()
     expect(out.reason).toBe('not-updated')
     expect(out.code).toBe('auth/x')
     expect(h.api.clearFlag).not.toHaveBeenCalled()
     expect(h.state.flag).toBe(true)
+    expect(h.state.account).toBe(TEMP)
+    expect(h.lock.read()).toBeNull()
     expect(JSON.stringify(out)).not.toContain(NEXT)
   })
 
-  it('keeps a committed marker so a failed flag write can be finished without a third password', async () => {
+  it('finishes a failed flag write by signing in with the new password, without storing it', async () => {
     const h = harness()
     h.api.clearFlag = vi.fn(async () => { throw Object.assign(new Error('no'), { code: 'unavailable' }) })
     expect((await h.run()).reason).toBe('flag-unchanged')
     expect(h.state.flag).toBe(true)
-    expect(h.state.marker).toEqual({ sha256: commitmentOf(NEXT), committed: true })
+    expect(h.state.account).toBe(NEXT)
+    const held = h.lock.read()
+    expect(held.phase).toBe('committed')
+    expect(held.expiresAtMs).toBe(NOW + PASSWORD_GATE_LOCK_MS)
+    expect(held.nonce).toMatch(/^[a-f0-9]{64}$/)
+    expect(JSON.stringify(held)).not.toContain(NEXT)
+    expect(JSON.stringify(held)).not.toContain(TEMP)
 
     h.api.current = NEXT
     h.api.password = NEXT
-    h.api.signIn = vi.fn(async (_email, password) => (password === NEXT ? 'current' : 'not-current'))
     h.api.clearFlag = vi.fn(async () => { h.state.flag = false })
     expect(await h.run()).toEqual({ ok: true, reason: 'replaced' })
     expect(h.api.updatePassword).toHaveBeenCalledTimes(1)
     expect(h.state.flag).toBe(false)
+    expect(h.lock.read()).toBeNull()
   })
 
-  it('does not treat an uncommitted marker plus the old password as a completed change', async () => {
+  it('does not treat a pending lock plus the old password as a completed change', async () => {
     const h = harness()
-    h.state.marker = { sha256: commitmentOf(TEMP), committed: false }
+    h.api.updatePassword = vi.fn(async () => { throw Object.assign(new Error('no'), { code: 'auth/internal' }) })
+    h.api.releaseLock = vi.fn(async () => {})
+    expect((await h.run()).reason).toBe('not-updated')
+    // The release was skipped by the stub, so the pending lock is still there.
+    h.lock.read().phase = 'pending'
     h.api.password = TEMP
+    h.api.releaseLock = (id) => h.lock.releaseLock(id)
     expect((await h.run()).reason).toBe('unchanged')
     expect(h.state.flag).toBe(true)
+    expect(h.api.updatePassword).toHaveBeenCalledTimes(1)
+  })
+
+  it('a replay of the temporary password after a replacement does not clear or set it again', async () => {
+    const h = harness()
+    expect(await h.run()).toEqual({ ok: true, reason: 'replaced' })
+    h.state.flag = true
+    h.api.current = TEMP
+    h.api.password = NEXT
+    expect((await h.run()).reason).toBe('current-rejected')
+    expect(h.api.updatePassword).toHaveBeenCalledTimes(1)
+    expect(h.state.flag).toBe(true)
+    expect(h.state.account).toBe(NEXT)
+  })
+
+  it('a second completion after the flag is down does not change the password again', async () => {
+    const h = harness()
+    expect((await h.run()).reason).toBe('replaced')
+    const updates = h.api.updatePassword.mock.calls.length
+    h.api.current = NEXT
+    h.api.password = 'second-lantern-9'
+    expect(await h.run()).toEqual({ ok: true, reason: 'not-required' })
+    expect(h.api.updatePassword).toHaveBeenCalledTimes(updates)
+    expect(h.state.account).toBe(NEXT)
+  })
+
+  it('lets only one of two concurrent replacements call updateUser', async () => {
+    const h = harness()
+    let release
+    const gate = new Promise((resolve) => { release = resolve })
+    const original = h.api.updatePassword
+    h.api.updatePassword = vi.fn(async (id, password) => {
+      await gate
+      return original(id, password)
+    })
+    const first = h.run()
+    const second = applyPasswordChange({
+      ...h.api,
+      password: 'other-lantern-7',
+      flag: true,
+      marker: null,
+    })
+    await Promise.resolve()
+    release()
+    const [a, b] = await Promise.all([first, second])
+    const reasons = [a.reason, b.reason].sort()
+    expect(reasons).toEqual(['busy', 'replaced'])
+    expect(h.api.updatePassword).toHaveBeenCalledTimes(1)
+    expect(h.state.flag).toBe(false)
+    expect(h.lock.read()).toBeNull()
+  })
+
+  it('ignores an expired lock, so a failed attempt does not block the account', async () => {
+    const h = harness()
+    const stale = {
+      nonce: 'a'.repeat(64),
+      phase: 'committed',
+      expiresAtMs: NOW - 1,
+    }
+    expect(lockState(stale, NOW)).toBeNull()
+    h.api.password = TEMP
+    const same = await applyPasswordChange({ ...h.api, flag: true, marker: stale, password: TEMP })
+    expect(same.reason).toBe('unchanged')
+    expect(h.state.flag).toBe(true)
+    h.api.password = NEXT
+    expect((await h.run()).reason).toBe('replaced')
+    expect(h.state.flag).toBe(false)
+  })
+
+  it('drops the lock when the requirement changes and keeps it across a name edit', () => {
+    const flagged = { mustChangePassword: true, name: 'Ada' }
+    expect(gateLockShouldDrop(flagged, { ...flagged, name: 'Ada Lovelace' })).toBe(false)
+    expect(gateLockShouldDrop(flagged, { mustChangePassword: false })).toBe(true)
+    expect(gateLockShouldDrop({ mustChangePassword: false }, flagged)).toBe(true)
+    expect(gateLockShouldDrop(flagged, null)).toBe(true)
+  })
+
+  it('does not log a credential validation message or a non-code error', () => {
+    expect(authErrorCode(`INVALID_PASSWORD : ${TEMP}`)).toBe('INVALID_PASSWORD')
+    expect(authErrorCode(`INVALID_PASSWORD : ${TEMP}`)).not.toContain(TEMP)
+    expect(safeAuthCode(`auth/internal ${NEXT}`)).toBe('')
+    expect(safeAuthCode('auth/internal')).toBe('auth/internal')
+    expect(classifySignInResponse(400, `TOKEN_EXPIRED ${TEMP}`)).toBe('unavailable')
   })
 
   it('does not touch Auth when the flag is not set or the password is refused by policy', async () => {
@@ -217,6 +330,6 @@ describe('applyPasswordChange', () => {
     const dumped = JSON.stringify(out)
     expect(dumped).not.toContain(TEMP)
     expect(dumped).not.toContain(NEXT)
-    expect(dumped).not.toContain(commitmentOf(NEXT))
+    expect(h.lock.read()).toBeNull()
   })
 })

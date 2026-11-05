@@ -1508,8 +1508,8 @@ service cloud.firestore {
       allow delete: if isPlatformAdmin();
     }
 
-    // Server-only marker for an in-flight password replacement. A sha256 of
-    // the candidate, deleted once the flag is cleared. Not a client concern.
+    // Server-only lock for an in-flight password replacement: a random nonce,
+    // a phase, and an expiry. Not a password and not a digest of one.
     match /authGates/{uid} {
       allow read, write: if false;
     }

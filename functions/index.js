@@ -23,6 +23,8 @@ import { logger } from 'firebase-functions'
 import { claimsFor, claimsChanged, mergeClaims, revokesAccess } from './lib/claims.js'
 import {
   applyPasswordChange,
+  gateLockShouldDrop,
+  lockState,
   postPasswordSignIn,
   signInEndpoint,
 } from './lib/passwordGate.js'
@@ -191,7 +193,10 @@ const APP_ORIGIN = defineString('APP_ORIGIN', { default: DEFAULT_MAIL.appOrigin 
 //   AUTH_WEB_API_KEY=the-server-usable-web-api-key
 //
 // Empty means the function cannot verify a password and will not lift
-// mustChangePassword. Deploy the rules only after a completion has succeeded.
+// mustChangePassword. A release deploys functions, then rules, then hosting
+// with no pause, so an empty value here and the rules in that same release
+// leave a flagged account unable to finish. Unflagged accounts are unaffected.
+// This is not the browser key, and it is not committed.
 const AUTH_WEB_API_KEY = defineString('AUTH_WEB_API_KEY', { default: '' })
 
 // Keep the functions beside the data they trigger on. This project's Firestore
@@ -278,16 +283,12 @@ export const syncUserClaims = onDocumentWritten(
     const { uid } = event.params
     const after = event.data?.after?.data() || null
 
-    // The marker is a hash of a candidate password. Drop it when the profile
-    // goes away, when the requirement is imposed again (a leftover committed
-    // marker must not satisfy the next change), and when the flag has just
-    // been lifted (the callable also deletes it; this covers a failed delete).
-    // A profile edit that leaves the flag true does not touch it, so a retry
-    // after a failed flag write still finds the marker. The hash is not logged.
+    // The lock is a nonce and an expiry, not a password. Drop it when the
+    // profile goes away or the requirement changes, so a committed lock cannot
+    // finish a later forced change. A name edit that leaves the flag true
+    // keeps it, which is how a failed flag write is retried.
     const before = event.data?.before?.data() || null
-    const beforeFlag = before?.mustChangePassword === true
-    const afterFlag = after?.mustChangePassword === true
-    if (!after || beforeFlag !== afterFlag) {
+    if (gateLockShouldDrop(before, after)) {
       try {
         await getFirestore().doc(`authGates/${uid}`).delete()
       } catch (err) {
@@ -364,6 +365,42 @@ const PASSWORD_GATE_HTTP = {
   unchanged: ['failed-precondition', 'Choose a different password than the temporary one.'],
   'not-updated': ['internal', 'Could not update the password.'],
   'flag-unchanged': ['failed-precondition', 'The password was saved but the account is still locked. Submit the new password once more.'],
+  busy: ['failed-precondition', 'A password change is already in progress. Wait a moment and try again.'],
+  'finish-pending': ['failed-precondition', 'That password was saved. Enter it again in both fields to finish unlocking the account.'],
+}
+
+async function claimPasswordLock(db, uid, record, now) {
+  const ref = db.doc(`authGates/${uid}`)
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref)
+    if (lockState(snap.exists ? snap.data() : null, now)) return false
+    tx.set(ref, {
+      nonce: record.nonce,
+      phase: 'pending',
+      expiresAtMs: record.expiresAtMs,
+    })
+    return true
+  })
+}
+
+async function commitPasswordLock(db, uid, nonce, expiresAtMs, now) {
+  const ref = db.doc(`authGates/${uid}`)
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref)
+    const live = lockState(snap.exists ? snap.data() : null, now)
+    if (!live || live.nonce !== nonce || live.phase !== 'pending') return false
+    tx.set(ref, { nonce, phase: 'committed', expiresAtMs })
+    return true
+  })
+}
+
+async function releasePasswordLock(db, uid, nonce) {
+  const ref = db.doc(`authGates/${uid}`)
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref)
+    if (!snap.exists || snap.data()?.nonce !== nonce) return
+    tx.delete(ref)
+  })
 }
 
 /**
@@ -375,9 +412,15 @@ const PASSWORD_GATE_HTTP = {
  * updateUser with a string Identity Toolkit has just said is not the current
  * password. Sign-in, refresh, reauth and revoke never reach updateUser.
  *
- * Deploy the Firestore rules that refuse a client clear only after this
- * function can complete a change. Until AUTH_WEB_API_KEY is set (or the Auth
- * emulator is answering), verification returns unavailable and the flag stays.
+ * The request body is not logged. Identity Toolkit's error text is reduced to
+ * a known code before it is classified, and Auth errors are logged only as a
+ * short code. The callable returns { ok, reason } and never a token.
+ *
+ * A release deploys functions, then rules, then hosting, with no pause between
+ * them. An empty AUTH_WEB_API_KEY makes this function refuse, and the rules
+ * deploy in that same release then stops the client from clearing the flag.
+ * Flagged accounts cannot finish until a server-usable key is in the param.
+ * Accounts that are not flagged are unaffected.
  */
 export const completePasswordChange = onCall({ region: REGION }, async (request) => {
   const uid = request.auth?.uid
@@ -414,13 +457,10 @@ export const completePasswordChange = onCall({ region: REGION }, async (request)
     marker: markerSnap.exists ? markerSnap.data() : null,
     signIn: (email, password) => postPasswordSignIn(fetch, endpoint, email, password),
     updatePassword: (id, password) => auth.updateUser(id, { password }),
-    writeMarker: (id, marker) => db.doc(`authGates/${id}`).set({
-      sha256: marker.sha256,
-      committed: marker.committed === true,
-      at: FieldValue.serverTimestamp(),
-    }),
+    claimLock: (record) => claimPasswordLock(db, uid, record, Date.now()),
+    commitLock: (id, expiresAtMs) => commitPasswordLock(db, uid, id, expiresAtMs, Date.now()),
+    releaseLock: (id) => releasePasswordLock(db, uid, id),
     clearFlag: (id) => db.doc(`users/${id}`).update({ mustChangePassword: false }),
-    deleteMarker: (id) => db.doc(`authGates/${id}`).delete(),
   })
 
   if (result.ok) return { ok: true, reason: result.reason }

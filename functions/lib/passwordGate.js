@@ -23,16 +23,20 @@
 // updateUser to replace it. The flag is cleared after that call returns. A
 // sign-in that is not followed by a different password does not clear anything.
 //
-// The password is an argument to Auth and nothing else. It is not logged, not
-// written to Firestore, and not returned. authGates/{uid} holds only a sha256
-// of the candidate, and only so a crash between updateUser and the flag write
-// can be finished without setting a third password. It is deleted once the
-// flag is cleared. Clients cannot read it.
+// The password is an argument to Auth for this call and nothing else. It is
+// not logged, not written to Firestore, and not returned. A crash between
+// updateUser and the flag write is recovered with authGates/{uid}, which holds
+// a random nonce, a phase, and an expiry — not a password and not a digest of
+// one. Clients cannot read it. It is deleted when the flag moves, and an
+// expired lock is ignored so a failed attempt cannot sit there forever.
 // ─────────────────────────────────────────────────────────────────────────────
-import { createHash } from 'node:crypto'
+import { randomBytes } from 'node:crypto'
 
 /** How long after auth_time a completion attempt is still this sign-in. */
 export const PASSWORD_GATE_FRESH_MS = 5 * 60 * 1000
+
+/** How long an in-flight lock may block another attempt. Not a password lifetime. */
+export const PASSWORD_GATE_LOCK_MS = 10 * 60 * 1000
 
 const MIN_PASSWORD_LENGTH = 10
 
@@ -80,9 +84,42 @@ export function authIsFresh(authTimeSec, nowMs, windowMs = PASSWORD_GATE_FRESH_M
   return age >= -60_000 && age <= windowMs
 }
 
-/** sha256 of the candidate. Not the password, and not written anywhere else. */
-export function commitmentOf(password) {
-  return createHash('sha256').update(String(password), 'utf8').digest('hex')
+/** A lock we will still honour. Expired, malformed, or unknown phases are absent. */
+export function lockState(marker, now) {
+  if (!marker || typeof marker !== 'object') return null
+  const nonce = marker.nonce
+  if (typeof nonce !== 'string' || !/^[a-f0-9]{64}$/.test(nonce)) return null
+  if (marker.phase !== 'pending' && marker.phase !== 'committed') return null
+  const exp = Number(marker.expiresAtMs)
+  if (!Number.isFinite(exp) || !Number.isFinite(now) || exp <= now) return null
+  return { nonce, phase: marker.phase, expiresAtMs: exp }
+}
+
+/**
+ * Drop the lock when the profile goes away or the requirement changes.
+ * A name edit that leaves the flag true must not drop it: that is the retry
+ * after a failed flag write. Imposing the requirement again must drop it, or
+ * a committed lock from the previous change would finish the new one.
+ */
+export function gateLockShouldDrop(before, after) {
+  if (!after) return true
+  return (before?.mustChangePassword === true) !== (after?.mustChangePassword === true)
+}
+
+/** An Auth error code safe to log. Anything else, including a message, is dropped. */
+export function safeAuthCode(code) {
+  const s = typeof code === 'string' ? code : ''
+  return /^[a-z0-9/_-]{1,64}$/i.test(s) ? s : ''
+}
+
+/** The leading Identity Toolkit code, with the rest of the message discarded. */
+export function authErrorCode(message) {
+  const token = String(message || '').trim().split(/[\s:]/, 1)[0]
+  return /^[A-Z0-9_]{1,64}$/.test(token) ? token : ''
+}
+
+export function newLockNonce() {
+  return randomBytes(32).toString('hex')
 }
 
 /**
@@ -112,10 +149,8 @@ export function signInEndpoint({ emulatorHost = '', apiKey = '' } = {}) {
  */
 export function classifySignInResponse(httpStatus, errorMessage) {
   if (httpStatus >= 200 && httpStatus < 300) return 'current'
-  const code = String(errorMessage || '')
-  if (code.includes('INVALID_PASSWORD') || code.includes('INVALID_LOGIN_CREDENTIALS')) {
-    return 'not-current'
-  }
+  const code = authErrorCode(errorMessage)
+  if (code === 'INVALID_PASSWORD' || code === 'INVALID_LOGIN_CREDENTIALS') return 'not-current'
   return 'unavailable'
 }
 
@@ -154,13 +189,15 @@ export async function postPasswordSignIn(fetchImpl, url, email, password) {
  * Replace the password and lift the flag, or do neither.
  *
  * `signIn` is Identity Toolkit, not a session we trust: 'current' means the
- * string is the password on the account right now. Equal strings stop here.
- * updateUser runs only after that, and the flag moves only after updateUser
- * returns. If the flag write fails, a retry that signs in with the password
- * we just set finds the committed marker and finishes the clear — it does
- * not get to skip the replacement, because the marker is written only after
- * a sign-in proved the candidate was not the current password, and flipped
- * to committed only after updateUser.
+ * string is the password on the account right now. Equal strings do not call
+ * updateUser. The one exception is a lock this process already committed
+ * after updateUser returned and the flag write then failed: signing in with
+ * that same new password finishes the clear. A pending lock is not that
+ * proof — updateUser may have thrown — so it cannot clear the flag.
+ *
+ * The lock stores a random nonce. claimLock must refuse when another
+ * unexpired lock is already held, so two completions cannot both call
+ * updateUser. releaseLock must delete only its own nonce.
  */
 export async function applyPasswordChange({
   uid,
@@ -174,9 +211,11 @@ export async function applyPasswordChange({
   marker,
   signIn,
   updatePassword,
-  writeMarker,
+  claimLock,
+  commitLock,
+  releaseLock,
   clearFlag,
-  deleteMarker,
+  nonce = newLockNonce,
 }) {
   if (!uid) return { ok: false, reason: 'unauthenticated' }
   if (!authIsFresh(authTime, now)) return { ok: false, reason: 'stale' }
@@ -198,33 +237,84 @@ export async function applyPasswordChange({
   if (known === 'unavailable') return { ok: false, reason: 'unavailable' }
   if (known !== 'current') return { ok: false, reason: 'current-rejected' }
 
+  const live = lockState(marker, now)
   if (current === password) {
-    const commit = typeof marker?.sha256 === 'string' ? marker.sha256 : ''
-    if (marker?.committed === true && commit && commit === commitmentOf(password)) {
-      try {
-        await clearFlag(uid)
-      } catch (err) {
-        return { ok: false, reason: 'flag-unchanged', code: err?.code || '' }
-      }
-      await deleteMarker(uid).catch(() => {})
-      return { ok: true, reason: 'replaced' }
+    if (live?.phase !== 'committed') return { ok: false, reason: 'unchanged' }
+    try {
+      await clearFlag(uid)
+    } catch (err) {
+      return { ok: false, reason: 'flag-unchanged', code: safeAuthCode(err?.code) }
     }
-    return { ok: false, reason: 'unchanged' }
+    await releaseLock(live.nonce).catch(() => {})
+    return { ok: true, reason: 'replaced' }
   }
 
-  const sha256 = commitmentOf(password)
-  await writeMarker(uid, { sha256, committed: false })
+  if (live?.phase === 'pending') return { ok: false, reason: 'busy' }
+  if (live?.phase === 'committed') return { ok: false, reason: 'finish-pending' }
+
+  const id = nonce()
+  const expiresAtMs = now + PASSWORD_GATE_LOCK_MS
+  let claimed = false
+  try {
+    claimed = await claimLock({ nonce: id, expiresAtMs })
+  } catch {
+    return { ok: false, reason: 'unavailable' }
+  }
+  if (!claimed) return { ok: false, reason: 'busy' }
+
   try {
     await updatePassword(uid, password)
   } catch (err) {
-    return { ok: false, reason: 'not-updated', code: err?.code || '' }
+    await releaseLock(id).catch(() => {})
+    return { ok: false, reason: 'not-updated', code: safeAuthCode(err?.code) }
   }
-  await writeMarker(uid, { sha256, committed: true })
+
+  let committed = false
+  try {
+    committed = await commitLock(id, expiresAtMs)
+  } catch {
+    return { ok: false, reason: 'busy' }
+  }
+  if (!committed) return { ok: false, reason: 'busy' }
+
   try {
     await clearFlag(uid)
   } catch (err) {
-    return { ok: false, reason: 'flag-unchanged', code: err?.code || '' }
+    return { ok: false, reason: 'flag-unchanged', code: safeAuthCode(err?.code) }
   }
-  await deleteMarker(uid).catch(() => {})
+  await releaseLock(id).catch(() => {})
   return { ok: true, reason: 'replaced' }
+}
+
+/**
+ * In-memory lock with the same rules as the Firestore transaction: one holder,
+ * nonce-checked commit and release, expired locks ignored. Tests and the
+ * Auth emulator exercise races through this. Production uses a transaction
+ * that calls lockState the same way.
+ */
+export function createSerialLock(nowFn = () => Date.now()) {
+  let doc = null
+  let chain = Promise.resolve()
+  const run = (fn) => {
+    const next = chain.then(fn, fn)
+    chain = next.then(() => {}, () => {})
+    return next
+  }
+  return {
+    read: () => doc,
+    claimLock: (record) => run(() => {
+      if (lockState(doc, nowFn())) return false
+      doc = { nonce: record.nonce, phase: 'pending', expiresAtMs: record.expiresAtMs }
+      return true
+    }),
+    commitLock: (id, expiresAtMs) => run(() => {
+      const live = lockState(doc, nowFn())
+      if (!live || live.nonce !== id || live.phase !== 'pending') return false
+      doc = { nonce: id, phase: 'committed', expiresAtMs }
+      return true
+    }),
+    releaseLock: (id) => run(() => {
+      if (doc && doc.nonce === id) doc = null
+    }),
+  }
 }

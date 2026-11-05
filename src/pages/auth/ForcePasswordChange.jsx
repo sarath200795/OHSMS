@@ -68,7 +68,8 @@ export default function ForcePasswordChange() {
         // updateUser succeeded and the flag write did not. The password on the
         // account is the new one; signing in with it is what finishes the clear
         // (the committed marker matches, and the temporary password no longer does).
-        if (gateReason(err) !== 'flag-unchanged') throw err
+        const reason = gateReason(err)
+        if (reason !== 'flag-unchanged' && reason !== 'finish-pending') throw err
         await signInWithEmailAndPassword(auth, email, pw)
         outcome = await completePasswordChange({ current: pw, password: pw })
       }
