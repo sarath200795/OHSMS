@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { fetchWeather } from './windy'
+import { fetchWeather } from './reading'
 import { assessWeather } from './weatherRisk'
 
 /** Requests in flight at once. Enough to fill a page quickly, few enough to be polite. */

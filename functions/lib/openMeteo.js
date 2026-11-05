@@ -1,39 +1,47 @@
-// Current conditions for a coordinate, from the Windy Point Forecast API.
+// Current conditions for a coordinate, from Open-Meteo's public forecast and
+// air-quality APIs. No API key. GET only.
 //
-// POST https://api.windy.com/api/point-forecast/v2. One coordinate per call.
-// The key travels in the JSON body, never in the URL, and never back to the
-// browser: the digest reads WINDY_API_KEY here, and the site screen calls the
-// fetchSiteWeather function, which does the same. A missing key is a failed
-// read, not a calm site.
+// The browser never calls these hosts. The digest and fetchSiteWeather do,
+// and the page only sees the observation below. A missing key must not block
+// the read: callers used to pass one for the previous provider, and a key on
+// this URL would be a credential in the query string. options.apiKey is
+// ignored.
 //
 // Coordinates are rounded to two decimals (~1 km) before they leave. The
 // weather is the same at that resolution, and the exact position of a
 // workplace is not part of the request. The site name, org and id are not
 // either.
 //
-// Two models, because one model does not carry every alert:
-//   icon — global weather. Temperature, humidity, the 3-hour precipitation
-//     column, CAPE, and weatherWarnings. Codes 95 and 96 on that warning are
-//     a thunderstorm. ICON is the only global model here that has them.
-//   gfs — the same weather fields except the warning, used when ICON has
-//     nothing for the point. Lightning then rests on CAPE alone.
-//   cams — global air quality. `aqi` is the US AQI (aqi_us, 0–500). When that
-//     series is missing, PM2.5 and PM10 are converted with the US EPA
-//     breakpoints, which are the same 0–500 scale, and the worse one is kept.
+// Two forecast models:
+//   icon_global — temperature, humidity, hourly precipitation, CAPE, WMO
+//     weather code, and wind. Codes 95, 96 and 99 are thunderstorms. 99 is
+//     heavy hail. The previous provider's warning field only carried 95 and
+//     96, so 99 has to be copied here or a named storm arrives as quiet CAPE.
+//   gfs_global — the same fields, used only when ICON answered and had no
+//     usable weather numbers (an empty 204, or JSON with no numbers). A
+//     429, 408 or 5xx does not open GFS. A rate limit must not spend the
+//     budget twice.
 //
-// Windy does not return a feels-like temperature. Apparent temperature is the
-// Bureau of Meteorology form of Steadman, from air temperature, humidity and
-// wind, so the existing heat and cold cuts still have a feels-like to read.
-// Wind is fetched only for that. It is not an alert.
+// Air quality is a second host. us_aqi is the 0–500 US AQI. When that series
+// is missing, PM2.5 and PM10 (µg/m³) are converted with the US EPA
+// breakpoints, which are the same scale, and the worse one is kept. UV,
+// European AQI and visibility are not requested.
 //
-// Precipitation is `past3hprecip`: the water column for the preceding three
-// hours, not a rate. The rain cuts are mm/h, so the column is turned into
-// millimetres and divided by three. A metre column is scaled up first. That
-// is the same correction the Open-Meteo 15-minute sum needed: a total read
-// as a rate drops a wet hour under the mail line.
+// Hourly precipitation is already millimetres in the preceding hour, so it
+// is the mm/h the rain cuts compare. It is not divided by three, and the
+// 15-minute sum is not requested. The earlier Open-Meteo client treated that
+// 15-minute sum as a rate and dropped wet hours under the mail line.
 //
-// A failure is null. The digest must not treat "the provider was down" as
-// "no elevated risk".
+// Open-Meteo's apparent_temperature adds a solar-radiation term. Apparent
+// temperature here is the Bureau of Meteorology form of Steadman, from air
+// temperature, humidity and wind, with no radiation, so the heat and cold
+// cuts still see the feels-like they were tuned on. Wind is fetched only for
+// that. It is not an alert. The code is copied onto lightningCode only. A
+// raw weatherCode field is not a hazard.
+//
+// A failure is not a calm site. requestPoint returns retry on 429, 408, 5xx
+// and a network error. fetchGrids lists those keys instead of storing an
+// empty reading as clear.
 //
 // requestPoint checks the slot cache first (weatherCache.js). A hit is the
 // reading already shown on the screen, not a second ask that can land on
@@ -41,34 +49,31 @@
 
 import { cachedObservation } from './weatherCacheDoc.js'
 
-const ENDPOINT = 'https://api.windy.com/api/point-forecast/v2'
+const FORECAST_URL = 'https://api.open-meteo.com/v1/forecast'
+const AIR_URL = 'https://air-quality-api.open-meteo.com/v1/air-quality'
+const USER_AGENT = 'OHSMS-weather/1.0 (contact: info@weehs.org)'
 const TIMEOUT_MS = 12_000
 
-export const WEATHER_MODEL = 'icon'
-export const FALLBACK_MODEL = 'gfs'
-export const AIR_MODEL = 'cams'
+export const WEATHER_MODEL = 'icon_global'
+export const FALLBACK_MODEL = 'gfs_global'
 
-// `wind` is for feels-like only. `weatherWarnings` is ICON's thunderstorm
-// code. Neither visibility nor UV is requested.
-export const WEATHER_PARAMETERS = [
-  'temp',
-  'dewpoint',
-  'rh',
-  'precip',
-  'wind',
+export const HOURLY_WEATHER = [
+  'temperature_2m',
+  'relative_humidity_2m',
+  'precipitation',
   'cape',
-  'weatherWarnings',
+  'weather_code',
+  'wind_speed_10m',
 ]
-export const FALLBACK_PARAMETERS = ['temp', 'dewpoint', 'rh', 'precip', 'wind', 'cape']
-export const AIR_PARAMETERS = ['aqi', 'pm2p5', 'pm10']
+export const HOURLY_AIR = ['us_aqi', 'pm2_5', 'pm10']
 
 export const FETCH_CONCURRENCY = 3
 const MAX_ATTEMPTS = 4
 const BACKOFF_CAP_MS = 20_000
 
 // US EPA breakpoint rows: [concLow, concHigh, indexLow, indexHigh]. Used only
-// when CAMS does not send `aqi`. The occupational bands applied later are not
-// these EPA category names.
+// when the air-quality API does not send us_aqi. The occupational bands
+// applied later are not these EPA category names.
 const PM25_BREAKS = [
   [0.0, 12.0, 0, 50],
   [12.1, 35.4, 51, 100],
@@ -88,25 +93,69 @@ const PM10_BREAKS = [
   [505, 604, 401, 500],
 ]
 
+const WEATHER_NUMBERS = ['temperature_2m', 'precipitation', 'cape', 'weather_code']
+
+// Temperature first, then anything else on that hour. A missing temperature
+// walks back to the latest earlier hour that has one. A later hour is used
+// only when nothing at or before the current step exists, so a forecast hour
+// cannot masquerade as now while an earlier reading is sitting in the series.
+const HOUR_FIELDS = [
+  'temperature_2m',
+  'precipitation',
+  'cape',
+  'relative_humidity_2m',
+  'weather_code',
+]
+
 export function gridKey(lat, lng) {
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return ''
   if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return ''
   return `${lat.toFixed(2)},${lng.toFixed(2)}`
 }
 
-/** The JSON body that would be posted. Exported so a test can see what leaves. */
-export function pointBody(lat, lng, model, parameters, apiKey) {
+function locationParams(lat, lng) {
   const key = gridKey(lat, lng)
-  if (!key || typeof apiKey !== 'string' || !apiKey.trim()) return null
-  const [gLat, gLng] = key.split(',')
-  return {
-    lat: Number(gLat),
-    lon: Number(gLng),
-    model,
-    parameters,
-    levels: ['surface'],
-    key: apiKey,
-  }
+  if (!key) return null
+  const [latitude, longitude] = key.split(',')
+  return { latitude, longitude }
+}
+
+function withTime(params) {
+  params.set('timeformat', 'unixtime')
+  params.set('timezone', 'GMT')
+  params.set('past_hours', '6')
+  params.set('forecast_hours', '6')
+  return params
+}
+
+/** Forecast URL for one rounded coordinate. Empty when the point is not one. */
+export function forecastUrl(lat, lng, model) {
+  const loc = locationParams(lat, lng)
+  if (!loc || !model) return ''
+  const params = new URLSearchParams({
+    latitude: loc.latitude,
+    longitude: loc.longitude,
+    hourly: HOURLY_WEATHER.join(','),
+    wind_speed_unit: 'ms',
+    precipitation_unit: 'mm',
+    temperature_unit: 'celsius',
+  })
+  withTime(params)
+  params.set('models', model)
+  return `${FORECAST_URL}?${params.toString()}`
+}
+
+/** Air-quality URL. Same clock window as the forecast, no weather fields. */
+export function airQualityUrl(lat, lng) {
+  const loc = locationParams(lat, lng)
+  if (!loc) return ''
+  const params = new URLSearchParams({
+    latitude: loc.latitude,
+    longitude: loc.longitude,
+    hourly: HOURLY_AIR.join(','),
+  })
+  withTime(params)
+  return `${AIR_URL}?${params.toString()}`
 }
 
 function pick(v) {
@@ -126,42 +175,30 @@ export function stepIndex(ts, now) {
   return best >= 0 ? best : 0
 }
 
-function seriesValue(json, name, idx) {
-  if (!json || idx < 0) return null
-  const series = json[name]
+function seriesValue(hourly, name, idx) {
+  if (!hourly || idx < 0) return null
+  const series = hourly[name]
   if (!Array.isArray(series) || idx >= series.length) return null
   return pick(series[idx])
 }
 
-// Temperature first, then anything else on that hour. A missing temperature
-// walks back to the latest earlier hour that has one. A later hour is used
-// only when nothing at or before the current step exists, so a forecast hour
-// cannot masquerade as now while an earlier reading is sitting in the series.
-const HOUR_FIELDS = [
-  'temp-surface',
-  'past3hprecip-surface',
-  'cape-surface',
-  'rh-surface',
-  'weatherwarnings-surface',
-]
-
-function hourHas(json, idx) {
-  return HOUR_FIELDS.some((name) => seriesValue(json, name, idx) != null)
+function hourHas(hourly, idx) {
+  return HOUR_FIELDS.some((name) => seriesValue(hourly, name, idx) != null)
 }
 
-export function hourIndex(json, preferred) {
-  if (!json || preferred < 0) return preferred
-  const hasTemp = (idx) => seriesValue(json, 'temp-surface', idx) != null
+export function hourIndex(hourly, preferred) {
+  if (!hourly || preferred < 0) return preferred
+  const hasTemp = (idx) => seriesValue(hourly, 'temperature_2m', idx) != null
   if (hasTemp(preferred)) return preferred
   for (let i = preferred - 1; i >= 0; i -= 1) if (hasTemp(i)) return i
-  if (hourHas(json, preferred)) return preferred
-  for (let i = preferred - 1; i >= 0; i -= 1) if (hourHas(json, i)) return i
-  const len = Array.isArray(json.ts) ? json.ts.length : 0
-  for (let i = preferred + 1; i < len; i += 1) if (hasTemp(i) || hourHas(json, i)) return i
+  if (hourHas(hourly, preferred)) return preferred
+  for (let i = preferred - 1; i >= 0; i -= 1) if (hourHas(hourly, i)) return i
+  const len = Array.isArray(hourly.time) ? hourly.time.length : 0
+  for (let i = preferred + 1; i < len; i += 1) if (hasTemp(i) || hourHas(hourly, i)) return i
   return preferred
 }
 
-/** CAMS step closest to the weather hour, so AQI is not a different clock. */
+/** Air-quality step closest to the weather hour, so AQI is not a different clock. */
 export function nearestIndex(ts, targetMs) {
   if (!Array.isArray(ts) || !ts.length || !Number.isFinite(targetMs)) return -1
   let best = -1
@@ -185,53 +222,6 @@ function msAt(ts, idx) {
   return raw < 1e12 ? raw * 1000 : raw
 }
 
-function unitOf(json, name) {
-  const unit = json?.units?.[name]
-  return typeof unit === 'string' ? unit : ''
-}
-
-export function toCelsius(value, unit) {
-  const n = pick(value)
-  if (n == null) return null
-  const u = String(unit || '').trim()
-  if (u === 'K' || u.startsWith('K') || (!u && n > 150)) return n - 273.15
-  return n
-}
-
-function toMs(value, unit) {
-  const n = pick(value)
-  if (n == null) return null
-  const u = String(unit || '')
-  if (/km/i.test(u)) return n / 3.6
-  if (/kt|knot/i.test(u)) return n * 0.514444
-  return n
-}
-
-/**
- * Millimetres per hour from Windy's precipitation column.
- * A 3-hour accumulation is divided by 3. A unit that is already a rate
- * (`mm*h-1`) is left alone. Metres become millimetres first.
- */
-export function precipRateMmHr(value, unit) {
-  const n = pick(value)
-  if (n == null || n < 0) return null
-  const u = String(unit || '').replace(/\s+/g, '')
-  let mm = n
-  if (u === 'm' || /^m[*/]/.test(u)) mm = n * 1000
-  else if (/^in/i.test(u)) mm = n * 25.4
-  if (/h-1|\/h/i.test(u)) return mm
-  return mm / 3
-}
-
-function toMicrograms(value, unit) {
-  const n = pick(value)
-  if (n == null || n < 0) return null
-  const u = String(unit || '').toLowerCase()
-  if (u.includes('kg')) return n * 1e9
-  if (u.includes('mg')) return n * 1000
-  return n
-}
-
 function subIndex(conc, rows) {
   if (conc == null || !Number.isFinite(conc) || conc < 0) return null
   let row = rows.find((r) => conc >= r[0] && conc <= r[1])
@@ -252,7 +242,7 @@ export function aqiFromParticles(pm25, pm10) {
 /**
  * Bureau of Meteorology apparent temperature (°C).
  * AT = Ta + 0.33e − 0.70ws − 4.00, with e from relative humidity.
- * Without humidity the air temperature is returned unchanged.
+ * Without humidity the air temperature is returned unchanged. Wind is m/s.
  */
 export function apparentTemperatureC(tempC, rh, windMs) {
   if (tempC == null) return null
@@ -260,15 +250,6 @@ export function apparentTemperatureC(tempC, rh, windMs) {
   const vapour = (rh / 100) * 6.105 * Math.exp((17.27 * tempC) / (237.7 + tempC))
   const ws = windMs != null && windMs >= 0 ? windMs : 0
   return tempC + 0.33 * vapour - 0.7 * ws - 4
-}
-
-function humidity(tempC, rh, dewC) {
-  if (rh != null) return Math.min(100, Math.max(0, rh))
-  if (tempC == null || dewC == null) return null
-  const sat = (t) => 6.105 * Math.exp((17.27 * t) / (237.7 + t))
-  const value = (100 * sat(dewC)) / sat(tempC)
-  if (!Number.isFinite(value)) return null
-  return Math.min(100, Math.max(0, value))
 }
 
 function stamp(ts, idx) {
@@ -279,53 +260,52 @@ function stamp(ts, idx) {
   return new Date(ms).toISOString()
 }
 
-/** Shape Windy's weather and air-quality payloads into the observation assessWeather expects. */
-export function normalizeWindy(weather, air, now = Date.now()) {
+function lightningCodeOf(code) {
+  if (code === 95 || code === 96 || code === 99) return code
+  return null
+}
+
+/**
+ * Shape one forecast payload and one air-quality payload into the observation
+ * assessWeather reads. Every weather field comes from one hour.
+ */
+export function normalizeObservation(weather, air, now = Date.now()) {
   if (!weather && !air) return null
-  // Every weather field is taken from one hour. Mixing the current step's
-  // rain with an earlier step's temperature is how two screens disagreed
-  // about the same square.
-  const wIdx = weather ? hourIndex(weather, stepIndex(weather.ts, now)) : -1
-  const weatherMs = msAt(weather?.ts, wIdx)
-  const aIdx = air
+  const wHourly = weather?.hourly
+  const wIdx = wHourly ? hourIndex(wHourly, stepIndex(wHourly.time, now)) : -1
+  const weatherMs = msAt(wHourly?.time, wIdx)
+  const aHourly = air?.hourly
+  const aIdx = aHourly
     ? Number.isFinite(weatherMs)
-      ? nearestIndex(air.ts, weatherMs)
-      : stepIndex(air.ts, now)
+      ? nearestIndex(aHourly.time, weatherMs)
+      : stepIndex(aHourly.time, now)
     : -1
-  const atW = (name) => seriesValue(weather, name, wIdx)
-  const atA = (name) => seriesValue(air, name, aIdx)
+  const atW = (name) => seriesValue(wHourly, name, wIdx)
+  const atA = (name) => seriesValue(aHourly, name, aIdx)
 
-  const tempC = toCelsius(atW('temp-surface'), unitOf(weather, 'temp-surface'))
-  const dewC = toCelsius(atW('dewpoint-surface'), unitOf(weather, 'dewpoint-surface'))
-  const rh = humidity(tempC, pick(atW('rh-surface')), dewC)
-  const u = toMs(atW('wind_u-surface'), unitOf(weather, 'wind_u-surface'))
-  const v = toMs(atW('wind_v-surface'), unitOf(weather, 'wind_v-surface'))
-  const windMs = u != null && v != null ? Math.hypot(u, v) : (u ?? v)
-  const warning = pick(atW('weatherwarnings-surface'))
-  const lightningCode = warning === 95 || warning === 96 ? warning : null
+  const tempC = atW('temperature_2m')
+  const rhRaw = atW('relative_humidity_2m')
+  const rh = rhRaw == null ? null : Math.min(100, Math.max(0, rhRaw))
+  const windMs = atW('wind_speed_10m')
+  const precip = atW('precipitation')
 
-  let aqi = pick(atA('aqi_us-surface'))
+  let aqi = atA('us_aqi')
   let aqiSource = ''
   if (aqi != null && aqi >= 0) aqiSource = 'aqi'
   else {
-    const pm25 = toMicrograms(atA('pm2p5-surface'), unitOf(air, 'pm2p5-surface'))
-    const pm10 = toMicrograms(atA('pm10-surface'), unitOf(air, 'pm10-surface'))
-    aqi = aqiFromParticles(pm25, pm10)
+    aqi = aqiFromParticles(atA('pm2_5'), atA('pm10'))
     if (aqi != null) aqiSource = 'pm'
   }
 
   return {
     tempC,
     apparentTempC: apparentTemperatureC(tempC, rh, windMs),
-    precipMmHr: precipRateMmHr(
-      atW('past3hprecip-surface'),
-      unitOf(weather, 'past3hprecip-surface')
-    ),
-    capeJkg: pick(atW('cape-surface')),
-    lightningCode,
+    precipMmHr: precip != null && precip >= 0 ? precip : null,
+    capeJkg: atW('cape'),
+    lightningCode: lightningCodeOf(atW('weather_code')),
     aqi: aqi != null && aqi >= 0 ? aqi : null,
     aqiSource,
-    observedAt: stamp(weather?.ts, wIdx) || stamp(air?.ts, aIdx),
+    observedAt: stamp(wHourly?.time, wIdx) || stamp(aHourly?.time, aIdx),
   }
 }
 
@@ -342,9 +322,10 @@ function readable(obs) {
 }
 
 function hasWeather(json) {
-  if (!json || typeof json !== 'object') return false
-  return ['temp-surface', 'past3hprecip-surface', 'cape-surface', 'weatherwarnings-surface'].some(
-    (name) => Array.isArray(json[name]) && json[name].some((v) => pick(v) != null)
+  const hourly = json?.hourly
+  if (!hourly || typeof hourly !== 'object') return false
+  return WEATHER_NUMBERS.some(
+    (name) => Array.isArray(hourly[name]) && hourly[name].some((v) => pick(v) != null)
   )
 }
 
@@ -358,22 +339,20 @@ function retryAfterMs(headers) {
   return Math.max(0, when - Date.now())
 }
 
-async function postModel(point, model, parameters, apiKey, fetchImpl) {
-  const body = pointBody(point.lat, point.lng, model, parameters, apiKey)
-  if (!body) return { ok: false, retry: false, retryAfterMs: 0, json: null }
+async function getJson(url, fetchImpl) {
+  if (!url) return { ok: false, retry: false, retryAfterMs: 0, json: null }
   try {
-    const resp = await fetchImpl(ENDPOINT, {
-      method: 'POST',
-      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+    const resp = await fetchImpl(url, {
+      method: 'GET',
+      headers: { Accept: 'application/json', 'User-Agent': USER_AGENT },
       signal: AbortSignal.timeout(TIMEOUT_MS),
     })
     const wait = retryAfterMs(resp.headers)
-    if (resp.status === 204)
+    if (resp.status === 204) {
       return { ok: false, empty: true, retry: false, retryAfterMs: 0, json: null }
+    }
     if (!resp.ok) {
-      const rateLimited = resp.status === 429
-      const transient = rateLimited || resp.status === 408 || resp.status >= 500
+      const transient = resp.status === 429 || resp.status === 408 || resp.status >= 500
       return { ok: false, retry: transient, retryAfterMs: wait, json: null }
     }
     return { ok: true, json: await resp.json(), retryAfterMs: 0 }
@@ -382,30 +361,30 @@ async function postModel(point, model, parameters, apiKey, fetchImpl) {
   }
 }
 
-async function loadWeather(point, apiKey, fetchImpl) {
-  const icon = await postModel(point, WEATHER_MODEL, WEATHER_PARAMETERS, apiKey, fetchImpl)
+async function loadWeather(point, fetchImpl) {
+  const icon = await getJson(forecastUrl(point.lat, point.lng, WEATHER_MODEL), fetchImpl)
   if (icon.retry && !hasWeather(icon.json)) return icon
   if (hasWeather(icon.json)) return icon
-  const gfs = await postModel(point, FALLBACK_MODEL, FALLBACK_PARAMETERS, apiKey, fetchImpl)
+  const gfs = await getJson(forecastUrl(point.lat, point.lng, FALLBACK_MODEL), fetchImpl)
   if (hasWeather(gfs.json)) return gfs
   if (gfs.retry && !hasWeather(gfs.json)) return gfs
   return icon.json ? icon : gfs
 }
 
-/**
- * One point. `retry` means the caller should wait and try again. A 429 does
- * not fall through to a second model: that only spends the same budget faster.
- */
 function withSlot(obs, slot) {
   if (!obs) return obs
   if (!slot || obs.slot === slot) return obs.slot ? obs : { ...obs, slot }
   return { ...obs, slot }
 }
 
+/**
+ * One point. `retry` means the caller should wait and try again. A 429 does
+ * not fall through to a second model: that only spends the same budget faster.
+ * `options.apiKey` is ignored. Open-Meteo does not take one.
+ */
 export async function requestPoint(point, options = {}) {
   const fetchImpl = options.fetchImpl || globalThis.fetch
   const nowMs = typeof options.now === 'number' ? options.now : Date.now()
-  const apiKey = options.apiKey || ''
   const slot = options.slot || ''
   if (!point?.key) return { ok: false, retry: false, retryAfterMs: 0, obs: null }
   if (options.cache && slot) {
@@ -413,14 +392,13 @@ export async function requestPoint(point, options = {}) {
     const hit = cachedObservation(doc, slot)
     if (hit) return { ok: true, obs: withSlot(hit, slot), cached: true, retryAfterMs: 0 }
   }
-  if (!apiKey) return { ok: false, retry: false, retryAfterMs: 0, obs: null }
 
-  const weather = await loadWeather(point, apiKey, fetchImpl)
+  const weather = await loadWeather(point, fetchImpl)
   if (weather.retry && !hasWeather(weather.json)) {
     return { ok: false, retry: true, retryAfterMs: weather.retryAfterMs || 0, obs: null }
   }
-  const air = await postModel(point, AIR_MODEL, AIR_PARAMETERS, apiKey, fetchImpl)
-  const normalized = normalizeWindy(weather.json, air.json, nowMs)
+  const air = await getJson(airQualityUrl(point.lat, point.lng), fetchImpl)
+  const normalized = normalizeObservation(weather.json, air.json, nowMs)
   if (!readable(normalized)) {
     if (air.retry || weather.retry) {
       return {
@@ -437,7 +415,7 @@ export async function requestPoint(point, options = {}) {
   return { ok: true, obs, retryAfterMs: air.retry ? air.retryAfterMs || 1000 : 0 }
 }
 
-/** One coordinate. Null when the key is missing, the point is invalid, or Windy did not answer. */
+/** One coordinate. Null when the point is invalid or the provider did not answer. */
 export async function fetchObservation(lat, lng, options = {}) {
   const key = gridKey(lat, lng)
   if (!key) return null
@@ -457,14 +435,9 @@ export async function fetchGrids(points, options = {}) {
   const now = options.now || (() => Date.now())
   const onProgress = options.onProgress || (async () => {})
   const until = options.until ?? now() + 8 * 60 * 1000
-  const apiKey = options.apiKey || ''
   const observations = new Map()
   const failed = []
   const queue = [...(points || [])]
-  if (!apiKey && !options.cache) {
-    for (const point of queue) if (point?.key) failed.push(point.key)
-    return { observations, failed }
-  }
   let coolOffUntil = 0
 
   async function one(point) {
@@ -481,7 +454,6 @@ export async function fetchGrids(points, options = {}) {
         return
       }
       const result = await requestPoint(point, {
-        apiKey,
         fetchImpl,
         now: now(),
         cache: options.cache,

@@ -166,10 +166,10 @@ write_env() {
     printf 'TG_DAILY_CAP=%s\n' "$tg_cap"
   } >"$env_file"
 
-  # WINDY_API_KEY is a secret the operator sets. It was not in the v2.0.7
-  # error, so it is already in Secret Manager. It must not be copied here to
-  # satisfy a future non-interactive deploy: that would ship the key as a
-  # plain env var (LOW-13).
+  # Names in this guard are credentials. A match deletes the dotenv file
+  # rather than deploying them as plain env vars (LOW-13). Weather uses
+  # Open-Meteo's free API and does not need WINDY_API_KEY; the name stays
+  # here so a leftover copy is still refused.
   if grep -Eq '^(DATA_KEY_MASTER|SMTP_PASS|WINDY_API_KEY|WA_APP_SECRET|WA_ACCESS_TOKEN|WA_VERIFY_TOKEN|TELEGRAM_BOT_TOKEN|TG_WEBHOOK_SECRET)=' "$env_file"; then
     rm -f "$env_file"
     echo "::error::Refusing to leave a secret (DATA_KEY_MASTER, SMTP_PASS, WINDY_API_KEY, WA_*, TELEGRAM_BOT_TOKEN, TG_WEBHOOK_SECRET) in ${env_file}." >&2

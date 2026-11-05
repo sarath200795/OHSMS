@@ -123,6 +123,18 @@ describe('lightning', () => {
     expect(digestDrivers(a)[0].value).toBe('Thunderstorm forecast · CAPE 200 J/kg')
     expect(digestLevel(a.band)).toBe('High')
   })
+
+  it('treats lightning code 99 as severe and digests it as High', () => {
+    const a = assessWeather({ lightningCode: 99 })
+    expect(bandOf({ lightningCode: 99 }, 'lightning')).toBe('severe')
+    expect(digestLevel(a.band)).toBe('High')
+    expect(digestDrivers(a)).toContainEqual({
+      key: 'lightning',
+      label: 'Lightning',
+      value: 'Thunderstorm forecast',
+      level: 'High',
+    })
+  })
 })
 
 describe('air quality', () => {

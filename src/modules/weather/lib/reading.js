@@ -1,7 +1,7 @@
-// Current conditions for a coordinate, from Windy, via the fetchSiteWeather
-// function. The browser never sees the API key and never calls api.windy.com.
-// Coordinates are still rounded to ~1 km before they leave this page: the
-// weather is the same at that resolution, and the cache is bucketed by it.
+// Current conditions for a coordinate, via the fetchSiteWeather function.
+// The browser never calls Open-Meteo. Coordinates are still rounded to ~1 km
+// before they leave this page: the weather is the same at that resolution,
+// and the cache is bucketed by it.
 //
 // The cache is what makes a map usable. A hundred pins in one city share a
 // handful of grid squares, and hovering the same pin twice costs nothing.
@@ -15,10 +15,10 @@ const GRID = 2
 const TTL_MS = 15 * 60 * 1000
 const COOLOFF_MS = 60_000
 
-// v2 drops readings stored before the slot cache. Those were a different
-// provider, or a different hour, and a widget that kept one while the page
-// fetched another is the mismatch this key exists to end.
-const STORE_KEY = 'wehs:weather:v2'
+// v3 drops readings stored under v2. Those came from the previous provider,
+// and a widget that kept one while the page fetched an Open-Meteo hour is
+// the mismatch this key exists to end.
+const STORE_KEY = 'wehs:weather:v3'
 const STORE_MAX = 200
 
 const cache = new Map()

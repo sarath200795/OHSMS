@@ -595,7 +595,7 @@ describe('deliverWeatherDigest', () => {
       'organizations/orgA': { name: 'Acme' },
       'organizations/orgA/sites/s1': { name: 'Plant 2', region: 'South', lat: 17.44, lng: 78.39 },
       'users/admin': user('admin', { role: 'admin' }),
-      [`weatherCache/17.44_78.39`]: {
+      [`weatherCache/om_17.44_78.39`]: {
         slot,
         obs: {
           tempC: 42,

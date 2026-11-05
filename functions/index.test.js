@@ -724,13 +724,12 @@ describe('lifecycle mail triggers', () => {
     expect(retryWeatherRiskDigest.__endpoint.availableMemoryMb).toBe(512)
     const secretNames = (fn) =>
       (fn.__endpoint.secretEnvironmentVariables || []).map((secret) => secret.key)
-    expect(secretNames(sendWeatherRiskDigest)).toEqual(
-      expect.arrayContaining(['SMTP_PASS', 'WINDY_API_KEY'])
-    )
-    expect(secretNames(retryWeatherRiskDigest)).toEqual(
-      expect.arrayContaining(['SMTP_PASS', 'WINDY_API_KEY'])
-    )
-    expect(secretNames(fetchSiteWeather)).toContain('WINDY_API_KEY')
+    expect(secretNames(sendWeatherRiskDigest)).toContain('SMTP_PASS')
+    expect(secretNames(sendWeatherRiskDigest)).not.toContain('WINDY_API_KEY')
+    expect(secretNames(retryWeatherRiskDigest)).toContain('SMTP_PASS')
+    expect(secretNames(retryWeatherRiskDigest)).not.toContain('WINDY_API_KEY')
+    expect(secretNames(fetchSiteWeather)).toEqual([])
+    expect(secretNames(fetchSiteWeather)).not.toContain('WINDY_API_KEY')
   })
 
   it('publishes the organization directory as a callable in asia-south1', () => {

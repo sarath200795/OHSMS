@@ -1,6 +1,6 @@
 // The clock printed next to a weather reading.
 //
-// Windy's timestamps are UTC. The digest window, the sites and the mail are
+// The provider stamps UTC. The digest window, the sites and the mail are
 // Asia/Kolkata, which is UTC+05:30 all year. Formatting here, rather than
 // with the machine's local zone, keeps the screen, the phone and the mail on
 // one label for one instant.

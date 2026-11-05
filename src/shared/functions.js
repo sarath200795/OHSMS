@@ -422,11 +422,12 @@ export async function sendWhatsAppOrgTest(phone) {
 }
 
 /**
- * Current conditions near a coordinate, from Windy via Cloud Functions.
+ * Current conditions near a coordinate, from Open-Meteo via Cloud Functions.
  *
- * The API key stays in Secret Manager (`WINDY_API_KEY`). This returns the
- * normalised observation, or `{ obs: null }` when the provider did not answer.
- * `{ limited: true }` means the provider asked us to wait.
+ * The browser calls this function only. It does not call Open-Meteo, and there
+ * is no weather API key in the client. This returns the normalised observation,
+ * or `{ obs: null }` when the provider did not answer. `{ limited: true }`
+ * means the provider asked us to wait.
  */
 export async function fetchSiteWeather({ lat, lng } = {}) {
   const fn = await callable('fetchSiteWeather')
