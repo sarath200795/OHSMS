@@ -178,7 +178,7 @@ export function mergeInjuryDetail(stubs = [], injuries = []) {
 }
 
 /** Denormalized injury doc body (incident context carried for the standalone list). */
-function injuryPayload(incident, report) {
+function injuryPayload(incident, report, actor) {
   return {
     incidentId: incident.id,
     incidentRefNo: incident.refNo || '',
@@ -191,6 +191,9 @@ function injuryPayload(incident, report) {
     medication: report.medication || '',
     daysToReturnToWork: report.daysToReturnToWork ?? '',
     recordFileIds: report.recordFileIds || [],
+    // Who may edit this report again. A later save by someone else is not a
+    // merge of the same record; the rules refuse it. Empty is not "anyone".
+    createdBy: actor?.uid || '',
     // incident context (for filtering / display in the standalone page)
     incidentDate: incident.incidentDate || '',
     incidentType: incident.type || '',
@@ -255,7 +258,7 @@ export async function syncIncidentInjuries(orgId, incident, reports = [], actor)
     pending.map(async ({ id, report }) => {
       await setDoc(
         injuryRef(orgId, id),
-        await sealDoc(orgId, SEALED, injuryPayload(incident, report)),
+        await sealDoc(orgId, SEALED, injuryPayload(incident, report, actor)),
         { merge: true }
       )
     })

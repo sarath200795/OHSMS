@@ -33,7 +33,7 @@ import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { beforeAll, afterAll, beforeEach, describe, it, expect } from 'vitest'
 import { initializeTestEnvironment, assertFails, assertSucceeds } from '@firebase/rules-unit-testing'
-import { doc, getDoc, getDocs, collection, query, where, orderBy, limit, setDoc, updateDoc } from 'firebase/firestore'
+import { doc, getDoc, getDocs, collection, query, where, orderBy, limit, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore'
 import {
   MEDICAL_FIELDS,
   INCIDENT_INJURY_FIELDS,
@@ -143,6 +143,7 @@ beforeEach(async () => {
     await setDoc(doc(db, 'users', 'manager1'), user('manager1', { role: 'manager' }))
     await setDoc(doc(db, 'users', 'auditor1'), user('auditor1', { role: 'auditor' }))
     await setDoc(doc(db, 'users', 'member1'), user('member1'))
+    await setDoc(doc(db, 'users', 'member2'), user('member2'))
 
     await setDoc(doc(db, 'organizations', 'orgB'), { name: 'orgB', createdBy: 'stranger' })
     await setDoc(doc(db, 'users', 'stranger'), user('stranger', { orgId: 'orgB' }))
@@ -321,7 +322,10 @@ describe('the split still joins', () => {
     await assertSucceeds(setDoc(doc(db, 'organizations', ORG, 'injuries', id), {
       incidentId: 'i4', personId: 'p-new', personName: 'T. Adeyemi',
       bodyParts: ['ankle'], injuryType: 'sprain', medication: '', firstAidDetail: 'Iced',
-      daysToReturnToWork: 0, recordFileIds: [], deletedAt: null,
+      daysToReturnToWork: 0, recordFileIds: [], deletedAt: null, createdBy: 'member1',
+    }))
+    await assertFails(setDoc(doc(db, 'organizations', ORG, 'injuries', 'i4__other'), {
+      incidentId: 'i4', personId: 'other', medication: 'x', createdBy: 'member2', deletedAt: null,
     }))
     await assertFails(getDoc(doc(db, 'organizations', ORG, 'injuries', id)))
   })
@@ -516,9 +520,10 @@ describe('soft-deleting an injury takes the standing that deleting it takes', ()
     await assertFails(updateDoc(injury(as('member1')), { deletedAt: new Date(), deletedBy: 'member1' }))
   })
 
-  it('allows a manager and an admin', async () => {
-    await assertSucceeds(updateDoc(injury(as('manager1')), { deletedAt: new Date(), deletedBy: 'manager1' }))
-    await assertSucceeds(updateDoc(injury(as('admin1'), deleted), { deletedAt: new Date(), deletedBy: 'admin1' }))
+  it('allows a manager and an admin to stamp now, and refuses a backdated stamp', async () => {
+    await assertSucceeds(updateDoc(injury(as('manager1')), { deletedAt: serverTimestamp(), deletedBy: 'manager1' }))
+    await assertSucceeds(updateDoc(injury(as('admin1'), deleted), { deletedAt: serverTimestamp(), deletedBy: 'admin1' }))
+    await assertFails(updateDoc(injury(as('manager1')), { deletedAt: new Date('2020-01-01'), deletedBy: 'manager1' }))
   })
 
   // Both directions. Restoring is as much the manager's act as deleting, and a
@@ -533,11 +538,17 @@ describe('soft-deleting an injury takes the standing that deleting it takes', ()
     await assertSucceeds(updateDoc(injury(as('manager1'), deleted), { deletedAt: null, deletedBy: null }))
   })
 
-  // The half that must not break. This collection depends on a member being
-  // able to write a report they cannot read back — gating the whole document
-  // instead of the one field would have closed the capture path in Step 1a.
-  it('still lets a member write the report itself', async () => {
+  // The author can keep editing the report they filed. A colleague who only
+  // knows the id cannot replace the clinical fields, including on a document
+  // that never recorded an author.
+  it('lets the author edit the report and refuses a colleague the same write', async () => {
+    const id = injuryDocId('i1', 'p-osei')
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'organizations', ORG, 'injuries', id),
+        { createdBy: 'member1' }, { merge: true })
+    })
     await assertSucceeds(updateDoc(injury(as('member1')), { medication: 'paracetamol 500' }))
+    await assertFails(updateDoc(injury(as('member2')), { medication: 'something else' }))
   })
 
   it('still refuses the auditor every write, deletedAt or not', async () => {
@@ -549,13 +560,10 @@ describe('soft-deleting an injury takes the standing that deleting it takes', ()
     await assertFails(updateDoc(injury(as('stranger')), { deletedAt: new Date() }))
   })
 
-  // Scoped to /injuries deliberately. Soft delete is manager-only in
-  // permissions.js for incidents too and is enforced on neither — the delete
-  // button on Incidents.jsx is not gated at all — so widening the predicate
-  // would refuse a write the product currently permits from its own UI. This
-  // pins the scope so the asymmetry is a decision on the record rather than
-  // something discovered later.
-  it('leaves the incident bin alone, which is a separate decision', async () => {
-    await assertSucceeds(updateDoc(incident(as('member1')), { deletedAt: new Date(), deletedBy: 'member1' }))
+  it('refuses a member the incident bin, and lets a manager stamp now only', async () => {
+    await assertFails(updateDoc(incident(as('member1')), { deletedAt: new Date(), deletedBy: 'member1' }))
+    await assertFails(updateDoc(incident(as('member1')), { deletedAt: new Date('2020-01-01') }))
+    await assertSucceeds(updateDoc(incident(as('manager1')), { deletedAt: serverTimestamp(), deletedBy: 'manager1' }))
+    await assertFails(updateDoc(incident(as('manager1')), { deletedAt: new Date('2020-01-01') }))
   })
 })
