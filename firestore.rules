@@ -2933,13 +2933,20 @@ service cloud.firestore {
       return request.resource.data.get(field, null) == resource.data.get(field, null);
     }
 
-    // Parent injury/illness documents carry these. A medical-record or illness
-    // file create does not, and must stay writable by the member who cannot
-    // read the record back. hasAny is true when the key is present, including
-    // an empty string, which is how createIllness always writes exposedToAgent.
+    // Parent injury/illness documents carry the clinical fields. hasAny is true
+    // when the key is present, including an empty string, which is how
+    // createIllness always writes exposedToAgent and how injuryPayload always
+    // writes medication, bodyParts and injuryType.
+    //
+    // incidentId is not in this list. The medical-file writer creates the
+    // parent with only the join keys so the file has a path, and the member
+    // who uploads it cannot read the parent back to learn whether it exists.
+    // Treating the join key as clinical content refused that create. A later
+    // update still cannot fill medication, bodyParts or injuryType unless
+    // createdBy is already this member.
     function clinicalParentCreate(col) {
       return (col == 'injuries'
-          && request.resource.data.keys().hasAny(['incidentId', 'medication', 'bodyParts', 'injuryType']))
+          && request.resource.data.keys().hasAny(['medication', 'bodyParts', 'injuryType']))
         || (col == 'illnesses'
           && request.resource.data.keys().hasAny(['exposedToAgent', 'healthIssue', 'affectedPersonnel']));
     }

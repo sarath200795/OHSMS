@@ -165,6 +165,24 @@ describe('injury clinical edits and medical-record uploads', () => {
     await assertSucceeds(updateDoc(injury(as('manager1')), { medication: 'manager after verify' }))
   })
 
+  it('lets a member create the join-key stub a medical upload needs, and not the clinical fields', async () => {
+    // The upload creates the parent with only the join keys when the injury
+    // document is not there yet. incidentId is that key, not the clinical
+    // content. Medication on the same create is a parent report and still
+    // has to name the author. syncIncidentInjuries passes the actor, so
+    // createdBy is this member.
+    await assertSucceeds(setDoc(doc(as('member1'), 'organizations', ORG, 'injuries', 'i9__p9'), {
+      incidentId: 'i9', incidentRefNo: 'IRA-9', personId: 'p9', updatedAt: serverTimestamp(),
+    }))
+    await assertFails(setDoc(doc(as('member1'), 'organizations', ORG, 'injuries', 'i9__p8'), {
+      incidentId: 'i9', personId: 'p8', medication: 'undisclosed',
+    }))
+    await assertSucceeds(setDoc(doc(as('member1'), 'organizations', ORG, 'injuries', 'i9__p7'), {
+      incidentId: 'i9', personId: 'p7', medication: '', bodyParts: [], injuryType: '',
+      createdBy: 'member1', deletedAt: null,
+    }))
+  })
+
   it('lets a member upload a medical record and not rewrite one', async () => {
     const rec = (db, id) => doc(db, 'organizations', ORG, 'injuries', 'i1__p1', 'records', id)
     await assertSucceeds(setDoc(rec(as('member1'), 'r1'), {
