@@ -60,8 +60,14 @@ service cloud.firestore {
     // to false from the SDK and never replaced the password. passwordGateOn()
     // below is what stops that. The only clear is completePasswordChange,
     // which replaces the Auth password first and then writes with the Admin SDK.
-    function passwordIsOwn() {
-      return myProfile().get('mustChangePassword', false) != true;
+    // The profile isApprovedMemberOf has already loaded. A second myProfile()
+    // here is another get(), and the consultation close — eight unrolled
+    // action rows, also copied onto the recursive wildcard — was already on
+    // the 1000-expression ceiling. Inlining this get again stops that close
+    // from evaluating once both rules are in the same file. Absent key means
+    // the account predates the flag, and .get's default covers that.
+    function passwordIsOwn(p) {
+      return p.get('mustChangePassword', false) != true;
     }
 
     // .get() with a default, same reason as passwordIsOwn(): a profile that
@@ -83,10 +89,11 @@ service cloud.firestore {
     }
 
     function isApprovedMemberOf(orgId) {
+      let p = myProfile();
       return hasProfile()
-        && myProfile().orgId == orgId
-        && myProfile().status == 'approved'
-        && passwordIsOwn();
+        && p.orgId == orgId
+        && p.status == 'approved'
+        && passwordIsOwn(p);
     }
 
     // ── Admin MFA in rules (draft, OFF) ─────────────────────────────────────

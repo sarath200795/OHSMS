@@ -1480,6 +1480,14 @@ describe('a provisioned account is inert until its password is changed', () => {
     await assertFails(deleteDoc(doc(asFresh(), 'users', 'fresh')))
   })
 
+  it('treats a profile that predates the flag as already on its own password', async () => {
+    // seedMember does not write mustChangePassword. .get's default is what
+    // keeps that account approved. A direct read of the missing key would
+    // raise and lock every existing user out.
+    const alice = testEnv.authenticatedContext('alice').firestore()
+    await assertSucceeds(getDoc(doc(alice, 'organizations', 'orgA', 'incidents', 'seed')))
+  })
+
   it('an admin can still edit the profile while the requirement stays', async () => {
     const alice = testEnv.authenticatedContext('alice').firestore()
     await assertSucceeds(setDoc(doc(alice, 'users', 'fresh'), {
