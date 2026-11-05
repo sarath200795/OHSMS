@@ -21,6 +21,11 @@ import { onCall, onRequest, HttpsError } from 'firebase-functions/v2/https'
 import { defineSecret, defineString } from 'firebase-functions/params'
 import { logger } from 'firebase-functions'
 import { claimsFor, claimsChanged, mergeClaims, revokesAccess } from './lib/claims.js'
+import {
+  applyPasswordChange,
+  postPasswordSignIn,
+  signInEndpoint,
+} from './lib/passwordGate.js'
 import { planBackfill } from './lib/docVisibility.js'
 import { classifyLocks } from './lib/defectLocks.js'
 import { deliverLotoPermitMails } from './lib/lotoPermitNotify.js'
@@ -175,6 +180,20 @@ const SMTP_USER = defineString('SMTP_USER', { default: DEFAULT_MAIL.user })
 const MAIL_FROM = defineString('MAIL_FROM', { default: DEFAULT_MAIL.from })
 const APP_ORIGIN = defineString('APP_ORIGIN', { default: DEFAULT_MAIL.appOrigin })
 
+// Identity Toolkit will not check a password for the Admin SDK. The check is
+// accounts:signInWithPassword, which takes the web API key. That key is public
+// — it ships in the SPA — but a browser key restricted to HTTP referrers is
+// rejected from Cloud Functions, and a rejection here must not clear the flag.
+// Set this to a key Identity Toolkit accepts from this function (API-restricted
+// to Identity Toolkit; application restriction none, or the function's egress,
+// not the hosting referrer). The Auth emulator ignores it.
+//
+//   AUTH_WEB_API_KEY=the-server-usable-web-api-key
+//
+// Empty means the function cannot verify a password and will not lift
+// mustChangePassword. Deploy the rules only after a completion has succeeded.
+const AUTH_WEB_API_KEY = defineString('AUTH_WEB_API_KEY', { default: '' })
+
 // Keep the functions beside the data they trigger on. This project's Firestore
 // is in asia-south1 (Mumbai), and a Firestore trigger's Eventarc plumbing is
 // created in the DATABASE's region regardless of where the function runs — so a
@@ -259,6 +278,25 @@ export const syncUserClaims = onDocumentWritten(
     const { uid } = event.params
     const after = event.data?.after?.data() || null
 
+    // The marker is a hash of a candidate password. Drop it when the profile
+    // goes away, when the requirement is imposed again (a leftover committed
+    // marker must not satisfy the next change), and when the flag has just
+    // been lifted (the callable also deletes it; this covers a failed delete).
+    // A profile edit that leaves the flag true does not touch it, so a retry
+    // after a failed flag write still finds the marker. The hash is not logged.
+    const before = event.data?.before?.data() || null
+    const beforeFlag = before?.mustChangePassword === true
+    const afterFlag = after?.mustChangePassword === true
+    if (!after || beforeFlag !== afterFlag) {
+      try {
+        await getFirestore().doc(`authGates/${uid}`).delete()
+      } catch (err) {
+        logger.error('password gate: could not drop the marker', {
+          uid, error: err?.code || 'delete-failed',
+        })
+      }
+    }
+
     let existing = {}
     try {
       const record = await getAuth().getUser(uid)
@@ -313,6 +351,91 @@ export const syncUserClaims = onDocumentWritten(
     logger.info('claims: updated', { uid, orgId: next.orgId, role: next.role })
   }
 )
+
+// Reason codes from applyPasswordChange, as the client may show them. The
+// password is never one of these strings. `policy` uses the validator's own
+// message, which names the rule that failed and not the password.
+const PASSWORD_GATE_HTTP = {
+  unauthenticated: ['unauthenticated', 'Sign in first.'],
+  stale: ['failed-precondition', 'Sign in again, then set the password.'],
+  'current-required': ['invalid-argument', 'Enter the temporary password you were given.'],
+  unavailable: ['failed-precondition', 'Password change is not available right now. Try again shortly.'],
+  'current-rejected': ['permission-denied', 'The temporary password was not accepted.'],
+  unchanged: ['failed-precondition', 'Choose a different password than the temporary one.'],
+  'not-updated': ['internal', 'Could not update the password.'],
+  'flag-unchanged': ['failed-precondition', 'The password was saved but the account is still locked. Submit the new password once more.'],
+}
+
+/**
+ * Replace the signed-in user's password and lift mustChangePassword.
+ *
+ * The uid is the token's. A uid in the body is ignored, so this cannot be
+ * aimed at someone else. auth_time has to be recent; that rejects a stale
+ * session and is not evidence the password changed. The evidence is
+ * updateUser with a string Identity Toolkit has just said is not the current
+ * password. Sign-in, refresh, reauth and revoke never reach updateUser.
+ *
+ * Deploy the Firestore rules that refuse a client clear only after this
+ * function can complete a change. Until AUTH_WEB_API_KEY is set (or the Auth
+ * emulator is answering), verification returns unavailable and the flag stays.
+ */
+export const completePasswordChange = onCall({ region: REGION }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in first.')
+
+  const db = getFirestore()
+  const auth = getAuth()
+  const profile = (await db.doc(`users/${uid}`).get()).data() || null
+  let record
+  try {
+    record = await auth.getUser(uid)
+  } catch (err) {
+    if (err?.code === 'auth/user-not-found') {
+      throw new HttpsError('not-found', 'No account for this session.')
+    }
+    throw err
+  }
+  const markerSnap = await db.doc(`authGates/${uid}`).get()
+  const endpoint = signInEndpoint({
+    emulatorHost: process.env.FIREBASE_AUTH_EMULATOR_HOST,
+    apiKey: AUTH_WEB_API_KEY.value(),
+  })
+
+  const result = await applyPasswordChange({
+    uid,
+    authTime: request.auth.token?.auth_time,
+    now: Date.now(),
+    email: record.email || '',
+    name: profile?.name || '',
+    flag: profile?.mustChangePassword === true,
+    // The body is not logged. current and password are handed to Auth and dropped.
+    current: request.data?.current,
+    password: request.data?.password,
+    marker: markerSnap.exists ? markerSnap.data() : null,
+    signIn: (email, password) => postPasswordSignIn(fetch, endpoint, email, password),
+    updatePassword: (id, password) => auth.updateUser(id, { password }),
+    writeMarker: (id, marker) => db.doc(`authGates/${id}`).set({
+      sha256: marker.sha256,
+      committed: marker.committed === true,
+      at: FieldValue.serverTimestamp(),
+    }),
+    clearFlag: (id) => db.doc(`users/${id}`).update({ mustChangePassword: false }),
+    deleteMarker: (id) => db.doc(`authGates/${id}`).delete(),
+  })
+
+  if (result.ok) return { ok: true, reason: result.reason }
+
+  logger.warn('password gate: refused', {
+    uid,
+    reason: result.reason,
+    ...(result.code ? { code: result.code } : {}),
+  })
+  if (result.reason === 'policy') {
+    throw new HttpsError('invalid-argument', result.message || 'Enter a password', { reason: 'policy' })
+  }
+  const [code, message] = PASSWORD_GATE_HTTP[result.reason] || ['internal', 'Could not update the password.']
+  throw new HttpsError(code, message, { reason: result.reason })
+})
 
 /**
  * Stamp every existing user, once.

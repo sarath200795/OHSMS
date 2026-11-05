@@ -8,6 +8,15 @@ describe('claimsFor', () => {
     expect(claimsFor(approved)).toEqual({ orgId: 'orgA', role: 'member' })
   })
 
+  // Storage reads the token, not the profile. A flagged account with an org
+  // claim would keep reaching files the Firestore rules already refuse.
+  // Absent and false stay approved: the field did not exist on older profiles.
+  it('withholds the org while a password change is still required', () => {
+    expect(claimsFor({ ...approved, mustChangePassword: true })).toEqual({ orgId: null, role: null })
+    expect(claimsFor({ ...approved, mustChangePassword: false })).toEqual({ orgId: 'orgA', role: 'member' })
+    expect(claimsFor(approved)).toEqual({ orgId: 'orgA', role: 'member' })
+  })
+
   // The whole point. A pending joiner already has a /users doc naming an org —
   // that IS the waiting room — so minting a claim from it would let anyone sign
   // up naming a tenant and read its files immediately.
@@ -132,6 +141,13 @@ describe('when a claim change has to end the session', () => {
     expect(revokesAccess(c(null, null), c('orgA', 'member'))).toBe(false)
     expect(revokesAccess(c('orgA', 'member'), c('orgA', 'manager'))).toBe(false)
     expect(revokesAccess(c('orgA', 'manager'), c('orgA', 'admin'))).toBe(false)
+  })
+
+  it('revokes when a forced password change takes the org off the token, and not when the change is finished', () => {
+    const flagged = claimsFor({ ...approved, mustChangePassword: true })
+    const restored = claimsFor({ ...approved, mustChangePassword: false })
+    expect(revokesAccess(c('orgA', 'member'), flagged)).toBe(true)
+    expect(revokesAccess(flagged, restored)).toBe(false)
   })
 
   it('does not revoke when nothing that matters moved', () => {

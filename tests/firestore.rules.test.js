@@ -1062,11 +1062,26 @@ describe('one open report per defect (/defectLocks)', () => {
 })
 
 describe('employee provisioning', () => {
-  const emp = { role: 'member', status: 'approved', name: 'New Emp', email: 'new@t.co' }
+  const emp = {
+    role: 'member', status: 'approved', name: 'New Emp', email: 'new@t.co',
+    mustChangePassword: true,
+  }
 
   it('an org admin can create an approved non-admin profile for their org', async () => {
     const alice = testEnv.authenticatedContext('alice').firestore()
     await assertSucceeds(setDoc(doc(alice, 'users', 'emp1'), { ...emp, orgId: 'orgA' }))
+  })
+
+  // Creating the profile without the flag, or with it already false, is the
+  // delete-and-recreate bypass around a rule that only blocks updates.
+  it('an admin CANNOT provision an account that is not required to change its password', async () => {
+    const alice = testEnv.authenticatedContext('alice').firestore()
+    await assertFails(setDoc(doc(alice, 'users', 'empOpen'), {
+      role: 'member', status: 'approved', name: 'New Emp', email: 'new@t.co', orgId: 'orgA',
+    }))
+    await assertFails(setDoc(doc(alice, 'users', 'empFalse'), {
+      ...emp, orgId: 'orgA', mustChangePassword: false,
+    }))
   })
 
   it('an admin CANNOT provision into another org', async () => {
@@ -1409,14 +1424,91 @@ describe('a provisioned account is inert until its password is changed', () => {
     await assertFails(getDocs(query(collection(asFresh(), 'users'), where('orgId', '==', 'orgA'))))
   })
 
-  // The two things it MUST still be able to do, or the screen that clears the
-  // flag would be locked out of clearing it.
-  it('can still read its own profile and clear the flag', async () => {
+  // The screen still has to load the profile. It does not get to clear the
+  // flag: that write is what made "I know the temporary password" enough.
+  it('can still read its own profile and change a harmless field', async () => {
     await assertSucceeds(getDoc(doc(asFresh(), 'users', 'fresh')))
     await assertSucceeds(setDoc(doc(asFresh(), 'users', 'fresh'), {
       orgId: 'orgA', role: 'member', status: 'approved',
+      name: 'Fresher', email: 'fresh@t.co', mustChangePassword: true,
+    }))
+  })
+
+  it('cannot clear the flag by writing it, replacing the profile, or omitting it', async () => {
+    const fresh = asFresh()
+    await assertFails(setDoc(doc(fresh, 'users', 'fresh'), {
+      orgId: 'orgA', role: 'member', status: 'approved',
       name: 'Fresh', email: 'fresh@t.co', mustChangePassword: false,
     }))
+    await assertFails(setDoc(doc(fresh, 'users', 'fresh'), {
+      orgId: 'orgA', role: 'member', status: 'approved',
+      name: 'Fresh', email: 'fresh@t.co',
+    }))
+  })
+
+  it('cannot be cleared by an admin, including after a delete and recreate', async () => {
+    const alice = testEnv.authenticatedContext('alice').firestore()
+    await assertFails(setDoc(doc(alice, 'users', 'fresh'), {
+      orgId: 'orgA', role: 'member', status: 'approved',
+      name: 'Fresh', email: 'fresh@t.co', mustChangePassword: false,
+    }))
+    await assertSucceeds(deleteDoc(doc(alice, 'users', 'fresh')))
+    await assertFails(setDoc(doc(alice, 'users', 'fresh'), {
+      orgId: 'orgA', role: 'member', status: 'approved',
+      name: 'Fresh', email: 'fresh@t.co',
+    }))
+    await assertSucceeds(setDoc(doc(alice, 'users', 'fresh'), {
+      orgId: 'orgA', role: 'member', status: 'approved',
+      name: 'Fresh', email: 'fresh@t.co', mustChangePassword: true,
+    }))
+  })
+
+  it('is refused for a signed-out caller and for a different user', async () => {
+    const anon = testEnv.unauthenticatedContext().firestore()
+    await assertFails(setDoc(doc(anon, 'users', 'fresh'), {
+      orgId: 'orgA', role: 'member', status: 'approved',
+      name: 'Fresh', email: 'fresh@t.co', mustChangePassword: false,
+    }))
+    const bob = testEnv.authenticatedContext('bob').firestore()
+    await assertFails(setDoc(doc(bob, 'users', 'fresh'), {
+      orgId: 'orgA', role: 'member', status: 'approved',
+      name: 'Fresh', email: 'fresh@t.co', mustChangePassword: false,
+    }))
+  })
+
+  it('cannot delete its own profile to drop the requirement', async () => {
+    await assertFails(deleteDoc(doc(asFresh(), 'users', 'fresh')))
+  })
+
+  it('an admin can still edit the profile while the requirement stays', async () => {
+    const alice = testEnv.authenticatedContext('alice').firestore()
+    await assertSucceeds(setDoc(doc(alice, 'users', 'fresh'), {
+      orgId: 'orgA', role: 'member', status: 'approved',
+      name: 'Fresh', email: 'fresh@t.co', department: 'Plant', mustChangePassword: true,
+    }))
+  })
+
+  it('a flagged admin cannot delete their profile or clear their own flag', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'users', 'alice'), {
+        orgId: 'orgA', role: 'admin', status: 'approved',
+        name: 'Alice', email: 'alice@t.co', mustChangePassword: true,
+      })
+    })
+    const alice = testEnv.authenticatedContext('alice').firestore()
+    await assertFails(deleteDoc(doc(alice, 'users', 'alice')))
+    await assertFails(setDoc(doc(alice, 'users', 'alice'), {
+      orgId: 'orgA', role: 'admin', status: 'approved',
+      name: 'Alice', email: 'alice@t.co', mustChangePassword: false,
+    }))
+  })
+
+  it('keeps the marker collection closed to the signed-in user and to an admin', async () => {
+    await assertFails(getDoc(doc(asFresh(), 'authGates', 'fresh')))
+    await assertFails(setDoc(doc(asFresh(), 'authGates', 'fresh'), { sha256: 'abc', committed: true }))
+    const alice = testEnv.authenticatedContext('alice').firestore()
+    await assertFails(setDoc(doc(alice, 'authGates', 'fresh'), { sha256: 'abc', committed: true }))
+    await assertFails(getDoc(doc(alice, 'authGates', 'fresh')))
   })
 
   it('works normally once the flag is cleared', async () => {

@@ -77,6 +77,18 @@ export async function getDataKeys() {
 }
 
 /**
+ * Replace the signed-in user's password and lift mustChangePassword.
+ *
+ * The function reads the uid from the token. `current` is checked with
+ * Identity Toolkit; `password` is set with the Admin SDK only when it is a
+ * different string. Nothing in this module stores either value.
+ */
+export async function completePasswordChange({ current, password } = {}) {
+  const fn = await callable('completePasswordChange')
+  return (await fn({ current, password })).data
+}
+
+/**
  * Stamp `visibility` onto documents written before site scoping existed.
  * Reports without writing unless `dryRun: false`.
  */
