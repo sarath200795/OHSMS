@@ -1541,10 +1541,25 @@ service cloud.firestore {
           && request.resource.data.get('access', {}).get('entities', []).size() == 0;
       }
 
+      // department and dept are the same kind of grant as siteId. committeeRowCloseOk
+      // closes a department-owned action when myDepartment() matches, and
+      // myDepartment() reads `department`, then `dept` when department was never
+      // set. setUserStatus writes { status } and nothing else, so a department
+      // a joiner put on their own pending profile becomes that grant the moment
+      // an admin approves them. Both keys have to be empty on a self-create.
+      // A value they typed is departmentRequest, which nothing in these rules
+      // consults. An admin provisioning an employee is the other branch, and
+      // that assignment is theirs to make.
+      function noSelfAssertedDepartment() {
+        return request.resource.data.get('department', '') == ''
+          && request.resource.data.get('dept', '') == '';
+      }
+
       allow create: if isSignedIn()
         && noSelfGrantedScope()
         && (
           (request.auth.uid == uid
+            && noSelfAssertedDepartment()
             // 'member', not merely "not admin". A self-joining stranger used to
             // be able to name themselves 'manager' while pending, and approval
             // only flips status — nothing ever re-asserts the role — so the
@@ -1584,11 +1599,23 @@ service cloud.firestore {
           // rewrite their own access grants themselves every restricted
           // document in the org from the browser console, without ever
           // touching their role. Only an admin changes who can see what.
+          //
+          // department and dept are pinned for the same reason. .get so an
+          // absent key and '' are the same value: adding a key that was not
+          // there, deleting it with a replace, and writing null are all
+          // changes. The two keys are pinned separately. Clearing department
+          // and writing the target into dept in one update would otherwise
+          // move myDepartment(), because dept is what that function reads
+          // when department is blank. A manager is not an admin; user.manage
+          // is admin-only, and isAdminOf is the same line. An admin of
+          // another org does not pass isAdminOf(resource.data.orgId).
           (request.auth.uid == uid
             && request.resource.data.role == resource.data.role
             && request.resource.data.status == resource.data.status
             && request.resource.data.get('siteId', '') == resource.data.get('siteId', '')
-            && request.resource.data.get('access', {}) == resource.data.get('access', {}))
+            && request.resource.data.get('access', {}) == resource.data.get('access', {})
+            && request.resource.data.get('department', '') == resource.data.get('department', '')
+            && request.resource.data.get('dept', '') == resource.data.get('dept', ''))
           || isAdminOf(resource.data.orgId)
         );
 
@@ -3253,9 +3280,8 @@ service cloud.firestore {
       // Profile field is `department`. `dept` is the older key, read only
       // when `department` was never set.
       function myDepartment() {
-        return myProfile().get('department', '') != ''
-          ? myProfile().get('department', '')
-          : myProfile().get('dept', '');
+        let p = myProfile();
+        return p.get('department', '') != '' ? p.get('department', '') : p.get('dept', '');
       }
       function committeeActionsSame() {
         return resource != null
@@ -3265,33 +3291,39 @@ service cloud.firestore {
       // manager edit, and a manager can already close. These slots stay off
       // the generic write: unrolling them there blew the 1000-expression
       // budget, which is why consultations are not on that write.
+      //
+      // The lists are loaded once and passed in. Reading them again inside
+      // each of the eight rows, and again on the recursive wildcard, crosses
+      // that ceiling once another check is inlined into isApprovedMemberOf.
+      // Who may close does not change.
       function committeeMemberActionsOk() {
         let dept = myDepartment();
-        let n = request.resource.data.get('actions', []).size();
-        return n <= 8
-          && (resource == null || resource.data.get('actions', []).size() <= 8)
-          && committeeRowCloseOk(0, dept)
-          && committeeRowCloseOk(1, dept)
-          && committeeRowCloseOk(2, dept)
-          && committeeRowCloseOk(3, dept)
-          && committeeRowCloseOk(4, dept)
-          && committeeRowCloseOk(5, dept)
-          && committeeRowCloseOk(6, dept)
-          && committeeRowCloseOk(7, dept);
+        let after = request.resource.data.get('actions', []);
+        let before = resource == null ? [] : resource.data.get('actions', []);
+        return after.size() <= 8
+          && before.size() <= 8
+          && committeeRowCloseOk(0, dept, before, after)
+          && committeeRowCloseOk(1, dept, before, after)
+          && committeeRowCloseOk(2, dept, before, after)
+          && committeeRowCloseOk(3, dept, before, after)
+          && committeeRowCloseOk(4, dept, before, after)
+          && committeeRowCloseOk(5, dept, before, after)
+          && committeeRowCloseOk(6, dept, before, after)
+          && committeeRowCloseOk(7, dept, before, after);
       }
-      function committeeRowCloseOk(i, dept) {
-        return i >= request.resource.data.get('actions', []).size()
-          || request.resource.data.actions[i].get('ownerKind', '') != 'department'
-          || request.resource.data.actions[i].get('status', '') != 'Closed'
+      function committeeRowCloseOk(i, dept, before, after) {
+        return i >= after.size()
+          || after[i].get('ownerKind', '') != 'department'
+          || after[i].get('status', '') != 'Closed'
           || (resource != null
-              && i < resource.data.get('actions', []).size()
-              && resource.data.actions[i].get('status', '') == 'Closed'
-              && resource.data.actions[i].get('department', '') == request.resource.data.actions[i].get('department', ''))
-          || (request.resource.data.actions[i].get('department', '') == dept
+              && i < before.size()
+              && before[i].get('status', '') == 'Closed'
+              && before[i].get('department', '') == after[i].get('department', ''))
+          || (after[i].get('department', '') == dept
               && (resource == null
-                  || i >= resource.data.get('actions', []).size()
-                  || resource.data.actions[i].get('ownerKind', '') != 'department'
-                  || resource.data.actions[i].get('department', '') == request.resource.data.actions[i].get('department', '')));
+                  || i >= before.size()
+                  || before[i].get('ownerKind', '') != 'department'
+                  || before[i].get('department', '') == after[i].get('department', '')));
       }
 
       match /{col}/{docId} {
