@@ -97,24 +97,21 @@ describe('Connect with WhatsApp', () => {
     expect(screen.getByText('919000000001')).toBeTruthy()
     expect(screen.getAllByText(/Asha Example/).length).toBeGreaterThan(0)
     expect(screen.getByRole('button', { name: 'Turn off for this organisation' })).toBeTruthy()
-    expect(screen.queryByRole('button', { name: /telegram/i })).toBeTruthy()
-    expect(screen.queryByRole('button', { name: /turn on telegram|enable telegram/i })).toBeNull()
+    expect(screen.queryByRole('link', { name: /t\.me/i })).toBeNull()
+    expect(screen.queryByText(/telegram/i)).toBeNull()
   })
 
-  it('shows the Telegram bot link and QR, and copies it', async () => {
+  it('shows the WhatsApp link and QR, and copies it', async () => {
     renderSection()
-    const link = await screen.findByRole('link', { name: 'https://t.me/WEEHS_Site_Lookup_bot' })
-    expect(link.getAttribute('href')).toBe('https://t.me/WEEHS_Site_Lookup_bot')
-    expect(screen.getByText('@WEEHS_Site_Lookup_bot')).toBeTruthy()
+    const link = await screen.findByRole('link', { name: 'https://wa.me/919800000000' })
+    expect(link.getAttribute('href')).toBe('https://wa.me/919800000000')
     const codes = screen.getAllByTestId('qr').map((node) => node.getAttribute('data-value'))
     expect(codes).toContain('https://wa.me/919800000000')
-    expect(codes).toContain('https://t.me/WEEHS_Site_Lookup_bot')
+    expect(codes.some((value) => /t\.me|telegram/i.test(value || ''))).toBe(false)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Copy Telegram link' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Copy WhatsApp link' }))
     await waitFor(() =>
-      expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
-        'https://t.me/WEEHS_Site_Lookup_bot'
-      )
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith('https://wa.me/919800000000')
     )
   })
 
@@ -191,11 +188,12 @@ describe('Connect with WhatsApp', () => {
     expect(screen.getByRole('alert').textContent).toMatch(/24 hours/)
   })
 
-  it('still shows the Telegram link when WhatsApp settings cannot be loaded', async () => {
+  it('does not show a Telegram link when WhatsApp settings cannot be loaded', async () => {
     fns.whatsAppOrgStatus.mockRejectedValue(new Error('offline'))
     renderSection()
     expect(await screen.findByText('Could not load WhatsApp settings.')).toBeTruthy()
-    expect(screen.getByRole('link', { name: 'https://t.me/WEEHS_Site_Lookup_bot' })).toBeTruthy()
+    expect(screen.queryByRole('link', { name: /t\.me/i })).toBeNull()
+    expect(screen.queryByText(/telegram/i)).toBeNull()
     expect(screen.queryByText(/WA_ACCESS_TOKEN/)).toBeNull()
   })
 })

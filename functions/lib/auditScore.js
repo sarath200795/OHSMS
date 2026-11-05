@@ -1,6 +1,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // The pass-rate readers the ODIN dashboard uses, plus the one-site summary
-// the WhatsApp and Telegram lookups send.
+// the WhatsApp lookup sends.
 //
 // day0Of / n7Of / auditPopulation used to live only in the dashboard. A
 // second copy is how two tabs once disagreed about the same audits (see the

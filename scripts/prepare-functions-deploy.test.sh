@@ -35,9 +35,10 @@ assert_eq "$(grep '^SMTP_PORT=' "$env_file")" "SMTP_PORT=587" "default port"
 assert_eq "$(grep '^SMTP_USER=' "$env_file")" "SMTP_USER=" "default user is unset"
 assert_eq "$(grep '^MAIL_FROM=' "$env_file")" "MAIL_FROM=EHS notifications <info@weehs.org>" "default from"
 assert_eq "$(grep '^APP_ORIGIN=' "$env_file")" "APP_ORIGIN=https://suite.weehs.org" "default origin"
-assert_eq "$(grep '^TG_ENABLED=' "$env_file")" "TG_ENABLED=true" "telegram stays on"
-assert_eq "$(grep '^TG_LIST_ORGS=' "$env_file")" "TG_LIST_ORGS=false" "org names are not listed"
-assert_eq "$(grep '^TG_ORG_ID=' "$env_file")" "TG_ORG_ID=" "telegram is not pinned"
+assert_eq "$(grep '^WA_ENABLED=' "$env_file")" "WA_ENABLED=true" "production whatsapp stays on"
+if grep -Eq '^TG_|^TELEGRAM_' "$env_file"; then
+  fail "telegram param written into deploy env"
+fi
 assert_eq "$(grep '^WA_TEMPLATE_WELCOME=' "$env_file")" "WA_TEMPLATE_WELCOME=" "welcome template stays blank"
 assert_eq "$(grep '^WA_TEMPLATE_TEST=' "$env_file")" "WA_TEMPLATE_TEST=" "test template stays blank"
 assert_eq "$(grep '^AUTH_WEB_API_KEY=' "$env_file")" "AUTH_WEB_API_KEY=" "password check key stays empty"
@@ -125,7 +126,7 @@ assert_eq "$(grep '^WA_ENABLED=' "$tmp/fn-other/.env.stgtest1")" "WA_ENABLED=fal
 
 # The checked-in production file is the same deploy env a laptop uses when
 # it does not re-run write-env. A key present only in the script still fails
-# that deploy. TG_LIST_ORGS was the other one missing from this file.
+# that deploy.
 committed="$root/functions/.env.weehs-4eb28"
 while IFS= read -r name; do
   grep -q "^${name}=" "$committed" || fail "functions/.env.weehs-4eb28 missing $name"
@@ -188,7 +189,7 @@ if [[ "$1" == "functions:secrets:get" ]]; then
     state="${FAKE_MASTER:-present}"
   elif [[ "$name" == "SMTP_PASS" ]]; then
     state="${FAKE_SMTP:-present}"
-  elif [[ "$name" == "WA_APP_SECRET" || "$name" == "WA_ACCESS_TOKEN" || "$name" == "WA_VERIFY_TOKEN" || "$name" == "TELEGRAM_BOT_TOKEN" || "$name" == "TG_WEBHOOK_SECRET" ]]; then
+  elif [[ "$name" == "WA_APP_SECRET" || "$name" == "WA_ACCESS_TOKEN" || "$name" == "WA_VERIFY_TOKEN" ]]; then
     state="${FAKE_PLACEHOLDERS:-present}"
   else
     echo "unexpected secret $name" >&2
@@ -298,5 +299,22 @@ fi
 if grep -q -- '--force' <<<"$set_lines"; then
   fail "secrets:set line includes --force"
 fi
+
+if grep -Eq '^TG_|^TELEGRAM_' "$committed"; then
+  fail "functions/.env.weehs-4eb28 still names a telegram param"
+fi
+
+names="$(bash "$root/scripts/deploy-functions.sh" --print-only)"
+grep -qx 'waWebhook' <<<"$names" || fail "deploy list omitted waWebhook"
+grep -qx 'startWhatsAppLink' <<<"$names" || fail "deploy list omitted startWhatsAppLink"
+grep -qx 'refreshSiteAuditCache' <<<"$names" || fail "deploy list omitted refreshSiteAuditCache"
+if grep -Eq '^(tgWebhook|TG_|TELEGRAM_)' <<<"$names"; then
+  fail "deploy list still names Telegram"
+fi
+# Every export is on the list, so a new function is not skipped by the filter.
+while IFS= read -r name; do
+  grep -qx "$name" <<<"$names" || fail "deploy list omitted $name"
+done < <(grep -E '^export const [A-Za-z0-9_]+ =' "$root/functions/index.js" \
+  | sed -E 's/^export const ([A-Za-z0-9_]+) =.*/\1/')
 
 echo "ok"

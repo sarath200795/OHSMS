@@ -207,13 +207,18 @@ jobs:
 
       # Params and secrets are prepared above. A placeholder SMTP_PASS deploys
       # and does not send (DEPLOYMENT.md §6).
+      #
+      # Same deletion gate as production: --force on a full functions deploy
+      # deletes Cloud Functions that source no longer exports. This job does
+      # not set APPROVE_FUNCTION_DELETION, so tgWebhook is left in place until
+      # an operator deletes it. See scripts/deploy-functions.sh.
       - name: Deploy functions
         if: steps.creds.outputs.configured == 'true'
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa-staging.json
+          PROJECT_ID: ${{ vars.STAGING_FIREBASE_PROJECT_ID }}
         run: |
-          if ! npx firebase-tools deploy --only functions \
-            --project "${{ vars.STAGING_FIREBASE_PROJECT_ID }}" --non-interactive --force; then
+          if ! bash scripts/deploy-functions.sh; then
             echo "::error::Functions deploy failed. If the log names iam.serviceAccounts.actAs, the staging deployer cannot impersonate the runtime SA — grant that in GCP, or stop deploying functions from CI until then (DEPLOYMENT.md §5). This job did not change IAM."
             exit 1
           fi

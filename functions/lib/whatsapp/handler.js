@@ -271,8 +271,7 @@ export async function handleMessage(msg, ctx) {
 }
 
 /**
- * The lookup itself, shared by every channel (WhatsApp here, Telegram in
- * ../telegram/handler.js): once the caller is known to be allowed, resolve the
+ * The lookup itself: once the caller is known to be allowed, resolve the
  * command ONLY among the sites `user` reaches and send one reply.
  * Returns { outcome, extra? } for the query log. `from` keys the pick-list session.
  */
@@ -449,10 +448,10 @@ async function answerDetail({ store, reply, now, from, user, uid, org, offer, an
 }
 
 /**
- * Ask which organisation, then which site. Shared by WhatsApp and Telegram.
+ * Ask which organisation, then which site.
  *
- * One allowed organisation is already known — the link, or a bot pinned to
- * one — so a greeting is the centre prompt, and a centre id, a name or a
+ * One allowed organisation is already known — the linked profile — so a
+ * greeting is the centre prompt, and a centre id, a name or a
  * location is resolved immediately, still only among sites `reachableSites`
  * returns. Several organisations still ask first. A site answered before
  * that choice would confirm which organisation holds it. `listOrgs` is the

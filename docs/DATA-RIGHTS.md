@@ -43,7 +43,7 @@ at the database root, tenanted by an `orgId` field and **server-only** in
 |---|---|---|---|
 | `waLinks` | The person's WhatsApp number (the document id) and the uid it was proven for, or attached by an organisation administrator | `uid` | Until they unlink (UNLINK / STOP on WhatsApp, Security → Unlink, or an administrator removes it in Org Settings), or erasure |
 | `waQueryLog` | Which site they looked up, when, and the outcome. The number only as a keyed digest; **no message text** | `uid` | 90 days (`purgeWhatsAppLedgers`) |
-| `waSessions` | Chosen organisation, the last pick-list of site or organisation ids, and (for 15 minutes) the one site id the audit question is about. Never a location, never the message text. Telegram rows have no uid. | `uid` | 24 hours idle (`purgeWhatsAppLedgers`), or erasure. Numbered choices and the audit question stop working after 15 minutes. |
+| `waSessions` | Chosen organisation, the last pick-list of site or organisation ids, and (for 15 minutes) the one site id the audit question is about. Never a location, never the message text. A row with no uid is not included in that person's export. | `uid` | 24 hours idle (`purgeWhatsAppLedgers`), or erasure. Numbered choices and the audit question stop working after 15 minutes. |
 
 All three are in `SUBJECT_SOURCES` as `topLevel` + `orgField`, so the export finds
 them by uid without crossing tenants, and all three are ERASABLE. Withdrawing consent

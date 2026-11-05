@@ -12,11 +12,7 @@ import {
 } from '../../shared/functions'
 import { logAudit, subscribeOrgUsers } from '../../shared/org/orgData'
 import { Badge, Button, Card, Field, Input, Select } from '../../shared/ui'
-import {
-  safeWaChatLink,
-  TELEGRAM_SITE_LOOKUP_URL,
-  TELEGRAM_SITE_LOOKUP_USERNAME,
-} from './whatsappConnectApi.js'
+import { safeWaChatLink } from './whatsappConnectApi.js'
 
 /**
  * Org Settings → Integrations → Connect with WhatsApp.
@@ -27,9 +23,6 @@ import {
  * about that organisation's sites. Every one of those actions is a callable.
  * The access token, the app secret and the verify token are not parameters
  * of those callables and are not rendered here.
- *
- * Telegram is a link and a QR code only. The bot is not turned on or off
- * from this screen, and no Telegram user list is kept.
  */
 export default function WhatsAppConnect({ orgId, actor }) {
   const [status, setStatus] = useState(null)
@@ -391,26 +384,6 @@ export default function WhatsAppConnect({ orgId, actor }) {
             </div>
           </div>
         )}
-      </Card>
-
-      <Card>
-        <h3 id="tg-connect-heading" className="flex items-center gap-2 font-semibold text-ink-800">
-          <Send size={17} className="text-brand-600" aria-hidden="true" />
-          Telegram site lookup
-        </h3>
-        <p className="mt-1 max-w-[62ch] text-sm text-ink-500">
-          The shared bot {TELEGRAM_SITE_LOOKUP_USERNAME}. Copy or share the link. Telegram is not
-          turned on or off here, and there is no list of Telegram users to manage.
-        </p>
-        <div className="mt-4">
-          <ChatShare
-            url={TELEGRAM_SITE_LOOKUP_URL}
-            caption={TELEGRAM_SITE_LOOKUP_USERNAME}
-            qrLabel="QR code that opens the Telegram site lookup bot"
-            copyLabel="Copy Telegram link"
-            shareLabel="Share Telegram link"
-          />
-        </div>
       </Card>
     </div>
   )

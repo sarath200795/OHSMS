@@ -302,7 +302,7 @@ export const SUBJECT_SOURCES = [
 
   // The conversation: chosen organisation and the last pick-list (site or
   // organisation ids). 24 hours idle. No coordinates, no message text.
-  // Telegram rows have no uid, so a subject export does not include them.
+  // A row with no uid is not this person's export. WhatsApp sessions carry the uid.
   {
     path: 'waSessions',
     topLevel: true,
