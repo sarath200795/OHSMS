@@ -17,11 +17,13 @@ import { logAudit } from '../org/orgData'
  *
  * This used to be the constant '12345678', shared by every account the app ever
  * created and compiled into the public bundle. Accounts are written
- * status:'approved', and the "you must change it" gate is a React route guard —
- * so anyone who could guess a colleague's work email could sign in as them
- * through the REST API, get a real token, and never load the app that was
- * supposed to stop them. The window ran from provisioning until that person's
- * first login, which for a bulk import is indefinite.
+ * status:'approved', and the "you must change it" gate used to be a React
+ * route guard — so anyone who could guess a colleague's work email could sign
+ * in as them through the REST API, get a real token, and never load the app
+ * that was supposed to stop them. The window ran from provisioning until that
+ * person's first login, which for a bulk import is indefinite. The flag is now
+ * enforced in firestore.rules, and only completePasswordChange can clear it,
+ * after Auth has replaced the password.
  *
  * Now: 12 bytes from the CSPRNG, base32-ish and unambiguous (no O/0/I/1), so it
  * survives being read aloud or copied off a screen. Unique per account, so

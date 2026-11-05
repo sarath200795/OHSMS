@@ -34,7 +34,14 @@ const str = (v) => (typeof v === 'string' && v.trim() ? v.trim() : null)
  */
 export function claimsFor(profile) {
   const approved = profile && profile.status === 'approved'
-  if (!approved) return { orgId: null, role: null }
+  // Storage rules cannot see mustChangePassword. They trust orgId on the
+  // token, so a flagged account that still carries the claim can read files
+  // while passwordIsOwn() is refusing Firestore. Withhold the claim until the
+  // password has actually been replaced. Absent is not true: profiles written
+  // before the field existed keep the claim, or this would lock the tenant
+  // out of its own files.
+  const mustChange = profile?.mustChangePassword === true
+  if (!approved || mustChange) return { orgId: null, role: null }
   return { orgId: str(profile.orgId), role: str(profile.role) }
 }
 
