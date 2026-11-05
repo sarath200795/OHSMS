@@ -292,6 +292,35 @@ only `firebasestorage.googleapis.com` and `*.firebasestorage.app` are
 accepted, and anything else is ignored in favour of
 `/downloads/weehs-ohsms.apk`.
 
+## Android backup
+
+The installed app keeps the Firebase session in the WebView. Android uses
+local persistence, so the refresh token sits in IndexedDB under
+`app_webview`, and a few preferences sit in `localStorage` in that same
+directory. Auto Backup copies the private data directory. On Android 12 and
+later, some manufacturers still copy it in a device-to-device transfer when
+`android:allowBackup` is false.
+
+The manifest turns `allowBackup` off and points at two rule files that
+exclude every backup domain, including device-protected storage.
+`res/xml/backup_rules.xml` is what Android 7 through 11 read (`minSdk` is
+24). `res/xml/data_extraction_rules.xml` is what Android 12 and later read.
+It has its own `cloud-backup` and `device-transfer` sections, because the
+older file does not govern device-to-device transfer on those versions.
+`tools:replace` keeps a library manifest from switching any of those three
+attributes back on. No extra permission is involved.
+
+A phone keeps the old behaviour until it installs a build made from this
+manifest. A copy already in Google Drive, or already moved by a cable
+transfer, is not deleted, and no Firebase token is revoked. A debug APK is
+still `debuggable`; USB debugging on a developer phone can read that
+process. That path is not cloud backup.
+
+Android 16 QPR2 (API 36.1) adds transfer to iOS as a third mode. This app
+targets API 36 and does not declare that section. Declaring it needs an
+Apple team id, which is not invented here. Cache and `no_backup` directories
+are already left out by the platform; the session is not stored in them.
+
 ## Building Android
 
 Needs Android Studio (current stable) and JDK 21. Capacitor 8 compiles
