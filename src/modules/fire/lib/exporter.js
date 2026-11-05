@@ -1,5 +1,6 @@
 // xlsx helpers: bulk-upload template, parsing uploads, and exporting lists.
 import * as XLSX from 'xlsx'
+import { jsonToSheet } from '../../../shared/lib/sheet'
 import { format } from 'date-fns'
 import {
   BULK_COLUMNS, TYPES, CAPACITIES, ENTITIES, REGIONS, DEFAULT_REGION, STATUS, STATUS_LABEL, DEFECTS, normalizeEntity,
@@ -62,7 +63,7 @@ function downloadWorkbook(wb, filename) {
 }
 
 function bookFromRows(rows, sheetName = 'Extinguishers') {
-  const ws = XLSX.utils.json_to_sheet(rows, rows.length ? undefined : { header: BULK_COLUMNS })
+  const ws = jsonToSheet(rows, rows.length ? undefined : { header: BULK_COLUMNS })
   ws['!cols'] = (rows.length ? Object.keys(rows[0]) : BULK_COLUMNS).map(() => ({ wch: 20 }))
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, sheetName)
@@ -110,7 +111,7 @@ function matchStatus(v, cfg) {
 /** Download an AED, FAS or stretcher bulk-upload template. */
 export function downloadAssetTemplate(kind) {
   const cfg = ASSET_CFG[kind]
-  const ws = XLSX.utils.json_to_sheet([cfg.example], { header: cfg.columns })
+  const ws = jsonToSheet([cfg.example], { header: cfg.columns })
   ws['!cols'] = cfg.columns.map(() => ({ wch: 18 }))
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, cfg.sheet)
@@ -189,7 +190,7 @@ export function downloadTemplate() {
     'Date of Next HPT': '2027-01-15',
     'QR Link': '',
   }
-  const ws = XLSX.utils.json_to_sheet([example], { header: BULK_COLUMNS })
+  const ws = jsonToSheet([example], { header: BULK_COLUMNS })
   ws['!cols'] = BULK_COLUMNS.map(() => ({ wch: 20 }))
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, 'Extinguishers')
@@ -299,7 +300,7 @@ export function exportExtinguishers(list, filename = 'extinguishers.xlsx', today
  * `exportRows` falls back to the extinguisher bulk-upload headers when empty.
  */
 export function buildDefectRepositoryBook(rows = []) {
-  const ws = XLSX.utils.json_to_sheet(rows, { header: DEFECT_REPOSITORY_COLUMNS })
+  const ws = jsonToSheet(rows, { header: DEFECT_REPOSITORY_COLUMNS })
   ws['!cols'] = DEFECT_REPOSITORY_COLUMNS.map((h) => ({
     wch: h === 'Site' || h === 'Remarks' || h === 'Details' || h === 'Location' ? 28 : 18,
   }))
@@ -330,10 +331,10 @@ export function downloadJsonBackup(data, filename = 'backup.json') {
  */
 export function exportMatrix(matrixRows, detailRows, filename, detailSheet = 'Details') {
   const wb = XLSX.utils.book_new()
-  const mws = XLSX.utils.json_to_sheet(matrixRows.length ? matrixRows : [{ Site: '' }])
+  const mws = jsonToSheet(matrixRows.length ? matrixRows : [{ Site: '' }])
   mws['!cols'] = (matrixRows.length ? Object.keys(matrixRows[0]) : ['Site']).map((k) => ({ wch: k === 'Site' ? 26 : 16 }))
   XLSX.utils.book_append_sheet(wb, mws, 'Availability Matrix')
-  const dws = XLSX.utils.json_to_sheet(detailRows.length ? detailRows : [{ Site: '', Type: '' }])
+  const dws = jsonToSheet(detailRows.length ? detailRows : [{ Site: '', Type: '' }])
   dws['!cols'] = (detailRows.length ? Object.keys(detailRows[0]) : ['Site', 'Type']).map(() => ({ wch: 20 }))
   XLSX.utils.book_append_sheet(wb, dws, detailSheet)
   downloadWorkbook(wb, filename)
@@ -362,7 +363,7 @@ export function buildSiteDefectsBook(summaryRows = [], detailRows = []) {
   const wb = XLSX.utils.book_new()
 
   const headers = ['Site', 'No. of Defects', 'Type of Defects', 'Address', 'Entity', 'Region', 'Location Link']
-  const sws = XLSX.utils.json_to_sheet(
+  const sws = jsonToSheet(
     summaryRows.length ? summaryRows : [Object.fromEntries(headers.map((h) => [h, '']))]
   )
   // The type list and the address are the long ones; the count is a number.
@@ -371,7 +372,7 @@ export function buildSiteDefectsBook(summaryRows = [], detailRows = []) {
   }))
   XLSX.utils.book_append_sheet(wb, sws, 'By Site')
 
-  const dws = XLSX.utils.json_to_sheet(detailRows.length ? detailRows : [{ Site: '' }])
+  const dws = jsonToSheet(detailRows.length ? detailRows : [{ Site: '' }])
   dws['!cols'] = (detailRows.length ? Object.keys(detailRows[0]) : ['Site']).map(() => ({ wch: 20 }))
   XLSX.utils.book_append_sheet(wb, dws, 'Defect Detail')
 

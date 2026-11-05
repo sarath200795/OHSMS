@@ -49,6 +49,11 @@ describe('csvCell neutralises spreadsheet formulas', () => {
     expect(csvCell('Bay 3 = north wall')).toBe('Bay 3 = north wall')
   })
 
+  it('prefixes a formula that only shows up after leading whitespace', () => {
+    expect(csvCell(' =1+1')).toBe('"\t =1+1"')
+    expect(csvCell('\u0000=1+1')).toBe('"\t\u0000=1+1"')
+  })
+
   // '-' leads the list, so a negative number would be mangled if the guard did
   // not stop at strings.
   it('leaves a negative number as a number', () => {
@@ -59,7 +64,10 @@ describe('csvCell neutralises spreadsheet formulas', () => {
 })
 
 describe('toCsv', () => {
-  const columns = [{ key: 'name', label: 'Name' }, { key: 'site', label: 'Site' }]
+  const columns = [
+    { key: 'name', label: 'Name' },
+    { key: 'site', label: 'Site' },
+  ]
 
   it('writes a header and one row per record', () => {
     expect(toCsv([{ name: 'Ravi', site: 'Hosur' }], columns)).toBe('Name,Site\nRavi,Hosur\n')
