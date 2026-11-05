@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { beforeAll, afterAll, beforeEach, describe, it } from 'vitest'
 import { initializeTestEnvironment, assertFails, assertSucceeds } from '@firebase/rules-unit-testing'
-import { doc, setDoc, updateDoc } from 'firebase/firestore'
+import { doc, setDoc, updateDoc, deleteField } from 'firebase/firestore'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ORG = 'orgOne'
@@ -103,5 +103,90 @@ describe('closing a department action', () => {
       subject: 'Toolbox',
       actions: [{ ...openDept('Housekeeping'), status: 'Closed' }],
     }))
+  })
+})
+
+// department and dept decide who may close a department action. A member used
+// to be able to write either key on their own profile, and a joiner could
+// write them at signup — approval only sets status, so the value they chose
+// became the grant. These are the writes that must not.
+describe('department is assigned by an admin, not by the profile owner', () => {
+  const profile = (uid, id = uid) => doc(as(uid), 'users', id)
+  const closed = [{ ...openDept('Housekeeping'), status: 'Closed' }]
+
+  it('refuses a member changing, adding, clearing, or swapping either alias', async () => {
+    await assertFails(updateDoc(profile('safety'), { department: 'Housekeeping' }))
+    await assertFails(updateDoc(profile('safety'), { dept: 'Housekeeping' }))
+    await assertFails(updateDoc(profile('safety'), { department: null }))
+    await assertFails(updateDoc(profile('safety'), { department: deleteField() }))
+    await assertFails(setDoc(profile('safety'), {
+      orgId: ORG, role: 'member', status: 'approved', name: 'safety', email: 'safety@t.co',
+    }))
+    await assertFails(updateDoc(profile('both'), { department: 'Housekeeping', dept: 'Safety' }))
+    await assertFails(updateDoc(profile('legacy'), { department: 'Housekeeping' }))
+    await assertFails(updateDoc(profile('legacy'), { dept: 'Safety' }))
+  })
+
+  it('still lets that member edit a field that is not the grant', async () => {
+    await assertSucceeds(updateDoc(profile('safety'), { name: 'Safety Renamed' }))
+    await assertSucceeds(updateDoc(profile('safety'), {
+      accessRequest: { sites: ['site-2'], regions: [], entities: [], department: 'Housekeeping' },
+    }))
+    await assertFails(updateDoc(meeting('safety', 'm-1'), { actions: closed }))
+  })
+
+  it('refuses an auditor, a suspended member, and a manager the same write', async () => {
+    await assertFails(updateDoc(profile('aud'), { department: 'Safety' }))
+    await assertFails(updateDoc(profile('mgr'), { department: 'Housekeeping' }))
+    await assertFails(updateDoc(profile('mgr', 'house'), { department: 'Safety' }))
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'users', 'paused'), {
+        orgId: ORG, role: 'member', status: 'suspended', name: 'paused', email: 'paused@t.co',
+        department: 'Safety',
+      })
+    })
+    await assertFails(updateDoc(profile('paused'), { department: 'Housekeeping' }))
+    await assertFails(updateDoc(meeting('paused', 'm-1'), { actions: closed }))
+    await assertFails(updateDoc(meeting('aud', 'm-1'), { actions: closed }))
+  })
+
+  it('lets an admin of this org reassign, clear, and provision a department', async () => {
+    await assertSucceeds(updateDoc(profile('adm', 'house'), { department: 'Projects' }))
+    await assertSucceeds(updateDoc(profile('adm', 'house'), { department: '', dept: '' }))
+    await assertSucceeds(updateDoc(profile('adm', 'house'), { department: 'Housekeeping' }))
+    await assertSucceeds(setDoc(profile('adm', 'hired'), {
+      orgId: ORG, role: 'member', status: 'approved', name: 'hired', email: 'hired@t.co',
+      department: 'Housekeeping', dept: '',
+      access: { sites: [], regions: [], entities: [] },
+    }))
+    await assertSucceeds(updateDoc(meeting('hired', 'm-1'), { actions: closed }))
+  })
+
+  it('refuses an admin of another org', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore()
+      await setDoc(doc(db, 'organizations', 'orgTwo'), { name: 'Two', createdBy: 'outsider' })
+      await setDoc(doc(db, 'users', 'outsider'), {
+        orgId: 'orgTwo', role: 'admin', status: 'approved', name: 'outsider', email: 'outsider@t.co',
+      })
+    })
+    const outsider = as('outsider')
+    await assertFails(updateDoc(doc(outsider, 'users', 'house'), { department: 'Housekeeping' }))
+    await assertFails(updateDoc(doc(outsider, 'users', 'outsider'), { orgId: ORG, department: 'Housekeeping' }))
+  })
+
+  it('does not turn a self-declared department into a close after approval', async () => {
+    const join = {
+      orgId: ORG, role: 'member', status: 'pending', name: 'Joiner', email: 'joiner@t.co',
+      department: '', dept: '', departmentRequest: 'Housekeeping',
+    }
+    await assertFails(setDoc(profile('joiner'), { ...join, department: 'Housekeeping' }))
+    await assertFails(setDoc(profile('joiner'), { ...join, dept: 'Housekeeping' }))
+    await assertSucceeds(setDoc(profile('joiner'), join))
+    await assertFails(updateDoc(profile('joiner'), { department: 'Housekeeping' }))
+    await assertSucceeds(updateDoc(profile('adm', 'joiner'), { status: 'approved' }))
+    await assertFails(updateDoc(meeting('joiner', 'm-1'), { actions: closed }))
+    await assertSucceeds(updateDoc(profile('adm', 'joiner'), { department: 'Housekeeping' }))
+    await assertSucceeds(updateDoc(meeting('joiner', 'm-1'), { actions: closed }))
   })
 })

@@ -156,7 +156,7 @@ export default function Signup() {
         <Field label="Your name" htmlFor="name">
           <Input id="name" required value={form.name} onChange={set('name')} autoComplete="name" />
         </Field>
-        <Field label="Department" htmlFor="dept" hint="Site access is requested after you join">
+        <Field label="Department" htmlFor="dept" hint="An administrator assigns this. Choosing one here does not grant access.">
           <Select id="dept" value={form.department} onChange={set('department')}>
             <option value="">Select department…</option>
             {DEPARTMENTS.map((d) => (
