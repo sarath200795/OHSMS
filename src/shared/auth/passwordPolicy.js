@@ -17,6 +17,18 @@
 /** Ten, not six. Long enough to matter, short enough that nobody writes it down. */
 export const MIN_PASSWORD_LENGTH = 10
 
+/**
+ * The sentence a new-password field shows, and the number its minLength uses.
+ *
+ * Built from MIN_PASSWORD_LENGTH so the hint cannot drift back to six or eight
+ * while validatePassword still refuses those. This is the client check only.
+ * Identity Toolkit's password policy is a console setting; this string is not
+ * that policy and must not be read as one.
+ */
+export function passwordLengthHint() {
+  return `At least ${MIN_PASSWORD_LENGTH} characters`
+}
+
 // Rejected outright regardless of length. Not a serious dictionary — the point
 // is to catch the handful that get typed when someone is in a hurry, which is
 // exactly when a provisioned account gets its "temporary" password.

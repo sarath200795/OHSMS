@@ -12,7 +12,12 @@ const MESSAGES = {
   'auth/wrong-password': 'Incorrect email or password.',
   'auth/invalid-credential': 'Incorrect email or password.',
   'auth/email-already-in-use': 'An account with that email already exists. Try signing in.',
-  'auth/weak-password': 'Please choose a stronger password (at least 6 characters).',
+  // No length. The old copy repeated Firebase Auth's historical six-character
+  // default, and it taught a floor this app no longer uses. Quoting
+  // MIN_PASSWORD_LENGTH here would pretend the client check is the Identity
+  // Toolkit policy, which is a console setting and is not verified from here.
+  'auth/weak-password':
+    'Please choose a stronger password. The sign-in service did not accept this one.',
   'auth/too-many-requests': 'Too many attempts. Please wait a moment and try again.',
   'auth/network-request-failed': 'Network error. Check your connection and try again.',
   'auth/operation-not-allowed': 'Email/password sign-in is not enabled for this project.',
