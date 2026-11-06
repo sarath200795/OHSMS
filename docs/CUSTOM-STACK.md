@@ -718,8 +718,12 @@ that file. `script-src` on the shared host refuses an inline script, so this
 is a file URL, and it is injected only into the HTML this host serves.
 `dist/index.html` as Firebase hosting serves it has no such tag. The page
 reads `window.__OHSMS_STACK__` before the bundle's inlined values
-(`src/shared/stackPublicEnv.js`). A database URL, an IdP certificate, a
-client secret, and the session signing secret are not in that file. Build
+(`src/shared/stackPublicEnv.js`). When that driver is `postgres`, `App.jsx`
+does not stop on the Firebase setup screen: this build has no Firebase web
+config, and sign-in is the company's IdP. A shared build with no injection
+still shows that screen when Firebase is missing. A database URL, an IdP
+certificate, a client secret, and the session signing secret are not in that
+file. Build
 with `npm run build` from the repo root for the local demo. Do not point the
 Firebase production deploy at a build that was compiled with
 `VITE_DATA_DRIVER=postgres`.
