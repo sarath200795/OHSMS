@@ -93,6 +93,10 @@ export async function fulfillRequest({
     return { ok: false, reason: 'database' }
   }
 
+  // databaseUrl stays in the secret store. This call does not open it.
+  // The engine is the one the caller already bound. The local demo owns
+  // PGlite; a placeholder connection string on the handoff form must not
+  // become the database the browser then cannot reach.
   await applySchema(db)
   const orgId = orgIdFor(request.id)
   const sessionSecret = secret.sessionSecret || newSessionSecret()

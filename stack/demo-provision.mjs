@@ -96,7 +96,11 @@ if (saml) {
   console.log(fixture.cert.trim())
   console.log('The private key stays in this process.')
 } else {
-  console.log(`Submit ${request.handoffContact} and any one secret field.`)
+  console.log(`Submit ${request.handoffContact} and one secret field other than Database URL.`)
+  console.log(
+    'This process keeps its embedded database. A database URL on that form is stored and not opened.'
+  )
+  console.log('Leave Session signing secret blank to keep the secret this process started with.')
 }
 const distIndex = fileURLToPath(new URL('../dist/index.html', import.meta.url))
 if (existsSync(distIndex)) {

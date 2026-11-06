@@ -721,9 +721,16 @@ reads `window.__OHSMS_STACK__` before the bundle's inlined values
 (`src/shared/stackPublicEnv.js`). When that driver is `postgres`, `App.jsx`
 does not stop on the Firebase setup screen: this build has no Firebase web
 config, and sign-in is the company's IdP. A shared build with no injection
-still shows that screen when Firebase is missing. A database URL, an IdP
-certificate, a client secret, and the session signing secret are not in that
-file. Build
+still shows that screen when Firebase is missing. The postgres adapter reads
+`VITE_DATA_GATEWAY` from that same injection on each request. A gateway
+captured from the build is empty here, and the profile read then never
+leaves the browser: the session exists, fulfillment's invite became a user
+row at sign-in, and the portal stays on "Loading your profile…". A database
+URL, an IdP certificate, a client secret, and the session signing secret are
+not in that file. The local demo's handoff may include a database URL. This
+process does not open it. The engine is the embedded database the server was
+started with. Leave the session signing secret blank to keep the secret that
+process already uses. Build
 with `npm run build` from the repo root for the local demo. Do not point the
 Firebase production deploy at a build that was compiled with
 `VITE_DATA_DRIVER=postgres`.

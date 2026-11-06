@@ -14,6 +14,7 @@
 // not ISO strings.
 // ─────────────────────────────────────────────────────────────────────────────
 import { currentAccessToken } from '../../auth/ownStackSession'
+import { publicStackValue } from '../../stackPublicEnv'
 import {
   arrayUnion,
   assertOpts,
@@ -328,11 +329,21 @@ export function createPostgresAdapter(engine, session = null) {
 }
 
 function httpIo(baseUrl) {
-  const root = String(baseUrl || '').replace(/\/$/, '')
+  // Read on each call. The dedicated host publishes VITE_DATA_GATEWAY in
+  // /stack-env.js after fulfillment. Capturing import.meta.env here is empty
+  // in the stock build and stays empty on that host, so getUserProfile throws
+  // before any request. AuthContext then stores a null profile and
+  // ProtectedRoute waits on "Loading your profile…" for a row that was
+  // written at sign-in.
+  function root() {
+    const chosen = baseUrl != null ? baseUrl : publicStackValue('VITE_DATA_GATEWAY')
+    return String(chosen || '').replace(/\/$/, '')
+  }
   async function call(body) {
-    if (!root) throw fail('failed-precondition', 'postgres: VITE_DATA_GATEWAY is not set')
+    const gateway = root()
+    if (!gateway) throw fail('failed-precondition', 'postgres: VITE_DATA_GATEWAY is not set')
     const token = currentAccessToken()
-    const res = await fetch(`${root}/data`, {
+    const res = await fetch(`${gateway}/data`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -363,6 +374,5 @@ export function createHttpPostgresAdapter(baseUrl) {
   return buildAdapter(httpIo(baseUrl))
 }
 
-const gateway = typeof import.meta !== 'undefined' ? import.meta.env?.VITE_DATA_GATEWAY : ''
-
-export default createHttpPostgresAdapter(gateway)
+// No explicit URL: each call uses the injected gateway, then the inlined one.
+export default createHttpPostgresAdapter()

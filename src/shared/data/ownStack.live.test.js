@@ -6,7 +6,8 @@ import { fulfillRequest } from '../../../stack/fulfill.mjs'
 import { establishIdentity } from '../../../stack/identity.mjs'
 import { signSession, verifySession } from '../../../stack/session.mjs'
 import { decidePresign } from '../../../stack/presign.mjs'
-import { createPostgresAdapter } from './adapters/postgres'
+import { createHttpPostgresAdapter, createPostgresAdapter } from './adapters/postgres'
+import { clearAccessToken, setAccessToken } from '../auth/ownStackSession'
 import { createOwnStackServer } from '../../../stack/server.mjs'
 import { identityFromSupabase } from '../../../stack/supabaseAuth.mjs'
 import { samlClient, identityFromSaml } from '../../../stack/saml.mjs'
@@ -671,6 +672,84 @@ describe('dedicated host application', () => {
       expect(metadata.status).toBe(200)
       expect(await metadata.text()).toContain(`${origin}/auth/saml/acs`)
     } finally {
+      server.close()
+    }
+  })
+})
+
+describe('founder profile on the injected gateway', () => {
+  it('reads the user row after OIDC even when the handoff database URL is a placeholder', async () => {
+    const db = new PGlite()
+    const engine = createEngine(db)
+    const requests = new Map()
+    const secret = 'session-secret-for-the-test'
+    const server = createOwnStackServer({
+      engine,
+      db,
+      sessionSecret: secret,
+      origin: 'http://127.0.0.1',
+      auth: { method: 'oidc', issuer: '', clientId: 'ohsms' },
+      requests,
+      controlToken: 'operator-token',
+      spaRoot: mkdtempSync(join(tmpdir(), 'spa-empty-')),
+    })
+    const origin = await listen(server)
+    try {
+      requests.set('reqHostProfile1', {
+        ...request,
+        id: 'reqHostProfile1',
+        authIssuer: `${origin}/oidc`,
+      })
+      const started = await fetch(`${origin}/intake/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer operator-token' },
+        body: JSON.stringify({ requestId: 'reqHostProfile1' }),
+      })
+      const { token } = await started.json()
+      const intake = await fetch(`${origin}/intake`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requestId: 'reqHostProfile1',
+          email: 'ops@northwind.test',
+          token,
+          secrets: { databaseUrl: 'postgres://dead.example/not-opened' },
+        }),
+      })
+      const fulfilled = await intake.json()
+      expect(fulfilled.ok).toBe(true)
+
+      const start = await fetch(`${origin}/auth/start`, { redirect: 'manual' })
+      const form = await (await fetch(start.headers.get('location'))).text()
+      const action = form.match(/action="([^"]+)"/)[1]
+      const posted = await fetch(new URL(action, origin), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        redirect: 'manual',
+        body: new URLSearchParams({ email: 'asha@northwind.test' }),
+      })
+      const callback = await fetch(posted.headers.get('location'), { redirect: 'manual' })
+      expect(callback.status).toBe(302)
+      const sessionToken = decodeURIComponent(
+        new URL(callback.headers.get('location')).hash.replace(/^#session=/, '')
+      )
+      globalThis.__OHSMS_STACK__ = {
+        VITE_DATA_DRIVER: 'postgres',
+        VITE_DATA_GATEWAY: origin,
+      }
+      setAccessToken(sessionToken)
+      const profile = await createHttpPostgresAdapter().get('users', 'asha@northwind.test')
+      expect(profile).toMatchObject({
+        email: 'asha@northwind.test',
+        role: 'admin',
+        status: 'approved',
+        orgId: fulfilled.orgId,
+      })
+      const org = await createHttpPostgresAdapter().get('organizations', fulfilled.orgId)
+      expect(org.name).toBe('Northwind Metals')
+    } finally {
+      clearAccessToken()
+      delete globalThis.__OHSMS_STACK__
       server.close()
     }
   })
