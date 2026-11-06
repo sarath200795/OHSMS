@@ -158,6 +158,7 @@ export default function RegisterOrg() {
           <Input
             id="orgName"
             required
+            maxLength={120}
             value={form.orgName}
             onChange={set('orgName')}
             placeholder="Acme Manufacturing Ltd"
@@ -166,6 +167,7 @@ export default function RegisterOrg() {
         <Field label="Address" htmlFor="address" hint="Optional">
           <Input
             id="address"
+            maxLength={300}
             value={form.address}
             onChange={set('address')}
             placeholder="City, Country"
@@ -176,6 +178,7 @@ export default function RegisterOrg() {
           <Input
             id="name"
             required
+            maxLength={120}
             value={form.name}
             onChange={set('name')}
             placeholder="Jane Doe"
@@ -187,6 +190,7 @@ export default function RegisterOrg() {
             id="email"
             type="email"
             required
+            maxLength={200}
             value={form.email}
             onChange={set('email')}
             placeholder="jane@acme.com"

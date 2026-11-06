@@ -6,6 +6,7 @@ import { toastCaught } from '../../../shared/lib/toastCaught'
 import { Modal, Spinner, Field } from './ui'
 import { DEFECTS, REPORTER_ROLES } from '../lib/constants'
 import { createReport } from '../lib/firestore'
+import { REPORT_NOTE_MAX, reportNoteIssue } from '../lib/publicReport'
 import { lockedDefects } from '../lib/defectLock'
 
 /**
@@ -37,6 +38,8 @@ export default function ReportDefectModal({ open, onClose, ext, orgId, reporter,
     if (!selected) return toast.error('Select a defect type')
     if (locked.has(selected.key)) return toast.error(locked.get(selected.key).label)
     if (isQr && !role) return toast.error('Select who is reporting')
+    const noteIssue = reportNoteIssue(note)
+    if (noteIssue) return toast.error(noteIssue)
     setBusy(true)
     try {
       await createReport(orgId, {
@@ -130,6 +133,7 @@ export default function ReportDefectModal({ open, onClose, ext, orgId, reporter,
           className="input min-h-[72px]"
           placeholder="Describe what you observed…"
           value={note}
+          maxLength={REPORT_NOTE_MAX}
           onChange={(e) => setNote(e.target.value)}
         />
       </Field>

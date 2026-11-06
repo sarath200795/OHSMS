@@ -311,6 +311,60 @@ service cloud.firestore {
           && existsAfter(/databases/$(database)/documents/organizations/$(d.orgId)/$(mirrorCollection(d))/$(mirrorAssetId(d)));
       }
 
+      // Keys were bounded. Values were not: one member write could put a megabyte
+      // into a document anyone can read by scanning the sticker.
+      function boundedText(v, max) {
+        return v == null || (v is string && v.size() <= max);
+      }
+
+      function defectList(list) {
+        return list is list && list.size() <= 8
+          && (list.size() < 1 || (list[0] is string && list[0].size() <= 40))
+          && (list.size() < 2 || (list[1] is string && list[1].size() <= 40))
+          && (list.size() < 3 || (list[2] is string && list[2].size() <= 40))
+          && (list.size() < 4 || (list[3] is string && list[3].size() <= 40))
+          && (list.size() < 5 || (list[4] is string && list[4].size() <= 40))
+          && (list.size() < 6 || (list[5] is string && list[5].size() <= 40))
+          && (list.size() < 7 || (list[6] is string && list[6].size() <= 40))
+          && (list.size() < 8 || (list[7] is string && list[7].size() <= 40));
+      }
+
+      function equipmentMirrorContent(d) {
+        return boundedText(d.get('orgId', null), 128)
+          && boundedText(d.get('orgName', null), 120)
+          && boundedText(d.get('token', null), 128)
+          && boundedText(d.get('status', null), 60)
+          && boundedText(d.get('centerName', null), 300)
+          && boundedText(d.get('region', null), 80)
+          && boundedText(d.get('entity', null), 80)
+          && boundedText(d.get('location', null), 500)
+          && boundedText(d.get('extId', null), 200)
+          && boundedText(d.get('serialNo', null), 120)
+          && boundedText(d.get('type', null), 80)
+          && boundedText(d.get('capacity', null), 80)
+          && boundedText(d.get('assetKind', null), 40)
+          && boundedText(d.get('assetRefId', null), 200)
+          && boundedText(d.get('label', null), 200)
+          && boundedText(d.get('brand', null), 120)
+          && boundedText(d.get('model', null), 120)
+          && boundedText(d.get('deviceType', null), 80)
+          && boundedText(d.get('zone', null), 120)
+          && boundedText(d.get('amcVendor', null), 200)
+          && boundedText(d.get('stretcherType', null), 80)
+          && boundedText(d.get('batteryExpiry', null), 40)
+          && boundedText(d.get('padExpiry', null), 40)
+          && boundedText(d.get('lastInspection', null), 40)
+          && boundedText(d.get('nextInspection', null), 40)
+          && boundedText(d.get('lastService', null), 40)
+          && boundedText(d.get('nextService', null), 40)
+          && boundedText(d.get('dateOfDeployment', null), 40)
+          && boundedText(d.get('dateOfNextRefill', null), 40)
+          && boundedText(d.get('dateOfNextHPT', null), 40)
+          && (!('updatedAt' in d) || d.updatedAt is timestamp)
+          && (!('deletedAt' in d) || d.deletedAt == null || d.deletedAt is timestamp)
+          && (!('physicalDefects' in d) || d.physicalDefects == null || defectList(d.physicalDefects));
+      }
+
       allow get: if true;
       allow list: if false;
 
@@ -319,12 +373,14 @@ service cloud.firestore {
       allow create: if isWriterOf(request.resource.data.orgId)
         && mirrorsItsAsset(token, request.resource.data)
         && mirrorDeletionTracksAsset(request.resource.data)
-        && request.resource.data.keys().hasOnly(equipmentMirrorFields());
+        && request.resource.data.keys().hasOnly(equipmentMirrorFields())
+        && equipmentMirrorContent(request.resource.data);
       allow update: if resource != null
         && isWriterOf(resource.data.orgId)
         && request.resource.data.orgId == resource.data.orgId
         && mirrorDeletionTracksAsset(request.resource.data)
-        && keepsMirrorShape(equipmentMirrorFields());
+        && keepsMirrorShape(equipmentMirrorFields())
+        && equipmentMirrorContent(request.resource.data);
       // Admin may remove a mirror on its own (purge).
       allow delete: if resource != null && (
         isAdminOf(resource.data.orgId)
@@ -594,6 +650,111 @@ service cloud.firestore {
         ];
       }
 
+      // Values, not just keys. A nested hazards/jsa/engineering map was an
+      // unbounded object on a world-readable document. Legacy crew keys may
+      // remain so an old mirror can still be withdrawn; their contents are capped.
+      function boundedText(v, max) {
+        return v == null || (v is string && v.size() <= max);
+      }
+
+      function statusOnly(m) {
+        return m == null || (m is map && m.keys().hasOnly(['status']) && boundedText(m.get('status', null), 60));
+      }
+
+      function jsaRow(row) {
+        return row is map
+          && row.keys().hasOnly(['step', 'hazard', 'precaution'])
+          && boundedText(row.get('step', null), 2000)
+          && boundedText(row.get('hazard', null), 2000)
+          && boundedText(row.get('precaution', null), 2000);
+      }
+
+      function crewPerson(p) {
+        return p is map
+          && p.keys().hasOnly(['name', 'company', 'employer', 'contact', 'type', 'role', 'details', 'uid', 'phone'])
+          && boundedText(p.get('name', null), 200)
+          && boundedText(p.get('company', null), 200)
+          && boundedText(p.get('employer', null), 200)
+          && boundedText(p.get('contact', null), 200)
+          && boundedText(p.get('type', null), 40)
+          && boundedText(p.get('role', null), 80)
+          && boundedText(p.get('details', null), 200)
+          && boundedText(p.get('uid', null), 128)
+          && boundedText(p.get('phone', null), 40);
+      }
+
+      // Count is capped, and the first item's length. Walking every checklist
+      // item, on top of the permit lookup this create already does, crosses
+      // the 1000-expression ceiling and the printed QR stops updating. The
+      // builder clips every item; the rule stops a single field from being
+      // the whole document and stops a list from growing without bound.
+      function listOk(v, maxItems, maxItem) {
+        return v == null || (
+          v is list && v.size() <= maxItems
+          && (v.size() == 0 || (v[0] is string && v[0].size() <= maxItem))
+        );
+      }
+
+      function permitMirrorContent(d) {
+        return boundedText(d.get('orgId', null), 128)
+          && boundedText(d.get('orgName', null), 120)
+          && boundedText(d.get('permitId', null), 200)
+          && boundedText(d.get('token', null), 128)
+          && boundedText(d.get('permitNo', null), 120)
+          && boundedText(d.get('docId', null), 120)
+          && boundedText(d.get('site', null), 300)
+          && boundedText(d.get('typeOfWork', null), 80)
+          && boundedText(d.get('jobLocation', null), 500)
+          && boundedText(d.get('jobDescription', null), 4000)
+          && boundedText(d.get('issuingDepartment', null), 300)
+          && boundedText(d.get('issuedToName', null), 120)
+          && boundedText(d.get('storedStatus', null), 60)
+          && (!('hazards' in d) || listOk(d.hazards, 30, 120))
+          && (!('ppe' in d) || listOk(d.ppe, 40, 120))
+          && (!('precautions' in d) || listOk(d.precautions, 40, 160))
+          && (!('jsa' in d) || d.jsa == null || (
+            d.jsa is list && d.jsa.size() <= 20
+            && (d.jsa.size() == 0 || jsaRow(d.jsa[0]))
+          ))
+          && (!('participantCount' in d) || (d.participantCount is int && d.participantCount >= 0 && d.participantCount <= 500))
+          && (!('fireWatcherCount' in d) || (d.fireWatcherCount is int && d.fireWatcherCount >= 0 && d.fireWatcherCount <= 500))
+          && (!('hasConfinedWatcher' in d) || d.hasConfinedWatcher is bool)
+          && (!('withdrawn' in d) || d.withdrawn is bool)
+          && statusOnly(d.get('engineering', null))
+          && statusOnly(d.get('operations', null))
+          && (d.get('closure', null) == null
+              || (d.closure is map
+                  && d.closure.keys().hasOnly(['engineering', 'operations'])
+                  && statusOnly(d.closure.get('engineering', null))
+                  && statusOnly(d.closure.get('operations', null))))
+          && (d.get('extension', null) == null
+              || (d.extension is map
+                  && d.extension.keys().hasOnly(['engineering', 'operations', 'newValidTo'])
+                  && statusOnly(d.extension.get('engineering', null))
+                  && statusOnly(d.extension.get('operations', null))
+                  && boundedText(d.extension.get('newValidTo', null), 40)))
+          && (d.get('closedDueToObservation', null) == null
+              || (d.closedDueToObservation is map
+                  && d.closedDueToObservation.keys().hasOnly(['observationId', 'by', 'byName', 'at', 'note'])
+                  && boundedText(d.closedDueToObservation.get('observationId', null), 200)
+                  && boundedText(d.closedDueToObservation.get('by', null), 128)
+                  && boundedText(d.closedDueToObservation.get('byName', null), 200)
+                  && boundedText(d.closedDueToObservation.get('at', null), 40)
+                  && boundedText(d.closedDueToObservation.get('note', null), 2000)))
+          && boundedText(d.get('validFrom', null), 40)
+          && boundedText(d.get('validTo', null), 40)
+          && (!('updatedAt' in d) || d.updatedAt is timestamp)
+          && (!('participants' in d) || (
+            d.participants is list && d.participants.size() <= 24
+            && (d.participants.size() == 0 || crewPerson(d.participants[0]))
+          ))
+          && (!('fireWatchers' in d) || (
+            d.fireWatchers is list && d.fireWatchers.size() <= 24
+            && (d.fireWatchers.size() == 0 || crewPerson(d.fireWatchers[0]))
+          ));
+      }
+
+
       allow get: if true;
       allow list: if false;
 
@@ -605,11 +766,13 @@ service cloud.firestore {
         && request.resource.data.get('permitId', '') != ''
         && getAfter(/databases/$(database)/documents/organizations/$(request.resource.data.orgId)/permits/$(request.resource.data.permitId))
              .data.get('qrToken', '') == token
-        && request.resource.data.keys().hasOnly(permitMirrorFields());
+        && request.resource.data.keys().hasOnly(permitMirrorFields())
+        && permitMirrorContent(request.resource.data);
       allow update: if resource != null
         && isWriterOf(resource.data.orgId)
         && request.resource.data.orgId == resource.data.orgId
-        && keepsMirrorShape(permitMirrorFields());
+        && keepsMirrorShape(permitMirrorFields())
+        && permitMirrorContent(request.resource.data);
       allow delete: if isWriterOf(resource.data.orgId);
     }
 
@@ -885,7 +1048,85 @@ service cloud.firestore {
           && request.resource.data.get('dept', '') == '';
       }
 
+      function boundedText(v, max) {
+        return v == null || (v is string && v.size() <= max);
+      }
+
+      function userFields() {
+        return [
+          'name', 'email', 'orgId', 'orgName', 'role', 'status', 'dept', 'department',
+          'departmentRequest', 'access', 'accessRequest', 'mustChangePassword',
+          'provisionedBy', 'createdAt', 'portalWidgets', 'phone'
+        ];
+      }
+
+      function widgetList(v) {
+        return v is list && v.size() <= 24
+          && (v.size() < 1 || (v[0] is string && v[0].size() <= 40))
+          && (v.size() < 2 || (v[1] is string && v[1].size() <= 40))
+          && (v.size() < 3 || (v[2] is string && v[2].size() <= 40))
+          && (v.size() < 4 || (v[3] is string && v[3].size() <= 40))
+          && (v.size() < 5 || (v[4] is string && v[4].size() <= 40))
+          && (v.size() < 6 || (v[5] is string && v[5].size() <= 40))
+          && (v.size() < 7 || (v[6] is string && v[6].size() <= 40))
+          && (v.size() < 8 || (v[7] is string && v[7].size() <= 40))
+          && (v.size() < 9 || (v[8] is string && v[8].size() <= 40))
+          && (v.size() < 10 || (v[9] is string && v[9].size() <= 40))
+          && (v.size() < 11 || (v[10] is string && v[10].size() <= 40))
+          && (v.size() < 12 || (v[11] is string && v[11].size() <= 40))
+          && (v.size() < 13 || (v[12] is string && v[12].size() <= 40))
+          && (v.size() < 14 || (v[13] is string && v[13].size() <= 40))
+          && (v.size() < 15 || (v[14] is string && v[14].size() <= 40))
+          && (v.size() < 16 || (v[15] is string && v[15].size() <= 40))
+          && (v.size() < 17 || (v[16] is string && v[16].size() <= 40))
+          && (v.size() < 18 || (v[17] is string && v[17].size() <= 40))
+          && (v.size() < 19 || (v[18] is string && v[18].size() <= 40))
+          && (v.size() < 20 || (v[19] is string && v[19].size() <= 40))
+          && (v.size() < 21 || (v[20] is string && v[20].size() <= 40))
+          && (v.size() < 22 || (v[21] is string && v[21].size() <= 40))
+          && (v.size() < 23 || (v[22] is string && v[22].size() <= 40))
+          && (v.size() < 24 || (v[23] is string && v[23].size() <= 40));
+      }
+
+      function profileTextOk() {
+        return boundedText(request.resource.data.get('name', null), 120)
+          && boundedText(request.resource.data.get('email', null), 200)
+          && boundedText(request.resource.data.get('orgName', null), 200)
+          && boundedText(request.resource.data.get('orgId', null), 128)
+          && boundedText(request.resource.data.get('department', null), 120)
+          && boundedText(request.resource.data.get('dept', null), 120)
+          && boundedText(request.resource.data.get('departmentRequest', null), 120)
+          && boundedText(request.resource.data.get('provisionedBy', null), 120)
+          && boundedText(request.resource.data.get('phone', null), 40)
+          && boundedText(request.resource.data.get('role', null), 20)
+          && boundedText(request.resource.data.get('status', null), 20)
+          && (!('mustChangePassword' in request.resource.data)
+              || request.resource.data.mustChangePassword is bool)
+          && (!('createdAt' in request.resource.data)
+              || request.resource.data.createdAt == null
+              || request.resource.data.createdAt is timestamp)
+          && (!('portalWidgets' in request.resource.data)
+              || widgetList(request.resource.data.portalWidgets))
+          && (!('access' in request.resource.data)
+              || (request.resource.data.access is map
+                  && request.resource.data.access.keys().hasOnly(['sites', 'regions', 'entities'])
+                  && request.resource.data.access.get('sites', []) is list
+                  && request.resource.data.access.get('sites', []).size() <= 400
+                  && request.resource.data.access.get('regions', []) is list
+                  && request.resource.data.access.get('regions', []).size() <= 100
+                  && request.resource.data.access.get('entities', []) is list
+                  && request.resource.data.access.get('entities', []).size() <= 100))
+          && (!('accessRequest' in request.resource.data)
+              || request.resource.data.accessRequest == null
+              || (request.resource.data.accessRequest is map
+                  && request.resource.data.accessRequest.keys().hasOnly(['sites', 'regions', 'entities', 'department', 'at', 'by'])
+                  && boundedText(request.resource.data.accessRequest.get('department', null), 120)
+                  && boundedText(request.resource.data.accessRequest.get('by', null), 120)));
+      }
+
       allow create: if isSignedIn()
+        && request.resource.data.keys().hasOnly(userFields())
+        && profileTextOk()
         && noSelfGrantedScope()
         && (
           (request.auth.uid == uid
@@ -906,6 +1147,8 @@ service cloud.firestore {
       // Update your own limited fields, or an admin manages members in the same org. Users
       // cannot self-promote (role/status locked unless admin).
       allow update: if isSignedIn()
+        && request.resource.data.keys().hasOnly(userFields().concat(resource.data.keys()))
+        && profileTextOk()
         && request.resource.data.orgId == resource.data.orgId
         && (
           // `access` and `siteId` are pinned alongside role and status, because they are no less a privilege
@@ -936,7 +1179,16 @@ service cloud.firestore {
 
       allow read: if isApprovedMemberOf(orgId);
       allow create: if isSignedIn()
-        && request.resource.data.createdBy == request.auth.uid;
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.keys().hasOnly(['name', 'nameLower', 'address', 'createdBy', 'notificationEmail', 'createdAt', 'docCode'])
+        && request.resource.data.createdBy is string
+        && request.resource.data.createdBy.size() <= 128
+        && (!('name' in request.resource.data) || (request.resource.data.name is string && request.resource.data.name.size() <= 120))
+        && (!('nameLower' in request.resource.data) || (request.resource.data.nameLower is string && request.resource.data.nameLower.size() <= 120))
+        && (!('address' in request.resource.data) || (request.resource.data.address is string && request.resource.data.address.size() <= 300))
+        && (!('notificationEmail' in request.resource.data) || (request.resource.data.notificationEmail is string && request.resource.data.notificationEmail.size() <= 200))
+        && (!('docCode' in request.resource.data) || (request.resource.data.docCode is string && request.resource.data.docCode.size() <= 8))
+        && (!('createdAt' in request.resource.data) || request.resource.data.createdAt is timestamp);
       allow update, delete: if isAdminOf(orgId);
 
       // Append-only audit trail — create only, never edit or delete.
@@ -1008,6 +1260,16 @@ service cloud.firestore {
           // client's id and this comparison cannot mean different things.
           && !request.resource.data.extId.matches('.*/.*')
           && !request.resource.data.defectType.matches('.*/.*')
+          && (!('token' in request.resource.data)
+              || (request.resource.data.token is string
+                  && request.resource.data.token.size() <= 128
+                  && request.resource.data.token.matches('^[A-Za-z0-9._~-]*$')))
+          && (!('createdAt' in request.resource.data)
+              || request.resource.data.createdAt == null
+              || request.resource.data.createdAt is timestamp
+              || request.resource.data.createdAt is int
+              || (request.resource.data.createdAt is string
+                  && request.resource.data.createdAt.size() <= 40))
           && lockId == request.resource.data.extId + '__' + request.resource.data.defectType
           && (
             isWriterOf(orgId)
@@ -1091,7 +1353,120 @@ service cloud.firestore {
                   && scannedAssetField(request.resource.data, 'assetKind') == request.resource.data.assetKind
                 )
               )
+              && request.resource.data.token.size() <= 128
+              && request.resource.data.token.matches('^[A-Za-z0-9._~-]+$')
+              && (!('reportedAt' in request.resource.data)
+                  || request.resource.data.reportedAt == null
+                  || request.resource.data.reportedAt is timestamp
+                  || request.resource.data.reportedAt is int)
+              && (!('createdAt' in request.resource.data)
+                  || request.resource.data.createdAt == null
+                  || request.resource.data.createdAt is timestamp
+                  || request.resource.data.createdAt is int)
           );
+
+        // The generic org write used to grant members an unbounded report: extra
+        // keys, a megabyte note, and an approvalStatus other than the decision
+        // words, which took the report out of the queue without approving it.
+        // reports is excluded from that grant. Create stays pending. Only a
+        // manager moves approvalStatus, including to closed.
+        function optionalStamp(v) {
+          return v == null || v is timestamp || v is int;
+        }
+
+        function reportFields() {
+          return [
+            'extId', 'extLabel', 'kind', 'defectType', 'newStatus', 'note',
+            'reportedBy', 'reportedByName', 'reporterRole', 'source',
+            'approvalStatus', 'reportedAt', 'createdAt', 'token',
+            'assetKind', 'assetRefId', 'assetLabel', 'defect',
+            'reviewedBy', 'reviewedAt', 'closure', 'deletedAt'
+          ];
+        }
+
+        function fits(field, max) {
+          return (resource != null
+              && request.resource.data.get(field, null) == resource.data.get(field, null))
+            || boundedText(request.resource.data.get(field, null), max);
+        }
+
+        function stampOk(field) {
+          return (resource != null
+              && request.resource.data.get(field, null) == resource.data.get(field, null))
+            || !(field in request.resource.data)
+            || optionalStamp(request.resource.data[field]);
+        }
+
+        function closurePhotoOk(p) {
+          return p == null
+            || (p is map
+                && p.keys().hasOnly(['url', 'path', 'dataUrl', 'contentType', 'name', 'size'])
+                && boundedText(p.get('url', null), 2000)
+                && (p.get('url', '') == '' || p.get('url', '').matches('^https://.*'))
+                && boundedText(p.get('path', null), 500)
+                && boundedText(p.get('dataUrl', null), 750000)
+                && (p.get('dataUrl', '') == '' || p.get('dataUrl', '').matches('^data:image/.*'))
+                && boundedText(p.get('contentType', null), 100)
+                && boundedText(p.get('name', null), 200)
+                && (!('size' in p) || p.size == null || p.size is int));
+        }
+
+        function closureOk(c) {
+          return c == null
+            || (c is map
+                && c.keys().hasOnly(['remarks', 'closedOn', 'closedBy', 'closedByUid', 'photo', 'source'])
+                && boundedText(c.get('remarks', null), 2000)
+                && boundedText(c.get('closedOn', null), 40)
+                && boundedText(c.get('closedBy', null), 120)
+                && boundedText(c.get('closedByUid', null), 128)
+                && boundedText(c.get('source', null), 40)
+                && closurePhotoOk(c.get('photo', null)));
+        }
+
+        function reportTextOk() {
+          return fits('extId', 200) && fits('extLabel', 200) && fits('note', 500)
+            && fits('reportedByName', 120) && fits('reporterRole', 60)
+            && fits('defectType', 200) && fits('newStatus', 60)
+            && fits('defect', 200) && fits('assetLabel', 200) && fits('assetRefId', 200)
+            && fits('token', 128) && fits('reviewedBy', 120)
+            && fits('source', 20) && fits('kind', 40) && fits('approvalStatus', 40)
+            && fits('assetKind', 40)
+            && stampOk('reportedAt') && stampOk('createdAt')
+            && stampOk('reviewedAt') && stampOk('deletedAt');
+        }
+
+        allow read: if isApprovedMemberOf(orgId) && moduleOn(orgId, 'equipment');
+        allow create: if isWriterOf(orgId)
+          && moduleOn(orgId, 'equipment')
+          && request.resource.data.keys().hasOnly(reportFields())
+          && request.resource.data.approvalStatus == 'pending'
+          && request.resource.data.reportedBy == request.auth.uid
+          && request.resource.data.kind in ['defect', 'status_change', 'asset_defect']
+          && request.resource.data.source in ['portal', 'qr']
+          && request.resource.data.note is string
+          && !('closure' in request.resource.data)
+          && !('reviewedBy' in request.resource.data)
+          && reportTextOk()
+          && (request.resource.data.kind != 'defect'
+              || (request.resource.data.extId is string && request.resource.data.extId.size() > 0))
+          && (request.resource.data.kind != 'asset_defect'
+              || (request.resource.data.assetKind in ['aed', 'fas', 'stretcher']
+                  && request.resource.data.assetRefId is string
+                  && request.resource.data.assetRefId.size() > 0
+                  && request.resource.data.get('defect', '') is string
+                  && request.resource.data.get('defect', '').size() > 0));
+        allow update: if resource != null
+          && isWriterOf(orgId)
+          && moduleOn(orgId, 'equipment')
+          && request.resource.data.keys().hasOnly(reportFields().concat(resource.data.keys()))
+          && (isManagerOf(orgId)
+              || request.resource.data.get('approvalStatus', '') == resource.data.get('approvalStatus', ''))
+          && (isManagerOf(orgId)
+              || request.resource.data.get('closure', null) == resource.data.get('closure', null))
+          && reportTextOk()
+          && (request.resource.data.get('closure', null) == resource.data.get('closure', null)
+              || closureOk(request.resource.data.get('closure', null)));
+        allow delete: if isManagerOf(orgId);
       }
 
       // Observations logged by scanning a work permit's QR code.
@@ -1138,7 +1513,56 @@ service cloud.firestore {
               && boundedText(request.resource.data.get('observedByName', ''), 120)
               && boundedText(request.resource.data.get('observedByRole', ''), 60)
               && boundedText(request.resource.data.get('token', ''), 200)
+              && (!('at' in request.resource.data)
+                  || request.resource.data.at == null
+                  || request.resource.data.at is timestamp
+                  || request.resource.data.at is int)
           );
+
+        // Same union problem as /reports. A portal observation has no
+        // approvalStatus; a scanned one is pending. Neither may arrive approved,
+        // and neither may carry an unbounded note.
+        function obsFields() {
+          return [
+            'permitId', 'permitNo', 'docId', 'token', 'type', 'note',
+            'observedBy', 'observedByName', 'observedByRole', 'source',
+            'approvalStatus', 'at'
+          ];
+        }
+
+        function obsFits(field, max) {
+          return (resource != null
+              && request.resource.data.get(field, null) == resource.data.get(field, null))
+            || boundedText(request.resource.data.get(field, null), max);
+        }
+
+        allow read: if isApprovedMemberOf(orgId) && moduleOn(orgId, 'ptw');
+        allow create: if isWriterOf(orgId)
+          && moduleOn(orgId, 'ptw')
+          && request.resource.data.keys().hasOnly(obsFields())
+          && request.resource.data.observedBy == request.auth.uid
+          && request.resource.data.type in ['safe', 'unsafe']
+          && request.resource.data.source == 'portal'
+          && request.resource.data.permitId is string
+          && request.resource.data.permitId.size() > 0
+          && request.resource.data.permitId.size() < 200
+          && request.resource.data.note is string
+          && (request.resource.data.get('approvalStatus', '') == ''
+              || request.resource.data.approvalStatus == 'pending')
+          && (!('at' in request.resource.data) || request.resource.data.at is timestamp)
+          && obsFits('note', 2000) && obsFits('permitNo', 120) && obsFits('docId', 120)
+          && obsFits('token', 200) && obsFits('observedByName', 120)
+          && obsFits('observedByRole', 60);
+        allow update: if resource != null
+          && isWriterOf(orgId)
+          && moduleOn(orgId, 'ptw')
+          && request.resource.data.keys().hasOnly(obsFields().concat(resource.data.keys()))
+          && (isManagerOf(orgId)
+              || request.resource.data.get('approvalStatus', '') == resource.data.get('approvalStatus', ''))
+          && obsFits('note', 2000) && obsFits('permitNo', 120) && obsFits('docId', 120)
+          && obsFits('token', 200) && obsFits('observedByName', 200)
+          && obsFits('observedByRole', 60) && obsFits('type', 20) && obsFits('source', 20);
+        allow delete: if isManagerOf(orgId);
       }
 
       match /lotoPermits/{permitId} {
@@ -1764,10 +2188,22 @@ service cloud.firestore {
         }
 
         // moduleForCollection('incidents') is 'incidents'.
+        // Unchanged text passes, so a record written before the cap can still be
+        // closed. A new value has to fit. 16000 leaves room for a sealed note.
+        function noteFits(field, max) {
+          return (resource != null
+              && request.resource.data.get(field, null) == resource.data.get(field, null))
+            || request.resource.data.get(field, null) == null
+            || (request.resource.data.get(field, null) is string
+                && request.resource.data.get(field, null).size() <= max);
+        }
+
         allow read: if isApprovedMemberOf(orgId) && moduleOn(orgId, 'incidents');
         allow create, update: if isWriterOf(orgId)
           && moduleOn(orgId, 'incidents')
           && keepsSoftDelete()
+          && noteFits('narrative', 16000)
+          && noteFits('probableCause', 8000)
           && (isManagerOf(orgId)
               || keepsIncidentDecision(beforeData(), request.resource.data));
         allow delete: if isManagerOf(orgId);
@@ -1855,6 +2291,22 @@ service cloud.firestore {
             && keepsField(s, before, after, ['lifecycle']);
         }
 
+        function noteFits(field, max) {
+          return (resource != null
+              && request.resource.data.get(field, null) == resource.data.get(field, null))
+            || request.resource.data.get(field, null) == null
+            || (request.resource.data.get(field, null) is string
+                && request.resource.data.get(field, null).size() <= max);
+        }
+
+        function clinicalListOk(field) {
+          let v = request.resource.data.get(field, null);
+          return (resource != null && v == resource.data.get(field, null))
+            || v == null
+            || (v is string && v.size() <= 20000)
+            || (v is list && v.size() <= 80);
+        }
+
         allow read: if isManagerOf(orgId);
 
         // The attached FILES, not just the fields. Documents filed before that, as kind:'medical_record'
@@ -1864,6 +2316,11 @@ service cloud.firestore {
           && moduleOn(orgId, 'incidents')
           && keepsSoftDelete()
           && keepsClinicalJoin()
+          && noteFits('firstAidDetail', 8000)
+          && noteFits('medication', 8000)
+          && noteFits('injuryType', 200)
+          && noteFits('personName', 200)
+          && clinicalListOk('bodyParts')
           && (isManagerOf(orgId)
               || (keepsInjuryDecision(beforeData(), request.resource.data)
                   && keepsClinicalContent()
@@ -1950,6 +2407,22 @@ service cloud.firestore {
             && keepsField(s, before, after, ['lifecycle']);
         }
 
+        function noteFits(field, max) {
+          return (resource != null
+              && request.resource.data.get(field, null) == resource.data.get(field, null))
+            || request.resource.data.get(field, null) == null
+            || (request.resource.data.get(field, null) is string
+                && request.resource.data.get(field, null).size() <= max);
+        }
+
+        function clinicalListOk(field) {
+          let v = request.resource.data.get(field, null);
+          return (resource != null && v == resource.data.get(field, null))
+            || v == null
+            || (v is string && v.size() <= 20000)
+            || (v is list && v.size() <= 80);
+        }
+
         allow read: if isManagerOf(orgId);
 
         // The attachments, which /injuries got and this did not. isManagerOf, not isElevatedOf, for the
@@ -1958,6 +2431,12 @@ service cloud.firestore {
         allow create, update: if isWriterOf(orgId)
           && moduleOn(orgId, 'incidents')
           && keepsSoftDelete()
+          && noteFits('healthIssue', 16000)
+          && noteFits('exposedToAgent', 2000)
+          && noteFits('exposureDuration', 200)
+          && clinicalListOk('affectedBodyParts')
+          && clinicalListOk('ppe')
+          && clinicalListOk('affectedPersonnel')
           && (isManagerOf(orgId)
               || (keepsIllnessDecision(beforeData(), request.resource.data)
                   && keepsClinicalContent()
@@ -2103,6 +2582,9 @@ service cloud.firestore {
             return !(col in [
               'auditLogs', 'defectLocks', 'docSeq', 'consultations',
               'lotoPermits', 'lotoSettings', 'lotoGroupNumbers',
+              // reports and observations have their own shape. Leaving them here
+              // would OR an unbounded member write back in beside that shape.
+              'reports', 'observations',
               // Soft-delete and clinical field checks live on the dedicated matches. Another `&&` on the generic
               // write pushed the extinguisher close over the 1000-expression ceiling.
               'incidents', 'injuries', 'illnesses'

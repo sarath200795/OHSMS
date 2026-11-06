@@ -1,4 +1,18 @@
 import { STATUS, derivePermitStatus, effectiveValidTo } from './permitStatus'
+import { TEXT } from '../../../shared/validate/textCap'
+
+const clip = (value, max) => {
+  const text = value == null ? '' : String(value)
+  return text.length <= max ? text : text.slice(0, max)
+}
+
+const clipList = (value, maxItems, maxItem) => {
+  const list = Array.isArray(value) ? value : []
+  return list
+    .filter((item) => typeof item === 'string')
+    .slice(0, maxItems)
+    .map((item) => clip(item, maxItem))
+}
 
 /**
  * What a scanned permit QR tells a stranger.
@@ -106,16 +120,23 @@ export function withdrawnFields() {
 
 /** The display half of the mirror for a permit that is still live. */
 export function liveFields(permit = {}) {
+  const jsa = Array.isArray(permit.jsa) ? permit.jsa : []
   return {
-    typeOfWork: permit.typeOfWork || '',
-    jobLocation: permit.jobLocation || '',
-    jobDescription: permit.jobDescription || '',
-    issuingDepartment: permit.issuingDepartment || '',
-    issuedToName: permit.issuedToName || '',
-    hazards: permit.hazards || [],
-    ppe: permit.ppe || [],
-    precautions: permit.precautions || [],
-    jsa: permit.jsa || [],
+    typeOfWork: clip(permit.typeOfWork, TEXT.short),
+    jobLocation: clip(permit.jobLocation, TEXT.location),
+    jobDescription: clip(permit.jobDescription, TEXT.job),
+    issuingDepartment: clip(permit.issuingDepartment, TEXT.site),
+    issuedToName: clip(permit.issuedToName, TEXT.name),
+    // The checklists are short labels. Anything past the rule's list cap is
+    // dropped here so publishing the mirror does not fail the permit write.
+    hazards: clipList(permit.hazards, 30, TEXT.serial),
+    ppe: clipList(permit.ppe, 40, TEXT.serial),
+    precautions: clipList(permit.precautions, 40, 160),
+    jsa: jsa.slice(0, 20).map((row) => ({
+      step: clip(row?.step, TEXT.jsa),
+      hazard: clip(row?.hazard, TEXT.jsa),
+      precaution: clip(row?.precaution, TEXT.jsa),
+    })),
     ...crewSummary(permit),
     withdrawn: false,
   }

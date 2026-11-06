@@ -626,7 +626,7 @@ export default function PermitDetail() {
             </button>
           </div>
           <Field label="Observation note">
-            <textarea rows={3} className="input" placeholder="Describe what you observed…" value={obs.note} onChange={(e) => setObs({ ...obs, note: e.target.value })} />
+            <textarea rows={3} className="input" placeholder="Describe what you observed…" maxLength={2000} value={obs.note} onChange={(e) => setObs({ ...obs, note: e.target.value })} />
           </Field>
           {obs.type === 'unsafe' && (
             <p className="flex items-center gap-2 rounded-xl bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
