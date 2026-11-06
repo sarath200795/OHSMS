@@ -4,17 +4,42 @@
 
 import { SAML } from '@node-saml/node-saml'
 
-export function samlClient({ issuer, callbackUrl, idpCert, entryPoint }) {
-  if (!idpCert || !entryPoint) {
+// A password input keeps one line. A PEM pasted there loses its breaks, and
+// node-saml will not read the certificate until they are put back.
+export function idpCertPem(value) {
+  const text = String(value || '').trim()
+  if (!text) return ''
+  if (text.includes('-----BEGIN CERTIFICATE-----') && text.includes('\n')) {
+    return text.endsWith('\n') ? text : `${text}\n`
+  }
+  const body = text
+    .replace(/-----BEGIN CERTIFICATE-----/g, '')
+    .replace(/-----END CERTIFICATE-----/g, '')
+    .replace(/\s+/g, '')
+  if (!/^[A-Za-z0-9+/=]+$/.test(body)) return ''
+  const lines = body.match(/.{1,64}/g) || []
+  return `-----BEGIN CERTIFICATE-----\n${lines.join('\n')}\n-----END CERTIFICATE-----\n`
+}
+
+export function samlClient({ issuer, callbackUrl, idpCert, entryPoint, validateInResponseTo }) {
+  const cert = idpCertPem(idpCert)
+  if (!cert || !entryPoint) {
     throw new Error('saml: the IdP certificate and entry point are required')
   }
   return new SAML({
     issuer,
     callbackUrl,
-    idpCert,
+    idpCert: cert,
     entryPoint,
+    // The assertion is what this host treats as the identity. The library
+    // also defaults to requiring a signature on the Response wrapper, which
+    // rejects an IdP that signs the assertion and nothing else — the usual
+    // case — before the certificate is consulted.
     wantAssertionsSigned: true,
+    wantAuthnResponseSigned: false,
     identifierFormat: null,
+    disableRequestedAuthnContext: true,
+    ...(validateInResponseTo ? { validateInResponseTo } : {}),
   })
 }
 

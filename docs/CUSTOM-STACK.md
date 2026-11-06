@@ -424,11 +424,25 @@ The endpoint checks the caller's session and that `path` starts with
 `orgs/<orgId>/`, which is what `storage.rules` checks on Firebase. The path
 layout comes from `storagePath()` and is backend-neutral on purpose.
 
+The dedicated host implements that contract when the request has no
+`presignUrl`: presign returns the URLs, and `/blob` is where the bytes go.
+`PUT` or `POST` to `uploadUrl` stores the object. `GET` `publicUrl` with the
+session reads it. `DELETE` `deleteUrl` removes it. The `id` query is a
+one-time grant; the presign call itself does not write or delete. The browser
+adapter (`adapters/s3.js`) PUTs and then reads through `resolve`, which sends
+the session, because an `<img src>` would not. `storage.rules` is the read
+policy: the live profile, `medical-records` for an admin or manager only, and
+no client read of `mailed-reports`. The object stays in the host process. A
+company that brings a bucket sets `presignUrl` to a presigner that has to
+honor the same three calls. SVG is refused. An object that is already stored
+at that path is refused, which is the overwrite rule in `storage.rules`.
+
 What `s3` does not do:
 
-- It still sends `Authorization: Bearer <Firebase ID token>`. Until Auth is
-  replaced, an S3 bucket in front of a Firebase session is a file-store
-  swap. Say that to the organization. Do not describe it as path 3.
+- On the shared build, with no own-stack session, the presign call still
+  sends the Firebase ID token. That is a file-store swap. On the dedicated
+  host the same header is the company's session token. Neither token is a
+  bucket credential. Do not describe the Firebase-token case as path 3.
 - `removeFile` on the Firebase driver goes through the `deleteOrgFile`
   callable, because a Storage rule can only see the ID token and a token
   stays valid for up to an hour after the person is suspended, demoted, or
@@ -683,7 +697,58 @@ Firestore rule has a line-by-line twin:
   The token-bound policies exist. The vendor does not.
 
 `node stack/demo-provision.mjs` builds one embedded company on
-`http://127.0.0.1:8787`. It does not touch the shared Firebase project.
+`http://127.0.0.1:8787`. `node stack/demo-provision.mjs --saml` is the same
+company with the fixture IdP described below. Neither touches the shared
+Firebase project.
+
+### Dedicated host: the app, files, and SAML
+
+Fulfillment is what makes `/` the product. Until the request is `live`, `/`
+is a 404 and `/stack-env.js` is not served. After it, the host serves `dist/`
+(the Vite build, defaulting to the repo's `dist/` directory): `/` and the
+app's paths return `index.html`, and a file that exists on disk is that file.
+A missing file under `/assets/` stays a 404, so the browser does not run the
+HTML as a script.
+
+The shared Firebase build does not set `VITE_DATA_DRIVER=postgres`. The
+dedicated host does not bake that flag either. It publishes the public env
+from fulfillment — driver, gateway, storage driver, presign URL, auth method,
+issuer, client id — as `/stack-env.js`, and the HTML it serves references
+that file. `script-src` on the shared host refuses an inline script, so this
+is a file URL, and it is injected only into the HTML this host serves.
+`dist/index.html` as Firebase hosting serves it has no such tag. The page
+reads `window.__OHSMS_STACK__` before the bundle's inlined values
+(`src/shared/stackPublicEnv.js`). A database URL, an IdP certificate, a
+client secret, and the session signing secret are not in that file. Build
+with `npm run build` from the repo root for the local demo. Do not point the
+Firebase production deploy at a build that was compiled with
+`VITE_DATA_DRIVER=postgres`.
+
+Company SAML uses the same `/auth/start` the OIDC button already calls. The
+method on the request decides. The handoff fields are `samlIdpCert` (PEM; the
+form is a textarea because a one-line password input drops the breaks) and
+`samlEntryPoint`. They stay on the host. The assertion consumer is
+`{origin}/auth/saml/acs`. Metadata is `{origin}/auth/saml/metadata`. The
+entity id is the request's client id, or `ohsms` when that was left blank.
+The assertion has to be signed by the IdP certificate and has to answer an
+AuthnRequest this process issued, so a copied response does not sign the
+person in a second time. A signature on the Response wrapper is not required;
+the assertion is the identity.
+
+`node stack/demo-provision.mjs --saml` prints a certificate and an entry
+point for the fixture IdP at `/fixture/saml/sso`. Paste those two into the
+handoff form, submit the handoff contact, and sign in as the contact email.
+The fixture asks for that email and posts a signed response to the ACS. The
+private key is not printed, is not an intake field, and the fixture route is
+absent unless this process was started with the key. A real company IdP uses
+the same ACS and metadata with its own certificate and entry point, and does
+not get the fixture route.
+
+OIDC is unchanged: the default demo still prints a one-time handoff link, and
+submitting it still fulfills and sends the ready mail when a transport is
+configured. The process signs sessions with the session secret it was started
+with, unless the handoff submits `sessionSecret`, which replaces it for this
+process.
 
 ### Call-site traps the contract already names
 
@@ -773,27 +838,27 @@ request alone.
    the boundary; the service-role key may not. On `postgres` there is no
    anon key: the browser still does not receive the bypass URL. Turn the
    policy layer on for every table that browser role can see.
-5. Host the presign endpoint specified in `adapters/s3.js`. It checks the
-   session and the `orgs/<orgId>/` prefix, it holds the S3 secret, and a
-   delete re-reads the member's profile.
-6. Set `VITE_DATA_DRIVER=postgres` only on that company's build, and only
-   after the adapter is the one in `DRIVERS` (it is). `supabase` still
-   fails the app at startup with `UnimplementedDataDriverError`. That
-   failure is the control that stops a build writing into Firestore while
-   labelled as something else. The error is in the browser console, and
-   the value was compiled in, so clearing it means rebuilding. Do not set
-   `postgres` on the shared Firebase production build.
-7. If you set `VITE_STORAGE_DRIVER=s3` before the database has moved, tell
-   the organization the files are in their bucket and the records are
-   still in Firestore. The presign call still presents a Firebase ID
-   token until Auth is replaced. A failed presign still inlines the file
-   into the Firestore document.
-8. Wire the auth method from the request (company OIDC, SAML, or Supabase
-   Auth). Map its session onto `uid`, org, role, and approval. Do not also
-   create WEEHS Firebase users for that organization. In-app TOTP is optional
-   on this branch and off unless the company turns it on. Do not create a
-   temporary WEEHS account so the founder can watch the request. Status goes
-   by email.
+5. The dedicated host's presign and `/blob` routes are the endpoint in
+   `adapters/s3.js` when the request does not name another `presignUrl`. A
+   company bucket still needs a presigner that checks the session and the
+   `orgs/<orgId>/` prefix and re-reads the profile before a delete.
+6. Do not set `VITE_DATA_DRIVER=postgres` on the shared Firebase production
+   build. The dedicated host publishes that flag, and the gateway, in
+   `/stack-env.js` after fulfillment. `supabase` still fails a build that
+   selects it, with `UnimplementedDataDriverError`, instead of writing to
+   Firestore under that name.
+7. If `VITE_STORAGE_DRIVER=s3` is set on a build whose database is still
+   Firestore, say so: the files are in the bucket and the records are still
+   in Firestore. On that build the presign call presents a Firebase ID token.
+   On the dedicated host it presents the company's session. A failed upload
+   still inlines the file, under `MAX_INLINE_BYTES`.
+8. OIDC, SAML, and Supabase Auth are the methods the host already dispatches
+   from the request. SAML needs `samlIdpCert` and `samlEntryPoint` on the
+   handoff. The session is a uid. Org, role, and approval are read from the
+   profile. Do not also create WEEHS Firebase users for that organization.
+   In-app TOTP is optional on this branch and off unless the company turns it
+   on. Do not create a temporary WEEHS account so the founder can watch the
+   request. Status goes by email.
 9. Do not load production data, and do not point the Firebase seed scripts
    at the new database. They speak Firebase, not the company's engine.
 10. When the remaining-work list is empty and the hostile policy tests

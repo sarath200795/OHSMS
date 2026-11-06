@@ -24,6 +24,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { reportError } from '../monitoring'
 import { isSealedFile, openFileBytes, sealFileBytes } from '../crypto'
+import { publicStackValue } from '../stackPublicEnv'
 import { checkFileBytes, headOf } from './sniffType'
 
 /**
@@ -41,7 +42,7 @@ export class RejectedFileError extends Error {
   }
 }
 
-const DRIVER = String(import.meta.env.VITE_STORAGE_DRIVER || 'firebase')
+const DRIVER = String(publicStackValue('VITE_STORAGE_DRIVER') || 'firebase')
   .trim()
   .toLowerCase()
 
@@ -235,10 +236,10 @@ export async function putFile(orgId, kind, file, fileName, { collection } = {}) 
     //
     // `url` stays in the returned shape, empty, because dozens of callers spread
     // this into a Firestore document and readers still handle a stored url for
-    // records written before paths were recorded. The s3 adapter still supplies
-    // a real one: it has no `resolve`, so its publicUrl is the only way its
-    // objects can be read, and that is the deploying operator's choice to make
-    // at their presign endpoint rather than something to break from here.
+    // records written before paths were recorded. The s3 adapter also returns
+    // the blob URL. fileUrl prefers resolve(), which fetches that URL with the
+    // session, so a screen that still puts the URL in an img tag is the path
+    // that does not send the session.
     if (!result) return null
     return {
       url: result.url || '',

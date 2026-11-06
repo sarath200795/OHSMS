@@ -6,25 +6,18 @@
 // after the person was suspended (storage.rules, S-19). The token is not a
 // database password and it is not a VITE_ variable.
 
+import { publicStackValue } from '../stackPublicEnv'
+
 export function isOwnStackBuild() {
-  const driver = typeof import.meta !== 'undefined' ? import.meta.env?.VITE_DATA_DRIVER : ''
-  return (
-    String(driver || '')
-      .trim()
-      .toLowerCase() === 'postgres'
-  )
+  return publicStackValue('VITE_DATA_DRIVER').toLowerCase() === 'postgres'
 }
 
 export function ownStackGateway() {
-  const raw = typeof import.meta !== 'undefined' ? import.meta.env?.VITE_DATA_GATEWAY : ''
-  return String(raw || '').replace(/\/$/, '')
+  return publicStackValue('VITE_DATA_GATEWAY').replace(/\/$/, '')
 }
 
 export function ownStackAuthMethod() {
-  const raw = typeof import.meta !== 'undefined' ? import.meta.env?.VITE_AUTH_METHOD : ''
-  return String(raw || '')
-    .trim()
-    .toLowerCase()
+  return publicStackValue('VITE_AUTH_METHOD').toLowerCase()
 }
 
 const KEY = 'ohsms.ownStack.session'
