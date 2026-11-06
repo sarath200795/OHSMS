@@ -87,9 +87,11 @@ The wizard may ask:
 - Organization name, address, and the founder's name and work email, as
   contact details. Not a WEEHS password, and not a call to
   `createUserWithEmailAndPassword`.
-- Whether the company **brings** an existing Postgres or Supabase project, or
-  WEEHS **provisions** one for them. Both are in the product intent. Which of
-  those WEEHS will actually offer is an open decision below.
+- Which of the three hosting modes they want. All three are offered: the
+  company brings an existing Postgres or Supabase project; WEEHS provisions
+  the database in the company's cloud account; WEEHS operates a dedicated
+  project for that company alone. The request records the mode. It does not
+  collect the credentials for it.
 - Auth method: company OIDC, company SAML, or Supabase Auth. The issuer URL
   and client id are public. The client secret is not a field on this form.
 - File store: a bucket WEEHS provisions, or theirs. The bucket name, region,
@@ -112,28 +114,28 @@ Secrets, after the request exists:
   field "for now".
 
 What the request record may contain: the choice (`weehs` is not this
-branch), contact, auth method, issuer URL, client id, whether the database
-is brought or provisioned, bucket name, presign URL, status. What it must
-not contain: database URL, database password, service-role key, S3 secret,
-IdP client secret, `DATA_KEY_MASTER`.
+branch), contact, auth method, issuer URL, client id, which of the three
+hosting modes, bucket name, presign URL, status. What it must not contain:
+database URL, database password, service-role key, S3 secret, IdP client
+secret, `DATA_KEY_MASTER`.
 
 When the control plane finishes, that company's users sign in with **that
 company's auth** against **that company's database**. Joining is not
 `signUpMember` on the shared Firebase project. A person who types that
 organization's name into the WEEHS signup form must not receive a WEEHS
-password account inside it. The name has to be reserved when the request is
-accepted, so the public exact-name lookup (`findOrgByName`) can say the
+password account inside it. Anyone may file that request, and filing it
+reserves the name, so the public exact-name lookup (`findOrgByName`) can say the
 organization uses its own sign-in, instead of "no such organization" — which
 is how a duplicate WEEHS tenant gets created today.
 
-Fulfillment matches the seams that exist: the control plane provisions a
-**dedicated environment** for that company and sets its deploy config
+Fulfillment is a **dedicated environment and a dedicated URL** for that
+company. The control plane sets that environment's deploy config
 (`VITE_DATA_DRIVER`, `VITE_STORAGE_DRIVER`, the presign URL, the auth
 issuer). Those flags stay fail-closed until an adapter is registered.
-`postgres` and `supabase` still throw. A dedicated environment is one build
-with one driver, which is what `src/shared/data/index.js` can express. A
-single shared SPA that switches database per organization after login is a
-different architecture. It is an open decision, not the build plan.
+`postgres` and `supabase` still throw. One environment is one build with
+one driver, which is what `src/shared/data/index.js` can express. The
+shared suite does not route that company to another database after login.
+Their users use their URL.
 
 Auth is per choice for the life of the organization:
 
@@ -211,10 +213,13 @@ same split rather than inventing client copies:
   `src/shared/storage/adapters/s3.js` does not hold them.
 - **Session signing secret** for the auth replacement. The auth service
   holds it. A forged session is a forged org.
-- **`DATA_KEY_MASTER`.** The key-release worker. Losing it destroys every
-  sealed record in every tenant: the keys stored alongside the data are
-  wrapped under it. The comment on `VITE_ENCRYPTION` in `.env.example` is
-  the constraint. Do not keep a second copy of the encryption procedure.
+- **`DATA_KEY_MASTER`.** The key-release worker for that environment.
+  On the shared suite this is WEEHS's master. On an own-stack organization
+  it is that company's master and only theirs: not the shared secret, and
+  not a copy kept in the shared suite's secret store. Losing it destroys
+  the sealed records wrapped under it. The comment on `VITE_ENCRYPTION` in
+  `.env.example` is the constraint. Do not keep a second copy of the
+  encryption procedure.
 - **`SMTP_PASS`.** The mail worker. `DEPLOYMENT.md` §6 and
   `functions/.env.example`.
 - **`WA_APP_SECRET`, `WA_ACCESS_TOKEN`, `WA_VERIFY_TOKEN`.** The WhatsApp
@@ -356,7 +361,8 @@ trusted on its own for an irreversible delete is the S-19 failure again.
 SAML/OIDC and TOTP are part of the WEEHS product
 (`docs/ENTERPRISE-READINESS.md`). The own-stack branch uses the company's
 IdP, named at registration. Whether that replaces in-app TOTP or sits beside
-it is open decision 8. It is not dropped by leaving the field off the wizard.
+it is still open (see Open product decisions). It is not dropped by leaving
+the field off the wizard.
 
 Anonymous routes (`/qr/:token`, `/permit/:token`, `/p/:id`, `/t/:id/:point`)
 have no session. Their write is bound to a token that resolves to one org
@@ -685,15 +691,16 @@ this week.
 1. If the organization chose the WEEHS database, stop. Use the private
    production runbook (`docs/PRODUCTION.md`) and `DEPLOYMENT.md`. The shared
    suite is already that choice.
-2. From the provisioning request, record the non-secret answers (brought vs
-   provisioned database, auth method, issuer, bucket, presign URL) in that
+2. From the provisioning request, record the non-secret answers (which of
+   the three hosting modes, auth method, issuer, bucket, presign URL) in that
    environment's deploy config. Credentials go to the secret manager or a
    gitignored env file, through the secure channel, not through the wizard
    and not into a client-readable document.
-3. Provision the database the request names. A company that brings one is
-   attached to their project. A database WEEHS provisions is created in the
-   account the agreement names — that account is open decision 2, not assumed
-   here. The bucket follows the same answer.
+3. Provision the database in the hosting mode the request records. Brought:
+   attach to the company's existing Postgres or Supabase project. Company
+   cloud account: WEEHS creates the database there. WEEHS-operated: WEEHS
+   runs a dedicated project for that company alone. The bucket follows the
+   same mode. All three are offered; the request picks one.
 4. Create two database roles. The browser role is the one the future
    adapter will use, and RLS applies to it. The bypass role is for
    migrations and the workers (key release, retention). Its URL is a
@@ -717,7 +724,7 @@ this week.
 8. Wire the auth method from the request (company OIDC, SAML, or Supabase
    Auth). Map its session onto `uid`, org, role, and approval. Do not also
    create WEEHS Firebase users for that organization. In-app TOTP versus the
-   IdP's own second factor is open decision 8.
+   IdP's own second factor is still an open product decision.
 9. Do not load production data, and do not point the Firebase seed scripts
    at the new database. They do not speak Postgres.
 10. When the remaining-work list is empty and the hostile policy tests
@@ -729,41 +736,56 @@ that has asked, and stops before pointing the data driver at `postgres` or
 `supabase`. The registration screen keeps offering only the WEEHS database.
 That is the correct outcome until the gap list is done.
 
+## Decisions
+
+These are locked. The open list does not reopen them.
+
+1. **Anyone registering may request their own database.** No prior agreement
+   is required to ask. Filing the request reserves the organization name, so
+   a second person cannot register a WEEHS tenant or a second own-stack
+   request under it. `findOrgByName` can then say the name is taken and which
+   door it uses. A request is not a live stack: nothing is served until that
+   company's environment exists and the gap list is done.
+2. **All three hosting modes are offered.** The company brings an existing
+   Postgres or Supabase project. WEEHS provisions the database in the
+   company's cloud account. WEEHS operates a dedicated project for that
+   company alone. The wizard records which one. Credentials for all three
+   still arrive through the secure channel, not through the form.
+3. **Each own-stack company has its own environment and its own URL.** The
+   shared SPA does not send that company to a different database after
+   login. Their users use their URL. One environment, one driver, which is
+   the seam in `src/shared/data/index.js`.
+4. **That company alone holds `DATA_KEY_MASTER`.** It is not the shared
+   suite's master, and it is not copied into the shared suite's secret
+   store. The key-release worker on their environment reads their secret.
+   Losing it destroys the sealed records on that stack and nowhere else.
+   The master still never ships to the browser. When the mode is
+   "WEEHS operates the project", the secret lives in that project's store
+   because the worker has to read it there; it is still that company's
+   secret, not a WEEHS escrow of the shared suite's key.
+
 ## Open product decisions
 
-These are not settled by this document. The build plan does not guess them.
+These are not settled. The build plan does not guess them.
 
-1. **Who may ask for their own database.** Anyone who can open organization
-   registration, or only a company WEEHS has already agreed to onboard? An
-   open form is also a way to reserve a name on the public org lookup.
-2. **Who hosts the database.** The company brings an existing Postgres or
-   Supabase project, WEEHS provisions one in the company's cloud account, or
-   WEEHS provisions a project it operates for that company alone. The wizard
-   can ask. The commercial and data-controller answer is a product decision.
-3. **One suite URL, or a URL per company.** The build plan provisions a
-   dedicated environment per own-stack organization, because the data seam
-   is one driver per build and secrets stay in that deploy's config. A
-   single SPA that routes each organization to its own database after login
-   is a larger runtime. Say which one is the product before anyone builds
-   the wizard.
-4. **The founder's identity while the request is `requested`.** This design
+1. **The founder's identity while the request is `requested`.** This design
    does not create a WEEHS Firebase user on the own-stack branch, so there
-   is no session until the company's IdP is live. Confirm that, or say what
-   the founder is allowed to sign in to in the meantime.
-5. **Module entitlements.** `/platform` decides which modules a WEEHS
+   is no session on the shared suite. Their own URL does not exist yet.
+   What, if anything, they can sign in to before that URL is live is still
+   open.
+2. **Module entitlements.** `/platform` decides which modules a WEEHS
    organization may use, and the rule that enforces it is not writable by
-   the tenant (`docs/PLATFORM-CONSOLE.md`). Does that console still decide
-   for an own-stack organization, with the decision enforced in their RLS,
-   or does the company control its own module set?
-6. **Changing the choice later.** Moving an organization between the WEEHS
-   database and its own is a migration. It is outside this design unless it
-   is pulled in.
-7. **Who holds `DATA_KEY_MASTER` for an own-stack organization.** A
-   WEEHS-held master, or a master only that company holds. Losing it
-   destroys every sealed record on that stack. The master still never ships
-   to the browser.
-8. **Which IdPs the wizard offers on the first build**, and whether TOTP is
+   the tenant (`docs/PLATFORM-CONSOLE.md`). Whether that console still
+   decides for an own-stack organization, with the decision enforced in
+   their RLS, or the company controls its own module set, is still open.
+3. **Changing the choice later.** Moving an organization between the WEEHS
+   database and its own is a migration of people and records, not a toggle.
+   This design does not include that migration. Whether to pull it in is
+   still open.
+4. **Which IdPs the wizard offers on the first build**, and whether TOTP is
    required inside the product when the company's IdP already challenges a
    second factor. WEEHS requires TOTP for its own admins
-   (`docs/ENTERPRISE-READINESS.md`). Dropping it for a company stack is a
-   product cut, not a default.
+   (`docs/ENTERPRISE-READINESS.md`). Dropping it for a company stack would
+   be a product cut. The wizard's auth question can name OIDC, SAML, and
+   Supabase Auth as the kinds of answer; which of those ship first is still
+   open.
