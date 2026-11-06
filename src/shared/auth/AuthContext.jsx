@@ -28,6 +28,7 @@ import {
   getUserProfile,
   subscribeOrg,
 } from '../org/orgData'
+import { nameTakenMessage } from '../org/provisioningSchema'
 
 const AuthContext = createContext(null)
 
@@ -220,9 +221,8 @@ export function AuthProvider({ children }) {
     const cred = await withRetry(() => createUserWithEmailAndPassword(auth, email, password))
     try {
       const existing = await findOrgByName(orgName)
-      if (existing) {
-        throw new Error('An organization with that name already exists. Try signing up to join it.')
-      }
+      const taken = nameTakenMessage(existing)
+      if (taken) throw new Error(taken)
       await updateProfile(cred.user, { displayName: name })
       await createOrganization({ orgName, address, uid: cred.user.uid, name, email })
       setUser(cred.user)

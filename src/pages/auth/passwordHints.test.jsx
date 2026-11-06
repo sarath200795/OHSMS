@@ -7,7 +7,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { MIN_PASSWORD_LENGTH, passwordLengthHint } from '../../shared/auth/passwordPolicy'
 import { authErrorMessage } from '../../shared/lib/authErrors'
 
@@ -29,7 +29,10 @@ vi.mock('../../shared/auth/AuthContext', () => ({
     signOut: vi.fn(),
   }),
 }))
-vi.mock('../../shared/org/orgData', () => ({ findOrgByName: vi.fn() }))
+vi.mock('../../shared/org/orgData', () => ({
+  findOrgByName: vi.fn(),
+  orgIndexRef: vi.fn(),
+}))
 vi.mock('./AuthLayout', () => ({ default: ({ children }) => <div>{children}</div> }))
 vi.mock('../../shared/firebase', () => ({
   auth: { currentUser: { email: 'ravi@acme.test' } },
@@ -40,7 +43,17 @@ vi.mock('firebase/auth', () => ({
   reauthenticateWithCredential: vi.fn(),
   EmailAuthProvider: { credential: vi.fn() },
 }))
-vi.mock('firebase/firestore', () => ({ doc: vi.fn(), updateDoc: vi.fn() }))
+vi.mock('firebase/firestore', () => ({
+  doc: vi.fn(),
+  updateDoc: vi.fn(),
+  collection: vi.fn(),
+  getDocs: vi.fn(),
+  limit: vi.fn(),
+  orderBy: vi.fn(),
+  query: vi.fn(),
+  serverTimestamp: vi.fn(),
+  writeBatch: vi.fn(),
+}))
 vi.mock('../../shared/branding/BrandMark', () => ({ default: () => null }))
 
 const { default: Signup } = await import('./Signup')
@@ -65,6 +78,8 @@ describe('new-password fields show the shared client floor', () => {
     unmount()
 
     render(<RegisterOrg />)
+    fireEvent.click(screen.getByRole('radio', { name: /WEEHS database/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
     expectNewPassword('Password')
     cleanup()
 

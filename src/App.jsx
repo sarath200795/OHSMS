@@ -42,6 +42,7 @@ const PlatformLogin = lazy(() => import('./pages/platform/PlatformLogin'))
 const PlatformShell = lazy(() => import('./pages/platform/PlatformShell'))
 const PlatformModuleAccess = lazy(() => import('./pages/platform/ModuleAccess'))
 const PlatformOrganizations = lazy(() => import('./pages/platform/Organizations'))
+const PlatformProvisioning = lazy(() => import('./pages/platform/ProvisioningRequests'))
 
 // Modules (lazy — several pull heavy libs like react-flow / three / xlsx).
 const Incidents = lazy(() => import('./modules/incidents'))
@@ -250,6 +251,14 @@ export default function App() {
           element={
             <Suspense fallback={<SamLoading />}>
               <PlatformOrganizations />
+            </Suspense>
+          }
+        />
+        <Route
+          path="provisioning"
+          element={
+            <Suspense fallback={<SamLoading />}>
+              <PlatformProvisioning />
             </Suspense>
           }
         />

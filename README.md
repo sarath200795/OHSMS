@@ -97,8 +97,10 @@ Other cross-cutting pieces:
   `src/shared/data/README.md`. Organization registration is intended to offer
   the WEEHS database or the company's own stack (their database, their auth).
   That choice, and the work still required before the second branch can serve
-  anyone, is `docs/CUSTOM-STACK.md`. The screen today only creates a WEEHS
-  organization. The default build stays on Firestore.
+  anyone, is `docs/CUSTOM-STACK.md`. Registration asks which database. The
+  WEEHS choice creates a WEEHS organization. The own-database choice files a
+  provisioning request and does not serve traffic. The default build stays on
+  Firestore.
 - **Platform console** — a separate application at `/platform` with its own
   sign-in, deciding which modules each organization may use. See
   `docs/PLATFORM-CONSOLE.md`.
@@ -166,8 +168,9 @@ deployment this product already runs. Read §0 of that runbook before
 deploying it.
 
 Choosing the company's own database is a registration-time choice, not a
-matter of filling in Firebase keys. The screen does not offer it yet. The
-intent and the build plan are `docs/CUSTOM-STACK.md`.
+matter of filling in Firebase keys. The screen offers it. The own-database
+choice files a provisioning request and does not serve traffic. The intent
+and the build plan are `docs/CUSTOM-STACK.md`.
 
 ## Scripts
 

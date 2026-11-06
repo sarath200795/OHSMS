@@ -137,12 +137,34 @@ export async function createOrganization({ orgName, address, uid, name, email })
   return org.id
 }
 
+/**
+ * One public index row, as the signup screen needs it.
+ *
+ * A WEEHS organization is `{ orgId, name }`. An own-database reservation is
+ * `{ name, stack: 'own', requestId }` and has no orgId — the request reserved
+ * the name so a second person cannot found a WEEHS tenant under it, and this
+ * lookup can say which door the name uses. Treating a missing orgId as "no
+ * such organization" is how that duplicate tenant used to get created.
+ */
+export function orgFromIndex(data) {
+  if (!data) return null
+  if (data.stack === 'own') {
+    return {
+      id: null,
+      name: data.name || '',
+      stack: 'own',
+      requestId: data.requestId || null,
+    }
+  }
+  if (!data.orgId || !data.name) return null
+  return { id: data.orgId, name: data.name, stack: 'weehs' }
+}
+
 /** Find an organization by exact (case-insensitive) name via the public orgIndex. */
 export async function findOrgByName(orgName) {
   const snap = await getDoc(orgIndexRef(orgName))
   if (!snap.exists()) return null
-  const d = snap.data()
-  return { id: d.orgId, name: d.name }
+  return orgFromIndex(snap.data())
 }
 
 /**
@@ -158,8 +180,15 @@ export async function findOrgByName(orgName) {
 export async function listOrganizations() {
   const snap = await getDocs(collection(db, 'orgIndex'))
   return snap.docs
-    .map((d) => ({ id: d.data().orgId, name: d.data().name }))
-    .filter((o) => o.id && o.name)
+    .map((d) => {
+      const data = d.data()
+      // Own-stack reservations share this index so a typed name can say which
+      // door it uses. They are not tenants, and /platform does not choose
+      // their modules. Listing them here would show a request as a customer.
+      if (data.stack === 'own') return null
+      return { id: data.orgId, name: data.name }
+    })
+    .filter((o) => o && o.id && o.name)
     .sort((a, b) => a.name.localeCompare(b.name))
 }
 

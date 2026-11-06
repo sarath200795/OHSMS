@@ -11,9 +11,9 @@ to **roll back**.
 
 An organization that chooses its own database at registration, instead of the
 shared WEEHS database, is [`docs/CUSTOM-STACK.md`](docs/CUSTOM-STACK.md). That
-branch is not in the product yet and cannot serve traffic. This file stays
-the WEEHS Firebase deploy's first-organization checks, post-deploy
-verification, and rollback.
+branch can record a provisioning request and still cannot serve traffic.
+This file stays the WEEHS Firebase deploy's first-organization checks,
+post-deploy verification, and rollback.
 
 Everything about creating projects, `.firebaserc`, environment variables and the
 deploy commands themselves has been removed rather than kept in step — it was a
