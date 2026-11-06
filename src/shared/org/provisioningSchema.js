@@ -84,7 +84,7 @@ export const OWN_STACK_JOIN_MESSAGE =
 const WEEHS_NAME_TAKEN = 'An organization with that name already exists. Try signing up to join it.'
 
 const SECRET_REFUSAL =
-  'Database passwords, service-role keys, and DATA_KEY_MASTER are not collected here. Your company keeps those. An operator arranges the handoff out of band.'
+  'Database passwords, service-role keys, and DATA_KEY_MASTER are not collected here. Your company keeps those. They are submitted on the one-time handoff page, not on this form.'
 
 export const NAME_OWN =
   'That organization name is already reserved for an own-database request. It is not a WEEHS organization, and there is no account to create or join here.'

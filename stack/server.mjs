@@ -20,7 +20,17 @@ import {
   sweepLoto,
   productMail,
 } from './workers.mjs'
-import { checkIntake, hashIntakeToken, newIntakeToken, takeSecrets } from './intake.mjs'
+import {
+  checkIntake,
+  handoffLink,
+  handoffMessage,
+  hashIntakeToken,
+  newIntakeToken,
+  publicOutcome,
+  takePublicRequest,
+  takeSecrets,
+} from './intake.mjs'
+import { renderHandoffForm, renderHandoffRefusal, renderHandoffResult } from './handoffPage.mjs'
 import { fulfillRequest } from './fulfill.mjs'
 
 const WORKER = { role: 'ohsms_worker', uid: '' }
@@ -38,12 +48,18 @@ function send(res, status, body, headers = {}) {
 async function readBody(req) {
   const chunks = []
   for await (const chunk of req) chunks.push(chunk)
-  const raw = Buffer.concat(chunks)
-  if (!raw.length) return {}
+  const raw = Buffer.concat(chunks).toString('utf8')
+  if (!raw) return {}
+  const type = String(req.headers['content-type'] || '')
+  if (type.includes('application/x-www-form-urlencoded')) {
+    const out = {}
+    for (const [key, value] of new URLSearchParams(raw)) out[key] = value
+    return out
+  }
   try {
-    return JSON.parse(raw.toString('utf8'))
+    return JSON.parse(raw)
   } catch {
-    return { __raw: raw.toString('utf8') }
+    return { __raw: raw }
   }
 }
 
@@ -129,8 +145,20 @@ export function createOwnStackServer({
         onUserinfo(req, res)
         return
       }
+      if (req.method === 'POST' && url.pathname === '/requests') {
+        await onFile(req, res)
+        return
+      }
       if (req.method === 'POST' && url.pathname === '/intake/start') {
         await onIntakeStart(req, res)
+        return
+      }
+      if (req.method === 'GET' && url.pathname === '/handoff') {
+        onHandoffGet(url, res)
+        return
+      }
+      if (req.method === 'POST' && url.pathname === '/handoff') {
+        await onHandoffPost(req, res)
         return
       }
       if (req.method === 'POST' && url.pathname === '/intake') {
@@ -358,57 +386,241 @@ export function createOwnStackServer({
     send(res, 200, { sub: user.sub, email: user.email, name: user.email })
   }
 
+  function operator(req) {
+    const header = String(req.headers.authorization || '')
+    return Boolean(controlToken) && header === `Bearer ${controlToken}`
+  }
+
+  function contactOf(request) {
+    return String(request?.handoffContact || request?.contactEmail || '')
+      .trim()
+      .toLowerCase()
+  }
+
+  function tokenMatches(request, token) {
+    const slot = intake.get(request?.id)
+    return checkIntake({
+      email: contactOf(request),
+      request,
+      token,
+      tokenHash: slot?.hash,
+      used: slot?.used,
+    }).ok
+  }
+
+  // Filing and starting intake share this. The token is mailed to the handoff
+  // contact. It is returned to the operator only when that mail was not sent,
+  // so the one showing is whichever channel actually delivered it.
+  async function openIntake(request) {
+    if (!request?.id) return { http: 404, body: { code: 'not-found', message: 'unknown request' } }
+    if (request.status !== 'requested') {
+      return {
+        http: 409,
+        body: {
+          code: 'failed-precondition',
+          message: 'that request is not waiting',
+          reason: request.status === 'live' ? 'already-live' : 'status',
+        },
+      }
+    }
+    if (intake.get(request.id)?.secrets) {
+      return {
+        http: 409,
+        body: {
+          code: 'failed-precondition',
+          message: 'secrets have already arrived',
+          reason: 'already-ingested',
+        },
+      }
+    }
+    const to = contactOf(request)
+    if (!to) {
+      return {
+        http: 400,
+        body: { code: 'invalid-argument', message: 'no handoff contact', reason: 'email' },
+      }
+    }
+    const token = newIntakeToken()
+    const link = handoffLink({ origin, requestId: request.id, token })
+    if (!link.ok) {
+      return {
+        http: 400,
+        body: {
+          code: 'failed-precondition',
+          message: 'the handoff link was not sent',
+          reason: link.reason,
+        },
+      }
+    }
+    intake.set(request.id, { hash: hashIntakeToken(token), secrets: null, used: false })
+    let sent = false
+    if (mail) {
+      const mailed = await mail(
+        handoffMessage({ to, orgName: request.orgName, requestId: request.id, url: link.url })
+      )
+      sent = mailed?.sent === true
+    }
+    const body = { ok: true, emailed: sent, requestId: request.id }
+    if (!sent) body.token = token
+    return { http: 200, body }
+  }
+
+  async function ingest({ requestId, email, token, secrets }) {
+    const request = requests.get(requestId)
+    const slot = intake.get(requestId)
+    const gate = checkIntake({
+      email,
+      request,
+      token,
+      tokenHash: slot?.hash,
+      used: slot?.used,
+    })
+    if (!gate.ok) {
+      return {
+        http: 403,
+        body: {
+          ok: false,
+          code: 'permission-denied',
+          message: 'the handoff was refused',
+          reason: gate.reason,
+        },
+      }
+    }
+    const taken = takeSecrets(secrets)
+    if (!taken.ok) {
+      return {
+        http: 400,
+        body: {
+          ok: false,
+          code: 'invalid-argument',
+          message: 'nothing to store',
+          reason: taken.reason,
+        },
+      }
+    }
+    // Consume before the await. A second request with the same token must not
+    // pass the check while fulfillment is still running.
+    slot.used = true
+    slot.hash = null
+    slot.secrets = taken.value
+    return runFulfill(request, slot.secrets)
+  }
+
+  async function runFulfill(request, secrets) {
+    let result
+    try {
+      result = await fulfillRequest({
+        request,
+        secrets,
+        engine,
+        db,
+        admin: {
+          update: async (id, patch) => {
+            const current = requests.get(id)
+            requests.set(id, { ...current, ...patch })
+          },
+        },
+        mail,
+        dedicatedUrl: origin,
+        gatewayUrl: origin,
+      })
+    } catch {
+      return { http: 500, body: { ok: false, reason: 'fulfill' } }
+    }
+    const body = publicOutcome(result, secrets)
+    return { http: body.ok ? 200 : 400, body }
+  }
+
+  async function onFile(req, res) {
+    if (!operator(req)) {
+      send(res, 401, { code: 'unauthenticated', message: 'operator token required' })
+      return
+    }
+    const body = await readBody(req)
+    const accepted = takePublicRequest(body)
+    if (!accepted.ok) {
+      send(res, 400, {
+        code: 'invalid-argument',
+        message: 'request refused',
+        reason: accepted.reason,
+      })
+      return
+    }
+    const prior = requests.get(accepted.value.id)
+    if (prior?.status === 'live' || intake.get(accepted.value.id)?.secrets) {
+      send(res, 409, {
+        code: 'failed-precondition',
+        message: 'that request is no longer waiting',
+        reason: prior?.status === 'live' ? 'already-live' : 'already-ingested',
+      })
+      return
+    }
+    requests.set(accepted.value.id, accepted.value)
+    const opened = await openIntake(requests.get(accepted.value.id))
+    send(res, opened.http, opened.body)
+  }
+
   async function onIntakeStart(req, res) {
+    if (!operator(req)) {
+      send(res, 401, { code: 'unauthenticated', message: 'operator token required' })
+      return
+    }
     const body = await readBody(req)
     const request = requests.get(body.requestId)
     if (!request) {
       send(res, 404, { code: 'not-found', message: 'unknown request' })
       return
     }
-    const email = String(body.email || '')
-      .trim()
-      .toLowerCase()
-    const want = String(request.handoffContact || request.contactEmail || '')
-      .trim()
-      .toLowerCase()
-    if (!email || email !== want) {
-      send(res, 403, {
-        code: 'permission-denied',
-        message: 'that email is not the handoff contact',
-      })
+    const opened = await openIntake(request)
+    send(res, opened.http, opened.body)
+  }
+
+  function onHandoffGet(url, res) {
+    const requestId = url.searchParams.get('request') || ''
+    const token = url.searchParams.get('token') || ''
+    const request = requests.get(requestId)
+    if (!tokenMatches(request, token)) {
+      send(res, 403, renderHandoffRefusal())
       return
     }
-    const token = newIntakeToken()
-    intake.set(request.id, { hash: hashIntakeToken(token), secrets: null })
-    send(res, 200, { token })
+    send(res, 200, renderHandoffForm({ requestId, token, orgName: request.orgName }))
+  }
+
+  async function onHandoffPost(req, res) {
+    const body = await readBody(req)
+    const requestId = body.request || body.requestId
+    const outcome = await ingest({
+      requestId,
+      email: body.email,
+      token: body.token,
+      secrets: body,
+    })
+    const request = requests.get(requestId)
+    send(
+      res,
+      outcome.http,
+      renderHandoffResult({
+        ok: outcome.body.ok,
+        orgName: request?.orgName,
+        dedicatedUrl: outcome.body.dedicatedUrl,
+        reason: outcome.body.reason,
+      })
+    )
   }
 
   async function onIntake(req, res) {
     const body = await readBody(req)
-    const request = requests.get(body.requestId)
-    const slot = intake.get(body.requestId)
-    const gate = checkIntake({
+    const outcome = await ingest({
+      requestId: body.requestId,
       email: body.email,
-      request,
       token: body.token,
-      tokenHash: slot?.hash,
+      secrets: body.secrets,
     })
-    if (!gate.ok) {
-      send(res, 403, { code: 'permission-denied', message: 'the handoff was refused' })
-      return
-    }
-    const taken = takeSecrets(body.secrets)
-    if (!taken.ok) {
-      send(res, 400, { code: 'invalid-argument', message: 'nothing to store' })
-      return
-    }
-    slot.secrets = taken.value
-    send(res, 200, { ok: true })
+    send(res, outcome.http, outcome.body)
   }
 
   async function onFulfill(req, res) {
-    const header = String(req.headers.authorization || '')
-    if (!controlToken || header !== `Bearer ${controlToken}`) {
+    if (!operator(req)) {
       send(res, 401, { code: 'unauthenticated', message: 'operator token required' })
       return
     }
@@ -419,24 +631,8 @@ export function createOwnStackServer({
       send(res, 400, { code: 'failed-precondition', message: 'secrets have not arrived' })
       return
     }
-    const result = await fulfillRequest({
-      request,
-      secrets: slot.secrets,
-      engine,
-      db,
-      admin: {
-        update: async (id, patch) => {
-          const current = requests.get(id)
-          requests.set(id, { ...current, ...patch })
-        },
-      },
-      mail,
-      dedicatedUrl: origin,
-      gatewayUrl: origin,
-    })
-    const safe = { ...result }
-    delete safe.sessionSecret
-    send(res, result.ok ? 200 : 400, safe)
+    const outcome = await runFulfill(request, slot.secrets)
+    send(res, outcome.http, outcome.body)
   }
 
   return server

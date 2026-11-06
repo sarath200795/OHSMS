@@ -127,6 +127,8 @@ describe('the database choice', () => {
     expect(await screen.findByText(/Status: requested/i)).toBeTruthy()
     expect(screen.getByText(/reqNorthwind1/)).toBeTruthy()
     expect(screen.getByText(/dedicated URL|own URL/i)).toBeTruthy()
+    expect(screen.getByText(/one-time secure link/i)).toBeTruthy()
+    expect(screen.queryByText(/does not send email yet/i)).toBeNull()
     expect(screen.queryByText(/welcome/i)).toBeNull()
   })
 })
