@@ -56,6 +56,17 @@ export default function RegisterOrg() {
   }
 
   if (step === 'choice') {
+    // A fieldset's default min-width is min-content, and a flex label will not
+    // shrink its text. Together those two draw the choice smaller than its
+    // own label and let the words spill out of the card. min-w-0 on both, and
+    // the same padding as .input, keeps each option the width of the other
+    // register controls with the label wrapping inside it.
+    const optionClass = (on) =>
+      [
+        'flex w-full min-w-0 cursor-pointer items-start gap-3 rounded-2xl border px-3.5 py-3 text-left',
+        on ? 'border-brand-500 bg-white/80 ring-2 ring-brand-400' : 'border-ink-200 bg-white/50',
+      ].join(' ')
+
     return (
       <AuthLayout
         title="Register your organization"
@@ -73,50 +84,47 @@ export default function RegisterOrg() {
         }
       >
         <form onSubmit={choose} className="space-y-4">
-          <fieldset className="space-y-3">
+          <fieldset className="m-0 w-full min-w-0 space-y-3 border-0 p-0">
             <legend className="label">Database</legend>
-            <div className="rounded-2xl border border-ink-200 p-3">
-              <label
-                htmlFor="stack-weehs"
-                className="flex items-start gap-2 text-sm font-semibold text-ink-900"
-              >
-                <input
-                  id="stack-weehs"
-                  type="radio"
-                  name="stack"
-                  value="weehs"
-                  className="mt-1"
-                  checked={choice === 'weehs'}
-                  onChange={() => setChoice('weehs')}
-                />
-                Use the WEEHS database
-              </label>
-              <p id="stack-weehs-hint" className="mt-1 pl-6 text-xs leading-relaxed text-ink-500">
-                Shared Cloud Firestore. You create a WEEHS account and sign in on this site.
-              </p>
-            </div>
-            <div className="rounded-2xl border border-ink-200 p-3">
-              <label
-                htmlFor="stack-own"
-                className="flex items-start gap-2 text-sm font-semibold text-ink-900"
-              >
-                <input
-                  id="stack-own"
-                  type="radio"
-                  name="stack"
-                  value="own"
-                  className="mt-1"
-                  checked={choice === 'own'}
-                  onChange={() => setChoice('own')}
-                  aria-describedby="stack-own-hint"
-                />
-                Use your own database
-              </label>
-              <p id="stack-own-hint" className="mt-1 pl-6 text-xs leading-relaxed text-ink-500">
-                File a provisioning request. Your company is not live, and no WEEHS account is
-                created, until an operator provisions a dedicated environment.
-              </p>
-            </div>
+            <label htmlFor="stack-weehs" className={optionClass(choice === 'weehs')}>
+              <input
+                id="stack-weehs"
+                type="radio"
+                name="stack"
+                value="weehs"
+                className="mt-0.5 !h-5 !w-5 shrink-0"
+                checked={choice === 'weehs'}
+                onChange={() => setChoice('weehs')}
+              />
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-semibold leading-snug text-ink-900">
+                  Use the WEEHS database
+                </span>
+                <span className="mt-1 block text-sm font-normal leading-snug text-ink-600">
+                  Shared Cloud Firestore. You create a WEEHS account and sign in on this site.
+                </span>
+              </span>
+            </label>
+            <label htmlFor="stack-own" className={optionClass(choice === 'own')}>
+              <input
+                id="stack-own"
+                type="radio"
+                name="stack"
+                value="own"
+                className="mt-0.5 !h-5 !w-5 shrink-0"
+                checked={choice === 'own'}
+                onChange={() => setChoice('own')}
+              />
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-semibold leading-snug text-ink-900">
+                  Use your own database
+                </span>
+                <span className="mt-1 block text-sm font-normal leading-snug text-ink-600">
+                  File a provisioning request. Your company is not live, and no WEEHS account is
+                  created, until an operator provisions a dedicated environment.
+                </span>
+              </span>
+            </label>
           </fieldset>
           <Button type="submit" className="w-full" disabled={!choice}>
             Continue
