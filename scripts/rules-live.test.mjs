@@ -182,9 +182,12 @@ function ok(body) {
 
 test('live snapshot uses the default bucket and the exact release names', async () => {
   const seen = []
+  const indexQueries = []
   const fetchImpl = router({
     'https://firebaserules.googleapis.com/v1/projects/ohsms-demo/releases': (url) => {
-      seen.push(url.searchParams.get('pageToken') || 'page-1')
+      seen.push(
+        `${url.searchParams.get('pageSize') || 'no-page-size'}:${url.searchParams.get('pageToken') || 'page-1'}`
+      )
       if (!url.searchParams.get('pageToken')) {
         return ok({
           releases: [
@@ -219,20 +222,23 @@ test('live snapshot uses the default bucket and the exact release names', async 
       throw new Error('compared the wrong storage bucket')
     },
     'https://firestore.googleapis.com/v1/projects/ohsms-demo/databases/(default)/collectionGroups/-/indexes':
-      () =>
-        ok({
+      (url) => {
+        indexQueries.push(url.searchParams.get('pageSize'))
+        return ok({
           indexes: [
             liveIndex('documents', [
               ...documents.fields,
               { fieldPath: '__name__', order: 'DESCENDING' },
             ]),
           ],
-        }),
+        })
+      },
     'https://firestore.googleapis.com/v1/projects/ohsms-demo/databases/(default)': () =>
       ok({ databaseEdition: 'STANDARD' }),
   })
   const live = await fetchLiveSnapshot(PROJECT, 'token', fetchImpl, { fieldOverrides: [] })
-  assert.deepEqual(seen, ['page-1', 'next'])
+  assert.deepEqual(seen, ['100:page-1', '100:next'])
+  assert.deepEqual(indexQueries, [null])
   assert.deepEqual(
     assess(
       {
@@ -271,6 +277,133 @@ test('a rules API failure is unknown, so the caller must not skip', async () => 
   assert.equal(result.code, 1)
   assert.equal(result.line, 'unknown')
   assert.equal(result.detail.includes('token'), false)
+})
+
+test('index list omits pageSize and still reads the next page', async () => {
+  const seen = []
+  const fetchImpl = router({
+    'https://firebaserules.googleapis.com/v1/projects/ohsms-demo/releases': () =>
+      ok({
+        releases: [
+          {
+            name: `projects/${PROJECT}/releases/cloud.firestore`,
+            rulesetName: `projects/${PROJECT}/rulesets/fs`,
+          },
+          {
+            name: `projects/${PROJECT}/releases/firebase.storage/${BUCKET}`,
+            rulesetName: `projects/${PROJECT}/rulesets/st`,
+          },
+        ],
+      }),
+    'https://firebasestorage.googleapis.com/v1alpha/projects/ohsms-demo/defaultBucket': () =>
+      ok({ bucket: { name: BUCKET } }),
+    [`https://firebaserules.googleapis.com/v1/projects/${PROJECT}/rulesets/fs`]: () =>
+      ok(ruleset('firestore\n')),
+    [`https://firebaserules.googleapis.com/v1/projects/${PROJECT}/rulesets/st`]: () =>
+      ok(ruleset('storage\n')),
+    'https://firestore.googleapis.com/v1/projects/ohsms-demo/databases/(default)/collectionGroups/-/indexes':
+      (url) => {
+        seen.push({
+          pageSize: url.searchParams.get('pageSize'),
+          pageToken: url.searchParams.get('pageToken'),
+        })
+        if (!url.searchParams.get('pageToken')) {
+          return ok({
+            indexes: [
+              liveIndex('other', [
+                { fieldPath: 'a', order: 'ASCENDING' },
+                { fieldPath: '__name__', order: 'ASCENDING' },
+              ]),
+            ],
+            nextPageToken: 'more-indexes',
+          })
+        }
+        return ok({
+          indexes: [
+            liveIndex('documents', [
+              ...documents.fields,
+              { fieldPath: '__name__', order: 'DESCENDING' },
+            ]),
+          ],
+        })
+      },
+    'https://firestore.googleapis.com/v1/projects/ohsms-demo/databases/(default)': () =>
+      ok({ databaseEdition: 'STANDARD' }),
+  })
+  const live = await fetchLiveSnapshot(PROJECT, 'token', fetchImpl, { fieldOverrides: [] })
+  assert.deepEqual(seen, [
+    { pageSize: null, pageToken: null },
+    { pageSize: null, pageToken: 'more-indexes' },
+  ])
+  assert.deepEqual(
+    assess(
+      {
+        firestoreRules: 'firestore\n',
+        storageRules: 'storage\n',
+        indexes: [documents],
+        fieldOverrides: [],
+      },
+      live
+    ),
+    { kind: 'match' }
+  )
+})
+
+test('an indexes list HTTP 400 is unknown, so hosting cannot skip on it', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rules-live-'))
+  fs.writeFileSync(
+    path.join(dir, 'firebase.json'),
+    JSON.stringify({
+      firestore: { rules: 'firestore.rules', indexes: 'firestore.indexes.json' },
+      storage: { rules: 'storage.rules' },
+    })
+  )
+  fs.writeFileSync(path.join(dir, 'firestore.rules'), 'firestore\n')
+  fs.writeFileSync(path.join(dir, 'storage.rules'), 'storage\n')
+  fs.writeFileSync(
+    path.join(dir, 'firestore.indexes.json'),
+    JSON.stringify({ indexes: [documents], fieldOverrides: [] })
+  )
+  const fetchImpl = router({
+    'https://firebaserules.googleapis.com/v1/projects/ohsms-demo/releases': () =>
+      ok({
+        releases: [
+          {
+            name: `projects/${PROJECT}/releases/cloud.firestore`,
+            rulesetName: `projects/${PROJECT}/rulesets/fs`,
+          },
+          {
+            name: `projects/${PROJECT}/releases/firebase.storage/${BUCKET}`,
+            rulesetName: `projects/${PROJECT}/rulesets/st`,
+          },
+        ],
+      }),
+    'https://firebasestorage.googleapis.com/v1alpha/projects/ohsms-demo/defaultBucket': () =>
+      ok({ bucket: { name: BUCKET } }),
+    [`https://firebaserules.googleapis.com/v1/projects/${PROJECT}/rulesets/fs`]: () =>
+      ok(ruleset('firestore\n')),
+    [`https://firebaserules.googleapis.com/v1/projects/${PROJECT}/rulesets/st`]: () =>
+      ok(ruleset('storage\n')),
+    'https://firestore.googleapis.com/v1/projects/ohsms-demo/databases/(default)/collectionGroups/-/indexes':
+      () => ({
+        ok: false,
+        status: 400,
+        json: async () => ({
+          error: { message: 'The requested page size is too large.', status: 'INVALID_ARGUMENT' },
+        }),
+      }),
+  })
+  const result = await run({
+    cwd: dir,
+    env: { PROJECT_ID: PROJECT },
+    token: 'token',
+    fetchImpl,
+  })
+  assert.equal(result.code, 1)
+  assert.equal(result.line, 'unknown')
+  assert.match(result.detail, /indexes HTTP 400/)
+  assert.equal(result.detail.includes('token'), false)
+  assert.equal(result.detail.includes('ya29'), false)
 })
 
 test('run reports a storage difference without calling the rules compiler', async () => {

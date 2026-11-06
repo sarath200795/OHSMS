@@ -21,6 +21,8 @@
  *
  * Exit 1 and print `unknown` when the live release could not be read. That
  * is not a match. The caller deploys everything and hosting still waits.
+ * An indexes list that returns HTTP 400 is this case: the rules may
+ * already be live, but an index list that was not read is not proof.
  *
  * The comparison is the Rules API and the Firestore Admin API. A release
  * tag is not an input: a tag can point at a commit whose rules never
@@ -275,6 +277,14 @@ export async function fetchAccessToken(serviceAccount, fetchImpl) {
   return body.access_token
 }
 
+function errorDetail(body) {
+  const raw = body?.error?.message
+  if (typeof raw !== 'string') return ''
+  const message = raw.replace(/\s+/g, ' ').trim()
+  if (!message || /bearer |private_key|ya29\./i.test(message)) return ''
+  return message.length > 180 ? `${message.slice(0, 180)}...` : message
+}
+
 async function getJson(url, token, fetchImpl) {
   const res = await fetchImpl(url, {
     headers: { authorization: `Bearer ${token}` },
@@ -287,16 +297,26 @@ async function getJson(url, token, fetchImpl) {
       return 'request'
     }
   })()
-  if (!res.ok) fail(`GET ${pathname} HTTP ${res.status}`)
+  if (!res.ok) {
+    let detail = ''
+    try {
+      detail = errorDetail(await res.json())
+    } catch {
+      detail = ''
+    }
+    fail(`GET ${pathname} HTTP ${res.status}${detail ? `: ${detail}` : ''}`)
+  }
   return res.json()
 }
 
-async function getPaged(baseUrl, token, fetchImpl, listKey) {
+// pageSize is opt-in. The Rules releases list accepts it. The Firestore
+// indexes list does not: see fetchLiveSnapshot.
+async function getPaged(baseUrl, token, fetchImpl, listKey, options = {}) {
   const items = []
   let pageToken = ''
   for (let page = 0; page < 20; page++) {
     const url = new URL(baseUrl)
-    url.searchParams.set('pageSize', '100')
+    if (options.pageSize) url.searchParams.set('pageSize', String(options.pageSize))
     if (pageToken) url.searchParams.set('pageToken', pageToken)
     const body = await getJson(url, token, fetchImpl)
     if (Array.isArray(body[listKey])) items.push(...body[listKey])
@@ -335,13 +355,25 @@ export async function fetchLiveSnapshot(projectId, token, fetchImpl, local) {
     `https://firebaserules.googleapis.com/v1/projects/${projectId}/releases`,
     token,
     fetchImpl,
-    'releases'
+    'releases',
+    { pageSize: 100 }
   )
   const bucket = await defaultBucket(projectId, token, fetchImpl)
   const firestoreName = releaseRulesetName(releases, projectId, 'cloud.firestore')
   const storageName = releaseRulesetName(releases, projectId, `firebase.storage/${bucket}`)
   const firestoreRuleset = firestoreName ? await getRuleset(firestoreName, token, fetchImpl) : null
   const storageRuleset = storageName ? await getRuleset(storageName, token, fetchImpl) : null
+  // No pageSize. v2.0.5 through v2.0.14 logged
+  // `GET .../collectionGroups/-/indexes HTTP 400` on every production
+  // deploy, before the released rules were compared. The Rules release
+  // reads on those runs succeeded; this 400 made the whole snapshot
+  // `unknown`, so a commit whose rules were already live still called
+  // :test. v2.0.14 then 503'd on :test five times and skipped hosting.
+  // firebase-tools lists this path with no query string, and that call is
+  // what deployed these indexes. pageSize=100 is the parameter this client
+  // added. A later page, when the server sends nextPageToken, is requested
+  // with that token only. A 400 here stays `unknown`: an unreadable index
+  // list is not a match, and neither is a rules compile error.
   const indexes = await getPaged(
     `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/collectionGroups/-/indexes`,
     token,
@@ -364,6 +396,8 @@ export async function fetchLiveSnapshot(projectId, token, fetchImpl, local) {
     const parent = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/collectionGroups/-/fields`
     const url = new URL(parent)
     url.searchParams.set('filter', 'indexConfig.usesAncestorConfig=false OR ttlConfig:*')
+    // Same Admin API as the indexes list. firebase-tools sends the filter
+    // and no pageSize; pageSize is what the indexes list rejected.
     const fields = await getPaged(url, token, fetchImpl, 'fields')
     fieldOverrides = fields.filter((field) => !String(field.name || '').includes('__default__'))
   }

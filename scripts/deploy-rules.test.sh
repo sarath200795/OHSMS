@@ -218,6 +218,40 @@ live_calls() {
   fi
 }
 
+# ── v2.0.14: the first live read fails, :test 503s, a later proof matches ───
+# The indexes list 400 made every read `unknown` before this fix. Once a
+# read can confirm the release, hosting may proceed and :test is not called
+# again. A read that stays unknown is still not a match.
+reset
+reset_live
+write_spec 1 2 "Error: Request to https://firebaserules.googleapis.com/v1/projects/ohsms-demo:test had HTTP Error: 503, The service is currently unavailable."
+write_spec 2 2 "Error: Request to https://firebaserules.googleapis.com/v1/projects/ohsms-demo:test had HTTP Error: 503, The service is currently unavailable."
+write_live 1 1 "unknown"
+write_live 2 0 "match"
+RULES_LIVE_BIN="$live_seq" LIVE_SEQ_N="$live_seq_n" LIVE_SEQ_DIR="$live_seq_dir" \
+  run ohsms-demo custom 5 "0 0 0 0"
+assert_eq "$run_status" "0" "503 then a confirmed live release exits 0"
+assert_eq "$(calls)" "1" "a confirmed release stops further :test calls"
+assert_eq "$(live_calls)" "2" "the proof read follows the transient error"
+grep -q 'live release matches this commit' "$tmp/stdout" || fail "confirmed release after 503 was not reported"
+grep -q 'Skipping the Rules API deploy' "$tmp/stdout" && fail "a failed first read must not skip before proof"
+RULES_LIVE_BIN="$live_all"
+
+# ── a deploy HTTP 400 is not rescued by a live release that matches ─────────
+reset
+reset_live
+write_spec 1 1 "HTTP Error: 400, Request contains an invalid argument."
+write_live 1 10 "differ firestore"
+write_live 2 0 "match"
+RULES_LIVE_BIN="$live_seq" LIVE_SEQ_N="$live_seq_n" LIVE_SEQ_DIR="$live_seq_dir" \
+  run ohsms-demo custom 4 "0 0 0"
+assert_eq "$run_status" "1" "deploy 400 is not turned into a live match"
+assert_eq "$(calls)" "1" "deploy 400 is not retried"
+assert_eq "$(live_calls)" "1" "deploy 400 does not re-read the release"
+grep -q 'live release matches this commit' "$tmp/stdout" && fail "deploy 400 was reported as released"
+grep -q 'non-transient' "$err" || fail "deploy 400 was described as transient"
+RULES_LIVE_BIN="$live_all"
+
 # ── 409 after the release actually landed: prove it, then allow hosting ─────
 reset
 reset_live
