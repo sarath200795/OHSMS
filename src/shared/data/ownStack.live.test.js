@@ -202,8 +202,11 @@ describe('dedicated host', () => {
     requests.set('reqHost1', { ...request, id: 'reqHost1', authIssuer: `${origin}/oidc` })
     const started = await fetch(`${origin}/intake/start`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ requestId: 'reqHost1', email: 'ops@northwind.test' }),
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer operator-token',
+      },
+      body: JSON.stringify({ requestId: 'reqHost1' }),
     })
     const { token } = await started.json()
     const intake = await fetch(`${origin}/intake`, {
@@ -218,18 +221,20 @@ describe('dedicated host', () => {
     })
     expect(intake.status).toBe(200)
     const echoed = await intake.json()
+    expect(echoed.ok).toBe(true)
     expect(JSON.stringify(echoed)).not.toContain('master-value')
     expect(JSON.stringify(echoed)).not.toContain('postgres://')
+    expect(requests.get('reqHost1').status).toBe('live')
+    expect(JSON.stringify(requests.get('reqHost1'))).not.toContain('master-value')
 
-    const fulfilled = await fetch(`${origin}/fulfill`, {
+    const again = await fetch(`${origin}/fulfill`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer operator-token' },
       body: JSON.stringify({ requestId: 'reqHost1' }),
     })
-    const body = await fulfilled.json()
-    expect(body.ok).toBe(true)
-    expect(requests.get('reqHost1').status).toBe('live')
-    expect(JSON.stringify(requests.get('reqHost1'))).not.toContain('master-value')
+    expect(again.status).toBe(400)
+    expect((await again.json()).reason).toBe('already-live')
+    const body = echoed
 
     const who = await establishIdentity(engine, db, {
       sub: 'asha-subject',

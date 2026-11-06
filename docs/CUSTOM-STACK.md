@@ -45,17 +45,17 @@ The default build is unchanged: `VITE_DATA_DRIVER` unset or `firestore`,
 
 ## The choice
 
-|                    | Use the WEEHS database                                                          | Use your own database (path 3)                                                                                                      |
-| ------------------ | ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| Chosen at          | Organization registration                                                       | The same step, the other branch                                                                                                     |
-| What happens today | `RegisterOrg.jsx` creates a WEEHS Auth user and a shared Firestore organization | The wizard files a provisioning request. Fulfillment, after the secret intake, marks it live and serves that company on its own URL |
-| Database           | Shared Cloud Firestore, org under `organizations/{orgId}`                       | Any database the company chooses. `postgres` is the generic driver                                                                  |
-| Files              | Firebase Storage                                                                | S3-compatible (`s3` driver exists; see the file section)                                                                            |
-| Auth               | WEEHS Firebase Auth, including its SAML/OIDC and TOTP                           | That company's IdP. Not a WEEHS Firebase user                                                                                       |
-| Enforcement        | `firestore.rules`, `storage.rules`                                              | RLS, bucket policy, presign checks                                                                                                  |
-| Background work    | `functions/` on the shared project                                              | Workers for that company's stack                                                                                                    |
-| Secrets            | WEEHS deploy config                                                             | That stack's deploy config, via a secure channel. Never a database password in the SPA                                              |
-| Serves traffic     | Yes, on the shared suite                                                        | On that company's dedicated URL, after fulfillment, for `postgres` plus OIDC, SAML, or Supabase Auth                                |
+|                    | Use the WEEHS database                                                          | Use your own database (path 3)                                                                                                                                     |
+| ------------------ | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Chosen at          | Organization registration                                                       | The same step, the other branch                                                                                                                                    |
+| What happens today | `RegisterOrg.jsx` creates a WEEHS Auth user and a shared Firestore organization | The wizard files a non-secret request. The control plane emails a one-time handoff link; submitting it fulfills the request and serves that company on its own URL |
+| Database           | Shared Cloud Firestore, org under `organizations/{orgId}`                       | Any database the company chooses. `postgres` is the generic driver                                                                                                 |
+| Files              | Firebase Storage                                                                | S3-compatible (`s3` driver exists; see the file section)                                                                                                           |
+| Auth               | WEEHS Firebase Auth, including its SAML/OIDC and TOTP                           | That company's IdP. Not a WEEHS Firebase user                                                                                                                      |
+| Enforcement        | `firestore.rules`, `storage.rules`                                              | RLS, bucket policy, presign checks                                                                                                                                 |
+| Background work    | `functions/` on the shared project                                              | Workers for that company's stack                                                                                                                                   |
+| Secrets            | WEEHS deploy config                                                             | That stack's deploy config, via a secure channel. Never a database password in the SPA                                                                             |
+| Serves traffic     | Yes, on the shared suite                                                        | On that company's dedicated URL, after fulfillment, for `postgres` plus OIDC, SAML, or Supabase Auth                                                               |
 
 ## Registration
 
@@ -121,14 +121,19 @@ Then it stops. The confirmation shows the request id and status `requested`,
 and says the dedicated URL does not exist yet. The founder does not enter
 `/portal`, and no `organizations/{orgId}` tenant is created by
 `createOrganization`. The control plane holds the request with status
-`requested`. Email of that status is not sent yet; the screen says so and
-tells the founder to keep the request id. A platform operator can read the
-request at `/platform/provisioning`. That page lists the non-secret fields
-and cannot mark the request provisioned — `firestore.rules` refuses the
-update to every client, operator included. There is no sign-in until that
-company's IdP is live: no temporary WEEHS account, and no session on a URL
-that does not exist yet. Module data does not exist for that company until
-the stack is actually provisioned.
+`requested`. When mail is configured, filing that request on the control
+plane (`POST /requests`) or starting intake for one that is already
+`requested` (`POST /intake/start`) emails `handoffContact` — or
+`contactEmail`, when no handoff contact was given — a one-time HTTPS link.
+The token is in that link and nowhere else: only its hash is stored. The
+confirmation says the contact is emailed when mail is configured. The shared
+wizard does not send the link and does not see the token. A platform
+operator can read the request at `/platform/provisioning`. That page lists
+the non-secret fields and cannot mark the request provisioned —
+`firestore.rules` refuses the update to every client, operator included.
+There is no sign-in until that company's IdP is live: no temporary WEEHS
+account, and no session on a URL that does not exist yet. Module data does
+not exist for that company until the stack is actually provisioned.
 
 Filing the request reserves the name. The same batch writes `orgIndex/{key}`
 with `stack: 'own'` and the request id, and nothing else — no contact email
@@ -138,13 +143,27 @@ under the same name is refused, and so is `registerOrganization`.
 
 Secrets, after the request exists:
 
-- The control plane opens a one-time intake that writes into the secret store
-  for that stack (the company's secret manager, or WEEHS's, for the
-  environment being provisioned). The browser does not echo the value back
-  and does not copy it into Firestore.
-- Until that intake exists, an operator collects the secrets out of band and
-  puts them in the same store. The wizard still does not grow a password
-  field "for now".
+- The handoff contact opens the one-time link. The page is `GET /handoff` on
+  the control-plane host (`stack/server.mjs`), not a route in the shared SPA.
+  It posts only the allowlisted fields from `stack/intake.mjs` (`databaseUrl`,
+  `sessionSecret`, `oidcClientSecret`, `samlIdpCert`, `samlEntryPoint`,
+  `supabaseAnonKey`, `supabaseServiceRole`, `dataKeyMaster`, `s3AccessKeyId`,
+  `s3SecretAccessKey`, `smtpPass`). The response does not echo them, and they
+  are not copied onto the provisioning request.
+- The token is one-time. The wrong email is refused, and so is a reused
+  token. A public `http` origin is refused as well; loopback is the local
+  demo exception. When mail was not sent, the start response is the one
+  place the token is shown, and only to the operator.
+- A successful `POST /intake` stores those secrets and runs the same
+  fulfillment as `POST /fulfill`. Status becomes `live`, the dedicated URL
+  is assigned, and the founder is mailed that the organization is ready.
+  The handoff page shows that URL and no secrets. Fulfillment still refuses
+  when the secrets are missing for the chosen mode and engine, and it does
+  not mark the request live in that case.
+- `POST /fulfill` stays for an operator retry when the secrets are already
+  stored and the request is not live. It still requires the control token.
+  The happy path does not wait for that call. The wizard still does not
+  grow a password field.
 
 What the request record may contain: the choice (`weehs` is not this
 branch), contact, auth method, issuer URL, client id, which of the three
@@ -181,9 +200,9 @@ Auth is per choice for the life of the organization:
   Users of that organization are not also WEEHS Firebase users.
   `registerOrganization`'s "create the auth user first" order is the WEEHS
   branch only. While the request is `requested`, there is no sign-in. Status
-  to the contact is email only once that mail exists. This repository does
-  not send it yet. The confirmation screen and `/platform/provisioning` are
-  the record.
+  to the contact is the handoff mail and, after fulfillment, the ready mail,
+  both sent by the control plane when mail is configured. The confirmation
+  screen and `/platform/provisioning` are the record on the shared suite.
 
 Which modules an own-stack company may use is that company's decision, made
 by its admins and enforced in its database. `/platform` does not decide it.
@@ -781,13 +800,16 @@ request alone.
     exist, build that environment with the driver flags and deploy it as
     its own target. Leave the Firebase production tags where they are.
 
-An operator fulfills a postgres request with `stack/server.mjs` (or
-`node stack/demo-provision.mjs` for one local company). The wizard still
-only files the request. The dedicated URL is live after the secret intake
-and that server-side status write. `supabase` as a data driver, a full
-translation of every Firestore decision matrix, and moving an existing
-WEEHS tenant across stacks are still open. The shared Firebase production
-tags stay where they are.
+The control plane (`stack/server.mjs`, or `node stack/demo-provision.mjs`
+for one local company) emails the handoff contact a one-time link when mail
+is configured. Submitting that page fulfills a postgres request: status
+`live`, dedicated URL assigned, ready mail sent. The wizard on the shared
+suite still only files the non-secret Firestore request. It does not set
+`VITE_DATA_DRIVER=postgres` on the shared Firebase build. `POST /fulfill`
+retries fulfillment after secrets are already stored. `supabase` as a data
+driver, a full translation of every Firestore decision matrix, and moving
+an existing WEEHS tenant across stacks are still open. The shared Firebase
+production tags stay where they are.
 
 ## Moving between the WEEHS database and the company's database
 

@@ -117,13 +117,15 @@ export default function OwnStackRequest({ onBack }) {
         <div className="space-y-3 text-sm leading-relaxed text-ink-700">
           <p>
             Request <span className="font-mono text-ink-900">{filed.id}</span> is stored for{' '}
-            <span className="font-semibold text-ink-900">{filed.orgName}</span>. Keep that id. This
-            screen does not send email yet.
+            <span className="font-semibold text-ink-900">{filed.orgName}</span>. Keep that id.
+            Status stays requested until the secret handoff finishes.
           </p>
           <p>
-            An operator reads the request in the platform console and contacts{' '}
-            <span className="font-semibold text-ink-900">{filed.handoffContact}</span> for status
-            and for the secret handoff.
+            When mail is configured,{' '}
+            <span className="font-semibold text-ink-900">{filed.handoffContact}</span> is emailed a
+            one-time secure link. That page is where database credentials, identity-provider
+            secrets, and DATA_KEY_MASTER are submitted. This screen does not collect them, and it
+            does not write them onto the request.
           </p>
           <p>
             Recorded hosting: {hostingModeLabel(filed.mode)}. Engine: {filed.engine}. Sign-in:{' '}
@@ -138,12 +140,13 @@ export default function OwnStackRequest({ onBack }) {
             {filed.engine === 'postgres' || filed.engine === 'supabase'
               ? 'Postgres can back a dedicated environment. The supabase client driver is still reserved, so a Supabase Postgres uses the postgres driver. '
               : 'That engine has no adapter yet, so a build cannot select it. '}
-            This request does not open a session. Sign-in starts after the secret handoff, on the
-            address fulfillment assigns.
+            This request does not open a session. Sign-in starts after the handoff, on the address
+            fulfillment assigns.
           </p>
           <p>
-            Your company holds DATA_KEY_MASTER. Database passwords and service-role keys stay with
-            your company. Hand them over on the channel the operator opens.
+            Your company holds DATA_KEY_MASTER. A complete handoff marks the environment live and
+            mails {filed.contactEmail} that the organization is ready. The shared suite does not set
+            a Postgres driver for this request.
           </p>
         </div>
       </AuthLayout>
@@ -295,7 +298,7 @@ export default function OwnStackRequest({ onBack }) {
             <Field
               label="Client id"
               htmlFor="own-client"
-              hint="The public client id. Leave the client secret for the out-of-band handoff."
+              hint="The public client id. The client secret goes on the one-time handoff page, not here."
               error={errors.authClientId}
             >
               <Input
@@ -383,7 +386,7 @@ export default function OwnStackRequest({ onBack }) {
         <Field
           label="Secret-handoff contact"
           htmlFor="own-handoff"
-          hint="Who the operator should reach. Leave blank to use your work email. Do not paste a key into this field."
+          hint="Who receives the one-time link. Leave blank to use your work email. Do not paste a key into this field."
           error={errors.handoffContact}
         >
           <Input

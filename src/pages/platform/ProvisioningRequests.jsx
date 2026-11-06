@@ -42,9 +42,10 @@ export default function ProvisioningRequests() {
         icon={Database}
       />
       <p className="max-w-3xl text-sm leading-relaxed text-ink-600">
-        Each row stays requested until the control plane fulfills it. This page cannot mark a
-        company live: that write is refused to every browser, including an operator. Database
-        passwords, service-role keys, and DATA_KEY_MASTER are not stored on the request.
+        Each row stays requested until the control plane fulfills it. When mail is configured, the
+        handoff contact is emailed a one-time link; submitting that page marks the environment live.
+        This page cannot do that write, and it never collects database passwords, service-role keys,
+        or DATA_KEY_MASTER.
       </p>
       {error === 'denied' && (
         <AccessDenied

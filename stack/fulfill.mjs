@@ -4,6 +4,10 @@
 // is the server-side path: firestore.rules refuses the same write from every
 // client, operator included. Secrets stay in `secretStore`. The object handed
 // to admin.update is statusPatch(), which has no room for them.
+//
+// stack/server.mjs calls this as soon as POST /intake accepts the secrets.
+// POST /fulfill is the same call, kept for an operator retry when the secrets
+// are already stored and the request is not live yet.
 
 import { randomBytes } from 'node:crypto'
 import { applySchema } from './engine.mjs'
