@@ -24,15 +24,23 @@ assert_eq() {
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
+assert_no_smtp_user() {
+  local file="$1" label="$2"
+  if grep -q '^SMTP_USER=' "$file"; then
+    fail "$label wrote SMTP_USER ($(grep '^SMTP_USER=' "$file"))"
+  fi
+}
+
 # ── write-env: filename is functions/.env.<projectId>, defaults, no secrets ──
 env -u WA_TEMPLATE_WELCOME -u WA_TEMPLATE_TEST \
+  -u SMTP_HOST -u SMTP_PORT -u SMTP_USER -u MAIL_FROM -u APP_ORIGIN \
   PROJECT_ID=weehs-4eb28 FUNCTIONS_DIR="$tmp/fn" bash "$script" write-env >/dev/null
 env_file="$tmp/fn/.env.weehs-4eb28"
 [[ -f "$env_file" ]] || fail "expected $env_file"
 assert_eq "$(basename "$env_file")" ".env.weehs-4eb28" "dotenv filename"
 assert_eq "$(grep '^SMTP_HOST=' "$env_file")" "SMTP_HOST=smtp-relay.brevo.com" "default host"
 assert_eq "$(grep '^SMTP_PORT=' "$env_file")" "SMTP_PORT=587" "default port"
-assert_eq "$(grep '^SMTP_USER=' "$env_file")" "SMTP_USER=" "default user is unset"
+assert_no_smtp_user "$env_file" "unset user"
 assert_eq "$(grep '^MAIL_FROM=' "$env_file")" "MAIL_FROM=EHS notifications <info@weehs.org>" "default from"
 assert_eq "$(grep '^APP_ORIGIN=' "$env_file")" "APP_ORIGIN=https://suite.weehs.org" "default origin"
 assert_eq "$(grep '^WA_ENABLED=' "$env_file")" "WA_ENABLED=true" "production whatsapp stays on"
@@ -71,6 +79,45 @@ if grep -q 'supersecret\|do-not-write\|SMTP_PASS\|DATA_KEY_MASTER' "$over"; then
   fail "override path wrote a secret into dotenv"
 fi
 
+# GitHub Actions sets the variable to an empty string when it is unset.
+# That must not become SMTP_USER= (v2.0.9 cleared the Brevo login). Host,
+# port and From keep the relay defaults; a blank assignment is not a default.
+# Whitespace is empty too: `:-` would have written the spaces.
+PROJECT_ID=weehs-4eb28 \
+  FUNCTIONS_DIR="$tmp/fn-blank" \
+  SMTP_HOST= \
+  SMTP_PORT= \
+  SMTP_USER= \
+  MAIL_FROM= \
+  APP_ORIGIN= \
+  bash "$script" write-env >/dev/null
+blank="$tmp/fn-blank/.env.weehs-4eb28"
+assert_no_smtp_user "$blank" "empty user"
+assert_eq "$(grep '^SMTP_HOST=' "$blank")" "SMTP_HOST=smtp-relay.brevo.com" "empty host keeps relay"
+assert_eq "$(grep '^SMTP_PORT=' "$blank")" "SMTP_PORT=587" "empty port keeps relay"
+assert_eq "$(grep '^MAIL_FROM=' "$blank")" "MAIL_FROM=EHS notifications <info@weehs.org>" "empty from keeps default"
+assert_eq "$(grep '^APP_ORIGIN=' "$blank")" "APP_ORIGIN=https://suite.weehs.org" "empty origin keeps default"
+if grep -Eq '^(SMTP_HOST|SMTP_PORT|SMTP_USER|MAIL_FROM|APP_ORIGIN)=$' "$blank"; then
+  fail "empty mail param was written as a blank assignment"
+fi
+
+PROJECT_ID=weehs-4eb28 \
+  FUNCTIONS_DIR="$tmp/fn-ws" \
+  SMTP_HOST='   ' \
+  SMTP_PORT='   ' \
+  SMTP_USER='   ' \
+  MAIL_FROM='   ' \
+  APP_ORIGIN='   ' \
+  bash "$script" write-env >/dev/null
+ws="$tmp/fn-ws/.env.weehs-4eb28"
+assert_no_smtp_user "$ws" "whitespace user"
+assert_eq "$(grep '^SMTP_HOST=' "$ws")" "SMTP_HOST=smtp-relay.brevo.com" "whitespace host keeps relay"
+assert_eq "$(grep '^SMTP_PORT=' "$ws")" "SMTP_PORT=587" "whitespace port keeps relay"
+assert_eq "$(grep '^MAIL_FROM=' "$ws")" "MAIL_FROM=EHS notifications <info@weehs.org>" "whitespace from keeps default"
+if grep -Eq '^(SMTP_HOST|SMTP_PORT|SMTP_USER|MAIL_FROM|APP_ORIGIN)=[[:space:]]*$' "$ws"; then
+  fail "whitespace mail param was written"
+fi
+
 # A blank template is free-form text. A value firebase-tools would mis-parse
 # must not be written as a different string.
 if env -u WA_TEMPLATE_TEST PROJECT_ID=weehs-4eb28 FUNCTIONS_DIR="$tmp/badtpl" \
@@ -84,6 +131,11 @@ grep -q 'WA_TEMPLATE_WELCOME' "$tmp/tpl.err" || fail "rejected template did not 
 # --non-interactive before it applies the code default, and the error names
 # each absent key. That is the v2.0.7 failure. defineSecret names stay out:
 # a secret in this file is deployed as a plain env var (LOW-13).
+# SMTP_USER is the exception. When it is empty the line is omitted. A blank
+# SMTP_USER= is how v2.0.9 cleared the Brevo login; weather digests then
+# failed with missing:["SMTP_USER"]. A missing key stops the non-interactive
+# deploy instead of publishing an empty login. Do not put the line back to
+# make this check pass.
 # node_modules is present in a local functions install and its examples include
 # defineString('TOPIC') with no default. The coverage check is our source.
 param_sources=("$root/functions/index.js" "$root/functions/lib")
@@ -110,8 +162,10 @@ check_written_params() {
   local file="$dir/.env.$project"
   local name
   while IFS= read -r name; do
+    [[ "$name" == "SMTP_USER" ]] && continue
     grep -q "^${name}=" "$file" || fail "$label deploy env missing $name"
   done <<<"$string_params"
+  assert_no_smtp_user "$file" "$label deploy env"
   while IFS= read -r name; do
     if grep -q "^${name}=" "$file"; then
       fail "$label deploy env contains secret $name"
@@ -129,8 +183,10 @@ assert_eq "$(grep '^WA_ENABLED=' "$tmp/fn-other/.env.stgtest1")" "WA_ENABLED=fal
 # that deploy.
 committed="$root/functions/.env.weehs-4eb28"
 while IFS= read -r name; do
+  [[ "$name" == "SMTP_USER" ]] && continue
   grep -q "^${name}=" "$committed" || fail "functions/.env.weehs-4eb28 missing $name"
 done <<<"$string_params"
+assert_no_smtp_user "$committed" "functions/.env.weehs-4eb28"
 assert_eq "$(grep '^WA_TEMPLATE_WELCOME=' "$committed")" "WA_TEMPLATE_WELCOME=" "committed welcome stays blank"
 assert_eq "$(grep '^WA_TEMPLATE_TEST=' "$committed")" "WA_TEMPLATE_TEST=" "committed test stays blank"
 assert_eq "$(grep '^AUTH_WEB_API_KEY=' "$committed")" "AUTH_WEB_API_KEY=" "committed password-check key is empty"
@@ -163,6 +219,11 @@ assert_workflow_templates() {
     || fail "$file does not pass WA_TEMPLATE_TEST into write-env"
   grep -q 'AUTH_WEB_API_KEY: ${{ vars.AUTH_WEB_API_KEY }}' <<<"$block" \
     || fail "$file does not pass AUTH_WEB_API_KEY into write-env"
+  grep -q 'SMTP_USER: ${{ vars.SMTP_USER }}' <<<"$block" \
+    || fail "$file does not pass SMTP_USER into write-env"
+  if grep -Eq 'SMTP_USER=.+@' <<<"$block"; then
+    fail "$file hardcodes an SMTP login"
+  fi
 }
 assert_workflow_templates "$root/.github/workflows/deploy.yml"
 assert_workflow_templates "$root/.github/workflows/deploy-staging.yml"

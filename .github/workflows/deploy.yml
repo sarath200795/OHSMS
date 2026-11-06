@@ -261,6 +261,10 @@ jobs:
       # and never bound through Secret Manager (LOW-13). Repository variables
       # SMTP_HOST, SMTP_PORT, SMTP_USER, MAIL_FROM and APP_ORIGIN override the
       # Brevo relay defaults when they are set. SMTP_USER has no default.
+      # An empty SMTP_USER is omitted from the dotenv file. Writing SMTP_USER=
+      # replaces the login already on the function (v2.0.9). SMTP_HOST,
+      # SMTP_PORT and MAIL_FROM keep the relay defaults when empty, and a
+      # blank assignment is not written for those either.
       # WA_TEMPLATE_WELCOME and WA_TEMPLATE_TEST are written even when those
       # repository variables are unset. A missing key is what stopped the
       # v2.0.7 deploy; a blank value keeps the welcome and the org test on

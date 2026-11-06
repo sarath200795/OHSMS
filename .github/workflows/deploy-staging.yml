@@ -175,6 +175,9 @@ jobs:
       # functions/.env.<projectId> exists, and a secret named in that error
       # is not the same thing as a secret missing from Secret Manager.
       # Secrets are not written into the dotenv file (LOW-13).
+      # An empty SMTP_USER is omitted. Writing SMTP_USER= replaces the login
+      # already on the function (v2.0.9). Host, port and From keep the relay
+      # defaults when empty. WhatsApp template keys are different:
       # WA_TEMPLATE_* are written blank when the repository variables are
       # unset, which keeps free-form text and still satisfies the CLI.
       - name: Write functions param file

@@ -50,6 +50,35 @@ reject_param_value() {
   fi
 }
 
+# Copy $2 into the variable named by $1, or $3 when $2 is empty or whitespace.
+# `:-` does not treat spaces as unset, and a line of spaces is still a value.
+set_or_default() {
+  local dest="$1"
+  local value="$2"
+  local default="$3"
+  if [[ -z "${value//[[:space:]]/}" ]]; then
+    printf -v "$dest" '%s' "$default"
+  else
+    printf -v "$dest" '%s' "$value"
+  fi
+}
+
+# firebase-tools treats `KEY=` as a value and publishes it over the param
+# already on the function. It does not apply the defineString default first
+# (v1.9.19; still true in firebase-tools 15). v2.0.9 wrote `SMTP_USER=` from
+# an empty GitHub variable and weather digests then failed with
+# missing:["SMTP_USER"]. Omit the line. Do not invent a login to fill it.
+# A missing SMTP_USER stops the non-interactive deploy and names the variable,
+# which leaves the login already deployed in place.
+append_env_unless_empty() {
+  local key="$1"
+  local value="$2"
+  if [[ -z "${value//[[:space:]]/}" ]]; then
+    return 0
+  fi
+  printf '%s=%s\n' "$key" "$value"
+}
+
 firebase_cli() {
   if [[ -n "${FIREBASE_BIN:-}" ]]; then
     "$FIREBASE_BIN" "$@"
@@ -89,12 +118,16 @@ write_env() {
   require_project_id
   local dir="${FUNCTIONS_DIR:-functions}"
   local env_file="${dir}/.env.${PROJECT_ID}"
-  local host="${SMTP_HOST:-smtp-relay.brevo.com}"
-  local port="${SMTP_PORT:-587}"
-  # The Brevo SMTP login. Empty until it is set; the From address is not it.
-  local user="${SMTP_USER:-}"
-  local from="${MAIL_FROM:-EHS notifications <info@weehs.org>}"
-  local origin="${APP_ORIGIN:-https://suite.weehs.org}"
+  # Host, port and From keep the relay defaults when their variables are
+  # empty. Those defaults are the relay, not a credential. SMTP_USER has no
+  # default: the From mailbox would authenticate as the wrong account, and an
+  # empty value must be omitted rather than written (see append_env_unless_empty).
+  local host port user from origin
+  set_or_default host "${SMTP_HOST-}" "smtp-relay.brevo.com"
+  set_or_default port "${SMTP_PORT-}" "587"
+  set_or_default user "${SMTP_USER-}" ""
+  set_or_default from "${MAIL_FROM-}" "EHS notifications <info@weehs.org>"
+  set_or_default origin "${APP_ORIGIN-}" "https://suite.weehs.org"
 
   reject_param_value SMTP_HOST "$host"
   reject_param_value SMTP_PORT "$port"
@@ -142,11 +175,15 @@ write_env() {
   mkdir -p "$dir"
   umask 077
   {
-    printf 'SMTP_HOST=%s\n' "$host"
-    printf 'SMTP_PORT=%s\n' "$port"
-    printf 'SMTP_USER=%s\n' "$user"
-    printf 'MAIL_FROM=%s\n' "$from"
-    printf 'APP_ORIGIN=%s\n' "$origin"
+    # Empty SMTP_HOST, SMTP_PORT, SMTP_USER and MAIL_FROM are omitted. A blank
+    # assignment would clear the value already on the function. WhatsApp keys
+    # below stay even when blank: a missing key stopped the v2.0.7 deploy, and
+    # an empty template name is free-form text on purpose.
+    append_env_unless_empty SMTP_HOST "$host"
+    append_env_unless_empty SMTP_PORT "$port"
+    append_env_unless_empty SMTP_USER "$user"
+    append_env_unless_empty MAIL_FROM "$from"
+    append_env_unless_empty APP_ORIGIN "$origin"
     printf 'WA_ENABLED=%s\n' "$wa_enabled"
     printf 'WA_PHONE_NUMBER_ID=%s\n' "$wa_pnid"
     printf 'WA_GRAPH_VERSION=%s\n' "$wa_ver"
@@ -166,7 +203,7 @@ write_env() {
     echo "::error::Refusing to leave a secret (DATA_KEY_MASTER, SMTP_PASS, WINDY_API_KEY, WA_APP_SECRET, WA_ACCESS_TOKEN, WA_VERIFY_TOKEN) in ${env_file}." >&2
     exit 1
   fi
-  echo "Wrote ${env_file} with non-secret params only (SMTP_HOST SMTP_PORT SMTP_USER MAIL_FROM APP_ORIGIN WA_ENABLED WA_PHONE_NUMBER_ID WA_GRAPH_VERSION WA_DISPLAY_NUMBER WA_DAILY_CAP WA_TEMPLATE_WELCOME WA_TEMPLATE_TEST AUTH_WEB_API_KEY)."
+  echo "Wrote ${env_file} with non-secret params only (SMTP_HOST SMTP_PORT SMTP_USER MAIL_FROM APP_ORIGIN WA_ENABLED WA_PHONE_NUMBER_ID WA_GRAPH_VERSION WA_DISPLAY_NUMBER WA_DAILY_CAP WA_TEMPLATE_WELCOME WA_TEMPLATE_TEST AUTH_WEB_API_KEY). Empty SMTP_HOST, SMTP_PORT, SMTP_USER and MAIL_FROM lines are omitted."
 }
 
 # A WhatsApp secret that does not exist yet is created as UNSET-PLACEHOLDER so
