@@ -165,6 +165,13 @@ is missing, CI creates it from the `SMTP_PASS` GitHub secret when that is
 set, and otherwise as the placeholder `UNSET-PLACEHOLDER`. CI does not create
 or replace `DATA_KEY_MASTER`. Repository variables `SMTP_HOST`, `SMTP_PORT`,
 `SMTP_USER`, `MAIL_FROM` and `APP_ORIGIN` override those CI defaults when set.
+An empty `SMTP_USER` is left out of the file. Writing `SMTP_USER=` publishes
+an empty login over the one already on the function; that is what v2.0.9 did,
+and weather digests then failed with `missing:["SMTP_USER"]`. A non-interactive
+deploy with no `SMTP_USER` line stops and names the variable, which leaves the
+deployed login in place. `SMTP_HOST`, `SMTP_PORT` and `MAIL_FROM` are omitted
+the same way when they are still empty after the relay defaults. Do not put a
+login in this repository to get past that stop.
 `WA_TEMPLATE_WELCOME` and `WA_TEMPLATE_TEST` are written as well, blank unless
 those repository variables are set. Blank keeps the welcome and the org test
 on free-form text.
@@ -175,7 +182,7 @@ error and returns.
 
 `functions/.env` can override the defaults (`SMTP_HOST`, `SMTP_PORT`,
 `SMTP_USER`, `MAIL_FROM`, `APP_ORIGIN`). Leaving the host and port unset
-keeps the Brevo relay. `SMTP_USER` stays empty until it is set. See
+keeps the Brevo relay. `SMTP_USER` is not given a default. See
 `functions/.env.example`. `functions/.env.weehs-4eb28`
-supplies non-secret SMTP defaults for CI, while `SMTP_PASS` remains a
-Secret Manager secret.
+supplies the non-secret relay defaults for CI and does not set `SMTP_USER`.
+`SMTP_PASS` remains a Secret Manager secret.
