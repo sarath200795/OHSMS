@@ -39,6 +39,14 @@
 # After a transient failure this script reads the live release again. Exit 0
 # only when that read says the released source is this commit. A differ, or
 # a read that failed, is not a release.
+#
+# v2.0.14 hit :test 503 on all five attempts. The proof read never returned
+# match: each one logged `GET .../collectionGroups/-/indexes HTTP 400` and
+# exited 1, so the rules that were already live were never compared.
+# scripts/rules-live.mjs lists indexes without pageSize, which is what that
+# endpoint rejects. A live read that still 400s is not a match. A rules
+# compilation error, or HTTP 400/401/403 from the deploy itself, is not
+# retried and is not rescued by a live file that happens to match.
 set -euo pipefail
 
 require_project_id() {
