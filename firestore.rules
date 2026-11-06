@@ -105,7 +105,8 @@ service cloud.firestore {
         && claimsOwnName(request.resource.data.orgId, request.resource.data.name);
 
       // An entry may be corrected by its own org, but never repointed elsewhere and never renamed to
-      // something the org is not called.
+      // something the org is not called. An own-stack reservation has no orgId; reading it here
+      // raises, which denies, so this update cannot repoint that reservation either.
       allow update: if isApprovedMemberOf(resource.data.orgId)
         && request.resource.data.keys().hasOnly(['orgId', 'name'])
         && request.resource.data.orgId == resource.data.orgId
@@ -113,6 +114,132 @@ service cloud.firestore {
         && claimsOwnName(resource.data.orgId, request.resource.data.name);
 
       allow delete: if false;
+
+      // Own-database name reservation. Written in the same batch as
+      // /provisioningRequests/{requestId}. No orgId: there is no WEEHS tenant.
+      // The public document is the name, the door, and the request id. The
+      // contact email lives on the request, which this match does not expose.
+      // A reservation without that request would let anyone squat a name and
+      // leave no one to talk to. Rules OR, so this create does not relax the
+      // WEEHS create above: that one still requires orgId and the registration batch.
+      allow create: if request.resource.data.keys().hasOnly(['name', 'stack', 'requestId'])
+        && request.resource.data.stack == 'own'
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 120
+        && request.resource.data.name == request.resource.data.name.trim()
+        && !request.resource.data.name.matches('.*/.*')
+        && request.resource.data.name.trim().lower() == key
+        && key != '.'
+        && key != '..'
+        && request.resource.data.requestId is string
+        && request.resource.data.requestId.matches('^[A-Za-z0-9]{10,40}$')
+        && existsAfter(/databases/$(database)/documents/provisioningRequests/$(request.resource.data.requestId))
+        && getAfter(/databases/$(database)/documents/provisioningRequests/$(request.resource.data.requestId)).data.orgName
+             == request.resource.data.name
+        && getAfter(/databases/$(database)/documents/provisioningRequests/$(request.resource.data.requestId)).data.status
+             == 'requested';
+    }
+
+    // Non-secret own-database provisioning requests. Status is frozen at
+    // `requested`: a client that can write `provisioned` is how a request
+    // starts looking like a live stack. Fulfillment is not a browser write.
+    // Create is paired with the orgIndex reservation above (getAfter, both
+    // directions). Read is the platform operator. The contact email is why
+    // `get` is not public — the public fact is the orgIndex row.
+    match /provisioningRequests/{requestId} {
+      function isPlatformAdmin() {
+        return isSignedIn()
+          && exists(/databases/$(database)/documents/platformAdmins/$(request.auth.uid));
+      }
+
+      function clean(s) {
+        return s is string
+          && !s.matches('.*://.*')
+          && !s.matches('.*DATA_KEY_MASTER.*')
+          && !s.lower().matches('.*service[-_]?role.*')
+          && !s.lower().matches('.*password=.*');
+      }
+
+      function cleanUrl(s) {
+        return s is string
+          && !s.matches('.*@.*')
+          && !s.matches('.*DATA_KEY_MASTER.*')
+          && !s.lower().matches('.*service[-_]?role.*')
+          && !s.lower().matches('.*password=.*');
+      }
+
+      function emailOk(s) {
+        return clean(s)
+          && s.size() >= 6
+          && s.size() <= 200
+          && s.matches('^[^ @]+@[^ @]+[.][^ @]+$');
+      }
+
+      function httpsOk(s) {
+        return cleanUrl(s) && s.size() <= 500 && s.matches('^https://[^ @?#]+$');
+      }
+
+      allow get, list: if isPlatformAdmin();
+
+      allow update, delete: if false;
+
+      allow create: if requestId.matches('^[A-Za-z0-9]{10,40}$')
+        && request.resource.data.keys().hasOnly(['status', 'orgName', 'address', 'contactName', 'contactEmail', 'handoffContact', 'mode', 'engine', 'authMethod', 'authIssuer', 'authClientId', 'bucketMode', 'bucketName', 'bucketRegion', 'presignUrl', 'createdAt'])
+        && request.resource.data.status == 'requested'
+        && request.resource.data.createdAt == request.time
+        && clean(request.resource.data.orgName)
+        && request.resource.data.orgName.size() > 0
+        && request.resource.data.orgName.size() <= 120
+        && request.resource.data.orgName == request.resource.data.orgName.trim()
+        && !request.resource.data.orgName.matches('.*/.*')
+        && request.resource.data.orgName.trim().lower() != '.'
+        && request.resource.data.orgName.trim().lower() != '..'
+        && clean(request.resource.data.address)
+        && request.resource.data.address.size() <= 300
+        && clean(request.resource.data.contactName)
+        && request.resource.data.contactName.size() > 0
+        && request.resource.data.contactName.size() <= 120
+        && emailOk(request.resource.data.contactEmail)
+        && emailOk(request.resource.data.handoffContact)
+        && request.resource.data.mode in ['bring', 'company-cloud', 'weehs-operated']
+        && request.resource.data.engine is string
+        && request.resource.data.engine.matches('^[a-z][a-z0-9_-]{0,31}$')
+        && request.resource.data.engine.size() > 0
+        && !request.resource.data.engine.lower().matches('.*service[-_]?role.*')
+        && (
+          request.resource.data.mode == 'bring'
+          || request.resource.data.engine == 'postgres'
+        )
+        && request.resource.data.authMethod in ['oidc', 'saml', 'supabase']
+        && request.resource.data.authIssuer is string
+        && request.resource.data.authIssuer.size() <= 300
+        && request.resource.data.authClientId is string
+        && (
+          (request.resource.data.authMethod == 'supabase'
+            && request.resource.data.authClientId == ''
+            && (request.resource.data.authIssuer == '' || httpsOk(request.resource.data.authIssuer)))
+          || (request.resource.data.authMethod in ['oidc', 'saml']
+            && httpsOk(request.resource.data.authIssuer)
+            && clean(request.resource.data.authClientId)
+            && request.resource.data.authClientId.matches('^[A-Za-z0-9._~-]{1,200}$'))
+        )
+        && (
+          (request.resource.data.bucketMode == 'provision'
+            && request.resource.data.bucketName == ''
+            && request.resource.data.bucketRegion == ''
+            && request.resource.data.presignUrl == '')
+          || (request.resource.data.bucketMode == 'bring'
+            && request.resource.data.bucketName.matches('^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$')
+            && request.resource.data.bucketRegion.matches('^[a-z0-9-]{1,40}$')
+            && clean(request.resource.data.bucketName)
+            && (request.resource.data.presignUrl == '' || httpsOk(request.resource.data.presignUrl)))
+        )
+        && existsAfter(/databases/$(database)/documents/orgIndex/$(request.resource.data.orgName.trim().lower()))
+        && getAfter(/databases/$(database)/documents/orgIndex/$(request.resource.data.orgName.trim().lower())).data.keys().hasOnly(['name', 'stack', 'requestId'])
+        && getAfter(/databases/$(database)/documents/orgIndex/$(request.resource.data.orgName.trim().lower())).data.stack == 'own'
+        && getAfter(/databases/$(database)/documents/orgIndex/$(request.resource.data.orgName.trim().lower())).data.requestId == requestId
+        && getAfter(/databases/$(database)/documents/orgIndex/$(request.resource.data.orgName.trim().lower())).data.name == request.resource.data.orgName;
     }
 
     match /qr/{token} {

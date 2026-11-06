@@ -3,6 +3,7 @@ import { Link, useNavigate, Navigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { useAuth } from '../../shared/auth/AuthContext'
 import { findOrgByName } from '../../shared/org/orgData'
+import { OWN_STACK_JOIN_MESSAGE } from '../../shared/org/provisioningSchema'
 import { authErrorMessage } from '../../shared/lib/authErrors'
 import { Button, Field, Input, Select } from '../../shared/ui'
 import { DEPARTMENTS } from '../../shared/auth/access'
@@ -86,6 +87,9 @@ export default function Signup() {
       org && form.orgName.trim().toLowerCase() === org.name.trim().toLowerCase()
         ? org
         : await lookup(form.orgName)
+    if (found?.stack === 'own') {
+      return toast.error(OWN_STACK_JOIN_MESSAGE)
+    }
     if (!found) {
       return toast.error(
         'We could not find an organization with that name. Check the spelling with your administrator.'
@@ -104,6 +108,8 @@ export default function Signup() {
       setBusy(false)
     }
   }
+
+  const ownStack = org?.stack === 'own'
 
   return (
     <AuthLayout
@@ -135,14 +141,18 @@ export default function Signup() {
           hint={
             checking
               ? 'Checking…'
-              : org
-                ? `Found ${org.name}`
-                : 'Type the name exactly as your administrator registered it'
+              : ownStack
+                ? ''
+                : org
+                  ? `Found ${org.name}`
+                  : 'Type the name exactly as your administrator registered it'
           }
           error={
-            org === false
-              ? 'No organization with that name. Check the spelling with your administrator, or register it below.'
-              : ''
+            ownStack
+              ? OWN_STACK_JOIN_MESSAGE
+              : org === false
+                ? 'No organization with that name. Check the spelling with your administrator, or register it below.'
+                : ''
           }
         >
           <Input
@@ -157,43 +167,57 @@ export default function Signup() {
             autoComplete="organization"
           />
         </Field>
-        <Field label="Your name" htmlFor="name">
-          <Input id="name" required value={form.name} onChange={set('name')} autoComplete="name" />
-        </Field>
-        <Field label="Department" htmlFor="dept" hint="An administrator assigns this. Choosing one here does not grant access.">
-          <Select id="dept" value={form.department} onChange={set('department')}>
-            <option value="">Select department…</option>
-            {DEPARTMENTS.map((d) => (
-              <option key={d} value={d}>
-                {d}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="Work email" htmlFor="email">
-          <Input
-            id="email"
-            type="email"
-            required
-            value={form.email}
-            onChange={set('email')}
-            autoComplete="email"
-          />
-        </Field>
-        <Field label="Password" htmlFor="password" hint={passwordLengthHint()}>
-          <Input
-            id="password"
-            type="password"
-            required
-            minLength={MIN_PASSWORD_LENGTH}
-            value={form.password}
-            onChange={set('password')}
-            autoComplete="new-password"
-          />
-        </Field>
-        <Button type="submit" loading={busy} className="w-full">
-          Request access
-        </Button>
+        {ownStack ? null : (
+          <>
+            <Field label="Your name" htmlFor="name">
+              <Input
+                id="name"
+                required
+                value={form.name}
+                onChange={set('name')}
+                autoComplete="name"
+              />
+            </Field>
+            <Field
+              label="Department"
+              htmlFor="dept"
+              hint="An administrator assigns this. Choosing one here does not grant access."
+            >
+              <Select id="dept" value={form.department} onChange={set('department')}>
+                <option value="">Select department…</option>
+                {DEPARTMENTS.map((d) => (
+                  <option key={d} value={d}>
+                    {d}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Work email" htmlFor="email">
+              <Input
+                id="email"
+                type="email"
+                required
+                value={form.email}
+                onChange={set('email')}
+                autoComplete="email"
+              />
+            </Field>
+            <Field label="Password" htmlFor="password" hint={passwordLengthHint()}>
+              <Input
+                id="password"
+                type="password"
+                required
+                minLength={MIN_PASSWORD_LENGTH}
+                value={form.password}
+                onChange={set('password')}
+                autoComplete="new-password"
+              />
+            </Field>
+            <Button type="submit" loading={busy} className="w-full">
+              Request access
+            </Button>
+          </>
+        )}
       </form>
     </AuthLayout>
   )

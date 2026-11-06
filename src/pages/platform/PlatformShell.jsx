@@ -7,12 +7,13 @@
 // wrong — it is the operator's own tenant, sitting above a list of everybody
 // else's, which is precisely the confusion this separation removes.
 //
-// Quiet. It says "Platform console" and names the two jobs an operator has —
-// which modules a customer may use, and the directory of every customer — and
-// nothing that would place the operator inside one of them. Whoever is looking
-// at this screen should never have to check which app they are in.
+// Quiet. It says "Platform console" and names the jobs an operator has —
+// which modules a WEEHS customer may use, the directory of those customers,
+// and own-database requests that are not customers yet — and nothing that
+// would place the operator inside one of them. Whoever is looking at this
+// screen should never have to check which app they are in.
 // ─────────────────────────────────────────────────────────────────────────────
-import { Building2, LogOut, SlidersHorizontal } from 'lucide-react'
+import { Building2, Database, LogOut, SlidersHorizontal } from 'lucide-react'
 import { NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '../../shared/auth/AuthContext'
 import ErrorBoundary from '../../shared/ErrorBoundary'
@@ -68,6 +69,10 @@ export default function PlatformShell({ children }) {
           <NavLink to="/platform/organizations" className={tabClass}>
             <Building2 size={15} aria-hidden="true" />
             Organizations
+          </NavLink>
+          <NavLink to="/platform/provisioning" className={tabClass}>
+            <Database size={15} aria-hidden="true" />
+            Own-database requests
           </NavLink>
         </nav>
       </div>

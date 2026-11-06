@@ -140,6 +140,23 @@ describe('creating the account', () => {
     expect(signUpMember.mock.calls[0][0]).toMatchObject({ orgId: 'org-2' })
   })
 
+  it('does not create a WEEHS account when the name is an own-database reservation', async () => {
+    findOrgByName.mockResolvedValue({
+      id: null,
+      name: 'Northwind Metals',
+      stack: 'own',
+      requestId: 'reqNorthwind1',
+    })
+    render(<Signup />)
+    type('Organization', 'Northwind Metals')
+    blurOrg()
+    expect(await screen.findByText(/own database and its own sign-in/i)).toBeTruthy()
+    expect(screen.queryByLabelText('Password')).toBeNull()
+    fireEvent.submit(document.querySelector('form'))
+    await waitFor(() => expect(toastError).toHaveBeenCalled())
+    expect(signUpMember).not.toHaveBeenCalled()
+  })
+
   it('rejects a weak password before creating anything', async () => {
     render(<Signup />)
     type('Organization', 'Acme Manufacturing')
