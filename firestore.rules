@@ -1,18 +1,16 @@
 rules_version = '2';
 
-// OHS MS Firestore rules. Every organization is a tenant. A profile at
-// /users/{uid} pins orgId, status and role; module data lives under
-// /organizations/{orgId}. firestore.rules is the enforcement that cannot be
-// bypassed from the client.
+// Tenant rules. /users/{uid} pins orgId, status and role; module data lives under
+// /organizations/{orgId}. This file is the enforcement a client cannot bypass.
 //
-// Helpers live in the match that uses them. A function on a parent match is
-// compiled into every child, and that duplicated scope is what makes the
-// Rules API :test return HTTP 503 once the ruleset is large. Only helpers
-// shared by more than one collection stay on the database match.
+// A helper on a parent match is compiled into every child. Helpers sit in the
+// match that calls them — copied, when more than one match calls them — because
+// one database-level copy is what makes Rules :test return HTTP 503.
 //
-// Two shapes that have each shipped a hole: rules OR together, so a narrow
-// match cannot take away what a wider match grants; and request.resource.data
-// is the state AFTER the write, so it cannot be what authorises the writer.
+// Rules OR together, so a narrower match cannot take away a wider grant.
+// request.resource.data is the state AFTER the write, so it cannot alone
+// authorise the writer. .get(field, default) is how an absent field is read:
+// a direct read raises, and a raising rule denies.
 
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -31,17 +29,12 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/users/$(request.auth.uid));
     }
 
-    // An account still holding the password an admin typed for it reaches NOTHING. .get() with
-    // a default: every profile written before this field existed has no such key, and reading
-    // it directly would raise — which denies, and would have locked out every existing user of
-    // the app. The only clear is completePasswordChange, which replaces the Auth password first
-    // and then writes with the Admin SDK. A second myProfile() here is another get(), and the
-    // consultation close — eight unrolled action rows, also copied onto the recursive wildcard
-    // — was already on the 1000-expression ceiling.
+    // An account still holding the password an admin typed for it reaches NOTHING. .get() with a
+    // default: every profile written before this field existed has no such key, and reading it
+    // directly would raise — which denies, and would have locked out every existing user of the app.
     function passwordIsOwn(p) {
       return p.get('mustChangePassword', false) != true;
     }
-
 
     function isApprovedMemberOf(orgId) {
       let p = myProfile();
@@ -51,10 +44,7 @@ service cloud.firestore {
         && passwordIsOwn(p);
     }
 
-    // Admin MFA in rules (draft, OFF). Console MFA (S-05) challenges at SIGN-IN. That is not
-    // the same as these rules requiring `sign_in_second_factor` on the token: an admin who has
-    // enrolled still holds any session minted before they enrolled, and an admin who has not
-    // enrolled at all is locked out of the tenant the moment requireAdminMfa returns true.
+    // Admin MFA in rules (draft, OFF).
     function hasSecondFactor() {
       return request.auth != null
         && request.auth.token.firebase.sign_in_second_factor is string
@@ -77,159 +67,24 @@ service cloud.firestore {
         && (myProfile().role == 'admin' || myProfile().role == 'manager');
     }
 
-    // Auditor is documented as read-only across every module, and until now
-    // that was true only in React — `can()` hid the buttons while the rules
-    // cheerfully accepted the same write from the SDK. An auditor is typically
-    // an outside party given a login to inspect the safety record; being able
-    // to edit the evidence they are auditing is the one thing the role exists
-    // to prevent. Writes go through this instead of isApprovedMemberOf.
+    // Auditor is documented as read-only across every module, and until now that was true only in
+    // React — `can()` hid the buttons while the rules cheerfully accepted the same write from the SDK.
+    // An auditor is typically an outside party given a login to inspect the safety record;.
     function isWriterOf(orgId) {
       return isApprovedMemberOf(orgId) && myProfile().role != 'auditor';
     }
 
-    // The operator of the platform itself, as opposed to an administrator of a tenant inside
-    // it. The distinction is the whole point: an org admin configures their own organization,
-    // and must not be able to hand their organization modules it has not been given.
+    // The operator of the platform itself, as opposed to an administrator of a tenant inside it. The
+    // distinction is the whole point: an org admin configures their own organization, and must not be
+    // able to hand their organization modules it has not been given.
     function isPlatformAdmin() {
       return isSignedIn()
         && exists(/databases/$(database)/documents/platformAdmins/$(request.auth.uid));
     }
 
-
-    // Module entitlements, enforced. /moduleEntitlements/{orgId} was defined above, platform-
-    // operator-write only, and then referenced by NOTHING. Enforcement lived entirely in React
-    // — ModuleGate and the sidebar — whose own header claimed the opposite: "Firestore rules
-    // stop the data leaving, but an unguarded route would still mount the module." They did
-    // not. This is a licensing control, not a tenant boundary — nobody reaches another org's
-    // data either way — which is why it FAILS OPEN at every point of doubt: • a collection this
-    // list does not name is allowed (shared plumbing: sites, meta, docSeq, auditLogs, activity,
-    // and anything a module adds before someone updates this list), • an org with no
-    // entitlement document is allowed — ABSENT MEANS ENABLED, the same rule the client applies,
-    // so publishing this changed nothing for any existing organization, • a key absent from a
-    // document that exists is allowed, so a module added to the registry later is on until an
-    // operator turns it off.
-    // One ternary, not three helpers. moduleAllowed sits on the generic write,
-    // which is already at the 1000-expression ceiling, and a helper called from
-    // both the condition and the branch would be evaluated twice. '' is not a
-    // module: moduleOn allows it, so a collection missing from this table stays
-    // open. defectClosures is named under equipment for that reason.
-    function moduleForCollection(col) {
-      return col in ['incidents', 'illnesses', 'injuries'] ? 'incidents'
-        : col == 'assessments' ? 'hira'
-        : col in ['inspectionTemplates', 'inspectionRecords'] ? 'inspections'
-        : col in ['audits', 'auditPlans', 'auditFindings', 'capas', 'findings'] ? 'audit'
-        : col in ['permits', 'observations'] ? 'ptw'
-        : col in ['procedures', 'procedurePhotos', 'locks', 'technicians', 'lotoPermits'] ? 'loto'
-        : col in ['extinguishers', 'aeds', 'fas', 'signages', 'stretchers',
-                  'firstAid', 'reports', 'defectClosures'] ? 'equipment'
-        : col == 'mockDrills' ? 'drills'
-        : col == 'consultations' ? 'committee'
-        : col in ['trainingCourses', 'trainingRecords', 'trainingAssignments',
-                  'trainingSessions', 'trainingRequests'] ? 'training'
-        : col == 'documents' ? 'documents'
-        : col in ['erpContacts', 'erpLayouts', 'erpRescuePlans'] ? 'emergency'
-        : col == 'objectives' ? 'objectives'
-        : col in ['cctvCameras', 'cctvDvrs', 'cctvMeraki'] ? 'cctv'
-        : col in ['escalations', 'legalIssues'] ? 'stakeholder'
-        : '';
-    }
-
-    // Is this module key switched on for the org? The `let` matters: without it
-    // moduleForCollection ran twice per call, and moduleAllowed is called on both the generic
-    // match and its recursive {sub=**} twin. `.get('modules', {})` rather than `.modules` so a
-    // document written before the shape was pinned, holding no map at all, still evaluates
-    // instead of raising — reading an absent field raises, and a rule that raises denies.
-    function moduleOn(orgId, key) {
-      return key == ''
-        || !exists(/databases/$(database)/documents/moduleEntitlements/$(orgId))
-        || get(/databases/$(database)/documents/moduleEntitlements/$(orgId))
-             .data.get('modules', {}).get(key, true) != false;
-    }
-
-    function moduleAllowed(orgId, col) {
-      return moduleOn(orgId, moduleForCollection(col));
-    }
-
-
-    // Stricter than shortText, for fields an ANONYMOUS writer supplies. shortText answers "is
-    // this string short enough", and lets anything that is not a string straight through —
-    // which was the right call where it is used, because .size() on a present-but-null value
-    // RAISES and a raising rule denies (that refused every QR defect report for a day). Note
-    // that .get(k, '') already turns an absent key into '', so the null branch here is
-    // specifically for a key present with an explicit null.
-    function boundedText(v, max) {
-      return v == null || (v is string && v.size() <= max);
-    }
-
-    // Manager-only decisions. Approving a permit, deciding a defect report, verifying an
-    // injury, closing a finding: each of these was enforced by can() in React and by nothing
-    // else, so the same write went through unchallenged from the SDK. The whole value of an
-    // approval is that only the approver could have made it — a decision whose only guarantee
-    // is a hidden button is not one. Both sides of the write are read for that reason:
-    // request.resource.data is the state AFTER the write, so on its own it authorises nothing —
-    // the writer supplies it.
-    function decisionStates(col) {
-      return col in ['permits', 'procedures', 'reports', 'observations',
-                     'trainingRequests', 'erpRescuePlans']
-               ? ['approved', 'rejected', 'declined']
-           : col in ['incidents', 'illnesses', 'capas', 'findings', 'audits']
-               ? ['closed', 'verified']
-           // The internal-audit register capitalises its statuses.
-           : col == 'auditFindings' ? ['Closed']
-           : col == 'injuries' ? ['verified']
-           // A document reaching 'active' becomes the controlled copy of record.
-           : col == 'documents' ? ['active']
-           : [];
-    }
-
-    // Does this write leave `path` alone, or move it only between undecided
-    // states? An absent field reads as '', which is in no set, so a collection
-    // that does not use a given field is never affected by it.
-    function keeps(states, before, after, path) {
-      let a = before.get(path, '');
-      let b = after.get(path, '');
-      return a == b || (!(a in states) && !(b in states));
-    }
-
-    // A permit has no status field at all: each approving team writes its own
-    // decision block, and closure and extension carry another pair each.
-    // `storedStatus` is derived from them and is re-persisted by whoever opens
-    // the list, so gating that instead would deny ordinary browsing while
-    // leaving the decisions themselves wide open.
-    function keepsPermitDecisions(states, before, after) {
-      return keeps(states, before, after, ['engineering', 'status'])
-        && keeps(states, before, after, ['operations', 'status'])
-        && keeps(states, before, after, ['closure', 'engineering', 'status'])
-        && keeps(states, before, after, ['closure', 'operations', 'status'])
-        && keeps(states, before, after, ['extension', 'engineering', 'status'])
-        && keeps(states, before, after, ['extension', 'operations', 'status']);
-    }
-
-    // What a member may write: everything about the record except the decision.
-    //
-    // Rules are budgeted at 1000 expressions per request, and this rule is
-    // evaluated twice for every write (the recursive subcollection match below
-    // covers the parent document too). So the ungated collections — most of
-    // them — exit on the size() check, and the six nested permit paths are only
-    // walked for permits.
-    function keepsDecision(col, before, after) {
-      let s = decisionStates(col);
-      return s.size() == 0
-        || (keeps(s, before, after, ['status'])
-            && keeps(s, before, after, ['approvalStatus'])
-            // incidents and illnesses call it `lifecycle`.
-            && keeps(s, before, after, ['lifecycle'])
-            && (col != 'permits' || keepsPermitDecisions(s, before, after)));
-    }
-
-
-    // Public org-name index (no sensitive fields). Maps a lowercased org name to its orgId.
-    // Publicly readable because signup has to resolve "which org is this?" before the user is a
-    // member of anything. Create is pinned with getAfter to the registration batch that also
-    // writes the caller's own profile, exactly as /users/{uid} is: at that instant the profile
-    // does not exist yet, so isApprovedMemberOf cannot be used. The same condition covers the
-    // self-heal backfill for pre-index orgs, where the caller is already a member of the org
-    // being indexed.
+    // Public org-name index (no sensitive fields). Create is pinned with getAfter to the registration
+    // batch that also writes the caller's own profile, exactly as /users/{uid} is: at that instant the
+    // profile does not exist yet, so isApprovedMemberOf cannot be used.
     match /orgIndex/{key} {
       // Declared inside the match: `key` is only bound here.
       function claimsOwnName(orgId, name) {
@@ -250,11 +105,8 @@ service cloud.firestore {
              == request.resource.data.orgId
         && claimsOwnName(request.resource.data.orgId, request.resource.data.name);
 
-      // An entry may be corrected by its own org, but never repointed elsewhere
-      // and never renamed to something the org is not called. Since the key IS
-      // the normalised name, this now only permits fixing case or stray
-      // whitespace — a genuinely different name is a different entry, which is
-      // the correct semantic for a key that is the name.
+      // An entry may be corrected by its own org, but never repointed elsewhere and never renamed to
+      // something the org is not called.
       allow update: if isApprovedMemberOf(resource.data.orgId)
         && request.resource.data.keys().hasOnly(['orgId', 'name'])
         && request.resource.data.orgId == resource.data.orgId
@@ -264,31 +116,15 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-
-    // The shape rule for an UPDATE, which cannot simply be the allow-list. A plain hasOnly on
-    // the post-state would refuse every update to one of those forever, so it could never be
-    // corrected and never be WITHDRAWN. So the grandfathering is PER KEY, not per document:
-    // every key in the post-state must be one the builders write, or one this document already
-    // had.
-    function keepsMirrorShape(allowed) {
-      return request.resource.data.keys().hasOnly(allowed.concat(resource.data.keys()));
-    }
-
-
     match /qr/{token} {
+      // Per key, not per document, so an update can still correct or withdraw a mirror.
+      function keepsMirrorShape(allowed) {
+        return request.resource.data.keys().hasOnly(allowed.concat(resource.data.keys()));
+      }
+
       // Local to this match. A helper on a parent is compiled into every sibling.
 
-      // Public QR mirror (fire equipment). A minimal, publicly-readable copy of an extinguisher
-      // / AED / fire-alarm device, keyed by its qrToken, so anyone scanning the QR code can
-      // view the asset without signing in. Written (create/update/delete) only by an approved
-      // member of the owning org — the write rides in the same batch as the org-scoped asset
-      // write, so the member is already authorised there. It used to read
-      // `isApprovedMemberOf(resource.data.orgId) ||
-      // isApprovedMemberOf(request.resource.data.orgId)`, and the second branch is evaluated
-      // against the POST state — so a write that simply set orgId to the caller's own org
-      // satisfied it no matter who owned the document. Pinning orgId across the write closes it
-      // without costing anything: every legitimate writer already owns the mirror it is
-      // updating, and a merge write carries the existing orgId through to the post state.
+      // Public QR mirror (fire equipment).
       function mirrorCollection(d) {
         return !('assetKind' in d) ? 'extinguishers'
           : d.assetKind == 'aed' ? 'aeds'
@@ -301,10 +137,8 @@ service cloud.firestore {
         return !('assetKind' in d) ? d.get('extId', '') : d.get('assetRefId', '');
       }
 
-      // What an equipment mirror may carry. The union of every field the four mirror builders
-      // write — mirrorPayload, aedMirror, fasMirror and stretcherMirror in
-      // fire/lib/firestore.js. A union rather than four separate lists because the shapes
-      // overlap heavily and a per-kind split would be four places to forget instead of one.
+      // What an equipment mirror may carry. The union of every field the four mirror builders write —
+      // mirrorPayload, aedMirror, fasMirror and stretcherMirror in fire/lib/firestore.js.
       function equipmentMirrorFields() {
         return [
           'orgId', 'orgName', 'token', 'status', 'updatedAt',
@@ -320,10 +154,9 @@ service cloud.firestore {
         ];
       }
 
-      // Does the asset this mirror names actually claim this token? Every writer stamps
-      // `qrToken` on the asset in the same batch as the mirror (addExtinguisher, generateAedQr,
-      // backfillExtinguisherQr and the rest), so getAfter sees it — and for a mirror rewritten
-      // later the asset already carries it. /
+      // Does the asset this mirror names actually claim this token? Every writer stamps `qrToken` on the
+      // asset in the same batch as the mirror (addExtinguisher, generateAedQr, backfillExtinguisherQr
+      // and the rest), so getAfter sees it — and for a mirror rewritten later the asset.
       function mirrorsItsAsset(token, d) {
         return mirrorCollection(d) != ''
           && mirrorAssetId(d) is string
@@ -332,12 +165,8 @@ service cloud.firestore {
                .data.get('qrToken', '') == token;
       }
 
-      // The public page says "deleted" only while the asset itself is deleted. Comparing the
-      // timestamps would fail: the two server timestamps in one batch are not the same value. A
-      // status rewrite that does not touch deletedAt must not call getAfter. Older mirrors
-      // store extId as a label ("EXT-1") that is not the document id, and reading a path that
-      // is not there raises — a raising rule denies, which would refuse every ordinary update
-      // of those mirrors.
+      // The public page says "deleted" only while the asset itself is deleted. A status rewrite that
+      // does not touch deletedAt must not call getAfter.
       function mirrorDeletionTracksAsset(d) {
         return (resource != null
             && request.resource.data.get('deletedAt', null) == resource.data.get('deletedAt', null))
@@ -348,10 +177,7 @@ service cloud.firestore {
                 == (getAfter(/databases/$(database)/documents/organizations/$(d.orgId)/$(mirrorCollection(d))/$(mirrorAssetId(d))).data.get('deletedAt', null) != null));
       }
 
-      // The asset document is still there after this batch. Used so a writer
-      // cannot peel the QR mirror off a unit that is only in the bin: the
-      // sticker has to keep resolving until an admin purges it, or until the
-      // asset itself is deleted in the same batch (stretchers still hard-delete).
+      // The asset document is still there after this batch.
       function mirrorAssetRemains(d) {
         return mirrorCollection(d) != ''
           && mirrorAssetId(d) is string
@@ -362,11 +188,8 @@ service cloud.firestore {
       allow get: if true;
       allow list: if false;
 
-      // Owning the org in the PAYLOAD only proves the writer owns the org they named — never
-      // that the equipment this mirror speaks for exists, or is theirs, or has anything to do
-      // with this token. Without the second clause a member could publish a world-readable page
-      // describing a fire extinguisher nobody owns, or park one at a token that has not been
-      // printed yet and wait for the sticker to catch up.
+      // Owning the org in the PAYLOAD only proves the writer owns the org they named — never that the
+      // equipment this mirror speaks for exists, or is theirs, or has anything to do with this token.
       allow create: if isWriterOf(request.resource.data.orgId)
         && mirrorsItsAsset(token, request.resource.data)
         && mirrorDeletionTracksAsset(request.resource.data)
@@ -376,27 +199,29 @@ service cloud.firestore {
         && request.resource.data.orgId == resource.data.orgId
         && mirrorDeletionTracksAsset(request.resource.data)
         && keepsMirrorShape(equipmentMirrorFields());
-      // Admin may remove a mirror on its own (purge). Anyone else may remove
-      // it only when the asset goes in the same batch. A soft-deleted unit
-      // still exists, so its mirror cannot be stripped early.
+      // Admin may remove a mirror on its own (purge).
       allow delete: if resource != null && (
         isAdminOf(resource.data.orgId)
         || (isWriterOf(resource.data.orgId) && !mirrorAssetRemains(resource.data))
       );
     }
 
-
     match /procedureQr/{procedureId} {
+      // Null passes. .size() on a present null raises, and a raising rule denies.
+      function boundedText(v, max) {
+        return v == null || (v is string && v.size() <= max);
+      }
+
+      // Per key, not per document, so an update can still correct or withdraw a mirror.
+      function keepsMirrorShape(allowed) {
+        return request.resource.data.keys().hasOnly(allowed.concat(resource.data.keys()));
+      }
+
       // Local to this match. A helper on a parent is compiled into every sibling.
 
-      // Public LOTO procedure mirror. The QR printed on an isolation procedure is stuck to a
-      // machine, and the person scanning it is standing in front of that machine — usually with
-      // no account. This is what they read: what to isolate, how, the hazard, how to prove it
-      // dead, and whether each point is locked RIGHT NOW. keys().hasOnly on the document stops
-      // a name at the top level and says nothing about the inside of `points`. The builders
-      // rewrite the mirror in full (set, not a patch), which is why the post-state has to be
-      // the whitelist: a point that already carries an extra key is corrected by the next
-      // legitimate save, and an update that tries to keep it is refused.
+      // Public LOTO procedure mirror. The builders rewrite the mirror in full (set, not a patch), which
+      // is why the post-state has to be the whitelist: a point that already carries an extra key is
+      // corrected by the next legitimate save, and an update that tries to keep it is refused.
       function procedurePointDevices(list) {
         return list is list
           && list.size() <= 20
@@ -569,7 +394,6 @@ service cloud.firestore {
           && (list.size() < 80 || procedurePoints80(list));
       }
 
-
       function procedureMirrorContent(d) {
         return boundedText(d.get('orgId', null), 128)
           && boundedText(d.get('procedureCode', null), 200)
@@ -599,15 +423,9 @@ service cloud.firestore {
       allow get: if true;
       allow list: if false;
 
-      // The document ID is another tenant's procedure ID, so owning the org in the PAYLOAD is
-      // not enough — that only proves the writer owns the org they named, never that they own
-      // the procedure this mirror speaks for. Without the second clause any tenant could plant
-      // a mirror at someone else's procedure ID and serve attacker-written isolation
-      // instructions at the URL printed on that machine; worse, the real owner could then never
-      // overwrite it, because update pins to the squatter's orgId. getAfter, not get:
-      // createProcedure writes the procedure and this mirror in ONE batch, so at get() time the
-      // procedure does not exist yet. The backfill path has it committed already and getAfter
-      // reads the same.
+      // The document ID is another tenant's procedure ID, so owning the org in the PAYLOAD is not enough
+      // — that only proves the writer owns the org they named, never that they own the procedure this
+      // mirror speaks for. getAfter, not get: createProcedure writes the procedure and this.
       allow create: if isWriterOf(request.resource.data.orgId)
         && getAfter(/databases/$(database)/documents/procedures/$(procedureId)).data.orgId
              == request.resource.data.orgId
@@ -619,17 +437,20 @@ service cloud.firestore {
         && request.resource.data.orgId == resource.data.orgId
         && keepsMirrorShape(procedureMirrorFields())
         && procedureMirrorContent(request.resource.data);
-      // Pinned to the mirror's own org rather than the procedure's: delete runs
-      // in the same batch that deletes the procedure, so nothing would be left
-      // for getAfter to read.
+      // Pinned to the mirror's own org rather than the procedure's: delete runs in the same batch that
+      // deletes the procedure, so nothing would be left for getAfter to read.
       allow delete: if resource != null && isWriterOf(resource.data.orgId);
     }
 
-    // Public mirror for the QR code printed on a work permit. Same shape of rule as /qr above
-    // and for the same reason: whoever scans a permit taped to a scaffold — a contractor, an
-    // auditor, a fire watcher — has no account and must still be able to read whether it is
-    // valid right now.
+    // Public mirror for the QR code printed on a work permit. Same shape of rule as /qr above and for
+    // the same reason: whoever scans a permit taped to a scaffold — a contractor, an auditor, a fire
+    // watcher — has no account and must still be able to read whether it is valid right now.
     match /permitQr/{token} {
+      // Per key, not per document, so an update can still correct or withdraw a mirror.
+      function keepsMirrorShape(allowed) {
+        return request.resource.data.keys().hasOnly(allowed.concat(resource.data.keys()));
+      }
+
       // Local to this match. A helper on a parent is compiled into every sibling.
 
       // The same, for the permit mirror: fullMirror plus mirrorDisplayFields and
@@ -650,12 +471,9 @@ service cloud.firestore {
       allow get: if true;
       allow list: if false;
 
-      // Bound to the permit it speaks for, the same way /qr is bound to its equipment and for
-      // the same reason: the document ID is a random token, so nothing in the path ties this
-      // mirror to anything, and owning the org in the payload proves only that the writer owns
-      // the org they named. getAfter reads the post-state, which is what both writers need:
-      // createPermit commits the permit before publishing the mirror, and ensurePermitQr stamps
-      // qrToken on the permit first for exactly this reason.
+      // Bound to the permit it speaks for, the same way /qr is bound to its equipment and for the same
+      // reason: the document ID is a random token, so nothing in the path ties this mirror to anything,
+      // and owning the org in the payload proves only that the writer owns the org they.
       allow create: if isWriterOf(request.resource.data.orgId)
         && request.resource.data.get('permitId', '') is string
         && request.resource.data.get('permitId', '') != ''
@@ -669,47 +487,28 @@ service cloud.firestore {
       allow delete: if isWriterOf(resource.data.orgId);
     }
 
-
     // LOTO activity trail. Who applied and who removed a padlock on live plant: the document an
-    // investigator reads after somebody is hurt. It was described as append-only and was not —
-    // the wildcard above let any approved member rewrite an entry, a manager delete one, and
-    // anyone create one naming a colleague as the person who unlocked the machine.
+    // investigator reads after somebody is hurt.
 
-    // LOTO padlock claims. One document per padlock currently applied, keyed
-    // `${orgId}__${lockNo}`. The document ID carries the value, which is what makes the
-    // uniqueness real: two people claiming lock 12 are two writes to one document, and
-    // Firestore serialises those. Deliberately NOT added to isLegacyOrgCollection: that rule's
-    // create grant has no `resource == null`, so a claim could be overwritten in place — which
-    // is exactly the "two machines, one padlock" state the collection exists to make
-    // impossible.
+    // LOTO padlock claims.
     match /lockClaims/{claimId} {
       allow read: if resource != null && isApprovedMemberOf(resource.data.orgId);
 
-      // resource == null is the guarantee, not decoration. Without it a second claimant's
-      // create succeeds by overwriting the first, and the padlock is recorded on their machine
-      // while it physically hangs on someone else's. Checking only request.resource.data.orgId
-      // proves the writer owns the org they NAMED, never that they own the id they are writing
-      // at — and the id is `${orgId}__${lockNo}`, so without this a stranger could take out a
-      // claim at another tenant's address:
+      // resource == null is the guarantee, not decoration.
       allow create: if isWriterOf(request.resource.data.orgId)
         && resource == null
         && claimId.split('__')[0] == request.resource.data.orgId;
 
-      // Update exists only so re-asserting a claim the SAME procedure already
-      // holds is not an error (a personal→department swap can land on the same
-      // number). Pinned to the existing org and procedure so it can never be
-      // used to take a live claim over: moving a claim to another procedure is
-      // release-then-claim, which has to survive the create rule above.
+      // Update exists only so re-asserting a claim the SAME procedure already holds is not an error (a
+      // personal→department swap can land on the same number).
       allow update: if resource != null
         && isWriterOf(resource.data.orgId)
         && request.resource.data.orgId == resource.data.orgId
         && request.resource.data.procedureId == resource.data.procedureId;
 
-      // Any writer in the org may release: a padlock outliving the person who
-      // applied it is routine (shift change, someone off sick), and a claim
-      // nobody can clear strands the physical lock — the failure that teaches
-      // people to work around the system. The activity trail in /lotoEvents is
-      // where accountability lives, and it is append-only.
+      // Any writer in the org may release: a padlock outliving the person who applied it is routine
+      // (shift change, someone off sick), and a claim nobody can clear strands the physical lock — the
+      // failure that teaches people to work around the system.
       allow delete: if resource != null && isWriterOf(resource.data.orgId);
     }
 
@@ -720,29 +519,103 @@ service cloud.firestore {
         && request.resource.data.at == request.time;
       allow update, delete: if false;
     }
-    // moduleAllowed on every branch below. LOTO is the module the entitlement comment names
-    // FIRST, and it was the one module the entitlement gate could not see: these four
-    // collections are top-level, tenanted by an orgId field rather than by path, so the
-    // conjunct added to the generic /organizations/{orgId}/{col}/{docId} rule never reached
-    // them.
+    // moduleAllowed on every branch below.
     match /{legacyCol}/{docId} {
+      // '' is not a module, so a collection missing here stays open. Kept as one lookup: the generic
+      // write is near the 1000-expression ceiling, and a second call of this map would be counted twice.
+      function moduleForCollection(col) {
+        return {
+          'incidents': 'incidents', 'illnesses': 'incidents', 'injuries': 'incidents',
+          'assessments': 'hira',
+          'inspectionTemplates': 'inspections', 'inspectionRecords': 'inspections',
+          'audits': 'audit', 'auditPlans': 'audit', 'auditFindings': 'audit',
+          'capas': 'audit', 'findings': 'audit',
+          'permits': 'ptw', 'observations': 'ptw',
+          'procedures': 'loto', 'procedurePhotos': 'loto', 'locks': 'loto',
+          'technicians': 'loto', 'lotoPermits': 'loto',
+          'extinguishers': 'equipment', 'aeds': 'equipment', 'fas': 'equipment',
+          'signages': 'equipment', 'stretchers': 'equipment', 'firstAid': 'equipment',
+          'reports': 'equipment', 'defectClosures': 'equipment',
+          'mockDrills': 'drills',
+          'consultations': 'committee',
+          'trainingCourses': 'training', 'trainingRecords': 'training',
+          'trainingAssignments': 'training', 'trainingSessions': 'training',
+          'trainingRequests': 'training',
+          'documents': 'documents',
+          'erpContacts': 'emergency', 'erpLayouts': 'emergency', 'erpRescuePlans': 'emergency',
+          'objectives': 'objectives',
+          'cctvCameras': 'cctv', 'cctvDvrs': 'cctv', 'cctvMeraki': 'cctv',
+          'escalations': 'stakeholder', 'legalIssues': 'stakeholder'
+        }.get(col, '');
+      }
+
+      function moduleOn(orgId, key) {
+        return key == ''
+          || !exists(/databases/$(database)/documents/moduleEntitlements/$(orgId))
+          || get(/databases/$(database)/documents/moduleEntitlements/$(orgId))
+               .data.get('modules', {}).get(key, true) != false;
+      }
+
+      function moduleAllowed(orgId, col) {
+        return moduleOn(orgId, moduleForCollection(col));
+      }
+
+      // Manager-only decisions. Both sides are read: request.resource.data is the state
+      // after the write. .get defaults an absent field to '' so other collections skip it.
+      function decisionStates(col) {
+        return {
+          'permits': ['approved', 'rejected', 'declined'],
+          'procedures': ['approved', 'rejected', 'declined'],
+          'reports': ['approved', 'rejected', 'declined'],
+          'observations': ['approved', 'rejected', 'declined'],
+          'trainingRequests': ['approved', 'rejected', 'declined'],
+          'erpRescuePlans': ['approved', 'rejected', 'declined'],
+          'incidents': ['closed', 'verified'],
+          'illnesses': ['closed', 'verified'],
+          'capas': ['closed', 'verified'],
+          'findings': ['closed', 'verified'],
+          'audits': ['closed', 'verified'],
+          'auditFindings': ['Closed'],
+          'injuries': ['verified'],
+          'documents': ['active']
+        }.get(col, []);
+      }
+
+      function keeps(states, before, after, path) {
+        let a = before.get(path, '');
+        let b = after.get(path, '');
+        return a == b || (!(a in states) && !(b in states));
+      }
+
+      function keepsPermitDecisions(states, before, after) {
+        return keeps(states, before, after, ['engineering', 'status'])
+          && keeps(states, before, after, ['operations', 'status'])
+          && keeps(states, before, after, ['closure', 'engineering', 'status'])
+          && keeps(states, before, after, ['closure', 'operations', 'status'])
+          && keeps(states, before, after, ['extension', 'engineering', 'status'])
+          && keeps(states, before, after, ['extension', 'operations', 'status']);
+      }
+
+      function keepsDecision(col, before, after) {
+        let s = decisionStates(col);
+        return s.size() == 0
+          || (keeps(s, before, after, ['status'])
+              && keeps(s, before, after, ['approvalStatus'])
+              // incidents and illnesses call it `lifecycle`.
+              && keeps(s, before, after, ['lifecycle'])
+              && (col != 'permits' || keepsPermitDecisions(s, before, after)));
+      }
+
       // Local to this match. A helper on a parent is compiled into every sibling.
 
-      // Ported-module top-level collections (LOTO / hecp-loto). These modules scope tenancy
-      // with an `orgId` field on each document instead of an org subcollection path. Approved
-      // members of that org may read/write; managers+ may delete.
+      // Ported-module top-level collections (LOTO / hecp-loto).
       function isLegacyOrgCollection(col) {
         return col in ['procedures', 'procedurePhotos', 'locks', 'technicians'];
       }
 
-      // A procedure held by a permit. While a LOTO permit is active the procedure's locks
-      // belong to it: the permit and the procedure are written in ONE transaction (services/
-      // permitActions.js), and these two conjuncts make that the only way either can change. ·
-      // `activePermit` may be SET only in the commit that makes the permit active for THIS
-      // procedure, and CLEARED only in the commit that closes it as returned or emergency-
-      // removed (getAfter on the permit). .get(…, null) throughout: every procedure written
-      // before this field has none, and a raising rule denies — which would refuse every edit
-      // to them.
+      // A procedure held by a permit. · `activePermit` may be SET only in the commit that makes the
+      // permit active for THIS procedure, and CLEARED only in the commit that closes it as returned or
+      // emergency- removed (getAfter on the permit).
       function keepsActivePermit(orgId, procId, before, after) {
         let was = before.get('activePermit', null);
         let now = after.get('activePermit', null);
@@ -750,10 +623,7 @@ service cloud.firestore {
           || (was != null && now != null && was == now
               && after.get('lockSummary', {}).get('lockedCount', 0)
                  >= before.get('lockSummary', {}).get('lockedCount', 0)
-              // The permit copied this procedure's points at a revision. Revising
-              // (which resets it to draft) or re-deciding it while a permit holds
-              // it would leave the permit pointing at isolation steps nobody has
-              // approved, and a return that cannot find its points.
+              // The permit copied this procedure's points at a revision.
               && after.get('revision', 0) == before.get('revision', 0)
               && after.get('status', '') == before.get('status', ''))
           || (was == null && now != null
@@ -767,11 +637,9 @@ service cloud.firestore {
       allow read: if isLegacyOrgCollection(legacyCol)
         && resource != null && isApprovedMemberOf(resource.data.orgId)
         && moduleAllowed(resource.data.orgId, legacyCol);
-      // isWriterOf, not isApprovedMemberOf. These collections were the one place
-      // the read-only auditor role was still only read-only in React: an auditor
-      // could edit the isolation procedure they were auditing, and the LOTO
-      // adapter maps auditor onto its `technician` role, which carries
-      // loto.perform — so the buttons were there too. See the note on isWriterOf.
+      // isWriterOf, not isApprovedMemberOf. These collections were the one place the read-only auditor
+      // role was still only read-only in React: an auditor could edit the isolation procedure they were
+      // auditing, and the LOTO adapter maps auditor onto its `technician` role, which carries.
       allow create: if isLegacyOrgCollection(legacyCol)
         && isWriterOf(request.resource.data.orgId)
         && moduleAllowed(request.resource.data.orgId, legacyCol)
@@ -784,9 +652,9 @@ service cloud.firestore {
             || (request.resource.data.get('licenceExp', null) == null
                 && request.resource.data.get('licenceNo', '') == ''
                 && request.resource.data.get('licencePhotoPath', '') == ''));
-      // Pinned the same way as /qr above: the post-state branch let one org
-      // capture another's document by rewriting orgId to its own in a single
-      // update, which for LOTO means taking over a live isolation procedure.
+      // Pinned the same way as /qr above: the post-state branch let one org capture another's document
+      // by rewriting orgId to its own in a single update, which for LOTO means taking over a live
+      // isolation procedure.
       allow update: if isLegacyOrgCollection(legacyCol)
         && resource != null
         && isWriterOf(resource.data.orgId)
@@ -809,9 +677,8 @@ service cloud.firestore {
                 && request.resource.data.get('useCount', 0) == resource.data.get('useCount', 0)
                 && request.resource.data.get('openPermitId', '') == resource.data.get('openPermitId', '')
                 && request.resource.data.get('history', []) == resource.data.get('history', [])));
-      // A procedure a live permit has locked is not deletable: the permit would
-      // be left active against a document that no longer exists, with its
-      // padlock claims stranded.
+      // A procedure a live permit has locked is not deletable: the permit would be left active against a
+      // document that no longer exists, with its padlock claims stranded.
       allow delete: if isLegacyOrgCollection(legacyCol)
         && resource != null && isManagerOf(resource.data.orgId)
         && (legacyCol != 'procedures' || resource.data.get('activePermit', null) == null);
@@ -820,11 +687,8 @@ service cloud.firestore {
     // Server-only top-level paths. Nothing here grants them, and isLegacyOrgCollection does not
     // name them, so the default deny holds.
 
-
-    // Platform ownership. One document per person who operates the platform. Existence IS the
-    // grant; the body is only there so a human reading the console can tell whose uid it is.
-    // The only ways in are the Firebase console and the Admin SDK, both of which already
-    // require project-level access, which is the same authority this collection is standing in
+    // Platform ownership. The only ways in are the Firebase console and the Admin SDK, both of which
+    // already require project-level access, which is the same authority this collection is standing in
     // for.
     match /platformAdmins/{uid} {
       allow get: if isSignedIn() && request.auth.uid == uid;
@@ -837,23 +701,16 @@ service cloud.firestore {
     match /moduleEntitlements/{orgId} {
       allow get: if isApprovedMemberOf(orgId) || isPlatformAdmin();
       allow list: if isPlatformAdmin();
-      // The shape is pinned so a stray write cannot park unrelated data in a
-      // document every member of the tenant can read.
-      // hasAll BEFORE the field is read. Reading an absent field raises rather
-      // than evaluating false — the same shape that turned a missing orgId on a
-      // QR mirror into a denial nobody could explain — so a payload with no
-      // `modules` key has to be refused by the key check, not by touching it.
+      // Pinned shape. Reading an absent field raises, which denies, so every read below uses .get.
       allow create, update: if isPlatformAdmin()
         && request.resource.data.keys().hasAll(['modules', 'updatedBy'])
         && request.resource.data.keys().hasOnly(['modules', 'updatedAt', 'updatedBy', 'updatedByEmail'])
         && request.resource.data.modules is map
         && request.resource.data.updatedBy == request.auth.uid;
-      // Deleting the document restores the default — the full product — which
-      // is a legitimate thing for an operator to want, and is not a way to
-      // gain anything: it is the state every org starts in.
+      // Deleting the document restores the default — the full product — which is a legitimate thing for
+      // an operator to want, and is not a way to gain anything: it is the state every org starts in.
       allow delete: if isPlatformAdmin();
     }
-
 
     // ── User profiles ─────────────────────────────────────────────────────────
     match /users/{uid} {
@@ -869,10 +726,7 @@ service cloud.firestore {
         return passwordGateOn(request.resource.data) == passwordGateOn(resource.data);
       }
 
-      // An admin may impose the requirement (false → true). Nobody writing as a
-      // client may lift it (true → false), including the account itself and an
-      // admin editing somebody else. Replacing the whole document, or deleting
-      // it and creating it again without the flag, is the same bypass.
+      // An admin may impose the requirement (false → true).
       function keepsPasswordGate() {
         return !passwordGateOn(resource.data) || passwordGateOn(request.resource.data);
       }
@@ -884,12 +738,9 @@ service cloud.firestore {
             || (isApprovedMemberOf(resource.data.orgId)
                 && resource.data.orgId == myProfile().orgId));
 
-      // Create your own profile (joining as a pending member, or — if you just created the org
-      // — as its approved admin), OR an org admin provisions an employee account for their own
-      // org (never directly as admin; admins are promoted afterwards through the managed role
-      // update below). The approved-admin self-create exists for one moment only: registering a
-      // NEW organization, which writes the org doc and this user doc in one batch. getAfter
-      // pins that: within the batch the org must exist with createdBy == this caller.
+      // Create your own profile (joining as a pending member, or — if you just created the org — as its
+      // approved admin), OR an org admin provisions an employee account for their own org (never
+      // directly as admin; admins are promoted afterwards through the managed role update below)..
       function noSelfGrantedScope() {
         return request.resource.data.get('siteId', '') == ''
           && request.resource.data.get('access', {}).get('sites', []).size() == 0
@@ -897,12 +748,7 @@ service cloud.firestore {
           && request.resource.data.get('access', {}).get('entities', []).size() == 0;
       }
 
-      // department and dept are the same kind of grant as siteId. committeeRowCloseOk closes a
-      // department-owned action when myDepartment() matches, and myDepartment() reads
-      // `department`, then `dept` when department was never set. setUserStatus writes { status
-      // } and nothing else, so a department a joiner put on their own pending profile becomes
-      // that grant the moment an admin approves them. Both keys have to be empty on a self-
-      // create.
+      // department and dept are the same kind of grant as siteId.
       function noSelfAssertedDepartment() {
         return request.resource.data.get('department', '') == ''
           && request.resource.data.get('dept', '') == '';
@@ -913,20 +759,14 @@ service cloud.firestore {
         && (
           (request.auth.uid == uid
             && noSelfAssertedDepartment()
-            // 'member', not merely "not admin". A self-joining stranger used to
-            // be able to name themselves 'manager' while pending, and approval
-            // only flips status — nothing ever re-asserts the role — so the
-            // admin clicking Approve on what looked like a routine join request
-            // was silently granting the elevated role the joiner had chosen for
-            // themselves. Promotion is the admin's to make, afterwards.
+            // 'member', not merely "not admin". Promotion is the admin's to make, afterwards.
             && ((request.resource.data.status == 'pending' && request.resource.data.role == 'member')
                 || (request.resource.data.status == 'approved'
                     && request.resource.data.role == 'admin'
                     && getAfter(/databases/$(database)/documents/organizations/$(request.resource.data.orgId)).data.createdBy == request.auth.uid)))
-          // mustChangePassword has to be true on the way in. Without that, an
-          // admin who cannot clear the flag (keepsPasswordGate) could still
-          // delete the profile and create it again with the flag absent, and
-          // the temporary password would outlive the requirement.
+          // mustChangePassword has to be true on the way in. Without that, an admin who cannot clear the
+          // flag (keepsPasswordGate) could still delete the profile and create it again with the flag
+          // absent, and the temporary password would outlive the requirement.
           || (isAdminOf(request.resource.data.orgId)
               && request.resource.data.role != 'admin'
               && request.resource.data.get('mustChangePassword', false) == true)
@@ -937,11 +777,8 @@ service cloud.firestore {
       allow update: if isSignedIn()
         && request.resource.data.orgId == resource.data.orgId
         && (
-          // `access` and `siteId` are pinned alongside role and status, because they are no
-          // less a privilege than role is. They decide which sites a person resolves to, and
-          // site-level documents are now readable only by people whose access reaches the site
-          // — so a member who can rewrite their own access grants themselves every restricted
-          // document in the org from the browser console, without ever touching their role.
+          // `access` and `siteId` are pinned alongside role and status, because they are no less a privilege
+          // than role is.
           (request.auth.uid == uid
             && request.resource.data.role == resource.data.role
             && request.resource.data.status == resource.data.status
@@ -958,16 +795,92 @@ service cloud.firestore {
 
     // ── Organizations & all org-scoped module data ────────────────────────────
     match /organizations/{orgId} {
-      // Local to this match. A helper on a parent is compiled into every sibling.
-
-      // The encryption keyset. organizations/{orgId}/meta/cryptoKeys holds the organization's
-      // wrapped data keys (functions/lib/dataKeys.js). NO CLIENT OPERATION IS ALLOWED ON IT —
-      // not read, not write. Why it is a conjunct on the generic rules rather than a `match` of
-      // its own: rules are a permissive union, so a narrow match denying everything restricts
-      // nothing while `match /{col}/{docId}` still grants the same access.
-      function notKeyset(col, docId) {
-        return !(col == 'meta' && docId == 'cryptoKeys');
+      // '' is not a module, so a collection missing here stays open. Kept as one lookup: the generic
+      // write is near the 1000-expression ceiling, and a second call of this map would be counted twice.
+      function moduleForCollection(col) {
+        return {
+          'incidents': 'incidents', 'illnesses': 'incidents', 'injuries': 'incidents',
+          'assessments': 'hira',
+          'inspectionTemplates': 'inspections', 'inspectionRecords': 'inspections',
+          'audits': 'audit', 'auditPlans': 'audit', 'auditFindings': 'audit',
+          'capas': 'audit', 'findings': 'audit',
+          'permits': 'ptw', 'observations': 'ptw',
+          'procedures': 'loto', 'procedurePhotos': 'loto', 'locks': 'loto',
+          'technicians': 'loto', 'lotoPermits': 'loto',
+          'extinguishers': 'equipment', 'aeds': 'equipment', 'fas': 'equipment',
+          'signages': 'equipment', 'stretchers': 'equipment', 'firstAid': 'equipment',
+          'reports': 'equipment', 'defectClosures': 'equipment',
+          'mockDrills': 'drills',
+          'consultations': 'committee',
+          'trainingCourses': 'training', 'trainingRecords': 'training',
+          'trainingAssignments': 'training', 'trainingSessions': 'training',
+          'trainingRequests': 'training',
+          'documents': 'documents',
+          'erpContacts': 'emergency', 'erpLayouts': 'emergency', 'erpRescuePlans': 'emergency',
+          'objectives': 'objectives',
+          'cctvCameras': 'cctv', 'cctvDvrs': 'cctv', 'cctvMeraki': 'cctv',
+          'escalations': 'stakeholder', 'legalIssues': 'stakeholder'
+        }.get(col, '');
       }
+
+      function moduleOn(orgId, key) {
+        return key == ''
+          || !exists(/databases/$(database)/documents/moduleEntitlements/$(orgId))
+          || get(/databases/$(database)/documents/moduleEntitlements/$(orgId))
+               .data.get('modules', {}).get(key, true) != false;
+      }
+
+      function moduleAllowed(orgId, col) {
+        return moduleOn(orgId, moduleForCollection(col));
+      }
+
+      // Manager-only decisions. Both sides are read: request.resource.data is the state
+      // after the write. .get defaults an absent field to '' so other collections skip it.
+      function decisionStates(col) {
+        return {
+          'permits': ['approved', 'rejected', 'declined'],
+          'procedures': ['approved', 'rejected', 'declined'],
+          'reports': ['approved', 'rejected', 'declined'],
+          'observations': ['approved', 'rejected', 'declined'],
+          'trainingRequests': ['approved', 'rejected', 'declined'],
+          'erpRescuePlans': ['approved', 'rejected', 'declined'],
+          'incidents': ['closed', 'verified'],
+          'illnesses': ['closed', 'verified'],
+          'capas': ['closed', 'verified'],
+          'findings': ['closed', 'verified'],
+          'audits': ['closed', 'verified'],
+          'auditFindings': ['Closed'],
+          'injuries': ['verified'],
+          'documents': ['active']
+        }.get(col, []);
+      }
+
+      function keeps(states, before, after, path) {
+        let a = before.get(path, '');
+        let b = after.get(path, '');
+        return a == b || (!(a in states) && !(b in states));
+      }
+
+      function keepsPermitDecisions(states, before, after) {
+        return keeps(states, before, after, ['engineering', 'status'])
+          && keeps(states, before, after, ['operations', 'status'])
+          && keeps(states, before, after, ['closure', 'engineering', 'status'])
+          && keeps(states, before, after, ['closure', 'operations', 'status'])
+          && keeps(states, before, after, ['extension', 'engineering', 'status'])
+          && keeps(states, before, after, ['extension', 'operations', 'status']);
+      }
+
+      function keepsDecision(col, before, after) {
+        let s = decisionStates(col);
+        return s.size() == 0
+          || (keeps(s, before, after, ['status'])
+              && keeps(s, before, after, ['approvalStatus'])
+              // incidents and illnesses call it `lifecycle`.
+              && keeps(s, before, after, ['lifecycle'])
+              && (col != 'permits' || keepsPermitDecisions(s, before, after)));
+      }
+
+      // Local to this match. A helper on a parent is compiled into every sibling.
 
       // On a create there is no before state; an empty map defaults every field,
       // so creating a record already in a decided state is a move like any other.
@@ -975,52 +888,15 @@ service cloud.firestore {
         return resource == null ? {} : resource.data;
       }
 
-      // Site-scoped document visibility. A document filed at Site level is readable only by
-      // people whose access reaches that site. Everything else in the library stays org-wide,
-      // which is what it was before, so this narrows one level and nothing else.
-      function isElevatedOf(orgId) {
-        return isApprovedMemberOf(orgId)
-          && myProfile().role in ['admin', 'manager', 'auditor'];
-      }
-
-      // Proof of scan. The public write surfaces exist for one person: someone standing in
-      // front of an asset with their phone. Nothing used to check that.
-      function hasToken(data) {
-        return data.keys().hasAll(['token']) && data.token is string && data.token.size() > 0;
-      }
-
-      function scannedAsset(orgId, data) {
-        return hasToken(data)
-          && exists(/databases/$(database)/documents/qr/$(data.token))
-          && get(/databases/$(database)/documents/qr/$(data.token)).data.orgId == orgId
-          // A unit in the recycle bin keeps its mirror so the sticker still
-          // resolves, but it is not in service. .get defaults an older mirror
-          // that has no deletedAt to null, so a live label keeps working.
-          && get(/databases/$(database)/documents/qr/$(data.token)).data.get('deletedAt', null) == null;
-      }
-
-      function scannedPermit(orgId, data) {
-        return hasToken(data)
-          && exists(/databases/$(database)/documents/permitQr/$(data.token))
-          && get(/databases/$(database)/documents/permitQr/$(data.token)).data.orgId == orgId;
-      }
-
-      function scannedAssetField(data, field) {
-        return get(/databases/$(database)/documents/qr/$(data.token)).data[field];
-      }
-
       allow read: if isApprovedMemberOf(orgId);
       allow create: if isSignedIn()
         && request.resource.data.createdBy == request.auth.uid;
       allow update, delete: if isAdminOf(orgId);
 
-      // Append-only audit trail — create only, never edit or delete. Declared before the
-      // generic rule; the generic rule below excludes auditLogs so this is the only rule that
-      // governs it.
+      // Append-only audit trail — create only, never edit or delete.
       match /auditLogs/{logId} {
-        // "exposedToAgent: changed" may sit in a longer summary. A value, or
-        // anything after the word changed other than "." or ";", may not.
-        // RE2 has no lookahead, so each wrong letter is its own pattern.
+        // "exposedToAgent: changed" may sit in a longer summary. A value, or anything after the word
+        // changed other than "." or ";", may not.
         function auditSummaryHidesClinical() {
           let s = request.resource.data.get('summary', '');
           return !s.matches('.*exposedToAgent:.*')
@@ -1035,40 +911,44 @@ service cloud.firestore {
                 && !s.matches('.*exposedToAgent: changed[^.;].*'));
         }
         allow read: if isApprovedMemberOf(orgId);
-        // actorUid pins WHO. `at == request.time` pins WHEN, and without it a member could
-        // write a real entry under their own uid, dated last Tuesday, describing an action
-        // taken by someone else — every human reading the page sees a plausible backdated
-        // event, and only someone querying Firestore directly could tell. A strict pin would
-        // therefore stop recording those users SILENTLY — losing the trail is worse than a soft
-        // name. .get() with a default for the same reason it is used elsewhere: a profile
+        // actorUid pins WHO. .get() with a default for the same reason it is used elsewhere: a profile
         // without a name would otherwise raise, which denies.
         allow create: if isApprovedMemberOf(orgId)
           && request.resource.data.actorUid == request.auth.uid
           && request.resource.data.at == request.time
-          // .get() on BOTH sides. An entry written without an actorName at all
-          // is legitimate — several writers omit it — and reading an absent key
-          // directly raises, which denies. Getting that wrong here would have
-          // silently stopped recording, which is the one failure an audit trail
-          // must not have.
+          // .get() on BOTH sides. An entry written without an actorName at all is legitimate — several
+          // writers omit it — and reading an absent key directly raises, which denies.
           && (request.resource.data.get('actorName', '') == myProfile().get('name', '')
               || request.resource.data.get('actorName', '') == 'Unknown'
               || request.resource.data.get('actorName', '') == '')
           // exposedToAgent is the illness field the health gate exists for.
-          // /auditLogs is readable by every approved member, so a summary of
-          // the form "exposedToAgent: old → new" publishes it. The only legal
-          // mention is "exposedToAgent: changed". Historic rows already stored
-          // are not rewritten here.
           && auditSummaryHidesClinical();
         allow update, delete: if false;
       }
 
-      // One open report per defect per unit, enforced as a document rather than a check. The QR
-      // reporter is not signed in and must never be able to read the org's reports, so the
-      // client cannot look for a duplicate before submitting — but creating a document that
-      // already exists fails by itself: the write IS the check. Split so the auditor keeps the
-      // read and loses the write: pre-creating a lock, or deleting one, is how the DoS above
-      // worked, and "read-only" has to mean it here too.
+      // One open report per defect per unit, enforced as a document rather than a check. Split so the
+      // auditor keeps the read and loses the write: pre-creating a lock, or deleting one, is how the DoS
+      // above worked, and "read-only" has to mean it here too.
       match /defectLocks/{lockId} {
+        // Public create must present a live token for this org. .get defaults deletedAt
+        // so a mirror written before that field still resolves.
+        function hasToken(data) {
+          return data.keys().hasAll(['token']) && data.token is string && data.token.size() > 0;
+        }
+
+        function scannedAsset(orgId, data) {
+          return hasToken(data)
+            && exists(/databases/$(database)/documents/qr/$(data.token))
+            && get(/databases/$(database)/documents/qr/$(data.token)).data.orgId == orgId
+            // A unit in the recycle bin keeps its mirror so the sticker still resolves, but it is not in
+            // service.
+            && get(/databases/$(database)/documents/qr/$(data.token)).data.get('deletedAt', null) == null;
+        }
+
+        function scannedAssetField(data, field) {
+          return get(/databases/$(database)/documents/qr/$(data.token)).data[field];
+        }
+
         allow read: if isApprovedMemberOf(orgId);
         allow delete: if isWriterOf(orgId);
         allow create: if request.resource.data.keys().hasOnly(['extId', 'defectType', 'createdAt', 'token'])
@@ -1091,14 +971,34 @@ service cloud.firestore {
         allow update: if false;
       }
 
-      // Defect reports raised by scanning an equipment QR code. Whoever spots a discharged
-      // extinguisher is rarely a portal user, and requiring an account first is how defects go
-      // unreported — so an unauthenticated create is allowed, but only in the exact shape the
-      // QR page produces: a pending defect report that an approver must still accept. It was
-      // the broader match of the pair: it let an AUDITOR file a report, and once approving one
-      // became a manager's act it would have let any member create a report that was already
-      // approved and skip the queue entirely.
+      // Defect reports raised by scanning an equipment QR code. It was the broader match of the pair: it
+      // let an AUDITOR file a report, and once approving one became a manager's act it would have let
+      // any member create a report that was already approved and skip the queue entirely.
       match /reports/{reportId} {
+        // Null passes. .size() on a present null raises, and a raising rule denies.
+        function boundedText(v, max) {
+          return v == null || (v is string && v.size() <= max);
+        }
+
+        // Public create must present a live token for this org. .get defaults deletedAt
+        // so a mirror written before that field still resolves.
+        function hasToken(data) {
+          return data.keys().hasAll(['token']) && data.token is string && data.token.size() > 0;
+        }
+
+        function scannedAsset(orgId, data) {
+          return hasToken(data)
+            && exists(/databases/$(database)/documents/qr/$(data.token))
+            && get(/databases/$(database)/documents/qr/$(data.token)).data.orgId == orgId
+            // A unit in the recycle bin keeps its mirror so the sticker still resolves, but it is not in
+            // service.
+            && get(/databases/$(database)/documents/qr/$(data.token)).data.get('deletedAt', null) == null;
+        }
+
+        function scannedAssetField(data, field) {
+          return get(/databases/$(database)/documents/qr/$(data.token)).data[field];
+        }
+
         allow create: if (
               request.resource.data.keys().hasOnly([
                 'extId', 'extLabel', 'kind', 'defectType', 'newStatus', 'note',
@@ -1107,20 +1007,13 @@ service cloud.firestore {
                 'assetKind', 'assetRefId', 'assetLabel', 'defect',
               ])
               && request.resource.data.source == 'qr'
-              // The scanned token must exist and belong to THIS org. Without it,
-              // orgId was just a path segment an anonymous writer picked, so a
-              // stranger could file into any tenant's approval queue.
+              // The scanned token must exist and belong to THIS org.
               && scannedAsset(orgId, request.resource.data)
               && request.resource.data.approvalStatus == 'pending'
               && request.resource.data.reportedBy == 'public'
               && request.resource.data.note is string
               && request.resource.data.note.size() <= 500
-              // `note` was the only free string anyone had bounded, so every
-              // other one on this ANONYMOUS branch was unbounded — a person
-              // holding one scanned token could push a megabyte per write into
-              // the org's approval queue, repeatedly, for free. These are labels
-              // and roles copied off a sticker; 200 is generous for all of them.
-              // .get() defaults an absent optional field to '', which passes.
+              // Anonymous strings are bounded. .get defaults an absent optional field to ''.
               && boundedText(request.resource.data.get('extLabel', ''), 200)
               && boundedText(request.resource.data.get('assetLabel', ''), 200)
               && boundedText(request.resource.data.get('defectType', ''), 200)
@@ -1128,10 +1021,9 @@ service cloud.firestore {
               && boundedText(request.resource.data.get('reportedByName', ''), 120)
               && boundedText(request.resource.data.get('reporterRole', ''), 60)
               && (
-                // An extinguisher defect, keyed by the unit it was raised
-                // against — and that unit must be the one the token names,
-                // otherwise a single scanned QR let someone report faults on
-                // every other asset in the org.
+                // An extinguisher defect, keyed by the unit it was raised against — and that unit must be the one
+                // the token names, otherwise a single scanned QR let someone report faults on every other asset in
+                // the org.
                 (
                   request.resource.data.kind == 'defect'
                   && request.resource.data.extId is string
@@ -1139,13 +1031,7 @@ service cloud.firestore {
                   && request.resource.data.extId.size() < 200
                   && scannedAssetField(request.resource.data, 'extId') == request.resource.data.extId
                 )
-                // An AED, fire-alarm or stretcher fault. Same public surface,
-                // different sheet: these carry no extId, so the extinguisher
-                // clause above can never admit them and they need their own
-                // shape. assetKind is pinned to the known kinds because
-                // approving one writes to the matching collection — an
-                // unrecognised kind would target nothing — and it must agree
-                // with the mirror too.
+                // An AED, fire-alarm or stretcher fault.
                 || (
                   request.resource.data.kind == 'asset_defect'
                   && request.resource.data.assetKind in ['aed', 'fas', 'stretcher']
@@ -1162,11 +1048,25 @@ service cloud.firestore {
           );
       }
 
-      // Observations logged by scanning a work permit's QR code. Whoever walks past unsafe hot
-      // work is usually not a portal user, and requiring an account first is how it goes
-      // unreported — so an unauthenticated create is allowed, but only in the exact shape the
-      // public permit page writes.
+      // Observations logged by scanning a work permit's QR code.
       match /observations/{obsId} {
+        // Null passes. .size() on a present null raises, and a raising rule denies.
+        function boundedText(v, max) {
+          return v == null || (v is string && v.size() <= max);
+        }
+
+        // Public create must present a live token for this org. .get defaults deletedAt
+        // so a mirror written before that field still resolves.
+        function hasToken(data) {
+          return data.keys().hasAll(['token']) && data.token is string && data.token.size() > 0;
+        }
+
+        function scannedPermit(orgId, data) {
+          return hasToken(data)
+            && exists(/databases/$(database)/documents/permitQr/$(data.token))
+            && get(/databases/$(database)/documents/permitQr/$(data.token)).data.orgId == orgId;
+        }
+
         allow create: if (
               request.resource.data.keys().hasOnly([
                 'permitId', 'permitNo', 'docId', 'token', 'type', 'note',
@@ -1185,11 +1085,8 @@ service cloud.firestore {
               && request.resource.data.permitId.size() < 200
               && request.resource.data.note is string
               && request.resource.data.note.size() <= 500
-              // note and permitId were the only two anyone had bounded, so the other free
-              // strings on this ANONYMOUS branch had no ceiling at all. Whoever photographs a
-              // permit QR taped to a scaffold holds a valid token indefinitely, and
-              // scannedPermit() only proves the token exists and belongs to the org — it does
-              // not bound what rides in beside it.
+              // note and permitId were the only two anyone had bounded, so the other free strings on this
+              // ANONYMOUS branch had no ceiling at all.
               && boundedText(request.resource.data.get('permitNo', ''), 120)
               && boundedText(request.resource.data.get('docId', ''), 120)
               && boundedText(request.resource.data.get('observedByName', ''), 120)
@@ -1198,40 +1095,22 @@ service cloud.firestore {
           );
       }
 
-
       match /lotoPermits/{permitId} {
         // Local to this match. A helper on a parent is compiled into every sibling.
 
         // A length cap that survives a null. The caps on the public QR surface were written as
-        // `data.get('field', '').size() <= n`, and .get() only substitutes the default when the
-        // key is ABSENT. reportPayload writes `newStatus: x || null` — the key is present,
-        // holding null — so .size() was called on null, which raises, and a rule that raises
-        // denies.
+        // `data.get('field', '').size() <= n`, and .get() only substitutes the default when the key is
+        // ABSENT.
         function shortText(v, max) {
           return !(v is string) || v.size() <= max;
         }
 
-        // LOTO permits (per-job layer over the isolation procedures).
-        // organizations/{orgId}/lotoPermits/{permitNo}. PATH-tenanted, unlike the root
-        // `procedures`/`locks` collections (tenanted by an orgId FIELD, see docs/LOTO-
-        // COLLECTIONS.md): the org comes from the path, so the one thing the legacy rules had
-        // to pin — the orgId in the payload — cannot be lied about here. Rules are a permissive
-        // union, so a narrow block here restricts nothing unless that rule steps aside:
-        // `lotoPermits` is excluded in structuralOnly(), which both generic matches (and the
-        // recursive {sub=**} twin that would otherwise cover /events and /attachments) share.
-        // THE STATUS MACHINE is a whitelist of moves, each with the exact set of keys it may
-        // change (`diff().affectedKeys().hasOnly(...)`).
+        // lotoPermits is excluded from structuralOnly. A narrower match cannot take away a wider grant.
         function lotoPermitAdmin() {
           return isAdminOf(orgId);
         }
 
-        // Approve, extend and emergency-remove are not org-wide. An Admin whose
-        // profile names no site and no grant still reaches every permit — that
-        // is the unrestricted administrator, and the case the self-approval
-        // escape hatch is for when they are the only one. An Admin posted to a
-        // site, or granted sites or entities, reaches a permit only when that
-        // site or that entity is the permit's. A region grant is not enough:
-        // the decision was specified as the permit's site or its entity.
+        // Approve, extend and emergency-remove are not org-wide.
         function lotoPermitAdminOf(b) {
           let p = myProfile();
           let a = p.get('access', {});
@@ -1245,10 +1124,6 @@ service cloud.firestore {
             && (p.get('siteId', '') == site || a.get('sites', []).hasAny([site]));
           let entityOk = entity != '' && a.get('entities', []).hasAny([entity]);
           return lotoPermitAdmin() && (unrestricted || siteOk || entityOk);
-        }
-
-        function lotoPermitClosed(s) {
-          return s in ['returned', 'rejected', 'withdrawn', 'emergency_removed'];
         }
 
         // Requester, a named internal person, or an admin: the people the permit
@@ -1289,9 +1164,8 @@ service cloud.firestore {
             && d.requestedBy == request.auth.uid
             && d.requestedAt == request.time
             && d.updatedAt == request.time
-            // The number is the document id, and it is the counter's value: the
-            // counter transaction and this create are one commit (getAfter), so
-            // no client can choose a number or reuse one.
+            // The number is the document id, and it is the counter's value: the counter transaction and this
+            // create are one commit (getAfter), so no client can choose a number or reuse one.
             && d.permitNo == permitId
             && permitId.matches('^LP-' + year + '-[0-9]{4,}$')
             && d.permitSeq is int
@@ -1313,25 +1187,16 @@ service cloud.firestore {
             && d.locks is list && d.locks.size() == d.pointKeys.size()
             && d.pointCount == d.pointKeys.size()
             && d.get('isolationPoints', []).size() == d.pointCount
-            // Every permit names an approved procedure of its equipment. The old
-            // "other / tag-only" type, which carried no procedure and no points,
-            // is not a work type any more.
+            // Every permit names an approved procedure of its equipment.
             && lotoPermitProcOk(d)
-            // A group claim already spends the expression budget on the number
-            // register. Licence and contractor checks run on every other permit;
-            // a group permit's point locks are department locks (no techId) and
-            // its contractors are checked by the form. Naming a technician is
-            // refused on the ordinary path, which is every permit that is not a
-            // group claim.
+            // A group claim already spends the expression budget on the number register.
             && (d.get('groupLock', null) == null
                 ? (lotoTechsOk(d) && lotoVendorsOk(d))
                 : lotoGroupOk(d, permitId));
         }
 
-        // A permit that isolates equipment names an APPROVED procedure of THIS org, at the
-        // revision it was raised against, and takes its site, region and entity from it.
-        // Reading them from the procedure is what stops a requester filing against one plant
-        // under another's scope — the scope decides who is mailed.
+        // A permit that isolates equipment names an APPROVED procedure of THIS org, at the revision it was
+        // raised against, and takes its site, region and entity from it.
         function lotoSettingsPath() {
           return /databases/$(database)/documents/organizations/$(orgId)/lotoSettings/shifts;
         }
@@ -1371,9 +1236,8 @@ service cloud.firestore {
             : lotoDefaultShiftOk(d);
         }
 
-        // Group lockout on a permit: hecp-loto's shape (box or hasp, primary
-        // first, one personal lock per member). The group number is a register
-        // row whose openPermitId is claimed in this same commit.
+        // Group lockout on a permit: hecp-loto's shape (box or hasp, primary first, one personal lock per
+        // member).
         function lotoMemberOk(m) {
           return m.keys().hasOnly(['uid', 'name', 'lockNo'])
             && m.uid is string && m.uid.size() > 0 && m.uid.size() <= 128
@@ -1416,10 +1280,8 @@ service cloud.firestore {
             || getAfter(lotoGroupRef(b.groupLock.groupNo)).data.openPermitId == '';
         }
 
-        // A lock that names a technician is blocked unless that technician's
-        // licence expiry is still in the future. An empty techId is a department
-        // lock and is not a person. licenceExp stays readable so this check does
-        // not depend on the sealed licence number.
+        // A lock that names a technician is blocked unless that technician's licence expiry is still in
+        // the future.
         function lotoTechLicenced(id) {
           return id == '' || (
             get(/databases/$(database)/documents/technicians/$(id)).data.orgId == orgId
@@ -1465,9 +1327,7 @@ service cloud.firestore {
             && d.equipment == pr.equipment;
         }
 
-        // Approve / reject. Admin only, never on a document that is not waiting,
-        // and not the requester's own request unless the approver says why there
-        // was nobody else (the UI offers it only when no other admin exists).
+        // Approve / reject.
         function lotoPermitDecision(b, a, changed) {
           let self = a.approval.by == b.requestedBy;
           let sole = self
@@ -1497,12 +1357,9 @@ service cloud.firestore {
             && lotoGroupFreed(b);
         }
 
-        // approved -> active. The permit may start only with a scan recorded for
-        // EVERY isolation point, inside its window, and only in the same commit
-        // that stamps the procedure with this permit and locks all its points
-        // (getAfter on the procedure). The procedure side is judged by
-        // keepsActivePermit below, so neither document can be written without the
-        // other agreeing.
+        // approved -> active. The permit may start only with a scan recorded for EVERY isolation point,
+        // inside its window, and only in the same commit that stamps the procedure with this permit and
+        // locks all its points (getAfter on the procedure).
         function lotoPermitStart(permitId, b, a, changed) {
           return lotoPermitParty(b)
             && b.status == 'approved'
@@ -1526,12 +1383,7 @@ service cloud.firestore {
                     && getAfter(lotoPermitProc(b.procedureId)).data.lockSummary.lockedCount == b.pointCount));
         }
 
-        // active -> active with a later end. Admin only; the extension is capped at
-        // a day past the old end and appends exactly one record.
-        // Only an Admin moves the end past the shift, and the new end is one
-        // record on extensions: who, why, the previous end and the new one.
-        // `reason` is sealed, so the rule checks that a string is there and long
-        // enough to be either a sentence or ciphertext, not the plaintext.
+        // active -> active with a later end.
         function lotoPermitExtend(b, a, changed) {
           let n = a.extensions[a.extensions.size() - 1];
           return lotoPermitAdminOf(b)
@@ -1553,10 +1405,8 @@ service cloud.firestore {
             && n.reason.size() >= 10;
         }
 
-        // Both ways out of active release every lock in the commit that closes the
-        // permit, and say so on the procedure (activePermit cleared, nothing
-        // locked). A permit cannot be closed while the equipment is still locked
-        // to it, nor the equipment freed while the permit stays active.
+        // Both ways out of active release every lock in the commit that closes the permit, and say so on
+        // the procedure (activePermit cleared, nothing locked).
         function lotoPermitReleased(b) {
           return b.pointCount == 0
             || (getAfter(lotoPermitProc(b.procedureId)).data.get('activePermit', null) == null
@@ -1651,11 +1501,9 @@ service cloud.firestore {
             && a.photoRedo.note.size() > 0;
         }
 
-        // Dispatch on the status being LEFT, so a request is judged by the one or
-        // two moves that can start from it. Trying every move in turn spent the
-        // whole 1000-expression budget on a denied write (each isAdminOf is a
-        // profile read plus four comparisons), which made the denial real for the
-        // wrong reason and left no headroom for a legitimate write.
+        // Dispatch on the status being LEFT, so a request is judged by the one or two moves that can start
+        // from it. Trying every move in turn spent the whole 1000-expression budget on a denied write
+        // (each isAdminOf is a profile read plus four comparisons), which made the denial real.
         function lotoPermitUpdate(permitId) {
           let b = resource.data;
           let a = request.resource.data;
@@ -1691,11 +1539,15 @@ service cloud.firestore {
         // Never from a client. The one-year purge (functions) is the only
         // deletion, and the Admin SDK does not consult these rules.
         allow delete: if false;
+      }
 
-        // The permit's own timeline. Append-only: who did what, stamped by the
-        // server. Written in the same commit as the move it records, so `get`
-        // sees the permit BEFORE that move — an event can be added to a permit
-        // that is still open and never to one that has already closed.
+      // Events and attachments only need the closed-status check. The permit
+      // machine is the sibling match above, so it is not compiled into these two.
+      match /lotoPermits/{permitId} {
+        function lotoPermitClosed(s) {
+          return s in ['returned', 'rejected', 'withdrawn', 'emergency_removed'];
+        }
+
         match /events/{eventId} {
           allow read: if isApprovedMemberOf(orgId) && moduleOn(orgId, 'loto');
           allow create: if isWriterOf(orgId) && moduleOn(orgId, 'loto')
@@ -1724,11 +1576,6 @@ service cloud.firestore {
       }
 
       // Shift clocks, one document for the org, keyed by site inside `sites`.
-      // Members read it so the permit form can offer the right shifts. Only an
-      // Admin writes it. The permit create rule reads the same document.
-      // Group lockout numbers. Admin creates them empty. A permit claims
-      // openPermitId in the same commit that names the number, and clears it
-      // in the commit that closes. Description edits are Admin only.
       match /lotoGroupNumbers/{no} {
         allow read: if isApprovedMemberOf(orgId) && moduleOn(orgId, 'loto');
         allow create: if isAdminOf(orgId) && moduleOn(orgId, 'loto')
@@ -1769,9 +1616,9 @@ service cloud.firestore {
         allow delete: if false;
       }
 
-      // Document-id counters, one document per kind, holding a single integer. An auditor
-      // bumping a counter cannot forge a record, but it would burn a reference number out of a
-      // sequence that is quoted to a regulator.
+      // Document-id counters, one document per kind, holding a single integer. An auditor bumping a
+      // counter cannot forge a record, but it would burn a reference number out of a sequence that is
+      // quoted to a regulator.
       match /docSeq/{kind} {
         allow read: if isApprovedMemberOf(orgId);
         allow create: if isWriterOf(orgId)
@@ -1785,23 +1632,17 @@ service cloud.firestore {
         allow delete: if false;
       }
 
-      // The legacy reference-number counters. Same guarantee as /docSeq above, for the three
-      // counters that never moved onto it: `meta/stats` holds `nextSeq` for IRA- incident
-      // references (incidents/lib/incidents.js), `meta/illness` the same for ILL- illness ones,
-      // and `meta/counters` holds `permitSeq` — the number printed on a permit to work and
-      // quoted in its audit trail (ptw/lib/firestore.js nextPermitNo). The rule docSeq gets
-      // cannot be reused verbatim: meta/stats also carries the module's roll-up counters, so
-      // `hasOnly(['n'])` is wrong here. `.get('nextSeq', 0)` on both sides because most writes
-      // to this document are stats deltas that do not mention nextSeq at all, and reading an
-      // absent field directly raises — which denies.
+      // The legacy reference-number counters. `.get('nextSeq', 0)` on both sides because most writes to
+      // this document are stats deltas that do not mention nextSeq at all, and reading an absent field
+      // directly raises — which denies.
       match /meta/{kind} {
-        // notKeyset on READ as well as on the writes, and this is the whole reason to say so
-        // out loud: before `col != 'meta'` was added to structuralOnly, the keyset was refused
-        // by genericReadable → structuralOnly → notKeyset. Excluding the collection from
-        // structuralOnly moved every meta grant here, so a read rule without notKeyset does not
-        // "keep" the old behaviour — it silently GRANTS what the old rule refused, to every
-        // approved member including the outside auditor, and `list` on /meta would sweep the
-        // keyset up with the counters. tests/cryptoKeys.rules.test.js pins both.
+        // meta/cryptoKeys is server-only. A match that only denies it would not win.
+        function notKeyset(col, docId) {
+          return !(col == 'meta' && docId == 'cryptoKeys');
+        }
+
+        // Read included. Excluding meta from structuralOnly moved every meta grant here, so a read
+        // without notKeyset would hand meta/cryptoKeys to every approved member.
         allow read: if isApprovedMemberOf(orgId) && notKeyset('meta', kind);
         allow create: if isWriterOf(orgId) && notKeyset('meta', kind);
         allow update: if isWriterOf(orgId)
@@ -1811,24 +1652,18 @@ service cloud.firestore {
         allow delete: if false;
       }
 
-      // Generic module data (incidents, assessments, permits, inspections, extinguishers,
-      // meetings, meta/stats, sites, …). Approved members read/create/update; managers+ delete.
-      // auditLogs is excluded so it keeps its append-only rule above. Rules are a permissive
-      // union: a second match that still granted read would make every line of this one
-      // decorative.
+      // Generic module data (incidents, assessments, permits, inspections, extinguishers, meetings,
+      // meta/stats, sites, …). Rules are a permissive union: a second match that still granted read
+      // would make every line of this one decorative.
       match /documents/{docId} {
-        // Local to this match. A helper on a parent is compiled into every sibling.
+        // Includes auditor. Injury and illness reads must not use this helper.
+        function isElevatedOf(orgId) {
+          return isApprovedMemberOf(orgId)
+            && myProfile().role in ['admin', 'manager', 'auditor'];
+        }
 
-        // Read the queried document's fields DIRECTLY. This is not a style. preference, it is
-        // the difference between a boundary and a decoration. Write it defensively —
-        // resource.data.get('visibility','all'), or !('visibility' in resource.data) || … , or
-        // keys().hasAny([…]) — and the condition stops constraining the query: the single-
-        // document get is still refused, but an unfiltered LIST returns every document in the
-        // collection, contents and all. So the backfill is a PREREQUISITE, not a follow-up —
-        // scripts/backfill-document-visibility.mjs runs BEFORE these rules deploy, or the
-        // existing library goes dark. Fields of OTHER documents are safe to read defensively:
-        // the profile is fetched with get() and is constant across the query, so it constrains
-        // nothing and `.get(…, default)` on it costs nothing.
+        // Direct field access on the queried document. .get() or hasAny() stops constraining
+        // list queries: get is still refused, and an unfiltered list returns every document.
         function reachesSite(d) {
           let p = myProfile();
           let a = p.get('access', {});
@@ -1849,14 +1684,22 @@ service cloud.firestore {
         allow read: if canReadDocument(orgId, resource.data);
       }
 
-      // Incidents schedule the same purge as the clinical collections, and the
-      // check does not fit on the generic write (that grant is on the
-      // 1000-expression ceiling). Excluding the collection from structuralOnly
-      // is what makes this the only grant. Read stays every approved member:
-      // the incident is the report they filed, and the photos are its evidence.
-      // A nested {sub=**} would also match this document and hand deletedAt
-      // back, so photos are named on their own.
+      // Incidents schedule the same purge as the clinical collections, and the check does not fit on the
+      // generic write (that grant is on the 1000-expression ceiling).
       match /incidents/{incidentId} {
+        // .get(f, null) on both sides. A direct read of an absent deletedAt raises and
+        // would deny every edit of a record written before the field existed.
+        function keepsSoftDelete(col) {
+          return !(col in ['incidents', 'illnesses', 'injuries'])
+            || (resource == null
+                && request.resource.data.get('deletedAt', null) == null)
+            || (resource != null
+                && (request.resource.data.get('deletedAt', null) == resource.data.get('deletedAt', null)
+                    || (isManagerOf(orgId)
+                        && (request.resource.data.get('deletedAt', null) == null
+                            || request.resource.data.get('deletedAt', null) == request.time))));
+        }
+
         allow read: if isApprovedMemberOf(orgId) && moduleAllowed(orgId, 'incidents');
         allow create, update: if isWriterOf(orgId)
           && moduleAllowed(orgId, 'incidents')
@@ -1871,29 +1714,90 @@ service cloud.firestore {
         }
       }
 
-      // Health records. Injuries and illnesses carry special-category data: a named colleague's
-      // body parts, injury type, medication, days off, the agent they were exposed to, the
-      // health issue. All of it was scoped to the tenant and to nothing within it — every
-      // approved member could list every colleague's medical detail, and so could the auditor,
-      // who is typically an outside party given a login to inspect the safety record.
-      // isManagerOf, NOT isElevatedOf: that helper includes 'auditor', and an outside reviewer
-      // confirming injuries are recorded and verified does not need to read what medication a
-      // named person is on. A per-person branch — "you may read your own" — would have to test
-      // a field on the queried document, and a field access in an `allow read` raises on any
-      // record written before that field existed, which denies; the fix would need a backfill
-      // before it could ship, and the same access decision would then be spread across two
-      // mechanisms.
+      // Health records. All of it was scoped to the tenant and to nothing within it — every approved
+      // member could list every colleague's medical detail, and so could the auditor, who is typically
+      // an outside party given a login to inspect the safety record.
       match /injuries/{injuryId} {
+        // .get(f, null) on both sides. A direct read of an absent deletedAt raises and
+        // would deny every edit of a record written before the field existed.
+        function keepsSoftDelete(col) {
+          return !(col in ['incidents', 'illnesses', 'injuries'])
+            || (resource == null
+                && request.resource.data.get('deletedAt', null) == null)
+            || (resource != null
+                && (request.resource.data.get('deletedAt', null) == resource.data.get('deletedAt', null)
+                    || (isManagerOf(orgId)
+                        && (request.resource.data.get('deletedAt', null) == null
+                            || request.resource.data.get('deletedAt', null) == request.time))));
+        }
+
+        // Clinical fields stay the author's until a manager verifies or closes. A direct
+        // read of an absent field raises, which denies, so every read uses .get.
+        function clinicalFieldSame(field) {
+          return request.resource.data.get(field, null) == resource.data.get(field, null);
+        }
+
+        function clinicalParentCreate(col) {
+          return (col == 'injuries'
+              && request.resource.data.keys().hasAny(['medication', 'bodyParts', 'injuryType']))
+            || (col == 'illnesses'
+              && request.resource.data.keys().hasAny(['exposedToAgent', 'healthIssue', 'affectedPersonnel']));
+        }
+
+        function clinicalFieldsSame(col) {
+          return col == 'injuries'
+            ? clinicalFieldSame('bodyParts') && clinicalFieldSame('injuryType')
+              && clinicalFieldSame('medication') && clinicalFieldSame('firstAidDetail')
+              && clinicalFieldSame('daysToReturnToWork') && clinicalFieldSame('recordFileIds')
+              && clinicalFieldSame('personName') && clinicalFieldSame('firstAidDone')
+              && clinicalFieldSame('name') && clinicalFieldSame('caption') && clinicalFieldSame('dataUrl')
+            : col == 'illnesses'
+            ? clinicalFieldSame('healthIssue') && clinicalFieldSame('affectedBodyParts')
+              && clinicalFieldSame('exposedToAgent') && clinicalFieldSame('exposureDuration')
+              && clinicalFieldSame('ppe') && clinicalFieldSame('affectedPersonnel')
+              && clinicalFieldSame('actions') && clinicalFieldSame('createdByName')
+              && clinicalFieldSame('name') && clinicalFieldSame('caption') && clinicalFieldSame('dataUrl')
+            : true;
+        }
+
+        function reporterMayEditClinical(col) {
+          return resource != null
+            && resource.data.get('createdBy', '') == request.auth.uid
+            && (col == 'injuries'
+                ? resource.data.get('status', '') != 'verified'
+                  && request.resource.data.get('status', '') != 'verified'
+                : resource.data.get('lifecycle', '') != 'closed'
+                  && resource.data.get('lifecycle', '') != 'verified'
+                  && request.resource.data.get('lifecycle', '') != 'closed'
+                  && request.resource.data.get('lifecycle', '') != 'verified');
+        }
+
+        function keepsClinicalContent(col) {
+          return (col != 'injuries' && col != 'illnesses')
+            || (resource == null
+                ? !clinicalParentCreate(col)
+                  || request.resource.data.get('createdBy', '') == request.auth.uid
+                : clinicalFieldsSame(col) || reporterMayEditClinical(col));
+        }
+
+        function keepsClinicalAuthor(col) {
+          return (col != 'injuries' && col != 'illnesses')
+            || resource == null
+            || request.resource.data.get('createdBy', '') == resource.data.get('createdBy', '');
+        }
+
+        function keepsClinicalJoin(col) {
+          return col != 'injuries'
+            || resource == null
+            || (request.resource.data.get('incidentId', '') == resource.data.get('incidentId', '')
+                && request.resource.data.get('personId', '') == resource.data.get('personId', ''));
+        }
+
         allow read: if isManagerOf(orgId);
 
-        // The attached FILES, not just the fields. Documents filed before that, as
-        // kind:'medical_record' inside incidents/{id}/photos, are still handed by the generic
-        // {sub=**} rule to every approved member AND to the external auditor, by get and by
-        // list. isManagerOf, not isElevatedOf — the same reason as the injury record it hangs
-        // off: 'auditor' is an outside party, and confirming injuries are recorded does not
-        // require reading a named colleague's discharge summary. Reads nothing off the
-        // document, for the reason given above: a field access here raises on any pointer
-        // written before that field existed, and a raising rule denies.
+        // The attached FILES, not just the fields. Documents filed before that, as kind:'medical_record'
+        // inside incidents/{id}/photos, are still handed by the generic {sub=**} rule to every approved
+        // member AND to the external auditor, by get and by list.
         allow create, update: if isWriterOf(orgId)
           && moduleAllowed(orgId, 'incidents')
           && keepsSoftDelete('injuries')
@@ -1911,18 +1815,79 @@ service cloud.firestore {
       }
 
       match /illnesses/{illnessId} {
+        // .get(f, null) on both sides. A direct read of an absent deletedAt raises and
+        // would deny every edit of a record written before the field existed.
+        function keepsSoftDelete(col) {
+          return !(col in ['incidents', 'illnesses', 'injuries'])
+            || (resource == null
+                && request.resource.data.get('deletedAt', null) == null)
+            || (resource != null
+                && (request.resource.data.get('deletedAt', null) == resource.data.get('deletedAt', null)
+                    || (isManagerOf(orgId)
+                        && (request.resource.data.get('deletedAt', null) == null
+                            || request.resource.data.get('deletedAt', null) == request.time))));
+        }
+
+        // Clinical fields stay the author's until a manager verifies or closes. A direct
+        // read of an absent field raises, which denies, so every read uses .get.
+        function clinicalFieldSame(field) {
+          return request.resource.data.get(field, null) == resource.data.get(field, null);
+        }
+
+        function clinicalParentCreate(col) {
+          return (col == 'injuries'
+              && request.resource.data.keys().hasAny(['medication', 'bodyParts', 'injuryType']))
+            || (col == 'illnesses'
+              && request.resource.data.keys().hasAny(['exposedToAgent', 'healthIssue', 'affectedPersonnel']));
+        }
+
+        function clinicalFieldsSame(col) {
+          return col == 'injuries'
+            ? clinicalFieldSame('bodyParts') && clinicalFieldSame('injuryType')
+              && clinicalFieldSame('medication') && clinicalFieldSame('firstAidDetail')
+              && clinicalFieldSame('daysToReturnToWork') && clinicalFieldSame('recordFileIds')
+              && clinicalFieldSame('personName') && clinicalFieldSame('firstAidDone')
+              && clinicalFieldSame('name') && clinicalFieldSame('caption') && clinicalFieldSame('dataUrl')
+            : col == 'illnesses'
+            ? clinicalFieldSame('healthIssue') && clinicalFieldSame('affectedBodyParts')
+              && clinicalFieldSame('exposedToAgent') && clinicalFieldSame('exposureDuration')
+              && clinicalFieldSame('ppe') && clinicalFieldSame('affectedPersonnel')
+              && clinicalFieldSame('actions') && clinicalFieldSame('createdByName')
+              && clinicalFieldSame('name') && clinicalFieldSame('caption') && clinicalFieldSame('dataUrl')
+            : true;
+        }
+
+        function reporterMayEditClinical(col) {
+          return resource != null
+            && resource.data.get('createdBy', '') == request.auth.uid
+            && (col == 'injuries'
+                ? resource.data.get('status', '') != 'verified'
+                  && request.resource.data.get('status', '') != 'verified'
+                : resource.data.get('lifecycle', '') != 'closed'
+                  && resource.data.get('lifecycle', '') != 'verified'
+                  && request.resource.data.get('lifecycle', '') != 'closed'
+                  && request.resource.data.get('lifecycle', '') != 'verified');
+        }
+
+        function keepsClinicalContent(col) {
+          return (col != 'injuries' && col != 'illnesses')
+            || (resource == null
+                ? !clinicalParentCreate(col)
+                  || request.resource.data.get('createdBy', '') == request.auth.uid
+                : clinicalFieldsSame(col) || reporterMayEditClinical(col));
+        }
+
+        function keepsClinicalAuthor(col) {
+          return (col != 'injuries' && col != 'illnesses')
+            || resource == null
+            || request.resource.data.get('createdBy', '') == resource.data.get('createdBy', '');
+        }
+
         allow read: if isManagerOf(orgId);
 
-        // The attachments, which /injuries got and this did not. Rules do not cascade into
-        // subcollections, so the manager grant above stopped at the illness document:
-        // .../illnesses/{id}/files fell through to the generic recursive rule, where
-        // genericReadable() excludes col == 'illnesses' — and a collection excluded from the
-        // only rule that could grant it is a collection nobody can read. subscribeIllnessFiles
-        // (src/modules/incidents/lib/illnesses.js) queries exactly this path, so every
-        // occupational-illness attachment failed permission-denied for all four roles,
-        // including the managers the record is FOR. isManagerOf, not isElevatedOf, for the
-        // reason /injuries/{id}/records gives: 'auditor' is an outside party, and confirming
-        // illnesses are recorded does not require reading a named colleague's GP letter.
+        // The attachments, which /injuries got and this did not. isManagerOf, not isElevatedOf, for the
+        // reason /injuries/{id}/records gives: 'auditor' is an outside party, and confirming illnesses are
+        // recorded does not require reading a named colleague's GP letter.
         allow create, update: if isWriterOf(orgId)
           && moduleAllowed(orgId, 'incidents')
           && keepsSoftDelete('illnesses')
@@ -1938,118 +1903,14 @@ service cloud.firestore {
         }
       }
 
-
-      // Third-party credentials. integrations/metabase holds the API key ODIN queries the
-      // analytics warehouse with. That key is a bearer token for every question and every
-      // database the Metabase instance can reach — a far wider grant than anything else in this
-      // tenant — so it is admin-only on both sides, and 'integrations' is excluded from the
-      // generic rule below so this is the only grant that reaches it. The settings screen reads
-      // it back through a callable that strips the key first (functions/lib/metabase.js
-      // redactConfig), and the query runs server-side with the Admin SDK.
+      // Third-party credentials. The settings screen reads it back through a callable that strips the
+      // key first (functions/lib/metabase.js redactConfig), and the query runs server-side with the
+      // Admin SDK.
       match /integrations/{integrationId} {
         allow read, write: if isAdminOf(orgId);
       }
 
-
-    // Soft-deleting an injury is the first half of destroying it, so it takes the standing the
-    // second half takes. .get(f, null) on both sides because every injury written before this
-    // field existed does not carry it, and reading it directly raises — a raising rule denies,
-    // which would refuse every edit to older records rather than protecting a timestamp they
-    // never had. .get(f, null) because records written before the field existed do not carry
-    // it. Those collections are excluded from the generic grant; a conjunct here would not bind
-    // them while that grant remained, and adding it there crosses the expression ceiling. .get,
-    // never a direct read: an absent deletedAt raises, and a raising rule denies the edit.
-    function keepsSoftDelete(col) {
-      return !(col in ['incidents', 'illnesses', 'injuries'])
-        || (resource == null
-            && request.resource.data.get('deletedAt', null) == null)
-        || (resource != null
-            && (request.resource.data.get('deletedAt', null) == resource.data.get('deletedAt', null)
-                || (isManagerOf(orgId)
-                    && (request.resource.data.get('deletedAt', null) == null
-                        || request.resource.data.get('deletedAt', null) == request.time))));
-    }
-
-    // The injury document id is `${incidentId}__${personId}`. Rewriting those
-    // fields points the clinical record at someone else without changing the
-    // path the medical-record upload is filed under. Same values still merge.
-    // A subcollection row that has neither field compares empty to empty.
-    function keepsClinicalJoin(col) {
-      return col != 'injuries'
-        || resource == null
-        || (request.resource.data.get('incidentId', '') == resource.data.get('incidentId', '')
-            && request.resource.data.get('personId', '') == resource.data.get('personId', ''));
-    }
-
-    function clinicalFieldSame(field) {
-      return request.resource.data.get(field, null) == resource.data.get(field, null);
-    }
-
-    // Parent injury/illness documents carry the clinical fields. hasAny is true when the key is
-    // present, including an empty string, which is how createIllness always writes
-    // exposedToAgent and how injuryPayload always writes medication, bodyParts and injuryType.
-    function clinicalParentCreate(col) {
-      return (col == 'injuries'
-          && request.resource.data.keys().hasAny(['medication', 'bodyParts', 'injuryType']))
-        || (col == 'illnesses'
-          && request.resource.data.keys().hasAny(['exposedToAgent', 'healthIssue', 'affectedPersonnel']));
-    }
-
-    function clinicalFieldsSame(col) {
-      return col == 'injuries'
-        ? clinicalFieldSame('bodyParts') && clinicalFieldSame('injuryType')
-          && clinicalFieldSame('medication') && clinicalFieldSame('firstAidDetail')
-          && clinicalFieldSame('daysToReturnToWork') && clinicalFieldSame('recordFileIds')
-          && clinicalFieldSame('personName') && clinicalFieldSame('firstAidDone')
-          && clinicalFieldSame('name') && clinicalFieldSame('caption') && clinicalFieldSame('dataUrl')
-        : col == 'illnesses'
-        ? clinicalFieldSame('healthIssue') && clinicalFieldSame('affectedBodyParts')
-          && clinicalFieldSame('exposedToAgent') && clinicalFieldSame('exposureDuration')
-          && clinicalFieldSame('ppe') && clinicalFieldSame('affectedPersonnel')
-          && clinicalFieldSame('actions') && clinicalFieldSame('createdByName')
-          && clinicalFieldSame('name') && clinicalFieldSame('caption') && clinicalFieldSame('dataUrl')
-        : true;
-    }
-
-    // The author may keep editing the report they filed, until it is verified
-    // or the illness is closed. Someone else's createdBy, or none, is not them:
-    // a member who cannot read the document must not be able to write blanks
-    // over it, and a colleague who merely knows the id must not replace it.
-    // name/caption/dataUrl are the attachment. A create of those has no
-    // createdBy and is not a parent, so the upload still lands. An update of
-    // them does not, unless this member is the author recorded on that row.
-    function reporterMayEditClinical(col) {
-      return resource != null
-        && resource.data.get('createdBy', '') == request.auth.uid
-        && (col == 'injuries'
-            ? resource.data.get('status', '') != 'verified'
-              && request.resource.data.get('status', '') != 'verified'
-            : resource.data.get('lifecycle', '') != 'closed'
-              && resource.data.get('lifecycle', '') != 'verified'
-              && request.resource.data.get('lifecycle', '') != 'closed'
-              && request.resource.data.get('lifecycle', '') != 'verified');
-    }
-
-    function keepsClinicalContent(col) {
-      return (col != 'injuries' && col != 'illnesses')
-        || (resource == null
-            ? !clinicalParentCreate(col)
-              || request.resource.data.get('createdBy', '') == request.auth.uid
-            : clinicalFieldsSame(col) || reporterMayEditClinical(col));
-    }
-
-    function keepsClinicalAuthor(col) {
-      return (col != 'injuries' && col != 'illnesses')
-        || resource == null
-        || request.resource.data.get('createdBy', '') == resource.data.get('createdBy', '');
-    }
-
-
-      // Per-user alert cursor. The feed itself is the existing collections;
-      // this document is only which of those rows this person has opened.
-      // uid is the document id so a member cannot write anyone else's, and
-      // the payload is one bounded string — a map of free values was how a
-      // cursor document becomes a megabyte on someone else's bill.
+      // Per-user alert cursor.
       match /alertReads/{uid} {
         allow read: if isApprovedMemberOf(orgId) && request.auth.uid == uid;
         allow create, update: if isApprovedMemberOf(orgId)
@@ -2062,347 +1923,259 @@ service cloud.firestore {
         allow delete: if false;
       }
 
-
       match /{col}/{docId} {
-        // Local to this match. A helper on a parent is compiled into every sibling.
-
-        // The generic collection gate, in one place. Below, `match /{col}/{docId}` and its
-        // nested `match /{sub=**}` both grant the same three operations, and the exclusion list
-        // for each was written out INLINE IN BOTH — eight copies of a conjunct chain that has
-        // to agree with itself to mean anything. Their soft-delete and clinical checks do not
-        // fit on the generic grant — it is already on the 1000-expression ceiling — so those
-        // collections are in the list below and their own matches are the only write.
-        function structuralOnly(col, docId) {
-          // consultations is in this list so a member cannot close another department's action
-          // through the generic write. Its own create/update rule is below.
-          return !(col in [
-            'auditLogs', 'defectLocks', 'docSeq', 'consultations',
-            'lotoPermits', 'lotoSettings', 'lotoGroupNumbers',
-            // Soft-delete and clinical field checks live on the dedicated matches.
-            // Another `&&` on the generic write pushed the extinguisher close over
-            // the 1000-expression ceiling. One more name in this list does not.
-            'incidents', 'injuries', 'illnesses'
-          ])
-            // 'meta' joins them, and for the same reason docSeq did: /meta/{kind} now carries a
-            // monotonic rule of its own, and a narrow match cannot restrict anything while this
-            // one still grants the same write. The reference-number counters live in meta/stats
-            // and meta/illness, and a counter that can move BACKWARDS hands the next incident a
-            // reference already printed on a closed report. This supersedes notKeyset for the
-            // generic path — excluding the whole collection excludes meta/cryptoKeys with it —
-            // but the call stays, because notKeyset is what the /meta/{kind} rule itself uses
-            // to keep the keyset out, and deleting it here would leave that meaning unstated in
-            // the place a reader looks first.
-            && col != 'meta'
-            // 'integrations' holds third-party CREDENTIALS — today the Metabase API key ODIN
-            // queries through, which is a bearer token for an entire analytics warehouse. The
-            // generic rule grants read and write on any collection to any approved member, so
-            // leaving it in scope would hand that key to every employee and to the outside
-            // auditor, by one getDoc. Rules are a permissive union, so this exclusion is the
-            // load-bearing half — that match restricts nothing while this one still grants the
-            // same access.
-            && col != 'integrations'
-            // 'notifications' was excluded from READ and not from write, so a collection nobody
-            // could read was one every approved member could fill. Two things wrong with that,
-            // one dated and one immediate. Excluded here rather than in a narrow match of its
-            // own, for the reason every exclusion in this function is: rules are a permissive
-            // union, so the narrow `allow read: if false` block below restricts nothing while
-            // this one still grants the same write.
-            && col != 'notifications'
-            // 'weatherDigestRuns' is the in-progress forecast for the current
-            // digest slot: which ~1 km squares already have a reading, and whether
-            // the mail has gone. The function is the only writer. A member who
-            // could set status to 'sent' would suppress the rest of the slot, and
-            // one who could plant a reading would put a risk level in the mail
-            // that the provider never sent. Excluded from every operation, for the
-            // same reason as notifications: a narrow `if false` below restricts
-            // nothing while this generic grant still matches the collection.
-            && col != 'weatherDigestRuns'
-            // 'alertReads' is one document per person: the ids of alert rows they
-            // have already opened. The generic grant would let any approved member
-            // read a colleague's cursor and, worse, overwrite it — or park an
-            // unbounded document in a collection the screen treats as private.
-            // Rules are a permissive union, so the narrow match below restricts
-            // nothing while this one still grants the same write. Excluded from
-            // every operation; the owner's own read and write live on that match.
-            && col != 'alertReads'
-            // 'lotoPermits' has its own status machine and its own subcollections
-            // (events, attachments), written above. The generic grant would let any
-            // writer approve, edit or delete a permit in one setDoc, and its
-            // recursive twin would reopen /events, which is append-only.
-            && notKeyset(col, docId);
-        }
-
-        function genericReadable(col, docId) {
-          return (col == 'consultations' || structuralOnly(col, docId))
-            && col != 'documents' && col != 'injuries' && col != 'illnesses';
-        }
-
-        // Soft-deleting an extinguisher, AED or fire-alarm panel is the first half of
-        // destroying it. purgeSoftDeleted removes the document and its public QR mirror thirty
-        // days later. Until this, deletedAt was an ordinary field and the generic update rule
-        // let any member set it. Authorising against request.resource.data would let the writer
-        // set siteId to their own site in the same update that sets deletedAt. .get(f, null)
-        // because units written before the field existed do not carry it.
-        function equipmentPlaceUnchanged() {
-          return request.resource.data.get('siteId', '') == resource.data.get('siteId', '')
-            && request.resource.data.get('region', '') == resource.data.get('region', '')
-            && request.resource.data.get('entity', '') == resource.data.get('entity', '');
-        }
-
-        function reachesEquipment(d) {
-          let p = myProfile();
-          let a = p.get('access', {});
-          return (d.get('siteId', '') != ''
-                && (p.get('siteId', '') == d.get('siteId', '')
-                    || a.get('sites', []).hasAny([d.get('siteId', '')])))
-            || (d.get('region', '') != '' && a.get('regions', []).hasAny([d.get('region', '')]))
-            || (d.get('entity', '') != '' && a.get('entities', []).hasAny([d.get('entity', '')]));
-        }
-
-        // A signage record may only BECOME Deployed with evidence: at least ONE photo and a
-        // last-checked date. The register's form enforces the same thing; this is what stops
-        // the SDK writing it without. .get(f, default) on every read because older records
-        // carry none of these fields, and reading an absent field raises — a raising rule
-        // denies.
-        function hasSignagePhoto(d) {
-          return (d.get('photos', null) is list && d.get('photos', null).size() > 0)
-            || (!(d.get('photos', null) is list)
-                && d.get('photo', null) is map && d.get('photo', null).size() > 0);
-        }
-
-        function keepsSignageEvidence(col) {
-          return col != 'signages'
-            || request.resource.data.get('status', '') != 'Deployed'
-            || (resource != null && resource.data.get('status', '') == 'Deployed')
-            || (hasSignagePhoto(request.resource.data)
-                && request.resource.data.get('lastChecked', '') is string
-                && request.resource.data.get('lastChecked', '') != '');
-        }
-
-        function keepsEquipmentDeletion(col) {
-          return !(col in ['extinguishers', 'aeds', 'fas'])
-            || (resource == null
-                ? request.resource.data.get('deletedAt', null) == null
-                : request.resource.data.get('deletedAt', null) == resource.data.get('deletedAt', null)
-                  || (isManagerOf(orgId)
-                      && (isAdminOf(orgId) || reachesEquipment(resource.data))
-                      && equipmentPlaceUnchanged()));
-        }
-
-        // A fire-alarm panel's QR token is the code printed on the sticker. Once it is stored,
-        // nobody — including an admin — may replace it or clear it. Minting onto a panel that
-        // has none is still allowed: absent and '' are the same here, via .get's default,
-        // because panels written before the field existed do not carry it and reading it
-        // directly raises.
-        function keepsFasQr(col) {
-          return col != 'fas'
-            || resource == null
-            || request.resource.data.get('qrToken', '') == resource.data.get('qrToken', '')
-            || resource.data.get('qrToken', '') == '';
-        }
-
-        // Extinguisher transitions the screens refuse, enforced where a console write cannot
-        // skip them. The overdue check reads the document BEFORE the write. request.resource is
-        // the state after, so a writer who also set dateOfNextHPT to next year would otherwise
-        // authorise the send or the resolve they were refused. Reading the field directly
-        // raises, and a raising rule denies.
-        function istToday() {
-          let t = request.time + duration.value(5, 'h') + duration.value(30, 'm');
-          return string(t.year())
-            + '-' + (t.month() < 10 ? '0' + string(t.month()) : string(t.month()))
-            + '-' + (t.day() < 10 ? '0' + string(t.day()) : string(t.day()));
-        }
-
-        function isYmd(v) {
-          return v is string && v.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$');
-        }
-
-        function hptOverdue(before) {
-          let v = before.get('dateOfNextHPT', '');
-          return isYmd(v) && v <= istToday();
-        }
-
-        function hadDefect(data, key) {
-          let list = data.get('physicalDefects', []);
-          return list is list && list.hasAny([key]);
-        }
-
-        function droppedPhysical(before, after) {
-          return (hadDefect(before, 'pin') && !hadDefect(after, 'pin'))
-            || (hadDefect(before, 'stand') && !hadDefect(after, 'stand'))
-            || (hadDefect(before, 'hose_pipe') && !hadDefect(after, 'hose_pipe'))
-            || (hadDefect(before, 'handle') && !hadDefect(after, 'handle'));
-        }
-
-        function hptFile(h) {
-          return (h.get('fileName', '') is string && h.get('fileName', '').size() > 0)
-            || (h.get('filePath', '') is string && h.get('filePath', '').size() > 0)
-            || (h.get('fileUrl', '') is string && h.get('fileUrl', '').size() > 0)
-            || (h.get('fileData', '') is string && h.get('fileData', '').size() > 0);
-        }
-
-        function touchesRefilledClosed(before, after) {
-          return after.get('dateOfNextRefill', '') != before.get('dateOfNextRefill', '')
-            && after.get('dateOfNextHPT', '') != before.get('dateOfNextHPT', '')
-            && after.get('lastRefilledAt', '') != before.get('lastRefilledAt', '');
-        }
-
-        function validRefilledClosed(before, after) {
-          let refill = after.get('dateOfNextRefill', '');
-          let hpt = after.get('dateOfNextHPT', '');
-          let cert = after.get('hpt', {});
-          return touchesRefilledClosed(before, after)
-            && isYmd(refill) && isYmd(hpt)
-            && refill > istToday() && hpt > istToday()
-            && cert is map
-            && cert.get('result', '') == 'pass'
-            && cert.get('nextDueOn', '') == hpt
-            && hptFile(cert);
-        }
-
-        function keepsExtinguisherWorkflow(col) {
-          return col != 'extinguishers'
-            || resource == null
-            || extinguisherWriteOk();
-        }
-
-        function extinguisherWriteOk() {
-          let before = resource.data;
-          let after = request.resource.data;
-          let enteringVendor = after.get('status', '') == 'in_process_refilling'
-            && before.get('status', '') != 'in_process_refilling';
-          let touched = touchesRefilledClosed(before, after);
-          // validRefilledClosed is false unless both dates moved, and it walks the
-          // certificate. Binding it eagerly ran that walk on every extinguisher
-          // write. The generic update is evaluated twice (the recursive match
-          // covers the parent), and with alertReads excluded from that grant the
-          // manager bin path — which also has to prove site, region, or entity —
-          // crossed the 1000-expression budget and was denied. A write that does
-          // not move the dates still sees closed as false, which is what the
-          // eager call returned.
-          let closed = touched && validRefilledClosed(before, after);
-          return !(enteringVendor && hptOverdue(before))
-            && !(droppedPhysical(before, after) && hptOverdue(before) && !closed)
-            && (!touched || closed);
-        }
-
-        // A document's classification is enforced on READ and was unprotected on WRITE, so any
-        // member who could legitimately reach a restricted document — via their own site access
-        // — could publish it org-wide, and any member who learned a document id could overwrite
-        // one they cannot read. A classification the classified party can remove is advisory.
-        function keepsClassification(col) {
-          return col != 'documents'
-            || resource == null
-            // .get(f, '') on BOTH sides: a document written before a field existed does not
-            // carry it, and reading it directly raises — a raising rule denies, which would
-            // refuse every edit to older documents rather than protecting a label they never
-            // had. Safe here in a way it would not be on a read: this is a write condition, so
-            // nothing about list-query constraining applies.
-            || request.resource.data.get('visibility', '') == resource.data.get('visibility', '')
-            && request.resource.data.get('level', '') == resource.data.get('level', '')
-            && request.resource.data.get('siteId', '') == resource.data.get('siteId', '')
-            && request.resource.data.get('region', '') == resource.data.get('region', '')
-            && request.resource.data.get('siteRegion', '') == resource.data.get('siteRegion', '')
-            && request.resource.data.get('siteEntity', '') == resource.data.get('siteEntity', '');
-        }
-
-        // Profile field is `department`. `dept` is the older key, read only
-        // when `department` was never set.
-        function myDepartment() {
-          let p = myProfile();
-          return p.get('department', '') != '' ? p.get('department', '') : p.get('dept', '');
-        }
-
-        function committeeActionsSame() {
-          return resource != null
-            && request.resource.data.get('actions', []) == resource.data.get('actions', []);
-        }
-
-        // A member meeting keeps at most eight actions. A longer list is a manager edit, and a
-        // manager can already close. Reading them again inside each of the eight rows, and
-        // again on the recursive wildcard, crosses that ceiling once another check is inlined
-        // into isApprovedMemberOf.
-        function committeeMemberActionsOk() {
-          let dept = myDepartment();
-          let after = request.resource.data.get('actions', []);
-          let before = resource == null ? [] : resource.data.get('actions', []);
-          return after.size() <= 8
-            && before.size() <= 8
-            && committeeRowCloseOk(0, dept, before, after)
-            && committeeRowCloseOk(1, dept, before, after)
-            && committeeRowCloseOk(2, dept, before, after)
-            && committeeRowCloseOk(3, dept, before, after)
-            && committeeRowCloseOk(4, dept, before, after)
-            && committeeRowCloseOk(5, dept, before, after)
-            && committeeRowCloseOk(6, dept, before, after)
-            && committeeRowCloseOk(7, dept, before, after);
-        }
-
-        function committeeRowCloseOk(i, dept, before, after) {
-          return i >= after.size()
-            || after[i].get('ownerKind', '') != 'department'
-            || after[i].get('status', '') != 'Closed'
-            || (resource != null
-                && i < before.size()
-                && before[i].get('status', '') == 'Closed'
-                && before[i].get('department', '') == after[i].get('department', ''))
-            || (after[i].get('department', '') == dept
-                && (resource == null
-                    || i >= before.size()
-                    || before[i].get('ownerKind', '') != 'department'
-                    || before[i].get('department', '') == after[i].get('department', '')));
-        }
-
-        // defectLocks joins auditLogs in being excluded: its whole purpose is
-        // that a create fails on an existing document, which a generic update
-        // permission would quietly defeat. docSeq likewise: its monotonic rule
-        // above is the guarantee, and a generic update would erase it.
-        //
-        // `read` is split out from create/update for one reason: documents are
-        // read through the site-scoped rule above and written through this one.
-        allow read: if genericReadable(col, docId) && isApprovedMemberOf(orgId)
-          && moduleAllowed(orgId, col);
-        // The manager gate lives INSIDE this rule rather than in a new match of its own. Rules
-        // are a permissive union: a narrow per-collection match restricts nothing while this
-        // one still grants the same write, so the alternative was excluding a dozen collections
-        // here and again below — a list nobody would keep correct.
-        allow create, update: if structuralOnly(col, docId)
-          && isWriterOf(orgId)
-          && moduleAllowed(orgId, col)
-          && (isElevatedOf(orgId) || keepsClassification(col))
-          && (isManagerOf(orgId)
-              || (col != 'sites' && keepsDecision(col, beforeData(), request.resource.data)))
-          && keepsEquipmentDeletion(col)
-          && keepsSignageEvidence(col)
-          && keepsFasQr(col)
-          && keepsExtinguisherWorkflow(col);
-        // A member changing committee actions (including closing one assigned
-        // to their department). The generic update above does not cover that
-        // change — see committeeMemberActionsOk.
-        allow create, update: if col == 'consultations'
-          && isApprovedMemberOf(orgId)
-          && myProfile().role != 'auditor'
-          && (myProfile().role == 'admin'
-              || myProfile().role == 'manager'
-              || committeeActionsSame()
-              || committeeMemberActionsOk());
-        // Delete is deliberately NOT gated on the entitlement. Turning a module off should stop
-        // it being used, not trap the data already in it — an operator who disables a module
-        // must not leave a tenant unable to remove their own records.
-        allow delete: if (col == 'consultations' || structuralOnly(col, docId)) && isManagerOf(orgId)
-          && !(col in ['extinguishers', 'aeds', 'fas']);
-        allow delete: if structuralOnly(col, docId) && isAdminOf(orgId)
-          && col in ['extinguishers', 'aeds', 'fas'];
-
-        // Nested subcollections (e.g. incidents/{id}/photos).
-        // The recursive wildcard also matches the parent {col}/{docId} itself, so
-        // it must repeat the auditLogs guard — otherwise it would silently reopen
-        // updates/deletes on the append-only audit trail. The same applies to
-        // defectLocks, whose create-only rule is the duplicate check, to
-        // documents, whose site scoping this would otherwise hand straight back,
-        // and to the manager gate above, which this would otherwise hand back
-        // for the parent document of every gated collection.
         match /{sub=**} {
+          // meta/cryptoKeys is server-only. A match that only denies it would not win.
+          function notKeyset(col, docId) {
+            return !(col == 'meta' && docId == 'cryptoKeys');
+          }
+
+          // Includes auditor. Injury and illness reads must not use this helper.
+          function isElevatedOf(orgId) {
+            return isApprovedMemberOf(orgId)
+              && myProfile().role in ['admin', 'manager', 'auditor'];
+          }
+
+          // Local to this match. A helper on a parent is compiled into every sibling.
+
+          // The generic collection gate, in one place. Their soft-delete and clinical checks do not fit on
+          // the generic grant — it is already on the 1000-expression ceiling — so those collections are in
+          // the list below and their own matches are the only write.
+          function structuralOnly(col, docId) {
+            // consultations is in this list so a member cannot close another department's action
+            // through the generic write. Its own create/update rule is below.
+            return !(col in [
+              'auditLogs', 'defectLocks', 'docSeq', 'consultations',
+              'lotoPermits', 'lotoSettings', 'lotoGroupNumbers',
+              // Soft-delete and clinical field checks live on the dedicated matches. Another `&&` on the generic
+              // write pushed the extinguisher close over the 1000-expression ceiling.
+              'incidents', 'injuries', 'illnesses'
+            ])
+              // 'meta' joins them, and for the same reason docSeq did: /meta/{kind} now carries a monotonic rule
+              // of its own, and a narrow match cannot restrict anything while this one still grants the same
+              // write.
+              && col != 'meta'
+              // integrations holds third-party credentials. Leaving it in this grant hands the key to
+              // every approved member. A narrower match cannot take that away.
+              && col != 'integrations'
+              // notifications and the digest ledger are server-only. A narrower deny would not win.
+              && col != 'notifications'
+              // 'weatherDigestRuns' is the in-progress forecast for the current digest slot: which ~1 km squares
+              // already have a reading, and whether the mail has gone.
+              && col != 'weatherDigestRuns'
+              // 'alertReads' is one document per person: the ids of alert rows they have already opened. Rules
+              // are a permissive union, so the narrow match below restricts nothing while this one still grants
+              // the same write.
+              && col != 'alertReads'
+              // 'lotoPermits' has its own status machine and its own subcollections (events, attachments),
+              // written above.
+              && notKeyset(col, docId);
+          }
+
+          function genericReadable(col, docId) {
+            return (col == 'consultations' || structuralOnly(col, docId))
+              && col != 'documents' && col != 'injuries' && col != 'illnesses';
+          }
+
+          // Soft-deleting an extinguisher, AED or fire-alarm panel is the first half of destroying it.
+          // .get(f, null) because units written before the field existed do not carry it.
+          function equipmentPlaceUnchanged() {
+            return request.resource.data.get('siteId', '') == resource.data.get('siteId', '')
+              && request.resource.data.get('region', '') == resource.data.get('region', '')
+              && request.resource.data.get('entity', '') == resource.data.get('entity', '');
+          }
+
+          function reachesEquipment(d) {
+            let p = myProfile();
+            let a = p.get('access', {});
+            return (d.get('siteId', '') != ''
+                  && (p.get('siteId', '') == d.get('siteId', '')
+                      || a.get('sites', []).hasAny([d.get('siteId', '')])))
+              || (d.get('region', '') != '' && a.get('regions', []).hasAny([d.get('region', '')]))
+              || (d.get('entity', '') != '' && a.get('entities', []).hasAny([d.get('entity', '')]));
+          }
+
+          // A signage record may only BECOME Deployed with evidence: at least ONE photo and a last-checked
+          // date. .get(f, default) on every read because older records carry none of these fields, and
+          // reading an absent field raises — a raising rule denies.
+          function hasSignagePhoto(d) {
+            return (d.get('photos', null) is list && d.get('photos', null).size() > 0)
+              || (!(d.get('photos', null) is list)
+                  && d.get('photo', null) is map && d.get('photo', null).size() > 0);
+          }
+
+          function keepsSignageEvidence(col) {
+            return col != 'signages'
+              || request.resource.data.get('status', '') != 'Deployed'
+              || (resource != null && resource.data.get('status', '') == 'Deployed')
+              || (hasSignagePhoto(request.resource.data)
+                  && request.resource.data.get('lastChecked', '') is string
+                  && request.resource.data.get('lastChecked', '') != '');
+          }
+
+          function keepsEquipmentDeletion(col) {
+            return !(col in ['extinguishers', 'aeds', 'fas'])
+              || (resource == null
+                  ? request.resource.data.get('deletedAt', null) == null
+                  : request.resource.data.get('deletedAt', null) == resource.data.get('deletedAt', null)
+                    || (isManagerOf(orgId)
+                        && (isAdminOf(orgId) || reachesEquipment(resource.data))
+                        && equipmentPlaceUnchanged()));
+          }
+
+          // A fire-alarm panel's QR token is the code printed on the sticker. Minting onto a panel that has
+          // none is still allowed: absent and '' are the same here, via .get's default, because panels
+          // written before the field existed do not carry it and reading it directly raises.
+          function keepsFasQr(col) {
+            return col != 'fas'
+              || resource == null
+              || request.resource.data.get('qrToken', '') == resource.data.get('qrToken', '')
+              || resource.data.get('qrToken', '') == '';
+          }
+
+          // Extinguisher transitions the screens refuse, enforced where a console write cannot skip them.
+          // request.resource is the state after, so a writer who also set dateOfNextHPT to next year would
+          // otherwise authorise the send or the resolve they were refused.
+          function istToday() {
+            let t = request.time + duration.value(5, 'h') + duration.value(30, 'm');
+            return string(t.year())
+              + '-' + (t.month() < 10 ? '0' + string(t.month()) : string(t.month()))
+              + '-' + (t.day() < 10 ? '0' + string(t.day()) : string(t.day()));
+          }
+
+          function isYmd(v) {
+            return v is string && v.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$');
+          }
+
+          function hptOverdue(before) {
+            let v = before.get('dateOfNextHPT', '');
+            return isYmd(v) && v <= istToday();
+          }
+
+          function hadDefect(data, key) {
+            let list = data.get('physicalDefects', []);
+            return list is list && list.hasAny([key]);
+          }
+
+          function droppedPhysical(before, after) {
+            return (hadDefect(before, 'pin') && !hadDefect(after, 'pin'))
+              || (hadDefect(before, 'stand') && !hadDefect(after, 'stand'))
+              || (hadDefect(before, 'hose_pipe') && !hadDefect(after, 'hose_pipe'))
+              || (hadDefect(before, 'handle') && !hadDefect(after, 'handle'));
+          }
+
+          function hptFile(h) {
+            return (h.get('fileName', '') is string && h.get('fileName', '').size() > 0)
+              || (h.get('filePath', '') is string && h.get('filePath', '').size() > 0)
+              || (h.get('fileUrl', '') is string && h.get('fileUrl', '').size() > 0)
+              || (h.get('fileData', '') is string && h.get('fileData', '').size() > 0);
+          }
+
+          function touchesRefilledClosed(before, after) {
+            return after.get('dateOfNextRefill', '') != before.get('dateOfNextRefill', '')
+              && after.get('dateOfNextHPT', '') != before.get('dateOfNextHPT', '')
+              && after.get('lastRefilledAt', '') != before.get('lastRefilledAt', '');
+          }
+
+          function validRefilledClosed(before, after) {
+            let refill = after.get('dateOfNextRefill', '');
+            let hpt = after.get('dateOfNextHPT', '');
+            let cert = after.get('hpt', {});
+            return touchesRefilledClosed(before, after)
+              && isYmd(refill) && isYmd(hpt)
+              && refill > istToday() && hpt > istToday()
+              && cert is map
+              && cert.get('result', '') == 'pass'
+              && cert.get('nextDueOn', '') == hpt
+              && hptFile(cert);
+          }
+
+          function keepsExtinguisherWorkflow(col) {
+            return col != 'extinguishers'
+              || resource == null
+              || extinguisherWriteOk();
+          }
+
+          function extinguisherWriteOk() {
+            let before = resource.data;
+            let after = request.resource.data;
+            let enteringVendor = after.get('status', '') == 'in_process_refilling'
+              && before.get('status', '') != 'in_process_refilling';
+            let touched = touchesRefilledClosed(before, after);
+            // Walk the certificate only when both dates moved. Doing it on every extinguisher
+            // write crossed the 1000-expression ceiling and denied the manager bin path.
+            let closed = touched && validRefilledClosed(before, after);
+            return !(enteringVendor && hptOverdue(before))
+              && !(droppedPhysical(before, after) && hptOverdue(before) && !closed)
+              && (!touched || closed);
+          }
+
+          // A document's classification is enforced on READ and was unprotected on WRITE, so any member who
+          // could legitimately reach a restricted document — via their own site access — could publish it
+          // org-wide, and any member who learned a document id could overwrite one they cannot read.
+          function keepsClassification(col) {
+            return col != 'documents'
+              || resource == null
+              // .get(f, '') on BOTH sides: a document written before a field existed does not carry it, and
+              // reading it directly raises — a raising rule denies, which would refuse every edit to older
+              // documents rather than protecting a label they never had.
+              || request.resource.data.get('visibility', '') == resource.data.get('visibility', '')
+              && request.resource.data.get('level', '') == resource.data.get('level', '')
+              && request.resource.data.get('siteId', '') == resource.data.get('siteId', '')
+              && request.resource.data.get('region', '') == resource.data.get('region', '')
+              && request.resource.data.get('siteRegion', '') == resource.data.get('siteRegion', '')
+              && request.resource.data.get('siteEntity', '') == resource.data.get('siteEntity', '');
+          }
+
+          // Profile field is `department`. `dept` is the older key, read only
+          // when `department` was never set.
+          function myDepartment() {
+            let p = myProfile();
+            return p.get('department', '') != '' ? p.get('department', '') : p.get('dept', '');
+          }
+
+          function committeeActionsSame() {
+            return resource != null
+              && request.resource.data.get('actions', []) == resource.data.get('actions', []);
+          }
+
+          // A member meeting keeps at most eight actions. Reading them again inside each of the eight rows,
+          // and again on the recursive wildcard, crosses that ceiling once another check is inlined into
+          // isApprovedMemberOf.
+          function committeeMemberActionsOk() {
+            let dept = myDepartment();
+            let after = request.resource.data.get('actions', []);
+            let before = resource == null ? [] : resource.data.get('actions', []);
+            return after.size() <= 8
+              && before.size() <= 8
+              && committeeRowCloseOk(0, dept, before, after)
+              && committeeRowCloseOk(1, dept, before, after)
+              && committeeRowCloseOk(2, dept, before, after)
+              && committeeRowCloseOk(3, dept, before, after)
+              && committeeRowCloseOk(4, dept, before, after)
+              && committeeRowCloseOk(5, dept, before, after)
+              && committeeRowCloseOk(6, dept, before, after)
+              && committeeRowCloseOk(7, dept, before, after);
+          }
+
+          function committeeRowCloseOk(i, dept, before, after) {
+            return i >= after.size()
+              || after[i].get('ownerKind', '') != 'department'
+              || after[i].get('status', '') != 'Closed'
+              || (resource != null
+                  && i < before.size()
+                  && before[i].get('status', '') == 'Closed'
+                  && before[i].get('department', '') == after[i].get('department', ''))
+              || (after[i].get('department', '') == dept
+                  && (resource == null
+                      || i >= before.size()
+                      || before[i].get('ownerKind', '') != 'department'
+                      || before[i].get('department', '') == after[i].get('department', '')));
+          }
+
+          // defectLocks joins auditLogs in being excluded: its whole purpose is that a create fails on an
+          // existing document, which a generic update permission would quietly defeat.
+
           allow read: if genericReadable(col, docId) && isApprovedMemberOf(orgId)
             && moduleAllowed(orgId, col);
           allow create, update: if structuralOnly(col, docId)
