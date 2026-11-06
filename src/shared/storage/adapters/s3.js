@@ -22,7 +22,10 @@ const ENDPOINT = String(import.meta.env.VITE_S3_PRESIGN_ENDPOINT || '').trim()
 
 async function presign(body) {
   // Forward the Firebase ID token so the endpoint can authenticate the caller.
-  // When auth itself migrates off Firebase, swap this header for the new session.
+  // Path 3 replaces Auth. Until that session exists, this header is still
+  // Firebase, so VITE_STORAGE_DRIVER=s3 does not mean the deploy has left
+  // Firebase. docs/CUSTOM-STACK.md. The bucket's access key stays on the
+  // presign host — never in this file, and never in a VITE_ variable.
   const token = await auth?.currentUser?.getIdToken?.().catch(() => null)
   const res = await fetch(ENDPOINT, {
     method: 'POST',

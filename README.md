@@ -94,7 +94,10 @@ Other cross-cutting pieces:
 - **Portability seams** — `src/shared/data/` (database) and
   `src/shared/storage/` (files) sit behind documented adapter contracts selected
   by `VITE_DATA_DRIVER` / `VITE_STORAGE_DRIVER`. See
-  `src/shared/data/README.md`.
+  `src/shared/data/README.md`. A deployment that leaves Firebase for its own
+  Postgres or Supabase, S3-compatible files, and replacements for Auth, rules
+  and Cloud Functions is a deploy-time choice: `docs/CUSTOM-STACK.md`. The
+  default build stays on Firestore.
 - **Platform console** — a separate application at `/platform` with its own
   sign-in, deciding which modules each organization may use. See
   `docs/PLATFORM-CONSOLE.md`.
@@ -157,10 +160,13 @@ Runs the Vite app and the Firebase Emulator Suite in containers.
 
 ## Connecting a real Firebase project
 
-`docs/PRODUCTION.md` is the maintained runbook and covers the parts that bite:
-environment files, the order rules must ship in relative to hosting, App Check,
-backups, custom domains and the four allowlists, bucket CORS, and the encryption
-switch-on. Read §0 before deploying anything.
+`docs/PRODUCTION.md` is the pointer to the private runbook for the Firebase
+deployment this product already runs. Read §0 of that runbook before
+deploying it.
+
+Leaving Firebase entirely is not done by filling in Firebase keys. That
+decision, and the work still required before it can boot, is
+`docs/CUSTOM-STACK.md`.
 
 ## Scripts
 

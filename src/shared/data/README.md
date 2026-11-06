@@ -4,8 +4,8 @@ The app is built on Firebase today, but two seams keep it swappable:
 
 | Seam | Selects backend via | Adapters live in |
 |---|---|---|
-| **Files** — `src/shared/storage/` | `VITE_STORAGE_DRIVER` (`firebase` \| `s3`) | `src/shared/storage/adapters/` |
-| **Database** — `src/shared/data/` | `VITE_DATA_DRIVER` (`firestore` \| `memory`) | `src/shared/data/adapters/` |
+| **Files** — `src/shared/storage/` | `VITE_STORAGE_DRIVER` (`firebase` \| `s3`). `s3` is the path 3 file driver. | `src/shared/storage/adapters/` |
+| **Database** — `src/shared/data/` | `VITE_DATA_DRIVER` (`firestore` \| `memory`; `postgres` and `supabase` reserved, not registered) | `src/shared/data/adapters/` |
 
 ## Adding a storage backend
 
@@ -21,7 +21,11 @@ only a presign endpoint you host; the contract is documented at the top of
 Write one file in `src/shared/data/adapters/` implementing the provider
 contract documented at the top of `src/shared/data/index.js` — that header is
 the specification, not a summary of one. Register it in `DRIVERS` in the same
-file and set `VITE_DATA_DRIVER`.
+file and set `VITE_DATA_DRIVER`. `postgres` and `supabase` are reserved names
+for a custom stack. They are not registered. Setting either one refuses to
+start instead of silently using Firestore (`resolveDriver.js`). The deploy
+choice, which values are allowed to be public, and the file-by-file
+remaining work are `docs/CUSTOM-STACK.md`. This file stays the contract.
 
 The surface, over `/`-separated collection paths with documents addressed as
 `(path, id)`:
@@ -47,21 +51,26 @@ the contract suite runs under plain `npx vitest run`. Read it before writing a
 third; it is the smallest honest version of every guarantee above. It is a test
 and development driver, not a store anything should be shipped against.
 
-For Supabase/Postgres, the natural mapping is one table per collection with
-`org_id` and `jsonb data` columns, `subscribe` via Supabase Realtime, and
-Row Level Security policies replacing `firestore.rules`.
+For Supabase or Postgres, the natural mapping is one table per collection
+with `org_id` and `jsonb data` columns, `subscribe` via that backend's
+realtime channel, and row level security replacing `firestore.rules`. Those
+two driver names are reserved and unimplemented. Registering an adapter that
+only implements the reads would make the name resolve and then fail on the
+first exclusive create. `docs/CUSTOM-STACK.md` is the order to do it in.
 
 ## What the seam covers — and what it does not
 
 `createModuleService` (module-kit) routes **all generic module CRUD** through
 the provider. A full migration additionally touches:
 
-- **Direct Firestore usage** not yet behind the seam:
-  `src/shared/org/orgData.js` (orgs, users, audit log, sites, batched writes),
-  `src/shared/docId/` (transactional ID reservation), and per-module
-  `lib/firestore.js` files (fire, ptw, training, incidents, loto, cctv).
-  Migrate them the same way: move each call onto `dataProvider`. The contract
-  is already wide enough to carry them — single-doc reads, `where` filters,
+- **Direct Firestore usage** not yet behind the seam. The maintained
+  file list is `docs/CUSTOM-STACK.md` (regenerate it with the grep at the
+  bottom of this file). The clusters are `src/shared/org/orgData.js` (orgs,
+  users, audit log, sites, batched writes), `src/shared/docId/` (transactional
+  ID reservation), and the per-module libraries that still import
+  `firebase/firestore`. Migrate them the same way: move each call onto
+  `dataProvider`. The contract is already wide enough to carry them —
+  single-doc reads, `where` filters,
   batches, transactions and exclusive create are all in it — so a call that
   cannot move is a finding worth writing down, not a reason to widen it
   further. Two known ones: `doc.ref` writes (`deleteDoc(d.ref)` and friends)

@@ -9,6 +9,11 @@ This file covers only the parts that runbook does not: bringing up the **first
 organization** in a fresh project, what to check **after each deploy**, and how
 to **roll back**.
 
+A deployment that does not use Firebase is [`docs/CUSTOM-STACK.md`](docs/CUSTOM-STACK.md)
+(path 3: Postgres or Supabase, S3-compatible files, and replacements for Auth,
+rules and Cloud Functions). This file stays the Firebase deploy's
+first-organization checks, post-deploy verification and rollback.
+
 Everything about creating projects, `.firebaserc`, environment variables and the
 deploy commands themselves has been removed rather than kept in step — it was a
 second copy, and it had drifted into describing a two-project layout with a

@@ -104,9 +104,10 @@ the file that is read before writing.
 
 `src/shared/data/` and `src/shared/storage/` are adapter contracts. The header
 comment in `src/shared/data/index.js` declares itself to be the specification —
-it is, and an adapter that deviates is a bug in the adapter. Note that only two
-files consume `dataProvider` while 39 import `firebase/firestore` directly; the
-seam is real but not yet universal, so do not assume it.
+it is, and an adapter that deviates is a bug in the adapter. Most of the app
+still imports `firebase/firestore` directly. The list to trust is
+`docs/CUSTOM-STACK.md`, which is also the deploy-time choice for a Postgres
+or Supabase stack. The seam is real and not universal, so do not assume it.
 
 `src/shared/module-kit/service.js` (`createModuleService`) is the org-scoped CRUD
 factory. Prefer it over hand-rolling `collection(db, 'organizations', orgId, …)`.
