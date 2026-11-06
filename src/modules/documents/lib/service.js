@@ -7,7 +7,7 @@
 // readScope.js for why, and firestore.rules for the rule it mirrors.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { collection, query, where, orderBy, limit, onSnapshot } from 'firebase/firestore'
+import { collection, query, where, orderBy, limit, onSnapshot } from '../../../shared/data/client.js'
 import { db } from '../../../shared/firebase'
 import { createModuleService } from '../../../shared/module-kit/service'
 import { incompleteReadNotice } from '../../../shared/org/orgData'

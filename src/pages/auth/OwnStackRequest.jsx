@@ -136,9 +136,10 @@ export default function OwnStackRequest({ onBack }) {
           </p>
           <p>
             {filed.engine === 'postgres' || filed.engine === 'supabase'
-              ? 'The postgres and supabase drivers still have no adapter, so a build that selects either name refuses to start. '
+              ? 'Postgres can back a dedicated environment. The supabase client driver is still reserved, so a Supabase Postgres uses the postgres driver. '
               : 'That engine has no adapter yet, so a build cannot select it. '}
-            This request does not open a session on your database.
+            This request does not open a session. Sign-in starts after the secret handoff, on the
+            address fulfillment assigns.
           </p>
           <p>
             Your company holds DATA_KEY_MASTER. Database passwords and service-role keys stay with

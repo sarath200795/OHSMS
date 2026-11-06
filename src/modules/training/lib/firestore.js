@@ -7,7 +7,7 @@
 import {
   addDoc, deleteDoc, doc, getDoc, getDocs, limit, onSnapshot, orderBy, query, serverTimestamp,
   updateDoc, where, writeBatch, collection,
-} from 'firebase/firestore'
+} from '../../../shared/data/client.js'
 import { db } from '../../../shared/firebase'
 import { logAudit } from '../../../shared/org/orgData'
 import { isPermissionDenied } from '../../../shared/lib/permissionDenied'

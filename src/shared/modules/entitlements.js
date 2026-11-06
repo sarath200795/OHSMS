@@ -27,7 +27,7 @@ import {
   onSnapshot,
   serverTimestamp,
   setDoc,
-} from 'firebase/firestore'
+} from '../data/client.js'
 import { db } from '../firebase'
 import { MODULES, ADDONS, OPT_IN_KEYS } from './registry'
 

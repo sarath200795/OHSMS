@@ -19,6 +19,14 @@ const vitestGlobals = {
 }
 
 export default [
+  {
+    files: ['stack/**/*.mjs'],
+    languageOptions: {
+      ecmaVersion: 'latest',
+      sourceType: 'module',
+      globals: { ...globals.node, ...globals.es2021 },
+    },
+  },
   // `.claude` holds tooling state, and `.claude/worktrees/*` is a full second
   // checkout of this repository. Without it here, every file in the project is
   // linted twice and the duplicate copy reports ~270 no-undef errors, because

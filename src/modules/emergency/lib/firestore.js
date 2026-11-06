@@ -9,7 +9,7 @@ import {
   addDoc, collection, deleteDoc, doc, onSnapshot, orderBy, query,
   serverTimestamp, setDoc, updateDoc, writeBatch,
   limit,
-} from 'firebase/firestore'
+} from '../../../shared/data/client.js'
 import { db } from '../../../shared/firebase'
 import { logAudit, COLLECTION_READ_CAP } from '../../../shared/org/orgData'
 import { todayISO, addDaysISO } from '../../../shared/lib/dates'

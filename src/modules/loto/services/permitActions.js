@@ -26,7 +26,7 @@ import {
   Timestamp,
   updateDoc,
   writeBatch,
-} from 'firebase/firestore'
+} from '../../../shared/data/client.js'
 import { db } from '../../../shared/firebase'
 import { openDoc, sealDoc } from '../../../shared/crypto'
 import {

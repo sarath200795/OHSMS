@@ -1,4 +1,4 @@
-import { doc, getDoc } from 'firebase/firestore'
+import { doc, getDoc } from '../../shared/data/client.js'
 import { db } from '../../shared/firebase'
 
 const COLLECTION = {

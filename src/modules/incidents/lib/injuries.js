@@ -32,7 +32,7 @@ import {
   serverTimestamp,
   limit,
   writeBatch,
-} from 'firebase/firestore'
+} from '../../../shared/data/client.js'
 import { db } from '../../../shared/firebase'
 // purgeInjury destroys the clinical DOCUMENTS as well as the pointers to them.
 // A pointer deleted without its object leaves the GP letter in the bucket with

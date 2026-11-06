@@ -21,10 +21,13 @@ Firebase deployment. `DEPLOYMENT.md` is that deployment's first-organization
 check, post-deploy check, and rollback. This file does not describe standing
 up another Firebase project.
 
-**Path 3 is not ready to serve traffic.** `postgres` and `supabase` are
-reserved `VITE_DATA_DRIVER` names. Selecting either one throws
-`UnimplementedDataDriverError` at startup and does not open Firestore under
-that name. The registration screen offers the choice.
+**A dedicated own-stack host can serve one company.** `postgres` is a
+registered `VITE_DATA_DRIVER`. The browser talks to `VITE_DATA_GATEWAY` (a
+URL only) and row level security is the enforcement. `supabase` is still
+reserved: selecting it throws `UnimplementedDataDriverError` and does not
+open Firestore under that name. A Supabase Postgres uses `postgres`. The
+registration screen offers the choice. The shared Firebase build does not
+set `VITE_DATA_DRIVER=postgres`.
 `src/pages/auth/RegisterOrg.jsx` still creates a WEEHS Auth user and a shared
 Firestore organization when the founder chooses the WEEHS database
 (`registerOrganization` in `src/shared/auth/AuthContext.jsx`). The other
@@ -42,17 +45,17 @@ The default build is unchanged: `VITE_DATA_DRIVER` unset or `firestore`,
 
 ## The choice
 
-|                    | Use the WEEHS database                                                          | Use your own database (path 3)                                                         |
-| ------------------ | ------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| Chosen at          | Organization registration                                                       | The same step, the other branch                                                        |
-| What happens today | `RegisterOrg.jsx` creates a WEEHS Auth user and a shared Firestore organization | The wizard files a provisioning request with status `requested`. Nothing is served     |
-| Database           | Shared Cloud Firestore, org under `organizations/{orgId}`                       | Any database the company chooses. `postgres` is the generic driver                     |
-| Files              | Firebase Storage                                                                | S3-compatible (`s3` driver exists; see the file section)                               |
-| Auth               | WEEHS Firebase Auth, including its SAML/OIDC and TOTP                           | That company's IdP. Not a WEEHS Firebase user                                          |
-| Enforcement        | `firestore.rules`, `storage.rules`                                              | RLS, bucket policy, presign checks                                                     |
-| Background work    | `functions/` on the shared project                                              | Workers for that company's stack                                                       |
-| Secrets            | WEEHS deploy config                                                             | That stack's deploy config, via a secure channel. Never a database password in the SPA |
-| Serves traffic     | Yes                                                                             | Not until the gap list is done                                                         |
+|                    | Use the WEEHS database                                                          | Use your own database (path 3)                                                                                                      |
+| ------------------ | ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Chosen at          | Organization registration                                                       | The same step, the other branch                                                                                                     |
+| What happens today | `RegisterOrg.jsx` creates a WEEHS Auth user and a shared Firestore organization | The wizard files a provisioning request. Fulfillment, after the secret intake, marks it live and serves that company on its own URL |
+| Database           | Shared Cloud Firestore, org under `organizations/{orgId}`                       | Any database the company chooses. `postgres` is the generic driver                                                                  |
+| Files              | Firebase Storage                                                                | S3-compatible (`s3` driver exists; see the file section)                                                                            |
+| Auth               | WEEHS Firebase Auth, including its SAML/OIDC and TOTP                           | That company's IdP. Not a WEEHS Firebase user                                                                                       |
+| Enforcement        | `firestore.rules`, `storage.rules`                                              | RLS, bucket policy, presign checks                                                                                                  |
+| Background work    | `functions/` on the shared project                                              | Workers for that company's stack                                                                                                    |
+| Secrets            | WEEHS deploy config                                                             | That stack's deploy config, via a secure channel. Never a database password in the SPA                                              |
+| Serves traffic     | Yes, on the shared suite                                                        | On that company's dedicated URL, after fulfillment, for `postgres` plus OIDC, SAML, or Supabase Auth                                |
 
 ## Registration
 
@@ -89,7 +92,8 @@ own database). The write is `fileProvisioningRequest`. It does not call
 `createUserWithEmailAndPassword`, `registerOrganization`, or
 `createOrganization`. Secrets travel on a channel that does not put them in
 the SPA and does not write them to a client-readable document. That channel
-is not built yet: the wizard still has no field for them.
+is `POST /intake` on the control-plane host (`stack/server.mjs`). The wizard
+still has no field for them.
 
 The wizard may ask:
 
@@ -213,11 +217,11 @@ SPA picks between.
 - **`memory` is not path 3.** `VITE_DATA_DRIVER=memory` is an in-process
   driver for tests and demos. It has no tenancy enforcement. Do not deploy
   it.
-- **This change does not add a Postgres client, a SQL schema, or an RLS
-  file.** A half-registered adapter would make the reserved name resolve
-  and then fail on the first exclusive create. The names stay reserved
-  until an adapter implements the whole contract in
-  `src/shared/data/index.js`.
+- **No half-registered adapter.** `postgres` implements the whole contract
+  in `src/shared/data/index.js`, with schema and RLS in `stack/`. The next
+  engine stays reserved until its adapter does the same. A file that
+  implements the reads and not `createExclusive` would make the name
+  resolve and then fail on the first exclusive create.
 - **`firestore.rules`, `storage.rules`, and the CI gates stay as they are.**
   Path 3 does not weaken them so a future adapter can write.
 
@@ -233,8 +237,11 @@ secret store with the same split.
 Public by construction (they end up in the bundle):
 
 - `VITE_DATA_DRIVER` — `firestore` (default), `memory` (not a production
-  store), `postgres`, `supabase`. The last two throw until an adapter is
-  registered.
+  store), `postgres`. `supabase` still throws until that flavor's adapter
+  is registered.
+- `VITE_DATA_GATEWAY`, `VITE_AUTH_ISSUER`, `VITE_AUTH_CLIENT_ID`,
+  `VITE_AUTH_METHOD` — public own-stack config. No client secret, database
+  URL, or password.
 - `VITE_STORAGE_DRIVER` — `firebase` (default) or `s3`. `s3` is implemented.
   It is a file-store swap, not a whole custom stack.
 - `VITE_S3_PRESIGN_ENDPOINT` — a URL only. No access key in the URL, the
@@ -286,15 +293,17 @@ The company chooses the database. Supabase is not the data store. Auth and
 the database are separate: Supabase Auth is one IdP beside OIDC and SAML,
 and it does not require the `supabase` data driver.
 
-Registered today: `firestore`, `memory`.
+Registered today: `firestore`, `memory`, `postgres`.
 
-Reserved, not registered: `postgres`, `supabase`.
+Reserved, not registered: `supabase`.
 `src/shared/data/resolveDriver.js` throws
-`UnimplementedDataDriverError` when the build selects one and no adapter is
-in the `DRIVERS` map. An unknown string still falls back to `firestore`, so
-a typo cannot take down the Firebase deployment. A name this repository has
-published is not treated as a typo. Publish a new engine by reserving its
-name in the same change, or a build that sets it will quietly use Firestore.
+`UnimplementedDataDriverError` when the build selects a reserved name and no
+adapter is in the `DRIVERS` map. `postgres` is registered, so a dedicated
+build may set it. `supabase` is still reserved. An unknown string still
+falls back to `firestore`, so a typo cannot take down the Firebase
+deployment. A name this repository has published is not treated as a typo.
+Publish a new engine by reserving its name in the same change, or a build
+that sets it will quietly use Firestore.
 
 `postgres` is the generic path. One adapter covers Postgres-protocol
 servers — a database the company runs, or one a host runs for them,
@@ -625,111 +634,37 @@ Regenerate with:
 grep -rl "firebase/firestore\|firebase/storage" src --include="*.js*" | grep -v shared/data/adapters | grep -v shared/storage/adapters
 ```
 
-That command does not see `firebase/auth` or `firebase/functions`. Those
-are listed here as well. Counts below are the tree this document was
-written against. When the list and the tree disagree, re-run the grep and
-fix this file. Do not keep a second inventory in `src/shared/data/README.md`.
+That command does not see `firebase/auth` or `firebase/functions`.
+When the list and the tree disagree, re-run the grep and fix this file.
+Do not keep a second inventory in `src/shared/data/README.md`.
 
-### Registration — branch only when the request is real
+Module libraries no longer import `firebase/firestore`. They import
+`src/shared/data/client.js`, which calls the Firebase SDK on the WEEHS build
+and the postgres adapter when `VITE_DATA_DRIVER=postgres`. The product files
+the grep still finds are `src/shared/firebase.js` (WEEHS bootstrap) and
+`src/shared/data/client.js` (the forwarder). The Firestore and Storage
+adapters are excluded by the grep on purpose.
 
-These are the WEEHS path. They are listed so the choice has a home, and so
-nobody adds the second button by calling them with a different title.
+What is still open, and is why a dedicated host is not a claim that every
+Firestore rule has a line-by-line twin:
 
-- `src/pages/auth/RegisterOrg.jsx` — the choice, then the WEEHS form. That
-  form collects a WEEHS password and calls `registerOrganization`. The own
-  database choice renders `OwnStackRequest.jsx` instead.
-- `src/pages/auth/OwnStackRequest.jsx` — the own-database wizard. It files a
-  provisioning request and does not create a WEEHS user.
-- `src/shared/org/provisioningRequest.js` — the batch that writes
-  `/provisioningRequests/{id}` and the `orgIndex` reservation.
-  `firestore.rules` is the allowlist. Status stays `requested`.
-- `src/pages/platform/ProvisioningRequests.jsx` — operator read of those
-  requests. It does not provision anything.
-- `src/shared/auth/AuthContext.jsx` — `registerOrganization` creates the
-  Firebase user first; `signUpMember` joins a WEEHS org as `pending`. A name
-  reserved by an own-stack request is refused here.
-- `src/shared/org/orgData.js` — `createOrganization`, `findOrgByName`. The
-  lookup reports `stack: 'own'` when the index row is a reservation.
-- `src/pages/auth/Signup.jsx` — join by typed organization name, on WEEHS
-  Auth. An own-stack name does not get a WEEHS password account.
+- RLS covers org isolation, the password gate, auditor deletes, manager-only
+  reads of injuries and illnesses, anonymous token-bound reports, locks, and
+  observations, append-only audit logs, and the permissive-union and
+  post-state cases. It does not reproduce every permit and LOTO decision
+  matrix in `firestore.rules`.
+- `supabase` is still reserved. Supabase Auth is an IdP and does not select
+  that driver.
+- Moving an existing WEEHS tenant onto a company database, and the reverse,
+  is still the unbuilt migration below.
+- WhatsApp on the shared Firebase project is unchanged. The own-stack host
+  does not yet run that channel. Mail sends when the host is given a
+  transport; without `SMTP_PASS` it reports that mail was not sent.
+- App Check's replacement for anonymous routes is still the company's choice.
+  The token-bound policies exist. The vendor does not.
 
-The own-stack wizard is not a variant of `registerOrganization`. The control
-plane can hold the request. It still cannot provision the database, the IdP,
-or the dedicated URL.
-
-### Move first — shared data
-
-These are on the path of every module, including the ones that already use
-`dataProvider`:
-
-- `src/shared/org/orgData.js` — orgs, users, sites, the audit log, batched
-  writes. `logAudit` lives here and is the only writer of `auditLogs`.
-- `src/shared/docId/reserve.js` — transactional reference numbers
-- `src/shared/docId/backfill.js`
-- `src/shared/org/integrations.js`
-- `src/shared/modules/entitlements.js`
-- `src/shared/auth/platformAdmin.js`
-- `src/shared/auth/provisioning.js` — `firebase/app`, `firebase/auth`, and
-  `firebase/firestore`
-- `src/shared/crypto/backfill.js`
-- `src/shared/sam/liveStats.js`
-- `src/shared/mobile/useAlertFeed.jsx`
-- `src/shared/firebase.js` — client bootstrap. The Firebase deployment keeps
-  it. Path 3 replaces its role. It is not wrapped.
-
-### Auth, no Firestore import
-
-- `src/shared/auth/AuthContext.jsx`
-- `src/shared/auth/mfa.js`
-- `src/pages/auth/ForcePasswordChange.jsx`
-- `src/shared/auth/sso.js` reads `VITE_SSO_PROVIDERS` and does not itself
-  import the SDK. The popup it describes is performed by `AuthContext.jsx`.
-  The values are Firebase Identity Platform provider ids (`saml.` / `oidc.`).
-  A path 3 auth provider will not accept those ids unchanged.
-
-### Callable client
-
-- `src/shared/functions.js` — dynamic `import('firebase/functions')`. Every
-  maintenance, key, export, Metabase, weather, and WhatsApp screen that
-  calls a function comes through here.
-
-### Modules that import `firebase/firestore`
-
-Incidents, fire, LOTO, and permit-to-work first. Each module's own library
-moves in the same change as any dashboard path that already touches that
-collection. The dashboard streams incidents and HIRA assessments through
-the seam while these libraries still talk to Firestore. Moving one side
-only splits the module across two databases.
-
-- Incidents: `src/modules/incidents/lib/firestore.js`, `incidents.js`,
-  `illnesses.js`, `injuries.js`
-- Fire: `src/modules/fire/lib/firestore.js`,
-  `src/modules/fire/pages/QrLanding.jsx`
-- LOTO: `src/modules/loto/services/groupNumbers.js`, `lockClaims.js`,
-  `lockPhoto.js`, `locks.js`, `permitActions.js`, `permits.js`,
-  `procedures.js`, `shiftSettings.js`, `technicians.js`, and
-  `src/modules/loto/pages/PublicProcedure.jsx`
-- Permit to work: `src/modules/ptw/lib/firestore.js`
-- HIRA: `src/modules/hira/lib/firestore.js`
-- The rest: `src/modules/actions/lib/sources.js`,
-  `src/modules/audit/services/auditModule.js`, `audits.js`, `capa.js`,
-  `findings.js`, `src/modules/cctv/lib/firestore.js`,
-  `src/modules/committee/lib/firestore.js`,
-  `src/modules/documents/lib/service.js`,
-  `src/modules/emergency/lib/firestore.js`,
-  `src/modules/inspections/lib/firestore.js`,
-  `src/modules/objectives/lib/firestore.js`,
-  `src/modules/stakeholder/lib/firestore.js`,
-  `src/modules/training/lib/firestore.js`
-
-### Public and field reads
-
-- `src/pages/field/Asset.jsx`
-- `src/pages/field/loadAsset.js`
-- `src/pages/platform/PlatformLogin.jsx`
-- `src/pages/portal/widgets/useWidgetPrefs.js`
-
-Open the anonymous routes only after the token-bound policies exist.
+`node stack/demo-provision.mjs` builds one embedded company on
+`http://127.0.0.1:8787`. It does not touch the shared Firebase project.
 
 ### Call-site traps the contract already names
 
@@ -743,9 +678,10 @@ From `src/shared/data/README.md`, still in force:
 
 ## Migration order
 
-This list is the build plan. Path 3 does not serve traffic at any step
-before the last one. The registration choice is the product intent the plan
-is aiming at. It is not step 1 of the plan.
+This list is the build plan. A dedicated postgres host serves that company
+after fulfillment. It does not serve them from the shared Firebase build, and
+it does not serve an engine whose adapter is still reserved. The registration
+choice is the product intent. Filing the request is not itself the cutover.
 
 1. Keep serving users from the WEEHS Firebase deployment. Do the path 3 work
    in another environment. Do not move a `v*` tag. The database choice is on
@@ -821,12 +757,13 @@ request alone.
 5. Host the presign endpoint specified in `adapters/s3.js`. It checks the
    session and the `orgs/<orgId>/` prefix, it holds the S3 secret, and a
    delete re-reads the member's profile.
-6. Leave `VITE_DATA_DRIVER` unset or `firestore` until step 10 of the
-   migration order. Setting `postgres` or `supabase` now fails the app at
-   startup with `UnimplementedDataDriverError`. That failure is the
-   control that stops a build writing into Firestore while labelled as
-   something else. The error is in the browser console, and the value was
-   compiled in, so clearing it means rebuilding.
+6. Set `VITE_DATA_DRIVER=postgres` only on that company's build, and only
+   after the adapter is the one in `DRIVERS` (it is). `supabase` still
+   fails the app at startup with `UnimplementedDataDriverError`. That
+   failure is the control that stops a build writing into Firestore while
+   labelled as something else. The error is in the browser console, and
+   the value was compiled in, so clearing it means rebuilding. Do not set
+   `postgres` on the shared Firebase production build.
 7. If you set `VITE_STORAGE_DRIVER=s3` before the database has moved, tell
    the organization the files are in their bucket and the records are
    still in Firestore. The presign call still presents a Firebase ID
@@ -844,11 +781,13 @@ request alone.
     exist, build that environment with the driver flags and deploy it as
     its own target. Leave the Firebase production tags where they are.
 
-An operator following this today can read a provisioning request and prepare
-infrastructure for that company, and stops before pointing `VITE_DATA_DRIVER`
-at a reserved name. The registration screen offers the choice and the
-own-database branch only files the request. Serving that company is still
-the correct thing to refuse until the gap list is done.
+An operator fulfills a postgres request with `stack/server.mjs` (or
+`node stack/demo-provision.mjs` for one local company). The wizard still
+only files the request. The dedicated URL is live after the secret intake
+and that server-side status write. `supabase` as a data driver, a full
+translation of every Firestore decision matrix, and moving an existing
+WEEHS tenant across stacks are still open. The shared Firebase production
+tags stay where they are.
 
 ## Moving between the WEEHS database and the company's database
 

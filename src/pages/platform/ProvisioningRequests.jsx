@@ -42,9 +42,9 @@ export default function ProvisioningRequests() {
         icon={Database}
       />
       <p className="max-w-3xl text-sm leading-relaxed text-ink-600">
-        Each row is status requested unless an operator has changed it outside this screen. Database
-        passwords, service-role keys, and DATA_KEY_MASTER are not stored on the request, and this
-        page has no control that marks a company live.
+        Each row stays requested until the control plane fulfills it. This page cannot mark a
+        company live: that write is refused to every browser, including an operator. Database
+        passwords, service-role keys, and DATA_KEY_MASTER are not stored on the request.
       </p>
       {error === 'denied' && (
         <AccessDenied
@@ -90,6 +90,9 @@ export default function ProvisioningRequests() {
                   Status
                 </th>
                 <th scope="col" className="px-4 py-3 font-semibold">
+                  Dedicated URL
+                </th>
+                <th scope="col" className="px-4 py-3 font-semibold">
                   Filed
                 </th>
               </tr>
@@ -108,9 +111,26 @@ export default function ProvisioningRequests() {
                   <td className="px-4 py-3 font-mono text-ink-700">{row.engine || '—'}</td>
                   <td className="px-4 py-3 text-ink-700">{authMethodLabel(row.authMethod)}</td>
                   <td className="px-4 py-3">
-                    <Badge tone={row.status === 'requested' ? 'amber' : 'slate'}>
+                    <Badge
+                      tone={
+                        row.status === 'live'
+                          ? 'green'
+                          : row.status === 'requested'
+                            ? 'amber'
+                            : 'slate'
+                      }
+                    >
                       {row.status || '—'}
                     </Badge>
+                  </td>
+                  <td className="px-4 py-3 text-ink-700">
+                    {row.dedicatedUrl ? (
+                      <a href={row.dedicatedUrl} className="underline-offset-2 hover:underline">
+                        {row.dedicatedUrl}
+                      </a>
+                    ) : (
+                      '—'
+                    )}
                   </td>
                   <td className="px-4 py-3 text-ink-500">{formatDateTime(row.createdAt)}</td>
                 </tr>

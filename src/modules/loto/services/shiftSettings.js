@@ -1,7 +1,7 @@
 // Per-site shift clocks. organizations/{orgId}/lotoSettings/shifts.
 // Admin writes; every approved member can read. The permit rules read the
 // same document when they decide whether a window is that site's shift.
-import { doc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore'
+import { doc, onSnapshot, serverTimestamp, setDoc } from '../../../shared/data/client.js'
 import { db } from '../../../shared/firebase'
 
 export const SHIFT_SETTINGS_ID = 'shifts'

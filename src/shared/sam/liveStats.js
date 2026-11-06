@@ -2,7 +2,7 @@
 // Sam's live data — cheap Firestore COUNT aggregations (no document reads, so
 // this stays fast and cheap even at 5 000-employee scale). Cached for 60 s.
 // ─────────────────────────────────────────────────────────────────────────────
-import { collection, query, where, getCountFromServer } from 'firebase/firestore'
+import { collection, query, where, getCountFromServer } from '../data/client.js'
 import { db } from '../firebase'
 
 const TTL_MS = 60_000

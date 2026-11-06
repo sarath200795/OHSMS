@@ -49,14 +49,19 @@ export default function Dashboard() {
   const modules = useMemo(() => enabledModules(moduleMap), [moduleMap])
   const [incidents, setIncidents] = useState(null)
   const [risks, setRisks] = useState(null)
+  const [loadError, setLoadError] = useState('')
   const [tallies, setTallies] = useState(null)
   const [logs, setLogs] = useState(null)
 
   useEffect(() => {
     if (!orgId) return
     const unsubs = [
-      incidentsSvc.subscribe(orgId, setIncidents),
-      assessmentsSvc.subscribe(orgId, setRisks),
+      incidentsSvc.subscribe(orgId, setIncidents, () =>
+        setLoadError('Incidents could not be loaded. This is not an empty list.')
+      ),
+      assessmentsSvc.subscribe(orgId, setRisks, () =>
+        setLoadError('Assessments could not be loaded. This is not an empty list.')
+      ),
       subscribeAuditLogs(orgId, setLogs, 8),
     ]
     return () => unsubs.forEach((u) => u && u())
@@ -88,7 +93,7 @@ export default function Dashboard() {
     }
   }, [orgId])
 
-  const loading = incidents === null || risks === null || tallies === null
+  const loading = !loadError && (incidents === null || risks === null || tallies === null)
 
   const kpis = useMemo(() => {
     const openIncidents = (incidents || []).filter((i) => i.status && i.status !== 'closed').length
@@ -118,6 +123,11 @@ export default function Dashboard() {
         subtitle="Your organization's health & safety at a glance"
         icon={Activity}
       />
+      {loadError && (
+        <p role="alert" className="text-sm font-medium text-red-400">
+          {loadError}
+        </p>
+      )}
 
       {/* KPI row */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">

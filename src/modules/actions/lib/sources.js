@@ -9,7 +9,7 @@
 //
 // Normalized status: 'open' | 'in_progress' | 'done'.
 // ─────────────────────────────────────────────────────────────────────────────
-import { doc, getDoc, updateDoc } from 'firebase/firestore'
+import { doc, getDoc, updateDoc } from '../../../shared/data/client.js'
 import { db } from '../../../shared/firebase'
 import { subscribeOrgCollection, incompleteReadNotice } from '../../../shared/org/orgData'
 import { releaseDefectLocks } from '../../fire/lib/firestore'

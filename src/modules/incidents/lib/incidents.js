@@ -20,7 +20,7 @@ import {
   limit,
   increment,
   runTransaction,
-} from 'firebase/firestore'
+} from '../../../shared/data/client.js'
 import { db } from '../../../shared/firebase'
 import { onReadError } from '../../../shared/org/readError'
 import { logAudit } from './firestore'

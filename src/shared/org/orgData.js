@@ -20,7 +20,7 @@ import {
   serverTimestamp,
   writeBatch,
   limit,
-} from 'firebase/firestore'
+} from '../data/client.js'
 import { db } from '../firebase'
 import { isSessionEnd } from '../sessionEnd'
 import { onReadError } from './readError'

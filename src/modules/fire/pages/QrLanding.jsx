@@ -20,7 +20,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { doc, getDoc } from 'firebase/firestore'
+import { doc, getDoc } from '../../../shared/data/client.js'
 import toast from 'react-hot-toast'
 import { AlertTriangle, ShieldCheck, MapPin, Calendar, QrCode, Loader2, Wrench, HeartPulse, BellRing, Flame, Ambulance, RotateCcw } from 'lucide-react'
 import { db } from '../../../shared/firebase'

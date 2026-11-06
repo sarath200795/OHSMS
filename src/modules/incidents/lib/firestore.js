@@ -12,7 +12,7 @@ import {
   orderBy,
   onSnapshot,
   limit,
-} from 'firebase/firestore'
+} from '../../../shared/data/client.js'
 import { db } from '../../../shared/firebase'
 import { onReadError } from '../../../shared/org/readError'
 import { AUDIT } from './audit'
