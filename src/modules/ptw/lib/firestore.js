@@ -29,6 +29,12 @@ import { putFile, removeFile, MAX_INLINE_BYTES, tooLargeForInline } from '../../
 import { AUDIT } from './audit'
 import { computeWindow, derivePermitStatus } from './permitStatus'
 import { mirrorDisplayFields } from './publicPermit'
+import { TEXT } from '../../../shared/validate/textCap'
+
+const clip = (value, max) => {
+  const text = value == null ? '' : String(value)
+  return text.length <= max ? text : text.slice(0, max)
+}
 import { generateQrToken } from './qr'
 import { logAudit as logOrgAudit, orgIndexRef } from '../../../shared/org/orgData'
 import { discardMailedReport } from '../../../shared/print/mailedReport'
@@ -124,19 +130,35 @@ async function nextPermitNo(orgId, year) {
 
 // Status fields the public page feeds into derivePermitStatus, kept in sync.
 function mirrorStatusFields(p) {
+  const closed = p.closedDueToObservation
   return {
-    storedStatus: derivePermitStatus(p, Date.now()),
-    engineering: { status: p.engineering?.status || 'pending' },
-    operations: { status: p.operations?.status || 'pending' },
+    storedStatus: clip(derivePermitStatus(p, Date.now()), TEXT.status),
+    engineering: { status: clip(p.engineering?.status || 'pending', TEXT.status) },
+    operations: { status: clip(p.operations?.status || 'pending', TEXT.status) },
     closure: p.closure
-      ? { engineering: { status: p.closure.engineering?.status || 'pending' }, operations: { status: p.closure.operations?.status || 'pending' } }
+      ? {
+          engineering: { status: clip(p.closure.engineering?.status || 'pending', TEXT.status) },
+          operations: { status: clip(p.closure.operations?.status || 'pending', TEXT.status) },
+        }
       : null,
     extension: p.extension
-      ? { engineering: { status: p.extension.engineering?.status || 'pending' }, operations: { status: p.extension.operations?.status || 'pending' }, newValidTo: p.extension.newValidTo || null }
+      ? {
+          engineering: { status: clip(p.extension.engineering?.status || 'pending', TEXT.status) },
+          operations: { status: clip(p.extension.operations?.status || 'pending', TEXT.status) },
+          newValidTo: p.extension.newValidTo ? clip(p.extension.newValidTo, TEXT.date) : null,
+        }
       : null,
-    closedDueToObservation: p.closedDueToObservation || null,
-    validFrom: p.validFrom || null,
-    validTo: p.validTo || null,
+    closedDueToObservation: closed
+      ? {
+          observationId: clip(closed.observationId, TEXT.label),
+          by: clip(closed.by, TEXT.token),
+          byName: clip(closed.byName, TEXT.name),
+          at: clip(closed.at, TEXT.date),
+          note: clip(closed.note, TEXT.portalNote),
+        }
+      : null,
+    validFrom: p.validFrom ? clip(p.validFrom, TEXT.date) : null,
+    validTo: p.validTo ? clip(p.validTo, TEXT.date) : null,
     updatedAt: serverTimestamp(),
   }
 }
@@ -145,16 +167,16 @@ function mirrorStatusFields(p) {
 function fullMirror(orgId, orgName, permitId, p) {
   return {
     orgId,
-    orgName: orgName || '',
+    orgName: clip(orgName, TEXT.name),
     permitId,
     // Every field is defaulted: Firestore rejects `undefined`, and permits that
     // predate a column — or arrived by import or seed — legitimately lack one.
     // permitNo was the exception, so publishing the mirror threw for exactly the
     // legacy permits this function exists to heal, and the QR stayed dead.
-    token: p.qrToken || '',
-    permitNo: p.permitNo || '',
-    docId: p.docId || '',
-    site: p.site || '',
+    token: clip(p.qrToken, TEXT.token),
+    permitNo: clip(p.permitNo, TEXT.serial),
+    docId: clip(p.docId, TEXT.serial),
+    site: clip(p.site, TEXT.site),
     // Crew as COUNTS, and the display half withdrawn once the job is over —
     // see publicPermit.js. This published every participant's name and employer
     // to an unauthenticated URL for the life of the permit and then forever.
@@ -335,10 +357,10 @@ export async function createObservation(orgId, data, actor) {
     permitNo: data.permitNo || '',
     token: data.token || '',
     type: data.type, // 'safe' | 'unsafe'
-    note: data.note || '',
+    note: String(data.note || '').slice(0, TEXT.portalNote),
     observedBy: actor?.uid || null,
-    observedByName: actor?.name || '',
-    observedByRole: actor?.role || '',
+    observedByName: clip(actor?.name, TEXT.name),
+    observedByRole: clip(actor?.role, TEXT.role),
     source: data.source || 'portal',
     at: serverTimestamp(),
   })
@@ -401,13 +423,13 @@ export const OBSERVER_ROLES = [
 export async function createPublicObservation(orgId, data) {
   const ref = await addDoc(obsCol(orgId), {
     permitId: data.permitId,
-    permitNo: data.permitNo || '',
+    permitNo: clip(data.permitNo, TEXT.serial),
     token: data.token || '',
     type: data.type === 'unsafe' ? 'unsafe' : 'safe',
-    note: (data.note || '').slice(0, 500),
+    note: String(data.note || '').slice(0, TEXT.note),
     observedBy: 'public',
-    observedByName: data.reporterRole || 'QR Scan (Public)',
-    observedByRole: data.reporterRole || '',
+    observedByName: clip(data.reporterRole || 'QR Scan (Public)', TEXT.name),
+    observedByRole: clip(data.reporterRole, TEXT.role),
     source: 'qr',
     approvalStatus: 'pending',
     at: serverTimestamp(),

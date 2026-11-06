@@ -46,6 +46,8 @@ const writeBatch = (...args) => { assertWritable(); return _writeBatch(...args) 
 // the size of every transactional path added from here on.
 const runTransaction = (...args) => { assertWritable(); return _runTransaction(...args) }
 import { generateQrToken, tokenFromQrValue } from './qr'
+import { boundReportText, reportNoteIssue } from './publicReport'
+import { TEXT } from '../../../shared/validate/textCap'
 import {
   fasQrTokenForCreate,
   fasQrTokenForUpdate,
@@ -240,26 +242,38 @@ export function subscribeOrg(orgId, cb) {
 
 // ── QR mirror ──────────────────────────────────────────────────────────────────
 // Minimal public-readable copy of an extinguisher, keyed by qrToken.
+// Public mirrors are world-readable. A pasted paragraph must not become a
+// megabyte document at /qr/{token}; the rules reject that shape, so the
+// builder clips to the same caps or the asset write fails with it.
+const clipMirror = (value, max) => {
+  const text = value == null ? '' : String(value)
+  return text.length <= max ? text : text.slice(0, max)
+}
+
 function mirrorPayload(orgId, orgName, id, ext) {
+  const defects = Array.isArray(ext.physicalDefects) ? ext.physicalDefects : []
   return {
     orgId,
-    orgName: orgName || '',
+    orgName: clipMirror(orgName, TEXT.name),
     extId: id,
     token: ext.qrToken,
     // Every field is defaulted: Firestore rejects `undefined`, and assets that
     // predate a column (or arrived by import) legitimately lack one. The add
     // path always supplies them, but backfilling existing stock does not.
-    serialNo: ext.serialNo || '',
-    type: ext.type || '',
-    capacity: ext.capacity || '',
-    entity: ext.entity || '',
-    region: ext.region || '',
-    centerName: ext.centerName || '',
-    dateOfDeployment: ext.dateOfDeployment || '',
-    dateOfNextRefill: ext.dateOfNextRefill || '',
-    dateOfNextHPT: ext.dateOfNextHPT || '',
-    status: ext.status || '',
-    physicalDefects: ext.physicalDefects || [],
+    serialNo: clipMirror(ext.serialNo, TEXT.serial),
+    type: clipMirror(ext.type, TEXT.short),
+    capacity: clipMirror(ext.capacity, TEXT.short),
+    entity: clipMirror(ext.entity, TEXT.short),
+    region: clipMirror(ext.region, TEXT.short),
+    centerName: clipMirror(ext.centerName, TEXT.site),
+    dateOfDeployment: clipMirror(ext.dateOfDeployment, TEXT.date),
+    dateOfNextRefill: clipMirror(ext.dateOfNextRefill, TEXT.date),
+    dateOfNextHPT: clipMirror(ext.dateOfNextHPT, TEXT.date),
+    status: clipMirror(ext.status, TEXT.status),
+    physicalDefects: defects
+      .filter((key) => typeof key === 'string')
+      .slice(0, 8)
+      .map((key) => clipMirror(key, TEXT.date)),
     // Null on a live unit, set while it sits in the bin. Omitting it on a
     // rewrite would publish a retired unit as in service. The field is on the
     // rules allow-list for the same reason.
@@ -701,6 +715,8 @@ export async function getExtinguisher(orgId, id) {
  * users AND public QR visitors. Always lands as `pending`.
  */
 export async function createReport(orgId, report) {
+  const noteIssue = reportNoteIssue(report?.note)
+  if (noteIssue) throw new Error(noteIssue)
   // One open report per defect per unit. The lock document and the report are
   // written together, so a duplicate cannot slip through between the check and
   // the write, and the QR page — which may not read reports — is covered by the
@@ -767,16 +783,17 @@ export async function createReport(orgId, report) {
 }
 
 function reportPayload(report) {
+  const text = boundReportText(report)
   return {
     extId: report.extId,
-    extLabel: report.extLabel || '',
+    extLabel: text.extLabel || '',
     kind: report.kind, // 'defect' | 'status_change'
-    defectType: report.defectType || null,
-    newStatus: report.newStatus || null,
-    note: report.note || '',
+    defectType: text.defectType || null,
+    newStatus: text.newStatus || null,
+    note: text.note || '',
     reportedBy: report.reportedBy || 'public',
-    reportedByName: report.reportedByName || 'QR Scan (Public)',
-    reporterRole: report.reporterRole || null,
+    reportedByName: text.reportedByName || 'QR Scan (Public)',
+    reporterRole: text.reporterRole || null,
     source: report.source || 'portal',
     approvalStatus: 'pending',
     reportedAt: serverTimestamp(),
@@ -1778,11 +1795,14 @@ const cleanAed = (d) => ({
 // Public-readable QR mirror for an AED (keyed by qrToken, under /qr/{token}).
 function aedMirror(orgId, orgName, id, a) {
   return {
-    assetKind: 'aed', orgId, orgName: orgName || '', assetRefId: id, token: a.qrToken,
-    label: a.assetId || 'AED', brand: a.brand || '', model: a.model || '',
-    centerName: a.centerName || '', region: a.region || '', entity: a.entity || '', location: a.location || '',
-    status: a.status || 'ready', batteryExpiry: a.batteryExpiry || '', padExpiry: a.padExpiry || '',
-    lastInspection: a.lastInspection || '', nextInspection: a.nextInspection || '',
+    assetKind: 'aed', orgId, orgName: clipMirror(orgName, TEXT.name), assetRefId: id, token: a.qrToken,
+    label: clipMirror(a.assetId || 'AED', TEXT.label), brand: clipMirror(a.brand, TEXT.serial),
+    model: clipMirror(a.model, TEXT.serial),
+    centerName: clipMirror(a.centerName, TEXT.site), region: clipMirror(a.region, TEXT.short),
+    entity: clipMirror(a.entity, TEXT.short), location: clipMirror(a.location, TEXT.location),
+    status: clipMirror(a.status || 'ready', TEXT.status),
+    batteryExpiry: clipMirror(a.batteryExpiry, TEXT.date), padExpiry: clipMirror(a.padExpiry, TEXT.date),
+    lastInspection: clipMirror(a.lastInspection, TEXT.date), nextInspection: clipMirror(a.nextInspection, TEXT.date),
     deletedAt: a.deletedAt || null,
     updatedAt: serverTimestamp(),
   }
@@ -2013,11 +2033,14 @@ const cleanStretcher = (d) => ({
 // Public-readable QR mirror for a stretcher (keyed by qrToken, under /qr/{token}).
 function stretcherMirror(orgId, orgName, id, a) {
   return {
-    assetKind: 'stretcher', orgId, orgName: orgName || '', assetRefId: id, token: a.qrToken,
-    label: a.assetId || 'Stretcher', stretcherType: a.type || '', brand: a.brand || '', model: a.model || '',
-    centerName: a.centerName || '', region: a.region || '', entity: a.entity || '', location: a.location || '',
-    status: a.status || 'ready',
-    lastInspection: a.lastInspection || '', nextInspection: a.nextInspection || '', updatedAt: serverTimestamp(),
+    assetKind: 'stretcher', orgId, orgName: clipMirror(orgName, TEXT.name), assetRefId: id, token: a.qrToken,
+    label: clipMirror(a.assetId || 'Stretcher', TEXT.label), stretcherType: clipMirror(a.type, TEXT.short),
+    brand: clipMirror(a.brand, TEXT.serial), model: clipMirror(a.model, TEXT.serial),
+    centerName: clipMirror(a.centerName, TEXT.site), region: clipMirror(a.region, TEXT.short),
+    entity: clipMirror(a.entity, TEXT.short), location: clipMirror(a.location, TEXT.location),
+    status: clipMirror(a.status || 'ready', TEXT.status),
+    lastInspection: clipMirror(a.lastInspection, TEXT.date),
+    nextInspection: clipMirror(a.nextInspection, TEXT.date), updatedAt: serverTimestamp(),
   }
 }
 
@@ -2135,11 +2158,14 @@ const cleanFas = (d) => ({
 
 function fasMirror(orgId, orgName, id, a) {
   return {
-    assetKind: 'fas', orgId, orgName: orgName || '', assetRefId: id, token: a.qrToken,
-    label: a.deviceId || a.deviceType || 'FAS', deviceType: a.deviceType || '', zone: a.zone || '',
-    centerName: a.centerName || '', region: a.region || '', entity: a.entity || '', location: a.location || '',
-    status: a.status || 'operational', lastService: a.lastService || '', nextService: a.nextService || '',
-    amcVendor: a.amcVendor || '',
+    assetKind: 'fas', orgId, orgName: clipMirror(orgName, TEXT.name), assetRefId: id, token: a.qrToken,
+    label: clipMirror(a.deviceId || a.deviceType || 'FAS', TEXT.label),
+    deviceType: clipMirror(a.deviceType, TEXT.short), zone: clipMirror(a.zone, TEXT.serial),
+    centerName: clipMirror(a.centerName, TEXT.site), region: clipMirror(a.region, TEXT.short),
+    entity: clipMirror(a.entity, TEXT.short), location: clipMirror(a.location, TEXT.location),
+    status: clipMirror(a.status || 'operational', TEXT.status),
+    lastService: clipMirror(a.lastService, TEXT.date), nextService: clipMirror(a.nextService, TEXT.date),
+    amcVendor: clipMirror(a.amcVendor, TEXT.label),
     deletedAt: a.deletedAt || null,
     updatedAt: serverTimestamp(),
   }
@@ -2334,12 +2360,15 @@ export async function purgeFas(orgId, id, qrToken, actor, label) {
 // ── AED / FAS public defect reports (submitted from a QR scan) ─────────────────
 /** Create a pending asset-defect report (public QR scan). Lands in Approvals. */
 export async function createAssetReport(orgId, { assetKind, assetRefId, assetLabel, defect, token, reporterRole, note }) {
+  const noteIssue = reportNoteIssue(note)
+  if (noteIssue) throw new Error(noteIssue)
+  const text = boundReportText({ assetLabel, defect, reporterRole, note })
   await addDoc(reportCol(orgId), {
     kind: 'asset_defect',
     assetKind,
     assetRefId,
-    assetLabel: assetLabel || '',
-    defect,
+    assetLabel: text.assetLabel || '',
+    defect: text.defect,
     token: token || '',
     approvalStatus: 'pending',
     source: 'qr',
@@ -2348,8 +2377,8 @@ export async function createAssetReport(orgId, { assetKind, assetRefId, assetLab
     // Same two fields an extinguisher report carries, because the Approvals card
     // reads them off the report regardless of kind — without them an AED or panel
     // fault arrives anonymous next to a fully attributed extinguisher one.
-    reporterRole: reporterRole || null,
-    note: note || '',
+    reporterRole: text.reporterRole || null,
+    note: text.note || '',
     reportedAt: serverTimestamp(),
     createdAt: serverTimestamp(),
   })

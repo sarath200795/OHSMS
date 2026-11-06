@@ -211,7 +211,7 @@ export default function Injuries() {
                   ))}
                 </div>
                 {form.firstAidDone && (
-                  <input className="input mt-2" placeholder="First aid details" value={form.firstAidDetail} onChange={(e) => setForm({ ...form, firstAidDetail: e.target.value })} />
+                  <input className="input mt-2" placeholder="First aid details" maxLength={2000} value={form.firstAidDetail} onChange={(e) => setForm({ ...form, firstAidDetail: e.target.value })} />
                 )}
               </div>
               <Field label="Type of injury">

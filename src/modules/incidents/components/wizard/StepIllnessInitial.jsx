@@ -88,7 +88,7 @@ export default function StepIllnessInitial({ value, onChange, users, incidents =
 
       <div className="card p-6">
         <FieldLabel icon={HeartPulse}>Health issue triggered</FieldLabel>
-        <textarea className="input min-h-[100px] resize-y" placeholder="Describe the health issue / symptoms triggered by the exposure…" value={value.healthIssue || ''} onChange={(e) => set({ healthIssue: e.target.value })} />
+        <textarea className="input min-h-[100px] resize-y" maxLength={8000} placeholder="Describe the health issue / symptoms triggered by the exposure…" value={value.healthIssue || ''} onChange={(e) => set({ healthIssue: e.target.value })} />
       </div>
 
       <Field label="Affected body part(s) — internal & external" className="card p-6">

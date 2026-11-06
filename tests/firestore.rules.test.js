@@ -909,17 +909,17 @@ describe('public writes must prove a scan and cannot carry junk', () => {
     }))
   })
 
-  // Documents the real boundary rather than an imagined one. hasOnly binds the
-  // ANONYMOUS branch only: /reports is also covered by the generic org
-  // collection rule, and rules are a permissive union, so any constraint placed
-  // on the member branch here is overridden by that rule granting the same
-  // write. A member can already write arbitrary fields to every other
-  // collection in their own org, so this is consistent — and it is worth a test
-  // so nobody later "fixes" the public branch by hoisting hasOnly above both
-  // and believes it now covers members too.
-  it('a member CAN carry extra fields — hasOnly binds the public branch only', async () => {
+  // reports is no longer on the generic grant. A member write is the same
+  // shape as the form: pending, no extra keys, no pre-approval.
+  it('a member CANNOT carry extra fields or skip the queue', async () => {
     const alice = testEnv.authenticatedContext('alice').firestore()
-    await assertSucceeds(setDoc(reportAt(alice, 'r9'), { ...report, source: 'portal', junk: 1 }))
+    await assertFails(setDoc(reportAt(alice, 'r9'), { ...report, source: 'portal', reportedBy: 'alice', junk: 1 }))
+    await assertFails(setDoc(reportAt(alice, 'r10'), {
+      ...report, source: 'portal', reportedBy: 'alice', approvalStatus: 'closed',
+    }))
+    await assertFails(setDoc(reportAt(alice, 'r11'), {
+      ...report, source: 'portal', reportedBy: 'alice', note: 'x'.repeat(501),
+    }))
   })
 
   it('a scanner can still log an observation on the permit they scanned', async () => {
