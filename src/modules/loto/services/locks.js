@@ -9,7 +9,7 @@ import {
   updateDoc,
   where,
   limit,
-} from 'firebase/firestore'
+} from '../../../shared/data/client.js'
 import { db } from '../../../shared/firebase'
 import { COLLECTION_READ_CAP } from '../../../shared/org/orgData'
 

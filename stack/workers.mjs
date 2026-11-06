@@ -1,0 +1,192 @@
+// Jobs that have to exist before an own-stack tenant is served.
+//
+// They read the live profile. A uid in the body is ignored. The master key
+// is the argument the host passes from its secret store, never from the
+// request. Retention does not grow a scheduler that deletes statutory records:
+// planLiveAgePurge stays empty while the period is NEEDS_LEGAL_SIGN_OFF.
+
+import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
+import { grantsFor, generateKeyset, releaseKeyset } from '../functions/lib/dataKeys.js'
+import { mayDeleteFile } from '../functions/lib/fileDelete.js'
+import { planPurge } from '../functions/lib/retention.js'
+import {
+  planLiveAgePurge,
+  RECORD_CLASSES,
+  NEEDS_LEGAL_SIGN_OFF,
+} from '../functions/lib/retentionPolicy.js'
+import { planWithdrawals, withdrawnFields } from '../functions/lib/permitMirror.js'
+import { planFlags } from '../functions/lib/lotoPermitSweep.js'
+
+const WORKER = { role: 'ohsms_worker', uid: '' }
+
+function hashPassword(password, salt = randomBytes(16).toString('hex')) {
+  const hash = scryptSync(password, salt, 32).toString('hex')
+  return `scrypt$${salt}$${hash}`
+}
+
+function passwordMatches(stored, password) {
+  const parts = String(stored || '').split('$')
+  if (parts.length !== 3 || parts[0] !== 'scrypt') return false
+  const next = scryptSync(password, parts[1], 32)
+  const got = Buffer.from(parts[2], 'hex')
+  if (got.length !== next.length) return false
+  return timingSafeEqual(got, next)
+}
+
+async function liveProfile(engine, uid) {
+  if (!uid) return null
+  return engine.get(WORKER, 'users', uid)
+}
+
+export async function stampIdentity(engine, uid) {
+  const profile = await liveProfile(engine, uid)
+  if (
+    !profile ||
+    profile.status !== 'approved' ||
+    profile.mustChangePassword === true ||
+    !profile.orgId
+  ) {
+    return { stamped: false }
+  }
+  return {
+    stamped: true,
+    uid,
+    orgId: profile.orgId,
+    role: profile.role,
+    status: profile.status,
+    mustChangePassword: false,
+  }
+}
+
+export async function completePasswordChange(
+  engine,
+  db,
+  { uid, authTime, now = Date.now(), current, password, idp = false }
+) {
+  if (!uid) return { ok: false, reason: 'unauthenticated' }
+  if (idp) return { ok: false, reason: 'idp' }
+  if (typeof authTime === 'number' && now - authTime * 1000 > 5 * 60 * 1000) {
+    return { ok: false, reason: 'stale' }
+  }
+  const profile = await liveProfile(engine, uid)
+  if (!profile) return { ok: false, reason: 'no-profile' }
+  if (profile.mustChangePassword !== true) return { ok: true, reason: 'not-required' }
+  const row = await db.query('SELECT password_hash FROM auth_secrets WHERE uid = $1', [uid])
+  const stored = row.rows[0]?.password_hash
+  if (!stored || !passwordMatches(stored, current)) return { ok: false, reason: 'current-rejected' }
+  if (!password || password === current || password.length < 10)
+    return { ok: false, reason: 'policy' }
+  await db.query(
+    `INSERT INTO auth_secrets (uid, email, password_hash) VALUES ($1, $2, $3)
+     ON CONFLICT (uid) DO UPDATE SET password_hash = EXCLUDED.password_hash, updated_at = now()`,
+    [uid, profile.email || uid, hashPassword(password)]
+  )
+  await engine.commit(WORKER, [
+    {
+      type: 'update',
+      path: 'users',
+      id: uid,
+      data: { mustChangePassword: false },
+    },
+  ])
+  return { ok: true, reason: 'replaced' }
+}
+
+export async function setLocalPassword(db, { uid, email, password }) {
+  await db.query(
+    `INSERT INTO auth_secrets (uid, email, password_hash) VALUES ($1, $2, $3)
+     ON CONFLICT (uid) DO UPDATE SET password_hash = EXCLUDED.password_hash, updated_at = now()`,
+    [uid, email, hashPassword(password)]
+  )
+}
+
+export async function releaseDataKeys(engine, { uid, master }) {
+  if (!master) return { ok: false, reason: 'no-master' }
+  const profile = await liveProfile(engine, uid)
+  const grants = grantsFor(profile)
+  if (!grants.general) return { ok: false, reason: 'denied' }
+  const orgId = profile.orgId
+  const path = `organizations/${orgId}/meta`
+  let keyset = await engine.get(WORKER, path, 'cryptoKeys')
+  if (!keyset) {
+    const fresh = await generateKeyset(master, orgId, 1)
+    await engine.commit(WORKER, [
+      {
+        type: 'set',
+        path,
+        id: 'cryptoKeys',
+        merge: false,
+        data: { ...fresh, createdAt: { seconds: Math.floor(Date.now() / 1000), nanoseconds: 0 } },
+      },
+    ])
+    keyset = fresh
+  }
+  const stored = { ...keyset }
+  delete stored.id
+  const released = await releaseKeyset(master, orgId, stored, profile)
+  return { ok: true, keys: released }
+}
+
+export async function deleteOrgFile(engine, blobs, { uid, path }) {
+  const profile = await liveProfile(engine, uid)
+  const decision = mayDeleteFile(profile, path)
+  if (!decision.ok) return decision
+  if (blobs) blobs.delete(path)
+  return { ok: true }
+}
+
+export async function runRetention(engine, { orgId, now = Date.now() }) {
+  const live = []
+  for (const row of RECORD_CLASSES) {
+    const plan = planLiveAgePurge([{ id: 'sample' }], row, { now })
+    live.push({ path: row.path, purge: plan.purge.length, period: row.proposedPeriod })
+  }
+  if (live.some((row) => row.period === NEEDS_LEGAL_SIGN_OFF && row.purge !== 0)) {
+    throw new Error('retention: a statutory class was queued for deletion')
+  }
+  const docs = await engine.list(WORKER, `organizations/${orgId}/incidents`, {})
+  const plan = planPurge(docs, { now })
+  for (const item of plan.purge || []) {
+    await engine.commit(WORKER, [
+      { type: 'remove', path: `organizations/${orgId}/incidents`, id: item.id },
+    ])
+  }
+  return { livePurged: 0, recyclePurged: (plan.purge || []).length }
+}
+
+export async function withdrawStaleMirrors(engine, { now = Date.now() } = {}) {
+  const mirrors = await engine.list(WORKER, 'permitQr', {})
+  const plan = planWithdrawals(
+    mirrors.map((m) => ({ ...m, token: m.token || m.id })),
+    { now }
+  )
+  const fields = withdrawnFields()
+  for (const token of plan.withdraw) {
+    await engine.commit(WORKER, [{ type: 'update', path: 'permitQr', id: token, data: fields }])
+  }
+  return { withdrawn: plan.withdraw.length }
+}
+
+export async function sweepLoto(engine, { orgId, nowMs = Date.now() } = {}) {
+  const permits = await engine.list(WORKER, `organizations/${orgId}/lotoPermits`, {})
+  let flagged = 0
+  for (const permit of permits) {
+    const flags = planFlags(permit, nowMs)
+    if (!flags) continue
+    await engine.commit(WORKER, [
+      {
+        type: 'update',
+        path: `organizations/${orgId}/lotoPermits`,
+        id: permit.id,
+        data: { flags },
+      },
+    ])
+    flagged += 1
+  }
+  return { checked: permits.length, flagged }
+}
+
+export async function productMail(mail, message) {
+  if (!mail) return { sent: false, reason: 'no-smtp' }
+  return mail(message)
+}

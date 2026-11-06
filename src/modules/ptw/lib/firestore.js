@@ -21,7 +21,7 @@ import {
   limit,
   runTransaction,
   arrayUnion,
-} from 'firebase/firestore'
+} from '../../../shared/data/client.js'
 import { db } from '../../../shared/firebase'
 import { onReadError } from '../../../shared/org/readError'
 import { reserveDocId } from '../../../shared/docId/reserve'

@@ -4,6 +4,7 @@ import toast from 'react-hot-toast'
 import { useAuth } from '../../shared/auth/AuthContext'
 import { findOrgByName } from '../../shared/org/orgData'
 import { OWN_STACK_JOIN_MESSAGE } from '../../shared/org/provisioningSchema'
+import { isOwnStackBuild } from '../../shared/auth/ownStackSession'
 import { authErrorMessage } from '../../shared/lib/authErrors'
 import { Button, Field, Input, Select } from '../../shared/ui'
 import { DEPARTMENTS } from '../../shared/auth/access'
@@ -43,6 +44,27 @@ export default function Signup() {
   const [org, setOrg] = useState(null)
   const [checking, setChecking] = useState(false)
   const [busy, setBusy] = useState(false)
+
+  if (isOwnStackBuild()) {
+    return (
+      <AuthLayout
+        title="Company sign-in"
+        subtitle="This site does not create a WEEHS password account."
+        footer={
+          <Link
+            to="/login"
+            className="font-semibold text-brand-700 underline-offset-2 hover:underline"
+          >
+            Back to sign in
+          </Link>
+        }
+      >
+        <p className="text-sm leading-relaxed text-ink-700">
+          People at this organization sign in with the company identity provider.
+        </p>
+      </AuthLayout>
+    )
+  }
 
   if (isAuthed && profile)
     return <Navigate to={profile.status === 'approved' ? '/portal' : '/pending'} replace />

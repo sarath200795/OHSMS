@@ -14,7 +14,7 @@
 // That is deliberate: a gap in the sequence is harmless, and the alternative —
 // handing the same number out twice — is not.
 // ─────────────────────────────────────────────────────────────────────────────
-import { collection, doc, getDoc, getDocs, runTransaction, setDoc } from 'firebase/firestore'
+import { collection, doc, getDoc, getDocs, runTransaction, setDoc } from '../data/client.js'
 import { db } from '../firebase'
 import { formatDocId, deriveOrgCode, normalizeOrgCode } from './format'
 

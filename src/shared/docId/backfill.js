@@ -16,7 +16,7 @@
 // the highest it assigned, so ids handed out afterwards continue past the
 // backfill rather than colliding with it.
 // ─────────────────────────────────────────────────────────────────────────────
-import { collection, getDocs, writeBatch, doc } from 'firebase/firestore'
+import { collection, getDocs, writeBatch, doc } from '../data/client.js'
 import { db } from '../firebase'
 import { formatDocId, highestSeq, parseDocId } from './format'
 import { getOrgCode, raiseCounter, readCounters } from './reserve'

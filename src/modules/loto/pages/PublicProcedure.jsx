@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { doc, getDoc } from 'firebase/firestore'
+import { doc, getDoc } from '../../../shared/data/client.js'
 import { AlertTriangle, CheckCircle2, Lock, LockOpen, LogIn, ShieldAlert } from 'lucide-react'
 import { db } from '../../../shared/firebase'
 import { PUBLIC_COL } from '../utils/publicProcedure'

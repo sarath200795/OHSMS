@@ -15,7 +15,7 @@ import {
   serverTimestamp,
   runTransaction,
   limit,
-} from 'firebase/firestore'
+} from '../../../shared/data/client.js'
 import { db } from '../../../shared/firebase'
 import { reserveDocId } from '../../../shared/docId/reserve'
 import { logAudit as logOrgAudit, COLLECTION_READ_CAP } from '../../../shared/org/orgData'

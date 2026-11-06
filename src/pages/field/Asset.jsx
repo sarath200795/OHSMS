@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { doc, getDoc } from 'firebase/firestore'
+import { doc, getDoc } from '../../shared/data/client.js'
 import toast from 'react-hot-toast'
 import { AlertTriangle, ClipboardCheck, Loader2, PackageCheck, QrCode, Wrench } from 'lucide-react'
 import { db } from '../../shared/firebase'

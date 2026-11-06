@@ -12,7 +12,7 @@
 // console; the rules decide whether the writes it makes are accepted. Someone
 // who patched this to return true would get a page whose every save is refused.
 // ─────────────────────────────────────────────────────────────────────────────
-import { doc, onSnapshot } from 'firebase/firestore'
+import { doc, onSnapshot } from '../data/client.js'
 import { db } from '../firebase'
 
 export const PLATFORM_ADMINS_COLLECTION = 'platformAdmins'

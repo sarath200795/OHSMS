@@ -7,7 +7,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { initializeApp, deleteApp } from 'firebase/app'
 import { getAuth, connectAuthEmulator, createUserWithEmailAndPassword, signOut } from 'firebase/auth'
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore'
+import { doc, setDoc, serverTimestamp } from '../data/client.js'
 import Papa from 'papaparse'
 import { db, firebaseClientConfig, emulatorAuthUrl } from '../firebase'
 import { logAudit } from '../org/orgData'

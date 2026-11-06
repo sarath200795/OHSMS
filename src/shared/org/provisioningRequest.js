@@ -7,7 +7,7 @@ import {
   query,
   serverTimestamp,
   writeBatch,
-} from 'firebase/firestore'
+} from '../data/client.js'
 import { db } from '../firebase'
 import { findOrgByName, orgIndexRef } from './orgData'
 import {
@@ -109,6 +109,8 @@ const LIST_FIELDS = [
   'bucketRegion',
   'presignUrl',
   'createdAt',
+  'dedicatedUrl',
+  'secretsReceived',
 ]
 
 export async function listProvisioningRequests() {

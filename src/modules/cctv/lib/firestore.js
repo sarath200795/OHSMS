@@ -16,7 +16,7 @@
 import {
   collection, doc, addDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy, limit, serverTimestamp,
   writeBatch, getDocs,
-} from 'firebase/firestore'
+} from '../../../shared/data/client.js'
 import { db } from '../../../shared/firebase'
 import { isSessionEnd } from '../../../shared/sessionEnd'
 import { isPermissionDenied } from '../../../shared/lib/permissionDenied'

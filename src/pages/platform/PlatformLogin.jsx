@@ -27,7 +27,7 @@ import { useAuth } from '../../shared/auth/AuthContext'
 import { operatorLoginMessage, REFUSED } from './loginErrors'
 import { isCodeComplete } from '../../shared/auth/mfa'
 import { platformAdminRef } from '../../shared/auth/platformAdmin'
-import { getDoc } from 'firebase/firestore'
+import { getDoc } from '../../shared/data/client.js'
 import { Button, Field, Input } from '../../shared/ui'
 
 export default function PlatformLogin() {

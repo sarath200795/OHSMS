@@ -10,7 +10,7 @@ import {
   where,
   writeBatch,
   limit,
-} from 'firebase/firestore'
+} from '../../../shared/data/client.js'
 import { db } from '../../../shared/firebase'
 import { putFile, removeFile, fileUrl } from '../../../shared/storage'
 import { PROCEDURE_STATUS, computeLockSummary, mergeRevisedPoints } from '../constants/procedures'

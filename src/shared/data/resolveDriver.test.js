@@ -27,7 +27,7 @@ describe('resolveDataDriver', () => {
   it.each(RESERVED_DATA_DRIVERS)(
     'refuses %s instead of opening Firestore under that name',
     (name) => {
-      expect(RESERVED_DATA_DRIVERS).toEqual(['postgres', 'supabase'])
+      expect(RESERVED_DATA_DRIVERS).toEqual(['supabase'])
       let caught
       try {
         resolveDataDriver(name, registered)
@@ -42,7 +42,13 @@ describe('resolveDataDriver', () => {
   )
 
   it('normalises the reserved name before refusing', () => {
-    expect(() => resolveDataDriver('  Postgres ', registered)).toThrow(UnimplementedDataDriverError)
+    expect(() => resolveDataDriver('  Supabase ', registered)).toThrow(UnimplementedDataDriverError)
+  })
+
+  it('selects postgres once that adapter is registered', () => {
+    const withPostgres = { ...registered, postgres: { name: 'postgres' } }
+    expect(resolveDataDriver('postgres', withPostgres)).toBe('postgres')
+    expect(resolveDataDriver('  POSTGRES ', withPostgres)).toBe('postgres')
   })
 
   it('prefers a registered adapter when the name is still on the reserved list', () => {

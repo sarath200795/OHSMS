@@ -18,7 +18,7 @@ import {
   writeBatch,
   runTransaction,
   limit,
-} from 'firebase/firestore'
+} from '../../../shared/data/client.js'
 import { db } from '../../../shared/firebase'
 import { isSessionEnd } from '../../../shared/sessionEnd'
 import { isPermissionDenied } from '../../../shared/lib/permissionDenied'

@@ -18,13 +18,21 @@ export function createModuleService(collectionName, moduleKey = collectionName) 
   return {
     collectionName,
 
-    subscribe(orgId, cb) {
+    subscribe(orgId, cb, onError) {
       return dataProvider.subscribe(
         path(orgId),
         { orderBy: ['createdAt', 'desc'], limit: 1000 },
         cb,
-        // Fallback for records created before ordering existed / permission errors.
-        () => cb([])
+        // A refused read must not look like an empty module. Callers that care
+        // pass onError; everyone else gets the failure in the console instead
+        // of a list of nothing.
+        (err) => {
+          if (typeof onError === 'function') onError(err)
+          else {
+            // eslint-disable-next-line no-console
+            console.error(`[${collectionName}] subscribe failed:`, err?.code || err?.message || err)
+          }
+        }
       )
     },
 

@@ -12,6 +12,7 @@
 // wiring below had to exist at all.
 // ─────────────────────────────────────────────────────────────────────────────
 import app, { emulatorFunctions } from './firebase'
+import { currentAccessToken, isOwnStackBuild, ownStackGateway } from './auth/ownStackSession'
 
 // Must match REGION in functions/index.js.
 export const FUNCTIONS_REGION = 'asia-south1'
@@ -49,6 +50,28 @@ async function getFns() {
  * The deadline stays at the default for everything that does not ask.
  */
 async function callable(name, { timeout } = {}) {
+  if (isOwnStackBuild()) {
+    return async (data) => {
+      const gateway = ownStackGateway()
+      const token = currentAccessToken()
+      const res = await fetch(`${gateway}/rpc/${name}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(data ?? {}),
+        signal: timeout ? AbortSignal.timeout(timeout) : undefined,
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        const err = new Error(body.message || 'The request was refused.')
+        err.code = body.code || 'unknown'
+        throw err
+      }
+      return { data: body }
+    }
+  }
   const { mod, fns } = await getFns()
   return mod.httpsCallable(fns, name, timeout ? { timeout } : undefined)
 }

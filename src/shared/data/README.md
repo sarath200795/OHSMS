@@ -2,10 +2,10 @@
 
 The app is built on Firebase today, but two seams keep it swappable:
 
-| Seam | Selects backend via | Adapters live in |
-|---|---|---|
-| **Files** — `src/shared/storage/` | `VITE_STORAGE_DRIVER` (`firebase` \| `s3`). `s3` is the path 3 file driver. | `src/shared/storage/adapters/` |
-| **Database** — `src/shared/data/` | `VITE_DATA_DRIVER` (`firestore` \| `memory`; `postgres` and `supabase` reserved, not registered) | `src/shared/data/adapters/` |
+| Seam                              | Selects backend via                                                                             | Adapters live in               |
+| --------------------------------- | ----------------------------------------------------------------------------------------------- | ------------------------------ |
+| **Files** — `src/shared/storage/` | `VITE_STORAGE_DRIVER` (`firebase` \| `s3`). `s3` is the path 3 file driver.                     | `src/shared/storage/adapters/` |
+| **Database** — `src/shared/data/` | `VITE_DATA_DRIVER` (`firestore` \| `memory` \| `postgres`; `supabase` reserved, not registered) | `src/shared/data/adapters/`    |
 
 ## Adding a storage backend
 
@@ -21,28 +21,28 @@ only a presign endpoint you host; the contract is documented at the top of
 Write one file in `src/shared/data/adapters/` implementing the provider
 contract documented at the top of `src/shared/data/index.js` — that header is
 the specification, not a summary of one. Register it in `DRIVERS` in the same
-file and set `VITE_DATA_DRIVER`. `postgres` and `supabase` are reserved names
-for a custom stack. They are not registered. Setting either one refuses to
-start instead of silently using Firestore (`resolveDriver.js`). The deploy
+file and set `VITE_DATA_DRIVER`. `postgres` is the generic own-database adapter.
+`supabase` is still reserved. Setting it refuses to start instead of
+silently using Firestore (`resolveDriver.js`). The deploy
 choice, which values are allowed to be public, and the file-by-file
 remaining work are `docs/CUSTOM-STACK.md`. This file stays the contract.
 
 The surface, over `/`-separated collection paths with documents addressed as
 `(path, id)`:
 
-| | |
-|---|---|
-| sentinels | `serverTimestamp`, `increment`, `arrayUnion` |
-| reads | `get`, `list`, `count`, `subscribe`, `subscribeDoc` |
-| writes | `newId`, `create`, `set`, `createExclusive`, `update`, `remove` |
-| composition | `batch`, `runTransaction` |
-| errors | `isWriteRefused` |
+|             |                                                                 |
+| ----------- | --------------------------------------------------------------- |
+| sentinels   | `serverTimestamp`, `increment`, `arrayUnion`                    |
+| reads       | `get`, `list`, `count`, `subscribe`, `subscribeDoc`             |
+| writes      | `newId`, `create`, `set`, `createExclusive`, `update`, `remove` |
+| composition | `batch`, `runTransaction`                                       |
+| errors      | `isWriteRefused`                                                |
 
 Four of those carry weight beyond their signature, and an adapter that gets
 them wrong will still pass a casual read of its own tests: `createExclusive`
 must be atomic at the backend and never a read-then-write, `update` must
 **reject** on a missing document rather than upsert, `batch` must be
-all-or-nothing across *arbitrary* collections (not just one org's), and both
+all-or-nothing across _arbitrary_ collections (not just one org's), and both
 subscribes must return their unsubscribe synchronously while delivering the
 first emission asynchronously. `index.js` says why each one matters.
 
@@ -52,17 +52,16 @@ third; it is the smallest honest version of every guarantee above. It is a test
 and development driver, not a store anything should be shipped against.
 
 `postgres` is the generic own-database driver: one adapter for
-Postgres-protocol servers, whichever host. `supabase` is one flavor of that
-path, for Supabase's client and Realtime, not the only store a company may
-choose. Both names are reserved and unimplemented. Another engine is a new
-adapter, not an alias of `postgres`. The steps for registering one, and the
-order to do it in, are `docs/CUSTOM-STACK.md`. Registering an adapter that
-only implements the reads would make the name resolve and then fail on the
-first exclusive create.
+Postgres-protocol servers, whichever host. The browser calls
+`VITE_DATA_GATEWAY`; it does not open a database connection. `supabase` is
+one flavor of that path, for Supabase's client and Realtime, and it is
+still reserved. Another engine is a new adapter, not an alias of
+`postgres`. The steps for registering one are `docs/CUSTOM-STACK.md`.
 
-For the `postgres` adapter, the natural mapping is one table per collection
-with `org_id` and `jsonb data` columns, `subscribe` via that server's
-realtime channel, and row level security replacing `firestore.rules`.
+The `postgres` store is one `documents` table, `(path, id)`, `jsonb` data,
+row level security in `stack/schema.sql`. `where('x','==',null)` matches a
+missing field. `orderBy` keeps documents that lack the field. Timestamps
+come back with `.seconds` and `.toDate()`, not as ISO strings.
 
 ## What the seam covers — and what it does not
 
@@ -88,7 +87,7 @@ the provider. A full migration additionally touches:
   DB means swapping auth (e.g. Supabase Auth) or federating tokens.
 - **Security rules** — `firestore.rules` / `storage.rules` enforce tenancy
   server-side. The replacement backend must re-enforce the same rules (RLS,
-  bucket policies); the client-side seam is *not* a security boundary.
+  bucket policies); the client-side seam is _not_ a security boundary.
 - **Offline & realtime** — Firestore's IndexedDB cache and `onSnapshot` give
   offline reads/queued writes for free. Verify the replacement's story before
   switching; site-WiFi dead spots are a real usage mode for this app.

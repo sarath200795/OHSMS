@@ -153,16 +153,18 @@
 //
 // Which implementation backs the seam comes from VITE_DATA_DRIVER (default
 // 'firestore'). Adding a backend = one adapter file implementing everything
-// above plus a line in DRIVERS. postgres (any Postgres-protocol server) and
-// supabase (one flavor of that path) are reserved path 3 names
-// (resolveDriver.js, docs/CUSTOM-STACK.md). They are absent from DRIVERS
-// on purpose. Selecting one throws instead of falling through to Firestore:
-// that fallback is for a typo, and a name this repository has published as a
-// target is not a typo. ./README.md is the contract note that sits next to
-// the code; the deploy choice and the remaining-work list are the doc.
+// above plus a line in DRIVERS. postgres (any Postgres-protocol server) is
+// registered. supabase (the Supabase client / Realtime flavor, not brought
+// Postgres) stays reserved until that adapter exists (resolveDriver.js,
+// docs/CUSTOM-STACK.md). Selecting a reserved name throws instead of falling
+// through to Firestore: that fallback is for a typo, and a name this
+// repository has published as a target is not a typo. ./README.md is the
+// contract note that sits next to the code; the deploy choice and the
+// remaining-work list are the doc.
 // ─────────────────────────────────────────────────────────────────────────────
 import firestore from './adapters/firestore'
 import memory from './adapters/memory'
+import postgres from './adapters/postgres'
 import { resolveDataDriver } from './resolveDriver'
 
 // Static registry (not dynamic imports): subscribe() must return an
@@ -172,9 +174,11 @@ import { resolveDataDriver } from './resolveDriver'
 const DRIVERS = {
   firestore,
   memory, // the second real driver (no emulator needed) — NOT a production store
+  postgres, // own-stack. The browser talks to VITE_DATA_GATEWAY; RLS enforces.
 }
 
-// Throws UnimplementedDataDriverError for postgres/supabase until an adapter
-// is actually in DRIVERS. Unknown names still resolve to firestore.
+// Throws UnimplementedDataDriverError for supabase until that flavor's adapter
+// is actually in DRIVERS. postgres is registered. Unknown names still resolve
+// to firestore.
 export const dataDriver = resolveDataDriver(import.meta.env.VITE_DATA_DRIVER, DRIVERS)
 export const dataProvider = DRIVERS[dataDriver]

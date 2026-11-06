@@ -1,4 +1,4 @@
-import { collection, onSnapshot, orderBy, query, limit } from 'firebase/firestore'
+import { collection, onSnapshot, orderBy, query, limit } from '../../../shared/data/client.js'
 import { onReadError } from '../../../shared/org/readError'
 import { db } from '../../../shared/firebase'
 

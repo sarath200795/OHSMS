@@ -20,7 +20,11 @@ import { isMfaRequired, resolverFor, completeTotpSignIn } from './mfa'
 import { nativePlatform } from '../mobile/native'
 import { subscribePlatformAdmin } from './platformAdmin'
 import { startSession, endSession } from './sessionConstants'
-import { normalizeEntitlement, subscribeEntitlement, isModuleEnabled } from '../modules/entitlements'
+import {
+  normalizeEntitlement,
+  subscribeEntitlement,
+  isModuleEnabled,
+} from '../modules/entitlements'
 import {
   createOrganization,
   createPendingMember,
@@ -29,6 +33,15 @@ import {
   subscribeOrg,
 } from '../org/orgData'
 import { nameTakenMessage } from '../org/provisioningSchema'
+import {
+  clearAccessToken,
+  currentAccessToken,
+  isOwnStackBuild,
+  ownStackAuthMethod,
+  ownStackGateway,
+  sessionUid,
+  setAccessToken,
+} from './ownStackSession'
 
 const AuthContext = createContext(null)
 
@@ -77,9 +90,32 @@ export function AuthProvider({ children }) {
   }, [])
 
   useEffect(() => {
+    if (isOwnStackBuild()) {
+      if (typeof window !== 'undefined' && window.location.hash.includes('session=')) {
+        const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''))
+        const fromHash = hash.get('session')
+        if (fromHash) setAccessToken(fromHash)
+        window.history.replaceState({}, '', window.location.pathname + window.location.search)
+      }
+      const uid = sessionUid()
+      if (!uid) {
+        setUser(null)
+        setProfile(null)
+        setPlatformAdmin(false)
+        setLoading(false)
+        return undefined
+      }
+      const sessionUser = { uid, getIdToken: async () => currentAccessToken() }
+      setUser(sessionUser)
+      startSession()
+      refreshProfile(uid)
+        .catch(() => setProfile(null))
+        .finally(() => setLoading(false))
+      return undefined
+    }
     if (!isFirebaseConfigured) {
       setLoading(false)
-      return
+      return undefined
     }
     const unsub = onAuthStateChanged(auth, async (u) => {
       setUser(u)
@@ -125,25 +161,27 @@ export function AuthProvider({ children }) {
   const [pendingMfa, setPendingMfa] = useState(null)
 
   useEffect(() => {
-    if (!isFirebaseConfigured) return
-    getRedirectResult(auth).then((cred) => {
-      // A result here means a sign-in just completed on the other side of the
-      // redirect. It never reaches adopt() — the session arrives with the page
-      // load — so this is the only place that can start its clock.
-      if (cred) startSession()
-    }).catch((err) => {
-      if (isMfaRequired(err)) {
-        setPendingMfa(resolverFor(err))
-        return
-      }
-      // No redirect in progress is the normal case and resolves to null; a real
-      // failure here would otherwise vanish, leaving a login screen that simply
-      // does nothing after the round trip.
-      if (err?.code) {
-        // eslint-disable-next-line no-console
-        console.error('[auth] single sign-on redirect failed:', err.code)
-      }
-    })
+    if (isOwnStackBuild() || !isFirebaseConfigured) return undefined
+    getRedirectResult(auth)
+      .then((cred) => {
+        // A result here means a sign-in just completed on the other side of the
+        // redirect. It never reaches adopt() — the session arrives with the page
+        // load — so this is the only place that can start its clock.
+        if (cred) startSession()
+      })
+      .catch((err) => {
+        if (isMfaRequired(err)) {
+          setPendingMfa(resolverFor(err))
+          return
+        }
+        // No redirect in progress is the normal case and resolves to null; a real
+        // failure here would otherwise vanish, leaving a login screen that simply
+        // does nothing after the round trip.
+        if (err?.code) {
+          // eslint-disable-next-line no-console
+          console.error('[auth] single sign-on redirect failed:', err.code)
+        }
+      })
   }, [])
 
   // Keep the org document live so any screen can read org-level config (e.g. the
@@ -210,7 +248,9 @@ export function AuthProvider({ children }) {
         // Offline, or the token endpoint is briefly unhappy. Try again.
       }
       // eslint-disable-next-line no-await-in-loop
-      await new Promise((r) => { setTimeout(r, 300 * (i + 1)) })
+      await new Promise((r) => {
+        setTimeout(r, 300 * (i + 1))
+      })
     }
     return false
   }
@@ -218,6 +258,9 @@ export function AuthProvider({ children }) {
   // Register a brand new organization; caller becomes admin. Create the auth
   // user FIRST so the org-name lookup runs authenticated (rules require sign-in).
   const registerOrganization = async ({ orgName, address, name, email, password }) => {
+    if (isOwnStackBuild()) {
+      throw new Error("This site is one company's stack. A WEEHS account is not created here.")
+    }
     const cred = await withRetry(() => createUserWithEmailAndPassword(auth, email, password))
     try {
       const existing = await findOrgByName(orgName)
@@ -248,11 +291,21 @@ export function AuthProvider({ children }) {
 
   // Sign up to join an existing org (pending admin approval).
   const signUpMember = async ({ orgId, orgName, name, email, password, department }) => {
+    if (isOwnStackBuild()) {
+      throw new Error("This site is one company's stack. Join through your company's sign-in.")
+    }
     if (!orgId) throw new Error('Please select your organization.')
     const cred = await withRetry(() => createUserWithEmailAndPassword(auth, email, password))
     try {
       await updateProfile(cred.user, { displayName: name })
-      await createPendingMember({ uid: cred.user.uid, name, email, orgId, orgName: orgName || '', department })
+      await createPendingMember({
+        uid: cred.user.uid,
+        name,
+        email,
+        orgId,
+        orgName: orgName || '',
+        department,
+      })
       setUser(cred.user)
       startSession()
       await withRetry(() => refreshProfile(cred.user.uid))
@@ -289,6 +342,30 @@ export function AuthProvider({ children }) {
    * reporting "wrong password" to someone whose password was right.
    */
   const login = async ({ email, password }) => {
+    if (isOwnStackBuild()) {
+      const gateway = ownStackGateway()
+      if (!gateway) throw new Error('This stack has no sign-in host configured.')
+      if (ownStackAuthMethod() === 'supabase') {
+        const res = await fetch(`${gateway}/auth/supabase`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password }),
+        })
+        if (!res.ok) throw new Error('Sign-in was refused.')
+        const { token } = await res.json()
+        setAccessToken(token)
+        const uid = sessionUid(token)
+        const sessionUser = { uid, getIdToken: async () => token }
+        setUser(sessionUser)
+        startSession()
+        await refreshProfile(uid)
+        return { status: 'signed-in', user: sessionUser }
+      }
+      // Company OIDC or SAML. In-app TOTP stays off unless the company set
+      // VITE_AUTH_TOTP=on, and even then the IdP is where MFA belongs.
+      window.location.assign(`${gateway}/auth/start`)
+      return { status: 'redirecting' }
+    }
     try {
       return await adopt(await withRetry(() => signInWithEmailAndPassword(auth, email, password)))
     } catch (err) {
@@ -312,14 +389,19 @@ export function AuthProvider({ children }) {
       return await adopt(await signInWithPopup(auth, provider))
     } catch (err) {
       if (isMfaRequired(err)) return { status: 'mfa', resolver: resolverFor(err) }
-      if (err?.code === 'auth/popup-blocked' || err?.code === 'auth/operation-not-supported-in-this-environment') {
+      if (
+        err?.code === 'auth/popup-blocked' ||
+        err?.code === 'auth/operation-not-supported-in-this-environment'
+      ) {
         // The iOS shell's origin is capacitor://localhost. Firebase will not
         // accept that as an authorised domain, so a redirect leaves the person
         // on a page the WebView cannot come back from. Android is
         // https://localhost, which can be authorised. Email and password never
         // takes this branch. docs/MOBILE.md.
         if (nativePlatform() === 'ios') {
-          const denied = new Error('Single sign-on cannot return to the iOS app. Sign in with email and password.')
+          const denied = new Error(
+            'Single sign-on cannot return to the iOS app. Sign in with email and password.'
+          )
           denied.code = 'auth/native-sso-unsupported'
           throw denied
         }
@@ -327,7 +409,10 @@ export function AuthProvider({ children }) {
         return { status: 'redirecting' }
       }
       // Closing the popup is a decision, not a failure worth shouting about.
-      if (err?.code === 'auth/popup-closed-by-user' || err?.code === 'auth/cancelled-popup-request') {
+      if (
+        err?.code === 'auth/popup-closed-by-user' ||
+        err?.code === 'auth/cancelled-popup-request'
+      ) {
         return { status: 'cancelled' }
       }
       throw err
@@ -339,6 +424,16 @@ export function AuthProvider({ children }) {
   }
 
   const signOut = async () => {
+    if (isOwnStackBuild()) {
+      clearKeyring()
+      clearSharedSubscriptions()
+      endSession()
+      clearAccessToken()
+      setUser(null)
+      setProfile(null)
+      setPendingMfa(null)
+      return
+    }
     // Before the network call, not after: fbSignOut can fail or hang offline,
     // and the keys must be gone either way. onAuthStateChanged clears them too,
     // but only once it fires — which it will not do if this throws.

@@ -1,7 +1,7 @@
 // A permit's lock photo is stored the same way a procedure photo is: a file
 // under the org prefix and a procedurePhotos document. The permit itself only
 // keeps the path, which the one-year purge deletes.
-import { doc, serverTimestamp, setDoc } from 'firebase/firestore'
+import { doc, serverTimestamp, setDoc } from '../../../shared/data/client.js'
 import { db } from '../../../shared/firebase'
 import { putFile } from '../../../shared/storage'
 
