@@ -5,7 +5,8 @@ rules_version = '2';
 //
 // A helper on a parent match is compiled into every child. Helpers sit in the
 // match that calls them — copied, when more than one match calls them — because
-// one database-level copy is what makes Rules :test return HTTP 503.
+// one database-level copy is what makes Rules :test return HTTP 503. The module
+// and decision maps live on the generic grant, not on /organizations/{orgId}.
 //
 // Rules OR together, so a narrower match cannot take away a wider grant.
 // request.resource.data is the state AFTER the write, so it cannot alone
@@ -74,18 +75,16 @@ service cloud.firestore {
       return isApprovedMemberOf(orgId) && myProfile().role != 'auditor';
     }
 
-    // The operator of the platform itself, as opposed to an administrator of a tenant inside it. The
-    // distinction is the whole point: an org admin configures their own organization, and must not be
-    // able to hand their organization modules it has not been given.
-    function isPlatformAdmin() {
-      return isSignedIn()
-        && exists(/databases/$(database)/documents/platformAdmins/$(request.auth.uid));
-    }
-
     // Public org-name index (no sensitive fields). Create is pinned with getAfter to the registration
     // batch that also writes the caller's own profile, exactly as /users/{uid} is: at that instant the
     // profile does not exist yet, so isApprovedMemberOf cannot be used.
     match /orgIndex/{key} {
+      // Platform operator, not a tenant admin.
+      function isPlatformAdmin() {
+        return isSignedIn()
+          && exists(/databases/$(database)/documents/platformAdmins/$(request.auth.uid));
+      }
+
       // Declared inside the match: `key` is only bound here.
       function claimsOwnName(orgId, name) {
         return getAfter(/databases/$(database)/documents/organizations/$(orgId)).data.name == name
@@ -699,6 +698,11 @@ service cloud.firestore {
     // Per-organization module entitlements. Which of the modules in the registry an
     // organization may see and use. ABSENT MEANS ENABLED.
     match /moduleEntitlements/{orgId} {
+      function isPlatformAdmin() {
+        return isSignedIn()
+          && exists(/databases/$(database)/documents/platformAdmins/$(request.auth.uid));
+      }
+
       allow get: if isApprovedMemberOf(orgId) || isPlatformAdmin();
       allow list: if isPlatformAdmin();
       // Pinned shape. Reading an absent field raises, which denies, so every read below uses .get.
@@ -795,97 +799,12 @@ service cloud.firestore {
 
     // ── Organizations & all org-scoped module data ────────────────────────────
     match /organizations/{orgId} {
-      // '' is not a module, so a collection missing here stays open. Kept as one lookup: the generic
-      // write is near the 1000-expression ceiling, and a second call of this map would be counted twice.
-      function moduleForCollection(col) {
-        return {
-          'incidents': 'incidents', 'illnesses': 'incidents', 'injuries': 'incidents',
-          'assessments': 'hira',
-          'inspectionTemplates': 'inspections', 'inspectionRecords': 'inspections',
-          'audits': 'audit', 'auditPlans': 'audit', 'auditFindings': 'audit',
-          'capas': 'audit', 'findings': 'audit',
-          'permits': 'ptw', 'observations': 'ptw',
-          'procedures': 'loto', 'procedurePhotos': 'loto', 'locks': 'loto',
-          'technicians': 'loto', 'lotoPermits': 'loto',
-          'extinguishers': 'equipment', 'aeds': 'equipment', 'fas': 'equipment',
-          'signages': 'equipment', 'stretchers': 'equipment', 'firstAid': 'equipment',
-          'reports': 'equipment', 'defectClosures': 'equipment',
-          'mockDrills': 'drills',
-          'consultations': 'committee',
-          'trainingCourses': 'training', 'trainingRecords': 'training',
-          'trainingAssignments': 'training', 'trainingSessions': 'training',
-          'trainingRequests': 'training',
-          'documents': 'documents',
-          'erpContacts': 'emergency', 'erpLayouts': 'emergency', 'erpRescuePlans': 'emergency',
-          'objectives': 'objectives',
-          'cctvCameras': 'cctv', 'cctvDvrs': 'cctv', 'cctvMeraki': 'cctv',
-          'escalations': 'stakeholder', 'legalIssues': 'stakeholder'
-        }.get(col, '');
-      }
-
+      // Maps are on the generic grant: a helper here is compiled into every child.
       function moduleOn(orgId, key) {
         return key == ''
           || !exists(/databases/$(database)/documents/moduleEntitlements/$(orgId))
           || get(/databases/$(database)/documents/moduleEntitlements/$(orgId))
                .data.get('modules', {}).get(key, true) != false;
-      }
-
-      function moduleAllowed(orgId, col) {
-        return moduleOn(orgId, moduleForCollection(col));
-      }
-
-      // Manager-only decisions. Both sides are read: request.resource.data is the state
-      // after the write. .get defaults an absent field to '' so other collections skip it.
-      function decisionStates(col) {
-        return {
-          'permits': ['approved', 'rejected', 'declined'],
-          'procedures': ['approved', 'rejected', 'declined'],
-          'reports': ['approved', 'rejected', 'declined'],
-          'observations': ['approved', 'rejected', 'declined'],
-          'trainingRequests': ['approved', 'rejected', 'declined'],
-          'erpRescuePlans': ['approved', 'rejected', 'declined'],
-          'incidents': ['closed', 'verified'],
-          'illnesses': ['closed', 'verified'],
-          'capas': ['closed', 'verified'],
-          'findings': ['closed', 'verified'],
-          'audits': ['closed', 'verified'],
-          'auditFindings': ['Closed'],
-          'injuries': ['verified'],
-          'documents': ['active']
-        }.get(col, []);
-      }
-
-      function keeps(states, before, after, path) {
-        let a = before.get(path, '');
-        let b = after.get(path, '');
-        return a == b || (!(a in states) && !(b in states));
-      }
-
-      function keepsPermitDecisions(states, before, after) {
-        return keeps(states, before, after, ['engineering', 'status'])
-          && keeps(states, before, after, ['operations', 'status'])
-          && keeps(states, before, after, ['closure', 'engineering', 'status'])
-          && keeps(states, before, after, ['closure', 'operations', 'status'])
-          && keeps(states, before, after, ['extension', 'engineering', 'status'])
-          && keeps(states, before, after, ['extension', 'operations', 'status']);
-      }
-
-      function keepsDecision(col, before, after) {
-        let s = decisionStates(col);
-        return s.size() == 0
-          || (keeps(s, before, after, ['status'])
-              && keeps(s, before, after, ['approvalStatus'])
-              // incidents and illnesses call it `lifecycle`.
-              && keeps(s, before, after, ['lifecycle'])
-              && (col != 'permits' || keepsPermitDecisions(s, before, after)));
-      }
-
-      // Local to this match. A helper on a parent is compiled into every sibling.
-
-      // On a create there is no before state; an empty map defaults every field,
-      // so creating a record already in a decided state is a move like any other.
-      function beforeData() {
-        return resource == null ? {} : resource.data;
       }
 
       allow read: if isApprovedMemberOf(orgId);
@@ -1689,10 +1608,9 @@ service cloud.firestore {
       match /incidents/{incidentId} {
         // .get(f, null) on both sides. A direct read of an absent deletedAt raises and
         // would deny every edit of a record written before the field existed.
-        function keepsSoftDelete(col) {
-          return !(col in ['incidents', 'illnesses', 'injuries'])
-            || (resource == null
-                && request.resource.data.get('deletedAt', null) == null)
+        function keepsSoftDelete() {
+          return (resource == null
+              && request.resource.data.get('deletedAt', null) == null)
             || (resource != null
                 && (request.resource.data.get('deletedAt', null) == resource.data.get('deletedAt', null)
                     || (isManagerOf(orgId)
@@ -1700,16 +1618,35 @@ service cloud.firestore {
                             || request.resource.data.get('deletedAt', null) == request.time))));
         }
 
-        allow read: if isApprovedMemberOf(orgId) && moduleAllowed(orgId, 'incidents');
+        function beforeData() {
+          return resource == null ? {} : resource.data;
+        }
+
+        // decisionStates('incidents'). Permit branches do not apply.
+        function keepsField(states, before, after, path) {
+          let a = before.get(path, '');
+          let b = after.get(path, '');
+          return a == b || (!(a in states) && !(b in states));
+        }
+
+        function keepsIncidentDecision(before, after) {
+          let s = ['closed', 'verified'];
+          return keepsField(s, before, after, ['status'])
+            && keepsField(s, before, after, ['approvalStatus'])
+            && keepsField(s, before, after, ['lifecycle']);
+        }
+
+        // moduleForCollection('incidents') is 'incidents'.
+        allow read: if isApprovedMemberOf(orgId) && moduleOn(orgId, 'incidents');
         allow create, update: if isWriterOf(orgId)
-          && moduleAllowed(orgId, 'incidents')
-          && keepsSoftDelete('incidents')
+          && moduleOn(orgId, 'incidents')
+          && keepsSoftDelete()
           && (isManagerOf(orgId)
-              || keepsDecision('incidents', beforeData(), request.resource.data));
+              || keepsIncidentDecision(beforeData(), request.resource.data));
         allow delete: if isManagerOf(orgId);
         match /photos/{photoId} {
-          allow read: if isApprovedMemberOf(orgId) && moduleAllowed(orgId, 'incidents');
-          allow create, update: if isWriterOf(orgId) && moduleAllowed(orgId, 'incidents');
+          allow read: if isApprovedMemberOf(orgId) && moduleOn(orgId, 'incidents');
+          allow create, update: if isWriterOf(orgId) && moduleOn(orgId, 'incidents');
           allow delete: if isManagerOf(orgId);
         }
       }
@@ -1720,10 +1657,9 @@ service cloud.firestore {
       match /injuries/{injuryId} {
         // .get(f, null) on both sides. A direct read of an absent deletedAt raises and
         // would deny every edit of a record written before the field existed.
-        function keepsSoftDelete(col) {
-          return !(col in ['incidents', 'illnesses', 'injuries'])
-            || (resource == null
-                && request.resource.data.get('deletedAt', null) == null)
+        function keepsSoftDelete() {
+          return (resource == null
+              && request.resource.data.get('deletedAt', null) == null)
             || (resource != null
                 && (request.resource.data.get('deletedAt', null) == resource.data.get('deletedAt', null)
                     || (isManagerOf(orgId)
@@ -1731,66 +1667,65 @@ service cloud.firestore {
                             || request.resource.data.get('deletedAt', null) == request.time))));
         }
 
-        // Clinical fields stay the author's until a manager verifies or closes. A direct
-        // read of an absent field raises, which denies, so every read uses .get.
+        // .get: a direct read of an absent field raises and denies. Illness fields are
+        // not in this match; it only ever checks an injury.
         function clinicalFieldSame(field) {
           return request.resource.data.get(field, null) == resource.data.get(field, null);
         }
 
-        function clinicalParentCreate(col) {
-          return (col == 'injuries'
-              && request.resource.data.keys().hasAny(['medication', 'bodyParts', 'injuryType']))
-            || (col == 'illnesses'
-              && request.resource.data.keys().hasAny(['exposedToAgent', 'healthIssue', 'affectedPersonnel']));
+        function clinicalParentCreate() {
+          return request.resource.data.keys().hasAny(['medication', 'bodyParts', 'injuryType']);
         }
 
-        function clinicalFieldsSame(col) {
-          return col == 'injuries'
-            ? clinicalFieldSame('bodyParts') && clinicalFieldSame('injuryType')
-              && clinicalFieldSame('medication') && clinicalFieldSame('firstAidDetail')
-              && clinicalFieldSame('daysToReturnToWork') && clinicalFieldSame('recordFileIds')
-              && clinicalFieldSame('personName') && clinicalFieldSame('firstAidDone')
-              && clinicalFieldSame('name') && clinicalFieldSame('caption') && clinicalFieldSame('dataUrl')
-            : col == 'illnesses'
-            ? clinicalFieldSame('healthIssue') && clinicalFieldSame('affectedBodyParts')
-              && clinicalFieldSame('exposedToAgent') && clinicalFieldSame('exposureDuration')
-              && clinicalFieldSame('ppe') && clinicalFieldSame('affectedPersonnel')
-              && clinicalFieldSame('actions') && clinicalFieldSame('createdByName')
-              && clinicalFieldSame('name') && clinicalFieldSame('caption') && clinicalFieldSame('dataUrl')
-            : true;
+        function clinicalFieldsSame() {
+          return clinicalFieldSame('bodyParts') && clinicalFieldSame('injuryType')
+            && clinicalFieldSame('medication') && clinicalFieldSame('firstAidDetail')
+            && clinicalFieldSame('daysToReturnToWork') && clinicalFieldSame('recordFileIds')
+            && clinicalFieldSame('personName') && clinicalFieldSame('firstAidDone')
+            && clinicalFieldSame('name') && clinicalFieldSame('caption') && clinicalFieldSame('dataUrl');
         }
 
-        function reporterMayEditClinical(col) {
+        function reporterMayEditClinical() {
           return resource != null
             && resource.data.get('createdBy', '') == request.auth.uid
-            && (col == 'injuries'
-                ? resource.data.get('status', '') != 'verified'
-                  && request.resource.data.get('status', '') != 'verified'
-                : resource.data.get('lifecycle', '') != 'closed'
-                  && resource.data.get('lifecycle', '') != 'verified'
-                  && request.resource.data.get('lifecycle', '') != 'closed'
-                  && request.resource.data.get('lifecycle', '') != 'verified');
+            && resource.data.get('status', '') != 'verified'
+            && request.resource.data.get('status', '') != 'verified';
         }
 
-        function keepsClinicalContent(col) {
-          return (col != 'injuries' && col != 'illnesses')
-            || (resource == null
-                ? !clinicalParentCreate(col)
-                  || request.resource.data.get('createdBy', '') == request.auth.uid
-                : clinicalFieldsSame(col) || reporterMayEditClinical(col));
+        function keepsClinicalContent() {
+          return resource == null
+            ? !clinicalParentCreate()
+              || request.resource.data.get('createdBy', '') == request.auth.uid
+            : clinicalFieldsSame() || reporterMayEditClinical();
         }
 
-        function keepsClinicalAuthor(col) {
-          return (col != 'injuries' && col != 'illnesses')
-            || resource == null
+        function keepsClinicalAuthor() {
+          return resource == null
             || request.resource.data.get('createdBy', '') == resource.data.get('createdBy', '');
         }
 
-        function keepsClinicalJoin(col) {
-          return col != 'injuries'
-            || resource == null
+        function keepsClinicalJoin() {
+          return resource == null
             || (request.resource.data.get('incidentId', '') == resource.data.get('incidentId', '')
                 && request.resource.data.get('personId', '') == resource.data.get('personId', ''));
+        }
+
+        function beforeData() {
+          return resource == null ? {} : resource.data;
+        }
+
+        // decisionStates('injuries') is ['verified'] only. 'closed' is not manager-only.
+        function keepsField(states, before, after, path) {
+          let a = before.get(path, '');
+          let b = after.get(path, '');
+          return a == b || (!(a in states) && !(b in states));
+        }
+
+        function keepsInjuryDecision(before, after) {
+          let s = ['verified'];
+          return keepsField(s, before, after, ['status'])
+            && keepsField(s, before, after, ['approvalStatus'])
+            && keepsField(s, before, after, ['lifecycle']);
         }
 
         allow read: if isManagerOf(orgId);
@@ -1799,17 +1734,21 @@ service cloud.firestore {
         // inside incidents/{id}/photos, are still handed by the generic {sub=**} rule to every approved
         // member AND to the external auditor, by get and by list.
         allow create, update: if isWriterOf(orgId)
-          && moduleAllowed(orgId, 'incidents')
-          && keepsSoftDelete('injuries')
-          && keepsClinicalJoin('injuries')
+          && moduleOn(orgId, 'incidents')
+          && keepsSoftDelete()
+          && keepsClinicalJoin()
           && (isManagerOf(orgId)
-              || (keepsDecision('injuries', beforeData(), request.resource.data)
-                  && keepsClinicalContent('injuries')
-                  && keepsClinicalAuthor('injuries')));
+              || (keepsInjuryDecision(beforeData(), request.resource.data)
+                  && keepsClinicalContent()
+                  && keepsClinicalAuthor()));
         allow delete: if isManagerOf(orgId);
+      }
+
+      // Sibling so the clinical helpers are not compiled into every record write.
+      match /injuries/{injuryId} {
         match /records/{recordId} {
           allow read: if isManagerOf(orgId);
-          allow create: if isWriterOf(orgId) && moduleAllowed(orgId, 'incidents');
+          allow create: if isWriterOf(orgId) && moduleOn(orgId, 'incidents');
           allow update, delete: if isManagerOf(orgId);
         }
       }
@@ -1817,10 +1756,9 @@ service cloud.firestore {
       match /illnesses/{illnessId} {
         // .get(f, null) on both sides. A direct read of an absent deletedAt raises and
         // would deny every edit of a record written before the field existed.
-        function keepsSoftDelete(col) {
-          return !(col in ['incidents', 'illnesses', 'injuries'])
-            || (resource == null
-                && request.resource.data.get('deletedAt', null) == null)
+        function keepsSoftDelete() {
+          return (resource == null
+              && request.resource.data.get('deletedAt', null) == null)
             || (resource != null
                 && (request.resource.data.get('deletedAt', null) == resource.data.get('deletedAt', null)
                     || (isManagerOf(orgId)
@@ -1828,59 +1766,61 @@ service cloud.firestore {
                             || request.resource.data.get('deletedAt', null) == request.time))));
         }
 
-        // Clinical fields stay the author's until a manager verifies or closes. A direct
-        // read of an absent field raises, which denies, so every read uses .get.
+        // .get: a direct read of an absent field raises and denies. Injury fields are
+        // not in this match; it only ever checks an illness.
         function clinicalFieldSame(field) {
           return request.resource.data.get(field, null) == resource.data.get(field, null);
         }
 
-        function clinicalParentCreate(col) {
-          return (col == 'injuries'
-              && request.resource.data.keys().hasAny(['medication', 'bodyParts', 'injuryType']))
-            || (col == 'illnesses'
-              && request.resource.data.keys().hasAny(['exposedToAgent', 'healthIssue', 'affectedPersonnel']));
+        function clinicalParentCreate() {
+          return request.resource.data.keys().hasAny(['exposedToAgent', 'healthIssue', 'affectedPersonnel']);
         }
 
-        function clinicalFieldsSame(col) {
-          return col == 'injuries'
-            ? clinicalFieldSame('bodyParts') && clinicalFieldSame('injuryType')
-              && clinicalFieldSame('medication') && clinicalFieldSame('firstAidDetail')
-              && clinicalFieldSame('daysToReturnToWork') && clinicalFieldSame('recordFileIds')
-              && clinicalFieldSame('personName') && clinicalFieldSame('firstAidDone')
-              && clinicalFieldSame('name') && clinicalFieldSame('caption') && clinicalFieldSame('dataUrl')
-            : col == 'illnesses'
-            ? clinicalFieldSame('healthIssue') && clinicalFieldSame('affectedBodyParts')
-              && clinicalFieldSame('exposedToAgent') && clinicalFieldSame('exposureDuration')
-              && clinicalFieldSame('ppe') && clinicalFieldSame('affectedPersonnel')
-              && clinicalFieldSame('actions') && clinicalFieldSame('createdByName')
-              && clinicalFieldSame('name') && clinicalFieldSame('caption') && clinicalFieldSame('dataUrl')
-            : true;
+        function clinicalFieldsSame() {
+          return clinicalFieldSame('healthIssue') && clinicalFieldSame('affectedBodyParts')
+            && clinicalFieldSame('exposedToAgent') && clinicalFieldSame('exposureDuration')
+            && clinicalFieldSame('ppe') && clinicalFieldSame('affectedPersonnel')
+            && clinicalFieldSame('actions') && clinicalFieldSame('createdByName')
+            && clinicalFieldSame('name') && clinicalFieldSame('caption') && clinicalFieldSame('dataUrl');
         }
 
-        function reporterMayEditClinical(col) {
+        function reporterMayEditClinical() {
           return resource != null
             && resource.data.get('createdBy', '') == request.auth.uid
-            && (col == 'injuries'
-                ? resource.data.get('status', '') != 'verified'
-                  && request.resource.data.get('status', '') != 'verified'
-                : resource.data.get('lifecycle', '') != 'closed'
-                  && resource.data.get('lifecycle', '') != 'verified'
-                  && request.resource.data.get('lifecycle', '') != 'closed'
-                  && request.resource.data.get('lifecycle', '') != 'verified');
+            && resource.data.get('lifecycle', '') != 'closed'
+            && resource.data.get('lifecycle', '') != 'verified'
+            && request.resource.data.get('lifecycle', '') != 'closed'
+            && request.resource.data.get('lifecycle', '') != 'verified';
         }
 
-        function keepsClinicalContent(col) {
-          return (col != 'injuries' && col != 'illnesses')
-            || (resource == null
-                ? !clinicalParentCreate(col)
-                  || request.resource.data.get('createdBy', '') == request.auth.uid
-                : clinicalFieldsSame(col) || reporterMayEditClinical(col));
+        function keepsClinicalContent() {
+          return resource == null
+            ? !clinicalParentCreate()
+              || request.resource.data.get('createdBy', '') == request.auth.uid
+            : clinicalFieldsSame() || reporterMayEditClinical();
         }
 
-        function keepsClinicalAuthor(col) {
-          return (col != 'injuries' && col != 'illnesses')
-            || resource == null
+        function keepsClinicalAuthor() {
+          return resource == null
             || request.resource.data.get('createdBy', '') == resource.data.get('createdBy', '');
+        }
+
+        function beforeData() {
+          return resource == null ? {} : resource.data;
+        }
+
+        // decisionStates('illnesses'), on status, approvalStatus and lifecycle.
+        function keepsField(states, before, after, path) {
+          let a = before.get(path, '');
+          let b = after.get(path, '');
+          return a == b || (!(a in states) && !(b in states));
+        }
+
+        function keepsIllnessDecision(before, after) {
+          let s = ['closed', 'verified'];
+          return keepsField(s, before, after, ['status'])
+            && keepsField(s, before, after, ['approvalStatus'])
+            && keepsField(s, before, after, ['lifecycle']);
         }
 
         allow read: if isManagerOf(orgId);
@@ -1889,16 +1829,20 @@ service cloud.firestore {
         // reason /injuries/{id}/records gives: 'auditor' is an outside party, and confirming illnesses are
         // recorded does not require reading a named colleague's GP letter.
         allow create, update: if isWriterOf(orgId)
-          && moduleAllowed(orgId, 'incidents')
-          && keepsSoftDelete('illnesses')
+          && moduleOn(orgId, 'incidents')
+          && keepsSoftDelete()
           && (isManagerOf(orgId)
-              || (keepsDecision('illnesses', beforeData(), request.resource.data)
-                  && keepsClinicalContent('illnesses')
-                  && keepsClinicalAuthor('illnesses')));
+              || (keepsIllnessDecision(beforeData(), request.resource.data)
+                  && keepsClinicalContent()
+                  && keepsClinicalAuthor()));
         allow delete: if isManagerOf(orgId);
+      }
+
+      // Sibling so the clinical helpers are not compiled into every file write.
+      match /illnesses/{illnessId} {
         match /files/{fileId} {
           allow read: if isManagerOf(orgId);
-          allow create: if isWriterOf(orgId) && moduleAllowed(orgId, 'incidents');
+          allow create: if isWriterOf(orgId) && moduleOn(orgId, 'incidents');
           allow update, delete: if isManagerOf(orgId);
         }
       }
@@ -1925,6 +1869,91 @@ service cloud.firestore {
 
       match /{col}/{docId} {
         match /{sub=**} {
+          // '' is not a module, so a collection missing here stays open. One lookup:
+          // this write is near the 1000-expression ceiling, and a second call of
+          // this map would be counted twice.
+          function moduleForCollection(col) {
+            return {
+              'incidents': 'incidents', 'illnesses': 'incidents', 'injuries': 'incidents',
+              'assessments': 'hira',
+              'inspectionTemplates': 'inspections', 'inspectionRecords': 'inspections',
+              'audits': 'audit', 'auditPlans': 'audit', 'auditFindings': 'audit',
+              'capas': 'audit', 'findings': 'audit',
+              'permits': 'ptw', 'observations': 'ptw',
+              'procedures': 'loto', 'procedurePhotos': 'loto', 'locks': 'loto',
+              'technicians': 'loto', 'lotoPermits': 'loto',
+              'extinguishers': 'equipment', 'aeds': 'equipment', 'fas': 'equipment',
+              'signages': 'equipment', 'stretchers': 'equipment', 'firstAid': 'equipment',
+              'reports': 'equipment', 'defectClosures': 'equipment',
+              'mockDrills': 'drills',
+              'consultations': 'committee',
+              'trainingCourses': 'training', 'trainingRecords': 'training',
+              'trainingAssignments': 'training', 'trainingSessions': 'training',
+              'trainingRequests': 'training',
+              'documents': 'documents',
+              'erpContacts': 'emergency', 'erpLayouts': 'emergency', 'erpRescuePlans': 'emergency',
+              'objectives': 'objectives',
+              'cctvCameras': 'cctv', 'cctvDvrs': 'cctv', 'cctvMeraki': 'cctv',
+              'escalations': 'stakeholder', 'legalIssues': 'stakeholder'
+            }.get(col, '');
+          }
+
+          function moduleAllowed(orgId, col) {
+            return moduleOn(orgId, moduleForCollection(col));
+          }
+
+          // Manager-only decisions. Both sides are read: request.resource.data is the state
+          // after the write. .get defaults an absent field to '' so other collections skip it.
+          function decisionStates(col) {
+            return {
+              'permits': ['approved', 'rejected', 'declined'],
+              'procedures': ['approved', 'rejected', 'declined'],
+              'reports': ['approved', 'rejected', 'declined'],
+              'observations': ['approved', 'rejected', 'declined'],
+              'trainingRequests': ['approved', 'rejected', 'declined'],
+              'erpRescuePlans': ['approved', 'rejected', 'declined'],
+              'incidents': ['closed', 'verified'],
+              'illnesses': ['closed', 'verified'],
+              'capas': ['closed', 'verified'],
+              'findings': ['closed', 'verified'],
+              'audits': ['closed', 'verified'],
+              'auditFindings': ['Closed'],
+              'injuries': ['verified'],
+              'documents': ['active']
+            }.get(col, []);
+          }
+
+          function keeps(states, before, after, path) {
+            let a = before.get(path, '');
+            let b = after.get(path, '');
+            return a == b || (!(a in states) && !(b in states));
+          }
+
+          function keepsPermitDecisions(states, before, after) {
+            return keeps(states, before, after, ['engineering', 'status'])
+              && keeps(states, before, after, ['operations', 'status'])
+              && keeps(states, before, after, ['closure', 'engineering', 'status'])
+              && keeps(states, before, after, ['closure', 'operations', 'status'])
+              && keeps(states, before, after, ['extension', 'engineering', 'status'])
+              && keeps(states, before, after, ['extension', 'operations', 'status']);
+          }
+
+          function keepsDecision(col, before, after) {
+            let s = decisionStates(col);
+            return s.size() == 0
+              || (keeps(s, before, after, ['status'])
+                  && keeps(s, before, after, ['approvalStatus'])
+                  // incidents and illnesses call it `lifecycle`.
+                  && keeps(s, before, after, ['lifecycle'])
+                  && (col != 'permits' || keepsPermitDecisions(s, before, after)));
+          }
+
+          // On a create there is no before state; an empty map defaults every field,
+          // so creating a record already in a decided state is a move like any other.
+          function beforeData() {
+            return resource == null ? {} : resource.data;
+          }
+
           // meta/cryptoKeys is server-only. A match that only denies it would not win.
           function notKeyset(col, docId) {
             return !(col == 'meta' && docId == 'cryptoKeys');
