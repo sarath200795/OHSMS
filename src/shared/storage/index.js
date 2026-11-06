@@ -7,6 +7,13 @@
 //   firebase  (default)  Firebase Storage           adapters/firebase.js
 //   s3                   any S3-compatible bucket   adapters/s3.js
 //
+// `s3` is the path 3 file driver, and it is registered. It is not, by itself,
+// a custom-stack deploy: adapters/s3.js still sends a Firebase ID token to
+// the presign endpoint, and the rest of the app still reads and writes
+// Firestore until docs/CUSTOM-STACK.md's remaining-work list is done.
+// Selecting s3 while the database is Firestore is a file-store swap, which
+// this seam allows. Describe it as that.
+//
 // Adding a backend = one adapter file implementing { put(path, blob) -> {url},
 // remove(path) } plus a line in DRIVERS below. Nothing outside this folder
 // changes — every module already calls putFile/removeFile only.

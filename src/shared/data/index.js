@@ -153,24 +153,28 @@
 //
 // Which implementation backs the seam comes from VITE_DATA_DRIVER (default
 // 'firestore'). Adding a backend = one adapter file implementing everything
-// above plus a line in DRIVERS. See ./README.md for what a migration involves
-// beyond this seam (auth, security rules, realtime, offline).
+// above plus a line in DRIVERS. postgres (any Postgres-protocol server) and
+// supabase (one flavor of that path) are reserved path 3 names
+// (resolveDriver.js, docs/CUSTOM-STACK.md). They are absent from DRIVERS
+// on purpose. Selecting one throws instead of falling through to Firestore:
+// that fallback is for a typo, and a name this repository has published as a
+// target is not a typo. ./README.md is the contract note that sits next to
+// the code; the deploy choice and the remaining-work list are the doc.
 // ─────────────────────────────────────────────────────────────────────────────
 import firestore from './adapters/firestore'
 import memory from './adapters/memory'
-
-const DRIVER = String(import.meta.env.VITE_DATA_DRIVER || 'firestore')
-  .trim()
-  .toLowerCase()
+import { resolveDataDriver } from './resolveDriver'
 
 // Static registry (not dynamic imports): subscribe() must return an
 // unsubscribe function synchronously, which an async-loaded adapter cannot do
-// without every caller changing shape.
+// without every caller changing shape. A path 3 SDK pays that cost on the
+// day it is registered — do not "fix" it with a dynamic import.
 const DRIVERS = {
   firestore,
   memory, // the second real driver (no emulator needed) — NOT a production store
-  // supabase: supabaseAdapter,   ← future adapters register here
 }
 
-export const dataDriver = DRIVER in DRIVERS ? DRIVER : 'firestore'
+// Throws UnimplementedDataDriverError for postgres/supabase until an adapter
+// is actually in DRIVERS. Unknown names still resolve to firestore.
+export const dataDriver = resolveDataDriver(import.meta.env.VITE_DATA_DRIVER, DRIVERS)
 export const dataProvider = DRIVERS[dataDriver]
