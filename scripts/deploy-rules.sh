@@ -29,6 +29,16 @@
 # are not retried. Hosting is a separate workflow step and runs only when
 # this script exits 0. A skip is exit 0 because production is already
 # enforcing these files. A failed deploy is not.
+#
+# A 409 (and, less often, a 503 on POST /rulesets) can arrive after the
+# ruleset was created and the release was updated. The CLI still exits
+# non-zero. v2.0.9 through v2.0.11 then failed the step and skipped hosting
+# even when the release had landed. The opposite mistake is worse: a 409 on
+# ruleset create means the bytes were stored and the release was not
+# updated, and treating that as success would ship hosting on the old rules.
+# After a transient failure this script reads the live release again. Exit 0
+# only when that read says the released source is this commit. A differ, or
+# a read that failed, is not a release.
 set -euo pipefail
 
 require_project_id() {
@@ -137,18 +147,27 @@ select_targets() {
 
 script_dir="$(cd "$(dirname "$0")" && pwd)"
 log="$(mktemp)"
-live_out="$(mktemp)"
-trap 'rm -f "$log" "$live_out"' EXIT
+trap 'rm -f "$log"' EXIT
 
-set +e
-if [[ -n "${RULES_LIVE_BIN:-}" ]]; then
-  "$RULES_LIVE_BIN" >"$live_out"
-else
-  node "$script_dir/rules-live.mjs" >"$live_out"
-fi
-live_status=$?
-set -e
-live_line="$(tr -d '\r' <"$live_out" | head -n 1)"
+# stdout line and exit code of scripts/rules-live.mjs. Exit 0 and `match`
+# means the released Firestore rules, Storage rules and indexes are this
+# commit. Anything else — differ, unknown, a failed read — is not proof.
+read_live() {
+  local out
+  out="$(mktemp)"
+  set +e
+  if [[ -n "${RULES_LIVE_BIN:-}" ]]; then
+    "$RULES_LIVE_BIN" >"$out"
+  else
+    node "$script_dir/rules-live.mjs" >"$out"
+  fi
+  live_status=$?
+  set -e
+  live_line="$(tr -d '\r' <"$out" | head -n 1)"
+  rm -f "$out"
+}
+
+read_live
 
 if [[ "$live_status" -eq 0 && "$live_line" == "match" ]]; then
   echo "Live Firestore rules, Storage rules and indexes match this commit. Skipping the Rules API deploy."
@@ -184,6 +203,17 @@ while true; do
   retryable=0
   if transient_failure "$log"; then
     retryable=1
+  fi
+
+  # Prove the release before another attempt, and before giving up. A
+  # compilation error is not checked: the ruleset did not change, and a
+  # stale live match must not hide a rules file that does not compile.
+  if [[ "$retryable" -eq 1 ]]; then
+    read_live
+    if [[ "$live_status" -eq 0 && "$live_line" == "match" ]]; then
+      echo "Rules API returned a transient error, but the live release matches this commit. Hosting may deploy."
+      exit 0
+    fi
   fi
 
   if [[ "$retryable" -eq 0 || "$attempt" -ge "$attempts" ]]; then

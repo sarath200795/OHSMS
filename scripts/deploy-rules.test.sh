@@ -174,6 +174,105 @@ run ohsms-demo custom 3 "0 0"
 assert_eq "$run_status" "0" "409 is retried"
 assert_eq "$(calls)" "2" "409 retries once"
 
+# A live checker that answers differently on each invocation. Call 1 is the
+# pre-deploy read. Later calls are the proof read after a transient error.
+live_seq="$tmp/live-seq"
+live_seq_n="$tmp/live-seq-n"
+live_seq_dir="$tmp/live-seq-d"
+mkdir -p "$live_seq_dir"
+cat >"$live_seq" <<'EOF'
+#!/usr/bin/env bash
+n=0
+if [[ -f "$LIVE_SEQ_N" ]]; then
+  n="$(cat "$LIVE_SEQ_N")"
+fi
+n=$((n + 1))
+printf '%s' "$n" >"$LIVE_SEQ_N"
+spec="$LIVE_SEQ_DIR/$n"
+if [[ ! -f "$spec" ]]; then
+  echo "no live spec for call $n" >&2
+  exit 1
+fi
+code="$(head -n 1 "$spec")"
+tail -n +2 "$spec"
+exit "$code"
+EOF
+chmod +x "$live_seq"
+
+write_live() {
+  local n="$1" code="$2" line="$3"
+  printf '%s\n%s\n' "$code" "$line" >"$live_seq_dir/$n"
+}
+
+reset_live() {
+  rm -f "$live_seq_n"
+  rm -rf "$live_seq_dir"
+  mkdir -p "$live_seq_dir"
+}
+
+live_calls() {
+  if [[ -f "$live_seq_n" ]]; then
+    cat "$live_seq_n"
+  else
+    echo 0
+  fi
+}
+
+# ── 409 after the release actually landed: prove it, then allow hosting ─────
+reset
+reset_live
+write_spec 1 2 "HTTP Error: 409, Requested entity already exists."
+write_live 1 10 "differ firestore"
+write_live 2 0 "match"
+RULES_LIVE_BIN="$live_seq" LIVE_SEQ_N="$live_seq_n" LIVE_SEQ_DIR="$live_seq_dir" \
+  run ohsms-demo custom 3 "0 0"
+assert_eq "$run_status" "0" "409 plus a matching live release exits 0"
+assert_eq "$(calls)" "1" "a proved release is not deployed again"
+assert_eq "$(live_calls)" "2" "the proof read is a second live check"
+grep -q 'live release matches this commit' "$tmp/stdout" || fail "proved release was not reported"
+RULES_LIVE_BIN="$live_all"
+
+# ── 409 while the release is still the old rules: do not claim success ──────
+reset
+reset_live
+write_spec 1 2 "HTTP Error: 409, Requested entity already exists."
+write_live 1 10 "differ firestore"
+write_live 2 10 "differ firestore"
+RULES_LIVE_BIN="$live_seq" LIVE_SEQ_N="$live_seq_n" LIVE_SEQ_DIR="$live_seq_dir" \
+  run ohsms-demo custom 1 "0"
+assert_eq "$run_status" "2" "409 on a stale release keeps the firebase exit code"
+assert_eq "$(calls)" "1" "a stale 409 is not retried past the cap"
+grep -q 'live release matches this commit' "$tmp/stdout" && fail "stale 409 was reported as released"
+grep -q 'Hosting will not deploy' "$err" || fail "stale 409 did not keep hosting closed"
+RULES_LIVE_BIN="$live_all"
+
+# ── a live read that fails is not proof the release landed ──────────────────
+reset
+reset_live
+write_spec 1 2 "HTTP Error: 409, Requested entity already exists."
+write_spec 2 0 "released rules"
+write_live 1 10 "differ firestore"
+write_live 2 1 "unknown"
+RULES_LIVE_BIN="$live_seq" LIVE_SEQ_N="$live_seq_n" LIVE_SEQ_DIR="$live_seq_dir" \
+  run ohsms-demo custom 2 "0"
+assert_eq "$run_status" "0" "unknown proof read still retries the deploy"
+assert_eq "$(calls)" "2" "an unreadable release is not treated as live"
+grep -q 'live release matches this commit' "$tmp/stdout" && fail "unreadable release was reported as released"
+RULES_LIVE_BIN="$live_all"
+
+# ── compilation error is not rescued by a live file that happens to match ───
+reset
+reset_live
+write_spec 1 1 "Error: Compilation error in firestore.rules:" "[E] 10:1 - Unexpected '}'."
+write_live 1 10 "differ firestore"
+write_live 2 0 "match"
+RULES_LIVE_BIN="$live_seq" LIVE_SEQ_N="$live_seq_n" LIVE_SEQ_DIR="$live_seq_dir" \
+  run ohsms-demo custom 4 "0 0 0"
+assert_eq "$run_status" "1" "compilation error is not turned into a live match"
+assert_eq "$(calls)" "1" "compilation error still is not retried"
+assert_eq "$(live_calls)" "1" "compilation error does not re-read the release"
+RULES_LIVE_BIN="$live_all"
+
 # ── transport errors, with no HTTP status line ──────────────────────────────
 reset
 write_spec 1 2 "Error: connect ECONNRESET firebaserules.googleapis.com"
