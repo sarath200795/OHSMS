@@ -10,6 +10,7 @@
 // Pure: no Firestore, no DOM. Sealed fields arrive already opened (the permit
 // service decrypts on subscribe), so this never touches key material.
 // ─────────────────────────────────────────────────────────────────────────────
+import { sheetValue } from '../../../shared/lib/csv'
 import {
   CLOSED_STATUSES,
   EMERGENCY_ATTESTATIONS,
@@ -129,16 +130,11 @@ export function permitSummary(permit, events = []) {
 
 // ── Spreadsheet ──────────────────────────────────────────────────────────────
 
-// A spreadsheet cell that starts with = + - @ is a formula to Excel and Sheets
-// when the file is round-tripped through CSV or pasted, and the text here is
-// typed by requesters and contractors. A leading tab is the same neutralisation
-// shared/lib/csv.js uses; numbers are left alone.
-const FORMULA_LEAD = /^[=+\-@\t\r]/
+// Same rule as every other workbook. permitExcel writes these rows straight
+// through json_to_sheet and must not run them through sheetRows again — a
+// second pass would prefix the tab this already added.
 export function safeCell(value) {
-  if (value === null || value === undefined) return ''
-  if (typeof value === 'number' || typeof value === 'boolean') return value
-  const raw = String(value)
-  return FORMULA_LEAD.test(raw) ? `\t${raw}` : raw
+  return sheetValue(value)
 }
 
 const PERMIT_COLUMNS = [

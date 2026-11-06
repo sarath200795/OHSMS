@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
 import * as XLSX from 'xlsx';
+import { jsonToSheet } from '../../../shared/lib/sheet';
 import toast from 'react-hot-toast';
 import { toastCaught } from '../../../shared/lib/toastCaught';
 import {
@@ -627,8 +628,8 @@ export default function Consultation() {
                                 <button type="button" onClick={() => {
                                     const sheets = meetingExportSheets(filteredList, siteName);
                                     const wb = XLSX.utils.book_new();
-                                    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sheets.meetings), "Meetings");
-                                    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sheets.actions), "Actions");
+                                    XLSX.utils.book_append_sheet(wb, jsonToSheet(sheets.meetings), "Meetings");
+                                    XLSX.utils.book_append_sheet(wb, jsonToSheet(sheets.actions), "Actions");
                                     XLSX.writeFile(wb, "Meetings_Export.xlsx");
                                 }} className="bg-surface-100 hover:bg-surface-200 text-ink-900 px-4 py-2.5 rounded-xl font-bold text-xs shadow flex items-center gap-2 transition-colors border border-surface-300"><FileSpreadsheet size={14} className="text-emerald-600" /> Export</button>
                                 <button type="button" onClick={() => setView('calendar')} className="bg-surface-100 hover:bg-surface-200 text-ink-900 px-4 py-2.5 rounded-xl font-bold text-xs shadow flex items-center gap-2 transition-colors border border-surface-300"><Calendar size={14} className="text-brand-600" /> Calendar</button>

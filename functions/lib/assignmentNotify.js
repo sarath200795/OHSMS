@@ -30,6 +30,7 @@ import { loadOrgDisplayName } from './mailBrand.js'
 import { describeMailGap } from './mailer.js'
 import { renderAssignmentMessage } from './mailTemplates/assignments.js'
 import { readableText } from './mailTemplates/safe.js'
+import { mailboxAddress } from './mailAddress.js'
 
 export { readableText, safeLine } from './mailTemplates/safe.js'
 
@@ -44,8 +45,6 @@ export const ASSIGNMENT_COLLECTIONS = [
 // feature. Training already writes one assignment document per person, so it
 // never approaches this. A CAPA array past it is not a real batch.
 export const MAX_MAILS_PER_WRITE = 100
-
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 function closedStatus(status) {
   return (
@@ -255,8 +254,8 @@ export function deliveryDecision({ assigneeUid, actorUid, user, orgId }) {
   // A missing status is a profile from before the field existed. pending /
   // rejected / suspended are not people who can open the link.
   if (user.status && user.status !== 'approved') return { send: false, reason: 'not-approved' }
-  const email = typeof user.email === 'string' ? user.email.trim() : ''
-  if (!EMAIL_RE.test(email)) return { send: false, reason: 'no-email' }
+  const email = mailboxAddress(user.email)
+  if (!email) return { send: false, reason: 'no-email' }
   return { send: true, email }
 }
 

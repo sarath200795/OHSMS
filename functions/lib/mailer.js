@@ -15,8 +15,7 @@
 
 import { prepareAttachments } from './mailAttachments.js'
 import { isProductBrandName, mailSenderName, NEUTRAL_SENDER } from './mailBrand.js'
-
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+import { mailboxAddress } from './mailAddress.js'
 
 /** The address on the From header. Not the Brevo SMTP login. */
 export const MAILBOX_ADDRESS = 'info@weehs.org'
@@ -40,14 +39,16 @@ export function parseFrom(value) {
     .trim()
   const angled = raw.match(/^(.*)<([^<>]+)>$/)
   if (angled) {
-    const email = angled[2].trim()
+    const email = mailboxAddress(angled[2])
+    // The name is dropped when it could open another header. The address is
+    // kept only when it is still a single mailbox — a comment or a quoted
+    // local part inside the brackets is not one.
+    if (!email) return ''
     const name = angled[1].trim().replace(/^"|"$/g, '')
-    // A colon in the display name is how a second header gets introduced
-    // (`Evil\nBcc: x <good@host>`). The address is kept; the name is not.
     if (!name || /["<>:]/.test(name)) return email
     return `${name} <${email}>`
   }
-  return EMAIL_RE.test(raw) ? raw : ''
+  return mailboxAddress(raw)
 }
 
 /**
@@ -60,8 +61,8 @@ export function parseFrom(value) {
 export function applySenderName(configuredFrom, displayName) {
   const parsed = parseFrom(configuredFrom)
   const angled = parsed.match(/^(.*)<([^<>]+)>$/)
-  const address = angled ? angled[2].trim() : ''
-  const bare = !angled && EMAIL_RE.test(parsed) ? parsed : ''
+  const address = angled ? mailboxAddress(angled[2]) : ''
+  const bare = !angled ? mailboxAddress(parsed) : ''
   const mailbox = address || bare
   if (!mailbox) return parsed
   const requested = mailSenderName(displayName)

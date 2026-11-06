@@ -81,6 +81,68 @@ describe('hosting CSP allows Sentry ingest and refuses framing', () => {
   })
 })
 
+function hostingHeader(source, key) {
+  const hosting = JSON.parse(read('firebase.json')).hosting
+  const block = hosting.headers.find((entry) => entry.source === source)
+  return block?.headers?.find((entry) => entry.key === key)?.value
+}
+
+describe('hosting HSTS is this host only, and the CSP still blocks inline scripts', () => {
+  it('sends a one-day HSTS on every hosting response, without subdomains or preload', () => {
+    const hosting = JSON.parse(read('firebase.json')).hosting
+    const hsts = hostingHeader('**', 'Strict-Transport-Security')
+    // One day, this host only. includeSubDomains would force HTTPS on every
+    // name under the custom domain, web.app and firebaseapp.com, and those
+    // names are not all listed here. preload is a public list that is hard
+    // to leave. A longer max-age is a later change, after this header has
+    // been served from the production host without a mixed-content failure.
+    // Browsers that saw it keep HTTPS-only for this host until max-age ends,
+    // even if a later deploy drops the header.
+    expect(hsts).toBe('max-age=86400')
+    expect(hsts).not.toMatch(/includeSubDomains|preload/i)
+    const overrides = hosting.headers.filter((entry) =>
+      entry.headers.some(
+        (header) => header.key === 'Strict-Transport-Security' && entry.source !== '**'
+      )
+    )
+    expect(overrides).toEqual([])
+    // The other firebase configs do not serve hosting. A second header
+    // block there would not be covered by the assertion above.
+    expect(JSON.parse(read('firebase.docker.json')).hosting).toBeUndefined()
+    expect(JSON.parse(read('firebase.rulestest.json')).hosting).toBeUndefined()
+    expect(hostingHeader('**', 'X-Frame-Options')).toBe('DENY')
+    expect(hostingHeader('**', 'X-Content-Type-Options')).toBe('nosniff')
+    expect(hostingHeader('**', 'Referrer-Policy')).toBe('strict-origin-when-cross-origin')
+  })
+
+  it('keeps script-src free of unsafe-inline and serves the splash from a file', () => {
+    const csp = hostingHeader('**', 'Content-Security-Policy')
+    const scriptSrc = csp
+      .split(';')
+      .map((part) => part.trim())
+      .find((part) => part.startsWith('script-src '))
+    expect(scriptSrc).toBeTruthy()
+    expect(scriptSrc).not.toContain('unsafe-inline')
+    expect(scriptSrc).toContain("'self'")
+    expect(csp).toContain("object-src 'none'")
+    expect(csp).toContain("frame-ancestors 'none'")
+    // The boot <style> is still inline. style-src keeps unsafe-inline for that.
+    // Moving it is a separate change; do not "fix" the script by opening script-src.
+    expect(csp).toMatch(/style-src [^;]*'unsafe-inline'/)
+
+    const html = read('index.html')
+    const scripts = [...html.matchAll(/<script\b([^>]*)>/g)].map((match) => match[1])
+    expect(scripts.length).toBeGreaterThan(0)
+    for (const attrs of scripts) expect(attrs).toMatch(/\bsrc=/)
+    expect(html).toContain('src="/boot-splash.js"')
+    const boot = read('public/boot-splash.js')
+    expect(boot).toContain('native-shell')
+    expect(boot).toContain('ohsms.viewMode')
+    expect(boot).toContain("getElementById('boot-splash')")
+    expect(boot).toContain('8000')
+  })
+})
+
 describe('Cloud Functions tests run on the runtime they deploy to', () => {
   it('the functions CI job uses Node 22', () => {
     const yml = read('.github/workflows/ci.yml')
@@ -183,7 +245,8 @@ describe('700 is not a white-text fill', () => {
         .split('\n')
         .forEach((line, i) => {
           const trimmed = line.trim()
-          if (trimmed.startsWith('//') || trimmed.startsWith('*') || trimmed.startsWith('/*')) return
+          if (trimmed.startsWith('//') || trimmed.startsWith('*') || trimmed.startsWith('/*'))
+            return
           if (!FILL_700.test(line)) return
           if (!/text-white/.test(line)) return
           hits.push(`${file}:${i + 1}: ${trimmed}`)
@@ -238,4 +301,3 @@ describe('legacy download-token apply stays gated', () => {
     expect(read('docs/LEGACY-DOWNLOAD-URLS.md')).toMatch(/url-only/)
   })
 })
-

@@ -35,7 +35,8 @@
          does a phone that has chosen the desktop portal (html.desktop-view,
          the same ohsms.viewMode key as src/shared/mobile/viewMode.js). The
          timer removes it if the bundle never runs — a splash only the bundle
-         can dismiss is a blank phone when the script fails. -->
+         can dismiss is a blank phone when the script fails. The timer is
+         /boot-splash.js, not an inline script: script-src does not allow one. -->
     <style>
       #boot-splash {
         position: fixed;
@@ -90,30 +91,7 @@
         }
       }
     </style>
-    <script>
-      try {
-        if (
-          window.Capacitor &&
-          window.Capacitor.isNativePlatform &&
-          window.Capacitor.isNativePlatform()
-        ) {
-          document.documentElement.classList.add('native-shell')
-        }
-      } catch (e) {
-        /* no bridge in a browser; the HTML splash still runs */
-      }
-      try {
-        if (window.localStorage && localStorage.getItem('ohsms.viewMode') === 'desktop') {
-          document.documentElement.classList.add('desktop-view')
-        }
-      } catch (e) {
-        /* private mode: the bundle still removes the splash once it knows */
-      }
-      window.setTimeout(function () {
-        var el = document.getElementById('boot-splash')
-        if (el) el.remove()
-      }, 8000)
-    </script>
+    <script src="/boot-splash.js"></script>
   </head>
   <body>
     <div id="boot-splash" aria-hidden="true">

@@ -245,9 +245,12 @@ jobs:
       # mints the orgId/role claim that storage.rules enforces on, so rules that
       # depend on a claim must never ship before the function that sets it.
       #
-      # --force because a scheduled function that has been renamed or removed
-      # otherwise prompts, and a non-interactive run would hang until it timed
-      # out. Nothing here deletes data; the worst case is a stale function going.
+      # --force is still passed, inside scripts/deploy-functions.sh, because the
+      # other non-interactive prompts (minimum instances, cleanup policy) abort
+      # without it. It is not consent to delete a function this source no longer
+      # exports. That delete runs only when APPROVE_FUNCTION_DELETION=yes, which
+      # this workflow does not set. A removed function stays deployed until an
+      # operator deletes it. Nothing here deletes Firestore data.
       #
       # firebase-tools 13 resolveParams, with --non-interactive, throws before
       # it applies defineString defaults, and the error lists every unresolved
@@ -273,6 +276,9 @@ jobs:
           APP_ORIGIN: ${{ vars.APP_ORIGIN }}
           WA_TEMPLATE_WELCOME: ${{ vars.WA_TEMPLATE_WELCOME }}
           WA_TEMPLATE_TEST: ${{ vars.WA_TEMPLATE_TEST }}
+          # Empty when the variable is unset. That fail-closes password
+          # completion; it does not copy or loosen the browser API key.
+          AUTH_WEB_API_KEY: ${{ vars.AUTH_WEB_API_KEY }}
         run: bash scripts/prepare-functions-deploy.sh write-env
 
       # functions:secrets:get returns metadata only. functions:secrets:access
@@ -298,13 +304,20 @@ jobs:
 
       # Params and secrets are prepared above. SMTP_PASS may be the
       # placeholder; that deploys and does not send. See DEPLOYMENT.md §6.
+      #
+      # scripts/deploy-functions.sh keeps --force for the other non-interactive
+      # prompts, and deploys only the functions this source exports. firebase-tools
+      # treats --force on `deploy --only functions` as consent to delete every
+      # Cloud Function that is in the project and absent from source
+      # (promptForFunctionDeletion returns true immediately). That would remove
+      # tgWebhook on the next release with no separate approval. This job does
+      # not set APPROVE_FUNCTION_DELETION, so that delete does not run here.
       - name: Deploy functions
         if: steps.creds.outputs.configured == 'true'
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json
-        run: |
-          npx firebase-tools deploy --only functions \
-            --project "${{ vars.VITE_FIREBASE_PROJECT_ID }}" --non-interactive --force
+          PROJECT_ID: ${{ vars.VITE_FIREBASE_PROJECT_ID }}
+        run: bash scripts/deploy-functions.sh
 
       # Two steps, in this order, deliberately — see docs/PRODUCTION.md §0b.
       #

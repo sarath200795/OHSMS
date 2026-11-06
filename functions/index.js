@@ -21,6 +21,13 @@ import { onCall, onRequest, HttpsError } from 'firebase-functions/v2/https'
 import { defineSecret, defineString } from 'firebase-functions/params'
 import { logger } from 'firebase-functions'
 import { claimsFor, claimsChanged, mergeClaims, revokesAccess } from './lib/claims.js'
+import {
+  applyPasswordChange,
+  gateLockShouldDrop,
+  lockState,
+  postPasswordSignIn,
+  signInEndpoint,
+} from './lib/passwordGate.js'
 import { planBackfill } from './lib/docVisibility.js'
 import { classifyLocks } from './lib/defectLocks.js'
 import { deliverLotoPermitMails } from './lib/lotoPermitNotify.js'
@@ -82,8 +89,8 @@ import { deliverPermitMails } from './lib/permitNotify.js'
 import { deliverDefectReport, deliverAssetDefects } from './lib/defectNotify.js'
 import { deliverDrillReport } from './lib/drillReportNotify.js'
 import { deliverMeetingMail } from './lib/meetingNotify.js'
-import { deliverWeatherDigest, weatherBucket } from './lib/weatherDigest.js'
-import { gridKey, requestPoint } from './lib/openMeteo.js'
+import { deliverWeatherDigest } from './lib/weatherDigest.js'
+import { serveSiteWeather, countWeatherFetch } from './lib/siteWeatherCall.js'
 import { weatherCache } from './lib/weatherCache.js'
 import { createMailer, DEFAULT_MAIL } from './lib/mailer.js'
 import { createHmac } from 'node:crypto'
@@ -106,14 +113,6 @@ import {
 } from './lib/whatsapp/graph.js'
 import { countOutbound } from './lib/whatsapp/rateLimit.js'
 import { isActiveMember } from './lib/whatsapp/access.js'
-import {
-  verifySecretToken,
-  extractUpdate,
-  handleUpdate,
-  sendPayloads,
-  tgSend,
-  tgAnswerCallback,
-} from './lib/telegram/handler.js'
 import { generateLinkCode, hashLinkCode, maskPhone, LINK_CODE_TTL_MS } from './lib/whatsapp/link.js'
 import {
   readOrgConnect,
@@ -174,6 +173,23 @@ const SMTP_PORT = defineString('SMTP_PORT', { default: DEFAULT_MAIL.port })
 const SMTP_USER = defineString('SMTP_USER', { default: DEFAULT_MAIL.user })
 const MAIL_FROM = defineString('MAIL_FROM', { default: DEFAULT_MAIL.from })
 const APP_ORIGIN = defineString('APP_ORIGIN', { default: DEFAULT_MAIL.appOrigin })
+
+// Identity Toolkit will not check a password for the Admin SDK. The check is
+// accounts:signInWithPassword, which takes the web API key. That key is public
+// — it ships in the SPA — but a browser key restricted to HTTP referrers is
+// rejected from Cloud Functions, and a rejection here must not clear the flag.
+// Set this to a key Identity Toolkit accepts from this function (API-restricted
+// to Identity Toolkit; application restriction none, or the function's egress,
+// not the hosting referrer). The Auth emulator ignores it.
+//
+//   AUTH_WEB_API_KEY=the-server-usable-web-api-key
+//
+// Empty means the function cannot verify a password and will not lift
+// mustChangePassword. A release deploys functions, then rules, then hosting
+// with no pause, so an empty value here and the rules in that same release
+// leave a flagged account unable to finish. Unflagged accounts are unaffected.
+// This is not the browser key, and it is not committed.
+const AUTH_WEB_API_KEY = defineString('AUTH_WEB_API_KEY', { default: '' })
 
 // Keep the functions beside the data they trigger on. This project's Firestore
 // is in asia-south1 (Mumbai), and a Firestore trigger's Eventarc plumbing is
@@ -259,6 +275,21 @@ export const syncUserClaims = onDocumentWritten(
     const { uid } = event.params
     const after = event.data?.after?.data() || null
 
+    // The lock is a nonce and an expiry, not a password. Drop it when the
+    // profile goes away or the requirement changes, so a committed lock cannot
+    // finish a later forced change. A name edit that leaves the flag true
+    // keeps it, which is how a failed flag write is retried.
+    const before = event.data?.before?.data() || null
+    if (gateLockShouldDrop(before, after)) {
+      try {
+        await getFirestore().doc(`authGates/${uid}`).delete()
+      } catch (err) {
+        logger.error('password gate: could not drop the marker', {
+          uid, error: err?.code || 'delete-failed',
+        })
+      }
+    }
+
     let existing = {}
     try {
       const record = await getAuth().getUser(uid)
@@ -313,6 +344,130 @@ export const syncUserClaims = onDocumentWritten(
     logger.info('claims: updated', { uid, orgId: next.orgId, role: next.role })
   }
 )
+
+// Reason codes from applyPasswordChange, as the client may show them. The
+// password is never one of these strings. `policy` uses the validator's own
+// message, which names the rule that failed and not the password.
+const PASSWORD_GATE_HTTP = {
+  unauthenticated: ['unauthenticated', 'Sign in first.'],
+  stale: ['failed-precondition', 'Sign in again, then set the password.'],
+  'current-required': ['invalid-argument', 'Enter the temporary password you were given.'],
+  unavailable: ['failed-precondition', 'Password change is not available right now. Try again shortly.'],
+  'current-rejected': ['permission-denied', 'The temporary password was not accepted.'],
+  unchanged: ['failed-precondition', 'Choose a different password than the temporary one.'],
+  'not-updated': ['internal', 'Could not update the password.'],
+  'flag-unchanged': ['failed-precondition', 'The password was saved but the account is still locked. Submit the new password once more.'],
+  busy: ['failed-precondition', 'A password change is already in progress. Wait a moment and try again.'],
+  'finish-pending': ['failed-precondition', 'That password was saved. Enter it again in both fields to finish unlocking the account.'],
+}
+
+async function claimPasswordLock(db, uid, record, now) {
+  const ref = db.doc(`authGates/${uid}`)
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref)
+    if (lockState(snap.exists ? snap.data() : null, now)) return false
+    tx.set(ref, {
+      nonce: record.nonce,
+      phase: 'pending',
+      expiresAtMs: record.expiresAtMs,
+    })
+    return true
+  })
+}
+
+async function commitPasswordLock(db, uid, nonce, expiresAtMs, now) {
+  const ref = db.doc(`authGates/${uid}`)
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref)
+    const live = lockState(snap.exists ? snap.data() : null, now)
+    if (!live || live.nonce !== nonce || live.phase !== 'pending') return false
+    tx.set(ref, { nonce, phase: 'committed', expiresAtMs })
+    return true
+  })
+}
+
+async function releasePasswordLock(db, uid, nonce) {
+  const ref = db.doc(`authGates/${uid}`)
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref)
+    if (!snap.exists || snap.data()?.nonce !== nonce) return
+    tx.delete(ref)
+  })
+}
+
+/**
+ * Replace the signed-in user's password and lift mustChangePassword.
+ *
+ * The uid is the token's. A uid in the body is ignored, so this cannot be
+ * aimed at someone else. auth_time has to be recent; that rejects a stale
+ * session and is not evidence the password changed. The evidence is
+ * updateUser with a string Identity Toolkit has just said is not the current
+ * password. Sign-in, refresh, reauth and revoke never reach updateUser.
+ *
+ * The request body is not logged. Identity Toolkit's error text is reduced to
+ * a known code before it is classified, and Auth errors are logged only as a
+ * short code. The callable returns { ok, reason } and never a token.
+ *
+ * A release deploys functions, then rules, then hosting, with no pause between
+ * them. An empty AUTH_WEB_API_KEY makes this function refuse, and the rules
+ * deploy in that same release then stops the client from clearing the flag.
+ * Flagged accounts cannot finish until a server-usable key is in the param.
+ * Accounts that are not flagged are unaffected.
+ */
+export const completePasswordChange = onCall({ region: REGION }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in first.')
+
+  const db = getFirestore()
+  const auth = getAuth()
+  const profile = (await db.doc(`users/${uid}`).get()).data() || null
+  let record
+  try {
+    record = await auth.getUser(uid)
+  } catch (err) {
+    if (err?.code === 'auth/user-not-found') {
+      throw new HttpsError('not-found', 'No account for this session.')
+    }
+    throw err
+  }
+  const markerSnap = await db.doc(`authGates/${uid}`).get()
+  const endpoint = signInEndpoint({
+    emulatorHost: process.env.FIREBASE_AUTH_EMULATOR_HOST,
+    apiKey: AUTH_WEB_API_KEY.value(),
+  })
+
+  const result = await applyPasswordChange({
+    uid,
+    authTime: request.auth.token?.auth_time,
+    now: Date.now(),
+    email: record.email || '',
+    name: profile?.name || '',
+    flag: profile?.mustChangePassword === true,
+    // The body is not logged. current and password are handed to Auth and dropped.
+    current: request.data?.current,
+    password: request.data?.password,
+    marker: markerSnap.exists ? markerSnap.data() : null,
+    signIn: (email, password) => postPasswordSignIn(fetch, endpoint, email, password),
+    updatePassword: (id, password) => auth.updateUser(id, { password }),
+    claimLock: (record) => claimPasswordLock(db, uid, record, Date.now()),
+    commitLock: (id, expiresAtMs) => commitPasswordLock(db, uid, id, expiresAtMs, Date.now()),
+    releaseLock: (id) => releasePasswordLock(db, uid, id),
+    clearFlag: (id) => db.doc(`users/${id}`).update({ mustChangePassword: false }),
+  })
+
+  if (result.ok) return { ok: true, reason: result.reason }
+
+  logger.warn('password gate: refused', {
+    uid,
+    reason: result.reason,
+    ...(result.code ? { code: result.code } : {}),
+  })
+  if (result.reason === 'policy') {
+    throw new HttpsError('invalid-argument', result.message || 'Enter a password', { reason: 'policy' })
+  }
+  const [code, message] = PASSWORD_GATE_HTTP[result.reason] || ['internal', 'Could not update the password.']
+  throw new HttpsError(code, message, { reason: result.reason })
+})
 
 /**
  * Stamp every existing user, once.
@@ -2661,27 +2816,46 @@ export const retryWeatherRiskDigest = onSchedule(
 )
 
 // The site screen calls this and gets the observation. The browser does not
-// call Open-Meteo, and there is no weather API key. Coordinates are rounded
-// again inside the request. A retryable failure is an empty reading with
-// limited set, not an error the page can mistake for a calm site.
+// call Open-Meteo, and there is no weather API key. The answer is a public
+// forecast, not a record from the tenant. The gate is the same live profile
+// the other callables use, and the coordinate has to be a site that profile
+// can already see. The digest does not call this; it is a schedule.
 export const fetchSiteWeather = onCall({ region: REGION, timeoutSeconds: 30 }, async (request) => {
-  if (!request.auth?.uid) throw new HttpsError('unauthenticated', 'Sign in first.')
-  const lat = Number(request.data?.lat)
-  const lng = Number(request.data?.lng)
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-    throw new HttpsError('invalid-argument', 'A latitude and longitude are required.')
-  }
-  const key = gridKey(lat, lng)
-  if (!key) throw new HttpsError('invalid-argument', 'A latitude and longitude are required.')
-  const slot = weatherBucket(new Date())
-  const [gLat, gLng] = key.split(',').map(Number)
-  const result = await requestPoint(
-    { key, lat: gLat, lng: gLng },
-    { cache: weatherCache(getFirestore()), slot }
-  )
-  if (!result.ok && result.retry) return { obs: null, limited: true }
-  return { obs: result.obs || null }
+  const db = getFirestore()
+  const result = await serveSiteWeather({
+    uid: request.auth?.uid || '',
+    data: request.data,
+    loadProfile: async (uid) => {
+      const snap = await db.doc(`users/${uid}`).get()
+      return snap.exists ? snap.data() : null
+    },
+    orgExists: async (orgId) => (await db.doc(`organizations/${orgId}`).get()).exists,
+    loadSites: async (orgId) => {
+      const snap = await db.collection(`organizations/${orgId}/sites`).get()
+      return snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+    },
+    cache: weatherCache(db),
+    fetchImpl: globalThis.fetch,
+    takeRate: (uid, nowMs) => takeWeatherRate(db, uid, nowMs),
+  })
+  if (result.error) throw new HttpsError(result.error, result.message)
+  return result.body
 })
+
+async function takeWeatherRate(db, uid, nowMs) {
+  const ref = db.doc(`weatherRate/${uid}`)
+  try {
+    return await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref)
+      const next = countWeatherFetch(snap.exists ? snap.data() : {}, nowMs)
+      tx.set(ref, { stamps: next.stamps })
+      return next.allowed
+    })
+  } catch (err) {
+    logger.error('fetchSiteWeather: rate check failed', { uid, error: err?.message || String(err) })
+    return false
+  }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // WhatsApp site lookup (Meta WhatsApp Cloud API, direct).
@@ -2881,132 +3055,6 @@ export const waWebhook = onRequest(
       } catch (err) {
         logger.error('waWebhook: message failed', { error: err?.message || String(err) })
       }
-    }
-    res.status(200).send('ok')
-  }
-)
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Telegram site lookup (@WEEHS_Site_Lookup_bot). Same lookup and reply as
-// waWebhook; the conversation (which organisation, then which site) is
-// guideConversation in lib/whatsapp/handler.js. Channel glue and the access
-// rule: lib/telegram/handler.js. Telegram has no phone number to match to
-// /users, so the bot is open. TG_ORG_ID pins it to one organisation. Empty
-// means every named organisation, and TG_LIST_ORGS decides whether those
-// names are volunteered. The default is not to: orgIndex is the customer
-// list, and this bot is how that list would walk out the door.
-//
-//   firebase functions:secrets:set TELEGRAM_BOT_TOKEN   from @BotFather
-//   firebase functions:secrets:set TG_WEBHOOK_SECRET    random; passed to setWebhook
-//                                                       as secret_token
-//   TG_ENABLED      kill switch, default true; anything but "true" ignores updates
-//   TG_ORG_ID       optional pin; empty means every organisation
-//   TG_LIST_ORGS    "true" volunteers names when there are at most ten.
-//                   Anything else asks for the name. Default false.
-//
-// setWebhook allowed_updates must include "callback_query" as well as
-// "message", or the inline buttons never arrive.
-// ─────────────────────────────────────────────────────────────────────────────
-const TELEGRAM_BOT_TOKEN = defineSecret('TELEGRAM_BOT_TOKEN')
-const TG_WEBHOOK_SECRET = defineSecret('TG_WEBHOOK_SECRET')
-const TG_ENABLED = defineString('TG_ENABLED', { default: 'true' })
-const TG_ORG_ID = defineString('TG_ORG_ID', { default: '' })
-const TG_LIST_ORGS = defineString('TG_LIST_ORGS', { default: 'false' })
-const TG_DAILY_CAP = defineString('TG_DAILY_CAP', { default: '2000' })
-
-/** Organisations this bot may name. A pin that is not a real id is none. */
-async function tgOrganisations(store) {
-  const named = await store.listOrganizations()
-  const pinned = TG_ORG_ID.value().trim()
-  if (!pinned) return named
-  if (pinned.includes('/')) return []
-  const one = named.find((o) => o.id === pinned) || (await store.getOrganization(pinned))
-  if (!one || one.id !== pinned) return []
-  return [{ id: pinned, name: String(one.name || '').trim() || 'Your organisation' }]
-}
-
-export const tgWebhook = onRequest(
-  {
-    region: REGION,
-    secrets: [TELEGRAM_BOT_TOKEN, TG_WEBHOOK_SECRET],
-    invoker: 'public',
-    maxInstances: 5,
-    concurrency: 20,
-    timeoutSeconds: 60,
-    memory: '512MiB',
-  },
-  async (req, res) => {
-    if (req.method !== 'POST') {
-      res.status(405).send('Method Not Allowed')
-      return
-    }
-    if (!verifySecretToken(req.get('x-telegram-bot-api-secret-token'), TG_WEBHOOK_SECRET.value())) {
-      logger.warn('tgWebhook: bad secret token')
-      res.status(401).send('Unauthorized')
-      return
-    }
-    // Authenticated but off: acknowledge so Telegram stops retrying.
-    if (TG_ENABLED.value() !== 'true' || !isRealSecret(TELEGRAM_BOT_TOKEN.value())) {
-      res.status(200).send('disabled')
-      return
-    }
-    const msg = extractUpdate(req.body)
-    if (!msg) {
-      res.status(200).send('ignored')
-      return
-    }
-    const db = getFirestore()
-    try {
-      const pepper = createHmac('sha256', TG_WEBHOOK_SECRET.value())
-        .update('tg-chat-pepper-v1')
-        .digest('hex')
-      const store = createStore(db, { pepper })
-      const orgs = await tgOrganisations(store)
-      if (!orgs.length) {
-        logger.error('tgWebhook: no organisation available')
-        res.status(200).send('unconfigured')
-        return
-      }
-      const cap = Math.max(1, Number(TG_DAILY_CAP.value()) || 2000)
-      const reply = async (chatId, out) => {
-        const gate = await db.runTransaction(async (tx) => {
-          const ref = db.doc('waRate/outbound-telegram')
-          const snap = await tx.get(ref)
-          const o = countOutbound(snap.exists ? snap.data() : {}, new Date(), cap)
-          tx.set(ref, o.state)
-          return o
-        })
-        if (!gate.allowed) {
-          logger.error('tgWebhook: daily outbound cap reached, not replying', { cap })
-          return false
-        }
-        let ok = true
-        for (const body of sendPayloads(chatId, out)) {
-          const r = await tgSend(TELEGRAM_BOT_TOKEN.value(), body)
-          if (!r.ok) {
-            ok = false
-            logger.error('tgWebhook: send failed', { status: r.status, error: r.error })
-            break
-          }
-        }
-        return ok
-      }
-      const row = await handleUpdate(msg, {
-        store,
-        reply,
-        answerCallback: (id) => tgAnswerCallback(TELEGRAM_BOT_TOKEN.value(), id),
-        now: new Date(),
-        orgs,
-        listOrgs: TG_LIST_ORGS.value() === 'true',
-      })
-      logger.info('tgWebhook: handled', {
-        orgId: row.orgId,
-        intent: row.intent,
-        outcome: row.outcome,
-        siteId: row.siteId,
-      })
-    } catch (err) {
-      logger.error('tgWebhook: update failed', { error: err?.message || String(err) })
     }
     res.status(200).send('ok')
   }
@@ -3300,7 +3348,7 @@ export const notifyWhatsAppLinked = onDocumentWritten(
  * Every 3 hours: the last audit within 120 days, per site, for organisations
  * that have Metabase configured. Scores come from saved question 68611 and
  * open tickets from 80321, through the same card query the dashboard uses.
- * The bots read this cache. They do not call Metabase themselves — a
+ * WhatsApp reads this cache. It does not call Metabase itself — a
  * warehouse that never answered used to hold the only site reply. A failed
  * look leaves the previous document. asia-south1 and Asia/Kolkata match the
  * other schedules. The timeout is the platform
@@ -3316,7 +3364,7 @@ export const refreshSiteAuditCache = onSchedule(
     memory: '1GiB',
   },
   async () => {
-    if (!waSwitchedOn() && TG_ENABLED.value() !== 'true') return
+    if (!waSwitchedOn()) return
     const db = getFirestore()
     try {
       const out = await syncSiteAuditCaches({
@@ -3334,10 +3382,9 @@ export const refreshSiteAuditCache = onSchedule(
 
 /**
  * Every 30 minutes: one counts document per organisation, so a reply reads
- * one document instead of nine collections. Telegram can ask about any
- * organisation, not only those with a linked WhatsApp number, and building
- * on the first message of a chat would do this heavy read inside the
- * webhook's 60 second timeout. Runs when either channel is switched on.
+ * one document instead of nine collections. Building it on the first message
+ * of a chat would do this heavy read inside the webhook's 60 second timeout.
+ * Runs when WhatsApp lookup is switched on.
  */
 export const buildWhatsAppSnapshots = onSchedule(
   {
@@ -3348,7 +3395,7 @@ export const buildWhatsAppSnapshots = onSchedule(
     memory: '1GiB',
   },
   async () => {
-    if (!waSwitchedOn() && TG_ENABLED.value() !== 'true') return
+    if (!waSwitchedOn()) return
     const db = getFirestore()
     const orgIds = await listSnapshotOrgIds(db)
     for (const orgId of orgIds) {

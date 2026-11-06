@@ -126,6 +126,10 @@ write_env() {
   # name override the blank once a template is approved in Meta.
   local wa_welcome="${WA_TEMPLATE_WELCOME:-}"
   local wa_test="${WA_TEMPLATE_TEST:-}"
+  # Identity Toolkit password check for completePasswordChange. Empty is a
+  # value: the function then refuses and does not clear mustChangePassword.
+  # Not the browser key. A newline or '#' is rejected like the other params.
+  local auth_web_api_key="${AUTH_WEB_API_KEY:-}"
   reject_param_value WA_ENABLED "$wa_enabled"
   reject_param_value WA_PHONE_NUMBER_ID "$wa_pnid"
   reject_param_value WA_GRAPH_VERSION "$wa_ver"
@@ -133,17 +137,7 @@ write_env() {
   reject_param_value WA_DAILY_CAP "$wa_cap"
   reject_param_value WA_TEMPLATE_WELCOME "$wa_welcome"
   reject_param_value WA_TEMPLATE_TEST "$wa_test"
-
-  # Telegram site lookup (tgWebhook). On unless TG_ENABLED is not "true".
-  # TG_LIST_ORGS defaults false: an open bot does not recite organisation names.
-  local tg_enabled="${TG_ENABLED:-true}"
-  local tg_org="${TG_ORG_ID:-}"
-  local tg_list="${TG_LIST_ORGS:-false}"
-  local tg_cap="${TG_DAILY_CAP:-2000}"
-  reject_param_value TG_ENABLED "$tg_enabled"
-  reject_param_value TG_ORG_ID "$tg_org"
-  reject_param_value TG_LIST_ORGS "$tg_list"
-  reject_param_value TG_DAILY_CAP "$tg_cap"
+  reject_param_value AUTH_WEB_API_KEY "$auth_web_api_key"
 
   mkdir -p "$dir"
   umask 077
@@ -160,22 +154,19 @@ write_env() {
     printf 'WA_DAILY_CAP=%s\n' "$wa_cap"
     printf 'WA_TEMPLATE_WELCOME=%s\n' "$wa_welcome"
     printf 'WA_TEMPLATE_TEST=%s\n' "$wa_test"
-    printf 'TG_ENABLED=%s\n' "$tg_enabled"
-    printf 'TG_ORG_ID=%s\n' "$tg_org"
-    printf 'TG_LIST_ORGS=%s\n' "$tg_list"
-    printf 'TG_DAILY_CAP=%s\n' "$tg_cap"
+    printf 'AUTH_WEB_API_KEY=%s\n' "$auth_web_api_key"
   } >"$env_file"
 
   # Names in this guard are credentials. A match deletes the dotenv file
   # rather than deploying them as plain env vars (LOW-13). Weather uses
   # Open-Meteo's free API and does not need WINDY_API_KEY; the name stays
   # here so a leftover copy is still refused.
-  if grep -Eq '^(DATA_KEY_MASTER|SMTP_PASS|WINDY_API_KEY|WA_APP_SECRET|WA_ACCESS_TOKEN|WA_VERIFY_TOKEN|TELEGRAM_BOT_TOKEN|TG_WEBHOOK_SECRET)=' "$env_file"; then
+  if grep -Eq '^(DATA_KEY_MASTER|SMTP_PASS|WINDY_API_KEY|WA_APP_SECRET|WA_ACCESS_TOKEN|WA_VERIFY_TOKEN)=' "$env_file"; then
     rm -f "$env_file"
-    echo "::error::Refusing to leave a secret (DATA_KEY_MASTER, SMTP_PASS, WINDY_API_KEY, WA_*, TELEGRAM_BOT_TOKEN, TG_WEBHOOK_SECRET) in ${env_file}." >&2
+    echo "::error::Refusing to leave a secret (DATA_KEY_MASTER, SMTP_PASS, WINDY_API_KEY, WA_APP_SECRET, WA_ACCESS_TOKEN, WA_VERIFY_TOKEN) in ${env_file}." >&2
     exit 1
   fi
-  echo "Wrote ${env_file} with non-secret params only (SMTP_HOST SMTP_PORT SMTP_USER MAIL_FROM APP_ORIGIN WA_ENABLED WA_PHONE_NUMBER_ID WA_GRAPH_VERSION WA_DISPLAY_NUMBER WA_DAILY_CAP WA_TEMPLATE_WELCOME WA_TEMPLATE_TEST TG_ENABLED TG_ORG_ID TG_LIST_ORGS TG_DAILY_CAP)."
+  echo "Wrote ${env_file} with non-secret params only (SMTP_HOST SMTP_PORT SMTP_USER MAIL_FROM APP_ORIGIN WA_ENABLED WA_PHONE_NUMBER_ID WA_GRAPH_VERSION WA_DISPLAY_NUMBER WA_DAILY_CAP WA_TEMPLATE_WELCOME WA_TEMPLATE_TEST AUTH_WEB_API_KEY)."
 }
 
 # A WhatsApp secret that does not exist yet is created as UNSET-PLACEHOLDER so
@@ -271,10 +262,6 @@ ensure_secrets() {
   ensure_placeholder_secret WA_APP_SECRET
   ensure_placeholder_secret WA_ACCESS_TOKEN
   ensure_placeholder_secret WA_VERIFY_TOKEN
-  # Telegram lookup: placeholders authenticate nothing (isRealSecret), so a
-  # missing real value just leaves tgWebhook answering 401 / 'disabled'.
-  ensure_placeholder_secret TELEGRAM_BOT_TOKEN
-  ensure_placeholder_secret TG_WEBHOOK_SECRET
 }
 
 case "${1:-}" in

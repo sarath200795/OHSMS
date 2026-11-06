@@ -126,11 +126,6 @@ switch is `waOrgSettings/{orgId}`: `enabled: false` turns lookup off for that
 organisation only. A missing document leaves it on, which is how the bot
 behaved before the switch existed.
 
-The same screen shows the public Telegram bot link
-(`https://t.me/WEEHS_Site_Lookup_bot`, `@WEEHS_Site_Lookup_bot`) and a QR
-code for it. Telegram is not turned on or off there, and no Telegram user is
-added or removed.
-
 ## Configuration
 
 Off by default. It answers only when **all** of these are real:
@@ -168,44 +163,11 @@ stored, and the profile name in the webhook payload is dropped.
 - `waSessions/{phoneHash}` holds the conversation: the chosen organisation and the last numbered list (site ids or organisation ids). The list answers to its numbers for 15 minutes (`choicesExpireAtMs`). The document itself lasts 24 hours of idle time (`expiresAtMs`, refreshed on each message), which is how the chat remembers the organisation. The same document holds `detailOffer`, one site id for the audit question, also 15 minutes. The rules deny all client access to it, and `purgeWhatsAppLedgers` sweeps it when `expiresAtMs` has passed. MENU and CHANGE ORG start the organisation question again and drop the offer.
 - **Coordinates are never stored.** They are used for one distance calculation in memory. They do not go into `waQueryLog` (intent `location`, outcome `nearby`), `waSessions`, or logs. The name and address Meta attaches are dropped when the message is parsed.
 
-## Telegram (tgWebhook)
-
-The same lookup also answers on Telegram (@WEEHS_Site_Lookup_bot) through the
-`tgWebhook` function (asia-south1). The shared logic is
-`functions/lib/whatsapp/handler.js` `answerQuery`; Telegram glue is
-`functions/lib/telegram/handler.js`.
-
-- Auth: Telegram's `X-Telegram-Bot-Api-Secret-Token` header must equal the
-  `TG_WEBHOOK_SECRET` secret (set as `secret_token` in `setWebhook`).
-- Secrets: `TELEGRAM_BOT_TOKEN`, `TG_WEBHOOK_SECRET`. Params: `TG_ENABLED`
-  (default `true`; kill switch), `TG_ORG_ID` (optional pin to one organisation;
-  empty means every named organisation), `TG_LIST_ORGS` (default `false`),
-  `TG_DAILY_CAP` (default 2000 replies/day).
-- **Access differs from WhatsApp.** Telegram gives the bot no phone number to
-  match against linked users, so the bot is open: anyone can look up any site
-  of an organisation the bot is allowed to name, and gets the same reply an
-  admin of that organisation would get on WhatsApp (counts + emergency
-  contacts). Per-chat rate limits (30/h, 150/day), the daily cap and
-  `waQueryLog` (chat id hashed, no message text) still apply. Private chats
-  only. Turn off with `TG_ENABLED=false`.
-- **Names are not a directory.** `TG_LIST_ORGS` defaults to `false`. The bot
-  asks for the organisation name and only lists the ones that match what was
-  typed (at most ten). `true` volunteers every name when there are ten or
-  fewer; more than ten is still "reply with the name", because a WhatsApp
-  list cannot hold them and a longer list is the customer directory. One
-  allowed organisation is already known: the bot asks for the centre instead
-  of offering a one-line directory, and still names that organisation on the
-  centre prompt. `TG_ORG_ID` remains the way to keep the open bot on a single
-  organisation.
-- Register: `setWebhook?url=<function URL>&secret_token=<TG_WEBHOOK_SECRET>&allowed_updates=["message","callback_query"]`.
-  Inline buttons (the organisation list, and a site list that already has
-  rows) do not arrive unless `callback_query` is included.
-
 ## Additional audit details
 
-After a single centre's summary, both channels ask "Do you need any additional
-details? (Yes/No)" — WhatsApp reply buttons, Telegram an inline keyboard, and
-the same sentence as plain text if the buttons cannot be shown. Yes reads
+After a single centre's summary, WhatsApp asks "Do you need any additional
+details? (Yes/No)" — reply buttons, and the same sentence as plain text if
+the buttons cannot be shown. Yes reads
 `siteAuditCache/{orgId}/sites/{siteId}`, written every 3 hours by
 `refreshSiteAuditCache` (asia-south1, Asia/Kolkata) for organisations that
 have Metabase configured. The refresh asks two saved questions through the
@@ -229,20 +191,16 @@ Yes checks site reach again before anything is sent.
 
 ## Choosing an organisation
 
-Both channels remember the chosen organisation on `waSessions` for 24 hours of
-idle time. MENU (or `/start` on Telegram) and CHANGE ORG ask again. A linked
-WhatsApp user is offered only the organisation on their live profile
-(`users/{uid}.orgId`, re-checked every message). There is no membership list
-to consult: a person who works for two companies has two accounts, and the
-number is linked to one of them.
+WhatsApp remembers the chosen organisation on `waSessions` for 24 hours of
+idle time. MENU and CHANGE ORG ask again. A linked user is offered only the
+organisation on their live profile (`users/{uid}.orgId`, re-checked every
+message). There is no membership list to consult: a person who works for two
+companies has two accounts, and the number is linked to one of them.
 
 When that profile has its one organisation, the organisation is already known.
 A greeting is answered with the centre prompt. A Centre ID, a Centre Name, or
 a location pin is resolved immediately, and the search is still only the sites
-that profile can already open. The same is true of a bot pinned to one
-organisation. When more than one organisation is possible, nothing about a
-site is read until one is chosen: "not an organisation" and "no such centre"
-are not distinguished yet. A numbered reply to an organisation list is that
+that profile can already open. A numbered reply to an organisation list is that
 list, not a centre id. A site outside the user's reach is still not searched
 at all, and is not offered as a close name.
 
@@ -276,7 +234,3 @@ User: change org
 Bot:  Which organisation?
       1. Acme Fitness
 ```
-
-On Telegram with `TG_LIST_ORGS` left at its default, the first prompt does not
-contain those names. The user types one; several matches become a numbered
-list and inline buttons of those matches only.

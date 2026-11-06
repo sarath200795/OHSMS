@@ -7,7 +7,11 @@ import { authErrorMessage } from '../../shared/lib/authErrors'
 import { Button, Field, Input, Select } from '../../shared/ui'
 import { DEPARTMENTS } from '../../shared/auth/access'
 import AuthLayout from './AuthLayout'
-import { validatePassword } from '../../shared/auth/passwordPolicy'
+import {
+  validatePassword,
+  passwordLengthHint,
+  MIN_PASSWORD_LENGTH,
+} from '../../shared/auth/passwordPolicy'
 
 /**
  * Join an existing organization.
@@ -156,7 +160,7 @@ export default function Signup() {
         <Field label="Your name" htmlFor="name">
           <Input id="name" required value={form.name} onChange={set('name')} autoComplete="name" />
         </Field>
-        <Field label="Department" htmlFor="dept" hint="Site access is requested after you join">
+        <Field label="Department" htmlFor="dept" hint="An administrator assigns this. Choosing one here does not grant access.">
           <Select id="dept" value={form.department} onChange={set('department')}>
             <option value="">Select department…</option>
             {DEPARTMENTS.map((d) => (
@@ -176,11 +180,12 @@ export default function Signup() {
             autoComplete="email"
           />
         </Field>
-        <Field label="Password" htmlFor="password" hint="At least 6 characters">
+        <Field label="Password" htmlFor="password" hint={passwordLengthHint()}>
           <Input
             id="password"
             type="password"
             required
+            minLength={MIN_PASSWORD_LENGTH}
             value={form.password}
             onChange={set('password')}
             autoComplete="new-password"

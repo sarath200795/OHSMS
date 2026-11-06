@@ -1,10 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { describe, it, expect } from 'vitest'
-import {
-  safeWaChatLink,
-  TELEGRAM_SITE_LOOKUP_URL,
-  TELEGRAM_SITE_LOOKUP_USERNAME,
-} from './whatsappConnectApi.js'
+import { safeWaChatLink } from './whatsappConnectApi.js'
 
 describe('safeWaChatLink', () => {
   it('accepts only a wa.me link for a country-coded number', () => {
@@ -16,26 +12,18 @@ describe('safeWaChatLink', () => {
   })
 })
 
-describe('the public Telegram bot', () => {
-  it('is the site-lookup bot already named in the docs', () => {
-    expect(TELEGRAM_SITE_LOOKUP_URL).toBe('https://t.me/WEEHS_Site_Lookup_bot')
-    expect(TELEGRAM_SITE_LOOKUP_USERNAME).toBe('@WEEHS_Site_Lookup_bot')
-  })
-})
-
 describe('the settings screen source', () => {
   const src = readFileSync(new URL('./WhatsAppConnect.jsx', import.meta.url), 'utf8')
 
-  it('does not mention a WhatsApp or Telegram secret', () => {
+  it('does not mention a WhatsApp secret or a Telegram bot', () => {
     expect(src).not.toMatch(
-      /WA_ACCESS_TOKEN|WA_APP_SECRET|WA_VERIFY_TOKEN|WA_PHONE_NUMBER_ID|TELEGRAM_BOT_TOKEN|TG_WEBHOOK_SECRET/
+      /WA_ACCESS_TOKEN|WA_APP_SECRET|WA_VERIFY_TOKEN|WA_PHONE_NUMBER_ID|TELEGRAM|TG_|t\.me\//
     )
   })
 
-  it('uses the public Telegram link and does not offer Telegram management', () => {
-    expect(src).toContain('TELEGRAM_SITE_LOOKUP_URL')
-    expect(src).toContain('TELEGRAM_SITE_LOOKUP_USERNAME')
-    expect(src).not.toMatch(/setTelegram|enableTelegram|TG_ENABLED/)
+  it('keeps the WhatsApp link and does not offer a Telegram control', () => {
+    expect(src).toContain('safeWaChatLink')
+    expect(src).not.toMatch(/Telegram|telegram/)
   })
 
   // OrgSettings imported './WhatsAppConnect' with no extension. On a

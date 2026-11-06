@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx'
+import { jsonToSheet } from '../../../shared/lib/sheet'
 import {
   INCIDENT_TYPE_BY_KEY, SEVERITY_BY_KEY, LIFECYCLE_BY_KEY, ACTION_STATUS_BY_KEY,
   INVESTIGATION_METHOD_BY_KEY,
@@ -210,7 +211,7 @@ export function exportIncidents(incidents = [], filename = 'incidents.xlsx') {
   const chronology = chronologyRows(incidents)
 
   const wb = XLSX.utils.book_new()
-  const s1 = XLSX.utils.json_to_sheet(rows.length ? rows : [{
+  const s1 = jsonToSheet(rows.length ? rows : [{
     Reference: '', Date: '', Time: '', Site: '', Location: '', 'Incident Type': '',
     Severity: '', Description: '', Chronology: '', 'Root Cause': '', Actions: '', 'Actions Total': '',
     'Actions Closed': '', Status: '', 'Reported By': '',
@@ -218,14 +219,14 @@ export function exportIncidents(incidents = [], filename = 'incidents.xlsx') {
   s1['!cols'] = INCIDENT_WIDTHS.map((wch) => ({ wch }))
   XLSX.utils.book_append_sheet(wb, s1, 'Incidents')
 
-  const s2 = XLSX.utils.json_to_sheet(actions.length ? actions : [{
+  const s2 = jsonToSheet(actions.length ? actions : [{
     Reference: '', Date: '', Site: '', 'Incident Type': '', 'Incident Status': '',
     Action: '', Owner: '', Due: '', 'Action Status': '',
   }])
   s2['!cols'] = ACTION_WIDTHS.map((wch) => ({ wch }))
   XLSX.utils.book_append_sheet(wb, s2, 'Actions')
 
-  const s3 = XLSX.utils.json_to_sheet(chronology.length ? chronology : [{
+  const s3 = jsonToSheet(chronology.length ? chronology : [{
     Reference: '', Seq: '', Date: '', Time: '', Event: '', 'Established From': '',
     Site: '', 'Incident Type': '',
   }])

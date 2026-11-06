@@ -18,14 +18,13 @@
 // Mailing every approved member would send one plant's defect to every other
 // plant. Incident reads are org-wide for the same reason this is not.
 import { readableText } from './mailTemplates/safe.js'
+import { mailboxAddress } from './mailAddress.js'
 
 // One document write, or one scheduled org, becoming an unbounded number of
 // SMTP calls is a bill and a timeout. 100 is the same cap assignment mail
 // uses. The overflow is logged and not sent; it is not retried, because the
 // write will not be delivered again.
 export const CIRCULATION_CAP = 100
-
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 function text(value) {
   return readableText(value).trim()
@@ -78,8 +77,8 @@ export function recipientAddress(user, orgId) {
   if (!user || typeof user !== 'object') return null
   if (user.orgId !== orgId) return null
   if (user.status && user.status !== 'approved') return null
-  const email = typeof user.email === 'string' ? user.email.trim() : ''
-  if (!EMAIL_RE.test(email)) return null
+  const email = mailboxAddress(user.email)
+  if (!email) return null
   const uid = typeof user.uid === 'string' ? user.uid.trim() : ''
   if (!uid || uid === '.' || uid === '..' || uid.includes('/')) return null
   return { uid, email }
@@ -117,7 +116,7 @@ export function addressForToken(users, orgId, token) {
   const list = users || []
   const byUid = list.find((user) => user && text(user.uid) === raw)
   if (byUid) return recipientAddress(byUid, orgId)
-  if (EMAIL_RE.test(raw)) {
+  if (mailboxAddress(raw)) {
     const hits = list
       .map((user) => recipientAddress(user, orgId))
       .filter((addr) => addr && addr.email.toLowerCase() === raw.toLowerCase())

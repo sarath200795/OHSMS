@@ -34,7 +34,22 @@ vi.mock('./firestore', () => ({ logAudit: vi.fn(async () => {}) }))
 // purgeInjury deletes the clinical documents out of Cloud Storage as well as
 // their pointers. Mocked so the assertion is "it asked for this path", which is
 // the part that matters — a bucket is not what this suite is testing.
-vi.mock('../../../shared/storage', () => ({ removeFile: vi.fn(async () => {}) }))
+vi.mock('../../../shared/storage', () => ({
+  removeFile: vi.fn(async () => {}),
+  putFile: vi.fn(async (_orgId, kind) => ({
+    path: `orgs/acme/${kind}/ab12-letter.pdf`,
+    url: 'https://example.test/bearer',
+    size: 12,
+    contentType: 'application/pdf',
+    name: 'letter.pdf',
+    encScheme: 'enk',
+    encKeyId: 'medical.1',
+    encIv: 'iv',
+    encWrapped: 'wrapped',
+  })),
+  MAX_INLINE_BYTES: 900_000,
+  tooLargeForInline: (name) => `${name} is too large to store inline`,
+}))
 
 vi.mock('firebase/firestore', async (importOriginal) => {
   const actual = await importOriginal()
@@ -100,9 +115,10 @@ const {
   MEDICAL_FIELDS, INCIDENT_INJURY_FIELDS, incidentInjuryStub, incidentInjuryStubs,
   mergeInjuryDetail, syncIncidentInjuries, updateInjury,
   deleteInjury, restoreInjury, purgeInjury,
+  medicalAttachmentTarget, addMedicalRecord, MEDICAL_RECORD_STORAGE_KIND,
 } = await import('./injuries')
-const { removeFile } = await import('../../../shared/storage')
-const { createIncident, updateIncident } = await import('./incidents')
+const { removeFile, putFile } = await import('../../../shared/storage')
+const { createIncident, updateIncident, addIncidentPhoto } = await import('./incidents')
 
 const ORG = 'acme'
 const INCIDENTS = `organizations/${ORG}/incidents`
@@ -319,6 +335,74 @@ describe('deleting an injury report', () => {
     // Still the same record: the join keys the sweep and the register need.
     expect(after.incidentId).toBe('inc1')
     expect(after.personId).toBe('EMP-104')
+  })
+})
+
+describe('filing a medical record', () => {
+  const file = {
+    name: 'gp-letter.pdf',
+    type: 'application/pdf',
+    size: 1200,
+    dataUrl: 'data:application/pdf;base64,AAAA',
+    uploadedBy: 'member1',
+  }
+
+  beforeEach(() => {
+    putFile.mockClear()
+  })
+
+  it('chooses the injury-record path and the medical storage prefix', () => {
+    expect(medicalAttachmentTarget('inc1', 'EMP-104')).toEqual({
+      injuryId: 'inc1__EMP-104',
+      storageKind: 'medical-records',
+      collection: 'injuries/records',
+      incidentId: 'inc1',
+      personId: 'EMP-104',
+    })
+    expect(MEDICAL_RECORD_STORAGE_KIND).toBe('medical-records')
+    expect(medicalAttachmentTarget('inc1', '')).toBeNull()
+    expect(medicalAttachmentTarget('inc/1', 'EMP-104')).toBeNull()
+    expect(medicalAttachmentTarget('inc1', '../EMP')).toBeNull()
+  })
+
+  it('writes the pointer on the injury and uploads under medical-records', async () => {
+    const id = await addMedicalRecord(ORG, incident(), 'EMP-104', file)
+    expect(id).toBeTruthy()
+    expect(putFile).toHaveBeenCalledWith(
+      ORG,
+      'medical-records',
+      file.dataUrl,
+      file.name,
+      { collection: 'injuries/records' },
+    )
+    const records = fake.writesUnder(`${INJURIES}/inc1__EMP-104/records`)
+    expect(records).toHaveLength(1)
+    const pointer = records[0].data
+    expect(pointer.path).toBe('orgs/acme/medical-records/ab12-letter.pdf')
+    expect(pointer.personId).toBe('EMP-104')
+    expect(pointer.incidentId).toBe('inc1')
+    expect(pointer.encKeyId).toBe('medical.1')
+    expect(pointer.kind).toBeUndefined()
+    expect(pointer.url).toBeUndefined()
+    expect(fake.writes.some((w) => w.path.includes('/incidents/') && w.path.includes('/photos/'))).toBe(false)
+  })
+
+  it('does not clear a recycle-bin timestamp when the injury already exists', async () => {
+    fake.store.set(`${INJURIES}/inc1__EMP-104`, {
+      incidentId: 'inc1', personId: 'EMP-104', deletedAt: 'TS', status: 'verified', medication: 'kept',
+    })
+    await addMedicalRecord(ORG, incident(), 'EMP-104', file)
+    const injury = fake.store.get(`${INJURIES}/inc1__EMP-104`)
+    expect(injury.deletedAt).toBe('TS')
+    expect(injury.status).toBe('verified')
+    expect(injury.medication).toBe('kept')
+  })
+
+  it('refuses to file a medical record as an incident photo', async () => {
+    await expect(addIncidentPhoto(ORG, 'inc1', { ...file, kind: 'medical_record' }))
+      .rejects.toThrow(/injury report/)
+    expect(putFile).not.toHaveBeenCalled()
+    expect(fake.writes.some((w) => w.path.includes('/photos/'))).toBe(false)
   })
 })
 

@@ -2,6 +2,7 @@
 // the file can be sorted and filtered on the thing you care about — every site
 // over a rain alert of Medium, or every site with high air quality.
 import * as XLSX from 'xlsx'
+import { jsonToSheet } from '../../../shared/lib/sheet'
 import { BAND_LABEL } from './weatherRisk'
 import { formatObservedAt } from './observedAt'
 import { downloadBlob } from '../../../shared/lib/download'
@@ -70,7 +71,7 @@ export function weatherExportRows(sites = [], byId = {}) {
 }
 
 export function exportWeatherRisk(rows, filename = 'weather-risk.xlsx') {
-  const ws = XLSX.utils.json_to_sheet(
+  const ws = jsonToSheet(
     rows.length ? rows : [Object.fromEntries(WEATHER_COLUMNS.map((c) => [c, '']))]
   )
   ws['!cols'] = WEATHER_COLUMNS.map((c) => ({

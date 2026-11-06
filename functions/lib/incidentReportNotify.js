@@ -28,10 +28,9 @@ import { loadReportAttachments } from './mailAttachments.js'
 import { loadAppReportAttachment } from './reportAttachments.js'
 import { renderIncidentReportedMail } from './mailTemplates/incidentReported.js'
 import { sendPaced } from './mailPace.js'
+import { mailboxAddress } from './mailAddress.js'
 
 export const MAX_REPORT_MAILS = 100
-
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 function clean(value) {
   return typeof value === 'string' ? value.trim() : ''
@@ -46,8 +45,8 @@ export function addressDecision(user, orgId) {
   if (!user || typeof user !== 'object') return { send: false, reason: 'no-user' }
   if (user.orgId !== orgId) return { send: false, reason: 'cross-tenant' }
   if (user.status && user.status !== 'approved') return { send: false, reason: 'not-approved' }
-  const email = typeof user.email === 'string' ? user.email.trim() : ''
-  if (!EMAIL_RE.test(email)) return { send: false, reason: 'no-email' }
+  const email = mailboxAddress(user.email)
+  if (!email) return { send: false, reason: 'no-email' }
   return { send: true, email }
 }
 
