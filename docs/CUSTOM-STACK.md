@@ -8,11 +8,13 @@ can serve traffic.
 1. **Use the WEEHS database.** The organization lives in the shared
    multi-tenant suite: WEEHS Firebase Auth, Cloud Firestore, Firebase
    Storage, Cloud Functions. This is the product as it runs today.
-2. **Use your own database.** The organization brings a data store, or is
-   provisioned onto one that is theirs (Postgres, Supabase, or equivalent).
-   Their auth comes with that choice — company OIDC, SAML, or Supabase Auth —
-   and is not a WEEHS Firebase account with a different label. Files, row
-   level security, and workers follow the same choice.
+2. **Use your own database.** The organization brings any database it
+   chooses, or is provisioned onto one. Postgres is the generic path.
+   Supabase is one Postgres flavor, not the only store. Their auth comes
+   with that choice — company OIDC, SAML, or Supabase Auth — and is not a
+   WEEHS Firebase account with a different label. Supabase Auth does not
+   decide the database. Files, row level security, and workers follow the
+   same choice.
 
 `docs/PRODUCTION.md` is the pointer to the private runbook for the WEEHS
 Firebase deployment. `DEPLOYMENT.md` is that deployment's first-organization
@@ -40,7 +42,7 @@ The default build is unchanged: `VITE_DATA_DRIVER` unset or `firestore`,
 | ------------------ | --------------------------------------------------------- | -------------------------------------------------------------------------------------- |
 | Chosen at          | Organization registration, once the screen exists         | The same step, the other branch                                                        |
 | What happens today | This is the only branch `RegisterOrg.jsx` implements      | Nothing. The branch is not in the product yet                                          |
-| Database           | Shared Cloud Firestore, org under `organizations/{orgId}` | The company's Postgres or Supabase                                                     |
+| Database           | Shared Cloud Firestore, org under `organizations/{orgId}` | Any database the company chooses. `postgres` is the generic driver                     |
 | Files              | Firebase Storage                                          | S3-compatible (`s3` driver exists; see the file section)                               |
 | Auth               | WEEHS Firebase Auth, including its SAML/OIDC and TOTP     | That company's IdP. Not a WEEHS Firebase user                                          |
 | Enforcement        | `firestore.rules`, `storage.rules`                        | RLS, bucket policy, presign checks                                                     |
@@ -87,21 +89,30 @@ The wizard may ask:
 - Organization name, address, and the founder's name and work email, as
   contact details. Not a WEEHS password, and not a call to
   `createUserWithEmailAndPassword`.
-- Which of the three hosting modes they want. All three are offered: the
-  company brings an existing Postgres or Supabase project; WEEHS provisions
-  the database in the company's cloud account; WEEHS operates a dedicated
-  project for that company alone. The request records the mode. It does not
-  collect the credentials for it.
-- Auth method: company OIDC, company SAML, or Supabase Auth. The issuer URL
-  and client id are public. The client secret is not a field on this form.
+- Which of the three hosting modes they want, and which database engine.
+  All three modes are offered. The company may bring any database. WEEHS
+  provisions Postgres, the generic path, either in the company's cloud
+  account or in a dedicated project WEEHS operates for that company alone.
+  Supabase is one flavor of Postgres they may bring, not a required engine.
+  The request records the mode and the engine name. It does not collect
+  the credentials.
+- Auth method. The first wizard offers company OIDC, company SAML, and
+  Supabase Auth. The issuer URL and client id are public. The client secret
+  is not a field on this form. In-app TOTP on this branch is optional and
+  off unless the company turns it on. WEEHS's own TOTP requirement is
+  unchanged and does not apply here. When the company's IdP already
+  performs MFA, a second TOTP inside the product stays off.
 - File store: a bucket WEEHS provisions, or theirs. The bucket name, region,
   and presign endpoint URL are configuration. The access key is not.
 - A contact for the secret handoff.
 
 Then it stops. The founder does not enter `/portal` on the shared suite, and
 no `organizations/{orgId}` tenant is created by `createOrganization`. The
-control plane holds the request with status `requested`. Module data does not
-exist for that company until the stack is actually provisioned.
+control plane holds the request with status `requested` and emails status to
+the contact address. There is no sign-in until that company's IdP is live:
+no temporary WEEHS account, and no session on a URL that does not exist yet.
+Module data does not exist for that company until the stack is actually
+provisioned.
 
 Secrets, after the request exists:
 
@@ -115,9 +126,10 @@ Secrets, after the request exists:
 
 What the request record may contain: the choice (`weehs` is not this
 branch), contact, auth method, issuer URL, client id, which of the three
-hosting modes, bucket name, presign URL, status. What it must not contain:
-database URL, database password, service-role key, S3 secret, IdP client
-secret, `DATA_KEY_MASTER`.
+hosting modes, the engine name (`postgres`, `supabase`, or a name this
+document has reserved for a later adapter), bucket name, presign URL,
+status. What it must not contain: database URL, database password,
+service-role key, S3 secret, IdP client secret, `DATA_KEY_MASTER`.
 
 When the control plane finishes, that company's users sign in with **that
 company's auth** against **that company's database**. Joining is not
@@ -131,8 +143,9 @@ is how a duplicate WEEHS tenant gets created today.
 Fulfillment is a **dedicated environment and a dedicated URL** for that
 company. The control plane sets that environment's deploy config
 (`VITE_DATA_DRIVER`, `VITE_STORAGE_DRIVER`, the presign URL, the auth
-issuer). Those flags stay fail-closed until an adapter is registered.
-`postgres` and `supabase` still throw. One environment is one build with
+issuer). Those flags stay fail-closed until an adapter for that engine
+is registered. `postgres` and `supabase` still throw, and so does any
+later name added to `RESERVED_DATA_DRIVERS`. One environment is one build with
 one driver, which is what `src/shared/data/index.js` can express. The
 shared suite does not route that company to another database after login.
 Their users use their URL.
@@ -142,12 +155,19 @@ Auth is per choice for the life of the organization:
 - WEEHS database → WEEHS Firebase Auth. SSO providers in
   `VITE_SSO_PROVIDERS` are Firebase Identity Platform ids (`saml.` /
   `oidc.`). They are not the company's own-stack IdP.
-- Own database → the IdP named in the wizard. Users of that organization are
-  not also WEEHS Firebase users. `registerOrganization`'s "create the auth
-  user first" order is the WEEHS branch only.
+- Own database → the IdP named in the wizard (OIDC, SAML, or Supabase Auth).
+  Users of that organization are not also WEEHS Firebase users.
+  `registerOrganization`'s "create the auth user first" order is the WEEHS
+  branch only. While the request is `requested`, status is email only.
 
-Changing the choice later is a migration of people and records, not a toggle
-on the organization document.
+Which modules an own-stack company may use is that company's decision, made
+by its admins and enforced in its database. `/platform` does not decide it.
+On the WEEHS database, `/platform` still does (`docs/PLATFORM-CONSOLE.md`).
+A module flag that only hides a tile is not the control, on either stack.
+
+The choice can be changed later, in either direction, only by the planned
+migration below. It is not a toggle, and it is not a second live stack the
+SPA picks between.
 
 ## Non-goals
 
@@ -238,7 +258,11 @@ the second implementation and the one to read before writing a third.
 This file does not restate the contract. It says what path 3 has to attach
 to it.
 
-### Database — `VITE_DATA_DRIVER`
+### Database — any engine, one driver per adapter
+
+The company chooses the database. Supabase is not the data store. Auth and
+the database are separate: Supabase Auth is one IdP beside OIDC and SAML,
+and it does not require the `supabase` data driver.
 
 Registered today: `firestore`, `memory`.
 
@@ -247,14 +271,66 @@ Reserved, not registered: `postgres`, `supabase`.
 `UnimplementedDataDriverError` when the build selects one and no adapter is
 in the `DRIVERS` map. An unknown string still falls back to `firestore`, so
 a typo cannot take down the Firebase deployment. A name this repository has
-published is not treated as a typo.
+published is not treated as a typo. Publish a new engine by reserving its
+name in the same change, or a build that sets it will quietly use Firestore.
 
-`supabase` is the name when the project also uses Supabase Auth and
-Supabase Realtime. `postgres` is the name when identity and realtime are
-supplied beside a plain Postgres. They are one adapter family. Neither is
-implemented.
+`postgres` is the generic path. One adapter covers Postgres-protocol
+servers — a database the company runs, or one a host runs for them,
+including Supabase's Postgres. The host is deploy config. The driver name
+does not change because the host changed. Neither a database URL nor a
+password is a `VITE_` value. The browser role is one RLS constrains. The
+bypass role stays on the workers.
 
-The mapping, when the adapter is written:
+`supabase` is one flavor of that path, not a second product. Use it when
+the environment talks to Supabase through Supabase's client and Realtime.
+A company on Supabase's Postgres that does not need those libraries uses
+`postgres`. A company that uses Supabase Auth and some other database uses
+their IdP with that database's driver, not `supabase`.
+
+Any other engine is its own adapter. It is not an alias of `postgres`.
+MySQL is not Postgres. Naming it on a request does not make `postgres`
+speak it.
+
+The mapping below is the `postgres` adapter's. Another engine writes its
+own notes. The guarantees in that list do not change with the engine.
+
+#### Registering another engine
+
+Do this only when the adapter implements the whole contract. A file that
+implements the reads and not `createExclusive` would make the name resolve
+and then fail on the first exclusive create.
+
+1. Add the name to `RESERVED_DATA_DRIVERS` in
+   `src/shared/data/resolveDriver.js` and to the reserved list in this
+   document, in the same change, before anyone sets `VITE_DATA_DRIVER` to
+   it. The test in `resolveDriver.test.js` pins the reserved list. Update
+   that test in the same change. Until the adapter exists, selecting the
+   name throws.
+2. Write `src/shared/data/adapters/<name>.js` implementing every guarantee
+   in the header of `src/shared/data/index.js`. Read `adapters/memory.js`
+   first. It is the smallest honest version, and it is not a production
+   store.
+3. Import that file in `src/shared/data/index.js` and add it to `DRIVERS`.
+   The import is static. `subscribe` must return its unsubscribe
+   synchronously, so the SDK cannot be loaded with a dynamic `import()`.
+   The day the adapter is registered, its SDK is in the main bundle.
+4. Remove the name from `RESERVED_DATA_DRIVERS` in that same change.
+   Registration wins if the removal is forgotten; delete it anyway so the
+   name stops meaning "unimplemented".
+5. Run the contract assertions in `adapters/memory.test.js` against the
+   new adapter. That file says they should hold for any other driver.
+6. Set `VITE_DATA_DRIVER` to that name only in the company's dedicated
+   environment, and only after step 4. A reserved name with no adapter
+   throws at startup. An unreserved unknown name selects Firestore.
+
+WEEHS-provisioned databases — in the company's cloud account, or in a
+project WEEHS operates for that company — are Postgres, driver `postgres`.
+A company that brings another engine names it on the request. That
+environment does not set `VITE_DATA_DRIVER` to the new name until step 6.
+Supabase's Postgres is `postgres` unless the flavor in the paragraph above
+applies, in which case the driver is `supabase`.
+
+The `postgres` mapping, when that adapter is written:
 
 - One table per collection path, or one documents table keyed by the full
   path. The seam addresses `(path, id)` and is deliberately not org-scoped
@@ -284,10 +360,6 @@ The mapping, when the adapter is written:
   drops documents that lack the ordered field. SQL returns those rows.
 - `serverTimestamp`, `increment`, and `arrayUnion` resolve on the server,
   `increment` without a read.
-
-A registered adapter wins over the reserved list, so adding the file to
-`DRIVERS` makes the name selectable. Remove the name from
-`RESERVED_DATA_DRIVERS` in that same change.
 
 ### Files — `VITE_STORAGE_DRIVER`
 
@@ -360,9 +432,8 @@ trusted on its own for an irreversible delete is the S-19 failure again.
 
 SAML/OIDC and TOTP are part of the WEEHS product
 (`docs/ENTERPRISE-READINESS.md`). The own-stack branch uses the company's
-IdP, named at registration. Whether that replaces in-app TOTP or sits beside
-it is still open (see Open product decisions). It is not dropped by leaving
-the field off the wizard.
+IdP. In-app TOTP there is optional and off unless that company turns it on.
+WEEHS admins are unchanged.
 
 Anonymous routes (`/qr/:token`, `/permit/:token`, `/p/:id`, `/t/:id/:point`)
 have no session. Their write is bound to a token that resolves to one org
@@ -648,8 +719,9 @@ is aiming at. It is not step 1 of the plan.
    choice to `RegisterOrg.jsx` until the own-stack branch can file a
    provisioning request without calling `registerOrganization`.
 2. Design the auth session so RLS and the presign endpoint can prove `uid`,
-   org, role, approval, and the password-change gate. Decide explicitly
-   whether SAML/OIDC and TOTP carry over.
+   org, role, approval, and the password-change gate. The first own-stack
+   IdPs are OIDC, SAML, and Supabase Auth. In-app TOTP on that branch is
+   optional and off unless the company turns it on.
 3. Translate `firestore.rules` and `storage.rules` into RLS, bucket policy,
    and presign checks. Land the hostile tests before any adapter writes
    real data.
@@ -696,17 +768,22 @@ this week.
    environment's deploy config. Credentials go to the secret manager or a
    gitignored env file, through the secure channel, not through the wizard
    and not into a client-readable document.
-3. Provision the database in the hosting mode the request records. Brought:
-   attach to the company's existing Postgres or Supabase project. Company
-   cloud account: WEEHS creates the database there. WEEHS-operated: WEEHS
-   runs a dedicated project for that company alone. The bucket follows the
-   same mode. All three are offered; the request picks one.
-4. Create two database roles. The browser role is the one the future
-   adapter will use, and RLS applies to it. The bypass role is for
-   migrations and the workers (key release, retention). Its URL is a
-   secret. If the host is Supabase, the anon key may ship in the client
-   and the service-role key may not. Turn RLS on for every table that
-   anon key can see.
+3. Provision the database in the hosting mode the request records, for the
+   engine it names. Brought: attach to the company's database, whatever
+   engine they chose. Postgres, including Supabase's Postgres, is driver
+   `postgres` unless they need the Supabase client flavor (`supabase`).
+   Another engine waits until its adapter is registered as above. Company
+   cloud account, and WEEHS-operated: create Postgres. The bucket follows
+   the same hosting mode. All three modes are offered; the request picks
+   one mode and one engine.
+4. Create two database roles where the engine has roles. The browser role
+   is the one the future adapter will use, and the database's own policies
+   apply to it. The bypass role is for migrations and the workers (key
+   release, retention). Its URL is a secret. On the `supabase` flavor the
+   anon key may ship in the client, and only because row level security is
+   the boundary; the service-role key may not. On `postgres` there is no
+   anon key: the browser still does not receive the bypass URL. Turn the
+   policy layer on for every table that browser role can see.
 5. Host the presign endpoint specified in `adapters/s3.js`. It checks the
    session and the `orgs/<orgId>/` prefix, it holds the S3 secret, and a
    delete re-reads the member's profile.
@@ -723,22 +800,59 @@ this week.
    into the Firestore document.
 8. Wire the auth method from the request (company OIDC, SAML, or Supabase
    Auth). Map its session onto `uid`, org, role, and approval. Do not also
-   create WEEHS Firebase users for that organization. In-app TOTP versus the
-   IdP's own second factor is still an open product decision.
+   create WEEHS Firebase users for that organization. In-app TOTP is optional
+   on this branch and off unless the company turns it on. Do not create a
+   temporary WEEHS account so the founder can watch the request. Status goes
+   by email.
 9. Do not load production data, and do not point the Firebase seed scripts
-   at the new database. They do not speak Postgres.
+   at the new database. They speak Firebase, not the company's engine.
 10. When the remaining-work list is empty and the hostile policy tests
     exist, build that environment with the driver flags and deploy it as
     its own target. Leave the Firebase production tags where they are.
 
 An operator following this today can prepare infrastructure for a company
-that has asked, and stops before pointing the data driver at `postgres` or
-`supabase`. The registration screen keeps offering only the WEEHS database.
+that has asked, and stops before pointing `VITE_DATA_DRIVER` at a reserved
+name. The registration screen keeps offering only the WEEHS database.
 That is the correct outcome until the gap list is done.
+
+## Moving between the WEEHS database and the company's database
+
+This move is part of the design, in either direction. It is not built. It is
+not a field on the organization, and the SPA does not pick a stack at
+runtime while both exist.
+
+People keep using the source URL until the cutover. The destination URL
+starts serving when the move is finished, and not before. Two live copies
+that both accept writes are not a migration.
+
+What moves: the organization profile, the people, the module records, the
+files, and the audit log. Sealed fields are re-wrapped under the destination
+master by someone entitled to open them on the source. The WEEHS master does
+not become the company's master, and the company's master is not copied into
+the shared suite. `docs/DATA-RIGHTS.md` §2 still applies: reading ciphertext
+and finding nothing is not a search.
+
+Identities are created on the destination IdP. A move onto the company's
+stack enrolls people in that company's IdP. A move back onto the WEEHS
+database creates WEEHS Auth users. That destination account is not the
+temporary WEEHS account a pending request does not get.
+
+The module set follows the destination. On the company's database, the
+company decides and their database enforces it. On the WEEHS database,
+`/platform` decides. The move does not copy a module flag onto
+`organizations/{orgId}` in the shared suite. That document is writable by
+the organization's admin, which is why the entitlement does not live there
+(`docs/PLATFORM-CONSOLE.md`).
+
+The engine can change in the same move. A company leaving Firestore for
+MySQL waits on that engine's adapter the same way a new own-stack request
+does. Driver `postgres` is the generic Postgres destination, including a
+Supabase Postgres that does not need the Supabase client. Driver `supabase`
+is only the Supabase client flavor.
 
 ## Decisions
 
-These are locked. The open list does not reopen them.
+These are locked.
 
 1. **Anyone registering may request their own database.** No prior agreement
    is required to ask. Filing the request reserves the organization name, so
@@ -746,11 +860,13 @@ These are locked. The open list does not reopen them.
    request under it. `findOrgByName` can then say the name is taken and which
    door it uses. A request is not a live stack: nothing is served until that
    company's environment exists and the gap list is done.
-2. **All three hosting modes are offered.** The company brings an existing
-   Postgres or Supabase project. WEEHS provisions the database in the
-   company's cloud account. WEEHS operates a dedicated project for that
-   company alone. The wizard records which one. Credentials for all three
-   still arrive through the secure channel, not through the form.
+2. **All three hosting modes are offered.** The company brings any
+   database. WEEHS provisions Postgres, the generic driver, in the
+   company's cloud account. WEEHS operates a dedicated project, also
+   Postgres, for that company alone. Supabase is one flavor a company may
+   bring, not the only store. The wizard records the mode and the engine.
+   Credentials for all three still arrive through the secure channel, not
+   through the form.
 3. **Each own-stack company has its own environment and its own URL.** The
    shared SPA does not send that company to a different database after
    login. Their users use their URL. One environment, one driver, which is
@@ -763,29 +879,25 @@ These are locked. The open list does not reopen them.
    "WEEHS operates the project", the secret lives in that project's store
    because the worker has to read it there; it is still that company's
    secret, not a WEEHS escrow of the shared suite's key.
+5. **The data store is any database the company chooses.** `postgres` is
+   the generic driver, for Postgres-protocol servers including a Supabase
+   Postgres they do not need the Supabase client for. `supabase` is one
+   flavor, used when that client and Realtime are how the environment
+   talks to the database. Other engines register their own adapter, by the
+   steps under "Registering another engine". Supabase Auth is an IdP. It
+   does not select the driver.
+6. **While a request is `requested`, status is email only.** No sign-in
+   until that company's IdP is live. No temporary WEEHS account.
+7. **An own-stack company controls which modules it may use.** `/platform`
+   does not. The company's database enforces the set. On the WEEHS
+   database, `/platform` still decides (`docs/PLATFORM-CONSOLE.md`).
+8. **Moving between the WEEHS database and the company's database is in
+   this design**, in either direction. It is the migration in the section
+   above. It is not a runtime toggle.
+9. **The first wizard offers OIDC, SAML, and Supabase Auth.** All three.
+   Supabase Auth does not imply the `supabase` data driver. In-app TOTP on
+   the own-stack branch is optional and off unless the company turns it
+   on, including when the IdP already performs MFA. WEEHS admins stay on
+   the WEEHS TOTP requirement (`docs/ENTERPRISE-READINESS.md`).
 
-## Open product decisions
-
-These are not settled. The build plan does not guess them.
-
-1. **The founder's identity while the request is `requested`.** This design
-   does not create a WEEHS Firebase user on the own-stack branch, so there
-   is no session on the shared suite. Their own URL does not exist yet.
-   What, if anything, they can sign in to before that URL is live is still
-   open.
-2. **Module entitlements.** `/platform` decides which modules a WEEHS
-   organization may use, and the rule that enforces it is not writable by
-   the tenant (`docs/PLATFORM-CONSOLE.md`). Whether that console still
-   decides for an own-stack organization, with the decision enforced in
-   their RLS, or the company controls its own module set, is still open.
-3. **Changing the choice later.** Moving an organization between the WEEHS
-   database and its own is a migration of people and records, not a toggle.
-   This design does not include that migration. Whether to pull it in is
-   still open.
-4. **Which IdPs the wizard offers on the first build**, and whether TOTP is
-   required inside the product when the company's IdP already challenges a
-   second factor. WEEHS requires TOTP for its own admins
-   (`docs/ENTERPRISE-READINESS.md`). Dropping it for a company stack would
-   be a product cut. The wizard's auth question can name OIDC, SAML, and
-   Supabase Auth as the kinds of answer; which of those ship first is still
-   open.
+Nothing in this list is still open.

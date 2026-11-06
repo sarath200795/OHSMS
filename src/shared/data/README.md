@@ -51,12 +51,18 @@ the contract suite runs under plain `npx vitest run`. Read it before writing a
 third; it is the smallest honest version of every guarantee above. It is a test
 and development driver, not a store anything should be shipped against.
 
-For Supabase or Postgres, the natural mapping is one table per collection
-with `org_id` and `jsonb data` columns, `subscribe` via that backend's
-realtime channel, and row level security replacing `firestore.rules`. Those
-two driver names are reserved and unimplemented. Registering an adapter that
+`postgres` is the generic own-database driver: one adapter for
+Postgres-protocol servers, whichever host. `supabase` is one flavor of that
+path, for Supabase's client and Realtime, not the only store a company may
+choose. Both names are reserved and unimplemented. Another engine is a new
+adapter, not an alias of `postgres`. The steps for registering one, and the
+order to do it in, are `docs/CUSTOM-STACK.md`. Registering an adapter that
 only implements the reads would make the name resolve and then fail on the
-first exclusive create. `docs/CUSTOM-STACK.md` is the order to do it in.
+first exclusive create.
+
+For the `postgres` adapter, the natural mapping is one table per collection
+with `org_id` and `jsonb data` columns, `subscribe` via that server's
+realtime channel, and row level security replacing `firestore.rules`.
 
 ## What the seam covers — and what it does not
 

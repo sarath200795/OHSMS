@@ -153,8 +153,9 @@
 //
 // Which implementation backs the seam comes from VITE_DATA_DRIVER (default
 // 'firestore'). Adding a backend = one adapter file implementing everything
-// above plus a line in DRIVERS. postgres and supabase are reserved path 3
-// names (resolveDriver.js, docs/CUSTOM-STACK.md). They are absent from DRIVERS
+// above plus a line in DRIVERS. postgres (any Postgres-protocol server) and
+// supabase (one flavor of that path) are reserved path 3 names
+// (resolveDriver.js, docs/CUSTOM-STACK.md). They are absent from DRIVERS
 // on purpose. Selecting one throws instead of falling through to Firestore:
 // that fallback is for a typo, and a name this repository has published as a
 // target is not a typo. ./README.md is the contract note that sits next to

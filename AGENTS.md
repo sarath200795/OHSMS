@@ -107,8 +107,9 @@ comment in `src/shared/data/index.js` declares itself to be the specification â€
 it is, and an adapter that deviates is a bug in the adapter. Most of the app
 still imports `firebase/firestore` directly. The list to trust is
 `docs/CUSTOM-STACK.md`, which is also the registration-time choice between the
-WEEHS database and a company's own Postgres or Supabase stack. The seam is
-real and not universal, so do not assume it.
+WEEHS database and a company's own database (Postgres is the generic driver;
+other engines register the same way). The seam is real and not universal, so
+do not assume it.
 
 `src/shared/module-kit/service.js` (`createModuleService`) is the org-scoped CRUD
 factory. Prefer it over hand-rolling `collection(db, 'organizations', orgId, â€¦)`.
