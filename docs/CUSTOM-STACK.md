@@ -1,50 +1,164 @@
 # Custom stack (path 3)
 
-Path 3 is a **deploy / onboard choice**: this environment runs its own
-Postgres (Supabase or another Postgres), its own S3-compatible file store,
-and its own replacements for Firebase Auth, `firestore.rules` /
-`storage.rules`, and Cloud Functions.
+At **organization registration** the product offers two choices. Auth follows
+the choice. The database follows the choice. This document is that product
+intent, and the build plan for it. It is not a claim that the second choice
+can serve traffic.
 
-The product as it is operated today stays on Firebase. This document does
-not describe standing up another Firebase or Google Cloud project. That is
-already how this system is deployed. `docs/PRODUCTION.md` is the pointer to
-the private runbook for that deployment, and `DEPLOYMENT.md` is the
-first-organization check, the post-deploy check, and rollback.
+1. **Use the WEEHS database.** The organization lives in the shared
+   multi-tenant suite: WEEHS Firebase Auth, Cloud Firestore, Firebase
+   Storage, Cloud Functions. This is the product as it runs today.
+2. **Use your own database.** The organization brings a data store, or is
+   provisioned onto one that is theirs (Postgres, Supabase, or equivalent).
+   Their auth comes with that choice — company OIDC, SAML, or Supabase Auth —
+   and is not a WEEHS Firebase account with a different label. Files, row
+   level security, and workers follow the same choice.
 
-**Path 3 is not ready to boot.** `postgres` and `supabase` are reserved
-`VITE_DATA_DRIVER` names. Selecting either one throws
+`docs/PRODUCTION.md` is the pointer to the private runbook for the WEEHS
+Firebase deployment. `DEPLOYMENT.md` is that deployment's first-organization
+check, post-deploy check, and rollback. This file does not describe standing
+up another Firebase project.
+
+**Path 3 is not ready to serve traffic.** `postgres` and `supabase` are
+reserved `VITE_DATA_DRIVER` names. Selecting either one throws
 `UnimplementedDataDriverError` at startup and does not open Firestore under
-that name. An operator can choose path 3 today. They cannot flip the flag
-and serve traffic on it.
+that name. The registration screen does not offer the choice yet.
+`src/pages/auth/RegisterOrg.jsx` always creates a WEEHS Auth user and a
+shared Firestore organization (`registerOrganization` in
+`src/shared/auth/AuthContext.jsx`). Adding the two buttons before the
+own-stack branch can provision anything would put that company on the WEEHS
+database while the label said otherwise. That screen stays as it is until
+the gap list below is far enough along to accept a provisioning request
+without creating a WEEHS user.
 
 The default build is unchanged: `VITE_DATA_DRIVER` unset or `firestore`,
 `VITE_STORAGE_DRIVER` unset or `firebase`.
 
 ## The choice
 
-|                      | Firebase deployment (current product)         | Path 3 — custom stack                                                                     |
-| -------------------- | --------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| When it applies      | The environment this repository already ships | A deploy that will not use Firestore, Firebase Auth, Firebase Storage, or Cloud Functions |
-| Database             | Cloud Firestore                               | Postgres, Supabase or otherwise                                                           |
-| Files                | Firebase Storage                              | S3-compatible (`s3` driver, already implemented)                                          |
-| Auth                 | Firebase Auth, SAML/OIDC, TOTP                | A replacement session. No auth driver flag                                                |
-| Enforcement          | `firestore.rules`, `storage.rules`            | RLS, bucket policy, presign checks                                                        |
-| Background work      | `functions/`                                  | Operator-hosted workers                                                                   |
-| Where it is recorded | The Firebase build env                        | Deploy config. Never the SPA                                                              |
-| Serves traffic       | Yes                                           | Not until the gap list below is done                                                      |
+|                    | Use the WEEHS database                                    | Use your own database (path 3)                                                         |
+| ------------------ | --------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| Chosen at          | Organization registration, once the screen exists         | The same step, the other branch                                                        |
+| What happens today | This is the only branch `RegisterOrg.jsx` implements      | Nothing. The branch is not in the product yet                                          |
+| Database           | Shared Cloud Firestore, org under `organizations/{orgId}` | The company's Postgres or Supabase                                                     |
+| Files              | Firebase Storage                                          | S3-compatible (`s3` driver exists; see the file section)                               |
+| Auth               | WEEHS Firebase Auth, including its SAML/OIDC and TOTP     | That company's IdP. Not a WEEHS Firebase user                                          |
+| Enforcement        | `firestore.rules`, `storage.rules`                        | RLS, bucket policy, presign checks                                                     |
+| Background work    | `functions/` on the shared project                        | Workers for that company's stack                                                       |
+| Secrets            | WEEHS deploy config                                       | That stack's deploy config, via a secure channel. Never a database password in the SPA |
+| Serves traffic     | Yes                                                       | Not until the gap list is done                                                         |
 
-Choosing path 3 means funding that list. It does not create a second way to
-deploy Firebase.
+## Registration
+
+The choice is the first step of organization registration, before any account
+is created. It is a product decision recorded as non-secret intent. It is not
+a driver flag the browser flips, and it is not a connection string.
+
+### Use the WEEHS database
+
+The branch that exists today:
+
+1. The form in `RegisterOrg.jsx` collects organization name, address, the
+   founder's name, work email, and a WEEHS password.
+2. `registerOrganization` creates the Firebase Auth user first. Org-name
+   lookup is allowed only to a signed-in caller, which is why the account
+   exists before the organization does.
+3. `createOrganization` in `src/shared/org/orgData.js` writes the organization,
+   the approved admin profile, and the public `orgIndex` entry in one batch.
+4. The founder lands in the portal. Teammates join from `Signup.jsx` by typing
+   the organization name. They get a WEEHS password account, status `pending`,
+   and an admin approves them.
+
+That sequence stays the WEEHS branch. Do not insert a stack label into it
+and keep calling the same functions.
+
+### Use your own database
+
+This branch is the design. It is not implemented.
+
+The screen is a wizard. It collects **non-secret** configuration and hands a
+provisioning request to the WEEHS control plane (the platform operator side,
+not a tenant admin writing their own database). Secrets travel on a channel
+that does not put them in the SPA and does not write them to a client-readable
+document.
+
+The wizard may ask:
+
+- Organization name, address, and the founder's name and work email, as
+  contact details. Not a WEEHS password, and not a call to
+  `createUserWithEmailAndPassword`.
+- Whether the company **brings** an existing Postgres or Supabase project, or
+  WEEHS **provisions** one for them. Both are in the product intent. Which of
+  those WEEHS will actually offer is an open decision below.
+- Auth method: company OIDC, company SAML, or Supabase Auth. The issuer URL
+  and client id are public. The client secret is not a field on this form.
+- File store: a bucket WEEHS provisions, or theirs. The bucket name, region,
+  and presign endpoint URL are configuration. The access key is not.
+- A contact for the secret handoff.
+
+Then it stops. The founder does not enter `/portal` on the shared suite, and
+no `organizations/{orgId}` tenant is created by `createOrganization`. The
+control plane holds the request with status `requested`. Module data does not
+exist for that company until the stack is actually provisioned.
+
+Secrets, after the request exists:
+
+- The control plane opens a one-time intake that writes into the secret store
+  for that stack (the company's secret manager, or WEEHS's, for the
+  environment being provisioned). The browser does not echo the value back
+  and does not copy it into Firestore.
+- Until that intake exists, an operator collects the secrets out of band and
+  puts them in the same store. The wizard still does not grow a password
+  field "for now".
+
+What the request record may contain: the choice (`weehs` is not this
+branch), contact, auth method, issuer URL, client id, whether the database
+is brought or provisioned, bucket name, presign URL, status. What it must
+not contain: database URL, database password, service-role key, S3 secret,
+IdP client secret, `DATA_KEY_MASTER`.
+
+When the control plane finishes, that company's users sign in with **that
+company's auth** against **that company's database**. Joining is not
+`signUpMember` on the shared Firebase project. A person who types that
+organization's name into the WEEHS signup form must not receive a WEEHS
+password account inside it. The name has to be reserved when the request is
+accepted, so the public exact-name lookup (`findOrgByName`) can say the
+organization uses its own sign-in, instead of "no such organization" — which
+is how a duplicate WEEHS tenant gets created today.
+
+Fulfillment matches the seams that exist: the control plane provisions a
+**dedicated environment** for that company and sets its deploy config
+(`VITE_DATA_DRIVER`, `VITE_STORAGE_DRIVER`, the presign URL, the auth
+issuer). Those flags stay fail-closed until an adapter is registered.
+`postgres` and `supabase` still throw. A dedicated environment is one build
+with one driver, which is what `src/shared/data/index.js` can express. A
+single shared SPA that switches database per organization after login is a
+different architecture. It is an open decision, not the build plan.
+
+Auth is per choice for the life of the organization:
+
+- WEEHS database → WEEHS Firebase Auth. SSO providers in
+  `VITE_SSO_PROVIDERS` are Firebase Identity Platform ids (`saml.` /
+  `oidc.`). They are not the company's own-stack IdP.
+- Own database → the IdP named in the wizard. Users of that organization are
+  not also WEEHS Firebase users. `registerOrganization`'s "create the auth
+  user first" order is the WEEHS branch only.
+
+Changing the choice later is a migration of people and records, not a toggle
+on the organization document.
 
 ## Non-goals
 
-- **No in-app credential form.** A tenant admin does not paste a connection
-  string, an S3 secret, a service-role key, or a database password into the
-  SPA. The browser cannot be given a credential that bypasses RLS.
-- **No runtime backend switch.** The driver is compiled into the bundle from
-  the environment the build was given. Changing it means rebuilding. There
-  is no per-tenant setting under `organizations/{orgId}`, and there must not
-  be one: anything the SPA can read, the browser console can read.
+- **No database password in the SPA.** The wizard is allowed. A connection
+  string, an S3 secret, a service-role key, or a database password is not a
+  field on it. The browser cannot be given a credential that bypasses RLS.
+- **No half-built registration branch.** The two buttons are not added to
+  `RegisterOrg.jsx` while the own-stack path still calls
+  `registerOrganization`. A label on a WEEHS org is not a custom stack.
+- **No runtime switch that reads a secret.** The SPA does not read a driver
+  name or a connection string out of `organizations/{orgId}` and talk to a
+  different database. The organization's stack is fixed when the control
+  plane provisions it.
 - **No privileged database URL in a `VITE_` variable.** Vite inlines every
   `VITE_` value into the client bundle. That bundle is public to anyone who
   can load the app.
@@ -208,10 +322,16 @@ actually in use.
 Setting `VITE_STORAGE_DRIVER=s3` while the database is still Firestore is
 allowed. It is not a custom-stack cutover.
 
-### Auth — no driver flag
+### Auth — follows the registration choice
 
-There is no `VITE_AUTH_DRIVER`. Adding a facade that still calls Firebase
-would claim a seam the call sites do not go through. Identity is created in
+There is no `VITE_AUTH_DRIVER`, and this change does not add one. A facade
+that still calls Firebase would claim a seam the call sites do not go
+through, and a flag on the shared build would force every organization
+through one IdP. The registration choice is what selects the IdP: WEEHS
+Firebase Auth, or the company's OIDC, SAML, or Supabase Auth. The company's
+IdP is wired to that company's stack, not bolted onto a WEEHS Firebase user.
+
+Identity for the WEEHS branch is created in
 `src/shared/firebase.js` and consumed by:
 
 - `src/shared/auth/AuthContext.jsx` — session, sign-up, sign-in, SSO
@@ -233,9 +353,10 @@ cannot query Firestore (`syncUserClaims`). RLS can query the profile table.
 Use that live read for deletes and for presign. A claim mirror that is
 trusted on its own for an irreversible delete is the S-19 failure again.
 
-SAML/OIDC and TOTP are part of the current product
-(`docs/ENTERPRISE-READINESS.md`). A path 3 provider that drops either is a
-product cut. Record it. Do not let it fall out of a driver flag.
+SAML/OIDC and TOTP are part of the WEEHS product
+(`docs/ENTERPRISE-READINESS.md`). The own-stack branch uses the company's
+IdP, named at registration. Whether that replaces in-app TOTP or sits beside
+it is open decision 8. It is not dropped by leaving the field off the wizard.
 
 Anonymous routes (`/qr/:token`, `/permit/:token`, `/p/:id`, `/t/:id/:point`)
 have no session. Their write is bound to a token that resolves to one org
@@ -410,6 +531,22 @@ are listed here as well. Counts below are the tree this document was
 written against. When the list and the tree disagree, re-run the grep and
 fix this file. Do not keep a second inventory in `src/shared/data/README.md`.
 
+### Registration — branch only when the request is real
+
+These are the WEEHS path. They are listed so the choice has a home, and so
+nobody adds the second button by calling them with a different title.
+
+- `src/pages/auth/RegisterOrg.jsx` — the only organization-registration form.
+  It collects a WEEHS password and calls `registerOrganization`.
+- `src/shared/auth/AuthContext.jsx` — `registerOrganization` creates the
+  Firebase user first; `signUpMember` joins a WEEHS org as `pending`.
+- `src/shared/org/orgData.js` — `createOrganization`, `findOrgByName`.
+- `src/pages/auth/Signup.jsx` — join by typed organization name, on WEEHS Auth.
+
+The own-stack wizard is not a variant of these functions. It files a
+provisioning request and does not create a WEEHS user. Build it when the
+control plane can hold that request. Not before.
+
 ### Move first — shared data
 
 These are on the path of every module, including the ones that already use
@@ -496,8 +633,14 @@ From `src/shared/data/README.md`, still in force:
 
 ## Migration order
 
-1. Keep serving users from the Firebase deployment. Do the path 3 work in
-   another environment. Do not move a `v*` tag.
+This list is the build plan. Path 3 does not serve traffic at any step
+before the last one. The registration choice is the product intent the plan
+is aiming at. It is not step 1 of the plan.
+
+1. Keep serving users from the WEEHS Firebase deployment. Do the path 3 work
+   in another environment. Do not move a `v*` tag. Do not add the database
+   choice to `RegisterOrg.jsx` until the own-stack branch can file a
+   provisioning request without calling `registerOrganization`.
 2. Design the auth session so RLS and the presign endpoint can prove `uid`,
    org, role, approval, and the password-change gate. Decide explicitly
    whether SAML/OIDC and TOTP carry over.
@@ -530,21 +673,27 @@ From `src/shared/data/README.md`, still in force:
 `VITE_STORAGE_DRIVER=s3` may land earlier, as a file-store swap, under the
 constraints in the file section. It does not unblock the data driver.
 
-## Onboarding an external organization
+## Onboarding an organization that chose its own database
 
-This is the procedure for the person deploying that organization's
-environment. A tenant admin inside the app cannot make this choice, and
-the product must not grow a screen that looks like they can.
+The choice is made at registration, by the person founding the organization,
+once that screen exists. Today they do not get the question: registering
+creates a WEEHS organization. The steps below are what the operator does
+**after** a real provisioning request, and what an operator can rehearse
+before the screen exists. They are not a way to serve that company on path 3
+this week.
 
-1. Confirm the environment is leaving Firebase. If it is staying on
-   Firebase, stop. Use the private production runbook
-   (`docs/PRODUCTION.md`) and `DEPLOYMENT.md`.
-2. Write "path 3" into that environment's deploy config. Public flags in
-   CI. Credentials in the secret manager or a gitignored env file. Do not
-   write a connection string into Firestore or any other client-readable
-   store.
-3. Provision Postgres and an S3-compatible bucket in the organization's own
-   account.
+1. If the organization chose the WEEHS database, stop. Use the private
+   production runbook (`docs/PRODUCTION.md`) and `DEPLOYMENT.md`. The shared
+   suite is already that choice.
+2. From the provisioning request, record the non-secret answers (brought vs
+   provisioned database, auth method, issuer, bucket, presign URL) in that
+   environment's deploy config. Credentials go to the secret manager or a
+   gitignored env file, through the secure channel, not through the wizard
+   and not into a client-readable document.
+3. Provision the database the request names. A company that brings one is
+   attached to their project. A database WEEHS provisions is created in the
+   account the agreement names — that account is open decision 2, not assumed
+   here. The bucket follows the same answer.
 4. Create two database roles. The browser role is the one the future
    adapter will use, and RLS applies to it. The bypass role is for
    migrations and the workers (key release, retention). Its URL is a
@@ -565,15 +714,56 @@ the product must not grow a screen that looks like they can.
    still in Firestore. The presign call still presents a Firebase ID
    token until Auth is replaced. A failed presign still inlines the file
    into the Firestore document.
-8. Commission the auth provider. Map its session onto `uid`, org, role,
-   and approval. Keep TOTP and SAML/OIDC unless the cut has been written
-   down.
+8. Wire the auth method from the request (company OIDC, SAML, or Supabase
+   Auth). Map its session onto `uid`, org, role, and approval. Do not also
+   create WEEHS Firebase users for that organization. In-app TOTP versus the
+   IdP's own second factor is open decision 8.
 9. Do not load production data, and do not point the Firebase seed scripts
    at the new database. They do not speak Postgres.
 10. When the remaining-work list is empty and the hostile policy tests
     exist, build that environment with the driver flags and deploy it as
     its own target. Leave the Firebase production tags where they are.
 
-An operator following this today can do steps 1 through 5 and 8 as
-infrastructure, and stops at step 6 for the data driver. That is the
-correct outcome until the gap list is done.
+An operator following this today can prepare infrastructure for a company
+that has asked, and stops before pointing the data driver at `postgres` or
+`supabase`. The registration screen keeps offering only the WEEHS database.
+That is the correct outcome until the gap list is done.
+
+## Open product decisions
+
+These are not settled by this document. The build plan does not guess them.
+
+1. **Who may ask for their own database.** Anyone who can open organization
+   registration, or only a company WEEHS has already agreed to onboard? An
+   open form is also a way to reserve a name on the public org lookup.
+2. **Who hosts the database.** The company brings an existing Postgres or
+   Supabase project, WEEHS provisions one in the company's cloud account, or
+   WEEHS provisions a project it operates for that company alone. The wizard
+   can ask. The commercial and data-controller answer is a product decision.
+3. **One suite URL, or a URL per company.** The build plan provisions a
+   dedicated environment per own-stack organization, because the data seam
+   is one driver per build and secrets stay in that deploy's config. A
+   single SPA that routes each organization to its own database after login
+   is a larger runtime. Say which one is the product before anyone builds
+   the wizard.
+4. **The founder's identity while the request is `requested`.** This design
+   does not create a WEEHS Firebase user on the own-stack branch, so there
+   is no session until the company's IdP is live. Confirm that, or say what
+   the founder is allowed to sign in to in the meantime.
+5. **Module entitlements.** `/platform` decides which modules a WEEHS
+   organization may use, and the rule that enforces it is not writable by
+   the tenant (`docs/PLATFORM-CONSOLE.md`). Does that console still decide
+   for an own-stack organization, with the decision enforced in their RLS,
+   or does the company control its own module set?
+6. **Changing the choice later.** Moving an organization between the WEEHS
+   database and its own is a migration. It is outside this design unless it
+   is pulled in.
+7. **Who holds `DATA_KEY_MASTER` for an own-stack organization.** A
+   WEEHS-held master, or a master only that company holds. Losing it
+   destroys every sealed record on that stack. The master still never ships
+   to the browser.
+8. **Which IdPs the wizard offers on the first build**, and whether TOTP is
+   required inside the product when the company's IdP already challenges a
+   second factor. WEEHS requires TOTP for its own admins
+   (`docs/ENTERPRISE-READINESS.md`). Dropping it for a company stack is a
+   product cut, not a default.

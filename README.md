@@ -94,10 +94,11 @@ Other cross-cutting pieces:
 - **Portability seams** — `src/shared/data/` (database) and
   `src/shared/storage/` (files) sit behind documented adapter contracts selected
   by `VITE_DATA_DRIVER` / `VITE_STORAGE_DRIVER`. See
-  `src/shared/data/README.md`. A deployment that leaves Firebase for its own
-  Postgres or Supabase, S3-compatible files, and replacements for Auth, rules
-  and Cloud Functions is a deploy-time choice: `docs/CUSTOM-STACK.md`. The
-  default build stays on Firestore.
+  `src/shared/data/README.md`. Organization registration is intended to offer
+  the WEEHS database or the company's own stack (their database, their auth).
+  That choice, and the work still required before the second branch can serve
+  anyone, is `docs/CUSTOM-STACK.md`. The screen today only creates a WEEHS
+  organization. The default build stays on Firestore.
 - **Platform console** — a separate application at `/platform` with its own
   sign-in, deciding which modules each organization may use. See
   `docs/PLATFORM-CONSOLE.md`.
@@ -164,9 +165,9 @@ Runs the Vite app and the Firebase Emulator Suite in containers.
 deployment this product already runs. Read §0 of that runbook before
 deploying it.
 
-Leaving Firebase entirely is not done by filling in Firebase keys. That
-decision, and the work still required before it can boot, is
-`docs/CUSTOM-STACK.md`.
+Choosing the company's own database is a registration-time choice, not a
+matter of filling in Firebase keys. The screen does not offer it yet. The
+intent and the build plan are `docs/CUSTOM-STACK.md`.
 
 ## Scripts
 

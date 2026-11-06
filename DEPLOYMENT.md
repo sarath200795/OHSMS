@@ -9,10 +9,11 @@ This file covers only the parts that runbook does not: bringing up the **first
 organization** in a fresh project, what to check **after each deploy**, and how
 to **roll back**.
 
-A deployment that does not use Firebase is [`docs/CUSTOM-STACK.md`](docs/CUSTOM-STACK.md)
-(path 3: Postgres or Supabase, S3-compatible files, and replacements for Auth,
-rules and Cloud Functions). This file stays the Firebase deploy's
-first-organization checks, post-deploy verification and rollback.
+An organization that chooses its own database at registration, instead of the
+shared WEEHS database, is [`docs/CUSTOM-STACK.md`](docs/CUSTOM-STACK.md). That
+branch is not in the product yet and cannot serve traffic. This file stays
+the WEEHS Firebase deploy's first-organization checks, post-deploy
+verification, and rollback.
 
 Everything about creating projects, `.firebaserc`, environment variables and the
 deploy commands themselves has been removed rather than kept in step — it was a
