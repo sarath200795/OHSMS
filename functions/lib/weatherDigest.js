@@ -150,7 +150,7 @@ function siteLabel(site) {
 }
 
 /**
- * Located sites share a forecast when they fall in the same ~1 km square.
+ * Located sites share a forecast when they fall in the same ~11 km square.
  * A site with no usable coordinates is counted and not fetched: it cannot
  * block the mail, and it is not described as clear.
  */
@@ -211,7 +211,7 @@ export function assembleDigest(plan, observations) {
         hazards,
         drivers,
         observedAt,
-        // The pin is the site, not the ~1 km square the forecast was fetched
+        // The pin is the site, not the ~11 km square the forecast was fetched
         // for. The request stays rounded; the picture does not have to.
         lat: coord(site.lat),
         lng: coord(site.lng),

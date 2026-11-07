@@ -20,8 +20,11 @@ const AIR = 'https://air-quality-api.open-meteo.com/v1/air-quality'
 const USER_AGENT = 'OHSMS-weather/1.0 (contact: info@weehs.org)'
 const NOW = Date.parse('2026-09-23T06:30:00.000Z')
 
-function response({ status = 200, json = null, retryAfter } = {}) {
+function response({ status = 200, json = null, retryAfter, body = '' } = {}) {
   return {
+    async text() {
+      return body
+    },
     ok: status >= 200 && status < 300,
     status,
     headers: {
@@ -94,12 +97,12 @@ function modelOf(url) {
 }
 
 describe('what leaves for Open-Meteo', () => {
-  it('rounds to ~1 km and does not put a key, a site name, visibility or UV on the URL', () => {
+  it('rounds to ~11 km and does not put a key, a site name, visibility or UV on the URL', () => {
     const url = forecastUrl(17.43821, 78.3912, WEATHER_MODEL)
     const parsed = new URL(url)
     expect(`${parsed.origin}${parsed.pathname}`).toBe(FORECAST)
-    expect(parsed.searchParams.get('latitude')).toBe('17.44')
-    expect(parsed.searchParams.get('longitude')).toBe('78.39')
+    expect(parsed.searchParams.get('latitude')).toBe('17.4')
+    expect(parsed.searchParams.get('longitude')).toBe('78.4')
     expect(parsed.searchParams.get('models')).toBe('icon_global')
     expect(parsed.searchParams.get('hourly')).toBe(HOURLY_WEATHER.join(','))
     expect(parsed.searchParams.get('wind_speed_unit')).toBe('ms')
@@ -116,14 +119,18 @@ describe('what leaves for Open-Meteo', () => {
     expect(url).not.toContain('apparent_temperature')
     expect(url).not.toContain('european_aqi')
     expect(url).not.toContain('minutely_15')
+    // One cell of the coarsest model the answer comes from. Two sites a few
+    // kilometres apart in one city are one request, not two.
+    expect(gridKey(12.9352, 77.6245)).toBe('12.9,77.6')
+    expect(gridKey(12.9116, 77.6389)).toBe('12.9,77.6')
     expect(gridKey(91, 0)).toBe('')
     expect(gridKey(Number.NaN, 0)).toBe('')
     expect(forecastUrl(91, 0, WEATHER_MODEL)).toBe('')
 
     const air = new URL(airQualityUrl(17.43821, 78.3912))
     expect(`${air.origin}${air.pathname}`).toBe(AIR)
-    expect(air.searchParams.get('latitude')).toBe('17.44')
-    expect(air.searchParams.get('longitude')).toBe('78.39')
+    expect(air.searchParams.get('latitude')).toBe('17.4')
+    expect(air.searchParams.get('longitude')).toBe('78.4')
     expect(air.searchParams.get('hourly')).toBe(HOURLY_AIR.join(','))
     expect(air.searchParams.get('models')).toBeNull()
     expect(air.searchParams.get('past_hours')).toBe('6')
@@ -288,7 +295,86 @@ describe('fetchGrids', () => {
     const latitudes = calls
       .filter((url) => url.startsWith(FORECAST))
       .map((url) => new URL(url).searchParams.get('latitude'))
-    expect(latitudes.every((lat) => lat === '17.44' || lat === '13.08')).toBe(true)
+    expect(latitudes.every((lat) => lat === '17.4' || lat === '13.1')).toBe(true)
+  })
+
+  it('stops the pass on a spent daily quota instead of retrying every grid', async () => {
+    const slept = []
+    const { calls, fetchImpl } = scripted(() =>
+      response({
+        status: 429,
+        body: '{"error":true,"reason":"Daily API request limit exceeded. Please try again tomorrow."}',
+      })
+    )
+    const { observations, failed, exhausted } = await fetchGrids(points, {
+      sleep: async (ms) => {
+        slept.push(ms)
+      },
+      now: () => NOW,
+      fetchImpl,
+    })
+    expect(exhausted).toBe(true)
+    expect(observations.size).toBe(0)
+    // Listed as unread, never as clear.
+    expect([...failed].sort()).toEqual(points.map((p) => p.key).sort())
+    // One ICON ask per worker that started, no GFS, no air, no backoff loop.
+    expect(calls.length).toBeLessThanOrEqual(points.length)
+    expect(calls.every((url) => modelOf(url) === WEATHER_MODEL)).toBe(true)
+    expect(slept).toEqual([])
+  })
+
+  it('keeps the weather but stops the pass when only air quality is out of quota', async () => {
+    const { calls, fetchImpl } = scripted((url) => {
+      if (url.startsWith(AIR)) {
+        return response({ status: 429, body: '{"reason":"Daily API request limit exceeded."}' })
+      }
+      return response({ json: weatherJson({ temp: 33 }) })
+    })
+    const many = [
+      ...points,
+      { key: '28.6,77.2', lat: 28.6, lng: 77.2 },
+      { key: '19.1,72.9', lat: 19.1, lng: 72.9 },
+      { key: '22.6,88.4', lat: 22.6, lng: 88.4 },
+      { key: '23.0,72.6', lat: 23.0, lng: 72.6 },
+    ]
+    const { observations, failed, exhausted } = await fetchGrids(many, {
+      sleep: async () => {},
+      now: () => NOW,
+      fetchImpl,
+    })
+    expect(exhausted).toBe(true)
+    // Each worker's first point still has its weather reading.
+    expect(observations.size).toBeGreaterThan(0)
+    expect([...observations.values()].every((obs) => obs.tempC === 33)).toBe(true)
+    expect(observations.size + failed.length).toBe(many.length)
+    expect(failed.length).toBeGreaterThan(0)
+    // Nothing is asked after the refusal is seen: at most one ICON and one
+    // air request per worker that started.
+    expect(calls.length).toBeLessThanOrEqual(2 * 3)
+  })
+
+  it('still retries a minutely 429', async () => {
+    let iconAttempts = 0
+    const { fetchImpl } = scripted((url) => {
+      if (modelOf(url) === WEATHER_MODEL) {
+        iconAttempts += 1
+        if (iconAttempts === 1) {
+          return response({
+            status: 429,
+            body: '{"reason":"Minutely API request limit exceeded."}',
+          })
+        }
+        return response({ json: weatherJson({ temp: 31 }) })
+      }
+      return response({ json: airJson(10) })
+    })
+    const { observations, exhausted } = await fetchGrids([points[0]], {
+      sleep: async () => {},
+      now: () => NOW,
+      fetchImpl,
+    })
+    expect(exhausted).toBe(false)
+    expect(observations.get('17.44,78.39').tempC).toBe(31)
   })
 
   it('retries a 429 and does not open GFS', async () => {

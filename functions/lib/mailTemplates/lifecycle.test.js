@@ -238,13 +238,29 @@ describe('defect, drill, meeting and weather mail', () => {
       expect(heat).toMatchObject({ sites: 2, high: 1, medium: 1, hidden: 0 })
     })
 
+    it('does not put "0 high, 0 medium" on a run that read none of its sites', () => {
+      const none = renderWeatherDigest({
+        areas: [],
+        unread: 40,
+        unreadSites: ['Plant'],
+        located: 40,
+        checked: 0,
+      })
+      expect(none.subject).toBe('Weather risk: not checked — no reading for 40 of 40 sites')
+      expect(none.subject).not.toContain('0 high')
+      const some = renderWeatherDigest({ areas: [], unread: 1, located: 40, checked: 39 })
+      expect(some.subject).toBe('Weather risk: 0 high, 0 medium (1 of 40 sites not checked)')
+      const all = renderWeatherDigest({ areas: [], unread: 0, located: 40, checked: 40 })
+      expect(all.subject).toBe('Weather risk: 0 high, 0 medium')
+    })
+
     it('renders the sections in order, counts sites once, and references the map by cid', () => {
       const message = renderWeatherDigest(
         { areas, unread: 2 },
         { appOrigin: ORIGIN, mapCid: 'weather-risk-map', windowLabel: '2026-09-23 06:00-12:00 IST' }
       )
       // Plant, Yard, Annex are High sites; Depot is Medium; Quiet is Low.
-      expect(message.subject).toBe('Weather risk: 3 high, 1 medium')
+      expect(message.subject).toBe('Weather risk: 3 high, 1 medium (2 sites not checked)')
       const { text, html } = message
       const heat = text.indexOf('HEAT STRESS')
       const cold = text.indexOf('COLD STRESS')

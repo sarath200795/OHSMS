@@ -712,7 +712,19 @@ export function renderWeatherDigest(
   // though it is listed under both sections below.
   const high = areas.filter((a) => a.level === 'High').length
   const medium = areas.filter((a) => a.level === 'Medium').length
-  const subject = `Weather risk: ${high} high, ${medium} medium`
+  // A count is only a count of what was read. "0 high, 0 medium" over a run
+  // that read none of its sites looked like an all-clear in the inbox, and
+  // the subject is the part of a digest most people read.
+  const unread = Number(digest?.unread) || 0
+  const located = Number(digest?.located) || 0
+  const sites = (n) => `${n} site${n === 1 ? '' : 's'}`
+  const unreadOf = located >= unread ? `${unread} of ${sites(located)}` : sites(unread)
+  const counts = `${high} high, ${medium} medium`
+  const subject = !unread
+    ? `Weather risk: ${counts}`
+    : unread >= located && !areas.length
+      ? `Weather risk: not checked — no reading for ${unreadOf}`
+      : `Weather risk: ${counts} (${unreadOf} not checked)`
   const when = plain(windowLabel, 40)
   const sections = groupDigestSections(areas)
   const alerts = highAlertRegions(areas, HIGH_SITES_PER_REGION, { precautionFor })

@@ -7,10 +7,15 @@
 // this URL would be a credential in the query string. options.apiKey is
 // ignored.
 //
-// Coordinates are rounded to two decimals (~1 km) before they leave. The
-// weather is the same at that resolution, and the exact position of a
-// workplace is not part of the request. The site name, org and id are not
-// either.
+// Coordinates are rounded to one decimal (~11 km) before they leave. That
+// is the resolution of the answer: icon_global is a ~13 km grid, gfs_global
+// ~25 km and the air-quality model coarser still, and Open-Meteo returns the
+// nearest cell. Two decimals (~1 km) asked again for the same cell once per
+// site in it — two requests each, every slot, and again on every retry tick.
+// A large org then ran into the free tier's daily limit late in the UTC day
+// and two digests went out having read none of their sites. The exact
+// position of a workplace is not part of the request. The site name, org and
+// id are not either.
 //
 // Two forecast models:
 //   icon_global — temperature, humidity, hourly precipitation, CAPE, WMO
@@ -110,7 +115,7 @@ const HOUR_FIELDS = [
 export function gridKey(lat, lng) {
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return ''
   if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return ''
-  return `${lat.toFixed(2)},${lng.toFixed(2)}`
+  return `${lat.toFixed(1)},${lng.toFixed(1)}`
 }
 
 function locationParams(lat, lng) {
@@ -339,6 +344,19 @@ function retryAfterMs(headers) {
   return Math.max(0, when - Date.now())
 }
 
+// Open-Meteo answers a spent quota with 429 and a reason naming the window:
+// minutely, hourly or daily. The first two clear inside a slot. The daily one
+// clears at 00:00 UTC, so retrying it four times per grid on every tick only
+// adds requests that cannot succeed.
+async function dailyLimit(resp) {
+  try {
+    const body = typeof resp.text === 'function' ? await resp.text() : ''
+    return /daily/i.test(String(body || ''))
+  } catch {
+    return false
+  }
+}
+
 async function getJson(url, fetchImpl) {
   if (!url) return { ok: false, retry: false, retryAfterMs: 0, json: null }
   try {
@@ -353,7 +371,14 @@ async function getJson(url, fetchImpl) {
     }
     if (!resp.ok) {
       const transient = resp.status === 429 || resp.status === 408 || resp.status >= 500
-      return { ok: false, retry: transient, retryAfterMs: wait, json: null }
+      const exhausted = resp.status === 429 && (await dailyLimit(resp))
+      return {
+        ok: false,
+        retry: transient && !exhausted,
+        exhausted,
+        retryAfterMs: wait,
+        json: null,
+      }
     }
     return { ok: true, json: await resp.json(), retryAfterMs: 0 }
   } catch {
@@ -363,7 +388,7 @@ async function getJson(url, fetchImpl) {
 
 async function loadWeather(point, fetchImpl) {
   const icon = await getJson(forecastUrl(point.lat, point.lng, WEATHER_MODEL), fetchImpl)
-  if (icon.retry && !hasWeather(icon.json)) return icon
+  if ((icon.retry || icon.exhausted) && !hasWeather(icon.json)) return icon
   if (hasWeather(icon.json)) return icon
   const gfs = await getJson(forecastUrl(point.lat, point.lng, FALLBACK_MODEL), fetchImpl)
   if (hasWeather(gfs.json)) return gfs
@@ -394,6 +419,9 @@ export async function requestPoint(point, options = {}) {
   }
 
   const weather = await loadWeather(point, fetchImpl)
+  if (weather.exhausted) {
+    return { ok: false, retry: false, exhausted: true, retryAfterMs: 0, obs: null }
+  }
   if (weather.retry && !hasWeather(weather.json)) {
     return { ok: false, retry: true, retryAfterMs: weather.retryAfterMs || 0, obs: null }
   }
@@ -408,11 +436,16 @@ export async function requestPoint(point, options = {}) {
         obs: null,
       }
     }
-    return { ok: true, obs: null, retryAfterMs: 0 }
+    return { ok: true, obs: null, exhausted: Boolean(air.exhausted), retryAfterMs: 0 }
   }
   const obs = withSlot(normalized, slot)
   if (options.cache && slot) await options.cache.set(point.key, slot, obs)
-  return { ok: true, obs, retryAfterMs: air.retry ? air.retryAfterMs || 1000 : 0 }
+  return {
+    ok: true,
+    obs,
+    exhausted: Boolean(air.exhausted),
+    retryAfterMs: air.retry ? air.retryAfterMs || 1000 : 0,
+  }
 }
 
 /** One coordinate. Null when the point is invalid or the provider did not answer. */
@@ -439,9 +472,10 @@ export async function fetchGrids(points, options = {}) {
   const failed = []
   const queue = [...(points || [])]
   let coolOffUntil = 0
+  let exhausted = false
 
   async function one(point) {
-    if (now() >= until) {
+    if (exhausted || now() >= until) {
       failed.push(point.key)
       return
     }
@@ -449,7 +483,8 @@ export async function fetchGrids(points, options = {}) {
     while (attempt < MAX_ATTEMPTS) {
       const wait = Math.max(0, coolOffUntil - now())
       if (wait > 0) await sleep(Math.min(wait, BACKOFF_CAP_MS))
-      if (now() >= until) {
+      // Another worker may have hit the daily limit while this one slept.
+      if (exhausted || now() >= until) {
         failed.push(point.key)
         return
       }
@@ -460,6 +495,11 @@ export async function fetchGrids(points, options = {}) {
         slot: options.slot,
       })
       await onProgress()
+      // The rest of this pass would get the same answer. They stay listed as
+      // failed, not clear, and a tick after 00:00 UTC asks again. A reading
+      // that came back with only the air-quality request refused is kept:
+      // the weather half is real.
+      if (result.exhausted) exhausted = true
       if (result.retryAfterMs) {
         coolOffUntil = Math.max(coolOffUntil, now() + Math.min(result.retryAfterMs, BACKOFF_CAP_MS))
       }
@@ -468,7 +508,7 @@ export async function fetchGrids(points, options = {}) {
         else failed.push(point.key)
         return
       }
-      if (!result.retry) break
+      if (exhausted || !result.retry) break
       attempt += 1
       if (attempt < MAX_ATTEMPTS && !result.retryAfterMs) {
         await sleep(Math.min(1000 * 2 ** (attempt - 1), 8000))
@@ -486,5 +526,5 @@ export async function fetchGrids(points, options = {}) {
 
   const workers = Math.min(FETCH_CONCURRENCY, queue.length)
   if (workers) await Promise.all(Array.from({ length: workers }, () => worker()))
-  return { observations, failed }
+  return { observations, failed, exhausted }
 }

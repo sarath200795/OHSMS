@@ -168,7 +168,7 @@ export default function SiteWeather() {
       )}
 
       <p className="mt-6 text-xs text-ink-300">
-        Conditions from Open-Meteo.com at the nearest ~1 km, refreshed every 15 minutes. Guidance
+        Conditions from Open-Meteo.com at the nearest ~11 km, one reading per six-hour window. Guidance
         only — it does not replace a site assessment.
       </p>
     </div>
