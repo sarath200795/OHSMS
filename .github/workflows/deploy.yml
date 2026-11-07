@@ -122,6 +122,7 @@ jobs:
           npx eslint src
           npx vitest run
           bash scripts/deploy-rules.test.sh
+          bash scripts/apply-storage-cors.test.sh
           bash scripts/prepare-functions-deploy.test.sh
           node --test scripts/rules-live.test.mjs
           npm --prefix functions ci
@@ -367,6 +368,24 @@ jobs:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json
           PROJECT_ID: ${{ vars.VITE_FIREBASE_PROJECT_ID }}
         run: bash scripts/deploy-rules.sh
+
+      # The bucket's CORS rule, from scripts/storage-cors.json. Nothing applied
+      # that file before, so the production bucket had no rule for the app's
+      # origin: every getBlob read (org logos, attachments) was refused by the
+      # browser and fell back to a download-token URL. Applied on every release
+      # so the bucket cannot drift from the committed file.
+      #
+      # continue-on-error, deliberately and unlike the rules step: reads still
+      # render through the fallback without it, so a missing IAM permission on
+      # the service account (storage.buckets.update) should be a visible warning
+      # on the run, not a release that stops after functions and rules shipped.
+      - name: Apply Storage CORS
+        if: steps.creds.outputs.configured == 'true'
+        continue-on-error: true
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json
+          BUCKET: ${{ vars.VITE_FIREBASE_STORAGE_BUCKET }}
+        run: bash scripts/apply-storage-cors.sh
 
       - name: Deploy hosting
         if: steps.creds.outputs.configured == 'true' && steps.rules.outcome == 'success'
