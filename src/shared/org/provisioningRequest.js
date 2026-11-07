@@ -68,27 +68,65 @@ export function localRequestDefaults() {
   }
 }
 
+const LOCAL_FILING_MESSAGES = {
+  identity:
+    'The identity provider refused the registration. No organization was saved. You can submit this form again.',
+  fulfill:
+    'The server did not finish the organization. Check registration status before submitting again.',
+  'in-progress':
+    'A registration for this name is already running. Wait, then check status before submitting again.',
+  timeout: 'The server did not answer in time. Check registration status before submitting again.',
+  network: 'The server could not be reached. Check registration status before submitting again.',
+  url: 'The address was refused.',
+  fields: 'A field was refused.',
+  echo: 'The server refused to finish the registration. Check registration status before submitting again.',
+}
+
+function localFilingFailure(reason) {
+  const code = Object.prototype.hasOwnProperty.call(LOCAL_FILING_MESSAGES, reason)
+    ? reason
+    : 'refused'
+  const err = new Error(
+    LOCAL_FILING_MESSAGES[code] ||
+      'The request was not filed. Check registration status before submitting again.'
+  )
+  err.reason = code
+  return err
+}
+
 async function fileOnControlPlane(value) {
   const gateway = ownStackGateway()
   if (!gateway) throw new Error('This stack has no control plane configured.')
   const id = requestId()
-  const res = await fetch(`${gateway}/requests`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ...value, id }),
-  })
-  const body = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(NOT_FILED)
-  return {
-    id: body.requestId || id,
-    orgName: value.orgName,
-    contactEmail: value.contactEmail,
-    handoffContact: value.handoffContact,
-    mode: value.mode,
-    engine: value.engine,
-    authMethod: value.authMethod,
-    status: body.status || 'requested',
-    dedicatedUrl: body.dedicatedUrl || '',
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 60000)
+  try {
+    let res
+    try {
+      res = await fetch(`${gateway}/requests`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...value, id }),
+        signal: controller.signal,
+      })
+    } catch (err) {
+      throw localFilingFailure(err?.name === 'AbortError' ? 'timeout' : 'network')
+    }
+    const body = await res.json().catch(() => ({}))
+    if (!res.ok || body.ok === false) throw localFilingFailure(body.reason)
+    return {
+      id: body.requestId || id,
+      orgName: value.orgName,
+      contactEmail: value.contactEmail,
+      handoffContact: value.handoffContact,
+      mode: value.mode,
+      engine: value.engine,
+      authMethod: value.authMethod,
+      status: body.status || 'requested',
+      dedicatedUrl: body.dedicatedUrl || '',
+    }
+  } finally {
+    clearTimeout(timer)
   }
 }
 

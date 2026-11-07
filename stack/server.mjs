@@ -126,6 +126,8 @@ export function createOwnStackServer({
     samlKey: '',
   }
   const uploads = new Map()
+  const filing = new Set()
+  const failed = new Map()
   // Tests listen on port 0 and then learn the address. Fulfillment, the SAML
   // callback and the presign URLs read this object, so the port can be written
   // once before the handoff runs.
@@ -213,6 +215,10 @@ export function createOwnStackServer({
       }
       if (req.method === 'POST' && url.pathname === '/requests') {
         await onFile(req, res)
+        return
+      }
+      if (req.method === 'GET' && url.pathname === '/registration-status') {
+        await onRegistrationStatus(url, res)
         return
       }
       if (req.method === 'POST' && url.pathname === '/intake/start') {
@@ -737,6 +743,86 @@ export function createOwnStackServer({
     return { http: body.ok ? 200 : 400, body }
   }
 
+  function registrationLog(outcome, orgName) {
+    const name = String(orgName || '')
+      .replace(/[\r\n\t]/g, ' ')
+      .slice(0, 80)
+    console.log(`registration ${outcome} ${name}`)
+  }
+
+  async function liveNamed(name) {
+    try {
+      const orgs = await engine.list(WORKER, 'organizations', {})
+      return orgs.find((org) => org.name === name) || null
+    } catch {
+      return null
+    }
+  }
+
+  async function fileLocal(request) {
+    const name = request.orgName
+    if (filing.has(name)) {
+      registrationLog('in-progress', name)
+      return { http: 409, body: { ok: false, reason: 'in-progress' } }
+    }
+    if (await liveNamed(name)) {
+      registrationLog('already-live', name)
+      return {
+        http: 200,
+        body: { ok: true, status: 'live', dedicatedUrl: state.origin, already: true },
+      }
+    }
+    filing.add(name)
+    try {
+      if (prepareIdentity) {
+        try {
+          await prepareIdentity(request)
+        } catch {
+          failed.set(name, 'identity')
+          registrationLog('identity', name)
+          return { http: 503, body: { ok: false, reason: 'identity' } }
+        }
+      }
+      requests.set(request.id, request)
+      const outcome = await runFulfill(request, heldSecrets)
+      if (outcome.body?.ok) {
+        failed.delete(name)
+        registrationLog('live', name)
+      } else {
+        failed.set(name, 'fulfill')
+        registrationLog('fulfill', name)
+      }
+      return outcome
+    } finally {
+      filing.delete(name)
+    }
+  }
+
+  async function onRegistrationStatus(url, res) {
+    if (!localFiling) {
+      send(res, 404, { code: 'not-found', message: 'not found' })
+      return
+    }
+    const name = String(url.searchParams.get('name') || '').trim()
+    if (!name || name.length > 120) {
+      send(res, 400, { ok: false, reason: 'name' })
+      return
+    }
+    if (await liveNamed(name)) {
+      send(res, 200, { found: true, status: 'live', dedicatedUrl: state.origin })
+      return
+    }
+    if (filing.has(name)) {
+      send(res, 200, { found: true, status: 'running' })
+      return
+    }
+    if (failed.has(name)) {
+      send(res, 200, { found: true, status: 'failed', reason: failed.get(name) })
+      return
+    }
+    send(res, 200, { found: false, status: 'absent' })
+  }
+
   function mayFile(req) {
     if (operator(req)) return true
     // localFiling is the self-host process only. Its published port is
@@ -777,18 +863,9 @@ export function createOwnStackServer({
     }
     const request = { ...checked.value, id: requestId }
     if (localFiling && !operator(req)) {
-      // The first registration applies the schema inside fulfillment. A
-      // missing table is "no organizations yet", not a reason to refuse.
-      let orgs = []
-      try {
-        orgs = await engine.list(WORKER, 'organizations', {})
-      } catch {
-        orgs = []
-      }
-      if (orgs.some((org) => org.name === request.orgName)) {
-        send(res, 409, { code: 'already-exists', message: 'that organization is already live' })
-        return
-      }
+      const outcome = await fileLocal(request)
+      send(res, outcome.http, outcome.body)
+      return
     }
     const prior = requests.get(request.id)
     if (prior?.status === 'live' || intake.get(request.id)?.secrets) {
@@ -800,19 +877,6 @@ export function createOwnStackServer({
       return
     }
     requests.set(request.id, request)
-    if (localFiling && heldSecrets && !operator(req)) {
-      if (prepareIdentity) {
-        try {
-          await prepareIdentity(request)
-        } catch {
-          send(res, 503, { code: 'unavailable', message: 'the identity provider is not ready' })
-          return
-        }
-      }
-      const outcome = await runFulfill(request, heldSecrets)
-      send(res, outcome.http, outcome.body)
-      return
-    }
     const opened = await openIntake(requests.get(request.id))
     send(res, opened.http, opened.body)
   }

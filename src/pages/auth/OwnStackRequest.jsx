@@ -48,6 +48,7 @@ const EMPTY = {
 export default function OwnStackRequest({ onBack }) {
   const [form, setForm] = useState(EMPTY)
   const [errors, setErrors] = useState({})
+  const [notice, setNotice] = useState('')
   const [busy, setBusy] = useState(false)
   const [filed, setFiled] = useState(null)
 
@@ -98,16 +99,25 @@ export default function OwnStackRequest({ onBack }) {
     })
     if (!checked.ok) {
       setErrors(checked.errors)
-      toast.error(checked.errors.form || 'Check the highlighted fields.')
+      const text =
+        checked.errors.form ||
+        checked.errors.authIssuer ||
+        checked.errors.presignUrl ||
+        'Check the highlighted fields.'
+      setNotice(text)
+      toast.error(text)
       return
     }
     setErrors({})
+    setNotice('')
     setBusy(true)
     try {
       setFiled(await fileProvisioningRequest(checked.value))
     } catch (err) {
       if (err.fields) setErrors(err.fields)
-      toast.error(err.message || 'The request was not filed.')
+      const text = err.message || 'The request was not filed.'
+      setNotice(text)
+      toast.error(text, { duration: 10000 })
     } finally {
       setBusy(false)
     }
@@ -117,7 +127,11 @@ export default function OwnStackRequest({ onBack }) {
     return (
       <AuthLayout
         title="Request filed"
-        subtitle="Status: requested. Provisioning has not started."
+        subtitle={
+          filed.dedicatedUrl
+            ? 'The organization is live. Sign in with the company identity provider.'
+            : 'Status: requested. Provisioning has not started.'
+        }
         footer={
           <Link
             to="/login"
@@ -432,8 +446,13 @@ export default function OwnStackRequest({ onBack }) {
           />
         </Field>
 
+        {notice ? (
+          <p role="alert" className="text-sm font-medium text-red-700">
+            {notice}
+          </p>
+        ) : null}
         <Button type="submit" loading={busy} className="w-full">
-          File provisioning request
+          {busy ? 'Filing registration…' : 'File provisioning request'}
         </Button>
       </form>
     </AuthLayout>

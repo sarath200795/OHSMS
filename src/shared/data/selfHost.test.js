@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { PGlite } from '@electric-sql/pglite'
 import { describe, expect, it } from 'vitest'
-import { createEngine } from '../../../stack/engine.mjs'
+import { applySchema, createEngine } from '../../../stack/engine.mjs'
 import { createFixtureIdp, readAuthnRequest } from '../../../stack/samlFixture.mjs'
 import { configureKeycloak, certificateFromMetadata } from '../../../stack/keycloakAdmin.mjs'
 import { s3Blobs } from '../../../stack/s3blob.mjs'
@@ -255,6 +255,30 @@ describe('self-hosted services', () => {
       expect(JSON.stringify(body)).not.toContain(databaseUrl)
       expect(JSON.stringify(body)).not.toContain('BEGIN CERTIFICATE')
       expect(prepared).toBe('asha@local.test')
+      const status = await fetch(
+        `${origin}/registration-status?name=${encodeURIComponent(publicRequest.orgName)}`
+      )
+      expect(await status.json()).toEqual({
+        found: true,
+        status: 'live',
+        dedicatedUrl: origin,
+      })
+      const again = await fetch(`${origin}/requests`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...publicRequest,
+          id: 'reqLocalHost2',
+          presignUrl: `${origin}/presign`,
+        }),
+      })
+      const againBody = await again.json()
+      expect(again.status).toBe(200)
+      expect(againBody.already).toBe(true)
+      expect(againBody.dedicatedUrl).toBe(origin)
+      expect(JSON.stringify(againBody)).not.toContain(databaseUrl)
+      const orgs = await engine.list({ role: 'ohsms_worker', uid: '' }, 'organizations', {})
+      expect(orgs.filter((org) => org.name === publicRequest.orgName)).toHaveLength(1)
       const env = await (await fetch(`${origin}/stack-env.js`)).text()
       expect(env).toContain('"VITE_CONTROL_PLANE":"local"')
       expect(env).toContain('http://127.0.0.1:8080/realms/ohsms')
@@ -283,6 +307,120 @@ describe('self-hosted services', () => {
       const slo = await fetch(`${origin}/auth/saml/slo`, { redirect: 'manual' })
       expect(slo.headers.get('location')).toBe(`${origin}/login`)
     } finally {
+      server.close()
+    }
+  })
+
+  it('records an identity refusal without saving an organization or the password', async () => {
+    const db = new PGlite()
+    await applySchema(db)
+    const engine = createEngine(db)
+    const databaseUrl = 'postgres://ohsms:not-for-the-browser@postgres:5432/ohsms'
+    const logs = []
+    const original = console.log
+    console.log = (...args) => logs.push(args.map(String).join(' '))
+    const server = createOwnStackServer({
+      engine,
+      db,
+      sessionSecret: 'session-secret-for-the-test',
+      origin: 'http://127.0.0.1',
+      auth: { method: 'saml', clientId: 'ohsms' },
+      requests: new Map(),
+      localFiling: true,
+      heldSecrets: { databaseUrl, sessionSecret: 'session-secret-for-the-test' },
+      prepareIdentity: async () => {
+        throw new Error('keycloak user was not created (400)')
+      },
+    })
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+    const origin = `http://127.0.0.1:${server.address().port}`
+    server.stackState.origin = origin
+    try {
+      const filed = await fetch(`${origin}/requests`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...publicRequest, presignUrl: `${origin}/presign` }),
+      })
+      const body = await filed.json()
+      expect(filed.status).toBe(503)
+      expect(body).toEqual({ ok: false, reason: 'identity' })
+      const status = await (
+        await fetch(
+          `${origin}/registration-status?name=${encodeURIComponent(publicRequest.orgName)}`
+        )
+      ).json()
+      expect(status).toEqual({ found: true, status: 'failed', reason: 'identity' })
+      const orgs = await engine.list({ role: 'ohsms_worker', uid: '' }, 'organizations', {})
+      expect(orgs).toEqual([])
+      const text = logs.join('\n')
+      expect(text).toContain('registration identity Local Metals')
+      expect(text).not.toContain(databaseUrl)
+      expect(text).not.toContain('asha@local.test')
+      expect(text).not.toContain('400')
+    } finally {
+      console.log = original
+      server.close()
+    }
+  })
+
+  it('does not start a second organization while the first registration is running', async () => {
+    const db = new PGlite()
+    const engine = createEngine(db)
+    let release
+    const gate = new Promise((resolve) => {
+      release = resolve
+    })
+    let started
+    const startedP = new Promise((resolve) => {
+      started = resolve
+    })
+    const server = createOwnStackServer({
+      engine,
+      db,
+      sessionSecret: 'session-secret-for-the-test',
+      origin: 'http://127.0.0.1',
+      auth: { method: 'saml', clientId: 'ohsms' },
+      requests: new Map(),
+      localFiling: true,
+      heldSecrets: {
+        databaseUrl: 'postgres://ohsms:not-for-the-browser@postgres:5432/ohsms',
+        sessionSecret: 'session-secret-for-the-test',
+      },
+      prepareIdentity: async () => {
+        started()
+        await gate
+      },
+    })
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+    const origin = `http://127.0.0.1:${server.address().port}`
+    server.stackState.origin = origin
+    const body = { ...publicRequest, presignUrl: `${origin}/presign` }
+    try {
+      const first = fetch(`${origin}/requests`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      await startedP
+      const second = await fetch(`${origin}/requests`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...body, id: 'reqLocalHost2' }),
+      })
+      expect(second.status).toBe(409)
+      expect(await second.json()).toEqual({ ok: false, reason: 'in-progress' })
+      const running = await (
+        await fetch(
+          `${origin}/registration-status?name=${encodeURIComponent(publicRequest.orgName)}`
+        )
+      ).json()
+      expect(running).toEqual({ found: true, status: 'running' })
+      release()
+      expect((await first).status).toBe(200)
+      const orgs = await engine.list({ role: 'ohsms_worker', uid: '' }, 'organizations', {})
+      expect(orgs.filter((org) => org.name === publicRequest.orgName)).toHaveLength(1)
+    } finally {
+      release()
       server.close()
     }
   })

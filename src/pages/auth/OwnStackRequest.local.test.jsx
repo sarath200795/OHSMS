@@ -70,6 +70,9 @@ describe('own-stack registration on the local host', () => {
     fillIdentity()
     fireEvent.click(screen.getByRole('button', { name: 'File provisioning request' }))
     expect(await screen.findByText('Request filed')).toBeTruthy()
+    expect(
+      screen.getByText('The organization is live. Sign in with the company identity provider.')
+    ).toBeTruthy()
     expect(screen.queryByText(HTTPS_ISSUER)).toBeNull()
     expect(screen.queryByText(HTTPS_PRESIGN)).toBeNull()
     expect(calls).toHaveLength(1)
@@ -92,7 +95,7 @@ describe('own-stack registration on the local host', () => {
     })
     fillIdentity()
     fireEvent.click(screen.getByRole('button', { name: 'File provisioning request' }))
-    expect(await screen.findByText(HTTPS_ISSUER)).toBeTruthy()
+    expect((await screen.findAllByText(HTTPS_ISSUER)).length).toBeGreaterThan(0)
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
@@ -116,8 +119,67 @@ describe('own-stack registration on the local host', () => {
       target: { value: 'http://127.0.0.1:8787/presign' },
     })
     fireEvent.click(screen.getByRole('button', { name: 'File provisioning request' }))
-    expect(await screen.findByText(HTTPS_ISSUER)).toBeTruthy()
-    expect(screen.getByText(HTTPS_PRESIGN)).toBeTruthy()
+    expect((await screen.findAllByText(HTTPS_ISSUER)).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(HTTPS_PRESIGN).length).toBeGreaterThan(0)
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('own-stack registration against the host', () => {
+  async function answer(status, body) {
+    const { createServer } = await import('node:http')
+    const seen = []
+    const server = createServer((req, res) => {
+      const chunks = []
+      req.on('data', (chunk) => chunks.push(chunk))
+      req.on('end', () => {
+        seen.push(Buffer.concat(chunks).toString('utf8'))
+        res.writeHead(status, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify(body))
+      })
+    })
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+    const origin = `http://127.0.0.1:${server.address().port}`
+    globalThis.__OHSMS_STACK__ = {
+      ...LOCAL,
+      VITE_DATA_GATEWAY: origin,
+      VITE_S3_PRESIGN_ENDPOINT: `${origin}/presign`,
+    }
+    return { server, seen }
+  }
+
+  it('keeps the identity refusal on the form after the host answers', async () => {
+    const host = await answer(503, { ok: false, reason: 'identity' })
+    try {
+      await renderForm()
+      fillIdentity()
+      fireEvent.click(screen.getByRole('button', { name: 'File provisioning request' }))
+      const alert = await screen.findByText(/identity provider refused/)
+      expect(alert.textContent).toMatch(/No organization was saved/)
+      expect(screen.getByRole('button', { name: 'File provisioning request' })).toBeTruthy()
+      expect(host.seen).toHaveLength(1)
+      expect(host.seen[0]).not.toMatch(/password/i)
+      expect(host.seen[0]).toContain('http://127.0.0.1:8080/realms/ohsms')
+    } finally {
+      host.server.close()
+    }
+  })
+
+  it('replaces the form when the host says the organization is live', async () => {
+    const host = await answer(200, {
+      ok: true,
+      status: 'live',
+      dedicatedUrl: 'http://127.0.0.1:8787',
+    })
+    try {
+      await renderForm()
+      fillIdentity()
+      fireEvent.click(screen.getByRole('button', { name: 'File provisioning request' }))
+      expect(await screen.findByText(/is live at/)).toBeTruthy()
+      expect(screen.queryByRole('button', { name: 'File provisioning request' })).toBeNull()
+      expect(host.seen).toHaveLength(1)
+    } finally {
+      host.server.close()
+    }
   })
 })

@@ -90,6 +90,8 @@ describe('own-stack handoff link', () => {
       expect(body.reason).toBe('url')
       expect(JSON.stringify(body)).not.toContain('127.0.0.1')
       expect(host.requests.has('reqLoopback001')).toBe(false)
+      const status = await fetch(`${host.listen}/registration-status?name=Northwind%20Metals`)
+      expect(status.status).toBe(404)
     } finally {
       await host.close()
     }
