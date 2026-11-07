@@ -45,7 +45,6 @@ import ModuleLogo3D, { has3DLogo } from './ModuleLogo3D'
 import { desktopMarkClass } from './markMotion'
 import { Button, Skeleton, Spinner } from '../../shared/ui'
 import FieldAppGrid from '../../shared/layout/FieldAppGrid'
-import ContactUs from '../../shared/layout/ContactUs'
 import { fieldIdle } from '../../shared/mobile/fieldIdle'
 import { useViewMode, ViewModeSwitch } from '../../shared/mobile/viewModeContext'
 
@@ -494,8 +493,6 @@ export default function PortalHome() {
           )}
         </Raised>
       </div>
-
-      <ContactUs className="mb-5" />
 
       {/* The home page used to put IncompleteNotice here — amber "could not be
           loaded" copy for a capped or failed listener. The owner asked that

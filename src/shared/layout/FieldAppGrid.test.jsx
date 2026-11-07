@@ -28,9 +28,8 @@ describe('FieldAppGrid', () => {
     )
     expect(screen.getByRole('button', { name: /Switch to (desktop|mobile) view/ })).toBeTruthy()
     expect(screen.getByRole('heading', { name: 'Technical' })).toBeTruthy()
-    const contact = screen.getByRole('link', { name: /Contact us/ })
-    expect(contact.getAttribute('href')).toBe('tel:+917793966625')
-    expect(contact.textContent).toContain('+91 77939 66625')
+    // The phone-number contact card was taken off the home screen on request.
+    expect(screen.queryByRole('link', { name: /Contact us/ })).toBeNull()
     expect(screen.queryByRole('heading', { name: 'Admin' })).toBeNull()
     const extinguishers = screen.getByRole('link', { name: 'Extinguishers' })
     const aed = screen.getByRole('link', { name: 'AED' })
