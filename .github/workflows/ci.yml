@@ -150,6 +150,7 @@ jobs:
       - name: Deploy script tests
         run: |
           bash scripts/deploy-rules.test.sh
+          bash scripts/apply-storage-cors.test.sh
           bash scripts/prepare-functions-deploy.test.sh
           node --test scripts/rules-live.test.mjs
 

@@ -128,6 +128,7 @@ jobs:
           npx eslint src
           npx vitest run
           bash scripts/deploy-rules.test.sh
+          bash scripts/apply-storage-cors.test.sh
           bash scripts/prepare-functions-deploy.test.sh
           node --test scripts/rules-live.test.mjs
           npm --prefix functions ci
@@ -225,6 +226,17 @@ jobs:
             echo "::error::Functions deploy failed. If the log names iam.serviceAccounts.actAs, the staging deployer cannot impersonate the runtime SA — grant that in GCP, or stop deploying functions from CI until then (DEPLOYMENT.md §5). This job did not change IAM."
             exit 1
           fi
+
+      # Same CORS rule as production (deploy.yml), and the same reasoning for
+      # continue-on-error, including what it costs sealed files.
+      - name: Apply Storage CORS
+        if: steps.creds.outputs.configured == 'true'
+        continue-on-error: true
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa-staging.json
+          BUCKET: ${{ vars.STAGING_FIREBASE_STORAGE_BUCKET }}
+          PROJECT_ID: ${{ vars.STAGING_FIREBASE_PROJECT_ID }}
+        run: bash scripts/apply-storage-cors.sh
 
       # Same Rules API 503 as production (deploy.yml). When the live release
       # already matches, scripts/rules-live.mjs skips the upload. When it

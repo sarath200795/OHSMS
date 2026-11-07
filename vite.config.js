@@ -49,6 +49,15 @@ export default defineConfig({
     // Heavy libs (three.js, react-flow, xlsx, pdf) are lazy-loaded per module
     // route. Split the always-loaded vendors so the initial bundle stays lean.
     chunkSizeWarningLimit: 900,
+    // Fonts are always emitted as files, never inlined. @fontsource ships
+    // subsets (open-sans greek-ext) under the 4 KB inline limit, which Vite
+    // turned into data:font/woff2 URIs inside the CSS, and the CSP's
+    // `font-src 'self' https://fonts.gstatic.com` blocked every one of them
+    // on the portal. Widening font-src to data: would fix the symptom by
+    // weakening the policy; emitting the file keeps the policy as written.
+    // `undefined` defers to the default limit for everything else.
+    assetsInlineLimit: (filePath) =>
+      /\.(?:woff2?|ttf|otf|eot)$/i.test(filePath) ? false : undefined,
     // Vite 8 builds with Rolldown, which accepts manualChunks only as a
     // function. Same split as the object form: the always-loaded vendors
     // leave the entry chunk.
