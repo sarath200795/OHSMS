@@ -17,7 +17,7 @@
 // the message, so the claim is removed and a later delivery may send it.
 // ─────────────────────────────────────────────────────────────────────────────
 import { createHash } from 'node:crypto'
-import { isSmtpRateLimit } from './mailPace.js'
+import { isSmtpRateLimit, smtpUndelivered } from './mailPace.js'
 
 // The rules test seeds a row claimed on 4 Jan and expiring on 3 Feb: thirty
 // days. Nothing deletes on this date today. It is here so the shape the rules
@@ -105,6 +105,21 @@ export async function sendOnce({ ref, kind, key, uid, subject, now, send }) {
       }
       return { status: 'failed', reason: 'rate-limited', error: err }
     }
+    // Refused before the relay took it: nothing went out, so a later delivery
+    // may send it. Same release as a rate limit, recorded the same way when
+    // the delete itself fails.
+    const undelivered = smtpUndelivered(err)
+    if (undelivered) {
+      const released = await releaseClaim(ref)
+      if (!released) {
+        try {
+          await ref.update({ status: 'failed', failure: 'undelivered' })
+        } catch {
+          /* a stuck 'claimed' row still suppresses; the delete is the fix */
+        }
+      }
+      return { status: 'failed', reason: 'undelivered', undelivered, error: err }
+    }
     // Best effort. If this update fails the row stays 'claimed', which still
     // suppresses a retry — the same outcome as 'failed', with a less honest
     // status. Either is preferable to a second copy of the mail.
@@ -125,7 +140,11 @@ export async function sendOnce({ ref, kind, key, uid, subject, now, send }) {
 }
 
 function isRetryableRateLimit(row) {
-  return row?.status === 'rate-limited' || row?.failure === 'rate-limited'
+  return (
+    row?.status === 'rate-limited' ||
+    row?.failure === 'rate-limited' ||
+    row?.failure === 'undelivered'
+  )
 }
 
 async function existingRow(ref) {

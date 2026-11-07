@@ -72,6 +72,7 @@ export async function circulate({
   let sent = 0
   let skipped = list.length - batch.length
   let failed = 0
+  let undelivered = 0
 
   // One socket at a time, with a gap. A Promise.all of the cap would open a
   // hundred SMTP sessions inside a single function invocation, and back-to-back
@@ -107,6 +108,7 @@ export async function circulate({
       log.info(`${logLabel} mail sent`, { orgId, ...context, kind, uid: recipient.uid })
     } else if (result.status === 'failed') {
       failed += 1
+      if (result.reason === 'undelivered') undelivered += 1
       log.error(`${logLabel} mail failed`, {
         orgId,
         ...context,
@@ -128,10 +130,13 @@ export async function circulate({
     if (paced.stop) {
       // The rest are not claimed. A later delivery can send them. Claiming
       // them as failed is how a rate limit used to silence the whole list.
+      // A refused login or a dead connection stops it the same way: every
+      // address behind it would fail identically.
       skipped += batch.length - i - 1
-      return { sent, skipped, failed, reason: 'rate-limited' }
+      const reason = result.reason === 'rate-limited' ? 'rate-limited' : 'undelivered'
+      return { sent, skipped, failed, undelivered, reason }
     }
   }
 
-  return { sent, skipped, failed }
+  return { sent, skipped, failed, undelivered }
 }

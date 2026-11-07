@@ -37,6 +37,36 @@ export function isSmtpRateLimit(err) {
   return RATE_LIMIT_MARKERS.some((marker) => text.includes(marker))
 }
 
+// A refusal before the relay took the message. Nodemailer names the stage
+// on err.command and the class on err.code. A login the relay refused, a
+// connection that never opened, or a sender it would not accept cannot
+// have delivered anything, so holding the claim only stops a corrected
+// setup from sending. On 2026-11-06 a deploy cleared the SMTP login; once
+// it was back, the digest window whose send had failed stayed claimed and
+// a forced run could not send it.
+//
+// 'transport' means every recipient behind it fails the same way: the
+// caller stops the list and leaves the rest unclaimed. 'recipient' is one
+// address the relay refused at RCPT TO. A timeout or reset with no stage,
+// or anything at DATA or after, is ambiguous (the message may have been
+// accepted) and stays claimed, as it always has.
+// ECONNECTION is not here: nodemailer uses it for "connection closed
+// unexpectedly", which can happen after DATA. It counts only with
+// command CONN, below.
+const TRANSPORT_CODES = new Set(['EAUTH', 'EDNS', 'mail/not-configured'])
+const TRANSPORT_COMMANDS = /^(CONN|EHLO|HELO|STARTTLS|AUTH\b|MAIL FROM)/i
+
+/** 'transport' | 'recipient' | '' for a refusal that was certainly not delivered. */
+export function smtpUndelivered(err) {
+  if (!err || typeof err !== 'object') return ''
+  const code = String(err.code || '')
+  const command = String(err.command || '').trim()
+  if (TRANSPORT_CODES.has(code)) return 'transport'
+  if (command && TRANSPORT_COMMANDS.test(command)) return 'transport'
+  if (/^RCPT TO/i.test(command)) return 'recipient'
+  return ''
+}
+
 export function fanoutGapMs(explicit) {
   if (typeof explicit === 'number' && explicit >= 0) return explicit
   if (process.env.VITEST) return 0
@@ -61,5 +91,6 @@ export async function sendPaced({ attempt, sleep, gapMs, first }) {
     await wait(MAIL_RATE_LIMIT_BACKOFF_MS * n)
     result = await attempt()
   }
-  return { result, stop: result?.reason === 'rate-limited' }
+  const stop = result?.reason === 'rate-limited' || result?.undelivered === 'transport'
+  return { result, stop }
 }

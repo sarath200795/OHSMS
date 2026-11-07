@@ -270,7 +270,8 @@ export async function deliverIncidentReport({
     }
     if (paced.stop) {
       skipped += recipients.list.length - i - 1
-      return { sent, skipped, failed, reason: 'rate-limited' }
+      const reason = result.reason === 'rate-limited' ? 'rate-limited' : 'undelivered'
+      return { sent, skipped, failed, reason }
     }
   }
 
