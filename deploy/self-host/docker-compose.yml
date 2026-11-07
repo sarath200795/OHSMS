@@ -24,7 +24,12 @@ services:
     restart: unless-stopped
 
   minio:
-    image: minio/minio:RELEASE.2024-12-18T13-15-44Z
+    # Built from github.com/minio/minio tag RELEASE.2025-10-15T17-29-55Z.
+    # There is no public MinIO registry image: Docker Hub 404, Quay 401.
+    image: ohsms-self-host-minio:local
+    build:
+      context: ./minio
+      dockerfile: Dockerfile
     command: ['server', '/data', '--console-address', ':9001']
     env_file:
       - ./secrets/compose.env
@@ -34,15 +39,20 @@ services:
     volumes:
       - miniodata:/data
     healthcheck:
-      test: ['CMD', 'mc', 'ready', 'local']
+      # mc ready local only exists in the removed minio/minio image, which
+      # bundled mc. This source build does not. /minio/health/live is the
+      # documented unauthenticated liveness probe.
+      test: ['CMD', 'curl', '-fsS', 'http://127.0.0.1:9000/minio/health/live']
       interval: 5s
       timeout: 5s
       retries: 20
+      start_period: 10s
     restart: unless-stopped
 
   keycloak:
     image: quay.io/keycloak/keycloak:26.0.7
-    command: ['start-dev', '--http-port=8080', '--hostname-strict=false']
+    command:
+      ['start-dev', '--http-port=8080', '--hostname-strict=false', '--health-enabled=true']
     environment:
       KC_HEALTH_ENABLED: 'true'
       KC_HTTP_ENABLED: 'true'
@@ -50,19 +60,14 @@ services:
       - ./secrets/compose.env
     ports:
       - '127.0.0.1:8080:8080'
-    healthcheck:
-      test:
-        [
-          'CMD-SHELL',
-          'exec 3<>/dev/tcp/127.0.0.1/9000 && echo -e "GET /health/ready HTTP/1.0\\r\\n\\r\\n" >&3 && cat <&3 | grep -q UP',
-        ]
-      interval: 10s
-      timeout: 5s
-      retries: 30
-      start_period: 30s
+      # Management health only, on 9002 so it does not take MinIO's 9000.
+      # The 26.0.7 image is ubi9-micro and does not include curl. Check from
+      # the host: curl -fsS http://127.0.0.1:9002/health/ready
+      - '127.0.0.1:9002:9000'
     restart: unless-stopped
 
   ohsms:
+    image: ohsms-self-host-ohsms:latest
     build:
       context: .
       dockerfile: Dockerfile

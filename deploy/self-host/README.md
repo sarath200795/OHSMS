@@ -14,8 +14,12 @@ publish these ports on another interface.
   multi-arch)
 - Docker Desktop with Compose v2
 - Node.js 22, used once to generate secret files
-- Network access for the first `docker compose up`, so the images and npm
-  dependencies can be fetched
+- Network access the first time MinIO is built, so the official Go image,
+  Debian image, and `github.com/minio/minio` tag
+  `RELEASE.2025-10-15T17-29-55Z` can be fetched. Do not use `docker login`
+  for MinIO. Docker Hub repository `minio/minio` returns 404 (it is gone,
+  not private). `quay.io/minio/minio` returns 401 to an anonymous pull.
+  This package does not log in and does not use a third-party fork.
 - No host Postgres is required
 
 ## Secret file contract
@@ -57,16 +61,43 @@ them. Do not paste that output anywhere.
 
 ## Start, status, stop
 
-From this directory:
+If `ohsms-self-host-ohsms:latest` is already built, do not rebuild it.
+From this directory, after `node bootstrap.mjs`:
 
 ```sh
-docker compose up -d --build
+docker compose build minio
+docker compose up -d --no-build
 docker compose ps
 docker compose stop
 ```
 
-`stop` does not delete volumes. Start again with `docker compose up -d`.
-Do not run `docker compose down -v`.
+`--no-build` keeps the existing app image. `build minio` only compiles
+MinIO from the public Git tag. `stop` does not delete volumes. Start again
+with `docker compose up -d --no-build`. Do not run `docker compose down -v`.
+
+A first install that has not built the app yet uses `docker compose up -d --build`
+once. After that, use `--no-build` as above.
+
+### Health
+
+Postgres: `pg_isready` inside `postgres:16-alpine`. That image contains it.
+
+MinIO: `curl -fsS http://127.0.0.1:9000/minio/health/live` inside the image
+this package builds. The documented probe is `/minio/health/live`.
+`mc ready local` belongs to the removed `minio/minio` image, which bundled
+`mc`. This source build does not, so that check is not used.
+
+Keycloak `26.0.7` is `ubi9-micro` plus Java, a glibc langpack, and findutils.
+It does not include curl. The old in-container `/dev/tcp` check is not used.
+Health is enabled with `--health-enabled=true` and published only on
+`127.0.0.1:9002`. From the host, after start:
+
+```sh
+curl -fsS http://127.0.0.1:9002/health/ready
+```
+
+The documented body has `"status":"UP"`. These checks were not executed
+here. Docker is not available in the environment that prepared this file.
 
 ## URLs (this machine)
 
@@ -75,6 +106,7 @@ Do not run `docker compose down -v`.
 | App | http://127.0.0.1:8787 |
 | Register | http://127.0.0.1:8787/register-org |
 | Keycloak (IdP and its admin console) | http://127.0.0.1:8080 |
+| Keycloak health | http://127.0.0.1:9002/health/ready |
 | MinIO API | http://127.0.0.1:9000 |
 | MinIO console | http://127.0.0.1:9001 |
 | Postgres | 127.0.0.1:5432, database `ohsms`, user `ohsms` |
@@ -110,12 +142,9 @@ still there. MinIO and Postgres use named volumes `miniodata` and `pgdata`.
 
 ## What this package does not do
 
-The archive was packed without Docker on the build machine, so the compose
-file has not been started there. Image tags, the MinIO `mc ready` check, and
-the Keycloak `/dev/tcp` check are unverified. If a service stays unhealthy,
-`docker compose logs <service>` is the next step. The app process retries
-Postgres, MinIO, and Keycloak for about three minutes on its own, and it
-does not print passwords when a retry fails. Image pulls and the browser
-recording happen on the machine where you run the commands above.
+Docker is not available where this file was written, so none of these
+containers were started here. If a service fails, `docker compose logs
+<service>` is the next step. The app retries Postgres, MinIO, and Keycloak
+for about three minutes and does not print passwords when a retry fails.
 There is no public hostname until you choose one yourself. Do not point
 this stack at the shared Firebase project.
