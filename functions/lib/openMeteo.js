@@ -11,12 +11,14 @@
 // exact position of a workplace is not part of the request. The site name,
 // org and id are not either.
 //
-// One decimal (~11 km) was tried for a day (v2.0.16 to v2.0.18) on the theory
-// that the request count was spending the free daily quota. It was not: the
-// refusals came from requests reaching Open-Meteo from several addresses at
-// once, and that has been fixed at its source. Two decimals keeps each site's reading
-// to its own square, and the daily-limit stop in fetchGrids below still ends
-// a pass that does run out.
+// One decimal (~11 km) was tried for a day (v2.0.16 to v2.0.18) after two
+// digests read none of their sites, on the theory that the request count was
+// spending the free daily quota. That theory was never confirmed from logs.
+// The mail outage the same week was a separate fault: the relay refusing
+// sends, not Open-Meteo refusing reads. Two decimals is back so each site's
+// reading is its own square. If reads start failing again the digest says so
+// in its subject ("not checked"), the daily-limit stop in fetchGrids ends the
+// pass, and a coarser key here is the lever that cuts the request count.
 //
 // Two forecast models:
 //   icon_global — temperature, humidity, hourly precipitation, CAPE, WMO
