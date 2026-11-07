@@ -11,7 +11,24 @@ import { safeInternalPath } from '../../shared/safeUrl'
 import AuthLayout from './AuthLayout'
 import LoginModules from './LoginModules'
 import { isNativePlatform } from '../../shared/mobile/native'
+import {
+  isOwnStackBuild,
+  ownStackAuthMethod,
+  ownStackGateway,
+} from '../../shared/auth/ownStackSession'
 import StoreBadges from './StoreBadges'
+
+// Company SAML and OIDC do not use this page's email form. The password is
+// entered at the identity provider. /auth/start is the host route that builds
+// the AuthnRequest and redirects there. Submitting the email form used to be
+// the only way to reach it, so the dedicated host looked like a Firebase login.
+function companySignInStart() {
+  if (!isOwnStackBuild()) return ''
+  const method = ownStackAuthMethod()
+  if (method !== 'saml' && method !== 'oidc') return ''
+  const gateway = ownStackGateway()
+  return gateway ? `${gateway}/auth/start` : ''
+}
 
 export default function Login() {
   const {
@@ -34,6 +51,17 @@ export default function Login() {
   // it expires, and storing it would leave a partial session on the machine.
   const [resolver, setResolver] = useState(null)
   const [code, setCode] = useState('')
+  const idpStart = companySignInStart()
+
+  useEffect(() => {
+    if (!idpStart) return
+    try {
+      window.location.assign(idpStart)
+    } catch {
+      // The link below is the same URL. A test runner that refuses navigation
+      // still leaves it on the page.
+    }
+  }, [idpStart])
 
   // A challenge raised by the SSO redirect arrives through the context, because
   // that round trip destroyed this component's state on the way out.
@@ -170,6 +198,43 @@ export default function Login() {
             Lost your device? An administrator can reset two-factor for your account.
           </p>
         </form>
+      </AuthLayout>
+    )
+  }
+
+  if (idpStart) {
+    return (
+      <AuthLayout
+        title="Sign in"
+        subtitle="Company identity provider"
+        footer={
+          <span>
+            <a
+              href="/privacy"
+              className="font-semibold text-brand-700 underline-offset-2 hover:underline"
+            >
+              Privacy Policy
+            </a>
+            {' · '}
+            <a
+              href="/terms"
+              className="font-semibold text-brand-700 underline-offset-2 hover:underline"
+            >
+              Terms of Use
+            </a>
+          </span>
+        }
+      >
+        <p className="text-sm leading-relaxed text-ink-700">
+          Continuing to the company identity provider. The password is entered there, not on this
+          page.
+        </p>
+        <a
+          href={idpStart}
+          className="mt-4 inline-flex w-full items-center justify-center rounded-full bg-brand-700 px-4 py-2.5 text-sm font-semibold text-white"
+        >
+          Continue to company sign-in
+        </a>
       </AuthLayout>
     )
   }

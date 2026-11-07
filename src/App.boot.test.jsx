@@ -48,7 +48,10 @@ describe('app boot gate', () => {
     boot()
     expect(screen.getByRole('heading', { name: 'Sign in' })).toBeTruthy()
     expect(screen.queryByRole('heading', { name: 'Connect Firebase' })).toBeNull()
-    expect(screen.getByRole('button', { name: 'Sign in' })).toBeTruthy()
+    expect(screen.queryByLabelText('Password')).toBeNull()
+    expect(
+      screen.getByRole('link', { name: 'Continue to company sign-in' }).getAttribute('href')
+    ).toBe('http://127.0.0.1:8787/auth/start')
   })
 
   it('still requires Firebase when the injection is not an own-stack driver', () => {
