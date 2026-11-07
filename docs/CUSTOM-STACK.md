@@ -135,6 +135,15 @@ There is no sign-in until that company's IdP is live: no temporary WEEHS
 account, and no session on a URL that does not exist yet. Module data does
 not exist for that company until the stack is actually provisioned.
 
+On the shared suite, filing also mails the founder an acknowledgement (what
+was recorded, what happens next, and "ignore this if it was not you") and
+alerts each platform operator (`notifyProvisioningRequested`,
+`functions/lib/registrationMail.js`). That mail carries no link and no
+secret, and it is not the handoff. The filing is anonymous and the address
+is whatever was typed, so the acknowledgement is throttled per address and
+per hour. A WEEHS-database registration gets a welcome mail instead
+(`notifyOrganizationCreated`), sent to the founder's Firebase Auth address.
+
 Filing the request reserves the name. The same batch writes `orgIndex/{key}`
 with `stack: 'own'` and the request id, and nothing else — no contact email
 on the public row. `findOrgByName` returns that door, and `Signup.jsx` will
