@@ -324,6 +324,26 @@ jobs:
           PROJECT_ID: ${{ vars.VITE_FIREBASE_PROJECT_ID }}
         run: bash scripts/deploy-functions.sh
 
+      # The bucket's CORS rule, from scripts/storage-cors.json. Nothing applied
+      # that file before, so the production bucket had no rule for the app's
+      # origin: every getBlob read (org logos, attachments) was refused by the
+      # browser and fell back to a download-token URL. Applied on every release
+      # so the bucket cannot drift from the committed file. It sits above the
+      # rules step, not between rules and hosting: deploy-rules.test.sh reads
+      # that span as the rules step and refuses continue-on-error in it.
+      #
+      # continue-on-error, deliberately and unlike the rules step: reads still
+      # render through the fallback without it, so a missing IAM permission on
+      # the service account (storage.buckets.update) should be a visible warning
+      # on the run, not a release that stops after the functions already shipped.
+      - name: Apply Storage CORS
+        if: steps.creds.outputs.configured == 'true'
+        continue-on-error: true
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json
+          BUCKET: ${{ vars.VITE_FIREBASE_STORAGE_BUCKET }}
+        run: bash scripts/apply-storage-cors.sh
+
       # Two steps, in this order, deliberately — see docs/PRODUCTION.md §0b.
       #
       # Rules and indexes go first because the bundle depends on both: a client
@@ -368,24 +388,6 @@ jobs:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json
           PROJECT_ID: ${{ vars.VITE_FIREBASE_PROJECT_ID }}
         run: bash scripts/deploy-rules.sh
-
-      # The bucket's CORS rule, from scripts/storage-cors.json. Nothing applied
-      # that file before, so the production bucket had no rule for the app's
-      # origin: every getBlob read (org logos, attachments) was refused by the
-      # browser and fell back to a download-token URL. Applied on every release
-      # so the bucket cannot drift from the committed file.
-      #
-      # continue-on-error, deliberately and unlike the rules step: reads still
-      # render through the fallback without it, so a missing IAM permission on
-      # the service account (storage.buckets.update) should be a visible warning
-      # on the run, not a release that stops after functions and rules shipped.
-      - name: Apply Storage CORS
-        if: steps.creds.outputs.configured == 'true'
-        continue-on-error: true
-        env:
-          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json
-          BUCKET: ${{ vars.VITE_FIREBASE_STORAGE_BUCKET }}
-        run: bash scripts/apply-storage-cors.sh
 
       - name: Deploy hosting
         if: steps.creds.outputs.configured == 'true' && steps.rules.outcome == 'success'
