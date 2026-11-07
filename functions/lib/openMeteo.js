@@ -436,11 +436,16 @@ export async function requestPoint(point, options = {}) {
         obs: null,
       }
     }
-    return { ok: true, obs: null, retryAfterMs: 0 }
+    return { ok: true, obs: null, exhausted: Boolean(air.exhausted), retryAfterMs: 0 }
   }
   const obs = withSlot(normalized, slot)
   if (options.cache && slot) await options.cache.set(point.key, slot, obs)
-  return { ok: true, obs, retryAfterMs: air.retry ? air.retryAfterMs || 1000 : 0 }
+  return {
+    ok: true,
+    obs,
+    exhausted: Boolean(air.exhausted),
+    retryAfterMs: air.retry ? air.retryAfterMs || 1000 : 0,
+  }
 }
 
 /** One coordinate. Null when the point is invalid or the provider did not answer. */
@@ -478,7 +483,8 @@ export async function fetchGrids(points, options = {}) {
     while (attempt < MAX_ATTEMPTS) {
       const wait = Math.max(0, coolOffUntil - now())
       if (wait > 0) await sleep(Math.min(wait, BACKOFF_CAP_MS))
-      if (now() >= until) {
+      // Another worker may have hit the daily limit while this one slept.
+      if (exhausted || now() >= until) {
         failed.push(point.key)
         return
       }
@@ -489,12 +495,11 @@ export async function fetchGrids(points, options = {}) {
         slot: options.slot,
       })
       await onProgress()
-      if (result.exhausted) {
-        // The rest of this pass would get the same answer. They stay listed
-        // as failed, not clear, and a tick after 00:00 UTC asks again.
-        exhausted = true
-        break
-      }
+      // The rest of this pass would get the same answer. They stay listed as
+      // failed, not clear, and a tick after 00:00 UTC asks again. A reading
+      // that came back with only the air-quality request refused is kept:
+      // the weather half is real.
+      if (result.exhausted) exhausted = true
       if (result.retryAfterMs) {
         coolOffUntil = Math.max(coolOffUntil, now() + Math.min(result.retryAfterMs, BACKOFF_CAP_MS))
       }
@@ -503,7 +508,7 @@ export async function fetchGrids(points, options = {}) {
         else failed.push(point.key)
         return
       }
-      if (!result.retry) break
+      if (exhausted || !result.retry) break
       attempt += 1
       if (attempt < MAX_ATTEMPTS && !result.retryAfterMs) {
         await sleep(Math.min(1000 * 2 ** (attempt - 1), 8000))

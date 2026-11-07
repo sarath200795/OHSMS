@@ -13,8 +13,8 @@ const CONCURRENCY = 6
  * site is usually among the first few back. The queue is bounded so a page of
  * sites does not open sixty calls at once.
  *
- * The provider's cache buckets by ~11 km, so sites in one city cost one request
- * between them however many pins there are.
+ * The provider's cache buckets by ~11 km cells, so sites in one city cost one
+ * request per cell the city spans, however many pins there are.
  *
  * @returns { byId: Record<siteId, {risk, obs}>, done, total }
  */

@@ -323,6 +323,36 @@ describe('fetchGrids', () => {
     expect(slept).toEqual([])
   })
 
+  it('keeps the weather but stops the pass when only air quality is out of quota', async () => {
+    const { calls, fetchImpl } = scripted((url) => {
+      if (url.startsWith(AIR)) {
+        return response({ status: 429, body: '{"reason":"Daily API request limit exceeded."}' })
+      }
+      return response({ json: weatherJson({ temp: 33 }) })
+    })
+    const many = [
+      ...points,
+      { key: '28.6,77.2', lat: 28.6, lng: 77.2 },
+      { key: '19.1,72.9', lat: 19.1, lng: 72.9 },
+      { key: '22.6,88.4', lat: 22.6, lng: 88.4 },
+      { key: '23.0,72.6', lat: 23.0, lng: 72.6 },
+    ]
+    const { observations, failed, exhausted } = await fetchGrids(many, {
+      sleep: async () => {},
+      now: () => NOW,
+      fetchImpl,
+    })
+    expect(exhausted).toBe(true)
+    // Each worker's first point still has its weather reading.
+    expect(observations.size).toBeGreaterThan(0)
+    expect([...observations.values()].every((obs) => obs.tempC === 33)).toBe(true)
+    expect(observations.size + failed.length).toBe(many.length)
+    expect(failed.length).toBeGreaterThan(0)
+    // Nothing is asked after the refusal is seen: at most one ICON and one
+    // air request per worker that started.
+    expect(calls.length).toBeLessThanOrEqual(2 * 3)
+  })
+
   it('still retries a minutely 429', async () => {
     let iconAttempts = 0
     const { fetchImpl } = scripted((url) => {
