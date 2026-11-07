@@ -87,7 +87,10 @@ export const isFirebaseConfigured = USE_EMULATORS
 export const firebaseClientConfig = firebaseConfig
 export const emulatorAuthUrl = USE_EMULATORS ? `http://${EMU_HOST}:${EMU_AUTH_PORT}` : null
 
-if (!isFirebaseConfigured) {
+// A dedicated own-stack build (VITE_DATA_DRIVER=postgres) has no Firebase
+// project by design, so the warning would only be noise there.
+const OWN_STACK = clean(import.meta.env.VITE_DATA_DRIVER).toLowerCase() === 'postgres'
+if (!isFirebaseConfigured && !OWN_STACK) {
   // eslint-disable-next-line no-console
   console.warn('[OHS MS] Firebase is not configured. Copy .env.example to .env.')
 }

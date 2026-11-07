@@ -1,6 +1,6 @@
 import { lazy, Suspense } from 'react'
 import { Routes, Route, Navigate, useParams } from 'react-router-dom'
-import { isFirebaseConfigured } from './shared/firebase'
+import { isAppConfigured } from './shared/appConfigured'
 import ProtectedRoute from './shared/auth/ProtectedRoute'
 import PlatformRoute from './shared/auth/PlatformRoute'
 import ModuleGate from './shared/modules/ModuleGate'
@@ -118,8 +118,8 @@ export default function App() {
     throw new Error('Deliberate test crash (?__crash=1)')
   }
 
-  // Without Firebase config, only the setup screen can render.
-  if (!isFirebaseConfigured) {
+  // Without a backend, only the setup screen can render (appConfigured.js).
+  if (!isAppConfigured()) {
     return (
       <Suspense fallback={<SamLoading />}>
         <Routes>

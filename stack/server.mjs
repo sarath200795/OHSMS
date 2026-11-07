@@ -1,7 +1,8 @@
 // Dedicated-environment host. It is not a policy service: data calls set the
 // session uid and run SQL, and RLS decides. Presign and the workers re-read
 // the profile. The OIDC routes exist so a demo issuer can live on the same
-// host; a company issuer is just the URL in the request.
+// host; a company issuer is just the URL in the request. Company SAML has no
+// demo IdP here: the host is only ever the service provider.
 
 import { createServer } from 'node:http'
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
@@ -9,6 +10,7 @@ import { verifySession, signSession } from './session.mjs'
 import { decidePresign } from './presign.mjs'
 import { identityFromCode } from './oidc.mjs'
 import { identityFromSupabase } from './supabaseAuth.mjs'
+import { authnRequestId, samlClient, identityFromSaml } from './saml.mjs'
 import { establishIdentity } from './identity.mjs'
 import {
   stampIdentity,
@@ -45,9 +47,25 @@ function send(res, status, body, headers = {}) {
   res.end(payload)
 }
 
+// Every route that reads a body is reachable before any session exists
+// (/handoff, /intake, /auth/saml, /auth/supabase), so an uncapped read lets
+// anyone hold an arbitrary upload in this process's memory. The cap sits above
+// the largest legitimate body: a /data commit carrying an inline file of up to
+// MAX_INLINE_BYTES (700 KB) as base64, with room for the rest of the batch.
+export const MAX_BODY_BYTES = 4 * 1024 * 1024
+
 async function readBody(req) {
   const chunks = []
-  for await (const chunk of req) chunks.push(chunk)
+  let size = 0
+  for await (const chunk of req) {
+    size += chunk.length
+    if (size > MAX_BODY_BYTES) {
+      const err = new Error('body too large')
+      err.code = 'payload-too-large'
+      throw err
+    }
+    chunks.push(chunk)
+  }
   const raw = Buffer.concat(chunks).toString('utf8')
   if (!raw) return {}
   const type = String(req.headers['content-type'] || '')
@@ -99,7 +117,11 @@ export function createOwnStackServer({
         return
       }
       if (req.method === 'GET' && url.pathname === '/auth/start') {
-        onAuthStart(url, res)
+        await onAuthStart(url, res)
+        return
+      }
+      if (req.method === 'POST' && url.pathname === '/auth/saml') {
+        await onSaml(req, res)
         return
       }
       if (req.method === 'GET' && url.pathname === '/auth/callback') {
@@ -171,6 +193,10 @@ export function createOwnStackServer({
       }
       send(res, 404, { code: 'not-found', message: 'not found' })
     } catch (err) {
+      if (err.code === 'payload-too-large') {
+        send(res, 413, { code: err.code, message: 'request too large' }, { Connection: 'close' })
+        return
+      }
       send(res, 500, { code: err.code || 'internal', message: 'request failed' })
     }
   })
@@ -209,6 +235,37 @@ export function createOwnStackServer({
     send(res, 400, { code: 'invalid-argument', message: 'unknown op' })
   }
 
+  // One client for the life of the configuration. The AuthnRequest ids it
+  // issues are held in its own cache, and /auth/saml accepts a response only
+  // for one of those ids, so a fresh client per request would refuse every
+  // sign-in.
+  let saml = null
+  function samlFor() {
+    if (!saml) {
+      saml = samlClient({
+        issuer: auth.clientId || 'ohsms',
+        callbackUrl: `${origin}/auth/saml`,
+        idpCert: auth.idpCert,
+        entryPoint: auth.entryPoint,
+      })
+    }
+    return saml
+  }
+
+  // The AuthnRequest ids above are host-wide, so on their own they prove a
+  // response answers *some* sign-in this host started, not that it answers
+  // the one this browser started. Without that, an invited user could start a
+  // sign-in, authenticate as themselves, and have a victim's browser post the
+  // response — the victim then works signed in as the attacker (login CSRF).
+  // So /auth/start sets a one-time cookie naming its request, and /auth/saml
+  // accepts only the response to that request. SameSite=None because the ACS
+  // POST arrives cross-site from the IdP; Secure is required for that, and
+  // browsers treat localhost as secure for the local demo.
+  const SAML_COOKIE = 'ohsms_saml'
+  const SAML_TTL_MS = 10 * 60 * 1000
+  const samlCookie = (value, maxAge) =>
+    `${SAML_COOKIE}=${value}; Path=/auth/saml; HttpOnly; Secure; SameSite=None; Max-Age=${maxAge}`
+
   // `state` proves the callback answers a sign-in this host started, not that
   // it answers the one this browser started: the pending states are host-wide.
   // Without a tie to the browser, an invited user could start a sign-in,
@@ -237,7 +294,28 @@ export function createOwnStackServer({
     return x.length > 0 && x.length === y.length && timingSafeEqual(x, y)
   }
 
-  function onAuthStart(url, res) {
+  async function onAuthStart(url, res) {
+    if (auth.method === 'saml') {
+      let location
+      try {
+        location = await samlFor().getAuthorizeUrlAsync('', {})
+      } catch {
+        send(res, 503, { code: 'unavailable', message: 'single sign-on is not configured' })
+        return
+      }
+      const id = authnRequestId(location)
+      if (!id) {
+        send(res, 503, { code: 'unavailable', message: 'single sign-on is not configured' })
+        return
+      }
+      const binding = randomBytes(24).toString('base64url')
+      codes.set(`saml:${binding}`, { id, at: Date.now() })
+      send(res, 302, '', {
+        Location: location,
+        'Set-Cookie': samlCookie(binding, SAML_TTL_MS / 1000),
+      })
+      return
+    }
     const state = randomBytes(16).toString('base64url')
     const verifier = randomBytes(32).toString('base64url')
     const binding = randomBytes(24).toString('base64url')
@@ -276,6 +354,49 @@ export function createOwnStackServer({
       redirectUri: `${origin}/auth/callback`,
       verifier: pending.verifier,
     })
+    if (!identity.ok) {
+      send(
+        res,
+        401,
+        { code: 'unauthenticated', message: 'the identity provider refused the sign-in' },
+        clear
+      )
+      return
+    }
+    const established = await establishIdentity(engine, db, identity)
+    if (!established.ok) {
+      send(
+        res,
+        403,
+        { code: 'permission-denied', message: 'no account on this organization' },
+        clear
+      )
+      return
+    }
+    const token = signSession(sessionSecret, { sub: established.uid })
+    const app = origin || '/'
+    send(res, 302, '', { Location: `${app}/#session=${encodeURIComponent(token)}`, ...clear })
+  }
+
+  async function onSaml(req, res) {
+    if (auth.method !== 'saml') {
+      send(res, 404, { code: 'not-found', message: 'not found' })
+      return
+    }
+    const body = await readBody(req)
+    const binding = cookieOf(req, SAML_COOKIE)
+    const pending = binding ? codes.get(`saml:${binding}`) : null
+    if (binding) codes.delete(`saml:${binding}`)
+    const clear = { 'Set-Cookie': samlCookie('', 0) }
+    if (!pending || Date.now() - pending.at > SAML_TTL_MS) {
+      send(res, 401, { code: 'unauthenticated', message: 'start sign-in again' }, clear)
+      return
+    }
+    const identity = await identityFromSaml(samlFor(), String(body.SAMLResponse || ''))
+    if (identity.ok && identity.inResponseTo !== pending.id) {
+      send(res, 401, { code: 'unauthenticated', message: 'start sign-in again' }, clear)
+      return
+    }
     if (!identity.ok) {
       send(
         res,
@@ -573,6 +694,20 @@ export function createOwnStackServer({
       return { http: 500, body: { ok: false, reason: 'fulfill' } }
     }
     const body = publicOutcome(result, secrets)
+    // The IdP certificate and entry point arrive on the handoff and nowhere
+    // else: they are not on the request and not in the public env. Once the
+    // environment is live, this host is that company's service provider, so it
+    // takes them from the intake it just accepted.
+    if (body.ok && request.authMethod === 'saml') {
+      auth = {
+        ...auth,
+        method: 'saml',
+        clientId: request.authClientId || auth.clientId,
+        idpCert: secrets.samlIdpCert,
+        entryPoint: secrets.samlEntryPoint,
+      }
+      saml = null
+    }
     return { http: body.ok ? 200 : 400, body }
   }
 

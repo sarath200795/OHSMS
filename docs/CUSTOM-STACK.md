@@ -811,6 +811,14 @@ driver, a full translation of every Firestore decision matrix, and moving
 an existing WEEHS tenant across stacks are still open. The shared Firebase
 production tags stay where they are.
 
+For company SAML the host is the service provider: `GET /auth/start` sends the
+browser to the entry point from the handoff, and `POST /auth/saml` accepts a
+response only if it is signed by the handoff's IdP certificate and answers an
+AuthnRequest this host issued, once. `node e2e/record/own-stack-walkthrough.mjs`
+drives the whole path — wizard, handoff, SAML sign-in, a logo into the
+company's bucket, sign-out — against local stand-ins for the company's IdP and
+bucket, and records it to `recordings/`.
+
 ## Moving between the WEEHS database and the company's database
 
 This move is part of the design, in either direction. It is not built. It is

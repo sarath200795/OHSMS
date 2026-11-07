@@ -84,6 +84,16 @@ export async function fulfillRequest({
   if (request.mode === 'bring' && request.engine !== 'postgres' && request.engine !== 'supabase') {
     return { ok: false, reason: 'engine' }
   }
+  // A SAML company signs in with the certificate and entry point from this
+  // handoff and nothing else. Marking it live without both left an
+  // organization whose every sign-in answered 503.
+  const present = (v) => String(v || '').trim() !== ''
+  if (
+    request.authMethod === 'saml' &&
+    !(present(secret.samlIdpCert) && present(secret.samlEntryPoint))
+  ) {
+    return { ok: false, reason: 'saml' }
+  }
   if (
     (request.mode === 'bring' || secret.databaseUrl) &&
     request.engine === 'postgres' &&
