@@ -29,7 +29,8 @@ export const INTAKE_FIELDS = [
   {
     key: 'samlIdpCert',
     label: 'SAML IdP certificate',
-    hint: 'The identity provider certificate, not a private key for this app.',
+    hint: 'The identity provider certificate, PEM text. Not a private key for this app.',
+    multiline: true,
   },
   {
     key: 'samlEntryPoint',

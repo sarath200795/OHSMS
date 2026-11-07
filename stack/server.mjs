@@ -5,11 +5,21 @@
 
 import { createServer } from 'node:http'
 import { createHash, randomBytes } from 'node:crypto'
+import { fileURLToPath } from 'node:url'
 import { verifySession, signSession } from './session.mjs'
-import { decidePresign } from './presign.mjs'
+import { allowedBlobType, decideBlobRead, decidePresign, MAX_BLOB_BYTES } from './presign.mjs'
 import { identityFromCode } from './oidc.mjs'
+import { identityFromSaml, samlClient } from './saml.mjs'
+import {
+  FIXTURE_CONTINUE_JS,
+  readAuthnRequest,
+  renderFixtureLogin,
+  renderFixturePost,
+  signSamlResponse,
+} from './samlFixture.mjs'
 import { identityFromSupabase } from './supabaseAuth.mjs'
 import { establishIdentity } from './identity.mjs'
+import { accessFacts, repairSignedInOwner } from './ownerGrant.mjs'
 import {
   stampIdentity,
   completePasswordChange,
@@ -32,6 +42,9 @@ import {
 } from './intake.mjs'
 import { renderHandoffForm, renderHandoffRefusal, renderHandoffResult } from './handoffPage.mjs'
 import { fulfillRequest } from './fulfill.mjs'
+import { stackEnvSource } from './publicEnv.mjs'
+import { validateProvisioningRequest } from '../src/shared/org/provisioningSchema.js'
+import { readSpaBody, resolveSpaRequest } from './spa.mjs'
 
 const WORKER = { role: 'ohsms_worker', uid: '' }
 
@@ -73,6 +86,14 @@ function challenge(verifier) {
   return createHash('sha256').update(verifier).digest('base64url')
 }
 
+const GRANT_MS = 10 * 60 * 1000
+const DEFAULT_SPA_ROOT = fileURLToPath(new URL('../dist', import.meta.url))
+
+function sendBytes(res, status, body, headers) {
+  res.writeHead(status, { 'X-Content-Type-Options': 'nosniff', ...headers })
+  res.end(body)
+}
+
 export function createOwnStackServer({
   engine,
   db,
@@ -86,7 +107,31 @@ export function createOwnStackServer({
   intake = new Map(),
   requests = new Map(),
   controlToken = '',
+  spaRoot = DEFAULT_SPA_ROOT,
+  samlFixtureKey = '',
+  localFiling = false,
+  allowLoopback = false,
+  heldSecrets = null,
+  prepareIdentity = null,
+  publicEnv = null,
+  envExtras = null,
 }) {
+  const state = {
+    origin: String(origin || '').replace(/\/$/, ''),
+    sessionSecret,
+    master: dataKeyMaster,
+    auth: { ...auth },
+    publicEnv,
+    envExtras: envExtras || {},
+    saml: null,
+    samlKey: '',
+  }
+  const uploads = new Map()
+  const filing = new Set()
+  const failed = new Map()
+  // Tests listen on port 0 and then learn the address. Fulfillment, the SAML
+  // callback and the presign URLs read this object, so the port can be written
+  // once before the handoff runs.
   const server = createServer(async (req, res) => {
     try {
       const url = new URL(req.url || '/', 'http://localhost')
@@ -99,11 +144,39 @@ export function createOwnStackServer({
         return
       }
       if (req.method === 'GET' && url.pathname === '/auth/start') {
-        onAuthStart(url, res)
+        await onAuthStart(url, res, req)
         return
       }
       if (req.method === 'GET' && url.pathname === '/auth/callback') {
         await onCallback(url, res)
+        return
+      }
+      if (url.pathname === '/auth/saml/acs') {
+        await onSamlAcs(req, res)
+        return
+      }
+      if (url.pathname === '/auth/saml/slo') {
+        send(res, 302, '', { Location: `${selfOrigin(req)}/login?signedOut=1` })
+        return
+      }
+      if (req.method === 'POST' && url.pathname === '/auth/logout') {
+        await onLogout(req, res)
+        return
+      }
+      if (req.method === 'GET' && url.pathname === '/auth/access') {
+        if (!localFiling) {
+          send(res, 404, { code: 'not-found', message: 'not found' })
+          return
+        }
+        await onAccess(req, res)
+        return
+      }
+      if (req.method === 'GET' && url.pathname === '/auth/saml/metadata') {
+        onSamlMetadata(req, res)
+        return
+      }
+      if (url.pathname === '/fixture/saml/sso' || url.pathname === '/fixture/saml/continue.js') {
+        await onSamlFixture(req, res, url)
         return
       }
       if (req.method === 'POST' && url.pathname === '/auth/supabase') {
@@ -114,6 +187,10 @@ export function createOwnStackServer({
         await onPresign(req, res)
         return
       }
+      if (url.pathname === '/blob') {
+        await onBlob(req, res, url)
+        return
+      }
       if (req.method === 'POST' && url.pathname.startsWith('/rpc/')) {
         await onRpc(req, res, url.pathname.slice('/rpc/'.length))
         return
@@ -122,9 +199,9 @@ export function createOwnStackServer({
         url.pathname === '/oidc/.well-known/openid-configuration' ||
         url.pathname === '/.well-known/openid-configuration'
       ) {
-        const base = `${origin || ''}/oidc`
+        const base = `${state.origin}/oidc`
         send(res, 200, {
-          issuer: `${origin}/oidc`,
+          issuer: `${state.origin}/oidc`,
           authorization_endpoint: `${base}/authorize`,
           token_endpoint: `${base}/token`,
           userinfo_endpoint: `${base}/userinfo`,
@@ -149,6 +226,10 @@ export function createOwnStackServer({
         await onFile(req, res)
         return
       }
+      if (req.method === 'GET' && url.pathname === '/registration-status') {
+        await onRegistrationStatus(url, res)
+        return
+      }
       if (req.method === 'POST' && url.pathname === '/intake/start') {
         await onIntakeStart(req, res)
         return
@@ -169,6 +250,19 @@ export function createOwnStackServer({
         await onFulfill(req, res)
         return
       }
+      if (req.method === 'GET' && url.pathname === '/stack-env.js') {
+        if (!publishedEnv()) {
+          send(res, 404, { code: 'not-found', message: 'not found' })
+          return
+        }
+        send(res, 200, stackEnvSource(publishedEnv()), {
+          'Content-Type': 'text/javascript; charset=utf-8',
+        })
+        return
+      }
+      if ((req.method === 'GET' || req.method === 'HEAD') && (await serveSpa(req, res, url))) {
+        return
+      }
       send(res, 404, { code: 'not-found', message: 'not found' })
     } catch (err) {
       send(res, 500, { code: err.code || 'internal', message: 'request failed' })
@@ -177,9 +271,16 @@ export function createOwnStackServer({
 
   async function onData(req, res) {
     const body = await readBody(req)
-    const session = sessionOf(req, sessionSecret)
+    const session = sessionOf(req, state.sessionSecret)
     const roleSession = { role: 'ohsms_browser', uid: session?.sub || '' }
     if (body.op === 'get') {
+      if (session?.sub && body.path === 'users' && body.id === session.sub) {
+        try {
+          await repairSignedInOwner(engine, db, session.sub)
+        } catch (err) {
+          if (err?.code !== '42P01') throw err
+        }
+      }
       const doc = await engine.get(roleSession, body.path, body.id, { rev: Boolean(body.rev) })
       send(res, 200, { doc })
       return
@@ -209,33 +310,43 @@ export function createOwnStackServer({
     send(res, 400, { code: 'invalid-argument', message: 'unknown op' })
   }
 
-  function onAuthStart(url, res) {
-    const state = randomBytes(16).toString('base64url')
+  async function onAuthStart(_url, res, req) {
+    if (state.auth.method === 'saml') {
+      const client = serviceProvider(req)
+      if (!client) {
+        send(res, 400, { code: 'failed-precondition', message: 'SAML is not configured' })
+        return
+      }
+      const location = await client.getAuthorizeUrlAsync('')
+      send(res, 302, '', { Location: location })
+      return
+    }
+    const pending = randomBytes(16).toString('base64url')
     const verifier = randomBytes(32).toString('base64url')
-    codes.set(`state:${state}`, { verifier, at: Date.now() })
-    const issuer = auth.issuer || `${origin}/oidc`
-    const redirect = `${origin}/auth/callback`
-    const location = `${issuer.replace(/\/$/, '')}/authorize?response_type=code&client_id=${encodeURIComponent(auth.clientId || 'ohsms')}&redirect_uri=${encodeURIComponent(redirect)}&scope=openid%20email%20profile&state=${state}&code_challenge=${challenge(verifier)}&code_challenge_method=S256`
+    codes.set(`state:${pending}`, { verifier, at: Date.now() })
+    const issuer = state.auth.issuer || `${state.origin}/oidc`
+    const redirect = `${state.origin}/auth/callback`
+    const location = `${issuer.replace(/\/$/, '')}/authorize?response_type=code&client_id=${encodeURIComponent(state.auth.clientId || 'ohsms')}&redirect_uri=${encodeURIComponent(redirect)}&scope=openid%20email%20profile&state=${pending}&code_challenge=${challenge(verifier)}&code_challenge_method=S256`
     send(res, 302, '', { Location: location })
   }
 
   async function onCallback(url, res) {
-    const state = url.searchParams.get('state')
+    const oauthState = url.searchParams.get('state')
     const code = url.searchParams.get('code')
-    const pending = codes.get(`state:${state}`)
-    codes.delete(`state:${state}`)
+    const pending = codes.get(`state:${oauthState}`)
+    codes.delete(`state:${oauthState}`)
     if (!pending || !code) {
       send(res, 400, { code: 'invalid-argument', message: 'sign-in could not be completed' })
       return
     }
-    const issuer = (auth.issuer || `${origin}/oidc`).replace(/\/$/, '')
+    const issuer = (state.auth.issuer || `${state.origin}/oidc`).replace(/\/$/, '')
     const identity = await identityFromCode({
       tokenEndpoint: `${issuer}/token`,
       userinfoEndpoint: `${issuer}/userinfo`,
-      clientId: auth.clientId || 'ohsms',
-      clientSecret: auth.clientSecret || '',
+      clientId: state.auth.clientId || 'ohsms',
+      clientSecret: state.auth.clientSecret || '',
       code,
-      redirectUri: `${origin}/auth/callback`,
+      redirectUri: `${state.origin}/auth/callback`,
       verifier: pending.verifier,
     })
     if (!identity.ok) {
@@ -250,16 +361,16 @@ export function createOwnStackServer({
       send(res, 403, { code: 'permission-denied', message: 'no account on this organization' })
       return
     }
-    const token = signSession(sessionSecret, { sub: established.uid })
-    const app = origin || '/'
+    const token = signSession(state.sessionSecret, { sub: established.uid })
+    const app = state.origin || '/'
     send(res, 302, '', { Location: `${app}/#session=${encodeURIComponent(token)}` })
   }
 
   async function onSupabase(req, res) {
     const body = await readBody(req)
     const identity = await identityFromSupabase({
-      issuer: auth.issuer,
-      anonKey: auth.anonKey,
+      issuer: state.auth.issuer,
+      anonKey: state.auth.anonKey,
       email: body.email,
       password: body.password,
     })
@@ -272,12 +383,45 @@ export function createOwnStackServer({
       send(res, 403, { code: 'permission-denied', message: 'no account on this organization' })
       return
     }
-    send(res, 200, { token: signSession(sessionSecret, { sub: established.uid }) })
+    send(res, 200, { token: signSession(state.sessionSecret, { sub: established.uid }) })
+  }
+
+  function selfOrigin(req) {
+    const configured = state.origin
+    const host = String(req.headers.host || '').trim()
+    if (!configured || !host || /[\s/@]/.test(host)) return configured
+    let configuredHost = ''
+    try {
+      configuredHost = new URL(configured).hostname
+    } catch {
+      return configured
+    }
+    const hostName = host.startsWith('[')
+      ? host.slice(1, host.indexOf(']'))
+      : host.replace(/:\d+$/, '')
+    // A foreign Host must not mint an upload or ACS URL on someone else's origin.
+    if (hostName !== configuredHost) return configured
+    const proto = configured.startsWith('https:') ? 'https' : 'http'
+    return `${proto}://${host}`
+  }
+
+  function grant(op, path) {
+    const id = randomBytes(16).toString('hex')
+    uploads.set(id, { op, path, exp: Date.now() + GRANT_MS })
+    return id
+  }
+
+  function takeGrant(id, op, path) {
+    const pending = uploads.get(id)
+    uploads.delete(id)
+    if (!pending || pending.op !== op || pending.path !== path || pending.exp < Date.now())
+      return false
+    return true
   }
 
   async function onPresign(req, res) {
     const body = await readBody(req)
-    const session = sessionOf(req, sessionSecret)
+    const session = sessionOf(req, state.sessionSecret)
     if (!session) {
       send(res, 401, { code: 'unauthenticated', message: 'sign in first' })
       return
@@ -288,23 +432,106 @@ export function createOwnStackServer({
       send(res, 403, { code: 'permission-denied', message: 'refused' })
       return
     }
+    const base = selfOrigin(req)
+    const path = encodeURIComponent(body.path)
     if (body.op === 'delete') {
-      blobs.delete(body.path)
-      send(res, 200, { deleteUrl: `${origin}/blob?path=${encodeURIComponent(body.path)}` })
+      // The adapter DELETEs deleteUrl. Deleting here made that request a 404
+      // and left no record of the grant the profile check had just issued.
+      const id = grant('delete', body.path)
+      send(res, 200, { deleteUrl: `${base}/blob?path=${path}&id=${id}` })
       return
     }
-    const id = randomBytes(8).toString('hex')
+    const id = grant('put', body.path)
     send(res, 200, {
-      uploadUrl: `${origin}/blob?path=${encodeURIComponent(body.path)}&id=${id}`,
-      publicUrl: `${origin}/blob?path=${encodeURIComponent(body.path)}`,
+      uploadUrl: `${base}/blob?path=${path}&id=${id}`,
+      publicUrl: `${base}/blob?path=${path}`,
     })
+  }
+
+  async function onBlob(req, res, url) {
+    const path = url.searchParams.get('path') || ''
+    const id = url.searchParams.get('id') || ''
+    if (req.method === 'PUT' || req.method === 'POST') {
+      // Read before refusing. Leaving the body on a keep-alive socket makes the
+      // next request on that connection look like part of this one.
+      const chunks = []
+      let size = 0
+      let tooBig = false
+      for await (const chunk of req) {
+        size += chunk.length
+        if (size > MAX_BLOB_BYTES) {
+          tooBig = true
+          continue
+        }
+        chunks.push(chunk)
+      }
+      if (tooBig) {
+        send(res, 413, { code: 'invalid-argument', message: 'file is too large' })
+        return
+      }
+      if (!takeGrant(id, 'put', path)) {
+        send(res, 403, { code: 'permission-denied', message: 'upload was refused' })
+        return
+      }
+      const type = String(req.headers['content-type'] || 'application/octet-stream')
+      if (!allowedBlobType(type)) {
+        send(res, 415, { code: 'invalid-argument', message: 'that file type is not stored' })
+        return
+      }
+      if (await blobs.has(path)) {
+        send(res, 409, { code: 'already-exists', message: 'that object already exists' })
+        return
+      }
+      const body = Buffer.concat(chunks)
+      await blobs.set(path, {
+        body,
+        contentType: type.split(';')[0].trim().toLowerCase(),
+        size: body.length,
+      })
+      send(res, 200, { ok: true, path, size: body.length })
+      return
+    }
+    if (req.method === 'DELETE') {
+      if (!takeGrant(id, 'delete', path)) {
+        send(res, 403, { code: 'permission-denied', message: 'delete was refused' })
+        return
+      }
+      await blobs.delete(path)
+      send(res, 200, { ok: true })
+      return
+    }
+    if (req.method === 'GET' || req.method === 'HEAD') {
+      const session = sessionOf(req, state.sessionSecret)
+      if (!session) {
+        send(res, 401, { code: 'unauthenticated', message: 'sign in first' })
+        return
+      }
+      const profile = await engine.get(WORKER, 'users', session.sub)
+      const decision = decideBlobRead({ path, profile })
+      if (!decision.ok) {
+        send(res, 403, { code: 'permission-denied', message: 'refused' })
+        return
+      }
+      const stored = await blobs.get(path)
+      if (!stored) {
+        send(res, 404, { code: 'not-found', message: 'not found' })
+        return
+      }
+      sendBytes(res, 200, req.method === 'HEAD' ? undefined : stored.body, {
+        'Content-Type': stored.contentType || 'application/octet-stream',
+        'Content-Length': stored.body.length,
+        'Cache-Control': 'private, no-store',
+      })
+      return
+    }
+    send(res, 405, { code: 'method-not-allowed', message: 'method not allowed' })
   }
 
   async function onRpc(req, res, name) {
     const body = await readBody(req)
-    const session = sessionOf(req, sessionSecret)
+    const session = sessionOf(req, state.sessionSecret)
     const uid = session?.sub || ''
-    const idp = auth.method === 'oidc' || auth.method === 'saml'
+    const idp = state.auth.method === 'oidc' || state.auth.method === 'saml'
     const table = {
       stampIdentity: () => stampIdentity(engine, uid),
       backfillClaims: () => stampIdentity(engine, uid),
@@ -316,7 +543,7 @@ export function createOwnStackServer({
           password: body.password,
           idp,
         }),
-      getDataKeys: () => releaseDataKeys(engine, { uid, master: dataKeyMaster }),
+      getDataKeys: () => releaseDataKeys(engine, { uid, master: state.master }),
       deleteOrgFile: () => deleteOrgFile(engine, blobs, { uid, path: body.path }),
       purgeSoftDeleted: () => runRetention(engine, { orgId: body.orgId }),
       withdrawStalePermitMirrors: () => withdrawStaleMirrors(engine),
@@ -344,10 +571,10 @@ export function createOwnStackServer({
     }
     const raw = await readBody(req)
     const email = String(raw.email || raw.__raw?.match(/email=([^&]+)/)?.[1] || '').trim()
-    const state = url.searchParams.get('state')
+    const oauthState = url.searchParams.get('state')
     const codeChallenge = url.searchParams.get('code_challenge')
     const redirect = url.searchParams.get('redirect_uri')
-    if (!email || !state || !codeChallenge || !redirect) {
+    if (!email || !oauthState || !codeChallenge || !redirect) {
       send(res, 400, { code: 'invalid-argument', message: 'incomplete authorization request' })
       return
     }
@@ -355,7 +582,7 @@ export function createOwnStackServer({
     codes.set(`code:${code}`, { email, challenge: codeChallenge, at: Date.now() })
     const back = new URL(redirect)
     back.searchParams.set('code', code)
-    back.searchParams.set('state', state)
+    back.searchParams.set('state', oauthState)
     send(res, 302, '', { Location: back.toString() })
   }
 
@@ -441,7 +668,7 @@ export function createOwnStackServer({
       }
     }
     const token = newIntakeToken()
-    const link = handoffLink({ origin, requestId: request.id, token })
+    const link = handoffLink({ origin: state.origin, requestId: request.id, token })
     if (!link.ok) {
       return {
         http: 400,
@@ -521,18 +748,123 @@ export function createOwnStackServer({
           },
         },
         mail,
-        dedicatedUrl: origin,
-        gatewayUrl: origin,
+        dedicatedUrl: state.origin,
+        gatewayUrl: state.origin,
       })
-    } catch {
-      return { http: 500, body: { ok: false, reason: 'fulfill' } }
+    } catch (error) {
+      const stage = /^[a-z-]{1,32}$/.test(error?.stage) ? error.stage : 'fulfill'
+      const code = /^[A-Za-z0-9-]{1,32}$/.test(error?.code) ? error.code : 'threw'
+      return { http: 500, body: { ok: false, reason: 'fulfill', stage, code } }
     }
+    if (result?.ok) adoptLive(request, secrets, result)
     const body = publicOutcome(result, secrets)
     return { http: body.ok ? 200 : 400, body }
   }
 
+  function token(value) {
+    return typeof value === 'string' && /^[A-Za-z0-9-]{1,32}$/.test(value) ? value : ''
+  }
+
+  function registrationLog(outcome, orgName) {
+    const name = String(orgName || '')
+      .replace(/[\r\n\t]/g, ' ')
+      .slice(0, 80)
+    console.log(`registration ${outcome} ${name}`)
+  }
+
+  async function liveNamed(name) {
+    try {
+      const orgs = await engine.list(WORKER, 'organizations', {})
+      return orgs.find((org) => org.name === name) || null
+    } catch {
+      return null
+    }
+  }
+
+  async function fileLocal(request) {
+    const name = request.orgName
+    if (filing.has(name)) {
+      registrationLog('in-progress', name)
+      return { http: 409, body: { ok: false, reason: 'in-progress' } }
+    }
+    if (await liveNamed(name)) {
+      registrationLog('already-live', name)
+      return {
+        http: 200,
+        body: { ok: true, status: 'live', dedicatedUrl: state.origin, already: true },
+      }
+    }
+    filing.add(name)
+    try {
+      if (prepareIdentity) {
+        try {
+          await prepareIdentity(request)
+        } catch {
+          failed.set(name, { reason: 'identity' })
+          registrationLog('identity', name)
+          return { http: 503, body: { ok: false, reason: 'identity' } }
+        }
+      }
+      requests.set(request.id, request)
+      const outcome = await runFulfill(request, heldSecrets)
+      if (outcome.body?.ok) {
+        failed.delete(name)
+        registrationLog('live', name)
+      } else {
+        const reason = token(outcome.body?.reason) || 'fulfill'
+        const stage = token(outcome.body?.stage)
+        const code = token(outcome.body?.code)
+        failed.set(name, { reason, stage, code })
+        registrationLog(
+          [reason, stage && `stage=${stage}`, code && `code=${code}`].filter(Boolean).join(' '),
+          name
+        )
+      }
+      return outcome
+    } finally {
+      filing.delete(name)
+    }
+  }
+
+  async function onRegistrationStatus(url, res) {
+    if (!localFiling) {
+      send(res, 404, { code: 'not-found', message: 'not found' })
+      return
+    }
+    const name = String(url.searchParams.get('name') || '').trim()
+    if (!name || name.length > 120) {
+      send(res, 400, { ok: false, reason: 'name' })
+      return
+    }
+    if (await liveNamed(name)) {
+      send(res, 200, { found: true, status: 'live', dedicatedUrl: state.origin })
+      return
+    }
+    if (filing.has(name)) {
+      send(res, 200, { found: true, status: 'running' })
+      return
+    }
+    if (failed.has(name)) {
+      const failure = failed.get(name)
+      const body = { found: true, status: 'failed', reason: failure.reason || 'fulfill' }
+      if (failure.stage) body.stage = failure.stage
+      if (failure.code) body.code = failure.code
+      send(res, 200, body)
+      return
+    }
+    send(res, 200, { found: false, status: 'absent' })
+  }
+
+  function mayFile(req) {
+    if (operator(req)) return true
+    // localFiling is the self-host process only. Its published port is
+    // 127.0.0.1, which the container cannot see (the peer is the docker
+    // bridge). The body is still takePublicRequest: a secret field is refused.
+    return Boolean(localFiling)
+  }
+
   async function onFile(req, res) {
-    if (!operator(req)) {
+    if (!mayFile(req)) {
       send(res, 401, { code: 'unauthenticated', message: 'operator token required' })
       return
     }
@@ -546,8 +878,29 @@ export function createOwnStackServer({
       })
       return
     }
-    const prior = requests.get(accepted.value.id)
-    if (prior?.status === 'live' || intake.get(accepted.value.id)?.secrets) {
+    // Same URL rule as the form. localFiling is this self-host process.
+    // A hosted control plane does not get allowLoopback, so http://127.0.0.1
+    // is refused there too. The response does not echo the submitted URL.
+    const { id: requestId, ...publicFields } = accepted.value
+    const checked = validateProvisioningRequest(publicFields, {
+      allowLoopback: Boolean(localFiling || allowLoopback),
+    })
+    if (!checked.ok) {
+      send(res, 400, {
+        code: 'invalid-argument',
+        message: 'request refused',
+        reason: checked.errors.authIssuer || checked.errors.presignUrl ? 'url' : 'fields',
+      })
+      return
+    }
+    const request = { ...checked.value, id: requestId }
+    if (localFiling && !operator(req)) {
+      const outcome = await fileLocal(request)
+      send(res, outcome.http, outcome.body)
+      return
+    }
+    const prior = requests.get(request.id)
+    if (prior?.status === 'live' || intake.get(request.id)?.secrets) {
       send(res, 409, {
         code: 'failed-precondition',
         message: 'that request is no longer waiting',
@@ -555,8 +908,8 @@ export function createOwnStackServer({
       })
       return
     }
-    requests.set(accepted.value.id, accepted.value)
-    const opened = await openIntake(requests.get(accepted.value.id))
+    requests.set(request.id, request)
+    const opened = await openIntake(requests.get(request.id))
     send(res, opened.http, opened.body)
   }
 
@@ -635,5 +988,211 @@ export function createOwnStackServer({
     send(res, outcome.http, outcome.body)
   }
 
+  function publishedEnv() {
+    if (!state.publicEnv) return null
+    return { ...state.publicEnv, ...state.envExtras }
+  }
+
+  async function onAccess(req, res) {
+    const session = sessionOf(req, state.sessionSecret)
+    const facts = await accessFacts(engine, db, session?.sub || '')
+    send(res, 200, facts)
+  }
+
+  async function onLogout(req, res) {
+    const session = sessionOf(req, state.sessionSecret)
+    const client = serviceProvider(req)
+    const login = `${selfOrigin(req)}/login?signedOut=1`
+    if (!session || !client) {
+      send(res, 200, { url: login })
+      return
+    }
+    try {
+      const url = await client.getLogoutUrlAsync(
+        {
+          nameID: session.sub,
+          nameIDFormat: 'urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress',
+        },
+        ''
+      )
+      send(res, 200, { url })
+    } catch {
+      send(res, 200, { url: login })
+    }
+  }
+
+  function spIssuer() {
+    return state.auth.clientId || 'ohsms'
+  }
+
+  function serviceProvider(req) {
+    if (state.auth.method !== 'saml') return null
+    const cert = state.auth.idpCert
+    const entry = state.auth.entryPoint
+    if (!cert || !entry) return null
+    const issuer = spIssuer()
+    const callbackUrl = `${selfOrigin(req)}/auth/saml/acs`
+    const key = `${issuer}|${callbackUrl}|${entry}|${cert}|${state.auth.forceAuthn ? 1 : 0}`
+    if (state.samlKey !== key) {
+      // always: the assertion has to answer an AuthnRequest this process
+      // issued. A captured response cannot be replayed at ACS after the id
+      // is consumed, and a response that never started here is refused.
+      state.saml = samlClient({
+        issuer,
+        callbackUrl,
+        idpCert: cert,
+        entryPoint: entry,
+        validateInResponseTo: 'always',
+        forceAuthn: Boolean(state.auth.forceAuthn),
+        logoutUrl: entry,
+      })
+      state.samlKey = key
+    }
+    return state.saml
+  }
+
+  function adoptLive(request, secrets, result) {
+    state.publicEnv = result.publicEnv
+    if (request?.authMethod) state.auth.method = request.authMethod
+    if (request?.authIssuer) state.auth.issuer = request.authIssuer
+    if (request?.authClientId) state.auth.clientId = request.authClientId
+    if (secrets?.oidcClientSecret) state.auth.clientSecret = secrets.oidcClientSecret
+    if (secrets?.samlIdpCert) state.auth.idpCert = secrets.samlIdpCert
+    if (secrets?.samlEntryPoint) state.auth.entryPoint = secrets.samlEntryPoint
+    if (secrets?.supabaseAnonKey) state.auth.anonKey = secrets.supabaseAnonKey
+    if (secrets?.dataKeyMaster) state.master = secrets.dataKeyMaster
+    if (secrets?.sessionSecret) state.sessionSecret = secrets.sessionSecret
+    state.saml = null
+    state.samlKey = ''
+  }
+
+  function finishSession(res, established) {
+    if (!established.ok) {
+      send(res, 403, { code: 'permission-denied', message: 'no account on this organization' })
+      return
+    }
+    const token = signSession(state.sessionSecret, { sub: established.uid })
+    const app = state.origin || '/'
+    send(res, 302, '', { Location: `${app}/#session=${encodeURIComponent(token)}` })
+  }
+
+  async function onSamlAcs(req, res) {
+    if (req.method !== 'POST') {
+      send(res, 405, { code: 'method-not-allowed', message: 'method not allowed' })
+      return
+    }
+    const client = serviceProvider(req)
+    if (!client) {
+      send(res, 400, { code: 'failed-precondition', message: 'SAML is not configured' })
+      return
+    }
+    const body = await readBody(req)
+    const samlResponse = body.SAMLResponse
+    if (!samlResponse) {
+      send(res, 400, { code: 'invalid-argument', message: 'sign-in could not be completed' })
+      return
+    }
+    const identity = await identityFromSaml(client, samlResponse)
+    if (!identity.ok) {
+      send(res, 401, {
+        code: 'unauthenticated',
+        message: 'the identity provider refused the sign-in',
+      })
+      return
+    }
+    finishSession(res, await establishIdentity(engine, db, identity))
+  }
+
+  function onSamlMetadata(req, res) {
+    const client = serviceProvider(req)
+    if (!client) {
+      send(res, 404, { code: 'not-found', message: 'SAML is not configured' })
+      return
+    }
+    send(res, 200, client.generateServiceProviderMetadata(null, null), {
+      'Content-Type': 'application/xml; charset=utf-8',
+    })
+  }
+
+  async function onSamlFixture(req, res, url) {
+    if (!samlFixtureKey) {
+      send(res, 404, { code: 'not-found', message: 'not found' })
+      return
+    }
+    if (url.pathname === '/fixture/saml/continue.js') {
+      send(res, 200, FIXTURE_CONTINUE_JS, { 'Content-Type': 'text/javascript; charset=utf-8' })
+      return
+    }
+    const acs = `${selfOrigin(req)}/auth/saml/acs`
+    if (req.method === 'GET') {
+      const samlRequest = url.searchParams.get('SAMLRequest') || ''
+      if (!samlRequest) {
+        send(res, 400, { code: 'invalid-argument', message: 'incomplete authorization request' })
+        return
+      }
+      send(
+        res,
+        200,
+        renderFixtureLogin({
+          action: '/fixture/saml/sso',
+          samlRequest,
+          relayState: url.searchParams.get('RelayState') || '',
+        })
+      )
+      return
+    }
+    if (req.method !== 'POST') {
+      send(res, 405, { code: 'method-not-allowed', message: 'method not allowed' })
+      return
+    }
+    const body = await readBody(req)
+    const email = String(body.email || '').trim()
+    const parsed = readAuthnRequest(body.SAMLRequest)
+    if (!email || !parsed.id || parsed.acs !== acs || parsed.issuer !== spIssuer()) {
+      send(res, 400, { code: 'invalid-argument', message: 'incomplete authorization request' })
+      return
+    }
+    const samlResponse = signSamlResponse({
+      key: samlFixtureKey,
+      cert: state.auth.idpCert,
+      audience: spIssuer(),
+      acsUrl: acs,
+      nameId: email,
+      inResponseTo: parsed.id,
+    })
+    send(
+      res,
+      200,
+      renderFixturePost({
+        acsUrl: acs,
+        samlResponse,
+        relayState: String(body.RelayState || '').slice(0, 200),
+      })
+    )
+  }
+
+  async function serveSpa(req, res, url) {
+    if (!state.publicEnv) return false
+    const hit = await resolveSpaRequest(spaRoot, url.pathname)
+    if (hit.kind === 'forbidden' || hit.kind === 'missing') {
+      send(res, 404, { code: 'not-found', message: 'not found' })
+      return true
+    }
+    if (hit.kind === 'unbuilt') {
+      send(res, 404, {
+        code: 'not-found',
+        message: 'the application build is not on this host',
+      })
+      return true
+    }
+    const file = await readSpaBody(hit)
+    sendBytes(res, 200, req.method === 'HEAD' ? undefined : file.body, {
+      'Content-Type': file.type,
+      'Cache-Control': file.hashed ? 'public, max-age=31536000, immutable' : 'no-store',
+    })
+    return true
+  }
+
+  server.stackState = state
   return server
 }

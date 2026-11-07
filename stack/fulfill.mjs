@@ -11,6 +11,7 @@
 
 import { randomBytes } from 'node:crypto'
 import { applySchema } from './engine.mjs'
+import { rememberOwner } from './ownerGrant.mjs'
 import { newSessionSecret } from './session.mjs'
 import { statusPatch, takeSecrets } from './intake.mjs'
 
@@ -40,12 +41,33 @@ function publicEnv({ request, gatewayUrl, presignUrl }) {
 function assertPublic(env, secrets) {
   const blob = JSON.stringify(env)
   for (const value of Object.values(secrets)) {
-    if (value && blob.includes(value)) {
+    // The MinIO user and the SAML client id are both the public name ohsms,
+    // and the issuer URL contains that name. includes() then throws after
+    // the organization row is already written, and the client only sees a
+    // generic fulfill failure. A short public name is not a secret. Long
+    // values, the database URL, and a service-role key still are.
+    if (typeof value === 'string' && value.length >= 12 && blob.includes(value)) {
       throw new Error('public env contains a secret')
     }
   }
   if (/postgres(ql)?:\/\//i.test(blob) || /service[-_]?role/i.test(blob)) {
     throw new Error('public env contains a credential')
+  }
+}
+
+function sqlState(error) {
+  const code = error?.code
+  return typeof code === 'string' && /^[0-9A-Z]{5}$/.test(code) ? code : 'threw'
+}
+
+async function at(stage, fn) {
+  try {
+    return await fn()
+  } catch (error) {
+    const wrapped = new Error('fulfill failed')
+    wrapped.stage = stage
+    wrapped.code = sqlState(error)
+    throw wrapped
   }
 }
 
@@ -93,33 +115,16 @@ export async function fulfillRequest({
     return { ok: false, reason: 'database' }
   }
 
-  await applySchema(db)
+  // databaseUrl stays in the secret store. This call does not open it.
+  // The engine is the one the caller already bound. The local demo owns
+  // PGlite; a placeholder connection string on the handoff form must not
+  // become the database the browser then cannot reach.
+  //
+  // Check the public env before any write. The previous order created the
+  // organization and the invite, then threw, so a retry could see a partial
+  // row while the form only said fulfill.
   const orgId = orgIdFor(request.id)
   const sessionSecret = secret.sessionSecret || newSessionSecret()
-  await engine.commit(WORKER, [
-    {
-      type: 'set',
-      path: 'organizations',
-      id: orgId,
-      merge: false,
-      data: {
-        name: request.orgName,
-        address: request.address || '',
-        createdBy: 'provisioning',
-        stack: 'own',
-      },
-    },
-  ])
-  await db.query(
-    `INSERT INTO invites (email, org_id, role, name) VALUES ($1, $2, 'admin', $3)
-     ON CONFLICT (email) DO UPDATE SET org_id = EXCLUDED.org_id, role = 'admin', name = EXCLUDED.name`,
-    [
-      String(request.contactEmail).trim().toLowerCase(),
-      orgId,
-      request.contactName || request.orgName,
-    ]
-  )
-
   const presignUrl = request.presignUrl || `${gatewayUrl}/presign`
   const anon = request.authMethod === 'supabase' ? secret.supabaseAnonKey || '' : ''
   const env = publicEnv({
@@ -129,18 +134,45 @@ export async function fulfillRequest({
   })
   const secretBlob = { ...secret, sessionSecret }
   delete secretBlob.supabaseAnonKey
-  assertPublic(env, secretBlob)
-  if (anon) {
-    // The anon key is public by construction. The service-role key is not,
-    // and assertPublic already rejected it if it was copied into env.
+  try {
+    assertPublic(env, secretBlob)
+  } catch {
+    return { ok: false, reason: 'public-env' }
   }
+
+  await at('schema', () => applySchema(db))
+  await at('organization', () =>
+    engine.commit(WORKER, [
+      {
+        type: 'set',
+        path: 'organizations',
+        id: orgId,
+        merge: false,
+        data: {
+          name: request.orgName,
+          address: request.address || '',
+          createdBy: 'provisioning',
+          stack: 'own',
+        },
+      },
+    ])
+  )
+  const ownerEmail = String(request.contactEmail).trim().toLowerCase()
+  await at('invite', async () => {
+    await db.query(
+      `INSERT INTO invites (email, org_id, role, name) VALUES ($1, $2, 'admin', $3)
+       ON CONFLICT (email) DO UPDATE SET org_id = EXCLUDED.org_id, role = 'admin', name = EXCLUDED.name`,
+      [ownerEmail, orgId, request.contactName || request.orgName]
+    )
+    await rememberOwner(db, { email: ownerEmail, orgId, orgName: request.orgName })
+  })
 
   const patch = statusPatch({
     status: 'live',
     dedicatedUrl,
     secretsReceived: true,
   })
-  await admin.update(request.id, patch)
+  await at('publish', () => admin.update(request.id, patch))
   let mailed = { sent: false, reason: 'no-mail' }
   if (mail) {
     mailed = await mail({

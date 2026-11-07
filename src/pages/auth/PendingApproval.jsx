@@ -18,14 +18,20 @@ export default function PendingApproval() {
         </span>
         <p className="text-sm text-ink-600">
           Your account has been created and is waiting for an administrator at{' '}
-          <span className="font-semibold">{orgName}</span> to approve your access. You&apos;ll be able to
-          sign in to the platform once approved.
+          <span className="font-semibold">{orgName}</span> to approve your access. You&apos;ll be
+          able to sign in to the platform once approved.
         </p>
         <div className="flex w-full gap-2">
-          <Button variant="soft" icon={RefreshCw} className="flex-1" onClick={() => refreshProfile()}>
+          <Button
+            type="button"
+            variant="soft"
+            icon={RefreshCw}
+            className="flex-1"
+            onClick={() => refreshProfile()}
+          >
             Check again
           </Button>
-          <Button variant="ghost" className="flex-1" onClick={signOut}>
+          <Button type="button" variant="ghost" className="flex-1" onClick={signOut}>
             Sign out
           </Button>
         </div>

@@ -39,7 +39,7 @@ function page(title, inner) {
   main { max-width: 36rem; margin: 0 auto; padding: 2rem 1rem 3rem; }
   label { display: block; font-weight: 600; margin-top: 1rem; }
   .hint { display: block; font-weight: 400; color: #333; }
-  input { width: 100%; box-sizing: border-box; margin-top: 0.25rem; padding: 0.5rem; font: inherit; }
+  input, textarea { width: 100%; box-sizing: border-box; margin-top: 0.25rem; padding: 0.5rem; font: inherit; }
   button { margin-top: 1.25rem; padding: 0.6rem 1rem; font: inherit; }
   a { color: #0b3a82; }
 </style>
@@ -54,12 +54,15 @@ ${inner}
 
 export function renderHandoffForm({ requestId, token, orgName }) {
   const who = orgName ? escapeHtml(orgName) : 'this organization'
-  const fields = INTAKE_FIELDS.map(
-    (field) => `<label for="${escapeHtml(field.key)}">${escapeHtml(field.label)}
+  const fields = INTAKE_FIELDS.map((field) => {
+    const control = field.multiline
+      ? `<textarea id="${escapeHtml(field.key)}" name="${escapeHtml(field.key)}" autocomplete="off" spellcheck="false" rows="6"></textarea>`
+      : `<input id="${escapeHtml(field.key)}" name="${escapeHtml(field.key)}" type="password" autocomplete="off" spellcheck="false">`
+    return `<label for="${escapeHtml(field.key)}">${escapeHtml(field.label)}
 <span class="hint">${escapeHtml(field.hint)}</span>
-<input id="${escapeHtml(field.key)}" name="${escapeHtml(field.key)}" type="password" autocomplete="off" spellcheck="false">
+${control}
 </label>`
-  ).join('\n')
+  }).join('\n')
   return page(
     'Secret handoff',
     `<h1>Secret handoff</h1>

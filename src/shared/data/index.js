@@ -166,6 +166,7 @@ import firestore from './adapters/firestore'
 import memory from './adapters/memory'
 import postgres from './adapters/postgres'
 import { resolveDataDriver } from './resolveDriver'
+import { publicStackValue } from '../stackPublicEnv'
 
 // Static registry (not dynamic imports): subscribe() must return an
 // unsubscribe function synchronously, which an async-loaded adapter cannot do
@@ -180,5 +181,8 @@ const DRIVERS = {
 // Throws UnimplementedDataDriverError for supabase until that flavor's adapter
 // is actually in DRIVERS. postgres is registered. Unknown names still resolve
 // to firestore.
-export const dataDriver = resolveDataDriver(import.meta.env.VITE_DATA_DRIVER, DRIVERS)
+// publicStackValue reads the dedicated host's /stack-env.js when that page
+// injected one, and the inlined flag otherwise. The shared build inlines
+// nothing (or firestore) and has no injection, so this stays Firestore there.
+export const dataDriver = resolveDataDriver(publicStackValue('VITE_DATA_DRIVER'), DRIVERS)
 export const dataProvider = DRIVERS[dataDriver]

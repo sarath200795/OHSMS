@@ -180,7 +180,34 @@ function fail(errors) {
  *
  * @param {Record<string, unknown>} input
  */
-export function validateProvisioningRequest(input) {
+// http is accepted only for this machine, and only when the caller is the
+// local self-host (allowLoopback). The URL parser is what rejects a password,
+// a query, or a host that merely begins with 127.0.0.1. A prefix check would
+// allow http://127.0.0.1.evil.example and http://user:pass@127.0.0.1, and the
+// server would then fetch that issuer.
+function loopbackHttp(value) {
+  let url
+  try {
+    url = new URL(value)
+  } catch {
+    return false
+  }
+  if (url.protocol !== 'http:') return false
+  if (url.username || url.password) return false
+  if (url.search || url.hash) return false
+  if (url.hostname !== '127.0.0.1' && url.hostname !== 'localhost') return false
+  // Node rewrites 2130706433 and 0x7f000001 into 127.0.0.1. Those are not the
+  // address this host publishes, so the written host has to be one of the
+  // two names as well.
+  return /^http:\/\/(127\.0\.0\.1|localhost)(?::\d{1,5})?(?:\/|$)/i.test(value)
+}
+
+function acceptableUrl(value, allowLoopback) {
+  if (HTTPS.test(value)) return true
+  return Boolean(allowLoopback) && loopbackHttp(value)
+}
+
+export function validateProvisioningRequest(input, { allowLoopback = false } = {}) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) {
     return fail({ form: 'The request could not be read.' })
   }
@@ -270,11 +297,11 @@ export function validateProvisioningRequest(input) {
     errors.authMethod = 'Choose company OIDC, company SAML, or Supabase Auth.'
   } else if (authMethod === 'supabase') {
     authClientId = ''
-    if (authIssuer && !HTTPS.test(authIssuer)) {
+    if (authIssuer && !acceptableUrl(authIssuer, allowLoopback)) {
       errors.authIssuer = 'The project URL has to be an https address, with no password in it.'
     }
   } else {
-    if (!HTTPS.test(authIssuer)) {
+    if (!acceptableUrl(authIssuer, allowLoopback)) {
       errors.authIssuer = 'The issuer URL has to be an https address, with no password in it.'
     }
     if (!CLIENT_ID.test(authClientId)) {
@@ -293,7 +320,7 @@ export function validateProvisioningRequest(input) {
     if (!BUCKET.test(bucketName)) errors.bucketName = 'Enter the bucket name. Not an access key.'
     if (!REGION.test(bucketRegion))
       errors.bucketRegion = 'Enter the bucket region, such as ap-south-1.'
-    if (presignUrl && !HTTPS.test(presignUrl)) {
+    if (presignUrl && !acceptableUrl(presignUrl, allowLoopback)) {
       errors.presignUrl = 'The presign endpoint has to be an https address, with no key in the URL.'
     }
     if (presignUrl.length > 500) errors.presignUrl = 'Use a shorter presign endpoint URL.'

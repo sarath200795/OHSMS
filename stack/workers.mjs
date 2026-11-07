@@ -131,7 +131,7 @@ export async function deleteOrgFile(engine, blobs, { uid, path }) {
   const profile = await liveProfile(engine, uid)
   const decision = mayDeleteFile(profile, path)
   if (!decision.ok) return decision
-  if (blobs) blobs.delete(path)
+  if (blobs) await blobs.delete(path)
   return { ok: true }
 }
 

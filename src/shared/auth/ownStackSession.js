@@ -6,32 +6,47 @@
 // after the person was suspended (storage.rules, S-19). The token is not a
 // database password and it is not a VITE_ variable.
 
+import { publicStackValue } from '../stackPublicEnv'
+
 export function isOwnStackBuild() {
-  const driver = typeof import.meta !== 'undefined' ? import.meta.env?.VITE_DATA_DRIVER : ''
-  return (
-    String(driver || '')
-      .trim()
-      .toLowerCase() === 'postgres'
-  )
+  return publicStackValue('VITE_DATA_DRIVER').toLowerCase() === 'postgres'
 }
 
 export function ownStackGateway() {
-  const raw = typeof import.meta !== 'undefined' ? import.meta.env?.VITE_DATA_GATEWAY : ''
-  return String(raw || '').replace(/\/$/, '')
+  return publicStackValue('VITE_DATA_GATEWAY').replace(/\/$/, '')
 }
 
 export function ownStackAuthMethod() {
-  const raw = typeof import.meta !== 'undefined' ? import.meta.env?.VITE_AUTH_METHOD : ''
-  return String(raw || '')
-    .trim()
-    .toLowerCase()
+  return publicStackValue('VITE_AUTH_METHOD').toLowerCase()
 }
 
 const KEY = 'ohsms.ownStack.session'
 let memory = ''
+// Set before the token is cleared. /login would otherwise start a new
+// ForceAuthn while sign-out is still asking the IdP to drop its cookie, and
+// the approval page's Sign out never finishes.
+let signedOutHold = false
+
+export function holdOwnStackSignIn() {
+  signedOutHold = true
+}
+
+export function ownStackSignInHeld() {
+  return signedOutHold
+}
+
+export function resetOwnStackSignInHold() {
+  signedOutHold = false
+}
+
+export function shouldStartCompanySignIn({ idpStart, isAuthed, token, search, held }) {
+  if (!idpStart || isAuthed || token || held) return false
+  return new URLSearchParams(String(search || '')).get('signedOut') !== '1'
+}
 
 export function setAccessToken(token) {
   memory = typeof token === 'string' ? token : ''
+  if (memory) signedOutHold = false
   try {
     if (memory) sessionStorage.setItem(KEY, memory)
     else sessionStorage.removeItem(KEY)
@@ -53,6 +68,30 @@ export function currentAccessToken() {
 
 export function clearAccessToken() {
   setAccessToken('')
+}
+
+// The SAML response lands on /#session= before React Router runs. A later
+// <Navigate> drops the hash, and /login then starts a new ForceAuthn request.
+// Keycloak still has the session cookie, so it shows "Please re-authenticate
+// to continue" again. Read the hash before that navigation.
+export function captureOwnStackSessionFromHash(
+  loc = globalThis.location,
+  history = globalThis.history
+) {
+  if (!isOwnStackBuild()) return ''
+  const hash = String(loc?.hash || '')
+  if (!hash.includes('session=')) return ''
+  const token = new URLSearchParams(hash.replace(/^#/, '')).get('session') || ''
+  if (!token) return ''
+  setAccessToken(token)
+  const next = `${loc.pathname || '/'}${loc.search || ''}`
+  try {
+    history?.replaceState?.({}, '', next)
+  } catch {
+    // The token is already stored. A history API that refuses the rewrite
+    // must not drop the session.
+  }
+  return token
 }
 
 function decodeBase64Url(part) {

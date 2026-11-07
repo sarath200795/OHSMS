@@ -25,7 +25,8 @@ vi.mock('./orgData', () => ({
   orgIndexRef: (name) => ({ index: String(name).trim().toLowerCase() }),
 }))
 
-const { fileProvisioningRequest, listProvisioningRequests } = await import('./provisioningRequest')
+const { fileProvisioningRequest, listProvisioningRequests, localRequestDefaults } =
+  await import('./provisioningRequest')
 
 const bring = {
   orgName: 'Northwind Metals',
@@ -120,6 +121,48 @@ describe('validateProvisioningRequest', () => {
     expect(checked.errors.status).toMatch(/requested/)
   })
 
+  it('accepts a loopback issuer only when the dedicated host asks for it', () => {
+    const local = {
+      ...bring,
+      authIssuer: 'http://127.0.0.1:8080/realms/ohsms',
+      authClientId: 'ohsms',
+      bucketMode: 'bring',
+      bucketName: 'ohsms',
+      bucketRegion: 'us-east-1',
+      presignUrl: 'http://127.0.0.1:8787/presign',
+    }
+    expect(validateProvisioningRequest(local).ok).toBe(false)
+    expect(validateProvisioningRequest(local).errors.authIssuer).toMatch(/https/)
+    expect(validateProvisioningRequest(local).errors.presignUrl).toMatch(/https/)
+    expect(validateProvisioningRequest(local, { allowLoopback: true }).ok).toBe(true)
+    expect(
+      validateProvisioningRequest(
+        { ...local, authIssuer: 'http://login.example/realms/staff' },
+        { allowLoopback: true }
+      ).ok
+    ).toBe(false)
+    for (const authIssuer of [
+      'http://user:pass@127.0.0.1:8080/realms/ohsms',
+      'http://127.0.0.1.evil.example/realms/ohsms',
+      'http://127.0.0.1:8080/realms/ohsms?next=https://evil.example',
+      'http://169.254.169.254/latest/meta-data',
+      'http://10.1.1.1/realms/ohsms',
+      'http://2130706433/realms/ohsms',
+      'http://0x7f000001/realms/ohsms',
+      'http://localhost.evil.example/realms/ohsms',
+    ]) {
+      expect(
+        validateProvisioningRequest({ ...local, authIssuer }, { allowLoopback: true }).ok
+      ).toBe(false)
+    }
+    expect(
+      validateProvisioningRequest(
+        { ...local, presignUrl: 'http://127.0.0.1:8787/presign?X-Amz-Credential=abc' },
+        { allowLoopback: true }
+      ).ok
+    ).toBe(false)
+  })
+
   it('refuses an issuer that is not a public https URL', () => {
     expect(
       validateProvisioningRequest({ ...bring, authIssuer: 'http://login.example/realms/staff' }).ok
@@ -148,6 +191,46 @@ describe('validateProvisioningRequest', () => {
 })
 
 describe('fileProvisioningRequest', () => {
+  it('posts a public request to the local control plane and does not write Firestore', async () => {
+    globalThis.__OHSMS_STACK__ = {
+      VITE_CONTROL_PLANE: 'local',
+      VITE_DATA_GATEWAY: 'http://127.0.0.1:8787',
+      VITE_AUTH_ISSUER: 'http://127.0.0.1:8080/realms/ohsms',
+      VITE_AUTH_CLIENT_ID: 'ohsms',
+      VITE_S3_PRESIGN_ENDPOINT: 'http://127.0.0.1:8787/presign',
+    }
+    const original = globalThis.fetch
+    const calls = []
+    globalThis.fetch = async (url, opts) => {
+      calls.push({ url: String(url), body: opts.body })
+      return {
+        ok: true,
+        json: async () => ({ ok: true, status: 'live', dedicatedUrl: 'http://127.0.0.1:8787' }),
+      }
+    }
+    try {
+      const defaults = localRequestDefaults()
+      expect(defaults.authIssuer).toBe('http://127.0.0.1:8080/realms/ohsms')
+      const filed = await fileProvisioningRequest({
+        orgName: 'Local Metals',
+        address: 'Pune',
+        contactName: 'Asha Rao',
+        contactEmail: 'asha@local.test',
+        handoffContact: 'asha@local.test',
+        ...defaults,
+      })
+      expect(filed.dedicatedUrl).toBe('http://127.0.0.1:8787')
+      expect(calls).toHaveLength(1)
+      expect(calls[0].url).toBe('http://127.0.0.1:8787/requests')
+      expect(calls[0].body).not.toMatch(/postgres:\/\//)
+      expect(h.findOrgByName).not.toHaveBeenCalled()
+      expect(h.batch.set).not.toHaveBeenCalled()
+    } finally {
+      globalThis.fetch = original
+      delete globalThis.__OHSMS_STACK__
+    }
+  })
+
   it('writes the request and reserves the name, and does not create a WEEHS organization', async () => {
     const filed = await fileProvisioningRequest(bring)
     expect(filed).toMatchObject({

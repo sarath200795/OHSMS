@@ -70,6 +70,19 @@ CREATE TABLE IF NOT EXISTS invites (
   name text NOT NULL
 );
 
+-- The invite row is deleted on first sign-in. A profile that already existed
+-- was returned as-is, so a founder row with no status stayed on the approval
+-- gate and there was nothing left to repair it from. This is that assignment
+-- after the invite is gone. The browser role has no grant. Email is not a
+-- field the client may use to nominate itself: sign-in matches the session
+-- uid, which is the NameID the host put in the token.
+CREATE TABLE IF NOT EXISTS owner_grants (
+  email text PRIMARY KEY,
+  org_id text NOT NULL,
+  role text NOT NULL,
+  org_name text NOT NULL DEFAULT ''
+);
+
 CREATE TABLE IF NOT EXISTS schema_migrations (
   id text PRIMARY KEY
 );
@@ -77,7 +90,7 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 GRANT SELECT, INSERT, UPDATE, DELETE ON documents TO ohsms_browser;
 GRANT SELECT, INSERT, UPDATE, DELETE ON files TO ohsms_browser;
 GRANT SELECT, INSERT, UPDATE, DELETE ON policy_union TO ohsms_browser;
-GRANT SELECT, INSERT, UPDATE, DELETE ON documents, files, policy_union, auth_secrets, invites TO ohsms_worker;
+GRANT SELECT, INSERT, UPDATE, DELETE ON documents, files, policy_union, auth_secrets, invites, owner_grants TO ohsms_worker;
 
 ALTER TABLE documents ENABLE ROW LEVEL SECURITY;
 ALTER TABLE documents FORCE ROW LEVEL SECURITY;
@@ -89,6 +102,8 @@ ALTER TABLE auth_secrets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE auth_secrets FORCE ROW LEVEL SECURITY;
 ALTER TABLE invites ENABLE ROW LEVEL SECURITY;
 ALTER TABLE invites FORCE ROW LEVEL SECURITY;
+ALTER TABLE owner_grants ENABLE ROW LEVEL SECURITY;
+ALTER TABLE owner_grants FORCE ROW LEVEL SECURITY;
 
 -- ── Session helpers ──────────────────────────────────────────────────────────
 -- SECURITY DEFINER so a policy can read the caller's profile without the

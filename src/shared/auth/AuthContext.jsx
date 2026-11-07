@@ -34,8 +34,10 @@ import {
 } from '../org/orgData'
 import { nameTakenMessage } from '../org/provisioningSchema'
 import {
+  captureOwnStackSessionFromHash,
   clearAccessToken,
   currentAccessToken,
+  holdOwnStackSignIn,
   isOwnStackBuild,
   ownStackAuthMethod,
   ownStackGateway,
@@ -69,7 +71,14 @@ async function withRetry(fn, tries = 3) {
 }
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null) // firebase auth user
+  const [user, setUser] = useState(() => {
+    // Before any child <Navigate> can replace /#session= with /portal.
+    captureOwnStackSessionFromHash()
+    if (!isOwnStackBuild()) return null
+    const uid = sessionUid()
+    if (!uid) return null
+    return { uid, getIdToken: async () => currentAccessToken() }
+  })
   const [profile, setProfile] = useState(null) // users/{uid} doc
   const [org, setOrg] = useState(null) // organizations/{orgId} doc (live)
   const [loading, setLoading] = useState(true)
@@ -425,6 +434,27 @@ export function AuthProvider({ children }) {
 
   const signOut = async () => {
     if (isOwnStackBuild()) {
+      const gateway = ownStackGateway()
+      const token = currentAccessToken()
+      const method = ownStackAuthMethod()
+      let next = ''
+      // Ask while the token is still valid. Clearing it first sends the
+      // approval page to /login, and that page starts another ForceAuthn
+      // before this request returns, so Sign out never finishes.
+      if (gateway && token && (method === 'saml' || method === 'oidc')) {
+        try {
+          const res = await fetch(`${gateway}/auth/logout`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+            signal: AbortSignal.timeout(4000),
+          })
+          const body = await res.json().catch(() => ({}))
+          if (typeof body.url === 'string' && /^https?:\/\//.test(body.url)) next = body.url
+        } catch {
+          // The IdP did not answer. The local session still has to end.
+        }
+      }
+      holdOwnStackSignIn()
       clearKeyring()
       clearSharedSubscriptions()
       endSession()
@@ -432,6 +462,13 @@ export function AuthProvider({ children }) {
       setUser(null)
       setProfile(null)
       setPendingMfa(null)
+      const dest = next || '/login?signedOut=1'
+      try {
+        window.location.assign(dest)
+      } catch {
+        // The token is already gone. A runner that refuses navigation stays
+        // on the signed-out login page instead of starting another sign-in.
+      }
       return
     }
     // Before the network call, not after: fbSignOut can fail or hang offline,
@@ -470,7 +507,7 @@ export function AuthProvider({ children }) {
     modulesReady,
     moduleEnabled: (key) => isModuleEnabled(moduleMap, key),
     orgId: profile?.orgId || null,
-    orgName: profile?.orgName || '',
+    orgName: profile?.orgName || org?.name || '',
     actor: { uid: user?.uid, name: profile?.name || user?.displayName || 'Unknown' },
     registerOrganization,
     signUpMember,

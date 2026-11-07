@@ -2,7 +2,11 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { Button, Field, Input, Select } from '../../shared/ui'
-import { fileProvisioningRequest } from '../../shared/org/provisioningRequest'
+import {
+  fileProvisioningRequest,
+  localControlPlane,
+  localRequestDefaults,
+} from '../../shared/org/provisioningRequest'
 import {
   AUTH_METHODS,
   BUCKET_MODES,
@@ -12,6 +16,8 @@ import {
   validateProvisioningRequest,
 } from '../../shared/org/provisioningSchema'
 import AuthLayout from './AuthLayout'
+
+const PRESET = localRequestDefaults()
 
 const EMPTY = {
   orgName: '',
@@ -28,6 +34,7 @@ const EMPTY = {
   bucketName: '',
   bucketRegion: '',
   presignUrl: '',
+  ...(PRESET || {}),
 }
 
 /**
@@ -41,6 +48,7 @@ const EMPTY = {
 export default function OwnStackRequest({ onBack }) {
   const [form, setForm] = useState(EMPTY)
   const [errors, setErrors] = useState({})
+  const [notice, setNotice] = useState('')
   const [busy, setBusy] = useState(false)
   const [filed, setFiled] = useState(null)
 
@@ -82,19 +90,34 @@ export default function OwnStackRequest({ onBack }) {
       ...form,
       handoffContact: form.handoffContact.trim() || form.contactEmail.trim(),
     }
-    const checked = validateProvisioningRequest(payload)
+    // The prefilled issuer and presign are http://127.0.0.1 on this host.
+    // Calling validate without allowLoopback applies the hosted rule and
+    // rejects those values before the request is filed. The flag is the
+    // injected control plane, not the fact that the text starts with http.
+    const checked = validateProvisioningRequest(payload, {
+      allowLoopback: localControlPlane(),
+    })
     if (!checked.ok) {
       setErrors(checked.errors)
-      toast.error(checked.errors.form || 'Check the highlighted fields.')
+      const text =
+        checked.errors.form ||
+        checked.errors.authIssuer ||
+        checked.errors.presignUrl ||
+        'Check the highlighted fields.'
+      setNotice(text)
+      toast.error(text)
       return
     }
     setErrors({})
+    setNotice('')
     setBusy(true)
     try {
       setFiled(await fileProvisioningRequest(checked.value))
     } catch (err) {
       if (err.fields) setErrors(err.fields)
-      toast.error(err.message || 'The request was not filed.')
+      const text = err.message || 'The request was not filed.'
+      setNotice(text)
+      toast.error(text, { duration: 10000 })
     } finally {
       setBusy(false)
     }
@@ -104,7 +127,11 @@ export default function OwnStackRequest({ onBack }) {
     return (
       <AuthLayout
         title="Request filed"
-        subtitle="Status: requested. Provisioning has not started."
+        subtitle={
+          filed.dedicatedUrl
+            ? 'The organization is live. Sign in with the company identity provider.'
+            : 'Status: requested. Provisioning has not started.'
+        }
         footer={
           <Link
             to="/login"
@@ -115,10 +142,22 @@ export default function OwnStackRequest({ onBack }) {
         }
       >
         <div className="space-y-3 text-sm leading-relaxed text-ink-700">
+          {filed.dedicatedUrl ? (
+            <p>
+              <span className="font-semibold text-ink-900">{filed.orgName}</span> is live at{' '}
+              <a className="font-semibold text-brand-700" href={filed.dedicatedUrl}>
+                {filed.dedicatedUrl}
+              </a>
+              . Sign in there with your company identity provider. This screen did not collect a
+              database password or an identity-provider secret.
+            </p>
+          ) : null}
           <p>
             Request <span className="font-mono text-ink-900">{filed.id}</span> is stored for{' '}
             <span className="font-semibold text-ink-900">{filed.orgName}</span>. Keep that id.
-            Status stays requested until the secret handoff finishes.
+            {filed.dedicatedUrl
+              ? ' The environment is live.'
+              : ' Status stays requested until the secret handoff finishes.'}
           </p>
           <p>
             When mail is configured,{' '}
@@ -156,6 +195,7 @@ export default function OwnStackRequest({ onBack }) {
   const mode = HOSTING_MODES.find((m) => m.id === form.mode)
   const auth = AUTH_METHODS.find((m) => m.id === form.authMethod)
   const showEngine = form.mode === 'bring'
+  const localHost = localControlPlane()
   const showIssuer = form.authMethod === 'oidc' || form.authMethod === 'saml'
   const showProjectUrl = form.authMethod === 'supabase'
   const showBucket = form.bucketMode === 'bring'
@@ -282,7 +322,11 @@ export default function OwnStackRequest({ onBack }) {
             <Field
               label="Issuer URL"
               htmlFor="own-issuer"
-              hint="Public https address. No client secret in the URL."
+              hint={
+                localHost
+                  ? 'Loopback http on this machine, or a public https address. No password in the URL.'
+                  : 'Public https address. No client secret in the URL.'
+              }
               error={errors.authIssuer}
             >
               <Input
@@ -368,7 +412,11 @@ export default function OwnStackRequest({ onBack }) {
             <Field
               label="Presign endpoint URL"
               htmlFor="own-presign"
-              hint="Optional. The endpoint URL only. No access key in the URL."
+              hint={
+                localHost
+                  ? 'Loopback http on this machine, or a public https address. No access key in the URL.'
+                  : 'Optional. The endpoint URL only. No access key in the URL.'
+              }
               error={errors.presignUrl}
             >
               <Input
@@ -398,8 +446,13 @@ export default function OwnStackRequest({ onBack }) {
           />
         </Field>
 
+        {notice ? (
+          <p role="alert" className="text-sm font-medium text-red-700">
+            {notice}
+          </p>
+        ) : null}
         <Button type="submit" loading={busy} className="w-full">
-          File provisioning request
+          {busy ? 'Filing registration…' : 'File provisioning request'}
         </Button>
       </form>
     </AuthLayout>

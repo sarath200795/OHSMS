@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react'
 import { Routes, Route, Navigate, useParams } from 'react-router-dom'
 import { isFirebaseConfigured } from './shared/firebase'
+import { isOwnStackBuild } from './shared/auth/ownStackSession'
 import ProtectedRoute from './shared/auth/ProtectedRoute'
 import PlatformRoute from './shared/auth/PlatformRoute'
 import ModuleGate from './shared/modules/ModuleGate'
@@ -118,8 +119,13 @@ export default function App() {
     throw new Error('Deliberate test crash (?__crash=1)')
   }
 
-  // Without Firebase config, only the setup screen can render.
-  if (!isFirebaseConfigured) {
+  // Without Firebase config, only the setup screen can render — on the shared
+  // suite. A dedicated host has no Firebase web config. isOwnStackBuild reads
+  // the public env that host injects after fulfillment. Skipping this check
+  // left a fulfilled URL on "Connect Firebase" and never reached /login.
+  // The shared build has no injection, so a missing Firebase config still
+  // stops here.
+  if (!isFirebaseConfigured && !isOwnStackBuild()) {
     return (
       <Suspense fallback={<SamLoading />}>
         <Routes>
