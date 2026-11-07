@@ -19,6 +19,7 @@ import {
 } from './samlFixture.mjs'
 import { identityFromSupabase } from './supabaseAuth.mjs'
 import { establishIdentity } from './identity.mjs'
+import { accessFacts, repairSignedInOwner } from './ownerGrant.mjs'
 import {
   stampIdentity,
   completePasswordChange,
@@ -155,11 +156,19 @@ export function createOwnStackServer({
         return
       }
       if (url.pathname === '/auth/saml/slo') {
-        send(res, 302, '', { Location: `${selfOrigin(req)}/login` })
+        send(res, 302, '', { Location: `${selfOrigin(req)}/login?signedOut=1` })
         return
       }
       if (req.method === 'POST' && url.pathname === '/auth/logout') {
         await onLogout(req, res)
+        return
+      }
+      if (req.method === 'GET' && url.pathname === '/auth/access') {
+        if (!localFiling) {
+          send(res, 404, { code: 'not-found', message: 'not found' })
+          return
+        }
+        await onAccess(req, res)
         return
       }
       if (req.method === 'GET' && url.pathname === '/auth/saml/metadata') {
@@ -265,6 +274,13 @@ export function createOwnStackServer({
     const session = sessionOf(req, state.sessionSecret)
     const roleSession = { role: 'ohsms_browser', uid: session?.sub || '' }
     if (body.op === 'get') {
+      if (session?.sub && body.path === 'users' && body.id === session.sub) {
+        try {
+          await repairSignedInOwner(engine, db, session.sub)
+        } catch (err) {
+          if (err?.code !== '42P01') throw err
+        }
+      }
       const doc = await engine.get(roleSession, body.path, body.id, { rev: Boolean(body.rev) })
       send(res, 200, { doc })
       return
@@ -977,10 +993,16 @@ export function createOwnStackServer({
     return { ...state.publicEnv, ...state.envExtras }
   }
 
+  async function onAccess(req, res) {
+    const session = sessionOf(req, state.sessionSecret)
+    const facts = await accessFacts(engine, db, session?.sub || '')
+    send(res, 200, facts)
+  }
+
   async function onLogout(req, res) {
     const session = sessionOf(req, state.sessionSecret)
     const client = serviceProvider(req)
-    const login = `${selfOrigin(req)}/login`
+    const login = `${selfOrigin(req)}/login?signedOut=1`
     if (!session || !client) {
       send(res, 200, { url: login })
       return

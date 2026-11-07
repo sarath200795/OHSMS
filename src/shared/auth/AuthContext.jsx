@@ -37,6 +37,7 @@ import {
   captureOwnStackSessionFromHash,
   clearAccessToken,
   currentAccessToken,
+  holdOwnStackSignIn,
   isOwnStackBuild,
   ownStackAuthMethod,
   ownStackGateway,
@@ -436,6 +437,24 @@ export function AuthProvider({ children }) {
       const gateway = ownStackGateway()
       const token = currentAccessToken()
       const method = ownStackAuthMethod()
+      let next = ''
+      // Ask while the token is still valid. Clearing it first sends the
+      // approval page to /login, and that page starts another ForceAuthn
+      // before this request returns, so Sign out never finishes.
+      if (gateway && token && (method === 'saml' || method === 'oidc')) {
+        try {
+          const res = await fetch(`${gateway}/auth/logout`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+            signal: AbortSignal.timeout(4000),
+          })
+          const body = await res.json().catch(() => ({}))
+          if (typeof body.url === 'string' && /^https?:\/\//.test(body.url)) next = body.url
+        } catch {
+          // The IdP did not answer. The local session still has to end.
+        }
+      }
+      holdOwnStackSignIn()
       clearKeyring()
       clearSharedSubscriptions()
       endSession()
@@ -443,24 +462,12 @@ export function AuthProvider({ children }) {
       setUser(null)
       setProfile(null)
       setPendingMfa(null)
-      // Clearing the token only drops this app's session. The IdP cookie
-      // would sign the next visit straight back in. Ask the host for the
-      // IdP logout URL, which also sets ForceAuthn on the next request.
-      if (gateway && token && (method === 'saml' || method === 'oidc')) {
-        try {
-          const res = await fetch(`${gateway}/auth/logout`, {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${token}` },
-          })
-          const body = await res.json().catch(() => ({}))
-          if (body.url) {
-            window.location.assign(body.url)
-            return
-          }
-        } catch {
-          // The local session is already gone. A failed IdP call leaves the
-          // person on this page signed out.
-        }
+      const dest = next || '/login?signedOut=1'
+      try {
+        window.location.assign(dest)
+      } catch {
+        // The token is already gone. A runner that refuses navigation stays
+        // on the signed-out login page instead of starting another sign-in.
       }
       return
     }
@@ -500,7 +507,7 @@ export function AuthProvider({ children }) {
     modulesReady,
     moduleEnabled: (key) => isModuleEnabled(moduleMap, key),
     orgId: profile?.orgId || null,
-    orgName: profile?.orgName || '',
+    orgName: profile?.orgName || org?.name || '',
     actor: { uid: user?.uid, name: profile?.name || user?.displayName || 'Unknown' },
     registerOrganization,
     signUpMember,

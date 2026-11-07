@@ -5,6 +5,7 @@
 
 import { readFileSync } from 'node:fs'
 import { createEngine, applySchema } from './engine.mjs'
+import { reconcileOwnerGrants } from './ownerGrant.mjs'
 import { createPgDatabase } from './pgdb.mjs'
 import { s3Blobs } from './s3blob.mjs'
 import { configureKeycloak } from './keycloakAdmin.mjs'
@@ -59,6 +60,7 @@ const db = createPgDatabase(databaseUrl)
 await until('postgres', () => db.query('SELECT 1'))
 await applySchema(db)
 const engine = createEngine(db)
+await reconcileOwnerGrants(engine, db)
 
 const blobs = s3Blobs({
   endpoint: process.env.MINIO_ENDPOINT || 'http://minio:9000',

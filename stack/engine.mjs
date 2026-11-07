@@ -46,10 +46,26 @@ export async function applySchema(db) {
   await db.exec(SCHEMA)
 }
 
+function objectData(value) {
+  let data = value
+  // postgres.js parses jsonb. A handle that returns the column as text would
+  // otherwise spread into character keys, and the profile the browser reads
+  // has no status. That is the approval gate with a blank organization name.
+  if (typeof data === 'string') {
+    try {
+      data = JSON.parse(data)
+    } catch {
+      return {}
+    }
+  }
+  const revived = revive(data)
+  if (!revived || typeof revived !== 'object' || Array.isArray(revived)) return {}
+  return revived
+}
+
 function rowToDoc(row, { rev = false } = {}) {
   if (!row) return null
-  const data = revive(row.data)
-  const doc = { id: row.id, ...data }
+  const doc = { id: row.id, ...objectData(row.data) }
   if (rev) return { rev: row.rev, data: doc }
   return doc
 }

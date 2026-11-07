@@ -7,6 +7,8 @@ import { fileURLToPath } from 'node:url'
 import { PGlite } from '@electric-sql/pglite'
 import { describe, expect, it } from 'vitest'
 import { applySchema, createEngine } from '../../../stack/engine.mjs'
+import { establishIdentity } from '../../../stack/identity.mjs'
+import { reconcileOwnerGrants } from '../../../stack/ownerGrant.mjs'
 import { createFixtureIdp, readAuthnRequest } from '../../../stack/samlFixture.mjs'
 import { configureKeycloak, certificateFromMetadata } from '../../../stack/keycloakAdmin.mjs'
 import { s3Blobs } from '../../../stack/s3blob.mjs'
@@ -395,7 +397,7 @@ describe('self-hosted services', () => {
       expect(out.url).toContain('http://127.0.0.1:8080/realms/ohsms/protocol/saml')
       expect(out.url).toContain('SAMLRequest=')
       const slo = await fetch(`${origin}/auth/saml/slo`, { redirect: 'manual' })
-      expect(slo.headers.get('location')).toBe(`${origin}/login`)
+      expect(slo.headers.get('location')).toBe(`${origin}/login?signedOut=1`)
     } finally {
       server.close()
     }
@@ -721,7 +723,12 @@ describe('self-hosted services', () => {
         },
         body: JSON.stringify({ op: 'get', path: 'users', id: publicRequest.contactEmail }),
       })
-      expect((await profile.json()).doc.email).toBe(publicRequest.contactEmail)
+      expect((await profile.json()).doc).toMatchObject({
+        email: publicRequest.contactEmail,
+        role: 'admin',
+        status: 'approved',
+        orgName: publicRequest.orgName,
+      })
       const logout = await fetch(`${origin}/auth/logout`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${currentAccessToken()}` },
@@ -740,6 +747,260 @@ describe('self-hosted services', () => {
     } finally {
       clearAccessToken()
       delete globalThis.__OHSMS_STACK__
+      server.close()
+    }
+  })
+
+  it('repairs only the provisioned owner, and leaves a pending user pending', async () => {
+    const db = new PGlite()
+    await applySchema(db)
+    const engine = createEngine(db)
+    const secret = 'session-secret-for-the-owner-repair'
+    const server = createOwnStackServer({
+      engine,
+      db,
+      sessionSecret: secret,
+      origin: 'http://127.0.0.1:8787',
+      auth: { method: 'saml', clientId: 'ohsms' },
+      requests: new Map(),
+      localFiling: true,
+      heldSecrets: {
+        databaseUrl: 'postgres://ohsms:not-for-the-browser@postgres:5432/ohsms',
+        sessionSecret: secret,
+      },
+      prepareIdentity: async () => {},
+      publicEnv: { VITE_DATA_DRIVER: 'postgres', VITE_AUTH_METHOD: 'saml' },
+      envExtras: { VITE_CONTROL_PLANE: 'local' },
+    })
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+    const origin = `http://127.0.0.1:${server.address().port}`
+    server.stackState.origin = origin
+    const read = async (token, id) => {
+      const res = await fetch(`${origin}/data`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ op: 'get', path: 'users', id }),
+      })
+      return (await res.json()).doc
+    }
+    try {
+      const filed = await fetch(`${origin}/requests`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...publicRequest, presignUrl: `${origin}/presign` }),
+      })
+      expect(filed.status).toBe(200)
+      const orgs = await engine.list({ role: 'ohsms_worker', uid: '' }, 'organizations', {})
+      const org = orgs.find((row) => row.name === publicRequest.orgName)
+      expect(org?.id).toBeTruthy()
+      await engine.commit({ role: 'ohsms_worker', uid: '' }, [
+        {
+          type: 'set',
+          path: 'users',
+          id: publicRequest.contactEmail,
+          merge: false,
+          data: {
+            email: publicRequest.contactEmail,
+            role: 'member',
+            status: 'pending',
+            name: 'Asha Rao',
+          },
+        },
+        {
+          type: 'set',
+          path: 'users',
+          id: 'visitor@local.test',
+          merge: false,
+          data: {
+            email: 'visitor@local.test',
+            role: 'member',
+            status: 'pending',
+            orgId: org.id,
+            orgName: publicRequest.orgName,
+          },
+        },
+        {
+          type: 'set',
+          path: 'organizations',
+          id: 'orgOther',
+          merge: false,
+          data: { name: 'Other Works', stack: 'own' },
+        },
+        {
+          type: 'set',
+          path: 'users',
+          id: 'boss@other.test',
+          merge: false,
+          data: {
+            email: 'boss@other.test',
+            role: 'member',
+            status: 'pending',
+            orgId: 'orgOther',
+            orgName: 'Other Works',
+          },
+        },
+      ])
+      await db.query(
+        `INSERT INTO owner_grants (email, org_id, role, org_name) VALUES ($1, $2, 'admin', $3)`,
+        ['boss@other.test', org.id, publicRequest.orgName]
+      )
+      await reconcileOwnerGrants(engine, db)
+      const repaired = await engine.get(
+        { role: 'ohsms_worker', uid: '' },
+        'users',
+        publicRequest.contactEmail
+      )
+      expect(repaired).toMatchObject({
+        role: 'admin',
+        status: 'approved',
+        orgId: org.id,
+        orgName: publicRequest.orgName,
+        email: publicRequest.contactEmail,
+      })
+      const visitor = await engine.get(
+        { role: 'ohsms_worker', uid: '' },
+        'users',
+        'visitor@local.test'
+      )
+      expect(visitor).toMatchObject({ role: 'member', status: 'pending', orgId: org.id })
+      const boss = await engine.get({ role: 'ohsms_worker', uid: '' }, 'users', 'boss@other.test')
+      expect(boss).toMatchObject({ role: 'member', status: 'pending', orgId: 'orgOther' })
+      const ownerToken = signSession(secret, { sub: publicRequest.contactEmail })
+      const ownerDoc = await read(ownerToken, publicRequest.contactEmail)
+      expect(ownerDoc).toMatchObject({
+        status: 'approved',
+        role: 'admin',
+        orgName: publicRequest.orgName,
+      })
+      const visitorToken = signSession(secret, { sub: 'visitor@local.test' })
+      const visitorDoc = await read(visitorToken, 'visitor@local.test')
+      expect(visitorDoc).toMatchObject({ status: 'pending', role: 'member' })
+      const access = await fetch(`${origin}/auth/access`, {
+        headers: { Authorization: `Bearer ${ownerToken}` },
+      })
+      const facts = await access.json()
+      expect(facts).toEqual({
+        signedIn: true,
+        approved: true,
+        admin: true,
+        orgLinked: true,
+        orgNamed: true,
+        ownerMatched: true,
+      })
+      expect(JSON.stringify(facts)).not.toMatch(/@|asha|Bearer|postgres/)
+      const visitorAccess = await (
+        await fetch(`${origin}/auth/access`, {
+          headers: { Authorization: `Bearer ${visitorToken}` },
+        })
+      ).json()
+      expect(visitorAccess).toMatchObject({
+        signedIn: true,
+        approved: false,
+        admin: false,
+        ownerMatched: false,
+      })
+      expect(JSON.stringify(visitorAccess)).not.toMatch(/@|visitor|Bearer/)
+      const stranger = await establishIdentity(engine, db, {
+        sub: 'stranger@local.test',
+        email: 'stranger@local.test',
+        name: 'Stranger',
+      })
+      expect(stranger.ok).toBe(false)
+      expect(
+        await engine.get({ role: 'ohsms_worker', uid: '' }, 'users', 'stranger@local.test')
+      ).toBeNull()
+      await reconcileOwnerGrants(engine, db)
+      const orgsAfter = await engine.list({ role: 'ohsms_worker', uid: '' }, 'organizations', {})
+      expect(orgsAfter.filter((row) => row.name === publicRequest.orgName)).toHaveLength(1)
+      expect(
+        (await engine.get({ role: 'ohsms_worker', uid: '' }, 'users', 'visitor@local.test')).status
+      ).toBe('pending')
+    } finally {
+      server.close()
+    }
+  })
+
+  it('repairs the single untyped founder row without creating another organization', async () => {
+    const db = new PGlite()
+    await applySchema(db)
+    const engine = createEngine(db)
+    const secret = 'session-secret-for-the-sole-founder'
+    const server = createOwnStackServer({
+      engine,
+      db,
+      sessionSecret: secret,
+      origin: 'http://127.0.0.1:8787',
+      auth: { method: 'saml', clientId: 'ohsms' },
+      requests: new Map(),
+      localFiling: true,
+      heldSecrets: {
+        databaseUrl: 'postgres://ohsms:not-for-the-browser@postgres:5432/ohsms',
+        sessionSecret: secret,
+      },
+      prepareIdentity: async () => {},
+      publicEnv: { VITE_DATA_DRIVER: 'postgres', VITE_AUTH_METHOD: 'saml' },
+      envExtras: { VITE_CONTROL_PLANE: 'local' },
+    })
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+    const origin = `http://127.0.0.1:${server.address().port}`
+    server.stackState.origin = origin
+    try {
+      const filed = await fetch(`${origin}/requests`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...publicRequest,
+          id: 'reqSoleFounder1',
+          presignUrl: `${origin}/presign`,
+        }),
+      })
+      expect(filed.status).toBe(200)
+      await engine.commit({ role: 'ohsms_worker', uid: '' }, [
+        { type: 'set', path: 'users', id: 'G-founder', merge: false, data: {} },
+      ])
+      await reconcileOwnerGrants(engine, db)
+      await reconcileOwnerGrants(engine, db)
+      const founder = await engine.get({ role: 'ohsms_worker', uid: '' }, 'users', 'G-founder')
+      expect(founder).toMatchObject({
+        role: 'admin',
+        status: 'approved',
+        email: publicRequest.contactEmail,
+        orgName: publicRequest.orgName,
+      })
+      const orgs = await engine.list({ role: 'ohsms_worker', uid: '' }, 'organizations', {})
+      expect(orgs).toHaveLength(1)
+      const users = await engine.list({ role: 'ohsms_worker', uid: '' }, 'users', {})
+      expect(users).toHaveLength(1)
+    } finally {
+      server.close()
+    }
+  })
+
+  it('does not publish the access check on a hosted control plane', async () => {
+    const server = createOwnStackServer({
+      engine: {
+        async get() {},
+        async list() {
+          return []
+        },
+        async commit() {
+          return {}
+        },
+      },
+      db: {
+        async query() {
+          return { rows: [] }
+        },
+      },
+      sessionSecret: 'hosted-session-secret',
+      origin: 'https://tenant.example',
+    })
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+    const origin = `http://127.0.0.1:${server.address().port}`
+    try {
+      const res = await fetch(`${origin}/auth/access`)
+      expect(res.status).toBe(404)
+    } finally {
       server.close()
     }
   })

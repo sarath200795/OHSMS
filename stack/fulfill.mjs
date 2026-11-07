@@ -11,6 +11,7 @@
 
 import { randomBytes } from 'node:crypto'
 import { applySchema } from './engine.mjs'
+import { rememberOwner } from './ownerGrant.mjs'
 import { newSessionSecret } from './session.mjs'
 import { statusPatch, takeSecrets } from './intake.mjs'
 
@@ -156,17 +157,15 @@ export async function fulfillRequest({
       },
     ])
   )
-  await at('invite', () =>
-    db.query(
+  const ownerEmail = String(request.contactEmail).trim().toLowerCase()
+  await at('invite', async () => {
+    await db.query(
       `INSERT INTO invites (email, org_id, role, name) VALUES ($1, $2, 'admin', $3)
        ON CONFLICT (email) DO UPDATE SET org_id = EXCLUDED.org_id, role = 'admin', name = EXCLUDED.name`,
-      [
-        String(request.contactEmail).trim().toLowerCase(),
-        orgId,
-        request.contactName || request.orgName,
-      ]
+      [ownerEmail, orgId, request.contactName || request.orgName]
     )
-  )
+    await rememberOwner(db, { email: ownerEmail, orgId, orgName: request.orgName })
+  })
 
   const patch = statusPatch({
     status: 'live',

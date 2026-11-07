@@ -16,6 +16,8 @@ import {
   isOwnStackBuild,
   ownStackAuthMethod,
   ownStackGateway,
+  ownStackSignInHeld,
+  shouldStartCompanySignIn,
 } from '../../shared/auth/ownStackSession'
 import StoreBadges from './StoreBadges'
 
@@ -55,14 +57,24 @@ export default function Login() {
   const idpStart = companySignInStart()
 
   useEffect(() => {
-    if (!idpStart || isAuthed || currentAccessToken()) return
+    if (
+      !shouldStartCompanySignIn({
+        idpStart,
+        isAuthed,
+        token: currentAccessToken(),
+        search: location.search,
+        held: ownStackSignInHeld(),
+      })
+    ) {
+      return
+    }
     try {
       window.location.assign(idpStart)
     } catch {
       // The link below is the same URL. A test runner that refuses navigation
       // still leaves it on the page.
     }
-  }, [idpStart, isAuthed])
+  }, [idpStart, isAuthed, location.search])
 
   // A challenge raised by the SSO redirect arrives through the context, because
   // that round trip destroyed this component's state on the way out.

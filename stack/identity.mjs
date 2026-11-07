@@ -1,6 +1,11 @@
 // First sign-in on a dedicated stack. The IdP says who the person is. The
-// invite, written by fulfillment as the worker, says they are the founder.
-// No WEEHS Firebase user is created.
+// owner grant, written at fulfillment, says they are the founder. An existing
+// row used to be returned unchanged, so a founder profile that was not
+// approved stayed on the gate and the invite was never applied. No WEEHS
+// Firebase user is created. Anyone who is not that owner still needs an
+// invite; a SAML assertion by itself is not one.
+
+import { bindProvisionedOwner } from './ownerGrant.mjs'
 
 const WORKER = { role: 'ohsms_worker', uid: '' }
 
@@ -10,6 +15,9 @@ export async function establishIdentity(engine, db, { sub, email, name }) {
     .trim()
     .toLowerCase()
   if (!uid || !mail) return { ok: false, reason: 'identity' }
+  const owner = await bindProvisionedOwner(engine, db, { uid, email: mail, name })
+  if (owner) return owner
+
   const existing = await engine.get(WORKER, 'users', uid)
   if (existing) return { ok: true, uid, profile: existing }
 
@@ -18,6 +26,7 @@ export async function establishIdentity(engine, db, { sub, email, name }) {
   ])
   const row = invite.rows[0]
   if (!row) return { ok: false, reason: 'no-invite' }
+  const org = await engine.get(WORKER, 'organizations', row.org_id)
   await engine.commit(WORKER, [
     {
       type: 'set',
@@ -30,6 +39,7 @@ export async function establishIdentity(engine, db, { sub, email, name }) {
         status: 'approved',
         name: name || row.name || mail,
         email: mail,
+        orgName: org?.name || '',
         mustChangePassword: false,
       },
     },

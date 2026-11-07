@@ -22,9 +22,31 @@ export function ownStackAuthMethod() {
 
 const KEY = 'ohsms.ownStack.session'
 let memory = ''
+// Set before the token is cleared. /login would otherwise start a new
+// ForceAuthn while sign-out is still asking the IdP to drop its cookie, and
+// the approval page's Sign out never finishes.
+let signedOutHold = false
+
+export function holdOwnStackSignIn() {
+  signedOutHold = true
+}
+
+export function ownStackSignInHeld() {
+  return signedOutHold
+}
+
+export function resetOwnStackSignInHold() {
+  signedOutHold = false
+}
+
+export function shouldStartCompanySignIn({ idpStart, isAuthed, token, search, held }) {
+  if (!idpStart || isAuthed || token || held) return false
+  return new URLSearchParams(String(search || '')).get('signedOut') !== '1'
+}
 
 export function setAccessToken(token) {
   memory = typeof token === 'string' ? token : ''
+  if (memory) signedOutHold = false
   try {
     if (memory) sessionStorage.setItem(KEY, memory)
     else sessionStorage.removeItem(KEY)

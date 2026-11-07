@@ -3,9 +3,15 @@ import {
   captureOwnStackSessionFromHash,
   clearAccessToken,
   currentAccessToken,
+  holdOwnStackSignIn,
+  ownStackSignInHeld,
+  resetOwnStackSignInHold,
+  setAccessToken,
+  shouldStartCompanySignIn,
 } from './ownStackSession'
 
 afterEach(() => {
+  resetOwnStackSignInHold()
   clearAccessToken()
   delete globalThis.__OHSMS_STACK__
 })
@@ -26,6 +32,24 @@ describe('captureOwnStackSessionFromHash', () => {
     expect(currentAccessToken()).toBe(token)
     expect(next).toBe('/')
     expect(loc.hash).toBe('')
+  })
+
+  it('does not start another company sign-in from the signed-out login page', () => {
+    const start = {
+      idpStart: 'http://127.0.0.1:8787/auth/start',
+      isAuthed: false,
+      token: '',
+      search: '',
+      held: false,
+    }
+    expect(shouldStartCompanySignIn(start)).toBe(true)
+    expect(shouldStartCompanySignIn({ ...start, search: '?signedOut=1' })).toBe(false)
+    holdOwnStackSignIn()
+    expect(ownStackSignInHeld()).toBe(true)
+    expect(shouldStartCompanySignIn({ ...start, held: ownStackSignInHeld() })).toBe(false)
+    setAccessToken('header.eyJzdWIiOiJ4In0.sig')
+    expect(ownStackSignInHeld()).toBe(false)
+    expect(shouldStartCompanySignIn({ ...start, token: currentAccessToken() })).toBe(false)
   })
 
   it('does not read a hash on a hosted build', () => {
