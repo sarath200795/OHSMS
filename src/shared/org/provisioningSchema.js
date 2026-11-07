@@ -128,10 +128,6 @@ const PASSWORD_ASSIGN = /password\s*=/i
 const ENGINE = /^[a-z][a-z0-9_-]{0,31}$/
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const HTTPS = /^https:\/\/[^\s@?#]+$/
-// Loopback http is only for a dedicated host bound to 127.0.0.1. A public
-// request still has to be https. The password-in-URL form stays refused
-// because the pattern has no userinfo.
-const LOOPBACK = /^http:\/\/(127\.0\.0\.1|localhost)(:[0-9]{1,5})?(\/[^\s@?#]*)?$/
 const CLIENT_ID = /^[A-Za-z0-9._~-]{1,200}$/
 const BUCKET = /^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/
 const REGION = /^[a-z0-9-]{1,40}$/
@@ -184,9 +180,31 @@ function fail(errors) {
  *
  * @param {Record<string, unknown>} input
  */
+// http is accepted only for this machine, and only when the caller is the
+// local self-host (allowLoopback). The URL parser is what rejects a password,
+// a query, or a host that merely begins with 127.0.0.1. A prefix check would
+// allow http://127.0.0.1.evil.example and http://user:pass@127.0.0.1, and the
+// server would then fetch that issuer.
+function loopbackHttp(value) {
+  let url
+  try {
+    url = new URL(value)
+  } catch {
+    return false
+  }
+  if (url.protocol !== 'http:') return false
+  if (url.username || url.password) return false
+  if (url.search || url.hash) return false
+  if (url.hostname !== '127.0.0.1' && url.hostname !== 'localhost') return false
+  // Node rewrites 2130706433 and 0x7f000001 into 127.0.0.1. Those are not the
+  // address this host publishes, so the written host has to be one of the
+  // two names as well.
+  return /^http:\/\/(127\.0\.0\.1|localhost)(?::\d{1,5})?(?:\/|$)/i.test(value)
+}
+
 function acceptableUrl(value, allowLoopback) {
   if (HTTPS.test(value)) return true
-  return Boolean(allowLoopback) && LOOPBACK.test(value)
+  return Boolean(allowLoopback) && loopbackHttp(value)
 }
 
 export function validateProvisioningRequest(input, { allowLoopback = false } = {}) {

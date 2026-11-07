@@ -46,15 +46,15 @@ node bootstrap.mjs
 
 That writes, and will not overwrite if you run it again:
 
-| File | What it is |
-| --- | --- |
-| `secrets/postgres-password` | Postgres role `ohsms` |
-| `secrets/minio-root-password` | MinIO root password. The user name is `ohsms` |
-| `secrets/keycloak-admin-password` | Keycloak admin console (`admin`) |
-| `secrets/session-secret` | Signs the app session |
-| `secrets/data-key-master` | This company's data-key master |
-| `secrets/control-token` | Operator token. The browser does not receive it |
-| `secrets/compose.env` | The three service passwords, for Compose |
+| File                              | What it is                                      |
+| --------------------------------- | ----------------------------------------------- |
+| `secrets/postgres-password`       | Postgres role `ohsms`                           |
+| `secrets/minio-root-password`     | MinIO root password. The user name is `ohsms`   |
+| `secrets/keycloak-admin-password` | Keycloak admin console (`admin`)                |
+| `secrets/session-secret`          | Signs the app session                           |
+| `secrets/data-key-master`         | This company's data-key master                  |
+| `secrets/control-token`           | Operator token. The browser does not receive it |
+| `secrets/compose.env`             | The three service passwords, for Compose        |
 
 Do not `cat`, log, or commit these files. `docker compose config` prints
 them. Do not paste that output anywhere.
@@ -126,21 +126,24 @@ here. Docker is not available in the environment that prepared this file.
 
 ## URLs (this machine)
 
-| | |
-| --- | --- |
-| App | http://127.0.0.1:8787 |
-| Register | http://127.0.0.1:8787/register-org |
-| Keycloak (IdP and its admin console) | http://127.0.0.1:8080 |
-| Keycloak health | http://127.0.0.1:9002/health/ready |
-| MinIO API | http://127.0.0.1:9000 |
-| MinIO console | http://127.0.0.1:9001 |
-| Postgres | 127.0.0.1:5432, database `ohsms`, user `ohsms` |
+|                                      |                                                |
+| ------------------------------------ | ---------------------------------------------- |
+| App                                  | http://127.0.0.1:8787                          |
+| Register                             | http://127.0.0.1:8787/register-org             |
+| Keycloak (IdP and its admin console) | http://127.0.0.1:8080                          |
+| Keycloak health                      | http://127.0.0.1:9002/health/ready             |
+| MinIO API                            | http://127.0.0.1:9000                          |
+| MinIO console                        | http://127.0.0.1:9001                          |
+| Postgres                             | 127.0.0.1:5432, database `ohsms`, user `ohsms` |
 
 The registration form is filled with the running issuer
 `http://127.0.0.1:8080/realms/ohsms`, client id `ohsms`, bucket `ohsms`,
-and presign `http://127.0.0.1:8787/presign`. Those are the services this
-compose file started. The IdP certificate and the database URL stay on the
-server. The form does not ask for them.
+and presign `http://127.0.0.1:8787/presign`. Those http addresses are
+accepted only because this host publishes `VITE_CONTROL_PLANE=local`. A
+password in the URL, a query string, or any other host is still refused.
+A build that is not this local control plane still requires https. The IdP
+certificate and the database URL stay on the server. The form does not ask
+for them.
 
 ## Register and sign in
 

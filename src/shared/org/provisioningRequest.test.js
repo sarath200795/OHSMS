@@ -132,10 +132,32 @@ describe('validateProvisioningRequest', () => {
       presignUrl: 'http://127.0.0.1:8787/presign',
     }
     expect(validateProvisioningRequest(local).ok).toBe(false)
+    expect(validateProvisioningRequest(local).errors.authIssuer).toMatch(/https/)
+    expect(validateProvisioningRequest(local).errors.presignUrl).toMatch(/https/)
     expect(validateProvisioningRequest(local, { allowLoopback: true }).ok).toBe(true)
     expect(
       validateProvisioningRequest(
         { ...local, authIssuer: 'http://login.example/realms/staff' },
+        { allowLoopback: true }
+      ).ok
+    ).toBe(false)
+    for (const authIssuer of [
+      'http://user:pass@127.0.0.1:8080/realms/ohsms',
+      'http://127.0.0.1.evil.example/realms/ohsms',
+      'http://127.0.0.1:8080/realms/ohsms?next=https://evil.example',
+      'http://169.254.169.254/latest/meta-data',
+      'http://10.1.1.1/realms/ohsms',
+      'http://2130706433/realms/ohsms',
+      'http://0x7f000001/realms/ohsms',
+      'http://localhost.evil.example/realms/ohsms',
+    ]) {
+      expect(
+        validateProvisioningRequest({ ...local, authIssuer }, { allowLoopback: true }).ok
+      ).toBe(false)
+    }
+    expect(
+      validateProvisioningRequest(
+        { ...local, presignUrl: 'http://127.0.0.1:8787/presign?X-Amz-Credential=abc' },
         { allowLoopback: true }
       ).ok
     ).toBe(false)

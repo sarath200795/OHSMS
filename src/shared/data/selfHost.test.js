@@ -221,6 +221,28 @@ describe('self-hosted services', () => {
         body: JSON.stringify({ ...publicRequest, databaseUrl }),
       })
       expect(refused.status).toBe(400)
+      const metadata = await fetch(`${origin}/requests`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...publicRequest,
+          id: 'reqMetadata01',
+          authIssuer: 'http://169.254.169.254/latest/meta-data',
+        }),
+      })
+      expect(metadata.status).toBe(400)
+      expect((await metadata.json()).reason).toBe('url')
+      const creds = await fetch(`${origin}/requests`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...publicRequest,
+          id: 'reqCredsUrl01',
+          authIssuer: 'http://user:pass@127.0.0.1:8080/realms/ohsms',
+        }),
+      })
+      expect(creds.status).toBe(400)
+      expect(JSON.stringify(await creds.json())).not.toContain('pass')
       const filed = await fetch(`${origin}/requests`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

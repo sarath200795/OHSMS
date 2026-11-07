@@ -9,6 +9,7 @@ RUN npm ci --omit=dev
 COPY app/stack ./stack
 COPY app/functions ./functions
 COPY app/src/shared/data/adapters/postgresWire.js ./src/shared/data/adapters/postgresWire.js
+COPY app/src/shared/org/provisioningSchema.js ./src/shared/org/provisioningSchema.js
 COPY app/dist ./dist
 ENV NODE_ENV=production
 EXPOSE 8787

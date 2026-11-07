@@ -51,7 +51,7 @@ const request = {
 const db = new PGlite()
 const engine = createEngine(db)
 const origin = 'http://127.0.0.1:8787'
-if (!saml) request.authIssuer = `${origin}/oidc`
+request.authIssuer = saml ? `${origin}/fixture/saml/sso` : `${origin}/oidc`
 const server = createOwnStackServer({
   engine,
   db,
@@ -63,6 +63,10 @@ const server = createOwnStackServer({
   samlFixtureKey: fixture?.key || '',
   requests: new Map(),
   controlToken: 'demo-operator',
+  // The demo issuer is this process on 127.0.0.1. That is not the hosted
+  // control plane, which refuses loopback http. The Mac self-host uses
+  // localFiling instead of this flag.
+  allowLoopback: true,
   dataKeyMaster: 'demo-data-key-master-not-in-the-browser',
   mail: async (message) => {
     console.log(`To: ${message.to}`)

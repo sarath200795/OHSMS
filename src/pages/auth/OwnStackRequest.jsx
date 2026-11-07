@@ -2,7 +2,11 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { Button, Field, Input, Select } from '../../shared/ui'
-import { fileProvisioningRequest, localRequestDefaults } from '../../shared/org/provisioningRequest'
+import {
+  fileProvisioningRequest,
+  localControlPlane,
+  localRequestDefaults,
+} from '../../shared/org/provisioningRequest'
 import {
   AUTH_METHODS,
   BUCKET_MODES,
@@ -85,7 +89,13 @@ export default function OwnStackRequest({ onBack }) {
       ...form,
       handoffContact: form.handoffContact.trim() || form.contactEmail.trim(),
     }
-    const checked = validateProvisioningRequest(payload)
+    // The prefilled issuer and presign are http://127.0.0.1 on this host.
+    // Calling validate without allowLoopback applies the hosted rule and
+    // rejects those values before the request is filed. The flag is the
+    // injected control plane, not the fact that the text starts with http.
+    const checked = validateProvisioningRequest(payload, {
+      allowLoopback: localControlPlane(),
+    })
     if (!checked.ok) {
       setErrors(checked.errors)
       toast.error(checked.errors.form || 'Check the highlighted fields.')
@@ -171,6 +181,7 @@ export default function OwnStackRequest({ onBack }) {
   const mode = HOSTING_MODES.find((m) => m.id === form.mode)
   const auth = AUTH_METHODS.find((m) => m.id === form.authMethod)
   const showEngine = form.mode === 'bring'
+  const localHost = localControlPlane()
   const showIssuer = form.authMethod === 'oidc' || form.authMethod === 'saml'
   const showProjectUrl = form.authMethod === 'supabase'
   const showBucket = form.bucketMode === 'bring'
@@ -297,7 +308,11 @@ export default function OwnStackRequest({ onBack }) {
             <Field
               label="Issuer URL"
               htmlFor="own-issuer"
-              hint="Public https address. No client secret in the URL."
+              hint={
+                localHost
+                  ? 'Loopback http on this machine, or a public https address. No password in the URL.'
+                  : 'Public https address. No client secret in the URL.'
+              }
               error={errors.authIssuer}
             >
               <Input
@@ -383,7 +398,11 @@ export default function OwnStackRequest({ onBack }) {
             <Field
               label="Presign endpoint URL"
               htmlFor="own-presign"
-              hint="Optional. The endpoint URL only. No access key in the URL."
+              hint={
+                localHost
+                  ? 'Loopback http on this machine, or a public https address. No access key in the URL.'
+                  : 'Optional. The endpoint URL only. No access key in the URL.'
+              }
               error={errors.presignUrl}
             >
               <Input

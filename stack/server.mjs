@@ -42,6 +42,7 @@ import {
 import { renderHandoffForm, renderHandoffRefusal, renderHandoffResult } from './handoffPage.mjs'
 import { fulfillRequest } from './fulfill.mjs'
 import { stackEnvSource } from './publicEnv.mjs'
+import { validateProvisioningRequest } from '../src/shared/org/provisioningSchema.js'
 import { readSpaBody, resolveSpaRequest } from './spa.mjs'
 
 const WORKER = { role: 'ohsms_worker', uid: '' }
@@ -108,6 +109,7 @@ export function createOwnStackServer({
   spaRoot = DEFAULT_SPA_ROOT,
   samlFixtureKey = '',
   localFiling = false,
+  allowLoopback = false,
   heldSecrets = null,
   prepareIdentity = null,
   publicEnv = null,
@@ -758,6 +760,22 @@ export function createOwnStackServer({
       })
       return
     }
+    // Same URL rule as the form. localFiling is this self-host process.
+    // A hosted control plane does not get allowLoopback, so http://127.0.0.1
+    // is refused there too. The response does not echo the submitted URL.
+    const { id: requestId, ...publicFields } = accepted.value
+    const checked = validateProvisioningRequest(publicFields, {
+      allowLoopback: Boolean(localFiling || allowLoopback),
+    })
+    if (!checked.ok) {
+      send(res, 400, {
+        code: 'invalid-argument',
+        message: 'request refused',
+        reason: checked.errors.authIssuer || checked.errors.presignUrl ? 'url' : 'fields',
+      })
+      return
+    }
+    const request = { ...checked.value, id: requestId }
     if (localFiling && !operator(req)) {
       // The first registration applies the schema inside fulfillment. A
       // missing table is "no organizations yet", not a reason to refuse.
@@ -767,13 +785,13 @@ export function createOwnStackServer({
       } catch {
         orgs = []
       }
-      if (orgs.some((org) => org.name === accepted.value.orgName)) {
+      if (orgs.some((org) => org.name === request.orgName)) {
         send(res, 409, { code: 'already-exists', message: 'that organization is already live' })
         return
       }
     }
-    const prior = requests.get(accepted.value.id)
-    if (prior?.status === 'live' || intake.get(accepted.value.id)?.secrets) {
+    const prior = requests.get(request.id)
+    if (prior?.status === 'live' || intake.get(request.id)?.secrets) {
       send(res, 409, {
         code: 'failed-precondition',
         message: 'that request is no longer waiting',
@@ -781,21 +799,21 @@ export function createOwnStackServer({
       })
       return
     }
-    requests.set(accepted.value.id, accepted.value)
+    requests.set(request.id, request)
     if (localFiling && heldSecrets && !operator(req)) {
       if (prepareIdentity) {
         try {
-          await prepareIdentity(accepted.value)
+          await prepareIdentity(request)
         } catch {
           send(res, 503, { code: 'unavailable', message: 'the identity provider is not ready' })
           return
         }
       }
-      const outcome = await runFulfill(accepted.value, heldSecrets)
+      const outcome = await runFulfill(request, heldSecrets)
       send(res, outcome.http, outcome.body)
       return
     }
-    const opened = await openIntake(requests.get(accepted.value.id))
+    const opened = await openIntake(requests.get(request.id))
     send(res, opened.http, opened.body)
   }
 

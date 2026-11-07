@@ -69,6 +69,32 @@ async function boot({ db = null, engine = null, publicOrigin = 'https://handoff.
 }
 
 describe('own-stack handoff link', () => {
+  it('refuses loopback http on a hosted control plane', async () => {
+    const host = await boot()
+    try {
+      const filed = await fetch(`${host.listen}/requests`, {
+        method: 'POST',
+        headers: operator,
+        body: JSON.stringify({
+          ...request,
+          id: 'reqLoopback001',
+          authIssuer: 'http://127.0.0.1:8080/realms/ohsms',
+          bucketMode: 'bring',
+          bucketName: 'ohsms',
+          bucketRegion: 'us-east-1',
+          presignUrl: 'http://127.0.0.1:8787/presign',
+        }),
+      })
+      expect(filed.status).toBe(400)
+      const body = await filed.json()
+      expect(body.reason).toBe('url')
+      expect(JSON.stringify(body)).not.toContain('127.0.0.1')
+      expect(host.requests.has('reqLoopback001')).toBe(false)
+    } finally {
+      await host.close()
+    }
+  })
+
   it('emails the token once, then the handoff page fulfills without an operator', async () => {
     const db = new PGlite()
     const host = await boot({ db, engine: createEngine(db) })
