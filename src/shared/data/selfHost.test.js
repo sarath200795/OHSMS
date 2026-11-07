@@ -12,6 +12,16 @@ import { configureKeycloak, certificateFromMetadata } from '../../../stack/keycl
 import { s3Blobs } from '../../../stack/s3blob.mjs'
 import { createOwnStackServer } from '../../../stack/server.mjs'
 import { signSession } from '../../../stack/session.mjs'
+import {
+  captureOwnStackSessionFromHash,
+  clearAccessToken,
+  currentAccessToken,
+} from '../auth/ownStackSession'
+
+function hidden(html, name) {
+  const match = new RegExp(`name="${name}" value="([^"]*)"`).exec(html)
+  return match ? match[1] : ''
+}
 
 const publicRequest = {
   id: 'reqLocalHost1',
@@ -165,9 +175,89 @@ describe('self-hosted services', () => {
       const clientPost = seen.find((call) => String(call.url).endsWith('/clients'))
       expect(String(clientPost.body)).toContain('http://127.0.0.1:8787/auth/saml/acs')
       expect(logs.join('\n')).not.toContain(password)
+      const created = seen.find(
+        (call) =>
+          String(call.url).endsWith('/users') && String(call.body || '').includes('credentials')
+      )
+      expect(JSON.parse(created.body).firstName).toBe('asha')
+      expect(JSON.parse(created.body).credentials[0].value).toBe(password)
     } finally {
       console.log = original
     }
+  })
+
+  it('clears a finished Keycloak profile action without sending the password again', async () => {
+    const password = 'bootstrap-password-not-logged'
+    const puts = []
+    const fetchImpl = async (url, opts = {}) => {
+      const body = opts.body || ''
+      if (String(url).includes('/protocol/openid-connect/token')) {
+        return { ok: true, json: async () => ({ access_token: 'admin-token' }) }
+      }
+      if (String(url).endsWith('/admin/realms/ohsms')) {
+        return { ok: true, status: 200, json: async () => ({}) }
+      }
+      if (String(url).includes('/clients?')) return { ok: true, json: async () => [{ id: 'c1' }] }
+      if (String(url).includes('/users?')) {
+        return {
+          ok: true,
+          json: async () => [
+            {
+              id: 'user-1',
+              email: 'founder@local.test',
+              username: 'founder@local.test',
+              firstName: 'Asha',
+              lastName: 'Rao',
+              requiredActions: ['VERIFY_PROFILE'],
+            },
+          ],
+        }
+      }
+      if (String(url).endsWith('/users/user-1') && opts.method === 'GET') {
+        return {
+          ok: true,
+          json: async () => ({
+            id: 'user-1',
+            email: 'founder@local.test',
+            username: 'founder@local.test',
+            firstName: 'Asha',
+            lastName: 'Rao',
+            enabled: true,
+            requiredActions: ['VERIFY_PROFILE'],
+          }),
+        }
+      }
+      if (String(url).endsWith('/users/user-1') && opts.method === 'PUT') {
+        puts.push(body)
+        return { ok: true, status: 204, json: async () => ({}) }
+      }
+      if (String(url).endsWith('/protocol/saml/descriptor')) {
+        return {
+          ok: true,
+          text: async () =>
+            '<EntityDescriptor><KeyDescriptor use="signing"><ds:X509Certificate>MIIB</ds:X509Certificate></KeyDescriptor></EntityDescriptor>',
+        }
+      }
+      return { ok: false, status: 500, json: async () => ({}), text: async () => '' }
+    }
+    await configureKeycloak({
+      internalUrl: 'http://keycloak:8080',
+      publicUrl: 'http://127.0.0.1:8080',
+      adminUser: 'admin',
+      adminPassword: password,
+      realm: 'ohsms',
+      clientId: 'ohsms',
+      acsUrl: 'http://127.0.0.1:8787/auth/saml/acs',
+      sloUrl: 'http://127.0.0.1:8787/auth/saml/slo',
+      fetchImpl,
+    })
+    expect(puts).toHaveLength(1)
+    const body = JSON.parse(puts[0])
+    expect(body.requiredActions).toEqual([])
+    expect(body.firstName).toBe('Asha')
+    expect(body.lastName).toBe('Rao')
+    expect(JSON.stringify(body)).not.toContain(password)
+    expect(body.credentials).toBeUndefined()
   })
 
   it('fulfills a loopback registration with server-held secrets and logs the user out through the IdP', async () => {
@@ -537,6 +627,119 @@ describe('self-hosted services', () => {
       expect(orgs.filter((org) => org.name === publicRequest.orgName)).toHaveLength(1)
     } finally {
       release()
+      server.close()
+    }
+  })
+
+  it('keeps the SAML callback session after the hash is cleared, then logs out and starts fresh', async () => {
+    const db = new PGlite()
+    const engine = createEngine(db)
+    const { key, cert } = createFixtureIdp()
+    const secret = 'session-secret-for-the-test'
+    const held = {
+      databaseUrl: 'postgres://ohsms:not-for-the-browser@postgres:5432/ohsms',
+      samlIdpCert: cert,
+      samlEntryPoint: 'http://127.0.0.1/fixture/saml/sso',
+      sessionSecret: secret,
+    }
+    const server = createOwnStackServer({
+      engine,
+      db,
+      sessionSecret: secret,
+      origin: 'http://127.0.0.1',
+      auth: {
+        method: 'saml',
+        clientId: 'ohsms',
+        idpCert: cert,
+        entryPoint: held.samlEntryPoint,
+        forceAuthn: true,
+      },
+      requests: new Map(),
+      localFiling: true,
+      heldSecrets: held,
+      prepareIdentity: async () => {},
+      samlFixtureKey: key,
+      publicEnv: { VITE_DATA_DRIVER: 'postgres', VITE_AUTH_METHOD: 'saml' },
+      envExtras: { VITE_CONTROL_PLANE: 'local' },
+    })
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+    const origin = `http://127.0.0.1:${server.address().port}`
+    server.stackState.origin = origin
+    held.samlEntryPoint = `${origin}/fixture/saml/sso`
+    server.stackState.auth.entryPoint = held.samlEntryPoint
+    server.stackState.saml = null
+    server.stackState.samlKey = ''
+    globalThis.__OHSMS_STACK__ = {
+      VITE_DATA_DRIVER: 'postgres',
+      VITE_DATA_GATEWAY: origin,
+      VITE_AUTH_METHOD: 'saml',
+    }
+    try {
+      const filed = await fetch(`${origin}/requests`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...publicRequest, presignUrl: `${origin}/presign` }),
+      })
+      expect(filed.status).toBe(200)
+      const start = await fetch(`${origin}/auth/start`, { redirect: 'manual' })
+      const firstRequest = new URL(start.headers.get('location')).searchParams.get('SAMLRequest')
+      const form = await (await fetch(start.headers.get('location'))).text()
+      const posted = await fetch(`${origin}/fixture/saml/sso`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          email: publicRequest.contactEmail,
+          SAMLRequest: hidden(form, 'SAMLRequest'),
+          RelayState: hidden(form, 'RelayState'),
+        }),
+      })
+      const acs = await fetch(`${origin}/auth/saml/acs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        redirect: 'manual',
+        body: new URLSearchParams({
+          SAMLResponse: hidden(await posted.text(), 'SAMLResponse'),
+        }),
+      })
+      expect(acs.status).toBe(302)
+      const landed = new URL(acs.headers.get('location'))
+      const loc = { hash: landed.hash, pathname: landed.pathname, search: landed.search }
+      const token = captureOwnStackSessionFromHash(loc, {
+        replaceState: (_state, _title, url) => {
+          loc.hash = ''
+          loc.pathname = new URL(url, origin).pathname
+        },
+      })
+      expect(token).toBeTruthy()
+      expect(loc.hash).toBe('')
+      expect(currentAccessToken()).toBe(token)
+      const profile = await fetch(`${origin}/data`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${currentAccessToken()}`,
+        },
+        body: JSON.stringify({ op: 'get', path: 'users', id: publicRequest.contactEmail }),
+      })
+      expect((await profile.json()).doc.email).toBe(publicRequest.contactEmail)
+      const logout = await fetch(`${origin}/auth/logout`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${currentAccessToken()}` },
+      })
+      expect((await logout.json()).url).toContain('SAMLRequest=')
+      clearAccessToken()
+      expect(currentAccessToken()).toBe('')
+      const again = await fetch(`${origin}/auth/start`, { redirect: 'manual' })
+      const secondRequest = new URL(again.headers.get('location')).searchParams.get('SAMLRequest')
+      expect(secondRequest).toBeTruthy()
+      expect(secondRequest).not.toBe(firstRequest)
+      const { inflateRawSync } = await import('node:zlib')
+      expect(inflateRawSync(Buffer.from(secondRequest, 'base64')).toString('utf8')).toContain(
+        'ForceAuthn="true"'
+      )
+    } finally {
+      clearAccessToken()
+      delete globalThis.__OHSMS_STACK__
       server.close()
     }
   })

@@ -48,6 +48,30 @@ export function clearAccessToken() {
   setAccessToken('')
 }
 
+// The SAML response lands on /#session= before React Router runs. A later
+// <Navigate> drops the hash, and /login then starts a new ForceAuthn request.
+// Keycloak still has the session cookie, so it shows "Please re-authenticate
+// to continue" again. Read the hash before that navigation.
+export function captureOwnStackSessionFromHash(
+  loc = globalThis.location,
+  history = globalThis.history
+) {
+  if (!isOwnStackBuild()) return ''
+  const hash = String(loc?.hash || '')
+  if (!hash.includes('session=')) return ''
+  const token = new URLSearchParams(hash.replace(/^#/, '')).get('session') || ''
+  if (!token) return ''
+  setAccessToken(token)
+  const next = `${loc.pathname || '/'}${loc.search || ''}`
+  try {
+    history?.replaceState?.({}, '', next)
+  } catch {
+    // The token is already stored. A history API that refuses the rewrite
+    // must not drop the session.
+  }
+  return token
+}
+
 function decodeBase64Url(part) {
   const pad = part.replace(/-/g, '+').replace(/_/g, '/')
   const padded = pad + '='.repeat((4 - (pad.length % 4)) % 4)

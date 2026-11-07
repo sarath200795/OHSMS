@@ -34,6 +34,7 @@ import {
 } from '../org/orgData'
 import { nameTakenMessage } from '../org/provisioningSchema'
 import {
+  captureOwnStackSessionFromHash,
   clearAccessToken,
   currentAccessToken,
   isOwnStackBuild,
@@ -69,7 +70,14 @@ async function withRetry(fn, tries = 3) {
 }
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null) // firebase auth user
+  const [user, setUser] = useState(() => {
+    // Before any child <Navigate> can replace /#session= with /portal.
+    captureOwnStackSessionFromHash()
+    if (!isOwnStackBuild()) return null
+    const uid = sessionUid()
+    if (!uid) return null
+    return { uid, getIdToken: async () => currentAccessToken() }
+  })
   const [profile, setProfile] = useState(null) // users/{uid} doc
   const [org, setOrg] = useState(null) // organizations/{orgId} doc (live)
   const [loading, setLoading] = useState(true)

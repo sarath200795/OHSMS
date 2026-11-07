@@ -50,6 +50,57 @@ export function certificateFromMetadata(xml) {
   return `-----BEGIN CERTIFICATE-----\n${lines.join('\n')}\n-----END CERTIFICATE-----\n`
 }
 
+const PROFILE_ACTIONS = new Set(['VERIFY_PROFILE', 'UPDATE_PROFILE'])
+
+function personName(value, email) {
+  const parts = String(value || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+  if (parts.length >= 2) return { firstName: parts[0], lastName: parts.slice(1).join(' ') }
+  if (parts.length === 1) return { firstName: parts[0], lastName: parts[0] }
+  const local = String(email || '').split('@')[0] || 'member'
+  return { firstName: local, lastName: local }
+}
+
+async function settleProfile(fetchImpl, internalUrl, access, realm, summary, fallbackName) {
+  const actions = Array.isArray(summary?.requiredActions) ? summary.requiredActions : []
+  const missingName =
+    !String(summary?.firstName || '').trim() || !String(summary?.lastName || '').trim()
+  const blocking = actions.some((action) => PROFILE_ACTIONS.has(action))
+  if (!missingName && !blocking) return
+  const full = await api(
+    fetchImpl,
+    internalUrl,
+    access,
+    'GET',
+    `/admin/realms/${realm}/users/${encodeURIComponent(summary.id)}`
+  )
+  if (!full.ok) throw new Error(`keycloak profile lookup failed (${full.status})`)
+  const user = await full.json()
+  const current = Array.isArray(user.requiredActions) ? user.requiredActions : []
+  const names = personName(
+    fallbackName || `${user.firstName || ''} ${user.lastName || ''}`,
+    user.email
+  )
+  const body = {
+    ...user,
+    firstName: String(user.firstName || '').trim() || names.firstName,
+    lastName: String(user.lastName || '').trim() || names.lastName,
+    requiredActions: current.filter((action) => !PROFILE_ACTIONS.has(action)),
+  }
+  delete body.credentials
+  const updated = await api(
+    fetchImpl,
+    internalUrl,
+    access,
+    'PUT',
+    `/admin/realms/${realm}/users/${encodeURIComponent(summary.id)}`,
+    body
+  )
+  if (!updated.ok) throw new Error(`keycloak profile was not updated (${updated.status})`)
+}
+
 export async function configureKeycloak({
   internalUrl,
   publicUrl,
@@ -61,6 +112,7 @@ export async function configureKeycloak({
   sloUrl,
   userEmail,
   userPassword,
+  userName = '',
   fetchImpl = fetch,
 }) {
   const access = await token({ internalUrl, adminUser, adminPassword, fetchImpl })
@@ -140,12 +192,35 @@ export async function configureKeycloak({
           email: userEmail,
           enabled: true,
           emailVerified: true,
+          ...personName(userName, userEmail),
+          requiredActions: [],
           credentials: [{ type: 'password', value: userPassword, temporary: false }],
         }
       )
       if (!made.ok && made.status !== 409) {
         throw new Error(`keycloak user was not created (${made.status})`)
       }
+    } else {
+      await settleProfile(fetchImpl, internalUrl, access, realm, users[0], userName)
+    }
+  }
+
+  // Keycloak 26 asks for a first and last name when they are empty, then
+  // ForceAuthn treats the session from that form as stale. Clearing the
+  // profile action after the name exists lets the next password finish
+  // the SAML response. The password is not sent again.
+  const listed = await api(
+    fetchImpl,
+    internalUrl,
+    access,
+    'GET',
+    `/admin/realms/${realm}/users?max=50`
+  )
+  if (listed.ok) {
+    const realmUsers = await listed.json()
+    for (const realmUser of Array.isArray(realmUsers) ? realmUsers : []) {
+      if (!realmUser?.id) continue
+      await settleProfile(fetchImpl, internalUrl, access, realm, realmUser, '')
     }
   }
 

@@ -121,6 +121,7 @@ const server = createOwnStackServer({
       sloUrl: `${origin}/auth/saml/slo`,
       userEmail: request.contactEmail,
       userPassword: bootstrapPassword,
+      userName: request.contactName,
     }),
   publicEnv: {
     VITE_DATA_DRIVER: 'postgres',
