@@ -1,6 +1,6 @@
 import { createServer } from 'node:http'
 import { PGlite } from '@electric-sql/pglite'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { applySchema, createEngine } from '../../../stack/engine.mjs'
 import { fulfillRequest } from '../../../stack/fulfill.mjs'
 import { establishIdentity } from '../../../stack/identity.mjs'
@@ -315,6 +315,114 @@ describe('other IdPs', () => {
       Buffer.from('<Response></Response>').toString('base64')
     )
     expect(result.ok).toBe(false)
+  })
+})
+
+describe('company OIDC on the dedicated host', () => {
+  // The callback used to accept any pending `state`, from any browser. These
+  // drive the host's own demo issuer through the real redirects, then try to
+  // finish one browser's sign-in from another.
+  async function oidcHost() {
+    const probe = createServer()
+    await new Promise((resolve) => probe.listen(0, '127.0.0.1', resolve))
+    const { port } = probe.address()
+    await new Promise((resolve) => probe.close(resolve))
+    const origin = `http://127.0.0.1:${port}`
+
+    const db = new PGlite()
+    const engine = createEngine(db)
+    const requests = new Map()
+    const secret = 'session-secret-for-the-oidc-test'
+    const server = createOwnStackServer({
+      engine,
+      db,
+      sessionSecret: secret,
+      origin,
+      auth: { method: 'oidc', issuer: '', clientId: 'ohsms' },
+      requests,
+      controlToken: 'operator-token',
+    })
+    await new Promise((resolve) => server.listen(port, '127.0.0.1', resolve))
+    requests.set('reqOidc1', { ...request, id: 'reqOidc1', authIssuer: `${origin}/oidc` })
+    const started = await fetch(`${origin}/intake/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer operator-token' },
+      body: JSON.stringify({ requestId: 'reqOidc1' }),
+    })
+    const { token } = await started.json()
+    const intake = await fetch(`${origin}/intake`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        requestId: 'reqOidc1',
+        email: 'ops@northwind.test',
+        token,
+        secrets: { databaseUrl: 'postgres://db.example/northwind', dataKeyMaster: 'master-value' },
+      }),
+    })
+    expect(intake.status).toBe(200)
+    return { server, origin, secret }
+  }
+
+  /** One browser: /auth/start, then the issuer's sign-in, up to the callback URL. */
+  async function begin(origin, email = 'asha@northwind.test') {
+    const start = await fetch(`${origin}/auth/start`, { redirect: 'manual' })
+    expect(start.status).toBe(302)
+    const cookie = String(start.headers.get('set-cookie') || '').split(';')[0]
+    expect(cookie).toMatch(/^ohsms_oidc=.+/)
+    expect(start.headers.get('set-cookie')).toMatch(/HttpOnly/)
+    const authorize = await fetch(start.headers.get('location'), {
+      method: 'POST',
+      redirect: 'manual',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ email }).toString(),
+    })
+    expect(authorize.status).toBe(302)
+    return { cookie, callback: authorize.headers.get('location') }
+  }
+
+  const finish = (callback, cookie = '') =>
+    fetch(callback, { redirect: 'manual', headers: cookie ? { Cookie: cookie } : {} })
+
+  it('signs in the browser that started the sign-in, and clears its cookie', async () => {
+    const { server, origin, secret } = await oidcHost()
+    const { cookie, callback } = await begin(origin)
+    const res = await finish(callback, cookie)
+    expect(res.status).toBe(302)
+    const session = decodeURIComponent(res.headers.get('location').split('#session=')[1])
+    expect(verifySession(secret, session).sub).toBe('asha@northwind.test')
+    expect(res.headers.get('set-cookie')).toMatch(/^ohsms_oidc=;.*Max-Age=0/)
+    server.close()
+  })
+
+  it("refuses to finish one browser's sign-in in another browser", async () => {
+    const { server, origin } = await oidcHost()
+    const attacker = await begin(origin)
+    const victim = await begin(origin)
+    const res = await finish(attacker.callback, victim.cookie)
+    expect(res.status).toBe(400)
+    expect(String(res.headers.get('location'))).not.toContain('#session=')
+    server.close()
+  })
+
+  it('refuses a callback from a browser holding no sign-in cookie', async () => {
+    const { server, origin } = await oidcHost()
+    const { callback } = await begin(origin)
+    expect((await finish(callback)).status).toBe(400)
+    server.close()
+  })
+
+  it('refuses a sign-in left pending past ten minutes', async () => {
+    const { server, origin } = await oidcHost()
+    const { cookie, callback } = await begin(origin)
+    const now = Date.now()
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(now + 11 * 60 * 1000)
+    try {
+      expect((await finish(callback, cookie)).status).toBe(400)
+    } finally {
+      clock.mockRestore()
+      server.close()
+    }
   })
 })
 
