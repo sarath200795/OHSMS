@@ -548,7 +548,12 @@ async function deliverOrg({
   // not claimed. Leaving the run open lets the next tick send them. Marking
   // it sent would make the ledger's "at most one" into "at most the ones
   // that fitted in the first burst".
-  const status = result.reason === 'rate-limited' ? 'open' : 'sent'
+  // A send the relay refused before taking it (bad login, no connection,
+  // sender not accepted) is the same: the claims were released, and the
+  // next tick in this slot sends once the setup is right. Marking it sent
+  // is what turned one cleared login into three silent windows.
+  const status =
+    result.reason === 'rate-limited' || result.reason === 'undelivered' ? 'open' : 'sent'
   await ref.set({ ...base, status, updatedAt: clock() }, { merge: true })
   return { sent: result.sent, skipped: result.skipped, failed: result.failed }
 }

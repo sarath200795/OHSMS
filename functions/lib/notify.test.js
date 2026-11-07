@@ -217,6 +217,87 @@ describe('sendOnce', () => {
     expect(store.get(ref.path).status).toBe('failed')
   })
 
+  // Nodemailer names the stage on err.command. A refused login cannot have
+  // delivered; holding the claim is what kept a corrected setup silent.
+  async function failWith(err) {
+    const store = new Map()
+    const ref = memoryRef(store, 'organizations/orgA/notifications/abc')
+    const args = { ref, kind: 'weather.digest', key: ['k'], uid: 'u1', subject: 's', now: NOW }
+    const result = await sendOnce({
+      ...args,
+      send: async () => {
+        throw err
+      },
+    })
+    return { store, ref, args, result }
+  }
+  const smtpError = (message, fields) => Object.assign(new Error(message), fields)
+
+  it('releases a refused login, and the same key sends once the login is fixed', async () => {
+    const { store, ref, args, result } = await failWith(
+      smtpError('Invalid login: 535 5.7.8 Authentication failed', {
+        code: 'EAUTH',
+        command: 'AUTH PLAIN',
+        responseCode: 535,
+      })
+    )
+    expect(result).toMatchObject({
+      status: 'failed',
+      reason: 'undelivered',
+      undelivered: 'transport',
+    })
+    expect(store.has(ref.path)).toBe(false)
+    const sent = []
+    const again = await sendOnce({ ...args, send: async () => sent.push('mail') })
+    expect(again.status).toBe('sent')
+    expect(sent).toEqual(['mail'])
+  })
+
+  it('releases a connection that never opened and a sender the relay refused', async () => {
+    for (const err of [
+      smtpError('Greeting never received', { code: 'ETIMEDOUT', command: 'CONN' }),
+      smtpError('connect ECONNREFUSED', { code: 'ESOCKET', command: 'CONN' }),
+      smtpError('Mail command failed: 550 sender not valid', {
+        code: 'EENVELOPE',
+        command: 'MAIL FROM',
+        responseCode: 550,
+      }),
+    ]) {
+      const { store, ref, result } = await failWith(err)
+      expect(result.undelivered).toBe('transport')
+      expect(store.has(ref.path)).toBe(false)
+    }
+  })
+
+  it('releases one refused recipient without calling it a transport failure', async () => {
+    const { store, ref, result } = await failWith(
+      smtpError('Recipient command failed: 550 5.1.1 no such user', {
+        code: 'EENVELOPE',
+        command: 'RCPT TO',
+        responseCode: 550,
+      })
+    )
+    expect(result.undelivered).toBe('recipient')
+    expect(store.has(ref.path)).toBe(false)
+  })
+
+  it('keeps a failure the relay may already have accepted, so nobody gets a second copy', async () => {
+    for (const err of [
+      smtpError('Message failed: 451 try later', {
+        code: 'EMESSAGE',
+        command: 'DATA',
+        responseCode: 451,
+      }),
+      smtpError('Timeout', { code: 'ETIMEDOUT' }),
+      smtpError('Connection closed unexpectedly', { code: 'ESOCKET' }),
+      smtpError('AUTHENTICATION looks like a word here', { command: 'DATA' }),
+    ]) {
+      const { store, ref, result } = await failWith(err)
+      expect(result.reason).toBe('send-failed')
+      expect(store.get(ref.path).status).toBe('failed')
+    }
+  })
+
   it('rethrows when the claim itself cannot be written', async () => {
     const ref = {
       async create() {
