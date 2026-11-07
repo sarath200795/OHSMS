@@ -55,6 +55,28 @@ export function clearAccessToken() {
   setAccessToken('')
 }
 
+/**
+ * Take the session the host's sign-in redirect put in the URL fragment
+ * (`/#session=<token>`), store it, and strip it from the address bar.
+ *
+ * This has to run before the router does anything. It used to run in
+ * AuthProvider's effect, but effects run child-first, so the `/` route's
+ * `<Navigate to="/portal">` replaced the URL — fragment and all — before the
+ * provider looked. Every SAML and OIDC sign-in on a dedicated build landed
+ * back on /login with a valid session thrown away.
+ *
+ * @returns {boolean} whether a session was taken
+ */
+export function adoptSessionFromHash(loc = typeof window !== 'undefined' ? window.location : null) {
+  if (!loc || !String(loc.hash || '').includes('session=')) return false
+  const token = new URLSearchParams(String(loc.hash).replace(/^#/, '')).get('session')
+  if (token) setAccessToken(token)
+  // The token must not stay in history, where a back button or a shared
+  // screenshot would carry it.
+  window.history.replaceState({}, '', loc.pathname + loc.search)
+  return Boolean(token)
+}
+
 function decodeBase64Url(part) {
   const pad = part.replace(/-/g, '+').replace(/_/g, '/')
   const padded = pad + '='.repeat((4 - (pad.length % 4)) % 4)

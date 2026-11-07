@@ -55,6 +55,8 @@ Vedio/
 # Playwright artifacts
 test-results/
 playwright-report/
+# e2e/record/*.mjs output. Videos are regenerated, not versioned (see Vedio/ above).
+recordings/
 
 # Vitest writes these transient config snapshots next to the config file
 vitest.config.js.timestamp-*

@@ -201,7 +201,13 @@ export default [
   // built-ins are not all declared by the node set, and `fetch`/`AbortSignal`
   // in particular are language-level here rather than Node API.
   {
-    files: ['scripts/**/*.mjs', 'tools/**/*.mjs', '*.config.js', '*.config.mjs'],
+    files: [
+      'scripts/**/*.mjs',
+      'tools/**/*.mjs',
+      'e2e/**/*.mjs',
+      '*.config.js',
+      '*.config.mjs',
+    ],
     languageOptions: {
       ecmaVersion: 'latest',
       sourceType: 'module',

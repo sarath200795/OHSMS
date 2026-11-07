@@ -12,6 +12,7 @@ import AuthLayout from './AuthLayout'
 import LoginModules from './LoginModules'
 import { isNativePlatform } from '../../shared/mobile/native'
 import StoreBadges from './StoreBadges'
+import { isOwnStackBuild, ownStackAuthMethod } from '../../shared/auth/ownStackSession'
 
 export default function Login() {
   const {
@@ -169,6 +170,34 @@ export default function Login() {
           <p className="text-center text-xs text-ink-500">
             Lost your device? An administrator can reset two-factor for your account.
           </p>
+        </form>
+      </AuthLayout>
+    )
+  }
+
+  // ── Company IdP (own-stack, OIDC or SAML) ──────────────────────────────────
+  // A dedicated build whose company chose OIDC or SAML has no password here.
+  // It used to render the WEEHS email/password form anyway, and submitting it
+  // discarded both fields and redirected to the IdP — so the screen asked for
+  // a password this site never checks, and invited people to type their
+  // company password into a form that is not their company's. Register and
+  // Join are absent for the same reason: both refuse on this build.
+  // docs/CUSTOM-STACK.md, "Auth — follows the registration choice".
+  if (isOwnStackBuild() && ['oidc', 'saml'].includes(ownStackAuthMethod())) {
+    return (
+      <AuthLayout
+        title="Sign in"
+        subtitle="Occupational Health & Safety Management System"
+        showcase={<LoginModules />}
+      >
+        <form onSubmit={submit} className="space-y-4">
+          <p className="text-sm leading-relaxed text-ink-600">
+            Your organization signs in with its own identity provider. You will be taken to your
+            company&apos;s sign-in page and brought back here.
+          </p>
+          <Button type="submit" icon={ShieldCheck} loading={busy} className="w-full">
+            Continue with company sign-in
+          </Button>
         </form>
       </AuthLayout>
     )

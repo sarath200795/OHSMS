@@ -7,6 +7,7 @@ import { INTAKE_FIELDS } from './intake.mjs'
 
 const REASONS = {
   database: 'The database credential this mode needs was not in the handoff.',
+  saml: 'Company SAML needs both the IdP certificate and the entry point, and one was missing.',
   engine: 'That engine has no adapter, so the request was not marked live.',
   empty: 'Nothing was submitted. Enter at least one secret and try the link again.',
   reused: 'That link was already used.',
