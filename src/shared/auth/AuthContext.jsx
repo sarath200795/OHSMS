@@ -34,6 +34,7 @@ import {
 } from '../org/orgData'
 import { nameTakenMessage } from '../org/provisioningSchema'
 import {
+  adoptSessionFromHash,
   clearAccessToken,
   currentAccessToken,
   isOwnStackBuild,
@@ -83,6 +84,10 @@ export function AuthProvider({ children }) {
   // and doing that before the answer is known would show it to the operator.
   const [platformAdmin, setPlatformAdmin] = useState(null)
 
+  // During render, not in the effect below: a child's <Navigate> runs its
+  // effect first and would strip the fragment. See adoptSessionFromHash.
+  useState(() => isOwnStackBuild() && adoptSessionFromHash())
+
   const refreshProfile = useCallback(async (uid) => {
     const p = await getUserProfile(uid)
     setProfile(p)
@@ -91,12 +96,6 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     if (isOwnStackBuild()) {
-      if (typeof window !== 'undefined' && window.location.hash.includes('session=')) {
-        const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''))
-        const fromHash = hash.get('session')
-        if (fromHash) setAccessToken(fromHash)
-        window.history.replaceState({}, '', window.location.pathname + window.location.search)
-      }
       const uid = sessionUid()
       if (!uid) {
         setUser(null)

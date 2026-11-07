@@ -4,17 +4,39 @@
 
 import { SAML } from '@node-saml/node-saml'
 
+/**
+ * The certificate as node-saml accepts it whatever shape it arrived in.
+ *
+ * The handoff page collects it in a single-line field, and an <input> drops
+ * line breaks, so a pasted PEM arrives as one line. node-saml rejects that
+ * form, and the failure surfaced as nothing more than every sign-in being
+ * refused. The base64 body alone is accepted, so that is what is kept.
+ */
+export function normalizeIdpCert(cert) {
+  return String(cert || '')
+    .replace(/-----(BEGIN|END) CERTIFICATE-----/g, '')
+    .replace(/\s+/g, '')
+}
+
 export function samlClient({ issuer, callbackUrl, idpCert, entryPoint }) {
-  if (!idpCert || !entryPoint) {
+  const cert = normalizeIdpCert(idpCert)
+  if (!cert || !entryPoint) {
     throw new Error('saml: the IdP certificate and entry point are required')
   }
   return new SAML({
     issuer,
     callbackUrl,
-    idpCert,
+    idpCert: cert,
     entryPoint,
     wantAssertionsSigned: true,
     identifierFormat: null,
+    // A response is accepted only as the answer to an AuthnRequest this host
+    // issued, once. The library default is 'never', under which a signed
+    // response captured from one sign-in can be posted again, or posted
+    // without anyone having started a sign-in, until its timestamps expire.
+    // The request ids live in this client's in-memory cache, so the host must
+    // keep one client for both legs (stack/server.mjs does).
+    validateInResponseTo: 'always',
   })
 }
 
