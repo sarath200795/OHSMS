@@ -632,6 +632,50 @@ describe('deliverWeatherDigest', () => {
     expect(store.store.get(runPath).status).toBe('sent')
   })
 
+  it('keeps the slot open for one refused recipient, and mails only them on the next tick', async () => {
+    const store = memoryDb({
+      'organizations/orgA': { name: 'Acme' },
+      'organizations/orgA/sites/s1': { name: 'Plant 2', region: 'South', lat: 17.44, lng: 78.39 },
+      'users/admin': user('admin', { role: 'admin' }),
+      'users/other': user('other', { role: 'admin', email: 'other@example.com' }),
+    })
+    const args = {
+      db: store,
+      logger,
+      scheduleTime: '2026-09-23T06:00:00.000Z',
+      now: () => new Date('2026-09-23T06:40:00.000Z'),
+      orgIds: ['orgA'],
+      fetchObs: async () => ({ tempC: 42, apparentTempC: 52 }),
+      renderMap: async () => ({ png: PNG }),
+    }
+    const first = []
+    const greylisted = {
+      ...mailer([]),
+      async send(message) {
+        if (message.to === 'other@example.com') {
+          throw Object.assign(new Error('Recipient command failed: 450 4.2.0 greylisted'), {
+            code: 'EENVELOPE',
+            command: 'RCPT TO',
+          })
+        }
+        first.push(message.to)
+      },
+    }
+    await deliverWeatherDigest({ ...args, mailer: greylisted })
+    expect(first).toEqual(['admin@example.com'])
+    const runPath = 'organizations/orgA/weatherDigestRuns/2026-09-23T06+0530'
+    expect(store.store.get(runPath).status).toBe('open')
+
+    const second = []
+    await deliverWeatherDigest({
+      ...args,
+      now: () => new Date('2026-09-23T06:50:00.000Z'),
+      mailer: mailer(second),
+    })
+    expect(second.map((m) => m.to)).toEqual(['other@example.com'])
+    expect(store.store.get(runPath).status).toBe('sent')
+  })
+
   it('mails the slot cache the screen already fetched, and does not ask again', async () => {
     const sent = []
     const slot = '2026-09-23T06+0530'

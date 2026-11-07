@@ -552,8 +552,14 @@ async function deliverOrg({
   // sender not accepted) is the same: the claims were released, and the
   // next tick in this slot sends once the setup is right. Marking it sent
   // is what turned one cleared login into three silent windows.
+  // One refused recipient counts too: its claim was released, a refusal at
+  // RCPT TO is often temporary (greylisting, a busy mailbox), and a run
+  // marked sent would never come back for it. Everyone already mailed skips
+  // on their ledger row.
   const status =
-    result.reason === 'rate-limited' || result.reason === 'undelivered' ? 'open' : 'sent'
+    result.reason === 'rate-limited' || result.reason === 'undelivered' || result.undelivered > 0
+      ? 'open'
+      : 'sent'
   await ref.set({ ...base, status, updatedAt: clock() }, { merge: true })
   return { sent: result.sent, skipped: result.skipped, failed: result.failed }
 }
