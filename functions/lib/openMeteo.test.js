@@ -97,12 +97,12 @@ function modelOf(url) {
 }
 
 describe('what leaves for Open-Meteo', () => {
-  it('rounds to ~11 km and does not put a key, a site name, visibility or UV on the URL', () => {
+  it('rounds to ~1 km and does not put a key, a site name, visibility or UV on the URL', () => {
     const url = forecastUrl(17.43821, 78.3912, WEATHER_MODEL)
     const parsed = new URL(url)
     expect(`${parsed.origin}${parsed.pathname}`).toBe(FORECAST)
-    expect(parsed.searchParams.get('latitude')).toBe('17.4')
-    expect(parsed.searchParams.get('longitude')).toBe('78.4')
+    expect(parsed.searchParams.get('latitude')).toBe('17.44')
+    expect(parsed.searchParams.get('longitude')).toBe('78.39')
     expect(parsed.searchParams.get('models')).toBe('icon_global')
     expect(parsed.searchParams.get('hourly')).toBe(HOURLY_WEATHER.join(','))
     expect(parsed.searchParams.get('wind_speed_unit')).toBe('ms')
@@ -119,18 +119,17 @@ describe('what leaves for Open-Meteo', () => {
     expect(url).not.toContain('apparent_temperature')
     expect(url).not.toContain('european_aqi')
     expect(url).not.toContain('minutely_15')
-    // One cell of the coarsest model the answer comes from. Two sites a few
-    // kilometres apart in one city are one request, not two.
-    expect(gridKey(12.9352, 77.6245)).toBe('12.9,77.6')
-    expect(gridKey(12.9116, 77.6389)).toBe('12.9,77.6')
+    // Two sites a few kilometres apart are two squares, each its own reading.
+    expect(gridKey(12.9352, 77.6245)).toBe('12.94,77.62')
+    expect(gridKey(12.9116, 77.6389)).toBe('12.91,77.64')
     expect(gridKey(91, 0)).toBe('')
     expect(gridKey(Number.NaN, 0)).toBe('')
     expect(forecastUrl(91, 0, WEATHER_MODEL)).toBe('')
 
     const air = new URL(airQualityUrl(17.43821, 78.3912))
     expect(`${air.origin}${air.pathname}`).toBe(AIR)
-    expect(air.searchParams.get('latitude')).toBe('17.4')
-    expect(air.searchParams.get('longitude')).toBe('78.4')
+    expect(air.searchParams.get('latitude')).toBe('17.44')
+    expect(air.searchParams.get('longitude')).toBe('78.39')
     expect(air.searchParams.get('hourly')).toBe(HOURLY_AIR.join(','))
     expect(air.searchParams.get('models')).toBeNull()
     expect(air.searchParams.get('past_hours')).toBe('6')
@@ -295,7 +294,7 @@ describe('fetchGrids', () => {
     const latitudes = calls
       .filter((url) => url.startsWith(FORECAST))
       .map((url) => new URL(url).searchParams.get('latitude'))
-    expect(latitudes.every((lat) => lat === '17.4' || lat === '13.1')).toBe(true)
+    expect(latitudes.every((lat) => lat === '17.44' || lat === '13.08')).toBe(true)
   })
 
   it('stops the pass on a spent daily quota instead of retrying every grid', async () => {

@@ -7,15 +7,16 @@
 // this URL would be a credential in the query string. options.apiKey is
 // ignored.
 //
-// Coordinates are rounded to one decimal (~11 km) before they leave. That
-// is the resolution of the answer: icon_global is a ~13 km grid, gfs_global
-// ~25 km and the air-quality model coarser still, and Open-Meteo returns the
-// nearest cell. Two decimals (~1 km) asked again for the same cell once per
-// site in it — two requests each, every slot, and again on every retry tick.
-// A large org then ran into the free tier's daily limit late in the UTC day
-// and two digests went out having read none of their sites. The exact
-// position of a workplace is not part of the request. The site name, org and
-// id are not either.
+// Coordinates are rounded to two decimals (~1 km) before they leave. The
+// exact position of a workplace is not part of the request. The site name,
+// org and id are not either.
+//
+// One decimal (~11 km) was tried for a day (v2.0.16 to v2.0.18) on the theory
+// that the request count was spending the free daily quota. It was not: the
+// refusals came from requests reaching Open-Meteo from several addresses at
+// once, and that has been fixed at its source. Two decimals keeps each site's reading
+// to its own square, and the daily-limit stop in fetchGrids below still ends
+// a pass that does run out.
 //
 // Two forecast models:
 //   icon_global — temperature, humidity, hourly precipitation, CAPE, WMO
@@ -115,7 +116,7 @@ const HOUR_FIELDS = [
 export function gridKey(lat, lng) {
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return ''
   if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return ''
-  return `${lat.toFixed(1)},${lng.toFixed(1)}`
+  return `${lat.toFixed(2)},${lng.toFixed(2)}`
 }
 
 function locationParams(lat, lng) {

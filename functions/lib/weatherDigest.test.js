@@ -86,11 +86,11 @@ describe('collectDigest', () => {
       { id: 's5', name: 'No pin', region: 'South', entity: 'COCO' },
     ]
     const byLat = {
-      17.4: { tempC: 42, apparentTempC: 52 },
-      13.1: { tempC: 38, apparentTempC: 46 },
-      28.6: { tempC: 30, apparentTempC: 32 },
+      17.44: { tempC: 42, apparentTempC: 52 },
+      13.08: { tempC: 38, apparentTempC: 46 },
+      28.61: { tempC: 30, apparentTempC: 32 },
     }
-    const digest = await collectDigest(sites, async (lat) => byLat[lat.toFixed(1)] || null)
+    const digest = await collectDigest(sites, async (lat) => byLat[lat.toFixed(2)] || null)
     expect(digest.areas.map((a) => `${a.region}:${a.name}:${a.level}`)).toEqual([
       'South:Plant 2:High',
       'East:Depot:Medium',
@@ -119,7 +119,7 @@ describe('collectDigest', () => {
       name: `Site ${i}`,
       region: 'South',
       lat: 10 + Math.floor(i / 50),
-      lng: 70 + (i % 50) * 0.2,
+      lng: 70 + (i % 50) * 0.05,
     }))
     const seen = []
     const digest = await collectDigest(sites, async (lat, lng) => {
@@ -261,10 +261,10 @@ describe('deliverWeatherDigest', () => {
       'users/admin': user('admin', { role: 'admin' }),
     })
     const byLat = {
-      17.4: { tempC: 42, apparentTempC: 52, precipMmHr: 5, observedAt: '2026-09-23T11:00' },
-      13.1: { apparentTempC: 30, precipMmHr: 12 },
-      28.6: { tempC: 39, apparentTempC: 46 },
-      19.1: { capeJkg: 2600 },
+      17.44: { tempC: 42, apparentTempC: 52, precipMmHr: 5, observedAt: '2026-09-23T11:00' },
+      13.08: { apparentTempC: 30, precipMmHr: 12 },
+      28.61: { tempC: 39, apparentTempC: 46 },
+      19.07: { capeJkg: 2600 },
     }
     const pinned = []
     await deliverWeatherDigest({
@@ -273,7 +273,7 @@ describe('deliverWeatherDigest', () => {
       logger,
       scheduleTime: '2026-09-23T06:00:00.000Z',
       orgIds: ['orgA'],
-      fetchObs: async (lat) => byLat[lat.toFixed(1)] || null,
+      fetchObs: async (lat) => byLat[lat.toFixed(2)] || null,
       renderMap: async (pins) => {
         pinned.push(...pins)
         return { png: PNG }
@@ -317,8 +317,8 @@ describe('deliverWeatherDigest', () => {
       'users/admin': user('admin', { role: 'admin' }),
     })
     const byLat = {
-      17.4: { tempC: 38, apparentTempC: 52 },
-      28.6: { tempC: 40.1, apparentTempC: 52 },
+      17.44: { tempC: 38, apparentTempC: 52 },
+      28.61: { tempC: 40.1, apparentTempC: 52 },
     }
     await deliverWeatherDigest({
       db: store,
@@ -326,7 +326,7 @@ describe('deliverWeatherDigest', () => {
       logger,
       scheduleTime: '2026-09-23T06:00:00.000Z',
       orgIds: ['orgA'],
-      fetchObs: async (lat) => byLat[lat.toFixed(1)] || null,
+      fetchObs: async (lat) => byLat[lat.toFixed(2)] || null,
       renderMap: async (pins) => {
         pinned.push(...pins)
         return { png: PNG }
@@ -456,7 +456,7 @@ describe('deliverWeatherDigest', () => {
       now: () => new Date(slot),
       orgIds: ['orgA'],
       fetchObs: async (lat) => {
-        asked.push(Number(lat.toFixed(1)))
+        asked.push(Number(lat.toFixed(2)))
         if (lat < 15) {
           depotTries += 1
           if (depotTries === 1) return null
@@ -473,12 +473,12 @@ describe('deliverWeatherDigest', () => {
     expect(store.notifications()).toHaveLength(0)
     const progress = store.store.get(`organizations/orgA/weatherDigestRuns/${held.bucket}`)
     expect(progress.status).toBe('open')
-    expect(progress.observations.map((row) => row.key)).toEqual(['17.4,78.4'])
+    expect(progress.observations.map((row) => row.key)).toEqual(['17.44,78.39'])
 
     asked.length = 0
     const released = await deliverWeatherDigest({ ...args, mailer: mailer(sent) })
     expect(released.sent).toBe(3)
-    expect(asked).toEqual([13.1])
+    expect(asked).toEqual([13.08])
     expect(sent[0].text).toContain('Weather checked for 2 of 2 sites')
     expect(sent[0].text).not.toContain('Could not fetch')
   })
@@ -683,7 +683,7 @@ describe('deliverWeatherDigest', () => {
       'organizations/orgA': { name: 'Acme' },
       'organizations/orgA/sites/s1': { name: 'Plant 2', region: 'South', lat: 17.44, lng: 78.39 },
       'users/admin': user('admin', { role: 'admin' }),
-      [`weatherCache/om_17.4_78.4`]: {
+      [`weatherCache/om_17.44_78.39`]: {
         slot,
         obs: {
           tempC: 42,

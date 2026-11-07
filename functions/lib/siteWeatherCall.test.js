@@ -91,7 +91,7 @@ describe('decideWeatherCaller', () => {
 
 describe('callerReachesPoint', () => {
   it('allows a posting, a grant and an admin, and refuses another site', () => {
-    const key = '17.4,78.4'
+    const key = '17.44,78.39'
     expect(callerReachesPoint(approved(), [site()], key)).toBe(true)
     expect(
       callerReachesPoint(approved({ siteId: '', access: { regions: ['South'] } }), [site()], key)
@@ -198,8 +198,8 @@ describe('serveSiteWeather', () => {
       const url = new URL(call.url)
       expect(['api.open-meteo.com', 'air-quality-api.open-meteo.com']).toContain(url.hostname)
       expect(url.protocol).toBe('https:')
-      expect(url.searchParams.get('latitude')).toBe('17.4')
-      expect(url.searchParams.get('longitude')).toBe('78.4')
+      expect(url.searchParams.get('latitude')).toBe('17.44')
+      expect(url.searchParams.get('longitude')).toBe('78.39')
       expect(call.timeout).toBeTruthy()
     }
   })

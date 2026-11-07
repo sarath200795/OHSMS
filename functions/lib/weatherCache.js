@@ -1,4 +1,4 @@
-// One Open-Meteo reading per ~11 km square per six-hour slot.
+// One Open-Meteo reading per ~1 km square per six-hour slot.
 //
 // The site screen, the home widget, the map, the phone alerts and the digest
 // used to each ask the provider on their own clock. Two of those asks can land

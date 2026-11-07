@@ -7,7 +7,7 @@
 // password. The digest does not come through here. It is a schedule, and it
 // does not borrow a user.
 //
-// A coordinate is allowed when it is the ~11 km square of a site this profile
+// A coordinate is allowed when it is the ~1 km square of a site this profile
 // can already see. Admins see every site in their org. Everyone else is the
 // same reach as reachesScope: their posting, or an explicit site, region or
 // entity grant. Another org's sites are not in the list the caller loads.
