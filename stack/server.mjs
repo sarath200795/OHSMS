@@ -10,7 +10,7 @@ import { verifySession, signSession } from './session.mjs'
 import { decidePresign } from './presign.mjs'
 import { identityFromCode } from './oidc.mjs'
 import { identityFromSupabase } from './supabaseAuth.mjs'
-import { samlClient, identityFromSaml } from './saml.mjs'
+import { authnRequestId, samlClient, identityFromSaml } from './saml.mjs'
 import { establishIdentity } from './identity.mjs'
 import {
   stampIdentity,
@@ -252,6 +252,28 @@ export function createOwnStackServer({
     return saml
   }
 
+  // The AuthnRequest ids above are host-wide, so on their own they prove a
+  // response answers *some* sign-in this host started, not that it answers
+  // the one this browser started. Without that, an invited user could start a
+  // sign-in, authenticate as themselves, and have a victim's browser post the
+  // response — the victim then works signed in as the attacker (login CSRF).
+  // So /auth/start sets a one-time cookie naming its request, and /auth/saml
+  // accepts only the response to that request. SameSite=None because the ACS
+  // POST arrives cross-site from the IdP; Secure is required for that, and
+  // browsers treat localhost as secure for the local demo.
+  const SAML_COOKIE = 'ohsms_saml'
+  const SAML_TTL_MS = 10 * 60 * 1000
+  const samlCookie = (value, maxAge) =>
+    `${SAML_COOKIE}=${value}; Path=/auth/saml; HttpOnly; Secure; SameSite=None; Max-Age=${maxAge}`
+
+  function cookieOf(req, name) {
+    for (const part of String(req.headers.cookie || '').split(';')) {
+      const [k, ...v] = part.trim().split('=')
+      if (k === name) return v.join('=')
+    }
+    return ''
+  }
+
   async function onAuthStart(url, res) {
     if (auth.method === 'saml') {
       let location
@@ -261,7 +283,17 @@ export function createOwnStackServer({
         send(res, 503, { code: 'unavailable', message: 'single sign-on is not configured' })
         return
       }
-      send(res, 302, '', { Location: location })
+      const id = authnRequestId(location)
+      if (!id) {
+        send(res, 503, { code: 'unavailable', message: 'single sign-on is not configured' })
+        return
+      }
+      const binding = randomBytes(24).toString('base64url')
+      codes.set(`saml:${binding}`, { id, at: Date.now() })
+      send(res, 302, '', {
+        Location: location,
+        'Set-Cookie': samlCookie(binding, SAML_TTL_MS / 1000),
+      })
       return
     }
     const state = randomBytes(16).toString('base64url')
@@ -315,22 +347,41 @@ export function createOwnStackServer({
       return
     }
     const body = await readBody(req)
+    const binding = cookieOf(req, SAML_COOKIE)
+    const pending = binding ? codes.get(`saml:${binding}`) : null
+    if (binding) codes.delete(`saml:${binding}`)
+    const clear = { 'Set-Cookie': samlCookie('', 0) }
+    if (!pending || Date.now() - pending.at > SAML_TTL_MS) {
+      send(res, 401, { code: 'unauthenticated', message: 'start sign-in again' }, clear)
+      return
+    }
     const identity = await identityFromSaml(samlFor(), String(body.SAMLResponse || ''))
+    if (identity.ok && identity.inResponseTo !== pending.id) {
+      send(res, 401, { code: 'unauthenticated', message: 'start sign-in again' }, clear)
+      return
+    }
     if (!identity.ok) {
-      send(res, 401, {
-        code: 'unauthenticated',
-        message: 'the identity provider refused the sign-in',
-      })
+      send(
+        res,
+        401,
+        { code: 'unauthenticated', message: 'the identity provider refused the sign-in' },
+        clear
+      )
       return
     }
     const established = await establishIdentity(engine, db, identity)
     if (!established.ok) {
-      send(res, 403, { code: 'permission-denied', message: 'no account on this organization' })
+      send(
+        res,
+        403,
+        { code: 'permission-denied', message: 'no account on this organization' },
+        clear
+      )
       return
     }
     const token = signSession(sessionSecret, { sub: established.uid })
     const app = origin || '/'
-    send(res, 302, '', { Location: `${app}/#session=${encodeURIComponent(token)}` })
+    send(res, 302, '', { Location: `${app}/#session=${encodeURIComponent(token)}`, ...clear })
   }
 
   async function onSupabase(req, res) {

@@ -380,14 +380,25 @@ describe('company SAML on the dedicated host', () => {
     const res = await fetch(`${origin}/auth/start`, { redirect: 'manual' })
     expect(res.status).toBe(302)
     const location = new URL(res.headers.get('location'))
-    return { location, authn: readAuthnRequest(location.searchParams.get('SAMLRequest')) }
+    // The browser's half of the binding: what /auth/start set, sent back.
+    const cookie = String(res.headers.get('set-cookie') || '').split(';')[0]
+    expect(cookie).toMatch(/^ohsms_saml=.+/)
+    expect(res.headers.get('set-cookie')).toMatch(/HttpOnly/)
+    return {
+      location,
+      cookie,
+      authn: readAuthnRequest(location.searchParams.get('SAMLRequest')),
+    }
   }
 
-  function post(origin, samlResponse) {
+  function post(origin, samlResponse, cookie = '') {
     return fetch(`${origin}/auth/saml`, {
       method: 'POST',
       redirect: 'manual',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        ...(cookie ? { Cookie: cookie } : {}),
+      },
       body: new URLSearchParams({ SAMLResponse: samlResponse }).toString(),
     })
   }
@@ -403,11 +414,11 @@ describe('company SAML on the dedicated host', () => {
 
   it('sends the browser to the company IdP and signs in the invited founder', async () => {
     const { server, origin, keys, secret } = await samlHost()
-    const { location, authn } = await start(origin)
+    const { location, authn, cookie } = await start(origin)
     expect(location.origin + location.pathname).toBe('https://idp.northwind.test/sso')
     expect(authn.issuer).toBe('ohsms-northwind')
 
-    const res = await post(origin, answer(keys, authn))
+    const res = await post(origin, answer(keys, authn), cookie)
     expect(res.status).toBe(302)
     const back = res.headers.get('location')
     const session = decodeURIComponent(back.split('#session=')[1])
@@ -419,8 +430,8 @@ describe('company SAML on the dedicated host', () => {
     const { server, origin, keys } = await samlHost({
       certAs: (pem) => pem.replace(/\r?\n/g, ''),
     })
-    const { authn } = await start(origin)
-    expect((await post(origin, answer(keys, authn))).status).toBe(302)
+    const { authn, cookie } = await start(origin)
+    expect((await post(origin, answer(keys, authn), cookie)).status).toBe(302)
     server.close()
   })
 
@@ -449,35 +460,57 @@ describe('company SAML on the dedicated host', () => {
     server.close()
   })
 
+  it('refuses a valid response posted from a browser that did not start that sign-in', async () => {
+    // Login CSRF: an invited user starts a sign-in, authenticates as
+    // themselves, and makes the victim's browser (which holds its own
+    // sign-in cookie, or none) post the response.
+    const { server, origin, keys } = await samlHost()
+    const attacker = await start(origin)
+    const victim = await start(origin)
+    const response = answer(keys, attacker.authn)
+    expect((await post(origin, response, victim.cookie)).status).toBe(401)
+    expect((await post(origin, response)).status).toBe(401)
+    server.close()
+  })
+
+  it('clears the one-time sign-in cookie once it is used', async () => {
+    const { server, origin, keys } = await samlHost()
+    const { authn, cookie } = await start(origin)
+    const res = await post(origin, answer(keys, authn), cookie)
+    expect(res.status).toBe(302)
+    expect(res.headers.get('set-cookie')).toMatch(/^ohsms_saml=;.*Max-Age=0/)
+    server.close()
+  })
+
   it('refuses the same signed response a second time', async () => {
     const { server, origin, keys } = await samlHost()
-    const { authn } = await start(origin)
+    const { authn, cookie } = await start(origin)
     const response = answer(keys, authn)
-    expect((await post(origin, response)).status).toBe(302)
-    expect((await post(origin, response)).status).toBe(401)
+    expect((await post(origin, response, cookie)).status).toBe(302)
+    expect((await post(origin, response, cookie)).status).toBe(401)
     server.close()
   })
 
   it('refuses a correctly signed response nobody asked for', async () => {
     const { server, origin, keys } = await samlHost()
-    const { authn } = await start(origin)
+    const { authn, cookie } = await start(origin)
     const unsolicited = answer(keys, { ...authn, id: '_never-issued-by-this-host' })
-    expect((await post(origin, unsolicited)).status).toBe(401)
+    expect((await post(origin, unsolicited, cookie)).status).toBe(401)
     server.close()
   })
 
   it('refuses a response signed by a key other than the company IdP', async () => {
     const { server, origin } = await samlHost()
-    const { authn } = await start(origin)
+    const { authn, cookie } = await start(origin)
     const forged = answer(makeIdpKeys('attacker-idp'), authn)
-    expect((await post(origin, forged)).status).toBe(401)
+    expect((await post(origin, forged, cookie)).status).toBe(401)
     server.close()
   })
 
   it('does not admit a valid IdP user who was never invited', async () => {
     const { server, origin, keys } = await samlHost()
-    const { authn } = await start(origin)
-    const res = await post(origin, answer(keys, authn, 'stranger@northwind.test'))
+    const { authn, cookie } = await start(origin)
+    const res = await post(origin, answer(keys, authn, 'stranger@northwind.test'), cookie)
     expect(res.status).toBe(403)
     expect(res.headers.get('location')).toBeNull()
     server.close()

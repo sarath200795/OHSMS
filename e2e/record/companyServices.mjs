@@ -15,7 +15,7 @@
 import { createServer } from 'node:http'
 import { createServer as createTlsServer } from 'node:https'
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomBytes } from 'node:crypto'
@@ -55,7 +55,9 @@ export function makeTls(hostnames) {
     ],
     { stdio: 'ignore' }
   )
-  return { key: readFileSync(key), cert: readFileSync(cert) }
+  const out = { key: readFileSync(key), cert: readFileSync(cert) }
+  rmSync(dir, { recursive: true, force: true })
+  return out
 }
 
 function serve(tls, handler) {
@@ -71,6 +73,10 @@ async function bodyOf(req) {
   for await (const chunk of req) chunks.push(chunk)
   return Buffer.concat(chunks)
 }
+
+// Query values reach these pages from the URL, so they are escaped before
+// they land in an attribute: this IdP is a stand-in, not an XSS sink.
+const attr = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)
 
 const page = (title, inner) => `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title>
@@ -105,8 +111,8 @@ export async function startCompanyIdp({ port, entityId, publicUrl, tls }) {
           `<div class="brand"><span class="dot"></span>Northwind Metals</div>
            <p>Company single sign-on (SAML 2.0)</p>
            <form method="post" action="/sso">
-             <input type="hidden" name="SAMLRequest" value="${samlRequest}">
-             <input type="hidden" name="RelayState" value="${relay}">
+             <input type="hidden" name="SAMLRequest" value="${attr(samlRequest)}">
+             <input type="hidden" name="RelayState" value="${attr(relay)}">
              <label for="email">Work email</label><input id="email" name="email" type="email" required>
              <label for="password">Password</label><input id="password" name="password" type="password" required>
              <button type="submit">Sign in</button>
@@ -134,7 +140,7 @@ export async function startCompanyIdp({ port, entityId, publicUrl, tls }) {
         page(
           'Signing in…',
           `<div class="brand"><span class="dot"></span>Northwind Metals</div><p>Returning to the application…</p>
-           <form id="f" method="post" action="${authn.acs}"><input type="hidden" name="SAMLResponse" value="${response}"></form>
+           <form id="f" method="post" action="${attr(authn.acs)}"><input type="hidden" name="SAMLResponse" value="${response}"></form>
            <script>setTimeout(()=>document.getElementById('f').submit(),900)</script>`
         )
       )

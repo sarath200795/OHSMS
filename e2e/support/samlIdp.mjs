@@ -9,7 +9,7 @@
 // else. The key is generated per run and never leaves the temp directory.
 
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomBytes } from 'node:crypto'
@@ -45,7 +45,11 @@ export function makeIdpKeys(cn = 'test-idp') {
     ],
     { stdio: 'ignore' }
   )
-  return { key: readFileSync(key, 'utf8'), cert: readFileSync(cert, 'utf8') }
+  const out = { key: readFileSync(key, 'utf8'), cert: readFileSync(cert, 'utf8') }
+  // The private key is throwaway, but it is still a private key: do not leave
+  // one on disk per run.
+  rmSync(dir, { recursive: true, force: true })
+  return out
 }
 
 /** The fields of a redirect-binding AuthnRequest the IdP needs to answer it. */

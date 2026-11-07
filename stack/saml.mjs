@@ -3,6 +3,7 @@
 // value, not a field on the provisioning request.
 
 import { SAML } from '@node-saml/node-saml'
+import { inflateRawSync } from 'node:zlib'
 
 /**
  * The certificate as node-saml accepts it whatever shape it arrived in.
@@ -40,6 +41,17 @@ export function samlClient({ issuer, callbackUrl, idpCert, entryPoint }) {
   })
 }
 
+/** The ID of the AuthnRequest carried in a redirect-binding authorize URL. */
+export function authnRequestId(authorizeUrl) {
+  try {
+    const raw = new URL(authorizeUrl).searchParams.get('SAMLRequest') || ''
+    const xml = inflateRawSync(Buffer.from(raw, 'base64')).toString('utf8')
+    return xml.match(/\sID="([^"]+)"/)?.[1] || ''
+  } catch {
+    return ''
+  }
+}
+
 export async function identityFromSaml(client, samlResponse) {
   let profile
   try {
@@ -53,6 +65,7 @@ export async function identityFromSaml(client, samlResponse) {
   const email = profile.email || profile.mail || (String(sub).includes('@') ? sub : '')
   return {
     ok: true,
+    inResponseTo: String(profile.inResponseTo || ''),
     sub: String(sub),
     email: String(email || ''),
     name: String(profile.displayName || email || sub),
