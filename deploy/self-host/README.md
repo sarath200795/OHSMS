@@ -61,8 +61,8 @@ them. Do not paste that output anywhere.
 
 ## Start, status, stop
 
-If `ohsms-self-host-ohsms:latest` is already built, do not rebuild it.
-From this directory, after `node bootstrap.mjs`:
+Building MinIO does not rebuild the app. From this directory, after
+`node bootstrap.mjs`:
 
 ```sh
 docker compose build minio
@@ -77,6 +77,31 @@ with `docker compose up -d --no-build`. Do not run `docker compose down -v`.
 
 A first install that has not built the app yet uses `docker compose up -d --build`
 once. After that, use `--no-build` as above.
+
+### Rebuild only the app
+
+`stack/presign.mjs` imports `functions/lib` before the process listens. An
+image that copied `stack/` and not `functions/` exits with
+`ERR_MODULE_NOT_FOUND` and never opens `:8787`. The Dockerfile copies
+`app/functions` as well as `app/stack`. `deploy/self-host/runtimeClosure.mjs`
+is the file list, and `src/shared/data/selfHostPackage.test.js` imports
+`stack/self-host.mjs` from a directory that contains only that list.
+
+When that image is already running and Postgres, MinIO, and Keycloak are
+healthy, replace the app container only. Do not replace `docker-compose.yml`,
+`minio/`, or `secrets/`. Do not run `docker compose down` or `down -v`.
+
+```sh
+docker compose ps -q postgres minio keycloak
+docker compose build ohsms
+docker compose up -d --no-deps --force-recreate ohsms
+docker compose ps -q postgres minio keycloak
+curl -fsS http://127.0.0.1:8787/health
+```
+
+The two `ps -q` lines should print the same three container ids. `build ohsms`
+does not rebuild MinIO. `--no-deps` does not recreate Postgres, Keycloak, or
+MinIO. Named volumes `pgdata` and `miniodata` stay.
 
 ### Health
 
