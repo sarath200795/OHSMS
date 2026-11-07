@@ -383,10 +383,6 @@ async function main() {
     VITE_AUTH_ISSUER: filed.authIssuer,
     VITE_AUTH_CLIENT_ID: filed.authClientId,
     VITE_AUTH_TOTP: 'off',
-    // App.jsx still gates on a Firebase project id even on this build. It is
-    // a placeholder: nothing here talks to Firebase.
-    VITE_FIREBASE_PROJECT_ID: 'northwind-dedicated',
-    VITE_FIREBASE_API_KEY: 'unused-on-this-build',
   })
   await waitFor(`${APP}/login`)
   // Warm the module graph so the recording is not a loading spinner.
