@@ -8,7 +8,10 @@
 # back to download-token URLs — the bearer-credential path getBlob replaced.
 # Applying it on every deploy means the bucket cannot drift from the file.
 #
-# Env: BUCKET (bare name, no gs://), GOOGLE_APPLICATION_CREDENTIALS.
+# Env: BUCKET (bare name, no gs://), PROJECT_ID, GOOGLE_APPLICATION_CREDENTIALS.
+# An empty BUCKET falls back to <PROJECT_ID>.firebasestorage.app, the same
+# default src/shared/firebase.js gives the bundle, so the rule lands on the
+# bucket the app actually reads rather than on none.
 # GCLOUD overrides the binary for the test.
 set -euo pipefail
 
@@ -16,11 +19,15 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 cors="${CORS_FILE:-$root/scripts/storage-cors.json}"
 gcloud_bin="${GCLOUD:-gcloud}"
 
-if [[ -z "${BUCKET:-}" ]]; then
-  echo "::warning::VITE_FIREBASE_STORAGE_BUCKET is not set; bucket CORS not applied."
+bucket="${BUCKET:-}"
+if [[ -z "$bucket" && -n "${PROJECT_ID:-}" ]]; then
+  bucket="${PROJECT_ID}.firebasestorage.app"
+fi
+if [[ -z "$bucket" ]]; then
+  echo "::warning::Neither a storage bucket nor a project id is set; bucket CORS not applied."
   exit 0
 fi
-bucket="${BUCKET#gs://}"
+bucket="${bucket#gs://}"
 if [[ ! "$bucket" =~ ^[a-z0-9][a-z0-9._-]*[a-z0-9]$ ]]; then
   echo "Refusing bucket name: $bucket" >&2
   exit 1

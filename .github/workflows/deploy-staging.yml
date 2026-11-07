@@ -227,14 +227,15 @@ jobs:
             exit 1
           fi
 
-      # Same CORS rule as production (deploy.yml), same reasoning for
-      # continue-on-error: reads fall back without it.
+      # Same CORS rule as production (deploy.yml), and the same reasoning for
+      # continue-on-error, including what it costs sealed files.
       - name: Apply Storage CORS
         if: steps.creds.outputs.configured == 'true'
         continue-on-error: true
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa-staging.json
           BUCKET: ${{ vars.STAGING_FIREBASE_STORAGE_BUCKET }}
+          PROJECT_ID: ${{ vars.STAGING_FIREBASE_PROJECT_ID }}
         run: bash scripts/apply-storage-cors.sh
 
       # Same Rules API 503 as production (deploy.yml). When the live release

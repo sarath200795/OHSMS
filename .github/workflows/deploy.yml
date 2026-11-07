@@ -332,16 +332,21 @@ jobs:
       # rules step, not between rules and hosting: deploy-rules.test.sh reads
       # that span as the rules step and refuses continue-on-error in it.
       #
-      # continue-on-error, deliberately and unlike the rules step: reads still
-      # render through the fallback without it, so a missing IAM permission on
-      # the service account (storage.buckets.update) should be a visible warning
-      # on the run, not a release that stops after the functions already shipped.
+      # continue-on-error, deliberately and unlike the rules step. Plain files
+      # still render through the getDownloadURL fallback without the rule;
+      # SEALED files do not (they need the bytes, so getBlob or nothing). A
+      # failure here therefore costs encrypted attachments until it is fixed,
+      # but it never changes a bucket that already has the rule, and stopping
+      # here would strand a release whose functions already shipped. So: a
+      # loud warning on the run (missing storage.buckets.update is the likely
+      # cause), not a half-deployed release.
       - name: Apply Storage CORS
         if: steps.creds.outputs.configured == 'true'
         continue-on-error: true
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json
           BUCKET: ${{ vars.VITE_FIREBASE_STORAGE_BUCKET }}
+          PROJECT_ID: ${{ vars.VITE_FIREBASE_PROJECT_ID }}
         run: bash scripts/apply-storage-cors.sh
 
       # Two steps, in this order, deliberately — see docs/PRODUCTION.md §0b.

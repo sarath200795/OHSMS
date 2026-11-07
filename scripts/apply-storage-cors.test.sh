@@ -23,12 +23,20 @@ export GCLOUD="$tmp/gcloud" FAKE_LOG="$log"
 # The committed rule must parse, and must cover the production origin.
 node -e '
 const r = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))
-if (!r[0].origin.includes("https://suite.weehs.org")) process.exit(1)
+for (const o of ["https://suite.weehs.org", "https://localhost", "capacitor://localhost"]) {
+  if (!r[0].origin.includes(o)) process.exit(1)
+}
 if (r[0].method.some((m) => !["GET", "HEAD"].includes(m))) process.exit(2)
-' "$root/scripts/storage-cors.json" || fail "storage-cors.json missing production origin or allows a write method"
+' "$root/scripts/storage-cors.json" || fail "storage-cors.json missing an app origin (web, Android, iOS) or allows a write method"
 
-# Unset bucket: skip with a warning, call nothing.
-out="$(BUCKET= GOOGLE_APPLICATION_CREDENTIALS="$tmp/sa.json" bash "$script")"
+# Unset bucket: the bundle's default, <project>.firebasestorage.app.
+BUCKET= PROJECT_ID=demo-project GOOGLE_APPLICATION_CREDENTIALS="$tmp/sa.json" bash "$script" >/dev/null
+grep -q "^storage buckets update gs://demo-project.firebasestorage.app " "$log" \
+  || fail "unset bucket did not fall back to the project default"
+: >"$log"
+
+# Neither bucket nor project: skip with a warning, call nothing.
+out="$(BUCKET= PROJECT_ID= GOOGLE_APPLICATION_CREDENTIALS="$tmp/sa.json" bash "$script")"
 [[ "$out" == *"::warning::"* ]] || fail "unset bucket should warn"
 [[ ! -s "$log" ]] || fail "unset bucket should not call gcloud"
 
