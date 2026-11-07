@@ -14,7 +14,7 @@ RUN go build -trimpath -o /out/minio .
 
 FROM debian:bookworm-slim
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates curl \
+ && apt-get install -y --no-install-recommends ca-certificates curl util-linux \
  && rm -rf /var/lib/apt/lists/* \
  && useradd --system --uid 1000 --home-dir /data --shell /usr/sbin/nologin minio
 COPY --from=build /out/minio /usr/local/bin/minio
