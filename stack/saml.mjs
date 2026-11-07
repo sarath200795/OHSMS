@@ -21,7 +21,15 @@ export function idpCertPem(value) {
   return `-----BEGIN CERTIFICATE-----\n${lines.join('\n')}\n-----END CERTIFICATE-----\n`
 }
 
-export function samlClient({ issuer, callbackUrl, idpCert, entryPoint, validateInResponseTo }) {
+export function samlClient({
+  issuer,
+  callbackUrl,
+  idpCert,
+  entryPoint,
+  validateInResponseTo,
+  forceAuthn = false,
+  logoutUrl,
+}) {
   const cert = idpCertPem(idpCert)
   if (!cert || !entryPoint) {
     throw new Error('saml: the IdP certificate and entry point are required')
@@ -39,6 +47,11 @@ export function samlClient({ issuer, callbackUrl, idpCert, entryPoint, validateI
     wantAuthnResponseSigned: false,
     identifierFormat: null,
     disableRequestedAuthnContext: true,
+    // A leftover IdP cookie must not skip the password. Logout also sends
+    // the browser to the IdP so that cookie is cleared. Both are required:
+    // a redirect back to /login alone leaves the IdP session in place.
+    forceAuthn: Boolean(forceAuthn),
+    ...(logoutUrl ? { logoutUrl } : {}),
     ...(validateInResponseTo ? { validateInResponseTo } : {}),
   })
 }

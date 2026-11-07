@@ -425,6 +425,9 @@ export function AuthProvider({ children }) {
 
   const signOut = async () => {
     if (isOwnStackBuild()) {
+      const gateway = ownStackGateway()
+      const token = currentAccessToken()
+      const method = ownStackAuthMethod()
       clearKeyring()
       clearSharedSubscriptions()
       endSession()
@@ -432,6 +435,25 @@ export function AuthProvider({ children }) {
       setUser(null)
       setProfile(null)
       setPendingMfa(null)
+      // Clearing the token only drops this app's session. The IdP cookie
+      // would sign the next visit straight back in. Ask the host for the
+      // IdP logout URL, which also sets ForceAuthn on the next request.
+      if (gateway && token && (method === 'saml' || method === 'oidc')) {
+        try {
+          const res = await fetch(`${gateway}/auth/logout`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+          })
+          const body = await res.json().catch(() => ({}))
+          if (body.url) {
+            window.location.assign(body.url)
+            return
+          }
+        } catch {
+          // The local session is already gone. A failed IdP call leaves the
+          // person on this page signed out.
+        }
+      }
       return
     }
     // Before the network call, not after: fbSignOut can fail or hang offline,

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { Button, Field, Input, Select } from '../../shared/ui'
-import { fileProvisioningRequest } from '../../shared/org/provisioningRequest'
+import { fileProvisioningRequest, localRequestDefaults } from '../../shared/org/provisioningRequest'
 import {
   AUTH_METHODS,
   BUCKET_MODES,
@@ -12,6 +12,8 @@ import {
   validateProvisioningRequest,
 } from '../../shared/org/provisioningSchema'
 import AuthLayout from './AuthLayout'
+
+const PRESET = localRequestDefaults()
 
 const EMPTY = {
   orgName: '',
@@ -28,6 +30,7 @@ const EMPTY = {
   bucketName: '',
   bucketRegion: '',
   presignUrl: '',
+  ...(PRESET || {}),
 }
 
 /**
@@ -115,10 +118,22 @@ export default function OwnStackRequest({ onBack }) {
         }
       >
         <div className="space-y-3 text-sm leading-relaxed text-ink-700">
+          {filed.dedicatedUrl ? (
+            <p>
+              <span className="font-semibold text-ink-900">{filed.orgName}</span> is live at{' '}
+              <a className="font-semibold text-brand-700" href={filed.dedicatedUrl}>
+                {filed.dedicatedUrl}
+              </a>
+              . Sign in there with your company identity provider. This screen did not collect a
+              database password or an identity-provider secret.
+            </p>
+          ) : null}
           <p>
             Request <span className="font-mono text-ink-900">{filed.id}</span> is stored for{' '}
             <span className="font-semibold text-ink-900">{filed.orgName}</span>. Keep that id.
-            Status stays requested until the secret handoff finishes.
+            {filed.dedicatedUrl
+              ? ' The environment is live.'
+              : ' Status stays requested until the secret handoff finishes.'}
           </p>
           <p>
             When mail is configured,{' '}

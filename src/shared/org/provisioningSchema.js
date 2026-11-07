@@ -128,6 +128,10 @@ const PASSWORD_ASSIGN = /password\s*=/i
 const ENGINE = /^[a-z][a-z0-9_-]{0,31}$/
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const HTTPS = /^https:\/\/[^\s@?#]+$/
+// Loopback http is only for a dedicated host bound to 127.0.0.1. A public
+// request still has to be https. The password-in-URL form stays refused
+// because the pattern has no userinfo.
+const LOOPBACK = /^http:\/\/(127\.0\.0\.1|localhost)(:[0-9]{1,5})?(\/[^\s@?#]*)?$/
 const CLIENT_ID = /^[A-Za-z0-9._~-]{1,200}$/
 const BUCKET = /^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/
 const REGION = /^[a-z0-9-]{1,40}$/
@@ -180,7 +184,12 @@ function fail(errors) {
  *
  * @param {Record<string, unknown>} input
  */
-export function validateProvisioningRequest(input) {
+function acceptableUrl(value, allowLoopback) {
+  if (HTTPS.test(value)) return true
+  return Boolean(allowLoopback) && LOOPBACK.test(value)
+}
+
+export function validateProvisioningRequest(input, { allowLoopback = false } = {}) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) {
     return fail({ form: 'The request could not be read.' })
   }
@@ -270,11 +279,11 @@ export function validateProvisioningRequest(input) {
     errors.authMethod = 'Choose company OIDC, company SAML, or Supabase Auth.'
   } else if (authMethod === 'supabase') {
     authClientId = ''
-    if (authIssuer && !HTTPS.test(authIssuer)) {
+    if (authIssuer && !acceptableUrl(authIssuer, allowLoopback)) {
       errors.authIssuer = 'The project URL has to be an https address, with no password in it.'
     }
   } else {
-    if (!HTTPS.test(authIssuer)) {
+    if (!acceptableUrl(authIssuer, allowLoopback)) {
       errors.authIssuer = 'The issuer URL has to be an https address, with no password in it.'
     }
     if (!CLIENT_ID.test(authClientId)) {
@@ -293,7 +302,7 @@ export function validateProvisioningRequest(input) {
     if (!BUCKET.test(bucketName)) errors.bucketName = 'Enter the bucket name. Not an access key.'
     if (!REGION.test(bucketRegion))
       errors.bucketRegion = 'Enter the bucket region, such as ap-south-1.'
-    if (presignUrl && !HTTPS.test(presignUrl)) {
+    if (presignUrl && !acceptableUrl(presignUrl, allowLoopback)) {
       errors.presignUrl = 'The presign endpoint has to be an https address, with no key in the URL.'
     }
     if (presignUrl.length > 500) errors.presignUrl = 'Use a shorter presign endpoint URL.'

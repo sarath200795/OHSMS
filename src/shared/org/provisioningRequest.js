@@ -9,6 +9,8 @@ import {
   writeBatch,
 } from '../data/client.js'
 import { db } from '../firebase'
+import { ownStackGateway } from '../auth/ownStackSession'
+import { publicStackValue } from '../stackPublicEnv'
 import { findOrgByName, orgIndexRef } from './orgData'
 import {
   NAME_OWN,
@@ -41,13 +43,67 @@ export {
  * @param {Record<string, unknown>} input
  * @returns {Promise<{ id: string, orgName: string, contactEmail: string, handoffContact: string, mode: string, engine: string, authMethod: string }>}
  */
+export function localControlPlane() {
+  return publicStackValue('VITE_CONTROL_PLANE') === 'local'
+}
+
+function requestId() {
+  const bytes = new Uint8Array(12)
+  crypto.getRandomValues(bytes)
+  return Array.from(bytes, (b) => 'abcdefghijklmnopqrstuvwxyz0123456789'[b % 36]).join('')
+}
+
+export function localRequestDefaults() {
+  if (!localControlPlane()) return null
+  return {
+    mode: 'bring',
+    engine: 'postgres',
+    authMethod: 'saml',
+    authIssuer: publicStackValue('VITE_AUTH_ISSUER'),
+    authClientId: publicStackValue('VITE_AUTH_CLIENT_ID') || 'ohsms',
+    bucketMode: 'bring',
+    bucketName: 'ohsms',
+    bucketRegion: 'us-east-1',
+    presignUrl: publicStackValue('VITE_S3_PRESIGN_ENDPOINT'),
+  }
+}
+
+async function fileOnControlPlane(value) {
+  const gateway = ownStackGateway()
+  if (!gateway) throw new Error('This stack has no control plane configured.')
+  const id = requestId()
+  const res = await fetch(`${gateway}/requests`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...value, id }),
+  })
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(NOT_FILED)
+  return {
+    id: body.requestId || id,
+    orgName: value.orgName,
+    contactEmail: value.contactEmail,
+    handoffContact: value.handoffContact,
+    mode: value.mode,
+    engine: value.engine,
+    authMethod: value.authMethod,
+    status: body.status || 'requested',
+    dedicatedUrl: body.dedicatedUrl || '',
+  }
+}
+
 export async function fileProvisioningRequest(input) {
-  const checked = validateProvisioningRequest(input)
+  const checked = validateProvisioningRequest(input, { allowLoopback: localControlPlane() })
   if (!checked.ok) {
     const err = new Error(checked.errors.form || 'Check the request and try again.')
     err.fields = checked.errors
     throw err
   }
+
+  // The dedicated host has no Firestore name index. The control plane
+  // refuses a second live organization. The shared suite still checks
+  // orgIndex before it writes.
+  if (localControlPlane()) return fileOnControlPlane(checked.value)
 
   let existing = null
   try {

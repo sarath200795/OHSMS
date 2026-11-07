@@ -696,6 +696,11 @@ Firestore rule has a line-by-line twin:
 - App Check's replacement for anonymous routes is still the company's choice.
   The token-bound policies exist. The vendor does not.
 
+`deploy/self-host/` is a Docker Compose package for one company on a single
+machine: persistent Postgres, Keycloak, and MinIO, with the app host on
+`127.0.0.1:8787`. It is not the embedded demo and it does not use the shared
+Firebase project. The install steps are `deploy/self-host/README.md`.
+
 `node stack/demo-provision.mjs` builds one embedded company on
 `http://127.0.0.1:8787`. `node stack/demo-provision.mjs --saml` is the same
 company with the fixture IdP described below. Neither touches the shared

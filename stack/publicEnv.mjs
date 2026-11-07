@@ -16,6 +16,7 @@ export const PUBLIC_STACK_KEYS = [
   'VITE_AUTH_CLIENT_ID',
   'VITE_AUTH_TOTP',
   'VITE_SUPABASE_ANON_KEY',
+  'VITE_CONTROL_PLANE',
 ]
 
 export function publicStackDocument(env) {

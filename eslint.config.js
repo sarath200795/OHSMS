@@ -20,7 +20,7 @@ const vitestGlobals = {
 
 export default [
   {
-    files: ['stack/**/*.mjs'],
+    files: ['stack/**/*.mjs', 'deploy/self-host/**/*.mjs'],
     languageOptions: {
       ecmaVersion: 'latest',
       sourceType: 'module',

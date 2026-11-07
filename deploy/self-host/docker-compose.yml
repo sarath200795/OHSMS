@@ -1,0 +1,114 @@
+# Local self-hosted OHSMS. Ports are published on 127.0.0.1 only.
+# Stop with `docker compose stop`. Do not use `down -v`; that deletes the
+# database and the bucket.
+
+name: ohsms-self-host
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ohsms
+      POSTGRES_DB: ohsms
+    env_file:
+      - ./secrets/compose.env
+    ports:
+      - '127.0.0.1:5432:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ohsms -d ohsms']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:RELEASE.2024-12-18T13-15-44Z
+    command: ['server', '/data', '--console-address', ':9001']
+    env_file:
+      - ./secrets/compose.env
+    ports:
+      - '127.0.0.1:9000:9000'
+      - '127.0.0.1:9001:9001'
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ['CMD', 'mc', 'ready', 'local']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0.7
+    command: ['start-dev', '--http-port=8080', '--hostname-strict=false']
+    environment:
+      KC_HEALTH_ENABLED: 'true'
+      KC_HTTP_ENABLED: 'true'
+    env_file:
+      - ./secrets/compose.env
+    ports:
+      - '127.0.0.1:8080:8080'
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'exec 3<>/dev/tcp/127.0.0.1/9000 && echo -e "GET /health/ready HTTP/1.0\\r\\n\\r\\n" >&3 && cat <&3 | grep -q UP',
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    restart: unless-stopped
+
+  ohsms:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      OHSMS_ORIGIN: http://127.0.0.1:8787
+      KEYCLOAK_PUBLIC_URL: http://127.0.0.1:8080
+      KEYCLOAK_INTERNAL_URL: http://keycloak:8080
+      KEYCLOAK_ADMIN: admin
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ROOT_USER: ohsms
+      POSTGRES_HOST: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres-password
+      MINIO_PASSWORD_FILE: /run/secrets/minio-root-password
+      KEYCLOAK_ADMIN_PASSWORD_FILE: /run/secrets/keycloak-admin-password
+      BOOTSTRAP_PASSWORD_FILE: /run/secrets/bootstrap-password
+      SESSION_SECRET_FILE: /run/secrets/session-secret
+      DATA_KEY_MASTER_FILE: /run/secrets/data-key-master
+      CONTROL_TOKEN_FILE: /run/secrets/control-token
+    volumes:
+      - ./secrets/postgres-password:/run/secrets/postgres-password:ro
+      - ./secrets/minio-root-password:/run/secrets/minio-root-password:ro
+      - ./secrets/keycloak-admin-password:/run/secrets/keycloak-admin-password:ro
+      - ./secrets/bootstrap-password:/run/secrets/bootstrap-password:ro
+      - ./secrets/session-secret:/run/secrets/session-secret:ro
+      - ./secrets/data-key-master:/run/secrets/data-key-master:ro
+      - ./secrets/control-token:/run/secrets/control-token:ro
+    ports:
+      - '127.0.0.1:8787:8787'
+    depends_on:
+      - postgres
+      - minio
+      - keycloak
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:8787/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  miniodata:

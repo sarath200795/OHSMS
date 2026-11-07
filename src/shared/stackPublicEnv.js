@@ -20,6 +20,7 @@ export const STACK_ENV_KEYS = [
   'VITE_AUTH_CLIENT_ID',
   'VITE_AUTH_TOTP',
   'VITE_SUPABASE_ANON_KEY',
+  'VITE_CONTROL_PLANE',
 ]
 
 function builtValue(name) {
@@ -44,6 +45,8 @@ function builtValue(name) {
       return import.meta.env.VITE_AUTH_TOTP
     case 'VITE_SUPABASE_ANON_KEY':
       return import.meta.env.VITE_SUPABASE_ANON_KEY
+    case 'VITE_CONTROL_PLANE':
+      return import.meta.env.VITE_CONTROL_PLANE
     default:
       return ''
   }

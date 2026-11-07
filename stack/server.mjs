@@ -107,13 +107,19 @@ export function createOwnStackServer({
   controlToken = '',
   spaRoot = DEFAULT_SPA_ROOT,
   samlFixtureKey = '',
+  localFiling = false,
+  heldSecrets = null,
+  prepareIdentity = null,
+  publicEnv = null,
+  envExtras = null,
 }) {
   const state = {
     origin: String(origin || '').replace(/\/$/, ''),
     sessionSecret,
     master: dataKeyMaster,
     auth: { ...auth },
-    publicEnv: null,
+    publicEnv,
+    envExtras: envExtras || {},
     saml: null,
     samlKey: '',
   }
@@ -142,6 +148,14 @@ export function createOwnStackServer({
       }
       if (url.pathname === '/auth/saml/acs') {
         await onSamlAcs(req, res)
+        return
+      }
+      if (url.pathname === '/auth/saml/slo') {
+        send(res, 302, '', { Location: `${selfOrigin(req)}/login` })
+        return
+      }
+      if (req.method === 'POST' && url.pathname === '/auth/logout') {
+        await onLogout(req, res)
         return
       }
       if (req.method === 'GET' && url.pathname === '/auth/saml/metadata') {
@@ -220,11 +234,11 @@ export function createOwnStackServer({
         return
       }
       if (req.method === 'GET' && url.pathname === '/stack-env.js') {
-        if (!state.publicEnv) {
+        if (!publishedEnv()) {
           send(res, 404, { code: 'not-found', message: 'not found' })
           return
         }
-        send(res, 200, stackEnvSource(state.publicEnv), {
+        send(res, 200, stackEnvSource(publishedEnv()), {
           'Content-Type': 'text/javascript; charset=utf-8',
         })
         return
@@ -440,12 +454,12 @@ export function createOwnStackServer({
         send(res, 415, { code: 'invalid-argument', message: 'that file type is not stored' })
         return
       }
-      if (blobs.has(path)) {
+      if (await blobs.has(path)) {
         send(res, 409, { code: 'already-exists', message: 'that object already exists' })
         return
       }
       const body = Buffer.concat(chunks)
-      blobs.set(path, {
+      await blobs.set(path, {
         body,
         contentType: type.split(';')[0].trim().toLowerCase(),
         size: body.length,
@@ -458,7 +472,7 @@ export function createOwnStackServer({
         send(res, 403, { code: 'permission-denied', message: 'delete was refused' })
         return
       }
-      blobs.delete(path)
+      await blobs.delete(path)
       send(res, 200, { ok: true })
       return
     }
@@ -474,7 +488,7 @@ export function createOwnStackServer({
         send(res, 403, { code: 'permission-denied', message: 'refused' })
         return
       }
-      const stored = blobs.get(path)
+      const stored = await blobs.get(path)
       if (!stored) {
         send(res, 404, { code: 'not-found', message: 'not found' })
         return
@@ -721,8 +735,16 @@ export function createOwnStackServer({
     return { http: body.ok ? 200 : 400, body }
   }
 
+  function mayFile(req) {
+    if (operator(req)) return true
+    // localFiling is the self-host process only. Its published port is
+    // 127.0.0.1, which the container cannot see (the peer is the docker
+    // bridge). The body is still takePublicRequest: a secret field is refused.
+    return Boolean(localFiling)
+  }
+
   async function onFile(req, res) {
-    if (!operator(req)) {
+    if (!mayFile(req)) {
       send(res, 401, { code: 'unauthenticated', message: 'operator token required' })
       return
     }
@@ -736,6 +758,20 @@ export function createOwnStackServer({
       })
       return
     }
+    if (localFiling && !operator(req)) {
+      // The first registration applies the schema inside fulfillment. A
+      // missing table is "no organizations yet", not a reason to refuse.
+      let orgs = []
+      try {
+        orgs = await engine.list(WORKER, 'organizations', {})
+      } catch {
+        orgs = []
+      }
+      if (orgs.some((org) => org.name === accepted.value.orgName)) {
+        send(res, 409, { code: 'already-exists', message: 'that organization is already live' })
+        return
+      }
+    }
     const prior = requests.get(accepted.value.id)
     if (prior?.status === 'live' || intake.get(accepted.value.id)?.secrets) {
       send(res, 409, {
@@ -746,6 +782,19 @@ export function createOwnStackServer({
       return
     }
     requests.set(accepted.value.id, accepted.value)
+    if (localFiling && heldSecrets && !operator(req)) {
+      if (prepareIdentity) {
+        try {
+          await prepareIdentity(accepted.value)
+        } catch {
+          send(res, 503, { code: 'unavailable', message: 'the identity provider is not ready' })
+          return
+        }
+      }
+      const outcome = await runFulfill(accepted.value, heldSecrets)
+      send(res, outcome.http, outcome.body)
+      return
+    }
     const opened = await openIntake(requests.get(accepted.value.id))
     send(res, opened.http, opened.body)
   }
@@ -825,6 +874,33 @@ export function createOwnStackServer({
     send(res, outcome.http, outcome.body)
   }
 
+  function publishedEnv() {
+    if (!state.publicEnv) return null
+    return { ...state.publicEnv, ...state.envExtras }
+  }
+
+  async function onLogout(req, res) {
+    const session = sessionOf(req, state.sessionSecret)
+    const client = serviceProvider(req)
+    const login = `${selfOrigin(req)}/login`
+    if (!session || !client) {
+      send(res, 200, { url: login })
+      return
+    }
+    try {
+      const url = await client.getLogoutUrlAsync(
+        {
+          nameID: session.sub,
+          nameIDFormat: 'urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress',
+        },
+        ''
+      )
+      send(res, 200, { url })
+    } catch {
+      send(res, 200, { url: login })
+    }
+  }
+
   function spIssuer() {
     return state.auth.clientId || 'ohsms'
   }
@@ -836,7 +912,7 @@ export function createOwnStackServer({
     if (!cert || !entry) return null
     const issuer = spIssuer()
     const callbackUrl = `${selfOrigin(req)}/auth/saml/acs`
-    const key = `${issuer}|${callbackUrl}|${entry}|${cert}`
+    const key = `${issuer}|${callbackUrl}|${entry}|${cert}|${state.auth.forceAuthn ? 1 : 0}`
     if (state.samlKey !== key) {
       // always: the assertion has to answer an AuthnRequest this process
       // issued. A captured response cannot be replayed at ACS after the id
@@ -847,6 +923,8 @@ export function createOwnStackServer({
         idpCert: cert,
         entryPoint: entry,
         validateInResponseTo: 'always',
+        forceAuthn: Boolean(state.auth.forceAuthn),
+        logoutUrl: entry,
       })
       state.samlKey = key
     }
