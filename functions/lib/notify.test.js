@@ -257,6 +257,7 @@ describe('sendOnce', () => {
     for (const err of [
       smtpError('Greeting never received', { code: 'ETIMEDOUT', command: 'CONN' }),
       smtpError('connect ECONNREFUSED', { code: 'ESOCKET', command: 'CONN' }),
+      smtpError('Connection closed unexpectedly', { code: 'ECONNECTION', command: 'CONN' }),
       smtpError('Mail command failed: 550 sender not valid', {
         code: 'EENVELOPE',
         command: 'MAIL FROM',
@@ -290,6 +291,8 @@ describe('sendOnce', () => {
       }),
       smtpError('Timeout', { code: 'ETIMEDOUT' }),
       smtpError('Connection closed unexpectedly', { code: 'ESOCKET' }),
+      smtpError('Connection closed unexpectedly', { code: 'ECONNECTION', command: 'DATA' }),
+      smtpError('Connection closed unexpectedly', { code: 'ECONNECTION' }),
       smtpError('AUTHENTICATION looks like a word here', { command: 'DATA' }),
     ]) {
       const { store, ref, result } = await failWith(err)

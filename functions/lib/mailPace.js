@@ -50,7 +50,10 @@ export function isSmtpRateLimit(err) {
 // address the relay refused at RCPT TO. A timeout or reset with no stage,
 // or anything at DATA or after, is ambiguous (the message may have been
 // accepted) and stays claimed, as it always has.
-const TRANSPORT_CODES = new Set(['EAUTH', 'ECONNECTION', 'EDNS', 'mail/not-configured'])
+// ECONNECTION is not here: nodemailer uses it for "connection closed
+// unexpectedly", which can happen after DATA. It counts only with
+// command CONN, below.
+const TRANSPORT_CODES = new Set(['EAUTH', 'EDNS', 'mail/not-configured'])
 const TRANSPORT_COMMANDS = /^(CONN|EHLO|HELO|STARTTLS|AUTH\b|MAIL FROM)/i
 
 /** 'transport' | 'recipient' | '' for a refusal that was certainly not delivered. */
