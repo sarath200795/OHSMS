@@ -47,9 +47,25 @@ function send(res, status, body, headers = {}) {
   res.end(payload)
 }
 
+// Every route that reads a body is reachable before any session exists
+// (/handoff, /intake, /auth/saml, /auth/supabase), so an uncapped read lets
+// anyone hold an arbitrary upload in this process's memory. The cap sits above
+// the largest legitimate body: a /data commit carrying an inline file of up to
+// MAX_INLINE_BYTES (700 KB) as base64, with room for the rest of the batch.
+export const MAX_BODY_BYTES = 4 * 1024 * 1024
+
 async function readBody(req) {
   const chunks = []
-  for await (const chunk of req) chunks.push(chunk)
+  let size = 0
+  for await (const chunk of req) {
+    size += chunk.length
+    if (size > MAX_BODY_BYTES) {
+      const err = new Error('body too large')
+      err.code = 'payload-too-large'
+      throw err
+    }
+    chunks.push(chunk)
+  }
   const raw = Buffer.concat(chunks).toString('utf8')
   if (!raw) return {}
   const type = String(req.headers['content-type'] || '')
@@ -177,6 +193,10 @@ export function createOwnStackServer({
       }
       send(res, 404, { code: 'not-found', message: 'not found' })
     } catch (err) {
+      if (err.code === 'payload-too-large') {
+        send(res, 413, { code: err.code, message: 'request too large' }, { Connection: 'close' })
+        return
+      }
       send(res, 500, { code: err.code || 'internal', message: 'request failed' })
     }
   })

@@ -7,7 +7,7 @@ import { establishIdentity } from '../../../stack/identity.mjs'
 import { signSession, verifySession } from '../../../stack/session.mjs'
 import { decidePresign } from '../../../stack/presign.mjs'
 import { createPostgresAdapter } from './adapters/postgres'
-import { createOwnStackServer } from '../../../stack/server.mjs'
+import { createOwnStackServer, MAX_BODY_BYTES } from '../../../stack/server.mjs'
 import { identityFromSupabase } from '../../../stack/supabaseAuth.mjs'
 import { samlClient, identityFromSaml } from '../../../stack/saml.mjs'
 import { makeIdpKeys, readAuthnRequest, signedResponse } from '../../../e2e/support/samlIdp.mjs'
@@ -324,7 +324,11 @@ describe('company SAML on the dedicated host', () => {
   // used to start an OIDC flow whatever the request said, so a company that
   // chose SAML had no way in. These drive the real host with a real signed
   // response, and then try to get in without one.
-  async function samlHost({ certAs = (pem) => pem } = {}) {
+  async function samlHost({
+    certAs = (pem) => pem,
+    entryPoint = 'https://idp.northwind.test/sso',
+    expect200 = true,
+  } = {}) {
     const db = new PGlite()
     const engine = createEngine(db)
     const requests = new Map()
@@ -364,12 +368,12 @@ describe('company SAML on the dedicated host', () => {
         secrets: {
           dataKeyMaster: 'master-value',
           samlIdpCert: certAs(keys.cert),
-          samlEntryPoint: 'https://idp.northwind.test/sso',
+          samlEntryPoint: entryPoint,
         },
       }),
     })
-    expect(intake.status).toBe(200)
-    return { server, origin, keys, secret }
+    if (expect200) expect(intake.status).toBe(200)
+    return { server, origin, keys, secret, intake, requests }
   }
 
   async function start(origin) {
@@ -417,6 +421,31 @@ describe('company SAML on the dedicated host', () => {
     })
     const { authn } = await start(origin)
     expect((await post(origin, answer(keys, authn))).status).toBe(302)
+    server.close()
+  })
+
+  it('does not mark a SAML company live without the IdP entry point', async () => {
+    const { server, origin, intake, requests } = await samlHost({
+      entryPoint: '  ',
+      expect200: false,
+    })
+    expect(intake.status).toBe(400)
+    expect((await intake.json()).reason).toBe('saml')
+    expect(requests.get('reqSaml1').status).toBe('requested')
+    const start = await fetch(`${origin}/auth/start`, { redirect: 'manual' })
+    expect(String(start.headers.get('location'))).not.toContain('idp.northwind.test')
+    server.close()
+  })
+
+  it('refuses an oversized body on the unauthenticated assertion route', async () => {
+    const { server, origin } = await samlHost()
+    const res = await fetch(`${origin}/auth/saml`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'SAMLResponse=' + 'A'.repeat(MAX_BODY_BYTES + 1),
+    })
+    expect(res.status).toBe(413)
+    expect((await fetch(`${origin}/health`)).status).toBe(200)
     server.close()
   })
 
