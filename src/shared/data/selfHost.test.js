@@ -311,6 +311,122 @@ describe('self-hosted services', () => {
     }
   })
 
+  it('finishes registration when the MinIO user name is also the client id', async () => {
+    const db = new PGlite()
+    await applySchema(db)
+    const engine = createEngine(db)
+    const databaseUrl = 'postgres://ohsms:not-for-the-browser@postgres:5432/ohsms'
+    const minioPassword = 'minio-root-password-not-printed'
+    const logs = []
+    const original = console.log
+    console.log = (...args) => logs.push(args.map(String).join(' '))
+    const server = createOwnStackServer({
+      engine,
+      db,
+      sessionSecret: 'session-secret-for-the-test',
+      origin: 'http://127.0.0.1:8787',
+      auth: { method: 'saml', clientId: 'ohsms' },
+      requests: new Map(),
+      localFiling: true,
+      heldSecrets: {
+        databaseUrl,
+        samlIdpCert: '-----BEGIN CERTIFICATE-----\nQQ==\n-----END CERTIFICATE-----\n',
+        samlEntryPoint: 'http://127.0.0.1:8080/realms/ohsms/protocol/saml',
+        s3AccessKeyId: 'ohsms',
+        s3SecretAccessKey: minioPassword,
+        sessionSecret: 'session-secret-for-the-test',
+        dataKeyMaster: 'data-key-master-not-printed',
+      },
+      prepareIdentity: async () => {},
+    })
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+    const origin = `http://127.0.0.1:${server.address().port}`
+    server.stackState.origin = origin
+    const request = {
+      ...publicRequest,
+      id: 'reqtest000001',
+      orgName: 'test',
+      presignUrl: `${origin}/presign`,
+    }
+    try {
+      const filed = await fetch(`${origin}/requests`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(request),
+      })
+      const body = await filed.json()
+      expect(filed.status).toBe(200)
+      expect(body.ok).toBe(true)
+      expect(body.status).toBe('live')
+      expect(JSON.stringify(body)).not.toContain(databaseUrl)
+      expect(JSON.stringify(body)).not.toContain(minioPassword)
+      const again = await fetch(`${origin}/requests`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...request, id: 'reqtest000002' }),
+      })
+      expect(await again.json()).toMatchObject({ ok: true, already: true, status: 'live' })
+      const orgs = await engine.list({ role: 'ohsms_worker', uid: '' }, 'organizations', {})
+      expect(orgs.filter((org) => org.name === 'test')).toHaveLength(1)
+      const text = logs.join('\n')
+      expect(text).toContain('registration live test')
+      expect(text).not.toContain(databaseUrl)
+      expect(text).not.toContain(minioPassword)
+      expect(text).not.toContain('founder@')
+      expect(text).not.toContain(publicRequest.contactEmail)
+    } finally {
+      console.log = original
+      server.close()
+    }
+  })
+
+  it('refuses a public env that contains a long secret and does not save the organization', async () => {
+    const db = new PGlite()
+    await applySchema(db)
+    const engine = createEngine(db)
+    const master = 'data-key-master-not-printed'
+    const server = createOwnStackServer({
+      engine,
+      db,
+      sessionSecret: 'session-secret-for-the-test',
+      origin: 'http://127.0.0.1:8787',
+      auth: { method: 'saml', clientId: 'ohsms' },
+      requests: new Map(),
+      localFiling: true,
+      heldSecrets: {
+        databaseUrl: 'postgres://ohsms:not-for-the-browser@postgres:5432/ohsms',
+        sessionSecret: 'session-secret-for-the-test',
+        dataKeyMaster: master,
+      },
+      prepareIdentity: async () => {},
+    })
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+    const origin = `http://127.0.0.1:${server.address().port}`
+    server.stackState.origin = origin
+    try {
+      const filed = await fetch(`${origin}/requests`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...publicRequest,
+          orgName: 'test',
+          authIssuer: `http://127.0.0.1:8080/realms/${master}`,
+          presignUrl: `${origin}/presign`,
+        }),
+      })
+      const body = await filed.json()
+      expect(filed.status).toBe(400)
+      expect(body).toEqual({ ok: false, reason: 'public-env' })
+      expect(JSON.stringify(body)).not.toContain(master)
+      const status = await (await fetch(`${origin}/registration-status?name=test`)).json()
+      expect(status).toEqual({ found: true, status: 'failed', reason: 'public-env' })
+      const orgs = await engine.list({ role: 'ohsms_worker', uid: '' }, 'organizations', {})
+      expect(orgs).toEqual([])
+    } finally {
+      server.close()
+    }
+  })
+
   it('records an identity refusal without saving an organization or the password', async () => {
     const db = new PGlite()
     await applySchema(db)

@@ -80,16 +80,23 @@ const LOCAL_FILING_MESSAGES = {
   url: 'The address was refused.',
   fields: 'A field was refused.',
   echo: 'The server refused to finish the registration. Check registration status before submitting again.',
+  'public-env':
+    'The server refused the registration before saving the organization. You can submit this form again.',
 }
 
-function localFilingFailure(reason) {
+function safeToken(value) {
+  return typeof value === 'string' && /^[A-Za-z0-9-]{1,32}$/.test(value) ? value : ''
+}
+
+function localFilingFailure(reason, body = {}) {
   const code = Object.prototype.hasOwnProperty.call(LOCAL_FILING_MESSAGES, reason)
     ? reason
     : 'refused'
-  const err = new Error(
+  const detail = [safeToken(body.stage), safeToken(body.code)].filter(Boolean).join(' ')
+  const text =
     LOCAL_FILING_MESSAGES[code] ||
-      'The request was not filed. Check registration status before submitting again.'
-  )
+    'The request was not filed. Check registration status before submitting again.'
+  const err = new Error(detail ? `${text} (${detail})` : text)
   err.reason = code
   return err
 }
@@ -113,7 +120,7 @@ async function fileOnControlPlane(value) {
       throw localFilingFailure(err?.name === 'AbortError' ? 'timeout' : 'network')
     }
     const body = await res.json().catch(() => ({}))
-    if (!res.ok || body.ok === false) throw localFilingFailure(body.reason)
+    if (!res.ok || body.ok === false) throw localFilingFailure(body.reason, body)
     return {
       id: body.requestId || id,
       orgName: value.orgName,

@@ -735,12 +735,18 @@ export function createOwnStackServer({
         dedicatedUrl: state.origin,
         gatewayUrl: state.origin,
       })
-    } catch {
-      return { http: 500, body: { ok: false, reason: 'fulfill' } }
+    } catch (error) {
+      const stage = /^[a-z-]{1,32}$/.test(error?.stage) ? error.stage : 'fulfill'
+      const code = /^[A-Za-z0-9-]{1,32}$/.test(error?.code) ? error.code : 'threw'
+      return { http: 500, body: { ok: false, reason: 'fulfill', stage, code } }
     }
     if (result?.ok) adoptLive(request, secrets, result)
     const body = publicOutcome(result, secrets)
     return { http: body.ok ? 200 : 400, body }
+  }
+
+  function token(value) {
+    return typeof value === 'string' && /^[A-Za-z0-9-]{1,32}$/.test(value) ? value : ''
   }
 
   function registrationLog(outcome, orgName) {
@@ -778,7 +784,7 @@ export function createOwnStackServer({
         try {
           await prepareIdentity(request)
         } catch {
-          failed.set(name, 'identity')
+          failed.set(name, { reason: 'identity' })
           registrationLog('identity', name)
           return { http: 503, body: { ok: false, reason: 'identity' } }
         }
@@ -789,8 +795,14 @@ export function createOwnStackServer({
         failed.delete(name)
         registrationLog('live', name)
       } else {
-        failed.set(name, 'fulfill')
-        registrationLog('fulfill', name)
+        const reason = token(outcome.body?.reason) || 'fulfill'
+        const stage = token(outcome.body?.stage)
+        const code = token(outcome.body?.code)
+        failed.set(name, { reason, stage, code })
+        registrationLog(
+          [reason, stage && `stage=${stage}`, code && `code=${code}`].filter(Boolean).join(' '),
+          name
+        )
       }
       return outcome
     } finally {
@@ -817,7 +829,11 @@ export function createOwnStackServer({
       return
     }
     if (failed.has(name)) {
-      send(res, 200, { found: true, status: 'failed', reason: failed.get(name) })
+      const failure = failed.get(name)
+      const body = { found: true, status: 'failed', reason: failure.reason || 'fulfill' }
+      if (failure.stage) body.stage = failure.stage
+      if (failure.code) body.code = failure.code
+      send(res, 200, body)
       return
     }
     send(res, 200, { found: false, status: 'absent' })
