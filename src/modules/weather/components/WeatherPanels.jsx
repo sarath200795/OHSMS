@@ -121,7 +121,7 @@ export function WeatherRiskPanel({ lat, lng, active }) {
         <p style={{ margin: '6px 0 0', fontSize: 10.5, color: '#64748b' }}>{asOf}</p>
       ) : null}
       <p style={{ margin: '6px 0 0', fontSize: 9.5, color: '#cbd5e1' }}>
-        Open-Meteo.com, nearest ~11 km. Guidance only — it does not replace a site assessment.
+        Open-Meteo.com, nearest ~1 km. Guidance only — it does not replace a site assessment.
       </p>
     </div>
   )

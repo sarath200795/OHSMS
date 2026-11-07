@@ -1,10 +1,9 @@
 // Current conditions for a coordinate, via the fetchSiteWeather function.
-// The browser never calls Open-Meteo. Coordinates are still rounded to ~11 km
-// before they leave this page, the same one decimal as gridKey in
-// functions/lib/openMeteo.js. That is the forecast model's own resolution, and
-// the server checks the point against a site's cell: rounding to two decimals
-// here and one there could put a site on a cell edge into the next cell and
-// refuse its own screen.
+// The browser never calls Open-Meteo. Coordinates are still rounded to ~1 km
+// before they leave this page, the same two decimals as gridKey in
+// functions/lib/openMeteo.js. The server checks the point against a site's
+// square, so the two roundings have to match or a site on an edge is refused
+// its own screen.
 //
 // The cache is what makes a map usable. A hundred pins in one city share a
 // handful of grid squares, and hovering the same pin twice costs nothing.
@@ -14,7 +13,7 @@
 import { fetchSiteWeather } from '../../../shared/functions'
 import { weatherSlot } from './observedAt'
 
-const GRID = 1
+const GRID = 2
 const TTL_MS = 15 * 60 * 1000
 const COOLOFF_MS = 60_000
 

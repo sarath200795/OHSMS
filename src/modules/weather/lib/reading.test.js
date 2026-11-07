@@ -8,7 +8,7 @@ beforeEach(() => {
 })
 
 describe('fetchWeather', () => {
-  it('rounds to the ~11 km square and does not send a key or a site name', async () => {
+  it('rounds to the ~1 km square and does not send a key or a site name', async () => {
     const seen = []
     _setWeatherTransport(async (lat, lng) => {
       seen.push({ lat, lng })
@@ -16,7 +16,7 @@ describe('fetchWeather', () => {
     })
     const obs = await fetchWeather(17.438765432, 78.398765432)
     expect(obs.tempC).toBe(30)
-    expect(seen).toEqual([{ lat: 17.4, lng: 78.4 }])
+    expect(seen).toEqual([{ lat: 17.44, lng: 78.4 }])
   })
 
   it('reuses one square and one in-flight request', async () => {
