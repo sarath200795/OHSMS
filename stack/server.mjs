@@ -5,7 +5,7 @@
 // demo IdP here: the host is only ever the service provider.
 
 import { createServer } from 'node:http'
-import { createHash, randomBytes } from 'node:crypto'
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import { verifySession, signSession } from './session.mjs'
 import { decidePresign } from './presign.mjs'
 import { identityFromCode } from './oidc.mjs'
@@ -125,7 +125,7 @@ export function createOwnStackServer({
         return
       }
       if (req.method === 'GET' && url.pathname === '/auth/callback') {
-        await onCallback(url, res)
+        await onCallback(req, url, res)
         return
       }
       if (req.method === 'POST' && url.pathname === '/auth/supabase') {
@@ -266,12 +266,32 @@ export function createOwnStackServer({
   const samlCookie = (value, maxAge) =>
     `${SAML_COOKIE}=${value}; Path=/auth/saml; HttpOnly; Secure; SameSite=None; Max-Age=${maxAge}`
 
+  // `state` proves the callback answers a sign-in this host started, not that
+  // it answers the one this browser started: the pending states are host-wide.
+  // Without a tie to the browser, an invited user could start a sign-in,
+  // authenticate as themselves, and send someone else's browser to the
+  // callback URL — that person would then be working signed in as them (login
+  // CSRF). So /auth/start sets a one-time cookie, and /auth/callback accepts
+  // only the state that cookie was issued with. Lax is enough: the IdP comes
+  // back with a top-level GET, which Lax cookies ride on.
+  const OIDC_COOKIE = 'ohsms_oidc'
+  const OIDC_TTL_MS = 10 * 60 * 1000
+  const oidcCookie = (value, maxAge) =>
+    `${OIDC_COOKIE}=${value}; Path=/auth/callback; HttpOnly; SameSite=Lax; Max-Age=${maxAge}` +
+    (String(origin).startsWith('https://') ? '; Secure' : '')
+
   function cookieOf(req, name) {
     for (const part of String(req.headers.cookie || '').split(';')) {
       const [k, ...v] = part.trim().split('=')
       if (k === name) return v.join('=')
     }
     return ''
+  }
+
+  function sameSecret(a, b) {
+    const x = Buffer.from(String(a))
+    const y = Buffer.from(String(b))
+    return x.length > 0 && x.length === y.length && timingSafeEqual(x, y)
   }
 
   async function onAuthStart(url, res) {
@@ -298,20 +318,30 @@ export function createOwnStackServer({
     }
     const state = randomBytes(16).toString('base64url')
     const verifier = randomBytes(32).toString('base64url')
-    codes.set(`state:${state}`, { verifier, at: Date.now() })
+    const binding = randomBytes(24).toString('base64url')
+    codes.set(`state:${state}`, { verifier, binding, at: Date.now() })
     const issuer = auth.issuer || `${origin}/oidc`
     const redirect = `${origin}/auth/callback`
     const location = `${issuer.replace(/\/$/, '')}/authorize?response_type=code&client_id=${encodeURIComponent(auth.clientId || 'ohsms')}&redirect_uri=${encodeURIComponent(redirect)}&scope=openid%20email%20profile&state=${state}&code_challenge=${challenge(verifier)}&code_challenge_method=S256`
-    send(res, 302, '', { Location: location })
+    send(res, 302, '', {
+      Location: location,
+      'Set-Cookie': oidcCookie(binding, OIDC_TTL_MS / 1000),
+    })
   }
 
-  async function onCallback(url, res) {
+  async function onCallback(req, url, res) {
     const state = url.searchParams.get('state')
     const code = url.searchParams.get('code')
     const pending = codes.get(`state:${state}`)
     codes.delete(`state:${state}`)
-    if (!pending || !code) {
-      send(res, 400, { code: 'invalid-argument', message: 'sign-in could not be completed' })
+    const clear = { 'Set-Cookie': oidcCookie('', 0) }
+    if (
+      !pending ||
+      !code ||
+      Date.now() - pending.at > OIDC_TTL_MS ||
+      !sameSecret(cookieOf(req, OIDC_COOKIE), pending.binding)
+    ) {
+      send(res, 400, { code: 'invalid-argument', message: 'sign-in could not be completed' }, clear)
       return
     }
     const issuer = (auth.issuer || `${origin}/oidc`).replace(/\/$/, '')
@@ -325,20 +355,27 @@ export function createOwnStackServer({
       verifier: pending.verifier,
     })
     if (!identity.ok) {
-      send(res, 401, {
-        code: 'unauthenticated',
-        message: 'the identity provider refused the sign-in',
-      })
+      send(
+        res,
+        401,
+        { code: 'unauthenticated', message: 'the identity provider refused the sign-in' },
+        clear
+      )
       return
     }
     const established = await establishIdentity(engine, db, identity)
     if (!established.ok) {
-      send(res, 403, { code: 'permission-denied', message: 'no account on this organization' })
+      send(
+        res,
+        403,
+        { code: 'permission-denied', message: 'no account on this organization' },
+        clear
+      )
       return
     }
     const token = signSession(sessionSecret, { sub: established.uid })
     const app = origin || '/'
-    send(res, 302, '', { Location: `${app}/#session=${encodeURIComponent(token)}` })
+    send(res, 302, '', { Location: `${app}/#session=${encodeURIComponent(token)}`, ...clear })
   }
 
   async function onSaml(req, res) {
