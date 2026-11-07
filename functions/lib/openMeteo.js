@@ -15,8 +15,9 @@
 // digests read none of their sites, on the theory that the request count was
 // spending the free daily quota. That theory was never confirmed from logs.
 // The mail outage the same week was a separate fault: the relay refusing
-// sends, not Open-Meteo refusing reads. Two decimals is back so each site's
-// reading is its own square. If reads start failing again the digest says so
+// sends, not Open-Meteo refusing reads. Two decimals is back so a reading
+// covers ~1 km; sites inside one square still share it, one request per
+// distinct square, not per site. If reads start failing again the digest says so
 // in its subject ("not checked"), the daily-limit stop in fetchGrids ends the
 // pass, and a coarser key here is the lever that cuts the request count.
 //
