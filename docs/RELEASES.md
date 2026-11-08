@@ -69,8 +69,9 @@ organizations may _use_ it is the license's job, not the registry's.
 
 ## What an organization does with a release
 
-**Install** (first time): follow [`CONTROL-PLANE.md`](CONTROL-PLANE.md), using
-the published image instead of building one.
+**Install** (first time): on any Linux server with Docker, follow
+[`SELF-HOSTING.md`](SELF-HOSTING.md); on Google Cloud Run, follow
+[`CONTROL-PLANE.md`](CONTROL-PLANE.md). Both use the published image.
 
 **Upgrade**:
 

@@ -1,0 +1,72 @@
+# WEEHS on any Linux server with Docker: the app, its Postgres, and an HTTPS
+# front door. docs/SELF-HOSTING.md is the procedure; .env.example lists every
+# setting.
+#
+#   cp .env.example .env    # then fill it in
+#   docker compose up -d
+#
+# Only Caddy publishes ports. The database and the app are reachable from
+# inside this network and nowhere else.
+name: weehs
+
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ehs
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_ADMIN_PASSWORD:?set DB_ADMIN_PASSWORD in .env}
+      # Read by init-db.sh, once, when the data volume is first created.
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?set APP_DB_PASSWORD in .env}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - ./init-db.sh:/docker-entrypoint-initdb.d/10-weehs-roles.sh:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d ehs']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  app:
+    image: ${WEEHS_IMAGE:?set WEEHS_IMAGE in .env}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://ehs_app:${APP_DB_PASSWORD}@db:5432/ehs
+      PUBLIC_ORIGIN: https://${DOMAIN:?set DOMAIN in .env}
+      STATE_KEY: ${STATE_KEY:?set STATE_KEY in .env}
+      CONTROL_TOKEN: ${CONTROL_TOKEN:?set CONTROL_TOKEN in .env}
+      SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET in .env}
+      DATA_KEY_MASTER: ${DATA_KEY_MASTER:?set DATA_KEY_MASTER in .env}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      MAIL_FROM: ${MAIL_FROM:-}
+    expose:
+      - '8080'
+
+  # Gets and renews a certificate for DOMAIN automatically. The DNS record for
+  # DOMAIN must point at this server, and ports 80 and 443 must be open.
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - '80:80'
+      - '443:443'
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  db-data:
+  caddy-data:
+  caddy-config:
