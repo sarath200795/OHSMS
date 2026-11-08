@@ -37,7 +37,9 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          # The Capacitor CLI refuses anything older than Node 22 (v2.3.0's
+          # APK build stopped at `cap sync` for that).
+          node-version: 22
           cache: npm
 
       - uses: actions/setup-java@v4

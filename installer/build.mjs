@@ -15,9 +15,13 @@
 import { execFileSync } from 'node:child_process'
 import { copyFileSync, mkdirSync, readFileSync, writeFileSync, chmodSync, rmSync } from 'node:fs'
 import { join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
 
-const here = resolve(new URL('.', import.meta.url).pathname)
+// fileURLToPath, not .pathname: on Windows the pathname of file:///D:/a/x is
+// /D:/a/x, which resolve() turns into D:\D:\a\x and the v2.3.0 Windows
+// installer build failed reading selfhost/ from there.
+const here = fileURLToPath(new URL('.', import.meta.url))
 const root = resolve(here, '..')
 const arg = (name, fallback) => {
   const i = process.argv.indexOf(`--${name}`)
