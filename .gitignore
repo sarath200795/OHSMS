@@ -104,3 +104,6 @@ ohsms-private-docs/
 SECURITY-open.md
 ISO27001-Audit-Report-*.pdf
 ux-ref/
+
+# WEEHS Installer builds (installer/build.mjs)
+dist-installer/

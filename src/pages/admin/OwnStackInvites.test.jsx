@@ -10,6 +10,13 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 const inviteMember = vi.fn()
 const listInvites = vi.fn()
 const revokeInvite = vi.fn()
+const getAutoJoin = vi.fn()
+const setAutoJoin = vi.fn()
+const getGroupRoles = vi.fn()
+const setGroupRoles = vi.fn()
+const scimStatus = vi.fn()
+const createScimToken = vi.fn()
+const revokeScimToken = vi.fn()
 const toastSuccess = vi.fn()
 const toastError = vi.fn()
 
@@ -17,6 +24,13 @@ vi.mock('../../shared/functions', () => ({
   inviteMember: (...a) => inviteMember(...a),
   listInvites: (...a) => listInvites(...a),
   revokeInvite: (...a) => revokeInvite(...a),
+  getAutoJoin: (...a) => getAutoJoin(...a),
+  setAutoJoin: (...a) => setAutoJoin(...a),
+  getGroupRoles: (...a) => getGroupRoles(...a),
+  setGroupRoles: (...a) => setGroupRoles(...a),
+  scimStatus: (...a) => scimStatus(...a),
+  createScimToken: (...a) => createScimToken(...a),
+  revokeScimToken: (...a) => revokeScimToken(...a),
 }))
 vi.mock('react-hot-toast', () => ({
   default: { success: (...a) => toastSuccess(...a), error: (...a) => toastError(...a) },
@@ -33,6 +47,9 @@ function refused(reason) {
 beforeEach(() => {
   vi.clearAllMocks()
   listInvites.mockResolvedValue([])
+  getAutoJoin.mockResolvedValue(null)
+  getGroupRoles.mockResolvedValue([])
+  scimStatus.mockResolvedValue({ ok: true, enabled: false, createdAt: null })
   inviteMember.mockResolvedValue({ ok: true, email: 'ravi@northwind.test', emailed: true })
   revokeInvite.mockResolvedValue({ ok: true, removed: true })
 })
@@ -84,5 +101,74 @@ describe('own-stack invites panel', () => {
     )
     await waitFor(() => expect(revokeInvite).toHaveBeenCalledWith('temp@northwind.test'))
     expect(inviteMember).not.toHaveBeenCalled()
+  })
+})
+
+describe('joining automatically by domain', () => {
+  it('saves the domains typed and the role chosen, and never offers admin', async () => {
+    setAutoJoin.mockResolvedValue({ domains: ['cult.fit', 'cult.test'], role: 'member' })
+    await openPanel()
+    await waitFor(() => expect(screen.getByLabelText('Email domains').disabled).toBe(false))
+    expect(screen.getByText(/Off: only invited people join/)).toBeTruthy()
+    const role = screen.getByLabelText('They join as')
+    expect([...role.querySelectorAll('option')].map((o) => o.value)).not.toContain('admin')
+    fireEvent.change(screen.getByLabelText('Email domains'), {
+      target: { value: 'cult.fit, cult.test' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() =>
+      expect(setAutoJoin).toHaveBeenCalledWith({
+        domains: ['cult.fit', 'cult.test'],
+        role: 'member',
+      })
+    )
+    await waitFor(() =>
+      expect(screen.getByText(/On: anyone your company sign-in admits/)).toBeTruthy()
+    )
+    expect(inviteMember).not.toHaveBeenCalled()
+  })
+
+  it('says why a save was refused', async () => {
+    setAutoJoin.mockRejectedValue(refused('domains'))
+    await openPanel()
+    await waitFor(() => expect(screen.getByLabelText('Email domains').disabled).toBe(false))
+    fireEvent.change(screen.getByLabelText('Email domains'), { target: { value: 'not a domain' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() =>
+      expect(toastError).toHaveBeenCalledWith(expect.stringMatching(/domains only/))
+    )
+  })
+})
+
+describe('following the company directory', () => {
+  it('saves group rows as typed, including an administrator group', async () => {
+    setGroupRoles.mockImplementation(async (rules) => rules)
+    await openPanel()
+    await waitFor(() => expect(getGroupRoles).toHaveBeenCalled())
+    fireEvent.click(screen.getByRole('button', { name: 'Add a group' }))
+    fireEvent.change(screen.getByLabelText('Group name or ID'), { target: { value: ' EHS-Admins ' } })
+    fireEvent.change(screen.getByLabelText('Role for this group'), { target: { value: 'admin' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save groups' }))
+    await waitFor(() =>
+      expect(setGroupRoles).toHaveBeenCalledWith([{ group: 'EHS-Admins', role: 'admin' }])
+    )
+    expect(inviteMember).not.toHaveBeenCalled()
+  })
+
+  it('shows a new SCIM token once, with the base URL to give the identity provider', async () => {
+    createScimToken.mockResolvedValue('weehs_scim_example-token')
+    scimStatus
+      .mockResolvedValueOnce({ ok: true, enabled: false, createdAt: null })
+      .mockResolvedValue({ ok: true, enabled: true, createdAt: '2026-11-08T12:00:00Z' })
+    await openPanel()
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Turn on sync' }).disabled).toBe(false)
+    )
+    expect(screen.getByLabelText('SCIM base URL').value).toMatch(/\/scim\/v2$/)
+    fireEvent.click(screen.getByRole('button', { name: 'Turn on sync' }))
+    await waitFor(() =>
+      expect(screen.getByLabelText(/Token \(shown once\)/).value).toBe('weehs_scim_example-token')
+    )
+    expect(screen.getByRole('button', { name: 'Turn off sync' })).toBeTruthy()
   })
 })

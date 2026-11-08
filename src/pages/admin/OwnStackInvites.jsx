@@ -4,6 +4,8 @@ import { UserPlus, Trash2, MailCheck } from 'lucide-react'
 import { Button, Field, IconButton, Input, Modal, Select } from '../../shared/ui'
 import { ROLES, roleLabel } from '../../shared/auth/permissions'
 import { inviteMember, listInvites, revokeInvite } from '../../shared/functions'
+import OwnStackAutoJoin from './OwnStackAutoJoin'
+import OwnStackDirectory from './OwnStackDirectory'
 
 const REASONS = {
   'not-admin': 'Only an administrator can invite people.',
@@ -175,6 +177,8 @@ export default function OwnStackInvites() {
             )}
           </div>
         </form>
+        <OwnStackAutoJoin open={open} />
+        <OwnStackDirectory open={open} />
       </Modal>
     </>
   )

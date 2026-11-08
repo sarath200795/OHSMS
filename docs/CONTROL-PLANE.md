@@ -327,10 +327,62 @@ unchanged across deploys.
   provider says the address is verified (`email_verified: true`). Microsoft
   Entra does not send that claim at all: register the application as
   **single-tenant** (your organization only), so every `email` it sends is one
-  your administrators set, and deploy with `OIDC_ACCEPT_UNVERIFIED_EMAIL=true`.
-  Never set it for a multi-tenant registration, which admits accounts from
-  other tenants whose email address nobody verified. An explicit
-  `email_verified: false` is refused either way.
+  your administrators set, and deploy with `OIDC_ACCEPT_UNVERIFIED_EMAIL=true`
+  (or tick "Microsoft Entra ID, single tenant" on `/setup`, which stores the
+  same choice with the sign-in configuration). Never for a multi-tenant
+  registration, which admits accounts from other tenants whose email address
+  nobody verified. An explicit `email_verified: false` is refused either way.
+- **SAML sign-in starts at WEEHS, not at the portal.** Every SAML response
+  must answer a request this host made (it is what stops a response captured
+  elsewhere from being replayed here), so an IdP-initiated sign-in from the
+  app's tile in Okta or "My Apps" is refused. Point the tile at
+  `https://ehs.example.com/auth/start` instead: the Sign-on URL in Entra, a
+  bookmark app in Okta. `/setup` shows the address. The same works for OIDC.
+- **Who joins, and as what.** The IdP decides who can sign in; WEEHS decides
+  who belongs. In Employees → Invite employee, an admin can:
+  - invite people one by one;
+  - **Join automatically**: anyone with an address at the listed domains
+    joins with one role (never admin);
+  - map **identity provider groups to roles** (`EHS-Admins` → Administrator,
+    `Safety-Managers` → Manager): applied at every sign-in, so a change in
+    the IdP shows at the person's next sign-in, and anyone in a mapped group
+    joins without an invite. The most capable mapped role wins; no mapped
+    group sent leaves the role as it is; a sign-in never moves the last
+    administrator. Groups are read from a SAML `groups` or `memberOf`
+    attribute or Entra's groups claim, and from OIDC `groups` in userinfo or
+    the ID token. Entra sends group object IDs unless configured otherwise:
+    map those IDs.
+- **SCIM sync, and leaving.** **Turn on sync** in the same dialog gives a
+  SCIM 2.0 base URL (`https://ehs.example.com/scim/v2`) and a bearer token,
+  shown once, to enter in Okta or Entra as the app's provisioning.
+  - Users: assigning someone the app invites them here; deactivating or
+    removing them disables their account at once (an open session stops at
+    its next request) and keeps them out even if their domain or a group
+    would let them join; reactivating lets them in again.
+  - Groups (Okta "Push Groups", Entra group provisioning): pushed groups and
+    their members count like groups sent at sign-in, and a change applies to
+    existing accounts at once. Entra signs people in with group object IDs;
+    a group it has pushed carries that ID as its externalId, so rules can be
+    written with the group's name.
+- **Google Workspace.** OIDC (`https://accounts.google.com`) and custom SAML
+  apps both work. Differences from Okta and Entra: Google's OIDC sends no
+  groups, so map roles with SAML (add "Group membership" to the custom app's
+  attribute mapping, named `groups`) or use invites and Join automatically;
+  and Google does not provision custom apps over SCIM, so leaving relies on
+  Google refusing a suspended user's sign-in, plus an admin disabling or
+  removing the account in Employees.
+- **Checked against the real providers.** `WEEHS_LIVE_IDP=1 npx vitest run
+src/shared/data/realProviders.test.js` reads Google's and Microsoft's live
+  discovery documents through the same code, and sends Google a real sign-in
+  request (refused only for its made-up client). A person signing in still
+  needs a real account in a real tenant: do that once with each customer's
+  provider before going live.
+- **SAML email.** Read from an attribute named `email`, `mail` or
+  `emailAddress`, or the standard claim
+  `http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress`
+  (Microsoft Entra, AD FS), and only then from NameID. Entra's NameID is the
+  user principal name, which is not always the address people were invited
+  with.
 - **"WEEHS provisions a bucket" is not served.** The presign answer points at a
   `/blob` route this host does not implement. Have the company bring a bucket
   and a presign endpoint (`docs/CUSTOM-STACK.md`, "Files").

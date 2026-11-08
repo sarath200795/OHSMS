@@ -2,6 +2,10 @@
 # front door. docs/SELF-HOSTING.md is the procedure; .env.example lists every
 # setting.
 #
+#   ./install.sh --domain ehs.example.com --image IMAGE    # writes .env, starts
+#
+# or by hand:
+#
 #   cp .env.example .env    # then fill it in
 #   docker compose up -d
 #

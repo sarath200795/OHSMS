@@ -303,6 +303,55 @@ export async function revokeInvite(email) {
   return (await fn({ email })).data
 }
 
+/**
+ * Own-stack only: who joins without an invite. Anyone the company's identity
+ * provider signs in with an address at one of these domains joins with this
+ * role (never admin). Admin only; the host checks (stack/invites.mjs).
+ * @returns {{ domains: string[], role: string } | null}
+ */
+export async function getAutoJoin() {
+  const fn = await callable('getAutoJoin')
+  return (await fn()).data?.autoJoin || null
+}
+
+/** Own-stack only: set it, or turn it off with no domains. */
+export async function setAutoJoin({ domains, role }) {
+  const fn = await callable('setAutoJoin')
+  return (await fn({ domains, role })).data?.autoJoin || null
+}
+
+/**
+ * Own-stack only: IdP groups mapped to roles, applied at every sign-in
+ * (stack/directory.mjs). Admin only.
+ * @returns {Array<{ group: string, role: string }>}
+ */
+export async function getGroupRoles() {
+  const fn = await callable('getGroupRoles')
+  return (await fn()).data?.rules || []
+}
+
+export async function setGroupRoles(rules) {
+  const fn = await callable('setGroupRoles')
+  return (await fn({ rules })).data?.rules || []
+}
+
+/** Own-stack only: whether SCIM sync has a token, and since when. */
+export async function scimStatus() {
+  const fn = await callable('scimStatus')
+  return (await fn()).data
+}
+
+/** Own-stack only: a new SCIM token, shown once; it replaces any earlier one. */
+export async function createScimToken() {
+  const fn = await callable('createScimToken')
+  return (await fn()).data?.token
+}
+
+export async function revokeScimToken() {
+  const fn = await callable('revokeScimToken')
+  return (await fn()).data
+}
+
 export async function deleteOrgFile(path) {
   const fn = await callable('deleteOrgFile')
   return (await fn({ path })).data

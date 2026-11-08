@@ -45,7 +45,13 @@ jobs:
           distribution: temurin
           java-version: 21
 
+      # The action's default installs `tools platform-tools`. `tools` was
+      # retired from the SDK repository; cmdline-tools 16 on the runner
+      # refuses it, and v2.2.0's APK build died there before compiling
+      # anything. platform-tools only; the next step adds what the build needs.
       - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
 
       - name: Install Android SDK packages
         run: |

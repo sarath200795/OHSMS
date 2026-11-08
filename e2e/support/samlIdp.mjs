@@ -85,11 +85,29 @@ function sign(xml, { key, cert }, element, after) {
  * @param {{ keys: {key:string, cert:string}, request: {id:string, acs:string, issuer:string},
  *           idpEntityId: string, email: string, name?: string }} input
  */
-export function signedResponse({ keys, request, idpEntityId, email, name = '' }) {
+export function signedResponse({
+  keys,
+  request,
+  idpEntityId,
+  email,
+  name = '',
+  // An IdP's own shape: Microsoft Entra puts the UPN in NameID and the email
+  // under a claim URI. Defaults are the short names Okta and Google send.
+  nameId = email,
+  attributes = { email, displayName: name || email },
+}) {
+  const attributeXml = Object.entries(attributes)
+    .map(
+      ([n, v]) =>
+        `<saml:Attribute Name="${escape(n)}">${(Array.isArray(v) ? v : [v])
+          .map((one) => `<saml:AttributeValue>${escape(one)}</saml:AttributeValue>`)
+          .join('')}</saml:Attribute>`
+    )
+    .join('')
   const now = new Date()
   const iso = (offsetMs) => new Date(now.getTime() + offsetMs).toISOString()
   const id = (p) => `_${p}${randomBytes(12).toString('hex')}`
-  const assertion = `<saml:Assertion xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion" ID="${id('a')}" Version="2.0" IssueInstant="${iso(0)}"><saml:Issuer>${escape(idpEntityId)}</saml:Issuer><saml:Subject><saml:NameID Format="urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress">${escape(email)}</saml:NameID><saml:SubjectConfirmation Method="urn:oasis:names:tc:SAML:2.0:cm:bearer"><saml:SubjectConfirmationData InResponseTo="${escape(request.id)}" NotOnOrAfter="${iso(300000)}" Recipient="${escape(request.acs)}"/></saml:SubjectConfirmation></saml:Subject><saml:Conditions NotBefore="${iso(-60000)}" NotOnOrAfter="${iso(300000)}"><saml:AudienceRestriction><saml:Audience>${escape(request.issuer)}</saml:Audience></saml:AudienceRestriction></saml:Conditions><saml:AuthnStatement AuthnInstant="${iso(0)}" SessionIndex="${id('s')}"><saml:AuthnContext><saml:AuthnContextClassRef>urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport</saml:AuthnContextClassRef></saml:AuthnContext></saml:AuthnStatement><saml:AttributeStatement><saml:Attribute Name="email"><saml:AttributeValue>${escape(email)}</saml:AttributeValue></saml:Attribute><saml:Attribute Name="displayName"><saml:AttributeValue>${escape(name || email)}</saml:AttributeValue></saml:Attribute></saml:AttributeStatement></saml:Assertion>`
+  const assertion = `<saml:Assertion xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion" ID="${id('a')}" Version="2.0" IssueInstant="${iso(0)}"><saml:Issuer>${escape(idpEntityId)}</saml:Issuer><saml:Subject><saml:NameID Format="urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress">${escape(nameId)}</saml:NameID><saml:SubjectConfirmation Method="urn:oasis:names:tc:SAML:2.0:cm:bearer"><saml:SubjectConfirmationData InResponseTo="${escape(request.id)}" NotOnOrAfter="${iso(300000)}" Recipient="${escape(request.acs)}"/></saml:SubjectConfirmation></saml:Subject><saml:Conditions NotBefore="${iso(-60000)}" NotOnOrAfter="${iso(300000)}"><saml:AudienceRestriction><saml:Audience>${escape(request.issuer)}</saml:Audience></saml:AudienceRestriction></saml:Conditions><saml:AuthnStatement AuthnInstant="${iso(0)}" SessionIndex="${id('s')}"><saml:AuthnContext><saml:AuthnContextClassRef>urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport</saml:AuthnContextClassRef></saml:AuthnContext></saml:AuthnStatement><saml:AttributeStatement>${attributeXml}</saml:AttributeStatement></saml:Assertion>`
   const response = `<samlp:Response xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol" xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion" ID="${id('r')}" Version="2.0" IssueInstant="${iso(0)}" Destination="${escape(request.acs)}" InResponseTo="${escape(request.id)}"><saml:Issuer>${escape(idpEntityId)}</saml:Issuer><samlp:Status><samlp:StatusCode Value="urn:oasis:names:tc:SAML:2.0:status:Success"/></samlp:Status>${assertion}</samlp:Response>`
   const assertionSigned = sign(
     response,

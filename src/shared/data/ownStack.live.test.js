@@ -840,6 +840,33 @@ describe('what an OIDC provider has to vouch for', () => {
     expect((await exchange({ ...user, email_verified: true })).ok).toBe(true)
   })
 
+  it('reads groups from userinfo and from the ID token, as Entra sends them', async () => {
+    const payload = Buffer.from(JSON.stringify({ groups: ['b1e2-guid', 'EHS-Admins'] })).toString(
+      'base64url'
+    )
+    const out = await identityFromCode({
+      tokenEndpoint: 'https://idp.test/token',
+      userinfoEndpoint: 'https://idp.test/userinfo',
+      clientId: 'c',
+      code: 'x',
+      redirectUri: 'https://ehs.test/auth/callback',
+      verifier: 'v',
+      fetchImpl: async (url) => ({
+        ok: true,
+        json: async () =>
+          String(url).endsWith('/token')
+            ? { access_token: 'at', id_token: `e30.${payload}.sig` }
+            : {
+                sub: 'u1',
+                email: 'a@b.test',
+                email_verified: true,
+                groups: ['EHS-Admins', 'Okta-Group'],
+              },
+      }),
+    })
+    expect(out.groups.sort()).toEqual(['EHS-Admins', 'Okta-Group', 'b1e2-guid'])
+  })
+
   it('follows no redirect from the provider', async () => {
     calls.length = 0
     await exchange({ sub: 'u1', email: 'a@b.test', email_verified: true })
@@ -865,5 +892,52 @@ describe('what an OIDC provider has to vouch for', () => {
         fetchImpl: stub({ [where]: doc('https://idp.test/tenant/') }),
       })
     ).resolves.toMatchObject({ tokenEndpoint: 'https://idp.test/t' })
+  })
+})
+
+describe('Microsoft Entra, chosen at /setup', () => {
+  async function setUp(fields) {
+    const db = new PGlite()
+    const saved = []
+    const server = createOwnStackServer({
+      engine: createEngine(db),
+      db,
+      sessionSecret: 'session-secret-for-the-entra-test',
+      origin: 'https://ehs.northwind.test',
+      requests: new Map(),
+      intake: new Map(),
+      controlToken: 'operator-token-for-the-entra-test',
+      demoIssuer: false,
+      onAuthChange: (auth) => saved.push(auth),
+    })
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+    const res = await fetch(`http://127.0.0.1:${server.address().port}/setup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        code: 'operator-token-for-the-entra-test',
+        orgName: 'Northwind Metals',
+        contactName: 'Asha Rao',
+        contactEmail: 'asha@northwind.test',
+        method: 'oidc',
+        authIssuer: 'https://login.microsoftonline.com/0000-tenant/v2.0',
+        authClientId: 'weehs-northwind',
+        oidcClientSecret: 'entra-secret-value',
+        ...fields,
+      }).toString(),
+    })
+    await new Promise((resolve) => server.close(resolve))
+    return { status: res.status, auth: saved.at(-1) }
+  }
+
+  it('accepts a missing email_verified only when the installer said single-tenant Entra', async () => {
+    const entra = await setUp({ entraSingleTenant: 'on' })
+    expect(entra.status).toBe(200)
+    expect(entra.auth).toMatchObject({ method: 'oidc', acceptUnverifiedEmail: true })
+    expect(JSON.stringify(entra.auth)).not.toContain('"acceptUnverifiedEmail":"on"')
+
+    const other = await setUp({})
+    expect(other.status).toBe(200)
+    expect(other.auth.acceptUnverifiedEmail).toBeUndefined()
   })
 })

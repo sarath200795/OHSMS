@@ -290,7 +290,7 @@ describe('on a database where the app is not a superuser', () => {
 // signs in with the company IdP, and everyone who should not be able to add
 // people — a member, a stranger, another tenant's admin — tries anyway.
 
-async function signIn(origin, keys, email) {
+async function signIn(origin, keys, email, shape = {}) {
   const begin = await fetch(`${origin}/auth/start`, { redirect: 'manual' })
   const cookie = String(begin.headers.get('set-cookie')).split(';')[0]
   const authn = readAuthnRequest(
@@ -307,6 +307,7 @@ async function signIn(origin, keys, email) {
         idpEntityId: 'https://idp.northwind.test/saml',
         email,
         name: email,
+        ...shape,
       }),
     }).toString(),
   })
@@ -579,5 +580,465 @@ describe('the settings a dedicated host gives the app', () => {
     expect(config.S3_PRESIGN_ENDPOINT).toBe(
       'https://ehs.test/</script><img src=x onerror=alert(1)>/presign'
     )
+  })
+})
+
+// ── First-run setup in the browser ──────────────────────────────────────────
+// The installer connects the organization at /setup with the setup code, no
+// curl and no handoff link. It must refuse a wrong code, never echo a secret,
+// make exactly one organization, and close once that organization is live.
+describe('setting up in the browser', () => {
+  const form = (fields) => ({
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams(fields).toString(),
+  })
+  const saml = (keys, extra = {}) => ({
+    code: OPERATOR,
+    orgName: 'Northwind Metals',
+    address: 'Pune',
+    contactName: 'Asha Rao',
+    contactEmail: 'Asha@Northwind.test',
+    method: 'saml',
+    samlEntryPoint: 'https://idp.northwind.test/sso',
+    samlIdpCert: keys.cert,
+    ...extra,
+  })
+
+  it('takes the organization and its SAML sign-in, then the founder signs in', async () => {
+    const keys = makeIdpKeys('northwind-idp')
+    const app = await start(await managedLikeDb(), { stateKey: randomBytes(32) })
+
+    const page = await fetch(`${app.origin}/setup`)
+    expect(page.status).toBe(200)
+    const html = await page.text()
+    expect(html).toContain('Set up WEEHS')
+    expect(html).toContain('http://127.0.0.1/auth/saml')
+
+    const done = await fetch(`${app.origin}/setup`, form(saml(keys)))
+    expect(done.status).toBe(200)
+    const doneHtml = await done.text()
+    expect(doneHtml).toContain('Northwind Metals is live')
+    expect(doneHtml).not.toContain(OPERATOR)
+    expect(doneHtml).not.toContain(keys.cert.replace(/-----[A-Z ]+-----|\s/g, '').slice(20, 80))
+
+    // The app is told about the sign-in, and the founder is its admin.
+    const config = configFrom(await (await fetch(`${app.origin}/runtime-config.js`)).text())
+    expect(config.AUTH_METHOD).toBe('saml')
+    const founder = await signIn(app.origin, keys, 'asha@northwind.test')
+    expect(founder.status).toBe(302)
+    expect(founder.session).not.toBe('')
+
+    // Closed from now on, whoever knows the code.
+    expect(await (await fetch(`${app.origin}/setup`)).text()).toContain('Already set up')
+    const again = await fetch(`${app.origin}/setup`, form(saml(keys, { orgName: 'Second Org' })))
+    expect(again.status).toBe(409)
+    await app.stop()
+  })
+
+  it('refuses a wrong code without echoing anything secret, and stops answering after ten', async () => {
+    const keys = makeIdpKeys('northwind-idp')
+    const app = await start(await managedLikeDb(), { stateKey: randomBytes(32) })
+    const wrong = await fetch(`${app.origin}/setup`, form(saml(keys, { code: 'not-the-code' })))
+    expect(wrong.status).toBe(403)
+    const html = await wrong.text()
+    expect(html).toContain('setup code is not right')
+    expect(html).not.toContain(keys.cert.replace(/-----[A-Z ]+-----|\s/g, '').slice(20, 80))
+    expect(html).not.toContain('not-the-code')
+    // Public values are kept so the form need not be typed again.
+    expect(html).toContain('value="Northwind Metals"')
+
+    for (let i = 0; i < 9; i += 1) {
+      await fetch(`${app.origin}/setup`, form(saml(keys, { code: `guess-${i}` })))
+    }
+    // Even the right code is refused while the window is full.
+    const locked = await fetch(`${app.origin}/setup`, form(saml(keys)))
+    expect(locked.status).toBe(429)
+    expect(await (await fetch(`${app.origin}/setup`)).text()).toContain('Set up WEEHS')
+    await app.stop()
+  })
+
+  it('refuses an incomplete sign-in and leaves the environment open to try again', async () => {
+    const keys = makeIdpKeys('northwind-idp')
+    const app = await start(await managedLikeDb(), { stateKey: randomBytes(32) })
+    const noCert = await fetch(`${app.origin}/setup`, form(saml(keys, { samlIdpCert: '' })))
+    expect(noCert.status).toBe(400)
+    expect(await noCert.text()).toContain('certificate')
+    const http = await fetch(
+      `${app.origin}/setup`,
+      form(saml(keys, { samlEntryPoint: 'http://idp.northwind.test/sso' }))
+    )
+    expect(http.status).toBe(400)
+    const oidc = await fetch(
+      `${app.origin}/setup`,
+      form({
+        ...saml(keys),
+        method: 'oidc',
+        authIssuer: 'https://login.northwind.test',
+        authClientId: 'c',
+      })
+    )
+    expect(oidc.status).toBe(400)
+    expect(await oidc.text()).toContain('client secret')
+
+    const ok = await fetch(`${app.origin}/setup`, form(saml(keys)))
+    expect(ok.status).toBe(200)
+    await app.stop()
+  })
+})
+
+// ── Company identity providers that already serve many apps ────────────────
+// Microsoft Entra sends SAML in its own shape, and a company of thousands
+// cannot be invited one person at a time. These go through the real host.
+describe('enterprise identity providers', () => {
+  const ENTRA = {
+    email: 'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress',
+    given: 'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/givenname',
+    surname: 'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/surname',
+  }
+
+  it('matches an Entra SAML user by the email claim, not the UPN in NameID', async () => {
+    const { app, keys, founder, rpc, read } = await liveEnvironment()
+    const invited = await rpc(founder, 'inviteMember', {
+      email: 'ravi@northwind.test',
+      role: 'member',
+    })
+    expect(invited.status).toBe(200)
+    const ravi = await signIn(app.origin, keys, 'ravi@northwind.test', {
+      nameId: 'rkumar@northwindcorp.onmicrosoft.com',
+      attributes: {
+        [ENTRA.email]: 'ravi@northwind.test',
+        [ENTRA.given]: 'Ravi',
+        [ENTRA.surname]: 'Kumar',
+      },
+    })
+    expect(ravi.status).toBe(302)
+    const me = await read(ravi.session, 'users', 'rkumar@northwindcorp.onmicrosoft.com')
+    expect(me.doc).toMatchObject({
+      email: 'ravi@northwind.test',
+      name: 'Ravi Kumar',
+      role: 'member',
+    })
+    await app.stop()
+  })
+
+  it('lets everyone at the company domain join, with the chosen role, and nobody else', async () => {
+    const { app, keys, founder, rpc, read } = await liveEnvironment()
+    // Off: no invite, no account.
+    expect((await signIn(app.origin, keys, 'nina@northwind.test')).session).toBe('')
+
+    const turnedOn = await rpc(founder, 'setAutoJoin', {
+      domains: ['Northwind.test'],
+      role: 'member',
+    })
+    expect(turnedOn.body).toMatchObject({
+      ok: true,
+      autoJoin: { domains: ['northwind.test'], role: 'member' },
+    })
+    expect((await rpc(founder, 'getAutoJoin')).body.autoJoin).toEqual({
+      domains: ['northwind.test'],
+      role: 'member',
+    })
+
+    const nina = await signIn(app.origin, keys, 'nina@northwind.test')
+    expect(nina.status).toBe(302)
+    const me = await read(nina.session, 'users', 'nina@northwind.test')
+    expect(me.doc).toMatchObject({ role: 'member', status: 'approved', joinedBy: 'domain' })
+
+    // Another domain, and a domain that merely ends the same way, stay out.
+    expect((await signIn(app.origin, keys, 'eve@other.test')).session).toBe('')
+    expect((await signIn(app.origin, keys, 'eve@evilnorthwind.test')).session).toBe('')
+
+    // Never admin, and only an admin may change it.
+    expect(
+      (await rpc(founder, 'setAutoJoin', { domains: ['northwind.test'], role: 'admin' })).body
+    ).toMatchObject({
+      ok: false,
+      reason: 'role',
+    })
+    expect(
+      (await rpc(nina.session, 'setAutoJoin', { domains: ['other.test'], role: 'manager' })).body
+    ).toMatchObject({
+      ok: false,
+      reason: 'not-admin',
+    })
+    // A typo is refused, not silently dropped.
+    expect(
+      (
+        await rpc(founder, 'setAutoJoin', {
+          domains: ['northwind', 'northwind.test'],
+          role: 'member',
+        })
+      ).body
+    ).toMatchObject({
+      ok: false,
+      reason: 'domains',
+    })
+
+    // Off again: the next new person needs an invite.
+    expect((await rpc(founder, 'setAutoJoin', { domains: [] })).body).toMatchObject({
+      ok: true,
+      autoJoin: null,
+    })
+    expect((await signIn(app.origin, keys, 'omar@northwind.test')).session).toBe('')
+    await app.stop()
+  })
+
+  it('tells the IdP where the app tile should point, and asks about Entra', async () => {
+    const app = await start(await managedLikeDb(), { stateKey: randomBytes(32) })
+    const html = await (await fetch(`${app.origin}/setup`)).text()
+    expect(html).toContain('http://127.0.0.1/auth/start')
+    expect(html).toContain('name="entraSingleTenant"')
+    await app.stop()
+  })
+})
+
+// ── The company's directory: groups, deactivation, SCIM ─────────────────────
+describe('following the company directory', () => {
+  const withGroups = (email, groups) => ({ attributes: { email, displayName: email, groups } })
+
+  it('takes roles from IdP groups at every sign-in, and never removes the last admin', async () => {
+    const { app, keys, founder, rpc, read } = await liveEnvironment()
+    const rules = [
+      { group: 'EHS-Managers', role: 'manager' },
+      { group: 'EHS-Admins', role: 'admin' },
+    ]
+    expect((await rpc(founder, 'setGroupRoles', { rules })).body).toMatchObject({ ok: true, rules })
+    expect(
+      (await rpc(founder, 'setGroupRoles', { rules: [{ group: '', role: 'member' }] })).body
+    ).toMatchObject({
+      ok: false,
+      reason: 'rules',
+    })
+
+    // In a mapped group: joins without an invite, with that group's role.
+    const gita = (groups) =>
+      signIn(app.origin, keys, 'gita@northwind.test', withGroups('gita@northwind.test', groups))
+    let g = await gita(['Everyone', 'EHS-Managers'])
+    expect(g.status).toBe(302)
+    expect((await read(g.session, 'users', 'gita@northwind.test')).doc).toMatchObject({
+      role: 'manager',
+      joinedBy: 'groups',
+    })
+    // Not a member, so not an admin either: she cannot change the rules.
+    expect((await rpc(g.session, 'setGroupRoles', { rules: [] })).body.reason).toBe('not-admin')
+
+    // Promoted in the IdP: admin at her next sign-in. No groups sent: unchanged.
+    g = await gita(['EHS-Admins', 'EHS-Managers'])
+    expect((await read(g.session, 'users', 'gita@northwind.test')).doc.role).toBe('admin')
+    g = await gita([])
+    expect((await read(g.session, 'users', 'gita@northwind.test')).doc.role).toBe('admin')
+
+    // Two admins: the founder can be moved to manager by her groups...
+    const asha = await signIn(
+      app.origin,
+      keys,
+      request.contactEmail,
+      withGroups(request.contactEmail, ['EHS-Managers'])
+    )
+    expect((await read(asha.session, 'users', request.contactEmail)).doc.role).toBe('manager')
+    // ...but the last one standing is not, or nobody could administer.
+    g = await gita(['EHS-Managers'])
+    expect((await read(g.session, 'users', 'gita@northwind.test')).doc.role).toBe('admin')
+
+    // No mapped group, no invite, no domain rule: no account.
+    expect(
+      (
+        await signIn(
+          app.origin,
+          keys,
+          'zed@northwind.test',
+          withGroups('zed@northwind.test', ['Everyone'])
+        )
+      ).session
+    ).toBe('')
+    await app.stop()
+  })
+
+  it('provisions, deactivates, reactivates and deletes people over SCIM', async () => {
+    const { app, keys, founder, rpc, read } = await liveEnvironment()
+    const scim = (token, method, path, body) =>
+      fetch(`${app.origin}/scim/v2${path}`, {
+        method,
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(body ? { 'Content-Type': 'application/scim+json' } : {}),
+        },
+        body: body ? JSON.stringify(body) : undefined,
+      }).then(async (r) => ({ status: r.status, body: r.status === 204 ? null : await r.json() }))
+
+    // Only an admin makes a token, and it is shown once.
+    expect((await scim('', 'GET', '/Users')).status).toBe(401)
+    const created = await rpc(founder, 'createScimToken')
+    const token = created.body.token
+    expect(token).toMatch(/^weehs_scim_/)
+    expect((await rpc(founder, 'scimStatus')).body).toMatchObject({ ok: true, enabled: true })
+    expect(JSON.stringify((await rpc(founder, 'scimStatus')).body)).not.toContain(token)
+    expect((await scim('weehs_scim_wrong', 'GET', '/Users')).status).toBe(401)
+    expect((await scim(token, 'GET', '/ServiceProviderConfig')).body.patch.supported).toBe(true)
+
+    // The directory adds Kiran: an invite, so his first sign-in lets him in.
+    const kiran = {
+      schemas: ['urn:ietf:params:scim:schemas:core:2.0:User'],
+      userName: 'kiran@northwind.test',
+      name: { givenName: 'Kiran', familyName: 'Shah' },
+      emails: [{ value: 'Kiran@Northwind.test', primary: true }],
+      externalId: 'okta-00u1',
+      active: true,
+    }
+    const made = await scim(token, 'POST', '/Users', kiran)
+    expect(made.status).toBe(201)
+    const id = made.body.id
+    expect((await scim(token, 'POST', '/Users', kiran)).status).toBe(409)
+    const found = await scim(
+      token,
+      'GET',
+      `/Users?filter=${encodeURIComponent('userName eq "kiran@northwind.test"')}`
+    )
+    expect(found.body.totalResults).toBe(1)
+    expect((await rpc(founder, 'listInvites')).body.invites.map((i) => i.email)).toContain(
+      'kiran@northwind.test'
+    )
+    let k = await signIn(app.origin, keys, 'kiran@northwind.test')
+    expect(k.status).toBe(302)
+    const oldSession = k.session
+    expect((await read(oldSession, 'users', 'kiran@northwind.test')).doc.status).toBe('approved')
+
+    // Deactivated (Okta's shape): his account is disabled, his open session stops working.
+    const off = await scim(token, 'PATCH', `/Users/${id}`, {
+      schemas: ['urn:ietf:params:scim:api:messages:2.0:PatchOp'],
+      Operations: [{ op: 'replace', value: { active: false } }],
+    })
+    expect(off.body.active).toBe(false)
+    expect((await signIn(app.origin, keys, 'kiran@northwind.test')).status).toBe(403)
+    const stillOpen = await read(
+      oldSession,
+      'organizations',
+      (await read(founder, 'users', request.contactEmail)).doc.orgId
+    )
+    expect(stillOpen.doc ?? null).toBeNull()
+
+    // Reactivated (Entra's shape): in again.
+    await scim(token, 'PATCH', `/Users/${id}`, {
+      schemas: ['urn:ietf:params:scim:api:messages:2.0:PatchOp'],
+      Operations: [{ op: 'Replace', path: 'active', value: 'True' }],
+    })
+    k = await signIn(app.origin, keys, 'kiran@northwind.test')
+    expect(k.status).toBe(302)
+
+    // Deleted: gone from SCIM, and joining by domain does not let him back.
+    expect((await scim(token, 'DELETE', `/Users/${id}`)).status).toBe(204)
+    expect((await scim(token, 'GET', `/Users/${id}`)).status).toBe(404)
+    await rpc(founder, 'setAutoJoin', { domains: ['northwind.test'], role: 'member' })
+    expect((await signIn(app.origin, keys, 'kiran@northwind.test')).status).toBe(403)
+    // Someone the directory never deactivated still joins by domain.
+    expect((await signIn(app.origin, keys, 'lata@northwind.test')).status).toBe(302)
+
+    // A new token replaces the old; revoking stops it.
+    const second = (await rpc(founder, 'createScimToken')).body.token
+    expect((await scim(token, 'GET', '/Users')).status).toBe(401)
+    expect((await scim(second, 'GET', '/Users')).status).toBe(200)
+    await rpc(founder, 'revokeScimToken')
+    expect((await scim(second, 'GET', '/Users')).status).toBe(401)
+    await app.stop()
+  })
+
+  it('takes groups pushed over SCIM: roles change at once, and Entra IDs get names', async () => {
+    const { app, keys, founder, rpc, read } = await liveEnvironment()
+    const token = (await rpc(founder, 'createScimToken')).body.token
+    const scim = (method, path, body) =>
+      fetch(`${app.origin}/scim/v2${path}`, {
+        method,
+        headers: {
+          Authorization: `Bearer ${token}`,
+          ...(body ? { 'Content-Type': 'application/scim+json' } : {}),
+        },
+        body: body ? JSON.stringify(body) : undefined,
+      }).then(async (r) => ({ status: r.status, body: r.status === 204 ? null : await r.json() }))
+    const patch = (Operations) => ({
+      schemas: ['urn:ietf:params:scim:api:messages:2.0:PatchOp'],
+      Operations,
+    })
+    await rpc(founder, 'setGroupRoles', {
+      rules: [
+        { group: 'Safety-Managers', role: 'manager' },
+        { group: 'EHS-Auditors', role: 'auditor' },
+      ],
+    })
+
+    // Mohan is provisioned and signs in as a member.
+    const mohan = (
+      await scim('POST', '/Users', {
+        userName: 'mohan@northwind.test',
+        emails: [{ value: 'mohan@northwind.test', primary: true }],
+        active: true,
+      })
+    ).body.id
+    const m = await signIn(app.origin, keys, 'mohan@northwind.test')
+    const roleOf = async (email) => (await read(founder, 'users', email)).doc.role
+    expect(await roleOf('mohan@northwind.test')).toBe('member')
+
+    // The directory pushes Safety-Managers with Mohan in it: manager now, no sign-in needed.
+    const made = await scim('POST', '/Groups', {
+      schemas: ['urn:ietf:params:scim:schemas:core:2.0:Group'],
+      displayName: 'Safety-Managers',
+      externalId: '5f3c0d2e-entra-object-id',
+      members: [{ value: mohan }, { value: 'not-a-user-here' }],
+    })
+    expect(made.status).toBe(201)
+    expect(made.body.members.map((x) => x.value)).toEqual([mohan])
+    expect(await roleOf('mohan@northwind.test')).toBe('manager')
+    expect((await scim('POST', '/Groups', { displayName: 'Safety-Managers' })).status).toBe(409)
+    const listed = await scim(
+      'GET',
+      `/Groups?filter=${encodeURIComponent('displayName eq "Safety-Managers"')}&excludedAttributes=members`
+    )
+    expect(listed.body.totalResults).toBe(1)
+    expect(listed.body.Resources[0].members).toBeUndefined()
+
+    // Moved to the auditors group the Okta way (remove by filter, add): auditor now.
+    const auditors = (await scim('POST', '/Groups', { displayName: 'EHS-Auditors', members: [] }))
+      .body.id
+    await scim(
+      'PATCH',
+      `/Groups/${made.body.id}`,
+      patch([{ op: 'remove', path: `members[value eq "${mohan}"]` }])
+    )
+    await scim(
+      'PATCH',
+      `/Groups/${auditors}`,
+      patch([{ op: 'add', path: 'members', value: [{ value: mohan }] }])
+    )
+    expect(await roleOf('mohan@northwind.test')).toBe('auditor')
+    expect(m.status).toBe(302)
+
+    // Entra signs Sara in with the group's object ID; the pushed group names it.
+    const sara = await signIn(app.origin, keys, 'sara@northwind.test', {
+      attributes: { email: 'sara@northwind.test', groups: ['5f3c0d2e-entra-object-id'] },
+    })
+    expect(sara.status).toBe(302)
+    expect((await read(sara.session, 'users', 'sara@northwind.test')).doc).toMatchObject({
+      role: 'manager',
+      joinedBy: 'groups',
+    })
+
+    // Deleted: the group gives nothing from then on.
+    expect((await scim('DELETE', `/Groups/${made.body.id}`)).status).toBe(204)
+    expect((await scim('GET', `/Groups/${made.body.id}`)).status).toBe(404)
+    const late = await signIn(app.origin, keys, 'tom@northwind.test', {
+      attributes: { email: 'tom@northwind.test', groups: ['5f3c0d2e-entra-object-id'] },
+    })
+    expect(late.session).toBe('')
+    await app.stop()
+  })
+
+  it('keeps the directory records and token out of the data API', async () => {
+    const { app, founder, rpc, read } = await liveEnvironment()
+    await rpc(founder, 'createScimToken')
+    const orgId = (await read(founder, 'users', request.contactEmail)).doc.orgId
+    const token = await read(founder, 'scimTokens', orgId)
+    expect(token.doc ?? null).toBeNull()
+    expect((await rpc(founder, 'createScimToken')).status).toBe(200)
+    await app.stop()
   })
 })
