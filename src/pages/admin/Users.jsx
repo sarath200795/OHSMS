@@ -15,6 +15,8 @@ import {
 } from '../../shared/ui'
 import { initials } from '../../shared/lib/format'
 import EmployeeProvisioning from './EmployeeProvisioning'
+import OwnStackInvites from './OwnStackInvites'
+import { isOwnStackBuild } from '../../shared/auth/ownStackSession'
 
 const STATUS_TONE = { approved: 'green', pending: 'amber', suspended: 'red' }
 const emptyScope = { sites: [], regions: [], entities: [] }
@@ -133,18 +135,28 @@ export default function Users() {
     <>
       <PageHeader
         title="Employees"
-        subtitle="Employee repository — add or bulk-upload employees, approve, set roles & site access"
+        subtitle={
+          isOwnStackBuild()
+            ? 'Employee repository — invite employees, approve, set roles & site access'
+            : 'Employee repository — add or bulk-upload employees, approve, set roles & site access'
+        }
         icon={UsersRound}
         actions={
           <div className="flex flex-wrap items-center gap-2">
             {pending > 0 && <Badge tone="amber">{pending} pending approval</Badge>}
             {requests > 0 && <Badge tone="violet">{requests} access request{requests === 1 ? '' : 's'}</Badge>}
-            <EmployeeProvisioning
-              orgId={orgId}
-              orgName={orgName}
-              actor={actor}
-              existingEmails={(users || []).map((u) => u.email)}
-            />
+            {/* A dedicated environment has no WEEHS passwords to provision:
+                people sign in with the company IdP once an admin invites them. */}
+            {isOwnStackBuild() ? (
+              <OwnStackInvites />
+            ) : (
+              <EmployeeProvisioning
+                orgId={orgId}
+                orgName={orgName}
+                actor={actor}
+                existingEmails={(users || []).map((u) => u.email)}
+              />
+            )}
           </div>
         }
       />
@@ -152,7 +164,7 @@ export default function Users() {
       {users === null ? (
         <SkeletonTable rows={5} cols={5} />
       ) : users.length === 0 ? (
-        <EmptyState icon={UsersRound} title="No employees yet" description="Add employees above (one by one or bulk upload) — or invite teammates to sign up." />
+        <EmptyState icon={UsersRound} title="No employees yet" description={isOwnStackBuild() ? 'Invite employees above. They join when they first sign in with your company account.' : 'Add employees above (one by one or bulk upload) — or invite teammates to sign up.'} />
       ) : (
         <>
         <div className="mb-3 flex flex-wrap items-center gap-3">

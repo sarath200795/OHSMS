@@ -282,3 +282,209 @@ describe('on a database where the app is not a superuser', () => {
     await app.stop()
   })
 })
+
+// ── Inviting people ─────────────────────────────────────────────────────────
+// Until invites, only the founder could ever sign in. These go through the
+// real host on a managed-shaped database: the founder invites, the invitee
+// signs in with the company IdP, and everyone who should not be able to add
+// people — a member, a stranger, another tenant's admin — tries anyway.
+
+async function signIn(origin, keys, email) {
+  const begin = await fetch(`${origin}/auth/start`, { redirect: 'manual' })
+  const cookie = String(begin.headers.get('set-cookie')).split(';')[0]
+  const authn = readAuthnRequest(
+    new URL(begin.headers.get('location')).searchParams.get('SAMLRequest')
+  )
+  const acs = await fetch(`${origin}/auth/saml`, {
+    method: 'POST',
+    redirect: 'manual',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', Cookie: cookie },
+    body: new URLSearchParams({
+      SAMLResponse: signedResponse({
+        keys,
+        request: authn,
+        idpEntityId: 'https://idp.northwind.test/saml',
+        email,
+        name: email,
+      }),
+    }).toString(),
+  })
+  const location = acs.headers.get('location') || ''
+  return {
+    status: acs.status,
+    session: location.includes('#session=')
+      ? decodeURIComponent(location.split('#session=')[1])
+      : '',
+  }
+}
+
+async function liveEnvironment() {
+  const db = await managedLikeDb()
+  const keys = makeIdpKeys('northwind-idp')
+  const app = await start(db, { stateKey: randomBytes(32) })
+  await fileAndHandOff(app.origin, {
+    databaseUrl: DB_URL,
+    dataKeyMaster: MASTER,
+    samlIdpCert: keys.cert,
+    samlEntryPoint: 'https://idp.northwind.test/sso',
+  })
+  const founder = await signIn(app.origin, keys, request.contactEmail)
+  expect(founder.status).toBe(302)
+  const rpc = (session, name, body = {}) =>
+    fetch(`${app.origin}/rpc/${name}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(session ? { Authorization: `Bearer ${session}` } : {}),
+      },
+      body: JSON.stringify(body),
+    }).then(async (r) => ({ status: r.status, body: await r.json() }))
+  const read = (session, path, id) =>
+    fetch(`${app.origin}/data`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session}` },
+      body: JSON.stringify({ op: 'get', path, id }),
+    }).then((r) => r.json())
+  return { db, keys, app, founder: founder.session, rpc, read }
+}
+
+describe('inviting people to a dedicated environment', () => {
+  it('lets the founder invite someone who then signs in with the invited role', async () => {
+    const env = await liveEnvironment()
+    const invited = await env.rpc(env.founder, 'inviteMember', {
+      email: 'Ravi@Northwind.test',
+      role: 'manager',
+      name: 'Ravi Nair',
+    })
+    expect(invited).toMatchObject({ status: 200, body: { ok: true, email: 'ravi@northwind.test' } })
+
+    const listed = await env.rpc(env.founder, 'listInvites')
+    expect(listed.body.invites).toEqual([
+      { email: 'ravi@northwind.test', role: 'manager', name: 'Ravi Nair' },
+    ])
+
+    const { session } = await signIn(env.app.origin, env.keys, 'ravi@northwind.test')
+    expect(session).not.toBe('')
+    const me = await env.read(session, 'users', 'ravi@northwind.test')
+    expect(me.doc).toMatchObject({
+      role: 'manager',
+      status: 'approved',
+      orgId: 'orgreqDedicated01',
+    })
+    // The invite is spent by the sign-in.
+    expect((await env.rpc(env.founder, 'listInvites')).body.invites).toEqual([])
+    await env.app.stop()
+  })
+
+  it('still refuses anyone the IdP knows but nobody invited', async () => {
+    const env = await liveEnvironment()
+    const stranger = await signIn(env.app.origin, env.keys, 'contractor@northwind.test')
+    expect(stranger).toEqual({ status: 403, session: '' })
+    await env.app.stop()
+  })
+
+  it('refuses a member, a signed-out caller and a forged session', async () => {
+    const env = await liveEnvironment()
+    await env.rpc(env.founder, 'inviteMember', { email: 'mo@northwind.test', role: 'member' })
+    const member = (await signIn(env.app.origin, env.keys, 'mo@northwind.test')).session
+    const attempt = { email: 'friend@elsewhere.test', role: 'admin' }
+    for (const session of [member, '', env.founder.slice(0, -4) + 'AAAA']) {
+      for (const name of ['inviteMember', 'listInvites', 'revokeInvite']) {
+        const res = await env.rpc(session, name, attempt)
+        expect(res.status, `${name} with ${session ? 'a session' : 'none'}`).toBe(403)
+        expect(res.body).toEqual({ ok: false, reason: 'not-admin' })
+      }
+    }
+    await env.app.stop()
+  })
+
+  it('stops an admin the moment they are demoted, whatever their session says', async () => {
+    const env = await liveEnvironment()
+    await env.rpc(env.founder, 'inviteMember', { email: 'ada@northwind.test', role: 'admin' })
+    const ada = (await signIn(env.app.origin, env.keys, 'ada@northwind.test')).session
+    expect((await env.rpc(ada, 'listInvites')).status).toBe(200)
+    // Demoted by the founder (as the Employees page does), same session.
+    const demote = await fetch(`${env.app.origin}/data`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.founder}` },
+      body: JSON.stringify({
+        op: 'commit',
+        ops: [
+          { type: 'update', path: 'users', id: 'ada@northwind.test', data: { role: 'member' } },
+        ],
+      }),
+    })
+    expect(demote.status).toBe(200)
+    const after = await env.rpc(ada, 'inviteMember', { email: 'x@northwind.test', role: 'admin' })
+    expect(after).toEqual({ status: 403, body: { ok: false, reason: 'not-admin' } })
+    await env.app.stop()
+  })
+
+  it('refuses a role the product does not have, and a malformed address', async () => {
+    const env = await liveEnvironment()
+    for (const [body, reason] of [
+      [{ email: 'a@northwind.test', role: 'superadmin' }, 'role'],
+      [{ email: 'a@northwind.test', role: 'Admin' }, 'role'],
+      [{ email: 'a@northwind.test' }, 'role'],
+      [{ email: 'not-an-address', role: 'member' }, 'email'],
+      [{ email: 'a@b.test\r\nBcc: x@y.test', role: 'member' }, 'email'],
+      [{ email: ['a@northwind.test'], role: 'member' }, 'email'],
+    ]) {
+      expect((await env.rpc(env.founder, 'inviteMember', body)).body).toEqual({
+        ok: false,
+        reason,
+      })
+    }
+    await env.app.stop()
+  })
+
+  it('will not re-invite an existing member, so a role is not changed by invitation', async () => {
+    const env = await liveEnvironment()
+    const res = await env.rpc(env.founder, 'inviteMember', {
+      email: request.contactEmail.toUpperCase(),
+      role: 'auditor',
+    })
+    expect(res.body).toEqual({ ok: false, reason: 'already-member' })
+    await env.app.stop()
+  })
+
+  it("will not move or withdraw another organization's pending invite", async () => {
+    const env = await liveEnvironment()
+    // A second tenant on the same database, with its own admin and a pending
+    // invite. One environment normally holds one company; the checks must
+    // hold anyway, because the org boundary is the whole of the isolation.
+    const W = { role: 'ohsms_worker', uid: '' }
+    const { createEngine, asWorker } = await import('../../../stack/engine.mjs')
+    const engine = createEngine(env.db)
+    await engine.commit(W, [
+      { type: 'set', path: 'organizations', id: 'orgOther', merge: false, data: { name: 'Other' } },
+    ])
+    await asWorker(
+      env.db,
+      `INSERT INTO invites (email, org_id, role, name) VALUES ('target@other.test', 'orgOther', 'member', 'T')`
+    )
+    const steal = await env.rpc(env.founder, 'inviteMember', {
+      email: 'target@other.test',
+      role: 'admin',
+    })
+    expect(steal.body).toEqual({ ok: false, reason: 'taken' })
+    const revoke = await env.rpc(env.founder, 'revokeInvite', { email: 'target@other.test' })
+    expect(revoke.body).toEqual({ ok: true, removed: false })
+    const still = await asWorker(
+      env.db,
+      `SELECT org_id, role FROM invites WHERE email = 'target@other.test'`
+    )
+    expect(still.rows).toEqual([{ org_id: 'orgOther', role: 'member' }])
+    expect((await env.rpc(env.founder, 'listInvites')).body.invites).toEqual([])
+    await env.app.stop()
+  })
+
+  it('withdraws an invite so that person can no longer sign in', async () => {
+    const env = await liveEnvironment()
+    await env.rpc(env.founder, 'inviteMember', { email: 'temp@northwind.test', role: 'member' })
+    const revoked = await env.rpc(env.founder, 'revokeInvite', { email: 'TEMP@northwind.test' })
+    expect(revoked.body).toEqual({ ok: true, removed: true })
+    expect((await signIn(env.app.origin, env.keys, 'temp@northwind.test')).status).toBe(403)
+    await env.app.stop()
+  })
+})
