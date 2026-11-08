@@ -74,7 +74,10 @@ const BASE_HEADERS = {
  * carried can close the script or start another one.
  */
 export function runtimeConfigScript({ origin, auth, requests }) {
-  const live = [...(requests?.values?.() || [])].find((r) => r?.status === 'live')
+  // The request whose sign-in this host adopted. Taking the first live one
+  // could pair one request's IdP with another's bucket if a host ever held two.
+  const adopted = auth?.requestId ? requests?.get?.(auth.requestId) : null
+  const live = adopted?.status === 'live' ? adopted : null
   const brought =
     live?.bucketMode === 'bring' && /^https:\/\/[^\s"'<>]+$/.test(live?.presignUrl || '')
   const method = ['saml', 'oidc', 'supabase'].includes(auth?.method) ? auth.method : 'none'
@@ -164,9 +167,11 @@ export async function createDedicatedApp({
     dataKeyMaster,
     mail,
     demoIssuer: false,
-    onAuthChange: (auth) => {
+    // Tell the app about a sign-in only once it is stored: if the write
+    // failed, a restart would bring back the old one and the two would differ.
+    onAuthChange: async (auth) => {
+      await state.saveAuth(auth)
       currentAuth = auth
-      return state.saveAuth(auth)
     },
   })
   const delegate = host.listeners('request')[0]

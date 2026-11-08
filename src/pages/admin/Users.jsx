@@ -135,7 +135,11 @@ export default function Users() {
     <>
       <PageHeader
         title="Employees"
-        subtitle="Employee repository — add or bulk-upload employees, approve, set roles & site access"
+        subtitle={
+          isOwnStackBuild()
+            ? 'Employee repository — invite employees, approve, set roles & site access'
+            : 'Employee repository — add or bulk-upload employees, approve, set roles & site access'
+        }
         icon={UsersRound}
         actions={
           <div className="flex flex-wrap items-center gap-2">
@@ -160,7 +164,7 @@ export default function Users() {
       {users === null ? (
         <SkeletonTable rows={5} cols={5} />
       ) : users.length === 0 ? (
-        <EmptyState icon={UsersRound} title="No employees yet" description="Add employees above (one by one or bulk upload) — or invite teammates to sign up." />
+        <EmptyState icon={UsersRound} title="No employees yet" description={isOwnStackBuild() ? 'Invite employees above. They join when they first sign in with your company account.' : 'Add employees above (one by one or bulk upload) — or invite teammates to sign up.'} />
       ) : (
         <>
         <div className="mb-3 flex flex-wrap items-center gap-3">

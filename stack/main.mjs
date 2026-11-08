@@ -23,14 +23,34 @@ const databaseUrl = required('DATABASE_URL')
 const origin = required('PUBLIC_ORIGIN').replace(/\/$/, '')
 const controlToken = required('CONTROL_TOKEN', { min: 32 })
 const sessionSecret = required('SESSION_SECRET', { min: 32 })
-const dataKeyMaster = required('DATA_KEY_MASTER', { min: 32 })
+const dataKeyMaster = required('DATA_KEY_MASTER')
 const stateKeyRaw = required('STATE_KEY')
 
 // The handoff link and every session redirect are built on this origin, and
 // intake refuses an http one that is not loopback. Fail here, not on the
 // first company's handoff.
-if (origin && !/^https:\/\/[^/\s]+$/.test(origin)) {
-  problems.push('PUBLIC_ORIGIN (an https:// origin with no path)')
+// Parsed, not pattern-matched: a pattern accepted `https://?x` and
+// `https://user@host`, which are not origins and produce broken links.
+if (origin) {
+  let parsed = null
+  try {
+    parsed = new URL(origin)
+  } catch {
+    parsed = null
+  }
+  if (!parsed || parsed.protocol !== 'https:' || !parsed.hostname || parsed.origin !== origin) {
+    problems.push('PUBLIC_ORIGIN (an https:// origin with no path)')
+  }
+}
+
+// The key-release worker refuses a master that is not exactly 32 bytes of
+// base64, and it only finds out on the first sign-in that asks for a key. A
+// hex secret passes a length check and decodes to 48 bytes.
+if (dataKeyMaster) {
+  const bytes = Buffer.from(dataKeyMaster.replace(/-/g, '+').replace(/_/g, '/'), 'base64')
+  if (bytes.length !== 32) {
+    problems.push('DATA_KEY_MASTER (32 random bytes, base64: openssl rand -base64 32)')
+  }
 }
 
 let stateKey
@@ -57,8 +77,10 @@ if (env.SMTP_HOST && env.SMTP_USER && env.SMTP_PASS && env.MAIL_FROM) {
   const transport = nodemailer.createTransport({
     host: env.SMTP_HOST,
     port,
+    // 465 is TLS from the first byte; on any other port, refuse to send the
+    // password over a connection that did not upgrade with STARTTLS.
     secure: port === 465,
-    requireTLS: port === 587,
+    requireTLS: port !== 465,
     auth: { user: env.SMTP_USER, pass: env.SMTP_PASS },
     connectionTimeout: 10_000,
     greetingTimeout: 10_000,
