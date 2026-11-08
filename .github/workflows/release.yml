@@ -110,9 +110,12 @@ jobs:
         run: |
           mkdir -p out
           git archive --format=tar.gz --prefix="weehs-$VERSION/" -o "out/weehs-$VERSION-source.tar.gz" "$GITHUB_SHA"
+          # Just the self-hosting kit (docs/SELF-HOSTING.md): what an
+          # organization copies onto its server.
+          git archive --format=tar.gz --prefix="weehs-selfhost-$VERSION/" -o "out/weehs-$VERSION-selfhost.tar.gz" "$GITHUB_SHA" selfhost
           printf '{"version":"%s","tag":"%s","commit":"%s","image":"%s:%s","digest":"%s"}\n' \
             "$VERSION" "$GITHUB_REF_NAME" "$GITHUB_SHA" "$IMAGE" "$VERSION" "$DIGEST" > out/release.json
-          (cd out && sha256sum "weehs-$VERSION-source.tar.gz" release.json > SHA256SUMS)
+          (cd out && sha256sum "weehs-$VERSION-source.tar.gz" "weehs-$VERSION-selfhost.tar.gz" release.json > SHA256SUMS)
 
       - name: Release notes
         env:
@@ -136,6 +139,9 @@ jobs:
             echo "version starts. Keep \`STATE_KEY\` and \`SESSION_SECRET\` unchanged. Full"
             echo "steps: [docs/RELEASES.md](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/docs/RELEASES.md)."
             echo
+            echo "Self-hosting on your own server: \`weehs-$VERSION-selfhost.tar.gz\` below,"
+            echo "with [docs/SELF-HOSTING.md](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/docs/SELF-HOSTING.md)."
+            echo
             echo "Check a download: \`sha256sum -c SHA256SUMS\` next to the files below."
             echo
             echo "The Android APK for the shared site's download page is attached when its"
@@ -148,7 +154,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.names.outputs.version }}
         run: |
-          FILES=(out/weehs-$VERSION-source.tar.gz out/release.json out/SHA256SUMS)
+          FILES=(out/weehs-$VERSION-source.tar.gz out/weehs-$VERSION-selfhost.tar.gz out/release.json out/SHA256SUMS)
           # Create, or — when android-apk.yml created it first, even a moment
           # ago — keep its file, replace its notes, and add ours.
           if ! gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
