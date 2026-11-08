@@ -533,12 +533,27 @@ describe('the settings a dedicated host gives the app', () => {
     const config = configFrom(
       runtimeConfigScript({
         origin: 'https://ehs.northwind.test',
-        auth: { method: 'oidc' },
+        auth: { method: 'oidc', requestId: 'r1' },
         requests,
       })
     )
     expect(config.S3_PRESIGN_ENDPOINT).toBe('https://files.northwind.test/presign')
     expect(config.AUTH_METHOD).toBe('oidc')
+  })
+
+  it('takes the bucket from the request whose sign-in was adopted, not the first live one', () => {
+    const requests = new Map([
+      ['old', { status: 'live', bucketMode: 'bring', presignUrl: 'https://old.test/presign' }],
+      ['new', { status: 'live', bucketMode: 'provision', presignUrl: '' }],
+    ])
+    const config = configFrom(
+      runtimeConfigScript({
+        origin: 'https://ehs.northwind.test',
+        auth: { method: 'saml', requestId: 'new' },
+        requests,
+      })
+    )
+    expect(config.S3_PRESIGN_ENDPOINT).toBe('https://ehs.northwind.test/presign')
   })
 
   it('cannot be made to close the script or carry markup', () => {
@@ -554,7 +569,7 @@ describe('the settings a dedicated host gives the app', () => {
     ])
     const script = runtimeConfigScript({
       origin: 'https://ehs.test/</script><img src=x onerror=alert(1)>',
-      auth: { method: '</script>' },
+      auth: { method: '</script>', requestId: 'r1' },
       requests,
     })
     expect(script).not.toMatch(/</)
