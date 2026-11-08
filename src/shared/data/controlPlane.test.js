@@ -943,6 +943,95 @@ describe('following the company directory', () => {
     await app.stop()
   })
 
+  it('takes groups pushed over SCIM: roles change at once, and Entra IDs get names', async () => {
+    const { app, keys, founder, rpc, read } = await liveEnvironment()
+    const token = (await rpc(founder, 'createScimToken')).body.token
+    const scim = (method, path, body) =>
+      fetch(`${app.origin}/scim/v2${path}`, {
+        method,
+        headers: {
+          Authorization: `Bearer ${token}`,
+          ...(body ? { 'Content-Type': 'application/scim+json' } : {}),
+        },
+        body: body ? JSON.stringify(body) : undefined,
+      }).then(async (r) => ({ status: r.status, body: r.status === 204 ? null : await r.json() }))
+    const patch = (Operations) => ({
+      schemas: ['urn:ietf:params:scim:api:messages:2.0:PatchOp'],
+      Operations,
+    })
+    await rpc(founder, 'setGroupRoles', {
+      rules: [
+        { group: 'Safety-Managers', role: 'manager' },
+        { group: 'EHS-Auditors', role: 'auditor' },
+      ],
+    })
+
+    // Mohan is provisioned and signs in as a member.
+    const mohan = (
+      await scim('POST', '/Users', {
+        userName: 'mohan@northwind.test',
+        emails: [{ value: 'mohan@northwind.test', primary: true }],
+        active: true,
+      })
+    ).body.id
+    const m = await signIn(app.origin, keys, 'mohan@northwind.test')
+    const roleOf = async (email) => (await read(founder, 'users', email)).doc.role
+    expect(await roleOf('mohan@northwind.test')).toBe('member')
+
+    // The directory pushes Safety-Managers with Mohan in it: manager now, no sign-in needed.
+    const made = await scim('POST', '/Groups', {
+      schemas: ['urn:ietf:params:scim:schemas:core:2.0:Group'],
+      displayName: 'Safety-Managers',
+      externalId: '5f3c0d2e-entra-object-id',
+      members: [{ value: mohan }, { value: 'not-a-user-here' }],
+    })
+    expect(made.status).toBe(201)
+    expect(made.body.members.map((x) => x.value)).toEqual([mohan])
+    expect(await roleOf('mohan@northwind.test')).toBe('manager')
+    expect((await scim('POST', '/Groups', { displayName: 'Safety-Managers' })).status).toBe(409)
+    const listed = await scim(
+      'GET',
+      `/Groups?filter=${encodeURIComponent('displayName eq "Safety-Managers"')}&excludedAttributes=members`
+    )
+    expect(listed.body.totalResults).toBe(1)
+    expect(listed.body.Resources[0].members).toBeUndefined()
+
+    // Moved to the auditors group the Okta way (remove by filter, add): auditor now.
+    const auditors = (await scim('POST', '/Groups', { displayName: 'EHS-Auditors', members: [] }))
+      .body.id
+    await scim(
+      'PATCH',
+      `/Groups/${made.body.id}`,
+      patch([{ op: 'remove', path: `members[value eq "${mohan}"]` }])
+    )
+    await scim(
+      'PATCH',
+      `/Groups/${auditors}`,
+      patch([{ op: 'add', path: 'members', value: [{ value: mohan }] }])
+    )
+    expect(await roleOf('mohan@northwind.test')).toBe('auditor')
+    expect(m.status).toBe(302)
+
+    // Entra signs Sara in with the group's object ID; the pushed group names it.
+    const sara = await signIn(app.origin, keys, 'sara@northwind.test', {
+      attributes: { email: 'sara@northwind.test', groups: ['5f3c0d2e-entra-object-id'] },
+    })
+    expect(sara.status).toBe(302)
+    expect((await read(sara.session, 'users', 'sara@northwind.test')).doc).toMatchObject({
+      role: 'manager',
+      joinedBy: 'groups',
+    })
+
+    // Deleted: the group gives nothing from then on.
+    expect((await scim('DELETE', `/Groups/${made.body.id}`)).status).toBe(204)
+    expect((await scim('GET', `/Groups/${made.body.id}`)).status).toBe(404)
+    const late = await signIn(app.origin, keys, 'tom@northwind.test', {
+      attributes: { email: 'tom@northwind.test', groups: ['5f3c0d2e-entra-object-id'] },
+    })
+    expect(late.session).toBe('')
+    await app.stop()
+  })
+
   it('keeps the directory records and token out of the data API', async () => {
     const { app, founder, rpc, read } = await liveEnvironment()
     await rpc(founder, 'createScimToken')

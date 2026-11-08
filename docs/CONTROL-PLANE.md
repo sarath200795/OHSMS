@@ -354,12 +354,29 @@ unchanged across deploys.
     map those IDs.
 - **SCIM sync, and leaving.** **Turn on sync** in the same dialog gives a
   SCIM 2.0 base URL (`https://ehs.example.com/scim/v2`) and a bearer token,
-  shown once, to enter in Okta, Entra or Google as the app's provisioning.
-  Assigning someone the app there invites them here; deactivating or
-  removing them disables their account at once (an open session stops at its
-  next request), and keeps them out even if their domain or a group would
-  let them join. Reactivating lets them in again. Users only: groups reach
-  WEEHS through sign-in, as above.
+  shown once, to enter in Okta or Entra as the app's provisioning.
+  - Users: assigning someone the app invites them here; deactivating or
+    removing them disables their account at once (an open session stops at
+    its next request) and keeps them out even if their domain or a group
+    would let them join; reactivating lets them in again.
+  - Groups (Okta "Push Groups", Entra group provisioning): pushed groups and
+    their members count like groups sent at sign-in, and a change applies to
+    existing accounts at once. Entra signs people in with group object IDs;
+    a group it has pushed carries that ID as its externalId, so rules can be
+    written with the group's name.
+- **Google Workspace.** OIDC (`https://accounts.google.com`) and custom SAML
+  apps both work. Differences from Okta and Entra: Google's OIDC sends no
+  groups, so map roles with SAML (add "Group membership" to the custom app's
+  attribute mapping, named `groups`) or use invites and Join automatically;
+  and Google does not provision custom apps over SCIM, so leaving relies on
+  Google refusing a suspended user's sign-in, plus an admin disabling or
+  removing the account in Employees.
+- **Checked against the real providers.** `WEEHS_LIVE_IDP=1 npx vitest run
+src/shared/data/realProviders.test.js` reads Google's and Microsoft's live
+  discovery documents through the same code, and sends Google a real sign-in
+  request (refused only for its made-up client). A person signing in still
+  needs a real account in a real tenant: do that once with each customer's
+  provider before going live.
 - **SAML email.** Read from an attribute named `email`, `mail` or
   `emailAddress`, or the standard claim
   `http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress`

@@ -118,6 +118,75 @@ export async function syncRoleFromGroups(engine, db, uid, profile, groups) {
   return engine.get(WORKER, 'users', uid)
 }
 
+// ── Groups the directory pushed (SCIM Groups) ───────────────────────────────
+// Okta's "Push Groups" and Entra's group provisioning send groups with their
+// members. Two things follow. Someone's groups are known without a sign-in,
+// so a change applies at once. And Entra, which signs people in with group
+// object IDs, also pushes each group's name with that ID as externalId, so
+// rules can be written with names.
+
+async function scimGroupRows(db, orgId) {
+  const res = await asWorker(
+    db,
+    orgId
+      ? `SELECT id, data FROM documents WHERE path = 'scimGroups' AND data->>'orgId' = $1`
+      : `SELECT id, data FROM documents WHERE path = 'scimGroups'`,
+    orgId ? [orgId] : []
+  )
+  // A group deleted in the directory gives nobody anything from that moment.
+  return res.rows
+    .map((r) => ({ id: r.id, rec: typeof r.data === 'string' ? JSON.parse(r.data) : r.data }))
+    .filter(({ rec }) => !rec.deleted)
+}
+
+/**
+ * The groups to apply rules to: what the sign-in carried, the names of pushed
+ * groups whose ID or externalId it carried (Entra), and the pushed groups the
+ * person is a member of. orgId null looks across organizations (first
+ * sign-in, before anyone knows which).
+ */
+export async function expandGroups(db, orgId, email, claimGroups = []) {
+  const out = new Set(Array.isArray(claimGroups) ? claimGroups.map(String) : [])
+  const rows = await scimGroupRows(db, orgId)
+  if (!rows.length) return [...out]
+  const mine = await asWorker(
+    db,
+    `SELECT id FROM documents WHERE path = 'scimUsers' AND data->>'email' = $1 AND data->>'active' = 'true'`,
+    [email]
+  )
+  const ids = new Set(mine.rows.map((r) => r.id))
+  for (const { id, rec } of rows) {
+    const named = out.has(id) || (rec.externalId && out.has(rec.externalId))
+    const member = (rec.members || []).some((m) => ids.has(m))
+    if ((named || member) && rec.displayName) out.add(rec.displayName)
+  }
+  return [...out]
+}
+
+/** Apply the rules now to these directory users' accounts, after a group changed. */
+async function resyncRoles(engine, db, orgId, scimUserIds) {
+  if (!scimUserIds.size) return
+  const res = await asWorker(
+    db,
+    `SELECT id, data->>'email' AS email FROM documents WHERE path = 'scimUsers' AND data->>'orgId' = $1`,
+    [orgId]
+  )
+  const emails = new Set(res.rows.filter((r) => scimUserIds.has(r.id)).map((r) => r.email))
+  for (const email of emails) {
+    const accounts = await asWorker(
+      db,
+      `SELECT id FROM documents WHERE path = 'users' AND data->>'orgId' = $1
+         AND lower(data->>'email') = $2 AND data->>'status' = 'approved'`,
+      [orgId, email]
+    )
+    const groups = await expandGroups(db, orgId, email, [])
+    for (const { id } of accounts.rows) {
+      const profile = await engine.get(WORKER, 'users', id)
+      await syncRoleFromGroups(engine, db, id, profile, groups)
+    }
+  }
+}
+
 // ── Disabled ────────────────────────────────────────────────────────────────
 
 /**
@@ -227,6 +296,7 @@ async function orgOfToken(db, header) {
 // ── SCIM 2.0 (RFC 7643, 7644): Users ────────────────────────────────────────
 
 const USER_SCHEMA = 'urn:ietf:params:scim:schemas:core:2.0:User'
+const GROUP_SCHEMA = 'urn:ietf:params:scim:schemas:core:2.0:Group'
 const LIST_SCHEMA = 'urn:ietf:params:scim:api:messages:2.0:ListResponse'
 const ERROR_SCHEMA = 'urn:ietf:params:scim:api:messages:2.0:Error'
 const PATCH_SCHEMA = 'urn:ietf:params:scim:api:messages:2.0:PatchOp'
@@ -345,7 +415,7 @@ export async function handleScim({ engine, db, origin, method, pathname, query, 
   if (method === 'GET' && rest === '/ResourceTypes') {
     return reply(200, {
       schemas: [LIST_SCHEMA],
-      totalResults: 1,
+      totalResults: 2,
       Resources: [
         {
           schemas: ['urn:ietf:params:scim:schemas:core:2.0:ResourceType'],
@@ -353,6 +423,13 @@ export async function handleScim({ engine, db, origin, method, pathname, query, 
           name: 'User',
           endpoint: '/Users',
           schema: USER_SCHEMA,
+        },
+        {
+          schemas: ['urn:ietf:params:scim:schemas:core:2.0:ResourceType'],
+          id: 'Group',
+          name: 'Group',
+          endpoint: '/Groups',
+          schema: GROUP_SCHEMA,
         },
       ],
     })
@@ -458,6 +535,142 @@ export async function handleScim({ engine, db, origin, method, pathname, query, 
       }
       await save(id, next)
       await applyActive(engine, db, orgId, found.rec.email, false)
+      return reply(204, null)
+    }
+  }
+
+  // ── Groups ──
+  const groupRows = () => scimGroupRows(db, orgId)
+  const knownUsers = async () => new Set((await users()).map((u) => u.id))
+  const memberIds = (list, known) =>
+    (Array.isArray(list) ? list : []).map((m) => String(m?.value || '')).filter((v) => known.has(v))
+  const saveGroup = async (id, rec) =>
+    engine.commit(WORKER, [
+      { type: 'set', path: 'scimGroups', id, merge: false, data: { ...rec, orgId } },
+    ])
+  const groupResource = (id, rec) => ({
+    schemas: [GROUP_SCHEMA],
+    id,
+    externalId: rec.externalId || undefined,
+    displayName: rec.displayName,
+    members: (rec.members || []).map((value) => ({
+      value,
+      $ref: `${origin}/scim/v2/Users/${value}`,
+    })),
+    meta: {
+      resourceType: 'Group',
+      created: rec.created,
+      lastModified: rec.lastModified,
+      location: `${origin}/scim/v2/Groups/${id}`,
+    },
+  })
+
+  if (rest === '/Groups' && method === 'GET') {
+    let list = await groupRows()
+    const filter = String(query.get('filter') || '')
+    const m = /^(displayName|externalId)\s+eq\s+"([^"]*)"$/i.exec(filter.trim())
+    if (filter && !m)
+      return fail(
+        400,
+        'Only "displayName eq" and "externalId eq" filters are supported.',
+        'invalidFilter'
+      )
+    if (m) {
+      const field = m[1].toLowerCase() === 'externalid' ? 'externalId' : 'displayName'
+      list = list.filter(({ rec }) => (rec[field] || '') === m[2])
+    }
+    const start = Math.max(1, Number(query.get('startIndex')) || 1)
+    const count = Math.min(100, Math.max(0, Number(query.get('count') ?? 100) || 0))
+    const page = list.slice(start - 1, start - 1 + count)
+    // Okta asks for groups without members when it only needs to find one.
+    const bare = String(query.get('excludedAttributes') || '').includes('members')
+    return reply(200, {
+      schemas: [LIST_SCHEMA],
+      totalResults: list.length,
+      startIndex: start,
+      itemsPerPage: page.length,
+      Resources: page.map(({ id, rec }) => {
+        const r = groupResource(id, rec)
+        if (bare) delete r.members
+        return r
+      }),
+    })
+  }
+
+  if (rest === '/Groups' && method === 'POST') {
+    const displayName = textOf(body?.displayName)
+    if (!displayName) return fail(400, 'displayName is required.', 'invalidValue')
+    if ((await groupRows()).some(({ rec }) => rec.displayName === displayName)) {
+      return fail(409, 'That group already exists.', 'uniqueness')
+    }
+    const now = new Date().toISOString()
+    const rec = {
+      displayName,
+      externalId: textOf(body?.externalId),
+      members: memberIds(body?.members, await knownUsers()),
+      created: now,
+      lastModified: now,
+    }
+    const id = randomBytes(12).toString('hex')
+    await saveGroup(id, rec)
+    await resyncRoles(engine, db, orgId, new Set(rec.members))
+    return reply(201, groupResource(id, rec))
+  }
+
+  const oneGroup = /^\/Groups\/([A-Za-z0-9]+)$/.exec(rest)
+  if (oneGroup) {
+    const id = oneGroup[1]
+    const found = (await groupRows()).find((g) => g.id === id)
+    if (!found) return fail(404, 'No such group.')
+    if (method === 'GET') return reply(200, groupResource(id, found.rec))
+    if (method === 'PUT' || method === 'PATCH') {
+      if (method === 'PATCH' && !(body?.schemas || []).includes(PATCH_SCHEMA)) {
+        return fail(400, 'A PatchOp body is required.', 'invalidSyntax')
+      }
+      const known = await knownUsers()
+      const next = { ...found.rec, members: [...(found.rec.members || [])] }
+      if (method === 'PUT') {
+        next.displayName = textOf(body?.displayName) || next.displayName
+        next.externalId = textOf(body?.externalId) || next.externalId
+        next.members = memberIds(body?.members, known)
+      } else {
+        for (const op of Array.isArray(body?.Operations) ? body.Operations : []) {
+          const kind = String(op?.op || '').toLowerCase()
+          const path = String(op?.path || '')
+          const value = op?.value
+          const filtered = /^members\[value eq "([^"]+)"\]$/.exec(path)
+          if (kind === 'add' && path === 'members') {
+            for (const v of memberIds(value, known))
+              if (!next.members.includes(v)) next.members.push(v)
+          } else if (kind === 'remove' && filtered) {
+            next.members = next.members.filter((v) => v !== filtered[1])
+          } else if (kind === 'remove' && path === 'members') {
+            const drop = new Set(
+              Array.isArray(value) ? value.map((m) => String(m?.value || '')) : []
+            )
+            next.members = drop.size ? next.members.filter((v) => !drop.has(v)) : []
+          } else if (kind === 'replace' && path === 'members') {
+            next.members = memberIds(value, known)
+          } else if (kind === 'replace' && path === 'displayName') {
+            next.displayName = textOf(value) || next.displayName
+          } else if (kind === 'replace' && path === 'externalId') {
+            next.externalId = textOf(value)
+          } else if (kind === 'replace' && !path && value && typeof value === 'object') {
+            if (value.displayName) next.displayName = textOf(value.displayName)
+            if (value.externalId) next.externalId = textOf(value.externalId)
+            if (value.members) next.members = memberIds(value.members, known)
+          }
+        }
+      }
+      next.lastModified = new Date().toISOString()
+      await saveGroup(id, next)
+      const touched = new Set([...(found.rec.members || []), ...next.members])
+      await resyncRoles(engine, db, orgId, touched)
+      return reply(200, groupResource(id, next))
+    }
+    if (method === 'DELETE') {
+      await saveGroup(id, { ...found.rec, deleted: true, lastModified: new Date().toISOString() })
+      await resyncRoles(engine, db, orgId, new Set(found.rec.members || []))
       return reply(204, null)
     }
   }

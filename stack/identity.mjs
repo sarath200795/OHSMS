@@ -11,6 +11,7 @@ import { asWorker } from './engine.mjs'
 import { autoJoinFor } from './invites.mjs'
 import {
   deactivatedByDirectory,
+  expandGroups,
   groupJoinFor,
   roleFromGroups,
   syncRoleFromGroups,
@@ -29,7 +30,8 @@ export async function establishIdentity(engine, db, { sub, email, name, groups =
   const existing = await engine.get(WORKER, 'users', uid)
   if (existing) {
     if (existing.status === 'disabled') return { ok: false, reason: 'disabled' }
-    const profile = await syncRoleFromGroups(engine, db, uid, existing, groups)
+    const mine = await expandGroups(db, existing.orgId, mail, groups)
+    const profile = await syncRoleFromGroups(engine, db, uid, existing, mine)
     return { ok: true, uid, profile }
   }
 
@@ -43,6 +45,8 @@ export async function establishIdentity(engine, db, { sub, email, name, groups =
     [mail]
   )
   const row = claimed.rows[0]
+  // With the groups the directory pushed, and Entra's IDs named (directory.mjs).
+  const mine = await expandGroups(db, row ? row.org_id : null, mail, groups)
   let join
   if (row) {
     join = { orgId: row.org_id, role: row.role, name: row.name, by: 'invite' }
@@ -50,7 +54,7 @@ export async function establishIdentity(engine, db, { sub, email, name, groups =
     // The other sign-in won the claim; it is the same person, so use its user.
     const raced = await engine.get(WORKER, 'users', uid)
     if (raced) return { ok: true, uid, profile: raced }
-    const byGroup = await groupJoinFor(db, groups)
+    const byGroup = await groupJoinFor(db, mine)
     const byDomain = byGroup ? null : await autoJoinFor(db, mail)
     const auto = byGroup || byDomain
     if (!auto) return { ok: false, reason: 'no-invite' }
@@ -59,7 +63,7 @@ export async function establishIdentity(engine, db, { sub, email, name, groups =
   // Mapped groups decide the role whenever they give one, invited or not.
   if (join.by !== 'groups') {
     const org = await engine.get(WORKER, 'organizations', join.orgId)
-    join.role = roleFromGroups(org?.groupRoles, groups) || join.role
+    join.role = roleFromGroups(org?.groupRoles, mine) || join.role
   }
 
   try {
