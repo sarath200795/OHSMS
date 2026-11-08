@@ -19,8 +19,9 @@ managed database instead? Follow [`CONTROL-PLANE.md`](CONTROL-PLANE.md).
   record pointing at the server's public IP address.
 - **Ports 80 and 443** open to the internet. Port 80 is needed for the free
   certificate; everything is served over 443.
-- Your organization's **identity provider** details (SAML is the tested
-  path; see "Known limits" in `CONTROL-PLANE.md`).
+- Your organization's **identity provider** details: SAML, or OIDC (Okta,
+  Microsoft Entra, Google, Keycloak, …). See "Known limits" in
+  `CONTROL-PLANE.md`.
 - The **image** for the release you are installing, from the release page
   ([`RELEASES.md`](RELEASES.md)).
 - Optional: SMTP details for outgoing mail.
@@ -162,6 +163,5 @@ a hope, not a backup.
 ## Known limits
 
 The limits in [`CONTROL-PLANE.md`](CONTROL-PLANE.md#known-limits--read-before-promising-a-company-a-date)
-apply here too: SAML is the tested sign-in, and a "WEEHS provisions a
-bucket" file store is not served, so arrange your own bucket and presign
-endpoint for uploads.
+apply here too: in particular, a "WEEHS provisions a bucket" file store is
+not served, so arrange your own bucket and presign endpoint for uploads.

@@ -8,7 +8,7 @@ import { createServer } from 'node:http'
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import { verifySession, signSession } from './session.mjs'
 import { decidePresign } from './presign.mjs'
-import { identityFromCode } from './oidc.mjs'
+import { authorizeUrl, endpointsFor, identityFromCode } from './oidc.mjs'
 import { identityFromSupabase } from './supabaseAuth.mjs'
 import { authnRequestId, samlClient, identityFromSaml } from './saml.mjs'
 import { establishIdentity } from './identity.mjs'
@@ -147,6 +147,9 @@ export function createOwnStackServer({
   // (stack/app.mjs does, always): with it on, anyone who typed an invited
   // founder's email would be signed in as them.
   demoIssuer = true,
+  // Accept an OIDC sign-in whose userinfo has no email_verified claim
+  // (stack/oidc.mjs explains when that is reasonable).
+  oidcAcceptUnverifiedEmail = false,
 }) {
   const server = createServer(async (req, res) => {
     try {
@@ -342,6 +345,34 @@ export function createOwnStackServer({
     return auth.issuer || (demoIssuer ? `${origin}/oidc` : '')
   }
 
+  // Discovery is read once an hour per issuer, not per sign-in. A failure is
+  // remembered for a short while, and concurrent starts share one request:
+  // /auth/start is public, and without both each hit on a provider that is
+  // down opened its own outbound fetch.
+  const DISCOVERY_TTL_MS = 60 * 60 * 1000
+  const DISCOVERY_RETRY_MS = 30 * 1000
+  const discovered = new Map()
+  const inFlight = new Map()
+  async function oidcEndpoints() {
+    const issuer = oidcIssuer()
+    if (!issuer) return null
+    const hit = discovered.get(issuer)
+    if (hit && Date.now() - hit.at < (hit.endpoints ? DISCOVERY_TTL_MS : DISCOVERY_RETRY_MS)) {
+      return hit.endpoints
+    }
+    if (!inFlight.has(issuer)) {
+      const pending = endpointsFor(issuer, { allowLoopbackHttp: demoIssuer })
+        .catch(() => null)
+        .then((endpoints) => {
+          discovered.set(issuer, { at: Date.now(), endpoints })
+          inFlight.delete(issuer)
+          return endpoints
+        })
+      inFlight.set(issuer, pending)
+    }
+    return inFlight.get(issuer)
+  }
+
   async function onAuthStart(url, res) {
     if (auth.method === 'saml') {
       let location
@@ -364,8 +395,8 @@ export function createOwnStackServer({
       })
       return
     }
-    const issuer = oidcIssuer()
-    if (!issuer) {
+    const endpoints = await oidcEndpoints()
+    if (!endpoints) {
       send(res, 503, { code: 'unavailable', message: 'single sign-on is not configured' })
       return
     }
@@ -373,8 +404,13 @@ export function createOwnStackServer({
     const verifier = randomBytes(32).toString('base64url')
     const binding = randomBytes(24).toString('base64url')
     codes.set(`state:${state}`, { verifier, binding, at: Date.now() })
-    const redirect = `${origin}/auth/callback`
-    const location = `${issuer.replace(/\/$/, '')}/authorize?response_type=code&client_id=${encodeURIComponent(auth.clientId || 'ohsms')}&redirect_uri=${encodeURIComponent(redirect)}&scope=openid%20email%20profile&state=${state}&code_challenge=${challenge(verifier)}&code_challenge_method=S256`
+    const location = authorizeUrl({
+      authorizationEndpoint: endpoints.authorizationEndpoint,
+      clientId: auth.clientId || 'ohsms',
+      redirectUri: `${origin}/auth/callback`,
+      state,
+      challenge: challenge(verifier),
+    })
     send(res, 302, '', {
       Location: location,
       'Set-Cookie': oidcCookie(binding, OIDC_TTL_MS / 1000),
@@ -396,19 +432,20 @@ export function createOwnStackServer({
       send(res, 400, { code: 'invalid-argument', message: 'sign-in could not be completed' }, clear)
       return
     }
-    const issuer = oidcIssuer().replace(/\/$/, '')
-    if (!issuer) {
-      send(res, 503, { code: 'unavailable', message: 'single sign-on is not configured' })
+    const endpoints = await oidcEndpoints()
+    if (!endpoints) {
+      send(res, 503, { code: 'unavailable', message: 'single sign-on is not configured' }, clear)
       return
     }
     const identity = await identityFromCode({
-      tokenEndpoint: `${issuer}/token`,
-      userinfoEndpoint: `${issuer}/userinfo`,
+      tokenEndpoint: endpoints.tokenEndpoint,
+      userinfoEndpoint: endpoints.userinfoEndpoint,
       clientId: auth.clientId || 'ohsms',
       clientSecret: auth.clientSecret || '',
       code,
       redirectUri: `${origin}/auth/callback`,
       verifier: pending.verifier,
+      acceptUnverifiedEmail: oidcAcceptUnverifiedEmail,
     })
     if (!identity.ok) {
       send(
@@ -616,7 +653,7 @@ export function createOwnStackServer({
       send(res, 401, { code: 'unauthenticated', message: 'unknown token' })
       return
     }
-    send(res, 200, { sub: user.sub, email: user.email, name: user.email })
+    send(res, 200, { sub: user.sub, email: user.email, email_verified: true, name: user.email })
   }
 
   function operator(req) {

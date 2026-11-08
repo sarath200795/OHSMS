@@ -6,10 +6,61 @@ function trim(url) {
   return String(url || '').replace(/\/$/, '')
 }
 
+// Every call to the provider refuses a redirect. The issuer is checked to be
+// https; a followed redirect could land on http, or somewhere else entirely,
+// and the document or tokens read there would be trusted as the provider's.
+const NO_REDIRECT = { redirect: 'error' }
+
 export async function discover(issuer, fetchImpl = fetch) {
-  const res = await fetchImpl(`${trim(issuer)}/.well-known/openid-configuration`)
+  // OIDC Discovery §4: a trailing / on the issuer is removed before the path.
+  const res = await fetchImpl(`${trim(issuer)}/.well-known/openid-configuration`, NO_REDIRECT)
   if (!res.ok) throw new Error(`oidc discovery failed (${res.status})`)
   return res.json()
+}
+
+const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]', '::1'])
+
+function endpointOk(value, { allowLoopbackHttp }) {
+  let url
+  try {
+    url = new URL(String(value || ''))
+  } catch {
+    return false
+  }
+  if (url.username || url.password) return false
+  if (url.protocol === 'https:') return true
+  return allowLoopbackHttp && url.protocol === 'http:' && LOOPBACK.has(url.hostname)
+}
+
+/**
+ * The provider's own endpoints, from its discovery document.
+ *
+ * Sign-in used to call ISSUER/authorize, ISSUER/token and ISSUER/userinfo,
+ * which is the shape of almost no real provider (Okta, Microsoft Entra,
+ * Google, Keycloak all put them elsewhere), so company OIDC worked only
+ * against the built-in demo issuer.
+ *
+ * The document's `issuer` must equal the configured issuer exactly (OIDC
+ * Discovery §4.3): a document fetched from one place that names another
+ * issuer is how one provider's tokens are accepted for another. Every
+ * endpoint must be https; plain http only on loopback, for the local demo.
+ */
+export async function endpointsFor(issuer, { fetchImpl = fetch, allowLoopbackHttp = false } = {}) {
+  // Compared as written, trailing slash included: issuers are compared as
+  // exact strings, and `https://idp/a` and `https://idp/a/` are two of them.
+  const expected = String(issuer || '').trim()
+  if (!endpointOk(expected, { allowLoopbackHttp })) throw new Error('oidc issuer is not https')
+  const doc = await discover(expected, fetchImpl)
+  if (doc?.issuer !== expected) throw new Error('oidc discovery names another issuer')
+  const endpoints = {
+    authorizationEndpoint: doc.authorization_endpoint,
+    tokenEndpoint: doc.token_endpoint,
+    userinfoEndpoint: doc.userinfo_endpoint,
+  }
+  for (const [name, value] of Object.entries(endpoints)) {
+    if (!endpointOk(value, { allowLoopbackHttp })) throw new Error(`oidc ${name} is not usable`)
+  }
+  return endpoints
 }
 
 export function authorizeUrl({
@@ -39,6 +90,7 @@ export async function identityFromCode({
   code,
   redirectUri,
   verifier,
+  acceptUnverifiedEmail = false,
   fetchImpl = fetch,
 }) {
   const body = new URLSearchParams({
@@ -50,6 +102,7 @@ export async function identityFromCode({
   })
   if (clientSecret) body.set('client_secret', clientSecret)
   const tokenRes = await fetchImpl(tokenEndpoint, {
+    ...NO_REDIRECT,
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body,
@@ -58,11 +111,25 @@ export async function identityFromCode({
   const tokens = await tokenRes.json()
   if (!tokens.access_token) return { ok: false, reason: 'token' }
   const infoRes = await fetchImpl(userinfoEndpoint, {
+    ...NO_REDIRECT,
     headers: { Authorization: `Bearer ${tokens.access_token}` },
   })
   if (!infoRes.ok) return { ok: false, reason: 'userinfo' }
   const user = await infoRes.json()
   if (!user?.sub) return { ok: false, reason: 'userinfo' }
+  // Invites are matched by email, so the address has to be one the provider
+  // vouches for. An unverified one is one anyone could have typed, and would
+  // take an invite meant for someone else. A missing claim is not a yes.
+  //
+  // Microsoft Entra sends no email_verified at all. Its `email` is set by the
+  // tenant's administrators, so an operator whose IdP is their own Entra
+  // tenant can say so with OIDC_ACCEPT_UNVERIFIED_EMAIL; an explicit false is
+  // refused even then.
+  const verified = user.email_verified === true || user.email_verified === 'true'
+  const absent = user.email_verified === undefined || user.email_verified === null
+  if (!verified && !(absent && acceptUnverifiedEmail)) {
+    return { ok: false, reason: 'email-unverified' }
+  }
   return {
     ok: true,
     sub: String(user.sub),
