@@ -110,7 +110,7 @@ export function renderRequestReceivedMail(request = {}, { requestId = '' } = {})
   const { text, html, senderName } = renderLayout({
     subject,
     label: 'Registration',
-    headline: 'Your request to use your own database was received.',
+    headline: 'Your request for a dedicated environment was received.',
     rows,
     blocks,
     url: '',
@@ -129,7 +129,7 @@ export function renderOperatorAlertMail(request = {}, { requestId = '', appOrigi
   const { text, html, senderName } = renderLayout({
     subject,
     label: 'Provisioning',
-    headline: 'An organization asked to use its own database.',
+    headline: 'An organization asked for a dedicated environment.',
     rows: [
       { label: 'Organization', value: orgName },
       { label: 'Request', value: line(requestId, 40) },
@@ -188,42 +188,56 @@ export function renderWelcomeMail({ orgName = '', name = '' } = {}, { appOrigin 
 // ── Throttle ────────────────────────────────────────────────────────────────
 
 /**
- * Count one send against `limit` in window `windowMs`. True when it fits.
- * The document id is a hash, and the document holds a count and an expiry:
- * the address it limits is not stored.
+ * Count one send against every limit in `limits`, or against none of them.
+ * Each limit is { name, key, limit, windowMs }. Returns '' when the send fits
+ * and was counted, else the name of the first limit it would exceed.
+ *
+ * All-or-nothing in one transaction. Taking the limits one at a time counted
+ * a refused send against the ones already taken: a request for an address
+ * that was already over its daily cap still used up an hourly slot, so one
+ * address filed repeatedly could hold the hourly cap and silence everyone
+ * else's acknowledgement.
+ *
+ * Each document id is a hash and holds a count and an expiry: the address
+ * it limits is not stored.
  */
-export async function takeThrottle(db, { key, limit, windowMs, now = new Date() }) {
-  const window = Math.floor(now.getTime() / windowMs)
-  const ref = db.doc(`mailThrottle/${notificationId(['registration', ...key, window])}`)
+export async function takeThrottles(db, limits, now = new Date()) {
+  const slots = limits.map((l) => {
+    const window = Math.floor(now.getTime() / l.windowMs)
+    return {
+      ...l,
+      window,
+      ref: db.doc(`mailThrottle/${notificationId(['registration', ...l.key, window])}`),
+    }
+  })
   return db.runTransaction(async (tx) => {
-    const snap = await tx.get(ref)
-    const count = snap.exists ? Number(snap.data()?.count) || 0 : 0
-    if (count >= limit) return false
-    tx.set(ref, {
-      count: count + 1,
-      expiresAt: new Date((window + 1) * windowMs + DAY_MS),
+    const counts = []
+    for (const slot of slots) {
+      const snap = await tx.get(slot.ref)
+      const count = snap.exists ? Number(snap.data()?.count) || 0 : 0
+      if (count >= slot.limit) return slot.name
+      counts.push(count)
+    }
+    slots.forEach((slot, i) => {
+      tx.set(slot.ref, {
+        count: counts[i] + 1,
+        expiresAt: new Date((slot.window + 1) * slot.windowMs + DAY_MS),
+      })
     })
-    return true
+    return ''
   })
 }
 
-async function underLimits(db, email, now) {
-  // Global first: a flood stops before it costs any per-address bookkeeping.
-  if (
-    !(await takeThrottle(db, { key: ['global'], limit: GLOBAL_PER_HOUR, windowMs: HOUR_MS, now }))
-  )
-    return 'global'
-  const address = email.toLowerCase()
-  if (
-    !(await takeThrottle(db, {
-      key: ['address', address],
+function founderLimits(email) {
+  return [
+    {
+      name: 'address',
+      key: ['address', email.toLowerCase()],
       limit: PER_ADDRESS_PER_DAY,
       windowMs: DAY_MS,
-      now,
-    }))
-  )
-    return 'address'
-  return ''
+    },
+    { name: 'global', key: ['global'], limit: GLOBAL_PER_HOUR, windowMs: HOUR_MS },
+  ]
 }
 
 function throttled(reason) {
@@ -275,7 +289,7 @@ export async function deliverProvisioningMail({
       subject: message.subject,
       now: now(),
       send: async () => {
-        const over = await underLimits(db, contact, now())
+        const over = await takeThrottles(db, founderLimits(contact), now())
         if (over) throw throttled(over)
         await mailer.send({ to: contact, ...message })
       },
@@ -306,13 +320,12 @@ export async function deliverProvisioningMail({
       send: async () => {
         // Operators are trusted inboxes; only the global cap applies, so a
         // flood of requests does not also flood them.
-        const ok = await takeThrottle(db, {
-          key: ['operator'],
-          limit: GLOBAL_PER_HOUR,
-          windowMs: HOUR_MS,
-          now: now(),
-        })
-        if (!ok) throw throttled('operator')
+        const over = await takeThrottles(
+          db,
+          [{ name: 'operator', key: ['operator'], limit: GLOBAL_PER_HOUR, windowMs: HOUR_MS }],
+          now()
+        )
+        if (over) throw throttled(over)
         await mailer.send({ to, ...alert })
       },
     })

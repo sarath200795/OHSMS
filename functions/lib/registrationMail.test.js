@@ -161,6 +161,24 @@ describe('own-database request: a stranger filing in someone else’s name', () 
     expect(sent).toHaveLength(GLOBAL_PER_HOUR)
   })
 
+  it('does not let one over-cap address use up the hourly cap for everyone else', async () => {
+    const db = memoryDb()
+    const sent = []
+    // Far more refused requests for one address than the hourly cap holds.
+    for (let i = 0; i < GLOBAL_PER_HOUR + 10; i += 1) {
+      await file(
+        db,
+        sent,
+        `reqHOG${String(i).padStart(8, '0')}`,
+        { contactEmail: 'hog@example.com' },
+        []
+      )
+    }
+    expect(sent).toHaveLength(PER_ADDRESS_PER_DAY)
+    await file(db, sent, 'reqINNOCENT0001', { contactEmail: 'founder@acme.test' }, [])
+    expect(sent.at(-1).to).toBe('founder@acme.test')
+  })
+
   it('stores neither the address nor the request in the throttle', async () => {
     const db = memoryDb()
     await file(db, [], 'reqAAAAAAAAAA1', {}, [])
