@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { createServer } from 'node:http'
 import { PGlite } from '@electric-sql/pglite'
 import { describe, expect, it, vi } from 'vitest'
@@ -633,6 +634,7 @@ describe('company OIDC on the dedicated host', () => {
 // provider says the email is unverified.
 async function fakeProvider({ issuerOverride, tokenEndpoint, emailVerified = true } = {}) {
   const codes = new Map()
+  const challenges = new Map()
   const server = createServer(async (req, res) => {
     const url = new URL(req.url, 'http://127.0.0.1')
     const base = `http://127.0.0.1:${server.address().port}/oauth2/default`
@@ -651,6 +653,7 @@ async function fakeProvider({ issuerOverride, tokenEndpoint, emailVerified = tru
     if (url.pathname === '/oauth2/default/v1/authorize') {
       const code = `code-${codes.size + 1}`
       codes.set(code, url.searchParams.get('login_hint') || 'asha@northwind.test')
+      challenges.set(code, url.searchParams.get('code_challenge'))
       const back = new URL(url.searchParams.get('redirect_uri'))
       back.searchParams.set('code', code)
       back.searchParams.set('state', url.searchParams.get('state'))
@@ -660,8 +663,13 @@ async function fakeProvider({ issuerOverride, tokenEndpoint, emailVerified = tru
     if (url.pathname === '/oauth2/default/v1/token' && req.method === 'POST') {
       let raw = ''
       for await (const chunk of req) raw += chunk
-      const code = new URLSearchParams(raw).get('code')
-      if (!codes.has(code)) {
+      const form = new URLSearchParams(raw)
+      const code = form.get('code')
+      // PKCE: the verifier must hash to the challenge sent with the
+      // authorize request, so this test fails if the host stops sending it.
+      const verifier = form.get('code_verifier') || ''
+      const hashed = createHash('sha256').update(verifier).digest('base64url')
+      if (!codes.has(code) || !verifier || hashed !== challenges.get(code)) {
         res.writeHead(400)
         return res.end()
       }

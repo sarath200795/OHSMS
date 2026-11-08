@@ -346,21 +346,31 @@ export function createOwnStackServer({
   }
 
   // Discovery is read once an hour per issuer, not per sign-in. A failure is
-  // not cached, so a provider that was briefly down is retried next time.
+  // remembered for a short while, and concurrent starts share one request:
+  // /auth/start is public, and without both each hit on a provider that is
+  // down opened its own outbound fetch.
   const DISCOVERY_TTL_MS = 60 * 60 * 1000
+  const DISCOVERY_RETRY_MS = 30 * 1000
   const discovered = new Map()
+  const inFlight = new Map()
   async function oidcEndpoints() {
     const issuer = oidcIssuer()
     if (!issuer) return null
     const hit = discovered.get(issuer)
-    if (hit && Date.now() - hit.at < DISCOVERY_TTL_MS) return hit.endpoints
-    try {
-      const endpoints = await endpointsFor(issuer, { allowLoopbackHttp: demoIssuer })
-      discovered.set(issuer, { at: Date.now(), endpoints })
-      return endpoints
-    } catch {
-      return null
+    if (hit && Date.now() - hit.at < (hit.endpoints ? DISCOVERY_TTL_MS : DISCOVERY_RETRY_MS)) {
+      return hit.endpoints
     }
+    if (!inFlight.has(issuer)) {
+      const pending = endpointsFor(issuer, { allowLoopbackHttp: demoIssuer })
+        .catch(() => null)
+        .then((endpoints) => {
+          discovered.set(issuer, { at: Date.now(), endpoints })
+          inFlight.delete(issuer)
+          return endpoints
+        })
+      inFlight.set(issuer, pending)
+    }
+    return inFlight.get(issuer)
   }
 
   async function onAuthStart(url, res) {
