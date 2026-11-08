@@ -81,3 +81,14 @@ describe('fulfillment refuses a sign-in it could never serve', () => {
     ).toEqual({ ok: false, reason: 'oidc' })
   })
 })
+
+describe('invite addresses', () => {
+  it('takes an ordinary address and refuses empty domain labels', async () => {
+    const { normalizeEmail } = await import('../../../stack/invites.mjs')
+    expect(normalizeEmail(' Ana@Keel.Test ')).toBe('ana@keel.test')
+    expect(normalizeEmail('ana@mail.keel.co.in')).toBe('ana@mail.keel.co.in')
+    for (const bad of ['a@b..test', 'a@.b.test', 'a@b.test.', 'a@b', ['a@b.test']]) {
+      expect(normalizeEmail(bad)).toBe('')
+    }
+  })
+})
