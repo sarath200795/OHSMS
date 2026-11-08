@@ -1,6 +1,6 @@
 # Self-hosting WEEHS on your own server
 
-This runs WEEHS for one organization on any Linux server with Docker: a
+This runs WEEHS for one organization on a computer or server with Docker: a
 virtual machine on any cloud, or a server in your own building. Your
 records stay in a Postgres database on that server, your people sign in with
 your own identity provider, and nothing is stored on the shared WEEHS
@@ -11,6 +11,34 @@ one command), `compose.yaml` (the app, Postgres, and an HTTPS front door),
 `.env.example` (every setting), and `init-db.sh` (the one-time database
 setup). Prefer Google Cloud Run with a
 managed database instead? Follow [`CONTROL-PLANE.md`](CONTROL-PLANE.md).
+
+## Install without a terminal (recommended)
+
+1. Install **Docker**: Docker Desktop on Windows or macOS (an ordinary
+   installer), Docker Engine on Linux.
+2. From the release page, download the **WEEHS Installer** for your system
+   (`weehs-installer-windows-x64.exe`, `weehs-installer-macos-arm64` or
+   `weehs-installer-linux-x64`) and open it.
+3. It opens in your web browser and walks you through it:
+   - **Check this computer:** Docker is running, and web ports 80 and 443
+     are free. Anything missing is named, with where to get it.
+   - **Your address:** for example `ehs.example.com`, and optionally email.
+   - **Install:** writes the settings with new secrets, starts the app, its
+     database and HTTPS, and waits until the app answers.
+   - **Done:** shows your **setup code**, with **Download settings backup**
+     (keep it somewhere safe, away from this computer) and **Continue to
+     setup**.
+4. **Continue to setup** opens `https://ehs.example.com/setup`: step 4 below.
+
+Opening the installer again later starts WEEHS again with the same
+settings; it never replaces the secrets of an existing install. It accepts
+connections from this computer only, and only from the page it opened.
+
+The installer is not code-signed yet, so Windows SmartScreen and macOS
+Gatekeeper ask for confirmation the first time.
+
+The rest of this page is the same install by command line, for servers
+without a desktop.
 
 ## What you need
 

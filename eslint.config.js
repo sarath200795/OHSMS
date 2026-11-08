@@ -27,13 +27,31 @@ export default [
       globals: { ...globals.node, ...globals.es2021 },
     },
   },
+  // The WEEHS Installer: Node code. CommonJS because Node's single-executable
+  // build runs one CommonJS script (installer/build.mjs).
+  {
+    files: ['installer/**/*.mjs'],
+    languageOptions: {
+      ecmaVersion: 'latest',
+      sourceType: 'module',
+      globals: { ...globals.node, ...globals.es2021 },
+    },
+  },
+  {
+    files: ['installer/**/*.cjs'],
+    languageOptions: {
+      ecmaVersion: 'latest',
+      sourceType: 'commonjs',
+      globals: { ...globals.node, ...globals.es2021 },
+    },
+  },
   // `.claude` holds tooling state, and `.claude/worktrees/*` is a full second
   // checkout of this repository. Without it here, every file in the project is
   // linted twice and the duplicate copy reports ~270 no-undef errors, because
   // the Node globals configured below are matched by path and those paths do
   // not match. CI never saw it — a fresh checkout has no worktrees — so the
   // only casualty was the local run, which is the one a person actually reads.
-  { ignores: ['dist', '.vendor', 'node_modules', 'emulator-data', '.claude', 'android', 'ios'] },
+  { ignores: ['dist', 'dist-installer', '.vendor', 'node_modules', 'emulator-data', '.claude', 'android', 'ios'] },
   js.configs.recommended,
   {
     files: ['**/*.{js,jsx}'],

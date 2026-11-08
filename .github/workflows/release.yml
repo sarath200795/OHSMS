@@ -25,6 +25,11 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    # The installer jobs below build against exactly this image.
+    outputs:
+      version: ${{ steps.names.outputs.version }}
+      image: ${{ steps.names.outputs.image }}
+      digest: ${{ steps.image.outputs.digest }}
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
@@ -139,6 +144,9 @@ jobs:
             echo "version starts. Keep \`STATE_KEY\` and \`SESSION_SECRET\` unchanged. Full"
             echo "steps: [docs/RELEASES.md](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/docs/RELEASES.md)."
             echo
+            echo "Install without a terminal: download the WEEHS Installer for your system below"
+            echo "(\`weehs-installer-windows-x64.exe\`, \`-macos-arm64\` or \`-linux-x64\`) and open it."
+            echo
             echo "Self-hosting on your own server: \`weehs-$VERSION-selfhost.tar.gz\` below,"
             echo "with [docs/SELF-HOSTING.md](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/docs/SELF-HOSTING.md)."
             echo
@@ -167,3 +175,40 @@ jobs:
             fi
             gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --clobber "${FILES[@]}"
           fi
+
+  # The WEEHS Installer (installer/): one program per platform that an
+  # organization double-clicks to install without a terminal. Built on each
+  # platform because a single executable is that platform's Node with the
+  # installer injected, and pinned to the image the job above published.
+  installer:
+    needs: release
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Build the installer
+        shell: bash
+        env:
+          VERSION: ${{ needs.release.outputs.version }}
+          IMAGE: ${{ needs.release.outputs.image }}@${{ needs.release.outputs.digest }}
+        run: node installer/build.mjs --version "$VERSION" --image "$IMAGE" --out out
+      - name: Attach it to the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd out
+          sum() { if command -v sha256sum >/dev/null; then sha256sum "$1"; else shasum -a 256 "$1"; fi; }
+          for f in weehs-installer-*; do sum "$f" > "$f.sha256"; done
+          gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --clobber weehs-installer-*
