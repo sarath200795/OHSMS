@@ -290,7 +290,7 @@ describe('on a database where the app is not a superuser', () => {
 // signs in with the company IdP, and everyone who should not be able to add
 // people — a member, a stranger, another tenant's admin — tries anyway.
 
-async function signIn(origin, keys, email) {
+async function signIn(origin, keys, email, shape = {}) {
   const begin = await fetch(`${origin}/auth/start`, { redirect: 'manual' })
   const cookie = String(begin.headers.get('set-cookie')).split(';')[0]
   const authn = readAuthnRequest(
@@ -307,6 +307,7 @@ async function signIn(origin, keys, email) {
         idpEntityId: 'https://idp.northwind.test/saml',
         email,
         name: email,
+        ...shape,
       }),
     }).toString(),
   })
@@ -682,6 +683,112 @@ describe('setting up in the browser', () => {
 
     const ok = await fetch(`${app.origin}/setup`, form(saml(keys)))
     expect(ok.status).toBe(200)
+    await app.stop()
+  })
+})
+
+// ── Company identity providers that already serve many apps ────────────────
+// Microsoft Entra sends SAML in its own shape, and a company of thousands
+// cannot be invited one person at a time. These go through the real host.
+describe('enterprise identity providers', () => {
+  const ENTRA = {
+    email: 'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress',
+    given: 'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/givenname',
+    surname: 'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/surname',
+  }
+
+  it('matches an Entra SAML user by the email claim, not the UPN in NameID', async () => {
+    const { app, keys, founder, rpc, read } = await liveEnvironment()
+    const invited = await rpc(founder, 'inviteMember', {
+      email: 'ravi@northwind.test',
+      role: 'member',
+    })
+    expect(invited.status).toBe(200)
+    const ravi = await signIn(app.origin, keys, 'ravi@northwind.test', {
+      nameId: 'rkumar@northwindcorp.onmicrosoft.com',
+      attributes: {
+        [ENTRA.email]: 'ravi@northwind.test',
+        [ENTRA.given]: 'Ravi',
+        [ENTRA.surname]: 'Kumar',
+      },
+    })
+    expect(ravi.status).toBe(302)
+    const me = await read(ravi.session, 'users', 'rkumar@northwindcorp.onmicrosoft.com')
+    expect(me.doc).toMatchObject({
+      email: 'ravi@northwind.test',
+      name: 'Ravi Kumar',
+      role: 'member',
+    })
+    await app.stop()
+  })
+
+  it('lets everyone at the company domain join, with the chosen role, and nobody else', async () => {
+    const { app, keys, founder, rpc, read } = await liveEnvironment()
+    // Off: no invite, no account.
+    expect((await signIn(app.origin, keys, 'nina@northwind.test')).session).toBe('')
+
+    const turnedOn = await rpc(founder, 'setAutoJoin', {
+      domains: ['Northwind.test'],
+      role: 'member',
+    })
+    expect(turnedOn.body).toMatchObject({
+      ok: true,
+      autoJoin: { domains: ['northwind.test'], role: 'member' },
+    })
+    expect((await rpc(founder, 'getAutoJoin')).body.autoJoin).toEqual({
+      domains: ['northwind.test'],
+      role: 'member',
+    })
+
+    const nina = await signIn(app.origin, keys, 'nina@northwind.test')
+    expect(nina.status).toBe(302)
+    const me = await read(nina.session, 'users', 'nina@northwind.test')
+    expect(me.doc).toMatchObject({ role: 'member', status: 'approved', joinedBy: 'domain' })
+
+    // Another domain, and a domain that merely ends the same way, stay out.
+    expect((await signIn(app.origin, keys, 'eve@other.test')).session).toBe('')
+    expect((await signIn(app.origin, keys, 'eve@evilnorthwind.test')).session).toBe('')
+
+    // Never admin, and only an admin may change it.
+    expect(
+      (await rpc(founder, 'setAutoJoin', { domains: ['northwind.test'], role: 'admin' })).body
+    ).toMatchObject({
+      ok: false,
+      reason: 'role',
+    })
+    expect(
+      (await rpc(nina.session, 'setAutoJoin', { domains: ['other.test'], role: 'manager' })).body
+    ).toMatchObject({
+      ok: false,
+      reason: 'not-admin',
+    })
+    // A typo is refused, not silently dropped.
+    expect(
+      (
+        await rpc(founder, 'setAutoJoin', {
+          domains: ['northwind', 'northwind.test'],
+          role: 'member',
+        })
+      ).body
+    ).toMatchObject({
+      ok: false,
+      reason: 'domains',
+    })
+
+    // Off again: the next new person needs an invite.
+    expect((await rpc(founder, 'setAutoJoin', { domains: [] })).body).toMatchObject({
+      ok: true,
+      autoJoin: null,
+    })
+    expect((await signIn(app.origin, keys, 'omar@northwind.test')).session).toBe('')
+    await app.stop()
+  })
+
+  it('tells the IdP where the app tile should point, and asks about Entra', async () => {
+    const app = await start(await managedLikeDb(), { stateKey: randomBytes(32) })
+    const html = await (await fetch(`${app.origin}/setup`)).text()
+    expect(html).toContain('http://127.0.0.1/auth/start')
+    expect(html).toContain('name="entraSingleTenant"')
     await app.stop()
   })
 })

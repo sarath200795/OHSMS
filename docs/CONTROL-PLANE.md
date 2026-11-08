@@ -327,10 +327,30 @@ unchanged across deploys.
   provider says the address is verified (`email_verified: true`). Microsoft
   Entra does not send that claim at all: register the application as
   **single-tenant** (your organization only), so every `email` it sends is one
-  your administrators set, and deploy with `OIDC_ACCEPT_UNVERIFIED_EMAIL=true`.
-  Never set it for a multi-tenant registration, which admits accounts from
-  other tenants whose email address nobody verified. An explicit
-  `email_verified: false` is refused either way.
+  your administrators set, and deploy with `OIDC_ACCEPT_UNVERIFIED_EMAIL=true`
+  (or tick "Microsoft Entra ID, single tenant" on `/setup`, which stores the
+  same choice with the sign-in configuration). Never for a multi-tenant
+  registration, which admits accounts from other tenants whose email address
+  nobody verified. An explicit `email_verified: false` is refused either way.
+- **SAML sign-in starts at WEEHS, not at the portal.** Every SAML response
+  must answer a request this host made (it is what stops a response captured
+  elsewhere from being replayed here), so an IdP-initiated sign-in from the
+  app's tile in Okta or "My Apps" is refused. Point the tile at
+  `https://ehs.example.com/auth/start` instead: the Sign-on URL in Entra, a
+  bookmark app in Okta. `/setup` shows the address. The same works for OIDC.
+- **Who joins.** The IdP decides who can sign in; WEEHS decides who belongs.
+  Either an admin invites each person (Employees → Invite employee), or, for
+  a company whose IdP already holds everyone, turns on **Join automatically**
+  in the same dialog: anyone the IdP signs in with an address at the listed
+  domains joins with the chosen role, never as admin. Roles are not taken
+  from IdP groups yet, and leaving the IdP does not remove the WEEHS account
+  (it can no longer sign in); remove it from Employees.
+- **SAML email.** Read from an attribute named `email`, `mail` or
+  `emailAddress`, or the standard claim
+  `http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress`
+  (Microsoft Entra, AD FS), and only then from NameID. Entra's NameID is the
+  user principal name, which is not always the address people were invited
+  with.
 - **"WEEHS provisions a bucket" is not served.** The presign answer points at a
   `/blob` route this host does not implement. Have the company bring a bucket
   and a presign endpoint (`docs/CUSTOM-STACK.md`, "Files").

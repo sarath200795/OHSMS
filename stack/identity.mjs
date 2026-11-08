@@ -3,6 +3,7 @@
 // No WEEHS Firebase user is created.
 
 import { asWorker } from './engine.mjs'
+import { autoJoinFor } from './invites.mjs'
 
 const WORKER = { role: 'ohsms_worker', uid: '' }
 
@@ -29,7 +30,27 @@ export async function establishIdentity(engine, db, { sub, email, name }) {
     // The other sign-in won the claim; it is the same person, so use its user.
     const raced = await engine.get(WORKER, 'users', uid)
     if (raced) return { ok: true, uid, profile: raced }
-    return { ok: false, reason: 'no-invite' }
+    // No invite: the organization may let its whole domain in (invites.mjs).
+    const auto = await autoJoinFor(db, mail)
+    if (!auto) return { ok: false, reason: 'no-invite' }
+    await engine.commit(WORKER, [
+      {
+        type: 'set',
+        path: 'users',
+        id: uid,
+        merge: false,
+        data: {
+          orgId: auto.orgId,
+          role: auto.role,
+          status: 'approved',
+          name: name || mail,
+          email: mail,
+          mustChangePassword: false,
+          joinedBy: 'domain',
+        },
+      },
+    ])
+    return { ok: true, uid, profile: await engine.get(WORKER, 'users', uid) }
   }
   try {
     await engine.commit(WORKER, [

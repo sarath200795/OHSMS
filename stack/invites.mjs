@@ -158,3 +158,88 @@ export async function revokeInvite(engine, db, { uid, email }) {
   ])
   return { ok: true, removed: res.affectedRows > 0 }
 }
+
+// ── Joining automatically, by email domain ──────────────────────────────────
+// Inviting one person at a time does not fit a company of thousands whose
+// identity provider already holds everyone. An admin can say instead: anyone
+// the company's IdP signs in with an address at these domains joins, with
+// this role. The IdP still decides who can sign in at all, and with what
+// checks (MFA, disabled accounts); this decides who belongs, as an invite
+// does. Never as admin: an administrator is always a named decision.
+
+export const AUTO_JOIN_ROLES = ['member', 'auditor', 'manager']
+export const MAX_AUTO_JOIN_DOMAINS = 10
+const DOMAIN = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/
+
+/** The setting as stored, or null when off or not something this accepts. */
+export function cleanAutoJoin(value) {
+  if (!value || typeof value !== 'object') return null
+  const role = AUTO_JOIN_ROLES.includes(value.role) ? value.role : null
+  const domains = Array.isArray(value.domains)
+    ? [
+        ...new Set(
+          value.domains
+            .filter((d) => typeof d === 'string')
+            .map((d) => d.trim().toLowerCase().replace(/^@/, ''))
+            .filter((d) => DOMAIN.test(d))
+        ),
+      ].slice(0, MAX_AUTO_JOIN_DOMAINS)
+    : []
+  return role && domains.length ? { domains, role } : null
+}
+
+export async function getAutoJoin(engine, db, { uid }) {
+  const admin = await adminOf(engine, uid)
+  if (!admin) return refuse('not-admin')
+  const org = await engine.get(WORKER, 'organizations', admin.orgId)
+  return { ok: true, autoJoin: cleanAutoJoin(org?.autoJoin) }
+}
+
+/** Turn it on (domains and a role) or off (no domains). */
+export async function setAutoJoin(engine, db, { uid, domains, role }) {
+  const admin = await adminOf(engine, uid)
+  if (!admin) return refuse('not-admin')
+  if (!Array.isArray(domains)) return refuse('domains')
+  const wanted = domains.filter((d) => typeof d === 'string' && d.trim())
+  if (wanted.length > MAX_AUTO_JOIN_DOMAINS) return refuse('too-many')
+  let next = null
+  if (wanted.length) {
+    if (!AUTO_JOIN_ROLES.includes(role)) return refuse('role')
+    next = cleanAutoJoin({ domains: wanted, role })
+    // Every domain typed must be one: a typo silently dropped would leave
+    // people out with nobody knowing why.
+    if (
+      !next ||
+      next.domains.length !==
+        new Set(wanted.map((d) => d.trim().toLowerCase().replace(/^@/, ''))).size
+    ) {
+      return refuse('domains')
+    }
+  }
+  await engine.commit(WORKER, [
+    { type: 'update', path: 'organizations', id: admin.orgId, data: { autoJoin: next } },
+  ])
+  return { ok: true, autoJoin: next }
+}
+
+/**
+ * The organization and role an address joins automatically, if any. The
+ * stored setting is read through cleanAutoJoin again: an admin can also write
+ * the organization document directly, and nothing written there may make
+ * someone an admin.
+ */
+export async function autoJoinFor(db, email) {
+  const domain = String(email || '')
+    .split('@')[1]
+    ?.toLowerCase()
+  if (!domain) return null
+  const rows = await asWorker(
+    db,
+    `SELECT id, data->'autoJoin' AS auto FROM documents WHERE path = 'organizations' AND data ? 'autoJoin'`
+  )
+  for (const row of rows.rows) {
+    const auto = cleanAutoJoin(typeof row.auto === 'string' ? JSON.parse(row.auto) : row.auto)
+    if (auto && auto.domains.includes(domain)) return { orgId: row.id, role: auto.role }
+  }
+  return null
+}

@@ -58,6 +58,9 @@ function page(title, inner) {
   .copy { font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; background: #f1ead9; border-radius: 8px; padding: .35rem .5rem; display: inline-block; word-break: break-all; }
   .error { background: #fde8e8; color: #7f1d1d; border-radius: 10px; padding: .7rem .9rem; margin: 1rem 0 0; }
   button, .button { display: inline-block; margin-top: 1.5rem; padding: .75rem 1.2rem; font: 600 1rem system-ui, sans-serif; color: #fff; background: #2f6f62; border: 0; border-radius: 999px; cursor: pointer; text-decoration: none; }
+  label.tick { display: grid; grid-template-columns: auto 1fr; gap: .2rem .6rem; align-items: start; font-weight: 600; }
+  label.tick input { width: auto; margin-top: .3rem; }
+  label.tick .hint { grid-column: 2; }
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -121,7 +124,8 @@ ${error}
 <legend>SAML</legend>
 <p class="hint">Register this application in your identity provider with:<br>
 Reply (ACS) URL <span class="copy">${escapeHtml(origin)}/auth/saml</span><br>
-Entity ID / audience <span class="copy">${escapeHtml(origin)}</span></p>
+Entity ID / audience <span class="copy">${escapeHtml(origin)}</span><br>
+Sign-on URL (for the app’s tile in your portal) <span class="copy">${escapeHtml(origin)}/auth/start</span></p>
 <label for="samlEntryPoint">Identity provider sign-in URL
 <input id="samlEntryPoint" name="samlEntryPoint" type="url" placeholder="https://…" ${value(values.samlEntryPoint)}>
 </label>
@@ -134,7 +138,9 @@ Entity ID / audience <span class="copy">${escapeHtml(origin)}</span></p>
 <fieldset id="oidc-fields"${method === 'oidc' ? '' : ' hidden'}>
 <legend>OpenID Connect</legend>
 <p class="hint">Register this application in your identity provider with redirect URI
-<span class="copy">${escapeHtml(origin)}/auth/callback</span></p>
+<span class="copy">${escapeHtml(origin)}/auth/callback</span><br>
+and, for the app’s tile in your portal, home page / sign-in URL
+<span class="copy">${escapeHtml(origin)}/auth/start</span></p>
 <label for="authIssuer">Issuer URL
 <input id="authIssuer" name="authIssuer" type="url" placeholder="https://login.microsoftonline.com/TENANT-ID/v2.0" ${value(values.authIssuer)}>
 </label>
@@ -143,6 +149,9 @@ Entity ID / audience <span class="copy">${escapeHtml(origin)}</span></p>
 </label>
 <label for="oidcClientSecret">Client secret
 <input id="oidcClientSecret" name="oidcClientSecret" type="password" spellcheck="false">
+</label>
+<label class="tick"><input type="checkbox" name="entraSingleTenant"${values.entraSingleTenant ? ' checked' : ''}> This is Microsoft Entra ID, registered for my organization only (single tenant)
+<span class="hint">Entra does not say whether an email address is verified. Tick this only for a single-tenant registration, where your own admins set every address; a multi-tenant one would let accounts from other organizations in.</span>
 </label>
 </fieldset>
 

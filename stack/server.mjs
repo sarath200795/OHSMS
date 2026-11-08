@@ -12,7 +12,7 @@ import { authorizeUrl, endpointsFor, identityFromCode } from './oidc.mjs'
 import { identityFromSupabase } from './supabaseAuth.mjs'
 import { authnRequestId, samlClient, identityFromSaml } from './saml.mjs'
 import { establishIdentity } from './identity.mjs'
-import { inviteMember, listInvites, revokeInvite } from './invites.mjs'
+import { getAutoJoin, inviteMember, listInvites, revokeInvite, setAutoJoin } from './invites.mjs'
 import {
   stampIdentity,
   completePasswordChange,
@@ -454,7 +454,9 @@ export function createOwnStackServer({
       code,
       redirectUri: `${origin}/auth/callback`,
       verifier: pending.verifier,
-      acceptUnverifiedEmail: oidcAcceptUnverifiedEmail,
+      // The deployment's setting, or the one chosen at /setup for an Entra
+      // tenant (onSetupPost).
+      acceptUnverifiedEmail: oidcAcceptUnverifiedEmail || auth.acceptUnverifiedEmail === true,
     })
     if (!identity.ok) {
       send(
@@ -601,6 +603,8 @@ export function createOwnStackServer({
         }),
       listInvites: () => listInvites(engine, db, { uid }),
       revokeInvite: () => revokeInvite(engine, db, { uid, email: body.email }),
+      getAutoJoin: () => getAutoJoin(engine, db, { uid }),
+      setAutoJoin: () => setAutoJoin(engine, db, { uid, domains: body.domains, role: body.role }),
     }
     const fn = table[name]
     if (!fn) {
@@ -953,6 +957,7 @@ export function createOwnStackServer({
       samlEntryPoint: text(body.samlEntryPoint, 2048),
       authIssuer: text(body.authIssuer, 2048),
       authClientId: text(body.authClientId, 256),
+      entraSingleTenant: body.entraSingleTenant === 'on',
     }
   }
 
@@ -998,14 +1003,14 @@ export function createOwnStackServer({
       return refuse(400, 'contactEmail', values)
     }
     let secrets
-    let auth
+    let authFields
     if (values.method === 'saml') {
       const cert = typeof body.samlIdpCert === 'string' ? body.samlIdpCert.trim() : ''
       if (!values.samlEntryPoint || !cert) return refuse(400, 'saml', values)
       if (!httpsUrl(values.samlEntryPoint)) return refuse(400, 'samlUrl', values)
       secrets = { samlIdpCert: cert, samlEntryPoint: values.samlEntryPoint }
       // The SP entity id the setup page tells the IdP to expect.
-      auth = { authMethod: 'saml', authIssuer: '', authClientId: origin }
+      authFields = { authMethod: 'saml', authIssuer: '', authClientId: origin }
     } else if (values.method === 'oidc') {
       const secret = typeof body.oidcClientSecret === 'string' ? body.oidcClientSecret.trim() : ''
       if (!values.authIssuer || !values.authClientId || !secret) {
@@ -1013,7 +1018,7 @@ export function createOwnStackServer({
       }
       if (!httpsUrl(values.authIssuer)) return refuse(400, 'oidcIssuer', values)
       secrets = { oidcClientSecret: secret }
-      auth = {
+      authFields = {
         authMethod: 'oidc',
         authIssuer: values.authIssuer,
         authClientId: values.authClientId,
@@ -1035,7 +1040,7 @@ export function createOwnStackServer({
         handoffContact: values.contactEmail,
         mode: 'bring',
         engine: 'postgres',
-        ...auth,
+        ...authFields,
         bucketMode: 'provision',
         bucketName: '',
         bucketRegion: '',
@@ -1064,6 +1069,14 @@ export function createOwnStackServer({
           outcome.body.reason in { saml: 1, oidc: 1 } ? outcome.body.reason : 'fulfill',
           values
         )
+      }
+      // Microsoft Entra sends no email_verified claim. Its single-tenant
+      // registration's email is set by the tenant's own admins, and the
+      // installer said so on the form; this is the deployment-wide
+      // OIDC_ACCEPT_UNVERIFIED_EMAIL, chosen where nobody has a terminal.
+      if (values.method === 'oidc' && values.entraSingleTenant) {
+        auth = { ...auth, acceptUnverifiedEmail: true }
+        await onAuthChange?.(auth)
       }
       send(
         res,

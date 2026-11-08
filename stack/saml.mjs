@@ -62,12 +62,41 @@ export async function identityFromSaml(client, samlResponse) {
   }
   const sub = profile?.nameID
   if (!sub) return { ok: false, reason: 'assertion' }
-  const email = profile.email || profile.mail || (String(sub).includes('@') ? sub : '')
+  const email = first(profile, EMAIL_CLAIMS) || (String(sub).includes('@') ? sub : '')
+  const given = first(profile, [CLAIM.givenName])
+  const family = first(profile, [CLAIM.surname])
   return {
     ok: true,
     inResponseTo: String(profile.inResponseTo || ''),
     sub: String(sub),
     email: String(email || ''),
-    name: String(profile.displayName || email || sub),
+    name: String(
+      first(profile, NAME_CLAIMS) || [given, family].filter(Boolean).join(' ') || email || sub
+    ),
   }
+}
+
+// Attribute names differ by identity provider. Okta and Google send short
+// names when an admin maps them (email, mail, displayName); Microsoft Entra
+// and AD FS send the WS-Federation claim URIs, and put the user principal
+// name, not the email, in NameID. Invites are matched by email, so reading
+// only the short names meant that an Entra user whose UPN differs from their
+// address never matched their invite.
+const CLAIM = {
+  email: 'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress',
+  name: 'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name',
+  displayName: 'http://schemas.microsoft.com/identity/claims/displayname',
+  givenName: 'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/givenname',
+  surname: 'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/surname',
+}
+const EMAIL_CLAIMS = ['email', 'mail', 'emailAddress', CLAIM.email]
+const NAME_CLAIMS = ['displayName', CLAIM.displayName]
+
+function first(profile, names) {
+  for (const n of names) {
+    const v = profile?.[n] ?? profile?.attributes?.[n]
+    const one = Array.isArray(v) ? v[0] : v
+    if (typeof one === 'string' && one.trim()) return one.trim()
+  }
+  return ''
 }

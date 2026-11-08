@@ -303,6 +303,23 @@ export async function revokeInvite(email) {
   return (await fn({ email })).data
 }
 
+/**
+ * Own-stack only: who joins without an invite. Anyone the company's identity
+ * provider signs in with an address at one of these domains joins with this
+ * role (never admin). Admin only; the host checks (stack/invites.mjs).
+ * @returns {{ domains: string[], role: string } | null}
+ */
+export async function getAutoJoin() {
+  const fn = await callable('getAutoJoin')
+  return (await fn()).data?.autoJoin || null
+}
+
+/** Own-stack only: set it, or turn it off with no domains. */
+export async function setAutoJoin({ domains, role }) {
+  const fn = await callable('setAutoJoin')
+  return (await fn({ domains, role })).data?.autoJoin || null
+}
+
 export async function deleteOrgFile(path) {
   const fn = await callable('deleteOrgFile')
   return (await fn({ path })).data

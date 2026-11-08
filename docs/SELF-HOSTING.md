@@ -164,6 +164,12 @@ environment is not set up) and fill in:
 and connects the sign-in. Then sign in with your company account and, from
 **Employees**, invite everyone else; from **Sites**, add your locations.
 
+For a company whose identity provider already serves many apps, read
+"Known limits" in [`CONTROL-PLANE.md`](CONTROL-PLANE.md#known-limits--read-before-promising-a-company-a-date):
+where the app's tile in their portal should point, Microsoft Entra, and
+**Join automatically**, which lets everyone at the company's email domain in
+without an invite each.
+
 `/setup` closes for good once the organization is live. Ten wrong setup codes
 in fifteen minutes lock it for the rest of that window.
 

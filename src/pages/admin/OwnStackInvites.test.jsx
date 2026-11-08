@@ -10,6 +10,8 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 const inviteMember = vi.fn()
 const listInvites = vi.fn()
 const revokeInvite = vi.fn()
+const getAutoJoin = vi.fn()
+const setAutoJoin = vi.fn()
 const toastSuccess = vi.fn()
 const toastError = vi.fn()
 
@@ -17,6 +19,8 @@ vi.mock('../../shared/functions', () => ({
   inviteMember: (...a) => inviteMember(...a),
   listInvites: (...a) => listInvites(...a),
   revokeInvite: (...a) => revokeInvite(...a),
+  getAutoJoin: (...a) => getAutoJoin(...a),
+  setAutoJoin: (...a) => setAutoJoin(...a),
 }))
 vi.mock('react-hot-toast', () => ({
   default: { success: (...a) => toastSuccess(...a), error: (...a) => toastError(...a) },
@@ -33,6 +37,7 @@ function refused(reason) {
 beforeEach(() => {
   vi.clearAllMocks()
   listInvites.mockResolvedValue([])
+  getAutoJoin.mockResolvedValue(null)
   inviteMember.mockResolvedValue({ ok: true, email: 'ravi@northwind.test', emailed: true })
   revokeInvite.mockResolvedValue({ ok: true, removed: true })
 })
@@ -84,5 +89,41 @@ describe('own-stack invites panel', () => {
     )
     await waitFor(() => expect(revokeInvite).toHaveBeenCalledWith('temp@northwind.test'))
     expect(inviteMember).not.toHaveBeenCalled()
+  })
+})
+
+describe('joining automatically by domain', () => {
+  it('saves the domains typed and the role chosen, and never offers admin', async () => {
+    setAutoJoin.mockResolvedValue({ domains: ['cult.fit', 'cult.test'], role: 'member' })
+    await openPanel()
+    await waitFor(() => expect(screen.getByLabelText('Email domains').disabled).toBe(false))
+    expect(screen.getByText(/Off: only invited people join/)).toBeTruthy()
+    const role = screen.getByLabelText('They join as')
+    expect([...role.querySelectorAll('option')].map((o) => o.value)).not.toContain('admin')
+    fireEvent.change(screen.getByLabelText('Email domains'), {
+      target: { value: 'cult.fit, cult.test' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() =>
+      expect(setAutoJoin).toHaveBeenCalledWith({
+        domains: ['cult.fit', 'cult.test'],
+        role: 'member',
+      })
+    )
+    await waitFor(() =>
+      expect(screen.getByText(/On: anyone your company sign-in admits/)).toBeTruthy()
+    )
+    expect(inviteMember).not.toHaveBeenCalled()
+  })
+
+  it('says why a save was refused', async () => {
+    setAutoJoin.mockRejectedValue(refused('domains'))
+    await openPanel()
+    await waitFor(() => expect(screen.getByLabelText('Email domains').disabled).toBe(false))
+    fireEvent.change(screen.getByLabelText('Email domains'), { target: { value: 'not a domain' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() =>
+      expect(toastError).toHaveBeenCalledWith(expect.stringMatching(/domains only/))
+    )
   })
 })
