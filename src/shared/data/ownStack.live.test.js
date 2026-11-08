@@ -10,6 +10,7 @@ import { createPostgresAdapter } from './adapters/postgres'
 import { createOwnStackServer, MAX_BODY_BYTES } from '../../../stack/server.mjs'
 import { identityFromSupabase } from '../../../stack/supabaseAuth.mjs'
 import { samlClient, identityFromSaml } from '../../../stack/saml.mjs'
+import { endpointsFor } from '../../../stack/oidc.mjs'
 import { makeIdpKeys, readAuthnRequest, signedResponse } from '../../../e2e/support/samlIdp.mjs'
 import { execFileSync } from 'node:child_process'
 import { mkdtempSync, readFileSync } from 'node:fs'
@@ -622,6 +623,171 @@ describe('company OIDC on the dedicated host', () => {
       clock.mockRestore()
       server.close()
     }
+  })
+})
+
+// ── OIDC through the provider's discovery document ─────────────────────────
+// Sign-in used to call ISSUER/authorize, /token and /userinfo, the shape of
+// almost no real provider. This one puts them where Okta does. Then the
+// document lies about its issuer, points somewhere it should not, and the
+// provider says the email is unverified.
+async function fakeProvider({ issuerOverride, tokenEndpoint, emailVerified = true } = {}) {
+  const codes = new Map()
+  const server = createServer(async (req, res) => {
+    const url = new URL(req.url, 'http://127.0.0.1')
+    const base = `http://127.0.0.1:${server.address().port}/oauth2/default`
+    const json = (body) => {
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify(body))
+    }
+    if (url.pathname === '/oauth2/default/.well-known/openid-configuration') {
+      return json({
+        issuer: issuerOverride || base,
+        authorization_endpoint: `${base}/v1/authorize`,
+        token_endpoint: tokenEndpoint || `${base}/v1/token`,
+        userinfo_endpoint: `${base}/v1/userinfo`,
+      })
+    }
+    if (url.pathname === '/oauth2/default/v1/authorize') {
+      const code = `code-${codes.size + 1}`
+      codes.set(code, url.searchParams.get('login_hint') || 'asha@northwind.test')
+      const back = new URL(url.searchParams.get('redirect_uri'))
+      back.searchParams.set('code', code)
+      back.searchParams.set('state', url.searchParams.get('state'))
+      res.writeHead(302, { Location: back.toString() })
+      return res.end()
+    }
+    if (url.pathname === '/oauth2/default/v1/token' && req.method === 'POST') {
+      let raw = ''
+      for await (const chunk of req) raw += chunk
+      const code = new URLSearchParams(raw).get('code')
+      if (!codes.has(code)) {
+        res.writeHead(400)
+        return res.end()
+      }
+      return json({ access_token: `at-${code}`, token_type: 'Bearer' })
+    }
+    if (url.pathname === '/oauth2/default/v1/userinfo') {
+      const code = String(req.headers.authorization || '').replace('Bearer at-', '')
+      const email = codes.get(code)
+      return json({ sub: `okta|${email}`, email, email_verified: emailVerified, name: 'Asha' })
+    }
+    res.writeHead(404)
+    res.end()
+  })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  return { server, issuer: `http://127.0.0.1:${server.address().port}/oauth2/default` }
+}
+
+async function hostOnProvider(provider) {
+  const probe = createServer()
+  await new Promise((resolve) => probe.listen(0, '127.0.0.1', resolve))
+  const { port } = probe.address()
+  await new Promise((resolve) => probe.close(resolve))
+  const origin = `http://127.0.0.1:${port}`
+  const db = new PGlite()
+  const requests = new Map()
+  const server = createOwnStackServer({
+    engine: createEngine(db),
+    db,
+    sessionSecret: 'session-secret-for-the-discovery-test',
+    origin,
+    requests,
+    controlToken: 'operator-token',
+  })
+  await new Promise((resolve) => server.listen(port, '127.0.0.1', resolve))
+  requests.set('reqDisc1', {
+    ...request,
+    id: 'reqDisc1',
+    authMethod: 'oidc',
+    authIssuer: provider.issuer,
+    authClientId: 'weehs-okta',
+  })
+  const started = await fetch(`${origin}/intake/start`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer operator-token' },
+    body: JSON.stringify({ requestId: 'reqDisc1' }),
+  })
+  const { token } = await started.json()
+  const intake = await fetch(`${origin}/intake`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      requestId: 'reqDisc1',
+      email: 'ops@northwind.test',
+      token,
+      secrets: { dataKeyMaster: 'master-value-for-discovery', oidcClientSecret: 'okta-secret' },
+    }),
+  })
+  expect(intake.status).toBe(200)
+  return { server, origin }
+}
+
+async function signInThrough(origin) {
+  const start = await fetch(`${origin}/auth/start`, { redirect: 'manual' })
+  if (start.status !== 302) return { start: start.status }
+  const cookie = String(start.headers.get('set-cookie')).split(';')[0]
+  const at = await fetch(start.headers.get('location'), { redirect: 'manual' })
+  const back = await fetch(at.headers.get('location'), {
+    redirect: 'manual',
+    headers: { Cookie: cookie },
+  })
+  return {
+    start: start.status,
+    authorizeUrl: start.headers.get('location'),
+    callback: back.status,
+    session: (back.headers.get('location') || '').split('#session=')[1] || '',
+  }
+}
+
+describe('company OIDC through discovery', () => {
+  it("signs in through the provider's own endpoints, wherever they are", async () => {
+    const provider = await fakeProvider()
+    const { server, origin } = await hostOnProvider(provider)
+    const result = await signInThrough(origin)
+    expect(result.authorizeUrl).toContain('/oauth2/default/v1/authorize?')
+    expect(result.authorizeUrl).toContain('client_id=weehs-okta')
+    expect(result.callback).toBe(302)
+    expect(result.session).not.toBe('')
+    server.close()
+    provider.server.close()
+  })
+
+  it('refuses a discovery document that names another issuer', async () => {
+    const provider = await fakeProvider({ issuerOverride: 'https://evil.example/oauth2/default' })
+    const { server, origin } = await hostOnProvider(provider)
+    expect((await signInThrough(origin)).start).toBe(503)
+    server.close()
+    provider.server.close()
+  })
+
+  it('refuses an endpoint that is plain http off loopback', async () => {
+    const provider = await fakeProvider({ tokenEndpoint: 'http://idp.example/oauth2/v1/token' })
+    const { server, origin } = await hostOnProvider(provider)
+    expect((await signInThrough(origin)).start).toBe(503)
+    server.close()
+    provider.server.close()
+  })
+
+  it('refuses an email the provider says is unverified', async () => {
+    const provider = await fakeProvider({ emailVerified: false })
+    const { server, origin } = await hostOnProvider(provider)
+    const result = await signInThrough(origin)
+    expect(result.callback).toBe(401)
+    expect(result.session).toBe('')
+    server.close()
+    provider.server.close()
+  })
+
+  it('accepts http only on loopback, and only when the demo issuer is allowed', async () => {
+    const provider = await fakeProvider()
+    await expect(endpointsFor(provider.issuer)).rejects.toThrow(/https/)
+    await expect(endpointsFor(provider.issuer, { allowLoopbackHttp: true })).resolves.toMatchObject(
+      {
+        tokenEndpoint: `${provider.issuer}/v1/token`,
+      }
+    )
+    provider.server.close()
   })
 })
 

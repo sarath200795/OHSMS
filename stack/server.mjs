@@ -8,7 +8,7 @@ import { createServer } from 'node:http'
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import { verifySession, signSession } from './session.mjs'
 import { decidePresign } from './presign.mjs'
-import { identityFromCode } from './oidc.mjs'
+import { authorizeUrl, endpointsFor, identityFromCode } from './oidc.mjs'
 import { identityFromSupabase } from './supabaseAuth.mjs'
 import { authnRequestId, samlClient, identityFromSaml } from './saml.mjs'
 import { establishIdentity } from './identity.mjs'
@@ -342,6 +342,24 @@ export function createOwnStackServer({
     return auth.issuer || (demoIssuer ? `${origin}/oidc` : '')
   }
 
+  // Discovery is read once an hour per issuer, not per sign-in. A failure is
+  // not cached, so a provider that was briefly down is retried next time.
+  const DISCOVERY_TTL_MS = 60 * 60 * 1000
+  const discovered = new Map()
+  async function oidcEndpoints() {
+    const issuer = oidcIssuer()
+    if (!issuer) return null
+    const hit = discovered.get(issuer)
+    if (hit && Date.now() - hit.at < DISCOVERY_TTL_MS) return hit.endpoints
+    try {
+      const endpoints = await endpointsFor(issuer, { allowLoopbackHttp: demoIssuer })
+      discovered.set(issuer, { at: Date.now(), endpoints })
+      return endpoints
+    } catch {
+      return null
+    }
+  }
+
   async function onAuthStart(url, res) {
     if (auth.method === 'saml') {
       let location
@@ -364,8 +382,8 @@ export function createOwnStackServer({
       })
       return
     }
-    const issuer = oidcIssuer()
-    if (!issuer) {
+    const endpoints = await oidcEndpoints()
+    if (!endpoints) {
       send(res, 503, { code: 'unavailable', message: 'single sign-on is not configured' })
       return
     }
@@ -373,8 +391,13 @@ export function createOwnStackServer({
     const verifier = randomBytes(32).toString('base64url')
     const binding = randomBytes(24).toString('base64url')
     codes.set(`state:${state}`, { verifier, binding, at: Date.now() })
-    const redirect = `${origin}/auth/callback`
-    const location = `${issuer.replace(/\/$/, '')}/authorize?response_type=code&client_id=${encodeURIComponent(auth.clientId || 'ohsms')}&redirect_uri=${encodeURIComponent(redirect)}&scope=openid%20email%20profile&state=${state}&code_challenge=${challenge(verifier)}&code_challenge_method=S256`
+    const location = authorizeUrl({
+      authorizationEndpoint: endpoints.authorizationEndpoint,
+      clientId: auth.clientId || 'ohsms',
+      redirectUri: `${origin}/auth/callback`,
+      state,
+      challenge: challenge(verifier),
+    })
     send(res, 302, '', {
       Location: location,
       'Set-Cookie': oidcCookie(binding, OIDC_TTL_MS / 1000),
@@ -396,14 +419,14 @@ export function createOwnStackServer({
       send(res, 400, { code: 'invalid-argument', message: 'sign-in could not be completed' }, clear)
       return
     }
-    const issuer = oidcIssuer().replace(/\/$/, '')
-    if (!issuer) {
-      send(res, 503, { code: 'unavailable', message: 'single sign-on is not configured' })
+    const endpoints = await oidcEndpoints()
+    if (!endpoints) {
+      send(res, 503, { code: 'unavailable', message: 'single sign-on is not configured' }, clear)
       return
     }
     const identity = await identityFromCode({
-      tokenEndpoint: `${issuer}/token`,
-      userinfoEndpoint: `${issuer}/userinfo`,
+      tokenEndpoint: endpoints.tokenEndpoint,
+      userinfoEndpoint: endpoints.userinfoEndpoint,
       clientId: auth.clientId || 'ohsms',
       clientSecret: auth.clientSecret || '',
       code,

@@ -305,11 +305,13 @@ unchanged across deploys.
 
 ## Known limits — read before promising a company a date
 
-- **OIDC endpoint layout.** The host calls `ISSUER/authorize`, `ISSUER/token`
-  and `ISSUER/userinfo`; it does not read the provider's discovery document.
-  Providers whose endpoints are elsewhere (Okta, Azure AD, Keycloak's
-  `/protocol/openid-connect/…`) will not work until discovery is added.
-  **SAML is the path that is tested end to end.**
+- **OIDC providers must vouch for the email.** The host reads the provider's
+  discovery document, so Okta, Microsoft Entra, Google, Keycloak and others
+  work. Invites are matched by email, so a sign-in whose provider marks the
+  address unverified (`email_verified: false`) is refused. With Microsoft
+  Entra, register the application as **single-tenant** (your organization
+  only): a multi-tenant registration admits accounts from other tenants whose
+  email address nobody verified.
 - **"WEEHS provisions a bucket" is not served.** The presign answer points at a
   `/blob` route this host does not implement. Have the company bring a bucket
   and a presign endpoint (`docs/CUSTOM-STACK.md`, "Files").
