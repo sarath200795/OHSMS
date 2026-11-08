@@ -776,7 +776,9 @@ export function createOwnStackServer({
     if (body.ok) {
       const adopted = adoptAuth(request, secrets)
       if (adopted) {
-        auth = { ...auth, ...adopted }
+        // requestId says which request this sign-in came from, so what the
+        // app is told (stack/app.mjs) follows the same request.
+        auth = { ...auth, ...adopted, requestId: request.id }
         saml = null
         await onAuthChange?.(auth)
       }

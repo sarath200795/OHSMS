@@ -25,6 +25,7 @@
 import { reportError } from '../monitoring'
 import { isSealedFile, openFileBytes, sealFileBytes } from '../crypto'
 import { checkFileBytes, headOf } from './sniffType'
+import { runtimeEnv } from '../runtimeConfig'
 
 /**
  * A file refused on its contents, as opposed to storage being unavailable.
@@ -41,7 +42,7 @@ export class RejectedFileError extends Error {
   }
 }
 
-const DRIVER = String(import.meta.env.VITE_STORAGE_DRIVER || 'firebase')
+const DRIVER = String(runtimeEnv('STORAGE_DRIVER') || 'firebase')
   .trim()
   .toLowerCase()
 

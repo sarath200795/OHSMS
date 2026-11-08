@@ -29,6 +29,7 @@ describe('shellCacheDecision', () => {
   it('does not cache the auth handler, the health probe, or the store listings', () => {
     expect(shellCacheDecision(`${ORIGIN}/__/auth/handler`, { origin: ORIGIN })).toBe('pass')
     expect(shellCacheDecision(`${ORIGIN}/health.json`, { origin: ORIGIN })).toBe('pass')
+    expect(shellCacheDecision(`${ORIGIN}/runtime-config.js`, { origin: ORIGIN })).toBe('pass')
     expect(shellCacheDecision(`${ORIGIN}/store.json`, { origin: ORIGIN })).toBe('pass')
     expect(shellCacheDecision(`${ORIGIN}/downloads/weehs-ohsms.apk`, { origin: ORIGIN })).toBe(
       'pass'

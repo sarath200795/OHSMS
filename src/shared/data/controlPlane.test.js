@@ -12,7 +12,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomBytes } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
-import { createDedicatedApp } from '../../../stack/app.mjs'
+import { createDedicatedApp, runtimeConfigScript } from '../../../stack/app.mjs'
+import { runInNewContext } from 'node:vm'
 import { makeIdpKeys, readAuthnRequest, signedResponse } from '../../../e2e/support/samlIdp.mjs'
 
 const OPERATOR = 'operator-token-for-the-test-0123456789'
@@ -486,5 +487,97 @@ describe('inviting people to a dedicated environment', () => {
     expect(revoked.body).toEqual({ ok: true, removed: true })
     expect((await signIn(env.app.origin, env.keys, 'temp@northwind.test')).status).toBe(403)
     await env.app.stop()
+  })
+})
+
+// ── One image for every company ─────────────────────────────────────────────
+function configFrom(script) {
+  const window = {}
+  runInNewContext(script, { window })
+  return window.__OHSMS_CONFIG__
+}
+
+describe('the settings a dedicated host gives the app', () => {
+  it('follows the handoff: no sign-in before it, the adopted IdP after', async () => {
+    const db = new PGlite()
+    const keys = makeIdpKeys('northwind-idp')
+    const app = await start(db, { stateKey: randomBytes(32) })
+    const before = await fetch(`${app.origin}/runtime-config.js`)
+    expect(before.headers.get('cache-control')).toBe('no-store')
+    expect(configFrom(await before.text())).toEqual({
+      DATA_DRIVER: 'postgres',
+      DATA_GATEWAY: 'http://127.0.0.1',
+      STORAGE_DRIVER: 's3',
+      S3_PRESIGN_ENDPOINT: 'http://127.0.0.1/presign',
+      AUTH_METHOD: 'none',
+      AUTH_TOTP: 'off',
+    })
+    await fileAndHandOff(app.origin, {
+      databaseUrl: DB_URL,
+      dataKeyMaster: MASTER,
+      samlIdpCert: keys.cert,
+      samlEntryPoint: 'https://idp.northwind.test/sso',
+    })
+    const after = configFrom(await (await fetch(`${app.origin}/runtime-config.js`)).text())
+    expect(after.AUTH_METHOD).toBe('saml')
+    await app.stop()
+  })
+
+  it("points uploads at the company's own presign endpoint when it brought a bucket", () => {
+    const requests = new Map([
+      [
+        'r1',
+        { status: 'live', bucketMode: 'bring', presignUrl: 'https://files.northwind.test/presign' },
+      ],
+    ])
+    const config = configFrom(
+      runtimeConfigScript({
+        origin: 'https://ehs.northwind.test',
+        auth: { method: 'oidc', requestId: 'r1' },
+        requests,
+      })
+    )
+    expect(config.S3_PRESIGN_ENDPOINT).toBe('https://files.northwind.test/presign')
+    expect(config.AUTH_METHOD).toBe('oidc')
+  })
+
+  it('takes the bucket from the request whose sign-in was adopted, not the first live one', () => {
+    const requests = new Map([
+      ['old', { status: 'live', bucketMode: 'bring', presignUrl: 'https://old.test/presign' }],
+      ['new', { status: 'live', bucketMode: 'provision', presignUrl: '' }],
+    ])
+    const config = configFrom(
+      runtimeConfigScript({
+        origin: 'https://ehs.northwind.test',
+        auth: { method: 'saml', requestId: 'new' },
+        requests,
+      })
+    )
+    expect(config.S3_PRESIGN_ENDPOINT).toBe('https://ehs.northwind.test/presign')
+  })
+
+  it('cannot be made to close the script or carry markup', () => {
+    const requests = new Map([
+      [
+        'r1',
+        {
+          status: 'live',
+          bucketMode: 'bring',
+          presignUrl: 'https://x.test/</script><script>alert(1)//',
+        },
+      ],
+    ])
+    const script = runtimeConfigScript({
+      origin: 'https://ehs.test/</script><img src=x onerror=alert(1)>',
+      auth: { method: '</script>', requestId: 'r1' },
+      requests,
+    })
+    expect(script).not.toMatch(/</)
+    const config = configFrom(script)
+    expect(config.AUTH_METHOD).toBe('none')
+    // A presign URL that is not a plain https address is not used.
+    expect(config.S3_PRESIGN_ENDPOINT).toBe(
+      'https://ehs.test/</script><img src=x onerror=alert(1)>/presign'
+    )
   })
 })

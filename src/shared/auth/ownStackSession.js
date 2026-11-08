@@ -6,8 +6,10 @@
 // after the person was suspended (storage.rules, S-19). The token is not a
 // database password and it is not a VITE_ variable.
 
+import { runtimeEnv } from '../runtimeConfig'
+
 export function isOwnStackBuild() {
-  const driver = typeof import.meta !== 'undefined' ? import.meta.env?.VITE_DATA_DRIVER : ''
+  const driver = runtimeEnv('DATA_DRIVER')
   return (
     String(driver || '')
       .trim()
@@ -16,12 +18,12 @@ export function isOwnStackBuild() {
 }
 
 export function ownStackGateway() {
-  const raw = typeof import.meta !== 'undefined' ? import.meta.env?.VITE_DATA_GATEWAY : ''
+  const raw = runtimeEnv('DATA_GATEWAY')
   return String(raw || '').replace(/\/$/, '')
 }
 
 export function ownStackAuthMethod() {
-  const raw = typeof import.meta !== 'undefined' ? import.meta.env?.VITE_AUTH_METHOD : ''
+  const raw = runtimeEnv('AUTH_METHOD')
   return String(raw || '')
     .trim()
     .toLowerCase()

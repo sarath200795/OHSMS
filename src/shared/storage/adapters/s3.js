@@ -18,8 +18,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { auth } from '../../firebase'
 import { currentAccessToken } from '../../auth/ownStackSession'
+import { runtimeEnv } from '../../runtimeConfig'
 
-const ENDPOINT = String(import.meta.env.VITE_S3_PRESIGN_ENDPOINT || '').trim()
+const ENDPOINT = String(runtimeEnv('S3_PRESIGN_ENDPOINT') || '').trim()
 
 async function presign(body) {
   // Own-stack sends the session token from the company's IdP host. The WEEHS

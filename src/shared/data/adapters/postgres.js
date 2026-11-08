@@ -26,6 +26,7 @@ import {
   revive,
   serverTimestamp,
 } from './postgresWire'
+import { runtimeEnv } from '../../runtimeConfig'
 
 const ID_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
 
@@ -363,6 +364,6 @@ export function createHttpPostgresAdapter(baseUrl) {
   return buildAdapter(httpIo(baseUrl))
 }
 
-const gateway = typeof import.meta !== 'undefined' ? import.meta.env?.VITE_DATA_GATEWAY : ''
+const gateway = runtimeEnv('DATA_GATEWAY')
 
 export default createHttpPostgresAdapter(gateway)
