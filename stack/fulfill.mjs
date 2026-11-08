@@ -10,7 +10,7 @@
 // are already stored and the request is not live yet.
 
 import { randomBytes } from 'node:crypto'
-import { applySchema } from './engine.mjs'
+import { applySchema, asWorker } from './engine.mjs'
 import { newSessionSecret } from './session.mjs'
 import { statusPatch, takeSecrets } from './intake.mjs'
 
@@ -120,7 +120,8 @@ export async function fulfillRequest({
       },
     },
   ])
-  await db.query(
+  await asWorker(
+    db,
     `INSERT INTO invites (email, org_id, role, name) VALUES ($1, $2, 'admin', $3)
      ON CONFLICT (email) DO UPDATE SET org_id = EXCLUDED.org_id, role = 'admin', name = EXCLUDED.name`,
     [

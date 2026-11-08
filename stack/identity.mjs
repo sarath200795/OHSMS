@@ -2,6 +2,8 @@
 // invite, written by fulfillment as the worker, says they are the founder.
 // No WEEHS Firebase user is created.
 
+import { asWorker } from './engine.mjs'
+
 const WORKER = { role: 'ohsms_worker', uid: '' }
 
 export async function establishIdentity(engine, db, { sub, email, name }) {
@@ -13,9 +15,11 @@ export async function establishIdentity(engine, db, { sub, email, name }) {
   const existing = await engine.get(WORKER, 'users', uid)
   if (existing) return { ok: true, uid, profile: existing }
 
-  const invite = await db.query('SELECT email, org_id, role, name FROM invites WHERE email = $1', [
-    mail,
-  ])
+  const invite = await asWorker(
+    db,
+    'SELECT email, org_id, role, name FROM invites WHERE email = $1',
+    [mail]
+  )
   const row = invite.rows[0]
   if (!row) return { ok: false, reason: 'no-invite' }
   await engine.commit(WORKER, [
@@ -34,7 +38,7 @@ export async function establishIdentity(engine, db, { sub, email, name }) {
       },
     },
   ])
-  await db.query('DELETE FROM invites WHERE email = $1', [mail])
+  await asWorker(db, 'DELETE FROM invites WHERE email = $1', [mail])
   const profile = await engine.get(WORKER, 'users', uid)
   return { ok: true, uid, profile }
 }

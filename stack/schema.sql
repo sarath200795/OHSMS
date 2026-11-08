@@ -16,13 +16,23 @@
 --   authorises them. users_keep_privilege reads the actor's existing profile
 --   and OLD.data, and refuses the change when those do not allow it.
 
+-- Created here when the connecting user may (an embedded or self-run
+-- Postgres). A managed Postgres does not hand out SUPERUSER, and creating a
+-- BYPASSRLS role needs BYPASSRLS, so an administrator creates both roles once
+-- (docs/CONTROL-PLANE.md, "Database"). Checked by name first: Postgres refuses
+-- CREATE ROLE ... BYPASSRLS on privilege before it notices the role exists,
+-- so catching duplicate_object alone failed every start after that setup.
 DO $$ BEGIN
-  CREATE ROLE ohsms_browser NOLOGIN;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ohsms_browser') THEN
+    CREATE ROLE ohsms_browser NOLOGIN;
+  END IF;
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
 DO $$ BEGIN
-  CREATE ROLE ohsms_worker NOLOGIN BYPASSRLS;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ohsms_worker') THEN
+    CREATE ROLE ohsms_worker NOLOGIN BYPASSRLS;
+  END IF;
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
@@ -560,3 +570,18 @@ GRANT EXECUTE ON FUNCTION password_ok() TO ohsms_browser, ohsms_worker;
 GRANT EXECUTE ON FUNCTION approved_of(text) TO ohsms_browser, ohsms_worker;
 GRANT EXECUTE ON FUNCTION writer_of(text) TO ohsms_browser, ohsms_worker;
 GRANT EXECUTE ON FUNCTION manager_of(text) TO ohsms_browser, ohsms_worker;
+
+-- The SECURITY DEFINER helpers above run as their owner, and only an owner
+-- that bypasses row level security keeps the policy from re-entering itself:
+-- app_profile() reads users, whose policy calls app_profile(). On an embedded
+-- or self-run Postgres the owner is a superuser and that held by accident. On
+-- a managed Postgres the owner is the ordinary login role, every member read
+-- recursed until "stack depth limit exceeded", and the dedicated host could
+-- not serve one signed-in page. Owned by the bypass role instead. ALTER OWNER
+-- needs that role to be able to create in the schema.
+GRANT USAGE, CREATE ON SCHEMA public TO ohsms_worker;
+ALTER FUNCTION app_profile() OWNER TO ohsms_worker;
+ALTER FUNCTION password_ok() OWNER TO ohsms_worker;
+ALTER FUNCTION approved_of(text) OWNER TO ohsms_worker;
+ALTER FUNCTION writer_of(text) OWNER TO ohsms_worker;
+ALTER FUNCTION manager_of(text) OWNER TO ohsms_worker;

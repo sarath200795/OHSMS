@@ -1,0 +1,18 @@
+{
+  "name": "ohsms-stack",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Control plane and dedicated host for one own-stack company. docs/CONTROL-PLANE.md.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node main.mjs"
+  },
+  "dependencies": {
+    "@node-saml/node-saml": "^5.2.0",
+    "nodemailer": "^10.3.1",
+    "pg": "^8.16.3"
+  }
+}

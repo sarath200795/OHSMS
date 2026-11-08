@@ -751,6 +751,10 @@ constraints in the file section. It does not unblock the data driver.
 
 ## Onboarding an organization that chose its own database
 
+The procedure for deploying one company's dedicated environment on Cloud Run
+with a managed Postgres — commands, secrets, and the limits to read first — is
+[`CONTROL-PLANE.md`](CONTROL-PLANE.md). What follows is the reasoning.
+
 The choice is made at registration, by the person founding the organization.
 Choosing the WEEHS database creates a WEEHS organization. Choosing an own
 database files a provisioning request and stops. The steps below are what the

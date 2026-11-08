@@ -14,6 +14,7 @@ import {
   RECORD_CLASSES,
   NEEDS_LEGAL_SIGN_OFF,
 } from '../functions/lib/retentionPolicy.js'
+import { asWorker } from './engine.mjs'
 import { planWithdrawals, withdrawnFields } from '../functions/lib/permitMirror.js'
 import { planFlags } from '../functions/lib/lotoPermitSweep.js'
 
@@ -71,12 +72,13 @@ export async function completePasswordChange(
   const profile = await liveProfile(engine, uid)
   if (!profile) return { ok: false, reason: 'no-profile' }
   if (profile.mustChangePassword !== true) return { ok: true, reason: 'not-required' }
-  const row = await db.query('SELECT password_hash FROM auth_secrets WHERE uid = $1', [uid])
+  const row = await asWorker(db, 'SELECT password_hash FROM auth_secrets WHERE uid = $1', [uid])
   const stored = row.rows[0]?.password_hash
   if (!stored || !passwordMatches(stored, current)) return { ok: false, reason: 'current-rejected' }
   if (!password || password === current || password.length < 10)
     return { ok: false, reason: 'policy' }
-  await db.query(
+  await asWorker(
+    db,
     `INSERT INTO auth_secrets (uid, email, password_hash) VALUES ($1, $2, $3)
      ON CONFLICT (uid) DO UPDATE SET password_hash = EXCLUDED.password_hash, updated_at = now()`,
     [uid, profile.email || uid, hashPassword(password)]
@@ -93,7 +95,8 @@ export async function completePasswordChange(
 }
 
 export async function setLocalPassword(db, { uid, email, password }) {
-  await db.query(
+  await asWorker(
+    db,
     `INSERT INTO auth_secrets (uid, email, password_hash) VALUES ($1, $2, $3)
      ON CONFLICT (uid) DO UPDATE SET password_hash = EXCLUDED.password_hash, updated_at = now()`,
     [uid, email, hashPassword(password)]
