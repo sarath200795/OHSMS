@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import { UserPlus, Trash2, MailCheck } from 'lucide-react'
 import { Button, Field, IconButton, Input, Modal, Select } from '../../shared/ui'
@@ -31,12 +31,25 @@ export default function OwnStackInvites() {
   const [form, setForm] = useState(EMPTY)
   const [busy, setBusy] = useState(false)
   const [invites, setInvites] = useState(null)
+  const [loadFailed, setLoadFailed] = useState(false)
+  // Only the newest load may write the list. Opening the dialog and sending an
+  // invite both load; if the older response arrived last, it overwrote the
+  // newer list and a just-sent invite vanished from it.
+  const loadSeq = useRef(0)
 
   const load = useCallback(async () => {
+    const seq = ++loadSeq.current
     try {
-      setInvites(await listInvites())
+      const list = await listInvites()
+      if (seq !== loadSeq.current) return
+      setInvites(list)
+      setLoadFailed(false)
     } catch {
+      if (seq !== loadSeq.current) return
+      // Not an empty list: "No pending invites" after a failed load would tell
+      // an admin there is nothing to withdraw when there may be.
       setInvites([])
+      setLoadFailed(true)
     }
   }, [])
 
@@ -67,8 +80,14 @@ export default function OwnStackInvites() {
 
   const withdraw = async (email) => {
     try {
-      await revokeInvite(email)
-      toast.success(`Invite for ${email} withdrawn`)
+      const res = await revokeInvite(email)
+      if (res?.removed === false) {
+        // Already gone: they signed in and became a member, or another admin
+        // withdrew it. Saying "withdrawn" would hide that they may have access.
+        toast(`${email} had no pending invite. Check the employee list.`)
+      } else {
+        toast.success(`Invite for ${email} withdrawn`)
+      }
       await load()
     } catch (err) {
       toast.error(REASONS[err?.reason] || 'The invite was not withdrawn.')
@@ -118,6 +137,17 @@ export default function OwnStackInvites() {
             <h3 className="text-sm font-semibold text-ink-900">Pending invites</h3>
             {invites === null ? (
               <p className="mt-2 text-sm text-ink-500">Loading…</p>
+            ) : loadFailed ? (
+              <p className="mt-2 text-sm text-ink-500">
+                Pending invites could not be loaded.{' '}
+                <button
+                  type="button"
+                  className="font-medium text-brand-700 underline"
+                  onClick={load}
+                >
+                  Try again
+                </button>
+              </p>
             ) : invites.length === 0 ? (
               <p className="mt-2 text-sm text-ink-500">No pending invites.</p>
             ) : (

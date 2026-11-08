@@ -120,7 +120,7 @@ openssl rand -hex 32 | gcloud secrets create ehs-COMPANY-session-secret --data-f
 ```
 
 ```bash
-openssl rand -hex 32 | gcloud secrets create ehs-COMPANY-data-key-master --data-file=-
+openssl rand -base64 32 | gcloud secrets create ehs-COMPANY-data-key-master --data-file=-
 ```
 
 The database URL, for Cloud SQL over its Unix socket:
@@ -141,7 +141,7 @@ printf 'SMTP-KEY' | gcloud secrets create ehs-COMPANY-smtp-pass --data-file=-
 | `STATE_KEY`       | Encrypts the stored handoff secrets. **Losing it loses them**, and the environment refuses to start with a different key. Back it up. |
 | `CONTROL_TOKEN`   | The operator's password for filing a request (step 7). Keep it with the operators.                                                    |
 | `SESSION_SECRET`  | Signs sign-in sessions. Changing it signs everyone out.                                                                               |
-| `DATA_KEY_MASTER` | Wraps the keys for encrypted fields.                                                                                                  |
+| `DATA_KEY_MASTER` | Wraps the keys for encrypted fields. 32 random bytes, base64 (as above); a hex value is refused at start-up.                          |
 | `DATABASE_URL`    | The database from step 2.                                                                                                             |
 | `SMTP_PASS`       | Optional. Without mail, the handoff token is returned to you instead (step 7).                                                        |
 
@@ -175,14 +175,28 @@ says the environment is not set up yet.
 ## 5. Deploy to Cloud Run
 
 ```bash
-gcloud run deploy ehs-COMPANY --image=REGION-docker.pkg.dev/PROJECT/ehs/weehs-dedicated:v1 --region=REGION --allow-unauthenticated --max-instances=1 --add-cloudsql-instances=PROJECT:REGION:ehs-COMPANY --set-env-vars=PUBLIC_ORIGIN=https://ehs.example.com,SMTP_HOST=smtp-relay.brevo.com,SMTP_PORT=587,SMTP_USER=BREVO-LOGIN,MAIL_FROM='EHS notifications <info@weehs.org>' --set-secrets=STATE_KEY=ehs-COMPANY-state-key:latest,CONTROL_TOKEN=ehs-COMPANY-control-token:latest,SESSION_SECRET=ehs-COMPANY-session-secret:latest,DATA_KEY_MASTER=ehs-COMPANY-data-key-master:latest,DATABASE_URL=ehs-COMPANY-database-url:latest,SMTP_PASS=ehs-COMPANY-smtp-pass:latest
+gcloud run deploy ehs-COMPANY --image=IMAGE --region=REGION --allow-unauthenticated --max-instances=1 --add-cloudsql-instances=PROJECT:REGION:ehs-COMPANY --set-env-vars=PUBLIC_ORIGIN=https://ehs.example.com,SMTP_HOST=smtp-relay.brevo.com,SMTP_PORT=587,SMTP_USER=BREVO-LOGIN,MAIL_FROM='EHS notifications <info@weehs.org>' --set-secrets=STATE_KEY=ehs-COMPANY-state-key:latest,CONTROL_TOKEN=ehs-COMPANY-control-token:latest,SESSION_SECRET=ehs-COMPANY-session-secret:latest,DATA_KEY_MASTER=ehs-COMPANY-data-key-master:latest,DATABASE_URL=ehs-COMPANY-database-url:latest,SMTP_PASS=ehs-COMPANY-smtp-pass:latest
 ```
+
+- `IMAGE`: an image in your Artifact Registry. Cloud Run does not pull from
+  `ghcr.io`, so either build it (step 4) or copy the release image in, by the
+  digest on its release page:
+
+  ```bash
+  docker pull ghcr.io/OWNER/weehs-dedicated@sha256:DIGEST
+  docker tag ghcr.io/OWNER/weehs-dedicated@sha256:DIGEST REGION-docker.pkg.dev/PROJECT/ehs/weehs-dedicated:VERSION
+  docker push REGION-docker.pkg.dev/PROJECT/ehs/weehs-dedicated:VERSION
+  ```
 
 - **`--max-instances=1` is required.** A sign-in that is half-way through (the
   SAML request id, the OIDC state) is held in the instance's memory; with two
   instances, the return leg can land on the one that did not start it.
 - `--allow-unauthenticated` because this is a public website: the company's
   people sign in with their IdP, and the handoff page is opened from an email.
+- No mail? Leave the four `SMTP_`/`MAIL_FROM` variables out of
+  `--set-env-vars`, `SMTP_PASS=…` out of `--set-secrets`, and `smtp-pass` out
+  of the loop in step 3: Cloud Run will not start a revision that names a
+  secret which does not exist.
 - The service refuses to start, and says which setting, if any of the required
   ones is missing or too short. Read the log if the deploy reports an unhealthy
   revision.
@@ -257,8 +271,10 @@ their sign-in needs:
 | OIDC     | **OIDC client secret**                                            |
 | Supabase | **Supabase anon key**                                             |
 
-plus **DATA_KEY_MASTER** and, if they brought a bucket, the S3 keys. The
-SAML certificate can be pasted as-is; a lost line break is fine.
+plus, if they brought a bucket, the S3 keys. Leave the **DATA_KEY_MASTER**
+field empty: this environment uses the `DATA_KEY_MASTER` deployed with it in
+step 5, and a value typed here is not used. The SAML certificate can be pasted
+as-is; a lost line break is fine.
 
 On success the page says **Organization is live**, shows the address, and the
 founder is emailed that it is ready. The founder's email is invited as the
