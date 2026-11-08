@@ -154,8 +154,9 @@ for s in state-key control-token session-secret data-key-master database-url smt
 ## 4. Build the image
 
 One image serves every company; nothing about a company is built into it.
-Build it once per WEEHS version and reuse it for every environment. From the
-repository root:
+Each version tag publishes it to `ghcr.io/OWNER/weehs-dedicated` with a
+release page ([`RELEASES.md`](RELEASES.md)); use that image and skip this
+step. To build it yourself instead, from the repository root:
 
 ```bash
 gcloud artifacts repositories create ehs --repository-format=docker --location=REGION
