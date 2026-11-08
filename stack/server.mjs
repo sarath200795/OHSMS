@@ -34,6 +34,7 @@ import {
   takeSecrets,
 } from './intake.mjs'
 import { renderHandoffForm, renderHandoffRefusal, renderHandoffResult } from './handoffPage.mjs'
+import { renderSetupClosed, renderSetupDone, renderSetupForm } from './setupPage.mjs'
 import { fulfillRequest } from './fulfill.mjs'
 
 const WORKER = { role: 'ohsms_worker', uid: '' }
@@ -212,6 +213,14 @@ export function createOwnStackServer({
       }
       if (demoIssuer && req.method === 'GET' && url.pathname === '/oidc/userinfo') {
         onUserinfo(req, res)
+        return
+      }
+      if (req.method === 'GET' && url.pathname === '/setup') {
+        onSetupGet(res)
+        return
+      }
+      if (req.method === 'POST' && url.pathname === '/setup') {
+        await onSetupPost(req, res)
         return
       }
       if (req.method === 'POST' && url.pathname === '/requests') {
@@ -910,6 +919,160 @@ export function createOwnStackServer({
       secrets: body.secrets,
     })
     send(res, outcome.http, outcome.body)
+  }
+
+  // ── First-run setup in the browser (setupPage.mjs) ─────────────────────────
+  // One organization per environment: once any request is live, /setup is
+  // closed for good, whoever knows the code.
+  const isLive = () => [...(requests.values?.() || [])].some((r) => r?.status === 'live')
+  // CONTROL_TOKEN is 32 random bytes, so guessing it is not the risk; a cap on
+  // wrong codes still stops this page from being a free oracle.
+  const SETUP_FAILURES_MAX = 10
+  const SETUP_WINDOW_MS = 15 * 60 * 1000
+  let setupFailures = []
+  let setupBusy = false
+
+  function onSetupGet(res) {
+    send(res, 200, isLive() ? renderSetupClosed({ origin }) : renderSetupForm({ origin }))
+  }
+
+  function setupValues(body) {
+    const text = (v, max) =>
+      typeof v === 'string'
+        ? v
+            .replace(/[\r\n\t]+/g, ' ')
+            .trim()
+            .slice(0, max)
+        : ''
+    return {
+      orgName: text(body.orgName, 120),
+      address: text(body.address, 200),
+      contactName: text(body.contactName, 120),
+      contactEmail: text(body.contactEmail, 254).toLowerCase(),
+      method: body.method === 'oidc' ? 'oidc' : body.method === 'saml' ? 'saml' : '',
+      samlEntryPoint: text(body.samlEntryPoint, 2048),
+      authIssuer: text(body.authIssuer, 2048),
+      authClientId: text(body.authClientId, 256),
+    }
+  }
+
+  const httpsUrl = (v) => {
+    try {
+      const u = new URL(v)
+      return u.protocol === 'https:' && !u.username && !u.password
+    } catch {
+      return false
+    }
+  }
+
+  async function onSetupPost(req, res) {
+    const refuse = (status, reason, values) =>
+      send(res, status, renderSetupForm({ origin, values, reason }))
+    if (isLive()) {
+      send(res, 409, renderSetupClosed({ origin }))
+      return
+    }
+    const now = Date.now()
+    setupFailures = setupFailures.filter((t) => now - t < SETUP_WINDOW_MS)
+    let body
+    try {
+      body = await readBody(req)
+    } catch {
+      refuse(400, 'shape', {})
+      return
+    }
+    const values = setupValues(body)
+    if (setupFailures.length >= SETUP_FAILURES_MAX) {
+      refuse(429, 'too-many', values)
+      return
+    }
+    if (!controlToken || !sameSecret(String(body.code || '').trim(), controlToken)) {
+      setupFailures.push(now)
+      refuse(403, 'code', values)
+      return
+    }
+    for (const key of ['orgName', 'contactName']) {
+      if (!values[key]) return refuse(400, key, values)
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.contactEmail)) {
+      return refuse(400, 'contactEmail', values)
+    }
+    let secrets
+    let auth
+    if (values.method === 'saml') {
+      const cert = typeof body.samlIdpCert === 'string' ? body.samlIdpCert.trim() : ''
+      if (!values.samlEntryPoint || !cert) return refuse(400, 'saml', values)
+      if (!httpsUrl(values.samlEntryPoint)) return refuse(400, 'samlUrl', values)
+      secrets = { samlIdpCert: cert, samlEntryPoint: values.samlEntryPoint }
+      // The SP entity id the setup page tells the IdP to expect.
+      auth = { authMethod: 'saml', authIssuer: '', authClientId: origin }
+    } else if (values.method === 'oidc') {
+      const secret = typeof body.oidcClientSecret === 'string' ? body.oidcClientSecret.trim() : ''
+      if (!values.authIssuer || !values.authClientId || !secret) {
+        return refuse(400, 'oidc', values)
+      }
+      if (!httpsUrl(values.authIssuer)) return refuse(400, 'oidcIssuer', values)
+      secrets = { oidcClientSecret: secret }
+      auth = {
+        authMethod: 'oidc',
+        authIssuer: values.authIssuer,
+        authClientId: values.authClientId,
+      }
+    } else {
+      return refuse(400, 'method', values)
+    }
+    // Two submissions at once must not create two organizations.
+    if (setupBusy) return refuse(409, 'already-live', values)
+    setupBusy = true
+    try {
+      const accepted = takePublicRequest({
+        id: `setup${randomBytes(12).toString('hex')}`,
+        status: 'requested',
+        orgName: values.orgName,
+        address: values.address,
+        contactName: values.contactName,
+        contactEmail: values.contactEmail,
+        handoffContact: values.contactEmail,
+        mode: 'bring',
+        engine: 'postgres',
+        ...auth,
+        bucketMode: 'provision',
+        bucketName: '',
+        bucketRegion: '',
+        presignUrl: '',
+      })
+      if (!accepted.ok)
+        return refuse(400, accepted.reason === 'email' ? 'contactEmail' : 'shape', values)
+      const taken = takeSecrets(secrets)
+      if (!taken.ok) return refuse(400, values.method, values)
+      const request = accepted.value
+      requests.set(request.id, request)
+      await requests.flush?.()
+      // Recorded as a used intake, exactly as a handoff leaves it, so a
+      // restart finds the secrets and no token is left that could reuse them.
+      intake.set(request.id, { hash: null, used: true, secrets: taken.value })
+      await intake.flush?.()
+      const outcome = await runFulfill(requests.get(request.id), taken.value)
+      if (!outcome.body.ok) {
+        // Not live: drop the half-made request so the next attempt starts clean.
+        requests.delete?.(request.id)
+        intake.delete?.(request.id)
+        await requests.flush?.()
+        await intake.flush?.()
+        return refuse(
+          400,
+          outcome.body.reason in { saml: 1, oidc: 1 } ? outcome.body.reason : 'fulfill',
+          values
+        )
+      }
+      send(
+        res,
+        200,
+        renderSetupDone({ origin, orgName: values.orgName, email: values.contactEmail })
+      )
+    } finally {
+      setupBusy = false
+    }
   }
 
   async function onFulfill(req, res) {

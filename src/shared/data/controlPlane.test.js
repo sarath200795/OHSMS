@@ -581,3 +581,107 @@ describe('the settings a dedicated host gives the app', () => {
     )
   })
 })
+
+// ── First-run setup in the browser ──────────────────────────────────────────
+// The installer connects the organization at /setup with the setup code, no
+// curl and no handoff link. It must refuse a wrong code, never echo a secret,
+// make exactly one organization, and close once that organization is live.
+describe('setting up in the browser', () => {
+  const form = (fields) => ({
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams(fields).toString(),
+  })
+  const saml = (keys, extra = {}) => ({
+    code: OPERATOR,
+    orgName: 'Northwind Metals',
+    address: 'Pune',
+    contactName: 'Asha Rao',
+    contactEmail: 'Asha@Northwind.test',
+    method: 'saml',
+    samlEntryPoint: 'https://idp.northwind.test/sso',
+    samlIdpCert: keys.cert,
+    ...extra,
+  })
+
+  it('takes the organization and its SAML sign-in, then the founder signs in', async () => {
+    const keys = makeIdpKeys('northwind-idp')
+    const app = await start(await managedLikeDb(), { stateKey: randomBytes(32) })
+
+    const page = await fetch(`${app.origin}/setup`)
+    expect(page.status).toBe(200)
+    const html = await page.text()
+    expect(html).toContain('Set up WEEHS')
+    expect(html).toContain('http://127.0.0.1/auth/saml')
+
+    const done = await fetch(`${app.origin}/setup`, form(saml(keys)))
+    expect(done.status).toBe(200)
+    const doneHtml = await done.text()
+    expect(doneHtml).toContain('Northwind Metals is live')
+    expect(doneHtml).not.toContain(OPERATOR)
+    expect(doneHtml).not.toContain(keys.cert.replace(/-----[A-Z ]+-----|\s/g, '').slice(20, 80))
+
+    // The app is told about the sign-in, and the founder is its admin.
+    const config = configFrom(await (await fetch(`${app.origin}/runtime-config.js`)).text())
+    expect(config.AUTH_METHOD).toBe('saml')
+    const founder = await signIn(app.origin, keys, 'asha@northwind.test')
+    expect(founder.status).toBe(302)
+    expect(founder.session).not.toBe('')
+
+    // Closed from now on, whoever knows the code.
+    expect(await (await fetch(`${app.origin}/setup`)).text()).toContain('Already set up')
+    const again = await fetch(`${app.origin}/setup`, form(saml(keys, { orgName: 'Second Org' })))
+    expect(again.status).toBe(409)
+    await app.stop()
+  })
+
+  it('refuses a wrong code without echoing anything secret, and stops answering after ten', async () => {
+    const keys = makeIdpKeys('northwind-idp')
+    const app = await start(await managedLikeDb(), { stateKey: randomBytes(32) })
+    const wrong = await fetch(`${app.origin}/setup`, form(saml(keys, { code: 'not-the-code' })))
+    expect(wrong.status).toBe(403)
+    const html = await wrong.text()
+    expect(html).toContain('setup code is not right')
+    expect(html).not.toContain(keys.cert.replace(/-----[A-Z ]+-----|\s/g, '').slice(20, 80))
+    expect(html).not.toContain('not-the-code')
+    // Public values are kept so the form need not be typed again.
+    expect(html).toContain('value="Northwind Metals"')
+
+    for (let i = 0; i < 9; i += 1) {
+      await fetch(`${app.origin}/setup`, form(saml(keys, { code: `guess-${i}` })))
+    }
+    // Even the right code is refused while the window is full.
+    const locked = await fetch(`${app.origin}/setup`, form(saml(keys)))
+    expect(locked.status).toBe(429)
+    expect(await (await fetch(`${app.origin}/setup`)).text()).toContain('Set up WEEHS')
+    await app.stop()
+  })
+
+  it('refuses an incomplete sign-in and leaves the environment open to try again', async () => {
+    const keys = makeIdpKeys('northwind-idp')
+    const app = await start(await managedLikeDb(), { stateKey: randomBytes(32) })
+    const noCert = await fetch(`${app.origin}/setup`, form(saml(keys, { samlIdpCert: '' })))
+    expect(noCert.status).toBe(400)
+    expect(await noCert.text()).toContain('certificate')
+    const http = await fetch(
+      `${app.origin}/setup`,
+      form(saml(keys, { samlEntryPoint: 'http://idp.northwind.test/sso' }))
+    )
+    expect(http.status).toBe(400)
+    const oidc = await fetch(
+      `${app.origin}/setup`,
+      form({
+        ...saml(keys),
+        method: 'oidc',
+        authIssuer: 'https://login.northwind.test',
+        authClientId: 'c',
+      })
+    )
+    expect(oidc.status).toBe(400)
+    expect(await oidc.text()).toContain('client secret')
+
+    const ok = await fetch(`${app.origin}/setup`, form(saml(keys)))
+    expect(ok.status).toBe(200)
+    await app.stop()
+  })
+})

@@ -134,8 +134,7 @@ cat <<NEXT
 
 WEEHS is running at https://$DOMAIN  (health: {"ok":true})
 
-Next: connect your company sign-in (docs/SELF-HOSTING.md, step 4).
-  - File the request with CONTROL_TOKEN from .env.
-  - Your handoff contact opens the one-time link and enters the IdP details.
-  - The founder signs in and invites everyone else from Employees.
+Next, in a browser: open https://$DOMAIN/setup
+  Setup code: CONTROL_TOKEN in .env
+  Enter your organization and its sign-in (SAML or OpenID Connect), then sign in.
 NEXT

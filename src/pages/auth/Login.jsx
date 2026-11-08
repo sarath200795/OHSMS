@@ -193,9 +193,16 @@ export default function Login() {
         showcase={<LoginModules />}
       >
         <p className="text-sm leading-relaxed text-ink-600">
-          This environment is waiting for your organization&apos;s sign-in to be connected. Your
-          administrator receives a one-time setup link by email; sign-in opens here once it is
-          complete.
+          This environment is waiting for your organization&apos;s sign-in to be connected. Sign-in
+          opens here once that is done.
+        </p>
+        {/* A full page load, not a route: /setup is served by the host, not this app. */}
+        <Button as="a" href="/setup" icon={ShieldCheck} className="mt-5 w-full">
+          Set up this environment
+        </Button>
+        <p className="mt-3 text-xs leading-relaxed text-ink-500">
+          For whoever installed it. You will need the setup code from this environment&apos;s
+          settings.
         </p>
       </AuthLayout>
     )

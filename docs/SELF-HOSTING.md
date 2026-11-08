@@ -113,19 +113,30 @@ curl -s https://ehs.example.com/health
 
 `/health` answers `{"ok":true}`.
 
-## 4. Connect your sign-in
+## 4. Connect your organization, in the browser
 
-This is the same as on any dedicated environment. Follow
-[`CONTROL-PLANE.md`](CONTROL-PLANE.md) from **step 7, "File the request"**,
-using `https://ehs.example.com` as the address and `CONTROL_TOKEN` from
-`.env`:
+Open `https://ehs.example.com/setup` (the sign-in page links to it while the
+environment is not set up) and fill in:
 
-- file your organization's request (step 7);
-- your handoff contact opens the one-time link and submits the IdP
-  certificate and entry point (step 8), and registers
-  `https://ehs.example.com/auth/saml` as the application in your IdP;
-- the founder signs in (step 9) and invites everyone else from
-  **Employees** (step 10).
+- **Setup code:** `CONTROL_TOKEN` from `.env`.
+- **Your organization:** its name and address, and your name and work email.
+  You become the administrator.
+- **How people sign in:** SAML or OpenID Connect. The page shows the values
+  to register this application with in your identity provider (the SAML
+  reply URL and entity ID, or the OIDC redirect URI), and asks for what the
+  identity provider gives back: for SAML its sign-in URL and certificate, for
+  OIDC the issuer URL, client ID and client secret.
+
+**Set up and go live** creates the organization in this server's database
+and connects the sign-in. Then sign in with your company account and, from
+**Employees**, invite everyone else; from **Sites**, add your locations.
+
+`/setup` closes for good once the organization is live. Ten wrong setup codes
+in fifteen minutes lock it for the rest of that window.
+
+The operator route from [`CONTROL-PLANE.md`](CONTROL-PLANE.md) (file a
+request with `curl`, a one-time handoff link) still works, for an operator
+setting up an environment on someone else's behalf.
 
 ## Upgrading
 
